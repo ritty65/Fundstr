@@ -1,23 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { useNostr } from '../nostr';
+import { useNostr, KIND_PROFILE } from '../nostr';
+import { useUserEvents } from '../hooks/useUserEvents';
 
 export default function MyProfilePage() {
-  const { nostrUser, publishProfile, fetchProfile, setError } = useNostr();
+  const { nostrUser, publishProfile, setError } = useNostr();
+  const [events] = useUserEvents(KIND_PROFILE);
   const [profile, setProfile] = useState({ name: '', picture: '', about: '' });
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    async function loadProfile() {
-      if (nostrUser) {
-        try {
-          const p = await fetchProfile(nostrUser.pk);
-          setProfile({ ...p });
-        } catch {}
-      }
+    if (events.length > 0) {
+      try {
+        setProfile(JSON.parse(events[0].content));
+      } catch {}
+    } else if (!nostrUser) {
+      setProfile({ name: '', picture: '', about: '' });
     }
-    loadProfile();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nostrUser]);
+  }, [events, nostrUser]);
 
   async function handlePublish() {
     try {
