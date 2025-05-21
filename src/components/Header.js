@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNostr } from '../nostr';
 import styles from './Header.module.css';
 import DarkModeToggle from './DarkModeToggle';
 
 export default function Header({ onTab, tab, darkMode, onToggleDarkMode }) {
-  const { nostrUser, loginWithExtension, logout, error, hasNip07 } = useNostr();
+  const { nostrUser, loginWithExtension, loginWithPrivateKey, logout, error, hasNip07 } = useNostr();
+  const [privKey, setPrivKey] = useState('');
   return (
     <header className={styles.header}>
       <h1>Nostr Patreon MVP</h1>
@@ -31,6 +32,15 @@ export default function Header({ onTab, tab, darkMode, onToggleDarkMode }) {
             ) : (
               <span className={styles.notDetected}>Nostr extension not detected</span>
             )}
+            <div>
+              <input
+                type="text"
+                placeholder="nsec..."
+                value={privKey}
+                onChange={e => setPrivKey(e.target.value)}
+              />
+              <button onClick={() => loginWithPrivateKey(privKey)}>Login with Private Key</button>
+            </div>
           </>
         )}
         {error && <div className={styles.error}>{error}</div>}

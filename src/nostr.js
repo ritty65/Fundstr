@@ -47,6 +47,21 @@ export function NostrProvider({ children }) {
     }
   }
 
+  function loginWithPrivateKey(nsec) {
+    try {
+      const decoded = window.NostrTools.nip19.decode(nsec);
+      if (decoded.type !== 'nsec') {
+        throw new Error('Invalid nsec string');
+      }
+      const sk = decoded.data;
+      const pk = window.NostrTools.getPublicKey(sk);
+      setNostrUser({ pk, sk, npub: npubEncode(pk) });
+      setError(null);
+    } catch (e) {
+      setError('Failed to use private key: ' + e.message);
+    }
+  }
+
   function logout() {
     setNostrUser(null);
     setError(null);
@@ -314,7 +329,7 @@ export function NostrProvider({ children }) {
 
   return (
     <NostrContext.Provider value={{
-      nostrUser, error, setError, loginWithExtension, logout, hasNip07,
+      nostrUser, error, setError, loginWithExtension, loginWithPrivateKey, logout, hasNip07,
       publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay,
       relays, addRelay, removeRelay, relayStatus,
       publishProfile, fetchProfile,
