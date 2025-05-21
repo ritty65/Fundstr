@@ -269,6 +269,15 @@ export function NostrProvider({ children }) {
     return evs;
   }
 
+  async function fetchReactions(pubkey) {
+    const events = [];
+    for (const relay of relays) {
+      const res = await fetchEventsFromRelay({ authors: [pubkey], kinds: [7] }, relay);
+      if (res.length) events.push(...res);
+    }
+    return events;
+  }
+
   async function publishCashuWallet(data) {
     return await publishNostrEvent({
       kind: KIND_CASHU_WALLET,
@@ -376,7 +385,8 @@ export function NostrProvider({ children }) {
       publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay,
       relays, addRelay, removeRelay, relayStatus,
       publishProfile, fetchProfile,
-      fetchCashuWallet, fetchCashuTokens, publishCashuWallet, addCashuToken, sendCashuToken,
+      fetchCashuWallet, fetchCashuTokens, fetchReactions,
+      publishCashuWallet, addCashuToken, sendCashuToken,
       fetchFollowingList, fetchFollowersList, countFollowing, countFollowers,
       nwc, connectNwc, disconnectNwc, sendNwcPayInvoice
     }}>
