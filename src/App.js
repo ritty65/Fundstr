@@ -278,6 +278,7 @@ function Header({ onTab, tab }) {
       <h1>Nostr Patreon MVP</h1>
       <button onClick={() => onTab("creator")}>Creator</button>
       <button onClick={() => onTab("supporter")}>Support a Creator</button>
+      <button onClick={() => onTab("discover")}>Discover Creators</button>
       <button onClick={() => onTab("profile")}>My Profile</button>
       <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
         {nostrUser ? (
@@ -506,6 +507,45 @@ function SupportCreatorPage() {
   );
 }
 
+function DiscoverCreatorsPage() {
+  const { fetchEventsFromRelay } = useNostr();
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSearch() {
+    setLoading(true);
+    const events = await fetchEventsFromRelay({ kinds: [KIND_PROFILE], limit: 200 }, DEFAULT_RELAYS[0]);
+    const q = query.toLowerCase();
+    const matches = events.filter(ev => {
+      try {
+        const p = JSON.parse(ev.content);
+        return (p.name && p.name.toLowerCase().includes(q)) || (p.about && p.about.toLowerCase().includes(q));
+      } catch {
+        return false;
+      }
+    }).map(ev => ev.pubkey);
+    setResults(matches);
+    setLoading(false);
+  }
+
+  return (
+    <div>
+      <RelayManager />
+      <h2>Discover Creators</h2>
+      <input placeholder="Search by name or bio" value={query} onChange={e => setQuery(e.target.value)} />
+      <button onClick={handleSearch}>Search</button>
+      {loading ? "Searching..." : (
+        <div>
+          {results.map(pk => (
+            <ProfileCard key={pk} pubkey={pk} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [tab, setTab] = useState("creator");
   return (
@@ -514,6 +554,7 @@ export default function App() {
         <Header tab={tab} onTab={setTab} />
         {tab === "creator" && <CreatorSetupPage />}
         {tab === "supporter" && <SupportCreatorPage />}
+        {tab === "discover" && <DiscoverCreatorsPage />}
         {tab === "profile" && <MyProfilePage />}
         <footer style={{ marginTop: 64, color: "#888" }}>Nostr Patreon MVP - Demo</footer>
       </div>
