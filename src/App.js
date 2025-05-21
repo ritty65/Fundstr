@@ -35,15 +35,84 @@ function nsecEncode(sk) {
   return window.NostrTools.nip19.nsecEncode(sk);
 }
 
-function saveKeys(sk, pk) {
-  localStorage.setItem("nostr_sk", sk);
+async function encryptPrivateKey(sk, passphrase) {
+  const enc = new TextEncoder();
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+  const salt = window.crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial = await window.crypto.subtle.importKey(
+    "raw",
+    enc.encode(passphrase),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+  const key = await window.crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt"]
+  );
+  const ciphertext = await window.crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    enc.encode(sk)
+  );
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(ciphertext)));
+  const ivb64 = btoa(String.fromCharCode(...iv));
+  const saltb64 = btoa(String.fromCharCode(...salt));
+  return `${b64}.${ivb64}.${saltb64}`;
+}
+
+async function decryptPrivateKey(data, passphrase) {
+  const [b64, ivb64, saltb64] = data.split(".");
+  const enc = new TextEncoder();
+  const ciphertext = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const iv = Uint8Array.from(atob(ivb64), c => c.charCodeAt(0));
+  const salt = Uint8Array.from(atob(saltb64), c => c.charCodeAt(0));
+  const keyMaterial = await window.crypto.subtle.importKey(
+    "raw",
+    enc.encode(passphrase),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+  const key = await window.crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["decrypt"]
+  );
+  const decrypted = await window.crypto.subtle.decrypt(
+    { name: "AES-GCM", iv },
+    key,
+    ciphertext
+  );
+  return new TextDecoder().decode(decrypted);
+}
+
+async function saveKeys(sk, pk) {
+  const passphrase = window.prompt("Set a passphrase to encrypt your key");
+  if (!passphrase) throw new Error("Passphrase required");
+  const encSk = await encryptPrivateKey(sk, passphrase);
+  localStorage.setItem("nostr_sk_enc", encSk);
   localStorage.setItem("nostr_pk", pk);
 }
-function loadKeys() {
-  const sk = localStorage.getItem("nostr_sk");
+
+async function loadKeys() {
+  const encSk = localStorage.getItem("nostr_sk_enc");
   const pk = localStorage.getItem("nostr_pk");
-  if (sk && pk) return { sk, pk };
-  return null;
+  if (!encSk || !pk) return null;
+  const passphrase = window.prompt("Enter passphrase to unlock your key");
+  if (!passphrase) return null;
+  try {
+    const sk = await decryptPrivateKey(encSk, passphrase);
+    return { sk, pk };
+  } catch {
+    alert("Failed to decrypt private key.");
+    return null;
+  }
 }
 function saveRelays(relays) {
   localStorage.setItem("nostr_relays", JSON.stringify(relays));
@@ -63,15 +132,17 @@ function NostrProvider({ children }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const keys = loadKeys();
-    if (keys) {
-      setNostrUser({
-        sk: keys.sk,
-        pk: keys.pk,
-        npub: npubEncode(keys.pk),
-        nsec: nsecEncode(keys.sk)
-      });
-    }
+    (async () => {
+      const keys = await loadKeys();
+      if (keys) {
+        setNostrUser({
+          sk: keys.sk,
+          pk: keys.pk,
+          npub: npubEncode(keys.pk),
+          nsec: nsecEncode(keys.sk)
+        });
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -105,11 +176,11 @@ function NostrProvider({ children }) {
     setRelays(relays.filter(r => r !== relay));
   }
 
-  function createNewKeypair() {
+  async function createNewKeypair() {
     try {
       const sk = generatePrivateKey();
       const pk = getPublicKey(sk);
-      saveKeys(sk, pk);
+      await saveKeys(sk, pk);
       setNostrUser({ sk, pk, npub: npubEncode(pk), nsec: nsecEncode(sk) });
       setError(null);
     } catch (e) {
@@ -118,7 +189,7 @@ function NostrProvider({ children }) {
   }
 
   function logout() {
-    localStorage.removeItem("nostr_sk");
+    localStorage.removeItem("nostr_sk_enc");
     localStorage.removeItem("nostr_pk");
     setNostrUser(null);
     setError(null);
