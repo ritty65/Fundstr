@@ -21,3 +21,8 @@ The demo now includes a very small Cashu wallet implementation. Users can
 publish wallet metadata and token events using the Cashu tab. Stored token
 events follow the [NIP-60](https://nips.nostr.com/60) draft so they can be
 synchronized across Nostr clients.
+
+Cashu tokens stored in the wallet can now be used to pay creator tiers.
+When a recurring pledge payment is due a "Pay with Cashu" option will
+appear if tokens are available. The token is sent to the creator via a
+Nostr DM and the local token event is deleted.

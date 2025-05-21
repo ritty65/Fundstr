@@ -8,6 +8,9 @@ export const KIND_PROFILE = 0;
 export const KIND_MVP_TIER = 30078;
 export const KIND_MVP_PLEDGE = 30079;
 export const KIND_RECURRING_PLEDGE = 30080;
+export const KIND_CASHU_WALLET = 17375;
+export const KIND_CASHU_TOKENS = 7375;
+export const KIND_CASHU_HISTORY = 7376;
 
 const NostrContext = createContext();
 
@@ -188,6 +191,57 @@ export function NostrProvider({ children }) {
     return {};
   }
 
+  // --- Cashu wallet helpers ---
+  async function fetchCashuWallet(pubkey) {
+    for (const relay of relays) {
+      const ev = await fetchLatestEvent(pubkey, KIND_CASHU_WALLET, relay);
+      if (ev) {
+        try { return JSON.parse(ev.content); } catch { return null; }
+      }
+    }
+    return null;
+  }
+
+  async function fetchCashuTokens(pubkey) {
+    const evs = [];
+    for (const relay of relays) {
+      const res = await fetchEventsFromRelay({ authors: [pubkey], kinds: [KIND_CASHU_TOKENS] }, relay);
+      if (res.length) evs.push(...res);
+    }
+    return evs;
+  }
+
+  async function publishCashuWallet(data) {
+    return await publishNostrEvent({
+      kind: KIND_CASHU_WALLET,
+      tags: [["mint", data.mint]],
+      content: JSON.stringify(data)
+    });
+  }
+
+  async function addCashuToken(token) {
+    return await publishNostrEvent({
+      kind: KIND_CASHU_TOKENS,
+      tags: [],
+      content: JSON.stringify(token)
+    });
+  }
+
+  async function sendCashuToken(tokenEvent, toPubkey) {
+    if (!nostrUser) throw new Error("Connect your Nostr extension first!");
+    const enc = await window.nostr.nip04.encrypt(toPubkey, tokenEvent.content);
+    await publishNostrEvent({
+      kind: 4,
+      tags: [["p", toPubkey]],
+      content: enc
+    });
+    await publishNostrEvent({
+      kind: 5,
+      tags: [["e", tokenEvent.id], ["k", String(KIND_CASHU_TOKENS)]],
+      content: ""
+    });
+  }
+
   // --- NIP-47 wallet connect helpers ---
   function loadNwc() {
     try { return JSON.parse(localStorage.getItem("nwc_conn")); } catch { return null; }
@@ -264,6 +318,7 @@ export function NostrProvider({ children }) {
       publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay,
       relays, addRelay, removeRelay, relayStatus,
       publishProfile, fetchProfile,
+      fetchCashuWallet, fetchCashuTokens, publishCashuWallet, addCashuToken, sendCashuToken,
       nwc, connectNwc, disconnectNwc, sendNwcPayInvoice
     }}>
       {children}
