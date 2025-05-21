@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { useNostr, DEFAULT_RELAYS, KIND_MVP_TIER, KIND_PROFILE, KIND_MVP_PLEDGE, KIND_RECURRING_PLEDGE } from '../nostr';
+import { useNostr, DEFAULT_RELAYS, KIND_MVP_TIER, KIND_PROFILE, KIND_MVP_PLEDGE, KIND_RECURRING_PLEDGE, KIND_CASHU_TOKENS } from '../nostr';
+import { useUserEvents } from '../hooks/useUserEvents';
 import RelayManager from '../components/RelayManager';
 import ProfileCard from '../components/ProfileCard';
 import { useNotification } from '../components/NotificationProvider';
@@ -11,8 +12,6 @@ export default function SupportCreatorPage() {
     nostrUser,
     publishNostrEvent,
     fetchLatestEvent,
-    fetchEventsFromRelay,
-    fetchCashuTokens,
     sendCashuToken,
     nwc,
     connectNwc,
@@ -24,33 +23,14 @@ export default function SupportCreatorPage() {
   const [tier, setTier] = useState(null);
   const [error, setError] = useState(null);
   const [nwcUri, setNwcUri] = useState('');
-  const [recurrings, setRecurrings] = useState([]);
+  const [recurrings, setRecurrings] = useUserEvents(KIND_RECURRING_PLEDGE);
   const [duePledges, setDuePledges] = useState([]);
   const [recurringAmount, setRecurringAmount] = useState('');
   const [period, setPeriod] = useState('weekly');
   const [note, setNote] = useState('');
-  const [cashuTokens, setCashuTokens] = useState([]);
+  const [cashuTokens, setCashuTokens] = useUserEvents(KIND_CASHU_TOKENS);
   const [working, setWorking] = useState(false);
 
-  useEffect(() => {
-    if (!nostrUser) { setRecurrings([]); return; }
-    (async () => {
-      try {
-        const evs = await fetchEventsFromRelay({ authors: [nostrUser.pk], kinds: [KIND_RECURRING_PLEDGE] }, DEFAULT_RELAYS[0]);
-        setRecurrings(evs);
-      } catch {}
-    })();
-  }, [nostrUser]);
-
-  useEffect(() => {
-    if (!nostrUser) { setCashuTokens([]); return; }
-    (async () => {
-      try {
-        const ts = await fetchCashuTokens(nostrUser.pk);
-        setCashuTokens(ts);
-      } catch {}
-    })();
-  }, [nostrUser]);
 
   useEffect(() => {
     const id = setInterval(() => {

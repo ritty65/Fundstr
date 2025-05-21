@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useNostr, DEFAULT_RELAYS, KIND_MVP_TIER, KIND_MVP_PLEDGE, KIND_RECURRING_PLEDGE } from '../nostr';
+import { useUserEvents } from '../hooks/useUserEvents';
 import RelayManager from '../components/RelayManager';
 import ProfileCard from '../components/ProfileCard';
 import { useNotification } from '../components/NotificationProvider';
 import Spinner from '../components/Spinner';
 
 export default function CreatorSetupPage() {
-  const { nostrUser, publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay, setError } = useNostr();
+  const { nostrUser, publishNostrEvent, fetchEventsFromRelay, setError } = useNostr();
   const { show } = useNotification();
   const [tier, setTier] = useState({ title: '', amount: '', paymentInstructions: '' });
   const [currentTier, setCurrentTier] = useState(null);
+  const [tierEvents] = useUserEvents(KIND_MVP_TIER);
   const [supporters, setSupporters] = useState([]);
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -21,11 +23,12 @@ export default function CreatorSetupPage() {
       setLoading(true);
       setError(null);
       try {
-        const latestTier = await fetchLatestEvent(nostrUser.pk, KIND_MVP_TIER, DEFAULT_RELAYS[0]);
-        setCurrentTier(latestTier ? JSON.parse(latestTier.content) : null);
-        if (latestTier) {
+        if (tierEvents.length > 0) {
+          setCurrentTier(JSON.parse(tierEvents[0].content));
           const pledges = await fetchEventsFromRelay({ kinds: [KIND_MVP_PLEDGE, KIND_RECURRING_PLEDGE], '#p': [nostrUser.pk] }, DEFAULT_RELAYS[0]);
           setSupporters(pledges);
+        } else {
+          setCurrentTier(null);
         }
       } catch (e) {
         setError('Failed to load creator data.');
@@ -33,7 +36,7 @@ export default function CreatorSetupPage() {
       setLoading(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nostrUser]);
+  }, [nostrUser, tierEvents]);
 
   async function handlePublishTier() {
     if (!nostrUser) { show('Connect your Nostr extension first'); return; }

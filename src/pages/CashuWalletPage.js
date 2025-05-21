@@ -1,35 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { useNostr } from '../nostr';
+import React, { useState } from 'react';
+import { useNostr, KIND_CASHU_WALLET, KIND_CASHU_TOKENS } from '../nostr';
+import { useUserEvents } from '../hooks/useUserEvents';
 import { useNotification } from '../components/NotificationProvider';
 import Spinner from '../components/Spinner';
 
 export default function CashuWalletPage() {
   const {
     nostrUser,
-    fetchCashuWallet,
-    fetchCashuTokens,
     publishCashuWallet,
     addCashuToken
   } = useNostr();
   const { show } = useNotification();
-  const [wallet, setWallet] = useState(null);
   const [mint, setMint] = useState('');
-  const [tokens, setTokens] = useState([]);
+  const [tokens, setTokens] = useUserEvents(KIND_CASHU_TOKENS);
   const [newToken, setNewToken] = useState('');
   const [error, setError] = useState(null);
   const [working, setWorking] = useState(false);
 
-  useEffect(() => {
-    if (!nostrUser) return;
-    (async () => {
-      try {
-        const w = await fetchCashuWallet(nostrUser.pk);
-        if (w) setWallet(w);
-        const ts = await fetchCashuTokens(nostrUser.pk);
-        setTokens(ts);
-      } catch {}
-    })();
-  }, [nostrUser]);
 
   async function handlePublishWallet() {
     if (!nostrUser) return;
