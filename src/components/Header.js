@@ -10,6 +10,7 @@ export default function Header({ onTab, tab }) {
       <button onClick={() => onTab('supporter')}>Support a Creator</button>
       <button onClick={() => onTab('profile')}>My Profile</button>
       <button onClick={() => onTab('wallet')}>Cashu Wallet</button>
+      <button onClick={() => onTab('follows')}>Follows</button>
       <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
         {nostrUser ? (
           <>
