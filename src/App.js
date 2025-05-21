@@ -35,6 +35,29 @@ function nsecEncode(sk) {
   return window.NostrTools.nip19.nsecEncode(sk);
 }
 
+// Decode npub/note/nevent/naddr identifiers to raw values
+function decodeNostrIdentifier(value) {
+  if (!value) return value;
+  if (/^[0-9a-f]{64}$/i.test(value)) return value.toLowerCase();
+  try {
+    const { type, data } = window.NostrTools.nip19.decode(value);
+    switch (type) {
+      case 'npub':
+        return data; // hex pubkey
+      case 'note':
+        return data; // event id
+      case 'nevent':
+        return data.id || data;
+      case 'naddr':
+        return data; // {kind, pubkey, identifier}
+      default:
+        return value;
+    }
+  } catch {
+    return value;
+  }
+}
+
 function saveKeys(sk, pk) {
   localStorage.setItem("nostr_sk", sk);
   localStorage.setItem("nostr_pk", pk);
@@ -454,10 +477,11 @@ function SupportCreatorPage() {
     setError(null);
     if (!creatorKey) return;
     try {
-      const tierEvent = await fetchLatestEvent(creatorKey, KIND_MVP_TIER, DEFAULT_RELAYS[0]);
+      const hexKey = decodeNostrIdentifier(creatorKey);
+      const tierEvent = await fetchLatestEvent(hexKey, KIND_MVP_TIER, DEFAULT_RELAYS[0]);
       if (!tierEvent) { setTier(null); setError("No tier found for this pubkey."); return; }
       setTier(JSON.parse(tierEvent.content));
-      const profEvent = await fetchLatestEvent(creatorKey, KIND_PROFILE, DEFAULT_RELAYS[0]);
+      const profEvent = await fetchLatestEvent(hexKey, KIND_PROFILE, DEFAULT_RELAYS[0]);
       if (profEvent) {
         try { setCreatorProfile(JSON.parse(profEvent.content)); } catch { }
       }
@@ -473,7 +497,7 @@ function SupportCreatorPage() {
       const event = {
         kind: KIND_MVP_PLEDGE,
         tags: [
-          ["p", creatorKey],
+          ["p", decodeNostrIdentifier(creatorKey)],
           ["e", tier.id || ""]
         ],
         content: "I pledge support"
@@ -492,7 +516,7 @@ function SupportCreatorPage() {
       <input placeholder="Creator Pubkey" value={creatorKey} onChange={e => setCreatorKey(e.target.value)} />
       <button onClick={handleFetchCreatorTier}>Find Tier</button>
       {creatorProfile && (
-        <ProfileCard pubkey={creatorKey} />
+        <ProfileCard pubkey={decodeNostrIdentifier(creatorKey)} />
       )}
       {tier && (
         <div>
