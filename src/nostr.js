@@ -92,6 +92,15 @@ export function NostrProvider({ children }) {
     setError(null);
   }
 
+  async function getPrivateKey() {
+    if (!hasNip07 || !window.nostr.getPrivateKey) return null;
+    try {
+      return await window.nostr.getPrivateKey();
+    } catch {
+      return null;
+    }
+  }
+
   async function publishNostrEvent(eventTemplate) {
     if (!nostrUser) throw new Error("Connect your Nostr extension first!");
     if (!hasNip07) throw new Error("NIP-07 extension not available");
@@ -319,7 +328,8 @@ export function NostrProvider({ children }) {
       relays, addRelay, removeRelay, relayStatus,
       publishProfile, fetchProfile,
       fetchCashuWallet, fetchCashuTokens, publishCashuWallet, addCashuToken, sendCashuToken,
-      nwc, connectNwc, disconnectNwc, sendNwcPayInvoice
+      nwc, connectNwc, disconnectNwc, sendNwcPayInvoice,
+      getPrivateKey
     }}>
       {children}
     </NostrContext.Provider>
