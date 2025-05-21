@@ -1,4 +1,5 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
+import { fetchNip11 } from "./nip11";
 import { QRCodeSVG } from 'qrcode.react';
 
 const DEFAULT_RELAYS = [
@@ -88,6 +89,7 @@ function NostrProvider({ children }) {
   const [nostrUser, setNostrUser] = useState(null);
   const [relays, setRelays] = useState(loadRelays());
   const [relayStatus, setRelayStatus] = useState({});
+  const [relayInfo, setRelayInfo] = useState({});
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -105,6 +107,7 @@ function NostrProvider({ children }) {
   useEffect(() => {
     saveRelays(relays);
     checkRelayStatuses(relays);
+    fetchRelayInfos(relays);
     // eslint-disable-next-line
   }, [relays]);
 
@@ -123,6 +126,16 @@ function NostrProvider({ children }) {
       })
     ));
     setRelayStatus(statuses);
+  }
+
+  async function fetchRelayInfos(rlys) {
+    const infoCopy = {};
+    await Promise.all(rlys.map(async r => {
+      const data = await fetchNip11(r);
+      if (data) infoCopy[r] = data;
+      else infoCopy[r] = { error: true };
+    }));
+    setRelayInfo(infoCopy);
   }
 
   function addRelay(relay) {
@@ -258,7 +271,7 @@ function NostrProvider({ children }) {
     <NostrContext.Provider value={{
       nostrUser, error, setError, createNewKeypair, logout,
       publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay,
-      relays, addRelay, removeRelay, relayStatus,
+      relays, addRelay, removeRelay, relayStatus, relayInfo,
       publishProfile, fetchProfile
     }}>
       {children}
@@ -269,7 +282,7 @@ function NostrProvider({ children }) {
 // --- UI Components ---
 
 function RelayManager() {
-  const { relays, addRelay, removeRelay, relayStatus } = useNostr();
+  const { relays, addRelay, removeRelay, relayStatus, relayInfo } = useNostr();
   const [newRelay, setNewRelay] = useState("");
   return (
     <section style={{ marginBottom: 24 }}>
@@ -284,7 +297,31 @@ function RelayManager() {
               marginRight: 6,
               background: relayStatus[relay] === "online" ? "limegreen" : "crimson"
             }}></span>
-            <span style={{ flex: 1 }}>{relay}</span>
+            <div style={{ flex: 1 }}>
+              <strong>{relayInfo[relay] && !relayInfo[relay].error ? (relayInfo[relay].name || relay) : relay}</strong>
+              {relayInfo[relay] && relayInfo[relay].description && !relayInfo[relay].error && (
+                <div style={{ fontSize: "0.8em" }}>{relayInfo[relay].description}</div>
+              )}
+              {relayInfo[relay] && relayInfo[relay].error && (
+                <div style={{ fontSize: "0.8em", color: "gray" }}>NIP-11 unavailable</div>
+              )}
+              {relayInfo[relay] && relayInfo[relay].supported_nips && (
+                <div style={{ fontSize: "0.75em" }}>
+                  NIPs: {relayInfo[relay].supported_nips.slice(0,5).map(nip => (
+                    <span
+                      key={nip}
+                      style={{
+                        marginRight: 4,
+                        fontWeight: nip===45 || nip===50 ? "bold" : "normal",
+                        color: nip===45 || nip===50 ? "darkorange" : "inherit"
+                      }}
+                    >
+                      {nip}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
             <button style={{ fontSize: 13, marginLeft: 10 }} onClick={() => removeRelay(relay)}>Remove</button>
           </li>
         )}
