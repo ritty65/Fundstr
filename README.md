@@ -7,3 +7,10 @@ The "Nostr Patreon-like Platform" is an application that allows creators to set 
 - **30078** - Creator tier definition.
 - **30079** - One-time pledge.
 - **30080** - Recurring pledge agreement.
+
+## Wallet Connect
+
+Supporters can optionally connect a Nostr Wallet Connect (NIP-47) compatible wallet.
+When a recurring pledge payment is due the app can send a `pay_invoice` request
+to the connected wallet. If no wallet is connected, the app will show the
+invoice so it can be paid manually.
