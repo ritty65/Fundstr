@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { useNostr, DEFAULT_RELAYS } from '../nostr';
+import { useNostr } from '../nostr';
 
 export default function CashuWalletPage() {
-  const { nostrUser, publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay } = useNostr();
+  const {
+    nostrUser,
+    fetchCashuWallet,
+    fetchCashuTokens,
+    publishCashuWallet,
+    addCashuToken
+  } = useNostr();
   const [wallet, setWallet] = useState(null);
   const [mint, setMint] = useState('');
   const [tokens, setTokens] = useState([]);
@@ -13,9 +19,9 @@ export default function CashuWalletPage() {
     if (!nostrUser) return;
     (async () => {
       try {
-        const w = await fetchLatestEvent(nostrUser.pk, 17375, DEFAULT_RELAYS[0]);
-        if (w) setWallet(JSON.parse(w.content));
-        const ts = await fetchEventsFromRelay({ authors: [nostrUser.pk], kinds: [7375] }, DEFAULT_RELAYS[0]);
+        const w = await fetchCashuWallet(nostrUser.pk);
+        if (w) setWallet(w);
+        const ts = await fetchCashuTokens(nostrUser.pk);
         setTokens(ts);
       } catch {}
     })();
@@ -25,11 +31,7 @@ export default function CashuWalletPage() {
     if (!nostrUser) return;
     try {
       setError(null);
-      await publishNostrEvent({
-        kind: 17375,
-        tags: [["mint", mint]],
-        content: JSON.stringify({ mint })
-      });
+      await publishCashuWallet({ mint });
       alert('Wallet event published');
     } catch (e) { setError('Failed: ' + e.message); }
   }
@@ -38,11 +40,7 @@ export default function CashuWalletPage() {
     if (!nostrUser || !newToken) return;
     try {
       setError(null);
-      await publishNostrEvent({
-        kind: 7375,
-        tags: [],
-        content: JSON.stringify({ mint, proofs: [newToken] })
-      });
+      await addCashuToken({ mint, proofs: [newToken] });
       alert('Token event published');
     } catch (e) { setError('Failed: ' + e.message); }
   }

@@ -5,7 +5,17 @@ import RelayManager from '../components/RelayManager';
 import ProfileCard from '../components/ProfileCard';
 
 export default function SupportCreatorPage() {
-  const { nostrUser, publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay, nwc, connectNwc, sendNwcPayInvoice } = useNostr();
+  const {
+    nostrUser,
+    publishNostrEvent,
+    fetchLatestEvent,
+    fetchEventsFromRelay,
+    fetchCashuTokens,
+    sendCashuToken,
+    nwc,
+    connectNwc,
+    sendNwcPayInvoice
+  } = useNostr();
   const [creatorKey, setCreatorKey] = useState('');
   const [creatorProfile, setCreatorProfile] = useState(null);
   const [tier, setTier] = useState(null);
@@ -16,6 +26,7 @@ export default function SupportCreatorPage() {
   const [recurringAmount, setRecurringAmount] = useState('');
   const [period, setPeriod] = useState('weekly');
   const [note, setNote] = useState('');
+  const [cashuTokens, setCashuTokens] = useState([]);
 
   useEffect(() => {
     if (!nostrUser) { setRecurrings([]); return; }
@@ -23,6 +34,16 @@ export default function SupportCreatorPage() {
       try {
         const evs = await fetchEventsFromRelay({ authors: [nostrUser.pk], kinds: [KIND_RECURRING_PLEDGE] }, DEFAULT_RELAYS[0]);
         setRecurrings(evs);
+      } catch {}
+    })();
+  }, [nostrUser]);
+
+  useEffect(() => {
+    if (!nostrUser) { setCashuTokens([]); return; }
+    (async () => {
+      try {
+        const ts = await fetchCashuTokens(nostrUser.pk);
+        setCashuTokens(ts);
       } catch {}
     })();
   }, [nostrUser]);
@@ -56,6 +77,19 @@ export default function SupportCreatorPage() {
       }
     } catch {
       alert('Could not process payment');
+    }
+  }
+
+  async function handlePayPledgeCashu(ev) {
+    const creator = ev.tags.find(t => t[0] === 'p')?.[1];
+    if (!creator || cashuTokens.length === 0) return;
+    try {
+      const token = cashuTokens[0];
+      await sendCashuToken(token, creator);
+      alert('Cashu token sent');
+      setCashuTokens(cashuTokens.filter(t => t.id !== token.id));
+    } catch {
+      alert('Could not send token');
     }
   }
 
@@ -183,6 +217,11 @@ export default function SupportCreatorPage() {
                 <button style={{ marginLeft: 8 }} onClick={() => handlePayPledge(ev)}>
                   Pay Now
                 </button>
+                {cashuTokens.length > 0 && (
+                  <button style={{ marginLeft: 8 }} onClick={() => handlePayPledgeCashu(ev)}>
+                    Pay with Cashu
+                  </button>
+                )}
               </li>
             ))}
           </ul>
