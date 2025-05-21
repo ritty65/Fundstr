@@ -14,3 +14,10 @@ Supporters can optionally connect a Nostr Wallet Connect (NIP-47) compatible wal
 When a recurring pledge payment is due the app can send a `pay_invoice` request
 to the connected wallet. If no wallet is connected, the app will show the
 invoice so it can be paid manually.
+
+## Cashu Wallet (NIP-60)
+
+The demo now includes a very small Cashu wallet implementation. Users can
+publish wallet metadata and token events using the Cashu tab. Stored token
+events follow the [NIP-60](https://nips.nostr.com/60) draft so they can be
+synchronized across Nostr clients.
