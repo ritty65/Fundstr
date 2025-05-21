@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { NostrProvider } from './nostr';
 import Header from './components/Header';
 import CreatorSetupPage from './pages/CreatorSetupPage';
@@ -9,19 +10,23 @@ import FollowsPage from './pages/FollowsPage';
 import UserActivityPage from './pages/UserActivityPage';
 
 export default function App() {
-  const [tab, setTab] = useState('creator');
   return (
     <NostrProvider>
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: 32 }}>
-        <Header tab={tab} onTab={setTab} />
-        {tab === 'creator' && <CreatorSetupPage />}
-        {tab === 'supporter' && <SupportCreatorPage />}
-        {tab === 'profile' && <MyProfilePage />}
-        {tab === 'wallet' && <CashuWalletPage />}
-        {tab === 'follows' && <FollowsPage />}
-        {tab === 'activity' && <UserActivityPage />}
-        <footer style={{ marginTop: 64, color: '#888' }}>Nostr Patreon MVP - Demo</footer>
-      </div>
+      <Router>
+        <div style={{ maxWidth: 800, margin: '0 auto', padding: 32 }}>
+          <Header />
+          <Routes>
+            <Route path="/" element={<CreatorSetupPage />} />
+            <Route path="/creator" element={<CreatorSetupPage />} />
+            <Route path="/supporter" element={<SupportCreatorPage />} />
+            <Route path="/profile" element={<MyProfilePage />} />
+            <Route path="/wallet" element={<CashuWalletPage />} />
+            <Route path="/follows" element={<FollowsPage />} />
+            <Route path="/activity" element={<UserActivityPage />} />
+          </Routes>
+          <footer style={{ marginTop: 64, color: '#888' }}>Nostr Patreon MVP - Demo</footer>
+        </div>
+      </Router>
     </NostrProvider>
   );
 }

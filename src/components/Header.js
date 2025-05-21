@@ -1,17 +1,18 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { useNostr } from '../nostr';
 
-export default function Header({ onTab, tab }) {
+export default function Header() {
   const { nostrUser, loginWithExtension, logout, error, hasNip07 } = useNostr();
   return (
     <header style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
       <h1>Nostr Patreon MVP</h1>
-      <button onClick={() => onTab('creator')}>Creator</button>
-      <button onClick={() => onTab('supporter')}>Support a Creator</button>
-      <button onClick={() => onTab('profile')}>My Profile</button>
-      <button onClick={() => onTab('wallet')}>Cashu Wallet</button>
-      <button onClick={() => onTab('follows')}>Follows</button>
-      <button onClick={() => onTab('activity')}>Activity</button>
+      <Link to="/creator">Creator</Link>
+      <Link to="/supporter">Support a Creator</Link>
+      <Link to="/profile">My Profile</Link>
+      <Link to="/wallet">Cashu Wallet</Link>
+      <Link to="/follows">Follows</Link>
+      <Link to="/activity">Activity</Link>
       <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
         {nostrUser ? (
           <>
