@@ -172,6 +172,64 @@ export function NostrProvider({ children }) {
     });
   }
 
+  // --- Follower/Following helpers ---
+  async function fetchFollowingList(pubkey) {
+    for (const relay of relays) {
+      const ev = await fetchLatestEvent(pubkey, 3, relay);
+      if (ev) {
+        return ev.tags.filter(t => t[0] === "p").map(t => t[1]);
+      }
+    }
+    return [];
+  }
+
+  async function fetchFollowersList(pubkey) {
+    let events = [];
+    for (const relay of relays) {
+      const res = await fetchEventsFromRelay({ kinds: [3], "#p": [pubkey] }, relay);
+      if (res.length) events.push(...res);
+    }
+    const pks = Array.from(new Set(events.map(ev => ev.pubkey)));
+    return pks;
+  }
+
+  async function requestCount(filter, relayUrl) {
+    return new Promise(resolve => {
+      try {
+        const ws = new window.WebSocket(relayUrl);
+        const subId = Math.random().toString(36).slice(2);
+        ws.onopen = () => { ws.send(JSON.stringify(["COUNT", subId, filter])); };
+        ws.onmessage = e => {
+          const data = JSON.parse(e.data);
+          if (data[0] === "COUNT" && data[1] === subId) {
+            ws.close();
+            resolve(data[2].count);
+          }
+          if (data[0] === "EOSE" && data[1] === subId) { ws.close(); resolve(null); }
+        };
+        ws.onerror = () => { ws.close(); resolve(null); };
+      } catch { resolve(null); }
+    });
+  }
+
+  async function countFollowing(pubkey) {
+    for (const relay of relays) {
+      const cnt = await requestCount({ kinds: [3], authors: [pubkey] }, relay);
+      if (typeof cnt === "number") return cnt;
+    }
+    const list = await fetchFollowingList(pubkey);
+    return list.length;
+  }
+
+  async function countFollowers(pubkey) {
+    for (const relay of relays) {
+      const cnt = await requestCount({ kinds: [3], "#p": [pubkey] }, relay);
+      if (typeof cnt === "number") return cnt;
+    }
+    const list = await fetchFollowersList(pubkey);
+    return list.length;
+  }
+
   // Profile functions
   async function publishProfile(profile) {
     if (!nostrUser) throw new Error("Connect your Nostr extension first!");
@@ -319,6 +377,7 @@ export function NostrProvider({ children }) {
       relays, addRelay, removeRelay, relayStatus,
       publishProfile, fetchProfile,
       fetchCashuWallet, fetchCashuTokens, publishCashuWallet, addCashuToken, sendCashuToken,
+      fetchFollowingList, fetchFollowersList, countFollowing, countFollowers,
       nwc, connectNwc, disconnectNwc, sendNwcPayInvoice
     }}>
       {children}
