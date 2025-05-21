@@ -30,7 +30,7 @@ export default function Header({ onTab, tab, darkMode, onToggleDarkMode }) {
               <button onClick={loginWithExtension}>Login with Nostr Extension</button>
             ) : (
               <span className={styles.notDetected}>Nostr extension not detected</span>
-            )
+            )}
           </>
         )}
         {error && <div className={styles.error}>{error}</div>}
