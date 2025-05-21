@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNostr } from '../nostr';
 
-export default function Header({ onTab, tab }) {
+export default function Header({ onTab, tab, darkMode, onToggleDarkMode }) {
   const { nostrUser, loginWithExtension, logout, error, hasNip07 } = useNostr();
   return (
     <header style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
@@ -12,6 +12,9 @@ export default function Header({ onTab, tab }) {
       <button onClick={() => onTab('wallet')}>Cashu Wallet</button>
       <button onClick={() => onTab('follows')}>Follows</button>
       <button onClick={() => onTab('activity')}>Activity</button>
+      <button onClick={onToggleDarkMode}>
+        {darkMode ? 'Light Mode' : 'Dark Mode'}
+      </button>
       <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
         {nostrUser ? (
           <>

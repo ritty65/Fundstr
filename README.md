@@ -26,3 +26,9 @@ Cashu tokens stored in the wallet can now be used to pay creator tiers.
 When a recurring pledge payment is due a "Pay with Cashu" option will
 appear if tokens are available. The token is sent to the creator via a
 Nostr DM and the local token event is deleted.
+
+## Dark Mode
+
+The header now includes a button to toggle between light and dark
+themes. Your preference is stored in `localStorage` so it persists
+across visits.
