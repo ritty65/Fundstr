@@ -278,6 +278,33 @@ export function NostrProvider({ children }) {
     return events;
   }
 
+  async function fetchZapReceipts(pubkey) {
+    const events = [];
+    for (const relay of relays) {
+      const res = await fetchEventsFromRelay({ kinds: [9735] }, relay);
+      if (res.length) events.push(...res);
+    }
+    const dedup = {};
+    const zapper = [];
+    const recipient = [];
+    for (const ev of events) {
+      if (dedup[ev.id]) continue;
+      dedup[ev.id] = true;
+      let zapReq = null;
+      const descTag = ev.tags.find(t => t[0] === "description");
+      if (descTag) {
+        try { zapReq = JSON.parse(descTag[1]); } catch {}
+      }
+      if (zapReq && zapReq.pubkey === pubkey) {
+        zapper.push(ev);
+      }
+      if (ev.tags.some(t => t[0] === "p" && t[1] === pubkey)) {
+        recipient.push(ev);
+      }
+    }
+    return { zapper, recipient };
+  }
+
   async function publishCashuWallet(data) {
     return await publishNostrEvent({
       kind: KIND_CASHU_WALLET,
@@ -385,7 +412,7 @@ export function NostrProvider({ children }) {
       publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay,
       relays, addRelay, removeRelay, relayStatus,
       publishProfile, fetchProfile,
-      fetchCashuWallet, fetchCashuTokens, fetchReactions,
+      fetchCashuWallet, fetchCashuTokens, fetchReactions, fetchZapReceipts,
       publishCashuWallet, addCashuToken, sendCashuToken,
       fetchFollowingList, fetchFollowersList, countFollowing, countFollowers,
       nwc, connectNwc, disconnectNwc, sendNwcPayInvoice
