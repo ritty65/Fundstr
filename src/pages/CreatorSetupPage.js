@@ -32,7 +32,7 @@ export default function CreatorSetupPage() {
   }, [nostrUser]);
 
   async function handlePublishTier() {
-    if (!nostrUser) return alert('Generate your key pair first');
+    if (!nostrUser) return alert('Connect your Nostr extension first');
     try {
       setError(null);
       const event = {
@@ -51,7 +51,7 @@ export default function CreatorSetupPage() {
     <div>
       <RelayManager />
       <h2>Creator Setup</h2>
-      {!nostrUser && <div style={{ color: 'gray' }}>Generate or load your Nostr key to use creator functions.</div>}
+      {!nostrUser && <div style={{ color: 'gray' }}>Login with your Nostr extension to use creator functions.</div>}
       <div>
         <input placeholder="Tier Title" value={tier.title} onChange={e => setTier({ ...tier, title: e.target.value })} disabled={!nostrUser} />
         <input placeholder="Amount (in sats)" type="number" value={tier.amount} onChange={e => setTier({ ...tier, amount: e.target.value })} disabled={!nostrUser} />
