@@ -1,0 +1,13 @@
+.toggle {
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 0.4rem;
+  color: var(--foreground);
+}
+
+.toggle:hover,
+.toggle:focus {
+  color: var(--accent);
+}
