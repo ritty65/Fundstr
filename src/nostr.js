@@ -92,6 +92,15 @@ export function NostrProvider({ children }) {
     setError(null);
   }
 
+  async function getPrivateKey() {
+    if (!hasNip07 || !window.nostr.getPrivateKey) return null;
+    try {
+      return await window.nostr.getPrivateKey();
+    } catch {
+      return null;
+    }
+  }
+
   async function publishNostrEvent(eventTemplate) {
     if (!nostrUser) throw new Error("Connect your Nostr extension first!");
     if (!hasNip07) throw new Error("NIP-07 extension not available");
@@ -189,6 +198,41 @@ export function NostrProvider({ children }) {
       }
     }
     return {};
+  }
+
+  // --- Social helper functions ---
+  async function fetchFollowingList(pubkey) {
+    const following = new Set();
+    for (const relay of relays) {
+      const ev = await fetchLatestEvent(pubkey, 3, relay);
+      if (ev) {
+        for (const tag of ev.tags) {
+          if (tag[0] === 'p' && tag[1]) following.add(tag[1]);
+        }
+      }
+    }
+    return Array.from(following);
+  }
+
+  async function fetchFollowersList(pubkey) {
+    const followers = new Set();
+    for (const relay of relays) {
+      const events = await fetchEventsFromRelay({ kinds: [3], "#p": [pubkey] }, relay);
+      if (events.length) {
+        for (const ev of events) followers.add(ev.pubkey);
+      }
+    }
+    return Array.from(followers);
+  }
+
+  async function countFollowing(pubkey) {
+    const list = await fetchFollowingList(pubkey);
+    return list.length;
+  }
+
+  async function countFollowers(pubkey) {
+    const list = await fetchFollowersList(pubkey);
+    return list.length;
   }
 
   // --- Cashu wallet helpers ---
@@ -318,8 +362,10 @@ export function NostrProvider({ children }) {
       publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay,
       relays, addRelay, removeRelay, relayStatus,
       publishProfile, fetchProfile,
+      fetchFollowingList, fetchFollowersList, countFollowing, countFollowers,
       fetchCashuWallet, fetchCashuTokens, publishCashuWallet, addCashuToken, sendCashuToken,
-      nwc, connectNwc, disconnectNwc, sendNwcPayInvoice
+      nwc, connectNwc, disconnectNwc, sendNwcPayInvoice,
+      getPrivateKey
     }}>
       {children}
     </NostrContext.Provider>
