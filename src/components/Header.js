@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNostr } from '../nostr';
 import styles from './Header.module.css';
+import DarkModeToggle from './DarkModeToggle';
 
 export default function Header({ onTab, tab, darkMode, onToggleDarkMode }) {
   const { nostrUser, loginWithExtension, logout, error, hasNip07 } = useNostr();
@@ -13,9 +14,7 @@ export default function Header({ onTab, tab, darkMode, onToggleDarkMode }) {
       <button onClick={() => onTab('wallet')}>Cashu Wallet</button>
       <button onClick={() => onTab('follows')}>Follows</button>
       <button onClick={() => onTab('activity')}>Activity</button>
-      <button onClick={onToggleDarkMode}>
-        {darkMode ? 'Light Mode' : 'Dark Mode'}
-      </button>
+      <DarkModeToggle darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
       <div className={styles.userArea}>
         {nostrUser ? (
           <>
