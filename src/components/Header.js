@@ -1,8 +1,26 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNostr } from '../nostr';
 
 export default function Header({ onTab, tab }) {
-  const { nostrUser, loginWithExtension, logout, error, hasNip07 } = useNostr();
+  const { nostrUser, loginWithExtension, logout, error, hasNip07, getPrivateKey } = useNostr();
+  const [showKeys, setShowKeys] = useState(false);
+  const [nsec, setNsec] = useState(null);
+
+  async function toggleKeys() {
+    if (showKeys) {
+      setShowKeys(false);
+    } else {
+      if (!nsec && getPrivateKey) {
+        try {
+          const pk = await getPrivateKey();
+          if (pk) {
+            setNsec(window.NostrTools.nip19.nsecEncode(pk));
+          }
+        } catch {}
+      }
+      setShowKeys(true);
+    }
+  }
   return (
     <header style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
       <h1>Nostr Patreon MVP</h1>
@@ -14,9 +32,20 @@ export default function Header({ onTab, tab }) {
         {nostrUser ? (
           <>
             <div style={{ fontSize: '0.8em' }}>
-              <strong>npub:</strong> {nostrUser.npub.slice(0, 16)}...
+              <strong>npub:</strong> {showKeys ? nostrUser.npub : nostrUser.npub.slice(0, 16) + '...'}
+              {showKeys && (
+                <>
+                  <br />
+                  {nsec ? (
+                    <><strong>nsec:</strong> {nsec}</>
+                  ) : (
+                    <span style={{ color: 'gray' }}>Private key not accessible</span>
+                  )}
+                </>
+              )}
               <br />
               <button style={{ marginTop: 3 }} onClick={logout}>Logout</button>
+              <button style={{ marginLeft: 8 }} onClick={toggleKeys}>{showKeys ? 'Hide Keys' : 'Show Keys'}</button>
             </div>
           </>
         ) : (
