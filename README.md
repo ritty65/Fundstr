@@ -26,3 +26,8 @@ Cashu tokens stored in the wallet can now be used to pay creator tiers.
 When a recurring pledge payment is due a "Pay with Cashu" option will
 appear if tokens are available. The token is sent to the creator via a
 Nostr DM and the local token event is deleted.
+
+## Profile Feed Viewer
+
+A separate tab allows looking up any npub or NIP-05 identifier. It displays the user's profile along with recent notes, articles, and follower lists.
+
