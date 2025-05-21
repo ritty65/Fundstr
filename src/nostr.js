@@ -7,6 +7,7 @@ export const DEFAULT_RELAYS = [
 export const KIND_PROFILE = 0;
 export const KIND_MVP_TIER = 30078;
 export const KIND_MVP_PLEDGE = 30079;
+export const KIND_RECURRING_PLEDGE = 30080;
 
 const NostrContext = createContext();
 
