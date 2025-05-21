@@ -228,7 +228,8 @@ function NostrProvider({ children }) {
       nostrUser, error, setError, createNewKeypair, logout,
       publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay,
       relays, addRelay, removeRelay, relayStatus,
-      publishProfile, fetchProfile
+      publishProfile, fetchProfile,
+      setNostrUser
     }}>
       {children}
     </NostrContext.Provider>
@@ -272,7 +273,53 @@ function RelayManager() {
 }
 
 function Header({ onTab, tab }) {
-  const { nostrUser, createNewKeypair, logout, error } = useNostr();
+  const { nostrUser, createNewKeypair, logout, error, setNostrUser } = useNostr();
+  const [showLogin, setShowLogin] = useState(false);
+  const [importKey, setImportKey] = useState("");
+  const [importError, setImportError] = useState("");
+  const [showExport, setShowExport] = useState(false);
+
+  function handleImport() {
+    setImportError("");
+    let sk;
+    try {
+      if (importKey.startsWith("nsec")) {
+        sk = window.NostrTools.nip19.decode(importKey).data;
+      } else if (/^[a-f0-9]{64}$/i.test(importKey)) {
+        sk = importKey;
+      } else {
+        throw new Error("Invalid key format");
+      }
+      const pk = getPublicKey(sk);
+      saveKeys(sk, pk);
+      setNostrUser({ sk, pk, npub: npubEncode(pk), nsec: nsecEncode(sk) });
+      setShowLogin(false);
+      setImportKey("");
+    } catch (e) {
+      setImportError("Invalid key: " + e.message);
+    }
+  }
+
+  function handleExport() {
+    setShowExport(true);
+  }
+  function doExportDownload() {
+    if (!nostrUser) return;
+    const blob = new Blob(
+      [
+         `nsec: ${nostrUser.nsec}\nnpub: ${nostrUser.npub}\nprivkey: ${nostrUser.sk}\npubkey: ${nostrUser.pk}\n`
+      ],
+      { type: "text/plain" }
+    );
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.download = "nostr-keys.txt";
+    link.href = url;
+    link.click();
+    URL.revokeObjectURL(url);
+    setShowExport(false);
+  }
+
   return (
     <header style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
       <h1>Nostr Patreon MVP</h1>
@@ -285,11 +332,42 @@ function Header({ onTab, tab }) {
             <div style={{ fontSize: "0.8em" }}>
               <strong>npub:</strong> {nostrUser.npub.slice(0, 16)}...<br />
               <strong>nsec:</strong> {nostrUser.nsec.slice(0, 10)}...
-              <br /><button style={{ marginTop: 3 }} onClick={logout}>Forget Key</button>
+              <br />
+              <button style={{ marginTop: 3 }} onClick={logout}>Forget Key</button>
+              <button style={{ marginTop: 3, marginLeft: 5 }} onClick={handleExport}>Export Key Pair</button>
             </div>
+            {showExport && (
+              <div style={{ background: "#eee", padding: 10, borderRadius: 6 }}>
+                <div>
+                  <b>nsec:</b> {nostrUser.nsec}<br />
+                  <b>npub:</b> {nostrUser.npub}<br />
+                  <b>privkey (hex):</b> {nostrUser.sk}<br />
+                  <b>pubkey (hex):</b> {nostrUser.pk}
+                </div>
+                <button onClick={() => {navigator.clipboard.writeText(nostrUser.nsec + "\n" + nostrUser.npub + "\n" + nostrUser.sk + "\n" + nostrUser.pk); setShowExport(false);}}>Copy to Clipboard</button>
+                <button onClick={doExportDownload}>Download</button>
+                <button onClick={() => setShowExport(false)}>Close</button>
+              </div>
+            )}
           </>
         ) : (
-          <button onClick={createNewKeypair}>Create New Key Pair</button>
+          <>
+            <button onClick={createNewKeypair}>Create New Key Pair</button>
+            <button onClick={() => setShowLogin(s => !s)}>Login with Private Key</button>
+            {showLogin && (
+              <div style={{ background: "#eee", padding: 12, borderRadius: 6 }}>
+                <input
+                  placeholder="nsec... or 64-char hex"
+                  style={{ width: 220 }}
+                  value={importKey}
+                  onChange={e => setImportKey(e.target.value)}
+                />
+                <button onClick={handleImport}>Import</button>
+                <button onClick={() => setShowLogin(false)}>Cancel</button>
+                {importError && <div style={{ color: "red" }}>{importError}</div>}
+              </div>
+            )}
+          </>
         )}
         {error && <div style={{ color: "red", fontSize: "0.85em" }}>{error}</div>}
       </div>
