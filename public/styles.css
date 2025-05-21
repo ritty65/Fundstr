@@ -1,0 +1,132 @@
+:root {
+  --primary: #4a314d;
+  --accent: #a8ba9a;
+  --background: #f5f6fa;
+  --foreground: #1a090d;
+  --surface: #fff;
+  --gray: #e8e9ed;
+  --border: #d4d4d4;
+  --error: #ef4444;
+}
+
+[data-theme="dark"] {
+  --background: #16141a;
+  --foreground: #e2e8f0;
+  --surface: #262335;
+  --gray: #22212c;
+  --border: #35314c;
+}
+
+body {
+  font-family: 'Lato', Arial, Helvetica, sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+  margin: 0;
+  min-height: 100vh;
+  transition: background 0.2s, color 0.2s;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+header {
+  background: var(--surface);
+  border-radius: 1rem;
+  padding: 1.5rem 2rem;
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+
+h1 {
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin: 0;
+}
+
+h2, h3 {
+  color: var(--primary);
+  margin-top: 2rem;
+}
+
+input, button, select, textarea {
+  font-family: inherit;
+  font-size: 1rem;
+  margin: 0.2rem 0.2rem 1rem 0;
+}
+
+input, textarea, select {
+  padding: 0.6em 1em;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--foreground);
+  outline: none;
+  transition: border 0.2s;
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--primary);
+}
+
+button {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.65em 1.3em;
+  cursor: pointer;
+  font-weight: 700;
+  transition: background 0.15s;
+}
+
+button:hover, button:focus {
+  background: var(--accent);
+  color: var(--primary);
+}
+
+pre {
+  background: var(--gray);
+  padding: 0.7rem 1.2rem;
+  border-radius: 8px;
+  font-size: 0.97em;
+  overflow-x: auto;
+  color: var(--foreground);
+}
+
+footer {
+  text-align: center;
+  padding: 2rem 0 0.7rem 0;
+  color: #7d7c8d;
+  font-size: 1em;
+  margin-top: 3rem;
+  opacity: 0.8;
+}
+
+header img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  margin-right: 7px;
+  border: 2px solid var(--primary);
+  object-fit: cover;
+}
+
+input[type="text"], input[type="number"] {
+  min-width: 200px;
+}
+
+@media (max-width: 650px) {
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1rem 0.6rem;
+  }
+  h1 { font-size: 1.25rem; }
+  pre { font-size: 0.92em; }
+  input, textarea, select { min-width: 140px; }
+}
