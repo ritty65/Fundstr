@@ -3,6 +3,8 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useNostr, DEFAULT_RELAYS, KIND_MVP_TIER, KIND_PROFILE, KIND_MVP_PLEDGE, KIND_RECURRING_PLEDGE } from '../nostr';
 import RelayManager from '../components/RelayManager';
 import ProfileCard from '../components/ProfileCard';
+import { useNotification } from '../components/NotificationProvider';
+import Spinner from '../components/Spinner';
 
 export default function SupportCreatorPage() {
   const {
@@ -16,6 +18,7 @@ export default function SupportCreatorPage() {
     connectNwc,
     sendNwcPayInvoice
   } = useNostr();
+  const { show } = useNotification();
   const [creatorKey, setCreatorKey] = useState('');
   const [creatorProfile, setCreatorProfile] = useState(null);
   const [tier, setTier] = useState(null);
@@ -27,6 +30,7 @@ export default function SupportCreatorPage() {
   const [period, setPeriod] = useState('weekly');
   const [note, setNote] = useState('');
   const [cashuTokens, setCashuTokens] = useState([]);
+  const [working, setWorking] = useState(false);
 
   useEffect(() => {
     if (!nostrUser) { setRecurrings([]); return; }
@@ -66,17 +70,20 @@ export default function SupportCreatorPage() {
     const amount = parseInt(ev.tags.find(t => t[0] === 'amount')?.[1] || '0');
     if (!creator) return;
     try {
+      setWorking(true);
       const tierEv = await fetchLatestEvent(creator, KIND_MVP_TIER, DEFAULT_RELAYS[0]);
       if (!tierEv) throw new Error('tier not found');
       const tierData = JSON.parse(tierEv.content);
       if (nwc) {
         await sendNwcPayInvoice(tierData.paymentInstructions, amount);
-        alert('Payment request sent to wallet');
+        show('Payment request sent to wallet');
       } else {
         window.prompt('Pay this invoice manually:', tierData.paymentInstructions);
       }
     } catch {
-      alert('Could not process payment');
+      show('Could not process payment');
+    } finally {
+      setWorking(false);
     }
   }
 
@@ -84,12 +91,15 @@ export default function SupportCreatorPage() {
     const creator = ev.tags.find(t => t[0] === 'p')?.[1];
     if (!creator || cashuTokens.length === 0) return;
     try {
+      setWorking(true);
       const token = cashuTokens[0];
       await sendCashuToken(token, creator);
-      alert('Cashu token sent');
+      show('Cashu token sent');
       setCashuTokens(cashuTokens.filter(t => t.id !== token.id));
     } catch {
-      alert('Could not send token');
+      show('Could not send token');
+    } finally {
+      setWorking(false);
     }
   }
 
@@ -113,6 +123,7 @@ export default function SupportCreatorPage() {
     if (!nostrUser || !tier) { setError('Connect your Nostr extension and load a tier.'); return; }
     try {
       setError(null);
+      setWorking(true);
       const event = {
         kind: KIND_MVP_PLEDGE,
         tags: [
@@ -122,9 +133,11 @@ export default function SupportCreatorPage() {
         content: 'I pledge support'
       };
       await publishNostrEvent(event);
-      alert('Pledge published!');
+      show('Pledge published!');
     } catch (e) {
       setError('Failed to pledge: ' + e.message);
+    } finally {
+      setWorking(false);
     }
   }
 
@@ -135,6 +148,7 @@ export default function SupportCreatorPage() {
     }
     try {
       setError(null);
+      setWorking(true);
       const next = Math.floor(Date.now() / 1000) + (period === 'daily' ? 86400 : 604800);
       const event = {
         kind: KIND_RECURRING_PLEDGE,
@@ -151,15 +165,18 @@ export default function SupportCreatorPage() {
         content: note
       };
       await publishNostrEvent(event);
-      alert('Recurring pledge published!');
+      show('Recurring pledge published!');
     } catch (e) {
       setError('Failed to create recurring pledge: ' + e.message);
+    } finally {
+      setWorking(false);
     }
   }
 
   return (
     <div>
       <RelayManager />
+      {working && <Spinner />}
       <h2>Support a Creator</h2>
       <div style={{ marginBottom: 12 }}>
         <input
@@ -168,7 +185,7 @@ export default function SupportCreatorPage() {
           onChange={e => setNwcUri(e.target.value)}
           style={{ width: '60%' }}
         />
-        <button onClick={() => { if (!connectNwc(nwcUri)) alert('Invalid URI'); }} style={{ marginLeft: 8 }}>
+        <button onClick={() => { if (!connectNwc(nwcUri)) show('Invalid URI'); }} style={{ marginLeft: 8 }}>
           Connect Wallet
         </button>
         {nwc && <span style={{ marginLeft: 8, color: 'green' }}>Connected</span>}

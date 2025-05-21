@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNostr } from '../nostr';
+import { useNotification } from '../components/NotificationProvider';
+import Spinner from '../components/Spinner';
 
 export default function CashuWalletPage() {
   const {
@@ -9,11 +11,13 @@ export default function CashuWalletPage() {
     publishCashuWallet,
     addCashuToken
   } = useNostr();
+  const { show } = useNotification();
   const [wallet, setWallet] = useState(null);
   const [mint, setMint] = useState('');
   const [tokens, setTokens] = useState([]);
   const [newToken, setNewToken] = useState('');
   const [error, setError] = useState(null);
+  const [working, setWorking] = useState(false);
 
   useEffect(() => {
     if (!nostrUser) return;
@@ -31,22 +35,27 @@ export default function CashuWalletPage() {
     if (!nostrUser) return;
     try {
       setError(null);
+      setWorking(true);
       await publishCashuWallet({ mint });
-      alert('Wallet event published');
+      show('Wallet event published');
     } catch (e) { setError('Failed: ' + e.message); }
+    finally { setWorking(false); }
   }
 
   async function handleAddToken() {
     if (!nostrUser || !newToken) return;
     try {
       setError(null);
+      setWorking(true);
       await addCashuToken({ mint, proofs: [newToken] });
-      alert('Token event published');
+      show('Token event published');
     } catch (e) { setError('Failed: ' + e.message); }
+    finally { setWorking(false); }
   }
 
   return (
     <div>
+      {working && <Spinner />}
       <h2>Cashu Wallet</h2>
       {!nostrUser && <div style={{ color: 'gray' }}>Login with your Nostr extension first.</div>}
       <div style={{ marginBottom: 20 }}>

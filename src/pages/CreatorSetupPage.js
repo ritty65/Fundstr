@@ -3,13 +3,17 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useNostr, DEFAULT_RELAYS, KIND_MVP_TIER, KIND_MVP_PLEDGE, KIND_RECURRING_PLEDGE } from '../nostr';
 import RelayManager from '../components/RelayManager';
 import ProfileCard from '../components/ProfileCard';
+import { useNotification } from '../components/NotificationProvider';
+import Spinner from '../components/Spinner';
 
 export default function CreatorSetupPage() {
   const { nostrUser, publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay, setError } = useNostr();
+  const { show } = useNotification();
   const [tier, setTier] = useState({ title: '', amount: '', paymentInstructions: '' });
   const [currentTier, setCurrentTier] = useState(null);
   const [supporters, setSupporters] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     if (!nostrUser) return;
@@ -32,18 +36,21 @@ export default function CreatorSetupPage() {
   }, [nostrUser]);
 
   async function handlePublishTier() {
-    if (!nostrUser) return alert('Connect your Nostr extension first');
+    if (!nostrUser) { show('Connect your Nostr extension first'); return; }
     try {
       setError(null);
+      setPublishing(true);
       const event = {
         kind: KIND_MVP_TIER,
         tags: [['d', 'mvp-creator-tier']],
         content: JSON.stringify({ ...tier, currency: 'BTC' })
       };
       await publishNostrEvent(event);
-      alert('Tier published!');
+      show('Tier published!');
     } catch (e) {
       setError('Failed to publish: ' + e.message);
+    } finally {
+      setPublishing(false);
     }
   }
 
@@ -57,13 +64,14 @@ export default function CreatorSetupPage() {
         <input placeholder="Amount (in sats)" type="number" value={tier.amount} onChange={e => setTier({ ...tier, amount: e.target.value })} disabled={!nostrUser} />
         <input placeholder="Payment Instructions (e.g., BTC address)" value={tier.paymentInstructions} onChange={e => setTier({ ...tier, paymentInstructions: e.target.value })} disabled={!nostrUser} />
         <input value="BTC" readOnly style={{ width: 64 }} title="Only BTC allowed" />
-        <button onClick={handlePublishTier} disabled={!nostrUser}>Publish Tier</button>
+        <button onClick={handlePublishTier} disabled={!nostrUser || publishing}>Publish Tier</button>
+        {publishing && <Spinner size={16} />}
       </div>
       <h3>Current Tier</h3>
       <pre>{currentTier ? JSON.stringify(currentTier, null, 2) : 'None'}</pre>
       {currentTier?.paymentInstructions && <QRCodeSVG value={currentTier.paymentInstructions} />}
       <h3>Supporters</h3>
-      {loading ? 'Loading...' : (
+      {loading ? <Spinner /> : (
         <ul>
           {supporters.map(ev => (
             <li key={ev.id}>
