@@ -15,6 +15,7 @@ export default function Header({ onTab, tab, darkMode, onToggleDarkMode }) {
       <button onClick={() => onTab('wallet')}>Cashu Wallet</button>
       <button onClick={() => onTab('follows')}>Follows</button>
       <button onClick={() => onTab('activity')}>Activity</button>
+      <button onClick={() => onTab('keys')}>Key Manager</button>
       <DarkModeToggle darkMode={darkMode} onToggleDarkMode={onToggleDarkMode} />
       <div className={styles.userArea}>
         {nostrUser ? (

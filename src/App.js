@@ -7,6 +7,7 @@ import MyProfilePage from './pages/MyProfilePage';
 import CashuWalletPage from './pages/CashuWalletPage';
 import FollowsPage from './pages/FollowsPage';
 import UserActivityPage from './pages/UserActivityPage';
+import KeyManagerPage from './pages/KeyManagerPage';
 
 export default function App() {
   const [tab, setTab] = useState('creator');
@@ -30,6 +31,7 @@ export default function App() {
         {tab === 'wallet' && <CashuWalletPage />}
         {tab === 'follows' && <FollowsPage />}
         {tab === 'activity' && <UserActivityPage />}
+        {tab === 'keys' && <KeyManagerPage />}
         <footer style={{ marginTop: 64, color: '#888' }}>Nostr Patreon MVP - Demo</footer>
       </div>
     </NostrProvider>
