@@ -35,6 +35,31 @@ function nsecEncode(sk) {
   return window.NostrTools.nip19.nsecEncode(sk);
 }
 
+function encodeEventPointer(ev, relay = DEFAULT_RELAYS[0]) {
+  try {
+    return window.NostrTools.nip19.neventEncode({
+      id: ev.id,
+      relays: [relay],
+      author: ev.pubkey
+    });
+  } catch {
+    try {
+      return window.NostrTools.nip19.noteEncode(ev.id);
+    } catch {
+      return ev.id;
+    }
+  }
+}
+
+function decodeNoteOrNevent(value) {
+  try {
+    const { type, data } = window.NostrTools.nip19.decode(value.trim());
+    if (type === "note") return data;
+    if (type === "nevent") return data.id;
+  } catch {}
+  return value;
+}
+
 function saveKeys(sk, pk) {
   localStorage.setItem("nostr_sk", sk);
   localStorage.setItem("nostr_pk", pk);
@@ -237,6 +262,17 @@ function NostrProvider({ children }) {
 
 // --- UI Components ---
 
+function EncodedEventDisplay({ event, label }) {
+  if (!event) return null;
+  const encoded = encodeEventPointer(event);
+  return (
+    <div style={{ fontSize: "0.85em" }}>
+      {label && <strong>{label}: </strong>}{encoded}
+      <button style={{ marginLeft: 6 }} onClick={() => navigator.clipboard.writeText(encoded)}>Copy</button>
+    </div>
+  );
+}
+
 function RelayManager() {
   const { relays, addRelay, removeRelay, relayStatus } = useNostr();
   const [newRelay, setNewRelay] = useState("");
@@ -375,6 +411,7 @@ function CreatorSetupPage() {
   const { nostrUser, publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay, setError } = useNostr();
   const [tier, setTier] = useState({ title: "", amount: "", paymentInstructions: "" });
   const [currentTier, setCurrentTier] = useState(null);
+  const [currentTierEvent, setCurrentTierEvent] = useState(null);
   const [supporters, setSupporters] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -385,6 +422,7 @@ function CreatorSetupPage() {
       setError(null);
       try {
         const latestTier = await fetchLatestEvent(nostrUser.pk, KIND_MVP_TIER, DEFAULT_RELAYS[0]);
+        setCurrentTierEvent(latestTier);
         setCurrentTier(latestTier ? JSON.parse(latestTier.content) : null);
         if (latestTier) {
           const pledges = await fetchEventsFromRelay({ kinds: [KIND_MVP_PLEDGE], "#p": [nostrUser.pk] }, DEFAULT_RELAYS[0]);
@@ -407,7 +445,9 @@ function CreatorSetupPage() {
         tags: [['d', 'mvp-creator-tier']],
         content: JSON.stringify({ ...tier, currency: "BTC" })
       };
-      await publishNostrEvent(event);
+      const published = await publishNostrEvent(event);
+      setCurrentTier(JSON.parse(published.content));
+      setCurrentTierEvent(published);
       alert("Tier published!");
     } catch (e) {
       setError("Failed to publish: " + e.message);
@@ -428,6 +468,7 @@ function CreatorSetupPage() {
       </div>
       <h3>Current Tier</h3>
       <pre>{currentTier ? JSON.stringify(currentTier, null, 2) : "None"}</pre>
+      {currentTierEvent && <EncodedEventDisplay event={currentTierEvent} label="Tier Event" />}
       {currentTier?.paymentInstructions && <QRCodeSVG value={currentTier.paymentInstructions} />}
       <h3>Supporters</h3>
       {loading ? "Loading..." : (
@@ -435,6 +476,7 @@ function CreatorSetupPage() {
           {supporters.map(ev => (
             <li key={ev.id}>
               <ProfileCard pubkey={ev.pubkey} />
+              <EncodedEventDisplay event={ev} label="Pledge" />
             </li>
           ))}
         </ul>
@@ -448,15 +490,18 @@ function SupportCreatorPage() {
   const [creatorKey, setCreatorKey] = useState("");
   const [creatorProfile, setCreatorProfile] = useState(null);
   const [tier, setTier] = useState(null);
+  const [tierEvent, setTierEvent] = useState(null);
+  const [pledgeEvent, setPledgeEvent] = useState(null);
   const [error, setError] = useState(null);
 
   async function handleFetchCreatorTier() {
     setError(null);
     if (!creatorKey) return;
     try {
-      const tierEvent = await fetchLatestEvent(creatorKey, KIND_MVP_TIER, DEFAULT_RELAYS[0]);
-      if (!tierEvent) { setTier(null); setError("No tier found for this pubkey."); return; }
-      setTier(JSON.parse(tierEvent.content));
+      const te = await fetchLatestEvent(creatorKey, KIND_MVP_TIER, DEFAULT_RELAYS[0]);
+      if (!te) { setTier(null); setTierEvent(null); setError("No tier found for this pubkey."); return; }
+      setTierEvent(te);
+      setTier(JSON.parse(te.content));
       const profEvent = await fetchLatestEvent(creatorKey, KIND_PROFILE, DEFAULT_RELAYS[0]);
       if (profEvent) {
         try { setCreatorProfile(JSON.parse(profEvent.content)); } catch { }
@@ -474,11 +519,12 @@ function SupportCreatorPage() {
         kind: KIND_MVP_PLEDGE,
         tags: [
           ["p", creatorKey],
-          ["e", tier.id || ""]
+          ["e", tierEvent?.id || ""]
         ],
         content: "I pledge support"
       };
-      await publishNostrEvent(event);
+      const published = await publishNostrEvent(event);
+      setPledgeEvent(published);
       alert("Pledge published!");
     } catch (e) {
       setError("Failed to pledge: " + e.message);
@@ -498,10 +544,12 @@ function SupportCreatorPage() {
         <div>
           <h3>Tier</h3>
           <pre>{JSON.stringify(tier, null, 2)}</pre>
+          {tierEvent && <EncodedEventDisplay event={tierEvent} label="Tier Event" />}
           {tier.paymentInstructions && <QRCodeSVG value={tier.paymentInstructions} />}
           <button onClick={handlePledgeSupport}>Pledge Support (Mock)</button>
         </div>
       )}
+      {pledgeEvent && <EncodedEventDisplay event={pledgeEvent} label="Pledge Event" />}
       {error && <div style={{ color: "red" }}>{error}</div>}
     </div>
   );
