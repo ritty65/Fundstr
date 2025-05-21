@@ -3,9 +3,11 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useNostr, DEFAULT_RELAYS, KIND_MVP_TIER, KIND_MVP_PLEDGE, KIND_RECURRING_PLEDGE } from '../nostr';
 import RelayManager from '../components/RelayManager';
 import ProfileCard from '../components/ProfileCard';
+import { useToast } from '../components/ToastProvider';
 
 export default function CreatorSetupPage() {
   const { nostrUser, publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay, setError } = useNostr();
+  const { addToast } = useToast();
   const [tier, setTier] = useState({ title: '', amount: '', paymentInstructions: '' });
   const [currentTier, setCurrentTier] = useState(null);
   const [supporters, setSupporters] = useState([]);
@@ -32,7 +34,7 @@ export default function CreatorSetupPage() {
   }, [nostrUser]);
 
   async function handlePublishTier() {
-    if (!nostrUser) return alert('Connect your Nostr extension first');
+    if (!nostrUser) return addToast('Connect your Nostr extension first', 'danger');
     try {
       setError(null);
       const event = {
@@ -41,7 +43,7 @@ export default function CreatorSetupPage() {
         content: JSON.stringify({ ...tier, currency: 'BTC' })
       };
       await publishNostrEvent(event);
-      alert('Tier published!');
+      addToast('Tier published!', 'success');
     } catch (e) {
       setError('Failed to publish: ' + e.message);
     }

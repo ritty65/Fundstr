@@ -3,6 +3,8 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useNostr, DEFAULT_RELAYS, KIND_MVP_TIER, KIND_PROFILE, KIND_MVP_PLEDGE, KIND_RECURRING_PLEDGE } from '../nostr';
 import RelayManager from '../components/RelayManager';
 import ProfileCard from '../components/ProfileCard';
+import { useToast } from '../components/ToastProvider';
+import InvoiceModal from '../components/InvoiceModal';
 
 export default function SupportCreatorPage() {
   const {
@@ -16,6 +18,7 @@ export default function SupportCreatorPage() {
     connectNwc,
     sendNwcPayInvoice
   } = useNostr();
+  const { addToast } = useToast();
   const [creatorKey, setCreatorKey] = useState('');
   const [creatorProfile, setCreatorProfile] = useState(null);
   const [tier, setTier] = useState(null);
@@ -27,6 +30,7 @@ export default function SupportCreatorPage() {
   const [period, setPeriod] = useState('weekly');
   const [note, setNote] = useState('');
   const [cashuTokens, setCashuTokens] = useState([]);
+  const [invoiceModal, setInvoiceModal] = useState(null);
 
   useEffect(() => {
     if (!nostrUser) { setRecurrings([]); return; }
@@ -71,12 +75,12 @@ export default function SupportCreatorPage() {
       const tierData = JSON.parse(tierEv.content);
       if (nwc) {
         await sendNwcPayInvoice(tierData.paymentInstructions, amount);
-        alert('Payment request sent to wallet');
+        addToast('Payment request sent to wallet', 'success');
       } else {
-        window.prompt('Pay this invoice manually:', tierData.paymentInstructions);
+        setInvoiceModal(tierData.paymentInstructions);
       }
     } catch {
-      alert('Could not process payment');
+      addToast('Could not process payment', 'danger');
     }
   }
 
@@ -86,10 +90,10 @@ export default function SupportCreatorPage() {
     try {
       const token = cashuTokens[0];
       await sendCashuToken(token, creator);
-      alert('Cashu token sent');
+      addToast('Cashu token sent', 'success');
       setCashuTokens(cashuTokens.filter(t => t.id !== token.id));
     } catch {
-      alert('Could not send token');
+      addToast('Could not send token', 'danger');
     }
   }
 
@@ -122,7 +126,7 @@ export default function SupportCreatorPage() {
         content: 'I pledge support'
       };
       await publishNostrEvent(event);
-      alert('Pledge published!');
+      addToast('Pledge published!', 'success');
     } catch (e) {
       setError('Failed to pledge: ' + e.message);
     }
@@ -151,7 +155,7 @@ export default function SupportCreatorPage() {
         content: note
       };
       await publishNostrEvent(event);
-      alert('Recurring pledge published!');
+      addToast('Recurring pledge published!', 'success');
     } catch (e) {
       setError('Failed to create recurring pledge: ' + e.message);
     }
@@ -168,7 +172,12 @@ export default function SupportCreatorPage() {
           onChange={e => setNwcUri(e.target.value)}
           style={{ width: '60%' }}
         />
-        <button onClick={() => { if (!connectNwc(nwcUri)) alert('Invalid URI'); }} style={{ marginLeft: 8 }}>
+        <button
+          onClick={() => {
+            if (!connectNwc(nwcUri)) addToast('Invalid URI', 'danger');
+          }}
+          style={{ marginLeft: 8 }}
+        >
           Connect Wallet
         </button>
         {nwc && <span style={{ marginLeft: 8, color: 'green' }}>Connected</span>}
@@ -228,6 +237,7 @@ export default function SupportCreatorPage() {
         </div>
       )}
       {error && <div style={{ color: 'red' }}>{error}</div>}
+      <InvoiceModal invoice={invoiceModal} onClose={() => setInvoiceModal(null)} />
     </div>
   );
 }

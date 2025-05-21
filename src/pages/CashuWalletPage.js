@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNostr } from '../nostr';
+import { useToast } from '../components/ToastProvider';
 
 export default function CashuWalletPage() {
   const {
@@ -9,6 +10,7 @@ export default function CashuWalletPage() {
     publishCashuWallet,
     addCashuToken
   } = useNostr();
+  const { addToast } = useToast();
   const [wallet, setWallet] = useState(null);
   const [mint, setMint] = useState('');
   const [tokens, setTokens] = useState([]);
@@ -32,7 +34,7 @@ export default function CashuWalletPage() {
     try {
       setError(null);
       await publishCashuWallet({ mint });
-      alert('Wallet event published');
+      addToast('Wallet event published', 'success');
     } catch (e) { setError('Failed: ' + e.message); }
   }
 
@@ -41,7 +43,7 @@ export default function CashuWalletPage() {
     try {
       setError(null);
       await addCashuToken({ mint, proofs: [newToken] });
-      alert('Token event published');
+      addToast('Token event published', 'success');
     } catch (e) { setError('Failed: ' + e.message); }
   }
 
