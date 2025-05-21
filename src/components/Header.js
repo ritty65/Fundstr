@@ -4,8 +4,10 @@ import styles from './Header.module.css';
 import DarkModeToggle from './DarkModeToggle';
 
 export default function Header({ onTab, tab, darkMode, onToggleDarkMode }) {
-  const { nostrUser, loginWithExtension, loginWithPrivateKey, logout, error, hasNip07 } = useNostr();
+  const { nostrUser, loginWithExtension, loginWithPrivateKey, loginWithEncryptedKey, saveEncryptedKey, removeEncryptedKey, encryptedSk, logout, error, hasNip07 } = useNostr();
   const [privKey, setPrivKey] = useState('');
+  const [encPass, setEncPass] = useState("");
+  const [decPass, setDecPass] = useState("");
   return (
     <header className={styles.header}>
       <h1>Nostr Patreon MVP</h1>
@@ -25,9 +27,37 @@ export default function Header({ onTab, tab, darkMode, onToggleDarkMode }) {
               <br />
               <button className={styles.logoutButton} onClick={logout}>Logout</button>
             </div>
+            {nostrUser.sk && (
+              <div className={styles.encryptArea}>
+                <input
+                  type="password"
+                  placeholder="Password"
+                  value={encPass}
+                  onChange={e => setEncPass(e.target.value)}
+                />
+                <button onClick={() => { saveEncryptedKey(encPass); setEncPass(''); }}>
+                  Save Encrypted Key
+                </button>
+              </div>
+            )}
+            {encryptedSk && (
+              <button onClick={removeEncryptedKey}>Remove Saved Key</button>
+            )}
           </>
         ) : (
           <>
+            {encryptedSk && (
+              <div>
+                <input
+                  type="password"
+                  placeholder="Password"
+                  value={decPass}
+                  onChange={e => setDecPass(e.target.value)}
+                />
+                <button onClick={() => loginWithEncryptedKey(decPass)}>Unlock Saved Key</button>
+                <button onClick={removeEncryptedKey}>Remove</button>
+              </div>
+            )}
             {hasNip07 ? (
               <button onClick={loginWithExtension}>Login with Nostr Extension</button>
             ) : (
