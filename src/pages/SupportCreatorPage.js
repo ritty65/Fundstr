@@ -1,18 +1,63 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useNostr, DEFAULT_RELAYS, KIND_MVP_TIER, KIND_PROFILE, KIND_MVP_PLEDGE, KIND_RECURRING_PLEDGE } from '../nostr';
 import RelayManager from '../components/RelayManager';
 import ProfileCard from '../components/ProfileCard';
 
 export default function SupportCreatorPage() {
-  const { nostrUser, publishNostrEvent, fetchLatestEvent } = useNostr();
+  const { nostrUser, publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay, nwc, connectNwc, sendNwcPayInvoice } = useNostr();
   const [creatorKey, setCreatorKey] = useState('');
   const [creatorProfile, setCreatorProfile] = useState(null);
   const [tier, setTier] = useState(null);
   const [error, setError] = useState(null);
+  const [nwcUri, setNwcUri] = useState('');
+  const [recurrings, setRecurrings] = useState([]);
+  const [duePledges, setDuePledges] = useState([]);
   const [recurringAmount, setRecurringAmount] = useState('');
   const [period, setPeriod] = useState('weekly');
   const [note, setNote] = useState('');
+
+  useEffect(() => {
+    if (!nostrUser) { setRecurrings([]); return; }
+    (async () => {
+      try {
+        const evs = await fetchEventsFromRelay({ authors: [nostrUser.pk], kinds: [KIND_RECURRING_PLEDGE] }, DEFAULT_RELAYS[0]);
+        setRecurrings(evs);
+      } catch {}
+    })();
+  }, [nostrUser]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const now = Math.floor(Date.now() / 1000);
+      const due = recurrings.filter(ev => {
+        const next = parseInt(ev.tags.find(t => t[0] === 'next_payment_due')?.[1] || '0');
+        const status = ev.tags.find(t => t[0] === 'status')?.[1];
+        return status === 'active' && next <= now;
+      });
+      setDuePledges(due);
+    }, 10000);
+    return () => clearInterval(id);
+  }, [recurrings]);
+
+  async function handlePayPledge(ev) {
+    const creator = ev.tags.find(t => t[0] === 'p')?.[1];
+    const amount = parseInt(ev.tags.find(t => t[0] === 'amount')?.[1] || '0');
+    if (!creator) return;
+    try {
+      const tierEv = await fetchLatestEvent(creator, KIND_MVP_TIER, DEFAULT_RELAYS[0]);
+      if (!tierEv) throw new Error('tier not found');
+      const tierData = JSON.parse(tierEv.content);
+      if (nwc) {
+        await sendNwcPayInvoice(tierData.paymentInstructions, amount);
+        alert('Payment request sent to wallet');
+      } else {
+        window.prompt('Pay this invoice manually:', tierData.paymentInstructions);
+      }
+    } catch {
+      alert('Could not process payment');
+    }
+  }
 
   async function handleFetchCreatorTier() {
     setError(null);
@@ -82,6 +127,18 @@ export default function SupportCreatorPage() {
     <div>
       <RelayManager />
       <h2>Support a Creator</h2>
+      <div style={{ marginBottom: 12 }}>
+        <input
+          placeholder="NWC URI"
+          value={nwcUri}
+          onChange={e => setNwcUri(e.target.value)}
+          style={{ width: '60%' }}
+        />
+        <button onClick={() => { if (!connectNwc(nwcUri)) alert('Invalid URI'); }} style={{ marginLeft: 8 }}>
+          Connect Wallet
+        </button>
+        {nwc && <span style={{ marginLeft: 8, color: 'green' }}>Connected</span>}
+      </div>
       <input placeholder="Creator Pubkey" value={creatorKey} onChange={e => setCreatorKey(e.target.value)} />
       <button onClick={handleFetchCreatorTier}>Find Tier</button>
       {creatorProfile && (
@@ -114,6 +171,21 @@ export default function SupportCreatorPage() {
               Start Recurring Support
             </button>
           </div>
+        </div>
+      )}
+      {duePledges.length > 0 && (
+        <div style={{ marginTop: 32 }}>
+          <h3>Payments Due</h3>
+          <ul>
+            {duePledges.map(ev => (
+              <li key={ev.id}>
+                To {ev.tags.find(t => t[0] === 'p')?.[1]}
+                <button style={{ marginLeft: 8 }} onClick={() => handlePayPledge(ev)}>
+                  Pay Now
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {error && <div style={{ color: 'red' }}>{error}</div>}
