@@ -305,6 +305,54 @@ export function NostrProvider({ children }) {
     return { zapper, recipient };
   }
 
+  async function fetchProfileBadges(pubkey) {
+    let prof = null;
+    for (const relay of relays) {
+      prof = await fetchLatestEvent(pubkey, 30008, relay);
+      if (prof) break;
+    }
+    if (!prof) return [];
+    const ids = prof.tags.filter(t => t[0] === "e").map(t => t[1]);
+    const badges = [];
+    for (const id of ids) {
+      let award = null;
+      for (const relay of relays) {
+        const res = await fetchEventsFromRelay({ ids: [id], kinds: [8] }, relay);
+        if (res.length) { award = res[0]; break; }
+      }
+      let definition = null;
+      if (award) {
+        const aTag = award.tags.find(t => t[0] === "a");
+        if (aTag) {
+          const parts = aTag[1].split(":");
+          if (parts.length === 3) {
+            const [, author, d] = parts;
+            for (const relay of relays) {
+              const res = await fetchEventsFromRelay({ kinds: [30009], authors: [author], "#d": [d] }, relay);
+              if (res.length) { definition = res[0]; break; }
+            }
+          } else {
+            for (const relay of relays) {
+              const res = await fetchEventsFromRelay({ kinds: [30009], ids: [aTag[1]] }, relay);
+              if (res.length) { definition = res[0]; break; }
+            }
+          }
+        }
+        if (!definition) {
+          const eTag = award.tags.find(t => t[0] === "e");
+          if (eTag) {
+            for (const relay of relays) {
+              const res = await fetchEventsFromRelay({ kinds: [30009], ids: [eTag[1]] }, relay);
+              if (res.length) { definition = res[0]; break; }
+            }
+          }
+        }
+      }
+      badges.push({ id, award, definition });
+    }
+    return badges;
+  }
+
   async function publishCashuWallet(data) {
     return await publishNostrEvent({
       kind: KIND_CASHU_WALLET,
@@ -413,6 +461,7 @@ export function NostrProvider({ children }) {
       relays, addRelay, removeRelay, relayStatus,
       publishProfile, fetchProfile,
       fetchCashuWallet, fetchCashuTokens, fetchReactions, fetchZapReceipts,
+      fetchProfileBadges,
       publishCashuWallet, addCashuToken, sendCashuToken,
       fetchFollowingList, fetchFollowersList, countFollowing, countFollowers,
       nwc, connectNwc, disconnectNwc, sendNwcPayInvoice
