@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { useNostr } from '../nostr';
 
 export default function UserActivityPage() {
-  const { nostrUser, fetchReactions, fetchZapReceipts } = useNostr();
+  const { nostrUser, fetchReactions, fetchZapReceipts, fetchProfileBadges } = useNostr();
   const [targetKey, setTargetKey] = useState('');
   const [reactions, setReactions] = useState([]);
   const [zapReceipts, setZapReceipts] = useState({ zapper: [], recipient: [] });
+  const [badges, setBadges] = useState([]);
 
   async function load() {
     const pk = targetKey || nostrUser?.pk;
@@ -14,6 +15,8 @@ export default function UserActivityPage() {
     setReactions(evs);
     const rec = await fetchZapReceipts(pk);
     setZapReceipts(rec);
+    const b = await fetchProfileBadges(pk);
+    setBadges(b);
   }
 
   return (
@@ -63,6 +66,27 @@ export default function UserActivityPage() {
             })}
           </ul>
         </div>
+      </div>
+      <div style={{ marginTop: 24 }}>
+        <h2>Profile Badges</h2>
+        <ul>
+          {badges.map(b => {
+            let name = '';
+            if (b.definition) {
+              try {
+                const parsed = JSON.parse(b.definition.content);
+                name = parsed.name || parsed.description || b.definition.content;
+              } catch {
+                name = b.definition.content;
+              }
+            }
+            return (
+              <li key={b.id}>
+                {name || 'Badge'} - awarded by {b.award?.pubkey || 'unknown'}
+              </li>
+            );
+          })}
+        </ul>
       </div>
     </section>
   );
