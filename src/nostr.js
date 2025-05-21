@@ -2,6 +2,7 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { useRelays, DEFAULT_RELAYS } from './hooks/useRelays';
 import { useWalletConnect } from './hooks/useWalletConnect';
 import { useCashu } from './hooks/useCashu';
+import { saveEncrypted, loadEncrypted, encryptPrivKey, decryptPrivKey } from "./utils/crypto";
 
 export { DEFAULT_RELAYS }; // re-export
 export const KIND_PROFILE = 0;
@@ -27,6 +28,8 @@ export function NostrProvider({ children }) {
   const { relays, relayStatus, addRelay, removeRelay } = useRelays(DEFAULT_RELAYS);
   const [error, setError] = useState(null);
   const [hasNip07, setHasNip07] = useState(false);
+  const [encryptedSk, setEncryptedSk] = useState(loadEncrypted());
+  useEffect(() => saveEncrypted(encryptedSk), [encryptedSk]);
 
   useEffect(() => {
     if (window.nostr && window.nostr.getPublicKey && window.nostr.signEvent) {
@@ -61,6 +64,38 @@ export function NostrProvider({ children }) {
       setError('Failed to use private key: ' + e.message);
     }
   }
+  async function loginWithEncryptedKey(password) {
+    if (!encryptedSk) {
+      setError("No encrypted key");
+      return;
+    }
+    try {
+      const sk = await decryptPrivKey(encryptedSk, password);
+      const pk = window.NostrTools.getPublicKey(sk);
+      setNostrUser({ pk, sk, npub: npubEncode(pk) });
+      setError(null);
+    } catch (e) {
+      setError("Failed to decrypt key: " + e.message);
+    }
+  }
+
+  async function saveEncryptedKey(password) {
+    if (!nostrUser || !nostrUser.sk) return false;
+    try {
+      const enc = await encryptPrivKey(nostrUser.sk, password);
+      setEncryptedSk(enc);
+      setError(null);
+      return true;
+    } catch (e) {
+      setError("Failed to encrypt key: " + e.message);
+      return false;
+    }
+  }
+
+  function removeEncryptedKey() {
+    setEncryptedSk(null);
+  }
+
 
   function logout() {
     setNostrUser(null);
@@ -329,8 +364,8 @@ export function NostrProvider({ children }) {
 
   return (
     <NostrContext.Provider value={{
-      nostrUser, error, setError, loginWithExtension, loginWithPrivateKey, logout, hasNip07,
-      publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay,
+      nostrUser, error, setError, loginWithExtension, loginWithPrivateKey, loginWithEncryptedKey, logout, hasNip07,
+      publishNostrEvent, saveEncryptedKey, removeEncryptedKey, encryptedSk, fetchLatestEvent, fetchEventsFromRelay,
       relays, addRelay, removeRelay, relayStatus,
       publishProfile, fetchProfile,
       fetchCashuWallet, fetchCashuTokens, fetchReactions, fetchZapReceipts,
