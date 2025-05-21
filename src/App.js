@@ -32,8 +32,12 @@ function npubEncode(pk) {
   return window.NostrTools.nip19.npubEncode(pk);
 }
 function nsecEncode(sk) {
+  // Convert a secret key to nsec format for local display only.
+  // Do NOT transmit this value to external services.
   return window.NostrTools.nip19.nsecEncode(sk);
 }
+
+
 
 // Decode npub/note/nevent/naddr identifiers to raw values
 function decodeNostrIdentifier(value) {
@@ -59,6 +63,7 @@ function decodeNostrIdentifier(value) {
 }
 
 function saveKeys(sk, pk) {
+  // Store keys locally in the browser. Nothing leaves the client.
   localStorage.setItem("nostr_sk", sk);
   localStorage.setItem("nostr_pk", pk);
 }
@@ -133,6 +138,7 @@ function NostrProvider({ children }) {
       const sk = generatePrivateKey();
       const pk = getPublicKey(sk);
       saveKeys(sk, pk);
+      // Store nsec in state for convenience but it is never sent to the network
       setNostrUser({ sk, pk, npub: npubEncode(pk), nsec: nsecEncode(sk) });
       setError(null);
     } catch (e) {
@@ -156,6 +162,8 @@ function NostrProvider({ children }) {
         created_at: Math.floor(Date.now() / 1000)
       };
       template.id = getEventHash(template);
+      // The secret key is used only to produce this signature locally.
+      // It is never transmitted to relays.
       template.sig = signEvent(template, nostrUser.sk);
 
       let errors = [];
@@ -308,7 +316,14 @@ function Header({ onTab, tab }) {
           <>
             <div style={{ fontSize: "0.8em" }}>
               <strong>npub:</strong> {nostrUser.npub.slice(0, 16)}...<br />
-              <strong>nsec:</strong> {nostrUser.nsec.slice(0, 10)}...
+              {/* Only show a short snippet of the private nsec key. */}
+              <strong>nsec:</strong>
+              <span title="This is your private nsec. Never share it.">
+                {nostrUser.nsec.slice(0, 10)}...
+              </span>
+              <em style={{ color: 'red', fontSize: '0.75em', marginLeft: 4 }}>
+                keep secret!
+              </em>
               <br /><button style={{ marginTop: 3 }} onClick={logout}>Forget Key</button>
             </div>
           </>
