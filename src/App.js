@@ -63,6 +63,16 @@ function decodeNostrIdentifier(value) {
   }
 }
 
+function NostrLink({ nip19, short = 16 }) {
+  if (!nip19) return null;
+  const text = nip19.length > short ? nip19.slice(0, short) + '...' : nip19;
+  return (
+    <a href={`nostr:${nip19}`} target="_blank" rel="noreferrer">
+      {text}
+    </a>
+  );
+}
+
 function saveKeys(sk, pk) {
   // Store keys locally in the browser. Nothing leaves the client.
   localStorage.setItem("nostr_sk", sk);
@@ -352,7 +362,7 @@ function Header({ onTab, tab }) {
         {nostrUser ? (
           <>
             <div style={{ fontSize: "0.8em" }}>
-              <strong>npub:</strong> {nostrUser.npub.slice(0, 16)}...<br />
+              <strong>npub:</strong> <NostrLink nip19={nostrUser.npub} short={16} /><br />
               {/* Only show a short snippet of the private nsec key. */}
               <strong>nsec:</strong>
               <span title="This is your private nsec. Never share it.">
@@ -434,7 +444,9 @@ function ProfileCard({ pubkey }) {
   if (!pubkey) return null;
   return (
     <div style={{ margin: "16px 0", border: "1px solid #eee", borderRadius: 10, padding: 10 }}>
-      <div style={{ fontWeight: 700 }}>User: {npubEncode(pubkey).slice(0, 14)}...</div>
+      <div style={{ fontWeight: 700 }}>
+        User: <NostrLink nip19={npubEncode(pubkey)} short={14} />
+      </div>
       {profile && (
         <div>
           {profile.picture && <img src={profile.picture} alt="" style={{ width: 36, borderRadius: "50%", margin: 6 }} />}
