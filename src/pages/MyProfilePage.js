@@ -33,7 +33,7 @@ export default function MyProfilePage() {
   return (
     <section>
       <h2>My Profile</h2>
-      {!nostrUser && <div style={{ color: 'gray' }}>Generate your Nostr key to use profile functions.</div>}
+      {!nostrUser && <div style={{ color: 'gray' }}>Login with your Nostr extension to use profile functions.</div>}
       <input placeholder="Name" value={profile.name} onChange={e => setProfile({ ...profile, name: e.target.value })} disabled={!nostrUser} />
       <input placeholder="Picture URL" value={profile.picture} onChange={e => setProfile({ ...profile, picture: e.target.value })} disabled={!nostrUser} />
       <textarea placeholder="Bio/About" value={profile.about} onChange={e => setProfile({ ...profile, about: e.target.value })} disabled={!nostrUser} />

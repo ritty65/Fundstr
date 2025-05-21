@@ -15,35 +15,8 @@ export function useNostr() {
   return useContext(NostrContext);
 }
 
-// Utility functions using window.NostrTools (from CDN)
-function generatePrivateKey() {
-  return window.NostrTools.generatePrivateKey();
-}
-function getPublicKey(sk) {
-  return window.NostrTools.getPublicKey(sk);
-}
-function getEventHash(ev) {
-  return window.NostrTools.getEventHash(ev);
-}
-function signEvent(ev, sk) {
-  return window.NostrTools.getSignature(ev, sk);
-}
 export function npubEncode(pk) {
   return window.NostrTools.nip19.npubEncode(pk);
-}
-export function nsecEncode(sk) {
-  return window.NostrTools.nip19.nsecEncode(sk);
-}
-
-function saveKeys(sk, pk) {
-  localStorage.setItem("nostr_sk", sk);
-  localStorage.setItem("nostr_pk", pk);
-}
-function loadKeys() {
-  const sk = localStorage.getItem("nostr_sk");
-  const pk = localStorage.getItem("nostr_pk");
-  if (sk && pk) return { sk, pk };
-  return null;
 }
 function saveRelays(relays) {
   localStorage.setItem("nostr_relays", JSON.stringify(relays));
@@ -61,16 +34,11 @@ export function NostrProvider({ children }) {
   const [relays, setRelays] = useState(loadRelays());
   const [relayStatus, setRelayStatus] = useState({});
   const [error, setError] = useState(null);
+  const [hasNip07, setHasNip07] = useState(false);
 
   useEffect(() => {
-    const keys = loadKeys();
-    if (keys) {
-      setNostrUser({
-        sk: keys.sk,
-        pk: keys.pk,
-        npub: npubEncode(keys.pk),
-        nsec: nsecEncode(keys.sk)
-      });
+    if (window.nostr && window.nostr.getPublicKey && window.nostr.signEvent) {
+      setHasNip07(true);
     }
   }, []);
 
@@ -105,35 +73,32 @@ export function NostrProvider({ children }) {
     setRelays(relays.filter(r => r !== relay));
   }
 
-  function createNewKeypair() {
+  async function loginWithExtension() {
+    if (!hasNip07) return;
     try {
-      const sk = generatePrivateKey();
-      const pk = getPublicKey(sk);
-      saveKeys(sk, pk);
-      setNostrUser({ sk, pk, npub: npubEncode(pk), nsec: nsecEncode(sk) });
+      const pk = await window.nostr.getPublicKey();
+      setNostrUser({ pk, npub: npubEncode(pk) });
       setError(null);
     } catch (e) {
-      setError("Failed to generate keys: " + e.message);
+      setError("Failed to get public key: " + e.message);
     }
   }
 
   function logout() {
-    localStorage.removeItem("nostr_sk");
-    localStorage.removeItem("nostr_pk");
     setNostrUser(null);
     setError(null);
   }
 
   async function publishNostrEvent(eventTemplate) {
-    if (!nostrUser) throw new Error("Generate your keypair first!");
+    if (!nostrUser) throw new Error("Connect your Nostr extension first!");
+    if (!hasNip07) throw new Error("NIP-07 extension not available");
     try {
       const template = {
         ...eventTemplate,
         pubkey: nostrUser.pk,
         created_at: Math.floor(Date.now() / 1000)
       };
-      template.id = getEventHash(template);
-      template.sig = signEvent(template, nostrUser.sk);
+      const signed = await window.nostr.signEvent(template);
 
       let errors = [];
       let successes = 0;
@@ -143,7 +108,7 @@ export function NostrProvider({ children }) {
             const ws = new window.WebSocket(relayUrl);
             let isHandled = false;
             ws.onopen = () => {
-              ws.send(JSON.stringify(["EVENT", template]));
+              ws.send(JSON.stringify(["EVENT", signed]));
               setTimeout(() => { if (!isHandled) ws.close(); }, 1000);
             };
             ws.onerror = () => { errors.push(relayUrl); ws.close(); resolve(); };
@@ -154,7 +119,7 @@ export function NostrProvider({ children }) {
       ));
       if (successes === 0) throw new Error(errors.join("; "));
       setError(null);
-      return template;
+      return signed;
     } catch (err) {
       setError("Publish failed: " + err.message);
       throw err;
@@ -206,7 +171,7 @@ export function NostrProvider({ children }) {
 
   // Profile functions
   async function publishProfile(profile) {
-    if (!nostrUser) throw new Error("Generate your keypair first!");
+    if (!nostrUser) throw new Error("Connect your Nostr extension first!");
     return await publishNostrEvent({
       kind: KIND_PROFILE,
       tags: [],
@@ -225,7 +190,7 @@ export function NostrProvider({ children }) {
 
   return (
     <NostrContext.Provider value={{
-      nostrUser, error, setError, createNewKeypair, logout,
+      nostrUser, error, setError, loginWithExtension, logout, hasNip07,
       publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay,
       relays, addRelay, removeRelay, relayStatus,
       publishProfile, fetchProfile

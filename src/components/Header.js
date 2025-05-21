@@ -2,7 +2,7 @@ import React from 'react';
 import { useNostr } from '../nostr';
 
 export default function Header({ onTab, tab }) {
-  const { nostrUser, createNewKeypair, logout, error } = useNostr();
+  const { nostrUser, loginWithExtension, logout, error, hasNip07 } = useNostr();
   return (
     <header style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
       <h1>Nostr Patreon MVP</h1>
@@ -13,13 +13,19 @@ export default function Header({ onTab, tab }) {
         {nostrUser ? (
           <>
             <div style={{ fontSize: '0.8em' }}>
-              <strong>npub:</strong> {nostrUser.npub.slice(0, 16)}...<br />
-              <strong>nsec:</strong> {nostrUser.nsec.slice(0, 10)}...
-              <br /><button style={{ marginTop: 3 }} onClick={logout}>Forget Key</button>
+              <strong>npub:</strong> {nostrUser.npub.slice(0, 16)}...
+              <br />
+              <button style={{ marginTop: 3 }} onClick={logout}>Logout</button>
             </div>
           </>
         ) : (
-          <button onClick={createNewKeypair}>Create New Key Pair</button>
+          <>
+            {hasNip07 ? (
+              <button onClick={loginWithExtension}>Login with Nostr Extension</button>
+            ) : (
+              <span style={{ color: 'gray' }}>Nostr extension not detected</span>
+            )
+          </>
         )}
         {error && <div style={{ color: 'red', fontSize: '0.85em' }}>{error}</div>}
       </div>

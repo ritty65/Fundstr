@@ -31,7 +31,7 @@ export default function SupportCreatorPage() {
   }
 
   async function handlePledgeSupport() {
-    if (!nostrUser || !tier) { setError('Generate your keypair and load a tier.'); return; }
+    if (!nostrUser || !tier) { setError('Connect your Nostr extension and load a tier.'); return; }
     try {
       setError(null);
       const event = {
