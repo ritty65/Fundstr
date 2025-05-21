@@ -48,15 +48,15 @@ export default function CreatorSetupPage() {
   }
 
   return (
-    <div>
+    <div className="section">
       <RelayManager />
       <h2>Creator Setup</h2>
-      {!nostrUser && <div style={{ color: 'gray' }}>Login with your Nostr extension to use creator functions.</div>}
-      <div>
+      {!nostrUser && <div className="text-gray">Login with your Nostr extension to use creator functions.</div>}
+      <div className="mb-2">
         <input placeholder="Tier Title" value={tier.title} onChange={e => setTier({ ...tier, title: e.target.value })} disabled={!nostrUser} />
         <input placeholder="Amount (in sats)" type="number" value={tier.amount} onChange={e => setTier({ ...tier, amount: e.target.value })} disabled={!nostrUser} />
         <input placeholder="Payment Instructions (e.g., BTC address)" value={tier.paymentInstructions} onChange={e => setTier({ ...tier, paymentInstructions: e.target.value })} disabled={!nostrUser} />
-        <input value="BTC" readOnly style={{ width: 64 }} title="Only BTC allowed" />
+        <input value="BTC" readOnly className="w-64" title="Only BTC allowed" />
         <button onClick={handlePublishTier} disabled={!nostrUser}>Publish Tier</button>
       </div>
       <h3>Current Tier</h3>
@@ -69,7 +69,7 @@ export default function CreatorSetupPage() {
             <li key={ev.id}>
               <ProfileCard pubkey={ev.pubkey} />
               {ev.kind === KIND_RECURRING_PLEDGE && (
-                <div style={{ fontSize: '0.9em' }}>
+                <div className="small">
                   Recurring {ev.tags.find(t => t[0] === 'period')?.[1]} - {ev.tags.find(t => t[0] === 'status')?.[1]}
                 </div>
               )}

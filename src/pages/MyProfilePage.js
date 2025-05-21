@@ -31,16 +31,20 @@ export default function MyProfilePage() {
   }
 
   return (
-    <section>
+    <section className="section">
       <h2>My Profile</h2>
-      {!nostrUser && <div style={{ color: 'gray' }}>Login with your Nostr extension to use profile functions.</div>}
+      {!nostrUser && <div className="text-gray">Login with your Nostr extension to use profile functions.</div>}
       <input placeholder="Name" value={profile.name} onChange={e => setProfile({ ...profile, name: e.target.value })} disabled={!nostrUser} />
       <input placeholder="Picture URL" value={profile.picture} onChange={e => setProfile({ ...profile, picture: e.target.value })} disabled={!nostrUser} />
       <textarea placeholder="Bio/About" value={profile.about} onChange={e => setProfile({ ...profile, about: e.target.value })} disabled={!nostrUser} />
       <br />
       <button onClick={handlePublish} disabled={!nostrUser}>Publish Profile</button>
-      {profile.picture && <div style={{ marginTop: 12 }}><img src={profile.picture} alt="profile" style={{ width: 64, height: 64, borderRadius: '50%' }} /></div>}
-      {saved && <div style={{ color: 'green' }}>Profile saved to relays!</div>}
+      {profile.picture && (
+        <div className="mt-2">
+          <img src={profile.picture} alt="profile" className="profile-avatar avatar-lg" />
+        </div>
+      )}
+      {saved && <div className="text-gray">Profile saved to relays!</div>}
     </section>
   );
 }

@@ -12,7 +12,7 @@ export default function App() {
   const [tab, setTab] = useState('creator');
   return (
     <NostrProvider>
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: 32 }}>
+      <div className="app-container">
         <Header tab={tab} onTab={setTab} />
         {tab === 'creator' && <CreatorSetupPage />}
         {tab === 'supporter' && <SupportCreatorPage />}
@@ -20,7 +20,7 @@ export default function App() {
         {tab === 'wallet' && <CashuWalletPage />}
         {tab === 'follows' && <FollowsPage />}
         {tab === 'activity' && <UserActivityPage />}
-        <footer style={{ marginTop: 64, color: '#888' }}>Nostr Patreon MVP - Demo</footer>
+        <footer>Nostr Patreon MVP - Demo</footer>
       </div>
     </NostrProvider>
   );

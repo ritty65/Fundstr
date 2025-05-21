@@ -20,15 +20,15 @@ export default function UserActivityPage() {
   }
 
   return (
-    <section>
+    <section className="section">
       <h2>User Reactions</h2>
-      <div style={{ marginBottom: 12 }}>
+      <div className="mb-3">
         <input
           placeholder="Pubkey"
           value={targetKey}
           onChange={e => setTargetKey(e.target.value)}
         />
-        <button onClick={load} style={{ marginLeft: 8 }}>Load</button>
+        <button className="ml-2" onClick={load}>Load</button>
       </div>
       <ul>
         {reactions.map(ev => (
@@ -37,7 +37,7 @@ export default function UserActivityPage() {
           </li>
         ))}
       </ul>
-      <div style={{ marginTop: 24 }}>
+      <div className="mt-3">
         <h2>Zap Receipts</h2>
         <div>
           <h3>As Zapper</h3>
@@ -67,7 +67,7 @@ export default function UserActivityPage() {
           </ul>
         </div>
       </div>
-      <div style={{ marginTop: 24 }}>
+      <div className="mt-3">
         <h2>Profile Badges</h2>
         <ul>
           {badges.map(b => {

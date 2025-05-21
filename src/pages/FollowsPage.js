@@ -22,11 +22,11 @@ export default function FollowsPage() {
   }
 
   return (
-    <section>
+    <section className="section">
       <h2>Follower/Following Info</h2>
-      <div style={{ marginBottom: 12 }}>
+      <div className="mb-3">
         <input placeholder="Pubkey" value={targetKey} onChange={e => setTargetKey(e.target.value)} />
-        <button onClick={load} style={{ marginLeft: 8 }}>Load</button>
+        <button className="ml-2" onClick={load}>Load</button>
       </div>
       <div>
         <h3>Following ({followingCount !== null ? followingCount : following.length})</h3>

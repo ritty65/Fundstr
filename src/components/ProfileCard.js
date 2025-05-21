@@ -16,11 +16,11 @@ export default function ProfileCard({ pubkey }) {
 
   if (!pubkey) return null;
   return (
-    <div style={{ margin: '16px 0', border: '1px solid #eee', borderRadius: 10, padding: 10 }}>
-      <div style={{ fontWeight: 700 }}>User: {npubEncode(pubkey).slice(0, 14)}...</div>
+    <div className="profile-card">
+      <div className="user">User: {npubEncode(pubkey).slice(0, 14)}...</div>
       {profile && (
         <div>
-          {profile.picture && <img src={profile.picture} alt="" style={{ width: 36, borderRadius: '50%', margin: 6 }} />}
+          {profile.picture && <img src={profile.picture} alt="" className="profile-avatar" />}
           {profile.name && <div><b>Name:</b> {profile.name}</div>}
           {profile.about && <div><b>Bio:</b> {profile.about}</div>}
         </div>

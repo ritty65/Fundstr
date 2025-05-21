@@ -158,20 +158,20 @@ export default function SupportCreatorPage() {
   }
 
   return (
-    <div>
+    <div className="section">
       <RelayManager />
       <h2>Support a Creator</h2>
-      <div style={{ marginBottom: 12 }}>
+      <div className="mb-3">
         <input
           placeholder="NWC URI"
           value={nwcUri}
           onChange={e => setNwcUri(e.target.value)}
-          style={{ width: '60%' }}
+          className="w-60p"
         />
-        <button onClick={() => { if (!connectNwc(nwcUri)) alert('Invalid URI'); }} style={{ marginLeft: 8 }}>
+        <button className="ml-2" onClick={() => { if (!connectNwc(nwcUri)) alert('Invalid URI'); }}>
           Connect Wallet
         </button>
-        {nwc && <span style={{ marginLeft: 8, color: 'green' }}>Connected</span>}
+        {nwc && <span className="ml-2 text-success">Connected</span>}
       </div>
       <input placeholder="Creator Pubkey" value={creatorKey} onChange={e => setCreatorKey(e.target.value)} />
       <button onClick={handleFetchCreatorTier}>Find Tier</button>
@@ -184,15 +184,15 @@ export default function SupportCreatorPage() {
           <pre>{JSON.stringify(tier, null, 2)}</pre>
           {tier.paymentInstructions && <QRCodeSVG value={tier.paymentInstructions} />}
           <button onClick={handlePledgeSupport}>Pledge Support (Mock)</button>
-          <div style={{ marginTop: 16 }}>
+          <div className="mt-2">
             <input
               placeholder="Amount (sats)"
               type="number"
               value={recurringAmount}
               onChange={e => setRecurringAmount(e.target.value)}
-              style={{ marginRight: 8 }}
+              className="mr-2"
             />
-            <select value={period} onChange={e => setPeriod(e.target.value)} style={{ marginRight: 8 }}>
+            <select value={period} onChange={e => setPeriod(e.target.value)} className="mr-2">
               <option value="weekly">Weekly</option>
               <option value="daily">Daily</option>
             </select>
@@ -201,24 +201,24 @@ export default function SupportCreatorPage() {
               value={note}
               onChange={e => setNote(e.target.value)}
             />
-            <button style={{ marginLeft: 8 }} onClick={handleCreateRecurring}>
+            <button className="ml-2" onClick={handleCreateRecurring}>
               Start Recurring Support
             </button>
           </div>
         </div>
       )}
       {duePledges.length > 0 && (
-        <div style={{ marginTop: 32 }}>
+        <div className="mt-3">
           <h3>Payments Due</h3>
           <ul>
             {duePledges.map(ev => (
               <li key={ev.id}>
                 To {ev.tags.find(t => t[0] === 'p')?.[1]}
-                <button style={{ marginLeft: 8 }} onClick={() => handlePayPledge(ev)}>
+                <button className="ml-2" onClick={() => handlePayPledge(ev)}>
                   Pay Now
                 </button>
                 {cashuTokens.length > 0 && (
-                  <button style={{ marginLeft: 8 }} onClick={() => handlePayPledgeCashu(ev)}>
+                  <button className="ml-2" onClick={() => handlePayPledgeCashu(ev)}>
                     Pay with Cashu
                   </button>
                 )}
@@ -227,7 +227,7 @@ export default function SupportCreatorPage() {
           </ul>
         </div>
       )}
-      {error && <div style={{ color: 'red' }}>{error}</div>}
+      {error && <div className="error">{error}</div>}
     </div>
   );
 }

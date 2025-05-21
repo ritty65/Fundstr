@@ -46,14 +46,14 @@ export default function CashuWalletPage() {
   }
 
   return (
-    <div>
+    <div className="section">
       <h2>Cashu Wallet</h2>
-      {!nostrUser && <div style={{ color: 'gray' }}>Login with your Nostr extension first.</div>}
-      <div style={{ marginBottom: 20 }}>
+      {!nostrUser && <div className="text-gray">Login with your Nostr extension first.</div>}
+      <div className="mb-4">
         <input placeholder="Mint URL" value={mint} onChange={e => setMint(e.target.value)} disabled={!nostrUser} />
         <button onClick={handlePublishWallet} disabled={!nostrUser}>Publish Wallet</button>
       </div>
-      <div style={{ marginBottom: 20 }}>
+      <div className="mb-4">
         <input placeholder="New proof" value={newToken} onChange={e => setNewToken(e.target.value)} disabled={!nostrUser} />
         <button onClick={handleAddToken} disabled={!nostrUser}>Add Token</button>
       </div>
@@ -63,7 +63,7 @@ export default function CashuWalletPage() {
           <li key={ev.id}>{ev.content.slice(0, 64)}...</li>
         ))}
       </ul>
-      {error && <div style={{ color: 'red' }}>{error}</div>}
+      {error && <div className="error">{error}</div>}
     </div>
   );
 }

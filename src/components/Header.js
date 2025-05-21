@@ -1,10 +1,20 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNostr } from '../nostr';
 
 export default function Header({ onTab, tab }) {
-  const { nostrUser, loginWithExtension, logout, error, hasNip07 } = useNostr();
+  const { nostrUser, loginWithExtension, logout, error, hasNip07, fetchProfile } = useNostr();
+  const [profile, setProfile] = useState(null);
+
+  useEffect(() => {
+    if (!nostrUser) { setProfile(null); return; }
+    (async () => {
+      try { setProfile(await fetchProfile(nostrUser.pk)); } catch {}
+    })();
+  }, [nostrUser, fetchProfile]);
+
   return (
-    <header style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+    <header>
+      {profile?.picture && <img src={profile.picture} alt="avatar" className="profile-avatar" />}
       <h1>Nostr Patreon MVP</h1>
       <button onClick={() => onTab('creator')}>Creator</button>
       <button onClick={() => onTab('supporter')}>Support a Creator</button>
@@ -12,13 +22,13 @@ export default function Header({ onTab, tab }) {
       <button onClick={() => onTab('wallet')}>Cashu Wallet</button>
       <button onClick={() => onTab('follows')}>Follows</button>
       <button onClick={() => onTab('activity')}>Activity</button>
-      <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+      <div className="header-right">
         {nostrUser ? (
           <>
-            <div style={{ fontSize: '0.8em' }}>
+            <div className="small">
               <strong>npub:</strong> {nostrUser.npub.slice(0, 16)}...
               <br />
-              <button style={{ marginTop: 3 }} onClick={logout}>Logout</button>
+              <button className="mt-1" onClick={logout}>Logout</button>
             </div>
           </>
         ) : (
@@ -26,11 +36,11 @@ export default function Header({ onTab, tab }) {
             {hasNip07 ? (
               <button onClick={loginWithExtension}>Login with Nostr Extension</button>
             ) : (
-              <span style={{ color: 'gray' }}>Nostr extension not detected</span>
+              <span className="text-gray">Nostr extension not detected</span>
             )
           </>
         )}
-        {error && <div style={{ color: 'red', fontSize: '0.85em' }}>{error}</div>}
+        {error && <div className="error small">{error}</div>}
       </div>
     </header>
   );
