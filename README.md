@@ -21,3 +21,7 @@ The demo now includes a very small Cashu wallet implementation. Users can
 publish wallet metadata and token events using the Cashu tab. Stored token
 events follow the [NIP-60](https://nips.nostr.com/60) draft so they can be
 synchronized across Nostr clients.
+
+## Nostr Ideas
+
+For potential future extensions, see [docs/NostrIdeas.md](docs/NostrIdeas.md).
