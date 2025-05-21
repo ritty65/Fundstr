@@ -1,9 +1,9 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
+import { useRelays, DEFAULT_RELAYS } from './hooks/useRelays';
+import { useWalletConnect } from './hooks/useWalletConnect';
+import { useCashu } from './hooks/useCashu';
 
-export const DEFAULT_RELAYS = [
-  "wss://relay.damus.io",
-  "wss://relay.primal.net"
-];
+export { DEFAULT_RELAYS }; // re-export
 export const KIND_PROFILE = 0;
 export const KIND_MVP_TIER = 30078;
 export const KIND_MVP_PLEDGE = 30079;
@@ -21,21 +21,10 @@ export function useNostr() {
 export function npubEncode(pk) {
   return window.NostrTools.nip19.npubEncode(pk);
 }
-function saveRelays(relays) {
-  localStorage.setItem("nostr_relays", JSON.stringify(relays));
-}
-function loadRelays() {
-  try {
-    const r = JSON.parse(localStorage.getItem("nostr_relays"));
-    if (Array.isArray(r) && r.length) return r;
-  } catch {}
-  return DEFAULT_RELAYS;
-}
 
 export function NostrProvider({ children }) {
   const [nostrUser, setNostrUser] = useState(null);
-  const [relays, setRelays] = useState(loadRelays());
-  const [relayStatus, setRelayStatus] = useState({});
+  const { relays, relayStatus, addRelay, removeRelay } = useRelays(DEFAULT_RELAYS);
   const [error, setError] = useState(null);
   const [hasNip07, setHasNip07] = useState(false);
 
@@ -45,36 +34,7 @@ export function NostrProvider({ children }) {
     }
   }, []);
 
-  useEffect(() => {
-    saveRelays(relays);
-    checkRelayStatuses(relays);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relays]);
-
-  async function checkRelayStatuses(relays) {
-    const statuses = {};
-    await Promise.all(relays.map(relayUrl =>
-      new Promise(resolve => {
-        try {
-          const ws = new window.WebSocket(relayUrl);
-          let settled = false;
-          ws.onopen = () => { statuses[relayUrl] = "online"; settled = true; ws.close(); resolve(); };
-          ws.onerror = () => { statuses[relayUrl] = "error"; settled = true; ws.close(); resolve(); };
-          ws.onclose = () => { if (!settled) { statuses[relayUrl] = "error"; resolve(); } };
-          setTimeout(() => { if (!settled) { statuses[relayUrl] = "error"; ws.close(); resolve(); } }, 1500);
-        } catch { statuses[relayUrl] = "error"; resolve(); }
-      })
-    ));
-    setRelayStatus(statuses);
-  }
-
-  function addRelay(relay) {
-    if (relays.includes(relay)) return;
-    setRelays([...relays, relay]);
-  }
-  function removeRelay(relay) {
-    setRelays(relays.filter(r => r !== relay));
-  }
+  // relay management handled by useRelays
 
   async function loginWithExtension() {
     if (!hasNip07) return;
@@ -249,25 +209,7 @@ export function NostrProvider({ children }) {
     return {};
   }
 
-  // --- Cashu wallet helpers ---
-  async function fetchCashuWallet(pubkey) {
-    for (const relay of relays) {
-      const ev = await fetchLatestEvent(pubkey, KIND_CASHU_WALLET, relay);
-      if (ev) {
-        try { return JSON.parse(ev.content); } catch { return null; }
-      }
-    }
-    return null;
-  }
-
-  async function fetchCashuTokens(pubkey) {
-    const evs = [];
-    for (const relay of relays) {
-      const res = await fetchEventsFromRelay({ authors: [pubkey], kinds: [KIND_CASHU_TOKENS] }, relay);
-      if (res.length) evs.push(...res);
-    }
-    return evs;
-  }
+  // --- Cashu wallet helpers handled by useCashu ---
 
   async function fetchReactions(pubkey) {
     const events = [];
@@ -353,106 +295,22 @@ export function NostrProvider({ children }) {
     return badges;
   }
 
-  async function publishCashuWallet(data) {
-    return await publishNostrEvent({
-      kind: KIND_CASHU_WALLET,
-      tags: [["mint", data.mint]],
-      content: JSON.stringify(data)
-    });
-  }
+  const {
+    fetchCashuWallet,
+    fetchCashuTokens,
+    publishCashuWallet,
+    addCashuToken,
+    sendCashuToken
+  } = useCashu({
+    relays,
+    nostrUser,
+    publishNostrEvent,
+    fetchLatestEvent,
+    fetchEventsFromRelay
+  });
 
-  async function addCashuToken(token) {
-    return await publishNostrEvent({
-      kind: KIND_CASHU_TOKENS,
-      tags: [],
-      content: JSON.stringify(token)
-    });
-  }
-
-  async function sendCashuToken(tokenEvent, toPubkey) {
-    if (!nostrUser) throw new Error("Connect your Nostr extension first!");
-    const enc = await window.nostr.nip04.encrypt(toPubkey, tokenEvent.content);
-    await publishNostrEvent({
-      kind: 4,
-      tags: [["p", toPubkey]],
-      content: enc
-    });
-    await publishNostrEvent({
-      kind: 5,
-      tags: [["e", tokenEvent.id], ["k", String(KIND_CASHU_TOKENS)]],
-      content: ""
-    });
-  }
-
-  // --- NIP-47 wallet connect helpers ---
-  function loadNwc() {
-    try { return JSON.parse(localStorage.getItem("nwc_conn")); } catch { return null; }
-  }
-  const [nwc, setNwc] = useState(loadNwc());
-
-  function saveNwc(conn) {
-    if (conn) localStorage.setItem("nwc_conn", JSON.stringify(conn));
-    else localStorage.removeItem("nwc_conn");
-  }
-
-  function parseNwcUri(uri) {
-    try {
-      if (!uri.startsWith("nostr+walletconnect://")) return null;
-      const stripped = uri.replace("nostr+walletconnect://", "https://");
-      const u = new URL(stripped);
-      return {
-        walletPubkey: u.hostname,
-        relays: u.searchParams.getAll("relay"),
-        secret: u.searchParams.get("secret")
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  function connectNwc(uri) {
-    const conn = parseNwcUri(uri);
-    if (conn && conn.secret && conn.walletPubkey) {
-      setNwc(conn);
-      saveNwc(conn);
-      return true;
-    }
-    return false;
-  }
-
-  function disconnectNwc() {
-    setNwc(null);
-    saveNwc(null);
-  }
-
-  async function sendNwcPayInvoice(invoice, amount) {
-    if (!nwc) throw new Error("No NWC connection");
-    const event = {
-      kind: 23194,
-      pubkey: window.NostrTools.getPublicKey(nwc.secret),
-      created_at: Math.floor(Date.now() / 1000),
-      tags: [["p", nwc.walletPubkey]],
-      content: await window.NostrTools.nip04.encrypt(
-        nwc.secret,
-        nwc.walletPubkey,
-        JSON.stringify({ method: "pay_invoice", params: { invoice, amount } })
-      )
-    };
-    const signed = window.NostrTools.signEvent(event, nwc.secret);
-    await Promise.all((nwc.relays.length ? nwc.relays : relays).map(relayUrl =>
-      new Promise(resolve => {
-        try {
-          const ws = new window.WebSocket(relayUrl);
-          ws.onopen = () => {
-            ws.send(JSON.stringify(["EVENT", signed]));
-            setTimeout(() => ws.close(), 1000);
-          };
-          ws.onerror = () => { ws.close(); resolve(); };
-          ws.onclose = () => resolve();
-        } catch { resolve(); }
-      })
-    ));
-  }
+  // --- NIP-47 wallet connect helpers handled by useWalletConnect ---
+  const { nwc, connectNwc, disconnectNwc, sendNwcPayInvoice } = useWalletConnect(relays);
 
   return (
     <NostrContext.Provider value={{
