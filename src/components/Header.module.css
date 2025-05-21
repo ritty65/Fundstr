@@ -1,0 +1,28 @@
+.header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.userArea {
+  margin-left: auto;
+  text-align: right;
+}
+
+.userInfo {
+  font-size: 0.8em;
+}
+
+.logoutButton {
+  margin-top: 3px;
+}
+
+.error {
+  color: red;
+  font-size: 0.85em;
+}
+
+.notDetected {
+  color: gray;
+}
