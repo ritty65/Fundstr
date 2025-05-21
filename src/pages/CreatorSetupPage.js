@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { useNostr, DEFAULT_RELAYS, KIND_MVP_TIER, KIND_MVP_PLEDGE } from '../nostr';
+import { useNostr, DEFAULT_RELAYS, KIND_MVP_TIER, KIND_MVP_PLEDGE, KIND_RECURRING_PLEDGE } from '../nostr';
 import RelayManager from '../components/RelayManager';
 import ProfileCard from '../components/ProfileCard';
 
@@ -20,7 +20,7 @@ export default function CreatorSetupPage() {
         const latestTier = await fetchLatestEvent(nostrUser.pk, KIND_MVP_TIER, DEFAULT_RELAYS[0]);
         setCurrentTier(latestTier ? JSON.parse(latestTier.content) : null);
         if (latestTier) {
-          const pledges = await fetchEventsFromRelay({ kinds: [KIND_MVP_PLEDGE], '#p': [nostrUser.pk] }, DEFAULT_RELAYS[0]);
+          const pledges = await fetchEventsFromRelay({ kinds: [KIND_MVP_PLEDGE, KIND_RECURRING_PLEDGE], '#p': [nostrUser.pk] }, DEFAULT_RELAYS[0]);
           setSupporters(pledges);
         }
       } catch (e) {
@@ -68,6 +68,11 @@ export default function CreatorSetupPage() {
           {supporters.map(ev => (
             <li key={ev.id}>
               <ProfileCard pubkey={ev.pubkey} />
+              {ev.kind === KIND_RECURRING_PLEDGE && (
+                <div style={{ fontSize: '0.9em' }}>
+                  Recurring {ev.tags.find(t => t[0] === 'period')?.[1]} - {ev.tags.find(t => t[0] === 'status')?.[1]}
+                </div>
+              )}
             </li>
           ))}
         </ul>
