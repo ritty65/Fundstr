@@ -34,6 +34,28 @@ export function nsecEncode(sk) {
   return window.NostrTools.nip19.nsecEncode(sk);
 }
 
+export function npubDecode(npub) {
+  try {
+    return window.NostrTools.nip19.decode(npub).data;
+  } catch {
+    return null;
+  }
+}
+
+export async function resolveNip05(identifier) {
+  const parts = identifier.split('@');
+  if (parts.length !== 2) return null;
+  const [name, domain] = parts;
+  try {
+    const res = await fetch(`https://${domain}/.well-known/nostr.json?name=${encodeURIComponent(name)}`);
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.names?.[name] || null;
+  } catch {
+    return null;
+  }
+}
+
 function saveKeys(sk, pk) {
   localStorage.setItem("nostr_sk", sk);
   localStorage.setItem("nostr_pk", pk);
@@ -227,7 +249,8 @@ export function NostrProvider({ children }) {
       nostrUser, error, setError, createNewKeypair, logout,
       publishNostrEvent, fetchLatestEvent, fetchEventsFromRelay,
       relays, addRelay, removeRelay, relayStatus,
-      publishProfile, fetchProfile
+      publishProfile, fetchProfile,
+      npubDecode, resolveNip05
     }}>
       {children}
     </NostrContext.Provider>

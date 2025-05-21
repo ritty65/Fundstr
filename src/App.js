@@ -3,6 +3,7 @@ import { NostrProvider } from './nostr';
 import Header from './components/Header';
 import CreatorSetupPage from './pages/CreatorSetupPage';
 import SupportCreatorPage from './pages/SupportCreatorPage';
+import DiscoverPage from './pages/DiscoverPage';
 import MyProfilePage from './pages/MyProfilePage';
 
 export default function App() {
@@ -13,6 +14,7 @@ export default function App() {
         <Header tab={tab} onTab={setTab} />
         {tab === 'creator' && <CreatorSetupPage />}
         {tab === 'supporter' && <SupportCreatorPage />}
+        {tab === 'discover' && <DiscoverPage />}
         {tab === 'profile' && <MyProfilePage />}
         <footer style={{ marginTop: 64, color: '#888' }}>Nostr Patreon MVP - Demo</footer>
       </div>

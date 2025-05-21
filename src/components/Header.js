@@ -8,6 +8,7 @@ export default function Header({ onTab, tab }) {
       <h1>Nostr Patreon MVP</h1>
       <button onClick={() => onTab('creator')}>Creator</button>
       <button onClick={() => onTab('supporter')}>Support a Creator</button>
+      <button onClick={() => onTab('discover')}>Discover</button>
       <button onClick={() => onTab('profile')}>My Profile</button>
       <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
         {nostrUser ? (

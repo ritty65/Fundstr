@@ -5,7 +5,8 @@ import RelayManager from '../components/RelayManager';
 import ProfileCard from '../components/ProfileCard';
 
 export default function SupportCreatorPage() {
-  const { nostrUser, publishNostrEvent, fetchLatestEvent } = useNostr();
+  const { nostrUser, publishNostrEvent, fetchLatestEvent, npubDecode, resolveNip05 } = useNostr();
+  const [inputId, setInputId] = useState('');
   const [creatorKey, setCreatorKey] = useState('');
   const [creatorProfile, setCreatorProfile] = useState(null);
   const [tier, setTier] = useState(null);
@@ -13,12 +14,23 @@ export default function SupportCreatorPage() {
 
   async function handleFetchCreatorTier() {
     setError(null);
-    if (!creatorKey) return;
+    let pk = inputId.trim();
+    if (!pk) return;
+    if (pk.includes('@') && !pk.match(/^[a-f0-9]{64}$/i)) {
+      const resolved = await resolveNip05(pk);
+      if (!resolved) { setError('NIP-05 identifier not found.'); return; }
+      pk = resolved;
+    } else if (pk.startsWith('npub')) {
+      const decoded = npubDecode(pk);
+      if (!decoded) { setError('Invalid npub.'); return; }
+      pk = decoded;
+    }
+    setCreatorKey(pk);
     try {
-      const tierEvent = await fetchLatestEvent(creatorKey, KIND_MVP_TIER, DEFAULT_RELAYS[0]);
+      const tierEvent = await fetchLatestEvent(pk, KIND_MVP_TIER, DEFAULT_RELAYS[0]);
       if (!tierEvent) { setTier(null); setError('No tier found for this pubkey.'); return; }
       setTier(JSON.parse(tierEvent.content));
-      const profEvent = await fetchLatestEvent(creatorKey, KIND_PROFILE, DEFAULT_RELAYS[0]);
+      const profEvent = await fetchLatestEvent(pk, KIND_PROFILE, DEFAULT_RELAYS[0]);
       if (profEvent) {
         try { setCreatorProfile(JSON.parse(profEvent.content)); } catch { }
       }
@@ -50,8 +62,13 @@ export default function SupportCreatorPage() {
     <div>
       <RelayManager />
       <h2>Support a Creator</h2>
-      <input placeholder="Creator Pubkey" value={creatorKey} onChange={e => setCreatorKey(e.target.value)} />
+      <input
+        placeholder="Creator npub or NIP-05"
+        value={inputId}
+        onChange={e => setInputId(e.target.value)}
+      />
       <button onClick={handleFetchCreatorTier}>Find Tier</button>
+      {creatorKey && <div style={{ fontSize: '0.8em', marginTop: 4 }}>Pubkey: {creatorKey}</div>}
       {creatorProfile && (
         <ProfileCard pubkey={creatorKey} />
       )}
