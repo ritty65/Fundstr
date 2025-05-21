@@ -32,3 +32,28 @@ Nostr DM and the local token event is deleted.
 The header now includes a button to toggle between light and dark
 themes. Your preference is stored in `localStorage` so it persists
 across visits.
+
+## Login Options
+
+You can authenticate with a NIP-07 browser extension or by pasting your
+`nsec` private key. When an encrypted key has been saved you may also
+unlock it by entering the password you used to encrypt it. **Never share
+your `nsec`**&nbsp;&ndash; anyone who knows this string controls your
+identity.
+
+## Key Manager and Mnemonic Backup
+
+The Key Manager page lets you generate a new key pair directly in the
+browser. If NIP-06 helpers are available you will also receive a list of
+mnemonic words. Write them down as they can be used to restore the key
+later. The generated `nsec` and `npub` are shown for reference.
+
+## Encrypted Key Storage
+
+When logged in with a private key you can save an encrypted copy to the
+browser using NIP-49. The key is encrypted with a password and stored in
+`localStorage`, allowing you to unlock it on subsequent visits.
+
+> Browser-based key handling is provided for convenience but carries
+> security risks. Avoid using keys that protect real funds and always
+> keep backups in a safe place.
