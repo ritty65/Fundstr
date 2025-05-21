@@ -1,0 +1,16 @@
+.card {
+  margin: 16px 0;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.username {
+  font-weight: 700;
+}
+
+.avatar {
+  width: 36px;
+  border-radius: 50%;
+  margin: 6px;
+}
