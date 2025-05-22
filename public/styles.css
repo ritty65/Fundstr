@@ -1,132 +1,853 @@
 :root {
-  --primary: #4a314d;
-  --accent: #a8ba9a;
-  --background: #f5f6fa;
-  --foreground: #1a090d;
-  --surface: #fff;
-  --gray: #e8e9ed;
-  --border: #d4d4d4;
-  --error: #ef4444;
+  /* Color Palette */
+  --primary-color: #0A2540;
+  --primary-color-rgb: 10, 37, 64; /* RGB for #0A2540 */
+  --on-primary-color: #FFFFFF;
+
+  --accent-color: #FF7A00;
+  --accent-color-rgb: 255, 122, 0; /* RGB for #FF7A00 */
+  --on-accent-color: #FFFFFF;
+
+  --background-color: #F8F9FA;
+  --surface-color: #FFFFFF;
+  --surface-color-hover: #F1F3F5; /* Slightly off-white for hover */
+  --surface-color-active: #E9ECEF; /* Slightly darker for active/pressed */
+  --text-color: #212529;
+  --border-color: #DEE2E6;
+
+  /* Typography */
+  --font-family-sans-serif: 'Inter', sans-serif;
+  --font-size-base: 16px; /* ~1rem */
+  --font-size-h1: 2.5rem;
+  --font-size-h2: 2rem;
+  --font-size-h3: 1.75rem;
+  --font-size-p: 1rem;
+  --font-size-small: 0.875rem;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500; /* Added for labels as per request */
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Spacing */
+  --spacing-unit: 1rem; /* Base unit for padding/margins */
+  --spacing-xs: calc(var(--spacing-unit) * 0.25);
+  --spacing-sm: calc(var(--spacing-unit) * 0.5);
+  --spacing-md: var(--spacing-unit);
+  --spacing-lg: calc(var(--spacing-unit) * 1.5);
+  --spacing-xl: calc(var(--spacing-unit) * 2);
+  --spacing-xxl: calc(var(--spacing-unit) * 3);
+
+  /* Border Radius */
+  --border-radius-sm: 0.25rem;
+  --border-radius-md: 0.5rem;
+  --border-radius-lg: 1rem;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 4px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.1); /* Existing card shadow seems to be this */
 }
 
 [data-theme="dark"] {
-  --background: #16141a;
-  --foreground: #e2e8f0;
-  --surface: #262335;
-  --gray: #22212c;
-  --border: #35314c;
+  --primary-color: #0A2540; 
+  --primary-color-rgb: 10, 37, 64;
+  --on-primary-color: #FFFFFF;
+
+  --accent-color: #FF7A00;
+  --accent-color-rgb: 255, 122, 0;
+  --on-accent-color: #FFFFFF;
+  
+  --background-color: #121212;
+  --surface-color: #1E1E1E;
+  --surface-color-hover: #2C2C2E; /* Darker surface for hover */
+  --surface-color-active: #3A3A3C; /* Even darker for active */
+  --text-color: #E5E5E5;
+  --border-color: #343A40;
+  --shadow-sm: 0 2px 4px rgba(0,0,0,0.25); /* Darker shadow-sm for dark mode */
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.35); /* Darker shadow-md for dark mode */
 }
 
+/* Base Layout */
 body {
-  font-family: 'Lato', Arial, Helvetica, sans-serif;
-  background: var(--background);
-  color: var(--foreground);
   margin: 0;
-  min-height: 100vh;
-  transition: background 0.2s, color 0.2s;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  font-family: var(--font-family-sans-serif);
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 #root {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
 }
 
-header {
-  background: var(--surface);
-  border-radius: 1rem;
-  padding: 1.5rem 2rem;
-  margin-bottom: 2rem;
-  display: flex;
-  align-items: center;
-  gap: 1.2rem;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+/* Main content area - assuming content is directly inside a div in #root */
+/* If there's a specific class for the main content wrapper, it should be used here.
+   For now, this targets a potential direct child div of #root or a common wrapper. */
+.main-content, #root > div:not(header):not(footer) { /* Added specificity to avoid styling header/footer if they are direct children */
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--spacing-xl); /* 2rem */
+  flex-grow: 1;
+}
+
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  margin-top: var(--spacing-lg);
+  margin-bottom: var(--spacing-md);
+  color: var(--primary-color); /* Headings often use primary color */
+  line-height: 1.3;
 }
 
 h1 {
-  font-size: 1.7rem;
-  font-weight: 700;
-  color: var(--primary);
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-bold);
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-bold);
+}
+
+h3 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-semibold);
+}
+
+p {
+  font-size: var(--font-size-p);
+  margin-top: 0;
+  margin-bottom: var(--spacing-md);
+}
+
+small {
+  font-size: var(--font-size-small);
+}
+
+a {
+  color: var(--accent-color);
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+a:hover, a:focus {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+/* Form Elements */
+.form-group {
+  margin-bottom: var(--spacing-lg); /* Increased spacing for form groups */
+}
+
+label {
+  display: block;
+  margin-bottom: var(--spacing-xs); /* 0.25rem */
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-p); /* Ensure label font size matches input or is slightly smaller */
+  color: var(--text-color);
+}
+
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+input[type="url"], /* Added url type */
+textarea,
+select {
+  display: block; /* Ensure they take up block space for width:100% to work as expected */
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md); /* 0.5rem 1rem */
+  font-family: inherit;
+  font-size: var(--font-size-p); /* 1rem */
+  color: var(--text-color);
+  background-color: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md); /* 0.5rem */
+  box-sizing: border-box; /* Important for width: 100% and padding */
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  margin: 0; /* Resetting default margins from user agent stylesheets */
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="url"]:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.25); /* Using primary color for focus */
+}
+
+textarea {
+  min-height: 120px; /* Increased min-height */
+  resize: vertical;
+}
+
+select {
+  appearance: none; /* Basic reset for select */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23${encodeURIComponent(getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim().substring(1))}'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E"); /* SVG arrow, color from CSS var */
+  background-repeat: no-repeat;
+  background-position: right var(--spacing-md) center;
+  background-size: 1.2em;
+  padding-right: calc(var(--spacing-md) * 2.5); /* Ensure space for arrow */
+}
+
+/* Button Styles */
+/* Base button style - applied to <button> elements directly or via .button class */
+.button,
+button {
+  display: inline-block; /* Allows for text-align on parent and respects padding/margin */
+  font-family: inherit;
+  font-size: var(--font-size-p); /* 1rem */
+  font-weight: var(--font-weight-semibold);
+  padding: var(--spacing-sm) var(--spacing-lg); /* 0.5rem 1.5rem */
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-md); /* 0.5rem */
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none; /* For a elements styled as buttons */
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+  margin: var(--spacing-xs) 0; /* Small default margin */
+}
+
+/* Primary Button */
+.button-primary,
+button[type="submit"] { /* Default styling for submit buttons */
+  background-color: var(--primary-color);
+  color: var(--on-primary-color);
+  border-color: var(--primary-color);
+}
+.button-primary:hover,
+button[type="submit"]:hover {
+  background-color: rgba(var(--primary-color-rgb), 0.85); /* Slightly darken/transparent */
+  border-color: rgba(var(--primary-color-rgb), 0.85);
+  color: var(--on-primary-color);
+  opacity: 1;
+}
+
+/* Accent/CTA Button */
+.button-accent {
+  background-color: var(--accent-color);
+  color: var(--on-accent-color);
+  border-color: var(--accent-color);
+}
+.button-accent:hover {
+  background-color: rgba(var(--accent-color-rgb), 0.85);
+  border-color: rgba(var(--accent-color-rgb), 0.85);
+  color: var(--on-accent-color);
+  opacity: 1;
+}
+
+/* Secondary/Outline Button */
+.button-secondary {
+  background-color: transparent;
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+.button-secondary:hover {
+  background-color: rgba(var(--primary-color-rgb), 0.1); /* Light primary background */
+  color: var(--primary-color);
+  opacity: 1;
+}
+[data-theme="dark"] .button-secondary:hover {
+    background-color: rgba(var(--primary-color-rgb), 0.2);
+}
+
+
+/* Minimal button was already defined, but ensure it doesn't conflict or can be integrated */
+/* .auth-button.minimal might need review if this general button styling is preferred */
+.button-minimal {
+  background: none;
+  border: none;
+  color: var(--text-color);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 0.9rem; /* Usually smaller */
+  font-weight: var(--font-weight-normal);
+}
+.button-minimal:hover {
+  color: var(--accent-color);
+  text-decoration: underline;
+  background-color: transparent; /* Ensure no background on hover */
+  opacity: 1;
+}
+
+
+.button-full-width {
+  display: block;
+  width: 100%;
+}
+
+/* Removing default button styles for already specialized header buttons */
+.app-header .auth-button, .app-header .avatar-button {
+    margin: 0; /* Reset any margin from general button style */
+}
+
+
+/* Cards or Surface elements */
+.card {
+  background-color: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  padding: var(--spacing-lg);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+[data-theme="dark"] .card {
+    box-shadow: var(--shadow-md); /* Assuming existing .card uses a medium shadow */
+}
+
+/* New Content Card Style */
+.content-card {
+  background-color: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg); /* Using existing var, 1rem */
+  padding: var(--spacing-lg); /* 1.5rem */
+  margin-bottom: var(--spacing-xl); /* 2rem */
+  box-shadow: var(--shadow-sm);
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+[data-theme="dark"] .content-card {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2); /* Darker shadow for dark mode for --shadow-sm */
+}
+
+.content-card h2 {
+  margin-top: 0; /* First heading in card should not have extra top margin */
+  margin-bottom: var(--spacing-lg); /* Space after h2 before content */
+  font-size: var(--font-size-h2); /* Ensure consistency */
+}
+.content-card h2:not(:first-child) { /* If h2 is not the first child, e.g. after an image */
+    margin-top: var(--spacing-md);
+}
+
+
+.content-card h3 {
+  margin-top: var(--spacing-md); /* Default top margin for h3 inside card */
+  margin-bottom: var(--spacing-md);
+  font-size: var(--font-size-h3); /* Ensure consistency */
+}
+.content-card h3:first-child { /* If h3 is the very first element */
+    margin-top: 0;
+}
+
+
+/* Header - basic styling, can be expanded */
+header {
+  background: var(--surface-color);
+  padding: var(--spacing-md) var(--spacing-xl);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Footer - basic styling */
+footer {
+  text-align: center;
+  padding: var(--spacing-lg) var(--spacing-xl);
+  margin-top: var(--spacing-xl);
+  color: var(--text-color);
+  opacity: 0.8;
+  font-size: var(--font-size-small);
+  border-top: 1px solid var(--border-color);
+}
+
+/* Utility classes */
+.text-center {
+  text-align: center;
+}
+
+.mt-1 { margin-top: var(--spacing-md); }
+.mb-1 { margin-bottom: var(--spacing-md); }
+/* Add more spacing utilities as needed */
+
+/* List Styles */
+.list-reset {
+  list-style: none;
+  padding-left: 0;
   margin: 0;
 }
 
-h2, h3 {
-  color: var(--primary);
-  margin-top: 2rem;
+.list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  margin-bottom: var(--spacing-sm);
+  background-color: var(--surface-color); /* Use base surface, hover will change it */
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
-input, button, select, textarea {
-  font-family: inherit;
-  font-size: 1rem;
-  margin: 0.2rem 0.2rem 1rem 0;
+.list-item:hover {
+  border-color: var(--primary-color);
+  background-color: var(--surface-color-hover);
 }
 
-input, textarea, select {
-  padding: 0.6em 1em;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--foreground);
-  outline: none;
-  transition: border 0.2s;
+.list-item-content {
+  flex-grow: 1; /* Allows content to take available space */
+  margin-right: var(--spacing-md); /* Space before action buttons */
+  word-break: break-all; /* Prevent long strings from breaking layout */
 }
 
-input:focus, textarea:focus, select:focus {
-  border-color: var(--primary);
-}
-
-button {
-  background: var(--primary);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 0.65em 1.3em;
-  cursor: pointer;
-  font-weight: 700;
-  transition: background 0.15s;
-}
-
-button:hover, button:focus {
-  background: var(--accent);
-  color: var(--primary);
-}
-
-pre {
-  background: var(--gray);
-  padding: 0.7rem 1.2rem;
-  border-radius: 8px;
-  font-size: 0.97em;
-  overflow-x: auto;
-  color: var(--foreground);
-}
-
-footer {
-  text-align: center;
-  padding: 2rem 0 0.7rem 0;
-  color: #7d7c8d;
-  font-size: 1em;
-  margin-top: 3rem;
-  opacity: 0.8;
-}
-
-header img {
-  width: 36px;
-  height: 36px;
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  margin-right: 7px;
-  border: 2px solid var(--primary);
-  object-fit: cover;
+  margin-right: var(--spacing-sm);
+  background-color: lightgray; /* Default color */
+}
+.status-dot.online {
+  background-color:limegreen;
+}
+.status-dot.error {
+  background-color: crimson;
+}
+.status-dot.unknown { /* For relays not yet checked or in an indeterminate state */
+    background-color: orange;
 }
 
-input[type="text"], input[type="number"] {
-  min-width: 200px;
+/* Ensure buttons within list items have appropriate spacing if not handled by button class itself */
+.list-item .button,
+.list-item button {
+  margin-left: var(--spacing-sm); /* Spacing from content or other buttons */
+  flex-shrink: 0; /* Prevent buttons from shrinking if content is long */
 }
 
-@media (max-width: 650px) {
-  header {
-    flex-direction: column;
-    align-items: flex-start;
-    padding: 1rem 0.6rem;
+
+/* Accessibility: Ensure sufficient contrast.
+   The chosen colors generally provide good contrast.
+   For example:
+   - Dark text (#212529) on light background (#F8F9FA or #FFFFFF)
+   - Light text (#E5E5E5) on dark background (#121212 or #1E1E1E)
+   - Accent (#FF7A00) with white text (#FFFFFF)
+   Tools can be used to verify specific combinations if needed.
+*/
+
+/* Example of an image style if logo is present in header */
+/* header img.logo has been replaced by .logo-img below */
+
+/* Ensure inputs are legible */
+input::placeholder, textarea::placeholder {
+    color: var(--text-color);
+    opacity: 0.6;
+}
+
+[data-theme="dark"] input::placeholder, [data-theme="dark"] textarea::placeholder {
+    color: var(--text-color);
+    opacity: 0.7;
+}
+
+/* New Header Styles */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md) var(--spacing-xl); /* 1rem 2rem */
+  background-color: var(--surface-color);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.03); /* Subtle shadow */
+  position: relative; /* For potential absolute positioning of error messages from auth */
+}
+
+.logo-container {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm); /* 0.5rem */
+}
+
+.logo-img {
+  height: 40px; /* Adjust as needed */
+  width: auto;
+}
+
+.logo-text {
+  font-size: 1.5rem; /* Adjust as needed */
+  font-weight: var(--font-weight-semibold);
+  color: var(--primary-color);
+}
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs); /* 0.25rem, small gap between tabs */
+  margin-left: var(--spacing-xl); /* Push nav away from logo */
+  margin-right: auto; /* Push auth section to the right */
+}
+
+.nav-tab {
+  font-family: var(--font-family-sans-serif);
+  font-size: var(--font-size-p); /* 1rem */
+  color: var(--text-color);
+  background-color: transparent;
+  border: none;
+  padding: var(--spacing-sm) var(--spacing-md); /* 0.5rem 1rem */
+  cursor: pointer;
+  border-bottom: 3px solid transparent; /* Increased thickness for better visibility */
+  transition: color 0.2s ease, border-bottom-color 0.2s ease;
+  font-weight: var(--font-weight-normal);
+  border-radius: var(--border-radius-sm) var(--border-radius-sm) 0 0; /* Slight top rounding */
+}
+
+.nav-tab:hover {
+  color: var(--accent-color);
+}
+
+.nav-tab.active {
+  color: var(--accent-color);
+  font-weight: var(--font-weight-semibold);
+  border-bottom-color: var(--accent-color);
+}
+
+.auth-section {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm); /* 0.5rem */
+}
+
+.auth-button {
+  /* Inherits general button styles, but can be overridden */
+  padding: var(--spacing-xs) var(--spacing-md); /* Smaller padding for header buttons */
+  font-size: 0.9rem; /* Slightly smaller font */
+}
+
+.auth-button.secondary {
+  background-color: var(--surface-color);
+  color: var(--accent-color);
+  border: 1px solid var(--accent-color);
+}
+
+.auth-button.secondary:hover {
+  background-color: rgba(var(--accent-color), 0.1); /* Light accent background on hover */
+  opacity: 1; /* Reset general button hover opacity if needed */
+}
+
+.auth-button.minimal {
+  background: none;
+  border: none;
+  color: var(--text-color);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 0.8rem;
+  font-weight: var(--font-weight-normal);
+}
+.auth-button.minimal:hover {
+  color: var(--accent-color);
+  text-decoration: underline;
+  opacity: 1;
+}
+
+/* User Menu & Dropdown Styles */
+.user-menu-container {
+  position: relative; /* For dropdown positioning */
+}
+
+.avatar-button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 50%;
+  width: 40px; /* Same as logo-img height for consistency */
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden; /* Ensures image fits */
+}
+
+.user-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* Cover the area, cropping if necessary */
+  border-radius: 50%;
+}
+
+.user-avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background-color: var(--primary-color);
+  color: var(--surface-color); /* Text color on primary background */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem; /* Adjust as needed for initial(s) */
+  font-weight: var(--font-weight-semibold);
+}
+
+.user-dropdown {
+  position: absolute;
+  top: calc(100% + var(--spacing-sm)); /* Position below avatar with a small gap */
+  right: 0;
+  background-color: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  z-index: 100; /* Ensure dropdown is above other content */
+  min-width: 220px; /* Minimum width for dropdown items */
+  padding: var(--spacing-sm) 0; /* Padding top/bottom for the dropdown itself */
+  animation: fadeInDropdown 0.15s ease-out; /* Simple fade-in animation */
+}
+
+@keyframes fadeInDropdown {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.dropdown-user-info {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: var(--spacing-sm);
+}
+.dropdown-user-info p {
+  margin: 0 0 var(--spacing-xs) 0;
+  font-size: var(--font-size-p);
+}
+.dropdown-user-info p.npub-display {
+  font-size: var(--font-size-small);
+  color: var(--text-color);
+  opacity: 0.7;
+  word-break: break-all;
+}
+
+
+.user-dropdown-item {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text-color);
+  padding: var(--spacing-sm) var(--spacing-md); /* 0.5rem 1rem */
+  text-align: left;
+  font-size: var(--font-size-p);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.user-dropdown-item:hover {
+  background-color: var(--accent-color);
+  color: #FFFFFF; /* White text on accent for hover */
+  opacity: 1; /* Reset general button opacity */
+}
+
+.user-dropdown-item:focus {
+  outline: none;
+  background-color: rgba(var(--accent-color), 0.15); /* Subtle focus for accessibility */
+}
+
+/* Theme toggle button specific style if needed (already covered by user-dropdown-item) */
+.theme-toggle-button { 
+  /* Specific styles if different from general user-dropdown-item */
+}
+
+.header-error-display {
+  color: var(--error, #ef4444); /* Using CSS var defined in an earlier step for error color or fallback */
+  font-size: var(--font-size-small);
+  text-align: right;
+  /* Position it appropriately if it's absolutely positioned, or ensure it flows well */
+  margin-left: var(--spacing-md); /* If it's part of the auth-section flow */
+  max-width: 200px; /* Prevent it from taking too much space */
+}
+[data-theme="dark"] .header-error-display {
+    color: var(--error, #f87171); /* Lighter error red for dark mode */
+}
+
+
+/* Hamburger Menu Styles */
+.hamburger-button {
+  display: none; /* Hidden by default, shown in media query */
+  background: none;
+  border: none;
+  padding: var(--spacing-sm);
+  cursor: pointer;
+  z-index: 105; /* Above mobile menu background, below open menu content */
+}
+
+.mobile-nav-menu {
+  display: none; /* Hidden by default */
+  flex-direction: column;
+  position: absolute;
+  top: 0; /* Or top: height of header if header is fixed */
+  left: 0;
+  width: 100%;
+  height: 100vh; /* Full viewport height */
+  background-color: var(--surface-color);
+  z-index: 100; /* Below hamburger button if it needs to be clicked to close, but above other content */
+  padding-top: calc(var(--spacing-xl) * 2); /* Space for header or close button */
+  align-items: center;
+  overflow-y: auto; /* Scroll if many items */
+  animation: slideInMenu 0.3s ease-out;
+}
+
+@keyframes slideInMenu {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.mobile-nav-menu .nav-tab { /* mobile-nav-tab class is also applied in JS */
+  width: 80%;
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+  text-align: center;
+  font-size: 1.2rem; /* Larger font for mobile menu */
+  border-bottom: 1px solid var(--border-color); /* Separator for items */
+  border-radius: var(--border-radius-sm);
+}
+.mobile-nav-menu .nav-tab:last-child {
+  border-bottom: none;
+}
+
+.mobile-nav-menu .nav-tab.active {
+  background-color: var(--accent-color);
+  color: #FFFFFF;
+  border-bottom-color: var(--accent-color); /* Match active state */
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) { 
+  .header-nav { /* Desktop nav */
+    /* Start hiding desktop nav items sooner if needed, or adjust gap */
+    gap: var(--spacing-xs);
   }
-  h1 { font-size: 1.25rem; }
-  pre { font-size: 0.92em; }
-  input, textarea, select { min-width: 140px; }
+  .nav-tab { /* Desktop nav tabs */
+    padding: var(--spacing-sm) var(--spacing-xs); 
+    font-size: 0.9rem;
+  }
+  .logo-text {
+    font-size: 1.25rem;
+  }
+  .app-header {
+    padding: var(--spacing-sm) var(--spacing-lg);
+  }
+}
+
+
+@media (max-width: 768px) {
+  .main-content, #root > div:not(header):not(footer) {
+    padding: var(--spacing-lg);
+  }
+
+  h1 { font-size: 2rem; }
+  h2 { font-size: 1.75rem; }
+  h3 { font-size: 1.5rem; }
+
+  .app-header {
+    padding: var(--spacing-sm) var(--spacing-md); 
+    flex-wrap: wrap; /* Allow items to wrap if needed, though ideally they fit */
+  }
+  
+  .logo-container {
+    /* Allow logo to shrink a bit if needed, but not too much */
+    flex-shrink: 1; 
+    margin-right: auto; /* Pushes hamburger and auth to the right */
+  }
+
+  .hamburger-button {
+    display: block;
+    order: 2; /* After logo */
+    /* margin-left: auto; removed, margin-right on logo handles it */
+  }
+  
+  .auth-section {
+    order: 3; /* After hamburger */
+    /* width: 100%; removed, let it size by content or flex */
+    /* justify-content: flex-start; removed */
+    margin-left: var(--spacing-sm); 
+  }
+
+  .header-nav { /* This is the DESKTOP nav */
+    display: none; /* Hide desktop nav */
+  }
+  
+  .header-nav.mobile-hidden { /* Explicitly hide desktop nav when mobile menu is open, though already hidden by general .header-nav display:none above */
+    display: none;
+  }
+
+  .hamburger-button {
+    display: block; /* Show hamburger */
+    order: 1; /* Ensure hamburger is placed before auth section if auth is not part of mobile menu */
+    margin-left: auto; /* Push it to the right of the logo/nav area */
+  }
+  
+  .auth-section {
+    /* auth-section should be visible. If it needs to be part of hamburger menu, it has to be moved in JS */
+    order: 2; /* After hamburger */
+    margin-left: var(--spacing-sm); /* Space between hamburger and auth */
+  }
+
+  .mobile-nav-menu { /* This rule shows the mobile menu when isMobileMenuOpen is true (JS adds/removes this or controls display directly) */
+    display: flex; /* Show when JS indicates it's open */
+  }
+
+  .logo-container {
+    margin-bottom: 0; /* Remove bottom margin if header items are now in a row */
+  }
+  
+  /* Adjust auth section for mobile if necessary (e.g. if buttons are too wide) */
+  .auth-section .auth-button {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: 0.8rem;
+  }
+  .user-menu-container .avatar-button { /* Ensure avatar button in auth isn't too large */
+    width: 36px;
+    height: 36px;
+  }
+  .user-menu-container .user-avatar-placeholder {
+    font-size: 1rem;
+  }
+
+}
+
+@media (max-width: 480px) {
+  .main-content, #root > div:not(header):not(footer) {
+    padding: var(--spacing-md); 
+  }
+
+  /* Make form primary/accent/secondary action buttons full-width on small screens */
+  .content-card .button-primary,
+  .content-card .button-accent,
+  .content-card .button-secondary { /* Added .button-secondary here */
+    width: 100%;
+    box-sizing: border-box; /* Ensure padding doesn't make it overflow */
+  }
+  
+  /* Adjust specific input widths if they cause overflow */
+  /* Example: #tierCurrency was fixed width, ensure it's responsive */
+  input[type="text"]#tierCurrency {
+      width: auto; /* Let it size by content or flex item rules if in a flex container */
+      min-width: 60px; /* Ensure it's still usable */
+  }
+  
+  /* Reduce padding on list items for very small screens */
+  .list-item {
+    padding: var(--spacing-sm);
+  }
+  .list-item-content {
+    margin-right: var(--spacing-sm);
+  }
+   .list-item .button-minimal { /* Ensure remove button in lists is still easily tappable */
+    padding: var(--spacing-xs); 
+  }
+
+  /* Reduce padding for content cards on very small screens */
+  .content-card {
+    padding: var(--spacing-md);
+  }
+  .content-card h2 {
+    font-size: 1.5rem; /* Adjust heading sizes */
+    margin-bottom: var(--spacing-md);
+  }
+   .content-card h3 {
+    font-size: 1.25rem;
+  }
 }
