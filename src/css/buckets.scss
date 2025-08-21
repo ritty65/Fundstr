@@ -1,0 +1,46 @@
+.bucket-card {
+  background-color: #1b2330;
+  border-radius: 12px;
+  border-top: 4px solid var(--bucket-color);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+}
+.bucket-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+.progress-section {
+  min-height: 48px;
+}
+.buckets-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.bucket-fab {
+  bottom: 64px !important;
+}
+
+.q-item__section--main {
+  white-space: normal; // allow wrapping within menu items
+  word-break: break-word; // prevent overflow for long words
+}
+
+/* ensure menu text wraps and doesn't overflow */
+.bucket-card .q-menu .q-item__section--main {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.elevated-menu {
+  z-index: 2000;
+}

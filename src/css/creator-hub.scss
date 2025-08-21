@@ -1,0 +1,105 @@
+.section-card {
+  padding: 24px;
+  background-color: var(--q-color-grey-9);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+}
+
+/* Dark slate gradient backgrounds */
+.gradient-dark-slate {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+}
+.gradient-dark-slate-alt {
+  background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+}
+
+/* Soft gradient backgrounds */
+.gradient-soft-blue {
+  background: linear-gradient(135deg, #93c5fd 0%, #bfdbfe 100%);
+}
+.gradient-soft-green {
+  background: linear-gradient(135deg, #a7f3d0 0%, #d1fae5 100%);
+}
+
+/* Subtle border helpers */
+.border-subtle {
+  border: var(--border-subtle);
+}
+
+/* Rounded card helpers */
+.card-rounded-16 {
+  border-radius: 16px;
+}
+.card-rounded-20 {
+  border-radius: 20px;
+}
+
+/* Chip variants */
+.chip-outline {
+  border: var(--border-subtle);
+  background-color: transparent;
+  color: var(--q-color-grey-8);
+}
+.chip-solid {
+  background-color: var(--q-color-grey-8);
+  color: #fff;
+  border: none;
+}
+.chip-filled {
+  @extend .chip-solid;
+}
+
+/* Compact spacing utilities */
+$compact-spacing: (
+  xs: 4px,
+  sm: 8px,
+);
+
+@each $name, $size in $compact-spacing {
+  .m-#{$name} {
+    margin: $size;
+  }
+  .p-#{$name} {
+    padding: $size;
+  }
+  .mx-#{$name} {
+    margin-left: $size;
+    margin-right: $size;
+  }
+  .my-#{$name} {
+    margin-top: $size;
+    margin-bottom: $size;
+  }
+  .mt-#{$name} {
+    margin-top: $size;
+  }
+  .mr-#{$name} {
+    margin-right: $size;
+  }
+  .mb-#{$name} {
+    margin-bottom: $size;
+  }
+  .ml-#{$name} {
+    margin-left: $size;
+  }
+  .px-#{$name} {
+    padding-left: $size;
+    padding-right: $size;
+  }
+  .py-#{$name} {
+    padding-top: $size;
+    padding-bottom: $size;
+  }
+  .pt-#{$name} {
+    padding-top: $size;
+  }
+  .pr-#{$name} {
+    padding-right: $size;
+  }
+  .pb-#{$name} {
+    padding-bottom: $size;
+  }
+  .pl-#{$name} {
+    padding-left: $size;
+  }
+}

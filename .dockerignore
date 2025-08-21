@@ -1,0 +1,25 @@
+# Git
+.git
+.gitignore
+
+# Node
+node_modules
+npm-debug.log
+pnpm-lock.yaml
+
+# Build artifacts
+dist
+build
+
+# Docker
+Dockerfile
+docker-compose.yaml
+
+# IDE / Editor
+.vscode
+.idea
+
+# Other
+.DS_Store
+*.log
+.npmrc

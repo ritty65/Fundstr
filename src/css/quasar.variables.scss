@@ -1,0 +1,45 @@
+// Quasar SCSS (& Sass) Variables
+@import "quasar/src/css/variables.sass";
+@import "tokens.scss";
+// --------------------------------------------------
+// To customize the look and feel of this app, you can override
+// the Sass/SCSS variables found in Quasar's source Sass/SCSS files.
+
+// Check documentation for full list of Quasar variables
+
+// Your own variables (that are declared here) and Quasar's own
+// ones will be available out of the box in your .vue/.scss/.sass files
+
+// It's highly recommended to change the default colors
+// to match your app's branding.
+// Tip: Use the "Theme Builder" on Quasar's documentation website.
+
+$primary: $primary-pink;
+$secondary: $primary-navy;
+$accent: $accent-green;
+
+$dark: $primary-navy;
+$dark-page: $primary-navy;
+
+$positive: #21ba45;
+$negative: #c10015;
+$info: #06b6d4;
+$warning: #f2c037;
+
+// Custom variables
+// Panel backgrounds
+$panel-dark: $grey-9;
+$panel-light: $grey-2;
+
+// Subtle border colors
+$subtle-border-dark: $border-subtle-dark;
+$subtle-border-light: $border-subtle-light;
+
+// Chip colors
+$chip-bg: $accent-green;
+$chip-text: #ffffff;
+
+// Progress ring colors
+$progress-ring-fill: $primary-pink;
+$progress-ring-track-dark: $grey-8;
+$progress-ring-track-light: $grey-3;

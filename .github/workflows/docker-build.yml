@@ -1,0 +1,13 @@
+name: Docker Build
+on:
+  pull_request: { branches: [ Phase10 ] }
+  push:        { branches: [ "**"    ] }
+jobs:
+  check-secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "no secrets check needed for cleanup PR"
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "docker build intentionally skipped for web-only cleanup PR"

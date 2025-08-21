@@ -1,0 +1,54 @@
+{
+  "taskList": {
+    "title": "Welcome",
+    "subtitle": "Get set up in about 2 minutes.",
+    "finish": "Finish",
+    "progress": "{done}/{total} required steps"
+  },
+  "tasks": {
+    "createKey": {
+      "title": "Create your private key",
+      "desc": "No account needed. Key stays on this device.",
+      "generate": "Generate key (~15s)",
+      "import": "Import key",
+      "restore": "Restore from backup"
+    },
+    "backup": {
+      "title": "Back up your key",
+      "desc": "Lose the device? Restore with your backup.",
+      "export": "Export backup now"
+    },
+    "chooseMint": {
+      "title": "Pick a mint",
+      "desc": "Mints convert Lightning ↔ ecash. You can switch anytime.",
+      "recommended": "Browse mints",
+      "choose": "Choose a mint"
+    },
+    "deposit": {
+      "title": "Add sats",
+      "desc": "Fund your wallet or skip for now.",
+      "deposit": "Deposit sats",
+      "skip": "Skip for now"
+    },
+    "testSend": {
+      "title": "Try a test send",
+      "desc": "Practice by sending a demo token to yourself (~30s).",
+      "cta": "Try a test send"
+    },
+    "role": {
+      "title": "Choose your role",
+      "desc": "Tailor the app: Supporter / Creator / Wallet-only.",
+      "cta": "Choose role"
+    },
+    "creatorSetup": {
+      "title": "Creator setup",
+      "desc": "Publish your profile & tiers to receive support.",
+      "cta": "Create my profile"
+    },
+    "buckets": {
+      "title": "Organize with Buckets",
+      "desc": "Earmark funds for goals.",
+      "cta": "Create a bucket"
+    }
+  }
+}
