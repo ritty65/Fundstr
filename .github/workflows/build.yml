@@ -1,9 +1,12 @@
 name: build
-on:
-  pull_request: { branches: [ Phase10 ] }
-  push:        { branches: [ "**"    ] }
+on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "temporary green build for cleanup PR"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm i -g pnpm@8.15.7 && pnpm -v
+      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm run build
