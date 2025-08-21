@@ -1,6 +1,6 @@
 import { useUiStore } from "stores/ui";
 import { Clipboard } from "@capacitor/clipboard";
-import { SafeArea } from "capacitor-plugin-safe-area";
+import { SafeArea } from './stubs/safe-area.stub.js';
 
 window.LOCALE = "en";
 // window.EventHub = new Vue();
