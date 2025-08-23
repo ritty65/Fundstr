@@ -67,6 +67,7 @@ import TaskChecklist from 'src/components/welcome/TaskChecklist.vue'
 import RevealSeedDialog from 'src/components/welcome/RevealSeedDialog.vue'
 import type { WelcomeTask } from 'src/types/welcome'
 import { useWelcomeStore, LAST_WELCOME_SLIDE } from 'src/stores/welcome'
+import { markWelcomeSeen } from 'src/composables/useWelcomeGate'
 import { useMnemonicStore } from 'src/stores/mnemonic'
 import { useStorageStore } from 'src/stores/storage'
 import { useNostrStore } from 'src/stores/nostr'
@@ -93,6 +94,8 @@ function downloadBackup() {
 function finishOnboarding() {
   showChecklist.value = false
   welcome.closeWelcome()
+  // remember that the welcome flow has been completed on this device
+  markWelcomeSeen()
   router.push('/')
 }
 

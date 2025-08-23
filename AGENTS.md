@@ -48,3 +48,7 @@ Fundstr — Quasar/Vite SPA (pnpm). Staging auto-deploys on every push to `devel
 | `--disabled-text` | Disabled text color |
 
 Utility classes: `.text-1`, `.text-2`, `.text-inverse`, `.bg-surface-1`, `.bg-surface-2`.
+
+## Welcome Gate
+- Local storage key `welcome.seen:v1` tracks if the onboarding was shown on a device.
+- Bump to `welcome.seen:v2` when revising the flow to force users through the new onboarding.
