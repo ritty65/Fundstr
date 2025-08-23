@@ -35,7 +35,7 @@
       <q-item-label header>{{
         $t("MainHeader.menu.settings.title")
       }}</q-item-label>
-      <q-item clickable @click="gotoWallet" data-tour="nav-wallet">
+      <q-item clickable @click="gotoWallet" data-tour="nav-dashboard nav-wallet">
         <q-item-section avatar>
           <q-icon name="account_balance_wallet" />
         </q-item-section>

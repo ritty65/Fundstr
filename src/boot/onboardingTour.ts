@@ -6,21 +6,16 @@ import { hasCompletedOnboarding, startOnboardingTour } from 'src/composables/use
 export default boot(async ({ router }) => {
   router.isReady().then(() => {
     const nostr = useNostrStore()
+    let lastPrefix: string | null = null
     const run = async () => {
       const prefix = (nostr.pubkey || 'anon').slice(0, 8)
+      if (prefix === lastPrefix) return
+      lastPrefix = prefix
       if (hasCompletedOnboarding(prefix)) return
       await nextTick()
-      startOnboardingTour(prefix)
+      setTimeout(() => startOnboardingTour(prefix), 300)
     }
-    if (nostr.pubkey) {
-      run()
-    } else {
-      const stop = watch(() => nostr.pubkey, (val) => {
-        if (val) {
-          stop()
-          run()
-        }
-      })
-    }
+    run()
+    watch(() => nostr.pubkey, run)
   })
 })
