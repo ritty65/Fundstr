@@ -1,7 +1,7 @@
 <template>
   <q-layout
     view="lHh Lpr lFf"
-    :class="$q.dark.isActive ? 'bg-dark text-white' : 'bg-white text-dark'"
+    class="bg-surface-1 text-1"
     :style="navStyleVars"
   >
     <MainHeader />

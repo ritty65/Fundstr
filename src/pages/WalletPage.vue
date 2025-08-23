@@ -62,51 +62,39 @@
           <!-- ///////////////////////////////////////////
       ////////////////// TABLES /////////////////
       /////////////////////////////////////////// -->
-          <q-expansion-item expand-icon-class="hidden" v-model="expandHistory">
-            <template v-slot:header="{ expanded }">
-              <q-item-section class="item-center text-center">
-                <span
-                  ><q-icon
-                    color="primary"
-                    :name="
-                      expanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down'
-                    "
-                /></span>
-              </q-item-section>
-            </template>
-            <q-tabs
-              v-model="tab"
-              no-caps
-              :class="$q.dark.isActive ? 'bg-dark' : 'bg-white'"
-            >
-              <q-tab
-                name="history"
-                class="text-secondary"
-                :label="$t('WalletPage.tabs.history.label')"
-              ></q-tab>
-              <q-tab
-                name="invoices"
-                class="text-secondary"
-                :label="$t('WalletPage.tabs.invoices.label')"
-              ></q-tab>
-              <!-- <q-tab name="tokens" label="Tokens"></q-tab> -->
-              <q-tab
-                name="mints"
-                class="text-secondary"
-                :label="$t('WalletPage.tabs.mints.label')"
-              ></q-tab>
-              <q-tab
-                name="buckets"
-                class="text-secondary"
-                :label="$t('WalletPage.tabs.buckets.label')"
-              ></q-tab>
-            </q-tabs>
+            <q-expansion-item expand-icon-class="hidden" v-model="expandHistory">
+              <template v-slot:header="{ expanded }">
+                <q-item-section class="item-center text-center">
+                  <span
+                    ><q-icon
+                      color="primary"
+                      :name="
+                        expanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down'
+                      "
+                  /></span>
+                </q-item-section>
+              </template>
+              <q-tabs v-model="tab" no-caps class="bg-surface-2">
+                <q-tab
+                  name="history"
+                  :label="$t('WalletPage.tabs.history.label')"
+                ></q-tab>
+                <q-tab
+                  name="invoices"
+                  :label="$t('WalletPage.tabs.invoices.label')"
+                ></q-tab>
+                <!-- <q-tab name="tokens" label="Tokens"></q-tab> -->
+                <q-tab
+                  name="mints"
+                  :label="$t('WalletPage.tabs.mints.label')"
+                ></q-tab>
+                <q-tab
+                  name="buckets"
+                  :label="$t('WalletPage.tabs.buckets.label')"
+                ></q-tab>
+              </q-tabs>
 
-            <q-tab-panels
-              :class="$q.dark.isActive ? 'bg-dark' : 'bg-white'"
-              v-model="tab"
-              animated
-            >
+              <q-tab-panels class="bg-surface-2" v-model="tab" animated>
               <!-- ////////////////// HISTORY LIST ///////////////// -->
 
               <q-tab-panel name="history">

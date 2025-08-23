@@ -28,3 +28,23 @@ Fundstr — Quasar/Vite SPA (pnpm). Staging auto-deploys on every push to `devel
 - Local build passes.
 - `pnpm test` (if tests exist) passes.
 - After push to `develop`, staging loads without console errors; `deploy.txt` updated.
+
+## Theme Tokens
+| Token | Purpose |
+|-------|---------|
+| `--text-1` | Primary text color |
+| `--text-2` | Muted/secondary text color |
+| `--text-inverse` | Text on inverted surfaces |
+| `--surface-1` | Page background |
+| `--surface-2` | Card/panel background |
+| `--surface-contrast-border` | Subtle surface border |
+| `--accent-500` | Brand accent base |
+| `--accent-600` | Active/pressed accent |
+| `--accent-200` | Accent outline/hover |
+| `--chip-bg` | Chip background |
+| `--chip-text` | Chip text color |
+| `--tab-active` | Active tab text/indicator |
+| `--tab-inactive` | Inactive tab text |
+| `--disabled-text` | Disabled text color |
+
+Utility classes: `.text-1`, `.text-2`, `.text-inverse`, `.bg-surface-1`, `.bg-surface-2`.

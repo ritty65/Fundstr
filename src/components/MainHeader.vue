@@ -2,16 +2,16 @@
   <q-header class="bg-transparent">
     <q-toolbar class="app-toolbar" dense>
       <div class="left-controls row items-center no-wrap" v-if="!isWelcomePage">
-        <q-btn
-          v-if="isMessengerPage"
-          flat
-          dense
-          round
-          icon="menu"
-          :color="chatButtonColor"
-          aria-label="Toggle Chats"
-          @click.stop="toggleMessengerDrawer"
-        >
+          <q-btn
+            v-if="isMessengerPage"
+            flat
+            dense
+            round
+            icon="chat"
+            :color="chatButtonColor"
+            aria-label="Toggle Chats"
+            @click.stop="toggleMessengerDrawer"
+          >
           <q-tooltip>Chats</q-tooltip>
         </q-btn>
         <q-btn
@@ -114,20 +114,6 @@
       </div>
     </q-toolbar>
   </q-header>
-  <div v-if="$q.screen.lt.md" class="mobile-nav-toggle">
-    <q-btn
-      ref="mobileNavBtn"
-      round
-      flat
-      :icon="ui.mainNavOpen ? 'close' : 'menu'"
-      color="primary"
-      class="mobile-nav-btn"
-      aria-label="Toggle main menu"
-      aria-controls="app-nav"
-      :aria-expanded="String(ui.mainNavOpen)"
-      @click="ui.toggleMainNav"
-    />
-  </div>
 </template>
 
 <script>import windowMixin from 'src/mixins/windowMixin'
@@ -156,10 +142,9 @@ export default defineComponent({
     const messenger = useMessengerStore();
     const $q = useQuasar();
     const mainNavBtn = ref(null);
-    const mobileNavBtn = ref(null);
 
     const focusNavBtn = () => {
-      (mobileNavBtn.value || mainNavBtn.value)?.focus();
+      mainNavBtn.value?.focus();
     };
     const onKeydown = (e) => {
       if (e.key === "Escape" && ui.mainNavOpen) {
@@ -265,10 +250,9 @@ export default defineComponent({
       toggleMessengerDrawer,
       toggleDarkMode,
       darkIcon,
-      chatButtonColor,
-      mainNavBtn,
-      mobileNavBtn,
-    };
+        chatButtonColor,
+        mainNavBtn,
+      };
   },
 });
 </script>
@@ -308,15 +292,4 @@ export default defineComponent({
   transform: translateX(var(--nav-offset-x, 0));
 }
 
-.mobile-nav-toggle {
-  position: fixed;
-  top: calc(env(safe-area-inset-top) + 8px);
-  left: calc(env(safe-area-inset-left) + 8px);
-  z-index: 12000;
-}
-
-.mobile-nav-btn {
-  width: 44px;
-  height: 44px;
-}
 </style>
