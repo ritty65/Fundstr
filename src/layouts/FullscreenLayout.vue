@@ -1,9 +1,9 @@
 <template>
-  <q-layout
-    view="lHh Lpr lFf"
-    :class="$q.dark.isActive ? 'bg-dark text-white' : 'bg-white text-dark'"
-    :style="navStyleVars"
-  >
+    <q-layout
+      view="lHh Lpr lFf"
+      class="bg-surface-1 text-1"
+      :style="navStyleVars"
+    >
     <MainHeader />
     <AppNavDrawer />
     <q-page-container class="text-body1">
