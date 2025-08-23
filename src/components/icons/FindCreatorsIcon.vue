@@ -5,7 +5,7 @@
     height="1em"
     fill="none"
     stroke="currentColor"
-    stroke-width="2"
+    stroke-width="2.5"
     stroke-linecap="round"
     stroke-linejoin="round"
     aria-hidden="true"

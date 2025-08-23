@@ -8,6 +8,7 @@
       aria-label="Toggle between fan and creator modes"
       :active-color="mode === 'fan' ? 'accent' : 'primary'"
       :indicator-color="mode === 'fan' ? 'accent' : 'primary'"
+      :indicator-style="{ height: '3px' }"
     >
       <q-tab name="fan" label="Fan" :aria-selected="mode === 'fan'" />
       <q-tab name="creator" label="Creator" :aria-selected="mode === 'creator'" />
@@ -27,16 +28,14 @@
         expanded-icon="keyboard_arrow_down"
       >
         <template v-if="item.iconComponent" #header>
-          <div class="nav-map-header">
-            <q-item-section avatar>
-              <component
-                :is="item.iconComponent"
-                class="themed-icon nav-map-icon"
-                aria-hidden="true"
-              />
-            </q-item-section>
-            <q-item-section>{{ item.menuItem }}</q-item-section>
-          </div>
+          <q-item-section avatar>
+            <component
+              :is="item.iconComponent"
+              class="themed-icon nav-map-icon"
+              aria-hidden="true"
+            />
+          </q-item-section>
+          <q-item-section>{{ item.menuItem }}</q-item-section>
         </template>
         <div class="px-4 pb-4 text-sm">
           <div class="fan-content">
