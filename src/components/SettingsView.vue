@@ -1806,6 +1806,7 @@ import { usePRStore } from "../stores/payment-request";
 import { useRestoreStore } from "src/stores/restore";
 import { useDexieStore } from "../stores/dexie";
 import { useReceiveTokensStore } from "../stores/receiveTokensStore";
+import { resetOnboarding, startOnboardingTour } from "src/composables/useOnboardingTour";
 import { useStorageStore } from "src/stores/storage";
 import { useI18n } from "vue-i18n";
 
@@ -2114,8 +2115,12 @@ export default defineComponent({
       await this.resetNip46Signer();
       await this.generateNPCConnection();
     },
-    showTour: function () {
-      this.$router.push('/tour');
+    showTour: async function () {
+      const prefix = (useNostrStore().pubkey || 'anon').slice(0, 8)
+      resetOnboarding(prefix)
+      this.$router.push('/wallet').then(() => {
+        setTimeout(() => startOnboardingTour(prefix), 300)
+      })
     },
     nukeWallet: async function () {
       // create a backup just in case
