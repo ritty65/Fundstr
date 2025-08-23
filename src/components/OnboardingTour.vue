@@ -32,32 +32,38 @@ const ui = useUiStore()
 
 const steps = [
   {
-    target: '[data-tour="nav-toggle"]',
+    target: '[data-tour~="nav-toggle"]',
     text: 'Open the sidebar to jump between pages. You can revisit this tour anytime from Settings.',
     anchor: 'bottom middle',
     self: 'top middle',
     onNext: () => ui.openMainNav(),
   },
   {
-    target: '[data-tour="nav-wallet"]',
+    target: '[data-tour~="nav-dashboard"]',
+    text: 'Your overview: balances, recent activity, and quick links.',
+    anchor: 'right middle',
+    self: 'left middle',
+  },
+  {
+    target: '[data-tour~="nav-wallet"]',
     text: 'Deposit or withdraw funds and review your transactions here.',
     anchor: 'right middle',
     self: 'left middle',
   },
   {
-    target: '[data-tour="nav-find-creators"]',
+    target: '[data-tour~="nav-find-creators"]',
     text: 'Discover creators and start supporting them with a few taps.',
     anchor: 'right middle',
     self: 'left middle',
   },
   {
-    target: '[data-tour="nav-subscriptions"]',
+    target: '[data-tour~="nav-subscriptions"]',
     text: 'Manage who you support and adjust contribution levels anytime.',
     anchor: 'right middle',
     self: 'left middle',
   },
   {
-    target: '[data-tour="nav-settings"]',
+    target: '[data-tour~="nav-settings"]',
     text: 'Update account preferences, notifications, and security. You can replay the tutorial here.',
     anchor: 'right middle',
     self: 'left middle',
@@ -90,8 +96,7 @@ async function showStep() {
   await nextTick()
   const el = document.querySelector(step.target) as HTMLElement | null
   if (!el) {
-    index.value++
-    showStep()
+    setTimeout(showStep, 300)
     return
   }
   current.value = { ...step, el }
