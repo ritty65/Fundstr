@@ -168,15 +168,11 @@ body.body--light {
 /* Welcome navigation icon sizing */
 .nav-map-icon {
   /* Use font-size so child SVGs sized 1em follow this */
-  font-size: 20px;
+  font-size: 24px;
   line-height: 1;
   display: inline-block;
   width: 1em;
   height: 1em;
-}
-
-#map-container .nav-map-header .q-item__section--avatar {
-  min-width: 32px; /* closer to QIcon spacing; adjust if needed */
 }
 
 /* Utility components */
