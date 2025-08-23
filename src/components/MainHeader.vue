@@ -15,12 +15,13 @@
           <q-tooltip>Chats</q-tooltip>
         </q-btn>
         <q-btn
+          v-if="!ui.mainNavOpen"
           flat
           dense
           round
           icon="menu"
           color="primary"
-          aria-label="Toggle main menu"
+          aria-label="Open navigation"
           :aria-expanded="String(ui.mainNavOpen)"
           aria-controls="app-nav"
           @click="ui.toggleMainNav"
@@ -126,6 +127,7 @@ import {
   onMounted,
   onBeforeUnmount,
   nextTick,
+  watch,
 } from "vue";
 import { useRoute } from "vue-router";
 import { useUiStore } from "src/stores/ui";
@@ -155,6 +157,13 @@ export default defineComponent({
 
     onMounted(() => window.addEventListener("keydown", onKeydown));
     onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
+
+    watch(
+      () => ui.mainNavOpen,
+      (open) => {
+        if (!open) nextTick(focusNavBtn);
+      },
+    );
 
     const toggleDarkMode = () => {
       console.log("toggleDarkMode", $q.dark.isActive);
@@ -260,8 +269,8 @@ export default defineComponent({
 .q-header {
   position: sticky;
   top: 0;
-  /* Keep header above Quasar drawer/scrim layers on mobile overlays */
-  z-index: 11000;
+  /* Allow navigation drawer overlay to sit above the header */
+  z-index: 950;
   overflow-x: hidden;
 }
 

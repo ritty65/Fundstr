@@ -17,6 +17,20 @@
     @hide="ui.closeMainNav()"
     @keyup.esc="ui.closeMainNav()"
   >
+    <div>
+      <q-btn
+        flat
+        dense
+        round
+        icon="close"
+        color="primary"
+        aria-label="Close navigation"
+        @click="ui.closeMainNav()"
+        class="q-mb-sm"
+      >
+        <q-tooltip>Close</q-tooltip>
+      </q-btn>
+    </div>
     <q-list>
       <q-item-label header>{{
         $t("MainHeader.menu.settings.title")
@@ -46,7 +60,7 @@
       </q-item>
       <q-item clickable @click="gotoFindCreators">
         <q-item-section avatar>
-          <q-icon name="img:icons/find-creators.svg" color="white" />
+          <FindCreatorsIcon class="themed-icon q-icon" />
         </q-item-section>
         <q-item-section>
           <q-item-label>{{
@@ -59,7 +73,7 @@
       </q-item>
       <q-item clickable @click="gotoCreatorHub">
         <q-item-section avatar>
-          <q-icon name="img:icons/creator-hub.svg" color="white" />
+          <CreatorHubIcon class="themed-icon q-icon" />
         </q-item-section>
         <q-item-section>
           <q-item-label>{{
@@ -179,6 +193,8 @@ import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import EssentialLink from "components/EssentialLink.vue";
 import { NAV_DRAWER_WIDTH } from "src/constants/layout";
+import FindCreatorsIcon from "src/components/icons/FindCreatorsIcon.vue";
+import CreatorHubIcon from "src/components/icons/CreatorHubIcon.vue";
 
 const ui = useUiStore();
 const router = useRouter();
@@ -262,7 +278,7 @@ const essentialLinks = [
 }
 
 .main-nav-safe {
-  padding-left: calc(env(safe-area-inset-left) + 60px);
+  padding-left: calc(env(safe-area-inset-left) + 8px);
   padding-top: calc(env(safe-area-inset-top) + 8px);
 }
 </style>
