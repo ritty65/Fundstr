@@ -14,20 +14,21 @@
           >
           <q-tooltip>Chats</q-tooltip>
         </q-btn>
-        <q-btn
-          v-if="!ui.mainNavOpen"
-          flat
-          dense
-          round
-          icon="menu"
-          color="primary"
-          aria-label="Open navigation"
-          :aria-expanded="String(ui.mainNavOpen)"
-          aria-controls="app-nav"
-          @click="ui.toggleMainNav"
-          ref="mainNavBtn"
-          :disable="ui.globalMutexLock"
-        >
+          <q-btn
+            v-if="!ui.mainNavOpen"
+            flat
+            dense
+            round
+            icon="menu"
+            color="primary"
+            aria-label="Open navigation"
+            :aria-expanded="String(ui.mainNavOpen)"
+            aria-controls="app-nav"
+            @click="ui.toggleMainNav"
+            ref="mainNavBtn"
+            :disable="ui.globalMutexLock"
+            data-tour="nav-toggle"
+          >
           <q-tooltip>Menu</q-tooltip>
         </q-btn>
       </div>

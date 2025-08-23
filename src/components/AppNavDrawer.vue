@@ -35,7 +35,7 @@
       <q-item-label header>{{
         $t("MainHeader.menu.settings.title")
       }}</q-item-label>
-      <q-item clickable @click="gotoWallet">
+      <q-item clickable @click="gotoWallet" data-tour="nav-wallet">
         <q-item-section avatar>
           <q-icon name="account_balance_wallet" />
         </q-item-section>
@@ -45,7 +45,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoSettings">
+      <q-item clickable @click="gotoSettings" data-tour="nav-settings">
         <q-item-section avatar>
           <q-icon name="settings" />
         </q-item-section>
@@ -58,7 +58,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoFindCreators">
+      <q-item clickable @click="gotoFindCreators" data-tour="nav-find-creators">
         <q-item-section avatar>
           <FindCreatorsIcon class="themed-icon q-icon" />
         </q-item-section>
@@ -110,7 +110,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoSubscriptions">
+      <q-item clickable @click="gotoSubscriptions" data-tour="nav-subscriptions">
         <q-item-section avatar>
           <q-icon name="auto_awesome_motion" />
         </q-item-section>
