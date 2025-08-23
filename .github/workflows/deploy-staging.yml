@@ -1,0 +1,42 @@
+name: Deploy staging (develop -> Hostinger)
+on:
+  push:
+    branches: [develop]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Quasar SPA for STAGING
+        run: |
+          cp .env.staging .env
+          pnpm exec quasar build -m spa || pnpm dlx @quasar/cli build -m spa
+
+      - name: Start SSH agent with CI key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Trust Hostinger host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Rsync to Hostinger (staging)
+        run: |
+          rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" \
+            dist/spa/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}
