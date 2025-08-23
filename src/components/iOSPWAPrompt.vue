@@ -26,8 +26,9 @@
     </div>
   </transition>
 </template>
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent } from "vue";
+
 export default defineComponent({
   name: "iOSPWAPrompt",
   mixins: [windowMixin],

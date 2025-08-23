@@ -19,8 +19,9 @@
     </div>
   </div>
 </template>
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent } from "vue";
+
 import { mapState, mapWritableState } from "pinia";
 import { useUiStore } from "stores/ui";
 import { useWalletStore } from "../stores/wallet";

@@ -67,8 +67,9 @@
     </q-card>
   </q-dialog>
 </template>
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent } from "vue";
+
 import { mapState, mapWritableState } from "pinia";
 import { useClipboard } from "src/composables/useClipboard";
 import { defineAsyncComponent } from "vue";

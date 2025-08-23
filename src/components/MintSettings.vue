@@ -455,8 +455,9 @@
     </div>
   </div>
 </template>
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { debug } from "src/js/logger";
+
 import { ref, defineComponent, onMounted, onBeforeUnmount } from "vue";
 import { useClipboard } from "src/composables/useClipboard";
 import { getShortUrl } from "src/js/wallet-helpers";

@@ -1779,8 +1779,9 @@
   <!-- NWC DIALOG -->
   <NWCDialog v-model="showNWCDialog" />
 </template>
-<script lang="ts">
+<script lang="ts">import windowMixin from 'src/mixins/windowMixin'
 import { debug } from "src/js/logger";
+
 import { defineComponent } from "vue";
 import { useClipboard } from "src/composables/useClipboard";
 import P2PKDialog from "./P2PKDialog.vue";

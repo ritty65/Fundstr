@@ -53,3 +53,10 @@ node_modules/
 
 # ignore editor/backups
 *.bak
+
+# env & builds
+.env
+.env.*
+node_modules/
+dist/
+dist-ssr/

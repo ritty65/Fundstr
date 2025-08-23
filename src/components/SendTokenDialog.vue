@@ -615,8 +615,9 @@
     </q-card>
   </q-dialog>
 </template>
-<script lang="ts">
+<script lang="ts">import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent, defineAsyncComponent } from "vue";
+
 import { useClipboard } from "src/composables/useClipboard";
 import { debug } from "src/js/logger";
 import { useSendTokensStore } from "src/stores/sendTokensStore";

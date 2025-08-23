@@ -14,8 +14,9 @@
   </q-layout>
 </template>
 
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent, computed } from "vue";
+
 import MainHeader from "components/MainHeader.vue";
 import AppNavDrawer from "components/AppNavDrawer.vue";
 import { useUiStore } from "src/stores/ui";

@@ -78,8 +78,9 @@
     </div>
   </div>
 </template>
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent } from "vue";
+
 import { mapState } from "pinia";
 import { useClipboard } from "src/composables/useClipboard";
 import { formatDistanceToNow, parseISO } from "date-fns";

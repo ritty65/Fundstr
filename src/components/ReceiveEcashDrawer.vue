@@ -139,8 +139,9 @@
   <PRDialog v-model="showPRDialog" />
 </template>
 
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { debug } from "src/js/logger";
+
 import { defineComponent } from "vue";
 import { useReceiveTokensStore } from "src/stores/receiveTokensStore";
 import { useWalletStore } from "src/stores/wallet";

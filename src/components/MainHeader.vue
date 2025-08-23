@@ -130,8 +130,9 @@
   </div>
 </template>
 
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import {
+
   defineComponent,
   ref,
   computed,

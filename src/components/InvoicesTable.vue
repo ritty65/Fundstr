@@ -100,8 +100,9 @@
     </div>
   </div>
 </template>
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent } from "vue";
+
 import { shortenString } from "src/js/string-utils";
 import { mapWritableState, mapActions } from "pinia";
 import { useUiStore } from "src/stores/ui";

@@ -83,8 +83,9 @@
   </q-layout>
 </template>
 
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent, ref, computed, watch } from "vue";
+
 import { useRouter } from "vue-router";
 import { useQuasar, LocalStorage } from "quasar";
 import MainHeader from "components/MainHeader.vue";
