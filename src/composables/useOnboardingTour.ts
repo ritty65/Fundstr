@@ -1,11 +1,10 @@
 import { LocalStorage } from 'quasar'
 import { createApp } from 'vue'
 import OnboardingTour from 'src/components/OnboardingTour.vue'
-
-const KEY_PREFIX = 'fundstr:onboarding:v1:'
+import { LOCAL_STORAGE_KEYS } from 'src/constants/localStorageKeys'
 
 function key(prefix: string) {
-  return `${KEY_PREFIX}${prefix}:done`
+  return `${LOCAL_STORAGE_KEYS.FUNDSTR_ONBOARDING_DONE}:${prefix}:done`
 }
 
 export function hasCompletedOnboarding(prefix: string): boolean {
