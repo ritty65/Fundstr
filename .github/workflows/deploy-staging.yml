@@ -14,18 +14,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # No pnpm/action-setup here (avoids conflicts).
+      # Install pnpm to match package.json "packageManager"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.15.7
+          run_install: false
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'pnpm'
           cache-dependency-path: 'pnpm-lock.yaml'
 
-      - name: Enable pnpm via Corepack (uses package.json "packageManager")
+      - name: Show versions
         run: |
-          corepack enable
-          echo "packageManager:" $(node -p "require('./package.json').packageManager")
+          node -v
           pnpm -v
+          node -p "require('./package.json').packageManager"
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
@@ -33,10 +38,9 @@ jobs:
       - name: Build Quasar SPA (staging)
         run: |
           cp .env.staging .env
-          pnpm dlx @quasar/cli --version || true
           pnpm dlx @quasar/cli build -m spa
           test -f dist/spa/index.html || { echo "Build missing dist/spa/index.html"; exit 1; }
-          echo "dist/spa contents:"; ls -lah dist/spa | sed -n '1,50p'
+          ls -lah dist/spa | sed -n '1,80p'
 
       - name: Add SSH key
         uses: webfactory/ssh-agent@v0.9.0
@@ -53,7 +57,7 @@ jobs:
           rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" \
             dist/spa/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}
 
-      - name: Drop deploy marker and set perms
+      - name: Drop deploy marker & perms
         run: |
           ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             echo deployed \$(date -u) > '${{ secrets.SSH_TARGET_STAGING }}deploy.txt' ;
