@@ -60,3 +60,17 @@ node_modules/
 node_modules/
 dist/
 dist-ssr/
+
+# env & builds
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+dist-ssr/
+*.zip
+*.tar.gz
+
+# editor/backups
+*.bak
+*.tmp
