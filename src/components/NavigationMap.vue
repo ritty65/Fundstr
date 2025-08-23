@@ -16,8 +16,8 @@
       <q-expansion-item
         v-for="(item, idx) in items"
         :key="item.id"
-        :label="item.menuItem"
-        :icon="item.icon"
+        :label="item.iconComponent ? void 0 : item.menuItem"
+        :icon="item.iconComponent ? void 0 : item.icon"
         group="navigation"
         class="border-b accordion-item"
         :class="{ open: openIndex === idx }"
@@ -26,6 +26,12 @@
         expand-icon="keyboard_arrow_down"
         expanded-icon="keyboard_arrow_down"
       >
+        <template v-if="item.iconComponent" #header>
+          <q-item-section avatar>
+            <component :is="item.iconComponent" class="themed-icon" />
+          </q-item-section>
+          <q-item-section>{{ item.menuItem }}</q-item-section>
+        </template>
         <div class="px-4 pb-4 text-sm">
           <div class="fan-content">
             <h4 class="font-semibold mb-2">{{ $t('AboutPage.navigation.fanPerspective') }}</h4>

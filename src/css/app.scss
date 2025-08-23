@@ -158,6 +158,13 @@ body.body--light {
   --due-soon-bg: var(--due-soon-bg-light);
 }
 
+.themed-icon {
+  color: #111827;
+}
+.body--dark .themed-icon {
+  color: #ffffff;
+}
+
 /* Utility components */
 .panel-container {
   background-color: var(--panel-bg-color);
