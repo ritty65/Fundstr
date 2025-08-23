@@ -52,3 +52,7 @@ Utility classes: `.text-1`, `.text-2`, `.text-inverse`, `.bg-surface-1`, `.bg-su
 ## Welcome Gate
 - Local storage key `welcome.seen:v1` and cookie `welcome_seen_v1` track if the onboarding was shown on a device.
 - Bump to `welcome.seen:v2`/`welcome_seen_v2` when revising the flow to force users through the new onboarding.
+
+## Onboarding Tour
+- Local storage key `fundstr:onboarding:v1:<pubkey>:done` tracks if the user finished the in-app tour.
+- Bump to `fundstr:onboarding:v2` when the tour changes and should be shown again.
