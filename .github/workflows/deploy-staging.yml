@@ -14,14 +14,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
+      # No pnpm/action-setup here (avoids conflicts).
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'pnpm'
+          cache-dependency-path: 'pnpm-lock.yaml'
+
+      - name: Enable pnpm via Corepack (uses package.json "packageManager")
+        run: |
+          corepack enable
+          echo "packageManager:" $(node -p "require('./package.json').packageManager")
+          pnpm -v
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
@@ -29,14 +33,12 @@ jobs:
       - name: Build Quasar SPA (staging)
         run: |
           cp .env.staging .env
-          pnpm exec quasar -v || true
-          pnpm exec quasar build -m spa || pnpm dlx @quasar/cli build -m spa
-          echo "== dist contents =="
-          ls -lah dist || true
-          echo "== dist/spa contents =="
-          ls -lah dist/spa || true
+          pnpm dlx @quasar/cli --version || true
+          pnpm dlx @quasar/cli build -m spa
+          test -f dist/spa/index.html || { echo "Build missing dist/spa/index.html"; exit 1; }
+          echo "dist/spa contents:"; ls -lah dist/spa | sed -n '1,50p'
 
-      - name: Start SSH agent with CI key
+      - name: Add SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -46,20 +48,15 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Test SSH connectivity
+      - name: Rsync to Hostinger (staging)
         run: |
-          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo connected: \$(hostname); mkdir -p '${{ secrets.SSH_TARGET_STAGING }}'"
-
-      - name: Deploy via rsync
-        run: |
-          rsync -avz --delete \
-            -e "ssh -p ${{ secrets.SSH_PORT }}" \
+          rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" \
             dist/spa/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}
 
-      - name: Fix permissions & drop marker
+      - name: Drop deploy marker and set perms
         run: |
           ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            echo deployed \$(date -u) > '${{ secrets.SSH_TARGET_STAGING }}deploy.txt' ;
             find '${{ secrets.SSH_TARGET_STAGING }}' -type d -exec chmod 755 {} \; ;
             find '${{ secrets.SSH_TARGET_STAGING }}' -type f -exec chmod 644 {} \; ;
-            echo deployed \$(date -u) > '${{ secrets.SSH_TARGET_STAGING }}deploy.txt'
           "
