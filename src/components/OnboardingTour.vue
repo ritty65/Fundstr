@@ -14,8 +14,8 @@
     <div class="onboarding-body">
       <div class="q-mb-sm">{{ current.text }}</div>
       <div class="row justify-end q-gutter-sm">
-        <q-btn flat dense class="skip-btn" @click="skip">Skip tour</q-btn>
-        <q-btn flat dense color="primary" @click="next">{{ isLast ? 'Got it' : 'Next' }}</q-btn>
+        <q-btn flat dense class="skip-btn" @click="skip">{{ $t('OnboardingTour.skip') }}</q-btn>
+        <q-btn flat dense color="primary" @click="next">{{ isLast ? $t('OnboardingTour.gotIt') : $t('OnboardingTour.next') }}</q-btn>
       </div>
     </div>
   </q-tooltip>
@@ -23,48 +23,50 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { LocalStorage } from 'quasar'
 import { useUiStore } from 'src/stores/ui'
 
 const props = defineProps<{ pubkeyPrefix: string; onFinish: () => void }>()
 
 const ui = useUiStore()
+const { t } = useI18n()
 
 const steps = [
   {
     target: '[data-tour~="nav-toggle"]',
-    text: 'Open the sidebar to jump between pages. You can revisit this tour anytime from Settings.',
+    text: t('OnboardingTour.navToggle'),
     anchor: 'bottom middle',
     self: 'top middle',
     onNext: () => ui.openMainNav(),
   },
   {
     target: '[data-tour~="nav-dashboard"]',
-    text: 'Your overview: balances, recent activity, and quick links.',
+    text: t('OnboardingTour.navDashboard'),
     anchor: 'right middle',
     self: 'left middle',
   },
   {
     target: '[data-tour~="nav-wallet"]',
-    text: 'Deposit or withdraw funds and review your transactions here.',
+    text: t('OnboardingTour.navWallet'),
     anchor: 'right middle',
     self: 'left middle',
   },
   {
     target: '[data-tour~="nav-find-creators"]',
-    text: 'Discover creators and start supporting them with a few taps.',
+    text: t('OnboardingTour.navFindCreators'),
     anchor: 'right middle',
     self: 'left middle',
   },
   {
     target: '[data-tour~="nav-subscriptions"]',
-    text: 'Manage who you support and adjust contribution levels anytime.',
+    text: t('OnboardingTour.navSubscriptions'),
     anchor: 'right middle',
     self: 'left middle',
   },
   {
     target: '[data-tour~="nav-settings"]',
-    text: 'Update account preferences, notifications, and security. You can replay the tutorial here.',
+    text: t('OnboardingTour.navSettings'),
     anchor: 'right middle',
     self: 'left middle',
   },

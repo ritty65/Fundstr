@@ -1991,6 +1991,19 @@ export const messages = {
       },
     },
   },
+  OnboardingTour: {
+    navToggle:
+      "Apri la barra laterale per cambiare pagina. Puoi ripetere il tour dalle Impostazioni.",
+    navDashboard: "La tua panoramica: saldi, attività recente e scorciatoie.",
+    navWallet: "Deposita o preleva fondi e controlla qui le tue transazioni.",
+    navFindCreators: "Scopri creatori e inizia a sostenerli con pochi tocchi.",
+    navSubscriptions: "Gestisci chi sostieni e modifica i contributi quando vuoi.",
+    navSettings:
+      "Aggiorna preferenze, notifiche e sicurezza. Qui puoi rivedere il tutorial.",
+    skip: "Salta tour",
+    gotIt: "Fatto",
+    next: "Avanti",
+  },
 };
 
 export default {

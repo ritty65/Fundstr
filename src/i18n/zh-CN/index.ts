@@ -1991,6 +1991,17 @@ export const messages = {
       },
     },
   },
+  OnboardingTour: {
+    navToggle: "打开侧栏切换页面。可在设置中再次查看此引导。",
+    navDashboard: "概览：余额、近期活动和快捷入口。",
+    navWallet: "在此存取资金并查看交易记录。",
+    navFindCreators: "发现创作者并轻松开始支持。",
+    navSubscriptions: "管理你支持的人并随时调整金额。",
+    navSettings: "更新偏好、通知和安全。在此可重看教程。",
+    skip: "跳过引导",
+    gotIt: "知道了",
+    next: "下一步",
+  },
 };
 
 export default {

@@ -1991,6 +1991,21 @@ export const messages = {
       },
     },
   },
+  OnboardingTour: {
+    navToggle:
+      "Ouvre la barre latérale pour changer de page. Relance ce tutoriel via les paramètres.",
+    navDashboard: "Vue d’ensemble : soldes, activité récente et raccourcis.",
+    navWallet: "Dépose ou retire des fonds et consulte tes transactions ici.",
+    navFindCreators:
+      "Découvre des créateurs et commence à les soutenir en quelques clics.",
+    navSubscriptions:
+      "Gère les créateurs que tu soutiens et ajuste tes contributions à tout moment.",
+    navSettings:
+      "Mets à jour préférences, notifications et sécurité. Relance le tutoriel ici.",
+    skip: "Passer le tour",
+    gotIt: "Compris",
+    next: "Suivant",
+  },
 };
 
 export default {

@@ -2006,6 +2006,17 @@ export const messages = {
       },
     },
   },
+  OnboardingTour: {
+    navToggle: "Open the sidebar to switch pages. Replay this tour from Settings.",
+    navDashboard: "Your overview: balances, activity, and quick links.",
+    navWallet: "Deposit or withdraw funds and review your transactions here.",
+    navFindCreators: "Discover creators and start supporting them with a few taps.",
+    navSubscriptions: "Manage who you support and adjust contribution levels anytime.",
+    navSettings: "Update preferences, notifications, and security. Replay the tutorial here.",
+    skip: "Skip tour",
+    gotIt: "Got it",
+    next: "Next",
+  },
   onb: {
     1: {
       title: "Private money for the open internet",

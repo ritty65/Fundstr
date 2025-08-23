@@ -1991,6 +1991,18 @@ export const messages = {
       },
     },
   },
+  OnboardingTour: {
+    navToggle:
+      "サイドバーを開いてページを移動。設定からいつでもツアーを再実行できます。",
+    navDashboard: "概要：残高、最近のアクティビティ、ショートカット。",
+    navWallet: "ここで入出金と取引履歴を確認します。",
+    navFindCreators: "クリエイターを探し、数タップで支援を開始。",
+    navSubscriptions: "支援先を管理し、金額をいつでも調整。",
+    navSettings: "設定や通知、セキュリティを更新。ここでチュートリアルを再実行。",
+    skip: "ツアーをスキップ",
+    gotIt: "了解",
+    next: "次へ",
+  },
 };
 
 export default {
