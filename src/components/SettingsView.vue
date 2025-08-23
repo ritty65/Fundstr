@@ -1672,7 +1672,7 @@
               <q-item>
                 <q-item-section>
                   <div class="row">
-                    <q-btn dense flat outline click @click="showOnboarding">
+                    <q-btn dense flat outline click @click="showTour">
                       {{
                         $t("Settings.advanced.developer.show_onboarding.button")
                       }}
@@ -1806,9 +1806,7 @@ import { usePRStore } from "../stores/payment-request";
 import { useRestoreStore } from "src/stores/restore";
 import { useDexieStore } from "../stores/dexie";
 import { useReceiveTokensStore } from "../stores/receiveTokensStore";
-import { useWelcomeStore } from "src/stores/welcome";
 import { useStorageStore } from "src/stores/storage";
-import { resetWelcome } from 'src/composables/useWelcomeGate'
 import { useI18n } from "vue-i18n";
 
 export default defineComponent({
@@ -2116,11 +2114,8 @@ export default defineComponent({
       await this.resetNip46Signer();
       await this.generateNPCConnection();
     },
-    showOnboarding: function () {
-      resetWelcome();
-      const store = useWelcomeStore();
-      store.welcomeCompleted = false;
-      this.$router.push("/welcome?first=1");
+    showTour: function () {
+      this.$router.push('/tour');
     },
     nukeWallet: async function () {
       // create a backup just in case

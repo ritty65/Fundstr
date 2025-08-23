@@ -1,6 +1,9 @@
 <IfModule mod_rewrite.c>
   Options -MultiViews
   RewriteEngine On
+  # when welcome cookie present, block access to /welcome and send to /wallet
+  RewriteCond %{HTTP_COOKIE} welcome_seen_v1=1 [NC]
+  RewriteRule ^welcome/?$ /wallet [R=302,L]
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteRule ^ index.html [QSA,L]
 </IfModule>

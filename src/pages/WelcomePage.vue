@@ -54,7 +54,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import WelcomeSlideFeatures from './welcome/WelcomeSlideFeatures.vue'
 import WelcomeSlideNostr from './welcome/WelcomeSlideNostr.vue'
@@ -67,7 +67,7 @@ import TaskChecklist from 'src/components/welcome/TaskChecklist.vue'
 import RevealSeedDialog from 'src/components/welcome/RevealSeedDialog.vue'
 import type { WelcomeTask } from 'src/types/welcome'
 import { useWelcomeStore, LAST_WELCOME_SLIDE } from 'src/stores/welcome'
-import { markWelcomeSeen } from 'src/composables/useWelcomeGate'
+import { markWelcomeSeen, hasSeenWelcome } from 'src/composables/useWelcomeGate'
 import { useMnemonicStore } from 'src/stores/mnemonic'
 import { useStorageStore } from 'src/stores/storage'
 import { useNostrStore } from 'src/stores/nostr'
@@ -76,12 +76,22 @@ import { useNdk } from 'src/composables/useNdk'
 const { t } = useI18n()
 const welcome = useWelcomeStore()
 const router = useRouter()
+const route = useRoute()
 const $q = useQuasar()
 const mnemonicStore = useMnemonicStore()
 const storageStore = useStorageStore()
 const nostr = useNostrStore()
 const showSeedDialog = ref(false)
 const showChecklist = ref(false)
+
+onMounted(() => {
+  const env = import.meta.env.VITE_APP_ENV
+  const allow =
+    route.query.allow === '1' && (env === 'development' || env === 'staging')
+  if (route.path.startsWith('/welcome') && hasSeenWelcome() && !allow) {
+    router.replace('/wallet')
+  }
+})
 
 function revealSeed() {
   showSeedDialog.value = true
