@@ -27,10 +27,16 @@
         expanded-icon="keyboard_arrow_down"
       >
         <template v-if="item.iconComponent" #header>
-          <q-item-section avatar>
-            <component :is="item.iconComponent" class="themed-icon" />
-          </q-item-section>
-          <q-item-section>{{ item.menuItem }}</q-item-section>
+          <div class="nav-map-header">
+            <q-item-section avatar>
+              <component
+                :is="item.iconComponent"
+                class="themed-icon nav-map-icon"
+                aria-hidden="true"
+              />
+            </q-item-section>
+            <q-item-section>{{ item.menuItem }}</q-item-section>
+          </div>
         </template>
         <div class="px-4 pb-4 text-sm">
           <div class="fan-content">
