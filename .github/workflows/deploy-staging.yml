@@ -4,6 +4,10 @@ on:
   push:
     branches: [develop]
 
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -22,10 +26,15 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
-      - name: Build Quasar SPA for STAGING
+      - name: Build Quasar SPA (staging)
         run: |
           cp .env.staging .env
+          pnpm exec quasar -v || true
           pnpm exec quasar build -m spa || pnpm dlx @quasar/cli build -m spa
+          echo "== dist contents =="
+          ls -lah dist || true
+          echo "== dist/spa contents =="
+          ls -lah dist/spa || true
 
       - name: Start SSH agent with CI key
         uses: webfactory/ssh-agent@v0.9.0
@@ -37,7 +46,20 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Rsync to Hostinger (staging)
+      - name: Test SSH connectivity
         run: |
-          rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" \
+          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "echo connected: \$(hostname); mkdir -p '${{ secrets.SSH_TARGET_STAGING }}'"
+
+      - name: Deploy via rsync
+        run: |
+          rsync -avz --delete \
+            -e "ssh -p ${{ secrets.SSH_PORT }}" \
             dist/spa/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}
+
+      - name: Fix permissions & drop marker
+        run: |
+          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
+            find '${{ secrets.SSH_TARGET_STAGING }}' -type d -exec chmod 755 {} \; ;
+            find '${{ secrets.SSH_TARGET_STAGING }}' -type f -exec chmod 644 {} \; ;
+            echo deployed \$(date -u) > '${{ secrets.SSH_TARGET_STAGING }}deploy.txt'
+          "
