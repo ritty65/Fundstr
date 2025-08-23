@@ -74,3 +74,7 @@ dist-ssr/
 # editor/backups
 *.bak
 *.tmp
+
+# allowlist envs safe to commit
+!.env.staging
+!.env.production
