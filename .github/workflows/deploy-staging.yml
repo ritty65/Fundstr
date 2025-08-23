@@ -1,4 +1,5 @@
 name: Deploy staging (develop -> Hostinger)
+
 on:
   push:
     branches: [develop]
