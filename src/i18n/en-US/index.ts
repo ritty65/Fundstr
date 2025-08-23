@@ -502,8 +502,8 @@ export const messages = {
             'This wallet marks pending outgoing ecash as reserved (and subtracts it from your balance) to prevent double-spend attempts. This button will unset all reserved tokens so they can be used again. If you do this, your wallet might include spent proofs. Press the "Remove spent proofs" button to get rid of them.',
         },
         show_onboarding: {
-          button: "Show Welcome again (this device)",
-          description: "Reset the Welcome flag on this device and show the onboarding screen again.",
+          button: "Show the tour again",
+          description: "Open the onboarding tour again without resetting the Welcome flag.",
         },
         reset_wallet: {
           button: "Reset wallet data",

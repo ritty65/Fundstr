@@ -111,6 +111,13 @@ const routes = [
     ],
   },
   {
+    path: "/tour",
+    component: () => import("layouts/BlankLayout.vue"),
+    children: [
+      { path: "", component: () => import("src/pages/WelcomePage.vue") },
+    ],
+  },
+  {
     path: "/onboarding",
     redirect: "/welcome?first=1",
   },
