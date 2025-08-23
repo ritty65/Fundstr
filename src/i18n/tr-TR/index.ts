@@ -1991,6 +1991,21 @@ export const messages = {
       },
     },
   },
+  OnboardingTour: {
+    navToggle:
+      "Sayfalar arasında geçmek için kenar çubuğunu aç. Turu Ayarlar'dan tekrar oynatabilirsin.",
+    navDashboard: "Genel bakış: bakiyeler, son etkinlik ve hızlı bağlantılar.",
+    navWallet: "Buradan para yatırıp çekebilir ve işlemlerini inceleyebilirsin.",
+    navFindCreators:
+      "Yaratıcıları keşfet ve birkaç dokunuşla desteklemeye başla.",
+    navSubscriptions:
+      "Desteklediklerini yönet ve katkı miktarlarını istediğin zaman ayarla.",
+    navSettings:
+      "Tercihleri, bildirimleri ve güvenliği güncelle. Turu burada tekrar edebilirsin.",
+    skip: "Turu geç",
+    gotIt: "Anladım",
+    next: "İleri",
+  },
 };
 
 export default {

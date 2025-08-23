@@ -1991,6 +1991,18 @@ export const messages = {
       },
     },
   },
+  OnboardingTour: {
+    navToggle: "Öppna sidomenyn för att byta sida. Kör om turen via Inställningar.",
+    navDashboard: "Din överblick: saldon, senaste aktivitet och snabblänkar.",
+    navWallet: "Sätt in eller ta ut pengar och se dina transaktioner här.",
+    navFindCreators: "Upptäck kreatörer och börja stötta dem med några tryck.",
+    navSubscriptions: "Hantera vem du stöttar och ändra nivåer när du vill.",
+    navSettings:
+      "Uppdatera inställningar, aviseringar och säkerhet. Spela om guiden här.",
+    skip: "Hoppa över tur",
+    gotIt: "Klart",
+    next: "Nästa",
+  },
 };
 
 export default {
