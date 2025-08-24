@@ -107,6 +107,7 @@ async function finishOnboarding() {
   // remember that the welcome flow has been completed on this device
   markWelcomeSeen()
   await nextTick()
+  router.replace('/wallet')
 }
 
 const slides = [
