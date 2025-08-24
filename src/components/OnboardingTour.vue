@@ -77,6 +77,7 @@ const steps = computed(() =>
 const index = ref(0)
 const current = ref<any>(null)
 const show = ref(false)
+const shownAtLeastOneStep = ref(false)
 
 const storageKey = `fundstr:onboarding:v1:${props.pubkeyPrefix}:done`
 
@@ -85,7 +86,11 @@ function markDone() {
 }
 
 function finish() {
-  markDone()
+  if (shownAtLeastOneStep.value) {
+    markDone()
+  } else {
+    console.warn('Onboarding tour finished without displaying any steps')
+  }
   props.onFinish()
 }
 
@@ -110,6 +115,7 @@ async function showStep(retries = 0) {
   }
   current.value = { ...step, el }
   show.value = true
+  shownAtLeastOneStep.value = true
 }
 
 function next() {
