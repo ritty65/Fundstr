@@ -1807,6 +1807,7 @@ import { useRestoreStore } from "src/stores/restore";
 import { useDexieStore } from "../stores/dexie";
 import { useReceiveTokensStore } from "../stores/receiveTokensStore";
 import { resetOnboarding, startOnboardingTour } from "src/composables/useOnboardingTour";
+import { useFirstRunStore } from "src/stores/firstRun";
 import { useStorageStore } from "src/stores/storage";
 import { useI18n } from "vue-i18n";
 
@@ -2118,8 +2119,12 @@ export default defineComponent({
     showTour: async function () {
       const prefix = (useNostrStore().pubkey || 'anon').slice(0, 8)
       resetOnboarding(prefix)
+      const firstRunStore = useFirstRunStore()
       this.$router.push('/wallet').then(() => {
-        setTimeout(() => startOnboardingTour(prefix), 300)
+        setTimeout(() => {
+          firstRunStore.tourStarted = true
+          startOnboardingTour(prefix)
+        }, 300)
       })
     },
     nukeWallet: async function () {
