@@ -251,11 +251,25 @@ function restoreDisabled() {
   disabledEls.length = 0
 }
 
-function finish() {
-  if (shownAtLeastOneStep.value) {
-    markDone()
-  } else {
+function finish({ skipped = false } = {}) {
+  const completed = index.value >= steps.value.length
+  if ((completed || skipped) && shownAtLeastOneStep.value) {
+    try {
+      markDone()
+    } catch (err) {
+      console.error('Failed to mark onboarding as done', err)
+      setTimeout(() => {
+        try {
+          markDone()
+        } catch (retryErr) {
+          console.error('Retrying markDone failed', retryErr)
+        }
+      }, 5000)
+    }
+  } else if (!shownAtLeastOneStep.value) {
     console.warn('Onboarding tour finished without displaying any steps')
+  } else {
+    console.warn('Onboarding tour ended before completion; flag not set')
   }
   restoreDisabled()
   props.onFinish()
@@ -360,7 +374,7 @@ function skipStep() {
 function skip() {
   clearInterval(completeInterval)
   current.value?.cleanup?.()
-  finish()
+  finish({ skipped: true })
 }
 
 const topStyle = computed(() =>

@@ -26,6 +26,8 @@ describe('OnboardingTour component', () => {
       props: { pubkeyPrefix: 'test2', onFinish: () => {} },
       global: { plugins: [[Quasar, {}], i18n] },
     })
+    ;(wrapper.vm as any).steps = [{}]
+    ;(wrapper.vm as any).index = 1
     ;(wrapper.vm as any).shownAtLeastOneStep = true
     ;(wrapper.vm as any).finish()
     expect(LocalStorage.getItem('fundstr:onboarding:v3:test2:done')).toBe('1')
