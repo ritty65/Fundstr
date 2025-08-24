@@ -105,7 +105,7 @@ function generateInternalSteps(): OnboardingStep[] {
         placement: 'bottom',
         requiredAction: 'click',
         advanceMode: 'auto',
-        completeWhen: () => ui.mainNavOpen,
+        completeWhen: { predicate: () => ui.mainNavOpen },
       },
       {
         id: 'nav-dashboard',
@@ -115,7 +115,7 @@ function generateInternalSteps(): OnboardingStep[] {
         requiredAction: 'click',
         advanceMode: 'auto',
         ensure: () => ui.openMainNav(),
-        completeWhen: () => router.currentRoute.value.path === '/dashboard',
+        completeWhen: { path: '/dashboard' },
       },
       {
         id: 'nav-wallet',
@@ -125,7 +125,7 @@ function generateInternalSteps(): OnboardingStep[] {
         requiredAction: 'click',
         advanceMode: 'auto',
         ensure: () => ui.openMainNav(),
-        completeWhen: () => router.currentRoute.value.path === '/wallet',
+        completeWhen: { path: '/wallet' },
       },
       {
         id: 'nav-find-creators',
@@ -135,7 +135,7 @@ function generateInternalSteps(): OnboardingStep[] {
         requiredAction: 'click',
         advanceMode: 'auto',
         ensure: () => ui.openMainNav(),
-        completeWhen: () => router.currentRoute.value.path === '/find-creators',
+        completeWhen: { path: '/find-creators' },
       },
       {
         id: 'nav-subscriptions',
@@ -145,7 +145,7 @@ function generateInternalSteps(): OnboardingStep[] {
         requiredAction: 'click',
         advanceMode: 'auto',
         ensure: () => ui.openMainNav(),
-        completeWhen: () => router.currentRoute.value.path === '/subscriptions',
+        completeWhen: { path: '/subscriptions' },
       },
       {
         id: 'nav-settings',
@@ -155,7 +155,7 @@ function generateInternalSteps(): OnboardingStep[] {
         requiredAction: 'click',
         advanceMode: 'auto',
         ensure: () => ui.openMainNav(),
-        completeWhen: () => router.currentRoute.value.path === '/settings',
+        completeWhen: { path: '/settings' },
       },
     ].filter(Boolean) as OnboardingStep[]
   )
@@ -179,26 +179,27 @@ const overlay = ref<{
   height: number
 }>()
 const disabledEls: { el: HTMLElement; pointer: string; opacity: string }[] = []
-let completeInterval: ReturnType<typeof setInterval>
+const cleanupFns: Array<() => void> = []
 
-function waitForSelector(selector: string, timeout = 10000) {
-  return new Promise<boolean>(resolve => {
-    if (document.querySelector(selector)) {
-      resolve(true)
+function waitForElement(selector: string, timeout = 10000): Promise<HTMLElement | null> {
+  const doc = document
+  return new Promise(resolve => {
+    const existing = doc.querySelector(selector) as HTMLElement | null
+    if (existing) {
+      resolve(existing)
       return
     }
     const observer = new MutationObserver(() => {
-      if (document.querySelector(selector)) {
-        cleanup(true)
-      }
+      const el = doc.querySelector(selector) as HTMLElement | null
+      if (el) cleanup(el)
     })
-    const timer = setTimeout(() => cleanup(false), timeout)
-    const cleanup = (found: boolean) => {
+    const timer = setTimeout(() => cleanup(null), timeout)
+    const cleanup = (el: HTMLElement | null) => {
       observer.disconnect()
       clearTimeout(timer)
-      resolve(found)
+      resolve(el)
     }
-    observer.observe(document.body, { childList: true, subtree: true })
+    observer.observe(doc.body, { childList: true, subtree: true })
   })
 }
 
@@ -277,8 +278,9 @@ function finish({ skipped = false } = {}) {
 
 const isLast = computed(() => index.value === steps.value.length - 1)
 
-async function showStep(retries = 0) {
+async function showStep() {
   try {
+    cleanupStep()
     const step = steps.value[index.value]
     if (!step) {
       finish()
@@ -288,23 +290,16 @@ async function showStep(retries = 0) {
       await step.ensure()
     }
     await nextTick()
-    const el = document.querySelector(step.target) as HTMLElement | null
+    const el = await waitForElement(step.target, step.timeoutMs ?? 10000)
     if (!el) {
-      if (retries === 20) {
-        await step.ensure?.()
-      }
-      if (retries >= 40) {
-        console.warn(`Onboarding step ${step.id}: target not found (${step.target})`)
-        current.value = { ...step, el: document.body, notFound: true }
-        actionDone.value = false
-        overlay.value = undefined
-        show.value = true
-        shownAtLeastOneStep.value = true
-        restoreDisabled()
-        setTimeout(skipStep, 1500)
-      } else {
-        setTimeout(() => showStep(retries + 1), 300)
-      }
+      console.warn(`Onboarding step ${step.id}: target not found (${step.target})`)
+      current.value = { ...step, el: document.body, notFound: true }
+      actionDone.value = false
+      overlay.value = undefined
+      show.value = true
+      shownAtLeastOneStep.value = true
+      restoreDisabled()
+      setTimeout(skipStep, 1500)
       return
     }
     current.value = { ...step, el }
@@ -318,7 +313,7 @@ async function showStep(retries = 0) {
       right: rect.right + padding,
       height: rect.height + padding * 2,
     }
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
     el.focus?.()
     if (step.requiredAction === 'click') {
       const handler = () => {
@@ -328,24 +323,57 @@ async function showStep(retries = 0) {
         el.style.opacity = '0.6'
       }
       el.addEventListener('click', handler)
-      current.value.cleanup = () => el.removeEventListener('click', handler)
+      cleanupFns.push(() => el.removeEventListener('click', handler))
     }
-    const check = () => {
-      if (step.completeWhen()) {
-        actionDone.value = true
-        if (step.advanceMode === 'auto') {
-          clearInterval(completeInterval)
-          const nextStep = steps.value[index.value + 1]
-          if (nextStep) {
-            waitForSelector(nextStep.target).then(() => setTimeout(next, 300))
-          } else {
-            setTimeout(next, 300)
-          }
+
+    const goNext = () => {
+      if (actionDone.value) return
+      actionDone.value = true
+      if (step.advanceMode === 'auto') {
+        const nextStep = steps.value[index.value + 1]
+        if (nextStep) {
+          waitForElement(nextStep.target).then(() => setTimeout(next, 300))
+        } else {
+          setTimeout(next, 300)
         }
       }
     }
-    check()
-    completeInterval = setInterval(check, 250)
+
+    if (step.completeWhen?.routeName || step.completeWhen?.path) {
+      const unwatch = router.afterEach(to => {
+        const okName =
+          step.completeWhen?.routeName && to.name === step.completeWhen.routeName
+        const okPath = step.completeWhen?.path && to.path === step.completeWhen.path
+        if (okName || okPath) goNext()
+      })
+      cleanupFns.push(unwatch)
+      const currentRoute = router.currentRoute.value
+      const okNameInit =
+        step.completeWhen?.routeName &&
+        currentRoute.name === step.completeWhen.routeName
+      const okPathInit =
+        step.completeWhen?.path && currentRoute.path === step.completeWhen.path
+      if (okNameInit || okPathInit) goNext()
+    }
+
+    if (step.completeWhen?.predicate) {
+      const interval = setInterval(() => {
+        try {
+          if (step.completeWhen?.predicate?.()) {
+            clearInterval(interval)
+            goNext()
+          }
+        } catch {}
+      }, 150)
+      cleanupFns.push(() => clearInterval(interval))
+      try {
+        if (step.completeWhen.predicate()) {
+          clearInterval(interval)
+          goNext()
+        }
+      } catch {}
+    }
+
     show.value = true
     shownAtLeastOneStep.value = true
   } catch (err) {
@@ -355,10 +383,14 @@ async function showStep(retries = 0) {
   }
 }
 
+function cleanupStep() {
+  cleanupFns.splice(0).forEach(fn => fn())
+  current.value?.cleanup?.()
+}
+
 function next() {
   show.value = false
-  clearInterval(completeInterval)
-  current.value?.cleanup?.()
+  cleanupStep()
   current.value?.onNext?.()
   index.value += 1
   setTimeout(showStep, 200)
@@ -366,16 +398,14 @@ function next() {
 
 function skipStep() {
   show.value = false
-  clearInterval(completeInterval)
-  current.value?.cleanup?.()
+  cleanupStep()
   restoreDisabled()
   index.value += 1
   setTimeout(showStep, 200)
 }
 
 function skip() {
-  clearInterval(completeInterval)
-  current.value?.cleanup?.()
+  cleanupStep()
   finish({ skipped: true })
 }
 
