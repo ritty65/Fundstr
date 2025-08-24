@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { useLocalStorage } from '@vueuse/core';
 import { LOCAL_STORAGE_KEYS } from 'src/constants/localStorageKeys';
-import { startOnboardingTour } from 'src/composables/useOnboardingTour';
+import { startOnboardingTour, getBrowserId } from 'src/composables/useOnboardingTour';
 import { useNostrStore } from 'src/stores/nostr';
 import type { Router } from 'vue-router';
 
@@ -34,7 +34,7 @@ export const useFirstRunStore = defineStore('firstRun', () => {
     cancelTimeout();
     timer = setTimeout(() => {
       const nostr = useNostrStore();
-      const prefix = (nostr.pubkey || 'anon').slice(0, 8);
+      const prefix = (nostr.pubkey || getBrowserId()).slice(0, 8);
       tourStarted.value = true;
       startOnboardingTour(prefix, undefined, () => {
         tourStarted.value = false;

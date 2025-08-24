@@ -505,6 +505,10 @@ export const messages = {
           button: "Show onboarding",
           description: "Show the onboarding screen again.",
         },
+        reset_onboarding: {
+          button: "Reset onboarding",
+          description: "Clear onboarding status for this browser.",
+        },
         reset_wallet: {
           button: "Reset wallet data",
           description:

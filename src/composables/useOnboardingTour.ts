@@ -6,6 +6,15 @@ import { LOCAL_STORAGE_KEYS } from 'src/constants/localStorageKeys'
 import { i18n } from 'src/boot/i18n'
 import type { OnboardingStep } from 'src/types/onboarding'
 
+export function getBrowserId(): string {
+  let id = LocalStorage.getItem<string>(LOCAL_STORAGE_KEYS.FUNDSTR_BROWSER_ID)
+  if (!id) {
+    id = crypto.randomUUID()
+    LocalStorage.set(LOCAL_STORAGE_KEYS.FUNDSTR_BROWSER_ID, id)
+  }
+  return id
+}
+
 function key(prefix: string) {
   return `${LOCAL_STORAGE_KEYS.FUNDSTR_ONBOARDING_DONE}:${prefix}:done`
 }

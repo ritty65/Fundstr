@@ -1537,12 +1537,32 @@
                       >
                     </div>
                   </div>
-                </q-item-section>
-              </q-item>
-              <q-item>
-                <q-item-section>
-                  <div class="row">
-                    <q-btn
+              </q-item-section>
+            </q-item>
+            <q-item>
+              <q-item-section>
+                <div class="row">
+                  <q-btn dense flat outline click @click="resetTour">
+                    {{
+                      $t("Settings.advanced.developer.reset_onboarding.button")
+                    }}
+                  </q-btn>
+                </div>
+                <div class="row">
+                  <q-item-label class="q-px-sm" caption
+                    >{{
+                      $t(
+                        "Settings.advanced.developer.reset_onboarding.description",
+                      )
+                    }}
+                  </q-item-label>
+                </div>
+              </q-item-section>
+            </q-item>
+            <q-item>
+              <q-item-section>
+                <div class="row">
+                  <q-btn
                       dense
                       flat
                       outline
@@ -1806,7 +1826,11 @@ import { usePRStore } from "../stores/payment-request";
 import { useRestoreStore } from "src/stores/restore";
 import { useDexieStore } from "../stores/dexie";
 import { useReceiveTokensStore } from "../stores/receiveTokensStore";
-import { resetOnboarding, startOnboardingTour } from "src/composables/useOnboardingTour";
+import {
+  resetOnboarding,
+  startOnboardingTour,
+  getBrowserId,
+} from "src/composables/useOnboardingTour";
 import { useFirstRunStore } from "src/stores/firstRun";
 import { useStorageStore } from "src/stores/storage";
 import { useI18n } from "vue-i18n";
@@ -2117,7 +2141,7 @@ export default defineComponent({
       await this.generateNPCConnection();
     },
     showTour: async function () {
-      const prefix = (useNostrStore().pubkey || 'anon').slice(0, 8)
+      const prefix = (useNostrStore().pubkey || getBrowserId()).slice(0, 8)
       resetOnboarding(prefix)
       const firstRunStore = useFirstRunStore()
       this.$router.push('/wallet').then(() => {
@@ -2128,6 +2152,10 @@ export default defineComponent({
           })
         }, 300)
       })
+    },
+    resetTour: function () {
+      const prefix = (useNostrStore().pubkey || getBrowserId()).slice(0, 8)
+      resetOnboarding(prefix)
     },
     nukeWallet: async function () {
       // create a backup just in case
