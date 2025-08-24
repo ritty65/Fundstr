@@ -147,12 +147,20 @@ export default defineComponent({
     const mainNavBtn = ref(null);
 
     const focusNavBtn = () => {
-      mainNavBtn.value?.focus();
+      const btn = mainNavBtn.value;
+      if (!btn) return;
+      if (typeof btn.focus === "function") {
+        btn.focus();
+      } else {
+        btn.$el?.focus();
+      }
     };
     const onKeydown = (e) => {
       if (e.key === "Escape" && ui.mainNavOpen) {
         ui.closeMainNav();
-        nextTick(focusNavBtn);
+        nextTick(() => {
+          if (mainNavBtn.value) focusNavBtn();
+        });
       }
     };
 
@@ -162,7 +170,11 @@ export default defineComponent({
     watch(
       () => ui.mainNavOpen,
       (open) => {
-        if (!open) nextTick(focusNavBtn);
+        if (!open) {
+          nextTick(() => {
+            if (mainNavBtn.value) focusNavBtn();
+          });
+        }
       },
     );
 
