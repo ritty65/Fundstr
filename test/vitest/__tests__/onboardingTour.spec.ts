@@ -15,7 +15,7 @@ vi.mock('quasar', () => ({
     }
   },
   QTooltip: { template: '<div><slot/></div>' },
-  QBtn: { template: '<button @click="$emit(\'click\')"><slot/></button>' }
+  QBtn: { template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot/></button>' }
 }))
 
 // mock i18n
@@ -28,8 +28,9 @@ const nostrStore = reactive<{ pubkey: string | null }>({ pubkey: null })
 vi.mock('src/stores/nostr', () => ({
   useNostrStore: () => nostrStore
 }))
+let uiStore: any
 vi.mock('src/stores/ui', () => ({
-  useUiStore: () => ({ openMainNav: vi.fn() })
+  useUiStore: () => uiStore
 }))
 
 beforeEach(() => {
@@ -39,6 +40,12 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.clearAllMocks()
   vi.resetModules()
+  uiStore = reactive({
+    mainNavOpen: false,
+    openMainNav: vi.fn(() => {
+      uiStore.mainNavOpen = true
+    })
+  })
 })
 
 describe('Onboarding tour', () => {
@@ -86,5 +93,47 @@ describe('Onboarding tour', () => {
     await nextTick()
     vi.runAllTimers()
     expect(startSpy).not.toHaveBeenCalled()
+  })
+
+  it('shows nav toggle when nav is initially closed and opens nav on next', async () => {
+    const prefix = 'abcdef12'
+    const navToggle = document.createElement('div')
+    navToggle.setAttribute('data-tour', 'nav-toggle')
+    document.body.appendChild(navToggle)
+
+    const OnboardingTour = (await import('src/components/OnboardingTour.vue')).default
+    const wrapper = mount(OnboardingTour, {
+      props: { pubkeyPrefix: prefix, onFinish: () => {} },
+      global: { config: { globalProperties: { $t: (s: string) => s } } }
+    })
+
+    await nextTick()
+    await nextTick()
+    await vi.runAllTimersAsync()
+    expect(wrapper.html()).toContain('OnboardingTour.navToggle')
+
+    await wrapper.findAll('button').at(1)!.trigger('click')
+    await nextTick()
+    await vi.runAllTimersAsync()
+    expect(uiStore.openMainNav).toHaveBeenCalled()
+  })
+
+  it('starts at dashboard when nav is already open', async () => {
+    uiStore.mainNavOpen = true
+    const prefix = 'abcdef12'
+    const navDashboard = document.createElement('div')
+    navDashboard.setAttribute('data-tour', 'nav-dashboard')
+    document.body.appendChild(navDashboard)
+
+    const OnboardingTour = (await import('src/components/OnboardingTour.vue')).default
+    const wrapper = mount(OnboardingTour, {
+      props: { pubkeyPrefix: prefix, onFinish: () => {} },
+      global: { config: { globalProperties: { $t: (s: string) => s } } }
+    })
+
+    await nextTick()
+    await nextTick()
+    await vi.runAllTimersAsync()
+    expect(wrapper.html()).toContain('OnboardingTour.navDashboard')
   })
 })
