@@ -52,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
@@ -103,11 +103,12 @@ function downloadBackup() {
   storageStore.exportWalletState()
 }
 
-function finishOnboarding() {
+async function finishOnboarding() {
   showChecklist.value = false
   welcome.closeWelcome()
   // remember that the welcome flow has been completed on this device
   markWelcomeSeen()
+  await nextTick()
   firstRunStore.beginFirstRun(router)
 }
 
@@ -143,9 +144,9 @@ function runTask(task: WelcomeTask) {
   showChecklist.value = false
 }
 
-function next() {
+async function next() {
   if (welcome.currentSlide === LAST_WELCOME_SLIDE) {
-    finishOnboarding()
+    await finishOnboarding()
   } else if (welcome.canProceed(welcome.currentSlide)) {
     welcome.currentSlide++
   }
