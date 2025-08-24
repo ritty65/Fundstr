@@ -27,6 +27,9 @@
               : `Step ${index + 1} of ${steps.length}`
           }}
         </div>
+        <div class="step-progress q-mb-sm">
+          <div class="bar" :style="{ width: progressPercent + '%' }"></div>
+        </div>
         <div class="q-mb-sm">
           {{ current.instruction }}
           <div v-if="current.notFound" class="text-negative q-mt-sm">
@@ -159,6 +162,9 @@ const internalSteps = computed<OnboardingStep[]>(() =>
 const steps = computed(() => props.steps ?? internalSteps.value)
 
 const index = ref(0)
+const progressPercent = computed(() =>
+  steps.value.length ? ((index.value + 1) / steps.value.length) * 100 : 0,
+)
 const current = ref<any>(null)
 const show = ref(false)
 const shownAtLeastOneStep = ref(false)
@@ -409,6 +415,19 @@ onMounted(showStep)
 }
 .step-counter {
   font-weight: 600;
+  font-size: 1rem;
+  color: var(--accent-500);
+}
+.step-progress {
+  height: 4px;
+  background: var(--surface-contrast-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.step-progress .bar {
+  height: 100%;
+  background: var(--accent-500);
+  transition: width 0.3s ease;
 }
 .onboarding-overlay {
   position: fixed;

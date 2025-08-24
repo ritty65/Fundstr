@@ -2005,7 +2005,7 @@ export const messages = {
     navSubscriptions: "Välj Prenumerationer för att hantera vem du stöttar.",
     navSettings:
       "Välj Inställningar (kugghjul) för att uppdatera preferenser och starta om turen.",
-    step: 'Step {current} of {total}',
+    step: 'Steg {current} av {total}',
     skip: "Hoppa över turen",
     gotIt: "Förstått",
     next: "Fortsätt",

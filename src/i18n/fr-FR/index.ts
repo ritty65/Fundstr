@@ -2007,7 +2007,7 @@ export const messages = {
       "Choisis Abonnements pour gérer tes soutiens.",
     navSettings:
       "Choisis Paramètres (icône engrenage) pour modifier les préférences et relancer ce tutoriel.",
-    step: 'Step {current} of {total}',
+    step: 'Étape {current} sur {total}',
     skip: "Passer le tour",
     gotIt: "Compris",
     next: "Continuer",
