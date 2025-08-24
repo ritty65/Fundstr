@@ -2005,7 +2005,7 @@ export const messages = {
     navSubscriptions: "「購読」を選択して支援先を管理します。",
     navSettings:
       "「設定」（歯車アイコン）を選択して好みを変更し、このツアーを再開できます。",
-    step: 'Step {current} of {total}',
+    step: 'ステップ {current} / {total}',
     skip: "ツアーをスキップ",
     gotIt: "了解",
     next: "続行",

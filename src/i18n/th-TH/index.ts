@@ -2005,7 +2005,7 @@ export const messages = {
     navSubscriptions: "เลือกการสมัครรับเพื่อจัดการผู้ที่คุณสนับสนุน",
     navSettings:
       "เลือกการตั้งค่า (ไอคอนเฟือง) เพื่อปรับแต่งและเริ่มทัวร์นี้ใหม่",
-    step: 'Step {current} of {total}',
+    step: 'ขั้นตอนที่ {current} จาก {total}',
     skip: "ข้ามทัวร์",
     gotIt: "เข้าใจแล้ว",
     next: "ดำเนินการต่อ",
