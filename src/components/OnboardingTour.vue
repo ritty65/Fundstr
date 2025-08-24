@@ -20,8 +20,12 @@
       content-class="onboarding-tooltip"
     >
       <div class="onboarding-body">
-        <div class="text-caption text-2 q-mb-xs">
-          {{ t('OnboardingTour.step', { current: index + 1, total: steps.length }) }}
+        <div class="step-counter text-body2 text-1 q-mb-xs">
+          {{
+            te('OnboardingTour.step')
+              ? t('OnboardingTour.step', { current: index + 1, total: steps.length })
+              : `Step ${index + 1} of ${steps.length}`
+          }}
         </div>
         <div class="q-mb-sm">{{ current.instruction }}</div>
         <div class="row justify-end q-gutter-sm">
@@ -64,7 +68,7 @@ const props = defineProps<{
 }>()
 
 const ui = useUiStore()
-const { t } = useI18n()
+const { t, te } = useI18n()
 const router = useRouter()
 
 const internalSteps = computed<OnboardingStep[]>(() =>
@@ -148,6 +152,27 @@ const overlay = ref<{
 const disabledEls: { el: HTMLElement; pointer: string; opacity: string }[] = []
 let completeInterval: ReturnType<typeof setInterval>
 
+function waitForSelector(selector: string, timeout = 10000) {
+  return new Promise<boolean>(resolve => {
+    if (document.querySelector(selector)) {
+      resolve(true)
+      return
+    }
+    const observer = new MutationObserver(() => {
+      if (document.querySelector(selector)) {
+        cleanup(true)
+      }
+    })
+    const timer = setTimeout(() => cleanup(false), timeout)
+    const cleanup = (found: boolean) => {
+      observer.disconnect()
+      clearTimeout(timer)
+      resolve(found)
+    }
+    observer.observe(document.body, { childList: true, subtree: true })
+  })
+}
+
 const menuPlacement = computed(() => {
   const placement = current.value?.placement || 'auto'
   switch (placement) {
@@ -204,61 +229,77 @@ function finish() {
 const isLast = computed(() => index.value === steps.value.length - 1)
 
 async function showStep(retries = 0) {
-  const step = steps.value[index.value]
-  if (!step) {
-    finish()
-    return
-  }
-  if (step.ensure) {
-    await step.ensure()
-  }
-  await nextTick()
-  const el = document.querySelector(step.target) as HTMLElement | null
-  if (!el) {
-    if (retries >= 20) {
-      console.error(`Onboarding step target not found: ${step.target}`)
+  try {
+    const step = steps.value[index.value]
+    if (!step) {
       finish()
-    } else {
-      setTimeout(() => showStep(retries + 1), 300)
+      return
     }
-    return
-  }
-  current.value = { ...step, el }
-  actionDone.value = false
-  const rect = el.getBoundingClientRect()
-  const padding = step.padding ?? 0
-  overlay.value = {
-    top: rect.top - padding,
-    bottom: rect.bottom + padding,
-    left: rect.left - padding,
-    right: rect.right + padding,
-    height: rect.height + padding * 2,
-  }
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  el.focus?.()
-  if (step.requiredAction === 'click') {
-    const handler = () => {
-      el.removeEventListener('click', handler)
-      disabledEls.push({ el, pointer: el.style.pointerEvents, opacity: el.style.opacity })
-      el.style.pointerEvents = 'none'
-      el.style.opacity = '0.6'
+    if (step.ensure) {
+      await step.ensure()
     }
-    el.addEventListener('click', handler)
-    current.value.cleanup = () => el.removeEventListener('click', handler)
-  }
-  const check = () => {
-    if (step.completeWhen()) {
-      actionDone.value = true
-      if (step.advanceMode === 'auto') {
-        clearInterval(completeInterval)
-        setTimeout(next, 300)
+    await nextTick()
+    const el = document.querySelector(step.target) as HTMLElement | null
+    if (!el) {
+      if (retries === 20) {
+        await step.ensure?.()
+      }
+      if (retries >= 40) {
+        console.warn(`Skipping onboarding step ${step.id}: target not found (${step.target})`)
+        restoreDisabled()
+        index.value += 1
+        setTimeout(showStep, 200)
+      } else {
+        setTimeout(() => showStep(retries + 1), 300)
+      }
+      return
+    }
+    current.value = { ...step, el }
+    actionDone.value = false
+    const rect = el.getBoundingClientRect()
+    const padding = step.padding ?? 0
+    overlay.value = {
+      top: rect.top - padding,
+      bottom: rect.bottom + padding,
+      left: rect.left - padding,
+      right: rect.right + padding,
+      height: rect.height + padding * 2,
+    }
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.focus?.()
+    if (step.requiredAction === 'click') {
+      const handler = () => {
+        el.removeEventListener('click', handler)
+        disabledEls.push({ el, pointer: el.style.pointerEvents, opacity: el.style.opacity })
+        el.style.pointerEvents = 'none'
+        el.style.opacity = '0.6'
+      }
+      el.addEventListener('click', handler)
+      current.value.cleanup = () => el.removeEventListener('click', handler)
+    }
+    const check = () => {
+      if (step.completeWhen()) {
+        actionDone.value = true
+        if (step.advanceMode === 'auto') {
+          clearInterval(completeInterval)
+          const nextStep = steps.value[index.value + 1]
+          if (nextStep) {
+            waitForSelector(nextStep.target).then(() => setTimeout(next, 300))
+          } else {
+            setTimeout(next, 300)
+          }
+        }
       }
     }
+    check()
+    completeInterval = setInterval(check, 250)
+    show.value = true
+    shownAtLeastOneStep.value = true
+  } catch (err) {
+    console.error('Error showing onboarding step', err)
+    restoreDisabled()
+    finish()
   }
-  check()
-  completeInterval = setInterval(check, 250)
-  show.value = true
-  shownAtLeastOneStep.value = true
 }
 
 function next() {
@@ -327,6 +368,9 @@ onMounted(showStep)
 }
 .onboarding-tooltip .skip-btn {
   color: var(--text-1);
+}
+.step-counter {
+  font-weight: 600;
 }
 .onboarding-overlay {
   position: fixed;
