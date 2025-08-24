@@ -25,7 +25,11 @@ export interface OnboardingStep {
   instruction: string
   requiredAction?: OnboardingRequiredAction
   advanceMode?: OnboardingAdvanceMode
-  completeWhen: () => boolean
+  completeWhen?: {
+    routeName?: string
+    path?: string
+    predicate?: () => boolean
+  }
   timeoutMs?: number
   a11yLabel?: string
 }
