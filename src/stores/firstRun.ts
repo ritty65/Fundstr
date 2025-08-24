@@ -38,9 +38,9 @@ export const useFirstRunStore = defineStore('firstRun', () => {
       tourStarted.value = true;
       startOnboardingTour(prefix, undefined, () => {
         tourStarted.value = false;
+        firstRunCompleted.value = true;
       });
       suppressModals.value = false;
-      firstRunCompleted.value = true;
     }, 5000);
   }
 
