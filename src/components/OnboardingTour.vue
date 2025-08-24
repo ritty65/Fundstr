@@ -32,45 +32,47 @@ const props = defineProps<{ pubkeyPrefix: string; onFinish: () => void }>()
 const ui = useUiStore()
 const { t } = useI18n()
 
-const steps = [
-  {
-    target: '[data-tour~="nav-toggle"]',
-    text: t('OnboardingTour.navToggle'),
-    anchor: 'bottom middle',
-    self: 'top middle',
-    onNext: () => ui.openMainNav(),
-  },
-  {
-    target: '[data-tour~="nav-dashboard"]',
-    text: t('OnboardingTour.navDashboard'),
-    anchor: 'right middle',
-    self: 'left middle',
-  },
-  {
-    target: '[data-tour~="nav-wallet"]',
-    text: t('OnboardingTour.navWallet'),
-    anchor: 'right middle',
-    self: 'left middle',
-  },
-  {
-    target: '[data-tour~="nav-find-creators"]',
-    text: t('OnboardingTour.navFindCreators'),
-    anchor: 'right middle',
-    self: 'left middle',
-  },
-  {
-    target: '[data-tour~="nav-subscriptions"]',
-    text: t('OnboardingTour.navSubscriptions'),
-    anchor: 'right middle',
-    self: 'left middle',
-  },
-  {
-    target: '[data-tour~="nav-settings"]',
-    text: t('OnboardingTour.navSettings'),
-    anchor: 'right middle',
-    self: 'left middle',
-  },
-]
+const steps = computed(() =>
+  [
+    !ui.mainNavOpen && {
+      target: '[data-tour~="nav-toggle"]',
+      text: t('OnboardingTour.navToggle'),
+      anchor: 'bottom middle',
+      self: 'top middle',
+      onNext: () => ui.openMainNav(),
+    },
+    {
+      target: '[data-tour~="nav-dashboard"]',
+      text: t('OnboardingTour.navDashboard'),
+      anchor: 'right middle',
+      self: 'left middle',
+    },
+    {
+      target: '[data-tour~="nav-wallet"]',
+      text: t('OnboardingTour.navWallet'),
+      anchor: 'right middle',
+      self: 'left middle',
+    },
+    {
+      target: '[data-tour~="nav-find-creators"]',
+      text: t('OnboardingTour.navFindCreators'),
+      anchor: 'right middle',
+      self: 'left middle',
+    },
+    {
+      target: '[data-tour~="nav-subscriptions"]',
+      text: t('OnboardingTour.navSubscriptions'),
+      anchor: 'right middle',
+      self: 'left middle',
+    },
+    {
+      target: '[data-tour~="nav-settings"]',
+      text: t('OnboardingTour.navSettings'),
+      anchor: 'right middle',
+      self: 'left middle',
+    },
+  ].filter(Boolean),
+)
 
 const index = ref(0)
 const current = ref<any>(null)
@@ -87,10 +89,10 @@ function finish() {
   props.onFinish()
 }
 
-const isLast = computed(() => index.value === steps.length - 1)
+const isLast = computed(() => index.value === steps.value.length - 1)
 
-async function showStep() {
-  const step = steps[index.value]
+async function showStep(retries = 0) {
+  const step = steps.value[index.value]
   if (!step) {
     finish()
     return
@@ -98,7 +100,12 @@ async function showStep() {
   await nextTick()
   const el = document.querySelector(step.target) as HTMLElement | null
   if (!el) {
-    setTimeout(showStep, 300)
+    if (retries >= 10) {
+      index.value++
+      showStep()
+    } else {
+      setTimeout(() => showStep(retries + 1), 300)
+    }
     return
   }
   current.value = { ...step, el }
@@ -107,8 +114,10 @@ async function showStep() {
 
 function next() {
   show.value = false
+  const before = steps.value.length
   current.value?.onNext?.()
-  index.value++
+  const diff = before - steps.value.length
+  index.value += 1 - diff
   setTimeout(showStep, 200)
 }
 
