@@ -19,7 +19,7 @@ export default boot(({ router }) => {
     }
 
     if (seen && isWelcome && !allow) {
-      next('/wallet')
+      next('/about')
       return
     }
 
