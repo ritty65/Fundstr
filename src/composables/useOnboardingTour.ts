@@ -18,13 +18,18 @@ export function resetOnboarding(prefix: string): void {
   LocalStorage.remove(key(prefix))
 }
 
-export function startOnboardingTour(prefix: string, steps?: OnboardingStep[]): void {
+export function startOnboardingTour(
+  prefix: string,
+  steps?: OnboardingStep[],
+  onFinish?: () => void
+): void {
   const el = document.createElement('div')
   document.body.appendChild(el)
   const app = createApp(OnboardingTour, {
     pubkeyPrefix: prefix,
     steps,
     onFinish: () => {
+      onFinish?.()
       app.unmount()
       el.remove()
     },

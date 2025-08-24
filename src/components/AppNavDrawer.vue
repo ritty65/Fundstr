@@ -14,8 +14,8 @@
     elevated
     tabindex="0"
     :content-class="drawerContentClass"
-    @hide="ui.closeMainNav()"
-    @keyup.esc="ui.closeMainNav()"
+    @hide="!firstRun.tourStarted && ui.closeMainNav()"
+    @keyup.esc="!firstRun.tourStarted && ui.closeMainNav()"
   >
     <div>
       <q-btn
@@ -25,7 +25,7 @@
         icon="close"
         color="primary"
         aria-label="Close navigation"
-        @click="ui.closeMainNav()"
+        @click="firstRun.tourStarted ? undefined : ui.closeMainNav()"
         class="q-mb-sm"
       >
         <q-tooltip>Close</q-tooltip>
@@ -184,7 +184,7 @@
         v-for="link in essentialLinks"
         :key="link.title"
         v-bind="link"
-        @click="ui.closeMainNav()"
+        @click="!firstRun.tourStarted && ui.closeMainNav()"
       />
     </q-list>
   </q-drawer>
@@ -198,6 +198,7 @@ import { useNostrStore } from "src/stores/nostr";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import EssentialLink from "components/EssentialLink.vue";
+import { useFirstRunStore } from "src/stores/firstRun";
 import { NAV_DRAWER_WIDTH } from "src/constants/layout";
 import FindCreatorsIcon from "src/components/icons/FindCreatorsIcon.vue";
 import CreatorHubIcon from "src/components/icons/CreatorHubIcon.vue";
@@ -207,10 +208,11 @@ const router = useRouter();
 const nostrStore = useNostrStore();
 const { t } = useI18n();
 const $q = useQuasar();
+const firstRun = useFirstRunStore();
 
 function goto(path: string) {
   router.push(path);
-  ui.closeMainNav();
+  if (!firstRun.tourStarted) ui.closeMainNav();
 }
 const gotoDashboard = () => goto("/dashboard");
 const gotoWallet = () => goto("/wallet");

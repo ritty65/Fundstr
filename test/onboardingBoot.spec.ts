@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 describe('onboarding boot', () => {
@@ -25,8 +25,8 @@ describe('onboarding boot', () => {
     document.body.innerHTML = '<div data-tour="nav-toggle"></div>'
     router.currentRoute.value.path = '/wallet'
     afterEachCbs.forEach(cb => cb())
-    await Promise.resolve()
-    expect(startSpy).toHaveBeenCalled()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(startSpy).toHaveBeenCalledWith('abcdef12', undefined, expect.any(Function))
     vi.unmock('src/composables/useOnboardingTour')
     vi.resetModules()
   })

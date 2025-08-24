@@ -22,14 +22,33 @@ export default boot(async ({ router }) => {
       const prefix = (nostr.pubkey || 'anon').slice(0, 8)
       if (hasCompletedOnboarding(prefix)) return
       await nextTick()
-      for (let i = 0; i < 3; i++) {
-        if (document.querySelector('[data-tour]')) break
-        await new Promise(r => setTimeout(r, 200))
+
+      const found = await new Promise<boolean>(resolve => {
+        if (document.querySelector('[data-tour]')) {
+          resolve(true)
+          return
+        }
+        const observer = new MutationObserver(() => {
+          if (document.querySelector('[data-tour]')) {
+            observer.disconnect()
+            clearTimeout(timeout)
+            resolve(true)
+          }
+        })
+        observer.observe(document.body, { childList: true, subtree: true })
+        const timeout = setTimeout(() => {
+          observer.disconnect()
+          resolve(false)
+        }, 5000)
+      })
+
+      if (!found) {
+        firstRunStore.tourStarted = false
+        return
       }
-      if (!document.querySelector('[data-tour]')) return
       started = true
       firstRunStore.tourStarted = true
-      startOnboardingTour(prefix)
+      startOnboardingTour(prefix, undefined, reset)
     }
 
     const reset = () => {

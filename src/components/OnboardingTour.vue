@@ -20,6 +20,9 @@
       content-class="onboarding-tooltip"
     >
       <div class="onboarding-body">
+        <div class="text-caption text-2 q-mb-xs">
+          {{ t('OnboardingTour.step', { current: index + 1, total: steps.length }) }}
+        </div>
         <div class="q-mb-sm">{{ current.instruction }}</div>
         <div class="row justify-end q-gutter-sm">
           <q-btn
@@ -82,6 +85,7 @@ const internalSteps = computed<OnboardingStep[]>(() =>
       placement: 'right',
       requiredAction: 'click',
       advanceMode: 'auto',
+      ensure: () => ui.openMainNav(),
       completeWhen: () => router.currentRoute.value.path === '/dashboard',
     },
     {
@@ -91,6 +95,7 @@ const internalSteps = computed<OnboardingStep[]>(() =>
       placement: 'right',
       requiredAction: 'click',
       advanceMode: 'auto',
+      ensure: () => ui.openMainNav(),
       completeWhen: () => router.currentRoute.value.path === '/wallet',
     },
     {
@@ -100,6 +105,7 @@ const internalSteps = computed<OnboardingStep[]>(() =>
       placement: 'right',
       requiredAction: 'click',
       advanceMode: 'auto',
+      ensure: () => ui.openMainNav(),
       completeWhen: () => router.currentRoute.value.path === '/find-creators',
     },
     {
@@ -109,6 +115,7 @@ const internalSteps = computed<OnboardingStep[]>(() =>
       placement: 'right',
       requiredAction: 'click',
       advanceMode: 'auto',
+      ensure: () => ui.openMainNav(),
       completeWhen: () => router.currentRoute.value.path === '/subscriptions',
     },
     {
@@ -118,6 +125,7 @@ const internalSteps = computed<OnboardingStep[]>(() =>
       placement: 'right',
       requiredAction: 'click',
       advanceMode: 'auto',
+      ensure: () => ui.openMainNav(),
       completeWhen: () => router.currentRoute.value.path === '/settings',
     },
   ].filter(Boolean) as OnboardingStep[],
@@ -207,9 +215,9 @@ async function showStep(retries = 0) {
   await nextTick()
   const el = document.querySelector(step.target) as HTMLElement | null
   if (!el) {
-    if (retries >= 10) {
-      index.value++
-      showStep()
+    if (retries >= 20) {
+      console.error(`Onboarding step target not found: ${step.target}`)
+      finish()
     } else {
       setTimeout(() => showStep(retries + 1), 300)
     }
