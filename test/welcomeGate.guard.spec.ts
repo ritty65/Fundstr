@@ -19,6 +19,7 @@ async function setup({
   const routes = [
     { path: '/', component: {} },
     { path: '/wallet', component: {} },
+    { path: '/about', component: {} },
     { path: '/welcome', component: {} },
     { path: '/restore', component: {} },
   ]
@@ -58,7 +59,7 @@ describe('welcome gate router guard', () => {
   it('redirects away from /welcome after completion', async () => {
     const router = await setup({ seen: true })
     await router.push('/welcome')
-    expect(router.currentRoute.value.fullPath).toBe('/wallet')
+    expect(router.currentRoute.value.fullPath).toBe('/about')
   })
 
   it('allows /welcome with allow flag in dev env', async () => {

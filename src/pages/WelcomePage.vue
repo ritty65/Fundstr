@@ -89,7 +89,7 @@ onMounted(() => {
   const allow =
     route.query.allow === '1' && (env === 'development' || env === 'staging')
   if (route.path.startsWith('/welcome') && hasSeenWelcome() && !allow) {
-    router.replace('/wallet')
+    router.replace('/about')
   }
 })
 
@@ -107,7 +107,7 @@ async function finishOnboarding() {
   // remember that the welcome flow has been completed on this device
   markWelcomeSeen()
   await nextTick()
-  router.replace('/wallet')
+  router.replace('/about')
 }
 
 const slides = [
