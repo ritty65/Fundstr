@@ -27,7 +27,6 @@
             @click="ui.toggleMainNav"
             ref="mainNavBtn"
             :disable="ui.globalMutexLock"
-            data-tour="nav-toggle"
           >
           <q-tooltip>Menu</q-tooltip>
         </q-btn>

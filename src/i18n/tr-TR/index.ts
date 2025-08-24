@@ -1996,22 +1996,6 @@ export const messages = {
       },
     },
   },
-  OnboardingTour: {
-    navToggle:
-      "☰ (sol üstteki menü) düğmesine tıklayarak kenar çubuğunu aç. Bu turu Ayarlar'dan tekrar başlatabilirsin.",
-    navDashboard: "Bakiye ve etkinliği görmek için Gösterge Paneli'ni seç.",
-    navWallet: "Yatırma ve çekimleri yönetmek için Cüzdan'ı seç.",
-    navFindCreators:
-      "Destekleyecek kişileri keşfetmek için Yaratıcı Bul'u seç.",
-    navSubscriptions:
-      "Kimi desteklediğini yönetmek için Abonelikler'i seç.",
-    navSettings:
-      "Tercihleri güncellemek ve turu yeniden başlatmak için Ayarlar'ı (dişli simgesi) seç.",
-    step: 'Adım {current} / {total}',
-    skip: "Turu atla",
-    gotIt: "Anladım",
-    next: "Devam et",
-  },
 };
 
 export default {

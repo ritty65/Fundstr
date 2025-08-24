@@ -1996,20 +1996,6 @@ export const messages = {
       },
     },
   },
-  OnboardingTour: {
-    navToggle:
-      "Tocca ☰ (menu in alto a sinistra) per aprire la barra laterale. Puoi riavviare questo tour da Impostazioni.",
-    navDashboard: "Scegli Dashboard per vedere saldi e attività.",
-    navWallet: "Scegli Portafoglio per gestire depositi e prelievi.",
-    navFindCreators: "Scegli Trova creator per scoprire chi sostenere.",
-    navSubscriptions: "Scegli Abbonamenti per gestire chi sostieni.",
-    navSettings:
-      "Scegli Impostazioni (icona ingranaggio) per aggiornare le preferenze e riavviare questo tour.",
-    step: 'Passo {current} di {total}',
-    skip: "Salta tour",
-    gotIt: "Fatto",
-    next: "Continua",
-  },
 };
 
 export default {

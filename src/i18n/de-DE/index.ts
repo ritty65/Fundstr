@@ -1996,20 +1996,6 @@ export const messages = {
       },
     },
   },
-  OnboardingTour: {
-    navToggle:
-      "Klicke auf ☰ (Navigation umschalten, oben links), um die Seitenleiste zu öffnen. Du kannst diese Tour unter Einstellungen erneut starten.",
-    navDashboard: "Wähle Dashboard, um Salden und Aktivitäten zu sehen.",
-    navWallet: "Wähle Wallet, um Ein- und Auszahlungen zu verwalten.",
-    navFindCreators: "Wähle Creator finden, um neue Unterstützte zu entdecken.",
-    navSubscriptions: "Wähle Abonnements, um deine Unterstützungen zu verwalten.",
-    navSettings:
-      "Wähle Einstellungen (Zahnrad), um Präferenzen zu ändern und die Tour erneut zu starten.",
-    step: 'Schritt {current} von {total}',
-    skip: "Tour überspringen",
-    gotIt: "Verstanden",
-    next: "Weiter",
-  },
 };
 
 export default {

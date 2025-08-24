@@ -1996,20 +1996,6 @@ export const messages = {
       },
     },
   },
-  OnboardingTour: {
-    navToggle:
-      "点击左上角的 ☰ 切换导航，打开侧边栏。可在设置中重新开始此引导。",
-    navDashboard: "选择“仪表盘”查看余额和活动。",
-    navWallet: "选择“钱包”管理存取款。",
-    navFindCreators: "选择“发现创作者”寻找要支持的人。",
-    navSubscriptions: "选择“订阅”管理你支持的人。",
-    navSettings:
-      "选择“设置”（齿轮图标）更新偏好并重新开始此引导。",
-    step: '第 {current} 步，共 {total} 步',
-    skip: "跳过导览",
-    gotIt: "知道了",
-    next: "继续",
-  },
 };
 
 export default {

@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 export default configure(() => ({
-  boot: ['welcomeGate', 'cashu', 'i18n', 'node-globals', 'onboardingTour'],
+  boot: ['welcomeGate', 'cashu', 'i18n', 'node-globals'],
   css: ['app.scss', 'base.scss', 'buckets.scss'],
   extras: ['roboto-font', 'material-icons'],
   build: {
