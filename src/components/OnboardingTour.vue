@@ -300,6 +300,8 @@ async function showStep(retries = 0) {
         overlay.value = undefined
         show.value = true
         shownAtLeastOneStep.value = true
+        restoreDisabled()
+        setTimeout(skipStep, 1500)
       } else {
         setTimeout(() => showStep(retries + 1), 300)
       }
