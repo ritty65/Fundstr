@@ -12,11 +12,16 @@ import { useUiStore } from 'src/stores/ui'
 
 const BLOCKED_ROUTES = ['/welcome', '/onboarding', '/tour']
 
+const ENABLE_LEGACY_TOOLTIP_TOUR = false
+
 function canRunOnRoute(path: string) {
   return !BLOCKED_ROUTES.some(r => path.startsWith(r))
 }
 
 export default boot(async ({ router }) => {
+  if (!ENABLE_LEGACY_TOOLTIP_TOUR) {
+    return
+  }
   router.isReady().then(() => {
     const nostr = useNostrStore()
     const firstRunStore = useFirstRunStore()

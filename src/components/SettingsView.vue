@@ -1542,26 +1542,6 @@
             <q-item>
               <q-item-section>
                 <div class="row">
-                  <q-btn dense flat outline click @click="resetTour">
-                    {{
-                      $t("Settings.advanced.developer.reset_onboarding.button")
-                    }}
-                  </q-btn>
-                </div>
-                <div class="row">
-                  <q-item-label class="q-px-sm" caption
-                    >{{
-                      $t(
-                        "Settings.advanced.developer.reset_onboarding.description",
-                      )
-                    }}
-                  </q-item-label>
-                </div>
-              </q-item-section>
-            </q-item>
-            <q-item>
-              <q-item-section>
-                <div class="row">
                   <q-btn
                       dense
                       flat
@@ -1689,26 +1669,15 @@
                   </div>
                 </q-item-section>
               </q-item>
-              <q-item>
-                <q-item-section>
-                  <div class="row">
-                    <q-btn dense flat outline click @click="showTour">
-                      {{
-                        $t("Settings.advanced.developer.show_onboarding.button")
-                      }}
-                    </q-btn>
-                  </div>
-                  <div class="row">
-                    <q-item-label class="q-px-sm" caption
-                      >{{
-                        $t(
-                          "Settings.advanced.developer.show_onboarding.description",
-                        )
-                      }}
-                    </q-item-label>
-                  </div>
-                </q-item-section>
-              </q-item>
+                <q-item>
+                  <q-item-section>
+                    <div class="row">
+                      <q-btn dense flat outline @click="replayAutoTour">
+                        Replay automated tour
+                      </q-btn>
+                    </div>
+                  </q-item-section>
+                </q-item>
               <q-item>
                 <q-item-section>
                   <div class="row">
@@ -1826,12 +1795,9 @@ import { usePRStore } from "../stores/payment-request";
 import { useRestoreStore } from "src/stores/restore";
 import { useDexieStore } from "../stores/dexie";
 import { useReceiveTokensStore } from "../stores/receiveTokensStore";
-import {
-  resetOnboarding,
-  startOnboardingTour,
-  getBrowserId,
-} from "src/composables/useOnboardingTour";
-import { useFirstRunStore } from "src/stores/firstRun";
+import { useAutoPageTour } from "src/composables/useAutoPageTour";
+import { LocalStorage } from "quasar";
+import { LOCAL_STORAGE_KEYS } from "src/constants/localStorageKeys";
 import { useStorageStore } from "src/stores/storage";
 import { useI18n } from "vue-i18n";
 
@@ -2144,26 +2110,12 @@ export default defineComponent({
       await this.resetNip46Signer();
       await this.generateNPCConnection();
     },
-    showTour: async function () {
-      const prefix = (useNostrStore().pubkey || getBrowserId()).slice(0, 8)
-      resetOnboarding(prefix)
-      const firstRunStore = useFirstRunStore()
-      firstRunStore.firstRunCompleted = false
+    replayAutoTour: function () {
+      LocalStorage.remove(LOCAL_STORAGE_KEYS.FUNDSTR_AUTOTOUR_DONE)
       this.$router.push('/wallet').then(() => {
-        setTimeout(() => {
-          firstRunStore.tourStarted = true
-          startOnboardingTour(prefix, this.$router, undefined, () => {
-            firstRunStore.tourStarted = false
-            firstRunStore.firstRunCompleted = true
-          })
-        }, 300)
+        const { startAutoPageTour } = useAutoPageTour()
+        startAutoPageTour({ replay: true })
       })
-    },
-    resetTour: function () {
-      const prefix = (useNostrStore().pubkey || getBrowserId()).slice(0, 8)
-      resetOnboarding(prefix)
-      const firstRunStore = useFirstRunStore()
-      firstRunStore.firstRunCompleted = false
     },
     nukeWallet: async function () {
       // create a backup just in case
