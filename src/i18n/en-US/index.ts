@@ -506,6 +506,10 @@ export const messages = {
           button: "Replay tutorial",
           description: "Restart the onboarding tour from the beginning.",
         },
+        reset_onboarding: {
+          button: "Reset onboarding",
+          description: "Clear onboarding status for this browser.",
+        },
         reset_wallet: {
           button: "Reset wallet data",
           description:

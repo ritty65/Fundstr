@@ -2,7 +2,11 @@ import { boot } from 'quasar/wrappers'
 import { nextTick, watch } from 'vue'
 import { Notify } from 'quasar'
 import { useNostrStore } from 'src/stores/nostr'
-import { hasCompletedOnboarding, startOnboardingTour } from 'src/composables/useOnboardingTour'
+import {
+  hasCompletedOnboarding,
+  startOnboardingTour,
+  getBrowserId,
+} from 'src/composables/useOnboardingTour'
 import { useFirstRunStore } from 'src/stores/firstRun'
 import { useUiStore } from 'src/stores/ui'
 
@@ -65,7 +69,7 @@ export default boot(async ({ router }) => {
     const tryStart = async () => {
       const path = router.currentRoute.value.path
       if (started || firstRunStore.tourStarted || firstRunStore.suppressModals || !canRunOnRoute(path)) return
-      const prefix = (nostr.pubkey || 'anon').slice(0, 8)
+      const prefix = (nostr.pubkey || getBrowserId()).slice(0, 8)
       if (hasCompletedOnboarding(prefix)) return
       await nextTick()
 
