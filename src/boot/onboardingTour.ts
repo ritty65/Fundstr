@@ -2,6 +2,7 @@ import { boot } from 'quasar/wrappers'
 import { nextTick, watch } from 'vue'
 import { useNostrStore } from 'src/stores/nostr'
 import { hasCompletedOnboarding, startOnboardingTour } from 'src/composables/useOnboardingTour'
+import { useFirstRunStore } from 'src/stores/firstRun'
 
 const MAIN_ROUTES = ['/dashboard', '/wallet', '/find-creators', '/subscriptions', '/settings']
 
@@ -12,11 +13,12 @@ function isMainRoute(path: string) {
 export default boot(async ({ router }) => {
   router.isReady().then(() => {
     const nostr = useNostrStore()
+    const firstRunStore = useFirstRunStore()
     let started = false
 
     const tryStart = async () => {
       const path = router.currentRoute.value.path
-      if (started || !isMainRoute(path)) return
+      if (started || firstRunStore.tourStarted || firstRunStore.suppressModals || !isMainRoute(path)) return
       const prefix = (nostr.pubkey || 'anon').slice(0, 8)
       if (hasCompletedOnboarding(prefix)) return
       await nextTick()
@@ -26,11 +28,13 @@ export default boot(async ({ router }) => {
       }
       if (!document.querySelector('[data-tour]')) return
       started = true
+      firstRunStore.tourStarted = true
       startOnboardingTour(prefix)
     }
 
     const reset = () => {
       started = false
+      firstRunStore.tourStarted = false
     }
 
     watch(

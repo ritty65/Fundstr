@@ -52,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
@@ -72,6 +72,7 @@ import { useMnemonicStore } from 'src/stores/mnemonic'
 import { useStorageStore } from 'src/stores/storage'
 import { useNostrStore } from 'src/stores/nostr'
 import { useNdk } from 'src/composables/useNdk'
+import { useFirstRunStore } from 'src/stores/firstRun'
 
 const { t } = useI18n()
 const welcome = useWelcomeStore()
@@ -83,6 +84,7 @@ const storageStore = useStorageStore()
 const nostr = useNostrStore()
 const showSeedDialog = ref(false)
 const showChecklist = ref(false)
+const firstRunStore = useFirstRunStore()
 
 onMounted(() => {
   const env = import.meta.env.VITE_APP_ENV
@@ -106,7 +108,7 @@ function finishOnboarding() {
   welcome.closeWelcome()
   // remember that the welcome flow has been completed on this device
   markWelcomeSeen()
-  router.push('/')
+  firstRunStore.beginFirstRun(router)
 }
 
 const slides = [
@@ -168,5 +170,9 @@ onMounted(() => {
       }
     })
     .catch(() => {})
+})
+
+onUnmounted(() => {
+  firstRunStore.cancelTimeout()
 })
 </script>
