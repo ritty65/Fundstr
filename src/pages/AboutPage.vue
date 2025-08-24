@@ -90,23 +90,34 @@
           The loop is simple: Bitcoin in → private e-cash out → social payments
           everywhere.
         </p>
-        <div class="flex flex-col md:flex-row items-center justify-center gap-8">
-          <div class="flex flex-col items-center text-center max-w-xs">
-            <q-icon name="currency_bitcoin" size="32px" class="mb-4 text-accent" aria-hidden="true" />
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 justify-items-center">
+          <div class="how-step relative flex flex-col items-center text-center max-w-xs">
+            <q-icon
+              name="currency_bitcoin"
+              size="32px"
+              class="mb-4 text-accent"
+              aria-hidden="true"
+            />
             <h3 class="font-semibold text-lg mb-1">Your Bitcoin</h3>
             <p class="text-sm">From any wallet</p>
           </div>
-          <q-icon name="arrow_downward" size="32px" class="md:hidden text-1" aria-hidden="true" />
-          <q-icon name="arrow_forward" size="32px" class="hidden md:block text-1" aria-hidden="true" />
-          <div class="flex flex-col items-center text-center max-w-xs">
-            <q-icon name="account_balance" size="32px" class="mb-4 text-accent" aria-hidden="true" />
+          <div class="how-step relative flex flex-col items-center text-center max-w-xs">
+            <q-icon
+              name="account_balance"
+              size="32px"
+              class="mb-4 text-accent"
+              aria-hidden="true"
+            />
             <h3 class="font-semibold text-lg mb-1">The Mint</h3>
             <p class="text-sm">Issues ecash tokens</p>
           </div>
-          <q-icon name="arrow_downward" size="32px" class="md:hidden text-1" aria-hidden="true" />
-          <q-icon name="arrow_forward" size="32px" class="hidden md:block text-1" aria-hidden="true" />
-          <div class="flex flex-col items-center text-center max-w-xs">
-            <q-icon name="account_balance_wallet" size="32px" class="mb-4 text-accent" aria-hidden="true" />
+          <div class="how-step relative flex flex-col items-center text-center max-w-xs">
+            <q-icon
+              name="account_balance_wallet"
+              size="32px"
+              class="mb-4 text-accent"
+              aria-hidden="true"
+            />
             <h3 class="font-semibold text-lg mb-1">Fundstr Wallet</h3>
             <p class="text-sm">Spend privately</p>
           </div>
@@ -896,6 +907,59 @@ blockquote {
   border-radius: 0.5rem;
   padding: 1rem;
   box-shadow: 0 0 10px rgba(var(--color-accent-rgb), 0.25);
+}
+
+#how-it-works .how-step {
+  position: relative;
+}
+
+#how-it-works .how-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  background-color: var(--text-1);
+}
+
+#how-it-works .how-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  border-style: solid;
+  border-color: transparent;
+}
+
+@media (min-width: 768px) {
+  #how-it-works .how-step:not(:last-child)::after {
+    top: 50%;
+    right: -2rem;
+    width: 2rem;
+    height: 2px;
+    transform: translateY(-50%);
+  }
+
+  #how-it-works .how-step:not(:last-child)::before {
+    top: 50%;
+    right: -2rem;
+    transform: translate(100%, -50%);
+    border-width: 5px 0 5px 5px;
+    border-color: transparent transparent transparent var(--text-1);
+  }
+}
+
+@media (max-width: 767px) {
+  #how-it-works .how-step:not(:last-child)::after {
+    left: 50%;
+    bottom: -2rem;
+    width: 2px;
+    height: 2rem;
+    transform: translateX(-50%);
+  }
+
+  #how-it-works .how-step:not(:last-child)::before {
+    left: 50%;
+    bottom: -2rem;
+    transform: translate(-50%, 100%);
+    border-width: 5px 5px 0 5px;
+    border-color: var(--text-1) transparent transparent transparent;
+  }
 }
 
 </style>
