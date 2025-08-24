@@ -23,6 +23,11 @@ vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: (s: string) => s })
 }))
 
+// mock router
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ currentRoute: { value: { path: '/' } } })
+}))
+
 // mock stores
 const nostrStore = reactive<{ pubkey: string | null }>({ pubkey: null })
 vi.mock('src/stores/nostr', () => ({

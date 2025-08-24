@@ -4,6 +4,7 @@ import { LocalStorage, Quasar } from 'quasar'
 import { mount } from '@vue/test-utils'
 import OnboardingTour from 'src/components/OnboardingTour.vue'
 import { i18n } from 'src/boot/i18n'
+vi.mock('vue-router', () => ({ useRouter: () => ({ currentRoute: { value: { path: '/' } } }) }))
 
 describe('OnboardingTour component', () => {
   beforeEach(() => {

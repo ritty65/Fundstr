@@ -10,8 +10,9 @@
     <q-menu
       v-model="show"
       :target="current.el"
-      :anchor="current.anchor"
-      :self="current.self"
+      :anchor="menuPlacement.anchor"
+      :self="menuPlacement.self"
+      :offset="menuOffset"
       no-parent-event
       persistent
       transition-show="fade"
@@ -19,7 +20,7 @@
       content-class="onboarding-tooltip"
     >
       <div class="onboarding-body">
-        <div class="q-mb-sm">{{ current.text }}</div>
+        <div class="q-mb-sm">{{ current.instruction }}</div>
         <div class="row justify-end q-gutter-sm">
           <q-btn
             flat
@@ -51,6 +52,7 @@ import { LocalStorage } from 'quasar'
 import { useUiStore } from 'src/stores/ui'
 import { LOCAL_STORAGE_KEYS } from 'src/constants/localStorageKeys'
 import type { OnboardingStep } from 'src/types/onboarding'
+import { useRouter } from 'vue-router'
 
 const props = defineProps<{
   pubkeyPrefix: string
@@ -60,56 +62,63 @@ const props = defineProps<{
 
 const ui = useUiStore()
 const { t } = useI18n()
+const router = useRouter()
 
 const internalSteps = computed<OnboardingStep[]>(() =>
   [
     !ui.mainNavOpen && {
+      id: 'nav-toggle',
       target: '[data-tour~="nav-toggle"]',
-      text: t('OnboardingTour.navToggle'),
-      anchor: 'bottom middle',
-      self: 'top middle',
+      instruction: t('OnboardingTour.navToggle'),
+      placement: 'bottom',
       requiredAction: 'click',
       advanceMode: 'auto',
+      completeWhen: () => ui.mainNavOpen,
     },
     {
+      id: 'nav-dashboard',
       target: '[data-tour~="nav-dashboard"]',
-      text: t('OnboardingTour.navDashboard'),
-      anchor: 'right middle',
-      self: 'left middle',
+      instruction: t('OnboardingTour.navDashboard'),
+      placement: 'right',
       requiredAction: 'click',
       advanceMode: 'auto',
+      completeWhen: () => router.currentRoute.value.path === '/dashboard',
     },
     {
+      id: 'nav-wallet',
       target: '[data-tour~="nav-wallet"]',
-      text: t('OnboardingTour.navWallet'),
-      anchor: 'right middle',
-      self: 'left middle',
+      instruction: t('OnboardingTour.navWallet'),
+      placement: 'right',
       requiredAction: 'click',
       advanceMode: 'auto',
+      completeWhen: () => router.currentRoute.value.path === '/wallet',
     },
     {
+      id: 'nav-find-creators',
       target: '[data-tour~="nav-find-creators"]',
-      text: t('OnboardingTour.navFindCreators'),
-      anchor: 'right middle',
-      self: 'left middle',
+      instruction: t('OnboardingTour.navFindCreators'),
+      placement: 'right',
       requiredAction: 'click',
       advanceMode: 'auto',
+      completeWhen: () => router.currentRoute.value.path === '/find-creators',
     },
     {
+      id: 'nav-subscriptions',
       target: '[data-tour~="nav-subscriptions"]',
-      text: t('OnboardingTour.navSubscriptions'),
-      anchor: 'right middle',
-      self: 'left middle',
+      instruction: t('OnboardingTour.navSubscriptions'),
+      placement: 'right',
       requiredAction: 'click',
       advanceMode: 'auto',
+      completeWhen: () => router.currentRoute.value.path === '/subscriptions',
     },
     {
+      id: 'nav-settings',
       target: '[data-tour~="nav-settings"]',
-      text: t('OnboardingTour.navSettings'),
-      anchor: 'right middle',
-      self: 'left middle',
+      instruction: t('OnboardingTour.navSettings'),
+      placement: 'right',
       requiredAction: 'click',
       advanceMode: 'auto',
+      completeWhen: () => router.currentRoute.value.path === '/settings',
     },
   ].filter(Boolean) as OnboardingStep[],
 )
@@ -129,6 +138,36 @@ const overlay = ref<{
   height: number
 }>()
 const disabledEls: { el: HTMLElement; pointer: string; opacity: string }[] = []
+let completeInterval: ReturnType<typeof setInterval>
+
+const menuPlacement = computed(() => {
+  const placement = current.value?.placement || 'auto'
+  switch (placement) {
+    case 'top':
+      return { anchor: 'top middle', self: 'bottom middle' }
+    case 'left':
+      return { anchor: 'center left', self: 'center right' }
+    case 'right':
+      return { anchor: 'center right', self: 'center left' }
+    case 'bottom':
+    default:
+      return { anchor: 'bottom middle', self: 'top middle' }
+  }
+})
+
+const menuOffset = computed((): [number, number] => {
+  const offset = current.value?.offset ?? 0
+  const placement = current.value?.placement || 'auto'
+  switch (placement) {
+    case 'left':
+    case 'right':
+      return [offset, 0]
+    case 'top':
+    case 'bottom':
+    default:
+      return [0, offset]
+  }
+})
 
 const storageKey = `${LOCAL_STORAGE_KEYS.FUNDSTR_ONBOARDING_DONE}:${props.pubkeyPrefix}:done`
 
@@ -162,6 +201,9 @@ async function showStep(retries = 0) {
     finish()
     return
   }
+  if (step.ensure) {
+    await step.ensure()
+  }
   await nextTick()
   const el = document.querySelector(step.target) as HTMLElement | null
   if (!el) {
@@ -176,35 +218,44 @@ async function showStep(retries = 0) {
   current.value = { ...step, el }
   actionDone.value = false
   const rect = el.getBoundingClientRect()
+  const padding = step.padding ?? 0
   overlay.value = {
-    top: rect.top,
-    bottom: rect.bottom,
-    left: rect.left,
-    right: rect.right,
-    height: rect.height,
+    top: rect.top - padding,
+    bottom: rect.bottom + padding,
+    left: rect.left - padding,
+    right: rect.right + padding,
+    height: rect.height + padding * 2,
   }
   el.scrollIntoView({ behavior: 'smooth', block: 'center' })
   el.focus?.()
   if (step.requiredAction === 'click') {
     const handler = () => {
-      actionDone.value = true
       el.removeEventListener('click', handler)
       disabledEls.push({ el, pointer: el.style.pointerEvents, opacity: el.style.opacity })
       el.style.pointerEvents = 'none'
       el.style.opacity = '0.6'
-      if (step.advanceMode === 'auto') {
-        next()
-      }
     }
     el.addEventListener('click', handler)
     current.value.cleanup = () => el.removeEventListener('click', handler)
   }
+  const check = () => {
+    if (step.completeWhen()) {
+      actionDone.value = true
+      if (step.advanceMode === 'auto') {
+        clearInterval(completeInterval)
+        setTimeout(next, 300)
+      }
+    }
+  }
+  check()
+  completeInterval = setInterval(check, 250)
   show.value = true
   shownAtLeastOneStep.value = true
 }
 
 function next() {
   show.value = false
+  clearInterval(completeInterval)
   current.value?.cleanup?.()
   const before = steps.value.length
   current.value?.onNext?.()
@@ -214,6 +265,7 @@ function next() {
 }
 
 function skip() {
+  clearInterval(completeInterval)
   current.value?.cleanup?.()
   finish()
 }
