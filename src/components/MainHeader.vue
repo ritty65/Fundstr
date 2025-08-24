@@ -47,7 +47,7 @@
           leave-active-class="animated fadeOut"
         >
           <q-badge
-            v-if="g.offline"
+            v-if="ui.offline"
             color="red"
             text-color="black"
             class="q-mr-sm"
