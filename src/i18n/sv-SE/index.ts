@@ -106,6 +106,7 @@ export const messages = {
   },
   MainHeader: {
     menu: {
+      dashboard: { title: "Dashboard" }, // TODO: translate
       wallet: { title: "@:FullscreenHeader.actions.back.label" },
       nostrMessenger: { title: "@:AboutPage.siteOverview.nostrMessengerTitle" },
       restore: { title: "@:AboutPage.siteOverview.restoreTitle" },
@@ -1992,6 +1993,7 @@ export const messages = {
     },
   },
   OnboardingTour: {
+    // TODO: update onboarding tour messages
     navToggle: "Öppna sidomenyn för att byta sida. Kör om turen via Inställningar.",
     navDashboard: "Din överblick: saldon, senaste aktivitet och snabblänkar.",
     navWallet: "Sätt in eller ta ut pengar och se dina transaktioner här.",

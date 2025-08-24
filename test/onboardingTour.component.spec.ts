@@ -17,7 +17,7 @@ describe('OnboardingTour component', () => {
       global: { plugins: [[Quasar, {}], i18n] },
     })
     ;(wrapper.vm as any).finish()
-    expect(LocalStorage.getItem('fundstr:onboarding:v1:test:done')).toBeNull()
+    expect(LocalStorage.getItem('fundstr:onboarding:v2:test:done')).toBeNull()
   })
 
   it('marks done when a step was shown', () => {
@@ -27,13 +27,13 @@ describe('OnboardingTour component', () => {
     })
     ;(wrapper.vm as any).shownAtLeastOneStep = true
     ;(wrapper.vm as any).finish()
-    expect(LocalStorage.getItem('fundstr:onboarding:v1:test2:done')).toBe('1')
+    expect(LocalStorage.getItem('fundstr:onboarding:v2:test2:done')).toBe('1')
   })
 
   it('resetOnboarding clears key', async () => {
-    LocalStorage.set('fundstr:onboarding:v1:abc:done', '1')
+    LocalStorage.set('fundstr:onboarding:v2:abc:done', '1')
     const { resetOnboarding } = await import('src/composables/useOnboardingTour')
     resetOnboarding('abc')
-    expect(LocalStorage.getItem('fundstr:onboarding:v1:abc:done')).toBeNull()
+    expect(LocalStorage.getItem('fundstr:onboarding:v2:abc:done')).toBeNull()
   })
 })

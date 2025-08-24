@@ -35,14 +35,20 @@
       <q-item-label header>{{
         $t("MainHeader.menu.settings.title")
       }}</q-item-label>
-      <q-item clickable @click="gotoWallet" data-tour="nav-dashboard nav-wallet">
+      <q-item clickable @click="gotoDashboard" data-tour="nav-dashboard">
+        <q-item-section avatar>
+          <q-icon name="dashboard" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>{{ $t("MainHeader.menu.dashboard.title") }}</q-item-label>
+        </q-item-section>
+      </q-item>
+      <q-item clickable @click="gotoWallet" data-tour="nav-wallet">
         <q-item-section avatar>
           <q-icon name="account_balance_wallet" />
         </q-item-section>
         <q-item-section>
-          <q-item-label>{{
-            $t("FullscreenHeader.actions.back.label")
-          }}</q-item-label>
+          <q-item-label>{{ $t("MainHeader.menu.wallet.title") }}</q-item-label>
         </q-item-section>
       </q-item>
       <q-item clickable @click="gotoSettings" data-tour="nav-settings">
@@ -206,6 +212,7 @@ function goto(path: string) {
   router.push(path);
   ui.closeMainNav();
 }
+const gotoDashboard = () => goto("/");
 const gotoWallet = () => goto("/wallet");
 const gotoSettings = () => goto("/settings");
 const gotoFindCreators = () => goto("/find-creators");

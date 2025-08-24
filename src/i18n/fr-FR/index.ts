@@ -106,6 +106,7 @@ export const messages = {
   },
   MainHeader: {
     menu: {
+      dashboard: { title: "Dashboard" }, // TODO: translate
       wallet: { title: "@:FullscreenHeader.actions.back.label" },
       nostrMessenger: { title: "@:AboutPage.siteOverview.nostrMessengerTitle" },
       restore: { title: "@:AboutPage.siteOverview.restoreTitle" },
@@ -1992,6 +1993,7 @@ export const messages = {
     },
   },
   OnboardingTour: {
+    // TODO: update onboarding tour messages
     navToggle:
       "Ouvre la barre latérale pour changer de page. Relance ce tutoriel via les paramètres.",
     navDashboard: "Vue d’ensemble : soldes, activité récente et raccourcis.",

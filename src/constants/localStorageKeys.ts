@@ -97,6 +97,6 @@ export const LOCAL_STORAGE_KEYS = {
   CREATORPROFILE_PICTURE: "creatorProfile.picture",
   CREATORPROFILE_PUBKEY: "creatorProfile.pubkey",
   CREATORPROFILE_RELAYS: "creatorProfile.relays",
-  // bump to `fundstr:onboarding:v2` if the tour changes and users should see it again
-  FUNDSTR_ONBOARDING_DONE: "fundstr:onboarding:v1",
+  // bump to `fundstr:onboarding:v3` if the tour changes and users should see it again
+  FUNDSTR_ONBOARDING_DONE: "fundstr:onboarding:v2",
 } as const;

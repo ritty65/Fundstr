@@ -14,7 +14,7 @@ vi.mock('quasar', () => ({
       delete storage[key]
     }
   },
-  QTooltip: { template: '<div><slot/></div>' },
+  QMenu: { template: '<div><slot/></div>' },
   QBtn: { template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot/></button>' }
 }))
 
@@ -82,7 +82,7 @@ describe('Onboarding tour', () => {
     await nextTick()
     await wrapper.find('button.skip-btn').trigger('click')
 
-    const key = `fundstr:onboarding:v1:${prefix}:done`
+    const key = `fundstr:onboarding:v2:${prefix}:done`
     expect(storage[key]).toBe('1')
 
     const onboarding = await import('src/composables/useOnboardingTour')
@@ -95,11 +95,15 @@ describe('Onboarding tour', () => {
     expect(startSpy).not.toHaveBeenCalled()
   })
 
-  it('shows nav toggle when nav is initially closed and opens nav on next', async () => {
+  it('shows nav toggle when nav is initially closed and advances on toggle click', async () => {
     const prefix = 'abcdef12'
     const navToggle = document.createElement('div')
     navToggle.setAttribute('data-tour', 'nav-toggle')
+    navToggle.addEventListener('click', uiStore.openMainNav)
     document.body.appendChild(navToggle)
+    const navDashboard = document.createElement('div')
+    navDashboard.setAttribute('data-tour', 'nav-dashboard')
+    document.body.appendChild(navDashboard)
 
     const OnboardingTour = (await import('src/components/OnboardingTour.vue')).default
     const wrapper = mount(OnboardingTour, {
@@ -112,10 +116,11 @@ describe('Onboarding tour', () => {
     await vi.runAllTimersAsync()
     expect(wrapper.html()).toContain('OnboardingTour.navToggle')
 
-    await wrapper.findAll('button').at(1)!.trigger('click')
+    navToggle.click()
     await nextTick()
     await vi.runAllTimersAsync()
     expect(uiStore.openMainNav).toHaveBeenCalled()
+    expect(document.body.innerHTML).toContain('OnboardingTour.navDashboard')
   })
 
   it('starts at dashboard when nav is already open', async () => {

@@ -107,6 +107,7 @@ export const messages = {
   },
   MainHeader: {
     menu: {
+      dashboard: { title: "Dashboard" },
       wallet: { title: "@:FullscreenHeader.actions.back.label" },
       nostrMessenger: { title: "@:AboutPage.siteOverview.nostrMessengerTitle" },
       restore: { title: "@:AboutPage.siteOverview.restoreTitle" },
@@ -2007,12 +2008,12 @@ export const messages = {
     },
   },
   OnboardingTour: {
-    navToggle: "Open the sidebar to switch pages. Replay this tour from Settings.",
-    navDashboard: "Your overview: balances, activity, and quick links.",
-    navWallet: "Deposit or withdraw funds and review your transactions here.",
-    navFindCreators: "Discover creators and start supporting them with a few taps.",
-    navSubscriptions: "Manage who you support and adjust contribution levels anytime.",
-    navSettings: "Update preferences, notifications, and security. Replay the tutorial here.",
+    navToggle: "Tap the menu button to open the sidebar.",
+    navDashboard: "This is your dashboard with balances and activity. Click Next to continue.",
+    navWallet: "Manage deposits and withdrawals in the wallet. Click Next to continue.",
+    navFindCreators: "Discover creators to support. Click Next to continue.",
+    navSubscriptions: "Manage who you support and adjust contribution levels. Click Next to continue.",
+    navSettings: "Update preferences and security in Settings. Click Next to finish.",
     skip: "Skip tour",
     gotIt: "Got it",
     next: "Next",

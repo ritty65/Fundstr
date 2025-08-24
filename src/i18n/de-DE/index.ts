@@ -106,6 +106,7 @@ export const messages = {
   },
   MainHeader: {
     menu: {
+      dashboard: { title: "Dashboard" }, // TODO: translate
       wallet: { title: "@:FullscreenHeader.actions.back.label" },
       nostrMessenger: { title: "@:AboutPage.siteOverview.nostrMessengerTitle" },
       restore: { title: "@:AboutPage.siteOverview.restoreTitle" },
@@ -1992,6 +1993,7 @@ export const messages = {
     },
   },
   OnboardingTour: {
+    // TODO: update onboarding tour messages
     navToggle:
       "Öffne die Seitenleiste, um zwischen Seiten zu wechseln. Du kannst die Tour jederzeit über Einstellungen erneut abspielen.",
     navDashboard: "Deine Übersicht: Kontostände, Aktivitäten und Schnellzugriffe.",
