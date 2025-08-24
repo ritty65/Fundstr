@@ -6,8 +6,8 @@ import {
   createWebHashHistory,
 } from "vue-router";
 import routes from "./routes";
-import { useWelcomeStore } from "src/stores/welcome";
 import { useRestoreStore } from "src/stores/restore";
+import { hasSeenWelcome } from "src/composables/useWelcomeGate";
 
 /*
  * If not building with SSR mode, you can
@@ -36,11 +36,10 @@ export default route(function (/* { store, ssrContext } */) {
   });
 
   Router.beforeEach((to, from, next) => {
-    const welcome = useWelcomeStore();
     const restore = useRestoreStore();
     if (
       to.path !== '/welcome' &&
-      !welcome.welcomeCompleted &&
+      !hasSeenWelcome() &&
       !restore.restoringState &&
       to.path !== '/restore'
     ) {
