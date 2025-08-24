@@ -1996,20 +1996,6 @@ export const messages = {
       },
     },
   },
-  OnboardingTour: {
-    navToggle:
-      "Klicka på ☰ (växla navigation uppe till vänster) för att öppna sidomenyn. Du kan starta om turen via Inställningar.",
-    navDashboard: "Välj Instrumentpanel för att se saldon och aktivitet.",
-    navWallet: "Välj Plånbok för att hantera insättningar och uttag.",
-    navFindCreators: "Välj Hitta skapare för att upptäcka personer att stötta.",
-    navSubscriptions: "Välj Prenumerationer för att hantera vem du stöttar.",
-    navSettings:
-      "Välj Inställningar (kugghjul) för att uppdatera preferenser och starta om turen.",
-    step: 'Steg {current} av {total}',
-    skip: "Hoppa över turen",
-    gotIt: "Förstått",
-    next: "Fortsätt",
-  },
 };
 
 export default {

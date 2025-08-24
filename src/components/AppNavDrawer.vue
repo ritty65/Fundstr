@@ -14,8 +14,8 @@
     elevated
     tabindex="0"
     :content-class="drawerContentClass"
-    @hide="!firstRun.tourStarted && ui.closeMainNav()"
-    @keyup.esc="!firstRun.tourStarted && ui.closeMainNav()"
+    @hide="ui.closeMainNav()"
+    @keyup.esc="ui.closeMainNav()"
   >
     <div>
       <q-btn
@@ -25,7 +25,7 @@
         icon="close"
         color="primary"
         aria-label="Close navigation"
-        @click="firstRun.tourStarted ? undefined : ui.closeMainNav()"
+        @click="ui.closeMainNav()"
         class="q-mb-sm"
       >
         <q-tooltip>Close</q-tooltip>
@@ -35,7 +35,7 @@
       <q-item-label header>{{
         $t("MainHeader.menu.settings.title")
       }}</q-item-label>
-      <q-item clickable @click="gotoDashboard" data-tour="nav-dashboard">
+      <q-item clickable @click="gotoDashboard">
         <q-item-section avatar>
           <q-icon name="dashboard" />
         </q-item-section>
@@ -43,7 +43,7 @@
           <q-item-label>{{ $t("MainHeader.menu.dashboard.title") }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoWallet" data-tour="nav-wallet">
+      <q-item clickable @click="gotoWallet">
         <q-item-section avatar>
           <q-icon name="account_balance_wallet" />
         </q-item-section>
@@ -51,7 +51,7 @@
           <q-item-label>{{ $t("MainHeader.menu.wallet.title") }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoSettings" data-tour="nav-settings">
+      <q-item clickable @click="gotoSettings">
         <q-item-section avatar>
           <q-icon name="settings" />
         </q-item-section>
@@ -64,7 +64,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoFindCreators" data-tour="nav-find-creators">
+      <q-item clickable @click="gotoFindCreators">
         <q-item-section avatar>
           <FindCreatorsIcon class="themed-icon q-icon" />
         </q-item-section>
@@ -116,7 +116,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoSubscriptions" data-tour="nav-subscriptions">
+      <q-item clickable @click="gotoSubscriptions">
         <q-item-section avatar>
           <q-icon name="auto_awesome_motion" />
         </q-item-section>
@@ -184,7 +184,7 @@
         v-for="link in essentialLinks"
         :key="link.title"
         v-bind="link"
-        @click="!firstRun.tourStarted && ui.closeMainNav()"
+        @click="ui.closeMainNav()"
       />
     </q-list>
   </q-drawer>
@@ -198,7 +198,6 @@ import { useNostrStore } from "src/stores/nostr";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import EssentialLink from "components/EssentialLink.vue";
-import { useFirstRunStore } from "src/stores/firstRun";
 import { NAV_DRAWER_WIDTH } from "src/constants/layout";
 import FindCreatorsIcon from "src/components/icons/FindCreatorsIcon.vue";
 import CreatorHubIcon from "src/components/icons/CreatorHubIcon.vue";
@@ -208,11 +207,10 @@ const router = useRouter();
 const nostrStore = useNostrStore();
 const { t } = useI18n();
 const $q = useQuasar();
-const firstRun = useFirstRunStore();
 
 function goto(path: string) {
   router.push(path);
-  if (!firstRun.tourStarted) ui.closeMainNav();
+  ui.closeMainNav();
 }
 const gotoDashboard = () => goto("/dashboard");
 const gotoWallet = () => goto("/wallet");

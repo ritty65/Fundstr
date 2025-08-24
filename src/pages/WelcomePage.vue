@@ -72,7 +72,6 @@ import { useMnemonicStore } from 'src/stores/mnemonic'
 import { useStorageStore } from 'src/stores/storage'
 import { useNostrStore } from 'src/stores/nostr'
 import { useNdk } from 'src/composables/useNdk'
-import { useAutoPageTour } from 'src/composables/useAutoPageTour'
 
 const { t } = useI18n()
 const welcome = useWelcomeStore()
@@ -84,7 +83,6 @@ const storageStore = useStorageStore()
 const nostr = useNostrStore()
 const showSeedDialog = ref(false)
 const showChecklist = ref(false)
-const { startAutoPageTour } = useAutoPageTour()
 
 onMounted(() => {
   const env = import.meta.env.VITE_APP_ENV
@@ -109,7 +107,6 @@ async function finishOnboarding() {
   // remember that the welcome flow has been completed on this device
   markWelcomeSeen()
   await nextTick()
-  startAutoPageTour({ dwellMs: 4000 })
 }
 
 const slides = [

@@ -99,7 +99,4 @@ export const LOCAL_STORAGE_KEYS = {
   CREATORPROFILE_RELAYS: "creatorProfile.relays",
   FIRST_RUN_DONE: "fundstr:firstRunDone",
   FUNDSTR_BROWSER_ID: "fundstr:browserId",
-  // bump to `fundstr:onboarding:v4` if the tour changes and users should see it again
-  FUNDSTR_ONBOARDING_DONE: "fundstr:onboarding:v3",
-  FUNDSTR_AUTOTOUR_DONE: "fundstr:autotour:v1",
 } as const;

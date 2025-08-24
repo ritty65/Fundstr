@@ -1996,20 +1996,6 @@ export const messages = {
       },
     },
   },
-  OnboardingTour: {
-    navToggle:
-      "左上の ☰（ナビゲーション切替）をクリックしてサイドバーを開きます。設定からいつでもこのツアーを再開できます。",
-    navDashboard: "「ダッシュボード」を選択して残高とアクティビティを確認しましょう。",
-    navWallet: "「ウォレット」を選択して入出金を管理します。",
-    navFindCreators: "「クリエイターを探す」を選択して支援する相手を見つけます。",
-    navSubscriptions: "「購読」を選択して支援先を管理します。",
-    navSettings:
-      "「設定」（歯車アイコン）を選択して好みを変更し、このツアーを再開できます。",
-    step: 'ステップ {current} / {total}',
-    skip: "ツアーをスキップ",
-    gotIt: "了解",
-    next: "続行",
-  },
 };
 
 export default {

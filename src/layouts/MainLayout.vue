@@ -80,22 +80,6 @@
       ref="newChatDialogRef"
       @start="startChat"
     />
-    <q-banner
-      v-if="isRunning"
-      class="fixed-bottom bg-primary text-white"
-    >
-      <div class="row items-center justify-end">
-        <q-btn flat dense color="white" @click="skip">Skip</q-btn>
-        <q-btn
-          flat
-          dense
-          color="white"
-          @click="isPaused ? resume() : pause()"
-        >
-          {{ isPaused ? 'Resume' : 'Pause' }}
-        </q-btn>
-      </div>
-    </q-banner>
   </q-layout>
 </template>
 
@@ -114,7 +98,6 @@ import { useNutzapStore } from "src/stores/nutzap";
 import { useMessengerStore } from "src/stores/messenger";
 import { useUiStore } from "src/stores/ui";
 import { NAV_DRAWER_WIDTH, NAV_DRAWER_GUTTER } from "src/constants/layout";
-import { useAutoPageTour } from "src/composables/useAutoPageTour";
 
 export default defineComponent({
   name: "MainLayout",
@@ -133,7 +116,6 @@ export default defineComponent({
     const newChatDialogRef = ref(null);
     const $q = useQuasar();
     const ui = useUiStore();
-    const { isRunning, isPaused, skip, pause, resume } = useAutoPageTour();
 
     const navStyleVars = computed(() => ({
       "--nav-drawer-width": `${NAV_DRAWER_WIDTH}px`,
@@ -231,11 +213,6 @@ export default defineComponent({
       computedDrawerWidth,
       onResizeStart,
       navStyleVars,
-      isRunning,
-      isPaused,
-      skip,
-      pause,
-      resume,
     };
   },
   async mounted() {

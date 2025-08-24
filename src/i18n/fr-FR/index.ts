@@ -1996,22 +1996,6 @@ export const messages = {
       },
     },
   },
-  OnboardingTour: {
-    navToggle:
-      "Appuie sur ☰ (menu en haut à gauche) pour ouvrir la barre latérale. Tu peux relancer ce tutoriel via Paramètres.",
-    navDashboard: "Choisis Tableau de bord pour voir tes soldes et ton activité.",
-    navWallet: "Choisis Portefeuille pour gérer dépôts et retraits.",
-    navFindCreators:
-      "Choisis Trouver des créateurs pour découvrir qui soutenir.",
-    navSubscriptions:
-      "Choisis Abonnements pour gérer tes soutiens.",
-    navSettings:
-      "Choisis Paramètres (icône engrenage) pour modifier les préférences et relancer ce tutoriel.",
-    step: 'Étape {current} sur {total}',
-    skip: "Passer le tour",
-    gotIt: "Compris",
-    next: "Continuer",
-  },
 };
 
 export default {

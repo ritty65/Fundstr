@@ -1996,20 +1996,6 @@ export const messages = {
       },
     },
   },
-  OnboardingTour: {
-    navToggle:
-      "Pulsa ☰ (alternar navegación arriba a la izquierda) para abrir la barra lateral. Puedes reiniciar este recorrido en Ajustes.",
-    navDashboard: "Elige Panel para ver saldos y actividad.",
-    navWallet: "Elige Billetera para gestionar depósitos y retiros.",
-    navFindCreators: "Elige Encontrar creadores para descubrir a quién apoyar.",
-    navSubscriptions: "Elige Suscripciones para gestionar a quién apoyas.",
-    navSettings:
-      "Elige Ajustes (icono de engranaje) para actualizar preferencias y reiniciar este recorrido.",
-    step: 'Paso {current} de {total}',
-    skip: "Omitir tour",
-    gotIt: "Entendido",
-    next: "Continuar",
-  },
 };
 
 export default {

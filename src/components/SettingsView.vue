@@ -1669,15 +1669,6 @@
                   </div>
                 </q-item-section>
               </q-item>
-                <q-item>
-                  <q-item-section>
-                    <div class="row">
-                      <q-btn dense flat outline @click="replayAutoTour">
-                        Replay automated tour
-                      </q-btn>
-                    </div>
-                  </q-item-section>
-                </q-item>
               <q-item>
                 <q-item-section>
                   <div class="row">
@@ -1795,9 +1786,6 @@ import { usePRStore } from "../stores/payment-request";
 import { useRestoreStore } from "src/stores/restore";
 import { useDexieStore } from "../stores/dexie";
 import { useReceiveTokensStore } from "../stores/receiveTokensStore";
-import { useAutoPageTour } from "src/composables/useAutoPageTour";
-import { LocalStorage } from "quasar";
-import { LOCAL_STORAGE_KEYS } from "src/constants/localStorageKeys";
 import { useStorageStore } from "src/stores/storage";
 import { useI18n } from "vue-i18n";
 
@@ -2109,13 +2097,6 @@ export default defineComponent({
     handleResetNip46Signer: async function () {
       await this.resetNip46Signer();
       await this.generateNPCConnection();
-    },
-    replayAutoTour: function () {
-      LocalStorage.remove(LOCAL_STORAGE_KEYS.FUNDSTR_AUTOTOUR_DONE)
-      this.$router.push('/wallet').then(() => {
-        const { startAutoPageTour } = useAutoPageTour()
-        startAutoPageTour({ replay: true })
-      })
     },
     nukeWallet: async function () {
       // create a backup just in case

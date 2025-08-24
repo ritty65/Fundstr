@@ -2010,21 +2010,7 @@ export const messages = {
         openWallet: "Start using wallet",
       },
     },
-  },
-  OnboardingTour: {
-    navToggle:
-      "Click ☰ Toggle navigation (top-left) to open the sidebar. Relaunch this tour from Settings.",
-    navDashboard: "Choose Dashboard to see balances and activity.",
-    navWallet: "Choose Wallet to manage deposits and withdrawals.",
-    navFindCreators: "Choose Find Creators to discover people to support.",
-    navSubscriptions: "Choose Subscriptions to manage who you support.",
-    navSettings:
-      "Choose Settings to update preferences and relaunch this tour.",
-    step: 'Step {current} of {total}',
-    skip: "Skip tour",
-    gotIt: "Got it",
-    next: "Continue",
-  },
+    },
   onb: {
     1: {
       title: "Private money for the open internet",

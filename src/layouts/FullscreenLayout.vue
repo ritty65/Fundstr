@@ -14,22 +14,6 @@
       :publishing="publishing"
       @publish="publishFullProfile"
     />
-    <q-banner
-      v-if="isRunning"
-      class="fixed-bottom bg-primary text-white"
-    >
-      <div class="row items-center justify-end">
-        <q-btn flat dense color="white" @click="skip">Skip</q-btn>
-        <q-btn
-          flat
-          dense
-          color="white"
-          @click="isPaused ? resume() : pause()"
-        >
-          {{ isPaused ? 'Resume' : 'Pause' }}
-        </q-btn>
-      </div>
-    </q-banner>
   </q-layout>
 </template>
 
@@ -44,7 +28,6 @@ import { useCreatorHub } from "src/composables/useCreatorHub";
 import { useQuasar } from "quasar";
 import { useUiStore } from "src/stores/ui";
 import { NAV_DRAWER_WIDTH, NAV_DRAWER_GUTTER } from "src/constants/layout";
-import { useAutoPageTour } from "src/composables/useAutoPageTour";
 
 export default defineComponent({
   name: "FullscreenLayout",
@@ -61,7 +44,6 @@ export default defineComponent({
 
     const $q = useQuasar();
     const ui = useUiStore();
-    const { isRunning, isPaused, skip, pause, resume } = useAutoPageTour();
     const navStyleVars = computed(() => ({
       "--nav-drawer-width": `${NAV_DRAWER_WIDTH}px`,
       "--nav-offset-x":
@@ -76,11 +58,6 @@ export default defineComponent({
       publishing,
       showPublishBar,
       navStyleVars,
-      isRunning,
-      isPaused,
-      skip,
-      pause,
-      resume,
     };
   },
 });

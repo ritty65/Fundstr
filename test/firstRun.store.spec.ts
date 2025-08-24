@@ -1,35 +1,20 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
 describe('firstRun store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
   })
-  afterEach(() => {
-    vi.unmock('src/composables/useOnboardingTour')
-    vi.resetModules()
-  })
 
-  it('sets completion only on finish', async () => {
+  it('marks completion after delay', async () => {
     vi.useFakeTimers()
-    let finish!: () => void
-    const startSpy = vi.fn(
-      (_prefix: string, _router: any, _steps: any, onFinish?: () => void) => {
-        finish = onFinish!
-      },
-    )
-    vi.doMock('src/composables/useOnboardingTour', () => ({
-      startOnboardingTour: startSpy,
-      getBrowserId: () => 'browserid',
-    }))
     const { useFirstRunStore } = await import('src/stores/firstRun')
     const router: any = { push: vi.fn(), replace: vi.fn() }
     const store = useFirstRunStore()
     store.beginFirstRun(router)
-    await vi.advanceTimersByTimeAsync(5000)
-    expect(startSpy).toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(4999)
     expect(store.firstRunCompleted).toBe(false)
-    finish()
+    await vi.advanceTimersByTimeAsync(1)
     expect(store.firstRunCompleted).toBe(true)
     vi.useRealTimers()
   })
