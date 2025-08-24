@@ -731,6 +731,7 @@ export default defineComponent({
       "canPasteFromClipboard",
       "globalMutexLock",
       "ndefSupported",
+      "offline",
     ]),
     ...mapWritableState(useUiStore, ["showNumericKeyboard"]),
     ...mapState(useMintsStore, [
@@ -1281,7 +1282,7 @@ export default defineComponent({
           this.$router.push("/find-creators");
         });
 
-        if (!this.g.offline) {
+        if (!this.offline) {
           this.onTokenPaid(historyToken);
         }
       } catch (error) {
@@ -1419,7 +1420,7 @@ export default defineComponent({
         this.addPendingToken({ ...historyToken, tokenStr: historyToken.token });
         this.sendData.historyToken = historyToken;
 
-        if (!this.g.offline) {
+        if (!this.offline) {
           this.onTokenPaid(historyToken);
         }
       } catch (error) {

@@ -2042,6 +2042,10 @@ export default defineComponent({
       this.$q.dark.toggle();
       this.$q.localStorage.set("cashu.darkMode", this.$q.dark.isActive);
     },
+    changeColor: function (newValue) {
+      document.body.setAttribute("data-theme", newValue);
+      this.$q.localStorage.set("cashu.theme", newValue);
+    },
     unsetAllReservedProofs: async function () {
       // mark all this.proofs as reserved=false
       const proofsStore = useProofsStore();
