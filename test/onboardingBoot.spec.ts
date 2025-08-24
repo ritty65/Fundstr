@@ -28,7 +28,12 @@ describe.skip('onboarding boot', () => {
     router.currentRoute.value.path = '/wallet'
     afterEachCbs.forEach(cb => cb())
     await vi.runAllTimersAsync()
-    expect(startSpy).toHaveBeenCalledWith('abcdef12', undefined, expect.any(Function))
+    expect(startSpy).toHaveBeenCalledWith(
+      'abcdef12',
+      router,
+      undefined,
+      expect.any(Function),
+    )
     vi.unmock('src/composables/useOnboardingTour')
     vi.resetModules()
     vi.useRealTimers()

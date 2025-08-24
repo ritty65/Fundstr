@@ -13,9 +13,11 @@ describe('firstRun store', () => {
   it('sets completion only on finish', async () => {
     vi.useFakeTimers()
     let finish!: () => void
-    const startSpy = vi.fn((_prefix: string, _steps: any, onFinish?: () => void) => {
-      finish = onFinish!
-    })
+    const startSpy = vi.fn(
+      (_prefix: string, _router: any, _steps: any, onFinish?: () => void) => {
+        finish = onFinish!
+      },
+    )
     vi.doMock('src/composables/useOnboardingTour', () => ({
       startOnboardingTour: startSpy,
       getBrowserId: () => 'browserid',

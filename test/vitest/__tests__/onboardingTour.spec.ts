@@ -67,11 +67,17 @@ describe('Onboarding tour', () => {
     target.setAttribute('data-tour', 'nav-dashboard')
     document.body.appendChild(target)
     const bootModule = await import('src/boot/onboardingTour')
-    await bootModule.default({ router: { isReady: () => Promise.resolve() } })
+    const router = { isReady: () => Promise.resolve() }
+    await bootModule.default({ router })
     await nextTick()
     await nextTick()
     vi.runAllTimers()
-    expect(startSpy).toHaveBeenCalledWith(prefix, undefined, expect.any(Function))
+    expect(startSpy).toHaveBeenCalledWith(
+      prefix,
+      router,
+      undefined,
+      expect.any(Function),
+    )
   })
 
   it('skip sets key and prevents subsequent runs', async () => {
@@ -99,7 +105,8 @@ describe('Onboarding tour', () => {
     const onboarding = await import('src/composables/useOnboardingTour')
     const startSpy = vi.spyOn(onboarding, 'startOnboardingTour').mockImplementation(() => {})
     const bootModule = await import('src/boot/onboardingTour')
-    await bootModule.default({ router: { isReady: () => Promise.resolve() } })
+    const router = { isReady: () => Promise.resolve() }
+    await bootModule.default({ router })
     await nextTick()
     await nextTick()
     vi.runAllTimers()
@@ -171,7 +178,12 @@ describe('Onboarding tour', () => {
     await nextTick()
     await vi.runAllTimersAsync()
     await nextTick()
-    expect(startSpy).toHaveBeenCalledWith(prefix, undefined, expect.any(Function))
+    expect(startSpy).toHaveBeenCalledWith(
+      prefix,
+      router,
+      undefined,
+      expect.any(Function),
+    )
     expect(document.body.innerHTML).toContain('OnboardingTour.navDashboard')
   })
 })

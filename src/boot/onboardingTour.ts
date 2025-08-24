@@ -87,7 +87,7 @@ export default boot(async ({ router }) => {
       firstRunStore.tourStarted = true
       const instance = Symbol('tour')
       activeTour = instance
-      startOnboardingTour(prefix, undefined, () => {
+      startOnboardingTour(prefix, router, undefined, () => {
         if (activeTour === instance) reset()
       })
     }

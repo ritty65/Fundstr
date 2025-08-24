@@ -2152,7 +2152,7 @@ export default defineComponent({
       this.$router.push('/wallet').then(() => {
         setTimeout(() => {
           firstRunStore.tourStarted = true
-          startOnboardingTour(prefix, undefined, () => {
+          startOnboardingTour(prefix, this.$router, undefined, () => {
             firstRunStore.tourStarted = false
             firstRunStore.firstRunCompleted = true
           })
