@@ -136,4 +136,26 @@ describe('Onboarding tour', () => {
     await vi.runAllTimersAsync()
     expect(wrapper.html()).toContain('OnboardingTour.navDashboard')
   })
+
+  it('boots at dashboard when nav is open and nav toggle missing', async () => {
+    uiStore.mainNavOpen = true
+    nostrStore.pubkey = 'fedcba9876543210'
+    const prefix = nostrStore.pubkey.slice(0, 8)
+
+    const navDashboard = document.createElement('div')
+    navDashboard.setAttribute('data-tour', 'nav-dashboard')
+    document.body.appendChild(navDashboard)
+
+    const onboarding = await import('src/composables/useOnboardingTour')
+    const startSpy = vi.spyOn(onboarding, 'startOnboardingTour')
+
+    const bootModule = await import('src/boot/onboardingTour')
+    await bootModule.default({ router: { isReady: () => Promise.resolve() } })
+    await nextTick()
+    await nextTick()
+    await vi.runAllTimersAsync()
+    await nextTick()
+    expect(startSpy).toHaveBeenCalledWith(prefix)
+    expect(document.body.innerHTML).toContain('OnboardingTour.navDashboard')
+  })
 })
