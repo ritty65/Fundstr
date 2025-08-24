@@ -95,71 +95,73 @@ const ui = useUiStore()
 const { t, te } = useI18n()
 const router = useRouter()
 
-const internalSteps = computed<OnboardingStep[]>(() =>
-  [
-    !ui.mainNavOpen && {
-      id: 'nav-toggle',
-      target: '[data-tour~="nav-toggle"]',
-      instruction: t('OnboardingTour.navToggle'),
-      placement: 'bottom',
-      requiredAction: 'click',
-      advanceMode: 'auto',
-      completeWhen: () => ui.mainNavOpen,
-    },
-    {
-      id: 'nav-dashboard',
-      target: '[data-tour~="nav-dashboard"]',
-      instruction: t('OnboardingTour.navDashboard'),
-      placement: 'right',
-      requiredAction: 'click',
-      advanceMode: 'auto',
-      ensure: () => ui.openMainNav(),
-      completeWhen: () => router.currentRoute.value.path === '/dashboard',
-    },
-    {
-      id: 'nav-wallet',
-      target: '[data-tour~="nav-wallet"]',
-      instruction: t('OnboardingTour.navWallet'),
-      placement: 'right',
-      requiredAction: 'click',
-      advanceMode: 'auto',
-      ensure: () => ui.openMainNav(),
-      completeWhen: () => router.currentRoute.value.path === '/wallet',
-    },
-    {
-      id: 'nav-find-creators',
-      target: '[data-tour~="nav-find-creators"]',
-      instruction: t('OnboardingTour.navFindCreators'),
-      placement: 'right',
-      requiredAction: 'click',
-      advanceMode: 'auto',
-      ensure: () => ui.openMainNav(),
-      completeWhen: () => router.currentRoute.value.path === '/find-creators',
-    },
-    {
-      id: 'nav-subscriptions',
-      target: '[data-tour~="nav-subscriptions"]',
-      instruction: t('OnboardingTour.navSubscriptions'),
-      placement: 'right',
-      requiredAction: 'click',
-      advanceMode: 'auto',
-      ensure: () => ui.openMainNav(),
-      completeWhen: () => router.currentRoute.value.path === '/subscriptions',
-    },
-    {
-      id: 'nav-settings',
-      target: '[data-tour~="nav-settings"]',
-      instruction: t('OnboardingTour.navSettings'),
-      placement: 'right',
-      requiredAction: 'click',
-      advanceMode: 'auto',
-      ensure: () => ui.openMainNav(),
-      completeWhen: () => router.currentRoute.value.path === '/settings',
-    },
-  ].filter(Boolean) as OnboardingStep[],
-)
+function generateInternalSteps(): OnboardingStep[] {
+  return (
+    [
+      !ui.mainNavOpen && {
+        id: 'nav-toggle',
+        target: '[data-tour~="nav-toggle"]',
+        instruction: t('OnboardingTour.navToggle'),
+        placement: 'bottom',
+        requiredAction: 'click',
+        advanceMode: 'auto',
+        completeWhen: () => ui.mainNavOpen,
+      },
+      {
+        id: 'nav-dashboard',
+        target: '[data-tour~="nav-dashboard"]',
+        instruction: t('OnboardingTour.navDashboard'),
+        placement: 'right',
+        requiredAction: 'click',
+        advanceMode: 'auto',
+        ensure: () => ui.openMainNav(),
+        completeWhen: () => router.currentRoute.value.path === '/dashboard',
+      },
+      {
+        id: 'nav-wallet',
+        target: '[data-tour~="nav-wallet"]',
+        instruction: t('OnboardingTour.navWallet'),
+        placement: 'right',
+        requiredAction: 'click',
+        advanceMode: 'auto',
+        ensure: () => ui.openMainNav(),
+        completeWhen: () => router.currentRoute.value.path === '/wallet',
+      },
+      {
+        id: 'nav-find-creators',
+        target: '[data-tour~="nav-find-creators"]',
+        instruction: t('OnboardingTour.navFindCreators'),
+        placement: 'right',
+        requiredAction: 'click',
+        advanceMode: 'auto',
+        ensure: () => ui.openMainNav(),
+        completeWhen: () => router.currentRoute.value.path === '/find-creators',
+      },
+      {
+        id: 'nav-subscriptions',
+        target: '[data-tour~="nav-subscriptions"]',
+        instruction: t('OnboardingTour.navSubscriptions'),
+        placement: 'right',
+        requiredAction: 'click',
+        advanceMode: 'auto',
+        ensure: () => ui.openMainNav(),
+        completeWhen: () => router.currentRoute.value.path === '/subscriptions',
+      },
+      {
+        id: 'nav-settings',
+        target: '[data-tour~="nav-settings"]',
+        instruction: t('OnboardingTour.navSettings'),
+        placement: 'right',
+        requiredAction: 'click',
+        advanceMode: 'auto',
+        ensure: () => ui.openMainNav(),
+        completeWhen: () => router.currentRoute.value.path === '/settings',
+      },
+    ].filter(Boolean) as OnboardingStep[]
+  )
+}
 
-const steps = computed(() => props.steps ?? internalSteps.value)
+const steps = ref<readonly OnboardingStep[]>([])
 
 const index = ref(0)
 const progressPercent = computed(() =>
@@ -341,10 +343,8 @@ function next() {
   show.value = false
   clearInterval(completeInterval)
   current.value?.cleanup?.()
-  const before = steps.value.length
   current.value?.onNext?.()
-  const diff = before - steps.value.length
-  index.value += 1 - diff
+  index.value += 1
   setTimeout(showStep, 200)
 }
 
@@ -397,7 +397,11 @@ const rightStyle = computed(() =>
     : {},
 )
 
-onMounted(showStep)
+onMounted(() => {
+  const initialSteps = props.steps ?? generateInternalSteps()
+  steps.value = Object.freeze([...initialSteps]) as readonly OnboardingStep[]
+  showStep()
+})
 </script>
 
 <style scoped>
