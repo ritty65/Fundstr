@@ -6,8 +6,6 @@ import {
   createWebHashHistory,
 } from "vue-router";
 import routes from "./routes";
-import { useRestoreStore } from "src/stores/restore";
-import { hasSeenWelcome } from "src/composables/useWelcomeGate";
 
 /*
  * If not building with SSR mode, you can
@@ -33,20 +31,6 @@ export default route(function (/* { store, ssrContext } */) {
     // quasar.conf.js -> build -> vueRouterMode
     // quasar.conf.js -> build -> publicPath
     history: createHistory(process.env.VUE_ROUTER_BASE),
-  });
-
-  Router.beforeEach((to, from, next) => {
-    const restore = useRestoreStore();
-    if (
-      to.path !== '/welcome' &&
-      !hasSeenWelcome() &&
-      !restore.restoringState &&
-      to.path !== '/restore'
-    ) {
-      next('/welcome?first=1');
-      return;
-    }
-    next();
   });
 
   return Router;
