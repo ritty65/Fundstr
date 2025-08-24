@@ -1,7 +1,7 @@
 <template>
   <div class="about-page antialiased">
     <!-- Header -->
-    <header class="pt-24 pb-12 fade-in-section">
+    <header class="pt-32 md:pt-40 pb-12 fade-in-section">
       <BaseContainer class="text-center">
         <h1 class="text-5xl md:text-7xl font-extrabold mb-6">
           About <span class="gradient-text">Fundstr</span>
@@ -187,7 +187,7 @@
           <!-- Card 1 -->
           <details class="interactive-card p-6 text-left">
             <summary class="cursor-pointer">
-              <span class="block text-4xl mb-4">🐙</span>
+              <q-icon name="code" size="32px" class="mb-4 text-accent" aria-hidden="true" />
               <span class="block font-semibold text-xl mb-2"
                 >Open Source & Verifiable</span
               >
@@ -242,7 +242,7 @@
           <!-- Card 2 -->
           <details class="interactive-card p-6 text-left">
             <summary class="cursor-pointer">
-              <span class="block text-4xl mb-4">🔑</span>
+              <q-icon name="vpn_key" size="32px" class="mb-4 text-accent" aria-hidden="true" />
               <span class="block font-semibold text-xl mb-2"
                 >You Hold the Keys</span
               >
@@ -289,7 +289,7 @@
           <!-- Card 3 -->
           <details class="interactive-card p-6 text-left">
             <summary class="cursor-pointer">
-              <span class="block text-4xl mb-4">🛡️</span>
+              <q-icon name="shield" size="32px" class="mb-4 text-accent" aria-hidden="true" />
               <span class="block font-semibold text-xl mb-2"
                 >Unbreakable Privacy</span
               >
@@ -352,7 +352,7 @@
           <!-- Card 4 -->
           <details class="interactive-card p-6 text-left">
             <summary class="cursor-pointer">
-              <span class="block text-4xl mb-4">🪙</span>
+              <q-icon name="account_balance_wallet" size="32px" class="mb-4 text-accent" aria-hidden="true" />
               <span class="block font-semibold text-xl mb-2"
                 >Mint Diversification</span
               >
@@ -598,7 +598,7 @@
     <footer class="px-4">
       <!-- Community -->
       <section class="py-16 fade-in-section">
-        <div class="max-w-4xl mx-auto text-center">
+        <BaseContainer class="text-center">
           <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
             Join the Conversation
           </h2>
@@ -606,28 +606,36 @@
             Follow the project and its creator on Nostr to stay up-to-date and
             connect with the community.
           </p>
-          <div
-            class="flex flex-col sm:flex-row justify-center gap-4 text-accent"
-          >
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-accent">
             <a
               href="https://primal.net/KalonAxiarch"
               target="_blank"
               rel="noopener noreferrer"
-              class="interactive-card px-6 py-3 flex items-center justify-center gap-2"
-              >👤 Creator's Profile</a
+              class="interactive-card p-6 flex flex-col items-center text-center h-full focus:outline-none focus:ring-2 focus:ring-accent-500"
             >
+              <q-icon name="person" size="32px" class="mb-2 text-accent" aria-hidden="true" />
+              <span class="font-semibold">Creator's Profile</span>
+              <q-icon name="open_in_new" size="20px" class="mt-2 text-accent" aria-hidden="true" />
+            </a>
             <a
               href="#"
-              class="interactive-card px-6 py-3 flex items-center justify-center gap-2"
-              >🚀 Fundstr Project Page</a
+              target="_blank"
+              rel="noopener noreferrer"
+              class="interactive-card p-6 flex flex-col items-center text-center h-full focus:outline-none focus:ring-2 focus:ring-accent-500"
             >
+              <q-icon name="rocket_launch" size="32px" class="mb-2 text-accent" aria-hidden="true" />
+              <span class="font-semibold">Fundstr Project Page</span>
+              <q-icon name="open_in_new" size="20px" class="mt-2 text-accent" aria-hidden="true" />
+            </a>
             <a
               href="/find-creators?npub=npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m"
-              class="interactive-card px-6 py-3 flex items-center justify-center gap-2"
-              >💰 View KalonAxiarch's Tiers</a
+              class="interactive-card p-6 flex flex-col items-center text-center h-full focus:outline-none focus:ring-2 focus:ring-accent-500"
             >
+              <q-icon name="paid" size="32px" class="mb-2 text-accent" aria-hidden="true" />
+              <span class="font-semibold">View KalonAxiarch's Tiers</span>
+            </a>
           </div>
-        </div>
+        </BaseContainer>
       </section>
 
       <!-- Quote -->
@@ -645,7 +653,7 @@
 
       <!-- CTA -->
       <section id="cta" class="py-16 fade-in-section">
-        <div class="max-w-4xl mx-auto text-center">
+        <BaseContainer class="text-center">
           <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
             Ready to Join the Movement?
           </h2>
@@ -653,18 +661,24 @@
             Install the PWA, explore the code, or help fund development.
           </p>
           <div class="flex flex-col sm:flex-row justify-center gap-4">
-            <a
+            <q-btn
               href="#"
-              class="px-8 py-3 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
-              >Install PWA</a
-            >
-            <a
+              color="accent"
+              unelevated
+              rounded
+              class="px-8 py-3 font-semibold"
+              label="Install PWA"
+            />
+            <q-btn
               href="#"
-              class="px-8 py-3 rounded-full gradient-bg text-white font-semibold"
-              >Support Fundstr</a
-            >
+              color="accent"
+              outline
+              rounded
+              class="px-8 py-3 font-semibold"
+              label="Support Fundstr"
+            />
           </div>
-        </div>
+        </BaseContainer>
       </section>
     </footer>
   </div>
