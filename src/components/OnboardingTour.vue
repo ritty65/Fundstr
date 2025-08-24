@@ -14,8 +14,8 @@
     <div class="onboarding-body">
       <div class="q-mb-sm">{{ current.text }}</div>
       <div class="row justify-end q-gutter-sm">
-        <q-btn flat dense class="skip-btn" @click="skip">{{ $t('OnboardingTour.skip') }}</q-btn>
-        <q-btn flat dense color="primary" @click="next">{{ isLast ? $t('OnboardingTour.gotIt') : $t('OnboardingTour.next') }}</q-btn>
+        <q-btn flat dense class="skip-btn" @click="skip">{{ t('OnboardingTour.skip') }}</q-btn>
+        <q-btn flat dense color="primary" @click="next">{{ isLast ? t('OnboardingTour.gotIt') : t('OnboardingTour.next') }}</q-btn>
       </div>
     </div>
   </q-tooltip>
