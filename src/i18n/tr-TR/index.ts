@@ -106,6 +106,7 @@ export const messages = {
   },
   MainHeader: {
     menu: {
+      dashboard: { title: "Dashboard" }, // TODO: translate
       wallet: { title: "@:FullscreenHeader.actions.back.label" },
       nostrMessenger: { title: "@:AboutPage.siteOverview.nostrMessengerTitle" },
       restore: { title: "@:AboutPage.siteOverview.restoreTitle" },
@@ -1992,6 +1993,7 @@ export const messages = {
     },
   },
   OnboardingTour: {
+    // TODO: update onboarding tour messages
     navToggle:
       "Sayfalar arasında geçmek için kenar çubuğunu aç. Turu Ayarlar'dan tekrar oynatabilirsin.",
     navDashboard: "Genel bakış: bakiyeler, son etkinlik ve hızlı bağlantılar.",

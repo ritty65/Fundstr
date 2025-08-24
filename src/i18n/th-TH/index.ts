@@ -106,6 +106,7 @@ export const messages = {
   },
   MainHeader: {
     menu: {
+      dashboard: { title: "Dashboard" }, // TODO: translate
       wallet: { title: "@:FullscreenHeader.actions.back.label" },
       nostrMessenger: { title: "@:AboutPage.siteOverview.nostrMessengerTitle" },
       restore: { title: "@:AboutPage.siteOverview.restoreTitle" },
@@ -1992,6 +1993,7 @@ export const messages = {
     },
   },
   OnboardingTour: {
+    // TODO: update onboarding tour messages
     navToggle: "เปิดแถบด้านข้างเพื่อสลับหน้า ดูทัวร์นี้อีกครั้งได้ที่การตั้งค่า",
     navDashboard: "ภาพรวม: ยอดคงเหลือ กิจกรรมล่าสุด และลิงก์ด่วน",
     navWallet: "ฝากหรือถอนเงินและดูธุรกรรมได้ที่นี่",

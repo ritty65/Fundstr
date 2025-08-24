@@ -54,5 +54,5 @@ Utility classes: `.text-1`, `.text-2`, `.text-inverse`, `.bg-surface-1`, `.bg-su
 - Bump to `welcome.seen:v2`/`welcome_seen_v2` when revising the flow to force users through the new onboarding.
 
 ## Onboarding Tour
-- Local storage key `fundstr:onboarding:v1:<pubkey>:done` tracks if the user finished the in-app tour.
-- Bump to `fundstr:onboarding:v2` when the tour changes and should be shown again.
+- Local storage key `fundstr:onboarding:v2:<pubkey>:done` tracks if the user finished the in-app tour.
+- Bump to `fundstr:onboarding:v3` when the tour changes and should be shown again.

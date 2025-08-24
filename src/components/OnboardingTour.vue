@@ -1,24 +1,32 @@
 <template>
-  <q-tooltip
+  <q-menu
     v-if="current"
     v-model="show"
     :target="current.el"
     :anchor="current.anchor"
     :self="current.self"
-    class="onboarding-tooltip"
     no-parent-event
     persistent
     transition-show="fade"
     transition-hide="fade"
+    content-class="onboarding-tooltip"
   >
     <div class="onboarding-body">
       <div class="q-mb-sm">{{ current.text }}</div>
       <div class="row justify-end q-gutter-sm">
         <q-btn flat dense class="skip-btn" @click="skip">{{ t('OnboardingTour.skip') }}</q-btn>
-        <q-btn flat dense color="primary" @click="next">{{ isLast ? t('OnboardingTour.gotIt') : t('OnboardingTour.next') }}</q-btn>
+        <q-btn
+          v-if="!current.advanceOnClick"
+          flat
+          dense
+          color="primary"
+          @click="next"
+        >
+          {{ isLast ? t('OnboardingTour.gotIt') : t('OnboardingTour.next') }}
+        </q-btn>
       </div>
     </div>
-  </q-tooltip>
+  </q-menu>
 </template>
 
 <script setup lang="ts">
@@ -39,7 +47,7 @@ const steps = computed(() =>
       text: t('OnboardingTour.navToggle'),
       anchor: 'bottom middle',
       self: 'top middle',
-      onNext: () => ui.openMainNav(),
+      advanceOnClick: true,
     },
     {
       target: '[data-tour~="nav-dashboard"]',
@@ -79,7 +87,7 @@ const current = ref<any>(null)
 const show = ref(false)
 const shownAtLeastOneStep = ref(false)
 
-const storageKey = `fundstr:onboarding:v1:${props.pubkeyPrefix}:done`
+const storageKey = `fundstr:onboarding:v2:${props.pubkeyPrefix}:done`
 
 function markDone() {
   LocalStorage.set(storageKey, '1')
@@ -114,12 +122,21 @@ async function showStep(retries = 0) {
     return
   }
   current.value = { ...step, el }
+  if (step.advanceOnClick) {
+    const handler = () => {
+      el.removeEventListener('click', handler)
+      next()
+    }
+    el.addEventListener('click', handler)
+    current.value.cleanup = () => el.removeEventListener('click', handler)
+  }
   show.value = true
   shownAtLeastOneStep.value = true
 }
 
 function next() {
   show.value = false
+  current.value?.cleanup?.()
   const before = steps.value.length
   current.value?.onNext?.()
   const diff = before - steps.value.length
@@ -128,6 +145,7 @@ function next() {
 }
 
 function skip() {
+  current.value?.cleanup?.()
   finish()
 }
 
