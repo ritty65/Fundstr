@@ -4,8 +4,8 @@ import { getActivePinia } from 'pinia'
 import OnboardingTour from 'src/components/OnboardingTour.vue'
 import { LOCAL_STORAGE_KEYS } from 'src/constants/localStorageKeys'
 import { i18n } from 'src/boot/i18n'
-import router from 'src/router'
 import type { OnboardingStep } from 'src/types/onboarding'
+import type { Router } from 'vue-router'
 
 export function getBrowserId(): string {
   let id = LocalStorage.getItem<string>(LOCAL_STORAGE_KEYS.FUNDSTR_BROWSER_ID)
@@ -30,6 +30,7 @@ export function resetOnboarding(prefix: string): void {
 
 export function startOnboardingTour(
   prefix: string,
+  passedRouter: Router,
   steps?: OnboardingStep[],
   onFinish?: () => void
 ): void {
@@ -48,6 +49,6 @@ export function startOnboardingTour(
   if (pinia) app.use(pinia)
   app.use(i18n)
   app.use(Quasar, {})
-  app.use(router)
+  app.use(passedRouter)
   app.mount(el)
 }

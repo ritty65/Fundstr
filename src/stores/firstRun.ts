@@ -36,7 +36,7 @@ export const useFirstRunStore = defineStore('firstRun', () => {
       const nostr = useNostrStore();
       const prefix = (nostr.pubkey || getBrowserId()).slice(0, 8);
       tourStarted.value = true;
-      startOnboardingTour(prefix, undefined, () => {
+      startOnboardingTour(prefix, router, undefined, () => {
         tourStarted.value = false;
         firstRunCompleted.value = true;
       });
