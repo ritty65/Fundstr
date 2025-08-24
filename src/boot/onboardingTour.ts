@@ -18,6 +18,7 @@ export default boot(async ({ router }) => {
     const firstRunStore = useFirstRunStore()
     const ui = useUiStore()
     let started = false
+    let activeTour: symbol | null = null
 
     const waitForTourTargets = (selector: string, timeout = 20000) =>
       new Promise<boolean>(resolve => {
@@ -80,23 +81,29 @@ export default boot(async ({ router }) => {
       }
       started = true
       firstRunStore.tourStarted = true
-      startOnboardingTour(prefix, undefined, reset)
+      const instance = Symbol('tour')
+      activeTour = instance
+      startOnboardingTour(prefix, undefined, () => {
+        if (activeTour === instance) reset()
+      })
     }
 
     const reset = () => {
       started = false
+      activeTour = null
       firstRunStore.tourStarted = false
     }
 
     watch(
       () => nostr.pubkey,
       () => {
-        reset()
+        if (activeTour) return
         tryStart()
       }
     )
 
     router.afterEach(() => {
+      if (activeTour) return
       tryStart()
     })
 
