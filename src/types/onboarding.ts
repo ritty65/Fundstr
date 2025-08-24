@@ -16,7 +16,6 @@ export type OnboardingPlacement =
 
 export interface OnboardingStep {
   id: string
-  route?: string
   ensure?: () => Promise<void> | void
   target: string
   placement?: OnboardingPlacement
@@ -25,7 +24,11 @@ export interface OnboardingStep {
   instruction: string
   requiredAction?: OnboardingRequiredAction
   advanceMode?: OnboardingAdvanceMode
-  completeWhen: () => boolean
+  completeWhen?: {
+    routeName?: string
+    path?: string
+    predicate?: () => boolean
+  }
   timeoutMs?: number
   a11yLabel?: string
 }
