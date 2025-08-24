@@ -27,8 +27,29 @@
               : `Step ${index + 1} of ${steps.length}`
           }}
         </div>
-        <div class="q-mb-sm">{{ current.instruction }}</div>
+        <div class="q-mb-sm">
+          {{ current.instruction }}
+          <div v-if="current.notFound" class="text-negative q-mt-sm">
+            {{
+              te('OnboardingTour.targetMissing')
+                ? t('OnboardingTour.targetMissing')
+                : "We couldn't find this element."
+            }}
+          </div>
+        </div>
         <div class="row justify-end q-gutter-sm">
+          <q-btn
+            v-if="!isLast"
+            flat
+            dense
+            class="skip-btn"
+            @click="skipStep"
+            >{{
+              te('OnboardingTour.cantFind')
+                ? t('OnboardingTour.cantFind')
+                : "I can't find this"
+            }}</q-btn
+          >
           <q-btn
             flat
             dense
@@ -174,6 +195,9 @@ function waitForSelector(selector: string, timeout = 10000) {
 }
 
 const menuPlacement = computed(() => {
+  if (current.value?.notFound) {
+    return { anchor: 'center middle', self: 'center middle' }
+  }
   const placement = current.value?.placement || 'auto'
   switch (placement) {
     case 'top':
@@ -189,6 +213,9 @@ const menuPlacement = computed(() => {
 })
 
 const menuOffset = computed((): [number, number] => {
+  if (current.value?.notFound) {
+    return [0, 0]
+  }
   const offset = current.value?.offset ?? 0
   const placement = current.value?.placement || 'auto'
   switch (placement) {
@@ -245,10 +272,12 @@ async function showStep(retries = 0) {
         await step.ensure?.()
       }
       if (retries >= 40) {
-        console.warn(`Skipping onboarding step ${step.id}: target not found (${step.target})`)
-        restoreDisabled()
-        index.value += 1
-        setTimeout(showStep, 200)
+        console.warn(`Onboarding step ${step.id}: target not found (${step.target})`)
+        current.value = { ...step, el: document.body, notFound: true }
+        actionDone.value = false
+        overlay.value = undefined
+        show.value = true
+        shownAtLeastOneStep.value = true
       } else {
         setTimeout(() => showStep(retries + 1), 300)
       }
@@ -310,6 +339,15 @@ function next() {
   current.value?.onNext?.()
   const diff = before - steps.value.length
   index.value += 1 - diff
+  setTimeout(showStep, 200)
+}
+
+function skipStep() {
+  show.value = false
+  clearInterval(completeInterval)
+  current.value?.cleanup?.()
+  restoreDisabled()
+  index.value += 1
   setTimeout(showStep, 200)
 }
 
