@@ -20,7 +20,7 @@
       content-class="onboarding-tooltip"
     >
       <div class="onboarding-body">
-        <div class="step-counter text-body2 text-1 q-mb-xs">
+        <div class="step-counter q-mb-xs">
           {{
             te('OnboardingTour.step')
               ? t('OnboardingTour.step', { current: index + 1, total: steps.length })
@@ -287,10 +287,23 @@ async function showStep() {
       return
     }
     if (step.ensure) {
-      await step.ensure()
+      try {
+        await step.ensure()
+      } catch (err) {
+        console.warn('Onboarding step ensure failed', err)
+        skipStep()
+        return
+      }
     }
     await nextTick()
-    const el = await waitForElement(step.target, step.timeoutMs ?? 10000)
+    let el: Element | null
+    try {
+      el = await waitForElement(step.target, step.timeoutMs ?? 10000)
+    } catch (err) {
+      console.warn('Onboarding step target wait failed', err)
+      skipStep()
+      return
+    }
     if (!el) {
       console.warn(`Onboarding step ${step.id}: target not found (${step.target})`)
       current.value = { ...step, el: document.body, notFound: true }
@@ -340,20 +353,26 @@ async function showStep() {
     }
 
     if (step.completeWhen?.routeName || step.completeWhen?.path) {
-      const unwatch = router.afterEach(to => {
-        const okName =
-          step.completeWhen?.routeName && to.name === step.completeWhen.routeName
-        const okPath = step.completeWhen?.path && to.path === step.completeWhen.path
-        if (okName || okPath) goNext()
-      })
-      cleanupFns.push(unwatch)
-      const currentRoute = router.currentRoute.value
-      const okNameInit =
-        step.completeWhen?.routeName &&
-        currentRoute.name === step.completeWhen.routeName
-      const okPathInit =
-        step.completeWhen?.path && currentRoute.path === step.completeWhen.path
-      if (okNameInit || okPathInit) goNext()
+      try {
+        const unwatch = router.afterEach(to => {
+          const okName =
+            step.completeWhen?.routeName && to.name === step.completeWhen.routeName
+          const okPath = step.completeWhen?.path && to.path === step.completeWhen.path
+          if (okName || okPath) goNext()
+        })
+        cleanupFns.push(unwatch)
+        const currentRoute = router.currentRoute.value
+        const okNameInit =
+          step.completeWhen?.routeName &&
+          currentRoute.name === step.completeWhen.routeName
+        const okPathInit =
+          step.completeWhen?.path && currentRoute.path === step.completeWhen.path
+        if (okNameInit || okPathInit) goNext()
+      } catch (err) {
+        console.warn('Onboarding route watcher failed', err)
+        skipStep()
+        return
+      }
     }
 
     if (step.completeWhen?.predicate) {
@@ -378,8 +397,7 @@ async function showStep() {
     shownAtLeastOneStep.value = true
   } catch (err) {
     console.error('Error showing onboarding step', err)
-    restoreDisabled()
-    finish()
+    skipStep()
   }
 }
 
@@ -464,12 +482,12 @@ onMounted(() => {
   color: var(--text-1);
 }
 .step-counter {
-  font-weight: 600;
-  font-size: 1rem;
+  font-weight: 700;
+  font-size: 1.1rem;
   color: var(--accent-500);
 }
 .step-progress {
-  height: 4px;
+  height: 6px;
   background: var(--surface-contrast-border);
   border-radius: 4px;
   overflow: hidden;
