@@ -2147,7 +2147,6 @@ export default defineComponent({
       this.$router.push('/wallet').then(() => {
         setTimeout(() => {
           firstRunStore.tourStarted = true
-          firstRunStore.firstRunCompleted = false
           startOnboardingTour(prefix, undefined, () => {
             firstRunStore.tourStarted = false
           })
@@ -2157,8 +2156,6 @@ export default defineComponent({
     resetTour: function () {
       const prefix = (useNostrStore().pubkey || getBrowserId()).slice(0, 8)
       resetOnboarding(prefix)
-      const firstRunStore = useFirstRunStore()
-      firstRunStore.firstRunCompleted = false
     },
     nukeWallet: async function () {
       // create a backup just in case
