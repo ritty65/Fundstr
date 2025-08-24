@@ -194,9 +194,9 @@
         <h2 class="text-3xl md:text-5xl font-bold mb-12 gradient-text">
           Trust Through Transparency
         </h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           <!-- Card 1 -->
-          <details class="interactive-card p-6 text-left">
+          <details class="interactive-card p-6 text-left h-full">
             <summary class="cursor-pointer">
               <q-icon name="code" size="32px" class="mb-4 text-accent" aria-hidden="true" />
               <span class="block font-semibold text-xl mb-2"
@@ -251,7 +251,7 @@
           </details>
 
           <!-- Card 2 -->
-          <details class="interactive-card p-6 text-left">
+          <details class="interactive-card p-6 text-left h-full">
             <summary class="cursor-pointer">
               <q-icon name="vpn_key" size="32px" class="mb-4 text-accent" aria-hidden="true" />
               <span class="block font-semibold text-xl mb-2"
@@ -298,7 +298,7 @@
           </details>
 
           <!-- Card 3 -->
-          <details class="interactive-card p-6 text-left">
+          <details class="interactive-card p-6 text-left h-full">
             <summary class="cursor-pointer">
               <q-icon name="shield" size="32px" class="mb-4 text-accent" aria-hidden="true" />
               <span class="block font-semibold text-xl mb-2"
@@ -361,7 +361,7 @@
           </details>
 
           <!-- Card 4 -->
-          <details class="interactive-card p-6 text-left">
+          <details class="interactive-card p-6 text-left h-full">
             <summary class="cursor-pointer">
               <q-icon name="account_balance_wallet" size="32px" class="mb-4 text-accent" aria-hidden="true" />
               <span class="block font-semibold text-xl mb-2"
