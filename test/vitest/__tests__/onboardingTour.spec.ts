@@ -60,6 +60,9 @@ describe('Onboarding tour', () => {
 
     const onboarding = await import('src/composables/useOnboardingTour')
     const startSpy = vi.spyOn(onboarding, 'startOnboardingTour').mockImplementation(() => {})
+    const toggle = document.createElement('div')
+    toggle.setAttribute('data-tour', 'nav-toggle')
+    document.body.appendChild(toggle)
     const target = document.createElement('div')
     target.setAttribute('data-tour', 'nav-dashboard')
     document.body.appendChild(target)
