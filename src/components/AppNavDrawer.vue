@@ -212,7 +212,7 @@ function goto(path: string) {
   router.push(path);
   ui.closeMainNav();
 }
-const gotoDashboard = () => goto("/");
+const gotoDashboard = () => goto("/dashboard");
 const gotoWallet = () => goto("/wallet");
 const gotoSettings = () => goto("/settings");
 const gotoFindCreators = () => goto("/find-creators");

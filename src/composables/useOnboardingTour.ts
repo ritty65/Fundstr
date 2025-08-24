@@ -4,6 +4,7 @@ import { getActivePinia } from 'pinia'
 import OnboardingTour from 'src/components/OnboardingTour.vue'
 import { LOCAL_STORAGE_KEYS } from 'src/constants/localStorageKeys'
 import { i18n } from 'src/boot/i18n'
+import type { OnboardingStep } from 'src/types/onboarding'
 
 function key(prefix: string) {
   return `${LOCAL_STORAGE_KEYS.FUNDSTR_ONBOARDING_DONE}:${prefix}:done`
@@ -17,11 +18,12 @@ export function resetOnboarding(prefix: string): void {
   LocalStorage.remove(key(prefix))
 }
 
-export function startOnboardingTour(prefix: string): void {
+export function startOnboardingTour(prefix: string, steps?: OnboardingStep[]): void {
   const el = document.createElement('div')
   document.body.appendChild(el)
   const app = createApp(OnboardingTour, {
     pubkeyPrefix: prefix,
+    steps,
     onFinish: () => {
       app.unmount()
       el.remove()

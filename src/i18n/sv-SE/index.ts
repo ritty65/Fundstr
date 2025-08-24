@@ -1993,17 +1993,17 @@ export const messages = {
     },
   },
   OnboardingTour: {
-    // TODO: update onboarding tour messages
-    navToggle: "Öppna sidomenyn för att byta sida. Kör om turen via Inställningar.",
-    navDashboard: "Din överblick: saldon, senaste aktivitet och snabblänkar.",
-    navWallet: "Sätt in eller ta ut pengar och se dina transaktioner här.",
-    navFindCreators: "Upptäck kreatörer och börja stötta dem med några tryck.",
-    navSubscriptions: "Hantera vem du stöttar och ändra nivåer när du vill.",
+    navToggle:
+      "Klicka på ☰ (växla navigation uppe till vänster) för att öppna sidomenyn. Du kan starta om turen via Inställningar.",
+    navDashboard: "Välj Instrumentpanel för att se saldon och aktivitet.",
+    navWallet: "Välj Plånbok för att hantera insättningar och uttag.",
+    navFindCreators: "Välj Hitta skapare för att upptäcka personer att stötta.",
+    navSubscriptions: "Välj Prenumerationer för att hantera vem du stöttar.",
     navSettings:
-      "Uppdatera inställningar, aviseringar och säkerhet. Spela om guiden här.",
-    skip: "Hoppa över tur",
-    gotIt: "Klart",
-    next: "Nästa",
+      "Välj Inställningar (kugghjul) för att uppdatera preferenser och starta om turen.",
+    skip: "Hoppa över turen",
+    gotIt: "Förstått",
+    next: "Fortsätt",
   },
 };
 

@@ -1993,16 +1993,17 @@ export const messages = {
     },
   },
   OnboardingTour: {
-    // TODO: update onboarding tour messages
-    navToggle: "打开侧栏切换页面。可在设置中再次查看此引导。",
-    navDashboard: "概览：余额、近期活动和快捷入口。",
-    navWallet: "在此存取资金并查看交易记录。",
-    navFindCreators: "发现创作者并轻松开始支持。",
-    navSubscriptions: "管理你支持的人并随时调整金额。",
-    navSettings: "更新偏好、通知和安全。在此可重看教程。",
-    skip: "跳过引导",
+    navToggle:
+      "点击左上角的 ☰ 切换导航，打开侧边栏。可在设置中重新开始此引导。",
+    navDashboard: "选择“仪表盘”查看余额和活动。",
+    navWallet: "选择“钱包”管理存取款。",
+    navFindCreators: "选择“发现创作者”寻找要支持的人。",
+    navSubscriptions: "选择“订阅”管理你支持的人。",
+    navSettings:
+      "选择“设置”（齿轮图标）更新偏好并重新开始此引导。",
+    skip: "跳过导览",
     gotIt: "知道了",
-    next: "下一步",
+    next: "继续",
   },
 };
 

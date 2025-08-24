@@ -1993,20 +1993,19 @@ export const messages = {
     },
   },
   OnboardingTour: {
-    // TODO: update onboarding tour messages
     navToggle:
-      "Sayfalar arasında geçmek için kenar çubuğunu aç. Turu Ayarlar'dan tekrar oynatabilirsin.",
-    navDashboard: "Genel bakış: bakiyeler, son etkinlik ve hızlı bağlantılar.",
-    navWallet: "Buradan para yatırıp çekebilir ve işlemlerini inceleyebilirsin.",
+      "☰ (sol üstteki menü) düğmesine tıklayarak kenar çubuğunu aç. Bu turu Ayarlar'dan tekrar başlatabilirsin.",
+    navDashboard: "Bakiye ve etkinliği görmek için Gösterge Paneli'ni seç.",
+    navWallet: "Yatırma ve çekimleri yönetmek için Cüzdan'ı seç.",
     navFindCreators:
-      "Yaratıcıları keşfet ve birkaç dokunuşla desteklemeye başla.",
+      "Destekleyecek kişileri keşfetmek için Yaratıcı Bul'u seç.",
     navSubscriptions:
-      "Desteklediklerini yönet ve katkı miktarlarını istediğin zaman ayarla.",
+      "Kimi desteklediğini yönetmek için Abonelikler'i seç.",
     navSettings:
-      "Tercihleri, bildirimleri ve güvenliği güncelle. Turu burada tekrar edebilirsin.",
-    skip: "Turu geç",
+      "Tercihleri güncellemek ve turu yeniden başlatmak için Ayarlar'ı (dişli simgesi) seç.",
+    skip: "Turu atla",
     gotIt: "Anladım",
-    next: "İleri",
+    next: "Devam et",
   },
 };
 

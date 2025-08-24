@@ -1993,20 +1993,19 @@ export const messages = {
     },
   },
   OnboardingTour: {
-    // TODO: update onboarding tour messages
     navToggle:
-      "Ouvre la barre latérale pour changer de page. Relance ce tutoriel via les paramètres.",
-    navDashboard: "Vue d’ensemble : soldes, activité récente et raccourcis.",
-    navWallet: "Dépose ou retire des fonds et consulte tes transactions ici.",
+      "Appuie sur ☰ (menu en haut à gauche) pour ouvrir la barre latérale. Tu peux relancer ce tutoriel via Paramètres.",
+    navDashboard: "Choisis Tableau de bord pour voir tes soldes et ton activité.",
+    navWallet: "Choisis Portefeuille pour gérer dépôts et retraits.",
     navFindCreators:
-      "Découvre des créateurs et commence à les soutenir en quelques clics.",
+      "Choisis Trouver des créateurs pour découvrir qui soutenir.",
     navSubscriptions:
-      "Gère les créateurs que tu soutiens et ajuste tes contributions à tout moment.",
+      "Choisis Abonnements pour gérer tes soutiens.",
     navSettings:
-      "Mets à jour préférences, notifications et sécurité. Relance le tutoriel ici.",
+      "Choisis Paramètres (icône engrenage) pour modifier les préférences et relancer ce tutoriel.",
     skip: "Passer le tour",
     gotIt: "Compris",
-    next: "Suivant",
+    next: "Continuer",
   },
 };
 

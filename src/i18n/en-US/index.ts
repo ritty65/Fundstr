@@ -2008,15 +2008,17 @@ export const messages = {
     },
   },
   OnboardingTour: {
-    navToggle: "Tap the menu button to open the sidebar.",
-    navDashboard: "This is your dashboard with balances and activity. Click Next to continue.",
-    navWallet: "Manage deposits and withdrawals in the wallet. Click Next to continue.",
-    navFindCreators: "Discover creators to support. Click Next to continue.",
-    navSubscriptions: "Manage who you support and adjust contribution levels. Click Next to continue.",
-    navSettings: "Update preferences and security in Settings. Click Next to finish.",
+    navToggle:
+      "Click ☰ Toggle navigation (top-left) to open the sidebar. Relaunch this tour from Settings.",
+    navDashboard: "Choose Dashboard to see balances and activity.",
+    navWallet: "Choose Wallet to manage deposits and withdrawals.",
+    navFindCreators: "Choose Find Creators to discover people to support.",
+    navSubscriptions: "Choose Subscriptions to manage who you support.",
+    navSettings:
+      "Choose Settings to update preferences and relaunch this tour.",
     skip: "Skip tour",
     gotIt: "Got it",
-    next: "Next",
+    next: "Continue",
   },
   onb: {
     1: {

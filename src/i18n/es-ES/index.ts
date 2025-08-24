@@ -1993,18 +1993,17 @@ export const messages = {
     },
   },
   OnboardingTour: {
-    // TODO: update onboarding tour messages
     navToggle:
-      "Abre la barra lateral para cambiar de página. Repite este recorrido desde Ajustes.",
-    navDashboard: "Tu resumen: saldos, actividad reciente y accesos rápidos.",
-    navWallet: "Deposita o retira fondos y revisa tus transacciones aquí.",
-    navFindCreators: "Descubre creadores y apóyalos con unos toques.",
-    navSubscriptions: "Gestiona a quién apoyas y ajusta las contribuciones cuando quieras.",
+      "Pulsa ☰ (alternar navegación arriba a la izquierda) para abrir la barra lateral. Puedes reiniciar este recorrido en Ajustes.",
+    navDashboard: "Elige Panel para ver saldos y actividad.",
+    navWallet: "Elige Billetera para gestionar depósitos y retiros.",
+    navFindCreators: "Elige Encontrar creadores para descubrir a quién apoyar.",
+    navSubscriptions: "Elige Suscripciones para gestionar a quién apoyas.",
     navSettings:
-      "Actualiza preferencias, notificaciones y seguridad. Vuelve a ver el tutorial aquí.",
-    skip: "Saltar tour",
+      "Elige Ajustes (icono de engranaje) para actualizar preferencias y reiniciar este recorrido.",
+    skip: "Omitir tour",
     gotIt: "Entendido",
-    next: "Siguiente",
+    next: "Continuar",
   },
 };
 
