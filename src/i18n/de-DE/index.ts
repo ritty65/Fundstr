@@ -1993,15 +1993,14 @@ export const messages = {
     },
   },
   OnboardingTour: {
-    // TODO: update onboarding tour messages
     navToggle:
-      "Öffne die Seitenleiste, um zwischen Seiten zu wechseln. Du kannst die Tour jederzeit über Einstellungen erneut abspielen.",
-    navDashboard: "Deine Übersicht: Kontostände, Aktivitäten und Schnellzugriffe.",
-    navWallet: "Zahle ein oder aus und sieh dir hier deine Transaktionen an.",
-    navFindCreators: "Entdecke Creator und unterstütze sie mit wenigen Klicks.",
-    navSubscriptions: "Verwalte, wen du unterstützt, und passe Beträge jederzeit an.",
+      "Klicke auf ☰ (Navigation umschalten, oben links), um die Seitenleiste zu öffnen. Du kannst diese Tour unter Einstellungen erneut starten.",
+    navDashboard: "Wähle Dashboard, um Salden und Aktivitäten zu sehen.",
+    navWallet: "Wähle Wallet, um Ein- und Auszahlungen zu verwalten.",
+    navFindCreators: "Wähle Creator finden, um neue Unterstützte zu entdecken.",
+    navSubscriptions: "Wähle Abonnements, um deine Unterstützungen zu verwalten.",
     navSettings:
-      "Aktualisiere Einstellungen, Benachrichtigungen und Sicherheit. Hier kannst du die Tour erneut starten.",
+      "Wähle Einstellungen (Zahnrad), um Präferenzen zu ändern und die Tour erneut zu starten.",
     skip: "Tour überspringen",
     gotIt: "Verstanden",
     next: "Weiter",

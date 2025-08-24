@@ -82,7 +82,7 @@ describe('Onboarding tour', () => {
     await nextTick()
     await wrapper.find('button.skip-btn').trigger('click')
 
-    const key = `fundstr:onboarding:v2:${prefix}:done`
+    const key = `fundstr:onboarding:v3:${prefix}:done`
     expect(storage[key]).toBe('1')
 
     const onboarding = await import('src/composables/useOnboardingTour')

@@ -1993,17 +1993,17 @@ export const messages = {
     },
   },
   OnboardingTour: {
-    // TODO: update onboarding tour messages
     navToggle:
-      "サイドバーを開いてページを移動。設定からいつでもツアーを再実行できます。",
-    navDashboard: "概要：残高、最近のアクティビティ、ショートカット。",
-    navWallet: "ここで入出金と取引履歴を確認します。",
-    navFindCreators: "クリエイターを探し、数タップで支援を開始。",
-    navSubscriptions: "支援先を管理し、金額をいつでも調整。",
-    navSettings: "設定や通知、セキュリティを更新。ここでチュートリアルを再実行。",
+      "左上の ☰（ナビゲーション切替）をクリックしてサイドバーを開きます。設定からいつでもこのツアーを再開できます。",
+    navDashboard: "「ダッシュボード」を選択して残高とアクティビティを確認しましょう。",
+    navWallet: "「ウォレット」を選択して入出金を管理します。",
+    navFindCreators: "「クリエイターを探す」を選択して支援する相手を見つけます。",
+    navSubscriptions: "「購読」を選択して支援先を管理します。",
+    navSettings:
+      "「設定」（歯車アイコン）を選択して好みを変更し、このツアーを再開できます。",
     skip: "ツアーをスキップ",
     gotIt: "了解",
-    next: "次へ",
+    next: "続行",
   },
 };
 
