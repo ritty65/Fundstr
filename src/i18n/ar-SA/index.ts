@@ -2001,6 +2001,7 @@ export const messages = {
     navSubscriptions: "اختر الاشتراكات لإدارة من تدعمه.",
     navSettings:
       "اختر الإعدادات (رمز الترس) لتحديث التفضيلات وإعادة تشغيل هذه الجولة.",
+    step: 'Step {current} of {total}',
     skip: "تخطي الجولة",
     gotIt: "فهمت",
     next: "متابعة",

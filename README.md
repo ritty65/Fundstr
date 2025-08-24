@@ -85,6 +85,11 @@ Fundstr is currently in Alpha/Beta.
 - Informational learn cards explain the main app sections without leaving the page.
 - To change the default mint suggested during onboarding, set the `RECOMMENDED_MINT_URL` environment variable.
 
+### Onboarding tour startup
+
+- The tour boot now waits up to 5s for elements with `[data-tour]` using a `MutationObserver`.
+- If no targets appear, the `tourStarted` flag resets so the app can retry launching the tour on later navigation.
+
 **What's Working**
 
 - Core Cashu wallet functionality (send, receive, mint management)

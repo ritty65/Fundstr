@@ -2016,6 +2016,7 @@ export const messages = {
     navSubscriptions: "Choose Subscriptions to manage who you support.",
     navSettings:
       "Choose Settings to update preferences and relaunch this tour.",
+    step: 'Step {current} of {total}',
     skip: "Skip tour",
     gotIt: "Got it",
     next: "Continue",

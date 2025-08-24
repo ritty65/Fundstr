@@ -2001,6 +2001,7 @@ export const messages = {
     navSubscriptions: "选择“订阅”管理你支持的人。",
     navSettings:
       "选择“设置”（齿轮图标）更新偏好并重新开始此引导。",
+    step: 'Step {current} of {total}',
     skip: "跳过导览",
     gotIt: "知道了",
     next: "继续",

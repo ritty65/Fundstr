@@ -2003,6 +2003,7 @@ export const messages = {
       "Kimi desteklediğini yönetmek için Abonelikler'i seç.",
     navSettings:
       "Tercihleri güncellemek ve turu yeniden başlatmak için Ayarlar'ı (dişli simgesi) seç.",
+    step: 'Step {current} of {total}',
     skip: "Turu atla",
     gotIt: "Anladım",
     next: "Devam et",

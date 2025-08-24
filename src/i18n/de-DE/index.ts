@@ -2001,6 +2001,7 @@ export const messages = {
     navSubscriptions: "Wähle Abonnements, um deine Unterstützungen zu verwalten.",
     navSettings:
       "Wähle Einstellungen (Zahnrad), um Präferenzen zu ändern und die Tour erneut zu starten.",
+    step: 'Step {current} of {total}',
     skip: "Tour überspringen",
     gotIt: "Verstanden",
     next: "Weiter",

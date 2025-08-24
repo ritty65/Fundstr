@@ -36,7 +36,9 @@ export const useFirstRunStore = defineStore('firstRun', () => {
       const nostr = useNostrStore();
       const prefix = (nostr.pubkey || 'anon').slice(0, 8);
       tourStarted.value = true;
-      startOnboardingTour(prefix);
+      startOnboardingTour(prefix, undefined, () => {
+        tourStarted.value = false;
+      });
       suppressModals.value = false;
       firstRunCompleted.value = true;
     }, 5000);

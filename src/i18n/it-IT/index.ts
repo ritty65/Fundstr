@@ -2001,6 +2001,7 @@ export const messages = {
     navSubscriptions: "Scegli Abbonamenti per gestire chi sostieni.",
     navSettings:
       "Scegli Impostazioni (icona ingranaggio) per aggiornare le preferenze e riavviare questo tour.",
+    step: 'Step {current} of {total}',
     skip: "Salta tour",
     gotIt: "Fatto",
     next: "Continua",
