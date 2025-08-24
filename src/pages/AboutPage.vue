@@ -426,9 +426,9 @@
           Frequently Asked Questions
         </h2>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <!-- Q1 -->
-          <details class="interactive-card p-4">
+          <details class="interactive-card p-4 w-full">
             <summary class="cursor-pointer font-semibold text-lg">
               What if a fan stops paying?
             </summary>
@@ -441,7 +441,7 @@
           </details>
 
           <!-- Q2 -->
-          <details class="interactive-card p-4">
+          <details class="interactive-card p-4 w-full">
             <summary class="cursor-pointer font-semibold text-lg">
               Can I withdraw to a Lightning wallet?
             </summary>
@@ -453,7 +453,7 @@
           </details>
 
           <!-- Q3 -->
-          <details class="interactive-card p-4">
+          <details class="interactive-card p-4 w-full">
             <summary class="cursor-pointer font-semibold text-lg">
               How private is this really?
             </summary>
@@ -472,7 +472,7 @@
           </details>
 
           <!-- Q4 -->
-          <details class="interactive-card p-4">
+          <details class="interactive-card p-4 w-full">
             <summary class="cursor-pointer font-semibold text-lg">
               What exactly is Cashu and how is it different from regular Bitcoin
               or Lightning wallets?
@@ -486,7 +486,7 @@
           </details>
 
           <!-- Q5 -->
-          <details class="interactive-card p-4">
+          <details class="interactive-card p-4 w-full">
             <summary class="cursor-pointer font-semibold text-lg">
               Do I need to trust a mint, and what happens if a mint goes
               offline?
@@ -500,7 +500,7 @@
           </details>
 
           <!-- Q6 -->
-          <details class="interactive-card p-4">
+          <details class="interactive-card p-4 w-full">
             <summary class="cursor-pointer font-semibold text-lg">
               How can I back up or restore my wallet?
             </summary>
@@ -513,7 +513,7 @@
           </details>
 
           <!-- Q7 -->
-          <details class="interactive-card p-4">
+          <details class="interactive-card p-4 w-full">
             <summary class="cursor-pointer font-semibold text-lg">
               What are “Buckets” and why would I use them?
             </summary>
@@ -526,7 +526,7 @@
           </details>
 
           <!-- Q8 -->
-          <details class="interactive-card p-4">
+          <details class="interactive-card p-4 w-full">
             <summary class="cursor-pointer font-semibold text-lg">
               How does the Nostr integration work?
             </summary>
@@ -539,7 +539,7 @@
           </details>
 
           <!-- Q9 -->
-          <details class="interactive-card p-4">
+          <details class="interactive-card p-4 w-full">
             <summary class="cursor-pointer font-semibold text-lg">
               What are Nutzaps and how do I receive them?
             </summary>
@@ -552,7 +552,7 @@
           </details>
 
           <!-- Q10 -->
-          <details class="interactive-card p-4">
+          <details class="interactive-card p-4 w-full">
             <summary class="cursor-pointer font-semibold text-lg">
               Can I connect the wallet to other Nostr‑enabled apps?
             </summary>
@@ -565,7 +565,7 @@
           </details>
 
           <!-- Q11 -->
-          <details class="interactive-card p-4">
+          <details class="interactive-card p-4 w-full">
             <summary class="cursor-pointer font-semibold text-lg">
               Are there any fees for using Cashu tokens?
             </summary>
@@ -578,7 +578,7 @@
           </details>
 
           <!-- Q12 -->
-          <details class="interactive-card p-4">
+          <details class="interactive-card p-4 w-full">
             <summary class="cursor-pointer font-semibold text-lg">
               Does the app work offline?
             </summary>
@@ -590,7 +590,7 @@
           </details>
 
           <!-- Q13 -->
-          <details class="interactive-card p-4">
+          <details class="interactive-card p-4 w-full">
             <summary class="cursor-pointer font-semibold text-lg">
               Is the code open source and can I run it myself?
             </summary>
