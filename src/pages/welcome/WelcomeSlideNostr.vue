@@ -126,7 +126,7 @@ async function connectNip07() {
       if (!nostr.signer) {
         await nostr.connectBrowserSigner()
       }
-      await creatorHubStore.loginWithNip07()
+      await creatorHubStore.login()
       welcome.nostrSetupCompleted = true
       npub.value = nostr.npub
       connected.value = true
@@ -143,7 +143,7 @@ async function connectNip07() {
   async function generate() {
     error.value = ''
     await nostr.initWalletSeedPrivateKeySigner()
-    await creatorHubStore.loginWithNsec(nostr.activePrivateKeyNsec)
+    await creatorHubStore.login(nostr.activePrivateKeyNsec)
     welcome.nostrSetupCompleted = true
     npub.value = nostr.npub
     backupNsec.value = nostr.activePrivateKeyNsec
@@ -176,7 +176,7 @@ async function importKey() {
   }
     try {
       await nostr.initPrivateKeySigner(nsecToUse)
-      await creatorHubStore.loginWithNsec(nostr.activePrivateKeyNsec)
+      await creatorHubStore.login(nostr.activePrivateKeyNsec)
       welcome.nostrSetupCompleted = true
       npub.value = nostr.npub
       backupNsec.value = nostr.activePrivateKeyNsec

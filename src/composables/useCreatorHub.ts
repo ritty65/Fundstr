@@ -46,12 +46,11 @@ export function useCreatorHub() {
     about: about.value,
   }));
 
-  const nsec = ref("");
   const isMobile = computed(() => $q.screen.lt.md);
   const splitterModel = ref(50);
   const tab = ref<"profile" | "tiers">("profile");
 
-  const loggedIn = computed(() => !!nostr.pubkey);
+  const loggedIn = computed(() => !!useNostrStore().pubkey);
   const tierList = computed<Tier[]>(() => store.getTierArray());
   const draggableTiers = ref<Tier[]>([]);
   const deleteDialog = ref(false);
@@ -71,16 +70,8 @@ export function useCreatorHub() {
     { immediate: true },
   );
 
-  async function loginNip07() {
-    await store.loginWithNip07();
-    // load cached data immediately and update in the background
-    initPage();
-  }
-
-  async function loginNsec() {
-    if (!nsec.value) return;
-    await store.loginWithNsec(nsec.value);
-    // don't block UI while profile/tiers are fetched
+  async function login(nsec?: string) {
+    await store.login(nsec);
     initPage();
   }
 
@@ -230,7 +221,6 @@ export function useCreatorHub() {
 
   return {
     profile,
-    nsec,
     isMobile,
     splitterModel,
     tab,
@@ -244,8 +234,7 @@ export function useCreatorHub() {
     publishing,
     npub,
     isDirty,
-    loginNip07,
-    loginNsec,
+    login,
     logout,
     initPage,
     publishFullProfile,

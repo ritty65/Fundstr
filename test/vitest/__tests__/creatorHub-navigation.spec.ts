@@ -33,11 +33,9 @@ vi.mock('nostr-tools', () => ({ nip19: { npubEncode: (s: string) => `npub${s}`, 
 vi.mock('../../../src/composables/useCreatorHub', () => ({
   useCreatorHub: () => {
     const nostr = useNostrStore()
-    const nsec = ref('')
     const loggedIn = computed(() => !!nostr.pubkey)
     const npub = computed(() => (nostr.pubkey ? `npub${nostr.pubkey}` : ''))
     return {
-      nsec,
       loggedIn,
       npub,
       // unused placeholders
@@ -51,8 +49,7 @@ vi.mock('../../../src/composables/useCreatorHub', () => ({
       currentTier: ref({}),
       publishing: ref(false),
       isDirty: ref(false),
-      loginNip07: vi.fn(),
-      loginNsec: vi.fn(),
+      login: vi.fn(),
       logout: vi.fn(),
       initPage: vi.fn(),
       publishFullProfile: vi.fn(),
@@ -78,7 +75,7 @@ describe('Welcome flow to Creator Hub', () => {
     Object.defineProperty(nostr, 'activePrivateKeyNsec', { get: () => 'nsec1abc' })
 
     const creatorHub = useCreatorHubStore()
-    const loginSpy = vi.spyOn(creatorHub, 'loginWithNsec').mockResolvedValue()
+    const loginSpy = vi.spyOn(creatorHub, 'login').mockResolvedValue()
 
     const wrapperWelcome = mount(WelcomeSlideNostr, {
       global: {
