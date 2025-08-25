@@ -681,7 +681,8 @@
               label="Install PWA"
             />
             <q-btn
-              href="#"
+              :href="donationLink"
+              target="_blank"
               color="accent"
               outline
               rounded
@@ -798,6 +799,8 @@ const siteOverviewCards: SiteOverviewCard[] = [
     icon: "vpn_key",
   },
 ];
+
+const donationLink = `lightning:${import.meta.env.VITE_DONATION_LIGHTNING || ''}`;
 
 // navigation items for the navigation map
 const navigationItems = useNavigationItems();
