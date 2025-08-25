@@ -104,8 +104,8 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, computed } from "vue";
-import { useRoute } from "vue-router";
+import { defineComponent, ref, onMounted, computed, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useCreatorsStore } from "stores/creators";
 import { useNostrStore } from "stores/nostr";
 import { useNdk } from "src/composables/useNdk";
@@ -125,6 +125,7 @@ export default defineComponent({
   components: { PaywalledContent, SubscriptionReceipt, MediaPreview },
   setup() {
     const route = useRoute();
+    const router = useRouter();
     const creatorNpub = route.params.npub as string;
     let creatorHex = creatorNpub;
     try {
@@ -167,8 +168,36 @@ export default defineComponent({
 
     const openSubscribe = (tier: any) => {
       selectedTier.value = tier;
+      if (!nostr.pubkey && !nostr.signer) {
+        const redirectUrl = router.resolve({
+          name: "PublicCreatorProfile",
+          params: { npub: creatorNpub },
+          query: { tier: tier.id },
+        }).fullPath;
+        router.push({ path: "/nostr-login", query: { redirect: redirectUrl } });
+        return;
+      }
       showSubscribeDialog.value = true;
     };
+
+    onMounted(() => {
+      const tierId = route.query.tier as string | undefined;
+      if (!tierId) return;
+      const tryOpen = () => {
+        const t = tiers.value.find((ti: any) => ti.id === tierId);
+        if (t) {
+          openSubscribe(t);
+          router.replace({ name: "PublicCreatorProfile", params: { npub: creatorNpub } });
+          return true;
+        }
+        return false;
+      };
+      if (!tryOpen()) {
+        const stop = watch(tiers, () => {
+          if (tryOpen()) stop();
+        });
+      }
+    });
 
     const formatTs = (ts: number) => {
       const d = new Date(ts * 1000);
@@ -225,10 +254,16 @@ export default defineComponent({
 
 <style scoped>
 .tier-card .subscribe-btn {
-  display: none;
+  display: inline-flex;
 }
 
-.tier-card:hover .subscribe-btn {
-  display: inline-flex;
+@media (hover: hover) {
+  .tier-card .subscribe-btn {
+    display: none;
+  }
+
+  .tier-card:hover .subscribe-btn {
+    display: inline-flex;
+  }
 }
 </style>
