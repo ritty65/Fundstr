@@ -9,7 +9,7 @@
         <ThemeToggle />
       </div>
       <div v-if="!loggedIn" class="q-mt-lg q-mb-lg">
-        <q-btn color="primary" class="full-width q-mb-md" @click="loginNip07"
+        <q-btn color="primary" class="full-width q-mb-md" @click="() => login()"
           >Login with Browser Signer</q-btn
         >
         <q-input
@@ -23,7 +23,7 @@
         <div class="text-negative text-caption q-mb-sm">
           Keep your nsec secret – it never leaves your browser.
         </div>
-        <q-btn color="primary" outline class="full-width" @click="loginNsec"
+        <q-btn color="primary" outline class="full-width" @click="() => login(nsec)"
           >Login with nsec</q-btn
         >
       </div>
@@ -139,7 +139,7 @@
 <script setup lang="ts">
 import Draggable from "vuedraggable";
 
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useCreatorHub } from "src/composables/useCreatorHub";
 import { useClipboard } from "src/composables/useClipboard";
 import CreatorProfileForm from "components/CreatorProfileForm.vue";
@@ -149,7 +149,6 @@ import DeleteModal from "components/DeleteModal.vue";
 import ThemeToggle from "components/ThemeToggle.vue";
 
 const {
-  nsec,
   isMobile,
   splitterModel,
   tab,
@@ -160,8 +159,7 @@ const {
   showTierDialog,
   currentTier,
   npub,
-  loginNip07,
-  loginNsec,
+  login,
   logout,
   publishFullProfile,
   addTier,
@@ -171,6 +169,8 @@ const {
   refreshTiers,
   performDelete,
 } = useCreatorHub();
+
+const nsec = ref("");
 
 const { copy } = useClipboard();
 const profileUrl = computed(

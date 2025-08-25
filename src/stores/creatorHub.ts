@@ -71,17 +71,27 @@ export const useCreatorHubStore = defineStore("creatorHub", {
     tierOrder: useLocalStorage<string[]>("creatorHub.tierOrder", []),
   }),
   actions: {
-    async loginWithNip07() {
+    async login(nsec?: string) {
       const nostr = useNostrStore();
-      await nostr.initNip07Signer();
-    },
-    async loginWithNsec(nsec: string) {
-      const nostr = useNostrStore();
-      await nostr.initPrivateKeySigner(nsec);
+      if (nsec) await nostr.initPrivateKeySigner(nsec);
+      else await nostr.initNip07Signer();
     },
     logout() {
       const nostr = useNostrStore();
+      nostr.disconnect();
       nostr.setPubkey("");
+      this.tiers = {} as any;
+      this.tierOrder = [];
+      const profileStore = useCreatorProfileStore();
+      profileStore.setProfile({
+        display_name: "",
+        picture: "",
+        about: "",
+        pubkey: "",
+        mints: [],
+        relays: [],
+      });
+      profileStore.markClean();
     },
     async updateProfile(profile: any) {
       const nostr = useNostrStore();
