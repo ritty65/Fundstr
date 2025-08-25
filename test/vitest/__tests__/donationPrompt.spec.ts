@@ -17,7 +17,11 @@ const mountComponent = () =>
         QTabPanel: { template: '<div><slot /></div>' },
         QInput: { template: '<input />', props: ['modelValue'] },
         QCardActions: { template: '<div><slot /></div>' },
-        QBtn: { template: '<button><slot /></button>' },
+        QBtn: {
+          props: ['label', 'disable'],
+          template: '<button :disabled="disable">{{ label }}</button>'
+        },
+        QBanner: { template: '<div><slot /></div>' },
         VueQrcode: { template: '<div />' }
       }
     }
@@ -41,5 +45,14 @@ describe('DonationPrompt', () => {
     localStorage.setItem(LOCAL_STORAGE_KEYS.DONATION_LAUNCH_COUNT, '4')
     const wrapper = mountComponent()
     expect(wrapper.vm.visible).toBe(true)
+  })
+
+  it('disables donate button when no address is configured', () => {
+    const wrapper = mountComponent()
+    const donateBtn = wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Donate Now')
+    expect(donateBtn?.attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('Donation address not configured')
   })
 })
