@@ -42,6 +42,7 @@ import { useI18n } from 'vue-i18n'
 import { useQuasar } from 'quasar'
 import { useNostrStore } from 'src/stores/nostr'
 import { useWelcomeStore } from 'src/stores/welcome'
+import { useCreatorHubStore } from 'src/stores/creatorHub'
 import NostrBackupDialog from 'src/components/welcome/NostrBackupDialog.vue'
 import { nip19 } from 'nostr-tools'
 import { hexToBytes } from '@noble/hashes/utils'
@@ -50,6 +51,7 @@ const { t } = useI18n()
 const $q = useQuasar()
 const nostr = useNostrStore()
 const welcome = useWelcomeStore()
+const creatorHubStore = useCreatorHubStore()
 const id = 'welcome-nostr-title'
 
 const nsec = ref('')
@@ -120,14 +122,15 @@ const suggestedExtensions = computed(() => {
 async function connectNip07() {
   error.value = ''
   connecting.value = true
-  try {
-    if (!nostr.signer) {
-      await nostr.connectBrowserSigner()
-    }
-    welcome.nostrSetupCompleted = true
-    npub.value = nostr.npub
-    connected.value = true
-    $q.notify({ type: 'positive', message: t('Welcome.nostr.connected') })
+    try {
+      if (!nostr.signer) {
+        await nostr.connectBrowserSigner()
+      }
+      await creatorHubStore.loginWithNip07()
+      welcome.nostrSetupCompleted = true
+      npub.value = nostr.npub
+      connected.value = true
+      $q.notify({ type: 'positive', message: t('Welcome.nostr.connected') })
   } catch (e) {
     const msg = t('Welcome.nostr.errorConnect')
     error.value = msg
@@ -137,14 +140,15 @@ async function connectNip07() {
   }
 }
 
-async function generate() {
-  error.value = ''
-  await nostr.initWalletSeedPrivateKeySigner()
-  welcome.nostrSetupCompleted = true
-  npub.value = nostr.npub
-  backupNsec.value = nostr.activePrivateKeyNsec
-  nsec.value = nostr.activePrivateKeyNsec
-  showBackup.value = true
+  async function generate() {
+    error.value = ''
+    await nostr.initWalletSeedPrivateKeySigner()
+    await creatorHubStore.loginWithNsec(nostr.activePrivateKeyNsec)
+    welcome.nostrSetupCompleted = true
+    npub.value = nostr.npub
+    backupNsec.value = nostr.activePrivateKeyNsec
+    nsec.value = nostr.activePrivateKeyNsec
+    showBackup.value = true
 }
 
 async function importKey() {
@@ -170,13 +174,14 @@ async function importKey() {
     error.value = t('Welcome.nostr.errorInvalid')
     return
   }
-  try {
-    await nostr.initPrivateKeySigner(nsecToUse)
-    welcome.nostrSetupCompleted = true
-    npub.value = nostr.npub
-    backupNsec.value = nostr.activePrivateKeyNsec
-    showBackup.value = true
-    nsec.value = ''
+    try {
+      await nostr.initPrivateKeySigner(nsecToUse)
+      await creatorHubStore.loginWithNsec(nostr.activePrivateKeyNsec)
+      welcome.nostrSetupCompleted = true
+      npub.value = nostr.npub
+      backupNsec.value = nostr.activePrivateKeyNsec
+      showBackup.value = true
+      nsec.value = ''
   } catch {
     error.value = t('Welcome.nostr.errorInvalid')
   }
