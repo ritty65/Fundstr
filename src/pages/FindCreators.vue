@@ -328,8 +328,17 @@ onMounted(async () => {
   }
 
   const npub = route.query.npub;
-  if (typeof npub === "string" && npub) {
-    router.push(`/creator/${npub}`);
+  if (typeof npub === "string" && npub && iframeEl.value) {
+    iframeEl.value.addEventListener(
+      "load",
+      () => {
+        iframeEl.value?.contentWindow?.postMessage(
+          { type: "prefillSearch", npub },
+          "*",
+        );
+      },
+      { once: true },
+    );
   }
 });
 
