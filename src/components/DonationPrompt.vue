@@ -56,7 +56,10 @@ onMounted(() => {
   const launchCount = getLaunchCount() + 1
   setLaunchCount(launchCount)
 
-  const lastPrompt = parseInt(localStorage.getItem(LOCAL_STORAGE_KEYS.DONATION_LAST_PROMPT) || '0')
+  const lastPrompt = parseInt(
+    localStorage.getItem(LOCAL_STORAGE_KEYS.DONATION_LAST_PROMPT) ||
+      Date.now().toString()
+  )
   const daysSince = (Date.now() - lastPrompt) / (1000 * 60 * 60 * 24)
 
   if (launchCount >= LAUNCH_THRESHOLD || daysSince >= DAY_THRESHOLD) {
