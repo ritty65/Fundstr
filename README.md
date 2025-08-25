@@ -248,6 +248,16 @@ wss://relay.nostr.band/
 wss://relay.snort.social/
 ```
 
+### Sharing Creator Links
+
+You can share direct links to creator profiles by appending an `npub` query parameter to the search page:
+
+```
+/#/find-creators?npub=<npub>
+```
+
+When opened, Fundstr automatically loads the profile for the provided `npub`. If the visitor hasn't logged in or set up a wallet yet, the app will prompt them to authenticate and choose a wallet before they can send support.
+
 ### Verify Nutzap Profile
 
 After publishing your `kind:10019` Nutzap profile, you can confirm that relays
