@@ -58,7 +58,7 @@ const profileStoreMock = {
   picture: "",
   about: "",
   pubkey: "",
-  mints: [] as string[],
+  mints: "",
   relays: [] as string[],
   setProfile: vi.fn(),
   markClean: vi.fn(),

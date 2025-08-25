@@ -70,16 +70,13 @@
     </div>
     <q-select
       v-model="profileMintsLocal"
-      multiple
       use-input
-      use-chips
       hide-dropdown-icon
-      new-value-mode="add-unique"
       :options="mintOptions"
       dense
       outlined
       persistent-hint
-      :rules="[urlListRule]"
+      :rules="[urlRule]"
       :hint="$t('creatorHub.urlListHint')"
       :label="$t('creatorHub.trustedMints')"
     />
@@ -180,7 +177,7 @@ const profilePubLocal = computed({
 });
 const profileMintsLocal = computed({
   get: () => profileMints.value,
-  set: (val: string[]) => (profileMints.value = val),
+  set: (val: string) => (profileMints.value = val),
 });
 const profileRelaysLocal = computed({
   get: () => profileRelays.value,

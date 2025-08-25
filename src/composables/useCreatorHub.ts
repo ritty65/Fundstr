@@ -23,7 +23,7 @@ export async function scanForMints() {
   const nostr = useNostrStore();
   const mintsStore = useMintsStore();
   const profileStore = useCreatorProfileStore();
-  const { mints: profileMints } = storeToRefs(profileStore);
+    const { mints: profileMints } = storeToRefs(profileStore);
   scanningMints.value = true;
   try {
     await nostr.initNdkReadOnly();
@@ -56,14 +56,14 @@ export async function scanForMints() {
       }
     });
 
-    if (reachable.length) {
-      profileMints.value = reachable;
-      notifySuccess(
-        `Found ${reachable.length} mint${reachable.length > 1 ? "s" : ""}`,
-      );
-    } else {
-      notifyError("No reachable mints found");
-    }
+      if (reachable.length) {
+        profileMints.value = reachable[0];
+        notifySuccess(
+          `Found ${reachable.length} mint${reachable.length > 1 ? "s" : ""}`,
+        );
+      } else {
+        notifyError("No reachable mints found");
+      }
 
     if (errors.length) {
       notifyError(`Errors: ${errors.join("; ")}`);
@@ -143,8 +143,8 @@ export function useCreatorHub() {
     await nostr.initSignerIfNotSet();
     const p = await nostr.getProfile(nostr.pubkey);
     if (p) profileStore.setProfile(p);
-    if (profileStore.mints.length) {
-      profileMints.value = [...profileStore.mints];
+    if (profileStore.mints) {
+      profileMints.value = profileStore.mints;
     }
     if (profileStore.relays.length) {
       profileRelays.value = [...profileStore.relays];
@@ -161,7 +161,7 @@ export function useCreatorHub() {
     }
     if (existing) {
       profilePub.value = existing.p2pkPubkey;
-      profileMints.value = [...existing.trustedMints];
+      profileMints.value = existing.trustedMints[0] || "";
       profileRelays.value = existing.relays
         ? [...existing.relays]
         : [...nostr.relays];
@@ -170,8 +170,8 @@ export function useCreatorHub() {
         profileRelays.value = [...nostr.relays];
       }
       if (p2pkStore.firstKey) profilePub.value = p2pkStore.firstKey.publicKey;
-      if (!profileStore.mints.length && mintsStore.mints.length > 0)
-        profileMints.value = mintsStore.mints.map((m) => m.url);
+        if (!profileStore.mints && mintsStore.mints.length > 0)
+          profileMints.value = mintsStore.mints[0].url;
     }
     await store.loadTiersFromNostr(nostr.pubkey);
     profileStore.markClean();
@@ -202,12 +202,12 @@ export function useCreatorHub() {
     try {
       const timeoutMs = 30000;
       await Promise.race([
-        publishDiscoveryProfile({
-          profile: profile.value,
-          p2pkPub: profilePub.value,
-          mints: profileMints.value,
-          relays: profileRelays.value,
-        }),
+          publishDiscoveryProfile({
+            profile: profile.value,
+            p2pkPub: profilePub.value,
+            mints: profileMints.value ? [profileMints.value] : [],
+            relays: profileRelays.value,
+          }),
         new Promise((_, reject) =>
           setTimeout(() => reject(new PublishTimeoutError()), timeoutMs),
         ),

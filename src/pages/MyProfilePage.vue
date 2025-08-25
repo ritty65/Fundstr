@@ -226,8 +226,8 @@ export default defineComponent({
         profileStore.setProfile(p);
         profileStore.markClean();
       }
-      if (profileStore.mints.length) {
-        profileMints.value = [...profileStore.mints];
+      if (profileStore.mints) {
+        profileMints.value = profileStore.mints;
       }
       if (profileStore.relays.length) {
         profileRelays.value = [...profileStore.relays];
@@ -257,7 +257,7 @@ export default defineComponent({
         await publishDiscoveryProfile({
           profile: profileData.value,
           p2pkPub: profilePub.value,
-          mints: profileMints.value,
+          mints: profileMints.value ? [profileMints.value] : [],
           relays: profileRelays.value,
         });
         notifySuccess("Profile updated");
