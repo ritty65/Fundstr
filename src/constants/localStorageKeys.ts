@@ -99,4 +99,7 @@ export const LOCAL_STORAGE_KEYS = {
   CREATORPROFILE_RELAYS: "creatorProfile.relays",
   FIRST_RUN_DONE: "fundstr:firstRunDone",
   FUNDSTR_BROWSER_ID: "fundstr:browserId",
+  DONATION_OPT_OUT: "fundstr:donationOptOut",
+  DONATION_LAST_PROMPT: "fundstr:lastDonationPromptTime",
+  DONATION_LAUNCH_COUNT: "fundstr:donationLaunchCount",
 } as const;
