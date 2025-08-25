@@ -43,6 +43,14 @@
             >Logout</q-btn
           >
         </div>
+        <div class="q-mb-md">
+          <div class="text-subtitle1 q-mb-sm">Share your profile</div>
+          <q-input :model-value="profileUrl" readonly dense>
+            <template #append>
+              <q-btn flat icon="content_copy" @click="copy(profileUrl)" />
+            </template>
+          </q-input>
+        </div>
         <q-splitter v-if="!isMobile" v-model="splitterModel">
           <template #before>
             <q-card class="section-card">
@@ -131,7 +139,9 @@
 <script setup lang="ts">
 import Draggable from "vuedraggable";
 
+import { computed } from "vue";
 import { useCreatorHub } from "src/composables/useCreatorHub";
+import { useClipboard } from "src/composables/useClipboard";
 import CreatorProfileForm from "components/CreatorProfileForm.vue";
 import TierItem from "components/TierItem.vue";
 import AddTierDialog from "components/AddTierDialog.vue";
@@ -161,6 +171,11 @@ const {
   refreshTiers,
   performDelete,
 } = useCreatorHub();
+
+const { copy } = useClipboard();
+const profileUrl = computed(
+  () => `${window.location.origin}/#/creator/${npub.value}`,
+);
 </script>
 
 <style lang="scss" src="../css/creator-hub.scss" scoped></style>
