@@ -28,7 +28,6 @@ import { useI18n } from "vue-i18n";
 import { maybeRepublishNutzapProfile } from "./creatorHub";
 import { useCreatorProfileStore } from "./creatorProfile";
 import { i18n } from "src/boot/i18n";
-import { useFirstRunStore } from "./firstRun";
 
 export type Mint = {
   url: string;
@@ -149,13 +148,9 @@ export const useMintsStore = defineStore("mints", {
       }
     };
 
-    const firstRunStore = useFirstRunStore();
     if (!isValidUrl(activeMintUrl.value)) {
       activeMintUrl.value = "";
       uiStoreGlobal.setTab("mints");
-      if (!firstRunStore.suppressModals) {
-        showAddMintDialog.value = true;
-      }
     }
 
     return {
