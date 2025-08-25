@@ -12,8 +12,9 @@
             $t("CreatorHub.profile.back")
           }}</q-btn>
         </div>
-        <div class="text-h5 q-mb-md">
-          {{ profile.display_name || creatorNpub }}
+        <div class="text-h5 q-mb-md row items-center q-gutter-x-sm">
+          <div>{{ profile.display_name || creatorNpub }}</div>
+          <q-btn flat dense icon="content_copy" @click="copy(profileUrl)" />
         </div>
         <div v-if="profile.picture" class="q-mb-md">
           <img :src="profile.picture" style="max-width: 150px" />
@@ -119,6 +120,7 @@ import { useI18n } from "vue-i18n";
 import PaywalledContent from "components/PaywalledContent.vue";
 import MediaPreview from "components/MediaPreview.vue";
 import { isTrustedUrl } from "src/utils/sanitize-url";
+import { useClipboard } from "src/composables/useClipboard";
 
 export default defineComponent({
   name: "PublicCreatorProfilePage",
@@ -141,6 +143,7 @@ export default defineComponent({
     const priceStore = usePriceStore();
     const uiStore = useUiStore();
     const { t } = useI18n();
+    const { copy } = useClipboard();
     const bitcoinPrice = computed(() => priceStore.bitcoinPrice);
     const profile = ref<any>({});
     const tiers = computed(() => creators.tiersMap[creatorHex] || []);
@@ -229,6 +232,10 @@ export default defineComponent({
       return t.price_sats ?? t.price ?? 0;
     }
 
+    const profileUrl = computed(
+      () => `${window.location.origin}/#/creator/${creatorNpub}`,
+    );
+
     return {
       creatorNpub,
       creatorHex,
@@ -247,6 +254,8 @@ export default defineComponent({
       getPrice,
       openSubscribe,
       confirmSubscribe,
+      copy,
+      profileUrl,
     };
   },
 });
