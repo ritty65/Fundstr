@@ -33,8 +33,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, defineAsyncComponent } from 'vue'
 import { LOCAL_STORAGE_KEYS } from '@/constants/localStorageKeys'
+
+const VueQrcode = defineAsyncComponent(() => import('@chenfengyuan/vue-qrcode'))
 
 const visible = ref(false)
 const tab = ref('lightning')
@@ -95,7 +97,7 @@ const never = () => {
 export default {
   name: 'DonationPrompt',
   components: {
-    VueQrcode: () => import('@chenfengyuan/vue-qrcode')
+    VueQrcode
   }
 }
 </script>
