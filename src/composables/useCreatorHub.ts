@@ -29,18 +29,44 @@ export async function scanForMints() {
     await nostr.initNdkReadOnly();
     const recommendations = await nostr.fetchMints();
     const urls = recommendations.map((m: any) => (m.url ? m.url : m));
-    const reachable: string[] = [];
-    for (const url of urls) {
-      try {
-        await mintsStore.fetchMintInfo({ url, keys: [], keysets: [] } as any);
-        reachable.push(url);
-      } catch {}
-    }
+    const errors: string[] = [];
+
+    const results = await Promise.allSettled(
+      urls.map((url) =>
+        Promise.race([
+          mintsStore
+            .fetchMintInfo({ url, keys: [], keysets: [] } as any)
+            .then(() => url),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("timeout")), 3000),
+          ),
+        ]),
+      ),
+    );
+
+    const reachable = results
+      .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled")
+      .map((r) => r.value);
+
+    results.forEach((r, i) => {
+      if (r.status === "rejected") {
+        const reason =
+          r.reason instanceof Error ? r.reason.message : String(r.reason);
+        errors.push(`${urls[i]}: ${reason}`);
+      }
+    });
+
     if (reachable.length) {
       profileMints.value = reachable;
-      notifySuccess(`Found ${reachable.length} mint${reachable.length > 1 ? "s" : ""}`);
+      notifySuccess(
+        `Found ${reachable.length} mint${reachable.length > 1 ? "s" : ""}`,
+      );
     } else {
       notifyError("No reachable mints found");
+    }
+
+    if (errors.length) {
+      notifyError(`Errors: ${errors.join("; ")}`);
     }
   } catch (e) {
     console.error(e);
