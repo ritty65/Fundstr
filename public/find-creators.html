@@ -449,6 +449,7 @@
         if (profiles.length > 0) {
           renderProfiles(profiles, resultsListElement, false);
           updateStatus("", true);
+          window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
           return;
         }
 
@@ -469,6 +470,7 @@
           if (profiles.length > 0) {
             renderProfiles(profiles, resultsListElement, false);
             updateStatus("", true);
+            window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
             return;
           }
         }
@@ -492,6 +494,7 @@
           if (profiles.length > 0) {
             renderProfiles(profiles, resultsListElement, false);
             updateStatus("", true);
+            window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
             return;
           }
         }
@@ -503,6 +506,7 @@
         if (profile) {
           renderProfiles([profile], resultsListElement, false);
           updateStatus("", true);
+          window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
           return;
         }
 
@@ -515,6 +519,7 @@
         if (profile) {
           renderProfiles([profile], resultsListElement, false);
           updateStatus("", true);
+          window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
         } else {
           updateStatus(
             "Profile could not be found after exhaustive search on known relays, discovered relays, and multiple public indexers.",
@@ -913,6 +918,13 @@
               "Could not load featured creators.";
             featuredStatusMessageElement.classList.remove("hidden");
           }
+        }
+      });
+
+      window.addEventListener("message", (ev) => {
+        if (ev.data?.type === "prefillSearch" && ev.data.npub) {
+          searchInputElement.value = ev.data.npub;
+          handleSearch(ev.data.npub);
         }
       });
 
