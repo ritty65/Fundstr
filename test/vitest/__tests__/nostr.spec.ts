@@ -47,12 +47,20 @@ vi.mock("../../../src/js/notify", () => ({
   notifyError,
 }));
 
+let filterHealthyRelaysFn: any;
+vi.mock("../../../src/utils/relayHealth", () => ({
+  filterHealthyRelays: (...args: any[]) => filterHealthyRelaysFn(...args),
+}));
+
 beforeEach(() => {
   encryptMock.mockClear();
   localStorage.clear();
   notifySuccess.mockClear();
   notifyError.mockClear();
   vi.useFakeTimers();
+  filterHealthyRelaysFn = vi.fn(async (r: string[]) =>
+    r.length ? r : ["wss://relay.test"],
+  );
 });
 
 afterEach(() => {

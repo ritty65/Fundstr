@@ -1197,10 +1197,20 @@ export const useNostrStore = defineStore("nostr", {
       ];
       await event.sign(signer);
 
+      const relayUrls = (relays ?? this.relays).filter((r) =>
+        r.startsWith("wss://"),
+      );
+      const healthyRelays = await filterHealthyRelays(relayUrls);
+      if (healthyRelays.length === 0) {
+        console.error("[nostr] NIP-04 publish failed: all relays unreachable");
+        notifyError("Could not publish NIP-04 event");
+        return { success: false, event: null };
+      }
+
       const pool = new SimplePool();
       const nostrEvent = await event.toNostrEvent();
       try {
-        await pool.publish(relays ?? this.relays, nostrEvent as any);
+        await pool.publish(healthyRelays, nostrEvent as any);
         notifySuccess("NIP-04 event published");
         return { success: true, event };
       } catch (e) {
@@ -1360,10 +1370,20 @@ export const useNostrStore = defineStore("nostr", {
       wrapEvent.id = wrapEvent.getEventHash();
       wrapEvent.sig = await wrapEvent.sign();
 
+      const relayUrls = (relays ?? this.relays).filter((r) =>
+        r.startsWith("wss://"),
+      );
+      const healthyRelays = await filterHealthyRelays(relayUrls);
+      if (healthyRelays.length === 0) {
+        console.error("[nostr] NIP-17 publish failed: all relays unreachable");
+        notifyError("Could not publish NIP-17 event");
+        return null;
+      }
+
       const pool = new SimplePool();
       const nostrEvent = await wrapEvent.toNostrEvent();
       try {
-        await pool.publish(relays ?? this.relays, nostrEvent as any);
+        await pool.publish(healthyRelays, nostrEvent as any);
         const chatStore = useDmChatsStore();
         chatStore.addOutgoing(dmEvent);
         const router = useRouter();
@@ -1697,10 +1717,17 @@ export async function signEvent(
 }
 
 export async function publishEvent(event: NostrEvent): Promise<void> {
-  const relays = useSettingsStore().defaultNostrRelays;
+  const relayUrls = useSettingsStore().defaultNostrRelays.filter((r) =>
+    r.startsWith("wss://"),
+  );
+  const healthyRelays = await filterHealthyRelays(relayUrls);
+  if (healthyRelays.length === 0) {
+    console.error("[nostr] publish failed: all relays unreachable");
+    return;
+  }
   const pool = new SimplePool();
   try {
-    await Promise.any(pool.publish(relays, event as any));
+    await Promise.any(pool.publish(healthyRelays, event as any));
   } catch (e) {
     console.error("Failed to publish event", e);
   }
@@ -1711,10 +1738,10 @@ export async function subscribeToNostr(
   cb: (ev: NostrEvent) => void,
   relays?: string[],
 ): Promise<boolean> {
-  const relayUrls =
-    relays && relays.length > 0
-      ? relays
-      : useSettingsStore().defaultNostrRelays;
+  const relayUrls = (relays && relays.length > 0
+    ? relays
+    : useSettingsStore().defaultNostrRelays
+  ).filter((r) => r.startsWith("wss://"));
   if (!relayUrls || relayUrls.length === 0) {
     console.warn("[nostr] subscribeMany called with empty relay list");
     return false;
