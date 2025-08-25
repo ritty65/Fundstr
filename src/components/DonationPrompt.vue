@@ -13,13 +13,31 @@
             <div class="text-center q-mb-md">
               <vue-qrcode :value="lightningQRCode" :options="{ width: 200 }" />
             </div>
-            <q-input v-model="lightning" readonly dense outlined label="Lightning" />
+            <q-input :model-value="lightning" readonly dense outlined label="Lightning">
+              <template #append>
+                <q-btn
+                  flat
+                  icon="content_copy"
+                  @click="copy(lightning)"
+                  aria-label="Copy Lightning address"
+                />
+              </template>
+            </q-input>
           </q-tab-panel>
           <q-tab-panel name="bitcoin" class="q-pt-md">
             <div class="text-center q-mb-md">
               <vue-qrcode :value="bitcoinQRCode" :options="{ width: 200 }" />
             </div>
-            <q-input v-model="bitcoin" readonly dense outlined label="Bitcoin" />
+            <q-input :model-value="bitcoin" readonly dense outlined label="Bitcoin">
+              <template #append>
+                <q-btn
+                  flat
+                  icon="content_copy"
+                  @click="copy(bitcoin)"
+                  aria-label="Copy Bitcoin address"
+                />
+              </template>
+            </q-input>
           </q-tab-panel>
         </q-tab-panels>
       </q-card-section>
@@ -34,6 +52,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, defineAsyncComponent } from 'vue'
+import { copyToClipboard } from 'quasar'
 import { LOCAL_STORAGE_KEYS } from '@/constants/localStorageKeys'
 
 const VueQrcode = defineAsyncComponent(() => import('@chenfengyuan/vue-qrcode'))
@@ -90,6 +109,14 @@ const never = () => {
   localStorage.setItem(LOCAL_STORAGE_KEYS.DONATION_OPT_OUT, 'true')
   setLaunchCount(0)
   visible.value = false
+}
+
+async function copy(text: string) {
+  try {
+    await copyToClipboard(text)
+  } catch {
+    // ignore copy errors
+  }
 }
 </script>
 
