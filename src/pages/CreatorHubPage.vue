@@ -1,9 +1,6 @@
 <template>
-  <q-page class="bg-surface-1 flex justify-center">
-    <q-card
-      class="q-pa-lg q-mt-md q-mb-md bg-surface-2 shadow-4"
-      style="max-width: 1200px; width: 100%"
-    >
+  <q-page class="bg-surface-1 q-pa-md">
+    <q-card class="q-pa-lg bg-surface-2 shadow-4 full-width">
       <div class="row items-center justify-between q-mb-lg">
         <div class="text-h5">Creator Hub</div>
         <ThemeToggle />
