@@ -5,6 +5,7 @@ import {
 } from "../../../src/stores/creatorHub";
 import { useP2PKStore } from "../../../src/stores/p2pk";
 import { useMintsStore } from "../../../src/stores/mints";
+import { useCreatorProfileStore } from "../../../src/stores/creatorProfile";
 
 const notifySuccess = vi.fn();
 const notifyError = vi.fn();
@@ -165,10 +166,12 @@ describe("maybeRepublishNutzapProfile", () => {
     ];
     const mints = useMintsStore();
     mints.mints = [{ url: "mint1" }, { url: "mint2" }] as any;
+    const profileStore = useCreatorProfileStore();
+    profileStore.mints = "mint1";
 
     fetchNutzapProfileMock = vi.fn(async () => ({
       p2pkPubkey: "other",
-      trustedMints: ["mint1"],
+      trustedMints: ["mint2"],
       relays: [],
       hexPub: "pub",
     }));
@@ -177,7 +180,7 @@ describe("maybeRepublishNutzapProfile", () => {
 
     expect(publishNutzapProfileMock).toHaveBeenCalledWith({
       p2pkPub: "pk",
-      mints: ["mint1", "mint2"],
+      mints: ["mint1"],
       relays: nostrStoreMock.relays,
     });
   });
