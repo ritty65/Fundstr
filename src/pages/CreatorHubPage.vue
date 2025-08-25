@@ -1,7 +1,7 @@
 <template>
-  <q-page class="bg-grey-10 flex justify-center">
+  <q-page class="bg-surface-1 flex justify-center">
     <q-card
-      class="q-pa-lg q-mt-md q-mb-md bg-grey-9 shadow-4"
+      class="q-pa-lg q-mt-md q-mb-md bg-surface-2 shadow-4"
       style="max-width: 1200px; width: 100%"
     >
       <div class="row items-center justify-between q-mb-lg">
