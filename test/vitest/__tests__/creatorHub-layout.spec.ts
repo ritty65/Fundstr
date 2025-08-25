@@ -7,7 +7,6 @@ vi.spyOn(quasar, "useQuasar").mockReturnValue({
 });
 
 const creatorHubStoreMock = {
-  loggedInNpub: "pubkey",
   tiers: {},
   tierOrder: [] as string[],
   getTierArray: () => [] as any[],
@@ -28,6 +27,7 @@ vi.mock("../../../src/stores/creatorHub", () => ({
 }));
 
 const nostrStoreMock = {
+  pubkey: "pubkey",
   initSignerIfNotSet: vi.fn(),
   getProfile: vi.fn(async () => null),
   relays: [] as string[],

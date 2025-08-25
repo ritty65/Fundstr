@@ -67,7 +67,6 @@ export async function maybeRepublishNutzapProfile() {
 
 export const useCreatorHubStore = defineStore("creatorHub", {
   state: () => ({
-    loggedInNpub: useLocalStorage<string>("creatorHub.loggedInNpub", ""),
     tiers: useLocalStorage<Record<string, Tier>>("creatorHub.tiers", {}),
     tierOrder: useLocalStorage<string[]>("creatorHub.tierOrder", []),
   }),
@@ -75,15 +74,14 @@ export const useCreatorHubStore = defineStore("creatorHub", {
     async loginWithNip07() {
       const nostr = useNostrStore();
       await nostr.initNip07Signer();
-      this.loggedInNpub = nostr.pubkey;
     },
     async loginWithNsec(nsec: string) {
       const nostr = useNostrStore();
       await nostr.initPrivateKeySigner(nsec);
-      this.loggedInNpub = nostr.pubkey;
     },
     logout() {
-      this.loggedInNpub = "";
+      const nostr = useNostrStore();
+      nostr.setPubkey("");
     },
     async updateProfile(profile: any) {
       const nostr = useNostrStore();
@@ -169,7 +167,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
     async loadTiersFromNostr(pubkey?: string) {
       const nostr = useNostrStore();
       await nostr.initNdkReadOnly();
-      const author = pubkey || this.loggedInNpub || nostr.pubkey;
+      const author = pubkey || nostr.pubkey;
       if (!author) return;
       const filter: NDKFilter = {
         kinds: [TIER_DEFINITIONS_KIND as unknown as NDKKind],

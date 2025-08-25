@@ -51,7 +51,7 @@ export function useCreatorHub() {
   const splitterModel = ref(50);
   const tab = ref<"profile" | "tiers">("profile");
 
-  const loggedIn = computed(() => !!store.loggedInNpub);
+  const loggedIn = computed(() => !!nostr.pubkey);
   const tierList = computed<Tier[]>(() => store.getTierArray());
   const draggableTiers = ref<Tier[]>([]);
   const deleteDialog = ref(false);
@@ -60,7 +60,7 @@ export function useCreatorHub() {
   const currentTier = ref<Partial<Tier>>({});
   const publishing = ref(false);
   const npub = computed(() =>
-    store.loggedInNpub ? nip19.npubEncode(store.loggedInNpub) : "",
+    nostr.pubkey ? nip19.npubEncode(nostr.pubkey) : "",
   );
 
   watch(
@@ -89,9 +89,9 @@ export function useCreatorHub() {
   }
 
   async function initPage() {
-    if (!store.loggedInNpub) return;
+    if (!nostr.pubkey) return;
     await nostr.initSignerIfNotSet();
-    const p = await nostr.getProfile(store.loggedInNpub);
+    const p = await nostr.getProfile(nostr.pubkey);
     if (p) profileStore.setProfile(p);
     if (profileStore.mints.length) {
       profileMints.value = [...profileStore.mints];
@@ -101,7 +101,7 @@ export function useCreatorHub() {
     }
     let existing = null;
     try {
-      existing = await fetchNutzapProfile(store.loggedInNpub);
+      existing = await fetchNutzapProfile(nostr.pubkey);
     } catch (e: any) {
       if (e instanceof RelayConnectionError) {
         notifyError("Unable to connect to Nostr relays");
@@ -123,7 +123,7 @@ export function useCreatorHub() {
       if (!profileStore.mints.length && mintsStore.mints.length > 0)
         profileMints.value = mintsStore.mints.map((m) => m.url);
     }
-    await store.loadTiersFromNostr(store.loggedInNpub);
+    await store.loadTiersFromNostr(nostr.pubkey);
     profileStore.markClean();
   }
 
@@ -225,7 +225,7 @@ export function useCreatorHub() {
   }
 
   onMounted(() => {
-    if (store.loggedInNpub) initPage();
+    if (nostr.pubkey) initPage();
   });
 
   return {
