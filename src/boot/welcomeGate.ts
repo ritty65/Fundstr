@@ -7,13 +7,20 @@ export default boot(({ router }) => {
   router.beforeEach((to, _from, next) => {
     const seen = hasSeenWelcome()
     const isWelcome = to.path.startsWith('/welcome')
+    const isCreator = to.path.startsWith('/creator/')
     const restore = useRestoreStore()
 
     const env = import.meta.env.VITE_APP_ENV
     const allow =
       to.query.allow === '1' && (env === 'development' || env === 'staging')
 
-    if (!seen && !isWelcome && !restore.restoringState && to.path !== '/restore') {
+    if (
+      !seen &&
+      !isWelcome &&
+      !restore.restoringState &&
+      to.path !== '/restore' &&
+      !isCreator
+    ) {
       next({ path: '/welcome', query: { first: '1' } })
       return
     }
