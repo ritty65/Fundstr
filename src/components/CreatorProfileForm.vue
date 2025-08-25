@@ -75,20 +75,24 @@
       use-chips
       hide-dropdown-icon
       new-value-mode="add-unique"
-      :options="[]"
+      :options="mintOptions"
       dense
       outlined
       persistent-hint
       :rules="[urlListRule]"
       :hint="$t('creatorHub.urlListHint')"
-    >
-      <template #label>
-        <div class="row items-center no-wrap">
-          <span>{{ $t("creatorHub.trustedMints") }}</span>
-          <InfoTooltip class="q-ml-xs" :text="$t('creatorHub.mintUrlInfo')" />
-        </div>
-      </template>
-    </q-select>
+      :label="$t('creatorHub.trustedMints')"
+    />
+    <div v-if="!profileMintsLocal.length" class="q-mt-sm">
+      <q-btn
+        flat
+        dense
+        color="primary"
+        :loading="scanningMints"
+        label="Scan for viable mints"
+        @click="scanForMints"
+      />
+    </div>
     <q-select
       v-model="profileRelaysLocal"
       multiple
@@ -120,11 +124,14 @@ import { useI18n } from "vue-i18n";
 import InfoTooltip from "./InfoTooltip.vue";
 import { useCreatorProfileStore } from "stores/creatorProfile";
 import { useP2PKStore } from "stores/p2pk";
+import { useMintsStore } from "stores/mints";
+import { scanForMints, scanningMints } from "src/composables/useCreatorHub";
 import { shortenString } from "src/js/string-utils";
 
 const { t } = useI18n();
 const profileStore = useCreatorProfileStore();
 const p2pkStore = useP2PKStore();
+const mintsStore = useMintsStore();
 
 const {
   display_name,
@@ -145,6 +152,8 @@ const p2pkOptions = computed(() =>
 const selectedKeyShort = computed(() =>
   profilePub.value ? shortenString(profilePub.value, 16, 6) : "",
 );
+
+const mintOptions = computed(() => mintsStore.mints.map((m) => m.url));
 
 async function generateP2PK() {
   await p2pkStore.createAndSelectNewKey();

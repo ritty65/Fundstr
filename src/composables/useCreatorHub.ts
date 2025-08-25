@@ -17,6 +17,39 @@ import { useCreatorProfileStore } from "stores/creatorProfile";
 import { notifySuccess, notifyError } from "src/js/notify";
 import { pingRelay } from "src/utils/relayHealth";
 
+export const scanningMints = ref(false);
+
+export async function scanForMints() {
+  const nostr = useNostrStore();
+  const mintsStore = useMintsStore();
+  const profileStore = useCreatorProfileStore();
+  const { mints: profileMints } = storeToRefs(profileStore);
+  scanningMints.value = true;
+  try {
+    await nostr.initNdkReadOnly();
+    const recommendations = await nostr.fetchMints();
+    const urls = recommendations.map((m: any) => (m.url ? m.url : m));
+    const reachable: string[] = [];
+    for (const url of urls) {
+      try {
+        await mintsStore.fetchMintInfo({ url, keys: [], keysets: [] } as any);
+        reachable.push(url);
+      } catch {}
+    }
+    if (reachable.length) {
+      profileMints.value = reachable;
+      notifySuccess(`Found ${reachable.length} mint${reachable.length > 1 ? "s" : ""}`);
+    } else {
+      notifyError("No reachable mints found");
+    }
+  } catch (e) {
+    console.error(e);
+    notifyError("Failed to fetch mints");
+  } finally {
+    scanningMints.value = false;
+  }
+}
+
 async function anyRelayReachable(urls: string[]): Promise<boolean> {
   const results = await Promise.all(urls.map(pingRelay));
   return results.some(Boolean);
@@ -245,5 +278,7 @@ export function useCreatorHub() {
     refreshTiers,
     removeTier,
     performDelete,
+    scanForMints,
+    scanningMints,
   };
 }
