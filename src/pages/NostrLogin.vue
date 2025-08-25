@@ -26,7 +26,7 @@
 
 <script lang="ts">
 import { defineComponent, ref, computed } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import { useNostrStore } from "stores/nostr";
 import { generateSecretKey, nip19 } from "nostr-tools";
 import { hexToBytes } from "@noble/hashes/utils";
@@ -38,6 +38,11 @@ export default defineComponent({
     const key = ref(nostr.activePrivateKeyNsec || nostr.privKeyHex || "");
     const hasExistingKey = computed(() => !!key.value);
     const router = useRouter();
+    const route = useRoute();
+    const redirect =
+      typeof route.query.redirect === "string"
+        ? decodeURIComponent(route.query.redirect)
+        : undefined;
 
     const normalizeKey = (input: string): string => {
       const trimmed = input.trim();
@@ -50,14 +55,14 @@ export default defineComponent({
     const submitKey = async () => {
       if (!key.value.trim()) return;
       await nostr.initPrivateKeySigner(normalizeKey(key.value));
-      if (nostr.pubkey) router.push("/wallet");
+      if (nostr.pubkey) router.push(redirect || "/wallet");
     };
 
     const createIdentity = async () => {
       const sk = generateSecretKey();
       const nsec = nip19.nsecEncode(sk);
       await nostr.initPrivateKeySigner(nsec);
-      if (nostr.pubkey) router.push("/wallet");
+      if (nostr.pubkey) router.push(redirect || "/wallet");
     };
 
     return { key, hasExistingKey, submitKey, createIdentity };
