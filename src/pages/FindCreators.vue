@@ -328,27 +328,8 @@ onMounted(async () => {
   }
 
   const npub = route.query.npub;
-  if (npub && typeof npub === "string") {
-    const sendViewProfile = () => {
-      try {
-        const decoded = nip19.decode(npub);
-        const hex = typeof decoded.data === "string" ? decoded.data : "";
-        if (hex) {
-          window.postMessage({ type: "viewProfile", pubkey: hex }, "*");
-        }
-      } catch {
-        /* ignore decode errors */
-      }
-    };
-
-    if (iframeEl.value) {
-      const iframe = iframeEl.value;
-      if (iframe.contentWindow?.document.readyState === "complete") {
-        sendViewProfile();
-      } else {
-        iframe.addEventListener("load", sendViewProfile, { once: true });
-      }
-    }
+  if (typeof npub === "string" && npub) {
+    router.push(`/creator/${npub}`);
   }
 });
 
