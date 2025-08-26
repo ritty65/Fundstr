@@ -16,6 +16,25 @@
     </div>
     <div v-if="profile.about" class="q-mb-md">{{ profile.about }}</div>
 
+    <div class="q-mb-md">
+      <q-input
+        :model-value="profileUrl"
+        readonly
+        dense
+        label="Share your profile"
+      >
+        <template #append>
+          <q-btn
+            flat
+            dense
+            icon="content_copy"
+            :disable="!profileUrl"
+            @click="copy(profileUrl)"
+          />
+        </template>
+      </q-input>
+    </div>
+
     <q-expansion-item
       class="q-mb-md"
       dense
@@ -150,6 +169,7 @@ import { storeToRefs } from "pinia";
 import { useQuasar } from "quasar";
 import { useRouter } from "vue-router";
 import { useClipboard } from "src/composables/useClipboard";
+import { buildProfileUrl } from "src/utils/profileUrl";
 import { useI18n } from "vue-i18n";
 import { useNostrStore, publishDiscoveryProfile } from "stores/nostr";
 import { useCreatorHubStore } from "stores/creatorHub";
@@ -203,6 +223,7 @@ export default defineComponent({
     const bitcoinPrice = computed(() => priceStore.bitcoinPrice);
     const profile = ref<any>({});
     const tiers = ref(hub.getTierArray());
+    const profileUrl = computed(() => buildProfileUrl(npub.value, router));
     const profileData = computed(() => ({
       display_name: display_name.value,
       picture: picture.value,
@@ -310,6 +331,7 @@ export default defineComponent({
       expandProfileDetails,
       expandTierList,
       expandP2PKKeys,
+      profileUrl,
     };
   },
 });

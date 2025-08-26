@@ -328,17 +328,25 @@ onMounted(async () => {
   }
 
   const npub = route.query.npub;
-  if (typeof npub === "string" && npub && iframeEl.value) {
-    iframeEl.value.addEventListener(
-      "load",
-      () => {
-        iframeEl.value?.contentWindow?.postMessage(
-          { type: "prefillSearch", npub },
-          "*",
+  if (typeof npub === "string" && npub) {
+    try {
+      nip19.decode(npub);
+      router.replace({ name: "PublicCreatorProfile", params: { npub } });
+      return;
+    } catch {
+      if (iframeEl.value) {
+        iframeEl.value.addEventListener(
+          "load",
+          () => {
+            iframeEl.value?.contentWindow?.postMessage(
+              { type: "prefillSearch", npub },
+              "*",
+            );
+          },
+          { once: true },
         );
-      },
-      { once: true },
-    );
+      }
+    }
   }
 });
 

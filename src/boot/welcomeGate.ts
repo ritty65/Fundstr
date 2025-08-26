@@ -7,7 +7,10 @@ export default boot(({ router }) => {
   router.beforeEach((to, _from, next) => {
     const seen = hasSeenWelcome()
     const isWelcome = to.path.startsWith('/welcome')
-    const isCreator = to.path.startsWith('/creator/')
+    const isPublicProfile =
+      to.matched.some(r => r.name === 'PublicCreatorProfile') ||
+      to.path.startsWith('/creator/')
+    const isPublicDiscover = to.path === '/find-creators'
     const restore = useRestoreStore()
 
     const env = import.meta.env.VITE_APP_ENV
@@ -19,7 +22,8 @@ export default boot(({ router }) => {
       !isWelcome &&
       !restore.restoringState &&
       to.path !== '/restore' &&
-      !isCreator
+      !isPublicProfile &&
+      !isPublicDiscover
     ) {
       next({ path: '/welcome', query: { first: '1' } })
       return

@@ -109,7 +109,7 @@ import { defineComponent, ref, onMounted, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useCreatorsStore } from "stores/creators";
 import { useNostrStore } from "stores/nostr";
-import { useNdk } from "src/composables/useNdk";
+import { buildProfileUrl } from "src/utils/profileUrl";
 import { nip19 } from "nostr-tools";
 
 import { usePriceStore } from "stores/price";
@@ -166,56 +166,63 @@ export default defineComponent({
     };
 
     const loadProfile = async () => {
-      await fetchTiers();
-      const p = await nostr.getProfile(creatorHex);
+      await fetchTiers()
+      const p = await nostr.getProfile(creatorHex)
       if (p) {
         if (p.picture && !isTrustedUrl(p.picture)) {
-          delete (p as any).picture;
+          delete (p as any).picture
         }
-        profile.value = { ...p };
+        profile.value = { ...p }
       }
-      followers.value = await nostr.fetchFollowerCount(creatorHex);
-      following.value = await nostr.fetchFollowingCount(creatorHex);
-    };
-    loadProfile();
-    useNdk();
+      followers.value = await nostr.fetchFollowerCount(creatorHex)
+      following.value = await nostr.fetchFollowingCount(creatorHex)
+    }
+    // initialization handled in onMounted
 
     const retryFetchTiers = () => {
-      fetchTiers();
-    };
+      fetchTiers()
+    }
 
     const openSubscribe = (tier: any) => {
-      selectedTier.value = tier;
+      selectedTier.value = tier
       if (!nostr.pubkey && !nostr.signer) {
-        const redirectUrl = router.resolve({
-          name: "PublicCreatorProfile",
-          params: { npub: creatorNpub },
-          query: { tier: tier.id },
-        }).fullPath;
-        router.push({ path: "/nostr-login", query: { redirect: redirectUrl } });
-        return;
+        router.push({
+          path: '/nostr-login',
+          query: { redirect: route.fullPath, tierId: tier.id },
+        })
+        return
       }
-      showSubscribeDialog.value = true;
-    };
+      showSubscribeDialog.value = true
+    }
 
-    onMounted(() => {
-      const tierId = route.query.tier as string | undefined;
-      if (!tierId) return;
+    onMounted(async () => {
+      try {
+        await nostr.initNdkReadOnly()
+      } catch (e) {
+        // ignore
+      }
+      await loadProfile()
+
+      const tierId = route.query.tierId as string | undefined
+      if (!nostr.pubkey || !tierId) return
       const tryOpen = () => {
-        const t = tiers.value.find((ti: any) => ti.id === tierId);
+        const t = tiers.value.find((ti: any) => ti.id === tierId)
         if (t) {
-          openSubscribe(t);
-          router.replace({ name: "PublicCreatorProfile", params: { npub: creatorNpub } });
-          return true;
+          openSubscribe(t)
+          router.replace({
+            name: 'PublicCreatorProfile',
+            params: { npub: creatorNpub },
+          })
+          return true
         }
-        return false;
-      };
+        return false
+      }
       if (!tryOpen()) {
         const stop = watch(tiers, () => {
-          if (tryOpen()) stop();
-        });
+          if (tryOpen()) stop()
+        })
       }
-    });
+    })
 
     const formatTs = (ts: number) => {
       const d = new Date(ts * 1000);
@@ -247,9 +254,7 @@ export default defineComponent({
       return t.price_sats ?? t.price ?? 0;
     }
 
-    const profileUrl = computed(
-      () => `${window.location.origin}/#/creator/${creatorNpub}`,
-    );
+    const profileUrl = computed(() => buildProfileUrl(creatorNpub, router))
 
     return {
       creatorNpub,
