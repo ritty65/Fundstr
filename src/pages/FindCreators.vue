@@ -377,10 +377,16 @@ onBeforeUnmount(() => {
 }
 
 .tier-card .subscribe-btn {
-  display: none;
+  display: inline-flex;
 }
 
-.tier-card:hover .subscribe-btn {
-  display: inline-flex;
+@media (hover: hover) {
+  .tier-card .subscribe-btn {
+    display: none;
+  }
+
+  .tier-card:hover .subscribe-btn {
+    display: inline-flex;
+  }
 }
 </style>
