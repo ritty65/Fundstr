@@ -35,7 +35,15 @@
       <q-item-label header>{{
         $t("MainHeader.menu.settings.title")
       }}</q-item-label>
-      <q-item clickable @click="gotoDashboard">
+      <q-item v-if="isGuest" clickable @click="gotoWelcome">
+        <q-item-section avatar>
+          <q-icon name="login" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>Finish setup</q-item-label>
+        </q-item-section>
+      </q-item>
+      <q-item v-if="!isGuest" clickable @click="gotoDashboard">
         <q-item-section avatar>
           <q-icon name="dashboard" />
         </q-item-section>
@@ -43,7 +51,7 @@
           <q-item-label>{{ $t("MainHeader.menu.dashboard.title") }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoWallet">
+      <q-item v-if="!isGuest" clickable @click="gotoWallet">
         <q-item-section avatar>
           <q-icon name="account_balance_wallet" />
         </q-item-section>
@@ -51,7 +59,7 @@
           <q-item-label>{{ $t("MainHeader.menu.wallet.title") }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoSettings">
+      <q-item v-if="!isGuest" clickable @click="gotoSettings">
         <q-item-section avatar>
           <q-icon name="settings" />
         </q-item-section>
@@ -77,7 +85,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoCreatorHub">
+      <q-item v-if="!isGuest" clickable @click="gotoCreatorHub">
         <q-item-section avatar>
           <CreatorHubIcon class="themed-icon q-icon" />
         </q-item-section>
@@ -90,7 +98,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoMyProfile">
+      <q-item v-if="!isGuest" clickable @click="gotoMyProfile">
         <q-item-section avatar>
           <q-icon name="person" />
         </q-item-section>
@@ -103,7 +111,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoBuckets">
+      <q-item v-if="!isGuest" clickable @click="gotoBuckets">
         <q-item-section avatar>
           <q-icon name="inventory_2" />
         </q-item-section>
@@ -116,7 +124,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoSubscriptions">
+      <q-item v-if="!isGuest" clickable @click="gotoSubscriptions">
         <q-item-section avatar>
           <q-icon name="auto_awesome_motion" />
         </q-item-section>
@@ -129,7 +137,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoChats">
+      <q-item v-if="!isGuest" clickable @click="gotoChats">
         <q-item-section avatar>
           <q-icon name="chat" />
         </q-item-section>
@@ -137,7 +145,7 @@
           <q-item-label>Chats</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item v-if="needsNostrLogin" clickable @click="gotoNostrLogin">
+      <q-item v-if="!isGuest && needsNostrLogin" clickable @click="gotoNostrLogin">
         <q-item-section avatar>
           <q-icon name="vpn_key" />
         </q-item-section>
@@ -195,6 +203,7 @@ import { computed } from "vue";
 import { useRouter } from "vue-router";
 import { useUiStore } from "src/stores/ui";
 import { useNostrStore } from "src/stores/nostr";
+import { useWelcomeStore } from "src/stores/welcome";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import EssentialLink from "components/EssentialLink.vue";
@@ -205,6 +214,7 @@ import CreatorHubIcon from "src/components/icons/CreatorHubIcon.vue";
 const ui = useUiStore();
 const router = useRouter();
 const nostrStore = useNostrStore();
+const welcomeStore = useWelcomeStore();
 const { t } = useI18n();
 const $q = useQuasar();
 
@@ -224,8 +234,10 @@ const gotoChats = () => goto("/nostr-messenger");
 const gotoNostrLogin = () => goto("/nostr-login");
 const gotoTerms = () => goto("/terms");
 const gotoAbout = () => goto("/about");
+const gotoWelcome = () => goto("/welcome");
 
 const needsNostrLogin = computed(() => !nostrStore.privateKeySignerPrivateKey);
+const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 
 const drawerContentClass = computed(() =>
   $q.screen.lt.md ? "main-nav-safe" : "q-pt-sm"
