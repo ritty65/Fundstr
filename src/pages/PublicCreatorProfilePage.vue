@@ -84,10 +84,13 @@
             </ul>
             <div class="q-mt-md text-right subscribe-container">
               <q-btn
-                label="Subscribe"
+                :label="isGuest ? 'Finish setup' : 'Subscribe'"
                 class="subscribe-btn"
+                :disable="isGuest"
                 @click="openSubscribe(t)"
-              />
+              >
+                <q-tooltip v-if="isGuest">Finish setup to subscribe</q-tooltip>
+              </q-btn>
             </div>
             <PaywalledContent
               :creator-npub="creatorHex"
@@ -189,6 +192,10 @@ export default defineComponent({
 
     const openSubscribe = (tier: any) => {
       selectedTier.value = tier
+      if (isGuest.value || !welcomeStore.welcomeCompleted) {
+        showSetupDialog.value = true
+        return
+      }
       if (!nostr.pubkey && !nostr.signer) {
         showSetupDialog.value = true
         return
