@@ -137,8 +137,10 @@
 import Draggable from "vuedraggable";
 
 import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
 import { useCreatorHub } from "src/composables/useCreatorHub";
 import { useClipboard } from "src/composables/useClipboard";
+import { buildProfileUrl } from "src/utils/profileUrl";
 import CreatorProfileForm from "components/CreatorProfileForm.vue";
 import TierItem from "components/TierItem.vue";
 import AddTierDialog from "components/AddTierDialog.vue";
@@ -169,10 +171,9 @@ const {
 
 const nsec = ref("");
 
+const router = useRouter();
 const { copy } = useClipboard();
-const profileUrl = computed(
-  () => `${window.location.origin}/#/creator/${npub.value}`,
-);
+const profileUrl = computed(() => buildProfileUrl(npub.value, router));
 </script>
 
 <style lang="scss" src="../css/creator-hub.scss" scoped></style>

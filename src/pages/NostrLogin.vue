@@ -43,6 +43,8 @@ export default defineComponent({
       typeof route.query.redirect === "string"
         ? decodeURIComponent(route.query.redirect)
         : undefined;
+    const tierId =
+      typeof route.query.tierId === "string" ? route.query.tierId : undefined;
 
     const normalizeKey = (input: string): string => {
       const trimmed = input.trim();
@@ -55,14 +57,24 @@ export default defineComponent({
     const submitKey = async () => {
       if (!key.value.trim()) return;
       await nostr.initPrivateKeySigner(normalizeKey(key.value));
-      if (nostr.pubkey) router.push(redirect || "/wallet");
+      if (!nostr.pubkey) return;
+      if (redirect) {
+        router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
+      } else {
+        router.replace("/wallet");
+      }
     };
 
     const createIdentity = async () => {
       const sk = generateSecretKey();
       const nsec = nip19.nsecEncode(sk);
       await nostr.initPrivateKeySigner(nsec);
-      if (nostr.pubkey) router.push(redirect || "/wallet");
+      if (!nostr.pubkey) return;
+      if (redirect) {
+        router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
+      } else {
+        router.replace("/wallet");
+      }
     };
 
     return { key, hasExistingKey, submitKey, createIdentity };
