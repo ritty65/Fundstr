@@ -10,6 +10,12 @@
         $t("CreatorHub.profile.back")
       }}</q-btn>
     </div>
+    <q-banner v-if="isGuest" class="q-mb-md">
+      You're browsing as a guest. Finish setup to subscribe.
+      <template #action>
+        <q-btn flat color="primary" label="Finish setup" @click="gotoWelcome" />
+      </template>
+    </q-banner>
     <div class="text-h5 q-mb-md row items-center q-gutter-x-sm">
       <div>{{ profile.display_name || creatorNpub }}</div>
       <q-btn flat dense icon="content_copy" @click="copy(profileUrl)" />
@@ -120,6 +126,7 @@ import PaywalledContent from "components/PaywalledContent.vue";
 import MediaPreview from "components/MediaPreview.vue";
 import { isTrustedUrl } from "src/utils/sanitize-url";
 import { useClipboard } from "src/composables/useClipboard";
+import { useWelcomeStore } from "stores/welcome";
 
 export default defineComponent({
   name: "PublicCreatorProfilePage",
@@ -141,6 +148,7 @@ export default defineComponent({
     const nostr = useNostrStore();
     const priceStore = usePriceStore();
     const uiStore = useUiStore();
+    const welcomeStore = useWelcomeStore();
     const { t } = useI18n();
     const { copy } = useClipboard();
     const bitcoinPrice = computed(() => priceStore.bitcoinPrice);
@@ -154,6 +162,7 @@ export default defineComponent({
     const following = ref<number | null>(null);
     const loadingTiers = ref(true);
     const tierFetchError = computed(() => creators.tierFetchError);
+    const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 
     const fetchTiers = async () => {
       loadingTiers.value = true;
@@ -192,6 +201,10 @@ export default defineComponent({
         return
       }
       showSubscribeDialog.value = true
+    }
+
+    const gotoWelcome = () => {
+      router.push({ path: '/welcome', query: { redirect: route.fullPath } })
     }
 
     onMounted(async () => {
@@ -278,6 +291,8 @@ export default defineComponent({
       retryFetchTiers,
       copy,
       profileUrl,
+      isGuest,
+      gotoWelcome,
     };
   },
 });
