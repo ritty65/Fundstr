@@ -21,7 +21,6 @@
     <SubscribeDialog
       v-model="showSubscribeDialog"
       :tier="selectedTier"
-      :supporter-pubkey="nostr.pubkey"
       :creator-pubkey="creatorHex"
       @confirm="confirmSubscribe"
     />
