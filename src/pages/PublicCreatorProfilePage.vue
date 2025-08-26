@@ -84,7 +84,7 @@
             </ul>
             <div class="q-mt-md text-right subscribe-container">
               <q-btn
-                :label="isGuest ? 'Finish setup' : 'Subscribe'"
+                label="Subscribe"
                 class="subscribe-btn"
                 :disable="isGuest"
                 @click="openSubscribe(t)"
