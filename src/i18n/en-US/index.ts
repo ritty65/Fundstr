@@ -107,7 +107,6 @@ export const messages = {
   },
   MainHeader: {
     menu: {
-      dashboard: { title: "Dashboard" },
       wallet: { title: "@:FullscreenHeader.actions.back.label" },
       nostrMessenger: { title: "@:AboutPage.siteOverview.nostrMessengerTitle" },
       restore: { title: "@:AboutPage.siteOverview.restoreTitle" },

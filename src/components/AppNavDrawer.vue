@@ -43,14 +43,6 @@
           <q-item-label>Finish setup</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item v-if="!isGuest" clickable @click="gotoDashboard">
-        <q-item-section avatar>
-          <q-icon name="dashboard" />
-        </q-item-section>
-        <q-item-section>
-          <q-item-label>{{ $t("MainHeader.menu.dashboard.title") }}</q-item-label>
-        </q-item-section>
-      </q-item>
       <q-item v-if="!isGuest" clickable @click="gotoWallet">
         <q-item-section avatar>
           <q-icon name="account_balance_wallet" />
@@ -222,7 +214,6 @@ function goto(path: string) {
   router.push(path);
   ui.closeMainNav();
 }
-const gotoDashboard = () => goto("/dashboard");
 const gotoWallet = () => goto("/wallet");
 const gotoSettings = () => goto("/settings");
 const gotoFindCreators = () => goto("/find-creators");
