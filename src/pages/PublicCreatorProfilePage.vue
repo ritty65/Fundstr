@@ -83,7 +83,7 @@
             </ul>
             <div class="q-mt-md text-right subscribe-container">
               <q-btn
-                :label="nostr.pubkey || nostr.signer ? 'Subscribe' : 'Login to Subscribe'"
+                label="Subscribe"
                 color="primary"
                 class="subscribe-btn"
                 @click="openSubscribe(t)"
@@ -120,7 +120,6 @@ import PaywalledContent from "components/PaywalledContent.vue";
 import MediaPreview from "components/MediaPreview.vue";
 import { isTrustedUrl } from "src/utils/sanitize-url";
 import { useClipboard } from "src/composables/useClipboard";
-import { useMeta } from "quasar";
 
 export default defineComponent({
   name: "PublicCreatorProfilePage",
@@ -155,19 +154,6 @@ export default defineComponent({
     const following = ref<number | null>(null);
     const loadingTiers = ref(true);
     const tierFetchError = computed(() => creators.tierFetchError);
-    const shortNpub = computed(() =>
-      creatorNpub.slice(0, 8) + "…" + creatorNpub.slice(-4)
-    );
-
-    useMeta(() => ({
-      title: `${profile.value.display_name || shortNpub.value} — Fundstr`,
-      meta: {
-        description: {
-          name: "description",
-          content: profile.value.about || "",
-        },
-      },
-    }));
 
     const fetchTiers = async () => {
       loadingTiers.value = true;
@@ -272,7 +258,6 @@ export default defineComponent({
     return {
       creatorNpub,
       creatorHex,
-      nostr,
       profile,
       tiers,
       showSubscribeDialog,

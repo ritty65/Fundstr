@@ -44,8 +44,5 @@ export const useWelcomeStore = defineStore('welcome', {
       this.featuresVisited = { creatorHub: false, subscriptions: false, buckets: false }
       this.welcomeCompleted = true
     },
-    markWelcomeCompleted() {
-      this.closeWelcome()
-    },
   },
 })

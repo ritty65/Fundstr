@@ -1,21 +1,5 @@
 <template>
   <q-header class="bg-transparent">
-    <q-banner
-      v-if="!welcome.welcomeCompleted && !isWelcomePage"
-      dense
-      class="bg-secondary text-white text-center"
-    >
-      You're browsing as a guest.
-      <q-btn
-        flat
-        dense
-        size="sm"
-        color="white"
-        label="Finish setup"
-        class="q-ml-sm"
-        @click="goToWelcome"
-      />
-    </q-banner>
     <q-toolbar class="app-toolbar" dense>
       <div class="left-controls row items-center no-wrap" v-if="!isWelcomePage">
           <q-btn
@@ -145,11 +129,10 @@ import {
   nextTick,
   watch,
 } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import { useUiStore } from "src/stores/ui";
 import { useMessengerStore } from "src/stores/messenger";
 import { useQuasar } from "quasar";
-import { useWelcomeStore } from "src/stores/welcome";
 
 export default defineComponent({
   name: "MainHeader",
@@ -158,8 +141,6 @@ export default defineComponent({
     const vm = getCurrentInstance()?.proxy;
     const ui = useUiStore();
     const route = useRoute();
-    const router = useRouter();
-    const welcome = useWelcomeStore();
     const messenger = useMessengerStore();
     const $q = useQuasar();
     const mainNavBtn = ref(null);
@@ -211,9 +192,6 @@ export default defineComponent({
       route.path.startsWith("/nostr-messenger"),
     );
     const isWelcomePage = computed(() => route.path.startsWith("/welcome"));
-    const goToWelcome = () => {
-      router.push({ path: "/welcome", query: { redirect: route.fullPath } });
-    };
     const appName = "Fundstr";
     const currentTitle = computed(() => {
       if (isMessengerPage.value) return "Nostr Messenger";
@@ -286,7 +264,6 @@ export default defineComponent({
       countdown,
       reloading,
       ui,
-      welcome,
       currentTitle,
       isWelcomePage,
       appName,
@@ -294,10 +271,9 @@ export default defineComponent({
       toggleMessengerDrawer,
       toggleDarkMode,
       darkIcon,
-      chatButtonColor,
-      mainNavBtn,
-      goToWelcome,
-    };
+        chatButtonColor,
+        mainNavBtn,
+      };
   },
 });
 </script>
