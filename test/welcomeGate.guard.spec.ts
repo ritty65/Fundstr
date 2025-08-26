@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createMemoryHistory, createRouter } from 'vue-router'
 
-// utility to initialize router with the welcome gate boot plugin
+// utility to initialize router with the welcome gate guard
 async function setup({
   seen = false,
   restoring = false,
@@ -24,9 +23,13 @@ async function setup({
     { path: '/restore', component: {} },
   ]
 
-  const router = createRouter({ history: createMemoryHistory(), routes })
-  const bootWelcomeGate = (await import('src/boot/welcomeGate')).default
-  await bootWelcomeGate({ router })
+  vi.doMock('src/router/routes', () => ({ default: routes }))
+
+  const oldServer = process.env.SERVER
+  process.env.SERVER = '1'
+  const createAppRouter = (await import('src/router/index.js')).default
+  const router = createAppRouter()
+  process.env.SERVER = oldServer
 
   // start router at root
   await router.push('/')
