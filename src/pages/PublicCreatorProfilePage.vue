@@ -1,22 +1,17 @@
 <template>
-  <div
-    :class="[
-      $q.dark.isActive ? 'bg-dark text-white' : 'bg-white text-dark',
-      'q-pa-md',
-    ]"
-  >
+  <div class="bg-surface-1 text-1 q-pa-md">
     <div class="q-mb-md">
       <q-btn flat color="primary" to="/find-creators">{{
         $t("CreatorHub.profile.back")
       }}</q-btn>
     </div>
-    <q-banner v-if="isGuest" class="q-mb-md">
+    <q-banner v-if="isGuest" class="q-mb-md bg-surface-2 text-2" icon="info">
       You're browsing as a guest. Finish setup to subscribe.
       <template #action>
         <q-btn flat color="primary" label="Finish setup" @click="gotoWelcome" />
       </template>
     </q-banner>
-    <div class="text-h5 q-mb-md row items-center q-gutter-x-sm">
+    <div class="bg-surface-2 q-pa-sm q-mb-md row items-center q-gutter-x-sm text-h5">
       <div>{{ profile.display_name || creatorNpub }}</div>
       <q-btn flat dense icon="content_copy" @click="copy(profileUrl)" />
     </div>
@@ -30,6 +25,7 @@
       :creator-pubkey="creatorHex"
       @confirm="confirmSubscribe"
     />
+    <SetupRequiredDialog v-model="showSetupDialog" :tier-id="selectedTier?.id" />
     <SubscriptionReceipt
       v-model="showReceiptDialog"
       :receipts="receiptList"
@@ -46,7 +42,7 @@
       <div v-if="loadingTiers" class="row justify-center q-pa-md">
         <q-spinner-hourglass />
       </div>
-      <q-banner v-else-if="tierFetchError" class="q-mb-md">
+      <q-banner v-else-if="tierFetchError" class="q-mb-md bg-surface-2">
         Failed to load tiers – check relay connectivity
         <template #action>
           <q-btn flat color="primary" @click="retryFetchTiers">Retry</q-btn>
@@ -60,10 +56,9 @@
           v-for="t in tiers"
           :key="t.id"
           flat
-          bordered
-          class="q-mb-md tier-card"
+          class="q-mb-md tier-card bg-surface-2"
         >
-          <q-card-section class="row items-center justify-between bg-grey-2">
+          <q-card-section class="row items-center justify-between">
             <div class="text-subtitle1">{{ t.name }}</div>
             <div class="text-subtitle2">
               {{ getPrice(t) }} sats/month
@@ -90,7 +85,6 @@
             <div class="q-mt-md text-right subscribe-container">
               <q-btn
                 label="Subscribe"
-                color="primary"
                 class="subscribe-btn"
                 @click="openSubscribe(t)"
               />
@@ -121,6 +115,7 @@ import { usePriceStore } from "stores/price";
 import { useUiStore } from "stores/ui";
 import SubscribeDialog from "components/SubscribeDialog.vue";
 import SubscriptionReceipt from "components/SubscriptionReceipt.vue";
+import SetupRequiredDialog from "components/SetupRequiredDialog.vue";
 import { useI18n } from "vue-i18n";
 import PaywalledContent from "components/PaywalledContent.vue";
 import MediaPreview from "components/MediaPreview.vue";
@@ -130,7 +125,7 @@ import { useWelcomeStore } from "stores/welcome";
 
 export default defineComponent({
   name: "PublicCreatorProfilePage",
-  components: { PaywalledContent, SubscriptionReceipt, MediaPreview },
+  components: { PaywalledContent, SubscriptionReceipt, MediaPreview, SetupRequiredDialog },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -155,6 +150,7 @@ export default defineComponent({
     const profile = ref<any>({});
     const tiers = computed(() => creators.tiersMap[creatorHex] || []);
     const showSubscribeDialog = ref(false);
+    const showSetupDialog = ref(false);
     const showReceiptDialog = ref(false);
     const receiptList = ref<any[]>([]);
     const selectedTier = ref<any>(null);
@@ -194,10 +190,7 @@ export default defineComponent({
     const openSubscribe = (tier: any) => {
       selectedTier.value = tier
       if (!nostr.pubkey && !nostr.signer) {
-        router.push({
-          path: '/nostr-login',
-          query: { redirect: route.fullPath, tierId: tier.id },
-        })
+        showSetupDialog.value = true
         return
       }
       showSubscribeDialog.value = true
@@ -274,6 +267,7 @@ export default defineComponent({
       profile,
       tiers,
       showSubscribeDialog,
+      showSetupDialog,
       showReceiptDialog,
       receiptList,
       selectedTier,
@@ -301,15 +295,23 @@ export default defineComponent({
 <style scoped>
 .tier-card .subscribe-btn {
   display: inline-flex;
+  background-color: var(--accent-500);
+  color: var(--text-inverse);
+  transition: opacity 0.2s, background-color 0.2s;
+}
+
+.tier-card .subscribe-btn:hover,
+.tier-card .subscribe-btn:active {
+  background-color: var(--accent-600);
 }
 
 @media (hover: hover) {
   .tier-card .subscribe-btn {
-    display: none;
+    opacity: 0;
   }
 
   .tier-card:hover .subscribe-btn {
-    display: inline-flex;
+    opacity: 1;
   }
 }
 </style>
