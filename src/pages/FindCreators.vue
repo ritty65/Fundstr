@@ -1,5 +1,12 @@
 <template>
   <div class="find-creators-wrapper">
+    <div
+      v-if="!welcome.welcomeCompleted"
+      class="q-pa-md text-center bg-secondary text-white"
+    >
+      Ready to support?
+      <q-btn flat color="white" label="Finish setup" @click="goToWelcome" />
+    </div>
     <iframe
       ref="iframeEl"
       src="/find-creators.html"
@@ -139,6 +146,7 @@ import {
 } from "stores/nostr";
 import { notifyWarning } from "src/js/notify";
 import { useRouter, useRoute } from "vue-router";
+import { useWelcomeStore } from "src/stores/welcome";
 import { useMessengerStore } from "stores/messenger";
 import { useI18n } from "vue-i18n";
 import {
@@ -171,7 +179,11 @@ const nostr = useNostrStore();
 const messenger = useMessengerStore();
 const router = useRouter();
 const route = useRoute();
+const welcome = useWelcomeStore();
 const { t } = useI18n();
+const goToWelcome = () => {
+  router.push({ path: '/welcome', query: { redirect: route.fullPath } });
+};
 const tiers = computed(() => creators.tiersMap[dialogPubkey.value] || []);
 const tierFetchError = computed(() => creators.tierFetchError);
 const showSubscribeDialog = ref(false);

@@ -6,7 +6,7 @@ import {
   createWebHashHistory,
 } from "vue-router";
 import routes from "./routes";
-import { hasSeenWelcome } from "src/composables/useWelcomeGate";
+import { useWelcomeStore } from "src/stores/welcome";
 import { useRestoreStore } from "src/stores/restore";
 
 /*
@@ -36,31 +36,32 @@ export default route(function (/* { store, ssrContext } */) {
   });
 
   Router.beforeEach((to, _from, next) => {
-    const seen = hasSeenWelcome();
-    const isWelcome = to.path.startsWith("/welcome");
-    const isPublicProfile =
-      to.matched.some((r) => r.name === "PublicCreatorProfile") ||
-      to.path.startsWith("/creator/");
-    const isPublicDiscover = to.path === "/find-creators";
+    const welcome = useWelcomeStore();
     const restore = useRestoreStore();
+
+    const isAllowedPublic =
+      to.path.startsWith("/welcome") ||
+      to.path === "/restore" ||
+      to.path === "/terms" ||
+      to.path === "/about";
 
     const env = import.meta.env.VITE_APP_ENV;
     const allow =
       to.query.allow === "1" && (env === "development" || env === "staging");
 
     if (
-      !seen &&
-      !isWelcome &&
-      !restore.restoringState &&
-      to.path !== "/restore" &&
-      !isPublicProfile &&
-      !isPublicDiscover
+      !welcome.welcomeCompleted &&
+      !isAllowedPublic &&
+      !restore.restoringState
     ) {
-      next({ path: "/welcome", query: { first: "1" } });
+      next({
+        path: "/welcome",
+        query: { redirect: encodeURIComponent(to.fullPath) },
+      });
       return;
     }
 
-    if (seen && isWelcome && !allow) {
+    if (welcome.welcomeCompleted && to.path.startsWith("/welcome") && !allow) {
       next("/about");
       return;
     }

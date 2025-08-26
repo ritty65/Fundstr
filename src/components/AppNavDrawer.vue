@@ -32,26 +32,59 @@
       </q-btn>
     </div>
     <q-list>
+      <q-item
+        v-if="!welcome.welcomeCompleted"
+        clickable
+        @click="redirectToWelcome"
+        class="q-mb-sm"
+      >
+        <q-item-section avatar>
+          <q-icon name="lock_open" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>Finish setup</q-item-label>
+        </q-item-section>
+      </q-item>
       <q-item-label header>{{
         $t("MainHeader.menu.settings.title")
       }}</q-item-label>
-      <q-item clickable @click="gotoDashboard">
+      <q-item
+        :clickable="welcome.welcomeCompleted"
+        :disable="!welcome.welcomeCompleted"
+        @click="gotoDashboard"
+      >
         <q-item-section avatar>
           <q-icon name="dashboard" />
         </q-item-section>
         <q-item-section>
           <q-item-label>{{ $t("MainHeader.menu.dashboard.title") }}</q-item-label>
         </q-item-section>
+        <q-item-section side v-if="!welcome.welcomeCompleted">
+          <q-icon name="lock" />
+        </q-item-section>
+        <q-tooltip v-if="!welcome.welcomeCompleted">Finish setup to use this</q-tooltip>
       </q-item>
-      <q-item clickable @click="gotoWallet">
+      <q-item
+        :clickable="welcome.welcomeCompleted"
+        :disable="!welcome.welcomeCompleted"
+        @click="gotoWallet"
+      >
         <q-item-section avatar>
           <q-icon name="account_balance_wallet" />
         </q-item-section>
         <q-item-section>
           <q-item-label>{{ $t("MainHeader.menu.wallet.title") }}</q-item-label>
         </q-item-section>
+        <q-item-section side v-if="!welcome.welcomeCompleted">
+          <q-icon name="lock" />
+        </q-item-section>
+        <q-tooltip v-if="!welcome.welcomeCompleted">Finish setup to use this</q-tooltip>
       </q-item>
-      <q-item clickable @click="gotoSettings">
+      <q-item
+        :clickable="welcome.welcomeCompleted"
+        :disable="!welcome.welcomeCompleted"
+        @click="gotoSettings"
+      >
         <q-item-section avatar>
           <q-icon name="settings" />
         </q-item-section>
@@ -63,8 +96,16 @@
             $t("MainHeader.menu.settings.settings.caption")
           }}</q-item-label>
         </q-item-section>
+        <q-item-section side v-if="!welcome.welcomeCompleted">
+          <q-icon name="lock" />
+        </q-item-section>
+        <q-tooltip v-if="!welcome.welcomeCompleted">Finish setup to use this</q-tooltip>
       </q-item>
-      <q-item clickable @click="gotoFindCreators">
+      <q-item
+        :clickable="welcome.welcomeCompleted"
+        :disable="!welcome.welcomeCompleted"
+        @click="gotoFindCreators"
+      >
         <q-item-section avatar>
           <FindCreatorsIcon class="themed-icon q-icon" />
         </q-item-section>
@@ -76,8 +117,16 @@
             $t("MainHeader.menu.findCreators.findCreators.caption")
           }}</q-item-label>
         </q-item-section>
+        <q-item-section side v-if="!welcome.welcomeCompleted">
+          <q-icon name="lock" />
+        </q-item-section>
+        <q-tooltip v-if="!welcome.welcomeCompleted">Finish setup to use this</q-tooltip>
       </q-item>
-      <q-item clickable @click="gotoCreatorHub">
+      <q-item
+        :clickable="welcome.welcomeCompleted"
+        :disable="!welcome.welcomeCompleted"
+        @click="gotoCreatorHub"
+      >
         <q-item-section avatar>
           <CreatorHubIcon class="themed-icon q-icon" />
         </q-item-section>
@@ -89,8 +138,16 @@
             $t("MainHeader.menu.creatorHub.caption")
           }}</q-item-label>
         </q-item-section>
+        <q-item-section side v-if="!welcome.welcomeCompleted">
+          <q-icon name="lock" />
+        </q-item-section>
+        <q-tooltip v-if="!welcome.welcomeCompleted">Finish setup to use this</q-tooltip>
       </q-item>
-      <q-item clickable @click="gotoMyProfile">
+      <q-item
+        :clickable="welcome.welcomeCompleted"
+        :disable="!welcome.welcomeCompleted"
+        @click="gotoMyProfile"
+      >
         <q-item-section avatar>
           <q-icon name="person" />
         </q-item-section>
@@ -102,8 +159,16 @@
             $t("MainHeader.menu.myProfile.myProfile.caption")
           }}</q-item-label>
         </q-item-section>
+        <q-item-section side v-if="!welcome.welcomeCompleted">
+          <q-icon name="lock" />
+        </q-item-section>
+        <q-tooltip v-if="!welcome.welcomeCompleted">Finish setup to use this</q-tooltip>
       </q-item>
-      <q-item clickable @click="gotoBuckets">
+      <q-item
+        :clickable="welcome.welcomeCompleted"
+        :disable="!welcome.welcomeCompleted"
+        @click="gotoBuckets"
+      >
         <q-item-section avatar>
           <q-icon name="inventory_2" />
         </q-item-section>
@@ -115,8 +180,16 @@
             $t("MainHeader.menu.buckets.buckets.caption")
           }}</q-item-label>
         </q-item-section>
+        <q-item-section side v-if="!welcome.welcomeCompleted">
+          <q-icon name="lock" />
+        </q-item-section>
+        <q-tooltip v-if="!welcome.welcomeCompleted">Finish setup to use this</q-tooltip>
       </q-item>
-      <q-item clickable @click="gotoSubscriptions">
+      <q-item
+        :clickable="welcome.welcomeCompleted"
+        :disable="!welcome.welcomeCompleted"
+        @click="gotoSubscriptions"
+      >
         <q-item-section avatar>
           <q-icon name="auto_awesome_motion" />
         </q-item-section>
@@ -128,22 +201,43 @@
             $t("MainHeader.menu.subscriptions.subscriptions.caption")
           }}</q-item-label>
         </q-item-section>
+        <q-item-section side v-if="!welcome.welcomeCompleted">
+          <q-icon name="lock" />
+        </q-item-section>
+        <q-tooltip v-if="!welcome.welcomeCompleted">Finish setup to use this</q-tooltip>
       </q-item>
-      <q-item clickable @click="gotoChats">
+      <q-item
+        :clickable="welcome.welcomeCompleted"
+        :disable="!welcome.welcomeCompleted"
+        @click="gotoChats"
+      >
         <q-item-section avatar>
           <q-icon name="chat" />
         </q-item-section>
         <q-item-section>
           <q-item-label>Chats</q-item-label>
         </q-item-section>
+        <q-item-section side v-if="!welcome.welcomeCompleted">
+          <q-icon name="lock" />
+        </q-item-section>
+        <q-tooltip v-if="!welcome.welcomeCompleted">Finish setup to use this</q-tooltip>
       </q-item>
-      <q-item v-if="needsNostrLogin" clickable @click="gotoNostrLogin">
+      <q-item
+        v-if="needsNostrLogin"
+        :clickable="welcome.welcomeCompleted"
+        :disable="!welcome.welcomeCompleted"
+        @click="gotoNostrLogin"
+      >
         <q-item-section avatar>
           <q-icon name="vpn_key" />
         </q-item-section>
         <q-item-section>
           <q-item-label>Setup Nostr Identity</q-item-label>
         </q-item-section>
+        <q-item-section side v-if="!welcome.welcomeCompleted">
+          <q-icon name="lock" />
+        </q-item-section>
+        <q-tooltip v-if="!welcome.welcomeCompleted">Finish setup to use this</q-tooltip>
       </q-item>
       <q-item-label header>{{
         $t("MainHeader.menu.terms.title")
@@ -192,7 +286,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import { useUiStore } from "src/stores/ui";
 import { useNostrStore } from "src/stores/nostr";
 import { useI18n } from "vue-i18n";
@@ -201,9 +295,12 @@ import EssentialLink from "components/EssentialLink.vue";
 import { NAV_DRAWER_WIDTH } from "src/constants/layout";
 import FindCreatorsIcon from "src/components/icons/FindCreatorsIcon.vue";
 import CreatorHubIcon from "src/components/icons/CreatorHubIcon.vue";
+import { useWelcomeStore } from "src/stores/welcome";
 
 const ui = useUiStore();
 const router = useRouter();
+const route = useRoute();
+const welcome = useWelcomeStore();
 const nostrStore = useNostrStore();
 const { t } = useI18n();
 const $q = useQuasar();
@@ -224,6 +321,11 @@ const gotoChats = () => goto("/nostr-messenger");
 const gotoNostrLogin = () => goto("/nostr-login");
 const gotoTerms = () => goto("/terms");
 const gotoAbout = () => goto("/about");
+
+const redirectToWelcome = () => {
+  router.push({ path: "/welcome", query: { redirect: route.fullPath } });
+  ui.closeMainNav();
+};
 
 const needsNostrLogin = computed(() => !nostrStore.privateKeySignerPrivateKey);
 
