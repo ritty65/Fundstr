@@ -103,19 +103,11 @@ function downloadBackup() {
 
 async function finishOnboarding() {
   showChecklist.value = false
-  welcome.markWelcomeCompleted()
+  welcome.closeWelcome()
   // remember that the welcome flow has been completed on this device
   markWelcomeSeen()
   await nextTick()
-  const redirect =
-    typeof route.query.redirect === 'string'
-      ? decodeURIComponent(route.query.redirect)
-      : undefined
-  if (redirect) {
-    router.replace(redirect)
-  } else {
-    router.push('/wallet')
-  }
+  router.replace('/about')
 }
 
 const slides = [
