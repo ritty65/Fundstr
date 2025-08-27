@@ -2,70 +2,41 @@
   <div class="about-page antialiased">
     <!-- Header -->
     <header class="pt-32 md:pt-40 pb-12 fade-in-section">
-      <BaseContainer>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-          <div class="text-center md:text-left">
-            <h1 class="text-5xl md:text-7xl font-extrabold mb-6">
-              About <span class="gradient-text">Fundstr</span>
-            </h1>
-            <p class="text-lg md:text-xl max-w-prose mx-auto md:mx-0">
-              A privacy-first Bitcoin wallet, social chat, and creator-monetisation
-              hub built on the open-source Cashu ecash protocol and the decentralised
-              Nostr network.
-            </p>
-          </div>
-          <div class="flex justify-center md:justify-end">
-            <q-img
-              src="@/assets/about/star.svg"
-              alt="Fundstr illustration"
-              class="max-w-xs"
-            />
-          </div>
-        </div>
+      <BaseContainer class="text-center">
+        <h1 class="text-5xl md:text-7xl font-extrabold mb-6">
+          About <span class="gradient-text">Fundstr</span>
+        </h1>
+        <p class="text-lg md:text-xl max-w-prose mx-auto">
+          A privacy-first Bitcoin wallet, social chat, and creator-monetisation
+          hub built on the open-source Cashu ecash protocol and the decentralised
+          Nostr network.
+        </p>
       </BaseContainer>
     </header>
-    <div class="fade-in-section">
-      <BaseContainer>
-        <q-card
-          flat
-          bordered
-          class="bg-surface-2 rounded-md p-4 grid grid-cols-[auto,1fr] gap-3 items-start"
-          role="alert"
-        >
-          <q-icon name="warning" size="32px" class="text-accent" aria-hidden="true" />
-          <p>
-            Fundstr is experimental alpha software. Features may break or change,
-            and loss of funds is possible. Use only small amounts you can afford
-            to lose.
-          </p>
-        </q-card>
+    <div class="alpha-warning fade-in-section">
+      <BaseContainer class="flex items-start gap-3" role="alert">
+        <q-icon name="warning" size="32px" class="text-accent" aria-hidden="true" />
+        <p>
+          Fundstr is experimental alpha software. Features may break or change,
+          and loss of funds is possible. Use only small amounts you can afford
+          to lose.
+        </p>
       </BaseContainer>
     </div>
 
     <!-- Vision -->
     <section id="vision" class="py-12 md:py-20 fade-in-section">
-      <BaseContainer>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-          <div class="text-center md:text-left">
-            <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
-              Your Money, Your Network
-            </h2>
-            <p class="text-lg md:text-xl max-w-prose mx-auto md:mx-0">
-              We believe in a world where your financial life and social
-              interactions are truly your own. Fundstr is an experiment in creating
-              a parallel, peer-to-peer economy—free from corporate gatekeepers,
-              surveillance, and unpredictable fees. It’s a gateway to a more
-              sovereign way of connecting and transacting.
-            </p>
-          </div>
-          <div class="flex justify-center md:justify-end">
-            <q-img
-              src="@/assets/about/privacy.svg"
-              alt="Vision illustration"
-              class="max-w-xs opacity-75"
-            />
-          </div>
-        </div>
+      <BaseContainer class="text-center">
+        <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
+          Your Money, Your Network
+        </h2>
+        <p class="text-lg md:text-xl max-w-prose mx-auto">
+          We believe in a world where your financial life and social
+          interactions are truly your own. Fundstr is an experiment in creating
+          a parallel, peer-to-peer economy—free from corporate gatekeepers,
+          surveillance, and unpredictable fees. It’s a gateway to a more
+          sovereign way of connecting and transacting.
+        </p>
       </BaseContainer>
     </section>
 
@@ -930,6 +901,15 @@ blockquote {
   border-left: 4px solid var(--color-accent);
   padding-left: 1rem;
   font-style: italic;
+}
+
+.alpha-warning {
+  background-color: var(--surface-2);
+  border: 1px solid var(--accent-200);
+  color: var(--text-1);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  box-shadow: 0 0 10px rgba(var(--color-accent-rgb), 0.25);
 }
 
 #how-it-works .how-step {
