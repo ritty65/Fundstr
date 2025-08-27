@@ -23,70 +23,93 @@
         </p>
       </BaseContainer>
     </div>
-
-    <!-- Vision -->
-    <section id="vision" class="py-12 md:py-20 fade-in-section">
-      <BaseContainer class="text-center">
-        <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
-          Your Money, Your Network
-        </h2>
-        <p class="text-lg md:text-xl max-w-prose mx-auto">
-          We believe in a world where your financial life and social
-          interactions are truly your own. Fundstr is an experiment in creating
-          a parallel, peer-to-peer economy—free from corporate gatekeepers,
-          surveillance, and unpredictable fees. It’s a gateway to a more
-          sovereign way of connecting and transacting.
-        </p>
-      </BaseContainer>
-    </section>
-
-    <!-- Site Overview -->
-    <section id="site-overview" class="py-12 md:py-20 fade-in-section">
-      <BaseContainer class="text-center">
-        <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
-          {{ $t("AboutPage.siteOverview.title") }}
-        </h2>
-        <div
-          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 text-left"
-        >
-          <router-link
-            v-for="card in siteOverviewCards"
-            :key="card.route"
-            :to="card.route"
-            class="interactive-card block no-underline p-6 md:p-8 flex flex-col cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent-500"
-            :aria-label="$t(card.titleKey)"
+    <div class="relative">
+      <div class="hidden md:block absolute left-0 right-0">
+        <div class="max-w-screen-xl mx-auto px-4">
+          <aside
+            class="sticky top-24 w-56 -ml-2"
+            aria-label="About page table of contents"
           >
-            <component
-              v-if="card.iconComponent"
-              :is="card.iconComponent"
-              class="w-8 h-8 mb-4 text-accent"
-              aria-hidden="true"
-            />
-            <q-icon
-              v-else
-              :name="card.icon"
-              size="32px"
-              class="mb-4 text-accent"
-              aria-hidden="true"
-            />
-            <p class="text-accent font-semibold">
-              {{ tOr(card.titleKey) }}
-            </p>
-            <p class="text-sm mt-2">
-              {{ tOr(card.descriptionKey) }}
-            </p>
-          </router-link>
+            <nav class="space-y-2 text-sm" id="about-toc">
+              <a
+                v-for="item in tocItems"
+                :key="item.id"
+                :href="`#${item.id}`"
+                class="toc-link block"
+                :data-target="item.id"
+              >
+                {{ item.label }}
+              </a>
+            </nav>
+          </aside>
         </div>
-      </BaseContainer>
-    </section>
+      </div>
 
-    <!-- How Ecash Works -->
-    <section id="how-it-works" class="py-12 md:py-20 fade-in-section">
-      <BaseContainer class="text-center">
-        <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
-          How Ecash Works
-        </h2>
-        <p class="text-lg md:text-xl mb-12 max-w-prose mx-auto">
+      <div class="md:pl-64">
+        <!-- Vision -->
+        <section id="vision" class="py-12 md:py-20 fade-in-section">
+          <BaseContainer class="text-center">
+            <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
+              Your Money, Your Network
+            </h2>
+            <p class="text-lg md:text-xl max-w-prose mx-auto">
+              We believe in a world where your financial life and social
+              interactions are truly your own. Fundstr is an experiment in creating
+              a parallel, peer-to-peer economy—free from corporate gatekeepers,
+              surveillance, and unpredictable fees. It’s a gateway to a more
+              sovereign way of connecting and transacting.
+            </p>
+          </BaseContainer>
+        </section>
+
+        <!-- Site Overview -->
+        <section id="site-overview" class="py-12 md:py-20 fade-in-section">
+          <BaseContainer class="text-center">
+            <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
+              {{ $t("AboutPage.siteOverview.title") }}
+            </h2>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 text-left">
+              <article
+                v-for="cluster in overviewClusters"
+                :key="cluster.title"
+                class="interactive-card p-5"
+              >
+                <header class="flex items-center gap-3 mb-3">
+                  <q-icon v-if="cluster.icon" :name="cluster.icon" size="24px" class="text-accent" aria-hidden="true" />
+                  <h3 class="font-semibold">{{ cluster.title }}</h3>
+                </header>
+
+                <ul class="space-y-2 text-sm">
+                  <li v-for="link in cluster.items" :key="link.to">
+                    <router-link
+                      :to="link.to"
+                      class="flex items-center gap-2 hover:underline"
+                      :aria-label="$t(link.titleKey)"
+                    >
+                      <component
+                        v-if="link.iconComponent"
+                        :is="link.iconComponent"
+                        class="w-4 h-4 text-accent"
+                        aria-hidden="true"
+                      />
+                      <q-icon v-else :name="link.icon" size="18px" class="text-accent" aria-hidden="true" />
+                      <span>{{ tOr(link.titleKey) }}</span>
+                    </router-link>
+                  </li>
+                </ul>
+              </article>
+            </div>
+          </BaseContainer>
+        </section>
+
+        <!-- How Ecash Works -->
+        <section id="how-it-works" class="py-12 md:py-20 fade-in-section">
+          <BaseContainer class="text-center">
+            <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
+              How Ecash Works
+            </h2>
+            <p class="text-lg md:text-xl mb-12 max-w-prose mx-auto">
           The loop is simple: Bitcoin in → private e-cash out → social payments
           everywhere.
         </p>
@@ -175,29 +198,29 @@
       </BaseContainer>
     </section>
 
-    <!-- Navigation Map -->
-    <section id="navigation-map" class="py-12 md:py-20 fade-in-section">
-      <BaseContainer class="text-center">
-        <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
-          Navigation Map
-        </h2>
-        <p class="text-lg md:text-xl mb-12 max-w-prose mx-auto">
-          Every page explained from both the Creator and Fan perspectives.
-        </p>
-        <NavigationMap :items="navigationItems" />
-      </BaseContainer>
-    </section>
+        <!-- Navigation Map -->
+        <section id="navigation-map" class="py-12 md:py-20 fade-in-section">
+          <BaseContainer class="text-center">
+            <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
+              Navigation Map
+            </h2>
+            <p class="text-lg md:text-xl mb-12 max-w-prose mx-auto">
+              Every page explained from both the Creator and Fan perspectives.
+            </p>
+            <NavigationMap :items="navigationItems" />
+          </BaseContainer>
+        </section>
 
-    <!-- Trust Through Transparency -->
-    <section id="trust" class="py-12 md:py-20 fade-in-section">
-      <BaseContainer class="text-center">
-        <h2 class="text-3xl md:text-5xl font-bold mb-12 gradient-text">
-          Trust Through Transparency
-        </h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-          <!-- Card 1 -->
-          <details class="interactive-card p-6 text-left h-full">
-            <summary class="cursor-pointer">
+        <!-- Trust Through Transparency -->
+        <section id="trust" class="py-12 md:py-20 fade-in-section">
+          <BaseContainer class="text-center">
+            <h2 class="text-3xl md:text-5xl font-bold mb-12 gradient-text">
+              Trust Through Transparency
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+              <!-- Card 1 -->
+              <details class="interactive-card p-6 text-left h-full">
+                <summary class="cursor-pointer">
               <q-icon name="code" size="32px" class="mb-4 text-accent" aria-hidden="true" />
               <span class="block font-semibold text-xl mb-2"
                 >Open Source & Verifiable</span
@@ -693,11 +716,13 @@
         </BaseContainer>
       </section>
     </footer>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, type Component } from "vue";
+import { onMounted, onBeforeUnmount, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import NavigationMap from "src/components/NavigationMap.vue";
 import BaseContainer from "src/components/BaseContainer.vue";
@@ -711,99 +736,162 @@ const tOr = (key: string, fallback = "") => {
   return val && val !== key ? val : fallback;
 };
 
-interface SiteOverviewCard {
-  route: string;
+type ClusterLink = {
+  to: string;
   titleKey: string;
-  descriptionKey: string;
   icon?: string;
   iconComponent?: Component;
-}
+};
+type Cluster = {
+  title: string;
+  icon?: string;
+  items: ClusterLink[];
+};
 
-const siteOverviewCards: SiteOverviewCard[] = [
+const overviewClusters: Cluster[] = [
   {
-    route: "/wallet",
-    titleKey: "MainHeader.menu.wallet.title",
-    descriptionKey: "AboutPage.siteOverview.wallet.description",
-    icon: "account_balance_wallet",
+    title: "Money",
+    icon: "savings",
+    items: [
+      {
+        to: "/wallet",
+        titleKey: "MainHeader.menu.wallet.title",
+        icon: "account_balance_wallet",
+      },
+      {
+        to: "/buckets",
+        titleKey: "MainHeader.menu.buckets.title",
+        icon: "inventory_2",
+      },
+      {
+        to: "/subscriptions",
+        titleKey: "MainHeader.menu.subscriptions.title",
+        icon: "auto_awesome_motion",
+      },
+    ],
   },
   {
-    route: "/find-creators",
-    titleKey: "MainHeader.menu.findCreators.title",
-    descriptionKey: "AboutPage.siteOverview.findCreators.description",
-    iconComponent: FindCreatorsIcon,
+    title: "Creators",
+    icon: "star",
+    items: [
+      {
+        to: "/find-creators",
+        titleKey: "MainHeader.menu.findCreators.title",
+        iconComponent: FindCreatorsIcon,
+      },
+      {
+        to: "/creator-hub",
+        titleKey: "MainHeader.menu.creatorHub.title",
+        iconComponent: CreatorHubIcon,
+      },
+      {
+        to: "/my-profile",
+        titleKey: "MainHeader.menu.myProfile.title",
+        icon: "person",
+      },
+    ],
   },
   {
-    route: "/creator-hub",
-    titleKey: "MainHeader.menu.creatorHub.title",
-    descriptionKey: "AboutPage.siteOverview.creatorHub.description",
-    iconComponent: CreatorHubIcon,
-  },
-  {
-    route: "/my-profile",
-    titleKey: "MainHeader.menu.myProfile.title",
-    descriptionKey: "AboutPage.siteOverview.myProfile.description",
-    icon: "person",
-  },
-  {
-    route: "/buckets",
-    titleKey: "MainHeader.menu.buckets.title",
-    descriptionKey: "AboutPage.siteOverview.buckets.description",
-    icon: "inventory_2",
-  },
-  {
-    route: "/subscriptions",
-    titleKey: "MainHeader.menu.subscriptions.title",
-    descriptionKey: "AboutPage.siteOverview.subscriptions.description",
-    icon: "auto_awesome_motion",
-  },
-  {
-    route: "/nostr-messenger",
-    titleKey: "MainHeader.menu.nostrMessenger.title",
-    descriptionKey: "AboutPage.siteOverview.nostrMessenger.description",
+    title: "Comms",
     icon: "chat",
+    items: [
+      {
+        to: "/nostr-messenger",
+        titleKey: "MainHeader.menu.nostrMessenger.title",
+        icon: "chat",
+      },
+      {
+        to: "/nostr-login",
+        titleKey: "MainHeader.menu.nostrLogin.title",
+        icon: "vpn_key",
+      },
+    ],
   },
   {
-    route: "/settings",
-    titleKey: "MainHeader.menu.settings.title",
-    descriptionKey: "AboutPage.siteOverview.settings.description",
+    title: "System",
     icon: "settings",
-  },
-  {
-    route: "/restore",
-    titleKey: "MainHeader.menu.restore.title",
-    descriptionKey: "AboutPage.siteOverview.restore.description",
-    icon: "settings_backup_restore",
-  },
-  {
-    route: "/already-running",
-    titleKey: "MainHeader.menu.alreadyRunning.title",
-    descriptionKey: "AboutPage.siteOverview.alreadyRunning.description",
-    icon: "warning",
-  },
-  {
-    route: "/welcome",
-    titleKey: "MainHeader.menu.welcome.title",
-    descriptionKey: "AboutPage.siteOverview.welcome.description",
-    icon: "info",
-  },
-  {
-    route: "/terms",
-    titleKey: "MainHeader.menu.terms.title",
-    descriptionKey: "AboutPage.siteOverview.terms.description",
-    icon: "gavel",
-  },
-  {
-    route: "/nostr-login",
-    titleKey: "MainHeader.menu.nostrLogin.title",
-    descriptionKey: "AboutPage.siteOverview.nostrLogin.description",
-    icon: "vpn_key",
+    items: [
+      {
+        to: "/settings",
+        titleKey: "MainHeader.menu.settings.title",
+        icon: "settings",
+      },
+      {
+        to: "/restore",
+        titleKey: "MainHeader.menu.restore.title",
+        icon: "settings_backup_restore",
+      },
+      {
+        to: "/already-running",
+        titleKey: "MainHeader.menu.alreadyRunning.title",
+        icon: "warning",
+      },
+      {
+        to: "/welcome",
+        titleKey: "MainHeader.menu.welcome.title",
+        icon: "info",
+      },
+      {
+        to: "/terms",
+        titleKey: "MainHeader.menu.terms.title",
+        icon: "gavel",
+      },
+    ],
   },
 ];
+
+const tocItems = [
+  { id: "vision", label: t("AboutPage.toc.vision") || "Vision" },
+  {
+    id: "site-overview",
+    label: t("AboutPage.siteOverview.title") || "Site Overview",
+  },
+  { id: "how-it-works", label: "How Ecash Works" },
+  { id: "who-for", label: "Who It’s For" },
+  { id: "navigation-map", label: "Navigation Map" },
+  { id: "trust", label: "Transparency" },
+  { id: "faq", label: "FAQ" },
+  { id: "cta", label: "Get Started" },
+];
+
+let spyObserver: IntersectionObserver | null = null;
 
 const donationLink = `lightning:${import.meta.env.VITE_DONATION_LIGHTNING || ''}`;
 
 // navigation items for the navigation map
 const navigationItems = useNavigationItems();
+
+onMounted(() => {
+  const root = document;
+  const existing = tocItems.filter((it) => root.getElementById(it.id));
+  const links = Array.from(
+    document.querySelectorAll<HTMLAnchorElement>("#about-toc .toc-link")
+  );
+  const targets = existing.map((it) => root.getElementById(it.id)!);
+  spyObserver = new IntersectionObserver(
+    (entries) => {
+      const visible = entries
+        .filter((e) => e.isIntersecting)
+        .sort(
+          (a, b) =>
+            Math.abs(a.boundingClientRect.top) -
+            Math.abs(b.boundingClientRect.top)
+        );
+      if (visible[0]) {
+        const id = visible[0].target.id;
+        links.forEach((a) =>
+          a.classList.toggle("active", a.dataset.target === id)
+        );
+      }
+    },
+    { rootMargin: "-30% 0px -65% 0px", threshold: [0, 0.25, 0.5, 1] }
+  );
+  targets.forEach((el) => spyObserver!.observe(el));
+});
+
+onBeforeUnmount(() => {
+  if (spyObserver) spyObserver.disconnect();
+});
 
 onMounted(() => {
   if ("IntersectionObserver" in window) {
@@ -910,6 +998,20 @@ blockquote {
   border-radius: 0.5rem;
   padding: 1rem;
   box-shadow: 0 0 10px rgba(var(--color-accent-rgb), 0.25);
+}
+
+.toc-link {
+  opacity: 0.75;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.toc-link:hover {
+  opacity: 1;
+}
+.toc-link.active {
+  opacity: 1;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 
 #how-it-works .how-step {
