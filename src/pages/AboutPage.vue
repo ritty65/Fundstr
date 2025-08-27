@@ -182,10 +182,21 @@
         <p class="center">Follow the project and its creator on Nostr to connect with the community.</p>
 
         <div class="cards cards--3">
+          <a
+            href="https://primal.net/p/nprofile1qqsdndspt5x07jhp5vrs0s4a7z0spwl4v28su0263vdjmwfmumxdygc6lzn8y"
+            target="_blank"
+            rel="noopener"
+            class="card tcenter"
+          >
+            <span class="emj xl">🧡</span><h3>Fundstr on Nostr</h3><p>Project profile ↗️</p>
+          </a>
           <a href="https://primal.net/KalonAxiarch" target="_blank" rel="noopener" class="card tcenter">
             <span class="emj xl">👤</span><h3>Creator’s Profile</h3><p>Primal profile ↗️</p>
           </a>
-          <router-link to="/find-creators?npub=npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m" class="card tcenter">
+          <router-link
+            to="/find-creators?npub=npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m"
+            class="card tcenter"
+          >
             <span class="emj xl">💵</span><h3>View KalonAxiarch’s Tiers</h3><p>Support the creator</p>
           </router-link>
         </div>
