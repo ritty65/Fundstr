@@ -1,201 +1,219 @@
 <template>
   <div class="about-page antialiased">
-    <!-- Header -->
-    <header class="pt-32 md:pt-40 pb-12 fade-in-section">
-      <BaseContainer class="text-center">
-        <h1 class="text-5xl md:text-7xl font-extrabold mb-6">
-          About <span class="gradient-text">Fundstr</span>
-        </h1>
-        <p class="text-lg md:text-xl max-w-prose mx-auto">
-          A privacy-first Bitcoin wallet, social chat, and creator-monetisation
-          hub built on the open-source Cashu ecash protocol and the decentralised
-          Nostr network.
-        </p>
-      </BaseContainer>
-    </header>
-    <div class="alpha-warning fade-in-section">
-      <BaseContainer class="flex items-start gap-3" role="alert">
-        <q-icon name="warning" size="32px" class="text-accent" aria-hidden="true" />
-        <p>
-          Fundstr is experimental alpha software. Features may break or change,
-          and loss of funds is possible. Use only small amounts you can afford
-          to lose.
-        </p>
-      </BaseContainer>
-    </div>
-    <div class="relative">
-      <div class="hidden md:block absolute left-0 right-0">
-        <div class="max-w-screen-xl mx-auto px-4">
-          <aside
-            class="sticky top-24 w-56 -ml-2"
-            aria-label="About page table of contents"
+    <div class="max-w-screen-xl mx-auto px-4 md:grid md:grid-cols-12 gap-8">
+      <aside
+        class="hidden md:block md:col-span-3"
+        aria-label="About page table of contents"
+      >
+        <nav class="sticky top-24 space-y-2 text-sm" id="about-toc">
+          <a
+            v-for="item in tocItems"
+            :key="item.id"
+            :href="`#${item.id}`"
+            class="toc-link block"
+            :data-target="item.id"
           >
-            <nav class="space-y-2 text-sm" id="about-toc">
-              <a
-                v-for="item in tocItems"
-                :key="item.id"
-                :href="`#${item.id}`"
-                class="toc-link block"
-                :data-target="item.id"
-              >
-                {{ item.label }}
-              </a>
-            </nav>
-          </aside>
-        </div>
-      </div>
+            {{ item.label }}
+          </a>
+        </nav>
+      </aside>
 
-      <div class="md:pl-64">
+      <div class="md:col-span-9">
+        <!-- Hero + Alpha warning -->
+        <section class="pt-32 md:pt-40 pb-12 md:pb-20 fade-in-section">
+          <div class="grid md:grid-cols-12 gap-6 items-start">
+            <div class="md:col-span-7 text-center md:text-left">
+              <h1 class="text-5xl md:text-7xl font-extrabold mb-6">
+                About <span class="gradient-text">Fundstr</span>
+              </h1>
+              <p class="text-lg md:text-xl max-w-prose">
+                A privacy-first Bitcoin wallet, social chat, and creator-monetisation
+                hub built on the open-source Cashu ecash protocol and the decentralised
+                Nostr network.
+              </p>
+            </div>
+            <div class="md:col-span-5">
+              <div class="alpha-warning flex items-start gap-3" role="alert">
+                <q-icon name="warning" size="32px" class="text-accent" aria-hidden="true" />
+                <p>
+                  Fundstr is experimental alpha software. Features may break or change,
+                  and loss of funds is possible. Use only small amounts you can afford
+                  to lose.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- Vision -->
         <section id="vision" class="py-12 md:py-20 fade-in-section">
-          <BaseContainer class="text-center">
-            <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
-              Your Money, Your Network
-            </h2>
-            <p class="text-lg md:text-xl max-w-prose mx-auto">
-              We believe in a world where your financial life and social
-              interactions are truly your own. Fundstr is an experiment in creating
-              a parallel, peer-to-peer economy—free from corporate gatekeepers,
-              surveillance, and unpredictable fees. It’s a gateway to a more
-              sovereign way of connecting and transacting.
-            </p>
-          </BaseContainer>
+          <div class="grid md:grid-cols-12 gap-6 items-start">
+            <div class="md:col-span-7">
+              <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
+                Your Money, Your Network
+              </h2>
+              <p class="text-lg md:text-xl max-w-prose">
+                We believe in a world where your financial life and social
+                interactions are truly your own. Fundstr is an experiment in creating
+                a parallel, peer-to-peer economy—free from corporate gatekeepers,
+                surveillance, and unpredictable fees. It’s a gateway to a more
+                sovereign way of connecting and transacting.
+              </p>
+            </div>
+            <ul class="md:col-span-5 list-disc pl-5 space-y-2 text-left">
+              <li>Private payments</li>
+              <li>Open protocols</li>
+              <li>No corporate gatekeepers</li>
+              <li>No surveillance</li>
+              <li>Predictable fees</li>
+            </ul>
+          </div>
         </section>
 
         <!-- Site Overview -->
         <section id="site-overview" class="py-12 md:py-20 fade-in-section">
-          <BaseContainer class="text-center">
-            <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
-              {{ $t("AboutPage.siteOverview.title") }}
-            </h2>
+          <h2 class="text-3xl md:text-5xl font-bold mb-6 text-center gradient-text">
+            {{ $t("AboutPage.siteOverview.title") }}
+          </h2>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 text-left">
-              <article
-                v-for="cluster in overviewClusters"
-                :key="cluster.title"
-                class="interactive-card p-5"
-              >
-                <header class="flex items-center gap-3 mb-3">
-                  <q-icon v-if="cluster.icon" :name="cluster.icon" size="24px" class="text-accent" aria-hidden="true" />
-                  <h3 class="font-semibold">{{ cluster.title }}</h3>
-                </header>
+          <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 text-left items-stretch">
+            <article
+              v-for="cluster in overviewClusters"
+              :key="cluster.title"
+              class="interactive-card p-5 h-full flex flex-col"
+            >
+              <header class="flex items-center gap-3 mb-3">
+                <q-icon
+                  v-if="cluster.icon"
+                  :name="cluster.icon"
+                  size="24px"
+                  class="text-accent"
+                  aria-hidden="true"
+                />
+                <h3 class="font-semibold">{{ cluster.title }}</h3>
+              </header>
 
-                <ul class="space-y-2 text-sm">
-                  <li v-for="link in cluster.items" :key="link.to">
-                    <router-link
-                      :to="link.to"
-                      class="flex items-center gap-2 hover:underline"
-                      :aria-label="$t(link.titleKey)"
-                    >
-                      <component
-                        v-if="link.iconComponent"
-                        :is="link.iconComponent"
-                        class="w-4 h-4 text-accent"
-                        aria-hidden="true"
-                      />
-                      <q-icon v-else :name="link.icon" size="18px" class="text-accent" aria-hidden="true" />
-                      <span>{{ tOr(link.titleKey) }}</span>
-                    </router-link>
-                  </li>
-                </ul>
-              </article>
-            </div>
-          </BaseContainer>
+              <ul class="space-y-2 text-sm">
+                <li v-for="link in cluster.items" :key="link.to">
+                  <router-link
+                    :to="link.to"
+                    class="flex items-center gap-2 hover:underline"
+                    :aria-label="$t(link.titleKey)"
+                  >
+                    <component
+                      v-if="link.iconComponent"
+                      :is="link.iconComponent"
+                      class="w-4 h-4 text-accent"
+                      aria-hidden="true"
+                    />
+                    <q-icon
+                      v-else
+                      :name="link.icon"
+                      size="18px"
+                      class="text-accent"
+                      aria-hidden="true"
+                    />
+                    <span>{{ tOr(link.titleKey) }}</span>
+                  </router-link>
+                </li>
+              </ul>
+            </article>
+          </div>
         </section>
 
         <!-- How Ecash Works -->
         <section id="how-it-works" class="py-12 md:py-20 fade-in-section">
-          <BaseContainer class="text-center">
-            <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
-              How Ecash Works
-            </h2>
-            <p class="text-lg md:text-xl mb-12 max-w-prose mx-auto">
-          The loop is simple: Bitcoin in → private e-cash out → social payments
-          everywhere.
-        </p>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 justify-items-center">
-          <div class="how-step relative flex flex-col items-center text-center max-w-xs">
-            <q-icon
-              name="currency_bitcoin"
-              size="32px"
-              class="mb-4 text-accent"
-              aria-hidden="true"
-            />
-            <h3 class="font-semibold text-lg mb-1">Your Bitcoin</h3>
-            <p class="text-sm">From any wallet</p>
+          <h2 class="text-3xl md:text-5xl font-bold mb-6 text-center gradient-text">
+            How Ecash Works
+          </h2>
+          <p class="text-lg md:text-xl mb-12 max-w-prose mx-auto text-center">
+            The loop is simple: Bitcoin in → private e-cash out → social payments
+            everywhere.
+          </p>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-8 justify-items-center">
+            <div class="how-step interactive-card p-6 flex flex-col items-center text-center h-full max-w-xs">
+              <q-icon
+                name="currency_bitcoin"
+                size="32px"
+                class="mb-4 text-accent"
+                aria-hidden="true"
+              />
+              <h3 class="font-semibold text-lg mb-1">Your Bitcoin</h3>
+              <p class="text-sm">From any wallet</p>
+            </div>
+            <div class="how-step interactive-card p-6 flex flex-col items-center text-center h-full max-w-xs">
+              <q-icon
+                name="account_balance"
+                size="32px"
+                class="mb-4 text-accent"
+                aria-hidden="true"
+              />
+              <h3 class="font-semibold text-lg mb-1">The Mint</h3>
+              <p class="text-sm">Issues ecash tokens</p>
+            </div>
+            <div class="how-step interactive-card p-6 flex flex-col items-center text-center h-full max-w-xs">
+              <q-icon
+                name="account_balance_wallet"
+                size="32px"
+                class="mb-4 text-accent"
+                aria-hidden="true"
+              />
+              <h3 class="font-semibold text-lg mb-1">Fundstr Wallet</h3>
+              <p class="text-sm">Spend privately</p>
+            </div>
           </div>
-          <div class="how-step relative flex flex-col items-center text-center max-w-xs">
-            <q-icon
-              name="account_balance"
-              size="32px"
-              class="mb-4 text-accent"
-              aria-hidden="true"
-            />
-            <h3 class="font-semibold text-lg mb-1">The Mint</h3>
-            <p class="text-sm">Issues ecash tokens</p>
-          </div>
-          <div class="how-step relative flex flex-col items-center text-center max-w-xs">
-            <q-icon
-              name="account_balance_wallet"
-              size="32px"
-              class="mb-4 text-accent"
-              aria-hidden="true"
-            />
-            <h3 class="font-semibold text-lg mb-1">Fundstr Wallet</h3>
-            <p class="text-sm">Spend privately</p>
-          </div>
-        </div>
-      </BaseContainer>
-    </section>
+        </section>
 
     <!-- Built for the Sovereign Individual -->
     <section id="who-for" class="py-12 md:py-20 fade-in-section">
-      <BaseContainer class="text-center">
-        <h2 class="text-3xl md:text-5xl font-bold mb-12 gradient-text">
-          Built for the Sovereign Individual
-        </h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-          <!-- Card 1 -->
-          <div class="interactive-card p-6 flex flex-col items-center text-center h-full focus:outline-none focus:ring-2 focus:ring-accent-500">
-            <q-icon name="brush" size="32px" class="mb-4 text-accent" aria-hidden="true" />
-            <h3 class="font-semibold text-lg mb-2">Content Creators</h3>
-            <p class="text-sm">
-              Monetize your audience directly, free from de-platforming and high
-              fees.
-            </p>
-          </div>
-
-          <!-- Card 2 -->
-          <div class="interactive-card p-6 flex flex-col items-center text-center h-full focus:outline-none focus:ring-2 focus:ring-accent-500">
-            <q-icon name="shield" size="32px" class="mb-4 text-accent" aria-hidden="true" />
-            <h3 class="font-semibold text-lg mb-2">Privacy Advocates</h3>
-            <p class="text-sm">
-              Transact with confidence that your financial life isn't being
-              tracked.
-            </p>
-          </div>
-
-          <!-- Card 3 -->
-          <div class="interactive-card p-6 flex flex-col items-center text-center h-full focus:outline-none focus:ring-2 focus:ring-accent-500">
-            <q-icon name="link" size="32px" class="mb-4 text-accent" aria-hidden="true" />
-            <h3 class="font-semibold text-lg mb-2">Nostr Users</h3>
-            <p class="text-sm">
-              Upgrade your zaps to be truly private and integrate payments
-              seamlessly.
-            </p>
-          </div>
-
-          <!-- Card 4 -->
-          <div class="interactive-card p-6 flex flex-col items-center text-center h-full focus:outline-none focus:ring-2 focus:ring-accent-500">
-            <q-icon name="public" size="32px" class="mb-4 text-accent" aria-hidden="true" />
-            <h3 class="font-semibold text-lg mb-2">Global Citizens</h3>
-            <p class="text-sm">
-              Move value across borders instantly, without relying on
-              traditional banking.
-            </p>
-          </div>
+      <h2 class="text-3xl md:text-5xl font-bold mb-12 text-center gradient-text">
+        Built for the Sovereign Individual
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <!-- Card 1 -->
+        <div class="interactive-card p-6 flex flex-col items-center text-center h-full focus:outline-none focus:ring-2 focus:ring-accent-500">
+          <q-badge color="accent" outline class="mb-2">Creators</q-badge>
+          <q-icon name="brush" size="32px" class="mb-4 text-accent" aria-hidden="true" />
+          <h3 class="font-semibold text-lg mb-2">Content Creators</h3>
+          <p class="text-sm">
+            Monetize your audience directly, free from de-platforming and high
+            fees.
+          </p>
         </div>
-      </BaseContainer>
+
+        <!-- Card 2 -->
+        <div class="interactive-card p-6 flex flex-col items-center text-center h-full focus:outline-none focus:ring-2 focus:ring-accent-500">
+          <q-badge color="accent" outline class="mb-2">Privacy</q-badge>
+          <q-icon name="shield" size="32px" class="mb-4 text-accent" aria-hidden="true" />
+          <h3 class="font-semibold text-lg mb-2">Privacy Advocates</h3>
+          <p class="text-sm">
+            Transact with confidence that your financial life isn't being
+            tracked.
+          </p>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="interactive-card p-6 flex flex-col items-center text-center h-full focus:outline-none focus:ring-2 focus:ring-accent-500">
+          <q-badge color="accent" outline class="mb-2">Nostr Users</q-badge>
+          <q-icon name="link" size="32px" class="mb-4 text-accent" aria-hidden="true" />
+          <h3 class="font-semibold text-lg mb-2">Nostr Users</h3>
+          <p class="text-sm">
+            Upgrade your zaps to be truly private and integrate payments
+            seamlessly.
+          </p>
+        </div>
+
+        <!-- Card 4 -->
+        <div class="interactive-card p-6 flex flex-col items-center text-center h-full focus:outline-none focus:ring-2 focus:ring-accent-500">
+          <q-badge color="accent" outline class="mb-2">Global Citizens</q-badge>
+          <q-icon name="public" size="32px" class="mb-4 text-accent" aria-hidden="true" />
+          <h3 class="font-semibold text-lg mb-2">Global Citizens</h3>
+          <p class="text-sm">
+            Move value across borders instantly, without relying on
+            traditional banking.
+          </p>
+        </div>
+      </div>
     </section>
 
         <!-- Navigation Map -->
@@ -220,23 +238,19 @@
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
               <!-- Card 1 -->
               <details class="interactive-card p-6 text-left h-full">
-                <summary class="cursor-pointer">
-              <q-icon name="code" size="32px" class="mb-4 text-accent" aria-hidden="true" />
-              <span class="block font-semibold text-xl mb-2"
-                >Open Source & Verifiable</span
-              >
-              <span class="block text-sm"
-                >Fundstr is built on open-source code. We invite you to inspect,
-                verify, and contribute. Transparency is our core
-                principle.</span
-              >
-            </summary>
-            <div class="mt-4 text-sm space-y-2">
-              <p>
-                Anyone can audit our wallet and mint implementations or even
-                reproduce the exact binaries we ship.
-              </p>
-              <ul class="list-disc pl-6 space-y-1">
+                <summary class="flex items-start gap-3 cursor-pointer">
+                  <q-icon name="code" size="32px" class="text-accent" aria-hidden="true" />
+                  <div>
+                    <span class="block font-semibold text-xl mb-1">Open Source & Verifiable</span>
+                    <span class="block text-sm">Fundstr is built on open-source code. We invite you to inspect, verify, and contribute. Transparency is our core principle.</span>
+                  </div>
+                </summary>
+                <div class="mt-4 text-sm space-y-2">
+                  <p>
+                    Anyone can audit our wallet and mint implementations or even
+                    reproduce the exact binaries we ship.
+                  </p>
+                  <ul class="list-disc pl-6 space-y-1">
                 <li>
                   <a
                     href="https://opensource.org/osd?utm_source=chatgpt.com"
@@ -275,16 +289,12 @@
 
           <!-- Card 2 -->
           <details class="interactive-card p-6 text-left h-full">
-            <summary class="cursor-pointer">
-              <q-icon name="vpn_key" size="32px" class="mb-4 text-accent" aria-hidden="true" />
-              <span class="block font-semibold text-xl mb-2"
-                >You Hold the Keys</span
-              >
-              <span class="block text-sm"
-                >You are the sole holder of your ecash tokens and Nostr
-                identity. Mints act as custodians for the underlying Bitcoin,
-                but only you can spend your ecash.</span
-              >
+            <summary class="flex items-start gap-3 cursor-pointer">
+              <q-icon name="vpn_key" size="32px" class="text-accent" aria-hidden="true" />
+              <div>
+                <span class="block font-semibold text-xl mb-1">You Hold the Keys</span>
+                <span class="block text-sm">You are the sole holder of your ecash tokens and Nostr identity. Mints act as custodians for the underlying Bitcoin, but only you can spend your ecash.</span>
+              </div>
             </summary>
             <div class="mt-4 text-sm space-y-2">
               <p>
@@ -322,16 +332,12 @@
 
           <!-- Card 3 -->
           <details class="interactive-card p-6 text-left h-full">
-            <summary class="cursor-pointer">
-              <q-icon name="shield" size="32px" class="mb-4 text-accent" aria-hidden="true" />
-              <span class="block font-semibold text-xl mb-2"
-                >Unbreakable Privacy</span
-              >
-              <span class="block text-sm"
-                >Thanks to Chaumian blind signatures, mints cannot link your
-                deposits to your withdrawals. Your spending habits remain
-                completely private.</span
-              >
+            <summary class="flex items-start gap-3 cursor-pointer">
+              <q-icon name="shield" size="32px" class="text-accent" aria-hidden="true" />
+              <div>
+                <span class="block font-semibold text-xl mb-1">Unbreakable Privacy</span>
+                <span class="block text-sm">Thanks to Chaumian blind signatures, mints cannot link your deposits to your withdrawals. Your spending habits remain completely private.</span>
+              </div>
             </summary>
             <div class="mt-4 text-sm space-y-2">
               <p>
@@ -385,16 +391,12 @@
 
           <!-- Card 4 -->
           <details class="interactive-card p-6 text-left h-full">
-            <summary class="cursor-pointer">
-              <q-icon name="account_balance_wallet" size="32px" class="mb-4 text-accent" aria-hidden="true" />
-              <span class="block font-semibold text-xl mb-2"
-                >Mint Diversification</span
-              >
-              <span class="block text-sm"
-                >Fundstr supports multiple mints, allowing you to diversify your
-                holdings. Our audit tools will warn you (⚠️) of any unusual mint
-                behavior.</span
-              >
+            <summary class="flex items-start gap-3 cursor-pointer">
+              <q-icon name="account_balance_wallet" size="32px" class="text-accent" aria-hidden="true" />
+              <div>
+                <span class="block font-semibold text-xl mb-1">Mint Diversification</span>
+                <span class="block text-sm">Fundstr supports multiple mints, allowing you to diversify your holdings. Our audit tools will warn you (⚠️) of any unusual mint behavior.</span>
+              </div>
             </summary>
             <div class="mt-4 text-sm space-y-2">
               <p>
@@ -442,190 +444,23 @@
 
     <!-- FAQ -->
     <section id="faq" class="py-12 md:py-20 fade-in-section">
-      <BaseContainer>
-        <h2
-          class="text-3xl md:text-5xl font-bold mb-12 text-center gradient-text"
-        >
-          Frequently Asked Questions
-        </h2>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <!-- Q1 -->
-          <details class="interactive-card p-4 w-full">
-            <summary class="cursor-pointer font-semibold text-lg">
-              What if a fan stops paying?
-            </summary>
-            <p class="mt-4 text-sm">
-              Creator view » Their timelocked token never unlocks for you.
-              Fundstr flags the user as “Expired” and hides future paid posts.
-              Fan view » You simply don’t renew. No recurring pull, no surprise
-              charges.
-            </p>
-          </details>
-
-          <!-- Q2 -->
-          <details class="interactive-card p-4 w-full">
-            <summary class="cursor-pointer font-semibold text-lg">
-              Can I withdraw to a Lightning wallet?
-            </summary>
-            <p class="mt-4 text-sm">
-              Yes. Go to Wallet → Send → Lightning Invoice, paste the invoice
-              from any external wallet; Fundstr melts the tokens at the mint and
-              pays it.
-            </p>
-          </details>
-
-          <!-- Q3 -->
-          <details class="interactive-card p-4 w-full">
-            <summary class="cursor-pointer font-semibold text-lg">
-              How private is this really?
-            </summary>
-            <ul class="mt-4 text-sm list-disc pl-6 space-y-1">
-              <li>
-                Mints see withdraw/redeem events but cannot correlate them.
-              </li>
-              <li>
-                Nostr chats are E2E encrypted; Nutzaps use P2PK so only the
-                intended receiver can claim them.
-              </li>
-              <li>
-                Choose different mints or buckets to compartmentalise further.
-              </li>
+      <h2 class="text-3xl md:text-5xl font-bold mb-12 text-center gradient-text">
+        Frequently Asked Questions
+      </h2>
+      <div class="mb-6 flex justify-center">
+        <q-input v-model="faqSearch" dense clearable placeholder="Search..." aria-label="Search questions" class="w-full md:w-1/2" />
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <details v-for="faq in filteredFaqs" :key="faq.q" class="interactive-card p-4 w-full">
+          <summary class="cursor-pointer font-semibold text-lg">{{ faq.q }}</summary>
+          <div v-if="Array.isArray(faq.a)" class="mt-4 text-sm">
+            <ul class="list-disc pl-6 space-y-1">
+              <li v-for="line in faq.a" :key="line">{{ line }}</li>
             </ul>
-          </details>
-
-          <!-- Q4 -->
-          <details class="interactive-card p-4 w-full">
-            <summary class="cursor-pointer font-semibold text-lg">
-              What exactly is Cashu and how is it different from regular Bitcoin
-              or Lightning wallets?
-            </summary>
-            <p class="mt-4 text-sm">
-              Cashu uses Chaumian e‑cash, allowing the mint to issue anonymized
-              tokens. Unlike typical wallets, your transactions never appear on
-              the blockchain, and the mint cannot link where your tokens are
-              spent.
-            </p>
-          </details>
-
-          <!-- Q5 -->
-          <details class="interactive-card p-4 w-full">
-            <summary class="cursor-pointer font-semibold text-lg">
-              Do I need to trust a mint, and what happens if a mint goes
-              offline?
-            </summary>
-            <p class="mt-4 text-sm">
-              A mint is required to issue and redeem tokens. If it disappears,
-              any tokens it issued become unusable. To reduce risk, you can hold
-              small balances, spread funds across multiple mints, and withdraw
-              or swap tokens when you suspect a mint might fail.
-            </p>
-          </details>
-
-          <!-- Q6 -->
-          <details class="interactive-card p-4 w-full">
-            <summary class="cursor-pointer font-semibold text-lg">
-              How can I back up or restore my wallet?
-            </summary>
-            <p class="mt-4 text-sm">
-              During setup you can generate a BIP‑39 seed. Record it safely; if
-              your device is lost, reinstall the app, enter the seed, and
-              reconnect to your mints to restore unspent tokens. Without a seed
-              or token export, lost devices mean lost funds.
-            </p>
-          </details>
-
-          <!-- Q7 -->
-          <details class="interactive-card p-4 w-full">
-            <summary class="cursor-pointer font-semibold text-lg">
-              What are “Buckets” and why would I use them?
-            </summary>
-            <p class="mt-4 text-sm">
-              Buckets act like sub‑accounts. You can allocate tokens to
-              categories (e.g., savings, subscriptions) and move funds between
-              buckets instantly, which helps with budgeting or keeping project
-              funds separate.
-            </p>
-          </details>
-
-          <!-- Q8 -->
-          <details class="interactive-card p-4 w-full">
-            <summary class="cursor-pointer font-semibold text-lg">
-              How does the Nostr integration work?
-            </summary>
-            <p class="mt-4 text-sm">
-              The app can generate or import a Nostr key pair, connect to
-              relays, and send encrypted DMs. This enables token transfers and
-              tipping directly through Nostr events without exposing invoices or
-              addresses.
-            </p>
-          </details>
-
-          <!-- Q9 -->
-          <details class="interactive-card p-4 w-full">
-            <summary class="cursor-pointer font-semibold text-lg">
-              What are Nutzaps and how do I receive them?
-            </summary>
-            <p class="mt-4 text-sm">
-              Nutzaps let users send Cashu tokens as Nostr “zap” events. Publish
-              your NIP‑61 profile (the app guides you), and others can tip you
-              using ecash locked to your Nostr wallet key, keeping the payment
-              private yet publicly verifiable.
-            </p>
-          </details>
-
-          <!-- Q10 -->
-          <details class="interactive-card p-4 w-full">
-            <summary class="cursor-pointer font-semibold text-lg">
-              Can I connect the wallet to other Nostr‑enabled apps?
-            </summary>
-            <p class="mt-4 text-sm">
-              Yes. Nostr Wallet Connect (NWC) provides a QR code and secret key.
-              Pair it with supported apps, and they can request payments or
-              signatures through Nostr events that you approve inside the
-              wallet.
-            </p>
-          </details>
-
-          <!-- Q11 -->
-          <details class="interactive-card p-4 w-full">
-            <summary class="cursor-pointer font-semibold text-lg">
-              Are there any fees for using Cashu tokens?
-            </summary>
-            <p class="mt-4 text-sm">
-              Sending tokens between users is free. Fees may apply when minting
-              or melting tokens via Lightning, depending on the mint’s policy
-              and Lightning network costs. The app shows mint‑specific fees
-              before you confirm a transaction.
-            </p>
-          </details>
-
-          <!-- Q12 -->
-          <details class="interactive-card p-4 w-full">
-            <summary class="cursor-pointer font-semibold text-lg">
-              Does the app work offline?
-            </summary>
-            <p class="mt-4 text-sm">
-              You can view balances, buckets, and message history offline.
-              Creating or redeeming tokens, chatting, and nutzap processing
-              require an internet connection to reach the mint and Nostr relays.
-            </p>
-          </details>
-
-          <!-- Q13 -->
-          <details class="interactive-card p-4 w-full">
-            <summary class="cursor-pointer font-semibold text-lg">
-              Is the code open source and can I run it myself?
-            </summary>
-            <p class="mt-4 text-sm">
-              Yes. The entire project is MIT‑licensed. You can review, fork, or
-              self‑host the repository. Advanced users can also run their own
-              mint and point the wallet at it for full control over issuance and
-              redemption.
-            </p>
-          </details>
-        </div>
-      </BaseContainer>
+          </div>
+          <p v-else class="mt-4 text-sm">{{ faq.a }}</p>
+        </details>
+      </div>
     </section>
 
     <!-- Footer -->
@@ -686,15 +521,18 @@
       </section>
 
       <!-- CTA -->
-      <section id="cta" class="py-16 fade-in-section">
-        <BaseContainer class="text-center">
+      <section
+        id="cta"
+        class="py-16 fade-in-section bg-gradient-to-r from-accent-500/10 to-accent-600/10"
+      >
+        <div class="max-w-screen-xl mx-auto px-4 text-center">
           <h2 class="text-3xl md:text-5xl font-bold mb-6 gradient-text">
             Ready to Join the Movement?
           </h2>
           <p class="mb-8">
             Install the PWA, explore the code, or help fund development.
           </p>
-          <div class="flex flex-col sm:flex-row justify-center gap-4">
+          <div class="grid md:grid-cols-3 gap-4 justify-items-center">
             <q-btn
               href="#"
               color="accent"
@@ -702,6 +540,15 @@
               rounded
               class="px-8 py-3 font-semibold"
               label="Install PWA"
+            />
+            <q-btn
+              href="https://github.com/fundstr/fundstr"
+              target="_blank"
+              color="accent"
+              outline
+              rounded
+              class="px-8 py-3 font-semibold"
+              label="Explore Code"
             />
             <q-btn
               :href="donationLink"
@@ -713,7 +560,7 @@
               label="Support Fundstr"
             />
           </div>
-        </BaseContainer>
+        </div>
       </section>
     </footer>
       </div>
@@ -722,7 +569,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, type Component } from "vue";
+import { onMounted, onBeforeUnmount, type Component, ref, computed } from "vue";
 import { useI18n } from "vue-i18n";
 import NavigationMap from "src/components/NavigationMap.vue";
 import BaseContainer from "src/components/BaseContainer.vue";
@@ -860,6 +707,70 @@ const donationLink = `lightning:${import.meta.env.VITE_DONATION_LIGHTNING || ''}
 
 // navigation items for the navigation map
 const navigationItems = useNavigationItems();
+
+type Faq = { q: string; a: string | string[] };
+const faqs: Faq[] = [
+  {
+    q: "What if a fan stops paying?",
+    a: "Creator view » Their timelocked token never unlocks for you. Fundstr flags the user as “Expired” and hides future paid posts. Fan view » You simply don’t renew. No recurring pull, no surprise charges.",
+  },
+  {
+    q: "Can I withdraw to a Lightning wallet?",
+    a: "Yes. Go to Wallet → Send → Lightning Invoice, paste the invoice from any external wallet; Fundstr melts the tokens at the mint and pays it.",
+  },
+  {
+    q: "How private is this really?",
+    a: [
+      "Mints see withdraw/redeem events but cannot correlate them.",
+      "Nostr chats are E2E encrypted; Nutzaps use P2PK so only the intended receiver can claim them.",
+      "Choose different mints or buckets to compartmentalise further.",
+    ],
+  },
+  {
+    q: "What exactly is Cashu and how is it different from regular Bitcoin or Lightning wallets?",
+    a: "Cashu uses Chaumian e‑cash, allowing the mint to issue anonymized tokens. Unlike typical wallets, your transactions never appear on the blockchain, and the mint cannot link where your tokens are spent.",
+  },
+  {
+    q: "Do I need to trust a mint, and what happens if a mint goes offline?",
+    a: "A mint is required to issue and redeem tokens. If it disappears, any tokens it issued become unusable. To reduce risk, you can hold small balances, spread funds across multiple mints, and withdraw or swap tokens when you suspect a mint might fail.",
+  },
+  {
+    q: "Can the mint freeze my funds or block me?",
+    a: "Mints can't freeze or claw back your tokens once issued. However, they can refuse new tokens from you. That's why diversification is key — use multiple mints if you're worried about any single provider.",
+  },
+  {
+    q: "How do subscriptions work without recurring pulls?",
+    a: "Fans prepay using timelocked tokens. When the period ends, the tokens are refunded if unspent. Creators receive funds when they publish and fans unlock content manually.",
+  },
+  {
+    q: "What happens if someone steals my tokens?",
+    a: "Ecash is bearer-based — whoever holds the tokens can spend them. Use device security and avoid sharing tokens. Soon: token backups and swap support.",
+  },
+  {
+    q: "Is there a limit to how many mints I can use?",
+    a: "No hard limit. Fundstr lets you add multiple mints and buckets. Each mint tracks your tokens separately.",
+  },
+  {
+    q: "Can I zap creators on Nostr with ecash?",
+    a: "Yes. Nutzaps use a Nostr event with an embedded ecash token. Only the intended receiver can claim it.",
+  },
+  {
+    q: "What’s the difference between buckets and mints?",
+    a: "Mints are custodians issuing tokens; buckets are like wallets within a mint. Use buckets to organise funds or separate activities.",
+  },
+  {
+    q: "Does the app work offline?",
+    a: "You can view balances, buckets, and message history offline. Creating or redeeming tokens, chatting, and nutzap processing require an internet connection to reach the mint and Nostr relays.",
+  },
+  {
+    q: "Is the code open source and can I run it myself?",
+    a: "Yes. The entire project is MIT‑licensed. You can review, fork, or self‑host the repository. Advanced users can also run their own mint and point the wallet at it for full control over issuance and redemption.",
+  },
+];
+const faqSearch = ref("");
+const filteredFaqs = computed(() =>
+  faqs.filter((f) => f.q.toLowerCase().includes(faqSearch.value.toLowerCase()))
+);
 
 onMounted(() => {
   const root = document;
