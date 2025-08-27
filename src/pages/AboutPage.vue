@@ -207,7 +207,7 @@
         <p class="center">Install the PWA, explore the code, or help fund development.</p>
         <div class="cta-row">
           <button class="btn solid" @click="installPwa">Install PWA</button>
-          <a class="btn outline" href="https://github.com/cashubtc" target="_blank" rel="noopener">View Code</a>
+          <a class="btn outline" href="https://github.com/ritty65/Fundstr" target="_blank" rel="noopener">View Code</a>
           <router-link class="btn outline" to="/creator-hub">Support Fundstr</router-link>
         </div>
       </section>

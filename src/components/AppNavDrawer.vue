@@ -242,6 +242,12 @@ const essentialLinks = [
     link: "https://primal.net/KalonAxiarch",
   },
   {
+    title: t("MainHeader.menu.links.fundstrNostr.title"),
+    caption: t("MainHeader.menu.links.fundstrNostr.caption"),
+    icon: "link",
+    link: "https://primal.net/p/nprofile1qqsdndspt5x07jhp5vrs0s4a7z0spwl4v28su0263vdjmwfmumxdygc6lzn8y",
+  },
+  {
     title: t("MainHeader.menu.links.cashuSpace.title"),
     caption: t("MainHeader.menu.links.cashuSpace.caption"),
     icon: "web",
@@ -251,7 +257,7 @@ const essentialLinks = [
     title: t("MainHeader.menu.links.github.title"),
     caption: t("MainHeader.menu.links.github.caption"),
     icon: "code",
-    link: "https://github.com/cashubtc/Fundstr",
+    link: "https://github.com/ritty65/Fundstr",
   },
   {
     title: t("MainHeader.menu.links.telegram.title"),
