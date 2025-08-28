@@ -82,7 +82,12 @@ async function createReadOnlyNdk(): Promise<NDK> {
     ? settings.defaultNostrRelays
     : [];
   const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
-  const healthy = await filterHealthyRelays(relays);
+  let healthy: string[] = [];
+  try {
+    healthy = await filterHealthyRelays(relays);
+  } catch {
+    healthy = [];
+  }
   const relayUrls = healthy.length ? healthy : FREE_RELAYS;
   const ndk = new NDK({ explicitRelayUrls: relayUrls });
   attachRelayErrorHandlers(ndk);
@@ -132,7 +137,12 @@ export async function createNdk(): Promise<NDK> {
     ? settings.defaultNostrRelays
     : [];
   const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
-  const healthy = await filterHealthyRelays(relays);
+  let healthy: string[] = [];
+  try {
+    healthy = await filterHealthyRelays(relays);
+  } catch {
+    healthy = [];
+  }
   const relayUrls = healthy.length ? healthy : FREE_RELAYS;
   const ndk = new NDK({ signer: signer as any, explicitRelayUrls: relayUrls });
   attachRelayErrorHandlers(ndk);
