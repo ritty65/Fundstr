@@ -131,6 +131,7 @@ import { useRoute } from "vue-router";
 import { useUiStore } from "src/stores/ui";
 import { useMessengerStore } from "src/stores/messenger";
 import { useQuasar } from "quasar";
+import { notifySuccess } from "src/js/notify";
 
 export default defineComponent({
   name: "MainHeader",
@@ -179,7 +180,7 @@ export default defineComponent({
       console.log("toggleDarkMode", $q.dark.isActive);
       $q.dark.toggle();
       $q.localStorage.set("cashu.darkMode", $q.dark.isActive);
-      vm?.notifySuccess(
+      notifySuccess(
         $q.dark.isActive ? "Dark mode enabled" : "Dark mode disabled",
       );
     };
