@@ -257,6 +257,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watchEffect } from 'vue'
 import { useQuasar } from 'quasar'
+import { usePwaInstall } from 'src/composables/usePwaInstall'
 
 const $q = useQuasar()
 const isDark = ref($q.dark.isActive)
@@ -264,6 +265,8 @@ watchEffect(() => (isDark.value = $q.dark.isActive))
 
 const root = ref<HTMLElement | null>(null)
 let io: IntersectionObserver | null = null
+
+const { deferredPrompt, promptInstall } = usePwaInstall()
 
 onMounted(() => {
   io = new IntersectionObserver((entries) => {
@@ -299,10 +302,8 @@ const filteredFaqs = computed(() => {
 })
 
 function installPwa () {
-  const evt: any = (window as any).deferredPWAInstallPrompt
-  if (evt?.prompt) {
-    evt.prompt()
-    evt.userChoice?.then(() => ((window as any).deferredPWAInstallPrompt = null))
+  if (deferredPrompt.value) {
+    promptInstall()
   } else {
     $q.notify({ message: 'Use your browser menu → “Install app” / “Add to Home Screen”.', color: 'primary', icon: 'download' })
   }
