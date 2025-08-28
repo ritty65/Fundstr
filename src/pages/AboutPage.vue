@@ -125,7 +125,13 @@
         <h2 class="h2 grad center">Trust Through Transparency</h2>
         <div class="cards cards--4">
           <details class="card">
-            <summary><span class="emj xl">💻</span><h3>Open Source &amp; Verifiable</h3><p>Fundstr is open-source. Inspect, verify, and contribute.</p></summary>
+            <summary class="card-summary">
+              <span class="emj xl">💻</span>
+              <span class="summary-text">
+                <span class="summary-title">Open Source &amp; Verifiable</span>
+                <span class="summary-desc">Fundstr is open-source. Inspect, verify, and contribute.</span>
+              </span>
+            </summary>
             <div class="detail">
               <p>Audit our wallet & mint implementations or reproduce our builds.</p>
               <ul class="bullet">
@@ -137,7 +143,13 @@
           </details>
 
           <details class="card">
-            <summary><span class="emj xl">🔑</span><h3>You Hold the Keys</h3><p>You control your ecash tokens and Nostr identity.</p></summary>
+            <summary class="card-summary">
+              <span class="emj xl">🔑</span>
+              <span class="summary-text">
+                <span class="summary-title">You Hold the Keys</span>
+                <span class="summary-desc">You control your ecash tokens and Nostr identity.</span>
+              </span>
+            </summary>
             <div class="detail">
               <p>Only you can authorise payments or posts.</p>
               <ul class="bullet">
@@ -148,7 +160,13 @@
           </details>
 
           <details class="card">
-            <summary><span class="emj xl">🛡️</span><h3>Unbreakable Privacy</h3><p>Chaumian blind signatures de-link deposits from withdrawals.</p></summary>
+            <summary class="card-summary">
+              <span class="emj xl">🛡️</span>
+              <span class="summary-text">
+                <span class="summary-title">Unbreakable Privacy</span>
+                <span class="summary-desc">Chaumian blind signatures de-link deposits from withdrawals.</span>
+              </span>
+            </summary>
             <div class="detail">
               <ul class="bullet">
                 <li><a class="ext" href="https://bitcoin.design/guide/how-it-works/ecash/cashu/" target="_blank" rel="noopener">Bitcoin Design Guide: Cashu</a></li>
@@ -158,7 +176,13 @@
           </details>
 
           <details class="card">
-            <summary><span class="emj xl">👛</span><h3>Mint Diversification</h3><p>Use multiple mints and watch for odd behaviour.</p></summary>
+            <summary class="card-summary">
+              <span class="emj xl">👛</span>
+              <span class="summary-text">
+                <span class="summary-title">Mint Diversification</span>
+                <span class="summary-desc">Use multiple mints and watch for odd behaviour.</span>
+              </span>
+            </summary>
             <div class="detail">
               <ul class="bullet">
                 <li><a class="ext" href="https://docs.cashu.space/mints" target="_blank" rel="noopener">Cashu docs: mints</a></li>
@@ -332,6 +356,8 @@ function installPwa () {
 .card{background:var(--s2); border:1px solid rgba(var(--acRGB),.18); border-radius:1rem; padding:1.25rem; box-shadow:0 4px 10px rgba(0,0,0,.25); transition:transform .2s, box-shadow .2s, border-color .2s;}
 .card:hover{transform:translateY(-6px); box-shadow:0 12px 22px rgba(0,0,0,.3); border-color:rgba(var(--acRGB),.35)}
 .card-head{display:flex; align-items:center; gap:.5rem; margin-bottom:.5rem}
+.card-summary{display:flex; align-items:flex-start; gap:.5rem}
+.summary-text{display:flex; flex-direction:column; white-space:normal; /* ensure wrapping */}
 .links{list-style:none; padding:0; margin:0}
 .links a{display:inline-flex; align-items:center; gap:.5rem; text-decoration:none}
 .links a:hover{text-decoration:underline}
