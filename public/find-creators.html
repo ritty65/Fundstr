@@ -955,21 +955,68 @@
           }
         }).filter((hex) => hex !== null);
 
-        if (featuredPubkeysHex.length > 0) {
-          featuredCreatorsLoaderElement.style.display = "block";
-          const profiles = await fetchProfilesFromRelays(
-            RELAYS,
-            { kinds: [0], authors: featuredPubkeysHex },
-            new AbortController().signal,
-          );
-          featuredCreatorsLoaderElement.style.display = "none";
-          if (profiles.length > 0) {
-            renderProfiles(profiles, featuredCreatorsGridElement, true);
-          } else {
-            featuredStatusMessageElement.textContent =
-              "Could not load featured creators.";
-            featuredStatusMessageElement.classList.remove("hidden");
+        const CACHE_KEY = "featured.creators:v1";
+        const CACHE_TTL = 24 * 60 * 60 * 1000; // 24h
+        let profiles = null;
+
+        try {
+          const cached = localStorage.getItem(CACHE_KEY);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (
+              parsed.timestamp &&
+              Array.isArray(parsed.profiles) &&
+              Date.now() - parsed.timestamp < CACHE_TTL
+            ) {
+              profiles = parsed.profiles;
+            }
           }
+        } catch (e) {}
+
+        if (!profiles) {
+          try {
+            featuredCreatorsLoaderElement.style.display = "block";
+            const res = await fetch("featured-creators.json");
+            if (res.ok) {
+              profiles = await res.json();
+              localStorage.setItem(
+                CACHE_KEY,
+                JSON.stringify({ timestamp: Date.now(), profiles }),
+              );
+            }
+          } catch (e) {
+          } finally {
+            featuredCreatorsLoaderElement.style.display = "none";
+          }
+        }
+
+        if (profiles && profiles.length > 0) {
+          renderProfiles(profiles, featuredCreatorsGridElement, true);
+        } else {
+          featuredStatusMessageElement.textContent =
+            "Could not load featured creators.";
+          featuredStatusMessageElement.classList.remove("hidden");
+        }
+
+        // refresh profiles from relays in background
+        if (featuredPubkeysHex.length > 0) {
+          (async () => {
+            try {
+              const refreshed = await fetchProfilesFromRelays(
+                RELAYS,
+                { kinds: [0], authors: featuredPubkeysHex },
+                new AbortController().signal,
+              );
+              if (refreshed.length > 0) {
+                renderProfiles(refreshed, featuredCreatorsGridElement, true);
+                localStorage.setItem(
+                  CACHE_KEY,
+                  JSON.stringify({ timestamp: Date.now(), profiles: refreshed }),
+                );
+              }
+            } catch (e) {
+            }
+          })();
         }
       });
 
