@@ -148,6 +148,7 @@ import {
   QCardActions,
   QBtn,
   QSeparator,
+  useQuasar,
 } from "quasar";
 import { nip19 } from "nostr-tools";
 
@@ -172,6 +173,7 @@ const messenger = useMessengerStore();
 const router = useRouter();
 const route = useRoute();
 const { t } = useI18n();
+const $q = useQuasar();
 const tiers = computed(() => creators.tiersMap[dialogPubkey.value] || []);
 const tierFetchError = computed(() => creators.tierFetchError);
 const showSubscribeDialog = ref(false);
@@ -179,6 +181,13 @@ const selectedTier = ref<any>(null);
 const nutzapProfile = ref<any | null>(null);
 const loadingProfile = ref(false);
 let tierTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function sendTheme() {
+  iframeEl.value?.contentWindow?.postMessage(
+    { type: "set-theme", dark: $q.dark.isActive },
+    "*",
+  );
+}
 
 function getPrice(t: any): number {
   return t.price_sats ?? t.price ?? 0;
@@ -259,6 +268,13 @@ watch(tierFetchError, (val) => {
   }
 });
 
+watch(
+  () => $q.dark.isActive,
+  () => {
+    sendTheme();
+  },
+);
+
 watch(showTierDialog, (val) => {
   if (!val) {
     nutzapProfile.value = null;
@@ -321,6 +337,8 @@ function handleDonate({
 
 onMounted(async () => {
   window.addEventListener("message", onMessage);
+  iframeEl.value?.addEventListener("load", sendTheme);
+  sendTheme();
   try {
     await nostr.initNdkReadOnly();
   } catch (e: any) {
@@ -352,6 +370,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("message", onMessage);
+  iframeEl.value?.removeEventListener("load", sendTheme);
   if (tierTimeout) clearTimeout(tierTimeout);
   nutzapProfile.value = null;
   loadingProfile.value = false;
