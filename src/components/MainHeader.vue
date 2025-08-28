@@ -32,9 +32,7 @@
         </q-btn>
       </div>
 
-      <q-toolbar-title class="app-title text-center">
-        {{ isWelcomePage ? appName : currentTitle }}
-      </q-toolbar-title>
+      <q-toolbar-title class="app-title" />
 
       <div
         class="right-controls row items-center no-wrap"
@@ -192,12 +190,6 @@ export default defineComponent({
       route.path.startsWith("/nostr-messenger"),
     );
     const isWelcomePage = computed(() => route.path.startsWith("/welcome"));
-    const appName = "Fundstr";
-    const currentTitle = computed(() => {
-      if (isMessengerPage.value) return "Nostr Messenger";
-      if (route.path.startsWith("/wallet")) return "Wallet";
-      return "Cashu";
-    });
     const chatButtonColor = computed(() =>
       $q.dark.isActive ? "white" : "primary",
     );
@@ -264,9 +256,7 @@ export default defineComponent({
       countdown,
       reloading,
       ui,
-      currentTitle,
       isWelcomePage,
-      appName,
       isMessengerPage,
       toggleMessengerDrawer,
       toggleDarkMode,
