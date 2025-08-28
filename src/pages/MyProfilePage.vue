@@ -274,6 +274,19 @@ export default defineComponent({
     }
 
     async function saveProfile() {
+      if (!profilePub.value) {
+        notifyError("Pay-to-public-key key is required");
+        return;
+      }
+      await nostr.initSignerIfNotSet();
+      if (!nostr.signer) {
+        notifyError("Please connect a Nostr signer");
+        return;
+      }
+      if (!profileRelays.value.length) {
+        notifyError("Please configure at least one relay");
+        return;
+      }
       try {
         await publishDiscoveryProfile({
           profile: profileData.value,
