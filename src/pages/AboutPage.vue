@@ -34,9 +34,32 @@
               gatekeepers, surveillance, and unpredictable fees.
             </p>
           </div>
-          <ul class="bullet">
-            <li>Private payments</li><li>Open protocols</li><li>No gatekeepers</li><li>Low fees</li>
-          </ul>
+          <q-list dense class="text-1">
+            <q-item class="q-py-sm">
+              <q-item-section avatar>
+                <q-icon name="lock" style="color: var(--accent-500)" />
+              </q-item-section>
+              <q-item-section>Private payments</q-item-section>
+            </q-item>
+            <q-item class="q-py-sm">
+              <q-item-section avatar>
+                <q-icon name="public" style="color: var(--accent-500)" />
+              </q-item-section>
+              <q-item-section>Open protocols</q-item-section>
+            </q-item>
+            <q-item class="q-py-sm">
+              <q-item-section avatar>
+                <q-icon name="block" style="color: var(--accent-500)" />
+              </q-item-section>
+              <q-item-section>No gatekeepers</q-item-section>
+            </q-item>
+            <q-item class="q-py-sm">
+              <q-item-section avatar>
+                <q-icon name="sell" style="color: var(--accent-500)" />
+              </q-item-section>
+              <q-item-section>Low fees</q-item-section>
+            </q-item>
+          </q-list>
         </div>
       </section>
 
