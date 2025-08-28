@@ -34,32 +34,24 @@
               gatekeepers, surveillance, and unpredictable fees.
             </p>
           </div>
-          <q-list dense class="text-1">
-            <q-item class="q-py-sm">
-              <q-item-section avatar>
-                <q-icon name="lock" style="color: var(--accent-500)" />
-              </q-item-section>
-              <q-item-section>Private payments</q-item-section>
-            </q-item>
-            <q-item class="q-py-sm">
-              <q-item-section avatar>
-                <q-icon name="public" style="color: var(--accent-500)" />
-              </q-item-section>
-              <q-item-section>Open protocols</q-item-section>
-            </q-item>
-            <q-item class="q-py-sm">
-              <q-item-section avatar>
-                <q-icon name="block" style="color: var(--accent-500)" />
-              </q-item-section>
-              <q-item-section>No gatekeepers</q-item-section>
-            </q-item>
-            <q-item class="q-py-sm">
-              <q-item-section avatar>
-                <q-icon name="sell" style="color: var(--accent-500)" />
-              </q-item-section>
-              <q-item-section>Low fees</q-item-section>
-            </q-item>
-          </q-list>
+          <div class="feature-grid text-1">
+            <div class="feature">
+              <q-icon name="lock" class="feature-icon" />
+              <span>Private payments</span>
+            </div>
+            <div class="feature">
+              <q-icon name="public" class="feature-icon" />
+              <span>Open protocols</span>
+            </div>
+            <div class="feature">
+              <q-icon name="block" class="feature-icon" />
+              <span>No gatekeepers</span>
+            </div>
+            <div class="feature">
+              <q-icon name="sell" class="feature-icon" />
+              <span>Low fees</span>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -329,6 +321,12 @@ function installPwa () {
 
 .two-col{display:grid; grid-template-columns:1fr 1fr; gap:2rem}
 @media (max-width: 960px){ .two-col{grid-template-columns:1fr} }
+
+.feature-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:1rem}
+@media (max-width:600px){ .feature-grid{grid-template-columns:1fr} }
+
+.feature{display:flex; flex-direction:column; align-items:center; text-align:center; gap:.5rem}
+.feature-icon{display:flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,var(--ac500),#4f46e5); color:#fff}
 
 /* Cards */
 .card{background:var(--s2); border:1px solid rgba(var(--acRGB),.18); border-radius:1rem; padding:1.25rem; box-shadow:0 4px 10px rgba(0,0,0,.25); transition:transform .2s, box-shadow .2s, border-color .2s;}
