@@ -9,7 +9,6 @@ const routes = [
   {
     path: "/wallet",
     component: () => import("layouts/MainLayout.vue"),
-    meta: { hideHeader: true },
     children: [
       { path: "", component: () => import("src/pages/WalletPage.vue") },
     ],
