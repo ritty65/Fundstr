@@ -4,8 +4,8 @@
       class="bg-surface-1 text-1"
       :style="navStyleVars"
     >
-    <MainHeader />
-    <AppNavDrawer />
+    <MainHeader v-if="!route.path.startsWith('/welcome')" />
+    <AppNavDrawer v-if="!route.path.startsWith('/welcome')" />
     <q-page-container class="text-body1">
       <div class="max-w-7xl mx-auto">
         <router-view />
@@ -16,6 +16,7 @@
 
 <script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent, computed } from "vue";
+import { useRoute } from "vue-router";
 
 import MainHeader from "components/MainHeader.vue";
 import AppNavDrawer from "components/AppNavDrawer.vue";
@@ -33,6 +34,7 @@ export default defineComponent({
   setup() {
     const ui = useUiStore();
     const $q = useQuasar();
+    const route = useRoute();
     const navStyleVars = computed(() => ({
       "--nav-drawer-width": `${NAV_DRAWER_WIDTH}px`,
       "--nav-offset-x":
@@ -41,7 +43,7 @@ export default defineComponent({
           : "0px",
     }));
 
-    return { ui, navStyleVars };
+    return { ui, navStyleVars, route };
   },
 });
 </script>
