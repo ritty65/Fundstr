@@ -324,24 +324,11 @@
           window.matchMedia("(prefers-color-scheme: dark)").matches,
       );
 
-      let storedRelays = [];
-      try {
-        const stored = window.localStorage.getItem(
-          "cashu.settings.defaultNostrRelays",
-        );
-        storedRelays = JSON.parse(stored ?? "[]");
-        if (!Array.isArray(storedRelays)) storedRelays = [];
-      } catch {
-        storedRelays = [];
-      }
-      let RELAYS = Array.from(
-        new Set([...storedRelays, ...DEFAULT_RELAYS]),
-      ).filter((r) => r.startsWith("wss://"));
-      RELAYS = await filterHealthyRelays(RELAYS);
+      const RELAYS = await filterHealthyRelays(DEFAULT_RELAYS);
       if (RELAYS.length === 0) {
         console.error(
           "[find-creators] no reachable relays:",
-          [...storedRelays, ...DEFAULT_RELAYS].join(", "),
+          DEFAULT_RELAYS.join(", "),
         );
       }
       document.getElementById("relayList").textContent = RELAYS.join(", ");
@@ -696,41 +683,62 @@
         return Array.from(profileMap.values());
       }
 
-      function fetchEventsFromRelays(relays, filter, signal, timeout = 7000) {
-        return new Promise((resolve, reject) => {
-          if (signal.aborted)
-            return reject(new DOMException("Aborted", "AbortError"));
+      async function fetchEventsFromRelays(
+        relays,
+        filter,
+        signal,
+        timeout = 7000,
+        retries = 1,
+      ) {
+        async function attempt() {
+          return await new Promise((resolve, reject) => {
+            if (signal.aborted)
+              return reject(new DOMException("Aborted", "AbortError"));
 
-          const events = [];
-          const sub = pool.sub([...new Set(relays)], [filter]);
+            const events = [];
+            const sub = pool.sub([...new Set(relays)], [filter]);
 
-          const cleanup = () => {
-            try {
-              sub.unsub();
-            } catch (e) {}
-            signal.removeEventListener("abort", onAbort);
-            clearTimeout(timeoutId);
-          };
+            const cleanup = () => {
+              try {
+                sub.unsub();
+              } catch (e) {}
+              signal.removeEventListener("abort", onAbort);
+              clearTimeout(timeoutId);
+            };
 
-          const onAbort = () => {
-            cleanup();
-            reject(new DOMException("Aborted", "AbortError"));
-          };
-          signal.addEventListener("abort", onAbort);
+            const onAbort = () => {
+              cleanup();
+              reject(new DOMException("Aborted", "AbortError"));
+            };
+            signal.addEventListener("abort", onAbort);
 
-          const timeoutId = setTimeout(() => {
-            cleanup();
-            resolve(events);
-          }, timeout);
+            const timeoutId = setTimeout(() => {
+              cleanup();
+              resolve(events);
+            }, timeout);
 
-          sub.on("event", (event) => {
-            events.push(event);
+            sub.on("event", (event) => {
+              events.push(event);
+            });
+
+            sub.on("eose", () => {
+              // Don't resolve on EOSE, wait for full timeout to gather from all relays
+            });
           });
+        }
 
-          sub.on("eose", () => {
-            // Don't resolve on EOSE, wait for full timeout to gather from all relays
-          });
-        });
+        for (let attemptNum = 0; attemptNum <= retries; attemptNum++) {
+          try {
+            const events = await attempt();
+            if (events.length > 0 || attemptNum === retries) {
+              return events;
+            }
+          } catch (err) {
+            if (err.name === "AbortError" || attemptNum === retries) throw err;
+          }
+          await new Promise((res) => setTimeout(res, 1000));
+        }
+        return [];
       }
 
       async function resolveNip05(nip05, signal) {
