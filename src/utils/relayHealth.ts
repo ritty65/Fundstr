@@ -34,9 +34,17 @@ export async function pingRelay(url: string): Promise<boolean> {
       const timer = setTimeout(() => {
         if (!settled) {
           settled = true;
-          try {
-            ws.close();
-          } catch {}
+          if (ws.readyState === WebSocket.OPEN) {
+            try {
+              ws.close();
+            } catch {}
+          } else if (ws.readyState === WebSocket.CONNECTING) {
+            ws.onopen = () => {
+              try {
+                ws.close();
+              } catch {}
+            };
+          }
           resolve(false);
         }
       }, 1000);
