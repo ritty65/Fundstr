@@ -1200,7 +1200,12 @@ export const useNostrStore = defineStore("nostr", {
       const relayUrls = (relays ?? this.relays).filter((r) =>
         r.startsWith("wss://"),
       );
-      const healthyRelays = await filterHealthyRelays(relayUrls);
+      let healthyRelays: string[] = [];
+      try {
+        healthyRelays = await filterHealthyRelays(relayUrls);
+      } catch {
+        healthyRelays = [];
+      }
       if (healthyRelays.length === 0) {
         console.error("[nostr] NIP-04 publish failed: all relays unreachable");
         notifyError("Could not publish NIP-04 event");
@@ -1373,7 +1378,12 @@ export const useNostrStore = defineStore("nostr", {
       const relayUrls = (relays ?? this.relays).filter((r) =>
         r.startsWith("wss://"),
       );
-      const healthyRelays = await filterHealthyRelays(relayUrls);
+      let healthyRelays: string[] = [];
+      try {
+        healthyRelays = await filterHealthyRelays(relayUrls);
+      } catch {
+        healthyRelays = [];
+      }
       if (healthyRelays.length === 0) {
         console.error("[nostr] NIP-17 publish failed: all relays unreachable");
         notifyError("Could not publish NIP-17 event");
@@ -1720,7 +1730,12 @@ export async function publishEvent(event: NostrEvent): Promise<void> {
   const relayUrls = useSettingsStore().defaultNostrRelays.filter((r) =>
     r.startsWith("wss://"),
   );
-  const healthyRelays = await filterHealthyRelays(relayUrls);
+  let healthyRelays: string[] = [];
+  try {
+    healthyRelays = await filterHealthyRelays(relayUrls);
+  } catch {
+    healthyRelays = [];
+  }
   if (healthyRelays.length === 0) {
     console.error("[nostr] publish failed: all relays unreachable");
     return;
@@ -1748,7 +1763,12 @@ export async function subscribeToNostr(
   }
 
   // Ensure at least one relay is reachable before subscribing
-  const healthy = await filterHealthyRelays(relayUrls);
+  let healthy: string[] = [];
+  try {
+    healthy = await filterHealthyRelays(relayUrls);
+  } catch {
+    healthy = [];
+  }
   if (healthy.length === 0) {
     console.error("[nostr] subscription failed: all relays unreachable");
     return false;

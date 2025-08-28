@@ -211,7 +211,12 @@ export const useCreatorsStore = defineStore("creators", {
       );
 
       // Filter out unreachable relays before subscribing
-      const healthyRelays = await filterHealthyRelays(relayUrls);
+      let healthyRelays: string[] = [];
+      try {
+        healthyRelays = await filterHealthyRelays(relayUrls);
+      } catch {
+        healthyRelays = [];
+      }
 
       let received = false;
       const fetchFromIndexer = async () => {

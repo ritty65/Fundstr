@@ -310,11 +310,13 @@
         "wss://nos.lol",
         "wss://relay.nostr.band",
       ];
+      const statusMessageElement = document.getElementById("statusMessage");
+      const retryButtonElement = document.getElementById("retryButton");
       // --- Nostr Tools ---
       if (!window.NostrTools) {
-        document.getElementById("statusMessage").textContent =
+        statusMessageElement.textContent =
           "Error: nostr-tools library not loaded.";
-        document.getElementById("statusMessage").classList.remove("hidden");
+        statusMessageElement.classList.remove("hidden");
       }
       const { SimplePool, nip19, utils } = window.NostrTools;
 
@@ -324,12 +326,17 @@
           window.matchMedia("(prefers-color-scheme: dark)").matches,
       );
 
-      const RELAYS = await filterHealthyRelays(DEFAULT_RELAYS);
-      if (RELAYS.length === 0) {
+      let RELAYS = [];
+      try {
+        RELAYS = await filterHealthyRelays(DEFAULT_RELAYS);
+      } catch {
         console.error(
           "[find-creators] no reachable relays:",
           DEFAULT_RELAYS.join(", "),
         );
+        statusMessageElement.textContent =
+          "Network error: could not reach relays.";
+        statusMessageElement.classList.remove("hidden");
       }
       document.getElementById("relayList").textContent = RELAYS.join(", ");
 
@@ -352,8 +359,6 @@
 
       const searchInputElement = document.getElementById("searchInput");
       const resultsListElement = document.getElementById("resultsList");
-      const statusMessageElement = document.getElementById("statusMessage");
-      const retryButtonElement = document.getElementById("retryButton");
       const loaderElement = document.getElementById("loader");
       const featuredCreatorsGridElement = document.getElementById(
         "featuredCreatorsGrid",

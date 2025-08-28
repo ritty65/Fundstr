@@ -21,59 +21,62 @@ function scheduleFailureLog() {
 }
 
 export async function pingRelay(url: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    let settled = false;
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(url);
-    } catch (err) {
-      // Catch constructor errors (e.g. invalid URL or security issues) and log
-      // them in an aggregated fashion instead of flooding the console.
-      reportedFailures.set(url, (reportedFailures.get(url) ?? 0) + 1);
-      scheduleFailureLog();
-      resolve(false);
-      return;
-    }
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        try {
+  const attempt = (): Promise<boolean> =>
+    new Promise((resolve) => {
+      let settled = false;
+      let ws: WebSocket;
+      try {
+        ws = new WebSocket(url);
+      } catch {
+        resolve(false);
+        return;
+      }
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          try {
+            ws.close();
+          } catch {}
+          resolve(false);
+        }
+      }, 1000);
+      ws.onopen = () => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
           ws.close();
-        } catch {}
-        resolve(false);
-      }
-    }, 1000);
-    ws.onopen = () => {
-      if (!settled) {
-        settled = true;
-        clearTimeout(timer);
-        ws.close();
-        resolve(true);
-      }
-    };
-    ws.onerror = () => {
-      if (!settled) {
-        settled = true;
-        clearTimeout(timer);
-        // aggregate error rather than letting each failed relay spam the console
-        reportedFailures.set(url, (reportedFailures.get(url) ?? 0) + 1);
-        scheduleFailureLog();
-        resolve(false);
-      }
-    };
-    ws.onmessage = (ev) => {
-      if (
-        !settled &&
-        typeof ev.data === "string" &&
-        ev.data.startsWith("restricted:")
-      ) {
-        settled = true;
-        clearTimeout(timer);
-        ws.close();
-        resolve(false);
-      }
-    };
-  });
+          resolve(true);
+        }
+      };
+      ws.onerror = () => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(false);
+        }
+      };
+      ws.onmessage = (ev) => {
+        if (
+          !settled &&
+          typeof ev.data === "string" &&
+          ev.data.startsWith("restricted:")
+        ) {
+          settled = true;
+          clearTimeout(timer);
+          ws.close();
+          resolve(false);
+        }
+      };
+    });
+
+  const maxAttempts = 3;
+  for (let i = 0; i < maxAttempts; i++) {
+    if (await attempt()) return true;
+  }
+
+  reportedFailures.set(url, (reportedFailures.get(url) ?? 0) + maxAttempts);
+  scheduleFailureLog();
+  return false;
 }
 
 export async function filterHealthyRelays(relays: string[]): Promise<string[]> {
@@ -88,6 +91,10 @@ export async function filterHealthyRelays(relays: string[]): Promise<string[]> {
     );
     const batchHealthy = results.filter((u): u is string => !!u);
     healthy.push(...batchHealthy);
+  }
+
+  if (healthy.length === 0) {
+    throw new Error("no reachable relays");
   }
 
   return healthy.length >= 2 ? healthy : FREE_RELAYS;
