@@ -153,6 +153,7 @@ import {
 import { nip19 } from "nostr-tools";
 
 const iframeEl = ref<HTMLIFrameElement | null>(null);
+const iframeLoaded = ref(false);
 const showDonateDialog = ref(false);
 const selectedPubkey = ref("");
 const showTierDialog = ref(false);
@@ -188,6 +189,18 @@ function sendTheme() {
     "*",
   );
 }
+
+function onIframeLoad() {
+  iframeLoaded.value = true;
+  sendTheme();
+}
+
+watch(
+  () => $q.dark.isActive,
+  () => {
+    if (iframeLoaded.value) sendTheme();
+  },
+);
 
 function getPrice(t: any): number {
   return t.price_sats ?? t.price ?? 0;
@@ -337,8 +350,7 @@ function handleDonate({
 
 onMounted(async () => {
   window.addEventListener("message", onMessage);
-  iframeEl.value?.addEventListener("load", sendTheme);
-  sendTheme();
+  iframeEl.value?.addEventListener("load", onIframeLoad);
   try {
     await nostr.initNdkReadOnly();
   } catch (e: any) {
@@ -370,7 +382,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("message", onMessage);
-  iframeEl.value?.removeEventListener("load", sendTheme);
+  iframeEl.value?.removeEventListener("load", onIframeLoad);
   if (tierTimeout) clearTimeout(tierTimeout);
   nutzapProfile.value = null;
   loadingProfile.value = false;
