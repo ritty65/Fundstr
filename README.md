@@ -114,6 +114,21 @@ Fundstr is currently in Alpha/Beta.
 - **Web/PWA**: visit your Fundstr URL
 - **Android/iOS**: use the store link or build instructions
 
+### Install Fundstr as a PWA
+
+Fundstr can be installed like a native app on browsers that support service workers (Chrome, Edge, Firefox for Android, Safari on iOS 16+). The site must be served over HTTPS so the service worker can register.
+
+- Click the **Install** button when it appears in the app header, or use your browser menu → **Add to Home Screen** / **Install App**.
+- Local build steps:
+
+  ```bash
+  pnpm install
+  pnpm dev                      # start dev server with service worker
+  pnpm dlx @quasar/cli build -m pwa
+  ```
+
+Troubleshooting: Some browsers block the `beforeinstallprompt` event. If no install prompt appears, ensure pop-ups aren't blocked, confirm you're not in private/incognito mode, or install manually through the browser menu.
+
 ### 2. For Supporters
 
 1. Set up your wallet and load it with ecash from a compatible mint.
