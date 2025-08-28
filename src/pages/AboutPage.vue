@@ -136,7 +136,7 @@
             <summary><span class="emj xl">💻</span><h3>Open Source &amp; Verifiable</h3><p>Fundstr is open-source. Inspect, verify, and contribute.</p></summary>
             <div class="detail">
               <p>Audit our wallet & mint implementations or reproduce our builds.</p>
-              <ul class="bul">
+              <ul class="bullet">
                 <li><a class="ext" href="https://opensource.org/osd" target="_blank" rel="noopener">Open Source Definition</a></li>
                 <li><a class="ext" href="https://github.com/cashubtc" target="_blank" rel="noopener">Cashu on GitHub</a></li>
                 <li><a class="ext" href="https://delvingbitcoin.org/t/building-intuition-for-the-cashu-blind-signature-scheme/506" target="_blank" rel="noopener">Cashu blind signature scheme</a></li>
@@ -148,7 +148,7 @@
             <summary><span class="emj xl">🔑</span><h3>You Hold the Keys</h3><p>You control your ecash tokens and Nostr identity.</p></summary>
             <div class="detail">
               <p>Only you can authorise payments or posts.</p>
-              <ul class="bul">
+              <ul class="bullet">
                 <li><a class="ext" href="https://www.coindesk.com/learn/what-is-crypto-custody" target="_blank" rel="noopener">What is crypto custody?</a></li>
                 <li><a class="ext" href="https://github.com/nostr-protocol/nips" target="_blank" rel="noopener">Nostr NIPs</a></li>
               </ul>
@@ -158,7 +158,7 @@
           <details class="card">
             <summary><span class="emj xl">🛡️</span><h3>Unbreakable Privacy</h3><p>Chaumian blind signatures de-link deposits from withdrawals.</p></summary>
             <div class="detail">
-              <ul class="bul">
+              <ul class="bullet">
                 <li><a class="ext" href="https://bitcoin.design/guide/how-it-works/ecash/cashu/" target="_blank" rel="noopener">Bitcoin Design Guide: Cashu</a></li>
                 <li><a class="ext" href="https://blog.cashu.space/buckets-of-blind-signatures/" target="_blank" rel="noopener">Buckets of blind signatures</a></li>
               </ul>
@@ -168,7 +168,7 @@
           <details class="card">
             <summary><span class="emj xl">👛</span><h3>Mint Diversification</h3><p>Use multiple mints and watch for odd behaviour.</p></summary>
             <div class="detail">
-              <ul class="bul">
+              <ul class="bullet">
                 <li><a class="ext" href="https://docs.cashu.space/mints" target="_blank" rel="noopener">Cashu docs: mints</a></li>
                 <li><a class="ext" href="https://github.com/cashubtc/awesome-cashu" target="_blank" rel="noopener">Awesome Cashu</a></li>
               </ul>
@@ -266,7 +266,7 @@ const faqQuery = ref('')
 const faqs = ref([
   { q: 'What if a fan stops paying?', a: 'Creator view » Their timelocked token never unlocks for you. Fundstr flags the user as “Expired” and hides future paid posts. Fan view » You simply don’t renew. No recurring pull, no surprise charges.' },
   { q: 'Can I withdraw to a Lightning wallet?', a: 'Yes. Wallet → Send → Lightning Invoice. Paste the invoice from any external wallet; Fundstr melts tokens at the mint and pays it.' },
-  { q: 'How private is this really?', a: `<ul class="bul"><li>Mints see withdraw/redeem events but cannot correlate them.</li><li>Nostr chats are E2E encrypted; Nutzaps use P2PK so only the intended receiver can claim them.</li><li>Use different mints/buckets to compartmentalise further.</li></ul>` },
+  { q: 'How private is this really?', a: `<ul class="bullet"><li>Mints see withdraw/redeem events but cannot correlate them.</li><li>Nostr chats are E2E encrypted; Nutzaps use P2PK so only the intended receiver can claim them.</li><li>Use different mints/buckets to compartmentalise further.</li></ul>` },
   { q: 'What exactly is Cashu?', a: 'Chaumian e-cash. The mint issues anonymised tokens; transactions never touch the blockchain and the mint cannot link where your tokens are spent.' },
   { q: 'Do I need to trust a mint?', a: 'A mint is required to issue/redeem tokens. Reduce risk by holding small balances, spreading across mints, and withdrawing if a mint looks risky.' },
   { q: 'How can I back up or restore?', a: 'Generate a BIP-39 seed during setup. Keep it safe. Reinstall the app, enter the seed, reconnect to your mints to restore unspent tokens.' },
@@ -357,8 +357,10 @@ function installPwa () {
 
 .faq-q{font-weight:700; font-size:1.05rem}
 .faq-a{margin-top:.75rem; font-size:.92rem}
-.bul{margin:.5rem 0 0 1.25rem; padding:0}
-.bul li{margin:.25rem 0}
+.bullet{list-style:none; display:flex; flex-direction:column; gap:.5rem; padding:0; margin:0}
+.bullet li{position:relative; padding-left:1.25rem}
+.bullet li::before{content:""; position:absolute; left:0; top:0.6em; width:.5rem; height:.5rem; border-radius:50%; background:var(--ac500); transform:translateY(-50%)}
+@media (max-width:600px){ .bullet{align-items:center} }
 
 /* CTA */
 .cta{background:linear-gradient(90deg,rgba(var(--acRGB),.10),rgba(var(--acRGB),.05)); border-radius:1rem}
