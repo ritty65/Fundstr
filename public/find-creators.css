@@ -891,6 +891,10 @@
   }
 }
 
+.hidden {
+  display: none;
+}
+
 @layer utilities {
   @tailwind utilities;
 }
