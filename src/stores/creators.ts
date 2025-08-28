@@ -1,15 +1,21 @@
 import { defineStore } from "pinia";
 import { db } from "./dexie";
-import { useNostrStore, getEventHash, signEvent, publishEvent, subscribeToNostr } from "./nostr";
+import {
+  useNostrStore,
+  getEventHash,
+  signEvent,
+  publishEvent,
+  subscribeToNostr,
+} from "./nostr";
 import { useSettingsStore } from "./settings";
 import { DEFAULT_RELAYS } from "src/config/relays";
 import { filterHealthyRelays } from "src/utils/relayHealth";
+import { useNdk } from "src/composables/useNdk";
 import { nip19 } from "nostr-tools";
 import { Event as NostrEvent } from "nostr-tools";
 import { notifyWarning } from "src/js/notify";
 import { filterValidMedia } from "src/utils/validateMedia";
 import type { Tier } from "./types";
-import { getNDK, ensureNDKConnected, PRIMARY_RELAYS } from "@/ndk/ndk-singleton";
 
 export const FEATURED_CREATORS = [
   "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
@@ -23,14 +29,6 @@ export const FEATURED_CREATORS = [
   "npub1s5yq6wadwrxde4lhfs56gn64hwzuhnfa6r9mj476r5s4hkunzgzqrs6q7z",
   "npub1spdnfacgsd7lk0nlqkq443tkq4jx9z6c6ksvaquuewmw7d3qltpslcq6j7",
 ];
-
-const SEARCH_RELAYS = [
-  "wss://relay.nostr.band",
-  "wss://search.nos.today",
-  "wss://relay.noswhere.com",
-];
-
-const profileCache = new Map<string, any>();
 
 export interface CreatorProfile {
   pubkey: string;
@@ -55,108 +53,44 @@ export const useCreatorsStore = defineStore("creators", {
       const nostrStore = useNostrStore();
       this.searchResults = [];
       this.error = "";
-      if (!query) return;
-      this.searching = true;
-      await ensureNDKConnected();
-      const ndk = getNDK();
-      const trimmed = query.trim();
-
-      const isPubkey =
-        trimmed.startsWith("npub") || /^[0-9a-fA-F]{64}$/.test(trimmed);
-
-      if (isPubkey) {
-        let pubkey = trimmed;
-        if (pubkey.startsWith("npub")) {
-          try {
-            const decoded = nip19.decode(pubkey);
-            pubkey = typeof decoded.data === "string" ? decoded.data : "";
-          } catch {
-            this.error = "Invalid npub";
-            this.searching = false;
-            return;
-          }
-        }
-        try {
-          const cached = profileCache.get(pubkey);
-          if (cached) {
-            this.searchResults.push({ ...cached });
-          } else {
-            const user = ndk.getUser({ pubkey });
-            await user.fetchProfile();
-            const profile = user.profile;
-            const obj = {
-              pubkey,
-              profile,
-              followers: -1,
-              following: -1,
-              joined: null,
-            } as CreatorProfile;
-            this.searchResults.push(obj);
-            profileCache.set(pubkey, obj);
-          }
-          Promise.all([
-            nostrStore.fetchFollowerCount(pubkey),
-            nostrStore.fetchFollowingCount(pubkey),
-            nostrStore.fetchJoinDate(pubkey),
-          ]).then(([followers, following, joined]) => {
-            const idx = this.searchResults.findIndex((r) => r.pubkey === pubkey);
-            if (idx !== -1) {
-              this.searchResults[idx].followers = followers;
-              this.searchResults[idx].following = following;
-              this.searchResults[idx].joined = joined;
-              profileCache.set(pubkey, { ...this.searchResults[idx] });
-            }
-          });
-        } catch (e) {
-          console.error(e);
-        } finally {
-          this.searching = false;
-        }
+      if (!query) {
         return;
       }
-
-      // keyword search via NIP-50
-      const results: Record<string, any> = {};
-      try {
-        await new Promise<void>((resolve) => {
-          ndk.subscribe(
-            { kinds: [0], search: trimmed },
-            { closeOnEose: true, relayUrls: SEARCH_RELAYS },
-            {
-              onEvent: (e) => {
-                results[e.pubkey] = e;
-              },
-              onEose: () => resolve(),
-            },
-          );
-        });
-
-        for (const e of Object.values(results) as any[]) {
-          const profile = e.content ? JSON.parse(e.content) : {};
-          const pubkey = e.pubkey;
-          this.searchResults.push({
-            pubkey,
-            profile,
-            followers: -1,
-            following: -1,
-            joined: null,
-          });
-          Promise.all([
-            nostrStore.fetchFollowerCount(pubkey),
-            nostrStore.fetchFollowingCount(pubkey),
-            nostrStore.fetchJoinDate(pubkey),
-          ]).then(([followers, following, joined]) => {
-            const idx = this.searchResults.findIndex((r) => r.pubkey === pubkey);
-            if (idx !== -1) {
-              this.searchResults[idx].followers = followers;
-              this.searchResults[idx].following = following;
-              this.searchResults[idx].joined = joined;
-            }
-          });
+      this.searching = true;
+      await nostrStore.initNdkReadOnly();
+      const ndk = await useNdk({ requireSigner: false });
+      let pubkey = query.trim();
+      if (pubkey.startsWith("npub")) {
+        try {
+          const decoded = nip19.decode(pubkey);
+          pubkey =
+            typeof decoded.data === "string" ? (decoded.data as string) : "";
+        } catch (e) {
+          console.error(e);
+          this.error = "Invalid npub";
+          this.searching = false;
+          return;
         }
+      } else if (!/^[0-9a-fA-F]{64}$/.test(pubkey)) {
+        this.error = "Invalid pubkey";
+        this.searching = false;
+        return;
+      }
+      try {
+        const user = ndk.getUser({ pubkey });
+        await user.fetchProfile();
+        const followers = await nostrStore.fetchFollowerCount(pubkey);
+        const following = await nostrStore.fetchFollowingCount(pubkey);
+        const joined = await nostrStore.fetchJoinDate(pubkey);
+        this.searchResults.push({
+          pubkey,
+          profile: user.profile,
+          followers,
+          following,
+          joined,
+        });
       } catch (e) {
         console.error(e);
-        this.error = "Search failed";
       } finally {
         this.searching = false;
       }
@@ -167,8 +101,8 @@ export const useCreatorsStore = defineStore("creators", {
       this.searchResults = [];
       this.error = "";
       this.searching = true;
-      await ensureNDKConnected();
-      const ndk = getNDK();
+      await nostrStore.initNdkReadOnly();
+      const ndk = await useNdk({ requireSigner: false });
 
       const pubkeys: string[] = [];
       for (const entry of FEATURED_CREATORS) {
@@ -193,37 +127,35 @@ export const useCreatorsStore = defineStore("creators", {
       }
 
       try {
-        for (const pubkey of pubkeys) {
-          const cached = profileCache.get(pubkey);
-          if (cached) {
-            this.searchResults.push({ ...cached });
-          } else {
-            const user = ndk.getUser({ pubkey });
-            await user.fetchProfile();
-            const obj = {
-              pubkey,
-              profile: user.profile,
-              followers: -1,
-              following: -1,
-              joined: null,
-            } as CreatorProfile;
-            this.searchResults.push(obj);
-            profileCache.set(pubkey, obj);
-          }
-          Promise.all([
-            nostrStore.fetchFollowerCount(pubkey),
-            nostrStore.fetchFollowingCount(pubkey),
-            nostrStore.fetchJoinDate(pubkey),
-          ]).then(([followers, following, joined]) => {
-            const idx = this.searchResults.findIndex((r) => r.pubkey === pubkey);
-            if (idx !== -1) {
-              this.searchResults[idx].followers = followers;
-              this.searchResults[idx].following = following;
-              this.searchResults[idx].joined = joined;
-              profileCache.set(pubkey, { ...this.searchResults[idx] });
+        const results = await Promise.all(
+          pubkeys.map(async (pubkey) => {
+            try {
+              const user = ndk.getUser({ pubkey });
+              const [_, followers, following, joined] = await Promise.all([
+                user.fetchProfile(),
+                nostrStore.fetchFollowerCount(pubkey),
+                nostrStore.fetchFollowingCount(pubkey),
+                nostrStore.fetchJoinDate(pubkey),
+              ]);
+              return {
+                pubkey,
+                profile: user.profile,
+                followers,
+                following,
+                joined,
+              } as CreatorProfile;
+            } catch (e) {
+              console.error(e);
+              return null;
             }
-          });
-        }
+          }),
+        );
+
+        results.forEach((res) => {
+          if (res) {
+            this.searchResults.push(res);
+          }
+        });
       } catch (e) {
         console.error(e);
       } finally {
