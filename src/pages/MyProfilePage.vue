@@ -294,6 +294,7 @@ export default defineComponent({
           mints: profileMints.value ? [profileMints.value] : [],
           relays: profileRelays.value,
         });
+        profile.value = { ...profileData.value };
         notifySuccess("Profile updated");
         profileStore.markClean();
       } catch (e: any) {
