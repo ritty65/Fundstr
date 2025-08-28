@@ -1,5 +1,6 @@
 <template>
   <div class="find-creators-wrapper">
+    <div class="find-creators-title">Find Creators</div>
     <iframe
       ref="iframeEl"
       src="/find-creators.html"
@@ -365,12 +366,23 @@ onBeforeUnmount(() => {
   height: 100vh;
   padding: 0;
   margin: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .find-creators-frame {
   border: none;
   width: 100%;
-  height: 100%;
+  flex: 1;
+}
+
+.find-creators-title {
+  font-size: 3rem;
+  font-weight: 700;
+  text-align: center;
+  color: #ff4081;
+  margin: 1rem 0;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
 }
 
 .tier-dialog {
