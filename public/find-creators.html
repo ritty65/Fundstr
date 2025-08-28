@@ -326,23 +326,37 @@
           window.matchMedia("(prefers-color-scheme: dark)").matches,
       );
 
-      let RELAYS = [];
-      try {
-        RELAYS = await filterHealthyRelays(DEFAULT_RELAYS);
-      } catch {
-        console.error(
-          "[find-creators] no reachable relays:",
-          DEFAULT_RELAYS.join(", "),
-        );
-        statusMessageElement.textContent =
-          "Network error: could not reach relays.";
-        statusMessageElement.classList.remove("hidden");
-      }
+      let RELAYS = [...DEFAULT_RELAYS];
       document.getElementById("relayList").textContent = RELAYS.join(", ");
 
       const pool = new SimplePool({ eoseSubTimeout: 8000 });
       let currentSearchAbortController = null;
       let lastSearchQuery = "";
+
+      let relayFailureCount = 0;
+      async function refreshRelays() {
+        try {
+          const healthy = await filterHealthyRelays(DEFAULT_RELAYS);
+          RELAYS = healthy;
+          relayFailureCount = 0;
+          document.getElementById("relayList").textContent = RELAYS.join(", ");
+          statusMessageElement.classList.add("hidden");
+        } catch {
+          relayFailureCount++;
+          if (relayFailureCount >= 3) {
+            console.error(
+              "[find-creators] no reachable relays:",
+              DEFAULT_RELAYS.join(", "),
+            );
+            statusMessageElement.textContent =
+              "Network error: could not reach relays.";
+            statusMessageElement.classList.remove("hidden");
+            clearInterval(relayInterval);
+          }
+        }
+      }
+      const relayInterval = setInterval(refreshRelays, 30000);
+      refreshRelays();
 
       const FEATURED_NPUBS = [
         "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
@@ -947,11 +961,13 @@
         document.body.removeChild(textArea);
       }
 
-      document.addEventListener("DOMContentLoaded", async () => {
+      async function init() {
         document.body.classList.toggle(
           "dark",
           window.matchMedia("(prefers-color-scheme: dark)").matches,
         );
+        featuredStatusMessageElement.textContent = "Loading featured creators...";
+        featuredStatusMessageElement.classList.remove("hidden");
         const featuredPubkeysHex = FEATURED_NPUBS.map((npub) => {
           try {
             return nip19.decode(npub).data;
@@ -997,6 +1013,7 @@
 
         if (profiles && profiles.length > 0) {
           renderProfiles(profiles, featuredCreatorsGridElement, true);
+          featuredStatusMessageElement.classList.add("hidden");
         } else {
           featuredStatusMessageElement.textContent =
             "Could not load featured creators.";
@@ -1023,34 +1040,50 @@
             }
           })();
         }
-      });
 
-      window.addEventListener("message", (ev) => {
-        if (ev.data?.type === "prefillSearch" && ev.data.npub) {
-          searchInputElement.value = ev.data.npub;
-          handleSearch(ev.data.npub);
-        } else if (ev.data?.type === "set-theme") {
-          document.body.classList.toggle("dark", !!ev.data.dark);
+        window.addEventListener("message", (ev) => {
+          if (ev.data?.type === "prefillSearch" && ev.data.npub) {
+            searchInputElement.value = ev.data.npub;
+            handleSearch(ev.data.npub);
+          } else if (ev.data?.type === "set-theme") {
+            document.body.classList.toggle("dark", !!ev.data.dark);
+          }
+        });
+
+        const debouncedSearchHandler = debounce(handleSearch, 500);
+        searchInputElement.addEventListener("input", (event) => {
+          debouncedSearchHandler(event.target.value);
+        });
+
+        retryButtonElement.addEventListener("click", () => {
+          if (lastSearchQuery) {
+            handleSearch(lastSearchQuery);
+          }
+        });
+
+        window.addEventListener("beforeunload", () => {
+          if (currentSearchAbortController) {
+            currentSearchAbortController.abort();
+          }
+          pool.close([...RELAYS]);
+        });
+      }
+
+      const stylesheet = document.querySelector(
+        'link[rel="stylesheet"][href="find-creators.css"]',
+      );
+      function waitForStyles(cb) {
+        if (!stylesheet || stylesheet.sheet) {
+          cb();
+        } else {
+          stylesheet.addEventListener("load", cb, { once: true });
         }
-      });
-
-      const debouncedSearchHandler = debounce(handleSearch, 500);
-      searchInputElement.addEventListener("input", (event) => {
-        debouncedSearchHandler(event.target.value);
-      });
-
-      retryButtonElement.addEventListener("click", () => {
-        if (lastSearchQuery) {
-          handleSearch(lastSearchQuery);
-        }
-      });
-
-      window.addEventListener("beforeunload", () => {
-        if (currentSearchAbortController) {
-          currentSearchAbortController.abort();
-        }
-        pool.close([...RELAYS]);
-      });
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => waitForStyles(init));
+      } else {
+        waitForStyles(init);
+      }
     </script>
   </body>
 </html>

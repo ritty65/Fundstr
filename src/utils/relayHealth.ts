@@ -21,7 +21,7 @@ function scheduleFailureLog() {
 }
 
 export async function pingRelay(url: string): Promise<boolean> {
-  const attempt = (): Promise<boolean> =>
+  const attemptOnce = (): Promise<boolean> =>
     new Promise((resolve) => {
       let settled = false;
       let ws: WebSocket;
@@ -69,9 +69,14 @@ export async function pingRelay(url: string): Promise<boolean> {
       };
     });
 
-  const maxAttempts = 3;
+  const maxAttempts = 6;
+  let delay = 1000;
   for (let i = 0; i < maxAttempts; i++) {
-    if (await attempt()) return true;
+    if (await attemptOnce()) return true;
+    if (i < maxAttempts - 1) {
+      await new Promise((r) => setTimeout(r, delay));
+      delay = Math.min(delay * 2, 32000);
+    }
   }
 
   reportedFailures.set(url, (reportedFailures.get(url) ?? 0) + maxAttempts);
