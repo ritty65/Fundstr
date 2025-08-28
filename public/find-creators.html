@@ -1005,11 +1005,10 @@
                 JSON.stringify({ timestamp: Date.now(), profiles }),
               );
             }
-          } catch (e) {
-          } finally {
-            featuredCreatorsLoaderElement.style.display = "none";
-          }
+          } catch (e) {}
         }
+
+        featuredCreatorsLoaderElement.style.display = "none";
 
         if (profiles && profiles.length > 0) {
           renderProfiles(profiles, featuredCreatorsGridElement, true);
