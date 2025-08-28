@@ -209,7 +209,7 @@
           </h2>
 
           <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
-            <details class="interactive-card p-6 text-left h-full rounded-2xl">
+            <details class="interactive-card p-6 text-left rounded-2xl">
               <summary class="cursor-pointer">
                 <span class="mb-4 text-4xl block">💻</span>
                 <span class="block font-bold text-xl mb-2">Open Source &amp; Verifiable</span>
@@ -228,7 +228,7 @@
               </div>
             </details>
 
-            <details class="interactive-card p-6 text-left h-full rounded-2xl">
+            <details class="interactive-card p-6 text-left rounded-2xl">
               <summary class="cursor-pointer">
                 <span class="mb-4 text-4xl block">🔑</span>
                 <span class="block font-bold text-xl mb-2">You Hold the Keys</span>
@@ -246,7 +246,7 @@
               </div>
             </details>
 
-            <details class="interactive-card p-6 text-left h-full rounded-2xl">
+            <details class="interactive-card p-6 text-left rounded-2xl">
               <summary class="cursor-pointer">
                 <span class="mb-4 text-4xl block">🛡️</span>
                 <span class="block font-bold text-xl mb-2">Unbreakable Privacy</span>
@@ -264,7 +264,7 @@
               </div>
             </details>
 
-            <details class="interactive-card p-6 text-left h-full rounded-2xl">
+            <details class="interactive-card p-6 text-left rounded-2xl">
               <summary class="cursor-pointer">
                 <span class="mb-4 text-4xl block">👛</span>
                 <span class="block font-bold text-xl mb-2">Mint Diversification</span>
