@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nostr User Search & Featured Creators</title>
+    <link rel="preload" as="style" href="find-creators.css" />
     <link rel="stylesheet" href="find-creators.css" />
     <!-- nostr-tools CDN -->
     <script src="https://unpkg.com/nostr-tools@1.17.0/lib/nostr.bundle.js"></script>
@@ -300,7 +301,7 @@
       <div class="relay-info">Connecting to: <span id="relayList"></span></div>
     </div>
 
-    <script type="module">
+    <script type="module" defer>
       import { filterHealthyRelays } from "./relayHealth.js";
       const DEFAULT_RELAYS = [
         "wss://relay.damus.io",
