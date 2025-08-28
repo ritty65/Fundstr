@@ -241,7 +241,7 @@ git grep -n ".ndk"
 ### Optional Backend Search Service
 
 You can configure a URL that returns NIP-50 search results for the
-Find Creators page. Set the value in local storage using the key
+`find-creators.html` page. Set the value in local storage using the key
 `cashu.settings.searchBackendUrl`. When defined, search queries hit this
 backend first and fall back to client-side relay queries if no results are
 returned.
@@ -262,6 +262,16 @@ wss://nostr.bitcoiner.social/
 wss://relay.nostr.band/
 wss://relay.snort.social/
 ```
+
+### Sharing Creator Links
+
+You can share direct links to creator profiles by appending an `npub` query parameter to the search page:
+
+```
+/#/find-creators?npub=<npub>
+```
+
+When opened, Fundstr automatically loads the profile for the provided `npub`. If the visitor hasn't logged in or set up a wallet yet, the app will prompt them to authenticate and choose a wallet before they can send support.
 
 ### Verify Nutzap Profile
 
