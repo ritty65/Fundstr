@@ -4,8 +4,8 @@
       class="bg-surface-1 text-1"
       :style="navStyleVars"
     >
-    <MainHeader />
-    <AppNavDrawer />
+    <MainHeader v-if="!route.meta.hideHeader" />
+    <AppNavDrawer v-if="!route.meta.hideHeader" />
     <q-page-container class="text-body1">
       <router-view />
     </q-page-container>
@@ -58,6 +58,7 @@ export default defineComponent({
       publishing,
       showPublishBar,
       navStyleVars,
+      route,
     };
   },
 });
