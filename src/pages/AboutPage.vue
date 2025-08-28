@@ -48,8 +48,8 @@
               <span>No gatekeepers</span>
             </div>
             <div class="feature">
-              <q-icon name="sell" class="feature-icon" />
-              <span>Low fees</span>
+              <q-icon name="money_off" class="feature-icon" />
+              <span>No fees</span>
             </div>
           </div>
         </div>
