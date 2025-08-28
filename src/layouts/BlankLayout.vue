@@ -4,8 +4,8 @@
       class="bg-surface-1 text-1"
       :style="navStyleVars"
     >
-    <MainHeader v-if="!route.path.startsWith('/welcome')" />
-    <AppNavDrawer v-if="!route.path.startsWith('/welcome')" />
+    <MainHeader v-if="!route.meta.hideHeader" />
+    <AppNavDrawer v-if="!route.meta.hideHeader" />
     <q-page-container class="text-body1">
       <div class="max-w-7xl mx-auto">
         <router-view />

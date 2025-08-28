@@ -9,6 +9,7 @@ const routes = [
   {
     path: "/wallet",
     component: () => import("layouts/MainLayout.vue"),
+    meta: { hideHeader: true },
     children: [
       { path: "", component: () => import("src/pages/WalletPage.vue") },
     ],
@@ -101,11 +102,13 @@ const routes = [
   {
     path: "/restore",
     component: () => import("layouts/FullscreenLayout.vue"),
+    meta: { hideHeader: true },
     children: [{ path: "", component: () => import("src/pages/Restore.vue") }],
   },
   {
     path: "/already-running",
     component: () => import("layouts/BlankLayout.vue"),
+    meta: { hideHeader: true },
     children: [
       { path: "", component: () => import("src/pages/AlreadyRunning.vue") },
     ],
@@ -113,6 +116,7 @@ const routes = [
   {
     path: "/welcome",
     component: () => import("layouts/BlankLayout.vue"),
+    meta: { hideHeader: true },
     children: [
       { path: "", component: () => import("src/pages/WelcomePage.vue") },
     ],
