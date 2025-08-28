@@ -26,13 +26,14 @@
 </template>
 
 <script setup lang="ts">
+import { usePwaInstall } from "src/composables/usePwaInstall";
+
 const props = defineProps<{ deferredPrompt?: any }>();
+const { promptInstall } = usePwaInstall();
 const id = "welcome-pwa-title";
 
 function install() {
-  if (props.deferredPrompt) {
-    props.deferredPrompt.prompt();
-  }
+  promptInstall();
 }
 
 function skip() {

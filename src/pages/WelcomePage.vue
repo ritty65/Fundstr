@@ -73,6 +73,7 @@ import { useStorageStore } from 'src/stores/storage'
 import { useNostrStore } from 'src/stores/nostr'
 import { useNdk } from 'src/composables/useNdk'
 import ThemeToggle from 'src/components/ThemeToggle.vue'
+import { usePwaInstall } from 'src/composables/usePwaInstall'
 
 const { t } = useI18n()
 const welcome = useWelcomeStore()
@@ -84,6 +85,7 @@ const storageStore = useStorageStore()
 const nostr = useNostrStore()
 const showSeedDialog = ref(false)
 const showChecklist = ref(false)
+const { deferredPrompt } = usePwaInstall()
 
 onMounted(() => {
   const env = import.meta.env.VITE_APP_ENV
@@ -114,7 +116,7 @@ async function finishOnboarding() {
 const slides = [
   { component: WelcomeSlideFeatures },
   { component: WelcomeSlideNostr },
-  { component: WelcomeSlidePwa },
+  { component: WelcomeSlidePwa, props: { deferredPrompt } },
   {
     component: WelcomeSlideBackup,
     props: { onRevealSeed: revealSeed, onDownloadBackup: downloadBackup },
