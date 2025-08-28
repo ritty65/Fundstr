@@ -2,7 +2,7 @@
   <q-page class="q-pa-md flex flex-center">
     <div style="width:100%;max-width:600px">
       <div class="row items-center justify-between q-mb-md">
-        <div></div>
+        <ThemeToggle />
         <q-btn dense flat icon="checklist" @click="showChecklist = true" />
       </div>
       <div class="text-center q-mb-md">
@@ -72,6 +72,7 @@ import { useMnemonicStore } from 'src/stores/mnemonic'
 import { useStorageStore } from 'src/stores/storage'
 import { useNostrStore } from 'src/stores/nostr'
 import { useNdk } from 'src/composables/useNdk'
+import ThemeToggle from 'src/components/ThemeToggle.vue'
 
 const { t } = useI18n()
 const welcome = useWelcomeStore()
