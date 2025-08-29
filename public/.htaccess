@@ -14,3 +14,7 @@
     Header set Expires "0"
   </FilesMatch>
 </IfModule>
+# Ensure Nostr provider served as JavaScript
+<Files "nostr-provider.js">
+  ForceType application/javascript
+</Files>
