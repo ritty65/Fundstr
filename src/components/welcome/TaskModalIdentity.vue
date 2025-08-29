@@ -70,7 +70,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useNostrStore, SignerType } from 'src/stores/nostr'
 
 const props = defineProps<{ modelValue?: boolean; inline?: boolean }>()
@@ -85,12 +85,24 @@ const inline = computed(() => !!props.inline)
 const nostr = useNostrStore()
 const nsec = ref('')
 
-const hasNip07 = computed(
-  () => typeof window !== 'undefined' && !!(window as any).nostr?.getPublicKey,
-)
+const hasNip07 = ref(false)
+onMounted(() => {
+  const check = () => {
+    if (typeof window !== 'undefined' && (window as any).nostr?.getPublicKey) {
+      hasNip07.value = true
+      clearInterval(interval)
+      clearTimeout(timeout)
+    }
+  }
+  const interval = setInterval(check, 500)
+  const timeout = setTimeout(() => clearInterval(interval), 5000)
+  check()
+})
 
 async function connectNip07() {
   try {
+    const available = await nostr.checkNip07Signer(true)
+    if (!available) throw new Error('NIP-07 unavailable')
     const pk = await (window as any).nostr.getPublicKey()
     const test = {
       kind: 1,

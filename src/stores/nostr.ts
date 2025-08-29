@@ -902,15 +902,16 @@ export const useNostrStore = defineStore("nostr", {
       }
     },
     checkNip07Signer: async function (force = false): Promise<boolean> {
-      if (this.nip07Checked && !force) return this.nip07SignerAvailable;
+      if (this.nip07Checked && this.nip07SignerAvailable && !force) return true;
       const signer = new NDKNip07Signer();
       try {
         await signer.user();
         this.nip07SignerAvailable = true;
+        this.nip07Checked = true;
       } catch (e) {
         this.nip07SignerAvailable = false;
+        this.nip07Checked = false;
       }
-      this.nip07Checked = true;
       return this.nip07SignerAvailable;
     },
     initNip07Signer: async function () {
