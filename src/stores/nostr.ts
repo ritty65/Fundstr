@@ -59,10 +59,31 @@ import { useP2PKStore } from "./p2pk";
 import { watch } from "vue";
 import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
+import { LOCAL_STORAGE_KEYS } from "src/constants/localStorageKeys";
 
 const STORAGE_SECRET = "cashu_ndk_storage_key";
 let cachedKey: CryptoKey | null = null;
 const RECONNECT_BACKOFF_MS = 15000; // 15s cooldown after failed attempts
+const SESSION_STORAGE_KEY = LOCAL_STORAGE_KEYS.CASHU_NOSTR_SESSION;
+
+interface NostrSession {
+  pubkey: string;
+  authSource: "nip07" | "local";
+}
+
+function loadSession(): NostrSession | null {
+  const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(session: NostrSession) {
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+}
 
 async function getKey(): Promise<CryptoKey> {
   if (cachedKey) return cachedKey;
@@ -589,6 +610,12 @@ export const useNostrStore = defineStore("nostr", {
   actions: {
     loadKeysFromStorage: async function () {
       if (this.secureStorageLoaded) return;
+      const session = loadSession();
+      if (session) {
+        this.pubkey = session.pubkey;
+        this.signerType =
+          session.authSource === "nip07" ? SignerType.NIP07 : SignerType.SEED;
+      }
       const pk = await secureGetItem("cashu.ndk.pubkey");
       if (pk) this.pubkey = pk;
       const st = await secureGetItem("cashu.ndk.signerType");
@@ -601,16 +628,24 @@ export const useNostrStore = defineStore("nostr", {
       if (seedSk) this.seedSignerPrivateKey = seedSk;
       const seedPk = await secureGetItem("cashu.ndk.seedSignerPublicKey");
       if (seedPk) this.seedSignerPublicKey = seedPk;
+      const persistSession = () =>
+        saveSession({
+          pubkey: this.pubkey,
+          authSource:
+            this.signerType === SignerType.NIP07 ? "nip07" : "local",
+        });
       watch(
         () => this.pubkey,
         (v) => {
           secureSetItem("cashu.ndk.pubkey", v);
+          persistSession();
         },
       );
       watch(
         () => this.signerType,
         (v) => {
           secureSetItem("cashu.ndk.signerType", v.toString());
+          persistSession();
         },
       );
       watch(
@@ -637,6 +672,7 @@ export const useNostrStore = defineStore("nostr", {
           secureSetItem("cashu.ndk.seedSignerPublicKey", v);
         },
       );
+      persistSession();
       this.secureStorageLoaded = true;
     },
     initNdkReadOnly: async function () {
@@ -667,6 +703,13 @@ export const useNostrStore = defineStore("nostr", {
         this.signer = nip07;
         this.signerType = SignerType.NIP07;
         this.setPubkey(user.pubkey);
+        saveSession({ pubkey: user.pubkey, authSource: "nip07" });
+        if ((window as any).nostr?.on) {
+          (window as any).nostr.on("accountChanged", (pk: string) => {
+            this.setPubkey(pk);
+            saveSession({ pubkey: pk, authSource: "nip07" });
+          });
+        }
         useNdk({ requireSigner: true }).catch(() => {});
       } catch (e) {
         throw new Error("The signer request was rejected or blocked.");
@@ -902,9 +945,22 @@ export const useNostrStore = defineStore("nostr", {
         await signer.blockUntilReady();
         const user = await signer.user();
         if (user?.npub) {
+          if (this.pubkey && user.pubkey !== this.pubkey) {
+            notifyWarning(
+              "NIP-07 account changed",
+              "Your extension returned a different account; updating session.",
+            );
+          }
           this.signerType = SignerType.NIP07;
           this.setPubkey(user.pubkey);
+          saveSession({ pubkey: user.pubkey, authSource: "nip07" });
           await this.setSigner(signer);
+          if ((window as any).nostr?.on) {
+            (window as any).nostr.on("accountChanged", (pk: string) => {
+              this.setPubkey(pk);
+              saveSession({ pubkey: pk, authSource: "nip07" });
+            });
+          }
         }
       } catch (e) {
         console.error("Failed to init NIP07 signer:", e);
