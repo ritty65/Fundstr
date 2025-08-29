@@ -522,11 +522,13 @@ export const useNostrStore = defineStore("nostr", {
     if (lastEventTimestamp.value > now) {
       lastEventTimestamp.value = now;
     }
+    const session = loadSession();
     return {
       connected: false,
-      pubkey: "",
+      pubkey: session?.pubkey ?? "",
       relays: useSettingsStore().defaultNostrRelays ?? ([] as string[]),
-      signerType: SignerType.SEED,
+      signerType:
+        session?.authSource === "nip07" ? SignerType.NIP07 : SignerType.SEED,
       nip07signer: {} as NDKNip07Signer,
       nip46Token: "",
       nip46signer: {} as NDKNip46Signer,
@@ -610,12 +612,6 @@ export const useNostrStore = defineStore("nostr", {
   actions: {
     loadKeysFromStorage: async function () {
       if (this.secureStorageLoaded) return;
-      const session = loadSession();
-      if (session) {
-        this.pubkey = session.pubkey;
-        this.signerType =
-          session.authSource === "nip07" ? SignerType.NIP07 : SignerType.SEED;
-      }
       const pk = await secureGetItem("cashu.ndk.pubkey");
       if (pk) this.pubkey = pk;
       const st = await secureGetItem("cashu.ndk.signerType");
@@ -825,6 +821,11 @@ export const useNostrStore = defineStore("nostr", {
     },
     setSigner: async function (signer: NDKSigner) {
       this.signer = signer;
+      saveSession({
+        pubkey: this.pubkey,
+        authSource:
+          this.signerType === SignerType.NIP07 ? "nip07" : "local",
+      });
       await this.connect();
     },
     signDummyEvent: async function (): Promise<NDKEvent> {
