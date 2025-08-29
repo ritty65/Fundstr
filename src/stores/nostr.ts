@@ -692,6 +692,23 @@ export const useNostrStore = defineStore("nostr", {
       this.signer = undefined;
       this.connected = false;
     },
+    handleAccountChanged: async function (pk: string) {
+      const approved = window.confirm(
+        "NIP-07 account changed. Use the new account?",
+      );
+      if (approved) {
+        this.setPubkey(pk);
+        saveSession({ pubkey: pk, authSource: "nip07" });
+      } else {
+        await this.disconnect();
+        this.pubkey = "";
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        notifyWarning(
+          "NIP-07 account change rejected",
+          "Reconnect to continue.",
+        );
+      }
+    },
     async connectBrowserSigner() {
       const nip07 = new NDKNip07Signer();
       try {
@@ -701,10 +718,9 @@ export const useNostrStore = defineStore("nostr", {
         this.setPubkey(user.pubkey);
         saveSession({ pubkey: user.pubkey, authSource: "nip07" });
         if ((window as any).nostr?.on) {
-          (window as any).nostr.on("accountChanged", (pk: string) => {
-            this.setPubkey(pk);
-            saveSession({ pubkey: pk, authSource: "nip07" });
-          });
+          (window as any).nostr.on("accountChanged", (pk: string) =>
+            this.handleAccountChanged(pk),
+          );
         }
         useNdk({ requireSigner: true }).catch(() => {});
       } catch (e) {
@@ -957,10 +973,9 @@ export const useNostrStore = defineStore("nostr", {
           saveSession({ pubkey: user.pubkey, authSource: "nip07" });
           await this.setSigner(signer);
           if ((window as any).nostr?.on) {
-            (window as any).nostr.on("accountChanged", (pk: string) => {
-              this.setPubkey(pk);
-              saveSession({ pubkey: pk, authSource: "nip07" });
-            });
+            (window as any).nostr.on("accountChanged", (pk: string) =>
+              this.handleAccountChanged(pk),
+            );
           }
         }
       } catch (e) {

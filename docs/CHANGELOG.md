@@ -9,3 +9,4 @@
   "Manage" on a bucket to open the modal.
 - Bucket detail modal includes a History tab.
 - Documented iframe snippet support and Nostr event link embedding for media previews. These previews also show when viewing tiers from the find creators page.
+- Documented a "switch account" action that clears the Nostr session and requires reconnecting.
