@@ -27,7 +27,9 @@ export default configure(() => ({
     }
   },
   framework: {
-    config: {},
+    config: {
+      dark: true
+    },
     plugins: ['Notify', 'LocalStorage']
   }
 }))
