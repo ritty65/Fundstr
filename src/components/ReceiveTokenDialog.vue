@@ -489,6 +489,9 @@ export default defineComponent({
       "pasteToParseDialog",
     ]),
     shortenString,
+    formatCurrency(amount, unit, showBalance = false) {
+      return useUiStore().formatCurrency(amount, unit, showBalance);
+    },
     // TOKEN METHODS
     decodePeanut: function (peanut) {
       try {
