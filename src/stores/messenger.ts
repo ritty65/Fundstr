@@ -78,12 +78,12 @@ export const useMessengerStore = defineStore("messenger", {
         () => `cashu.messenger.${nostrStore.pubkey || "anon"}.${suffix}`,
       );
     if (!Array.isArray(settings.defaultNostrRelays)) {
-      settings.defaultNostrRelays = DEFAULT_RELAYS;
+      settings.defaultNostrRelays = Array.from(new Set(DEFAULT_RELAYS));
     }
     const userRelays = Array.isArray(settings.defaultNostrRelays)
-      ? settings.defaultNostrRelays
+      ? Array.from(new Set(settings.defaultNostrRelays))
       : [];
-    const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
+    const relays = Array.from(new Set(userRelays.length ? userRelays : DEFAULT_RELAYS));
 
     const conversations = useLocalStorage<Record<string, MessengerMessage[]>>(
       storageKey("conversations"),
@@ -709,13 +709,15 @@ export const useMessengerStore = defineStore("messenger", {
 
     async connect(relays: string[]) {
       const nostr = useNostrStore();
-      this.relays = relays as any;
+      const unique = Array.from(new Set(relays));
+      this.relays = unique as any;
       // Reconnect the nostr store with the updated relays
-      await nostr.connect(relays as any);
+      await nostr.connect(unique as any);
     },
 
     removeRelay(relay: string) {
-      this.relays = (this.relays as any).filter((r: string) => r !== relay);
+      const updated = (this.relays as any).filter((r: string) => r !== relay);
+      this.relays = Array.from(new Set(updated));
       const nostr = useNostrStore();
       nostr.connect(this.relays as any);
     },
