@@ -62,20 +62,9 @@ function attachRelayErrorHandlers(ndk: NDK) {
 let ndkInstance: NDK | undefined;
 let ndkPromise: Promise<NDK> | undefined;
 
-// Retry count for connecting to relays. Defaults to a single retry in
-// production to reduce noisy "can't establish connection" logs. Developers can
-// override by setting `VITE_NDK_CONNECT_RETRIES` (set to `0` to disable
-// retries entirely) when debugging relay connectivity.
-export const NDK_CONNECT_RETRIES = (() => {
-  const defaultRetries = import.meta.env.PROD ? 1 : 3;
-  const fromEnv = import.meta.env.VITE_NDK_CONNECT_RETRIES;
-  const parsed = fromEnv === undefined ? NaN : Number(fromEnv);
-  return Number.isFinite(parsed) ? parsed : defaultRetries;
-})();
-
 export async function safeConnect(
   ndk: NDK,
-  retries = NDK_CONNECT_RETRIES,
+  retries = 3,
 ): Promise<Error | null> {
   let lastError: Error | null = null;
   for (let attempt = 1; attempt <= retries; attempt++) {
