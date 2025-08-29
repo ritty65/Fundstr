@@ -6,6 +6,11 @@ import { FREE_RELAYS } from "src/config/relays";
 const reportedFailures = new Map<string, number>();
 let aggregateTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Cache ping results for a short period so repeated health checks
+// don't keep hammering the same unreachable relays and flooding logs.
+const pingCache = new Map<string, { ok: boolean; ts: number }>();
+const CACHE_TTL = 30_000; // 30 seconds
+
 function scheduleFailureLog() {
   if (aggregateTimer) return;
   aggregateTimer = setTimeout(() => {
@@ -21,6 +26,11 @@ function scheduleFailureLog() {
 }
 
 export async function pingRelay(url: string): Promise<boolean> {
+  const cached = pingCache.get(url);
+  if (cached && Date.now() - cached.ts < CACHE_TTL) {
+    return cached.ok;
+  }
+
   const attemptOnce = (): Promise<boolean> =>
     new Promise((resolve) => {
       let settled = false;
@@ -80,13 +90,17 @@ export async function pingRelay(url: string): Promise<boolean> {
   const maxAttempts = 3;
   let delay = 2000;
   for (let i = 0; i < maxAttempts; i++) {
-    if (await attemptOnce()) return true;
+    if (await attemptOnce()) {
+      pingCache.set(url, { ok: true, ts: Date.now() });
+      return true;
+    }
     if (i < maxAttempts - 1) {
       await new Promise((r) => setTimeout(r, delay));
       delay = Math.min(delay * 2, 32000);
     }
   }
 
+  pingCache.set(url, { ok: false, ts: Date.now() });
   reportedFailures.set(url, (reportedFailures.get(url) ?? 0) + maxAttempts);
   scheduleFailureLog();
   return false;

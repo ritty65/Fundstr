@@ -6,6 +6,24 @@ import { NDKEvent, type NDKFilter } from "@nostr-dev-kit/ndk";
 import { useSettingsStore } from "src/stores/settings";
 import { DEFAULT_RELAYS, FREE_RELAYS } from "src/config/relays";
 import { filterHealthyRelays } from "src/utils/relayHealth";
+import { notifyWarning } from "src/js/notify";
+
+let dexieAdapter: any;
+async function getDexieAdapter() {
+  if (dexieAdapter !== undefined) return dexieAdapter;
+  try {
+    const loader = new Function(
+      "m",
+      "return import(m)",
+    ) as (m: string) => Promise<any>;
+    const mod = await loader("@nostr-dev-kit/ndk-cache-dexie");
+    dexieAdapter = new mod.NDKCacheAdapterDexie({ dbName: "fundstrCache" });
+  } catch (e) {
+    console.warn("[NDK] Dexie cache unavailable", e);
+    dexieAdapter = undefined;
+  }
+  return dexieAdapter;
+}
 
 export type NdkBootErrorReason =
   | "no-signer"
@@ -82,14 +100,28 @@ async function createReadOnlyNdk(): Promise<NDK> {
     ? settings.defaultNostrRelays
     : [];
   const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
-  let healthy: string[] = [];
-  try {
-    healthy = await filterHealthyRelays(relays);
-  } catch {
-    healthy = [];
+  let relayUrls = relays;
+  if (settings.relayHealthChecks) {
+    try {
+      const healthy = await filterHealthyRelays(relays);
+      relayUrls = healthy.length ? healthy : FREE_RELAYS;
+    } catch {
+      notifyWarning(
+        "All Nostr relays unreachable",
+        "Your network may block WebSocket connections",
+      );
+      relayUrls = FREE_RELAYS;
+    }
   }
-  const relayUrls = healthy.length ? healthy : FREE_RELAYS;
-  const ndk = new NDK({ explicitRelayUrls: relayUrls });
+  const cache = await getDexieAdapter();
+  const ndk = new NDK({
+    explicitRelayUrls: relayUrls,
+    enableOutboxModel: true,
+    autoConnectUserRelays: true,
+    cacheAdapter: cache,
+    initialValidationRatio: 0.5,
+    lowestValidationRatio: 0.1,
+  });
   attachRelayErrorHandlers(ndk);
   mergeDefaultRelays(ndk);
   await safeConnect(ndk);
@@ -103,10 +135,31 @@ async function createReadOnlyNdk(): Promise<NDK> {
 
 export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
   const settings = useSettingsStore();
-  const relays = settings.defaultNostrRelays.length
+  const baseRelays = settings.defaultNostrRelays.length
     ? settings.defaultNostrRelays
     : DEFAULT_RELAYS;
-  const ndk = new NDK({ explicitRelayUrls: relays });
+  let relayUrls = baseRelays;
+  if (settings.relayHealthChecks) {
+    try {
+      const healthy = await filterHealthyRelays(baseRelays);
+      relayUrls = healthy.length ? healthy : FREE_RELAYS;
+    } catch {
+      notifyWarning(
+        "All Nostr relays unreachable",
+        "Your network may block WebSocket connections",
+      );
+      relayUrls = FREE_RELAYS;
+    }
+  }
+  const cache = await getDexieAdapter();
+  const ndk = new NDK({
+    explicitRelayUrls: relayUrls,
+    enableOutboxModel: true,
+    autoConnectUserRelays: true,
+    cacheAdapter: cache,
+    initialValidationRatio: 0.5,
+    lowestValidationRatio: 0.1,
+  });
   attachRelayErrorHandlers(ndk);
   mergeDefaultRelays(ndk);
   ndk.signer = signer;
@@ -137,14 +190,29 @@ export async function createNdk(): Promise<NDK> {
     ? settings.defaultNostrRelays
     : [];
   const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
-  let healthy: string[] = [];
-  try {
-    healthy = await filterHealthyRelays(relays);
-  } catch {
-    healthy = [];
+  let relayUrls = relays;
+  if (settings.relayHealthChecks) {
+    try {
+      const healthy = await filterHealthyRelays(relays);
+      relayUrls = healthy.length ? healthy : FREE_RELAYS;
+    } catch {
+      notifyWarning(
+        "All Nostr relays unreachable",
+        "Your network may block WebSocket connections",
+      );
+      relayUrls = FREE_RELAYS;
+    }
   }
-  const relayUrls = healthy.length ? healthy : FREE_RELAYS;
-  const ndk = new NDK({ signer: signer as any, explicitRelayUrls: relayUrls });
+  const cache = await getDexieAdapter();
+  const ndk = new NDK({
+    signer: signer as any,
+    explicitRelayUrls: relayUrls,
+    enableOutboxModel: true,
+    autoConnectUserRelays: true,
+    cacheAdapter: cache,
+    initialValidationRatio: 0.5,
+    lowestValidationRatio: 0.1,
+  });
   attachRelayErrorHandlers(ndk);
   mergeDefaultRelays(ndk);
   await safeConnect(ndk);
@@ -160,7 +228,15 @@ export async function rebuildNdk(
   relays: string[],
   signer?: NDKSigner,
 ): Promise<NDK> {
-  const ndk = new NDK({ explicitRelayUrls: relays });
+  const cache = await getDexieAdapter();
+  const ndk = new NDK({
+    explicitRelayUrls: relays,
+    enableOutboxModel: true,
+    autoConnectUserRelays: true,
+    cacheAdapter: cache,
+    initialValidationRatio: 0.5,
+    lowestValidationRatio: 0.1,
+  });
   attachRelayErrorHandlers(ndk);
   mergeDefaultRelays(ndk);
   if (signer) ndk.signer = signer;
