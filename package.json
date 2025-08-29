@@ -32,6 +32,7 @@
     "@gandlaf21/bc-ur": "^1.1.12",
     "@noble/hashes": "^1.8.0",
     "@nostr-dev-kit/ndk": "^2.14.32",
+    "@nostr-dev-kit/ndk-cache-dexie": "^1.0.0",
     "@quasar/extras": "^1.16.11",
     "@quasar/icongenie": "^4.0.0",
     "@scure/bip32": "^1.7.0",

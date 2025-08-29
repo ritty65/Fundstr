@@ -2,9 +2,9 @@ export const DEFAULT_RELAYS = [
   "wss://relay.damus.io",
   "wss://relay.primal.net",
   "wss://relay.snort.social",
-  // Replaced unreachable relays with active public ones
-  "wss://nostr-pub.wellorder.net",
-  "wss://relay.nostr.band",
+  // Updated to currently active public relays
+  "wss://relay.f7z.io",
+  "wss://nos.lol",
 ];
 
 export const FREE_RELAYS = [

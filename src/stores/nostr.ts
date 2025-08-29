@@ -133,6 +133,42 @@ async function secureGetItem(key: string): Promise<string | null> {
   }
 }
 
+const NOSTR_SESSION_KEY = "nostrSession";
+
+interface StoredSession {
+  pubkey: string;
+  authSource: "nip07" | "privateKey" | "seed";
+}
+
+function readStoredSession(): StoredSession | null {
+  try {
+    const raw = localStorage.getItem(NOSTR_SESSION_KEY);
+    return raw ? (JSON.parse(raw) as StoredSession) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredSession(session: StoredSession | null) {
+  if (!session) {
+    localStorage.removeItem(NOSTR_SESSION_KEY);
+  } else {
+    localStorage.setItem(NOSTR_SESSION_KEY, JSON.stringify(session));
+  }
+}
+
+let nip07ListenerAdded = false;
+function addNip07Listener(store: any) {
+  if (nip07ListenerAdded || typeof window === "undefined") return;
+  window.addEventListener("message", (e: any) => {
+    if (e.data?.type === "nip07:pubkeyChanged" && e.data.pubkey) {
+      store.setPubkey(e.data.pubkey);
+      writeStoredSession({ pubkey: e.data.pubkey, authSource: "nip07" });
+    }
+  });
+  nip07ListenerAdded = true;
+}
+
 export function npubToHex(s: string): string | null {
   const input = s.trim();
   console.debug("[npubToHex] input", input);
@@ -589,10 +625,20 @@ export const useNostrStore = defineStore("nostr", {
   actions: {
     loadKeysFromStorage: async function () {
       if (this.secureStorageLoaded) return;
+      const session = readStoredSession();
+      if (session) {
+        this.pubkey = session.pubkey;
+        this.signerType =
+          session.authSource === "nip07"
+            ? SignerType.NIP07
+            : session.authSource === "privateKey"
+            ? SignerType.PRIVATEKEY
+            : SignerType.SEED;
+      }
       const pk = await secureGetItem("cashu.ndk.pubkey");
-      if (pk) this.pubkey = pk;
+      if (pk && !this.pubkey) this.pubkey = pk;
       const st = await secureGetItem("cashu.ndk.signerType");
-      if (st) this.signerType = st as SignerType;
+      if (st && !session) this.signerType = st as SignerType;
       const nip46 = await secureGetItem("cashu.ndk.nip46Token");
       if (nip46) this.nip46Token = nip46;
       const pks = await secureGetItem("cashu.ndk.privateKeySignerPrivateKey");
@@ -611,6 +657,22 @@ export const useNostrStore = defineStore("nostr", {
         () => this.signerType,
         (v) => {
           secureSetItem("cashu.ndk.signerType", v.toString());
+        },
+      );
+      watch(
+        [() => this.pubkey, () => this.signerType],
+        ([pub, type]) => {
+          if (!pub) {
+            writeStoredSession(null);
+            return;
+          }
+          const authSource =
+            type === SignerType.NIP07
+              ? "nip07"
+              : type === SignerType.PRIVATEKEY
+              ? "privateKey"
+              : "seed";
+          writeStoredSession({ pubkey: pub, authSource });
         },
       );
       watch(
@@ -668,6 +730,8 @@ export const useNostrStore = defineStore("nostr", {
         this.signerType = SignerType.NIP07;
         this.setPubkey(user.pubkey);
         useNdk({ requireSigner: true }).catch(() => {});
+        writeStoredSession({ pubkey: user.pubkey, authSource: "nip07" });
+        addNip07Listener(this);
       } catch (e) {
         throw new Error("The signer request was rejected or blocked.");
       }
@@ -751,6 +815,26 @@ export const useNostrStore = defineStore("nostr", {
     },
     initSignerIfNotSet: async function () {
       await this.loadKeysFromStorage();
+      if (!this.signer && !this.pubkey) {
+        const nip07 =
+          typeof window !== "undefined" ? (window as any).nostr : undefined;
+        if (nip07?.getPublicKey) {
+          try {
+            const pk = await nip07.getPublicKey();
+            this.signerType = SignerType.NIP07;
+            this.setPubkey(pk);
+            writeStoredSession({ pubkey: pk, authSource: "nip07" });
+          } catch {
+            await this.initNdkReadOnly();
+            this.initialized = true;
+            return;
+          }
+        } else {
+          await this.initNdkReadOnly();
+          this.initialized = true;
+          return;
+        }
+      }
       if (!this.signer) {
         if (
           this.signerType === SignerType.NIP07 &&
@@ -905,6 +989,8 @@ export const useNostrStore = defineStore("nostr", {
           this.signerType = SignerType.NIP07;
           this.setPubkey(user.pubkey);
           await this.setSigner(signer);
+          writeStoredSession({ pubkey: user.pubkey, authSource: "nip07" });
+          addNip07Listener(this);
         }
       } catch (e) {
         console.error("Failed to init NIP07 signer:", e);
@@ -962,6 +1048,10 @@ export const useNostrStore = defineStore("nostr", {
       this.signerType = SignerType.PRIVATEKEY;
       this.setPubkey(getPublicKey(privateKeyBytes));
       await this.setSigner(signer);
+      writeStoredSession({
+        pubkey: this.pubkey,
+        authSource: "privateKey",
+      });
     },
     resetPrivateKeySigner: async function () {
       this.privateKeySignerPrivateKey = "";
@@ -982,6 +1072,10 @@ export const useNostrStore = defineStore("nostr", {
       this.signerType = SignerType.SEED;
       this.setPubkey(this.seedSignerPublicKey);
       await this.setSigner(signer);
+      writeStoredSession({
+        pubkey: this.seedSignerPublicKey,
+        authSource: "seed",
+      });
     },
     fetchEventsFromUser: async function () {
       const filter: NDKFilter = { kinds: [1], authors: [this.pubkey] };

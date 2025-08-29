@@ -29,6 +29,10 @@ export const useSettingsStore = defineStore("settings", {
         "cashu.settings.useWebsockets",
         true,
       ),
+      relayHealthChecks: useLocalStorage<boolean>(
+        "cashu.settings.relayHealthChecks",
+        true,
+      ),
       defaultNostrRelays: useLocalStorage<string[]>(
         "cashu.settings.defaultNostrRelays",
         DEFAULT_RELAYS,

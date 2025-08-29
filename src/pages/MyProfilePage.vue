@@ -44,7 +44,11 @@
     >
       <CreatorProfileForm />
       <div class="text-center q-mt-md">
-        <q-btn color="primary" :disable="!isDirty" @click="saveProfile"
+        <q-btn
+          color="primary"
+          :loading="saving"
+          :disable="!isDirty || saving"
+          @click="saveProfile"
           >Save Changes</q-btn
         >
       </div>
@@ -223,6 +227,7 @@ export default defineComponent({
     const bitcoinPrice = computed(() => priceStore.bitcoinPrice);
     const profile = ref<any>({});
     const tiers = ref(hub.getTierArray());
+    const saving = ref(false);
     const profileUrl = computed(() => buildProfileUrl(npub.value, router));
     const profileData = computed(() => ({
       display_name: display_name.value,
@@ -274,20 +279,21 @@ export default defineComponent({
     }
 
     async function saveProfile() {
-      if (!profilePub.value) {
-        notifyError("Pay-to-public-key key is required");
-        return;
-      }
-      await nostr.initSignerIfNotSet();
-      if (!nostr.signer) {
-        notifyError("Please connect a Nostr signer");
-        return;
-      }
-      if (!profileRelays.value.length) {
-        notifyError("Please configure at least one relay");
-        return;
-      }
+      saving.value = true;
       try {
+        if (!profilePub.value) {
+          notifyError("Pay-to-public-key key is required");
+          return;
+        }
+        await nostr.initSignerIfNotSet();
+        if (!nostr.signer) {
+          notifyError("Please connect a Nostr signer");
+          return;
+        }
+        if (!profileRelays.value.length) {
+          notifyError("Please configure at least one relay");
+          return;
+        }
         await publishDiscoveryProfile({
           profile: profileData.value,
           p2pkPub: profilePub.value,
@@ -299,6 +305,8 @@ export default defineComponent({
         profileStore.markClean();
       } catch (e: any) {
         notifyError(e?.message || "Failed to publish profile");
+      } finally {
+        saving.value = false;
       }
     }
 
@@ -346,6 +354,7 @@ export default defineComponent({
       expandTierList,
       expandP2PKKeys,
       profileUrl,
+      saving,
     };
   },
 });

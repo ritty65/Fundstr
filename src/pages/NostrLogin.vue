@@ -16,6 +16,12 @@
       </q-card-section>
       <q-card-actions vertical class="q-gutter-sm">
         <q-btn color="primary" @click="submitKey">Use Key</q-btn>
+        <q-btn
+          v-if="hasNip07"
+          color="primary"
+          outline
+          @click="connectNip07"
+        >Use NIP-07 Extension</q-btn>
         <q-btn flat color="primary" @click="createIdentity"
           >Create Identity</q-btn
         >
@@ -27,6 +33,7 @@
 <script lang="ts">
 import { defineComponent, ref, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
+import { useQuasar } from "quasar";
 import { useNostrStore } from "stores/nostr";
 import { generateSecretKey, nip19 } from "nostr-tools";
 import { hexToBytes } from "@noble/hashes/utils";
@@ -35,8 +42,12 @@ export default defineComponent({
   name: "NostrLogin",
   setup() {
     const nostr = useNostrStore();
+    const $q = useQuasar();
     const key = ref(nostr.activePrivateKeyNsec || nostr.privKeyHex || "");
     const hasExistingKey = computed(() => !!key.value);
+    const hasNip07 = computed(
+      () => typeof window !== "undefined" && !!(window as any).nostr?.getPublicKey,
+    );
     const router = useRouter();
     const route = useRoute();
     const redirect =
@@ -65,6 +76,23 @@ export default defineComponent({
       }
     };
 
+    const connectNip07 = async () => {
+      try {
+        await nostr.connectBrowserSigner();
+        if (!nostr.pubkey) return;
+        if (redirect) {
+          router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
+        } else {
+          router.replace("/wallet");
+        }
+      } catch (e) {
+        $q.notify({
+          type: "negative",
+          message: "Extension connection failed. Make sure a NIP-07 extension is installed and try again.",
+        });
+      }
+    };
+
     const createIdentity = async () => {
       const sk = generateSecretKey();
       const nsec = nip19.nsecEncode(sk);
@@ -77,7 +105,7 @@ export default defineComponent({
       }
     };
 
-    return { key, hasExistingKey, submitKey, createIdentity };
+    return { key, hasExistingKey, hasNip07, submitKey, connectNip07, createIdentity };
   },
 });
 </script>
