@@ -4,6 +4,7 @@ import { FREE_RELAYS } from "src/config/relays";
 // emit a single console message per relay. This keeps startup logs readable when
 // many relays are unreachable.
 const reportedFailures = new Map<string, number>();
+const alreadyReported = new Set<string>();
 let aggregateTimer: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleFailureLog() {
@@ -16,6 +17,9 @@ function scheduleFailureLog() {
     const summary = entries
       .map(([u, c]) => (c > 1 ? `${u} (x${c})` : u))
       .join(", ");
+    for (const [u] of entries) {
+      alreadyReported.add(u);
+    }
     console.error(`WebSocket ping failed for: ${summary}`);
   }, 0);
 }
@@ -87,8 +91,10 @@ export async function pingRelay(url: string): Promise<boolean> {
     }
   }
 
-  reportedFailures.set(url, (reportedFailures.get(url) ?? 0) + maxAttempts);
-  scheduleFailureLog();
+  if (!alreadyReported.has(url)) {
+    reportedFailures.set(url, (reportedFailures.get(url) ?? 0) + maxAttempts);
+    scheduleFailureLog();
+  }
   return false;
 }
 
