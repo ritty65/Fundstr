@@ -1,12 +1,5 @@
 const routes = [
   {
-    path: "/dashboard",
-    component: () => import("layouts/MainLayout.vue"),
-    children: [
-      { path: "", component: () => import("src/pages/WalletPage.vue") },
-    ],
-  },
-  {
     path: "/wallet",
     component: () => import("layouts/MainLayout.vue"),
     children: [
@@ -15,7 +8,7 @@ const routes = [
   },
   {
     path: "/",
-    redirect: "/dashboard",
+    redirect: "/wallet",
   },
   {
     path: "/settings",
