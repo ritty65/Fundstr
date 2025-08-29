@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
-import { watch } from "vue";
+import { watch, computed } from "vue";
 import { Event as NostrEvent } from "nostr-tools";
 import { SignerType } from "./nostr";
 import { v4 as uuidv4 } from "uuid";
@@ -72,6 +72,11 @@ export type MessengerMessage = {
 export const useMessengerStore = defineStore("messenger", {
   state: () => {
     const settings = useSettingsStore();
+    const nostrStore = useNostrStore();
+    const storageKey = (suffix: string) =>
+      computed(
+        () => `cashu.messenger.${nostrStore.pubkey || "anon"}.${suffix}`,
+      );
     if (!Array.isArray(settings.defaultNostrRelays)) {
       settings.defaultNostrRelays = DEFAULT_RELAYS;
     }
@@ -79,32 +84,52 @@ export const useMessengerStore = defineStore("messenger", {
       ? settings.defaultNostrRelays
       : [];
     const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
+
+    const conversations = useLocalStorage<Record<string, MessengerMessage[]>>(
+      storageKey("conversations"),
+      {} as Record<string, MessengerMessage[]>,
+    );
+    const unreadCounts = useLocalStorage<Record<string, number>>(
+      storageKey("unread"),
+      {} as Record<string, number>,
+    );
+    const pinned = useLocalStorage<Record<string, boolean>>(
+      storageKey("pinned"),
+      {} as Record<string, boolean>,
+    );
+    const aliases = useLocalStorage<Record<string, string>>(
+      storageKey("aliases"),
+      {} as Record<string, string>,
+    );
+    const eventLog = useLocalStorage<MessengerMessage[]>(
+      storageKey("eventLog"),
+      [] as MessengerMessage[],
+    );
+    const drawerOpen = useLocalStorage<boolean>(storageKey("drawerOpen"), true);
+    const drawerMini = useLocalStorage<boolean>(storageKey("drawerMini"), false);
+
+    watch(
+      () => nostrStore.pubkey,
+      () => {
+        conversations.value = {} as any;
+        unreadCounts.value = {} as any;
+        pinned.value = {} as any;
+        aliases.value = {} as any;
+        eventLog.value = [] as any;
+      },
+    );
+
     return {
       relays,
-      conversations: useLocalStorage<Record<string, MessengerMessage[]>>(
-        "cashu.messenger.conversations",
-        {} as Record<string, MessengerMessage[]>,
-      ),
-      unreadCounts: useLocalStorage<Record<string, number>>(
-        "cashu.messenger.unread",
-        {} as Record<string, number>,
-      ),
-      pinned: useLocalStorage<Record<string, boolean>>(
-        "cashu.messenger.pinned",
-        {} as Record<string, boolean>,
-      ),
-      aliases: useLocalStorage<Record<string, string>>(
-        "cashu.messenger.aliases",
-        {} as Record<string, string>,
-      ),
-      eventLog: useLocalStorage<MessengerMessage[]>(
-        "cashu.messenger.eventLog",
-        [] as MessengerMessage[],
-      ),
+      conversations,
+      unreadCounts,
+      pinned,
+      aliases,
+      eventLog,
       sendQueue: [] as MessengerMessage[],
       currentConversation: "",
-      drawerOpen: useLocalStorage<boolean>("cashu.messenger.drawerOpen", true),
-      drawerMini: useLocalStorage<boolean>("cashu.messenger.drawerMini", false),
+      drawerOpen,
+      drawerMini,
       started: false,
       watchInitialized: false,
     };

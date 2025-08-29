@@ -104,8 +104,7 @@ const removeAlias = (key: string) => {
 };
 
 const save = async () => {
-  nostr.relays = relays.value as any;
-  await nostr.initPrivateKeySigner(privKey.value as any);
+  await nostr.updateIdentity(privKey.value as any, relays.value as any);
   pubKey.value = nostr.npub;
   showDialog.value = false;
 };

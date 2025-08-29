@@ -56,7 +56,7 @@ export default defineComponent({
 
     const submitKey = async () => {
       if (!key.value.trim()) return;
-      await nostr.initPrivateKeySigner(normalizeKey(key.value));
+      await nostr.updateIdentity(normalizeKey(key.value));
       if (!nostr.pubkey) return;
       if (redirect) {
         router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
@@ -68,7 +68,7 @@ export default defineComponent({
     const createIdentity = async () => {
       const sk = generateSecretKey();
       const nsec = nip19.nsecEncode(sk);
-      await nostr.initPrivateKeySigner(nsec);
+      await nostr.updateIdentity(nsec);
       if (!nostr.pubkey) return;
       if (redirect) {
         router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
