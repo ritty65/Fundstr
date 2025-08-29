@@ -238,6 +238,13 @@ git grep -n "new NDK("
 git grep -n ".ndk"
 ```
 
+### NDK connection retries
+
+The NDK boot uses a single retry by default in production to avoid repeated
+"can't establish connection" warnings. Developers can increase the retry count
+for debugging by setting the `VITE_NDK_CONNECT_RETRIES` environment variable
+(set to `0` to disable retries).
+
 ### Optional Backend Search Service
 
 You can configure a URL that returns NIP-50 search results for the
