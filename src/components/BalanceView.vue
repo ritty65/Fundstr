@@ -274,6 +274,9 @@ export default defineComponent({
     toggleHideBalance() {
       this.hideBalance = !this.hideBalance;
     },
+    formatCurrency(amount, unit) {
+      return useUiStore().formatCurrency(amount, unit);
+    },
     openBucketDetail(bucket) {
       this.viewingBucket = bucket;
       this.detailModalOpen = true;
