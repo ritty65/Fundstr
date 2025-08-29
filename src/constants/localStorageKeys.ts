@@ -31,6 +31,7 @@ export const LOCAL_STORAGE_KEYS = {
   CASHU_NDK_SEEDSIGNERPRIVATEKEY: "cashu.ndk.seedSignerPrivateKey",
   CASHU_NDK_SEEDSIGNERPUBLICKEY: "cashu.ndk.seedSignerPublicKey",
   CASHU_NDK_SIGNERTYPE: "cashu.ndk.signerType",
+  CASHU_NOSTR_SESSION: "cashu.nostr.session",
   CASHU_NPC_ADDRESS: "cashu.npc.address",
   CASHU_NPC_AUTOMATICCLAIM: "cashu.npc.automaticClaim",
   CASHU_NPC_BASEURL: "cashu.npc.baseURL",
