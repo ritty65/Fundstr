@@ -47,7 +47,7 @@ export async function pingRelay(url: string): Promise<boolean> {
           }
           resolve(false);
         }
-      }, 1000);
+      }, 2000);
       ws.onopen = () => {
         if (!settled) {
           settled = true;
@@ -77,8 +77,8 @@ export async function pingRelay(url: string): Promise<boolean> {
       };
     });
 
-  const maxAttempts = 6;
-  let delay = 1000;
+  const maxAttempts = 3;
+  let delay = 2000;
   for (let i = 0; i < maxAttempts; i++) {
     if (await attemptOnce()) return true;
     if (i < maxAttempts - 1) {
