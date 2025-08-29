@@ -1,4 +1,4 @@
-import { FREE_RELAYS } from "src/config/relays";
+import { FREE_RELAYS, FALLBACK_RELAYS } from "src/config/relays";
 
 // keep track of relays that have already produced a constructor error so we only
 // emit a single console message per relay. This keeps startup logs readable when
@@ -121,8 +121,16 @@ export async function filterHealthyRelays(relays: string[]): Promise<string[]> {
   }
 
   if (healthy.length === 0) {
-    throw new Error("no reachable relays");
+    const msg = "No reachable relays. Falling back to public relays.";
+    if (typeof window !== "undefined" && typeof window.alert === "function") {
+      window.alert(msg);
+    } else {
+      console.error(msg);
+    }
+    return FALLBACK_RELAYS;
   }
 
-  return healthy.length >= 2 ? healthy : FREE_RELAYS;
+  return healthy.length >= 2
+    ? healthy
+    : Array.from(new Set([...healthy, ...FALLBACK_RELAYS]));
 }
