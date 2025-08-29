@@ -17,11 +17,17 @@
       <q-card-actions vertical class="q-gutter-sm">
         <q-btn color="primary" @click="submitKey">Use Key</q-btn>
         <q-btn
-          v-if="hasNip07"
+          v-if="hasNip07 && !connected"
           color="primary"
           outline
           @click="connectNip07"
         >Use NIP-07 Extension</q-btn>
+        <q-btn
+          v-else-if="hasNip07 && connected"
+          color="primary"
+          outline
+          @click="switchAccount"
+        >Switch Account</q-btn>
         <q-btn flat color="primary" @click="createIdentity"
           >Create Identity</q-btn
         >
@@ -37,6 +43,7 @@ import { useQuasar } from "quasar";
 import { useNostrStore } from "stores/nostr";
 import { generateSecretKey, nip19 } from "nostr-tools";
 import { hexToBytes } from "@noble/hashes/utils";
+import { LOCAL_STORAGE_KEYS } from "src/constants/localStorageKeys";
 
 export default defineComponent({
   name: "NostrLogin",
@@ -48,6 +55,7 @@ export default defineComponent({
     const hasNip07 = computed(
       () => typeof window !== "undefined" && !!(window as any).nostr?.getPublicKey,
     );
+    const connected = computed(() => !!nostr.pubkey);
     const router = useRouter();
     const route = useRoute();
     const redirect =
@@ -78,6 +86,28 @@ export default defineComponent({
 
     const connectNip07 = async () => {
       try {
+        if (!nostr.pubkey) {
+          await nostr.connectBrowserSigner();
+        }
+        if (!nostr.pubkey) return;
+        if (redirect) {
+          router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
+        } else {
+          router.replace("/wallet");
+        }
+      } catch (e) {
+        $q.notify({
+          type: "negative",
+          message: "Extension connection failed. Make sure a NIP-07 extension is installed and try again.",
+        });
+      }
+    };
+
+    const switchAccount = async () => {
+      try {
+        await nostr.disconnect();
+        nostr.pubkey = '';
+        localStorage.removeItem(LOCAL_STORAGE_KEYS.CASHU_NOSTR_SESSION);
         await nostr.connectBrowserSigner();
         if (!nostr.pubkey) return;
         if (redirect) {
@@ -105,7 +135,7 @@ export default defineComponent({
       }
     };
 
-    return { key, hasExistingKey, hasNip07, submitKey, connectNip07, createIdentity };
+    return { key, hasExistingKey, hasNip07, connected, submitKey, connectNip07, switchAccount, createIdentity };
   },
 });
 </script>

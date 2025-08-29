@@ -5,12 +5,20 @@
       <q-separator />
       <q-card-section class="q-gutter-sm">
         <q-btn
-          v-if="hasNip07"
+          v-if="hasNip07 && !connected"
           unelevated
           color="primary"
           class="full-width"
           label="Use NIP-07"
           @click="connectNip07"
+        />
+        <q-btn
+          v-else-if="hasNip07 && connected"
+          unelevated
+          color="primary"
+          class="full-width"
+          label="Switch account"
+          @click="switchAccount"
         />
         <q-btn
           unelevated
@@ -39,12 +47,20 @@
       <q-separator />
       <q-card-section class="q-gutter-sm">
         <q-btn
-          v-if="hasNip07"
+          v-if="hasNip07 && !connected"
           unelevated
           color="primary"
           class="full-width"
           label="Use NIP-07"
           @click="connectNip07"
+        />
+        <q-btn
+          v-else-if="hasNip07 && connected"
+          unelevated
+          color="primary"
+          class="full-width"
+          label="Switch account"
+          @click="switchAccount"
         />
         <q-btn
           unelevated
@@ -71,7 +87,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { useNostrStore, SignerType } from 'src/stores/nostr'
+import { useNostrStore } from 'src/stores/nostr'
+import { LOCAL_STORAGE_KEYS } from 'src/constants/localStorageKeys'
 
 const props = defineProps<{ modelValue?: boolean; inline?: boolean }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'done'): void }>()
@@ -88,21 +105,30 @@ const nsec = ref('')
 const hasNip07 = computed(
   () => typeof window !== 'undefined' && !!(window as any).nostr?.getPublicKey,
 )
+const connected = computed(() => !!nostr.pubkey)
 
 async function connectNip07() {
   try {
-    const pk = await (window as any).nostr.getPublicKey()
-    const test = {
-      kind: 1,
-      created_at: Math.floor(Date.now() / 1000),
-      tags: [],
-      content: 'test',
+    if (!nostr.pubkey) {
+      await nostr.connectBrowserSigner()
     }
-    await (window as any).nostr.signEvent(test)
+    if (nostr.pubkey) {
+      close()
+    }
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+async function switchAccount() {
+  try {
+    await nostr.disconnect()
+    nostr.pubkey = ''
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.CASHU_NOSTR_SESSION)
     await nostr.connectBrowserSigner()
-    nostr.setPubkey(pk)
-    nostr.signerType = SignerType.NIP07
-    close()
+    if (nostr.pubkey) {
+      close()
+    }
   } catch (e) {
     console.error(e)
   }
