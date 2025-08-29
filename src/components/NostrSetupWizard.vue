@@ -4,10 +4,29 @@
       <q-card-section class="text-h6">Nostr Setup</q-card-section>
       <q-card-section>
         <q-stepper v-model="step" vertical color="primary" animated>
-          <q-step :name="1" title="Private Key" :done="step > 1">
-            <q-input v-model="privKey" label="nsec or hex private key" />
-            <div class="row justify-end q-mt-md">
-              <q-btn color="primary" label="Next" @click="nextFromKey" />
+          <q-step :name="1" title="Identity" :done="step > 1">
+            <q-option-group
+              v-model="loginMethod"
+              type="radio"
+              :options="loginOptions"
+            />
+            <div v-if="loginMethod === 'private'">
+              <q-input v-model="privKey" label="nsec or hex private key" />
+              <div class="row justify-end q-mt-md">
+                <q-btn color="primary" label="Next" @click="nextFromKey" />
+              </div>
+            </div>
+            <div v-else>
+              <div v-if="extError" class="text-negative q-mb-sm">
+                {{ extError }}
+              </div>
+              <div class="row justify-end q-mt-md">
+                <q-btn
+                  color="primary"
+                  label="Connect Extension"
+                  @click="connectExtension"
+                />
+              </div>
             </div>
           </q-step>
           <q-step :name="2" title="Relays" :done="step > 2">
@@ -35,7 +54,9 @@
               <span>Connecting...</span>
             </div>
             <div v-else-if="connected" class="text-positive">Connected!</div>
-            <div v-else-if="error" class="text-negative">{{ error }}</div>
+            <div v-else-if="connectError" class="text-negative">
+              {{ connectError }}
+            </div>
             <div
               class="row justify-between q-gutter-sm q-mt-md"
               v-if="!connected"
@@ -59,7 +80,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, watch, computed } from "vue";
+import { ref, computed } from "vue";
 import { useNostrStore } from "src/stores/nostr";
 import { useMessengerStore } from "src/stores/messenger";
 
@@ -80,7 +101,13 @@ const relayInput = ref("");
 const relays = ref<string[]>([...messenger.relays]);
 const connecting = ref(false);
 const connected = ref(false);
-const error = ref("");
+const connectError = ref("");
+const loginMethod = ref<"private" | "extension">("private");
+const loginOptions = [
+  { label: "Private Key", value: "private" },
+  { label: "Extension", value: "extension" },
+];
+const extError = ref("");
 
 function addRelay() {
   const val = relayInput.value.trim();
@@ -99,6 +126,21 @@ async function nextFromKey() {
   step.value = 2;
 }
 
+async function connectExtension() {
+  extError.value = "";
+  const available = await nostr.checkNip07Signer(true);
+  if (!available) {
+    extError.value = "No NIP-07 extension detected";
+    return;
+  }
+  try {
+    await nostr.connectBrowserSigner();
+    step.value = 2;
+  } catch (e: any) {
+    extError.value = e?.message || "Failed to connect";
+  }
+}
+
 function nextFromRelays() {
   if (relays.value.length === 0) return;
   step.value = 3;
@@ -106,12 +148,12 @@ function nextFromRelays() {
 
 async function connect() {
   connecting.value = true;
-  error.value = "";
+  connectError.value = "";
   try {
     await messenger.connect(relays.value);
     connected.value = messenger.connected;
   } catch (e: any) {
-    error.value = e?.message || "Failed to connect";
+    connectError.value = e?.message || "Failed to connect";
     connected.value = false;
   } finally {
     connecting.value = false;
