@@ -93,6 +93,26 @@ async function notifyWarning(
   });
 }
 
+async function notifyRefreshed(
+  message: string,
+  position = "top" as QNotifyCreateOptions["position"],
+) {
+  Notify.create({
+    timeout: 5000,
+    type: "positive",
+    message,
+    position,
+    progress: true,
+    actions: [
+      {
+        icon: "close",
+        color: "white",
+        handler: () => {},
+      },
+    ],
+  });
+}
+
 async function notify(
   message: string,
   position = "top" as QNotifyCreateOptions["position"],
@@ -114,4 +134,11 @@ async function notify(
   });
 }
 
-export { notifyApiError, notifySuccess, notifyError, notifyWarning, notify };
+export {
+  notifyApiError,
+  notifySuccess,
+  notifyError,
+  notifyWarning,
+  notify,
+  notifyRefreshed,
+};
