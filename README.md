@@ -50,6 +50,7 @@ Think Patreon, but built for the Nostr ecosystem and leveraging the privacy and 
 - **Subscriber Analytics Dashboard** – KPI cards and charts visualize subscriber counts, status mix and projected revenue. The final KPI toggles between upcoming week or month to estimate expected income.
 - **Direct Cashu Donations & Pledges** – One-time or recurring support using P2PK and timelocks.
 - **Nostr Direct Messages** – NIP-04 encrypted chat with creators and other users.
+- **Relay Management & Caching** – Relay ping results are cached to avoid console floods while NDK's outbox model auto-connects to user relays. Events persist locally in a Dexie-backed cache for offline access. If every relay is unreachable, the app warns about possible network restrictions and health checks can be disabled in Settings.
 - **Privacy-Preserving** – Chaumian ecash via Cashu.
 - **Cross-Platform** – Web App, PWA and native Android/iOS.
 - **npub.cash Integration** – Option to receive funds via a Lightning Address.
