@@ -610,6 +610,33 @@ export const useNostrStore = defineStore("nostr", {
     },
   },
   actions: {
+    validateNip07Session: async function (): Promise<string | null> {
+      const session = loadSession();
+      if (session?.authSource !== "nip07") return null;
+      try {
+        const extPk = await (window as any).nostr?.getPublicKey?.();
+        if (extPk === session.pubkey) {
+          this.signerType = SignerType.NIP07;
+          this.setPubkey(extPk);
+          return extPk;
+        }
+        // eslint-disable-next-line no-alert
+        const shouldSwitch = window.confirm(
+          "Nostr extension account differs from saved session. Switch to it?",
+        );
+        if (shouldSwitch) {
+          this.signerType = SignerType.NIP07;
+          this.setPubkey(extPk);
+          saveSession({ pubkey: extPk, authSource: "nip07" });
+          return extPk;
+        }
+        this.signerType = SignerType.SEED;
+        this.setPubkey("");
+      } catch {
+        /* ignore */
+      }
+      return null;
+    },
     loadKeysFromStorage: async function () {
       if (this.secureStorageLoaded) return;
       const pk = await secureGetItem("cashu.ndk.pubkey");
@@ -669,6 +696,7 @@ export const useNostrStore = defineStore("nostr", {
         },
       );
       persistSession();
+      await this.validateNip07Session();
       this.secureStorageLoaded = true;
     },
     initNdkReadOnly: async function () {
@@ -945,6 +973,20 @@ export const useNostrStore = defineStore("nostr", {
       return this.nip07SignerAvailable;
     },
     initNip07Signer: async function () {
+      const existing = await this.validateNip07Session();
+      if (existing) {
+        const signer = new NDKNip07Signer();
+        saveSession({ pubkey: this.pubkey, authSource: "nip07" });
+        await this.setSigner(signer);
+        if ((window as any).nostr?.on) {
+          (window as any).nostr.on("accountChanged", (pk: string) => {
+            this.setPubkey(pk);
+            saveSession({ pubkey: pk, authSource: "nip07" });
+          });
+        }
+        return;
+      }
+
       const available = await this.checkNip07Signer();
       if (!available) {
         if (!this.nip07Warned) {
