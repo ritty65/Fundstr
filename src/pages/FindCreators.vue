@@ -1,6 +1,11 @@
 <template>
   <div class="find-creators-wrapper">
-    <FindCreatorsRoute />
+    <iframe
+      ref="iframeEl"
+      src="/find-creators.html"
+      class="find-creators-frame"
+      title="Find Creators"
+    />
     <DonateDialog v-model="showDonateDialog" @confirm="handleDonate" />
     <SubscribeDialog
       v-model="showSubscribeDialog"
@@ -122,9 +127,8 @@ import DonateDialog from "components/DonateDialog.vue";
 import SubscribeDialog from "components/SubscribeDialog.vue";
 import SendTokenDialog from "components/SendTokenDialog.vue";
 import MediaPreview from "components/MediaPreview.vue";
-import FindCreatorsRoute from "./FindCreatorsRoute.vue";
 
-defineOptions({ components: { MediaPreview, FindCreatorsRoute } });
+defineOptions({ components: { MediaPreview } });
 import { useSendTokensStore } from "stores/sendTokensStore";
 import { useDonationPresetsStore } from "stores/donationPresets";
 import { useCreatorsStore } from "stores/creators";
@@ -148,6 +152,8 @@ import {
 } from "quasar";
 import { nip19 } from "nostr-tools";
 
+const iframeEl = ref<HTMLIFrameElement | null>(null);
+const iframeLoaded = ref(false);
 const showDonateDialog = ref(false);
 const selectedPubkey = ref("");
 const showTierDialog = ref(false);
@@ -178,13 +184,21 @@ const loadingProfile = ref(false);
 let tierTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function sendTheme() {
-  window.postMessage({ type: "set-theme", dark: $q.dark.isActive }, "*");
+  iframeEl.value?.contentWindow?.postMessage(
+    { type: "set-theme", dark: $q.dark.isActive },
+    "*",
+  );
+}
+
+function onIframeLoad() {
+  iframeLoaded.value = true;
+  sendTheme();
 }
 
 watch(
   () => $q.dark.isActive,
   () => {
-    sendTheme();
+    if (iframeLoaded.value) sendTheme();
   },
 );
 
@@ -336,7 +350,7 @@ function handleDonate({
 
 onMounted(async () => {
   window.addEventListener("message", onMessage);
-  sendTheme();
+  iframeEl.value?.addEventListener("load", onIframeLoad);
   try {
     await nostr.initNdkReadOnly();
   } catch (e: any) {
@@ -350,13 +364,25 @@ onMounted(async () => {
       router.replace({ name: "PublicCreatorProfile", params: { npub } });
       return;
     } catch {
-      window.postMessage({ type: "prefillSearch", npub }, "*");
+      if (iframeEl.value) {
+        iframeEl.value.addEventListener(
+          "load",
+          () => {
+            iframeEl.value?.contentWindow?.postMessage(
+              { type: "prefillSearch", npub },
+              "*",
+            );
+          },
+          { once: true },
+        );
+      }
     }
   }
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("message", onMessage);
+  iframeEl.value?.removeEventListener("load", onIframeLoad);
   if (tierTimeout) clearTimeout(tierTimeout);
   nutzapProfile.value = null;
   loadingProfile.value = false;
@@ -368,6 +394,12 @@ onBeforeUnmount(() => {
   height: 100vh;
   padding: 0;
   margin: 0;
+}
+
+.find-creators-frame {
+  border: none;
+  width: 100%;
+  height: 100%;
 }
 
 .tier-dialog {
