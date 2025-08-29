@@ -51,9 +51,11 @@ export const useReceiveTokensStore = defineStore("receiveTokensStore", {
       return enqueueRedemption(fn);
     },
     decodeToken: function (encodedToken: string) {
-      encodedToken = encodedToken.trim();
+      // strip all whitespace/newlines before validation
+      encodedToken = encodedToken.replace(/\s+/g, "");
       if (!isValidTokenString(encodedToken)) {
         console.error("Invalid token string");
+        notifyError("Invalid token string");
         return undefined;
       }
       let decodedToken = undefined;
@@ -62,10 +64,12 @@ export const useReceiveTokensStore = defineStore("receiveTokensStore", {
         const proofs = token.getProofs(decodedToken);
         if (!proofs || proofs.length === 0) {
           console.error("Decoded token contains no proofs");
+          notifyError("Decoded token contains no proofs");
           return undefined;
         }
       } catch (error) {
         console.error(error);
+        notifyError("Failed to decode token");
         return undefined;
       }
       return decodedToken;
