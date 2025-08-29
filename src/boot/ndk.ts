@@ -2,7 +2,6 @@ import { boot } from "quasar/wrappers";
 import { useBootErrorStore } from "stores/bootError";
 import NDK, { NDKSigner } from "@nostr-dev-kit/ndk";
 import { useNostrStore } from "stores/nostr";
-import { NDKEvent, type NDKFilter } from "@nostr-dev-kit/ndk";
 import { useSettingsStore } from "src/stores/settings";
 import { DEFAULT_RELAYS, FREE_RELAYS } from "src/config/relays";
 import { filterHealthyRelays } from "src/utils/relayHealth";
@@ -86,9 +85,75 @@ export async function safeConnect(
     }
   }
   console.warn(
-    "[NDK] connect failed after", retries, "attempts:", lastError?.message,
+    "[NDK] connect failed after",
+    retries,
+    "attempts:",
+    lastError?.message,
   );
   return lastError;
+}
+
+async function resolveRelayUrls(
+  relays: string[],
+  doHealthCheck: boolean,
+): Promise<{ urls: string[]; usedFallback: boolean }> {
+  let usedFallback = false;
+  let relayUrls = relays;
+  if (doHealthCheck) {
+    try {
+      relayUrls = await filterHealthyRelays(relays, {
+        onFallback: () => {
+          usedFallback = true;
+        },
+      });
+    } catch (e) {
+      console.warn("[NDK] relay health check failed", e);
+      relayUrls = FREE_RELAYS;
+      usedFallback = true;
+    }
+  }
+  return { urls: relayUrls, usedFallback };
+}
+
+async function waitForFirstRelayConnection(
+  ndk: NDK,
+  timeoutMs = 7000,
+): Promise<boolean> {
+  if ([...ndk.pool.relays.values()].some((r: any) => r.connected)) {
+    return true;
+  }
+
+  return new Promise((resolve) => {
+    const onConnect = () => {
+      cleanup();
+      resolve(true);
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve(false);
+    }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      const emitter: any = ndk.pool as any;
+      if (typeof emitter.off === "function") {
+        emitter.off("relay:connect", onConnect);
+      } else if (typeof emitter.removeListener === "function") {
+        emitter.removeListener("relay:connect", onConnect);
+      }
+    };
+
+    ndk.pool.on("relay:connect", onConnect);
+  });
+}
+
+async function connectWithFallback(ndk: NDK): Promise<void> {
+  await safeConnect(ndk);
+  const connected = await waitForFirstRelayConnection(ndk);
+  if (!connected) {
+    mergeDefaultRelays(ndk);
+    await safeConnect(ndk);
+  }
 }
 
 async function createReadOnlyNdk(): Promise<NDK> {
@@ -100,19 +165,18 @@ async function createReadOnlyNdk(): Promise<NDK> {
     ? settings.defaultNostrRelays
     : [];
   const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
-  let relayUrls = relays;
-  if (settings.relayHealthChecks) {
-    try {
-      const healthy = await filterHealthyRelays(relays);
-      relayUrls = healthy.length ? healthy : FREE_RELAYS;
-    } catch {
-      notifyWarning(
-        "All Nostr relays unreachable",
-        "Your network may block WebSocket connections",
-      );
-      relayUrls = FREE_RELAYS;
-    }
+
+  const { urls: relayUrls, usedFallback } = await resolveRelayUrls(
+    relays,
+    settings.relayHealthChecks,
+  );
+  if (usedFallback) {
+    notifyWarning(
+      "Unable to reach preferred Nostr relays",
+      "Connected using backup relays. Check your internet connection or configure custom relays in Settings.",
+    );
   }
+
   const cache = await getDexieAdapter();
   const ndk = new NDK({
     explicitRelayUrls: relayUrls,
@@ -124,12 +188,7 @@ async function createReadOnlyNdk(): Promise<NDK> {
   });
   attachRelayErrorHandlers(ndk);
   mergeDefaultRelays(ndk);
-  await safeConnect(ndk);
-  await new Promise((r) => setTimeout(r, 3000));
-  if (![...ndk.pool.relays.values()].some((r: any) => r.connected)) {
-    mergeDefaultRelays(ndk);
-    await safeConnect(ndk);
-  }
+  await connectWithFallback(ndk);
   return ndk;
 }
 
@@ -138,19 +197,18 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
   const baseRelays = settings.defaultNostrRelays.length
     ? settings.defaultNostrRelays
     : DEFAULT_RELAYS;
-  let relayUrls = baseRelays;
-  if (settings.relayHealthChecks) {
-    try {
-      const healthy = await filterHealthyRelays(baseRelays);
-      relayUrls = healthy.length ? healthy : FREE_RELAYS;
-    } catch {
-      notifyWarning(
-        "All Nostr relays unreachable",
-        "Your network may block WebSocket connections",
-      );
-      relayUrls = FREE_RELAYS;
-    }
+
+  const { urls: relayUrls, usedFallback } = await resolveRelayUrls(
+    baseRelays,
+    settings.relayHealthChecks,
+  );
+  if (usedFallback) {
+    notifyWarning(
+      "Unable to reach preferred Nostr relays",
+      "Connected using backup relays. Check your internet connection or configure custom relays in Settings.",
+    );
   }
+
   const cache = await getDexieAdapter();
   const ndk = new NDK({
     explicitRelayUrls: relayUrls,
@@ -163,12 +221,7 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
   attachRelayErrorHandlers(ndk);
   mergeDefaultRelays(ndk);
   ndk.signer = signer;
-  await safeConnect(ndk);
-  await new Promise((r) => setTimeout(r, 3000));
-  if (![...ndk.pool.relays.values()].some((r: any) => r.connected)) {
-    mergeDefaultRelays(ndk);
-    await safeConnect(ndk);
-  }
+  await connectWithFallback(ndk);
   return ndk;
 }
 
@@ -182,46 +235,7 @@ export async function createNdk(): Promise<NDK> {
     return createReadOnlyNdk();
   }
 
-  const settings = useSettingsStore();
-  if (!Array.isArray(settings.defaultNostrRelays)) {
-    settings.defaultNostrRelays = DEFAULT_RELAYS;
-  }
-  const userRelays = Array.isArray(settings.defaultNostrRelays)
-    ? settings.defaultNostrRelays
-    : [];
-  const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
-  let relayUrls = relays;
-  if (settings.relayHealthChecks) {
-    try {
-      const healthy = await filterHealthyRelays(relays);
-      relayUrls = healthy.length ? healthy : FREE_RELAYS;
-    } catch {
-      notifyWarning(
-        "All Nostr relays unreachable",
-        "Your network may block WebSocket connections",
-      );
-      relayUrls = FREE_RELAYS;
-    }
-  }
-  const cache = await getDexieAdapter();
-  const ndk = new NDK({
-    signer: signer as any,
-    explicitRelayUrls: relayUrls,
-    enableOutboxModel: true,
-    autoConnectUserRelays: true,
-    cacheAdapter: cache,
-    initialValidationRatio: 0.5,
-    lowestValidationRatio: 0.1,
-  });
-  attachRelayErrorHandlers(ndk);
-  mergeDefaultRelays(ndk);
-  await safeConnect(ndk);
-  await new Promise((r) => setTimeout(r, 3000));
-  if (![...ndk.pool.relays.values()].some((r: any) => r.connected)) {
-    mergeDefaultRelays(ndk);
-    await safeConnect(ndk);
-  }
-  return ndk;
+  return createSignedNdk(signer as any);
 }
 
 export async function rebuildNdk(
@@ -289,3 +303,4 @@ export default boot(async ({ app }) => {
   app.provide("$ndkPromise", ndkPromise);
   ndkPromise.catch((e) => useBootErrorStore().set(e as NdkBootError));
 });
+
