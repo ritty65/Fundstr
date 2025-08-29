@@ -28,6 +28,14 @@
     <link rel="icon" type="image/png" sizes="32x32" href="icons/32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="icons/16x16.png" />
     <link rel="icon" type="image/ico" href="favicon.ico" />
+
+    <script>
+      if (!window.nostr) {
+        const s = document.createElement('script');
+        s.src = 'nostr-provider.js';
+        document.head.appendChild(s);
+      }
+    </script>
   </head>
   <body>
     <!-- quasar:entry-point -->
