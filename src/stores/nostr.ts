@@ -994,7 +994,12 @@ export const useNostrStore = defineStore("nostr", {
     },
     async updateIdentity(nsec: string, relays?: string[]) {
       if (relays) this.relays = relays as any;
-      await this.initPrivateKeySigner(nsec);
+      await this.checkNip07Signer(true);
+      if (this.signerType === SignerType.NIP07 && this.nip07SignerAvailable) {
+        await this.initNip07Signer();
+      } else {
+        await this.initPrivateKeySigner(nsec);
+      }
     },
     resetPrivateKeySigner: async function () {
       this.privateKeySignerPrivateKey = "";
