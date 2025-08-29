@@ -616,8 +616,7 @@ export const useNostrStore = defineStore("nostr", {
       try {
         const extPk = await (window as any).nostr?.getPublicKey?.();
         if (extPk === session.pubkey) {
-          this.signerType = SignerType.NIP07;
-          this.setPubkey(extPk);
+          this.setSignerWithSource(extPk, "nip07");
           return extPk;
         }
         // eslint-disable-next-line no-alert
@@ -625,13 +624,11 @@ export const useNostrStore = defineStore("nostr", {
           "Nostr extension account differs from saved session. Switch to it?",
         );
         if (shouldSwitch) {
-          this.signerType = SignerType.NIP07;
-          this.setPubkey(extPk);
-          saveSession({ pubkey: extPk, authSource: "nip07" });
+          this.setSignerWithSource(extPk, "nip07");
           return extPk;
         }
         this.signerType = SignerType.SEED;
-        this.setPubkey("");
+        this.setSignerWithSource("", "local");
       } catch {
         /* ignore */
       }
@@ -661,7 +658,16 @@ export const useNostrStore = defineStore("nostr", {
         () => this.pubkey,
         (v) => {
           secureSetItem("cashu.ndk.pubkey", v);
-          persistSession();
+          const current = loadSession();
+          const newSource =
+            this.signerType === SignerType.NIP07 ? "nip07" : "local";
+          if (
+            !current ||
+            current.authSource === newSource ||
+            window.confirm("Auth source changed. Replace saved session?")
+          ) {
+            saveSession({ pubkey: v, authSource: newSource });
+          }
         },
       );
       watch(
@@ -725,8 +731,7 @@ export const useNostrStore = defineStore("nostr", {
         "NIP-07 account changed. Use the new account?",
       );
       if (approved) {
-        this.setPubkey(pk);
-        saveSession({ pubkey: pk, authSource: "nip07" });
+        this.setSignerWithSource(pk, "nip07");
       } else {
         await this.disconnect();
         this.pubkey = "";
@@ -742,9 +747,7 @@ export const useNostrStore = defineStore("nostr", {
       try {
         const user = await nip07.user();
         this.signer = nip07;
-        this.signerType = SignerType.NIP07;
-        this.setPubkey(user.pubkey);
-        saveSession({ pubkey: user.pubkey, authSource: "nip07" });
+        this.setSignerWithSource(user.pubkey, "nip07");
         if ((window as any).nostr?.on) {
           (window as any).nostr.on("accountChanged", (pk: string) =>
             this.handleAccountChanged(pk),
@@ -872,6 +875,16 @@ export const useNostrStore = defineStore("nostr", {
       });
       await this.connect();
     },
+    setSignerWithSource: function (
+      pubkey: string,
+      authSource: "nip07" | "local",
+    ) {
+      if (authSource === "nip07") {
+        this.signerType = SignerType.NIP07;
+      }
+      this.setPubkey(pubkey);
+      saveSession({ pubkey, authSource });
+    },
     signDummyEvent: async function (): Promise<NDKEvent> {
       const ndkEvent = new NDKEvent();
       ndkEvent.kind = 1;
@@ -976,12 +989,11 @@ export const useNostrStore = defineStore("nostr", {
       const existing = await this.validateNip07Session();
       if (existing) {
         const signer = new NDKNip07Signer();
-        saveSession({ pubkey: this.pubkey, authSource: "nip07" });
+        this.setSignerWithSource(this.pubkey, "nip07");
         await this.setSigner(signer);
         if ((window as any).nostr?.on) {
           (window as any).nostr.on("accountChanged", (pk: string) => {
-            this.setPubkey(pk);
-            saveSession({ pubkey: pk, authSource: "nip07" });
+            this.setSignerWithSource(pk, "nip07");
           });
         }
         return;
@@ -1010,9 +1022,7 @@ export const useNostrStore = defineStore("nostr", {
               "Your extension returned a different account; updating session.",
             );
           }
-          this.signerType = SignerType.NIP07;
-          this.setPubkey(user.pubkey);
-          saveSession({ pubkey: user.pubkey, authSource: "nip07" });
+          this.setSignerWithSource(user.pubkey, "nip07");
           await this.setSigner(signer);
           if ((window as any).nostr?.on) {
             (window as any).nostr.on("accountChanged", (pk: string) =>
@@ -1049,7 +1059,7 @@ export const useNostrStore = defineStore("nostr", {
       // wait until the signer is ready
       const loggedinUser = await signer.blockUntilReady();
       alert("You are now logged in as " + loggedinUser.npub);
-      this.setPubkey(loggedinUser.pubkey);
+      this.setSignerWithSource(loggedinUser.pubkey, "local");
     },
     resetNip46Signer: async function () {
       this.nip46Token = "";
@@ -1074,7 +1084,7 @@ export const useNostrStore = defineStore("nostr", {
       const signer = new NDKPrivateKeySigner(privateKeyHex);
       this.privateKeySignerPrivateKey = privateKeyHex;
       this.signerType = SignerType.PRIVATEKEY;
-      this.setPubkey(getPublicKey(privateKeyBytes));
+      this.setSignerWithSource(getPublicKey(privateKeyBytes), "local");
       await this.setSigner(signer);
     },
     resetPrivateKeySigner: async function () {
@@ -1094,7 +1104,7 @@ export const useNostrStore = defineStore("nostr", {
       await this.walletSeedGenerateKeyPair();
       const signer = new NDKPrivateKeySigner(this.seedSignerPrivateKey);
       this.signerType = SignerType.SEED;
-      this.setPubkey(this.seedSignerPublicKey);
+      this.setSignerWithSource(this.seedSignerPublicKey, "local");
       await this.setSigner(signer);
     },
     fetchEventsFromUser: async function () {
