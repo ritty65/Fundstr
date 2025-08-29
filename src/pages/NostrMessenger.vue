@@ -30,6 +30,9 @@
           <q-btn flat dense label="Reconnect All" @click="reconnectAll" />
         </div>
       </q-banner>
+      <div class="row justify-end q-mb-sm" v-if="!loading">
+        <q-btn flat dense label="Switch Account" @click="switchAccount" />
+      </div>
       <q-spinner v-if="loading" size="lg" color="primary" />
       <ActiveChatHeader :pubkey="selected" />
       <MessageList :messages="messages" class="col" />
@@ -192,6 +195,16 @@ export default defineComponent({
       }
     });
 
+    watch(
+      () => nostr.pubkey,
+      async (newVal, oldVal) => {
+        if (newVal && newVal !== oldVal && !loading.value) {
+          await messenger.loadIdentity();
+          await messenger.start();
+        }
+      },
+    );
+
     const sendMessage = (
       payload:
         | string
@@ -239,6 +252,19 @@ export default defineComponent({
       await init();
     };
 
+    const switchAccount = async () => {
+      const hasExt = await nostr.checkNip07Signer(true);
+      if (!hasExt) {
+        $q.notify({ type: "negative", message: "No NIP-07 extension detected" });
+        return;
+      }
+      try {
+        await nostr.connectBrowserSigner();
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
     return {
       loading,
       connecting,
@@ -254,6 +280,7 @@ export default defineComponent({
       totalRelays,
       nextReconnectIn,
       setupComplete,
+      switchAccount,
       openDrawer,
       ui,
     };
