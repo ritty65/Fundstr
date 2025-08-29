@@ -56,6 +56,8 @@ jobs:
         run: |
           rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" \
             dist/spa/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}
+          rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" \
+            dist/spa/assets/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}assets/
 
       - name: Drop deploy marker & perms
         run: |
