@@ -23,6 +23,7 @@ import { useSettingsStore } from "./settings";
 import { decode as decodeBolt11 } from "light-bolt11-decoder";
 import { useNostrStore } from "./nostr";
 import { useNdk } from "src/composables/useNdk";
+import { watch } from "vue";
 
 type NWCConnection = {
   walletPublicKey: string;
@@ -91,9 +92,26 @@ export const useNWCStore = defineStore("nwc", {
     subscriptions: [] as NDKSubscription[],
     showNWCDialog: false,
     showNWCData: { connection: {} as NWCConnection, connectionString: "" },
+    watchInitialized: false,
   }),
   getters: {},
   actions: {
+    initPubkeyWatcher() {
+      if (this.watchInitialized) return;
+      const nostr = useNostrStore();
+      watch(
+        () => nostr.pubkey,
+        async () => {
+          this.unsubscribeNWC();
+          this.connections = [] as any;
+          this.seenCommandsUntil = 0;
+          if (this.nwcEnabled) {
+            await this.generateNWCConnection();
+          }
+        },
+      );
+      this.watchInitialized = true;
+    },
     // ––––---------- NWC Command Handlers ––––----------
     handleGetInfo: async function (nwcCommand: NWCCommand) {
       debug("### get_info", nwcCommand.method);
@@ -431,6 +449,7 @@ export const useNWCStore = defineStore("nwc", {
       )}&secret=${connectionSecretHex}`;
     },
     generateNWCConnection: async function () {
+      this.initPubkeyWatcher();
       const nostr = useNostrStore();
       await nostr.initSignerIfNotSet();
       this.relays = nostr.relays as any;

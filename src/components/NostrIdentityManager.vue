@@ -10,6 +10,12 @@
         <q-card-section class="text-h6">Identity &amp; Relays</q-card-section>
         <q-card-section>
           <q-input v-model="privKey" label="Private Key" type="text" />
+          <q-btn
+            v-if="nip07SignerAvailable"
+            label="Use NIP-07"
+            class="q-mt-sm"
+            @click="useNip07"
+          />
           <q-input
             v-model="pubKey"
             label="Public Key"
@@ -66,10 +72,14 @@
 
 <script lang="ts" setup>
 import { ref } from "vue";
+import { storeToRefs } from "pinia";
 import { useNostrStore } from "src/stores/nostr";
 import { useMessengerStore } from "src/stores/messenger";
 
 const nostr = useNostrStore();
+const { nip07SignerAvailable } = storeToRefs(nostr);
+const { checkNip07Signer, connectBrowserSigner } = nostr;
+checkNip07Signer(true);
 
 const showDialog = ref(false);
 const privKey = ref(nostr.activePrivateKeyNsec);
@@ -101,6 +111,13 @@ const saveAlias = () => {
 
 const removeAlias = (key: string) => {
   messenger.setAlias(key, "");
+};
+
+const useNip07 = async () => {
+  await connectBrowserSigner();
+  pubKey.value = nostr.npub;
+  privKey.value = nostr.activePrivateKeyNsec;
+  showDialog.value = false;
 };
 
 const save = async () => {

@@ -1762,7 +1762,7 @@
 <script lang="ts">import windowMixin from 'src/mixins/windowMixin'
 import { debug } from "src/js/logger";
 
-import { defineComponent } from "vue";
+import { defineComponent, watch } from "vue";
 import { useClipboard } from "src/composables/useClipboard";
 import P2PKDialog from "./P2PKDialog.vue";
 import NWCDialog from "./NWCDialog.vue";
@@ -2174,6 +2174,12 @@ export default defineComponent({
   created: async function () {
     this.nip07SignerAvailable = await this.checkNip07Signer();
     debug("Nip07 signer available", this.nip07SignerAvailable);
+    watch(
+      () => useNostrStore().pubkey,
+      async () => {
+        this.nip07SignerAvailable = await this.checkNip07Signer();
+      },
+    );
     // Set the initial selected language based on the current locale
     const currentLocale =
       this.$i18n.locale === "en" ? "en-US" : this.$i18n.locale;
