@@ -80,7 +80,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
     logout() {
       const nostr = useNostrStore();
       nostr.disconnect();
-      nostr.setPubkey("");
+      nostr.setSignerWithSource("", "local");
       this.tiers = {} as any;
       this.tierOrder = [];
       const profileStore = useCreatorProfileStore();
