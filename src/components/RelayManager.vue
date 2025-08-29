@@ -105,12 +105,13 @@ const connect = async () => {
     .split(/\r?\n/)
     .map((r) => r.trim())
     .filter(Boolean);
+  const uniqueUrls = Array.from(new Set(urls));
   try {
     const ndk = await useNdk({ requireSigner: false });
-    for (const url of urls) {
+    for (const url of uniqueUrls) {
       ndk.addExplicitRelay(url);
     }
-    await messenger.connect(urls);
+    await messenger.connect(uniqueUrls);
     notifySuccess("Connected to relays");
   } catch (err: any) {
     notifyError(err?.message || "Failed to connect");
