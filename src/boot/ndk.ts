@@ -11,12 +11,8 @@ let dexieAdapter: any;
 async function getDexieAdapter() {
   if (dexieAdapter !== undefined) return dexieAdapter;
   try {
-    const loader = new Function(
-      "m",
-      "return import(m)",
-    ) as (m: string) => Promise<any>;
-    const mod = await loader("@nostr-dev-kit/ndk-cache-dexie");
-    dexieAdapter = new mod.NDKCacheAdapterDexie({ dbName: "fundstrCache" });
+    const mod = await import("@nostr-dev-kit/ndk-cache-dexie");
+    dexieAdapter = new mod.default({ dbName: "fundstrCache" });
   } catch (e) {
     console.warn("[NDK] Dexie cache unavailable", e);
     dexieAdapter = undefined;
