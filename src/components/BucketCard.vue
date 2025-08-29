@@ -78,7 +78,6 @@
     </div>
 
     <q-menu
-      v-if="menuTarget"
       v-model="menu"
       anchor="top right"
       self="top right"
