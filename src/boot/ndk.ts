@@ -32,11 +32,12 @@ export function mergeDefaultRelays(ndk: NDK) {
   }
 }
 
+const reportedRelays = new Set<string>();
+
 function attachRelayErrorHandlers(ndk: NDK) {
-  const reported = new Set<string>();
   ndk.pool.on("relay:disconnect", (relay: any) => {
-    if (reported.has(relay.url)) return;
-    reported.add(relay.url);
+    if (reportedRelays.has(relay.url)) return;
+    reportedRelays.add(relay.url);
     console.debug(`[NDK] relay disconnected: ${relay.url}`);
   });
   ndk.pool.on("notice", (relay: any, notice: string) => {
