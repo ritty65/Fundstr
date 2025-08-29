@@ -59,6 +59,8 @@ import { useP2PKStore } from "./p2pk";
 import { watch } from "vue";
 import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
+import { useMessengerStore } from "./messenger";
+import { useCreatorHubStore } from "./creatorHub";
 
 const STORAGE_SECRET = "cashu_ndk_storage_key";
 let cachedKey: CryptoKey | null = null;
@@ -796,6 +798,7 @@ export const useNostrStore = defineStore("nostr", {
     },
     setPubkey: function (pubkey: string) {
       debug("Setting pubkey to", pubkey);
+      const prev = this.pubkey;
       this.pubkey = pubkey;
       try {
         const privKey = this.privKeyHex;
@@ -815,6 +818,32 @@ export const useNostrStore = defineStore("nostr", {
             p2pkStore.p2pkKeys = p2pkStore.p2pkKeys.concat(keyPair);
           }
         }
+      } catch (e) {
+        console.error(e);
+      }
+      if (prev !== pubkey) {
+        this.onIdentityChange(prev);
+      }
+    },
+    async onIdentityChange(previous?: string) {
+      if (previous) {
+        delete (this.profiles as any)[previous];
+      }
+      if (this.pubkey) {
+        await this.getProfile(this.pubkey);
+      }
+      try {
+        useMessengerStore().start();
+      } catch (e) {
+        console.error(e);
+      }
+      try {
+        useCreatorHubStore().loadTiersFromNostr();
+      } catch (e) {
+        console.error(e);
+      }
+      try {
+        useWalletStore().$reset();
       } catch (e) {
         console.error(e);
       }
@@ -962,6 +991,10 @@ export const useNostrStore = defineStore("nostr", {
       this.signerType = SignerType.PRIVATEKEY;
       this.setPubkey(getPublicKey(privateKeyBytes));
       await this.setSigner(signer);
+    },
+    async updateIdentity(nsec: string, relays?: string[]) {
+      if (relays) this.relays = relays as any;
+      await this.initPrivateKeySigner(nsec);
     },
     resetPrivateKeySigner: async function () {
       this.privateKeySignerPrivateKey = "";

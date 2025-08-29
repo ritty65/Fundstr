@@ -34,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import { useQuasar } from "quasar";
 import { useNostrStore } from "src/stores/nostr";
 import { shortenString } from "src/js/string-utils";
@@ -46,6 +46,14 @@ const profile = computed(() => {
   const entry: any = (nostr.profiles as any)[nostr.pubkey];
   return entry?.profile ?? entry ?? {};
 });
+
+watch(
+  () => nostr.pubkey,
+  (pk) => {
+    if (pk) nostr.getProfile(pk);
+  },
+  { immediate: true },
+);
 
 const initials = computed(() => {
   const name = profile.value.display_name || profile.value.name || "";
