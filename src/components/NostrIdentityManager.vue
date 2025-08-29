@@ -11,11 +11,16 @@
         <q-card-section>
           <q-input v-model="privKey" label="Private Key" type="text" />
           <q-btn
-            v-if="nip07SignerAvailable"
+            v-if="hasNip07"
             label="Use NIP-07"
             class="q-mt-sm"
             @click="useNip07"
-          />
+            :disable="!nip07SignerAvailable"
+          >
+            <q-tooltip v-if="!nip07SignerAvailable"
+              >Unlock or enable your NIP-07 extension</q-tooltip
+            >
+          </q-btn>
           <q-input
             v-model="pubKey"
             label="Public Key"
@@ -71,7 +76,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import { storeToRefs } from "pinia";
 import { useNostrStore } from "src/stores/nostr";
 import { useMessengerStore } from "src/stores/messenger";
@@ -79,7 +84,20 @@ import { useMessengerStore } from "src/stores/messenger";
 const nostr = useNostrStore();
 const { nip07SignerAvailable } = storeToRefs(nostr);
 const { checkNip07Signer, connectBrowserSigner } = nostr;
-checkNip07Signer(true);
+const hasNip07 = ref(false);
+onMounted(() => {
+  checkNip07Signer(true);
+  const check = () => {
+    if (typeof window !== 'undefined' && (window as any).nostr?.getPublicKey) {
+      hasNip07.value = true;
+      clearInterval(interval);
+      clearTimeout(timeout);
+    }
+  };
+  const interval = setInterval(check, 500);
+  const timeout = setTimeout(() => clearInterval(interval), 5000);
+  check();
+});
 
 const showDialog = ref(false);
 const privKey = ref(nostr.activePrivateKeyNsec);
@@ -114,6 +132,8 @@ const removeAlias = (key: string) => {
 };
 
 const useNip07 = async () => {
+  const available = await checkNip07Signer(true);
+  if (!available) return;
   await connectBrowserSigner();
   pubKey.value = nostr.npub;
   privKey.value = nostr.activePrivateKeyNsec;
