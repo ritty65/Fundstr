@@ -6,8 +6,7 @@
     <title>Nostr User Search & Featured Creators</title>
     <link rel="preload" as="style" href="find-creators.css" />
     <link rel="stylesheet" href="find-creators.css" />
-    <!-- nostr-tools CDN -->
-    <script src="https://unpkg.com/nostr-tools@1.17.0/lib/nostr.bundle.js"></script>
+    <!-- nostr-tools loaded via dynamic import in module script -->
     <style>
       body {
         font-family: "Inter", sans-serif;
@@ -316,13 +315,18 @@
       ];
       const statusMessageElement = document.getElementById("statusMessage");
       const retryButtonElement = document.getElementById("retryButton");
-      // --- Nostr Tools ---
-      if (!window.NostrTools) {
+
+      let SimplePool, nip19, utils;
+      try {
+        ({ SimplePool, nip19, utils } = await import(
+          "https://unpkg.com/nostr-tools@1.17.0/lib/esm/index.js",
+        ));
+      } catch (e) {
         statusMessageElement.textContent =
           "Error: nostr-tools library not loaded.";
         statusMessageElement.classList.remove("hidden");
+        throw e;
       }
-      const { SimplePool, nip19, utils } = window.NostrTools;
 
       document.body.classList.toggle(
         "dark",
