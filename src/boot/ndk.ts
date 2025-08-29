@@ -32,13 +32,27 @@ export function mergeDefaultRelays(ndk: NDK) {
   }
 }
 
-const reportedRelays = new Set<string>();
+const disconnectCounts = new Map<string, number>();
+let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleDisconnectLog() {
+  if (disconnectTimer) return;
+  disconnectTimer = setTimeout(() => {
+    const entries = Array.from(disconnectCounts.entries());
+    disconnectCounts.clear();
+    disconnectTimer = null;
+    if (!entries.length) return;
+    const summary = entries
+      .map(([u, c]) => (c > 1 ? `${u} (x${c})` : u))
+      .join(", ");
+    console.debug(`[NDK] relay disconnected: ${summary}`);
+  }, 1000);
+}
 
 function attachRelayErrorHandlers(ndk: NDK) {
   ndk.pool.on("relay:disconnect", (relay: any) => {
-    if (reportedRelays.has(relay.url)) return;
-    reportedRelays.add(relay.url);
-    console.debug(`[NDK] relay disconnected: ${relay.url}`);
+    disconnectCounts.set(relay.url, (disconnectCounts.get(relay.url) ?? 0) + 1);
+    scheduleDisconnectLog();
   });
   ndk.pool.on("notice", (relay: any, notice: string) => {
     console.debug(`[NDK] notice from ${relay.url}: ${notice}`);
