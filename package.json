@@ -26,7 +26,7 @@
   "dependencies": {
     "@capacitor/clipboard": "^6.0.2",
     "@capacitor/haptics": "^6.0.2",
-    "@cashu/cashu-ts": "file:src/lib/cashu-ts",
+    "@cashu/cashu-ts": "^2.7.1",
     "@cashu/crypto": "^0.3.4",
     "@chenfengyuan/vue-qrcode": "^2.0.0",
     "@gandlaf21/bc-ur": "^1.1.12",
