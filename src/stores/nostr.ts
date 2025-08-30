@@ -228,17 +228,48 @@ export async function publishWithTimeout(
   ]);
 }
 
+const relayFailureCounts = new Map<string, number>();
+let relayRotationIndex = 0;
+const MAX_FAILURES = 3;
+
+export function resetRelaySelection() {
+  relayFailureCounts.clear();
+  relayRotationIndex = 0;
+}
+
 export async function selectPreferredRelays(
   relays: string[],
 ): Promise<string[]> {
   const relayUrls = relays
     .filter((r) => r.startsWith("wss://"))
     .map((r) => r.replace(/\/+$/, ""));
+
+  const candidates = relayUrls.filter(
+    (r) => (relayFailureCounts.get(r) ?? 0) < MAX_FAILURES,
+  );
+
+  let healthy: string[] = [];
   try {
-    return await filterHealthyRelays(relayUrls);
+    healthy = await filterHealthyRelays(candidates);
   } catch {
-    return [];
+    healthy = [];
   }
+
+  const healthySet = new Set(healthy);
+  for (const url of candidates) {
+    if (healthySet.has(url)) {
+      relayFailureCounts.delete(url);
+    } else {
+      const count = (relayFailureCounts.get(url) ?? 0) + 1;
+      relayFailureCounts.set(url, count);
+    }
+  }
+
+  if (healthy.length === 0) return [];
+
+  const start = relayRotationIndex % healthy.length;
+  relayRotationIndex = (relayRotationIndex + 1) % healthy.length;
+  return healthy.slice(start).concat(healthy.slice(0, start));
 }
 
 export async function publishDmNip04(

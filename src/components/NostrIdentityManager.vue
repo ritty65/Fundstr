@@ -80,8 +80,10 @@ import { ref, onMounted } from "vue";
 import { storeToRefs } from "pinia";
 import { useNostrStore } from "src/stores/nostr";
 import { useMessengerStore } from "src/stores/messenger";
+import { useSettingsStore } from "src/stores/settings";
 
 const nostr = useNostrStore();
+const settings = useSettingsStore();
 const { nip07SignerAvailable } = storeToRefs(nostr);
 const { checkNip07Signer, connectBrowserSigner } = nostr;
 const hasNip07 = ref(false);
@@ -103,7 +105,7 @@ const showDialog = ref(false);
 const privKey = ref(nostr.activePrivateKeyNsec);
 const pubKey = ref(nostr.npub);
 const relayInput = ref("");
-const relays = ref<string[]>([...nostr.relays]);
+const relays = ref<string[]>([...settings.defaultNostrRelays]);
 const messenger = useMessengerStore();
 const aliases = messenger.aliases as any;
 const aliasPubkey = ref("");
@@ -141,7 +143,8 @@ const useNip07 = async () => {
 };
 
 const save = async () => {
-  await nostr.updateIdentity(privKey.value as any, relays.value as any);
+  settings.defaultNostrRelays = [...relays.value];
+  await nostr.updateIdentity(privKey.value as any, settings.defaultNostrRelays);
   pubKey.value = nostr.npub;
   showDialog.value = false;
 };
