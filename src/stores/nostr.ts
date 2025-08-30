@@ -739,6 +739,7 @@ export const useNostrStore = defineStore("nostr", {
     async connectBrowserSigner() {
       const nip07 = new NDKNip07Signer();
       try {
+        await (window as any).nostr?.enable?.();
         const user = await nip07.user();
         this.signer = nip07;
         this.signerType = SignerType.NIP07;
@@ -982,8 +983,9 @@ export const useNostrStore = defineStore("nostr", {
     },
     checkNip07Signer: async function (force = false): Promise<boolean> {
       if (this.nip07Checked && this.nip07SignerAvailable && !force) return true;
-      const signer = new NDKNip07Signer();
       try {
+        await (window as any).nostr?.enable?.();
+        const signer = new NDKNip07Signer();
         await signer.user();
         this.nip07SignerAvailable = true;
         this.nip07Checked = true;
