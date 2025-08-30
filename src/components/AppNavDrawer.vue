@@ -227,7 +227,7 @@ const gotoTerms = () => goto("/terms");
 const gotoAbout = () => goto("/about");
 const gotoWelcome = () => goto("/welcome");
 
-const needsNostrLogin = computed(() => !nostrStore.privateKeySignerPrivateKey);
+const needsNostrLogin = computed(() => !nostrStore.hasIdentity);
 const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 
 const drawerContentClass = computed(() =>

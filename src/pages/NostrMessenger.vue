@@ -134,7 +134,7 @@ export default defineComponent({
     }
 
     async function checkAndInit() {
-      if (!nostr.pubkey || nostr.relays.length === 0) {
+      if (!nostr.hasIdentity || nostr.relays.length === 0) {
         loading.value = false;
         showSetupWizard.value = true;
         return;
