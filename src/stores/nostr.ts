@@ -1497,9 +1497,21 @@ export const useNostrStore = defineStore("nostr", {
       dmEvent.tags = [["p", recipient]];
       dmEvent.created_at = Math.floor(Date.now() / 1000);
       dmEvent.pubkey = this.pubkey;
-      await dmEvent.sign(this.signer);
-      dmEvent.id = dmEvent.getEventHash();
-      const dmEventString = JSON.stringify(await dmEvent.toNostrEvent());
+      dmEvent.id = ntGetEventHash({
+        kind: dmEvent.kind,
+        content: dmEvent.content,
+        tags: dmEvent.tags,
+        created_at: dmEvent.created_at,
+        pubkey: dmEvent.pubkey,
+      } as any);
+      const dmEventString = JSON.stringify({
+        id: dmEvent.id,
+        kind: dmEvent.kind,
+        content: dmEvent.content,
+        tags: dmEvent.tags,
+        created_at: dmEvent.created_at,
+        pubkey: dmEvent.pubkey,
+      });
 
       const sealEvent = new NDKEvent();
       sealEvent.kind = 13;
