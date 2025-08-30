@@ -270,8 +270,12 @@ export const useMessengerStore = defineStore("messenger", {
       } catch (e) {
         console.error("[messenger.sendDm]", e);
       }
+      notifyError("Unable to encrypt or send DM");
       msg.status = "failed";
       this.sendQueue.push(msg);
+      if (this.isConnected()) {
+        this.retryFailedMessages();
+      }
       return { success: false } as any;
     },
     async sendToken(
