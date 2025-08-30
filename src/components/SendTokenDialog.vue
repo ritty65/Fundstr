@@ -1218,7 +1218,7 @@ export default defineComponent({
             };
             const dmContent = JSON.stringify(payload);
             const { success, event } =
-              await useNostrStore().sendNip04DirectMessage(
+              await useNostrStore().sendDirectMessageUnified(
                 recipient,
                 dmContent,
               );
@@ -1372,7 +1372,7 @@ export default defineComponent({
             };
             const dmContent2 = JSON.stringify(payload2);
             const { success, event } =
-              await useNostrStore().sendNip04DirectMessage(
+              await useNostrStore().sendDirectMessageUnified(
                 recipient,
                 dmContent2,
               );

@@ -68,10 +68,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("sendNip04DirectMessage", () => {
+describe("sendDirectMessageUnified", () => {
   it("returns signed event when published", async () => {
     const store = useNostrStore();
-    const promise = store.sendNip04DirectMessage("r", "m");
+    const promise = store.sendDirectMessageUnified("r", "m");
     vi.runAllTimers();
     const res = await promise;
     expect(res.success).toBe(true);
@@ -84,7 +84,7 @@ describe("sendNip04DirectMessage", () => {
 
   it("constructs event with correct kind and tags", async () => {
     const store = useNostrStore();
-    const res = await store.sendNip04DirectMessage("receiver", "msg");
+    const res = await store.sendDirectMessageUnified("receiver", "msg");
     vi.runAllTimers();
     expect(res.event!.kind).toBe(NDKKind.EncryptedDirectMessage);
     expect(res.event!.tags).toContainEqual(["p", "receiver"]);
@@ -94,7 +94,7 @@ describe("sendNip04DirectMessage", () => {
   it("generates keypair if not set", async () => {
     const store = useNostrStore();
     expect(store.seedSignerPrivateKey).toBe("");
-    const res = await store.sendNip04DirectMessage("receiver", "msg");
+    const res = await store.sendDirectMessageUnified("receiver", "msg");
     vi.runAllTimers();
     expect(res.success).toBe(true);
     expect(res.event).not.toBeNull();
@@ -104,7 +104,7 @@ describe("sendNip04DirectMessage", () => {
   it("returns null when publish fails", async () => {
     const store = useNostrStore();
     publishSuccess = false;
-    const promise = store.sendNip04DirectMessage("r", "m");
+    const promise = store.sendDirectMessageUnified("r", "m");
     vi.runAllTimers();
     const res = await promise;
     expect(res.success).toBe(false);

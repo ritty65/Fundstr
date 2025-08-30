@@ -227,6 +227,37 @@ export async function publishWithTimeout(
   ]);
 }
 
+export async function selectPreferredRelays(
+  relays: string[],
+): Promise<string[]> {
+  const relayUrls = relays
+    .filter((r) => r.startsWith("wss://"))
+    .map((r) => r.replace(/\/+$/, ""));
+  try {
+    return await filterHealthyRelays(relayUrls);
+  } catch {
+    return [];
+  }
+}
+
+export async function publishDmNip04(
+  ev: NDKEvent,
+  relays: string[],
+  timeoutMs = 30000,
+): Promise<boolean> {
+  const relaySet = await urlsToRelaySet(relays);
+  if (!relaySet) return false;
+  try {
+    await publishWithTimeout(ev, relaySet, timeoutMs);
+    notifySuccess("NIP-04 event published");
+    return true;
+  } catch (e) {
+    console.error(e);
+    notifyError("Could not publish NIP-04 event");
+    return false;
+  }
+}
+
 /** Resolves once any relay in `ndk.pool` has `connected === true`. */
 export function ensureRelayConnectivity(ndk: NDK): Promise<void> {
   const isConnected = () =>
@@ -1203,7 +1234,7 @@ export const useNostrStore = defineStore("nostr", {
         }
       }
     },
-    sendNip04DirectMessage: async function (
+    sendDirectMessageUnified: async function (
       recipient: string,
       message: string,
       privKey?: string,
@@ -1236,32 +1267,20 @@ export const useNostrStore = defineStore("nostr", {
       ];
       await event.sign(signer);
 
-      const relayUrls = (relays ?? this.relays)
-        .filter((r) => r.startsWith("wss://"))
-        .map((r) => r.replace(/\/+$/, ""));
-      let healthyRelays: string[] = [];
-      try {
-        healthyRelays = await filterHealthyRelays(relayUrls);
-      } catch {
-        healthyRelays = [];
-      }
-      if (healthyRelays.length === 0) {
+      const relayCandidates = relays && relays.length ? relays : this.relays;
+      const selected = await selectPreferredRelays(relayCandidates);
+      if (selected.length === 0) {
         console.error("[nostr] NIP-04 publish failed: all relays unreachable");
         notifyError("Could not publish NIP-04 event");
         return { success: false, event: null };
       }
-
-      const pool = new SimplePool();
-      const nostrEvent = await event.toNostrEvent();
-      try {
-        await pool.publish(healthyRelays, nostrEvent as any);
-        notifySuccess("NIP-04 event published");
-        return { success: true, event };
-      } catch (e) {
-        console.error(e);
-        notifyError("Could not publish NIP-04 event");
-        return { success: false, event: null };
-      }
+      const success = await publishDmNip04(event, selected);
+      return { success, event: success ? event : null };
+    },
+    sendNip04DirectMessage: async function (...args: any[]) {
+      // legacy alias
+      // @ts-expect-error -- dynamic invocation
+      return await (this as any).sendDirectMessageUnified(...args);
     },
     subscribeToNip04DirectMessages: async function () {
       await this.initSignerIfNotSet();

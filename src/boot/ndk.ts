@@ -213,7 +213,7 @@ export async function ndkSend(
     );
   }
   const list = relays.length ? relays : ["wss://relay.damus.io"];
-  const { success } = await nostr.sendNip04DirectMessage(
+  const { success } = await nostr.sendDirectMessageUnified(
     toNpub,
     plaintext,
     undefined,
