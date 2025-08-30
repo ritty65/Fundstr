@@ -99,20 +99,37 @@ async function createReadOnlyNdk(): Promise<NDK> {
     ? settings.defaultNostrRelays
     : [];
   const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
-  let healthy: string[] = [];
-  try {
-    healthy = await filterHealthyRelays(relays);
-  } catch {
-    healthy = [];
-  }
-  const relayUrls = healthy.length ? healthy : FREE_RELAYS;
-  const ndk = new NDK({ explicitRelayUrls: relayUrls });
+  const healthyPromise = filterHealthyRelays(relays).catch(() => []);
+  const ndk = new NDK({ explicitRelayUrls: relays });
   attachRelayErrorHandlers(ndk);
   mergeDefaultRelays(ndk);
   await safeConnect(ndk);
+  healthyPromise.then(async (healthy) => {
+    const healthySet = new Set(healthy);
+    let changed = false;
+    for (const [url, relay] of ndk.pool.relays.entries()) {
+      if (!healthySet.has(url) && !relay.connected) {
+        ndk.pool.relays.delete(url);
+        changed = true;
+      }
+    }
+    for (const url of healthy) {
+      if (!ndk.pool.relays.has(url)) {
+        ndk.addExplicitRelay(url);
+        changed = true;
+      }
+    }
+    if (changed) {
+      await safeConnect(ndk);
+    }
+  });
   await new Promise((r) => setTimeout(r, 3000));
   if (![...ndk.pool.relays.values()].some((r: any) => r.connected)) {
-    mergeDefaultRelays(ndk);
+    for (const url of FREE_RELAYS) {
+      if (!ndk.pool.relays.has(url)) {
+        ndk.addExplicitRelay(url);
+      }
+    }
     await safeConnect(ndk);
   }
   if (!relayWatchdog) {
@@ -127,14 +144,38 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
   const relays = settings.defaultNostrRelays.length
     ? settings.defaultNostrRelays
     : DEFAULT_RELAYS;
+  const healthyPromise = filterHealthyRelays(relays).catch(() => []);
   const ndk = new NDK({ explicitRelayUrls: relays });
   attachRelayErrorHandlers(ndk);
   mergeDefaultRelays(ndk);
   ndk.signer = signer;
   await safeConnect(ndk);
+  healthyPromise.then(async (healthy) => {
+    const healthySet = new Set(healthy);
+    let changed = false;
+    for (const [url, relay] of ndk.pool.relays.entries()) {
+      if (!healthySet.has(url) && !relay.connected) {
+        ndk.pool.relays.delete(url);
+        changed = true;
+      }
+    }
+    for (const url of healthy) {
+      if (!ndk.pool.relays.has(url)) {
+        ndk.addExplicitRelay(url);
+        changed = true;
+      }
+    }
+    if (changed) {
+      await safeConnect(ndk);
+    }
+  });
   await new Promise((r) => setTimeout(r, 3000));
   if (![...ndk.pool.relays.values()].some((r: any) => r.connected)) {
-    mergeDefaultRelays(ndk);
+    for (const url of FREE_RELAYS) {
+      if (!ndk.pool.relays.has(url)) {
+        ndk.addExplicitRelay(url);
+      }
+    }
     await safeConnect(ndk);
   }
   if (!relayWatchdog) {
@@ -162,20 +203,37 @@ export async function createNdk(): Promise<NDK> {
     ? settings.defaultNostrRelays
     : [];
   const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
-  let healthy: string[] = [];
-  try {
-    healthy = await filterHealthyRelays(relays);
-  } catch {
-    healthy = [];
-  }
-  const relayUrls = healthy.length ? healthy : FREE_RELAYS;
-  const ndk = new NDK({ signer: signer as any, explicitRelayUrls: relayUrls });
+  const healthyPromise = filterHealthyRelays(relays).catch(() => []);
+  const ndk = new NDK({ signer: signer as any, explicitRelayUrls: relays });
   attachRelayErrorHandlers(ndk);
   mergeDefaultRelays(ndk);
   await safeConnect(ndk);
+  healthyPromise.then(async (healthy) => {
+    const healthySet = new Set(healthy);
+    let changed = false;
+    for (const [url, relay] of ndk.pool.relays.entries()) {
+      if (!healthySet.has(url) && !relay.connected) {
+        ndk.pool.relays.delete(url);
+        changed = true;
+      }
+    }
+    for (const url of healthy) {
+      if (!ndk.pool.relays.has(url)) {
+        ndk.addExplicitRelay(url);
+        changed = true;
+      }
+    }
+    if (changed) {
+      await safeConnect(ndk);
+    }
+  });
   await new Promise((r) => setTimeout(r, 3000));
   if (![...ndk.pool.relays.values()].some((r: any) => r.connected)) {
-    mergeDefaultRelays(ndk);
+    for (const url of FREE_RELAYS) {
+      if (!ndk.pool.relays.has(url)) {
+        ndk.addExplicitRelay(url);
+      }
+    }
     await safeConnect(ndk);
   }
   if (!relayWatchdog) {
