@@ -8,31 +8,60 @@
       dense
     />
     <div class="q-mb-sm" v-if="relayStatuses.length">
-      <div
-        v-for="s in relayStatuses"
-        :key="s.url"
-        class="row items-center q-my-xs"
-      >
-        <q-icon
-          :name="s.connected ? 'check_circle' : 'warning'"
-          :color="s.connected ? 'positive' : 'negative'"
-          size="sm"
-          class="q-mr-xs"
-        />
-        <span class="text-caption">{{ s.url }}</span>
-        <span class="text-caption q-ml-sm">
-          {{ s.status }}
-          <span v-if="!s.connected && s.nextReconnectAt">
-            - reconnect in
-            {{ Math.max(0, Math.ceil((s.nextReconnectAt - now) / 1000)) }}s
+      <div class="text-subtitle2 q-mb-xs">
+        {{ connectedCount }} / {{ relayStatuses.length }} connected
+      </div>
+      <div v-if="connectedRelays.length">
+        <div class="text-caption text-weight-bold q-mt-sm">Connected</div>
+        <div
+          v-for="s in connectedRelays"
+          :key="s.url"
+          class="row items-center q-my-xs"
+        >
+          <q-icon
+            name="check_circle"
+            color="positive"
+            size="sm"
+            class="q-mr-xs"
+          />
+          <span class="text-caption">{{ s.url }}</span>
+          <span class="text-caption q-ml-sm">{{ s.status }}</span>
+          <q-icon
+            name="delete_outline"
+            size="sm"
+            class="q-ml-xs cursor-pointer"
+            @click="removeRelay(s.url)"
+          />
+        </div>
+      </div>
+      <div v-if="disconnectedRelays.length">
+        <div class="text-caption text-weight-bold q-mt-sm">Disconnected</div>
+        <div
+          v-for="s in disconnectedRelays"
+          :key="s.url"
+          class="row items-center q-my-xs"
+        >
+          <q-icon
+            name="error"
+            color="negative"
+            size="sm"
+            class="q-mr-xs"
+          />
+          <span class="text-caption">{{ s.url }}</span>
+          <span class="text-caption q-ml-sm">
+            {{ s.status }}
+            <span v-if="s.nextReconnectAt">
+              - reconnect in
+              {{ Math.max(0, Math.ceil((s.nextReconnectAt - now) / 1000)) }}s
+            </span>
           </span>
-        </span>
-        <q-icon
-          name="delete_outline"
-          size="sm"
-          class="q-ml-xs cursor-pointer"
-          @click="removeRelay(s.url)"
-        />
+          <q-icon
+            name="delete_outline"
+            size="sm"
+            class="q-ml-xs cursor-pointer"
+            @click="removeRelay(s.url)"
+          />
+        </div>
       </div>
     </div>
     <div class="row q-gutter-sm">
@@ -92,6 +121,14 @@ const relayStatuses = computed(() =>
     };
   }),
 );
+
+const connectedRelays = computed(() =>
+  relayStatuses.value.filter((s) => s.connected),
+);
+const disconnectedRelays = computed(() =>
+  relayStatuses.value.filter((s) => !s.connected),
+);
+const connectedCount = computed(() => connectedRelays.value.length);
 
 watch(
   () => messenger.relays,
