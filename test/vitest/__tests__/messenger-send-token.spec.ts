@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-var sendDm: any;
+var sendNip17: any;
+var sendDmLegacy: any;
 var walletSend: any;
 var walletMintWallet: any;
 var serializeProofs: any;
@@ -8,14 +9,16 @@ var addPending: any;
 
 vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   const actual = await importOriginal();
-  sendDm = vi.fn(async () => ({
+  sendNip17 = vi.fn(async () => ({ id: "1", created_at: 0 }));
+  sendDmLegacy = vi.fn(async () => ({
     success: true,
     event: { id: "1", created_at: 0 },
   }));
   return {
     ...actual,
     useNostrStore: () => ({
-      sendDirectMessageUnified: sendDm,
+      sendNip17DirectMessage: sendNip17,
+      sendDirectMessageUnified: sendDmLegacy,
       initSignerIfNotSet: vi.fn(),
       privateKeySignerPrivateKey: "priv",
       seedSignerPrivateKey: "",
@@ -82,13 +85,12 @@ describe("messenger.sendToken", () => {
     expect(success).toBe(true);
     expect(walletMintWallet).toHaveBeenCalledWith("mint", "sat");
     expect(walletSend).toHaveBeenCalled();
-    expect(sendDm).toHaveBeenCalledWith(
+    expect(sendNip17).toHaveBeenCalledWith(
       "receiver",
       expect.stringContaining('"token":"TOKEN"'),
-      "priv",
-      "pub",
       undefined,
     );
+    expect(sendDmLegacy).not.toHaveBeenCalled();
     expect(addPending).toHaveBeenCalledWith({
       amount: -1,
       token: "TOKEN",
