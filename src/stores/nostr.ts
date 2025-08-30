@@ -14,6 +14,7 @@ import NDK, {
   NDKTag,
   ProfilePointer,
   NDKSubscription,
+  NDKPublishError,
 } from "@nostr-dev-kit/ndk";
 import {
   nip19,
@@ -285,7 +286,16 @@ export async function publishDmNip04(
     return true;
   } catch (e) {
     console.error(e);
-    notifyError("Could not publish NIP-04 event");
+    if (e instanceof NDKPublishError) {
+      const urls = relaySet.relayUrls?.join(", ") || relays.join(", ");
+      notifyError(`Could not publish NIP-04 event to: ${urls}`);
+    } else if (e instanceof PublishTimeoutError) {
+      notifyError(
+        "Publishing NIP-04 event timed out. Check your network connection or relay availability.",
+      );
+    } else {
+      notifyError("Could not publish NIP-04 event");
+    }
     return false;
   }
 }
