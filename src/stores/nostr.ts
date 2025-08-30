@@ -1236,9 +1236,9 @@ export const useNostrStore = defineStore("nostr", {
       ];
       await event.sign(signer);
 
-      const relayUrls = (relays ?? this.relays).filter((r) =>
-        r.startsWith("wss://"),
-      );
+      const relayUrls = (relays ?? this.relays)
+        .filter((r) => r.startsWith("wss://"))
+        .map((r) => r.replace(/\/+$/, ""));
       let healthyRelays: string[] = [];
       try {
         healthyRelays = await filterHealthyRelays(relayUrls);
@@ -1414,9 +1414,9 @@ export const useNostrStore = defineStore("nostr", {
       wrapEvent.id = wrapEvent.getEventHash();
       wrapEvent.sig = await wrapEvent.sign();
 
-      const relayUrls = (relays ?? this.relays).filter((r) =>
-        r.startsWith("wss://"),
-      );
+      const relayUrls = (relays ?? this.relays)
+        .filter((r) => r.startsWith("wss://"))
+        .map((r) => r.replace(/\/+$/, ""));
       let healthyRelays: string[] = [];
       try {
         healthyRelays = await filterHealthyRelays(relayUrls);
@@ -1766,9 +1766,9 @@ export async function signEvent(
 }
 
 export async function publishEvent(event: NostrEvent): Promise<void> {
-  const relayUrls = useSettingsStore().defaultNostrRelays.filter((r) =>
-    r.startsWith("wss://"),
-  );
+  const relayUrls = useSettingsStore().defaultNostrRelays
+    .filter((r) => r.startsWith("wss://"))
+    .map((r) => r.replace(/\/+$/, ""));
   let healthyRelays: string[] = [];
   try {
     healthyRelays = await filterHealthyRelays(relayUrls);
@@ -1795,7 +1795,9 @@ export async function subscribeToNostr(
   const relayUrls = (relays && relays.length > 0
     ? relays
     : useSettingsStore().defaultNostrRelays
-  ).filter((r) => r.startsWith("wss://"));
+  )
+    .filter((r) => r.startsWith("wss://"))
+    .map((r) => r.replace(/\/+$/, ""));
   if (!relayUrls || relayUrls.length === 0) {
     console.warn("[nostr] subscribeMany called with empty relay list");
     return false;

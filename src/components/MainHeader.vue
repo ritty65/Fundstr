@@ -1,5 +1,5 @@
 <template>
-  <q-header class="bg-transparent">
+  <q-header class="bg-transparent" style="z-index: 2000">
     <q-toolbar class="app-toolbar" dense>
       <div class="left-controls row items-center no-wrap" v-if="!isWelcomePage">
           <q-btn
@@ -15,13 +15,12 @@
           <q-tooltip>Chats</q-tooltip>
         </q-btn>
           <q-btn
-            v-if="!ui.mainNavOpen"
             flat
             dense
             round
-            icon="menu"
+            :icon="ui.mainNavOpen ? 'close' : 'menu'"
             color="primary"
-            aria-label="Open navigation"
+            aria-label="Toggle navigation"
             :aria-expanded="String(ui.mainNavOpen)"
             aria-controls="app-nav"
             @click="ui.toggleMainNav"
