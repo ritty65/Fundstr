@@ -12,6 +12,13 @@
             aria-label="Toggle Chats"
             @click.stop="toggleMessengerDrawer"
           >
+          <q-badge
+            v-if="messenger.sendQueue.length"
+            color="negative"
+            floating
+          >
+            {{ messenger.sendQueue.length }}
+          </q-badge>
           <q-tooltip>Chats</q-tooltip>
         </q-btn>
           <q-btn
@@ -264,9 +271,10 @@ export default defineComponent({
       toggleMessengerDrawer,
       toggleDarkMode,
       darkIcon,
-        chatButtonColor,
-        mainNavBtn,
-      };
+      chatButtonColor,
+      mainNavBtn,
+      messenger,
+    };
   },
 });
 </script>
