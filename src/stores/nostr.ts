@@ -1223,12 +1223,16 @@ export const useNostrStore = defineStore("nostr", {
       if (
         (!privKey || privKey.length === 0) &&
         (this.signerType === SignerType.NIP07 ||
-          this.signerType === SignerType.NIP46) &&
-        (window as any)?.nostr?.[useNip04 ? "nip04" : "nip44"]?.encrypt
+          this.signerType === SignerType.NIP46)
       ) {
-        return await (window as any).nostr[
-          useNip04 ? "nip04" : "nip44"
-        ].encrypt(recipient, message);
+        const nostr = (window as any)?.nostr;
+        if (!useNip04 && nostr?.nip44?.encrypt) {
+          return await nostr.nip44.encrypt(recipient, message);
+        }
+        if (nostr?.nip04?.encrypt) {
+          return await nostr.nip04.encrypt(recipient, message);
+        }
+        throw new Error("Signer lacks nip44/nip04 support");
       }
       if (!privKey) {
         throw new Error("No private key for encryption");
@@ -1328,7 +1332,15 @@ export const useNostrStore = defineStore("nostr", {
       const ndk = await useNdk();
       const event = new NDKEvent(ndk);
       event.kind = NDKKind.EncryptedDirectMessage;
-      event.content = await this.encryptNip04(key, recipient, message);
+      try {
+        event.content = await this.encryptNip04(key, recipient, message);
+      } catch (e: any) {
+        if (e?.message === "Signer lacks nip44/nip04 support") {
+          notifyError("Signer lacks nip44/nip04 support");
+          return { success: false, event: null };
+        }
+        throw e;
+      }
       event.tags = [
         ["p", recipient],
         ["p", senderPubkey],
