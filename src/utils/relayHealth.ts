@@ -38,7 +38,7 @@ export async function pingRelay(url: string): Promise<boolean> {
       let settled = false;
       let ws: WebSocket;
       try {
-        ws = new WebSocket(url);
+        ws = new WebSocket(url, 'nostr');
       } catch {
         resolve(false);
         return;
