@@ -53,6 +53,13 @@ async function notifySuccess(
   });
 }
 
+function notifyRefreshed(
+  message: string,
+  position = "top" as QNotifyCreateOptions["position"],
+) {
+  return notifySuccess(message, position);
+}
+
 async function notifyError(msg: any, caption?: any) {
   Notify.create({
     color: "red",
@@ -114,4 +121,11 @@ async function notify(
   });
 }
 
-export { notifyApiError, notifySuccess, notifyError, notifyWarning, notify };
+export {
+  notifyApiError,
+  notifySuccess,
+  notifyError,
+  notifyWarning,
+  notify,
+  notifyRefreshed,
+};

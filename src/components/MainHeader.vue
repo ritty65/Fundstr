@@ -120,7 +120,6 @@ import {
   defineComponent,
   ref,
   computed,
-  getCurrentInstance,
   onMounted,
   onBeforeUnmount,
   nextTick,
@@ -130,13 +129,17 @@ import { useRoute } from "vue-router";
 import { useUiStore } from "src/stores/ui";
 import { useMessengerStore } from "src/stores/messenger";
 import { useQuasar } from "quasar";
-import { notifySuccess } from "src/js/notify";
+import {
+  notifySuccess,
+  notify,
+  notifyWarning,
+  notifyRefreshed,
+} from "src/js/notify";
 
 export default defineComponent({
   name: "MainHeader",
   mixins: [windowMixin],
   setup() {
-    const vm = getCurrentInstance()?.proxy;
     const ui = useUiStore();
     const route = useRoute();
     const messenger = useMessengerStore();
@@ -202,7 +205,7 @@ export default defineComponent({
         messenger.setDrawer(!messenger.drawerOpen);
       } else {
         messenger.toggleDrawer();
-        vm?.notify(
+        notify(
           messenger.drawerMini ? "Messenger collapsed" : "Messenger expanded",
         );
       }
@@ -225,7 +228,7 @@ export default defineComponent({
           clearInterval(countdownInterval);
           countdown.value = 0;
           reloading.value = false;
-          vm?.notifyWarning("Reload cancelled");
+          notifyWarning("Reload cancelled");
         } finally {
           ui.unlockMutex();
         }
@@ -235,12 +238,12 @@ export default defineComponent({
       ui.lockMutex();
       reloading.value = true;
       countdown.value = 3;
-      vm?.notify("Reloading in 3 seconds…");
+      notify("Reloading in 3 seconds…");
       countdownInterval = setInterval(() => {
         countdown.value--;
         if (countdown.value === 0) {
           clearInterval(countdownInterval);
-          vm?.notifyRefreshed("Reloading…");
+          notifyRefreshed("Reloading…");
           try {
             location.reload();
           } finally {
