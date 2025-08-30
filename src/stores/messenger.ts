@@ -269,11 +269,10 @@ export const useMessengerStore = defineStore("messenger", {
       if (!recipient) return { success: false } as any;
       await this.loadIdentity();
       const nostr = useNostrStore();
-      let privKey: string | undefined = undefined;
-      if (nostr.signerType !== "NIP07" && nostr.signerType !== "NIP46") {
-        privKey = nostr.privKeyHex;
-        if (!privKey) return { success: false, event: null } as any;
-      }
+      const externalSigner =
+        nostr.signerType === SignerType.NIP07 ||
+        nostr.signerType === SignerType.NIP46;
+      const privKey = externalSigner ? undefined : nostr.privKeyHex;
       const msg = this.addOutgoingMessage(
         recipient,
         message,
@@ -286,14 +285,16 @@ export const useMessengerStore = defineStore("messenger", {
 
       const list = relays && relays.length ? relays : (this.relays as any);
       let nip17Event: NDKEvent | null = null;
-      try {
-        nip17Event = await nostr.sendNip17DirectMessage(
-          recipient,
-          message,
-          list,
-        );
-      } catch (e) {
-        console.error("[messenger.sendDm] NIP-17", e);
+      if (privKey) {
+        try {
+          nip17Event = await nostr.sendNip17DirectMessage(
+            recipient,
+            message,
+            list,
+          );
+        } catch (e) {
+          console.error("[messenger.sendDm] NIP-17", e);
+        }
       }
       if (nip17Event) {
         msg.id = nip17Event.id;
@@ -321,7 +322,9 @@ export const useMessengerStore = defineStore("messenger", {
       } catch (e) {
         console.error("[messenger.sendDm]", e);
       }
-      notifyError("Unable to encrypt or send DM");
+      if (!externalSigner) {
+        notifyError("Unable to encrypt or send DM");
+      }
       msg.status = "failed";
       this.sendQueue.push(msg);
       if (this.isConnected()) {
