@@ -983,15 +983,20 @@ export const useNostrStore = defineStore("nostr", {
     },
     checkNip07Signer: async function (force = false): Promise<boolean> {
       if (this.nip07Checked && this.nip07SignerAvailable && !force) return true;
+      const flag = localStorage.getItem("nip07.enabled");
       try {
-        await (window as any).nostr?.enable?.();
+        if (!flag || force) {
+          await (window as any).nostr?.enable?.();
+        }
         const signer = new NDKNip07Signer();
         await signer.user();
         this.nip07SignerAvailable = true;
         this.nip07Checked = true;
+        localStorage.setItem("nip07.enabled", "1");
       } catch (e) {
         this.nip07SignerAvailable = false;
         this.nip07Checked = false;
+        localStorage.removeItem("nip07.enabled");
       }
       return this.nip07SignerAvailable;
     },
