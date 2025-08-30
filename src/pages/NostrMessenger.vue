@@ -30,8 +30,22 @@
           <q-btn flat dense label="Reconnect All" @click="reconnectAll" />
         </div>
       </q-banner>
+      <div
+        v-if="connectedRelayUrls.length && !loading"
+        class="text-caption q-mt-xs ellipsis"
+        style="max-width: 100%"
+      >
+        {{ connectedRelayUrls.join(', ') }}
+        <q-tooltip>{{ connectedRelayUrls.join(', ') }}</q-tooltip>
+      </div>
       <div class="row justify-end q-mb-sm" v-if="!loading">
-        <q-btn flat dense label="Switch Account" @click="switchAccount" />
+        <q-btn
+          flat
+          dense
+          label="Switch Account"
+          @click="switchAccount"
+          :disable="!nip07Available"
+        />
       </div>
       <q-spinner v-if="loading" size="lg" color="primary" />
       <ActiveChatHeader :pubkey="selected" />
@@ -94,6 +108,7 @@ export default defineComponent({
     const showSetupWizard = ref(false);
     const $q = useQuasar();
     const ui = useUiStore();
+    const nip07Available = ref(false);
 
     const ndkRef = ref<NDK | null>(null);
     const now = ref(Date.now());
@@ -142,7 +157,8 @@ export default defineComponent({
       await init();
     }
 
-    onMounted(() => {
+    onMounted(async () => {
+      nip07Available.value = await nostr.checkNip07Signer();
       checkAndInit();
       timer = setInterval(() => (now.value = Date.now()), 1000);
     });
@@ -167,12 +183,14 @@ export default defineComponent({
       () => messenger.conversations[selected.value] || [],
     );
 
-    const connectedCount = computed(() => {
-      if (!ndkRef.value) return 0;
-      return Array.from(ndkRef.value.pool.relays.values()).filter(
-        (r) => r.connected,
-      ).length;
+    const connectedRelayUrls = computed(() => {
+      if (!ndkRef.value) return [] as string[];
+      return Array.from(ndkRef.value.pool.relays.entries())
+        .filter(([, r]) => r.connected)
+        .map(([url]) => url);
     });
+
+    const connectedCount = computed(() => connectedRelayUrls.value.length);
 
     const totalRelays = computed(() => ndkRef.value?.pool.relays.size || 0);
 
@@ -256,14 +274,22 @@ export default defineComponent({
     const switchAccount = async () => {
       try {
         const hasExt = await nostr.checkNip07Signer(true);
+        nip07Available.value = hasExt;
         if (!hasExt) {
           notifyWarning("No NIP-07 extension detected");
           return;
         }
+        const oldPubkey = nostr.pubkey;
         await nostr.connectBrowserSigner();
+        if (nostr.pubkey === oldPubkey) {
+          notifyWarning("Signer returned same account");
+          return;
+        }
+        await messenger.loadIdentity();
+        await messenger.start();
       } catch (e) {
         console.error(e);
-        notifyError("Failed to connect NIP-07 provider");
+        notifyError("Failed to switch account");
       }
     };
 
@@ -285,6 +311,8 @@ export default defineComponent({
       switchAccount,
       openDrawer,
       ui,
+      connectedRelayUrls,
+      nip07Available,
     };
   },
 });
