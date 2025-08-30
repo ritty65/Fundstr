@@ -1467,39 +1467,6 @@ export const useNostrStore = defineStore("nostr", {
     randomTimeUpTo2DaysInThePast: function () {
       return Math.floor(Date.now() / 1000) - Math.floor(Math.random() * 172800);
     },
-    canUseNip17: async function (
-      pubkey: string,
-    ): Promise<string[] | null> {
-      const resolved = this.resolvePubkey(pubkey);
-      if (!resolved) return null;
-      await this.initNdkReadOnly();
-      try {
-        const ndk = await useNdk();
-        const user = ndk.getUser({ pubkey: resolved });
-        const relays = await (user as any).fetchRelays?.();
-        const urls: string[] = [];
-        const collect = (rs: any) => {
-          if (!rs) return;
-          if (Array.isArray(rs)) {
-            for (const r of rs) urls.push(typeof r === "string" ? r : r?.url);
-          } else if (rs instanceof Set) {
-            for (const r of Array.from(rs))
-              urls.push(typeof r === "string" ? r : (r as any)?.url);
-          } else if (typeof rs === "object") {
-            for (const r of Array.from(rs.values?.() ?? []))
-              urls.push(typeof r === "string" ? r : (r as any)?.url);
-          }
-        };
-        collect(relays?.writeRelays ?? relays);
-        const cleaned = urls
-          .filter((u) => typeof u === "string" && u.startsWith("wss://"))
-          .map((u) => u.replace(/\/+$/, ""));
-        return cleaned.length ? cleaned : null;
-      } catch (e) {
-        console.error("[nostr.canUseNip17]", e);
-        return null;
-      }
-    },
     sendNip17DirectMessage: async function (
       recipient: string,
       message: string,

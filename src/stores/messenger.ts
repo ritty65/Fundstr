@@ -252,32 +252,8 @@ export const useMessengerStore = defineStore("messenger", {
       );
 
       const list = relays && relays.length ? relays : (this.relays as any);
-
-      // Prefer NIP-17 if both parties have DM relays
       try {
-        const dmRelays = await nostr.canUseNip17(recipient);
-        if (dmRelays && dmRelays.length > 0) {
-          const event = await nostr.sendNip17DirectMessage(
-            recipient,
-            message,
-            dmRelays,
-          );
-          if (event) {
-            msg.id = event.id;
-            msg.created_at =
-              event.created_at ?? Math.floor(Date.now() / 1000);
-            msg.status = "sent";
-            this.pushOwnMessage(event as any);
-            return { success: true, event } as any;
-          }
-        }
-      } catch (e) {
-        console.error("[messenger.sendDm] NIP17", e);
-      }
-
-      // Fallback to NIP-04
-      try {
-        const { success, event } = await nostr.sendNip04DirectMessage(
+        const { success, event } = await nostr.sendDirectMessageUnified(
           recipient,
           message,
           privKey,
