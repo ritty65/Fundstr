@@ -8,6 +8,8 @@ import {
 import routes from "./routes";
 import { hasSeenWelcome } from "src/composables/useWelcomeGate";
 import { useRestoreStore } from "src/stores/restore";
+import { useNostrStore } from "src/stores/nostr";
+import { Loading, QSpinner } from "quasar";
 
 /*
  * If not building with SSR mode, you can
@@ -35,7 +37,16 @@ export default route(function (/* { store, ssrContext } */) {
     history: createHistory(process.env.VUE_ROUTER_BASE),
   });
 
-  Router.beforeEach((to, _from, next) => {
+  Router.beforeEach(async (to, _from, next) => {
+    if (to.path === "/nostr-login") {
+      Loading.show({ spinner: QSpinner });
+      try {
+        await useNostrStore().initSignerIfNotSet();
+      } finally {
+        Loading.hide();
+      }
+    }
+
     const seen = hasSeenWelcome();
     const isWelcome = to.path.startsWith("/welcome");
     const isPublicProfile =
