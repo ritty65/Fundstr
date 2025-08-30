@@ -728,11 +728,7 @@ export default {
       if (this.nwcEnabled) {
         this.listenToNWCCommands();
       }
-
-      if (this.enablePaymentRequest) {
-        this.subscribeToNip17DirectMessages();
-      }
-
+      this.subscribeToNip17DirectMessages();
       this.subscribeToNip04DirectMessages();
       this.startInvoiceCheckerWorker();
       this.startLockedTokensRedeemWorker();
