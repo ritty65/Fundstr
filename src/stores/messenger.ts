@@ -43,12 +43,6 @@ function parseSubscriptionPaymentPayload(obj: any):
   };
 }
 
-export function computeNextRetry(attempts: number): number {
-  const base = Math.min(60 * 60, Math.pow(2, attempts) * 5);
-  const jitter = Math.floor(Math.random() * base);
-  return Math.floor(Date.now() / 1000) + base + jitter;
-}
-
 export interface SubscriptionPayment {
   token: string;
   subscription_id: string;
@@ -75,10 +69,6 @@ export type MessengerMessage = {
   subscriptionPayment?: SubscriptionPayment;
   tokenPayload?: any;
   autoRedeem?: boolean;
-  attempts?: number;
-  lastTriedAt?: number;
-  nextRetryAt?: number;
-  relayAcks?: string[];
 };
 
 export const useMessengerStore = defineStore("messenger", {
@@ -117,10 +107,6 @@ export const useMessengerStore = defineStore("messenger", {
       storageKey("eventLog"),
       [] as MessengerMessage[],
     );
-    const outbox = useLocalStorage<MessengerMessage[]>(
-      storageKey("outbox"),
-      [] as MessengerMessage[],
-    );
     const drawerOpen = useLocalStorage<boolean>(storageKey("drawerOpen"), true);
     const drawerMini = useLocalStorage<boolean>(storageKey("drawerMini"), false);
 
@@ -132,7 +118,6 @@ export const useMessengerStore = defineStore("messenger", {
         pinned.value = {} as any;
         aliases.value = {} as any;
         eventLog.value = [] as any;
-        outbox.value = [] as any;
       },
     );
 
@@ -143,7 +128,7 @@ export const useMessengerStore = defineStore("messenger", {
       pinned,
       aliases,
       eventLog,
-      outbox,
+      sendQueue: [] as MessengerMessage[],
       currentConversation: "",
       drawerOpen,
       drawerMini,
@@ -233,7 +218,7 @@ export const useMessengerStore = defineStore("messenger", {
       let privKey: string | undefined = undefined;
       if (nostr.signerType !== "NIP07" && nostr.signerType !== "NIP46") {
         privKey = nostr.privKeyHex;
-        if (!privKey) return { success: false, message: null } as any;
+        if (!privKey) return { success: false, event: null } as any;
       }
       const msg = this.addOutgoingMessage(
         recipient,
@@ -244,30 +229,29 @@ export const useMessengerStore = defineStore("messenger", {
         "pending",
         tokenPayload,
       );
-      msg.attempts = (msg.attempts || 0) + 1;
-      msg.lastTriedAt = Math.floor(Date.now() / 1000);
+
       const list = relays && relays.length ? relays : (this.relays as any);
       try {
-        const { ok, acks } = await nostr.publishNip04ToRelaysWithAcks(
+        const { success, event } = await nostr.sendDirectMessageUnified(
           recipient,
           message,
-          list,
           privKey,
+          nostr.pubkey,
+          list,
         );
-        msg.relayAcks = acks;
-        if (ok) {
+        if (success && event) {
+          msg.id = event.id;
+          msg.created_at = event.created_at ?? Math.floor(Date.now() / 1000);
           msg.status = "sent";
-          return { success: true, message: msg } as any;
+          this.pushOwnMessage(event as any);
+          return { success: true, event } as any;
         }
       } catch (e) {
         console.error("[messenger.sendDm]", e);
       }
       msg.status = "failed";
-      msg.nextRetryAt = computeNextRetry(msg.attempts || 0);
-      const idx = this.outbox.findIndex((m) => m.id === msg.id);
-      if (idx >= 0) this.outbox[idx] = msg;
-      else this.outbox.push(msg);
-      return { success: false, message: msg } as any;
+      this.sendQueue.push(msg);
+      return { success: false } as any;
     },
     async sendToken(
       recipient: string,
@@ -325,19 +309,19 @@ export const useMessengerStore = defineStore("messenger", {
               referenceId: uuidv4(),
             };
 
-        const { success, message: sentMsg } = await this.sendDm(
+        const { success, event } = await this.sendDm(
           recipient,
           JSON.stringify(payload),
           undefined,
           undefined,
           { token: tokenStr, amount: sendAmount, memo },
         );
-        if (success && sentMsg) {
+        if (success && event) {
           if (subscription) {
             const msg = this.conversations[recipient]?.find(
-              (m) => m.id === sentMsg.id,
+              (m) => m.id === event.id,
             );
-            const logMsg = this.eventLog.find((m) => m.id === sentMsg.id);
+            const logMsg = this.eventLog.find((m) => m.id === event.id);
             const payment: SubscriptionPayment & { htlc_hash?: string } = {
               token: tokenStr,
               subscription_id: subscription.subscription_id,
@@ -405,14 +389,15 @@ export const useMessengerStore = defineStore("messenger", {
           memo: memo || undefined,
         };
 
-        const { success } = await this.sendDm(
+        const { success, event } = await this.sendDm(
           recipient,
           JSON.stringify(payload),
           undefined,
           undefined,
           { token: tokenStr, amount: sendAmount, memo },
         );
-        if (success) {
+
+        if (success && event) {
           tokens.addPendingToken({
             amount: -sendAmount,
             tokenStr: tokenStr,
@@ -451,8 +436,6 @@ export const useMessengerStore = defineStore("messenger", {
         attachment,
         status,
         tokenPayload,
-        attempts: 0,
-        relayAcks: [],
       };
       if (!this.conversations[pubkey]) this.conversations[pubkey] = [];
       if (!this.conversations[pubkey].some((m) => m.id === messageId))
@@ -677,7 +660,7 @@ export const useMessengerStore = defineStore("messenger", {
         watch(
           () => useNostrStore().connected,
           (val) => {
-            if (val) this.retryOutbox();
+            if (val) this.retryFailedMessages();
           },
         );
         this.watchInitialized = true;
@@ -713,7 +696,6 @@ export const useMessengerStore = defineStore("messenger", {
         console.error("[messenger.start]", e);
       } finally {
         this.started = true;
-        await this.retryOutbox();
       }
     },
 
@@ -742,9 +724,8 @@ export const useMessengerStore = defineStore("messenger", {
       nostr.disconnect();
     },
 
-    async retryOutbox() {
-      if (!this.isConnected() || !this.outbox.length) return;
-      await this.loadIdentity();
+    async retryFailedMessages() {
+      if (!this.isConnected() || !this.sendQueue.length) return;
       const nostr = useNostrStore();
       let privKey: string | undefined = undefined;
       if (nostr.signerType !== "NIP07" && nostr.signerType !== "NIP46") {
@@ -752,31 +733,29 @@ export const useMessengerStore = defineStore("messenger", {
         if (!privKey) return;
       }
       const list = this.relays as any;
-      const now = Math.floor(Date.now() / 1000);
-      for (const msg of [...this.outbox]) {
-        if (msg.nextRetryAt && msg.nextRetryAt > now) continue;
-        msg.attempts = (msg.attempts || 0) + 1;
-        msg.lastTriedAt = now;
+      for (const msg of [...this.sendQueue]) {
         try {
-          const { ok, acks } = await nostr.publishNip04ToRelaysWithAcks(
+          const { success, event } = await nostr.sendDirectMessageUnified(
             msg.pubkey,
             msg.content,
-            list,
             privKey,
+            nostr.pubkey,
+            list,
           );
-          msg.relayAcks = acks;
-          if (ok) {
+          if (success && event) {
+            msg.id = event.id;
+            msg.created_at =
+              event.created_at ?? Math.floor(Date.now() / 1000);
             msg.status = "sent";
-            const idx = this.outbox.indexOf(msg);
-            if (idx >= 0) this.outbox.splice(idx, 1);
+            this.pushOwnMessage(event as any);
+            const idx = this.sendQueue.indexOf(msg);
+            if (idx >= 0) this.sendQueue.splice(idx, 1);
           } else {
-            msg.status = "failed";
-            msg.nextRetryAt = computeNextRetry(msg.attempts);
+            if (msg.status !== "sent") msg.status = "failed";
           }
         } catch (e) {
-          console.error("[messenger.retryOutbox]", e);
-          msg.status = "failed";
-          msg.nextRetryAt = computeNextRetry(msg.attempts);
+          console.error("[messenger.retryFailedMessages]", e);
+          if (msg.status !== "sent") msg.status = "failed";
         }
       }
     },
