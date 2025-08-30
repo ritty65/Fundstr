@@ -239,7 +239,6 @@ export default defineComponent({
         messenger.disconnect();
         messenger.started = false;
         await messenger.start();
-        await messenger.retryOutbox();
       } catch (e) {
         console.error(e);
       } finally {
