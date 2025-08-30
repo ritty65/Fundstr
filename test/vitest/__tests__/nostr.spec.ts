@@ -100,8 +100,11 @@ describe.skip("sendDirectMessageUnified", () => {
     const res = await store.sendDirectMessageUnified("receiver", "msg");
     vi.runAllTimers();
     expect(res.event!.kind).toBe(NDKKind.EncryptedDirectMessage);
-    expect(res.event!.tags).toContainEqual(["p", "receiver"]);
-    expect(res.event!.tags).toContainEqual(["p", store.seedSignerPublicKey]);
+    expect(res.event!.tags).toEqual([["p", "receiver"]]);
+    expect(res.event!.tags).not.toContainEqual([
+      "p",
+      store.seedSignerPublicKey,
+    ]);
   });
 
   it("generates keypair if not set", async () => {

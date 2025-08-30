@@ -1321,16 +1321,12 @@ export const useNostrStore = defineStore("nostr", {
         return { success: false, event: null };
       }
       const signer = privKey ? new NDKPrivateKeySigner(privKey) : this.signer;
-      const senderPubkey =
-        pubKey || (privKey ? getPublicKey(hexToBytes(privKey)) : this.pubkey);
       const ndk = await useNdk();
       const event = new NDKEvent(ndk);
       event.kind = NDKKind.EncryptedDirectMessage;
       event.content = await this.encryptNip04(key, recipient, message);
-      event.tags = [
-        ["p", recipient],
-        ["p", senderPubkey],
-      ];
+      // Event should include only a single recipient tag
+      event.tags = [["p", recipient]];
       await event.sign(signer);
 
       const relayCandidates = relays && relays.length ? relays : this.relays;
