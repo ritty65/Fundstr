@@ -74,6 +74,7 @@ import MessageInput from "components/MessageInput.vue";
 import ChatSendTokenDialog from "components/ChatSendTokenDialog.vue";
 import NostrSetupWizard from "components/NostrSetupWizard.vue";
 import { useQuasar, TouchSwipe } from "quasar";
+import { notifyWarning, notifyError } from "src/js/notify";
 
 export default defineComponent({
   name: "NostrMessenger",
@@ -253,15 +254,16 @@ export default defineComponent({
     };
 
     const switchAccount = async () => {
-      const hasExt = await nostr.checkNip07Signer(true);
-      if (!hasExt) {
-        $q.notify({ type: "negative", message: "No NIP-07 extension detected" });
-        return;
-      }
       try {
+        const hasExt = await nostr.checkNip07Signer(true);
+        if (!hasExt) {
+          notifyWarning("No NIP-07 extension detected");
+          return;
+        }
         await nostr.connectBrowserSigner();
       } catch (e) {
         console.error(e);
+        notifyError("Failed to connect NIP-07 provider");
       }
     };
 
