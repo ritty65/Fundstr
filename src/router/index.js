@@ -38,10 +38,15 @@ export default route(function (/* { store, ssrContext } */) {
   });
 
   Router.beforeEach(async (to, _from, next) => {
+    const nostrStore = useNostrStore();
+    if (!nostrStore.secureStorageLoaded) {
+      await nostrStore.loadKeysFromStorage();
+    }
+
     if (to.path === "/nostr-login") {
       Loading.show({ spinner: QSpinner });
       try {
-        await useNostrStore().initSignerIfNotSet();
+        await nostrStore.initSignerIfNotSet();
       } finally {
         Loading.hide();
       }

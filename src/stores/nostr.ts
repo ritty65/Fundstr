@@ -716,7 +716,6 @@ export const useNostrStore = defineStore("nostr", {
       this.secureStorageLoaded = true;
     },
     initNdkReadOnly: async function () {
-      await this.loadKeysFromStorage();
       const ndk = await useNdk({ requireSigner: false });
       if (this.connected) return;
       try {
@@ -827,7 +826,6 @@ export const useNostrStore = defineStore("nostr", {
       }
     },
     initSignerIfNotSet: async function () {
-      await this.loadKeysFromStorage();
       if (!this.signer) {
         if (
           this.signerType === SignerType.NIP07 &&
