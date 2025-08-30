@@ -279,6 +279,24 @@ export const useMessengerStore = defineStore("messenger", {
       );
 
       const list = relays && relays.length ? relays : (this.relays as any);
+      let nip17Event: NDKEvent | null = null;
+      try {
+        nip17Event = await nostr.sendNip17DirectMessage(
+          recipient,
+          message,
+          list,
+        );
+      } catch (e) {
+        console.error("[messenger.sendDm] NIP-17", e);
+      }
+      if (nip17Event) {
+        msg.id = nip17Event.id;
+        msg.created_at =
+          nip17Event.created_at ?? Math.floor(Date.now() / 1000);
+        msg.status = "sent";
+        this.pushOwnMessage(nip17Event as any);
+        return { success: true, event: nip17Event } as any;
+      }
       try {
         const { success, event } = await nostr.sendDirectMessageUnified(
           recipient,

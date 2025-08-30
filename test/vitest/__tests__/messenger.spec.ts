@@ -1,20 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-var sendDm: any;
+var sendNip17: any;
+var sendDmLegacy: any;
 var decryptDm: any;
 var stickySub: any;
 var walletGen: any;
 
 vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   const actual = await importOriginal();
-  sendDm = vi.fn(async () => ({
+  sendNip17 = vi.fn(async () => ({ id: "1", created_at: 0 }));
+  sendDmLegacy = vi.fn(async () => ({
     success: true,
     event: { id: "1", created_at: 0 },
   }));
   decryptDm = vi.fn(async () => "msg");
   walletGen = vi.fn();
   const store = {
-    sendDirectMessageUnified: sendDm,
+    sendNip17DirectMessage: sendNip17,
+    sendDirectMessageUnified: sendDmLegacy,
     decryptNip04: decryptDm,
     walletSeedGenerateKeyPair: walletGen,
     initSignerIfNotSet: vi.fn(),
@@ -67,10 +70,11 @@ beforeEach(() => {
 });
 
 describe("messenger store", () => {
-  it("uses global key when sending DMs", async () => {
+  it("uses NIP-17 when sending DMs", async () => {
     const messenger = useMessengerStore();
     await messenger.sendDm("r", "m");
-    expect(sendDm).toHaveBeenCalledWith("r", "m", "priv", "pub", undefined);
+    expect(sendNip17).toHaveBeenCalledWith("r", "m", undefined);
+    expect(sendDmLegacy).not.toHaveBeenCalled();
   });
 
   it("decrypts incoming messages with global key", async () => {
