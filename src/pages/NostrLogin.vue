@@ -16,6 +16,7 @@
       </q-card-section>
       <q-card-actions vertical class="q-gutter-sm">
         <q-btn color="primary" @click="submitKey">Use Key</q-btn>
+        <q-btn color="primary" @click="useNip07">Use NIP-07</q-btn>
         <q-btn flat color="primary" @click="createIdentity"
           >Create Identity</q-btn
         >
@@ -27,6 +28,7 @@
 <script lang="ts">
 import { defineComponent, ref, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
+import { useCreatorHubStore } from "stores/creatorHub";
 import { useNostrStore } from "stores/nostr";
 import { generateSecretKey, nip19 } from "nostr-tools";
 import { hexToBytes } from "@noble/hashes/utils";
@@ -35,6 +37,7 @@ export default defineComponent({
   name: "NostrLogin",
   setup() {
     const nostr = useNostrStore();
+    const creatorHubStore = useCreatorHubStore();
     const key = ref(nostr.activePrivateKeyNsec || nostr.privKeyHex || "");
     const hasExistingKey = computed(() => !!key.value);
     const router = useRouter();
@@ -77,7 +80,23 @@ export default defineComponent({
       }
     };
 
-    return { key, hasExistingKey, submitKey, createIdentity };
+    const useNip07 = async () => {
+      const available = await nostr.checkNip07Signer(true);
+      if (!available) return;
+      try {
+        await nostr.connectBrowserSigner();
+        await creatorHubStore.login();
+        if (redirect) {
+          router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
+        } else {
+          router.replace("/wallet");
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    return { key, hasExistingKey, submitKey, createIdentity, useNip07 };
   },
 });
 </script>
