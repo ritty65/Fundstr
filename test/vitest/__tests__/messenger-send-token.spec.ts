@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createPinia, setActivePinia } from "pinia";
 
-var sendNip04Dm: any;
-var sendNip17Dm: any;
-var canUseNip17: any;
+var sendDm: any;
 var walletSend: any;
 var walletMintWallet: any;
 var serializeProofs: any;
@@ -11,18 +8,14 @@ var addPending: any;
 
 vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   const actual = await importOriginal();
-  sendNip04Dm = vi.fn(async () => ({
+  sendDm = vi.fn(async () => ({
     success: true,
     event: { id: "1", created_at: 0 },
   }));
-  sendNip17Dm = vi.fn(async () => ({ id: "1", created_at: 0 }));
-  canUseNip17 = vi.fn(async () => null);
   return {
     ...actual,
     useNostrStore: () => ({
-      sendNip04DirectMessage: sendNip04Dm,
-      sendNip17DirectMessage: sendNip17Dm,
-      canUseNip17,
+      sendDirectMessageUnified: sendDm,
       initSignerIfNotSet: vi.fn(),
       privateKeySignerPrivateKey: "priv",
       seedSignerPrivateKey: "",
@@ -75,22 +68,11 @@ vi.mock("../../../src/js/message-utils", () => ({
   sanitizeMessage: vi.fn((s: string) => s),
 }));
 
-var notifySpy: any;
-var notifyErrorSpy: any;
-vi.mock("../../../src/js/notify", () => {
-  notifySpy = vi.fn();
-  notifyErrorSpy = vi.fn();
-  return { notifySuccess: notifySpy, notifyError: notifyErrorSpy };
-});
-
 import { useMessengerStore } from "../../../src/stores/messenger";
 
 beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
-  setActivePinia(createPinia());
-  const messenger = useMessengerStore();
-  (messenger as any).eventLog = [];
 });
 
 describe("messenger.sendToken", () => {
@@ -100,20 +82,19 @@ describe("messenger.sendToken", () => {
     expect(success).toBe(true);
     expect(walletMintWallet).toHaveBeenCalledWith("mint", "sat");
     expect(walletSend).toHaveBeenCalled();
-    expect(sendNip04Dm).toHaveBeenCalledWith(
+    expect(sendDm).toHaveBeenCalledWith(
       "receiver",
       expect.stringContaining('"token":"TOKEN"'),
       "priv",
       "pub",
-      expect.any(Array),
+      undefined,
     );
     expect(addPending).toHaveBeenCalledWith({
       amount: -1,
-      tokenStr: "TOKEN",
+      token: "TOKEN",
       unit: "sat",
       mint: "mint",
       bucketId: "b",
-      description: "note",
     });
     expect(store.conversations.receiver.length).toBe(1);
   });
