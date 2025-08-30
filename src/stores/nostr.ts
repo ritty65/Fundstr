@@ -1194,6 +1194,40 @@ export const useNostrStore = defineStore("nostr", {
       });
       return latest ? (latest.content as string) : null;
     },
+
+    fetchDmRelayUris: async function (
+      pubkey: string,
+    ): Promise<string[] | null> {
+      const resolved = this.resolvePubkey(pubkey);
+      if (!resolved) return null;
+      pubkey = resolved;
+      await this.initNdkReadOnly();
+      const filter: NDKFilter = {
+        kinds: [10050 as NDKKind],
+        authors: [pubkey],
+        limit: 1,
+      };
+      const ndk = await useNdk({ requireSigner: false });
+      const events = await ndk.fetchEvents(filter);
+      let latest: NDKEvent | null = null;
+      events.forEach((ev) => {
+        if (!latest || ev.created_at > (latest.created_at || 0)) {
+          latest = ev as NDKEvent;
+        }
+      });
+      if (!latest) return null;
+      try {
+        const parsed = JSON.parse(latest.content);
+        if (Array.isArray(parsed)) return parsed as string[];
+        if (parsed?.dm && Array.isArray(parsed.dm)) return parsed.dm;
+      } catch {
+        /* ignore */
+      }
+      const relays = (latest.tags || [])
+        .filter((t: any) => t[0] === "r" && typeof t[1] === "string")
+        .map((t: any) => t[1] as string);
+      return relays.length ? relays : null;
+    },
     fetchMints: async function () {
       const filter: NDKFilter = { kinds: [38000 as NDKKind], limit: 2000 };
       const ndk = await useNdk();
