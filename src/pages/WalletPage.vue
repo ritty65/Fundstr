@@ -424,7 +424,7 @@ export default {
     ...mapActions(useNWCStore, ["listenToNWCCommands"]),
     ...mapActions(useNPCStore, ["generateNPCConnection", "claimAllTokens"]),
     ...mapActions(useNostrStore, [
-      "sendNip04DirectMessage",
+      "sendDirectMessageUnified",
       "subscribeToNip04DirectMessages",
       "subscribeToNip17DirectMessages",
       "initSigner",

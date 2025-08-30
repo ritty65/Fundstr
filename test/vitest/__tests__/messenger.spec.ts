@@ -19,7 +19,7 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   );
   walletGen = vi.fn();
   const store = {
-    sendNip04DirectMessage: sendDm,
+    sendDirectMessageUnified: sendDm,
     decryptNip04: decryptDm,
     subscribeToNip04DirectMessagesCallback: subscribe,
     walletSeedGenerateKeyPair: walletGen,

@@ -15,7 +15,7 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   return {
     ...actual,
     useNostrStore: () => ({
-      sendNip04DirectMessage: sendDm,
+      sendDirectMessageUnified: sendDm,
       initSignerIfNotSet: vi.fn(),
       privateKeySignerPrivateKey: "priv",
       seedSignerPrivateKey: "",

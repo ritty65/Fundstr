@@ -228,26 +228,23 @@ export const useMessengerStore = defineStore("messenger", {
       );
 
       const list = relays && relays.length ? relays : (this.relays as any);
-      for (const r of list) {
-        try {
-          const { success, event } = await nostr.sendNip04DirectMessage(
-            recipient,
-            message,
-            privKey,
-            nostr.pubkey,
-            [r],
-          );
-          if (success && event) {
-            msg.id = event.id;
-            msg.created_at = event.created_at ?? Math.floor(Date.now() / 1000);
-            msg.status = "sent";
-            this.pushOwnMessage(event as any);
-            return { success: true, event } as any;
-          }
-          console.warn(`[messenger.sendDm] failed via ${r}`);
-        } catch (e) {
-          console.error(`[messenger.sendDm] relay ${r}`, e);
+      try {
+        const { success, event } = await nostr.sendDirectMessageUnified(
+          recipient,
+          message,
+          privKey,
+          nostr.pubkey,
+          list,
+        );
+        if (success && event) {
+          msg.id = event.id;
+          msg.created_at = event.created_at ?? Math.floor(Date.now() / 1000);
+          msg.status = "sent";
+          this.pushOwnMessage(event as any);
+          return { success: true, event } as any;
         }
+      } catch (e) {
+        console.error("[messenger.sendDm]", e);
       }
       msg.status = "failed";
       this.sendQueue.push(msg);
@@ -737,30 +734,29 @@ export const useMessengerStore = defineStore("messenger", {
       }
       const list = this.relays as any;
       for (const msg of [...this.sendQueue]) {
-        for (const r of list) {
-          try {
-            const { success, event } = await nostr.sendNip04DirectMessage(
-              msg.pubkey,
-              msg.content,
-              privKey,
-              nostr.pubkey,
-              [r],
-            );
-            if (success && event) {
-              msg.id = event.id;
-              msg.created_at =
-                event.created_at ?? Math.floor(Date.now() / 1000);
-              msg.status = "sent";
-              this.pushOwnMessage(event as any);
-              const idx = this.sendQueue.indexOf(msg);
-              if (idx >= 0) this.sendQueue.splice(idx, 1);
-              break;
-            }
-          } catch (e) {
-            console.error(`[messenger.retryFailedMessages] relay ${r}`, e);
+        try {
+          const { success, event } = await nostr.sendDirectMessageUnified(
+            msg.pubkey,
+            msg.content,
+            privKey,
+            nostr.pubkey,
+            list,
+          );
+          if (success && event) {
+            msg.id = event.id;
+            msg.created_at =
+              event.created_at ?? Math.floor(Date.now() / 1000);
+            msg.status = "sent";
+            this.pushOwnMessage(event as any);
+            const idx = this.sendQueue.indexOf(msg);
+            if (idx >= 0) this.sendQueue.splice(idx, 1);
+          } else {
+            if (msg.status !== "sent") msg.status = "failed";
           }
+        } catch (e) {
+          console.error("[messenger.retryFailedMessages]", e);
+          if (msg.status !== "sent") msg.status = "failed";
         }
-        if (msg.status !== "sent") msg.status = "failed";
       }
     },
 
