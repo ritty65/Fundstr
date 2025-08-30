@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
 import { watch, computed } from "vue";
-import { Event as NostrEvent } from "nostr-tools";
+import { Event as NostrEvent, nip44 } from "nostr-tools";
 import { SignerType } from "./nostr";
 import { v4 as uuidv4 } from "uuid";
 import { useSettingsStore } from "./settings";
@@ -24,7 +24,12 @@ import { subscriptionPayload } from "src/utils/receipt-utils";
 import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { stickyDmSubscription } from "src/js/nostr-runtime";
-import type { NDKEvent } from "@nostr-dev-kit/ndk";
+import { useNdk } from "src/composables/useNdk";
+import {
+  NDKKind,
+  type NDKEvent,
+  type NDKFilter,
+} from "@nostr-dev-kit/ndk";
 
 function parseSubscriptionPaymentPayload(obj: any):
   | {
@@ -140,6 +145,7 @@ export const useMessengerStore = defineStore("messenger", {
       started: false,
       watchInitialized: false,
       dmUnsub: null as null | (() => void),
+      nip17DmUnsub: null as null | (() => void),
       retryTimer: null as ReturnType<typeof setInterval> | null,
     };
   },
@@ -542,7 +548,7 @@ export const useMessengerStore = defineStore("messenger", {
         }
       } catch {}
     },
-    async addIncomingMessage(event: NostrEvent) {
+    async addIncomingMessage(event: NostrEvent, plaintext?: string) {
       await this.loadIdentity();
       const nostr = useNostrStore();
       let privKey: string | undefined = undefined;
@@ -553,11 +559,9 @@ export const useMessengerStore = defineStore("messenger", {
         privKey = nostr.privKeyHex;
         if (!privKey) return;
       }
-      const decrypted = await nostr.decryptNip04(
-        privKey,
-        event.pubkey,
-        event.content,
-      );
+      const decrypted =
+        plaintext ??
+        (await nostr.decryptNip04(privKey, event.pubkey, event.content));
       let subscriptionInfo: SubscriptionPayment | undefined;
       let tokenPayload: any | undefined;
       const lines = decrypted.split("\n").filter((l) => l.trim().length > 0);
@@ -748,6 +752,7 @@ export const useMessengerStore = defineStore("messenger", {
       }
       try {
         this.dmUnsub?.();
+        this.nip17DmUnsub?.();
         await this.loadIdentity();
         const nostr = useNostrStore();
         if (
@@ -770,6 +775,56 @@ export const useMessengerStore = defineStore("messenger", {
             await this.addIncomingMessage(raw as NostrEvent);
           },
         );
+
+        const ndk = await useNdk();
+        let nip17Sub: any;
+        const subscribeNip17 = () => {
+          const since = getSince();
+          const filter: NDKFilter = {
+            kinds: [1059 as NDKKind],
+            "#p": [nostr.pubkey],
+            since,
+          };
+          if (nip17Sub) {
+            try {
+              nip17Sub.stop();
+            } catch {}
+          }
+          nip17Sub = ndk.subscribe(filter, {
+            closeOnEose: false,
+            groupable: false,
+          });
+          nip17Sub.on("event", async (wrap: NDKEvent) => {
+            try {
+              const priv = nostr.privKeyHex;
+              if (!priv) return;
+              const wrappedContent = nip44.v2.decrypt(
+                wrap.content,
+                nip44.v2.utils.getConversationKey(priv as any, wrap.pubkey as any),
+              );
+              const seal = JSON.parse(wrappedContent) as NostrEvent;
+              const dmString = nip44.v2.decrypt(
+                seal.content,
+                nip44.v2.utils.getConversationKey(priv as any, seal.pubkey as any),
+              );
+              const dmEv = JSON.parse(dmString) as NostrEvent;
+              if (seal.pubkey !== dmEv.pubkey) return;
+              await this.addIncomingMessage(dmEv, dmEv.content);
+            } catch (err) {
+              console.error("[messenger.nip17]", err);
+            }
+          });
+        };
+        subscribeNip17();
+        ndk.pool.on("relay:connect", subscribeNip17);
+        this.nip17DmUnsub = () => {
+          ndk.pool.off("relay:connect", subscribeNip17);
+          if (nip17Sub) {
+            try {
+              nip17Sub.stop();
+            } catch {}
+          }
+        };
       } catch (e) {
         console.error("[messenger.start]", e);
       } finally {
