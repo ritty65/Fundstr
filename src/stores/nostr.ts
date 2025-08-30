@@ -22,6 +22,7 @@ import {
   SimplePool,
   getEventHash as ntGetEventHash,
   finalizeEvent,
+  Event as NostrEvent,
 } from "nostr-tools";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils"; // already an installed dependency
 import { ensureCompressed } from "src/utils/ecash";
@@ -1233,6 +1234,68 @@ export const useNostrStore = defineStore("nostr", {
           return await nip44.v2.decrypt(content, nip44Key);
         }
       }
+    },
+    publishNip04ToRelaysWithAcks: async function (
+      recipientHex: string,
+      message: string,
+      relays: string[],
+      keyHex?: string,
+      quorum = 1,
+      timeoutMs = 10000,
+    ): Promise<{ ok: boolean; acks: string[] }> {
+      recipientHex = this.resolvePubkey(recipientHex);
+      await this.initSignerIfNotSet();
+      const external =
+        this.signerType === SignerType.NIP07 || this.signerType === SignerType.NIP46;
+      const key = keyHex || this.privKeyHex;
+      if (!key && !external) {
+        notifyError("No private key available for messaging");
+        return { ok: false, acks: [] };
+      }
+      const signer = keyHex ? new NDKPrivateKeySigner(keyHex) : this.signer;
+      const senderPubkey =
+        keyHex ? getPublicKey(hexToBytes(keyHex)) : this.pubkey;
+      const ndk = await useNdk();
+      const event = new NDKEvent(ndk);
+      event.kind = NDKKind.EncryptedDirectMessage;
+      event.content = await this.encryptNip04(key, recipientHex, message);
+      event.tags = [
+        ["p", recipientHex],
+        ["p", senderPubkey],
+      ];
+      await event.sign(signer);
+      const raw = event.rawEvent() as NostrEvent;
+      const relayUrls = relays
+        .filter((r) => r.startsWith("wss://"))
+        .map((r) => r.replace(/\/+$/, ""));
+      let healthy: string[] = [];
+      try {
+        healthy = await filterHealthyRelays(relayUrls);
+      } catch {
+        healthy = [];
+      }
+      if (healthy.length === 0) return { ok: false, acks: [] };
+      const pool = new SimplePool();
+      const acks: string[] = [];
+      return await new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          pool.close(healthy);
+          resolve({ ok: acks.length >= quorum, acks });
+        }, timeoutMs);
+        healthy.forEach((url) => {
+          pool
+            .publish([url], raw)
+            .then(() => {
+              acks.push(url);
+              if (acks.length >= quorum) {
+                clearTimeout(timer);
+                pool.close(healthy);
+                resolve({ ok: true, acks });
+              }
+            })
+            .catch(() => {});
+        });
+      });
     },
     sendDirectMessageUnified: async function (
       recipient: string,
