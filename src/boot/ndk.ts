@@ -6,6 +6,7 @@ import { NDKEvent, type NDKFilter } from "@nostr-dev-kit/ndk";
 import { useSettingsStore } from "src/stores/settings";
 import { DEFAULT_RELAYS, FREE_RELAYS } from "src/config/relays";
 import { filterHealthyRelays } from "src/utils/relayHealth";
+import { RelayWatchdog } from "src/js/nostr-runtime";
 
 export type NdkBootErrorReason =
   | "no-signer"
@@ -61,6 +62,7 @@ function attachRelayErrorHandlers(ndk: NDK) {
 
 let ndkInstance: NDK | undefined;
 let ndkPromise: Promise<NDK> | undefined;
+let relayWatchdog: RelayWatchdog | undefined;
 
 export async function safeConnect(
   ndk: NDK,
@@ -113,6 +115,10 @@ async function createReadOnlyNdk(): Promise<NDK> {
     mergeDefaultRelays(ndk);
     await safeConnect(ndk);
   }
+  if (!relayWatchdog) {
+    relayWatchdog = new RelayWatchdog(ndk);
+    relayWatchdog.start(2, FREE_RELAYS);
+  }
   return ndk;
 }
 
@@ -130,6 +136,10 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
   if (![...ndk.pool.relays.values()].some((r: any) => r.connected)) {
     mergeDefaultRelays(ndk);
     await safeConnect(ndk);
+  }
+  if (!relayWatchdog) {
+    relayWatchdog = new RelayWatchdog(ndk);
+    relayWatchdog.start(2, FREE_RELAYS);
   }
   return ndk;
 }
@@ -167,6 +177,10 @@ export async function createNdk(): Promise<NDK> {
   if (![...ndk.pool.relays.values()].some((r: any) => r.connected)) {
     mergeDefaultRelays(ndk);
     await safeConnect(ndk);
+  }
+  if (!relayWatchdog) {
+    relayWatchdog = new RelayWatchdog(ndk);
+    relayWatchdog.start(2, FREE_RELAYS);
   }
   return ndk;
 }

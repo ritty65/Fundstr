@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 var sendDm: any;
 var decryptDm: any;
-var subscribe: any;
+var stickySub: any;
 var walletGen: any;
 
 vi.mock("../../../src/stores/nostr", async (importOriginal) => {
@@ -12,16 +12,10 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
     event: { id: "1", created_at: 0 },
   }));
   decryptDm = vi.fn(async () => "msg");
-  subscribe = vi.fn(
-    async (_priv: string, _pub: string, cb: any, _since?: number) => {
-      cb && cb({} as any, "");
-    },
-  );
   walletGen = vi.fn();
   const store = {
     sendDirectMessageUnified: sendDm,
     decryptNip04: decryptDm,
-    subscribeToNip04DirectMessagesCallback: subscribe,
     walletSeedGenerateKeyPair: walletGen,
     initSignerIfNotSet: vi.fn(),
     privateKeySignerPrivateKey: "priv",
@@ -37,6 +31,19 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
     },
   });
   return { ...actual, useNostrStore: () => store };
+});
+
+vi.mock("../../../src/js/nostr-runtime", () => {
+  stickySub = vi.fn(async (_pub: string, _getSince: any, cb: any) => {
+    const ev = {
+      pubkey: "s",
+      content: "c",
+      toNostrEvent: async () => ({ id: "1", pubkey: "s", content: "c", created_at: 1 }),
+    };
+    cb && cb(ev as any);
+    return vi.fn();
+  });
+  return { stickyDmSubscription: stickySub, RelayWatchdog: class {} };
 });
 
 vi.mock("../../../src/js/message-utils", () => ({
@@ -80,11 +87,12 @@ describe("messenger store", () => {
   it("subscribes using global key on start", async () => {
     const messenger = useMessengerStore();
     await messenger.start();
-    expect(subscribe).toHaveBeenCalled();
-    const args = subscribe.mock.calls[0];
-    expect(args[0]).toBe("priv");
-    expect(args[1]).toBe("pub");
-    expect(args[3]).toBe(0);
+    expect(stickySub).toHaveBeenCalled();
+    const args = stickySub.mock.calls[0];
+    expect(args[0]).toBe("pub");
+    const sinceFn = args[1];
+    expect(typeof sinceFn).toBe("function");
+    expect(sinceFn()).toBe(0);
   });
 
   it("notifies when starting without privkey", async () => {
