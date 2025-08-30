@@ -1,5 +1,5 @@
 <template>
-  <div class="row items-center justify-between q-pt-xs q-pb-none q-px-sm">
+  <div class="column q-pt-xs q-pb-none q-px-sm">
     <div class="row items-center">
       <q-btn
         flat
@@ -53,6 +53,13 @@
         <div class="text-grey-6">Select a conversation to start chatting.</div>
       </template>
     </div>
+    <div
+      v-if="connectedRelayHosts.length"
+      class="text-caption text-2 ellipsis q-mt-xs"
+    >
+      Relays: {{ connectedRelayHosts.join(', ') }}
+      <q-tooltip>{{ connectedRelayHosts.join(', ') }}</q-tooltip>
+    </div>
     <ChatSendTokenDialog
       ref="chatSendTokenDialogRef"
       :recipient="props.pubkey"
@@ -70,7 +77,7 @@ import { nip19 } from "nostr-tools";
 import ProfileInfoDialog from "./ProfileInfoDialog.vue";
 import RelayManagerDialog from "./RelayManagerDialog.vue";
 
-const props = defineProps<{ pubkey: string }>();
+const props = defineProps<{ pubkey: string; relays: { url: string; connected: boolean }[] }>();
 const nostr = useNostrStore();
 const messenger = useMessengerStore();
 const profile = ref<any>(null);
@@ -122,6 +129,18 @@ const relayManagerDialogRef = ref<InstanceType<
   typeof RelayManagerDialog
 > | null>(null);
 const showProfileDialog = ref(false);
+
+const connectedRelayHosts = computed(() =>
+  (props.relays || [])
+    .filter((r) => r.connected)
+    .map((r) => {
+      try {
+        return new URL(r.url).host;
+      } catch {
+        return r.url;
+      }
+    })
+);
 
 function openSendTokenDialog() {
   if (!props.pubkey) return;

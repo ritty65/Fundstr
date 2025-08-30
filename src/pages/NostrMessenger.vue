@@ -34,7 +34,7 @@
         <q-btn flat dense label="Switch Account" @click="switchAccount" />
       </div>
       <q-spinner v-if="loading" size="lg" color="primary" />
-      <ActiveChatHeader :pubkey="selected" />
+      <ActiveChatHeader :pubkey="selected" :relays="relayInfos" />
       <MessageList :messages="messages" class="col" />
       <MessageInput @send="sendMessage" @sendToken="openSendTokenDialog" />
       <ChatSendTokenDialog ref="chatSendTokenDialogRef" :recipient="selected" />
@@ -176,6 +176,14 @@ export default defineComponent({
 
     const totalRelays = computed(() => ndkRef.value?.pool.relays.size || 0);
 
+    const relayInfos = computed(() => {
+      if (!ndkRef.value) return [] as { url: string; connected: boolean }[];
+      return Array.from(ndkRef.value.pool.relays.values()).map((r) => ({
+        url: r.url,
+        connected: r.connected,
+      }));
+    });
+
     const nextReconnectIn = computed(() => {
       if (!ndkRef.value) return null;
       let earliest: number | null = null;
@@ -280,6 +288,7 @@ export default defineComponent({
       reconnectAll,
       connectedCount,
       totalRelays,
+      relayInfos,
       nextReconnectIn,
       setupComplete,
       switchAccount,
