@@ -4,6 +4,7 @@ import { useLocalStorage } from "@vueuse/core";
 import { useMintsStore } from "./mints";
 import { notifySuccess } from "../js/notify";
 import { useUiStore } from "./ui";
+import { useMessengerStore } from "./messenger";
 
 // Define the migration version type
 export type Migration = {
@@ -89,6 +90,16 @@ export const useMigrationsStore = defineStore("migrations", {
       }
     },
 
+    async cleanupMessengerKeys() {
+      const messenger = useMessengerStore();
+      messenger.normalizeStoredConversations();
+      for (const key of Object.keys(messenger.unreadCounts)) {
+        if (!messenger.conversations[key]) {
+          delete messenger.unreadCounts[key];
+        }
+      }
+    },
+
     // Initialize migrations
     initMigrations() {
       // Register the first migration
@@ -98,6 +109,14 @@ export const useMigrationsStore = defineStore("migrations", {
         description:
           "Updates mint URL from https://stablenut.umint.cash to https://stablenut.cashu.network",
         execute: async () => await this.migrateStablenutsToCash(),
+      });
+
+      this.registerMigration({
+        version: 2,
+        name: "Clean up messenger keys",
+        description:
+          "Removes invalid or mismatched keys from messenger conversations and unread counts",
+        execute: async () => await this.cleanupMessengerKeys(),
       });
 
       // Add more migrations here in the future
