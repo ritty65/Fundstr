@@ -14,8 +14,15 @@
           color="primary"
           @click="selectFile"
           icon="attach_file"
+          aria-label="Attach file"
         />
-        <q-btn flat round color="primary" @click="sendToken">
+        <q-btn
+          flat
+          round
+          color="primary"
+          @click="sendToken"
+          aria-label="Send token"
+        >
           <NutIcon />
         </q-btn>
         <q-btn
@@ -26,6 +33,7 @@
           class="q-ml-sm"
           :disable="!text.trim() && !attachment"
           @click="send"
+          aria-label="Send message"
         />
       </template>
     </q-input>

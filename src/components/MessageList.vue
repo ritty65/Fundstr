@@ -1,20 +1,23 @@
 <template>
-  <q-scroll-area class="col column q-pa-md">
-    <template v-for="(msg, idx) in messages" :key="msg.id">
-      <div
-        v-if="showDateSeparator(idx)"
-        class="text-caption text-center q-my-md divider-text"
-      >
-        {{ formatDay(msg.created_at) }}
-      </div>
-      <ChatMessageBubble
-        :message="msg"
-        :delivery-status="msg.status"
-        :prev-message="messages[idx - 1]"
-      />
-    </template>
-    <div ref="bottom"></div>
-  </q-scroll-area>
+  <q-virtual-scroll
+    ref="scroll"
+    class="col column q-pa-md"
+    :items="messages"
+    :virtual-scroll-slice-size="30"
+    v-slot="{ item: msg, index: idx }"
+  >
+    <div
+      v-if="showDateSeparator(idx)"
+      class="text-caption text-center q-my-md divider-text"
+    >
+      {{ formatDay(msg.created_at) }}
+    </div>
+    <ChatMessageBubble
+      :message="msg"
+      :delivery-status="msg.status"
+      :prev-message="messages[idx - 1]"
+    />
+  </q-virtual-scroll>
 </template>
 
 <script lang="ts" setup>
@@ -23,7 +26,7 @@ import type { MessengerMessage } from "src/stores/messenger";
 import ChatMessageBubble from "./ChatMessageBubble.vue";
 
 const props = defineProps<{ messages: MessengerMessage[] }>();
-const bottom = ref<HTMLElement>();
+const scroll = ref<any>();
 
 function formatDay(ts: number) {
   const d = new Date(ts * 1000);
@@ -41,14 +44,11 @@ function showDateSeparator(idx: number) {
 }
 
 watch(
-  () => props.messages,
+  () => props.messages.length,
   () => {
-    nextTick(() => bottom.value?.scrollIntoView({ behavior: "smooth" }));
+    nextTick(() => scroll.value?.scrollTo(props.messages.length - 1, "end"));
   },
-  { deep: true },
 );
-
-const formatDate = (ts: number) => new Date(ts * 1000).toLocaleString();
 
 defineExpose({ formatDay, showDateSeparator });
 </script>

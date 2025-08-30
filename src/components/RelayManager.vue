@@ -8,61 +8,75 @@
       dense
     />
     <div class="q-mb-sm" v-if="relayStatuses.length">
-      <div class="text-subtitle2 q-mb-xs">
+      <div class="text-subtitle2 q-mb-xs" aria-live="polite">
         {{ connectedCount }} / {{ relayStatuses.length }} connected
       </div>
-      <div v-if="connectedRelays.length">
-        <div class="text-caption text-weight-bold q-mt-sm">Connected</div>
+      <q-expansion-item
+        v-if="connectedRelays.length"
+        dense
+        expand-separator
+        label="Connected"
+        default-opened
+      >
         <div
           v-for="s in connectedRelays"
           :key="s.url"
           class="row items-center q-my-xs"
         >
-          <q-icon
-            name="check_circle"
-            color="positive"
-            size="sm"
-            class="q-mr-xs"
+          <q-badge
+            class="q-mr-sm"
+            rounded
+            :color="statusColor(s.status)"
+            :label="statusLabel(s.status)"
           />
           <span class="text-caption">{{ s.url }}</span>
-          <span class="text-caption q-ml-sm">{{ s.status }}</span>
-          <q-icon
-            name="delete_outline"
-            size="sm"
-            class="q-ml-xs cursor-pointer"
+          <q-btn
+            flat
+            dense
+            round
+            icon="delete_outline"
+            class="q-ml-xs"
             @click="removeRelay(s.url)"
+            aria-label="Remove relay"
           />
         </div>
-      </div>
-      <div v-if="disconnectedRelays.length">
-        <div class="text-caption text-weight-bold q-mt-sm">Disconnected</div>
+      </q-expansion-item>
+      <q-expansion-item
+        v-if="disconnectedRelays.length"
+        dense
+        expand-separator
+        label="Disconnected"
+      >
         <div
           v-for="s in disconnectedRelays"
           :key="s.url"
           class="row items-center q-my-xs"
         >
-          <q-icon
-            name="error"
-            color="negative"
-            size="sm"
-            class="q-mr-xs"
+          <q-badge
+            class="q-mr-sm"
+            rounded
+            :color="statusColor(s.status)"
+            :label="statusLabel(s.status)"
           />
           <span class="text-caption">{{ s.url }}</span>
-          <span class="text-caption q-ml-sm">
-            {{ s.status }}
-            <span v-if="s.nextReconnectAt">
-              - reconnect in
-              {{ Math.max(0, Math.ceil((s.nextReconnectAt - now) / 1000)) }}s
-            </span>
+          <span
+            class="text-caption q-ml-sm"
+            v-if="s.nextReconnectAt"
+          >
+            reconnect in
+            {{ Math.max(0, Math.ceil((s.nextReconnectAt - now) / 1000)) }}s
           </span>
-          <q-icon
-            name="delete_outline"
-            size="sm"
-            class="q-ml-xs cursor-pointer"
+          <q-btn
+            flat
+            dense
+            round
+            icon="delete_outline"
+            class="q-ml-xs"
             @click="removeRelay(s.url)"
+            aria-label="Remove relay"
           />
         </div>
-      </div>
+      </q-expansion-item>
     </div>
     <div class="row q-gutter-sm">
       <q-btn label="Connect" color="primary" @click="connect" dense />
@@ -129,6 +143,23 @@ const disconnectedRelays = computed(() =>
   relayStatuses.value.filter((s) => !s.connected),
 );
 const connectedCount = computed(() => connectedRelays.value.length);
+
+const statusMap: Record<string, { label: string; color: string }> = {
+  CONNECTED: { label: "Connected", color: "positive" },
+  CONNECTING: { label: "Connecting", color: "warning" },
+  RECONNECTING: { label: "Retrying…", color: "warning" },
+  DISCONNECTED: { label: "Disconnected", color: "negative" },
+  FAILED: { label: "Failed", color: "negative" },
+  UNKNOWN: { label: "Unknown", color: "grey" },
+};
+
+function statusLabel(status: string) {
+  return statusMap[status]?.label || status;
+}
+
+function statusColor(status: string) {
+  return statusMap[status]?.color || "grey";
+}
 
 watch(
   () => messenger.relays,

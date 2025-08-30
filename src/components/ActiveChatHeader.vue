@@ -8,6 +8,7 @@
         icon="payments"
         class="q-mr-sm"
         @click="openSendTokenDialog"
+        aria-label="Send token"
       />
       <template v-if="pubkey">
         <q-avatar size="md" class="q-mr-sm relative-position">
@@ -34,6 +35,7 @@
           icon="more_vert"
           class="q-ml-xs"
           @click="showProfileDialog = true"
+          aria-label="More options"
         />
         <q-btn
           flat
@@ -42,6 +44,7 @@
           icon="rss_feed"
           class="q-ml-xs"
           @click="openRelayDialog"
+          aria-label="Manage relays"
         />
         <ProfileInfoDialog
           v-model="showProfileDialog"
