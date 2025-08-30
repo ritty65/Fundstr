@@ -312,7 +312,8 @@ const deleteItem = () => emit("delete", nostr.resolvePubkey(props.pubkey));
   pointer-events: none; /* don’t block avatar clicks */
 }
 .conversation-item.selected {
-  background-color: color-mix(in srgb, var(--q-primary), transparent 92%);
+  background-color: var(--accent-200);
+  color: var(--text-1);
 }
 .conversation-item:focus {
   border-left: 2px solid var(--q-primary);
