@@ -19,6 +19,7 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
     sendNip17DirectMessage: sendNip17,
     sendDirectMessageUnified: sendDmLegacy,
     decryptNip04: decryptDm,
+    fetchDmRelayUris: vi.fn(async () => ["wss://relay.example"]),
     walletSeedGenerateKeyPair: walletGen,
     initSignerIfNotSet: vi.fn(),
     privateKeySignerPrivateKey: "priv",
@@ -73,7 +74,7 @@ describe("messenger store", () => {
   it("uses NIP-17 when sending DMs", async () => {
     const messenger = useMessengerStore();
     await messenger.sendDm("r", "m");
-    expect(sendNip17).toHaveBeenCalledWith("r", "m", undefined);
+    expect(sendNip17).toHaveBeenCalledWith("r", "m", ["wss://relay.example"]);
     expect(sendDmLegacy).not.toHaveBeenCalled();
   });
 

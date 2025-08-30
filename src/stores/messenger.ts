@@ -30,6 +30,7 @@ import {
   type NDKEvent,
   type NDKFilter,
 } from "@nostr-dev-kit/ndk";
+import { Dialog } from "quasar";
 
 function parseSubscriptionPaymentPayload(obj: any):
   | {
@@ -273,6 +274,32 @@ export const useMessengerStore = defineStore("messenger", {
         nostr.signerType === SignerType.NIP07 ||
         nostr.signerType === SignerType.NIP46;
       const privKey = externalSigner ? undefined : nostr.privKeyHex;
+      let list = relays && relays.length ? [...relays] : [...(this.relays as any)];
+      if (!relays || relays.length === 0) {
+        try {
+          const receiverRelays = await nostr.fetchDmRelayUris(recipient);
+          if (!receiverRelays || receiverRelays.length === 0) {
+            const proceed = await new Promise<boolean>((resolve) => {
+              Dialog.create({
+                title: "No DM relays found",
+                message:
+                  "Recipient has not published a kind:10050 DM relay list. Message may not be delivered. Send anyway?",
+                cancel: { label: "Cancel" },
+                ok: { label: "Send" },
+                persistent: true,
+              })
+                .onOk(() => resolve(true))
+                .onCancel(() => resolve(false));
+            });
+            if (!proceed) return { success: false } as any;
+          } else {
+            list = Array.from(new Set([...(list || []), ...receiverRelays]));
+          }
+        } catch (e) {
+          console.error("[messenger.sendDm] fetchDmRelayUris", e);
+        }
+      }
+
       const msg = this.addOutgoingMessage(
         recipient,
         message,
@@ -283,7 +310,6 @@ export const useMessengerStore = defineStore("messenger", {
         tokenPayload,
       );
 
-      const list = relays && relays.length ? relays : (this.relays as any);
       let nip17Event: NDKEvent | null = null;
       if (privKey) {
         try {
