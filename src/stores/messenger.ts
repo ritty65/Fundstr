@@ -156,7 +156,13 @@ export const useMessengerStore = defineStore("messenger", {
     },
     normalizeStoredConversations() {
       // normalize conversation keys and merge duplicates
+      const keyRegex = /[0-9a-fA-F]{64}|npub1|nprofile1/;
+
       for (const key of Object.keys(this.conversations)) {
+        if (!keyRegex.test(key)) {
+          delete this.conversations[key];
+          continue;
+        }
         const normalized = this.normalizeKey(key);
         const msgs = this.conversations[key];
         if (!normalized || !msgs) {
@@ -175,6 +181,10 @@ export const useMessengerStore = defineStore("messenger", {
       }
 
       for (const key of Object.keys(this.unreadCounts)) {
+        if (!keyRegex.test(key)) {
+          delete this.unreadCounts[key];
+          continue;
+        }
         const normalized = this.normalizeKey(key);
         if (!normalized) {
           delete this.unreadCounts[key];
@@ -188,6 +198,10 @@ export const useMessengerStore = defineStore("messenger", {
       }
 
       for (const key of Object.keys(this.pinned)) {
+        if (!keyRegex.test(key)) {
+          delete this.pinned[key];
+          continue;
+        }
         const normalized = this.normalizeKey(key);
         if (!normalized) {
           delete this.pinned[key];
@@ -200,6 +214,10 @@ export const useMessengerStore = defineStore("messenger", {
       }
 
       for (const key of Object.keys(this.aliases)) {
+        if (!keyRegex.test(key)) {
+          delete this.aliases[key];
+          continue;
+        }
         const normalized = this.normalizeKey(key);
         if (!normalized) {
           delete this.aliases[key];
@@ -212,9 +230,12 @@ export const useMessengerStore = defineStore("messenger", {
       }
 
       // normalize event log entries
-      this.eventLog.forEach((msg) => {
+      this.eventLog = this.eventLog.filter((msg) => {
+        if (!keyRegex.test(msg.pubkey)) return false;
         const normalized = this.normalizeKey(msg.pubkey);
-        if (normalized) msg.pubkey = normalized;
+        if (!normalized) return false;
+        msg.pubkey = normalized;
+        return true;
       });
     },
     async loadIdentity() {

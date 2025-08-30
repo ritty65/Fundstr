@@ -926,6 +926,8 @@ export const useNostrStore = defineStore("nostr", {
     resolvePubkey: function (pk: string): string | undefined {
       if (typeof pk !== "string") return undefined;
       const trimmed = pk.trim();
+      const keyRegex = /[0-9a-fA-F]{64}|npub1|nprofile1/;
+      if (!keyRegex.test(trimmed)) return undefined;
       if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
         return trimmed.toLowerCase();
       }
