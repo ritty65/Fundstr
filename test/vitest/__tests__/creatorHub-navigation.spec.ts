@@ -33,8 +33,8 @@ vi.mock('nostr-tools', () => ({ nip19: { npubEncode: (s: string) => `npub${s}`, 
 vi.mock('../../../src/composables/useCreatorHub', () => ({
   useCreatorHub: () => {
     const nostr = useNostrStore()
-    const loggedIn = computed(() => !!nostr.pubkey)
-    const npub = computed(() => (nostr.pubkey ? `npub${nostr.pubkey}` : ''))
+    const loggedIn = computed(() => nostr.hasIdentity)
+    const npub = computed(() => (nostr.hasIdentity ? `npub${nostr.pubkey}` : ''))
     return {
       loggedIn,
       npub,

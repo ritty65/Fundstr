@@ -196,7 +196,7 @@ export default defineComponent({
         showSetupDialog.value = true
         return
       }
-      if (!nostr.pubkey && !nostr.signer) {
+      if (!nostr.hasIdentity) {
         showSetupDialog.value = true
         return
       }
@@ -216,7 +216,7 @@ export default defineComponent({
       await loadProfile()
 
       const tierId = route.query.tierId as string | undefined
-      if (!nostr.pubkey || !tierId) return
+      if (!nostr.hasIdentity || !tierId) return
       const tryOpen = () => {
         const t = tiers.value.find((ti: any) => ti.id === tierId)
         if (t) {

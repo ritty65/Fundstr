@@ -237,7 +237,7 @@ export default defineComponent({
     );
 
     async function initProfile() {
-      if (!npub.value) return;
+      if (!nostr.hasIdentity) return;
       const p = await nostr.getProfile(npub.value);
       if (p) {
         if (p.picture && !isTrustedUrl(p.picture)) {

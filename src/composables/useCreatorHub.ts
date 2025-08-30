@@ -109,7 +109,7 @@ export function useCreatorHub() {
   const splitterModel = ref(50);
   const tab = ref<"profile" | "tiers">("profile");
 
-  const loggedIn = computed(() => !!useNostrStore().pubkey);
+  const loggedIn = computed(() => useNostrStore().hasIdentity);
   const tierList = computed<Tier[]>(() => store.getTierArray());
   const draggableTiers = ref<Tier[]>([]);
   const deleteDialog = ref(false);
@@ -139,7 +139,7 @@ export function useCreatorHub() {
   }
 
   async function initPage() {
-    if (!nostr.pubkey) return;
+    if (!nostr.hasIdentity) return;
     await nostr.initSignerIfNotSet();
     const p = await nostr.getProfile(nostr.pubkey);
     if (p) profileStore.setProfile(p);
@@ -275,7 +275,7 @@ export function useCreatorHub() {
   }
 
   onMounted(() => {
-    if (nostr.pubkey) initPage();
+    if (nostr.hasIdentity) initPage();
   });
 
   return {

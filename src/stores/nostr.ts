@@ -660,6 +660,7 @@ export const useNostrStore = defineStore("nostr", {
           return "";
       }
     },
+    hasIdentity: (state) => Boolean(state.pubkey && state.signerType),
   },
   actions: {
     loadKeysFromStorage: async function () {

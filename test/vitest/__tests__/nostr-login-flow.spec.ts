@@ -43,8 +43,8 @@ vi.mock("nostr-tools", () => ({
 vi.mock("../../../src/composables/useCreatorHub", () => ({
   useCreatorHub: () => {
     const nostr = useNostrStore();
-    const loggedIn = computed(() => !!nostr.pubkey);
-    const npub = computed(() => (nostr.pubkey ? `npub${nostr.pubkey}` : ""));
+    const loggedIn = computed(() => nostr.hasIdentity);
+    const npub = computed(() => (nostr.hasIdentity ? `npub${nostr.pubkey}` : ""));
     return {
       loggedIn,
       npub,
