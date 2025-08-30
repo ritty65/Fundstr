@@ -107,6 +107,10 @@ export const useMessengerStore = defineStore("messenger", {
       storageKey("eventLog"),
       [] as MessengerMessage[],
     );
+    const sendQueue = useLocalStorage<MessengerMessage[]>(
+      storageKey("sendQueue"),
+      [] as MessengerMessage[],
+    );
     const drawerOpen = useLocalStorage<boolean>(storageKey("drawerOpen"), true);
     const drawerMini = useLocalStorage<boolean>(storageKey("drawerMini"), false);
 
@@ -118,6 +122,7 @@ export const useMessengerStore = defineStore("messenger", {
         pinned.value = {} as any;
         aliases.value = {} as any;
         eventLog.value = [] as any;
+        sendQueue.value = [] as any;
       },
     );
 
@@ -128,13 +133,14 @@ export const useMessengerStore = defineStore("messenger", {
       pinned,
       aliases,
       eventLog,
-      sendQueue: [] as MessengerMessage[],
+      sendQueue,
       currentConversation: "",
       drawerOpen,
       drawerMini,
       started: false,
       watchInitialized: false,
       dmUnsub: null as null | (() => void),
+      retryTimer: null as ReturnType<typeof setInterval> | null,
     };
   },
   getters: {
@@ -715,6 +721,7 @@ export const useMessengerStore = defineStore("messenger", {
           (val) => {
             if (val) this.retryFailedMessages();
           },
+          { immediate: true },
         );
         this.watchInitialized = true;
       }
@@ -749,6 +756,7 @@ export const useMessengerStore = defineStore("messenger", {
         console.error("[messenger.start]", e);
       } finally {
         this.started = true;
+        this.retryFailedMessages();
       }
     },
 
@@ -778,38 +786,58 @@ export const useMessengerStore = defineStore("messenger", {
     },
 
     async retryFailedMessages() {
-      if (!this.isConnected() || !this.sendQueue.length) return;
-      const nostr = useNostrStore();
-      let privKey: string | undefined = undefined;
-      if (nostr.signerType !== "NIP07" && nostr.signerType !== "NIP46") {
-        privKey = nostr.privKeyHex;
-        if (!privKey) return;
-      }
-      const list = this.relays as any;
-      for (const msg of [...this.sendQueue]) {
-        try {
-          const { success, event } = await nostr.sendDirectMessageUnified(
-            msg.pubkey,
-            msg.content,
-            privKey,
-            nostr.pubkey,
-            list,
-          );
-          if (success && event) {
-            msg.id = event.id;
-            msg.created_at =
-              event.created_at ?? Math.floor(Date.now() / 1000);
-            msg.status = "sent";
-            this.pushOwnMessage(event as any);
-            const idx = this.sendQueue.indexOf(msg);
-            if (idx >= 0) this.sendQueue.splice(idx, 1);
-          } else {
+      const attempt = async () => {
+        if (!this.isConnected() || !this.sendQueue.length) {
+          if (this.retryTimer) {
+            clearInterval(this.retryTimer);
+            this.retryTimer = null;
+          }
+          return;
+        }
+        const nostr = useNostrStore();
+        let privKey: string | undefined = undefined;
+        if (nostr.signerType !== "NIP07" && nostr.signerType !== "NIP46") {
+          privKey = nostr.privKeyHex;
+          if (!privKey) return;
+        }
+        const list = this.relays as any;
+        for (const msg of [...this.sendQueue]) {
+          try {
+            const { success, event } = await nostr.sendDirectMessageUnified(
+              msg.pubkey,
+              msg.content,
+              privKey,
+              nostr.pubkey,
+              list,
+            );
+            if (success && event) {
+              msg.id = event.id;
+              msg.created_at =
+                event.created_at ?? Math.floor(Date.now() / 1000);
+              msg.status = "sent";
+              this.pushOwnMessage(event as any);
+              const idx = this.sendQueue.indexOf(msg);
+              if (idx >= 0) this.sendQueue.splice(idx, 1);
+            } else {
+              if (msg.status !== "sent") msg.status = "failed";
+            }
+          } catch (e) {
+            console.error("[messenger.retryFailedMessages]", e);
             if (msg.status !== "sent") msg.status = "failed";
           }
-        } catch (e) {
-          console.error("[messenger.retryFailedMessages]", e);
-          if (msg.status !== "sent") msg.status = "failed";
         }
+        if (!this.sendQueue.length && this.retryTimer) {
+          clearInterval(this.retryTimer);
+          this.retryTimer = null;
+        }
+      };
+
+      await attempt();
+
+      if (this.sendQueue.length && !this.retryTimer) {
+        this.retryTimer = setInterval(() => {
+          attempt();
+        }, 5000);
       }
     },
 

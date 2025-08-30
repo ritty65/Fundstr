@@ -15,11 +15,11 @@
       <q-banner v-if="connecting && !loading" dense class="bg-grey-3">
         Connecting...
       </q-banner>
-      <q-banner
-        v-else-if="!messenger.connected && !loading"
-        dense
-        class="bg-grey-3"
-      >
+        <q-banner
+          v-else-if="!messenger.connected && !loading"
+          dense
+          class="bg-grey-3"
+        >
         <div class="row items-center q-gutter-sm">
           <span>
             Offline - {{ connectedCount }}/{{ totalRelays }} connected
@@ -29,12 +29,23 @@
           </span>
           <q-btn flat dense label="Reconnect All" @click="reconnectAll" />
         </div>
-      </q-banner>
-      <div class="row justify-end q-mb-sm" v-if="!loading">
-        <q-btn flat dense label="Switch Account" @click="switchAccount" />
-      </div>
-      <q-spinner v-if="loading" size="lg" color="primary" />
-      <ActiveChatHeader :pubkey="selected" :relays="relayInfos" />
+        </q-banner>
+        <q-banner
+          v-if="messenger.sendQueue.length"
+          dense
+          class="bg-orange-2 q-mb-sm"
+        >
+          <div class="row items-center no-wrap">
+            <span>{{ messenger.sendQueue.length }} message(s) queued</span>
+            <q-space />
+            <q-btn flat dense label="Retry" @click="retryQueued" />
+          </div>
+        </q-banner>
+        <div class="row justify-end q-mb-sm" v-if="!loading">
+          <q-btn flat dense label="Switch Account" @click="switchAccount" />
+        </div>
+        <q-spinner v-if="loading" size="lg" color="primary" />
+        <ActiveChatHeader :pubkey="selected" :relays="relayInfos" />
       <MessageList :messages="messages" class="col" />
       <MessageInput @send="sendMessage" @sendToken="openSendTokenDialog" />
       <ChatSendTokenDialog ref="chatSendTokenDialogRef" :recipient="selected" />
@@ -152,6 +163,8 @@ export default defineComponent({
     });
 
     const route = useRoute();
+
+    const retryQueued = () => messenger.retryFailedMessages();
 
     const openDrawer = () => {
       if ($q.screen.lt.md) {
@@ -294,6 +307,7 @@ export default defineComponent({
       switchAccount,
       openDrawer,
       ui,
+      retryQueued,
     };
   },
 });
