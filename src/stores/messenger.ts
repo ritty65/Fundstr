@@ -23,6 +23,8 @@ import tokenUtil from "src/js/token";
 import { subscriptionPayload } from "src/utils/receipt-utils";
 import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
+import { stickyDmSubscription } from "src/js/nostr-runtime";
+import type { NDKEvent } from "@nostr-dev-kit/ndk";
 
 function parseSubscriptionPaymentPayload(obj: any):
   | {
@@ -132,6 +134,7 @@ export const useMessengerStore = defineStore("messenger", {
       drawerMini,
       started: false,
       watchInitialized: false,
+      dmUnsub: null as null | (() => void),
     };
   },
   getters: {
@@ -666,31 +669,28 @@ export const useMessengerStore = defineStore("messenger", {
         return;
       }
       try {
+        this.dmUnsub?.();
         await this.loadIdentity();
         const nostr = useNostrStore();
-        let privKey: string | undefined = undefined;
         if (
           nostr.signerType !== SignerType.NIP07 &&
-          nostr.signerType !== SignerType.NIP46
+          nostr.signerType !== SignerType.NIP46 &&
+          !nostr.privKeyHex
         ) {
-          privKey = nostr.privKeyHex;
-          if (!privKey) {
-            console.warn(
-              "[messenger] no private key set, running in read-only mode",
-            );
-          }
+          notifyError("Unable to decrypt messages: no private key");
         }
-        const since = this.eventLog.reduce(
-          (max, m) => (m.created_at > max ? m.created_at : max),
-          0,
-        );
-        await nostr.subscribeToNip04DirectMessagesCallback(
-          privKey,
+        const getSince = () =>
+          this.eventLog.reduce(
+            (max, m) => (m.created_at > max ? m.created_at : max),
+            0,
+          );
+        this.dmUnsub = await stickyDmSubscription(
           nostr.pubkey,
-          async (ev, _decrypted) => {
-            await this.addIncomingMessage(ev as NostrEvent);
+          getSince,
+          async (ev: NDKEvent) => {
+            const raw = await ev.toNostrEvent();
+            await this.addIncomingMessage(raw as NostrEvent);
           },
-          since,
         );
       } catch (e) {
         console.error("[messenger.start]", e);
