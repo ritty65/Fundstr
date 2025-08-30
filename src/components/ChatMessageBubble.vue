@@ -335,18 +335,15 @@ async function updateAutoRedeem(val: boolean) {
 
 .bubble-outgoing {
   background-color: var(--accent-500);
-  color: var(--text-1);
+  color: var(--bubble-outgoing-text);
   border-radius: 12px 0 12px 12px;
 }
 
-body.body--dark .bubble-outgoing {
-  color: var(--text-inverse);
-}
-
 .bubble-incoming {
-  background-color: var(--surface-2);
+  background-color: color-mix(in srgb, var(--surface-2), white 15%);
   color: var(--text-1);
   border-radius: 0 12px 12px 12px;
+  border: 1px solid var(--surface-contrast-border);
 }
 
 .token-wrapper {
