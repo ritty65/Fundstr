@@ -1630,14 +1630,25 @@ export const useNostrStore = defineStore("nostr", {
               ),
             );
             const sealEvent = JSON.parse(wappedContent) as NostrEvent;
-            const dmEventString = nip44.v2.decrypt(
+            const rumorString = nip44.v2.decrypt(
               sealEvent.content,
               nip44.v2.utils.getConversationKey(
                 privKey || ("" as any),
                 sealEvent.pubkey as any,
               ),
             );
-            dmEvent = JSON.parse(dmEventString) as NDKEvent;
+            const rumor = JSON.parse(rumorString) as NostrEvent;
+            if (sealEvent.pubkey !== rumor.pubkey) {
+              console.warn(
+                "[nostr] dropping gift-wrap: seal.pubkey and rumor.pubkey mismatch",
+                {
+                  seal: sealEvent.pubkey,
+                  rumor: rumor.pubkey,
+                },
+              );
+              return;
+            }
+            dmEvent = rumor as NDKEvent;
             content = dmEvent.content;
             debug("### NIP-17 DM from", dmEvent.pubkey);
             debug("Content:", content);
