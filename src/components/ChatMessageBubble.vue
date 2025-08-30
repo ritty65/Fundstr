@@ -334,14 +334,18 @@ async function updateAutoRedeem(val: boolean) {
 }
 
 .bubble-outgoing {
-  background-color: var(--q-primary);
-  color: #ffffff;
+  background-color: var(--accent-500);
+  color: var(--text-1);
   border-radius: 12px 0 12px 12px;
 }
 
+body.body--dark .bubble-outgoing {
+  color: var(--text-inverse);
+}
+
 .bubble-incoming {
-  background-color: var(--q-secondary);
-  color: #000000;
+  background-color: var(--surface-2);
+  color: var(--text-1);
   border-radius: 0 12px 12px 12px;
 }
 
