@@ -10,6 +10,7 @@ const FREE_RELAYS = [
 const reportedFailures = new Map();
 const alreadyReported = new Set();
 let aggregateTimer = null;
+let allFailedWarned = false;
 
 function scheduleFailureLog() {
   if (aggregateTimer) return;
@@ -115,9 +116,12 @@ export async function filterHealthyRelays(relays) {
     const batchHealthy = results.filter((u) => !!u);
     healthy.push(...batchHealthy);
   }
-
   if (healthy.length === 0) {
-    throw new Error("no reachable relays");
+    if (!allFailedWarned) {
+      console.warn("No reachable relays; falling back to FREE_RELAYS");
+      allFailedWarned = true;
+    }
+    return FREE_RELAYS;
   }
 
   return healthy.length >= 2 ? healthy : FREE_RELAYS;
