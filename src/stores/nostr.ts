@@ -1509,18 +1509,17 @@ export const useNostrStore = defineStore("nostr", {
         notifyError("No private key available for messaging");
         return null;
       }
-      const randomPrivateKey = generateSecretKey();
-      const randomPublicKey = getPublicKey(randomPrivateKey);
-
       const dmEvent = new NDKEvent();
-      dmEvent.kind = 14;
-      dmEvent.content = message;
-      dmEvent.tags = [["p", recipient]];
-      dmEvent.created_at = Math.floor(Date.now() / 1000);
-      dmEvent.pubkey = this.pubkey;
-      await dmEvent.sign(this.signer);
-      dmEvent.id = dmEvent.getEventHash();
-      const dmEventString = JSON.stringify(await dmEvent.toNostrEvent());
+      const dmNostrEvent: NostrEvent = {
+        kind: 14,
+        content: message,
+        tags: [["p", recipient]],
+        created_at: Math.floor(Date.now() / 1000),
+        pubkey: this.pubkey,
+      } as NostrEvent;
+      dmNostrEvent.id = getEventHash(dmNostrEvent);
+      Object.assign(dmEvent, dmNostrEvent);
+      const dmEventString = JSON.stringify(dmNostrEvent);
 
       const sealEvent = new NDKEvent();
       sealEvent.kind = 13;
@@ -1533,38 +1532,73 @@ export const useNostrStore = defineStore("nostr", {
       sealEvent.id = sealEvent.getEventHash();
       sealEvent.sig = await sealEvent.sign();
       const sealEventString = JSON.stringify(await sealEvent.toNostrEvent());
+      const randomPrivateKeyRecipient = generateSecretKey();
+      const randomPublicKeyRecipient = getPublicKey(randomPrivateKeyRecipient);
+      const randomPrivateKeySender = generateSecretKey();
+      const randomPublicKeySender = getPublicKey(randomPrivateKeySender);
 
-      const wrapEvent = new NDKEvent();
-      wrapEvent.kind = 1059;
-      wrapEvent.tags = [["p", recipient]];
-      wrapEvent.content = nip44.v2.encrypt(
+      const wrapEventRecipient = new NDKEvent();
+      wrapEventRecipient.kind = 1059;
+      wrapEventRecipient.tags = [["p", recipient]];
+      wrapEventRecipient.content = nip44.v2.encrypt(
         sealEventString,
-        nip44.v2.utils.getConversationKey(randomPrivateKey, recipient),
+        nip44.v2.utils.getConversationKey(randomPrivateKeyRecipient, recipient),
       );
-      wrapEvent.created_at = this.randomTimeUpTo2DaysInThePast();
-      wrapEvent.pubkey = randomPublicKey;
-      wrapEvent.id = wrapEvent.getEventHash();
-      wrapEvent.sig = await wrapEvent.sign();
+      wrapEventRecipient.created_at = this.randomTimeUpTo2DaysInThePast();
+      wrapEventRecipient.pubkey = randomPublicKeyRecipient;
+      wrapEventRecipient.id = wrapEventRecipient.getEventHash();
+      wrapEventRecipient.sig = await wrapEventRecipient.sign();
 
-      const relayUrls = (relays ?? this.relays)
+      const wrapEventSender = new NDKEvent();
+      wrapEventSender.kind = 1059;
+      wrapEventSender.tags = [["p", this.pubkey]];
+      wrapEventSender.content = nip44.v2.encrypt(
+        sealEventString,
+        nip44.v2.utils.getConversationKey(randomPrivateKeySender, this.pubkey),
+      );
+      wrapEventSender.created_at = this.randomTimeUpTo2DaysInThePast();
+      wrapEventSender.pubkey = randomPublicKeySender;
+      wrapEventSender.id = wrapEventSender.getEventHash();
+      wrapEventSender.sig = await wrapEventSender.sign();
+
+      const relayUrlsRecipient = (relays ?? this.relays)
         .filter((r) => r.startsWith("wss://"))
         .map((r) => r.replace(/\/+$/, ""));
-      let healthyRelays: string[] = [];
+      const relayUrlsSender = this.relays
+        .filter((r) => r.startsWith("wss://"))
+        .map((r) => r.replace(/\/+$/, ""));
+
+      let healthyRelaysRecipient: string[] = [];
+      let healthyRelaysSender: string[] = [];
       try {
-        healthyRelays = await filterHealthyRelays(relayUrls);
+        healthyRelaysRecipient = await filterHealthyRelays(relayUrlsRecipient);
       } catch {
-        healthyRelays = [];
+        healthyRelaysRecipient = [];
       }
-      if (healthyRelays.length === 0) {
+      try {
+        healthyRelaysSender = await filterHealthyRelays(relayUrlsSender);
+      } catch {
+        healthyRelaysSender = [];
+      }
+
+      if (healthyRelaysRecipient.length === 0 && healthyRelaysSender.length === 0) {
         console.error("[nostr] NIP-17 publish failed: all relays unreachable");
         notifyError("Could not publish NIP-17 event");
         return null;
       }
 
       const pool = new SimplePool();
-      const nostrEvent = await wrapEvent.toNostrEvent();
+      const nostrRecipient = await wrapEventRecipient.toNostrEvent();
+      const nostrSender = await wrapEventSender.toNostrEvent();
       try {
-        await pool.publish(healthyRelays, nostrEvent as any);
+        await Promise.all([
+          healthyRelaysRecipient.length
+            ? pool.publish(healthyRelaysRecipient, nostrRecipient as any)
+            : Promise.resolve(),
+          healthyRelaysSender.length
+            ? pool.publish(healthyRelaysSender, nostrSender as any)
+            : Promise.resolve(),
+        ]);
         const chatStore = useDmChatsStore();
         chatStore.addOutgoing(dmEvent);
         const router = useRouter();
