@@ -26,7 +26,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed } from "vue";
+import { defineComponent, ref, computed, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useCreatorHubStore } from "stores/creatorHub";
 import { useNostrStore } from "stores/nostr";
@@ -38,8 +38,16 @@ export default defineComponent({
   setup() {
     const nostr = useNostrStore();
     const creatorHubStore = useCreatorHubStore();
-    const key = ref(nostr.activePrivateKeyNsec || nostr.privKeyHex || "");
-    const hasExistingKey = computed(() => !!key.value);
+    const inputKey = ref("");
+    const key = computed({
+      get: () => inputKey.value || nostr.activePrivateKeyNsec || nostr.privKeyHex || "",
+      set: (val: string) => {
+        inputKey.value = val;
+      },
+    });
+    const hasExistingKey = computed(
+      () => !!(nostr.activePrivateKeyNsec || nostr.privKeyHex)
+    );
     const router = useRouter();
     const route = useRoute();
     const redirect =
@@ -57,15 +65,34 @@ export default defineComponent({
       return trimmed;
     };
 
+    let redirected = false;
+    const redirectTo = () => {
+      if (redirected) return;
+      redirected = true;
+      if (redirect) {
+        router.replace({
+          path: redirect,
+          query: tierId ? { tierId } : undefined,
+        });
+      } else {
+        router.replace("/wallet");
+      }
+    };
+
+    watch(
+      () => nostr.hasIdentity,
+      (val) => {
+        if (val) {
+          redirectTo();
+        }
+      }
+    );
+
     const submitKey = async () => {
       if (!key.value.trim()) return;
       await nostr.updateIdentity(normalizeKey(key.value));
       if (!nostr.hasIdentity) return;
-      if (redirect) {
-        router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
-      } else {
-        router.replace("/wallet");
-      }
+      redirectTo();
     };
 
     const createIdentity = async () => {
@@ -73,11 +100,7 @@ export default defineComponent({
       const nsec = nip19.nsecEncode(sk);
       await nostr.updateIdentity(nsec);
       if (!nostr.hasIdentity) return;
-      if (redirect) {
-        router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
-      } else {
-        router.replace("/wallet");
-      }
+      redirectTo();
     };
 
     const useNip07 = async () => {
@@ -86,11 +109,7 @@ export default defineComponent({
       try {
         await nostr.connectBrowserSigner();
         await creatorHubStore.login();
-        if (redirect) {
-          router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
-        } else {
-          router.replace("/wallet");
-        }
+        redirectTo();
       } catch (e) {
         console.error(e);
       }
