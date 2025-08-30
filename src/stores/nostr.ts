@@ -1681,6 +1681,17 @@ export const useNostrStore = defineStore("nostr", {
               ),
             );
             dmEvent = JSON.parse(dmEventString) as NDKEvent;
+
+            if (sealEvent.pubkey !== dmEvent.pubkey) {
+              debug(
+                "### NIP-17 DM verification failed: pubkey mismatch",
+                sealEvent.pubkey,
+                dmEvent.pubkey,
+              );
+              notifyWarning("Discarded invalid NIP-17 direct message");
+              return;
+            }
+
             content = dmEvent.content;
             debug("### NIP-17 DM from", dmEvent.pubkey);
             debug("Content:", content);
