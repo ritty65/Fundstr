@@ -10,6 +10,8 @@ let allFailedWarned = false;
 
 const CACHE_TTL_MS = 60_000;
 const pingCache = new Map<string, { ts: number; ok: boolean }>();
+const ls =
+  typeof localStorage !== "undefined" ? (localStorage as Storage) : null;
 const filterCache = new Map<string, { ts: number; res: string[] }>();
 
 function scheduleFailureLog() {
@@ -30,9 +32,22 @@ function scheduleFailureLog() {
 }
 
 export async function pingRelay(url: string): Promise<boolean> {
-  const cached = pingCache.get(url);
   const now = Date.now();
+  const cacheKey = `relayHealth.${url}`;
+  const cached = pingCache.get(url);
   if (cached && now - cached.ts < CACHE_TTL_MS) return cached.ok;
+  if (ls) {
+    try {
+      const raw = ls.getItem(cacheKey);
+      if (raw) {
+        const data = JSON.parse(raw) as { ts: number; ok: boolean };
+        if (now - data.ts < CACHE_TTL_MS) {
+          pingCache.set(url, data);
+          return data.ok;
+        }
+      }
+    } catch {}
+  }
   const attemptOnce = (): Promise<boolean> =>
     new Promise((resolve) => {
       let settled = false;
@@ -93,7 +108,13 @@ export async function pingRelay(url: string): Promise<boolean> {
   let delay = 1000;
   for (let i = 0; i < maxAttempts; i++) {
     if (await attemptOnce()) {
-      pingCache.set(url, { ts: now, ok: true });
+      const res = { ts: now, ok: true };
+      pingCache.set(url, res);
+      if (ls) {
+        try {
+          ls.setItem(cacheKey, JSON.stringify(res));
+        } catch {}
+      }
       return true;
     }
     if (i < maxAttempts - 1) {
@@ -106,7 +127,13 @@ export async function pingRelay(url: string): Promise<boolean> {
     reportedFailures.set(url, (reportedFailures.get(url) ?? 0) + maxAttempts);
     scheduleFailureLog();
   }
-  pingCache.set(url, { ts: now, ok: false });
+  const res = { ts: now, ok: false };
+  pingCache.set(url, res);
+  if (ls) {
+    try {
+      ls.setItem(cacheKey, JSON.stringify(res));
+    } catch {}
+  }
   return false;
 }
 
