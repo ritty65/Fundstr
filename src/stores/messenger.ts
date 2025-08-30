@@ -513,11 +513,15 @@ export const useMessengerStore = defineStore("messenger", {
       let tokenPayload: any | undefined;
       const lines = decrypted.split("\n").filter((l) => l.trim().length > 0);
       for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+          continue;
+        }
         let payload: any;
         try {
-          payload = JSON.parse(line);
+          payload = JSON.parse(trimmed);
         } catch (e) {
-          console.warn("[messenger.addIncomingMessage] invalid JSON", e);
+          console.debug("[messenger.addIncomingMessage] invalid JSON", e);
           continue;
         }
         const sub = parseSubscriptionPaymentPayload(payload);
