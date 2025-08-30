@@ -146,16 +146,23 @@ export const useMessengerStore = defineStore("messenger", {
   actions: {
     normalizeKey(pk: string): string {
       const ns: any = useNostrStore();
-      return typeof ns?.resolvePubkey === "function"
-        ? ns.resolvePubkey(pk)
-        : pk;
+      const resolved =
+        typeof ns?.resolvePubkey === "function" ? ns.resolvePubkey(pk) : pk;
+      if (!resolved) {
+        console.warn("[messenger] invalid pubkey", pk);
+        return "";
+      }
+      return resolved;
     },
     normalizeStoredConversations() {
       // normalize conversation keys and merge duplicates
       for (const key of Object.keys(this.conversations)) {
         const normalized = this.normalizeKey(key);
         const msgs = this.conversations[key];
-        if (!msgs) continue;
+        if (!normalized || !msgs) {
+          delete this.conversations[key];
+          continue;
+        }
         if (!this.conversations[normalized])
           this.conversations[normalized] = [];
         for (const msg of msgs) {
@@ -169,6 +176,10 @@ export const useMessengerStore = defineStore("messenger", {
 
       for (const key of Object.keys(this.unreadCounts)) {
         const normalized = this.normalizeKey(key);
+        if (!normalized) {
+          delete this.unreadCounts[key];
+          continue;
+        }
         if (normalized !== key) {
           this.unreadCounts[normalized] =
             (this.unreadCounts[normalized] || 0) + this.unreadCounts[key];
@@ -178,6 +189,10 @@ export const useMessengerStore = defineStore("messenger", {
 
       for (const key of Object.keys(this.pinned)) {
         const normalized = this.normalizeKey(key);
+        if (!normalized) {
+          delete this.pinned[key];
+          continue;
+        }
         if (normalized !== key) {
           this.pinned[normalized] = this.pinned[normalized] || this.pinned[key];
           delete this.pinned[key];
@@ -186,6 +201,10 @@ export const useMessengerStore = defineStore("messenger", {
 
       for (const key of Object.keys(this.aliases)) {
         const normalized = this.normalizeKey(key);
+        if (!normalized) {
+          delete this.aliases[key];
+          continue;
+        }
         if (normalized !== key) {
           this.aliases[normalized] = this.aliases[key];
           delete this.aliases[key];
@@ -194,7 +213,8 @@ export const useMessengerStore = defineStore("messenger", {
 
       // normalize event log entries
       this.eventLog.forEach((msg) => {
-        msg.pubkey = this.normalizeKey(msg.pubkey);
+        const normalized = this.normalizeKey(msg.pubkey);
+        if (normalized) msg.pubkey = normalized;
       });
     },
     async loadIdentity() {
@@ -213,6 +233,7 @@ export const useMessengerStore = defineStore("messenger", {
       tokenPayload?: any,
     ) {
       recipient = this.normalizeKey(recipient);
+      if (!recipient) return { success: false } as any;
       await this.loadIdentity();
       const nostr = useNostrStore();
       let privKey: string | undefined = undefined;
@@ -267,6 +288,7 @@ export const useMessengerStore = defineStore("messenger", {
     ) {
       try {
         recipient = this.normalizeKey(recipient);
+        if (!recipient) return false;
         const wallet = useWalletStore();
         const mints = useMintsStore();
         const proofsStore = useProofsStore();
@@ -358,6 +380,7 @@ export const useMessengerStore = defineStore("messenger", {
     ) {
       try {
         recipient = this.normalizeKey(recipient);
+        if (!recipient) return false;
         const wallet = useWalletStore();
         const mints = useMintsStore();
         const proofsStore = useProofsStore();
@@ -424,6 +447,7 @@ export const useMessengerStore = defineStore("messenger", {
       tokenPayload?: any,
     ): MessengerMessage {
       pubkey = this.normalizeKey(pubkey);
+      if (!pubkey) throw new Error("Invalid pubkey");
       const messageId = id || uuidv4();
       if (this.eventLog.some((m) => m.id === messageId))
         return this.eventLog.find((m) => m.id === messageId)!;
@@ -762,6 +786,7 @@ export const useMessengerStore = defineStore("messenger", {
 
     createConversation(pubkey: string) {
       pubkey = this.normalizeKey(pubkey);
+      if (!pubkey) return;
       if (!this.conversations[pubkey]) {
         this.conversations[pubkey] = [];
       }
@@ -772,6 +797,7 @@ export const useMessengerStore = defineStore("messenger", {
 
     startChat(pubkey: string) {
       pubkey = this.normalizeKey(pubkey);
+      if (!pubkey) return;
       this.createConversation(pubkey);
       this.markRead(pubkey);
       this.setCurrentConversation(pubkey);
@@ -779,16 +805,19 @@ export const useMessengerStore = defineStore("messenger", {
 
     markRead(pubkey: string) {
       pubkey = this.normalizeKey(pubkey);
+      if (!pubkey) return;
       this.unreadCounts[pubkey] = 0;
     },
 
     togglePin(pubkey: string) {
       pubkey = this.normalizeKey(pubkey);
+      if (!pubkey) return;
       this.pinned[pubkey] = !this.pinned[pubkey];
     },
 
     deleteConversation(pubkey: string) {
       pubkey = this.normalizeKey(pubkey);
+      if (!pubkey) return;
       delete this.conversations[pubkey];
       delete this.unreadCounts[pubkey];
       delete this.pinned[pubkey];
@@ -800,6 +829,11 @@ export const useMessengerStore = defineStore("messenger", {
 
     setAlias(pubkey: string, alias: string) {
       pubkey = this.normalizeKey(pubkey);
+      if (!pubkey) return;
+      if (typeof alias !== "string") {
+        console.warn("[messenger] alias must be string", alias);
+        return;
+      }
       if (alias.trim()) {
         this.aliases[pubkey] = alias.trim();
       } else {
@@ -809,6 +843,7 @@ export const useMessengerStore = defineStore("messenger", {
 
     getAlias(pubkey: string): string | undefined {
       pubkey = this.normalizeKey(pubkey);
+      if (!pubkey) return undefined;
       return this.aliases[pubkey];
     },
 
@@ -817,7 +852,8 @@ export const useMessengerStore = defineStore("messenger", {
         this.currentConversation = "";
         return;
       }
-      this.currentConversation = this.normalizeKey(pubkey);
+      const normalized = this.normalizeKey(pubkey);
+      this.currentConversation = normalized || "";
     },
 
     toggleDrawer() {

@@ -8,6 +8,10 @@ const alreadyReported = new Set<string>();
 let aggregateTimer: ReturnType<typeof setTimeout> | null = null;
 let allFailedWarned = false;
 
+const CACHE_TTL_MS = 60_000;
+const pingCache = new Map<string, { ts: number; ok: boolean }>();
+const filterCache = new Map<string, { ts: number; res: string[] }>();
+
 function scheduleFailureLog() {
   if (aggregateTimer) return;
   aggregateTimer = setTimeout(() => {
@@ -26,6 +30,9 @@ function scheduleFailureLog() {
 }
 
 export async function pingRelay(url: string): Promise<boolean> {
+  const cached = pingCache.get(url);
+  const now = Date.now();
+  if (cached && now - cached.ts < CACHE_TTL_MS) return cached.ok;
   const attemptOnce = (): Promise<boolean> =>
     new Promise((resolve) => {
       let settled = false;
@@ -82,10 +89,13 @@ export async function pingRelay(url: string): Promise<boolean> {
       };
     });
 
-  const maxAttempts = 6;
+  const maxAttempts = 3;
   let delay = 1000;
   for (let i = 0; i < maxAttempts; i++) {
-    if (await attemptOnce()) return true;
+    if (await attemptOnce()) {
+      pingCache.set(url, { ts: now, ok: true });
+      return true;
+    }
     if (i < maxAttempts - 1) {
       await new Promise((r) => setTimeout(r, delay));
       delay = Math.min(delay * 2, 32000);
@@ -96,10 +106,16 @@ export async function pingRelay(url: string): Promise<boolean> {
     reportedFailures.set(url, (reportedFailures.get(url) ?? 0) + maxAttempts);
     scheduleFailureLog();
   }
+  pingCache.set(url, { ts: now, ok: false });
   return false;
 }
 
 export async function filterHealthyRelays(relays: string[]): Promise<string[]> {
+  const key = relays.slice().sort().join("|");
+  const cached = filterCache.get(key);
+  const now = Date.now();
+  if (cached && now - cached.ts < CACHE_TTL_MS) return cached.res;
+
   const healthy: string[] = [];
   // Process relays in small batches to avoid exhausting browser resources
   const batchSize = 10;
@@ -117,8 +133,11 @@ export async function filterHealthyRelays(relays: string[]): Promise<string[]> {
       console.warn("No reachable relays; falling back to FREE_RELAYS");
       allFailedWarned = true;
     }
+    filterCache.set(key, { ts: now, res: FREE_RELAYS });
     return FREE_RELAYS;
   }
 
-  return healthy.length >= 2 ? healthy : FREE_RELAYS;
+  const res = healthy.length >= 2 ? healthy : FREE_RELAYS;
+  filterCache.set(key, { ts: now, res });
+  return res;
 }

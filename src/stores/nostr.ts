@@ -37,6 +37,7 @@ import {
 } from "@cashu/cashu-ts";
 import { useTokensStore } from "./tokens";
 import { filterHealthyRelays } from "src/utils/relayHealth";
+import { DEFAULT_RELAYS, FREE_RELAYS } from "src/config/relays";
 import {
   notifyApiError,
   notifyError,
@@ -879,16 +880,19 @@ export const useNostrStore = defineStore("nostr", {
         console.error(e);
       }
     },
-    resolvePubkey: function (pk: string): string {
-      if (/^[0-9a-fA-F]{64}$/.test(pk)) {
-        return pk.toLowerCase();
+    resolvePubkey: function (pk: string): string | undefined {
+      if (typeof pk !== "string") return undefined;
+      const trimmed = pk.trim();
+      if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+        return trimmed.toLowerCase();
       }
+      if (trimmed.length < 2) return undefined;
       try {
-        const decoded = nip19.decode(pk);
+        const decoded = nip19.decode(trimmed);
         if (decoded.type === "npub") {
           return typeof decoded.data === "string"
             ? (decoded.data as string)
-            : pk;
+            : bytesToHex(decoded.data as Uint8Array);
         }
         if (decoded.type === "nprofile") {
           return (decoded.data as ProfilePointer).pubkey;
@@ -896,10 +900,12 @@ export const useNostrStore = defineStore("nostr", {
       } catch (e) {
         console.error("Failed to decode pubkey", pk, e);
       }
-      return pk;
+      return undefined;
     },
     getProfile: async function (pubkey: string): Promise<any> {
-      pubkey = this.resolvePubkey(pubkey);
+      const resolved = this.resolvePubkey(pubkey);
+      if (!resolved) return undefined;
+      pubkey = resolved;
       const now = Math.floor(Date.now() / 1000);
       let cached = this.profiles[pubkey] as CachedProfile | undefined;
 
@@ -1060,7 +1066,9 @@ export const useNostrStore = defineStore("nostr", {
     },
 
     fetchFollowerCount: async function (pubkey: string): Promise<number> {
-      pubkey = this.resolvePubkey(pubkey);
+      const resolved = this.resolvePubkey(pubkey);
+      if (!resolved) return 0;
+      pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [3], "#p": [pubkey] };
       const ndk = await useNdk();
@@ -1071,7 +1079,9 @@ export const useNostrStore = defineStore("nostr", {
     },
 
     fetchFollowingCount: async function (pubkey: string): Promise<number> {
-      pubkey = this.resolvePubkey(pubkey);
+      const resolved = this.resolvePubkey(pubkey);
+      if (!resolved) return 0;
+      pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [3], authors: [pubkey] };
       const ndk = await useNdk();
@@ -1093,7 +1103,9 @@ export const useNostrStore = defineStore("nostr", {
     },
 
     fetchJoinDate: async function (pubkey: string): Promise<number | null> {
-      pubkey = this.resolvePubkey(pubkey);
+      const resolved = this.resolvePubkey(pubkey);
+      if (!resolved) return null;
+      pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [0, 1], authors: [pubkey] };
       const ndk = await useNdk();
@@ -1116,7 +1128,9 @@ export const useNostrStore = defineStore("nostr", {
     fetchMostRecentPost: async function (
       pubkey: string,
     ): Promise<string | null> {
-      pubkey = this.resolvePubkey(pubkey);
+      const resolved = this.resolvePubkey(pubkey);
+      if (!resolved) return null;
+      pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [1], authors: [pubkey], limit: 1 };
       const ndk = await useNdk();
@@ -1241,9 +1255,19 @@ export const useNostrStore = defineStore("nostr", {
       pubKey?: string,
       relays?: string[],
     ): Promise<{ success: boolean; event: NDKEvent | null }> {
-      recipient = this.resolvePubkey(recipient);
+      const recResolved = this.resolvePubkey(recipient);
+      if (!recResolved) {
+        notifyError("Invalid recipient pubkey");
+        return { success: false, event: null };
+      }
+      recipient = recResolved;
       if (pubKey) {
-        pubKey = this.resolvePubkey(pubKey);
+        const senderResolved = this.resolvePubkey(pubKey);
+        if (!senderResolved) {
+          notifyError("Invalid sender pubkey");
+          return { success: false, event: null };
+        }
+        pubKey = senderResolved;
       }
       await this.initSignerIfNotSet();
       const external =
@@ -1268,11 +1292,20 @@ export const useNostrStore = defineStore("nostr", {
       await event.sign(signer);
 
       const relayCandidates = relays && relays.length ? relays : this.relays;
-      const selected = await selectPreferredRelays(relayCandidates);
+      let selected = await selectPreferredRelays(relayCandidates);
       if (selected.length === 0) {
-        console.error("[nostr] NIP-04 publish failed: all relays unreachable");
-        notifyError("Could not publish NIP-04 event");
-        return { success: false, event: null };
+        const fallback = await selectPreferredRelays([
+          ...DEFAULT_RELAYS,
+          ...FREE_RELAYS,
+        ]);
+        selected = fallback;
+        if (selected.length === 0) {
+          console.error(
+            "[nostr] NIP-04 publish failed: all relays unreachable",
+          );
+          notifyError("Could not publish NIP-04 event");
+          return { success: false, event: null };
+        }
       }
       const success = await publishDmNip04(event, selected);
       return { success, event: success ? event : null };
@@ -1342,7 +1375,9 @@ export const useNostrStore = defineStore("nostr", {
       cb: (event: NostrEvent, decrypted: string) => void,
       since?: number,
     ) {
-      pubKey = this.resolvePubkey(pubKey);
+      const resolved = this.resolvePubkey(pubKey);
+      if (!resolved) return;
+      pubKey = resolved;
       await this.initNdkReadOnly();
       if (since === undefined) {
         if (!this.lastEventTimestamp) {
@@ -1389,7 +1424,12 @@ export const useNostrStore = defineStore("nostr", {
       message: string,
       relays?: string[],
     ): Promise<NDKEvent | null> {
-      recipient = this.resolvePubkey(recipient);
+      const recResolved = this.resolvePubkey(recipient);
+      if (!recResolved) {
+        notifyError("Invalid recipient pubkey");
+        return null;
+      }
+      recipient = recResolved;
       await this.initSignerIfNotSet();
       const privKey = this.privKeyHex;
       if (!privKey) {
