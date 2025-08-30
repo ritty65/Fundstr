@@ -12,7 +12,11 @@
         </q-banner>
       </q-card-section>
       <q-card-section>
-        <q-input v-model="key" type="text" label="nsec or hex private key" />
+        <q-input
+          v-model="inputKey"
+          type="text"
+          label="nsec or hex private key"
+        />
       </q-card-section>
       <q-card-actions vertical class="q-gutter-sm">
         <q-btn color="primary" @click="submitKey">Use Key</q-btn>
@@ -38,16 +42,11 @@ export default defineComponent({
   setup() {
     const nostr = useNostrStore();
     const creatorHubStore = useCreatorHubStore();
-    const inputKey = ref("");
-    const key = computed({
-      get: () => inputKey.value || nostr.activePrivateKeyNsec || nostr.privKeyHex || "",
-      set: (val: string) => {
-        inputKey.value = val;
-      },
-    });
-    const hasExistingKey = computed(
-      () => !!(nostr.activePrivateKeyNsec || nostr.privKeyHex)
+    const key = computed(
+      () => nostr.activePrivateKeyNsec || nostr.privKeyHex || ""
     );
+    const inputKey = ref(key.value);
+    const hasExistingKey = computed(() => nostr.hasIdentity);
     const router = useRouter();
     const route = useRoute();
     const redirect =
@@ -89,8 +88,9 @@ export default defineComponent({
     );
 
     const submitKey = async () => {
-      if (!key.value.trim()) return;
-      await nostr.updateIdentity(normalizeKey(key.value));
+      const value = inputKey.value.trim() || key.value;
+      if (!value) return;
+      await nostr.updateIdentity(normalizeKey(value));
       if (!nostr.hasIdentity) return;
       redirectTo();
     };
@@ -115,7 +115,7 @@ export default defineComponent({
       }
     };
 
-    return { key, hasExistingKey, submitKey, createIdentity, useNip07 };
+    return { inputKey, hasExistingKey, submitKey, createIdentity, useNip07 };
   },
 });
 </script>
