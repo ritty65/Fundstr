@@ -1307,6 +1307,16 @@ export const useNostrStore = defineStore("nostr", {
           return { success: false, event: null };
         }
       }
+      await this.ensureNdkConnected(selected);
+      try {
+        await ensureRelayConnectivity(ndk);
+      } catch (e: any) {
+        notifyError(
+          "Unable to connect to Nostr relays",
+          e?.message ?? String(e),
+        );
+        return { success: false, event: null };
+      }
       const success = await publishDmNip04(event, selected);
       return { success, event: success ? event : null };
     },
