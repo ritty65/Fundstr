@@ -25,11 +25,7 @@ import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { stickyDmSubscription } from "src/js/nostr-runtime";
 import { useNdk } from "src/composables/useNdk";
-import {
-  NDKKind,
-  type NDKEvent,
-  type NDKFilter,
-} from "@nostr-dev-kit/ndk";
+import { NDKKind, type NDKEvent, type NDKFilter } from "@nostr-dev-kit/ndk";
 import { Dialog } from "quasar";
 
 function parseSubscriptionPaymentPayload(obj: any):
@@ -91,7 +87,9 @@ export const useMessengerStore = defineStore("messenger", {
     const userRelays = Array.isArray(settings.defaultNostrRelays)
       ? Array.from(new Set(settings.defaultNostrRelays))
       : [];
-    const relays = Array.from(new Set(userRelays.length ? userRelays : DEFAULT_RELAYS));
+    const relays = Array.from(
+      new Set(userRelays.length ? userRelays : DEFAULT_RELAYS),
+    );
 
     const conversations = useLocalStorage<Record<string, MessengerMessage[]>>(
       storageKey("conversations"),
@@ -118,7 +116,10 @@ export const useMessengerStore = defineStore("messenger", {
       [] as MessengerMessage[],
     );
     const drawerOpen = useLocalStorage<boolean>(storageKey("drawerOpen"), true);
-    const drawerMini = useLocalStorage<boolean>(storageKey("drawerMini"), false);
+    const drawerMini = useLocalStorage<boolean>(
+      storageKey("drawerMini"),
+      false,
+    );
 
     watch(
       () => nostrStore.pubkey,
@@ -274,7 +275,8 @@ export const useMessengerStore = defineStore("messenger", {
         nostr.signerType === SignerType.NIP07 ||
         nostr.signerType === SignerType.NIP46;
       const privKey = externalSigner ? undefined : nostr.privKeyHex;
-      let list = relays && relays.length ? [...relays] : [...(this.relays as any)];
+      let list =
+        relays && relays.length ? [...relays] : [...(this.relays as any)];
       if (!relays || relays.length === 0) {
         try {
           const receiverRelays = await nostr.fetchDmRelayUris(recipient);
@@ -310,10 +312,13 @@ export const useMessengerStore = defineStore("messenger", {
         tokenPayload,
       );
 
-      let nip17Event: NDKEvent | null = null;
+      let nip17Result = { success: false } as {
+        success: boolean;
+        event?: NDKEvent;
+      };
       if (privKey) {
         try {
-          nip17Event = await nostr.sendNip17DirectMessage(
+          nip17Result = await nostr.sendNip17DirectMessage(
             recipient,
             message,
             list,
@@ -322,10 +327,10 @@ export const useMessengerStore = defineStore("messenger", {
           console.error("[messenger.sendDm] NIP-17", e);
         }
       }
-      if (nip17Event) {
+      if (nip17Result.success && nip17Result.event) {
+        const nip17Event = nip17Result.event;
         msg.id = nip17Event.id;
-        msg.created_at =
-          nip17Event.created_at ?? Math.floor(Date.now() / 1000);
+        msg.created_at = nip17Event.created_at ?? Math.floor(Date.now() / 1000);
         msg.status = "sent";
         this.pushOwnMessage(nip17Event as any);
         return { success: true, event: nip17Event } as any;
@@ -829,12 +834,18 @@ export const useMessengerStore = defineStore("messenger", {
               if (!priv) return;
               const wrappedContent = nip44.v2.decrypt(
                 wrap.content,
-                nip44.v2.utils.getConversationKey(priv as any, wrap.pubkey as any),
+                nip44.v2.utils.getConversationKey(
+                  priv as any,
+                  wrap.pubkey as any,
+                ),
               );
               const seal = JSON.parse(wrappedContent) as NostrEvent;
               const dmString = nip44.v2.decrypt(
                 seal.content,
-                nip44.v2.utils.getConversationKey(priv as any, seal.pubkey as any),
+                nip44.v2.utils.getConversationKey(
+                  priv as any,
+                  seal.pubkey as any,
+                ),
               );
               const dmEv = JSON.parse(dmString) as NostrEvent;
               if (seal.pubkey !== dmEv.pubkey) return;

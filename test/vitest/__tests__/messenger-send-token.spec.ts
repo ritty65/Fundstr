@@ -9,7 +9,10 @@ var addPending: any;
 
 vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   const actual = await importOriginal();
-  sendNip17 = vi.fn(async () => ({ id: "1", created_at: 0 }));
+  sendNip17 = vi.fn(async () => ({
+    success: true,
+    event: { id: "1", created_at: 0 },
+  }));
   sendDmLegacy = vi.fn(async () => ({
     success: true,
     event: { id: "1", created_at: 0 },

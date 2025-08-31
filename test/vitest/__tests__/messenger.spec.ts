@@ -8,7 +8,10 @@ var walletGen: any;
 
 vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   const actual = await importOriginal();
-  sendNip17 = vi.fn(async () => ({ id: "1", created_at: 0 }));
+  sendNip17 = vi.fn(async () => ({
+    success: true,
+    event: { id: "1", created_at: 0 },
+  }));
   sendDmLegacy = vi.fn(async () => ({
     success: true,
     event: { id: "1", created_at: 0 },
@@ -42,7 +45,12 @@ vi.mock("../../../src/js/nostr-runtime", () => {
     const ev = {
       pubkey: "s",
       content: "c",
-      toNostrEvent: async () => ({ id: "1", pubkey: "s", content: "c", created_at: 1 }),
+      toNostrEvent: async () => ({
+        id: "1",
+        pubkey: "s",
+        content: "c",
+        created_at: 1,
+      }),
     };
     cb && cb(ev as any);
     return vi.fn();
