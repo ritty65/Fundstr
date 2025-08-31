@@ -313,27 +313,32 @@ export const useMessengerStore = defineStore("messenger", {
         healthyRelays,
       );
 
-      // In the background, also send with legacy NIP-04 for compatibility.
-      nostr
-        .sendDirectMessageUnified(
+      // Additionally, attempt legacy NIP-04 for compatibility and await the result.
+      let nip04Result = { success: false, event: null as NDKEvent | null };
+      try {
+        nip04Result = await nostr.sendDirectMessageUnified(
           recipient,
           safeMessage,
           nostr.privKeyHex,
           nostr.pubkey,
           healthyRelays,
-        )
-        .catch((error) => {
-          console.error("Failed to send legacy NIP-04 DM:", error);
-        });
+        );
+      } catch (error) {
+        console.error("Failed to send legacy NIP-04 DM:", error);
+      }
 
-      if (nip17Result.success) {
+      const success = nip17Result.success || nip04Result.success;
+      const event = nip17Result.event || nip04Result.event || null;
+
+      if (success) {
         msg.status = "sent";
       } else {
         msg.status = "failed";
         this.sendQueue.push(msg);
+        notifyError("Failed to send DM");
       }
 
-      return { success: nip17Result.success, event: nip17Result.event };
+      return { success, event };
     },
     async sendToken(
       recipient: string,
