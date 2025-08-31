@@ -11,4 +11,9 @@ describe("sanitizeMessage", () => {
     const result = sanitizeMessage("abcdef", 3);
     expect(result).toBe("abc");
   });
+
+  it("returns empty string for non-string input", () => {
+    const result = sanitizeMessage({} as any);
+    expect(result).toBe("");
+  });
 });

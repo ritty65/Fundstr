@@ -74,6 +74,10 @@ vi.mock("../../../src/js/message-utils", () => ({
   sanitizeMessage: vi.fn((s: string) => s),
 }));
 
+vi.mock("../../../src/utils/relayHealth", () => ({
+  filterHealthyRelays: vi.fn(async (relays: string[]) => relays),
+}));
+
 var notifySpy: any;
 var notifyErrorSpy: any;
 vi.mock("../../../src/js/notify", () => {
@@ -99,7 +103,7 @@ describe("messenger store", () => {
     const messenger = useMessengerStore();
     await messenger.sendDm("r", "m");
     expect(sendNip17).toHaveBeenCalledWith("r", "m", ["wss://relay.example"]);
-    expect(sendDmLegacy).not.toHaveBeenCalled();
+    expect(sendDmLegacy).toHaveBeenCalled();
   });
 
   it("decrypts incoming messages with global key", async () => {
@@ -107,10 +111,10 @@ describe("messenger store", () => {
     await messenger.addIncomingMessage({
       id: "1",
       pubkey: "s",
-      content: "c",
+      content: "c?iv=1",
       created_at: 1,
     } as any);
-    expect(decryptDm).toHaveBeenCalledWith("priv", "s", "c");
+    expect(decryptDm).toHaveBeenCalledWith("priv", "s", "c?iv=1");
   });
 
   it("subscribes using global key on start", async () => {
@@ -143,5 +147,16 @@ describe("messenger store", () => {
       created_at: 1,
     } as any);
     expect(Array.isArray(messenger.eventLog)).toBe(true);
+  });
+
+  it("handles malformed content when sending", async () => {
+    const messenger = useMessengerStore();
+    await messenger.sendDm("r", { bad: "obj" } as any);
+    expect(sendNip17).toHaveBeenCalledWith(
+      "r",
+      "",
+      ["wss://relay.example"],
+    );
+    expect(messenger.conversations.r[0].content).toBe("");
   });
 });

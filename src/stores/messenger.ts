@@ -44,6 +44,18 @@ function parseSubscriptionPaymentPayload(obj: any):
   };
 }
 
+function generateContentTags(
+  content?: unknown,
+  tags?: unknown,
+): { content: string; tags: string[][] } {
+  const safeContent =
+    typeof content === "string" && content
+      ? sanitizeMessage(content)
+      : "";
+  const safeTags: string[][] = Array.isArray(tags) ? (tags as string[][]) : [];
+  return { content: safeContent, tags: safeTags };
+}
+
 export interface SubscriptionPayment {
   token: string;
   subscription_id: string;
@@ -271,13 +283,15 @@ export const useMessengerStore = defineStore("messenger", {
       await this.loadIdentity();
       const nostr = useNostrStore();
 
+      const { content: safeMessage } = generateContentTags(message);
+
       const userRelays = await nostr.fetchUserRelays(recipient);
       const targetRelays = relays || userRelays || (this.relays as any);
       const healthyRelays = await filterHealthyRelays(targetRelays);
 
       const msg = this.addOutgoingMessage(
         recipient,
-        message,
+        safeMessage,
         undefined,
         undefined,
         attachment,
@@ -295,7 +309,7 @@ export const useMessengerStore = defineStore("messenger", {
       // We prioritize the result from the modern NIP-17 for the UI feedback.
       const nip17Result = await nostr.sendNip17DirectMessage(
         recipient,
-        message,
+        safeMessage,
         healthyRelays,
       );
 
@@ -303,7 +317,7 @@ export const useMessengerStore = defineStore("messenger", {
       nostr
         .sendDirectMessageUnified(
           recipient,
-          message,
+          safeMessage,
           nostr.privKeyHex,
           nostr.pubkey,
           healthyRelays,
