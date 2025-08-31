@@ -1448,7 +1448,7 @@ export const useNostrStore = defineStore("nostr", {
               this.parseMessageForEcash(content, event.pubkey);
               try {
                 const chatStore = useDmChatsStore();
-                chatStore.addIncoming(event.rawEvent() as any);
+                chatStore.addIncoming(new NDKEvent(undefined, event.rawEvent()));
               } catch {}
             },
           );
