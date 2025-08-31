@@ -24,6 +24,7 @@ import {
   getEventHash as ntGetEventHash,
   finalizeEvent,
   verifyEvent,
+  Event as NostrEvent,
 } from "nostr-tools";
 import { bytesToHex, hexToBytes, randomBytes } from "@noble/hashes/utils"; // already an installed dependency
 import * as aes from '@noble/ciphers/aes.js';
@@ -382,6 +383,45 @@ export async function publishDmNip04(
     }
     return false;
   }
+}
+
+export type RelayAck = { ok: boolean; reason?: string };
+
+export async function publishWithAcks(
+  event: NostrEvent,
+  relays: string[],
+  timeoutMs = 5000,
+): Promise<Record<string, RelayAck>> {
+  const pool = new SimplePool();
+  const results: Record<string, RelayAck> = {};
+  const pub = pool.publish(relays, event as any);
+  return await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      for (const r of relays) {
+        if (!results[r]) results[r] = { ok: false, reason: "timeout" };
+      }
+      resolve(results);
+    }, timeoutMs);
+
+    const finish = () => {
+      if (Object.keys(results).length >= relays.length) {
+        clearTimeout(timer);
+        resolve(results);
+      }
+    };
+
+    pub.on("ok", (relay: any) => {
+      const url = relay.url || relay;
+      results[url] = { ok: true };
+      finish();
+    });
+
+    pub.on("failed", (relay: any, reason: any) => {
+      const url = relay.url || relay;
+      results[url] = { ok: false, reason: String(reason) };
+      finish();
+    });
+  });
 }
 
 /** Resolves once any relay in `ndk.pool` has `connected === true`. */

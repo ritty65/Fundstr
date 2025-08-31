@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
 
-var sendNip17: any;
-var sendDmLegacy: any;
+var publishWithAcksMock: any;
 var decryptDm: any;
 var walletGen: any;
 var subscribeMock: any;
@@ -27,37 +26,32 @@ const lsStore: Record<string, string> = {};
 
 vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   const actual = await importOriginal();
-  sendNip17 = vi.fn(async () => ({
-    success: true,
-    event: { id: "1", created_at: 0 },
-  }));
-  sendDmLegacy = vi.fn(async () => ({
-    success: true,
-    event: { id: "1", created_at: 0 },
+  publishWithAcksMock = vi.fn(async () => ({
+    "wss://relay.example": { ok: true },
   }));
   decryptDm = vi.fn(async () => "msg");
   walletGen = vi.fn();
+  const signer = { sign: vi.fn(async () => {}), user: vi.fn(async () => ({})) };
   const store = {
-    sendNip17DirectMessage: sendNip17,
-    sendDirectMessageUnified: sendDmLegacy,
     decryptDmContent: decryptDm,
+    encryptDmContent: vi.fn(async (_k, _r, m) => m),
     fetchUserRelays: vi.fn(async () => ["wss://relay.example"]),
     walletSeedGenerateKeyPair: walletGen,
     initSignerIfNotSet: vi.fn(),
-    privateKeySignerPrivateKey: "priv",
-    seedSignerPrivateKey: "",
+    privKeyHex: "priv",
     pubkey: "pub",
     connected: true,
     lastError: null,
     relays: [] as string[],
     signerType: "seed",
+    signerCaps: { nip44Encrypt: true, nip44Decrypt: true },
+    signer,
   };
-  Object.defineProperty(store, "privKeyHex", {
-    get() {
-      return store.privateKeySignerPrivateKey;
-    },
-  });
-  return { ...actual, useNostrStore: () => store };
+  return {
+    ...actual,
+    publishWithAcks: publishWithAcksMock,
+    useNostrStore: () => store,
+  };
 });
 
 vi.mock("../../../src/js/nostr-runtime", () => ({
@@ -99,11 +93,10 @@ beforeEach(() => {
 });
 
 describe("messenger store", () => {
-  it("uses NIP-17 when sending DMs", async () => {
+  it("publishes DM with relay acknowledgements", async () => {
     const messenger = useMessengerStore();
     await messenger.sendDm("r", "m");
-    expect(sendNip17).toHaveBeenCalledWith("r", "m", ["wss://relay.example"]);
-    expect(sendDmLegacy).toHaveBeenCalled();
+    expect(publishWithAcksMock).toHaveBeenCalled();
   });
 
   it("decrypts incoming messages with global key", async () => {
@@ -152,11 +145,7 @@ describe("messenger store", () => {
   it("handles malformed content when sending", async () => {
     const messenger = useMessengerStore();
     await messenger.sendDm("r", { bad: "obj" } as any);
-    expect(sendNip17).toHaveBeenCalledWith(
-      "r",
-      "",
-      ["wss://relay.example"],
-    );
+    expect(publishWithAcksMock).toHaveBeenCalled();
     expect(messenger.conversations.r[0].content).toBe("");
   });
 });

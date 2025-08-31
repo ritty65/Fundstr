@@ -2,7 +2,13 @@ import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
 import { watch, computed } from "vue";
 import { Event as NostrEvent } from "nostr-tools";
-import { SignerType, useNostrStore, isNip44Ciphertext } from "./nostr";
+import {
+  SignerType,
+  useNostrStore,
+  isNip44Ciphertext,
+  publishWithAcks,
+  RelayAck,
+} from "./nostr";
 import { v4 as uuidv4 } from "uuid";
 import { useSettingsStore } from "./settings";
 import { DEFAULT_RELAYS } from "src/config/relays";
@@ -83,6 +89,7 @@ export type MessengerMessage = {
   subscriptionPayment?: SubscriptionPayment;
   tokenPayload?: any;
   autoRedeem?: boolean;
+  relayResults?: Record<string, RelayAck>;
 };
 
 export const useMessengerStore = defineStore("messenger", {
@@ -315,33 +322,69 @@ export const useMessengerStore = defineStore("messenger", {
       }
 
       let protocolUsed: "nip17" | "nip04" | null = null;
-      let nip17Result = { success: false, event: null as NDKEvent | null };
+      let event: NDKEvent | null = null;
+      let results: Record<string, RelayAck> = {};
+
       if (canUseNip17) {
-        nip17Result = await nostr.sendNip17DirectMessage(
-          recipient,
-          safeMessage,
-          healthyRelays,
-        );
-        if (nip17Result.success) protocolUsed = "nip17";
+        try {
+          const ndk = await useNdk();
+          const rumor = new NDKEvent(ndk);
+          rumor.kind = 14 as NDKKind;
+          rumor.content = safeMessage;
+          rumor.tags = [["p", recipient]];
+          await rumor.sign(nostr.signer);
+
+          const seal = new NDKEvent(ndk);
+          seal.kind = 13 as NDKKind;
+          seal.content = await rumor.encrypt(await nostr.signer.user());
+          await seal.sign(nostr.signer);
+
+          const giftWrap = new NDKEvent(ndk);
+          giftWrap.kind = 1059 as NDKKind;
+          giftWrap.tags = [["p", recipient]];
+          giftWrap.content = await seal.toJson();
+          const ephemeralSigner = new NDKPrivateKeySigner();
+          await giftWrap.sign(ephemeralSigner);
+
+          const raw = await giftWrap.toNostrEvent();
+          results = await publishWithAcks(raw, healthyRelays);
+          console.table(results);
+          if (Object.values(results).some((r) => r.ok)) {
+            protocolUsed = "nip17";
+            event = giftWrap;
+          }
+        } catch (e) {
+          console.error("Failed to send NIP-17 DM:", e);
+        }
       }
 
-      let nip04Result = { success: false, event: null as NDKEvent | null };
-      try {
-        nip04Result = await nostr.sendDirectMessageUnified(
-          recipient,
-          safeMessage,
-          nostr.privKeyHex,
-          nostr.pubkey,
-          healthyRelays,
-        );
-        if (!protocolUsed && nip04Result.success) protocolUsed = "nip04";
-      } catch (error) {
-        console.error("Failed to send legacy NIP-04 DM:", error);
+      if (!protocolUsed) {
+        try {
+          const key = nostr.privKeyHex;
+          const ndk = await useNdk();
+          const dmEvent = new NDKEvent(ndk);
+          dmEvent.kind = NDKKind.EncryptedDirectMessage;
+          dmEvent.content = await nostr.encryptDmContent(
+            key,
+            recipient,
+            safeMessage,
+          );
+          dmEvent.tags = [["p", recipient], ["p", nostr.pubkey]];
+          await dmEvent.sign(nostr.signer);
+          const raw = await dmEvent.toNostrEvent();
+          results = await publishWithAcks(raw, healthyRelays);
+          console.table(results);
+          if (Object.values(results).some((r) => r.ok)) {
+            protocolUsed = "nip04";
+            event = dmEvent;
+          }
+        } catch (error) {
+          console.error("Failed to send legacy NIP-04 DM:", error);
+        }
       }
 
-      const success = nip17Result.success || nip04Result.success;
-      const event = nip17Result.event || nip04Result.event || null;
-
+      const success = Object.values(results).some((r) => r.ok);
+      msg.relayResults = results;
       if (success) {
         msg.status = "sent";
         msg.protocol = protocolUsed || undefined;
@@ -909,11 +952,6 @@ export const useMessengerStore = defineStore("messenger", {
           return;
         }
         const nostr = useNostrStore();
-        let privKey: string | undefined = undefined;
-        if (nostr.signerType !== "NIP07" && nostr.signerType !== "NIP46") {
-          privKey = nostr.privKeyHex;
-          if (!privKey) return;
-        }
         let canUseNip17 = true;
         if (
           nostr.signerType === SignerType.NIP07 ||
@@ -922,67 +960,89 @@ export const useMessengerStore = defineStore("messenger", {
           canUseNip17 =
             nostr.signerCaps.nip44Encrypt && nostr.signerCaps.nip44Decrypt;
         }
-        const list = this.relays as any;
         for (const msg of [...this.sendQueue]) {
           try {
-            let sent = false;
+            const userRelays = await nostr.fetchUserRelays(msg.pubkey);
+            const targets = userRelays || (this.relays as any);
+            const healthy = await filterHealthyRelays(targets);
+            if (!healthy.length) {
+              msg.status = "failed";
+              continue;
+            }
+
+            let protocol: "nip17" | "nip04" | null = null;
+            let results: Record<string, RelayAck> = {};
+            let event: NDKEvent | null = null;
+
             if (canUseNip17) {
               try {
-                const { success, event } =
-                  await nostr.sendNip17DirectMessage(
-                    msg.pubkey,
-                    msg.content,
-                    list,
-                  );
-                if (success && event) {
-                  msg.id = event.id;
-                  msg.created_at =
-                    event.created_at ?? Math.floor(Date.now() / 1000);
-                  msg.status = "sent";
-                  msg.protocol = "nip17";
-                  const chatStore = useDmChatsStore();
-                  chatStore.addOutgoing({
-                    id: event.id,
-                    content: msg.content,
-                    created_at:
-                      event.created_at ?? Math.floor(Date.now() / 1000),
-                    tags: [["p", msg.pubkey]],
-                  } as any);
-                  this.pushOwnMessage({
-                    id: event.id,
-                    content: msg.content,
-                    kind: event.kind,
-                  } as any);
-                  notifySuccess("DM sent via NIP-17");
-                  const idx = this.sendQueue.indexOf(msg);
-                  if (idx >= 0) this.sendQueue.splice(idx, 1);
-                  sent = true;
+                const ndk = await useNdk();
+                const rumor = new NDKEvent(ndk);
+                rumor.kind = 14 as NDKKind;
+                rumor.content = msg.content;
+                rumor.tags = [["p", msg.pubkey]];
+                await rumor.sign(nostr.signer);
+
+                const seal = new NDKEvent(ndk);
+                seal.kind = 13 as NDKKind;
+                seal.content = await rumor.encrypt(await nostr.signer.user());
+                await seal.sign(nostr.signer);
+
+                const giftWrap = new NDKEvent(ndk);
+                giftWrap.kind = 1059 as NDKKind;
+                giftWrap.tags = [["p", msg.pubkey]];
+                giftWrap.content = await seal.toJson();
+                const ephemeralSigner = new NDKPrivateKeySigner();
+                await giftWrap.sign(ephemeralSigner);
+
+                const raw = await giftWrap.toNostrEvent();
+                results = await publishWithAcks(raw, healthy);
+                console.table(results);
+                if (Object.values(results).some((r) => r.ok)) {
+                  protocol = "nip17";
+                  event = giftWrap;
                 }
               } catch (e) {
                 console.error("[messenger.retryFailedMessages] NIP-17", e);
               }
             }
-            if (!sent) {
-              const { success, event } = await nostr.sendDirectMessageUnified(
-                msg.pubkey,
-                msg.content,
-                privKey,
-                nostr.pubkey,
-                list,
-              );
-              if (success && event) {
-                msg.id = event.id;
-                msg.created_at =
-                  event.created_at ?? Math.floor(Date.now() / 1000);
-                msg.status = "sent";
-                msg.protocol = "nip04";
-                this.pushOwnMessage(event as any);
-                notifySuccess("DM sent via NIP-04");
-                const idx = this.sendQueue.indexOf(msg);
-                if (idx >= 0) this.sendQueue.splice(idx, 1);
-              } else if (msg.status !== "sent") {
-                msg.status = "failed";
+
+            if (!protocol) {
+              try {
+                const key = nostr.privKeyHex;
+                const ndk = await useNdk();
+                const dmEvent = new NDKEvent(ndk);
+                dmEvent.kind = NDKKind.EncryptedDirectMessage;
+                dmEvent.content = await nostr.encryptDmContent(
+                  key,
+                  msg.pubkey,
+                  msg.content,
+                );
+                dmEvent.tags = [["p", msg.pubkey], ["p", nostr.pubkey]];
+                await dmEvent.sign(nostr.signer);
+                const raw = await dmEvent.toNostrEvent();
+                results = await publishWithAcks(raw, healthy);
+                console.table(results);
+                if (Object.values(results).some((r) => r.ok)) {
+                  protocol = "nip04";
+                  event = dmEvent;
+                }
+              } catch (e) {
+                console.error("[messenger.retryFailedMessages]", e);
               }
+            }
+
+            msg.relayResults = results;
+            if (protocol && event) {
+              msg.id = event.id;
+              msg.created_at =
+                event.created_at ?? Math.floor(Date.now() / 1000);
+              msg.status = "sent";
+              msg.protocol = protocol;
+              const idx = this.sendQueue.indexOf(msg);
+              if (idx >= 0) this.sendQueue.splice(idx, 1);
+            } else {
+              msg.status = "failed";
             }
           } catch (e) {
             console.error("[messenger.retryFailedMessages]", e);
