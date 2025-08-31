@@ -30,6 +30,7 @@
           <q-btn flat dense label="Reconnect All" @click="reconnectAll" />
         </div>
         </q-banner>
+        <NostrRelayErrorBanner />
         <q-banner
           v-if="messenger.sendQueue.length"
           dense
@@ -84,6 +85,7 @@ import MessageList from "components/MessageList.vue";
 import MessageInput from "components/MessageInput.vue";
 import ChatSendTokenDialog from "components/ChatSendTokenDialog.vue";
 import NostrSetupWizard from "components/NostrSetupWizard.vue";
+import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 import { useQuasar, TouchSwipe } from "quasar";
 import { notifyWarning, notifyError } from "src/js/notify";
 
@@ -96,6 +98,7 @@ export default defineComponent({
     MessageInput,
     ChatSendTokenDialog,
     NostrSetupWizard,
+    NostrRelayErrorBanner,
   },
   setup() {
     const loading = ref(true);
