@@ -190,15 +190,27 @@ function decryptWithSharedSecret(
   return new TextDecoder().decode(plaintext);
 }
 
+function encryptWithSharedSecretV2(
+  shared: Uint8Array | string,
+  message: string,
+): string {
+  return encryptWithSharedSecret(shared, message);
+}
+
 export async function encryptNip04(
   recipient: string,
   message: string,
-  privKey?: string | Uint8Array,
+  opts: { privKey?: string | Uint8Array; externalSigner?: boolean } = {},
 ): Promise<string> {
+  const { privKey } = opts;
   const nostr = (window as any)?.nostr;
   if (!privKey) {
     if (nostr?.nip04?.encrypt) {
       return await nostr.nip04.encrypt(recipient, message);
+    }
+    if (nostr?.getSharedSecret) {
+      const shared = await nostr.getSharedSecret(recipient);
+      return encryptWithSharedSecretV2(shared, message);
     }
     if (nostr?.nip04?.getSharedSecret) {
       const shared = await nostr.nip04.getSharedSecret(recipient);
@@ -1407,7 +1419,10 @@ export const useNostrStore = defineStore("nostr", {
           );
         }
         try {
-          return await encryptNip04(recipient, message);
+          if (nostr?.nip04?.encrypt) {
+            return await nostr.nip04.encrypt(recipient, message);
+          }
+          return await encryptNip04(recipient, message, { externalSigner: true });
         } catch (e) {
           console.error("NIP-04 encryption failed:", e);
           notifyError(
@@ -1427,7 +1442,7 @@ export const useNostrStore = defineStore("nostr", {
         }
         return enc;
       } catch {
-        return await encryptNip04(recipient, message, privKey);
+        return await encryptNip04(recipient, message, { privKey });
       }
     },
 
