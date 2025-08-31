@@ -11,6 +11,8 @@ import {
 import { useMintsStore } from "./mints";
 import { useSendTokensStore } from "./sendTokensStore";
 import { useNostrStore } from "./nostr";
+import { useDmStore } from "./dm";
+import { nip19 } from "nostr-tools";
 import { useTokensStore } from "./tokens";
 import token from "src/js/token";
 import {
@@ -140,7 +142,7 @@ export const usePRStore = defineStore("payment-request", {
     ) {
       debug("payNostrPaymentRequest", request, tokenStr);
       debug("transport", transport);
-      const nostrStore = useNostrStore();
+      const dmStore = useDmStore();
       const decodedToken = token.decode(tokenStr);
       if (!decodedToken) {
         console.error("could not decode token");
@@ -156,10 +158,9 @@ export const usePRStore = defineStore("payment-request", {
       };
       const paymentPayloadString = JSON.stringify(paymentPayload);
       try {
-        await nostrStore.sendNip17DirectMessageToNprofile(
-          transport.target,
-          paymentPayloadString,
-        );
+        const result = nip19.decode(transport.target);
+        const pubkey: string = (result.data as any).pubkey;
+        await dmStore.sendDm(pubkey, paymentPayloadString);
       } catch (error) {
         console.error("Error paying payment request:", error);
         notifyError("Could not pay request");

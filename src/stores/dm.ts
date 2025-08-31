@@ -1,9 +1,13 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import type { NDKSubscription, NDKEvent } from "@nostr-dev-kit/ndk";
-import { NDKKind } from "@nostr-dev-kit/ndk";
+import {
+  type NDKSubscription,
+  type NDKEvent,
+  NDKKind,
+  NDKPublishError,
+} from "@nostr-dev-kit/ndk";
 import { useNdk } from "src/composables/useNdk";
-import { useNostrStore } from "./nostr";
+import { useNostrStore, publishWithTimeout, urlsToRelaySet, PublishTimeoutError } from "./nostr";
 import { useWalletStore } from "./wallet";
 import { useMintsStore } from "./mints";
 import { useProofsStore } from "./proofs";
@@ -11,8 +15,9 @@ import { useSettingsStore } from "./settings";
 import { useTokensStore } from "./tokens";
 import { v4 as uuidv4 } from "uuid";
 import { subscriptionPayload } from "src/utils/receipt-utils";
-import { notifyError } from "src/js/notify";
+import { notifyError, notifySuccess } from "src/js/notify";
 import { stickyDmSubscription } from "src/js/nostr-runtime";
+import { nip44, nip04 } from "nostr-tools";
 
 export interface NostrMessage {
   id: string;
@@ -34,6 +39,36 @@ export const useDmStore = defineStore("dm", () => {
   const isLoading = ref(false);
   const dmSubscription = ref<NDKSubscription | null>(null);
   const eventLog = ref<NostrMessage[]>([]);
+
+  async function decryptDmContent(
+    privKey: string | Uint8Array | undefined,
+    sender: string,
+    content: string,
+  ): Promise<string> {
+    const nostrExt = (window as any)?.nostr;
+    if (!privKey) {
+      if (nostrExt?.nip44?.decrypt) {
+        try {
+          return await nostrExt.nip44.decrypt(sender, content);
+        } catch {}
+      }
+      if (nostrExt?.nip04?.decrypt) {
+        try {
+          return await nostrExt.nip04.decrypt(sender, content);
+        } catch {}
+      }
+      throw new Error("Signer lacks nip44/nip04 support");
+    }
+    const nip44Key = nip44.v2.utils.getConversationKey(
+      privKey as any,
+      sender as any,
+    );
+    try {
+      return await nip44.v2.decrypt(content, nip44Key);
+    } catch {
+      return await nip04.decrypt(privKey as any, sender, content);
+    }
+  }
 
   const sortedConversations = computed(() => {
     return Array.from(conversations.value.values()).sort((a, b) => {
@@ -68,13 +103,11 @@ export const useDmStore = defineStore("dm", () => {
     const nostr = useNostrStore();
     let content = event.content;
     try {
-      if (typeof (nostr as any).decryptDmContent === "function") {
-        content = await (nostr as any).decryptDmContent(
-          (nostr as any).privKeyHex,
-          event.pubkey,
-          event.content,
-        );
-      }
+      content = await decryptDmContent(
+        (nostr as any).privKeyHex,
+        event.pubkey,
+        event.content,
+      );
     } catch {
       // ignore decrypt errors
     }
@@ -152,18 +185,7 @@ export const useDmStore = defineStore("dm", () => {
   }
 
   async function sendDm(recipient: string, msg: string) {
-    const nostr = useNostrStore();
-    let result: any = { success: false };
-    try {
-      result = await (nostr as any).sendNip17DirectMessage(recipient, msg, [
-        "wss://relay.example",
-      ]);
-    } catch {}
-    if (result.success && result.event) {
-      await handleEncryptedDmEvent(result.event as any);
-      return { success: true, event: result.event };
-    }
-    return { success: false };
+    return await sendMessage(recipient, msg);
   }
 
   function normalizeKey(pk: string): string {
@@ -290,3 +312,30 @@ export const useDmStore = defineStore("dm", () => {
 });
 
 export type DmStore = ReturnType<typeof useDmStore>;
+
+export async function publishDmNip04(
+  ev: NDKEvent,
+  relays: string[],
+  timeoutMs = 30000,
+): Promise<boolean> {
+  const relaySet = await urlsToRelaySet(relays);
+  if (!relaySet) return false;
+  try {
+    await publishWithTimeout(ev, relaySet, timeoutMs);
+    notifySuccess("NIP-04 event published");
+    return true;
+  } catch (e) {
+    console.error(e);
+    if (e instanceof NDKPublishError) {
+      const urls = relaySet.relayUrls?.join(", ") || relays.join(", ");
+      notifyError(`Could not publish NIP-04 event to: ${urls}`);
+    } else if (e instanceof PublishTimeoutError) {
+      notifyError(
+        "Publishing NIP-04 event timed out. Check your network connection or relay availability.",
+      );
+    } else {
+      notifyError("Could not publish NIP-04 event");
+    }
+    return false;
+  }
+}

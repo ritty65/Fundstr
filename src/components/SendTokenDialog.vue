@@ -1217,13 +1217,11 @@ export default defineComponent({
               referenceId: this.sendData.historyToken?.id || "",
             };
             const dmContent = JSON.stringify(payload);
-            const { success, event } =
-              await useNostrStore().sendDirectMessageUnified(
-                recipient,
-                dmContent,
-              );
-            if (success && event) {
-              useDmStore().addOutgoing(event);
+            const { success } = await useDmStore().sendDm(
+              recipient,
+              dmContent,
+            );
+            if (success) {
               Dialog.create({
                 message: this.$t(
                   "wallet.notifications.nostr_dm_sent",
@@ -1371,13 +1369,11 @@ export default defineComponent({
               referenceId: this.sendData.historyToken?.id || "",
             };
             const dmContent2 = JSON.stringify(payload2);
-            const { success, event } =
-              await useNostrStore().sendDirectMessageUnified(
-                recipient,
-                dmContent2,
-              );
-            if (success && event) {
-              useDmStore().addOutgoing(event);
+            const { success } = await useDmStore().sendDm(
+              recipient,
+              dmContent2,
+            );
+            if (success) {
               Dialog.create({
                 message: this.$t(
                   "wallet.notifications.nostr_dm_sent",
