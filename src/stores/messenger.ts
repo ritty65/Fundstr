@@ -26,6 +26,7 @@ import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useNdk } from "src/composables/useNdk";
 import { NDKKind, NDKEvent } from "@nostr-dev-kit/ndk";
+import { filterHealthyRelays } from "src/utils/relayHealth";
 
 function parseSubscriptionPaymentPayload(obj: any):
   | {
@@ -273,6 +274,7 @@ export const useMessengerStore = defineStore("messenger", {
 
       const userRelays = await nostr.fetchUserRelays(recipient);
       const targetRelays = relays || userRelays || (this.relays as any);
+      const healthyRelays = await filterHealthyRelays(targetRelays);
 
       const msg = this.addOutgoingMessage(
         recipient,
@@ -284,12 +286,18 @@ export const useMessengerStore = defineStore("messenger", {
         tokenPayload,
       );
 
+      if (!healthyRelays.length) {
+        msg.status = "failed";
+        this.sendQueue.push(msg);
+        return { success: false, event: null };
+      }
+
       // We will now send the message using both NIP-17 and NIP-04 to ensure delivery.
       // We prioritize the result from the modern NIP-17 for the UI feedback.
       const nip17Result = await nostr.sendNip17DirectMessage(
         recipient,
         message,
-        targetRelays,
+        healthyRelays,
       );
 
       // In the background, also send with legacy NIP-04 for compatibility.
@@ -299,7 +307,7 @@ export const useMessengerStore = defineStore("messenger", {
           message,
           nostr.privKeyHex,
           nostr.pubkey,
-          targetRelays,
+          healthyRelays,
         )
         .catch((error) => {
           console.error("Failed to send legacy NIP-04 DM:", error);

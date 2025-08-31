@@ -49,7 +49,7 @@ export async function pingRelay(url: string): Promise<boolean> {
       }
     } catch {}
   }
-  const attemptOnce = (useProtocol = true): Promise<boolean> =>
+  const attemptOnce = (useProtocol = false): Promise<boolean> =>
     new Promise((resolve) => {
       let settled = false;
       let ws: WebSocket;
@@ -91,14 +91,14 @@ export async function pingRelay(url: string): Promise<boolean> {
           try {
             ws.close();
           } catch {}
-          if (useProtocol) {
+          if (!useProtocol) {
             if (!handshakeWarned.has(url)) {
               console.warn(
-                `Relay handshake failed for: ${url} (retrying without protocol)`,
+                `Relay handshake failed for: ${url} (retrying with \"nostr\" protocol)`,
               );
               handshakeWarned.add(url);
             }
-            attemptOnce(false).then(resolve);
+            attemptOnce(true).then(resolve);
           } else {
             resolve(false);
           }
