@@ -46,7 +46,7 @@ import {
   notifySuccess,
   notifyWarning,
   notify,
-} from "../js/notify";
+} from "src/js/notify";
 import { useNdk } from "src/composables/useNdk";
 import { rebuildNdk } from "boot/ndk";
 import { useSendTokensStore } from "./sendTokensStore";
@@ -1285,19 +1285,33 @@ export const useNostrStore = defineStore("nostr", {
       message: string,
     ): Promise<string> {
       const nostr = (window as any)?.nostr;
+      // NIP-07/NIP-46 Signer (Browser Extension)
       if (!privKey) {
         if (nostr?.nip44?.encrypt) {
           try {
             return await nostr.nip44.encrypt(recipient, message);
-          } catch {}
+          } catch (e) {
+            console.error("NIP-44 encryption failed:", e);
+            notifyError(
+              "Encryption failed. Please grant encryption permissions in your Nostr extension.",
+            );
+            throw new Error("Signer lacks NIP-44 support or permission was denied.");
+          }
         }
         if (nostr?.nip04?.encrypt) {
           try {
             return await nostr.nip04.encrypt(recipient, message);
-          } catch {}
+          } catch (e) {
+            console.error("NIP-04 encryption failed:", e);
+            notifyError(
+              "Encryption failed. Please grant encryption permissions in your Nostr extension.",
+            );
+            throw new Error("Signer lacks NIP-04 support or permission was denied.");
+          }
         }
-        throw new Error("Signer lacks nip44/nip04 support");
+        throw new Error("Signer does not support NIP-44 or NIP-04 encryption.");
       }
+      // Local Private Key
       try {
         return await nip44.v2.encrypt(
           message,
@@ -1307,25 +1321,36 @@ export const useNostrStore = defineStore("nostr", {
         return await nip04.encrypt(privKey as any, recipient, message);
       }
     },
+
     decryptDmContent: async function (
       privKey: string | Uint8Array | undefined,
       sender: string,
       content: string,
     ): Promise<string> {
       const nostr = (window as any)?.nostr;
+      // NIP-07/NIP-46 Signer (Browser Extension)
       if (!privKey) {
         if (nostr?.nip44?.decrypt) {
           try {
             return await nostr.nip44.decrypt(sender, content);
-          } catch {}
+          } catch (e) {
+            console.error("NIP-44 decryption failed:", e);
+            // Do not notify on every failure, as it could be spam or an old format.
+            // Only throw to signal failure to the caller.
+            throw new Error("Signer lacks NIP-44 support or permission was denied.");
+          }
         }
         if (nostr?.nip04?.decrypt) {
           try {
             return await nostr.nip04.decrypt(sender, content);
-          } catch {}
+          } catch (e) {
+            console.error("NIP-04 decryption failed:", e);
+            throw new Error("Signer lacks NIP-04 support or permission was denied.");
+          }
         }
-        throw new Error("Signer lacks nip44/nip04 support");
+        throw new Error("Signer does not support NIP-44 or NIP-04 decryption.");
       }
+      // Local Private Key
       const nip44Key = nip44.v2.utils.getConversationKey(
         privKey as any,
         sender as any,
