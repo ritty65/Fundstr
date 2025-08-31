@@ -5,9 +5,9 @@ import { SimplePool, useWebSocketImplementation } from 'nostr-tools/pool';
 import { nip19 } from 'nostr-tools';
 import WebSocket from 'ws';
 
-// provide WebSocket implementation for nostr-tools in Node with nostr protocol
+// provide WebSocket implementation for nostr-tools in Node without forcing a protocol
 function NostrWebSocket(url, opts) {
-  return new WebSocket(url, 'nostr', opts);
+  return new WebSocket(url, opts);
 }
 useWebSocketImplementation(NostrWebSocket);
 
