@@ -1256,23 +1256,23 @@ export const useNostrStore = defineStore("nostr", {
       return mintUrlsCounted;
     },
     encryptDmContent: async function (
-      privKey: string | undefined,
+      privKey: string | Uint8Array | undefined,
       recipient: string,
       message: string,
     ): Promise<string> {
       const nostr = (window as any)?.nostr;
-      if (nostr?.nip44?.encrypt) {
-        try {
-          return await nostr.nip44.encrypt(recipient, message);
-        } catch {}
-      }
-      if (nostr?.nip04?.encrypt) {
-        try {
-          return await nostr.nip04.encrypt(recipient, message);
-        } catch {}
-      }
       if (!privKey) {
-        throw new Error("No private key for encryption");
+        if (nostr?.nip44?.encrypt) {
+          try {
+            return await nostr.nip44.encrypt(recipient, message);
+          } catch {}
+        }
+        if (nostr?.nip04?.encrypt) {
+          try {
+            return await nostr.nip04.encrypt(recipient, message);
+          } catch {}
+        }
+        throw new Error("Signer lacks nip44/nip04 support");
       }
       try {
         return await nip44.v2.encrypt(
@@ -1280,27 +1280,27 @@ export const useNostrStore = defineStore("nostr", {
           nip44.v2.utils.getConversationKey(privKey as any, recipient as any),
         );
       } catch {
-        return await nip04.encrypt(privKey, recipient, message);
+        return await nip04.encrypt(privKey as any, recipient, message);
       }
     },
     decryptDmContent: async function (
-      privKey: string | undefined,
+      privKey: string | Uint8Array | undefined,
       sender: string,
       content: string,
     ): Promise<string> {
       const nostr = (window as any)?.nostr;
-      if (nostr?.nip44?.decrypt) {
-        try {
-          return await nostr.nip44.decrypt(sender, content);
-        } catch {}
-      }
-      if (nostr?.nip04?.decrypt) {
-        try {
-          return await nostr.nip04.decrypt(sender, content);
-        } catch {}
-      }
       if (!privKey) {
-        throw new Error("No private key for decryption");
+        if (nostr?.nip44?.decrypt) {
+          try {
+            return await nostr.nip44.decrypt(sender, content);
+          } catch {}
+        }
+        if (nostr?.nip04?.decrypt) {
+          try {
+            return await nostr.nip04.decrypt(sender, content);
+          } catch {}
+        }
+        throw new Error("Signer lacks nip44/nip04 support");
       }
       const nip44Key = nip44.v2.utils.getConversationKey(
         privKey as any,
@@ -1309,7 +1309,7 @@ export const useNostrStore = defineStore("nostr", {
       try {
         return await nip44.v2.decrypt(content, nip44Key);
       } catch {
-        return await nip04.decrypt(privKey, sender, content);
+        return await nip04.decrypt(privKey as any, sender, content);
       }
     },
     sendDirectMessageUnified: async function (
@@ -1491,7 +1491,7 @@ export const useNostrStore = defineStore("nostr", {
     sendNip17DirectMessageToNprofile: async function (
       nprofile: string,
       message: string,
-    ): Promise<NDKEvent | null> {
+    ): Promise<{ success: boolean; event?: NDKEvent }> {
       const result = nip19.decode(nprofile);
       const pubkey: string = (result.data as ProfilePointer).pubkey;
       const relays: string[] | undefined = (result.data as ProfilePointer)
@@ -1505,19 +1505,14 @@ export const useNostrStore = defineStore("nostr", {
       recipient: string,
       message: string,
       relays?: string[],
-    ): Promise<NDKEvent | null> {
+    ): Promise<{ success: boolean; event?: NDKEvent }> {
       const recResolved = this.resolvePubkey(recipient);
       if (!recResolved) {
-        notifyError("Invalid recipient pubkey");
-        return null;
+        return { success: false };
       }
       recipient = recResolved;
       await this.initSignerIfNotSet();
-      const privKey = this.privKeyHex;
-      if (!privKey) {
-        notifyError("No private key available for messaging");
-        return null;
-      }
+
       const dmEvent = new NDKEvent();
       const dmNostrEvent: NostrEvent = {
         kind: 14,
@@ -1530,46 +1525,73 @@ export const useNostrStore = defineStore("nostr", {
       Object.assign(dmEvent, dmNostrEvent);
       const dmEventString = JSON.stringify(dmNostrEvent);
 
+      let sealContent: string;
+      try {
+        sealContent = await this.encryptDmContent(
+          this.privKeyHex,
+          recipient,
+          dmEventString,
+        );
+      } catch (e) {
+        console.error(e);
+        return { success: false };
+      }
+
       const sealEvent = new NDKEvent();
       sealEvent.kind = 13;
-      sealEvent.content = await this.encryptDmContent(
-        privKey,
-        recipient,
-        dmEventString,
-      );
+      sealEvent.content = sealContent;
       sealEvent.created_at = this.randomTimeUpTo2DaysInThePast();
       sealEvent.pubkey = this.pubkey;
-      sealEvent.id = sealEvent.getEventHash();
-      sealEvent.sig = await sealEvent.sign();
+      try {
+        await sealEvent.sign(this.signer);
+      } catch (e) {
+        console.error("Could not sign seal", e);
+        return { success: false };
+      }
       const sealEventString = JSON.stringify(await sealEvent.toNostrEvent());
-      const randomPrivateKeyRecipient = generateSecretKey();
+
+      const randomPrivateKeyRecipient = bytesToHex(generateSecretKey());
       const randomPublicKeyRecipient = getPublicKey(randomPrivateKeyRecipient);
-      const randomPrivateKeySender = generateSecretKey();
+      const randomPrivateKeySender = bytesToHex(generateSecretKey());
       const randomPublicKeySender = getPublicKey(randomPrivateKeySender);
+
+      let wrapContentRecipient: string;
+      let wrapContentSender: string;
+      try {
+        wrapContentRecipient = await this.encryptDmContent(
+          randomPrivateKeyRecipient,
+          recipient,
+          sealEventString,
+        );
+        wrapContentSender = await this.encryptDmContent(
+          randomPrivateKeySender,
+          this.pubkey,
+          sealEventString,
+        );
+      } catch (e) {
+        console.error("Wrap encryption failed", e);
+        return { success: false };
+      }
 
       const wrapEventRecipient = new NDKEvent();
       wrapEventRecipient.kind = 1059;
       wrapEventRecipient.tags = [["p", recipient]];
-      wrapEventRecipient.content = nip44.v2.encrypt(
-        sealEventString,
-        nip44.v2.utils.getConversationKey(randomPrivateKeyRecipient, recipient),
-      );
+      wrapEventRecipient.content = wrapContentRecipient;
       wrapEventRecipient.created_at = this.randomTimeUpTo2DaysInThePast();
       wrapEventRecipient.pubkey = randomPublicKeyRecipient;
-      wrapEventRecipient.id = wrapEventRecipient.getEventHash();
-      wrapEventRecipient.sig = await wrapEventRecipient.sign();
+      const recipientSigner = new NDKPrivateKeySigner(
+        randomPrivateKeyRecipient,
+      );
+      await wrapEventRecipient.sign(recipientSigner);
 
       const wrapEventSender = new NDKEvent();
       wrapEventSender.kind = 1059;
       wrapEventSender.tags = [["p", this.pubkey]];
-      wrapEventSender.content = nip44.v2.encrypt(
-        sealEventString,
-        nip44.v2.utils.getConversationKey(randomPrivateKeySender, this.pubkey),
-      );
+      wrapEventSender.content = wrapContentSender;
       wrapEventSender.created_at = this.randomTimeUpTo2DaysInThePast();
       wrapEventSender.pubkey = randomPublicKeySender;
-      wrapEventSender.id = wrapEventSender.getEventHash();
-      wrapEventSender.sig = await wrapEventSender.sign();
+      const senderSigner = new NDKPrivateKeySigner(randomPrivateKeySender);
+      await wrapEventSender.sign(senderSigner);
 
       const relayUrlsRecipient = (relays ?? this.relays)
         .filter((r) => r.startsWith("wss://"))
@@ -1591,34 +1613,29 @@ export const useNostrStore = defineStore("nostr", {
         healthyRelaysSender = [];
       }
 
-      if (healthyRelaysRecipient.length === 0 && healthyRelaysSender.length === 0) {
+      const healthyRelays = Array.from(
+        new Set([...healthyRelaysRecipient, ...healthyRelaysSender]),
+      );
+      if (healthyRelays.length === 0) {
         console.error("[nostr] NIP-17 publish failed: all relays unreachable");
-        notifyError("Could not publish NIP-17 event");
-        return null;
+        return { success: false };
       }
 
       const pool = new SimplePool();
       const nostrRecipient = await wrapEventRecipient.toNostrEvent();
       const nostrSender = await wrapEventSender.toNostrEvent();
       try {
-        await Promise.all([
-          healthyRelaysRecipient.length
-            ? pool.publish(healthyRelaysRecipient, nostrRecipient as any)
-            : Promise.resolve(),
-          healthyRelaysSender.length
-            ? pool.publish(healthyRelaysSender, nostrSender as any)
-            : Promise.resolve(),
-        ]);
+        await pool.publish(
+          [...healthyRelays],
+          nostrRecipient as any,
+          nostrSender as any,
+        );
         const chatStore = useDmChatsStore();
         chatStore.addOutgoing(dmEvent);
-        const router = useRouter();
-        router.push("/nostr-messenger");
-        notifySuccess("NIP-17 event published");
-        return dmEvent;
+        return { success: true, event: dmEvent };
       } catch (e) {
         console.error(e);
-        notifyError("Could not publish NIP-17 event");
-        return null;
+        return { success: false };
       }
     },
     subscribeToNip17DirectMessages: async function () {
@@ -1949,8 +1966,8 @@ export async function signEvent(
 }
 
 export async function publishEvent(event: NostrEvent): Promise<void> {
-  const relayUrls = useSettingsStore().defaultNostrRelays
-    .filter((r) => r.startsWith("wss://"))
+  const relayUrls = useSettingsStore()
+    .defaultNostrRelays.filter((r) => r.startsWith("wss://"))
     .map((r) => r.replace(/\/+$/, ""));
   let healthyRelays: string[] = [];
   try {
@@ -1975,9 +1992,8 @@ export async function subscribeToNostr(
   cb: (ev: NostrEvent) => void,
   relays?: string[],
 ): Promise<boolean> {
-  const relayUrls = (relays && relays.length > 0
-    ? relays
-    : useSettingsStore().defaultNostrRelays
+  const relayUrls = (
+    relays && relays.length > 0 ? relays : useSettingsStore().defaultNostrRelays
   )
     .filter((r) => r.startsWith("wss://"))
     .map((r) => r.replace(/\/+$/, ""));
