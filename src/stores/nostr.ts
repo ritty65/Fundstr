@@ -1570,11 +1570,14 @@ export const useNostrStore = defineStore("nostr", {
     async fetchUserRelays(pubkey: string): Promise<string[]> {
       const ndk = await useNdk();
       const user = ndk.getUser({ pubkey });
-      await user.fetchProfile();
-      const relayList = await user.relayList();
-      if (relayList) {
-        return Array.from(relayList.readRelayUrls);
-      }
+      try {
+        await user.fetchProfile();
+        await user.fetchRelayList();
+        const relayList = user.relayList;
+        if (relayList) {
+          return Array.from(relayList.readRelayUrls);
+        }
+      } catch {}
       return [];
     },
 

@@ -5,6 +5,7 @@ import { FREE_RELAYS } from "src/config/relays";
 // many relays are unreachable.
 const reportedFailures = new Map<string, number>();
 const alreadyReported = new Set<string>();
+const handshakeWarned = new Set<string>();
 let aggregateTimer: ReturnType<typeof setTimeout> | null = null;
 let allFailedWarned = false;
 
@@ -48,12 +49,12 @@ export async function pingRelay(url: string): Promise<boolean> {
       }
     } catch {}
   }
-  const attemptOnce = (): Promise<boolean> =>
+  const attemptOnce = (useProtocol = true): Promise<boolean> =>
     new Promise((resolve) => {
       let settled = false;
       let ws: WebSocket;
       try {
-        ws = new WebSocket(url, 'nostr');
+        ws = useProtocol ? new WebSocket(url, "nostr") : new WebSocket(url);
       } catch {
         resolve(false);
         return;
@@ -87,7 +88,20 @@ export async function pingRelay(url: string): Promise<boolean> {
         if (!settled) {
           settled = true;
           clearTimeout(timer);
-          resolve(false);
+          try {
+            ws.close();
+          } catch {}
+          if (useProtocol) {
+            if (!handshakeWarned.has(url)) {
+              console.warn(
+                `Relay handshake failed for: ${url} (retrying without protocol)`,
+              );
+              handshakeWarned.add(url);
+            }
+            attemptOnce(false).then(resolve);
+          } else {
+            resolve(false);
+          }
         }
       };
       ws.onmessage = (ev) => {
