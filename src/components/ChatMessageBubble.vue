@@ -89,11 +89,11 @@
           <q-tooltip>{{ isoTime }}</q-tooltip>
         </span>
         <q-icon
-          v-if="message.outgoing"
-          :name="statusIcon"
+          v-if="deliveryStatus"
+          :name="deliveryIcon"
           size="16px"
           class="q-ml-xs"
-          :color="statusColor"
+          :color="deliveryColor"
         />
       </div>
       <q-avatar
@@ -116,7 +116,6 @@ import {
   mdiCheck,
   mdiCheckAll,
   mdiAlertCircleOutline,
-  mdiClockOutline,
 } from "@quasar/extras/mdi-v6";
 import type { MessengerMessage } from "src/stores/messenger";
 import TokenCarousel from "components/TokenCarousel.vue";
@@ -132,6 +131,7 @@ import { nip19 } from "nostr-tools";
 
 const props = defineProps<{
   message: MessengerMessage;
+  deliveryStatus?: "sent" | "delivered" | "failed";
   prevMessage?: MessengerMessage;
 }>();
 
@@ -175,18 +175,12 @@ const time = computed(() =>
 const isoTime = computed(() =>
   new Date(props.message.created_at * 1000).toISOString(),
 );
-const statusIcon = computed(() => {
-  switch (props.message.status) {
-    case "pending":
-      return mdiClockOutline;
-    case "failed":
-      return mdiAlertCircleOutline;
-    default:
-      return props.message.status === "delivered" ? mdiCheckAll : mdiCheck;
-  }
+const deliveryIcon = computed(() => {
+  if (props.deliveryStatus === "failed") return mdiAlertCircleOutline;
+  return props.deliveryStatus === "delivered" ? mdiCheckAll : mdiCheck;
 });
-const statusColor = computed(() =>
-  props.message.status === "failed" ? "negative" : "grey",
+const deliveryColor = computed(() =>
+  props.deliveryStatus === "failed" ? "negative" : undefined,
 );
 
 const isDataUrl = computed(() => props.message.content.startsWith("data:"));
