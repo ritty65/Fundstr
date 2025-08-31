@@ -46,7 +46,7 @@ export async function stickyDmSubscription(
   getSince: () => number,
   handler: (ev: NDKEvent) => void | Promise<void>,
 ): Promise<() => void> {
-  const ndk = await useNdk();
+  const { ndk } = useNdk();
   let sub: any;
 
   const subscribe = () => {

@@ -862,7 +862,7 @@ async function updateProfiles() {
   if (!missing.length) return;
   try {
     await nostr.initNdkReadOnly();
-    const ndk = await useNdk({ requireSigner: false });
+    const { ndk } = useNdk();
     const events = await ndk.fetchEvents({ kinds: [0], authors: missing });
     const found = new Set<string>();
     events.forEach((ev: any) => {

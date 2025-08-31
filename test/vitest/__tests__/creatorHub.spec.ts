@@ -45,7 +45,7 @@ vi.mock("@nostr-dev-kit/ndk", async () => {
 });
 
 vi.mock("../../../src/composables/useNdk", () => ({
-  useNdk: vi.fn().mockImplementation(async () => ndkStub),
+  useNdk: vi.fn(() => ({ ndk: ndkStub })),
 }));
 
 const nostrStoreMock = {

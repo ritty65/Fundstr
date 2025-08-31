@@ -131,7 +131,8 @@ export default defineComponent({
       try {
         await nostr.initSignerIfNotSet();
         await messenger.loadIdentity();
-        ndkRef.value = await useNdk();
+        const { ndk } = useNdk();
+        ndkRef.value = ndk;
         await Promise.race([messenger.start(), timeout(10000)]);
       } catch (e) {
         console.error(e);

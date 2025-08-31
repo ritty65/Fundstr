@@ -87,7 +87,7 @@ export const useDmStore = defineStore("dm", () => {
   async function initialize() {
     if (isInitialized.value) return;
     isLoading.value = true;
-    const ndk = await useNdk();
+    const { ndk } = useNdk();
     const nostr = useNostrStore();
     const sub = ndk.subscribe(
       { kinds: [NDKKind.EncryptedDirectMessage], "#p": [nostr.pubkey] },
@@ -135,7 +135,7 @@ export const useDmStore = defineStore("dm", () => {
     pubkey: string,
     content: string,
   ): Promise<{ success: boolean; event?: NDKEvent }> {
-    const ndk = await useNdk();
+    const { ndk } = useNdk();
     const nostr = useNostrStore();
     const ev = new ndk.eventClass(ndk); // NDKEvent
     ev.kind = NDKKind.EncryptedDirectMessage;

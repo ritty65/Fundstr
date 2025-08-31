@@ -29,7 +29,7 @@ export async function maybeRepublishNutzapProfile() {
       "No Nostr signer available. Unlock or connect a signer add-on (Nos2x/Alby) first.",
     );
   }
-  const ndk = await useNdk();
+  const { ndk } = useNdk();
   if (!ndk) {
     throw new Error(
       "You need to connect a Nostr signer before publishing tiers",
@@ -109,7 +109,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
     async updateProfile(profile: any) {
       const nostr = useNostrStore();
       await nostr.initSignerIfNotSet();
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       const ev = new NDKEvent(ndk);
       ev.kind = 0;
       ev.content = JSON.stringify(profile);
@@ -198,7 +198,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         "#d": ["tiers"],
         limit: 1,
       };
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       const events = await ndk.fetchEvents(filter);
       events.forEach((ev) => {
         try {
@@ -238,7 +238,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         throw new Error("Signer required to publish tier definitions");
       }
 
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       if (!ndk) {
         throw new Error("NDK not initialised – cannot publish tiers");
       }
