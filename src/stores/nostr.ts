@@ -1537,128 +1537,54 @@ export const useNostrStore = defineStore("nostr", {
       recipient = recResolved;
       await this.initSignerIfNotSet();
 
-      const dmEvent = new NDKEvent();
-      const dmNostrEvent: NostrEvent = {
-        kind: 14,
-        content: message,
-        tags: [["p", recipient]],
-        created_at: Math.floor(Date.now() / 1000),
-        pubkey: this.pubkey,
-      } as NostrEvent;
-      dmNostrEvent.id = getEventHash(dmNostrEvent);
-      Object.assign(dmEvent, dmNostrEvent);
-      const dmEventString = JSON.stringify(dmNostrEvent);
+      // 1. Create the Rumor (the actual DM content)
+      const rumor = new NDKEvent(await useNdk());
+      rumor.kind = 14 as NDKKind;
+      rumor.content = message;
+      rumor.tags = [["p", recipient]];
+      await rumor.sign(this.signer);
 
-      let sealContent: string;
-      try {
-        sealContent = await this.encryptDmContent(
-          this.privKeyHex,
-          recipient,
-          dmEventString,
-        );
-      } catch (e) {
-        console.error(e);
-        return { success: false };
+      // 2. Create the Seal (the encrypted wrapper for the rumor)
+      const seal = new NDKEvent(await useNdk());
+      seal.kind = 13 as NDKKind;
+      seal.content = await rumor.encrypt(await this.signer.user());
+      await seal.sign(this.signer);
+
+      // 3. Create the Gift Wrap
+      const giftWrap = new NDKEvent(await useNdk());
+      giftWrap.kind = 1059 as NDKKind;
+      giftWrap.tags = [["p", recipient]];
+      giftWrap.content = await seal.toJson();
+
+      // Sign with an ephemeral key for anonymity
+      const ephemeralSigner = new NDKPrivateKeySigner();
+      await giftWrap.sign(ephemeralSigner);
+
+      // 4. Publish the Gift Wrap
+      const ndk = await useNdk();
+      const published = await ndk.publish(giftWrap, new Set(relays));
+
+      return { success: published.size > 0, event: giftWrap };
+    },
+
+    async fetchUserRelays(pubkey: string): Promise<string[]> {
+      const ndk = await useNdk();
+      const user = ndk.getUser({ pubkey });
+      await user.fetchProfile();
+      const relayList = await user.relayList();
+      if (relayList) {
+        return Array.from(relayList.readRelayUrls);
       }
+      return [];
+    },
 
-      const sealEvent = new NDKEvent();
-      sealEvent.kind = 13;
-      sealEvent.content = sealContent;
-      sealEvent.created_at = this.randomTimeUpTo2DaysInThePast();
-      sealEvent.pubkey = this.pubkey;
-      try {
-        await sealEvent.sign(this.signer);
-      } catch (e) {
-        console.error("Could not sign seal", e);
-        return { success: false };
-      }
-      const sealEventString = JSON.stringify(await sealEvent.toNostrEvent());
-
-      const randomPrivateKeyRecipient = bytesToHex(generateSecretKey());
-      const randomPublicKeyRecipient = getPublicKey(randomPrivateKeyRecipient);
-      const randomPrivateKeySender = bytesToHex(generateSecretKey());
-      const randomPublicKeySender = getPublicKey(randomPrivateKeySender);
-
-      let wrapContentRecipient: string;
-      let wrapContentSender: string;
-      try {
-        wrapContentRecipient = await this.encryptDmContent(
-          randomPrivateKeyRecipient,
-          recipient,
-          sealEventString,
-        );
-        wrapContentSender = await this.encryptDmContent(
-          randomPrivateKeySender,
-          this.pubkey,
-          sealEventString,
-        );
-      } catch (e) {
-        console.error("Wrap encryption failed", e);
-        return { success: false };
-      }
-
-      const wrapEventRecipient = new NDKEvent();
-      wrapEventRecipient.kind = 1059;
-      wrapEventRecipient.tags = [["p", recipient]];
-      wrapEventRecipient.content = wrapContentRecipient;
-      wrapEventRecipient.created_at = this.randomTimeUpTo2DaysInThePast();
-      wrapEventRecipient.pubkey = randomPublicKeyRecipient;
-      const recipientSigner = new NDKPrivateKeySigner(
-        randomPrivateKeyRecipient,
-      );
-      await wrapEventRecipient.sign(recipientSigner);
-
-      const wrapEventSender = new NDKEvent();
-      wrapEventSender.kind = 1059;
-      wrapEventSender.tags = [["p", this.pubkey]];
-      wrapEventSender.content = wrapContentSender;
-      wrapEventSender.created_at = this.randomTimeUpTo2DaysInThePast();
-      wrapEventSender.pubkey = randomPublicKeySender;
-      const senderSigner = new NDKPrivateKeySigner(randomPrivateKeySender);
-      await wrapEventSender.sign(senderSigner);
-
-      const relayUrlsRecipient = (relays ?? this.relays)
-        .filter((r) => r.startsWith("wss://"))
-        .map((r) => r.replace(/\/+$/, ""));
-      const relayUrlsSender = this.relays
-        .filter((r) => r.startsWith("wss://"))
-        .map((r) => r.replace(/\/+$/, ""));
-
-      let healthyRelaysRecipient: string[] = [];
-      let healthyRelaysSender: string[] = [];
-      try {
-        healthyRelaysRecipient = await filterHealthyRelays(relayUrlsRecipient);
-      } catch {
-        healthyRelaysRecipient = [];
-      }
-      try {
-        healthyRelaysSender = await filterHealthyRelays(relayUrlsSender);
-      } catch {
-        healthyRelaysSender = [];
-      }
-
-      const healthyRelays = Array.from(
-        new Set([...healthyRelaysRecipient, ...healthyRelaysSender]),
-      );
-      if (healthyRelays.length === 0) {
-        console.error("[nostr] NIP-17 publish failed: all relays unreachable");
-        return { success: false };
-      }
-
-      const pool = new SimplePool();
-      const nostrRecipient = await wrapEventRecipient.toNostrEvent();
-      const nostrSender = await wrapEventSender.toNostrEvent();
-      try {
-        await pool.publish(
-          [...healthyRelays],
-          nostrRecipient as any,
-          nostrSender as any,
-        );
-        return { success: true, event: wrapEventSender };
-      } catch (e) {
-        console.error(e);
-        return { success: false };
-      }
+    async publishRelayList(relays: string[]) {
+      const ndk = await useNdk();
+      const event = new NDKEvent(ndk);
+      event.kind = 10002 as NDKKind;
+      event.tags = relays.map((r) => ["r", r]);
+      await event.sign(this.signer);
+      await ndk.publish(event);
     },
     subscribeToNip17DirectMessages: async function () {
       await this.initSignerIfNotSet();
