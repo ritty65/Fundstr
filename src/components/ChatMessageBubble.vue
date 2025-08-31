@@ -7,6 +7,7 @@
       v-if="!message.outgoing && showAvatar"
       size="32px"
       class="q-mr-sm"
+      :title="displayName"
     >
       <img v-if="profile?.picture" :src="profile.picture" />
       <span v-else>{{ initials }}</span>
@@ -88,18 +89,35 @@
           {{ time }}
           <q-tooltip>{{ isoTime }}</q-tooltip>
         </span>
-        <q-icon
-          v-if="deliveryStatus"
-          :name="deliveryIcon"
-          size="16px"
-          class="q-ml-xs"
-          :color="deliveryColor"
-        />
+        <slot name="meta" :message="message">
+          <q-spinner-dots
+            v-if="message.isSending"
+            size="16px"
+            class="q-ml-xs"
+          />
+          <q-icon
+            v-else-if="!message.isSent"
+            name="warning"
+            size="16px"
+            color="negative"
+            class="q-ml-xs"
+          >
+            <q-tooltip>Failed to send</q-tooltip>
+          </q-icon>
+          <q-icon
+            v-else-if="deliveryStatus"
+            :name="deliveryIcon"
+            size="16px"
+            class="q-ml-xs"
+            :color="deliveryColor"
+          />
+        </slot>
       </div>
       <q-avatar
         v-if="message.outgoing && showAvatar"
         size="32px"
         class="q-ml-sm"
+        :title="displayName"
       >
         <img v-if="profile?.picture" :src="profile.picture" />
         <span v-else>{{ initials }}</span>
@@ -150,29 +168,49 @@ const showAvatar = computed(() => {
 
 const p2pk = useP2PKStore();
 const nostr = useNostrStore();
-const messenger = useDmStore();
+const messenger = useDmStore() as any;
 
 const avatarPubkey = computed(() =>
   props.message.outgoing ? nostr.pubkey : props.message.pubkey,
 );
-const profile = ref<any>(null);
-const initials = computed(() => {
-  const alias = messenger.aliases[avatarPubkey.value];
+
+const profile = computed(() => {
+  const entry: any = (nostr.profiles as any)[avatarPubkey.value];
+  return entry?.profile ?? entry ?? {};
+});
+
+const alias = computed(
+  () => messenger.aliases?.[avatarPubkey.value] || "",
+);
+
+const displayName = computed(() => {
   const p: any = profile.value;
-  const name = alias || p?.display_name || p?.name || "";
+  return (
+    alias.value ||
+    p?.display_name ||
+    p?.displayName ||
+    p?.name ||
+    (avatarPubkey.value ? avatarPubkey.value.slice(0, 8) + "…" : "")
+  );
+});
+
+const initials = computed(() => {
+  const name = displayName.value || "";
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return name.slice(0, 2).toUpperCase();
 });
 
-onMounted(async () => {
-  profile.value = await nostr.getProfile(avatarPubkey.value);
+onMounted(() => {
+  nostr.getProfile(avatarPubkey.value).catch(() => {});
 });
 
 const time = computed(() =>
+  (messenger as any).formatTimestamp?.(props.message.created_at) ??
   new Date(props.message.created_at * 1000).toLocaleString(),
 );
 const isoTime = computed(() =>
+  (messenger as any).formatISOTime?.(props.message.created_at) ??
   new Date(props.message.created_at * 1000).toISOString(),
 );
 const deliveryIcon = computed(() => {
