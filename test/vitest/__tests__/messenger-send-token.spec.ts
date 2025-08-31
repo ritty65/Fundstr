@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setActivePinia, createPinia } from "pinia";
 
 var sendNip17: any;
 var sendDmLegacy: any;
@@ -6,6 +7,23 @@ var walletSend: any;
 var walletMintWallet: any;
 var serializeProofs: any;
 var addPending: any;
+const lsStore: Record<string, string> = {};
+(globalThis as any).localStorage = {
+  getItem: (k: string) => (k in lsStore ? lsStore[k] : null),
+  setItem: (k: string, v: string) => {
+    lsStore[k] = String(v);
+  },
+  removeItem: (k: string) => {
+    delete lsStore[k];
+  },
+  clear: () => {
+    for (const k in lsStore) delete lsStore[k];
+  },
+  key: (i: number) => Object.keys(lsStore)[i] ?? null,
+  get length() {
+    return Object.keys(lsStore).length;
+  },
+};
 
 vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   const actual = await importOriginal();
@@ -30,6 +48,7 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
       connected: true,
       lastError: null,
       relays: [] as string[],
+      fetchUserRelays: vi.fn(async () => []),
       get privKeyHex() {
         return this.privateKeySignerPrivateKey;
       },
@@ -74,10 +93,19 @@ vi.mock("../../../src/js/message-utils", () => ({
   sanitizeMessage: vi.fn((s: string) => s),
 }));
 
+vi.mock("../../../src/js/notify", () => ({
+  notifySuccess: vi.fn(),
+  notifyError: vi.fn(),
+}));
+
 import { useMessengerStore } from "../../../src/stores/messenger";
 
 beforeEach(() => {
-  localStorage.clear();
+  setActivePinia(createPinia());
+  for (const k in lsStore) delete lsStore[k];
+  const m = useMessengerStore();
+  (m as any).eventLog = [];
+  (m as any).conversations = {};
   vi.clearAllMocks();
 });
 
@@ -91,14 +119,15 @@ describe("messenger.sendToken", () => {
     expect(sendNip17).toHaveBeenCalledWith(
       "receiver",
       expect.stringContaining('"token":"TOKEN"'),
-      undefined,
+      expect.anything(),
     );
     expect(sendDmLegacy).not.toHaveBeenCalled();
     expect(addPending).toHaveBeenCalledWith({
       amount: -1,
-      token: "TOKEN",
+      tokenStr: "TOKEN",
       unit: "sat",
       mint: "mint",
+      description: "note",
       bucketId: "b",
     });
     expect(store.conversations.receiver.length).toBe(1);
