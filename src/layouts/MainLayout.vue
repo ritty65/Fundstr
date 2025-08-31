@@ -48,8 +48,9 @@
           <Suspense>
             <template #default>
               <ConversationList
-                :conversations="filteredConversations"
-                :active-pubkey="messenger.currentConversation"
+                :mini="messenger.drawerMini"
+                :selected-pubkey="messenger.currentConversation"
+                :search="conversationSearch"
                 @select="selectConversation"
               />
             </template>
@@ -83,7 +84,7 @@
 </template>
 
 <script>import windowMixin from 'src/mixins/windowMixin'
-import { defineComponent, ref, computed, watch, onMounted } from "vue";
+import { defineComponent, ref, computed, watch } from "vue";
 
 import { useRouter, useRoute } from "vue-router";
 import { useQuasar, LocalStorage } from "quasar";
@@ -116,7 +117,6 @@ export default defineComponent({
     const newChatDialogRef = ref(null);
     const $q = useQuasar();
     const ui = useUiStore();
-    const nostr = useNostrStore();
 
     const navStyleVars = computed(() => ({
       "--nav-drawer-width": `${NAV_DRAWER_WIDTH}px`,
@@ -150,31 +150,6 @@ export default defineComponent({
     watch(drawerWidth, (val) => {
       LocalStorage.set("cashu.messenger.drawerWidth", val);
     });
-
-    const filteredConversations = computed(() => {
-      const q = conversationSearch.value.toLowerCase();
-      return messenger.sortedConversations.filter((c) => {
-        if (!q) return true;
-        const entry: any = (nostr.profiles as any)[c.pubkey];
-        const profile = entry?.profile ?? entry ?? {};
-        const name =
-          profile.display_name || profile.name || profile.displayName || c.pubkey;
-        return (
-          name.toLowerCase().includes(q) || c.pubkey.toLowerCase().includes(q)
-        );
-      });
-    });
-
-    const loadProfiles = async () => {
-      for (const c of filteredConversations.value) {
-        if (!(nostr.profiles as any)[c.pubkey]) {
-          await nostr.getProfile(c.pubkey);
-        }
-      }
-    };
-
-    onMounted(loadProfiles);
-    watch(filteredConversations, loadProfiles);
 
     watch(
       () => $q.screen.lt.md,
@@ -240,7 +215,6 @@ export default defineComponent({
       onResizeStart,
       navStyleVars,
       route,
-      filteredConversations,
     };
   },
   async mounted() {
