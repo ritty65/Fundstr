@@ -18,7 +18,7 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   const store = {
     sendNip17DirectMessage: sendNip17,
     sendDirectMessageUnified: sendDmLegacy,
-    decryptNip04: decryptDm,
+    decryptDmContent: decryptDm,
     fetchDmRelayUris: vi.fn(async () => ["wss://relay.example"]),
     walletSeedGenerateKeyPair: walletGen,
     initSignerIfNotSet: vi.fn(),

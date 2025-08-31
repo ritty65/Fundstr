@@ -590,7 +590,7 @@ export const useMessengerStore = defineStore("messenger", {
       }
       const decrypted =
         plaintext ??
-        (await nostr.decryptNip04(privKey, event.pubkey, event.content));
+        (await nostr.decryptDmContent(privKey, event.pubkey, event.content));
       let subscriptionInfo: SubscriptionPayment | undefined;
       let tokenPayload: any | undefined;
       const lines = decrypted.split("\n").filter((l) => l.trim().length > 0);

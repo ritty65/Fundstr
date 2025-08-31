@@ -1255,69 +1255,49 @@ export const useNostrStore = defineStore("nostr", {
       this.mintRecommendations = mintUrlsCounted;
       return mintUrlsCounted;
     },
-    encryptNip04: async function (
+    encryptDmContent: async function (
       privKey: string | undefined,
       recipient: string,
       message: string,
-      useNip04 = false,
     ): Promise<string> {
-      if (
-        (!privKey || privKey.length === 0) &&
-        (this.signerType === SignerType.NIP07 ||
-          this.signerType === SignerType.NIP46)
-      ) {
-        const nostr = (window as any)?.nostr;
-        if (!useNip04 && nostr?.nip44?.encrypt) {
+      const nostr = (window as any)?.nostr;
+      if (nostr?.nip44?.encrypt) {
+        try {
           return await nostr.nip44.encrypt(recipient, message);
-        }
-        if (nostr?.nip04?.encrypt) {
+        } catch {}
+      }
+      if (nostr?.nip04?.encrypt) {
+        try {
           return await nostr.nip04.encrypt(recipient, message);
-        }
-        throw new Error("Signer lacks nip44/nip04 support");
+        } catch {}
       }
       if (!privKey) {
         throw new Error("No private key for encryption");
       }
-      if (useNip04) {
+      try {
+        return await nip44.v2.encrypt(
+          message,
+          nip44.v2.utils.getConversationKey(privKey as any, recipient as any),
+        );
+      } catch {
         return await nip04.encrypt(privKey, recipient, message);
       }
-      return await nip44.v2.encrypt(
-        message,
-        nip44.v2.utils.getConversationKey(privKey as any, recipient as any),
-      );
     },
-    decryptNip04: async function (
+    decryptDmContent: async function (
       privKey: string | undefined,
       sender: string,
       content: string,
     ): Promise<string> {
-      if (
-        (!privKey || privKey.length === 0) &&
-        (this.signerType === SignerType.NIP07 ||
-          this.signerType === SignerType.NIP46)
-      ) {
-        if ((window as any)?.nostr?.nip44?.decrypt) {
-          try {
-            return await (window as any).nostr.nip44.decrypt(sender, content);
-          } catch (e) {
-            if ((window as any)?.nostr?.nip04?.decrypt) {
-              try {
-                return await (window as any).nostr.nip04.decrypt(
-                  sender,
-                  content,
-                );
-              } catch {}
-            }
-            const shared = await (window as any).nostr.getSharedSecret(sender);
-            try {
-              return await nip44.v2.decrypt(content, shared);
-            } catch (err) {
-              throw err;
-            }
-          }
-        } else if ((window as any)?.nostr?.nip04?.decrypt) {
-          return await (window as any).nostr.nip04.decrypt(sender, content);
-        }
+      const nostr = (window as any)?.nostr;
+      if (nostr?.nip44?.decrypt) {
+        try {
+          return await nostr.nip44.decrypt(sender, content);
+        } catch {}
+      }
+      if (nostr?.nip04?.decrypt) {
+        try {
+          return await nostr.nip04.decrypt(sender, content);
+        } catch {}
       }
       if (!privKey) {
         throw new Error("No private key for decryption");
@@ -1328,13 +1308,8 @@ export const useNostrStore = defineStore("nostr", {
       );
       try {
         return await nip44.v2.decrypt(content, nip44Key);
-      } catch (e) {
-        try {
-          return await nip04.decrypt(privKey, sender, content);
-        } catch {
-          // fallback to nip44 decrypt just in case
-          return await nip44.v2.decrypt(content, nip44Key);
-        }
+      } catch {
+        return await nip04.decrypt(privKey, sender, content);
       }
     },
     sendDirectMessageUnified: async function (
@@ -1374,7 +1349,7 @@ export const useNostrStore = defineStore("nostr", {
       const event = new NDKEvent(ndk);
       event.kind = NDKKind.EncryptedDirectMessage;
       try {
-        event.content = await this.encryptNip04(key, recipient, message);
+        event.content = await this.encryptDmContent(key, recipient, message);
       } catch (e: any) {
         if (e?.message === "Signer lacks nip44/nip04 support") {
           notifyError("Signer lacks nip44/nip04 support");
@@ -1455,7 +1430,7 @@ export const useNostrStore = defineStore("nostr", {
         );
         sub.on("event", (event: NDKEvent) => {
           debug("event");
-          this.decryptNip04(privKey, event.pubkey, event.content).then(
+          this.decryptDmContent(privKey, event.pubkey, event.content).then(
             (content) => {
               debug("NIP-04 DM from", event.pubkey);
               debug("Content:", content);
@@ -1503,7 +1478,7 @@ export const useNostrStore = defineStore("nostr", {
         groupable: false,
       });
       sub.on("event", async (ev: NDKEvent) => {
-        const decrypted = await this.decryptNip04(
+        const decrypted = await this.decryptDmContent(
           privKey,
           ev.pubkey,
           ev.content,
@@ -1557,9 +1532,10 @@ export const useNostrStore = defineStore("nostr", {
 
       const sealEvent = new NDKEvent();
       sealEvent.kind = 13;
-      sealEvent.content = nip44.v2.encrypt(
+      sealEvent.content = await this.encryptDmContent(
+        privKey,
+        recipient,
         dmEventString,
-        nip44.v2.utils.getConversationKey(privKey as any, recipient as any),
       );
       sealEvent.created_at = this.randomTimeUpTo2DaysInThePast();
       sealEvent.pubkey = this.pubkey;
@@ -1678,7 +1654,7 @@ export const useNostrStore = defineStore("nostr", {
           { closeOnEose: false, groupable: false },
         );
 
-        sub.on("event", (wrapEvent: NDKEvent) => {
+        sub.on("event", async (wrapEvent: NDKEvent) => {
           const eventLog = {
             id: wrapEvent.id,
             created_at: wrapEvent.created_at,
@@ -1699,20 +1675,16 @@ export const useNostrStore = defineStore("nostr", {
           let dmEvent: NDKEvent;
           let content: string;
           try {
-            const wappedContent = nip44.v2.decrypt(
+            const wappedContent = await this.decryptDmContent(
+              privKey,
+              wrapEvent.pubkey,
               wrapEvent.content,
-              nip44.v2.utils.getConversationKey(
-                privKey || ("" as any),
-                wrapEvent.pubkey as any,
-              ),
             );
             const sealEvent = JSON.parse(wappedContent) as NostrEvent;
-            const dmEventString = nip44.v2.decrypt(
+            const dmEventString = await this.decryptDmContent(
+              privKey,
+              sealEvent.pubkey,
               sealEvent.content,
-              nip44.v2.utils.getConversationKey(
-                privKey || ("" as any),
-                sealEvent.pubkey as any,
-              ),
             );
             dmEvent = JSON.parse(dmEventString) as NDKEvent;
 
