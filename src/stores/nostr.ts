@@ -25,7 +25,9 @@ import {
   finalizeEvent,
   verifyEvent,
 } from "nostr-tools";
-import { bytesToHex, hexToBytes } from "@noble/hashes/utils"; // already an installed dependency
+import { bytesToHex, hexToBytes, randomBytes } from "@noble/hashes/utils"; // already an installed dependency
+import { cbc } from "@noble/ciphers/aes";
+import { base64 } from "@scure/base";
 import { ensureCompressed } from "src/utils/ecash";
 import { useWalletStore } from "./wallet";
 import { generateSecretKey, getPublicKey } from "nostr-tools";
@@ -159,6 +161,71 @@ export function npubToHex(s: string): string | null {
 
 export function isNip44Ciphertext(str: string): boolean {
   return typeof str === "string" && /^[^?]+\?iv=[^?]+$/.test(str);
+}
+
+function encryptWithSharedSecret(
+  shared: Uint8Array | string,
+  message: string,
+): string {
+  const ss = typeof shared === "string" ? hexToBytes(shared) : shared;
+  const key = ss.length === 32 ? ss : ss.slice(1, 33);
+  const iv = randomBytes(16);
+  const plaintext = new TextEncoder().encode(message);
+  const ciphertext = cbc(key, iv).encrypt(plaintext);
+  const ctb64 = base64.encode(new Uint8Array(ciphertext));
+  const ivb64 = base64.encode(new Uint8Array(iv.buffer));
+  return `${ctb64}?iv=${ivb64}`;
+}
+
+function decryptWithSharedSecret(
+  shared: Uint8Array | string,
+  data: string,
+): string {
+  const ss = typeof shared === "string" ? hexToBytes(shared) : shared;
+  const key = ss.length === 32 ? ss : ss.slice(1, 33);
+  const [ctb64, ivb64] = data.split("?iv=");
+  const iv = base64.decode(ivb64);
+  const ciphertext = base64.decode(ctb64);
+  const plaintext = cbc(key, iv).decrypt(ciphertext);
+  return new TextDecoder().decode(plaintext);
+}
+
+export async function encryptNip04(
+  recipient: string,
+  message: string,
+  privKey?: string | Uint8Array,
+): Promise<string> {
+  const nostr = (window as any)?.nostr;
+  if (!privKey) {
+    if (nostr?.nip04?.encrypt) {
+      return await nostr.nip04.encrypt(recipient, message);
+    }
+    if (nostr?.nip04?.getSharedSecret) {
+      const shared = await nostr.nip04.getSharedSecret(recipient);
+      return encryptWithSharedSecret(shared, message);
+    }
+    throw new Error("Signer does not support NIP-04 encryption");
+  }
+  return await nip04.encrypt(privKey as any, recipient, message);
+}
+
+async function decryptNip04(
+  sender: string,
+  content: string,
+  privKey?: string | Uint8Array,
+): Promise<string> {
+  const nostr = (window as any)?.nostr;
+  if (!privKey) {
+    if (nostr?.nip04?.decrypt) {
+      return await nostr.nip04.decrypt(sender, content);
+    }
+    if (nostr?.nip04?.getSharedSecret) {
+      const shared = await nostr.nip04.getSharedSecret(sender);
+      return decryptWithSharedSecret(shared, content);
+    }
+    throw new Error("Signer does not support NIP-04 decryption");
+  }
+  return await nip04.decrypt(privKey as any, sender, content);
 }
 
 // --- Nutzap helpers (NIP-61) ----------------------------------------------
@@ -1339,28 +1406,15 @@ export const useNostrStore = defineStore("nostr", {
             "Signer does not expose NIP-44. Falling back to NIP-04; update your signer to enable NIP-44.",
           );
         }
-        if (nostr?.nip04?.encrypt) {
-          try {
-            const enc = await nostr.nip04.encrypt(recipient, message);
-            if (!isNip44Ciphertext(enc)) {
-              notifyError(
-                "Signer returned invalid encrypted format. Update your signer.",
-              );
-              throw new Error("Invalid ciphertext");
-            }
-            return enc;
-          } catch (e) {
-            console.error("NIP-04 encryption failed:", e);
-            notifyError(
-              "Encryption failed. Please grant NIP-04 permissions in your Nostr extension.",
-            );
-            throw new Error("Signer lacks NIP-04 support or permission was denied.");
-          }
+        try {
+          return await encryptNip04(recipient, message);
+        } catch (e) {
+          console.error("NIP-04 encryption failed:", e);
+          notifyError(
+            "Encryption failed. Please grant NIP-04 permissions in your Nostr extension.",
+          );
+          throw new Error("Signer lacks NIP-04 support or permission was denied.");
         }
-        notifyError(
-          "Signer does not support NIP-44 or NIP-04 encryption. Update your signer (e.g., nos2x) or use a local key.",
-        );
-        throw new Error("Signer does not support NIP-44 or NIP-04 encryption.");
       }
       // Local Private Key
       try {
@@ -1373,11 +1427,7 @@ export const useNostrStore = defineStore("nostr", {
         }
         return enc;
       } catch {
-        const enc = await nip04.encrypt(privKey as any, recipient, message);
-        if (!isNip44Ciphertext(enc)) {
-          throw new Error("Invalid ciphertext");
-        }
-        return enc;
+        return await encryptNip04(recipient, message, privKey);
       }
     },
 
@@ -1389,30 +1439,27 @@ export const useNostrStore = defineStore("nostr", {
       const nostr = (window as any)?.nostr;
       // NIP-07/NIP-46 Signer (Browser Extension)
       if (!privKey) {
-        if (!isNip44Ciphertext(content)) {
-          throw new Error("Invalid encrypted format");
-        }
         if (nostr?.nip44?.decrypt) {
           try {
+            if (!isNip44Ciphertext(content)) {
+              throw new Error("Invalid encrypted format");
+            }
             return await nostr.nip44.decrypt(sender, content);
           } catch (e) {
             console.error("NIP-44 decryption failed:", e);
-            throw new Error("Signer lacks NIP-44 support or permission was denied.");
+            // fall through to NIP-04
           }
         } else {
           notifyWarning(
             "Signer does not expose NIP-44. Attempting NIP-04; update your signer to enable NIP-44.",
           );
         }
-        if (nostr?.nip04?.decrypt) {
-          try {
-            return await nostr.nip04.decrypt(sender, content);
-          } catch (e) {
-            console.error("NIP-04 decryption failed:", e);
-            throw new Error("Signer lacks NIP-04 support or permission was denied.");
-          }
+        try {
+          return await decryptNip04(sender, content);
+        } catch (e) {
+          console.error("NIP-04 decryption failed:", e);
+          throw new Error("Signer lacks NIP-04 support or permission was denied.");
         }
-        throw new Error("Signer does not support NIP-44 or NIP-04 decryption.");
       }
       // Local Private Key
       const nip44Key = nip44.v2.utils.getConversationKey(
@@ -1425,8 +1472,7 @@ export const useNostrStore = defineStore("nostr", {
         }
         return await nip44.v2.decrypt(content, nip44Key);
       } catch {
-        const dec = await nip04.decrypt(privKey as any, sender, content);
-        return dec;
+        return await decryptNip04(sender, content, privKey);
       }
     },
     sendDirectMessageUnified: async function (
