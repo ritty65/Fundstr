@@ -157,6 +157,10 @@ export function npubToHex(s: string): string | null {
   return null;
 }
 
+export function isNip44Ciphertext(str: string): boolean {
+  return typeof str === "string" && /^[^?]+\?iv=[^?]+$/.test(str);
+}
+
 // --- Nutzap helpers (NIP-61) ----------------------------------------------
 
 import type { NostrEvent } from "@nostr-dev-kit/ndk";
@@ -1289,36 +1293,65 @@ export const useNostrStore = defineStore("nostr", {
       if (!privKey) {
         if (nostr?.nip44?.encrypt) {
           try {
-            return await nostr.nip44.encrypt(recipient, message);
+            const enc = await nostr.nip44.encrypt(recipient, message);
+            if (!isNip44Ciphertext(enc)) {
+              notifyError(
+                "Signer returned invalid NIP-44 format. Please update your signer and ensure NIP-44 permissions are enabled.",
+              );
+              throw new Error("Invalid NIP-44 ciphertext");
+            }
+            return enc;
           } catch (e) {
             console.error("NIP-44 encryption failed:", e);
             notifyError(
-              "Encryption failed. Please grant encryption permissions in your Nostr extension.",
+              "Encryption failed. Please grant NIP-44 permissions in your Nostr extension.",
             );
             throw new Error("Signer lacks NIP-44 support or permission was denied.");
           }
+        } else {
+          notifyWarning(
+            "Signer does not expose NIP-44. Falling back to NIP-04; update your signer to enable NIP-44.",
+          );
         }
         if (nostr?.nip04?.encrypt) {
           try {
-            return await nostr.nip04.encrypt(recipient, message);
+            const enc = await nostr.nip04.encrypt(recipient, message);
+            if (!isNip44Ciphertext(enc)) {
+              notifyError(
+                "Signer returned invalid encrypted format. Update your signer.",
+              );
+              throw new Error("Invalid ciphertext");
+            }
+            return enc;
           } catch (e) {
             console.error("NIP-04 encryption failed:", e);
             notifyError(
-              "Encryption failed. Please grant encryption permissions in your Nostr extension.",
+              "Encryption failed. Please grant NIP-04 permissions in your Nostr extension.",
             );
             throw new Error("Signer lacks NIP-04 support or permission was denied.");
           }
         }
+        notifyError(
+          "Signer does not support NIP-44 or NIP-04 encryption. Update your signer (e.g., nos2x) or use a local key.",
+        );
         throw new Error("Signer does not support NIP-44 or NIP-04 encryption.");
       }
       // Local Private Key
       try {
-        return await nip44.v2.encrypt(
+        const enc = await nip44.v2.encrypt(
           message,
           nip44.v2.utils.getConversationKey(privKey as any, recipient as any),
         );
+        if (!isNip44Ciphertext(enc)) {
+          throw new Error("Invalid NIP-44 ciphertext");
+        }
+        return enc;
       } catch {
-        return await nip04.encrypt(privKey as any, recipient, message);
+        const enc = await nip04.encrypt(privKey as any, recipient, message);
+        if (!isNip44Ciphertext(enc)) {
+          throw new Error("Invalid ciphertext");
+        }
+        return enc;
       }
     },
 
@@ -1330,15 +1363,20 @@ export const useNostrStore = defineStore("nostr", {
       const nostr = (window as any)?.nostr;
       // NIP-07/NIP-46 Signer (Browser Extension)
       if (!privKey) {
+        if (!isNip44Ciphertext(content)) {
+          throw new Error("Invalid encrypted format");
+        }
         if (nostr?.nip44?.decrypt) {
           try {
             return await nostr.nip44.decrypt(sender, content);
           } catch (e) {
             console.error("NIP-44 decryption failed:", e);
-            // Do not notify on every failure, as it could be spam or an old format.
-            // Only throw to signal failure to the caller.
             throw new Error("Signer lacks NIP-44 support or permission was denied.");
           }
+        } else {
+          notifyWarning(
+            "Signer does not expose NIP-44. Attempting NIP-04; update your signer to enable NIP-44.",
+          );
         }
         if (nostr?.nip04?.decrypt) {
           try {
@@ -1356,9 +1394,13 @@ export const useNostrStore = defineStore("nostr", {
         sender as any,
       );
       try {
+        if (!isNip44Ciphertext(content)) {
+          throw new Error("Invalid encrypted format");
+        }
         return await nip44.v2.decrypt(content, nip44Key);
       } catch {
-        return await nip04.decrypt(privKey as any, sender, content);
+        const dec = await nip04.decrypt(privKey as any, sender, content);
+        return dec;
       }
     },
     sendDirectMessageUnified: async function (
@@ -1400,11 +1442,8 @@ export const useNostrStore = defineStore("nostr", {
       try {
         event.content = await this.encryptDmContent(key, recipient, message);
       } catch (e: any) {
-        if (e?.message === "Signer lacks nip44/nip04 support") {
-          notifyError("Signer lacks nip44/nip04 support");
-          return { success: false, event: null };
-        }
-        throw e;
+        notifyError(e?.message || "Failed to encrypt message");
+        return { success: false, event: null };
       }
       event.tags = [
         ["p", recipient],
