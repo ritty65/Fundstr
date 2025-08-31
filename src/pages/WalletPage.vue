@@ -426,6 +426,7 @@ export default {
     ...mapActions(useNostrStore, [
       "sendDirectMessageUnified",
       "subscribeToNip04DirectMessages",
+      "subscribeToNip17DirectMessages",
       "initSigner",
       "checkNip07Signer",
       "initNip07Signer",
@@ -727,6 +728,7 @@ export default {
       if (this.nwcEnabled) {
         this.listenToNWCCommands();
       }
+      this.subscribeToNip17DirectMessages();
       this.subscribeToNip04DirectMessages();
       this.startInvoiceCheckerWorker();
       this.startLockedTokensRedeemWorker();

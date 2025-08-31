@@ -160,15 +160,8 @@ export function npubToHex(s: string): string | null {
   return null;
 }
 
-const IV_RE = /\?iv=/;
-
-export function isNip04Ciphertext(s: string): boolean {
-  return typeof s === "string" && IV_RE.test(s);
-}
-
-export function isProbablyNip44Payload(s: string): boolean {
-  // NIP-44 v2 payloads are base64 strings without '?iv=' and reasonably long
-  return typeof s === "string" && !IV_RE.test(s) && s.length >= 60;
+export function isNip44Ciphertext(str: string): boolean {
+  return typeof str === "string" && /^[^?]+\?iv=[^?]+$/.test(str);
 }
 
 function encryptWithSharedSecret(
@@ -1441,52 +1434,55 @@ export const useNostrStore = defineStore("nostr", {
       message: string,
     ): Promise<string> {
       const nostr = (window as any)?.nostr;
-
-      // External signer (NIP-07 / NIP-46)
+      // NIP-07/NIP-46 Signer (Browser Extension)
       if (!privKey) {
-        // Try NIP-44 first
         if (nostr?.nip44?.encrypt) {
           try {
             const enc = await nostr.nip44.encrypt(recipient, message);
+            if (!isNip44Ciphertext(enc)) {
+              notifyError(
+                "Signer returned invalid NIP-44 format. Please update your signer and ensure NIP-44 permissions are enabled.",
+              );
+              throw new Error("Invalid NIP-44 ciphertext");
+            }
             return enc;
           } catch (e) {
-            console.error("[nostr] NIP-44 encrypt failed, will fallback to NIP-04", e);
+            console.error("NIP-44 encryption failed:", e);
+            notifyError(
+              "Encryption failed. Please grant NIP-44 permissions in your Nostr extension.",
+            );
+            throw new Error("Signer lacks NIP-44 support or permission was denied.");
           }
+        } else {
+          notifyWarning(
+            "Signer does not expose NIP-44. Falling back to NIP-04; update your signer to enable NIP-44.",
+          );
         }
-
-        // Fallback to NIP-04
-        if (nostr?.nip04?.encrypt) {
-          const enc = await nostr.nip04.encrypt(recipient, message);
-          if (!isNip04Ciphertext(enc)) {
-            throw new Error("Signer returned invalid NIP-04 format (missing iv).");
+        try {
+          if (nostr?.nip04?.encrypt) {
+            return await nostr.nip04.encrypt(recipient, message);
           }
-          return enc;
+          return await encryptNip04(recipient, message, { externalSigner: true });
+        } catch (e) {
+          console.error("NIP-04 encryption failed:", e);
+          notifyError(
+            "Encryption failed. Please grant NIP-04 permissions in your Nostr extension.",
+          );
+          throw new Error("Signer lacks NIP-04 support or permission was denied.");
         }
-        if (nostr?.getSharedSecret || nostr?.nip04?.getSharedSecret) {
-          const shared = nostr?.getSharedSecret
-            ? await nostr.getSharedSecret(recipient)
-            : await nostr.nip04.getSharedSecret(recipient);
-          const enc = encryptWithSharedSecretV2(shared, message);
-          if (!isNip04Ciphertext(enc)) {
-            throw new Error("Invalid NIP-04 format produced by shared-secret path.");
-          }
-          return enc;
-        }
-        throw new Error("No supported encryption available (NIP-44/NIP-04).");
       }
-
-      // Local private key available: prefer NIP-44, fallback to NIP-04
+      // Local Private Key
       try {
-        const key = nip44.v2.utils.getConversationKey(privKey as any, recipient as any);
-        const enc = await nip44.v2.encrypt(message, key);
-        return enc;
-      } catch (e) {
-        console.warn("[nostr] NIP-44 local encrypt failed; falling back to NIP-04", e);
-        const enc = await nip04.encrypt(privKey as any, recipient, message);
-        if (!isNip04Ciphertext(enc)) {
-          throw new Error("Invalid NIP-04 format from local encryption.");
+        const enc = await nip44.v2.encrypt(
+          message,
+          nip44.v2.utils.getConversationKey(privKey as any, recipient as any),
+        );
+        if (!isNip44Ciphertext(enc)) {
+          throw new Error("Invalid NIP-44 ciphertext");
         }
         return enc;
+      } catch {
+        return await encryptNip04(recipient, message, { privKey });
       }
     },
 
@@ -1496,32 +1492,42 @@ export const useNostrStore = defineStore("nostr", {
       content: string,
     ): Promise<string> {
       const nostr = (window as any)?.nostr;
-
-      // External signer: try NIP-44, then NIP-04
+      // NIP-07/NIP-46 Signer (Browser Extension)
       if (!privKey) {
         if (nostr?.nip44?.decrypt) {
           try {
+            if (!isNip44Ciphertext(content)) {
+              throw new Error("Invalid encrypted format");
+            }
             return await nostr.nip44.decrypt(sender, content);
           } catch (e) {
-            console.warn("[nostr] NIP-44 decrypt failed; trying NIP-04", e);
+            console.error("NIP-44 decryption failed:", e);
+            // fall through to NIP-04
           }
+        } else {
+          notifyWarning(
+            "Signer does not expose NIP-44. Attempting NIP-04; update your signer to enable NIP-44.",
+          );
         }
-        if (nostr?.nip04?.decrypt) {
-          return await nostr.nip04.decrypt(sender, content);
+        try {
+          return await decryptNip04(sender, content);
+        } catch (e) {
+          console.error("NIP-04 decryption failed:", e);
+          throw new Error("Signer lacks NIP-04 support or permission was denied.");
         }
-        if (nostr?.nip04?.getSharedSecret) {
-          const shared = await nostr.nip04.getSharedSecret(sender);
-          return decryptWithSharedSecret(shared, content);
-        }
-        throw new Error("Signer cannot decrypt with NIP-44 or NIP-04.");
       }
-
-      // Local key: try NIP-44, then NIP-04
+      // Local Private Key
+      const nip44Key = nip44.v2.utils.getConversationKey(
+        privKey as any,
+        sender as any,
+      );
       try {
-        const key = nip44.v2.utils.getConversationKey(privKey as any, sender as any);
-        return await nip44.v2.decrypt(content, key);
-      } catch (_e) {
-        return await nip04.decrypt(privKey as any, sender, content);
+        if (!isNip44Ciphertext(content)) {
+          throw new Error("Invalid encrypted format");
+        }
+        return await nip44.v2.decrypt(content, nip44Key);
+      } catch {
+        return await decryptNip04(sender, content, privKey);
       }
     },
     sendDirectMessageUnified: async function (
@@ -1700,18 +1706,56 @@ export const useNostrStore = defineStore("nostr", {
     sendNip17DirectMessageToNprofile: async function (
       nprofile: string,
       message: string,
-    ): Promise<{ success: boolean; event: NDKEvent | null }> {
+    ): Promise<{ success: boolean; event?: NDKEvent }> {
       const result = nip19.decode(nprofile);
       const pubkey: string = (result.data as ProfilePointer).pubkey;
-      const relays: string[] | undefined = (result.data as ProfilePointer).relays;
-      return await this.sendDirectMessageUnified(pubkey, message, undefined, undefined, relays);
+      const relays: string[] | undefined = (result.data as ProfilePointer)
+        .relays;
+      return await this.sendNip17DirectMessage(pubkey, message, relays);
+    },
+    randomTimeUpTo2DaysInThePast: function () {
+      return Math.floor(Date.now() / 1000) - Math.floor(Math.random() * 172800);
     },
     sendNip17DirectMessage: async function (
       recipient: string,
       message: string,
       relays?: string[],
-    ): Promise<{ success: boolean; event: NDKEvent | null }> {
-      return await this.sendDirectMessageUnified(recipient, message, undefined, undefined, relays);
+    ): Promise<{ success: boolean; event?: NDKEvent }> {
+      const recResolved = this.resolvePubkey(recipient);
+      if (!recResolved) {
+        return { success: false };
+      }
+      recipient = recResolved;
+      await this.initSignerIfNotSet();
+
+      // 1. Create the Rumor (the actual DM content)
+      const rumor = new NDKEvent(await useNdk());
+      rumor.kind = 14 as NDKKind;
+      rumor.content = message;
+      rumor.tags = [["p", recipient]];
+      await rumor.sign(this.signer);
+
+      // 2. Create the Seal (the encrypted wrapper for the rumor)
+      const seal = new NDKEvent(await useNdk());
+      seal.kind = 13 as NDKKind;
+      seal.content = await rumor.encrypt(await this.signer.user());
+      await seal.sign(this.signer);
+
+      // 3. Create the Gift Wrap
+      const giftWrap = new NDKEvent(await useNdk());
+      giftWrap.kind = 1059 as NDKKind;
+      giftWrap.tags = [["p", recipient]];
+      giftWrap.content = await seal.toJson();
+
+      // Sign with an ephemeral key for anonymity
+      const ephemeralSigner = new NDKPrivateKeySigner();
+      await giftWrap.sign(ephemeralSigner);
+
+      // 4. Publish the Gift Wrap
+      const ndk = await useNdk();
+      const published = await ndk.publish(giftWrap, new Set(relays));
+
+      return { success: published.size > 0, event: giftWrap };
     },
 
     async fetchUserRelays(pubkey: string): Promise<string[]> {
