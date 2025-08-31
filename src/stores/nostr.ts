@@ -1639,9 +1639,7 @@ export const useNostrStore = defineStore("nostr", {
           nostrRecipient as any,
           nostrSender as any,
         );
-        const chatStore = useDmChatsStore();
-        chatStore.addOutgoing(dmEvent);
-        return { success: true, event: dmEvent };
+        return { success: true, event: wrapEventSender };
       } catch (e) {
         console.error(e);
         return { success: false };

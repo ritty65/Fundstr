@@ -17,6 +17,7 @@ import { useReceiveTokensStore } from "./receiveTokensStore";
 import { useBucketsStore } from "./buckets";
 import { useLockedTokensStore } from "./lockedTokens";
 import { useNostrStore } from "./nostr";
+import { useDmChatsStore } from "./dmChats";
 import { cashuDb, type LockedToken } from "./dexie";
 import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
 import tokenUtil from "src/js/token";
@@ -316,23 +317,29 @@ export const useMessengerStore = defineStore("messenger", {
         success: boolean;
         event?: NDKEvent;
       };
-      if (privKey) {
-        try {
-          nip17Result = await nostr.sendNip17DirectMessage(
-            recipient,
-            message,
-            list,
-          );
-        } catch (e) {
-          console.error("[messenger.sendDm] NIP-17", e);
-        }
+      try {
+        nip17Result = await nostr.sendNip17DirectMessage(
+          recipient,
+          message,
+          list,
+        );
+      } catch (e) {
+        console.error("[messenger.sendDm] NIP-17", e);
       }
       if (nip17Result.success && nip17Result.event) {
         const nip17Event = nip17Result.event;
         msg.id = nip17Event.id;
-        msg.created_at = nip17Event.created_at ?? Math.floor(Date.now() / 1000);
+        msg.created_at =
+          nip17Event.created_at ?? Math.floor(Date.now() / 1000);
         msg.status = "sent";
-        this.pushOwnMessage(nip17Event as any);
+        const chatStore = useDmChatsStore();
+        chatStore.addOutgoing({
+          id: nip17Event.id,
+          content: message,
+          created_at: nip17Event.created_at ?? Math.floor(Date.now() / 1000),
+          tags: [["p", recipient]],
+        } as any);
+        this.pushOwnMessage({ id: nip17Event.id, content: message } as any);
         return { success: true, event: nip17Event } as any;
       }
       try {
@@ -916,23 +923,57 @@ export const useMessengerStore = defineStore("messenger", {
         const list = this.relays as any;
         for (const msg of [...this.sendQueue]) {
           try {
-            const { success, event } = await nostr.sendDirectMessageUnified(
-              msg.pubkey,
-              msg.content,
-              privKey,
-              nostr.pubkey,
-              list,
-            );
-            if (success && event) {
-              msg.id = event.id;
-              msg.created_at =
-                event.created_at ?? Math.floor(Date.now() / 1000);
-              msg.status = "sent";
-              this.pushOwnMessage(event as any);
-              const idx = this.sendQueue.indexOf(msg);
-              if (idx >= 0) this.sendQueue.splice(idx, 1);
-            } else {
-              if (msg.status !== "sent") msg.status = "failed";
+            let sent = false;
+            try {
+              const { success, event } =
+                await nostr.sendNip17DirectMessage(
+                  msg.pubkey,
+                  msg.content,
+                  list,
+                );
+              if (success && event) {
+                msg.id = event.id;
+                msg.created_at =
+                  event.created_at ?? Math.floor(Date.now() / 1000);
+                msg.status = "sent";
+                const chatStore = useDmChatsStore();
+                chatStore.addOutgoing({
+                  id: event.id,
+                  content: msg.content,
+                  created_at:
+                    event.created_at ?? Math.floor(Date.now() / 1000),
+                  tags: [["p", msg.pubkey]],
+                } as any);
+                this.pushOwnMessage({
+                  id: event.id,
+                  content: msg.content,
+                } as any);
+                const idx = this.sendQueue.indexOf(msg);
+                if (idx >= 0) this.sendQueue.splice(idx, 1);
+                sent = true;
+              }
+            } catch (e) {
+              console.error("[messenger.retryFailedMessages] NIP-17", e);
+            }
+            if (!sent) {
+              const { success, event } = await nostr.sendDirectMessageUnified(
+                msg.pubkey,
+                msg.content,
+                privKey,
+                nostr.pubkey,
+                list,
+              );
+              if (success && event) {
+                msg.id = event.id;
+                msg.created_at =
+                  event.created_at ?? Math.floor(Date.now() / 1000);
+                msg.status = "sent";
+                this.pushOwnMessage(event as any);
+                const idx = this.sendQueue.indexOf(msg);
+                if (idx >= 0) this.sendQueue.splice(idx, 1);
+              } else if (msg.status !== "sent") {
+                msg.status = "failed";
+              }
             }
           } catch (e) {
             console.error("[messenger.retryFailedMessages]", e);
