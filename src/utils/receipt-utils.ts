@@ -1,7 +1,7 @@
 import { exportFile } from "quasar";
 import { format } from "date-fns";
 import token from "src/js/token";
-import type { MessengerMessage } from "src/stores/messenger";
+import type { MessengerMessage } from "src/stores/dm";
 
 export function saveReceipt(msg: MessengerMessage) {
   if (!msg.subscriptionPayment) return;

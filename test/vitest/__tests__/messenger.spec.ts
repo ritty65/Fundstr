@@ -70,7 +70,7 @@ vi.mock("../../../src/js/notify", () => {
   return { notifySuccess: notifySpy, notifyError: notifyErrorSpy };
 });
 
-import { useMessengerStore } from "../../../src/stores/messenger";
+import { useDmStore } from "../../../src/stores/dm";
 import { useNostrStore } from "../../../src/stores/nostr";
 
 beforeEach(() => {
@@ -80,14 +80,14 @@ beforeEach(() => {
 
 describe("messenger store", () => {
   it("uses NIP-17 when sending DMs", async () => {
-    const messenger = useMessengerStore();
+    const messenger = useDmStore();
     await messenger.sendDm("r", "m");
     expect(sendNip17).toHaveBeenCalledWith("r", "m", ["wss://relay.example"]);
     expect(sendDmLegacy).not.toHaveBeenCalled();
   });
 
   it("decrypts incoming messages with global key", async () => {
-    const messenger = useMessengerStore();
+    const messenger = useDmStore();
     await messenger.addIncomingMessage({
       id: "1",
       pubkey: "s",
@@ -98,7 +98,7 @@ describe("messenger store", () => {
   });
 
   it("subscribes using global key on start", async () => {
-    const messenger = useMessengerStore();
+    const messenger = useDmStore();
     await messenger.start();
     expect(stickySub).toHaveBeenCalled();
     const args = stickySub.mock.calls[0];
@@ -109,7 +109,7 @@ describe("messenger store", () => {
   });
 
   it("notifies when starting without privkey", async () => {
-    const messenger = useMessengerStore();
+    const messenger = useDmStore();
     const nostr = useNostrStore();
     nostr.privateKeySignerPrivateKey = "";
     await messenger.start();
@@ -117,7 +117,7 @@ describe("messenger store", () => {
   });
 
   it("handles multi-line JSON messages", async () => {
-    const messenger = useMessengerStore();
+    const messenger = useDmStore();
     (decryptDm as any).mockResolvedValue('{"a":1}\n{"b":2}');
     await messenger.addIncomingMessage({
       id: "1",

@@ -420,7 +420,7 @@ import { useBucketsStore } from "stores/buckets";
 import { useMintsStore } from "stores/mints";
 import { useUiStore } from "stores/ui";
 import { useNostrStore } from "stores/nostr";
-import { useMessengerStore } from "stores/messenger";
+import { useDmStore } from "stores/dm";
 import { useSubscriptionsStore } from "stores/subscriptions";
 import { useNutzapStore } from "stores/nutzap";
 import { useCreatorSubscriptionsStore } from "stores/creatorSubscriptions";
@@ -564,7 +564,7 @@ const monthlyTotal = computed(() =>
 
 const profiles = ref<Record<string, any>>({});
 const nostr = useNostrStore();
-const messenger = useMessengerStore();
+const messenger = useDmStore();
 const router = useRouter();
 const $q = useQuasar();
 const { t } = useI18n();

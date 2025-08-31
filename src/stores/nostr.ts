@@ -54,7 +54,7 @@ import { usePRStore } from "./payment-request";
 import token from "../js/token";
 import { HistoryToken } from "./tokens";
 import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
-import { useDmChatsStore } from "./dmChats";
+import { useDmStore } from "./dm";
 import { cashuDb, type LockedToken } from "./dexie";
 import { v4 as uuidv4 } from "uuid";
 import { useRouter } from "vue-router";
@@ -62,7 +62,7 @@ import { useP2PKStore } from "./p2pk";
 import { watch } from "vue";
 import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
-import { useMessengerStore } from "./messenger";
+import { useDmStore } from "./dm";
 import { useCreatorHubStore } from "./creatorHub";
 
 const STORAGE_SECRET = "cashu_ndk_storage_key";
@@ -932,7 +932,7 @@ export const useNostrStore = defineStore("nostr", {
         await this.getProfile(this.pubkey);
       }
       try {
-        useMessengerStore().start();
+        useDmStore().start();
       } catch (e) {
         console.error(e);
       }
@@ -1462,7 +1462,7 @@ export const useNostrStore = defineStore("nostr", {
               this.lastNip04EventTimestamp = Math.floor(Date.now() / 1000);
               this.parseMessageForEcash(content, event.pubkey);
               try {
-                const chatStore = useDmChatsStore();
+                const chatStore = useDmStore();
                 chatStore.addIncoming(new NDKEvent(undefined, event.rawEvent()));
               } catch {}
             },
@@ -1754,7 +1754,7 @@ export const useNostrStore = defineStore("nostr", {
           this.lastNip17EventTimestamp = Math.floor(Date.now() / 1000);
           this.parseMessageForEcash(content, dmEvent.pubkey);
           try {
-            const chatStore = useDmChatsStore();
+            const chatStore = useDmStore();
             chatStore.addIncoming(dmEvent);
           } catch {}
         });

@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { useNutzapStore } from "./nutzap";
-import { useMessengerStore } from "./messenger";
+import { useDmStore } from "./dm";
 
 export const useNutzapSendWorker = defineStore("nutzapSendWorker", {
   state: () => ({
@@ -20,7 +20,7 @@ export const useNutzapSendWorker = defineStore("nutzapSendWorker", {
       }
     },
     async process() {
-      const messenger = useMessengerStore();
+      const messenger = useDmStore();
       const nutzap = useNutzapStore();
       if (!messenger.isConnected() || !nutzap.sendQueue.length) return;
       await nutzap.retryQueuedSends();

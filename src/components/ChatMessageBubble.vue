@@ -117,7 +117,7 @@ import {
   mdiCheckAll,
   mdiAlertCircleOutline,
 } from "@quasar/extras/mdi-v6";
-import type { MessengerMessage } from "src/stores/messenger";
+import type { MessengerMessage } from "src/stores/dm";
 import TokenCarousel from "components/TokenCarousel.vue";
 import TokenInformation from "components/TokenInformation.vue";
 import { useReceiveTokensStore } from "src/stores/receiveTokensStore";
@@ -126,7 +126,7 @@ import { notifyError } from "src/js/notify";
 import { cashuDb } from "src/stores/dexie";
 import { useP2PKStore } from "src/stores/p2pk";
 import { useNostrStore } from "src/stores/nostr";
-import { useMessengerStore } from "src/stores/messenger";
+import { useDmStore } from "src/stores/dm";
 import { nip19 } from "nostr-tools";
 
 const props = defineProps<{
@@ -150,7 +150,7 @@ const showAvatar = computed(() => {
 
 const p2pk = useP2PKStore();
 const nostr = useNostrStore();
-const messenger = useMessengerStore();
+const messenger = useDmStore();
 
 const avatarPubkey = computed(() =>
   props.message.outgoing ? nostr.pubkey : props.message.pubkey,

@@ -74,7 +74,7 @@ vi.mock("../../../src/js/message-utils", () => ({
   sanitizeMessage: vi.fn((s: string) => s),
 }));
 
-import { useMessengerStore } from "../../../src/stores/messenger";
+import { useDmStore } from "../../../src/stores/dm";
 
 beforeEach(() => {
   localStorage.clear();
@@ -83,7 +83,7 @@ beforeEach(() => {
 
 describe("messenger.sendToken", () => {
   it("sends token DM and logs message", async () => {
-    const store = useMessengerStore();
+    const store = useDmStore();
     const success = await store.sendToken("receiver", 1, "b", "note");
     expect(success).toBe(true);
     expect(walletMintWallet).toHaveBeenCalledWith("mint", "sat");
@@ -101,6 +101,7 @@ describe("messenger.sendToken", () => {
       mint: "mint",
       bucketId: "b",
     });
-    expect(store.conversations.receiver.length).toBe(1);
+    const conv = store.conversations.get("receiver");
+    expect(conv?.messages.length).toBe(1);
   });
 });

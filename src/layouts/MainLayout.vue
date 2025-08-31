@@ -95,7 +95,7 @@ import UserInfo from "components/UserInfo.vue";
 import NewChatDialog from "components/NewChatDialog.vue";
 import { useNostrStore } from "src/stores/nostr";
 import { useNutzapStore } from "src/stores/nutzap";
-import { useMessengerStore } from "src/stores/messenger";
+import { useDmStore } from "src/stores/dm";
 import { useUiStore } from "src/stores/ui";
 import { NAV_DRAWER_WIDTH, NAV_DRAWER_GUTTER } from "src/constants/layout";
 
@@ -110,7 +110,7 @@ export default defineComponent({
     NewChatDialog,
   },
   setup() {
-    const messenger = useMessengerStore();
+    const messenger = useDmStore();
     const router = useRouter();
     const route = useRoute();
     const conversationSearch = ref("");

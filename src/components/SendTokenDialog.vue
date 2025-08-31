@@ -667,7 +667,7 @@ import {
   notifyWarning,
 } from "src/js/notify.ts";
 import { Dialog } from "quasar";
-import { useDmChatsStore } from "src/stores/dmChats";
+import { useDmStore } from "src/stores/dm";
 
 const VueQrcode = defineAsyncComponent(
   () => import("@chenfengyuan/vue-qrcode"),
@@ -1223,7 +1223,7 @@ export default defineComponent({
                 dmContent,
               );
             if (success && event) {
-              useDmChatsStore().addOutgoing(event);
+              useDmStore().addOutgoing(event);
               Dialog.create({
                 message: this.$t(
                   "wallet.notifications.nostr_dm_sent",
@@ -1377,7 +1377,7 @@ export default defineComponent({
                 dmContent2,
               );
             if (success && event) {
-              useDmChatsStore().addOutgoing(event);
+              useDmStore().addOutgoing(event);
               Dialog.create({
                 message: this.$t(
                   "wallet.notifications.nostr_dm_sent",

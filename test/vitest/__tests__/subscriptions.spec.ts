@@ -77,8 +77,8 @@ vi.mock("../../../src/stores/proofs", () => ({
   }),
 }));
 
-vi.mock("../../../src/stores/messenger", () => ({
-  useMessengerStore: () => ({ sendDm: (...args: any[]) => sendDm(...args) }),
+vi.mock("../../../src/stores/dm", () => ({
+  useDmStore: () => ({ sendDm: (...args: any[]) => sendDm(...args) }),
 }));
 
 vi.mock("../../../src/stores/bootError", () => ({

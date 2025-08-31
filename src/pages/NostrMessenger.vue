@@ -74,7 +74,7 @@ import {
   watch,
 } from "vue";
 import { useRoute } from "vue-router";
-import { useMessengerStore } from "src/stores/messenger";
+import { useDmStore } from "src/stores/dm";
 import { useNdk } from "src/composables/useNdk";
 import { useNostrStore } from "src/stores/nostr";
 import { useUiStore } from "src/stores/ui";
@@ -103,7 +103,7 @@ export default defineComponent({
   setup() {
     const loading = ref(true);
     const connecting = ref(false);
-    const messenger = useMessengerStore();
+    const messenger = useDmStore();
     const nostr = useNostrStore();
     const showSetupWizard = ref(false);
     const $q = useQuasar();

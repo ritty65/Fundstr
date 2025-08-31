@@ -16,7 +16,7 @@ vi.mock("stores/nostr", () => ({
   fetchNutzapProfile: vi.fn(),
   RelayConnectionError: class RelayConnectionError extends Error {},
 }));
-vi.mock("stores/messenger", () => ({ useMessengerStore: () => ({ started: false, startChat: vi.fn(), ensureChatSubscription: vi.fn() }) }));
+vi.mock("stores/dm", () => ({ useDmStore: () => ({ started: false, startChat: vi.fn(), ensureChatSubscription: vi.fn() }) }));
 vi.mock("src/js/notify", () => ({ notifyWarning: vi.fn() }));
 vi.mock("vue-i18n", () => ({ useI18n: () => ({ t: (k: string) => k }) }));
 
