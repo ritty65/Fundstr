@@ -1,109 +1,47 @@
 <template>
-  <div class="row no-wrap items-center q-pa-sm">
+  <div class="row items-center q-gutter-sm">
     <q-input
-      v-model="text"
-      class="col message-input"
+      v-model="messageText"
+      class="col"
       dense
       outlined
-      @keyup.enter="send"
-    >
-      <template v-slot:append>
-        <q-btn
-          flat
-          round
-          color="primary"
-          @click="selectFile"
-          icon="attach_file"
-          aria-label="Attach file"
-        />
-        <q-btn
-          flat
-          round
-          color="primary"
-          @click="sendToken"
-          aria-label="Send token"
-        >
-          <NutIcon />
-        </q-btn>
-        <q-btn
-          flat
-          round
-          icon="send"
-          color="primary"
-          class="q-ml-sm"
-          :disable="!text.trim() && !attachment"
-          @click="send"
-          aria-label="Send message"
-        />
-      </template>
-    </q-input>
-    <input ref="fileInput" type="file" class="hidden" @change="handleFile" />
-  </div>
-  <div v-if="attachment" class="q-px-sm q-pb-sm">
-    <q-img
-      v-if="isImage"
-      :src="attachment"
-      style="max-width: 150px; max-height: 150px"
-      class="q-mb-sm"
+      placeholder="Type a message"
+      @keyup.enter="onSend"
+      :disable="isSending"
     />
-    <div v-else class="text-caption">{{ attachmentName }}</div>
+    <q-btn
+      color="primary"
+      label="Send"
+      :loading="isSending"
+      :disable="!messageText.trim()"
+      @click="onSend"
+    />
   </div>
 </template>
 
-<script lang="ts" setup>
-import { ref, computed } from "vue";
-import { Nut as NutIcon } from "lucide-vue-next";
+<script setup lang="ts">
+import { ref } from "vue";
 
-const emit = defineEmits(["send", "sendToken"]);
-const text = ref("");
-const attachment = ref<string | null>(null);
-const attachmentName = ref<string>("");
-const attachmentType = ref<string>("");
-const isImage = computed(() => attachment.value?.startsWith("data:image"));
-const fileInput = ref<HTMLInputElement>();
+const emit = defineEmits<{
+  (e: "send", message: string): void | Promise<void>;
+}>();
 
-const send = () => {
-  const m = text.value.trim();
-  if (!m && !attachment.value) return;
-  const payload: any = { text: m };
-  if (attachment.value) {
-    payload.attachment = {
-      dataUrl: attachment.value,
-      name: attachmentName.value,
-      type: attachmentType.value,
-    };
+const messageText = ref("");
+const isSending = ref(false);
+
+const onSend = async () => {
+  const text = messageText.value.trim();
+  if (!text) return;
+  isSending.value = true;
+  try {
+    await emit("send", text);
+    messageText.value = "";
+  } finally {
+    isSending.value = false;
   }
-  emit("send", payload);
-  attachment.value = null;
-  attachmentName.value = "";
-  attachmentType.value = "";
-  text.value = "";
-};
-
-const sendToken = () => {
-  emit("sendToken");
-};
-
-const selectFile = () => {
-  fileInput.value?.click();
-};
-
-const handleFile = (e: Event) => {
-  const files = (e.target as HTMLInputElement).files;
-  if (!files || !files[0]) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    attachment.value = reader.result as string;
-    attachmentName.value = files[0].name;
-    attachmentType.value = files[0].type;
-  };
-  reader.readAsDataURL(files[0]);
 };
 </script>
 
 <style scoped>
-.message-input .q-field__control {
-  border-color: var(--surface-contrast-border);
-  background: var(--surface-1);
-}
 </style>
+
