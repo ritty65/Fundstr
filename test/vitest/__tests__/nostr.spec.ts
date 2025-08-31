@@ -1,10 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import {
-  useNostrStore,
-  SignerType,
-  publishDmNip04,
-  PublishTimeoutError,
-} from "../../../src/stores/nostr";
+import { useNostrStore, SignerType, PublishTimeoutError } from "../../../src/stores/nostr";
+import { publishDmNip04 } from "../../../src/stores/dm";
 import { useP2PKStore } from "../../../src/stores/p2pk";
 import { NDKKind, NDKPublishError } from "@nostr-dev-kit/ndk";
 

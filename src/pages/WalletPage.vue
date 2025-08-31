@@ -283,6 +283,7 @@ import { useInvoicesWorkerStore } from "src/stores/invoicesWorker";
 import { useLockedTokensRedeemWorker } from "src/stores/lockedTokensRedeemWorker";
 import { useSubscriptionRedeemWorker } from "src/stores/subscriptionRedeemWorker";
 import { useNutzapSendWorker } from "src/stores/nutzapSendWorker";
+import { useDmStore } from "src/stores/dm";
 import { notifyError, notify, notifyWarning } from "../js/notify";
 import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
 
@@ -424,9 +425,6 @@ export default {
     ...mapActions(useNWCStore, ["listenToNWCCommands"]),
     ...mapActions(useNPCStore, ["generateNPCConnection", "claimAllTokens"]),
     ...mapActions(useNostrStore, [
-      "sendDirectMessageUnified",
-      "subscribeToNip04DirectMessages",
-      "subscribeToNip17DirectMessages",
       "initSigner",
       "checkNip07Signer",
       "initNip07Signer",
@@ -728,8 +726,7 @@ export default {
       if (this.nwcEnabled) {
         this.listenToNWCCommands();
       }
-      this.subscribeToNip17DirectMessages();
-      this.subscribeToNip04DirectMessages();
+      useDmStore().initialize();
       this.startInvoiceCheckerWorker();
       this.startLockedTokensRedeemWorker();
       this.start();

@@ -2,6 +2,7 @@ import { boot } from "quasar/wrappers";
 import { useBootErrorStore } from "stores/bootError";
 import NDK, { NDKSigner } from "@nostr-dev-kit/ndk";
 import { useNostrStore } from "stores/nostr";
+import { useDmStore } from "stores/dm";
 import { NDKEvent, type NDKFilter } from "@nostr-dev-kit/ndk";
 import { useSettingsStore } from "src/stores/settings";
 import { DEFAULT_RELAYS, FREE_RELAYS } from "src/config/relays";
@@ -284,14 +285,8 @@ export async function ndkSend(
       "Nostr identity required to send a direct message",
     );
   }
-  const list = relays.length ? relays : ["wss://relay.damus.io"];
-  const { success } = await nostr.sendDirectMessageUnified(
-    toNpub,
-    plaintext,
-    undefined,
-    undefined,
-    list,
-  );
+  const dm = useDmStore();
+  const { success } = await dm.sendDm(toNpub, plaintext);
   return success;
 }
 
