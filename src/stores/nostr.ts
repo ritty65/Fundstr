@@ -564,6 +564,14 @@ type CachedProfile = {
   fetchedAt: number;
 };
 
+interface SignerCaps {
+  nip04Encrypt: boolean;
+  nip04Decrypt: boolean;
+  nip44Encrypt: boolean;
+  nip44Decrypt: boolean;
+  getSharedSecret: boolean;
+}
+
 export enum SignerType {
   NIP07 = "NIP07",
   NIP46 = "NIP46",
@@ -603,6 +611,13 @@ export const useNostrStore = defineStore("nostr", {
       seedSignerPrivateKeyNsec: "",
       privateKeySigner: {} as NDKPrivateKeySigner,
       signer: undefined as unknown as NDKSigner | undefined,
+      signerCaps: useLocalStorage<SignerCaps>("cashu.ndk.signerCaps", {
+        nip04Encrypt: false,
+        nip04Decrypt: false,
+        nip44Encrypt: false,
+        nip44Decrypt: false,
+        getSharedSecret: false,
+      }),
       nip07SignerAvailable: true,
       nip07Checked: false,
       nip07Warned: false,
@@ -885,8 +900,19 @@ export const useNostrStore = defineStore("nostr", {
       }
       this.initialized = true;
     },
+    probeSignerCaps: function () {
+      const ext: any = (window as any)?.nostr;
+      this.signerCaps = {
+        nip04Encrypt: typeof ext?.nip04?.encrypt === "function",
+        nip04Decrypt: typeof ext?.nip04?.decrypt === "function",
+        nip44Encrypt: typeof ext?.nip44?.encrypt === "function",
+        nip44Decrypt: typeof ext?.nip44?.decrypt === "function",
+        getSharedSecret: typeof ext?.getSharedSecret === "function",
+      };
+    },
     setSigner: async function (signer: NDKSigner) {
       this.signer = signer;
+      this.probeSignerCaps();
       await this.connect();
     },
     signDummyEvent: async function (): Promise<NDKEvent> {
