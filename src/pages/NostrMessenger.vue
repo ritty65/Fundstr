@@ -32,12 +32,12 @@
         </q-banner>
         <NostrRelayErrorBanner />
         <q-banner
-          v-if="failedQueue.length"
+          v-if="messenger.sendQueue.length"
           dense
           class="bg-orange-2 q-mb-sm"
         >
           <div class="row items-center no-wrap">
-            <span>{{ failedQueue.length }} message(s) failed</span>
+            <span>{{ messenger.sendQueue.length }} message(s) queued</span>
             <q-space />
             <q-btn flat dense label="Retry" @click="retryQueued" />
           </div>
@@ -181,10 +181,6 @@ export default defineComponent({
     > | null>(null);
     const messages = computed(
       () => messenger.conversations[selected.value] || [],
-    );
-
-    const failedQueue = computed(() =>
-      messenger.sendQueue.filter((m) => m.status === 'failed'),
     );
 
     const connectedCount = computed(() => {

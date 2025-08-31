@@ -81,12 +81,6 @@
     <div class="row q-gutter-sm">
       <q-btn label="Connect" color="primary" @click="connect" dense />
       <q-btn label="Disconnect" color="primary" @click="disconnect" dense />
-      <q-btn
-        label="Save to Profile"
-        color="secondary"
-        @click="saveToProfile"
-        dense
-      />
     </div>
     <div class="q-mt-sm">
       <q-btn
@@ -107,10 +101,8 @@ import { useNdk } from "src/composables/useNdk";
 import { DEFAULT_RELAYS } from "src/config/relays";
 import type NDK from "@nostr-dev-kit/ndk";
 import { NDKRelayStatus } from "@nostr-dev-kit/ndk";
-import { useNostrStore } from "src/stores/nostr";
 
 const messenger = useMessengerStore();
-const nostr = useNostrStore();
 
 const relayText = ref((messenger.relays ?? []).join("\n"));
 
@@ -206,12 +198,4 @@ const disconnect = async () => {
 const removeRelay = (url: string) => {
   messenger.removeRelay(url);
 };
-
-async function saveToProfile() {
-  const relays = relayText.value
-    .split("\n")
-    .map((r) => r.trim())
-    .filter(Boolean);
-  await nostr.publishRelayList(relays);
-}
 </script>
