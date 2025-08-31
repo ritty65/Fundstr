@@ -305,13 +305,13 @@ export const useMessengerStore = defineStore("messenger", {
         this.sendQueue.push(msg);
         return { success: false, event: null };
       }
-      const ext: any = (window as any)?.nostr;
       let canUseNip17 = true;
       if (
         nostr.signerType === SignerType.NIP07 ||
         nostr.signerType === SignerType.NIP46
       ) {
-        canUseNip17 = !!(ext?.nip44?.encrypt && ext?.nip44?.decrypt);
+        canUseNip17 =
+          nostr.signerCaps.nip44Encrypt && nostr.signerCaps.nip44Decrypt;
       }
 
       let protocolUsed: "nip17" | "nip04" | null = null;
@@ -914,13 +914,13 @@ export const useMessengerStore = defineStore("messenger", {
           privKey = nostr.privKeyHex;
           if (!privKey) return;
         }
-        const ext: any = (window as any)?.nostr;
         let canUseNip17 = true;
         if (
           nostr.signerType === SignerType.NIP07 ||
           nostr.signerType === SignerType.NIP46
         ) {
-          canUseNip17 = !!(ext?.nip44?.encrypt && ext?.nip44?.decrypt);
+          canUseNip17 =
+            nostr.signerCaps.nip44Encrypt && nostr.signerCaps.nip44Decrypt;
         }
         const list = this.relays as any;
         for (const msg of [...this.sendQueue]) {
