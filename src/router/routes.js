@@ -85,6 +85,13 @@ const routes = [
     ],
   },
   {
+    path: "/messenger/:pubkey?",
+    component: () => import("layouts/FullscreenLayout.vue"),
+    children: [
+      { path: "", component: () => import("src/pages/MessengerPage.vue") },
+    ],
+  },
+  {
     path: "/buckets/:id",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
