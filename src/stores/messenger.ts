@@ -2,12 +2,12 @@ import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
 import { watch, computed } from "vue";
 import { Event as NostrEvent } from "nostr-tools";
-import { SignerType } from "./nostr";
+import { SignerType, useNostrStore, isNip44Ciphertext } from "./nostr";
 import { v4 as uuidv4 } from "uuid";
 import { useSettingsStore } from "./settings";
 import { DEFAULT_RELAYS } from "src/config/relays";
 import { sanitizeMessage } from "src/js/message-utils";
-import { notifySuccess, notifyError } from "src/js/notify";
+import { notifySuccess, notifyError, notifyWarning } from "src/js/notify";
 import { useWalletStore } from "./wallet";
 import { useMintsStore } from "./mints";
 import { useProofsStore } from "./proofs";
@@ -16,7 +16,6 @@ import type { WalletProof } from "src/types/proofs";
 import { useReceiveTokensStore } from "./receiveTokensStore";
 import { useBucketsStore } from "./buckets";
 import { useLockedTokensStore } from "./lockedTokens";
-import { useNostrStore } from "./nostr";
 import { useDmChatsStore } from "./dmChats";
 import { cashuDb, type LockedToken } from "./dexie";
 import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
@@ -552,9 +551,21 @@ export const useMessengerStore = defineStore("messenger", {
         privKey = nostr.privKeyHex;
         if (!privKey) return;
       }
-      const decrypted =
-        plaintext ??
-        (await nostr.decryptDmContent(privKey, event.pubkey, event.content));
+      if (!plaintext && !isNip44Ciphertext(event.content)) {
+        notifyError("Invalid encrypted message format (missing iv)");
+        return;
+      }
+      let decrypted: string;
+      try {
+        decrypted =
+          plaintext ??
+          (await nostr.decryptDmContent(privKey, event.pubkey, event.content));
+      } catch (e) {
+        notifyError(
+          "Unable to decrypt message. Update your signer and ensure NIP-44 permissions are enabled.",
+        );
+        return;
+      }
       let subscriptionInfo: SubscriptionPayment | undefined;
       let tokenPayload: any | undefined;
       const lines = decrypted.split("\n").filter((l) => l.trim().length > 0);
@@ -748,6 +759,16 @@ export const useMessengerStore = defineStore("messenger", {
         this.nip17DmUnsub?.();
         await this.loadIdentity();
         const nostr = useNostrStore();
+        const ext: any = (window as any)?.nostr;
+        if (
+          (nostr.signerType === SignerType.NIP07 ||
+            nostr.signerType === SignerType.NIP46) &&
+          !(ext?.nip44?.encrypt && ext?.nip44?.decrypt)
+        ) {
+          notifyWarning(
+            "NIP-44 support missing in signer. Messages may fail; update your signer and enable NIP-44 permissions.",
+          );
+        }
         if (
           nostr.signerType !== SignerType.NIP07 &&
           nostr.signerType !== SignerType.NIP46 &&
