@@ -25,7 +25,7 @@ import { subscriptionPayload } from "src/utils/receipt-utils";
 import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useNdk } from "src/composables/useNdk";
-import { NDKKind, type NDKEvent } from "@nostr-dev-kit/ndk";
+import { NDKKind, NDKEvent } from "@nostr-dev-kit/ndk";
 
 function parseSubscriptionPaymentPayload(obj: any):
   | {
