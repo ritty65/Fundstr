@@ -78,6 +78,7 @@ export type MessengerMessage = {
   created_at: number;
   outgoing: boolean;
   status?: "pending" | "sent" | "delivered" | "failed";
+  protocol?: "nip17" | "nip04";
   attachment?: MessageAttachment;
   subscriptionPayment?: SubscriptionPayment;
   tokenPayload?: any;
@@ -304,16 +305,26 @@ export const useMessengerStore = defineStore("messenger", {
         this.sendQueue.push(msg);
         return { success: false, event: null };
       }
+      const ext: any = (window as any)?.nostr;
+      let canUseNip17 = true;
+      if (
+        nostr.signerType === SignerType.NIP07 ||
+        nostr.signerType === SignerType.NIP46
+      ) {
+        canUseNip17 = !!(ext?.nip44?.encrypt && ext?.nip44?.decrypt);
+      }
 
-      // We will now send the message using both NIP-17 and NIP-04 to ensure delivery.
-      // We prioritize the result from the modern NIP-17 for the UI feedback.
-      const nip17Result = await nostr.sendNip17DirectMessage(
-        recipient,
-        safeMessage,
-        healthyRelays,
-      );
+      let protocolUsed: "nip17" | "nip04" | null = null;
+      let nip17Result = { success: false, event: null as NDKEvent | null };
+      if (canUseNip17) {
+        nip17Result = await nostr.sendNip17DirectMessage(
+          recipient,
+          safeMessage,
+          healthyRelays,
+        );
+        if (nip17Result.success) protocolUsed = "nip17";
+      }
 
-      // Additionally, attempt legacy NIP-04 for compatibility and await the result.
       let nip04Result = { success: false, event: null as NDKEvent | null };
       try {
         nip04Result = await nostr.sendDirectMessageUnified(
@@ -323,6 +334,7 @@ export const useMessengerStore = defineStore("messenger", {
           nostr.pubkey,
           healthyRelays,
         );
+        if (!protocolUsed && nip04Result.success) protocolUsed = "nip04";
       } catch (error) {
         console.error("Failed to send legacy NIP-04 DM:", error);
       }
@@ -332,6 +344,12 @@ export const useMessengerStore = defineStore("messenger", {
 
       if (success) {
         msg.status = "sent";
+        msg.protocol = protocolUsed || undefined;
+        notifySuccess(
+          protocolUsed === "nip17"
+            ? "DM sent via NIP-17"
+            : "DM sent via NIP-04",
+        );
       } else {
         msg.status = "failed";
         this.sendQueue.push(msg);
@@ -537,6 +555,9 @@ export const useMessengerStore = defineStore("messenger", {
     pushOwnMessage(event: NostrEvent) {
       const msg = this.eventLog.find((m) => m.id === event.id);
       if (!msg) return;
+      if (event.kind) {
+        msg.protocol = event.kind === 1059 ? "nip17" : "nip04";
+      }
       try {
         const payload = JSON.parse(msg.content);
         const sub = parseSubscriptionPaymentPayload(payload);
@@ -722,6 +743,7 @@ export const useMessengerStore = defineStore("messenger", {
         content: sanitized,
         created_at: event.created_at,
         outgoing: false,
+        protocol: event.kind === 1059 ? "nip17" : "nip04",
       };
       if (/^data:[^;]+;base64,/.test(sanitized)) {
         const type = sanitized.substring(5, sanitized.indexOf(";"));
@@ -892,40 +914,53 @@ export const useMessengerStore = defineStore("messenger", {
           privKey = nostr.privKeyHex;
           if (!privKey) return;
         }
+        const ext: any = (window as any)?.nostr;
+        let canUseNip17 = true;
+        if (
+          nostr.signerType === SignerType.NIP07 ||
+          nostr.signerType === SignerType.NIP46
+        ) {
+          canUseNip17 = !!(ext?.nip44?.encrypt && ext?.nip44?.decrypt);
+        }
         const list = this.relays as any;
         for (const msg of [...this.sendQueue]) {
           try {
             let sent = false;
-            try {
-              const { success, event } =
-                await nostr.sendNip17DirectMessage(
-                  msg.pubkey,
-                  msg.content,
-                  list,
-                );
-              if (success && event) {
-                msg.id = event.id;
-                msg.created_at =
-                  event.created_at ?? Math.floor(Date.now() / 1000);
-                msg.status = "sent";
-                const chatStore = useDmChatsStore();
-                chatStore.addOutgoing({
-                  id: event.id,
-                  content: msg.content,
-                  created_at:
-                    event.created_at ?? Math.floor(Date.now() / 1000),
-                  tags: [["p", msg.pubkey]],
-                } as any);
-                this.pushOwnMessage({
-                  id: event.id,
-                  content: msg.content,
-                } as any);
-                const idx = this.sendQueue.indexOf(msg);
-                if (idx >= 0) this.sendQueue.splice(idx, 1);
-                sent = true;
+            if (canUseNip17) {
+              try {
+                const { success, event } =
+                  await nostr.sendNip17DirectMessage(
+                    msg.pubkey,
+                    msg.content,
+                    list,
+                  );
+                if (success && event) {
+                  msg.id = event.id;
+                  msg.created_at =
+                    event.created_at ?? Math.floor(Date.now() / 1000);
+                  msg.status = "sent";
+                  msg.protocol = "nip17";
+                  const chatStore = useDmChatsStore();
+                  chatStore.addOutgoing({
+                    id: event.id,
+                    content: msg.content,
+                    created_at:
+                      event.created_at ?? Math.floor(Date.now() / 1000),
+                    tags: [["p", msg.pubkey]],
+                  } as any);
+                  this.pushOwnMessage({
+                    id: event.id,
+                    content: msg.content,
+                    kind: event.kind,
+                  } as any);
+                  notifySuccess("DM sent via NIP-17");
+                  const idx = this.sendQueue.indexOf(msg);
+                  if (idx >= 0) this.sendQueue.splice(idx, 1);
+                  sent = true;
+                }
+              } catch (e) {
+                console.error("[messenger.retryFailedMessages] NIP-17", e);
               }
-            } catch (e) {
-              console.error("[messenger.retryFailedMessages] NIP-17", e);
             }
             if (!sent) {
               const { success, event } = await nostr.sendDirectMessageUnified(
@@ -940,7 +975,9 @@ export const useMessengerStore = defineStore("messenger", {
                 msg.created_at =
                   event.created_at ?? Math.floor(Date.now() / 1000);
                 msg.status = "sent";
+                msg.protocol = "nip04";
                 this.pushOwnMessage(event as any);
+                notifySuccess("DM sent via NIP-04");
                 const idx = this.sendQueue.indexOf(msg);
                 if (idx >= 0) this.sendQueue.splice(idx, 1);
               } else if (msg.status !== "sent") {
