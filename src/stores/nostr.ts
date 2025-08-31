@@ -26,7 +26,7 @@ import {
   verifyEvent,
 } from "nostr-tools";
 import { bytesToHex, hexToBytes, randomBytes } from "@noble/hashes/utils"; // already an installed dependency
-import { cbc } from "@noble/ciphers/aes";
+import { aes } from "@noble/ciphers/aes";
 import { base64 } from "@scure/base";
 import { ensureCompressed } from "src/utils/ecash";
 import { useWalletStore } from "./wallet";
@@ -171,7 +171,7 @@ function encryptWithSharedSecret(
   const key = ss.length === 32 ? ss : ss.slice(1, 33);
   const iv = randomBytes(16);
   const plaintext = new TextEncoder().encode(message);
-  const ciphertext = cbc(key, iv).encrypt(plaintext);
+  const ciphertext = aes.cbc(key, iv).encrypt(plaintext);
   const ctb64 = base64.encode(new Uint8Array(ciphertext));
   const ivb64 = base64.encode(new Uint8Array(iv.buffer));
   return `${ctb64}?iv=${ivb64}`;
@@ -186,7 +186,7 @@ function decryptWithSharedSecret(
   const [ctb64, ivb64] = data.split("?iv=");
   const iv = base64.decode(ivb64);
   const ciphertext = base64.decode(ctb64);
-  const plaintext = cbc(key, iv).decrypt(ciphertext);
+  const plaintext = aes.cbc(key, iv).decrypt(ciphertext);
   return new TextDecoder().decode(plaintext);
 }
 

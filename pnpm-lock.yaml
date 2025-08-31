@@ -21,8 +21,8 @@ dependencies:
     specifier: ^6.0.2
     version: 6.0.2(@capacitor/core@6.2.1)
   '@cashu/cashu-ts':
-    specifier: file:src/lib/cashu-ts
-    version: file:src/lib/cashu-ts
+    specifier: 2.7.1
+    version: 2.7.1
   '@cashu/crypto':
     specifier: ^0.3.4
     version: 0.3.4
@@ -33,7 +33,7 @@ dependencies:
     specifier: ^1.1.12
     version: 1.1.12
   '@noble/ciphers':
-    specifier: ^2.0.0
+    specifier: 2.0.0
     version: 2.0.0
   '@noble/hashes':
     specifier: ^1.8.0
@@ -41,6 +41,9 @@ dependencies:
   '@nostr-dev-kit/ndk':
     specifier: ^2.14.32
     version: 2.14.33(nostr-tools@2.16.2)
+  '@nostr-dev-kit/ndk-cache-dexie':
+    specifier: 1.4.2
+    version: 1.4.2
   '@quasar/extras':
     specifier: ^1.16.11
     version: 1.17.0
@@ -10954,13 +10957,3 @@ packages:
       compress-commons: 6.0.2
       readable-stream: 4.7.0
     dev: true
-
-  file:src/lib/cashu-ts:
-    resolution: {directory: src/lib/cashu-ts, type: directory}
-    name: '@cashu/cashu-ts'
-    dependencies:
-      '@noble/curves': 1.9.7
-      '@noble/hashes': 1.8.0
-      '@scure/bip32': 1.7.0
-      buffer: 6.0.3
-    dev: false
