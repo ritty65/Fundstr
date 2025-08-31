@@ -267,7 +267,7 @@ export const useMessengerStore = defineStore("messenger", {
       tokenPayload?: any,
     ) {
       recipient = this.normalizeKey(recipient);
-      if (!recipient) return { success: false } as any;
+      if (!recipient) return { success: false, event: null };
       await this.loadIdentity();
       const nostr = useNostrStore();
 
@@ -284,31 +284,44 @@ export const useMessengerStore = defineStore("messenger", {
         tokenPayload,
       );
 
+      // --- START: CORRECTED DUAL-SEND LOGIC ---
+      // We will now send the message using both NIP-17 and NIP-04 to ensure delivery.
+      // We prioritize the result from the modern NIP-17 for the UI feedback.
+
+      // Send with modern NIP-17 and treat its result as the primary outcome.
       const nip17Result = await nostr.sendNip17DirectMessage(
         recipient,
         message,
         targetRelays,
       );
-      if (nip17Result.success) {
-        msg.status = "sent";
-        return { success: true, event: nip17Result.event } as any;
-      }
 
-      const nip04Result = await nostr.sendDirectMessageUnified(
-        recipient,
-        message,
-        nostr.privKeyHex,
-        nostr.pubkey,
-        targetRelays,
-      );
-      if (nip04Result.success) {
+      // In the background, also send with legacy NIP-04 for compatibility.
+      // This is a "fire-and-forget" call; we don't wait for its result or handle its errors
+      // as the NIP-17 result is what matters for the user's immediate feedback.
+      nostr
+        .sendDirectMessageUnified(
+          recipient,
+          message,
+          nostr.privKeyHex,
+          nostr.pubkey,
+          targetRelays,
+        )
+        .catch((error) => {
+          // Log the error for debugging but don't let it affect the user experience.
+          console.error("Failed to send legacy NIP-04 DM:", error);
+        });
+
+      // Update message status based on the primary (NIP-17) send attempt.
+      if (nip17Result.success) {
         msg.status = "sent";
       } else {
         msg.status = "failed";
-        this.sendQueue.push(msg);
+        this.sendQueue.push(msg); // Keep it in the queue if the primary method fails.
       }
 
-      return nip04Result as any;
+      return { success: nip17Result.success, event: nip17Result.event };
+
+      // --- END: CORRECTED DUAL-SEND LOGIC ---
     },
     async sendToken(
       recipient: string,
