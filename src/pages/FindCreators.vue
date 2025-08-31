@@ -1,5 +1,6 @@
 <template>
   <div class="find-creators-wrapper">
+    <NostrRelayErrorBanner />
     <iframe
       ref="iframeEl"
       src="/find-creators.html"
@@ -127,6 +128,7 @@ import DonateDialog from "components/DonateDialog.vue";
 import SubscribeDialog from "components/SubscribeDialog.vue";
 import SendTokenDialog from "components/SendTokenDialog.vue";
 import MediaPreview from "components/MediaPreview.vue";
+import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 
 defineOptions({ components: { MediaPreview } });
 import { useSendTokensStore } from "stores/sendTokensStore";

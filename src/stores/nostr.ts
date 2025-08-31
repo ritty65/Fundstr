@@ -609,6 +609,7 @@ export const useNostrStore = defineStore("nostr", {
       initialized: false,
       secureStorageLoaded: false,
       lastError: "" as string | null,
+      connectionFailed: false,
       reconnectBackoffUntil: 0,
       lastNip04EventTimestamp,
       lastNip17EventTimestamp,
@@ -732,11 +733,14 @@ export const useNostrStore = defineStore("nostr", {
         await ndk.connect();
         this.connected = true;
         this.lastError = null;
+        this.connectionFailed = false;
       } catch (e: any) {
         console.warn("[nostr] read-only connect failed", e);
         notifyWarning(`Failed to connect to relays`, e?.message ?? String(e));
         this.connected = false;
         this.lastError = e?.message ?? String(e);
+        this.connectionFailed = true;
+        window.dispatchEvent(new Event("nostr-connect-failed"));
       }
     },
     disconnect: async function () {
@@ -767,6 +771,8 @@ export const useNostrStore = defineStore("nostr", {
         return;
       }
 
+      this.connectionFailed = false;
+
       // 1. remember desired relay set
       if (relays) this.relays = relays as any;
 
@@ -783,10 +789,13 @@ export const useNostrStore = defineStore("nostr", {
         this.connected = true;
         this.lastError = null;
         this.reconnectBackoffUntil = 0;
+        this.connectionFailed = false;
       } catch (e: any) {
         this.connected = false;
         this.lastError = e?.message ?? String(e);
         this.reconnectBackoffUntil = Date.now() + RECONNECT_BACKOFF_MS;
+        this.connectionFailed = true;
+        window.dispatchEvent(new Event("nostr-connect-failed"));
         notifyError(this.lastError);
       }
 
@@ -817,8 +826,11 @@ export const useNostrStore = defineStore("nostr", {
         try {
           await ndk.connect();
           this.connected = true;
+          this.connectionFailed = false;
         } catch (e: any) {
           notifyWarning("Failed to connect to relays", e?.message ?? String(e));
+          this.connectionFailed = true;
+          window.dispatchEvent(new Event("nostr-connect-failed"));
         }
       }
       if (relays?.length) {
@@ -826,11 +838,14 @@ export const useNostrStore = defineStore("nostr", {
         if (added) {
           try {
             await ndk.connect();
+            this.connectionFailed = false;
           } catch (e: any) {
             notifyWarning(
               "Failed to connect to additional relays",
               e?.message ?? String(e),
             );
+            this.connectionFailed = true;
+            window.dispatchEvent(new Event("nostr-connect-failed"));
           }
         }
       }
