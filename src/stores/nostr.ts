@@ -26,7 +26,7 @@ import {
   verifyEvent,
 } from "nostr-tools";
 import { bytesToHex, hexToBytes, randomBytes } from "@noble/hashes/utils"; // already an installed dependency
-import { aes } from "@noble/ciphers/aes";
+import { aes } from "@noble/ciphers/aes.js";
 import { base64 } from "@scure/base";
 import { ensureCompressed } from "src/utils/ecash";
 import { useWalletStore } from "./wallet";
