@@ -284,11 +284,8 @@ export const useMessengerStore = defineStore("messenger", {
         tokenPayload,
       );
 
-      // --- START: CORRECTED DUAL-SEND LOGIC ---
       // We will now send the message using both NIP-17 and NIP-04 to ensure delivery.
       // We prioritize the result from the modern NIP-17 for the UI feedback.
-
-      // Send with modern NIP-17 and treat its result as the primary outcome.
       const nip17Result = await nostr.sendNip17DirectMessage(
         recipient,
         message,
@@ -296,8 +293,6 @@ export const useMessengerStore = defineStore("messenger", {
       );
 
       // In the background, also send with legacy NIP-04 for compatibility.
-      // This is a "fire-and-forget" call; we don't wait for its result or handle its errors
-      // as the NIP-17 result is what matters for the user's immediate feedback.
       nostr
         .sendDirectMessageUnified(
           recipient,
@@ -307,21 +302,17 @@ export const useMessengerStore = defineStore("messenger", {
           targetRelays,
         )
         .catch((error) => {
-          // Log the error for debugging but don't let it affect the user experience.
           console.error("Failed to send legacy NIP-04 DM:", error);
         });
 
-      // Update message status based on the primary (NIP-17) send attempt.
       if (nip17Result.success) {
         msg.status = "sent";
       } else {
         msg.status = "failed";
-        this.sendQueue.push(msg); // Keep it in the queue if the primary method fails.
+        this.sendQueue.push(msg);
       }
 
       return { success: nip17Result.success, event: nip17Result.event };
-
-      // --- END: CORRECTED DUAL-SEND LOGIC ---
     },
     async sendToken(
       recipient: string,

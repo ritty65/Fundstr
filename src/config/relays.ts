@@ -1,17 +1,17 @@
-export const DEFAULT_RELAYS = [
+export const FREE_RELAYS = [
+  "wss://purplepag.es",
   "wss://relay.damus.io",
-  "wss://relay.primal.net",
-  "wss://nos.lol",
-  "wss://eden.nostr.land",
+  "wss://relay.nostr.band",
   "wss://relay.snort.social",
+  "wss://nos.lol",
 ];
 
-export const FREE_RELAYS = [
+// This list should only contain relays that are known to be reliable and fast.
+export const DEFAULT_RELAYS = [
+  "wss://purplepag.es",
   "wss://relay.damus.io",
-  "wss://relay.primal.net",
-  "wss://relayable.org",
-  "wss://nos.lol",
-  "wss://eden.nostr.land",
+  "wss://relay.nostr.band",
   "wss://relay.snort.social",
-  "wss://nostr.mom",
+  "wss://nos.lol",
 ];
+
