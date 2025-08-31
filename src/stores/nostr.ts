@@ -23,6 +23,7 @@ import {
   SimplePool,
   getEventHash as ntGetEventHash,
   finalizeEvent,
+  verifyEvent,
 } from "nostr-tools";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils"; // already an installed dependency
 import { ensureCompressed } from "src/utils/ecash";
@@ -568,13 +569,20 @@ export enum SignerType {
 
 export const useNostrStore = defineStore("nostr", {
   state: () => {
-    const lastEventTimestamp = useLocalStorage<number>(
-      "cashu.ndk.lastEventTimestamp",
+    const lastNip04EventTimestamp = useLocalStorage<number>(
+      "cashu.ndk.nip04.lastEventTimestamp",
+      0,
+    );
+    const lastNip17EventTimestamp = useLocalStorage<number>(
+      "cashu.ndk.nip17.lastEventTimestamp",
       0,
     );
     const now = Math.floor(Date.now() / 1000);
-    if (lastEventTimestamp.value > now) {
-      lastEventTimestamp.value = now;
+    if (lastNip04EventTimestamp.value > now) {
+      lastNip04EventTimestamp.value = now;
+    }
+    if (lastNip17EventTimestamp.value > now) {
+      lastNip17EventTimestamp.value = now;
     }
     return {
       connected: false,
@@ -602,7 +610,8 @@ export const useNostrStore = defineStore("nostr", {
       secureStorageLoaded: false,
       lastError: "" as string | null,
       reconnectBackoffUntil: 0,
-      lastEventTimestamp,
+      lastNip04EventTimestamp,
+      lastNip17EventTimestamp,
       nip17EventIdsWeHaveSeen: useLocalStorage<NostrEventLog[]>(
         "cashu.ndk.nip17EventIdsWeHaveSeen",
         [],
@@ -1404,15 +1413,15 @@ export const useNostrStore = defineStore("nostr", {
       const pubKey = this.pubkey;
       let nip04DirectMessageEvents: Set<NDKEvent> = new Set();
       const fetchEventsPromise = new Promise<Set<NDKEvent>>(async (resolve) => {
-        if (!this.lastEventTimestamp) {
-          this.lastEventTimestamp = Math.floor(Date.now() / 1000);
+        if (!this.lastNip04EventTimestamp) {
+          this.lastNip04EventTimestamp = Math.floor(Date.now() / 1000);
         }
         const now = Math.floor(Date.now() / 1000);
-        if (this.lastEventTimestamp > now) {
-          this.lastEventTimestamp = now;
+        if (this.lastNip04EventTimestamp > now) {
+          this.lastNip04EventTimestamp = now;
         }
         debug(
-          `### Subscribing to NIP-04 direct messages to ${pubKey} since ${this.lastEventTimestamp}`,
+          `### Subscribing to NIP-04 direct messages to ${pubKey} since ${this.lastNip04EventTimestamp}`,
         );
         const ndk = await useNdk();
         try {
@@ -1424,7 +1433,7 @@ export const useNostrStore = defineStore("nostr", {
           {
             kinds: [NDKKind.EncryptedDirectMessage],
             "#p": [pubKey],
-            since: this.lastEventTimestamp,
+            since: this.lastNip04EventTimestamp,
           } as NDKFilter,
           { closeOnEose: false, groupable: false },
         );
@@ -1435,7 +1444,7 @@ export const useNostrStore = defineStore("nostr", {
               debug("NIP-04 DM from", event.pubkey);
               debug("Content:", content);
               nip04DirectMessageEvents.add(event);
-              this.lastEventTimestamp = Math.floor(Date.now() / 1000);
+              this.lastNip04EventTimestamp = Math.floor(Date.now() / 1000);
               this.parseMessageForEcash(content, event.pubkey);
               try {
                 const chatStore = useDmChatsStore();
@@ -1462,10 +1471,10 @@ export const useNostrStore = defineStore("nostr", {
       pubKey = resolved;
       await this.initNdkReadOnly();
       if (since === undefined) {
-        if (!this.lastEventTimestamp) {
-          this.lastEventTimestamp = Math.floor(Date.now() / 1000);
+        if (!this.lastNip04EventTimestamp) {
+          this.lastNip04EventTimestamp = Math.floor(Date.now() / 1000);
         }
-        since = this.lastEventTimestamp;
+        since = this.lastNip04EventTimestamp;
       }
       const filter: NDKFilter = {
         kinds: [NDKKind.EncryptedDirectMessage],
@@ -1484,7 +1493,7 @@ export const useNostrStore = defineStore("nostr", {
           ev.content,
         );
         const raw = await ev.toNostrEvent();
-        this.lastEventTimestamp = Math.floor(Date.now() / 1000);
+        this.lastNip04EventTimestamp = Math.floor(Date.now() / 1000);
         cb(raw, decrypted);
       });
     },
@@ -1645,14 +1654,14 @@ export const useNostrStore = defineStore("nostr", {
       const pubKey = this.pubkey;
       let nip17DirectMessageEvents: Set<NDKEvent> = new Set();
       const fetchEventsPromise = new Promise<Set<NDKEvent>>(async (resolve) => {
-        if (!this.lastEventTimestamp) {
-          this.lastEventTimestamp = Math.floor(Date.now() / 1000);
+        if (!this.lastNip17EventTimestamp) {
+          this.lastNip17EventTimestamp = Math.floor(Date.now() / 1000);
         }
         const now = Math.floor(Date.now() / 1000);
-        if (this.lastEventTimestamp > now) {
-          this.lastEventTimestamp = now;
+        if (this.lastNip17EventTimestamp > now) {
+          this.lastNip17EventTimestamp = now;
         }
-        const since = this.lastEventTimestamp - 172800; // last 2 days
+        const since = this.lastNip17EventTimestamp - 172800; // last 2 days
         debug(
           `### Subscribing to NIP-17 direct messages to ${pubKey} since ${since}`,
         );
@@ -1698,12 +1707,18 @@ export const useNostrStore = defineStore("nostr", {
               wrapEvent.content,
             );
             const sealEvent = JSON.parse(wappedContent) as NostrEvent;
+            if (!verifyEvent(sealEvent)) {
+              debug("### NIP-17 DM verification failed: invalid signature");
+              notifyWarning("Discarded invalid NIP-17 direct message");
+              return;
+            }
             const dmEventString = await this.decryptDmContent(
               privKey,
               sealEvent.pubkey,
               sealEvent.content,
             );
-            dmEvent = JSON.parse(dmEventString) as NDKEvent;
+            const dmRaw = JSON.parse(dmEventString) as NostrEvent;
+            dmEvent = new NDKEvent(ndk, dmRaw);
 
             if (sealEvent.pubkey !== dmEvent.pubkey) {
               debug(
@@ -1723,11 +1738,11 @@ export const useNostrStore = defineStore("nostr", {
             return;
           }
           nip17DirectMessageEvents.add(dmEvent);
-          this.lastEventTimestamp = Math.floor(Date.now() / 1000);
+          this.lastNip17EventTimestamp = Math.floor(Date.now() / 1000);
           this.parseMessageForEcash(content, dmEvent.pubkey);
           try {
             const chatStore = useDmChatsStore();
-            chatStore.addIncoming(dmEvent as any);
+            chatStore.addIncoming(dmEvent);
           } catch {}
         });
       });
