@@ -8,7 +8,7 @@ import token, { createP2PKHTLC } from "src/js/token";
 import { v4 as uuidv4 } from "uuid";
 import { useMintsStore } from "./mints";
 import { useProofsStore } from "./proofs";
-import { useMessengerStore } from "./messenger";
+import { useDmStore } from "./dm";
 import { useSubscriptionsStore } from "./subscriptions";
 import type { CreatorIdentity, SubscribeTierOptions } from "src/types/creator";
 import { isValidCashuP2pk } from "src/types/creator";
@@ -88,7 +88,7 @@ export const useNutzapStore = defineStore("nutzap", {
     },
 
     async resendQueued(item: NutzapQueuedSend) {
-      const messenger = useMessengerStore();
+      const messenger = useDmStore();
       const payload = subscriptionPayload(item.token, item.unlockTime, {
         subscription_id: "",
         tier_id: "",
@@ -212,7 +212,7 @@ export const useNutzapStore = defineStore("nutzap", {
 
       const subscriptionId = uuidv4();
 
-      const messenger = useMessengerStore();
+      const messenger = useDmStore();
       const p2pk = useP2PKStore();
       if (!p2pk.firstKey) await p2pk.generateKeypair();
       const proofsStore = useProofsStore();
@@ -377,7 +377,7 @@ export const useNutzapStore = defineStore("nutzap", {
         if (!p2pk.firstKey) await p2pk.generateKeypair();
         const mints = useMintsStore();
         const proofsStore = useProofsStore();
-        const messenger = useMessengerStore();
+        const messenger = useDmStore();
         const subscriptionId = uuidv4();
         const lockedTokens: DexieLockedToken[] = [];
 

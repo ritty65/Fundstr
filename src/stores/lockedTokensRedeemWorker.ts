@@ -4,7 +4,7 @@ import { useWalletStore } from "./wallet";
 import { useReceiveTokensStore } from "./receiveTokensStore";
 import { useSettingsStore } from "./settings";
 import { useMintsStore } from "./mints";
-import { useMessengerStore } from "./messenger";
+import { useDmStore } from "./dm";
 import { useP2PKStore } from "./p2pk";
 import { notifySuccess } from "src/js/notify";
 import token from "src/js/token";
@@ -199,7 +199,7 @@ export const useLockedTokensRedeemWorker = defineStore(
                 }
 
                 if (entry.creatorNpub) {
-                  const messenger = useMessengerStore();
+                  const messenger = useDmStore();
                   const payload = {
                     type: "cashu_subscription_claimed",
                     subscription_id: entry.subscriptionId,

@@ -134,7 +134,7 @@ import {
 } from "vue";
 import { useRoute } from "vue-router";
 import { useUiStore } from "src/stores/ui";
-import { useMessengerStore } from "src/stores/messenger";
+import { useDmStore } from "src/stores/dm";
 import { useQuasar } from "quasar";
 import {
   notifySuccess,
@@ -149,7 +149,7 @@ export default defineComponent({
   setup() {
     const ui = useUiStore();
     const route = useRoute();
-    const messenger = useMessengerStore();
+    const messenger = useDmStore();
     const $q = useQuasar();
     const mainNavBtn = ref(null);
 

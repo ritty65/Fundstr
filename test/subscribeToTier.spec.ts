@@ -6,8 +6,8 @@ import { subscriptionPayload } from "../src/utils/receipt-utils";
 let sendDm: any;
 let createHTLC: any;
 
-vi.mock("../src/stores/messenger", () => ({
-  useMessengerStore: () => ({
+vi.mock("../src/stores/dm", () => ({
+  useDmStore: () => ({
     sendDm: (...args: any[]) => sendDm(...args),
     pushOwnMessage: vi.fn(),
   }),

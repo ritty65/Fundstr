@@ -134,7 +134,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useQuasar, QBadge, QBtn } from "quasar";
-import { useMessengerStore } from "src/stores/messenger";
+import { useDmStore } from "src/stores/dm";
 import { useNostrStore } from "src/stores/nostr";
 import { parseMessageSnippet } from "src/utils/message-snippet";
 
@@ -214,7 +214,7 @@ const props = defineProps({
 
 const emit = defineEmits(["click", "pin", "delete"]);
 
-const messenger = useMessengerStore();
+const messenger = useDmStore();
 const nostr = useNostrStore();
 const $q = useQuasar();
 

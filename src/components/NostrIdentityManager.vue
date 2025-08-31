@@ -79,7 +79,7 @@
 import { ref, onMounted } from "vue";
 import { storeToRefs } from "pinia";
 import { useNostrStore } from "src/stores/nostr";
-import { useMessengerStore } from "src/stores/messenger";
+import { useDmStore } from "src/stores/dm";
 import { useSettingsStore } from "src/stores/settings";
 
 const nostr = useNostrStore();
@@ -106,7 +106,7 @@ const privKey = ref(nostr.activePrivateKeyNsec);
 const pubKey = ref(nostr.npub);
 const relayInput = ref("");
 const relays = ref<string[]>([...settings.defaultNostrRelays]);
-const messenger = useMessengerStore();
+const messenger = useDmStore();
 const aliases = messenger.aliases as any;
 const aliasPubkey = ref("");
 const aliasName = ref("");

@@ -95,14 +95,14 @@
 
 <script lang="ts" setup>
 import { ref, watch, computed, onMounted, onUnmounted } from "vue";
-import { useMessengerStore } from "src/stores/messenger";
+import { useDmStore } from "src/stores/dm";
 import { notifySuccess, notifyError } from "src/js/notify";
 import { useNdk } from "src/composables/useNdk";
 import { DEFAULT_RELAYS } from "src/config/relays";
 import type NDK from "@nostr-dev-kit/ndk";
 import { NDKRelayStatus } from "@nostr-dev-kit/ndk";
 
-const messenger = useMessengerStore();
+const messenger = useDmStore();
 
 const relayText = ref((messenger.relays ?? []).join("\n"));
 

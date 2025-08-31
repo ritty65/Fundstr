@@ -4,7 +4,7 @@ import { useLocalStorage } from "@vueuse/core";
 import { useMintsStore } from "./mints";
 import { notifySuccess } from "../js/notify";
 import { useUiStore } from "./ui";
-import { useMessengerStore } from "./messenger";
+import { useDmStore } from "./dm";
 
 // Define the migration version type
 export type Migration = {
@@ -91,7 +91,7 @@ export const useMigrationsStore = defineStore("migrations", {
     },
 
     async cleanupMessengerKeys() {
-      const messenger = useMessengerStore();
+      const messenger = useDmStore();
       messenger.normalizeStoredConversations();
       for (const key of Object.keys(messenger.unreadCounts)) {
         if (!messenger.conversations[key]) {

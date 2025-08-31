@@ -40,7 +40,7 @@
 <script lang="ts" setup>
 import { computed, watch, onMounted, ref } from "vue";
 import { storeToRefs } from "pinia";
-import { useMessengerStore } from "src/stores/messenger";
+import { useDmStore } from "src/stores/dm";
 import { useNostrStore } from "src/stores/nostr";
 import ConversationListItem from "./ConversationListItem.vue";
 
@@ -51,7 +51,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits(["select"]);
-const messenger = useMessengerStore();
+const messenger = useDmStore();
 const nostr = useNostrStore();
 const { conversations } = storeToRefs(messenger);
 const filterQuery = ref(props.search || "");

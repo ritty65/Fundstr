@@ -74,7 +74,7 @@
 <script lang="ts" setup>
 import { ref, watch, computed } from "vue";
 import { useNostrStore } from "src/stores/nostr";
-import { useMessengerStore } from "src/stores/messenger";
+import { useDmStore } from "src/stores/dm";
 import ChatSendTokenDialog from "./ChatSendTokenDialog.vue";
 import { nip19 } from "nostr-tools";
 import ProfileInfoDialog from "./ProfileInfoDialog.vue";
@@ -82,7 +82,7 @@ import RelayManagerDialog from "./RelayManagerDialog.vue";
 
 const props = defineProps<{ pubkey: string; relays: { url: string; connected: boolean }[] }>();
 const nostr = useNostrStore();
-const messenger = useMessengerStore();
+const messenger = useDmStore();
 const profile = ref<any>(null);
 
 const loadProfile = async () => {

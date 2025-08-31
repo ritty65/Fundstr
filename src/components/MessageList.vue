@@ -22,7 +22,7 @@
 
 <script lang="ts" setup>
 import { nextTick, ref, watch } from "vue";
-import type { MessengerMessage } from "src/stores/messenger";
+import type { MessengerMessage } from "src/stores/dm";
 import ChatMessageBubble from "./ChatMessageBubble.vue";
 
 const props = defineProps<{ messages: MessengerMessage[] }>();

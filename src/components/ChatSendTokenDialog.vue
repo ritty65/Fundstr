@@ -39,7 +39,7 @@
 import { ref, computed } from "vue";
 import { storeToRefs } from "pinia";
 import { useBucketsStore } from "src/stores/buckets";
-import { useMessengerStore } from "src/stores/messenger";
+import { useDmStore } from "src/stores/dm";
 import { useMintsStore } from "src/stores/mints";
 import { useUiStore } from "src/stores/ui";
 
@@ -48,7 +48,7 @@ const props = defineProps<{ recipient: string }>();
 const bucketsStore = useBucketsStore();
 const mintsStore = useMintsStore();
 const uiStore = useUiStore();
-const messenger = useMessengerStore();
+const messenger = useDmStore();
 
 const { bucketList, bucketBalances } = storeToRefs(bucketsStore);
 const { activeUnit } = storeToRefs(mintsStore);

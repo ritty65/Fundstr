@@ -80,7 +80,7 @@ import { useBucketsStore } from "src/stores/buckets";
 import { useProofsStore } from "src/stores/proofs";
 import { useMintsStore } from "src/stores/mints";
 import { useUiStore } from "src/stores/ui";
-import { useMessengerStore } from "src/stores/messenger";
+import { useDmStore } from "src/stores/dm";
 import { useP2PKStore } from "src/stores/p2pk";
 import type { WalletProof } from "src/types/proofs";
 import { useI18n } from "vue-i18n";
@@ -91,7 +91,7 @@ const bucketsStore = useBucketsStore();
 const proofsStore = useProofsStore();
 const mintsStore = useMintsStore();
 const uiStore = useUiStore();
-const messenger = useMessengerStore();
+const messenger = useDmStore();
 const p2pkStore = useP2PKStore();
 
 const { activeUnit } = storeToRefs(mintsStore);

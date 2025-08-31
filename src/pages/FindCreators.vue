@@ -141,7 +141,7 @@ import {
 } from "stores/nostr";
 import { notifyWarning } from "src/js/notify";
 import { useRouter, useRoute } from "vue-router";
-import { useMessengerStore } from "stores/messenger";
+import { useDmStore } from "stores/dm";
 import { useI18n } from "vue-i18n";
 import {
   QDialog,
@@ -172,7 +172,7 @@ const sendTokensStore = useSendTokensStore();
 const donationStore = useDonationPresetsStore();
 const creators = useCreatorsStore();
 const nostr = useNostrStore();
-const messenger = useMessengerStore();
+const messenger = useDmStore();
 const router = useRouter();
 const route = useRoute();
 const { t } = useI18n();

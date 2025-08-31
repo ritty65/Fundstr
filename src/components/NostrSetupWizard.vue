@@ -82,13 +82,13 @@
 <script lang="ts" setup>
 import { ref, computed } from "vue";
 import { useNostrStore } from "src/stores/nostr";
-import { useMessengerStore } from "src/stores/messenger";
+import { useDmStore } from "src/stores/dm";
 
 const props = defineProps<{ modelValue: boolean }>();
 const emit = defineEmits(["update:modelValue", "complete"]);
 
 const nostr = useNostrStore();
-const messenger = useMessengerStore();
+const messenger = useDmStore();
 
 const model = computed({
   get: () => props.modelValue,
