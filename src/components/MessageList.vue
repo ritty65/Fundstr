@@ -14,6 +14,7 @@
     </div>
     <ChatMessageBubble
       :message="msg"
+      :delivery-status="msg.status"
       :prev-message="messages[idx - 1]"
     />
   </q-virtual-scroll>
