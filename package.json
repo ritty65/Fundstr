@@ -30,6 +30,7 @@
     "@cashu/crypto": "^0.3.4",
     "@chenfengyuan/vue-qrcode": "^2.0.0",
     "@gandlaf21/bc-ur": "^1.1.12",
+    "@noble/ciphers": "^2.0.0",
     "@noble/hashes": "^1.8.0",
     "@nostr-dev-kit/ndk": "^2.14.32",
     "@quasar/extras": "^1.16.11",

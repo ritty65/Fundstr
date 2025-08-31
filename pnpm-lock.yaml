@@ -32,6 +32,9 @@ dependencies:
   '@gandlaf21/bc-ur':
     specifier: ^1.1.12
     version: 1.1.12
+  '@noble/ciphers':
+    specifier: ^2.0.0
+    version: 2.0.0
   '@noble/hashes':
     specifier: ^1.8.0
     version: 1.8.0
@@ -2299,6 +2302,11 @@ packages:
 
   /@noble/ciphers@0.5.3:
     resolution: {integrity: sha512-B0+6IIHiqEs3BPMT0hcRmHvEj2QHOLu+uwt+tqDDeVd0oyVzh7BPrDcPjRnV1PV/5LaknXJJQvOuRGR0zQJz+w==}
+    dev: false
+
+  /@noble/ciphers@2.0.0:
+    resolution: {integrity: sha512-j/l6jpnpaIBM87cAYPJzi/6TgqmBv9spkqPyCXvRYsu5uxqh6tPJZDnD85yo8VWqzTuTQPgfv7NgT63u7kbwAQ==}
+    engines: {node: '>= 20.19.0'}
     dev: false
 
   /@noble/curves@1.1.0:
