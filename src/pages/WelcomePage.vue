@@ -168,7 +168,7 @@ onMounted(() => {
     .initNip07Signer()
     .then(() => {
       if (nostr.signer) {
-        useNdk({ requireSigner: true }).catch(() => {})
+        useNdk()
       }
     })
     .catch(() => {})

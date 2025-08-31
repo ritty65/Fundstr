@@ -18,7 +18,7 @@ const subMock = {
 };
 
 vi.mock("src/composables/useNdk", () => ({
-  useNdk: vi.fn(async () => ({ subscribe: vi.fn(() => subMock) })),
+  useNdk: vi.fn(() => ({ ndk: { subscribe: vi.fn(() => subMock) } })),
 }));
 
 const storeMock = { initNdkReadOnly: vi.fn() };

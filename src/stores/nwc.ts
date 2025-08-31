@@ -361,7 +361,7 @@ export const useNWCStore = defineStore("nwc", {
       conn: NWCConnection,
     ) {
       // reply to NWC with result
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       let replyEvent = new NDKEvent(ndk);
       replyEvent.kind = 23195;
       debug("### replying with", JSON.stringify(result));
@@ -474,7 +474,7 @@ export const useNWCStore = defineStore("nwc", {
       const walletSigner = nostr.signer;
       // close and delete all old subscriptions
       this.unsubscribeNWC();
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       await ndk.connect();
 
       const nip47InfoEvent = new NDKEvent(ndk);
@@ -515,7 +515,7 @@ export const useNWCStore = defineStore("nwc", {
         authors: [conn.connectionPublicKey],
         "#p": [conn.walletPublicKey],
       } as NDKFilter;
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       const sub = ndk.subscribe(filter);
       const nostr = useNostrStore();
       debug("### subscribing to NWC on relays: ", nostr.relays);

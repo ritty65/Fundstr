@@ -10,7 +10,7 @@ vi.mock("../../../src/composables/useNdk", () => {
     pool: { getRelay: (u: string) => ({ url: u }) },
     debug: { extend: () => () => {} },
   };
-  return { useNdk: vi.fn().mockResolvedValue(ndkStub) };
+  return { useNdk: vi.fn(() => ({ ndk: ndkStub })) };
 });
 
 var encryptMock: any;

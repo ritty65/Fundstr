@@ -737,11 +737,10 @@ export default {
   watch: {},
 
   mounted() {
-    const ndkReady = useNdk();
-    ndkReady.then(() => {
-      this.generateNPCConnection();
-      this.claimAllTokens();
-    });
+    const { ndk } = useNdk();
+    void ndk; // suppress unused for lint
+    this.generateNPCConnection();
+    this.claimAllTokens();
     this.initPage();
     this.$nextTick(this.equalizeButtonWidths);
     window.addEventListener("resize", this.equalizeButtonWidths);

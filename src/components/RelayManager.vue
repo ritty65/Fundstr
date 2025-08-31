@@ -108,7 +108,8 @@ const relayText = ref((messenger.relays ?? []).join("\n"));
 
 const ndkRef = ref<NDK | null>(null);
 onMounted(() => {
-  useNdk({ requireSigner: false }).then((n) => (ndkRef.value = n));
+  const { ndk } = useNdk();
+  ndkRef.value = ndk;
 });
 
 const now = ref(Date.now());
@@ -175,7 +176,7 @@ const connect = async () => {
     .filter(Boolean);
   const uniqueUrls = Array.from(new Set(urls));
   try {
-    const ndk = await useNdk({ requireSigner: false });
+    const { ndk } = useNdk();
     for (const url of uniqueUrls) {
       ndk.addExplicitRelay(url);
     }

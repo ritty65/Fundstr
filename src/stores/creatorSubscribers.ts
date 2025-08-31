@@ -312,7 +312,7 @@ export const useCreatorSubscribersStore = defineStore("creatorSubscribers", {
           return;
         }
 
-        const ndk = await useNdk({ requireSigner: false });
+        const { ndk } = useNdk();
         const authors = uncached.map((npub) => nostr.resolvePubkey(npub));
         const events: Set<any> = await ndk.fetchEvents({ kinds: [0], authors });
         const found = new Set<string>();

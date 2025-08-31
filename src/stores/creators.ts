@@ -58,7 +58,7 @@ export const useCreatorsStore = defineStore("creators", {
       }
       this.searching = true;
       await nostrStore.initNdkReadOnly();
-      const ndk = await useNdk({ requireSigner: false });
+      const { ndk } = useNdk();
       let pubkey = query.trim();
       if (pubkey.startsWith("npub")) {
         try {
@@ -102,7 +102,7 @@ export const useCreatorsStore = defineStore("creators", {
       this.error = "";
       this.searching = true;
       await nostrStore.initNdkReadOnly();
-      const ndk = await useNdk({ requireSigner: false });
+      const { ndk } = useNdk();
 
       const pubkeys: string[] = [];
       for (const entry of FEATURED_CREATORS) {

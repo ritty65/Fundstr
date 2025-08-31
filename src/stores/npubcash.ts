@@ -123,7 +123,7 @@ export const useNPCStore = defineStore("npc", {
     ): Promise<string> {
       const nostrStore = useNostrStore();
       await nostrStore.initSignerIfNotSet();
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       const nip98Event = new NDKEvent(ndk);
       nip98Event.kind = NIP98Kind;
       nip98Event.content = "";

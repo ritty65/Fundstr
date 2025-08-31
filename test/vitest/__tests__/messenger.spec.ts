@@ -24,7 +24,7 @@ vi.mock("../../../src/composables/useNdk", () => {
       return { id: "1", pubkey: this.pubkey, content: this.content, created_at: 1 } as any;
     }
   }
-  return { useNdk: vi.fn().mockResolvedValue({ eventClass: Event }) };
+  return { useNdk: vi.fn(() => ({ ndk: { eventClass: Event } })) };
 });
 
 vi.mock("../../../src/js/nostr-runtime", () => {

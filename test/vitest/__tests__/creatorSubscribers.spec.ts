@@ -89,9 +89,9 @@ vi.mock("../../../src/stores/nostr", () => ({
   }),
 }));
 vi.mock("../../../src/composables/useNdk", () => {
-  fetchEventsMock = vi.fn().mockResolvedValue(new Set());
+  fetchEventsMock = vi.fn().mockReturnValue(new Set());
   return {
-    useNdk: vi.fn().mockResolvedValue({ fetchEvents: fetchEventsMock }),
+    useNdk: vi.fn(() => ({ ndk: { fetchEvents: fetchEventsMock } })),
   };
 });
 

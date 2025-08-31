@@ -63,8 +63,8 @@ vi.mock("src/stores/nostr", () => ({
   }),
 }));
 vi.mock("src/composables/useNdk", () => {
-  const fetchEvents = vi.fn().mockResolvedValue(new Set());
-  return { useNdk: vi.fn().mockResolvedValue({ fetchEvents }) };
+  const fetchEvents = vi.fn().mockReturnValue(new Set());
+  return { useNdk: vi.fn(() => ({ ndk: { fetchEvents } })) };
 });
 
 import { copyNpub } from "src/utils/clipboard";

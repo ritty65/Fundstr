@@ -40,7 +40,6 @@ import {
   notify,
 } from "../js/notify";
 import { useNdk } from "src/composables/useNdk";
-import { rebuildNdk } from "boot/ndk";
 import { useRouter } from "vue-router";
 import { useP2PKStore } from "./p2pk";
 import { watch } from "vue";
@@ -161,7 +160,7 @@ export async function urlsToRelaySet(
 ): Promise<NDKRelaySet | undefined> {
   if (!urls?.length) return undefined;
 
-  const ndk = await useNdk({ requireSigner: false });
+  const { ndk } = useNdk();
   const set = new NDKRelaySet(new Set(), ndk);
   urls.forEach((u) =>
     set.addRelay(
@@ -286,7 +285,7 @@ export async function fetchNutzapProfile(
 ): Promise<NutzapProfile | null> {
   const nostr = useNostrStore();
   await nostr.initNdkReadOnly();
-  const ndk = await useNdk();
+  const { ndk } = useNdk();
   if (!ndk) {
     throw new Error(
       "NDK not initialised \u2013 call initSignerIfNotSet() first",
@@ -350,7 +349,7 @@ export async function publishNutzapProfile(opts: {
   for (const url of opts.mints) tags.push(["mint", url]);
   if (opts.relays) for (const r of opts.relays) tags.push(["relay", r]);
 
-  const ndk = await useNdk();
+  const { ndk } = useNdk();
   if (!ndk) {
     throw new Error(
       "NDK not initialised \u2013 call initSignerIfNotSet() first",
@@ -394,7 +393,7 @@ export async function publishDiscoveryProfile(opts: {
   }
   // Ensure we are connected to the relays we want to publish to.
   await nostr.ensureNdkConnected(opts.relays);
-  const ndk = await useNdk();
+  const { ndk } = useNdk();
   if (!ndk) {
     throw new Error("NDK not initialized. Cannot publish profile.");
   }
@@ -451,7 +450,7 @@ export async function publishNutzap(opts: {
   const nostr = useNostrStore();
   await nostr.initSignerIfNotSet();
   await nostr.ensureNdkConnected(opts.relayHints);
-  const ndk = await useNdk();
+  const { ndk } = useNdk();
   if (!ndk) {
     throw new Error(
       "NDK not initialised \u2013 call initSignerIfNotSet() first",
@@ -485,7 +484,7 @@ export async function subscribeToNutzaps(
 ): Promise<NDKSubscription> {
   const nostr = useNostrStore();
   await nostr.initNdkReadOnly();
-  const ndk = await useNdk();
+  const { ndk } = useNdk();
   if (!ndk) {
     throw new Error(
       "NDK not initialised \u2013 call initSignerIfNotSet() first",
@@ -655,7 +654,7 @@ export const useNostrStore = defineStore("nostr", {
     },
     initNdkReadOnly: async function () {
       await this.loadKeysFromStorage();
-      const ndk = await useNdk({ requireSigner: false });
+      const { ndk } = useNdk();
       if (this.connected) return;
       try {
         await ndk.connect();
@@ -672,7 +671,7 @@ export const useNostrStore = defineStore("nostr", {
       }
     },
     disconnect: async function () {
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       for (const relay of ndk.pool.relays.values()) relay.disconnect();
       this.signer = undefined;
       this.connected = false;
@@ -685,7 +684,7 @@ export const useNostrStore = defineStore("nostr", {
         this.signer = nip07;
         this.signerType = SignerType.NIP07;
         this.setPubkey(user.pubkey);
-        useNdk({ requireSigner: true }).catch(() => {});
+        useNdk();
       } catch (e) {
         throw new Error("The signer request was rejected or blocked.");
       }
@@ -704,8 +703,12 @@ export const useNostrStore = defineStore("nostr", {
       // 1. remember desired relay set
       if (relays) this.relays = relays as any;
 
-      // 2. build a *new* NDK whose pool contains only those relays
-      const ndk = await rebuildNdk(this.relays, this.signer);
+      // 2. ensure the global NDK uses only those relays
+      const { ndk } = useNdk();
+      ndk.pool.relays.clear();
+      for (const url of this.relays) {
+        ndk.addExplicitRelay(url);
+      }
 
       // 3. connect every relay with a 6-second guard, but do not await ndk.connect() again
       const relaysArr = Array.from(ndk.pool.relays.values());
@@ -749,7 +752,7 @@ export const useNostrStore = defineStore("nostr", {
       );
     },
     ensureNdkConnected: async function (relays?: string[]) {
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       if (!this.connected) {
         try {
           await ndk.connect();
@@ -918,7 +921,7 @@ export const useNostrStore = defineStore("nostr", {
 
       await this.initNdkReadOnly();
       try {
-        const ndk = await useNdk();
+        const { ndk } = useNdk();
         const user = ndk.getUser({ pubkey });
         await user.fetchProfile();
         const entry: CachedProfile = { profile: user.profile, fetchedAt: now };
@@ -976,7 +979,7 @@ export const useNostrStore = defineStore("nostr", {
       }
     },
     initNip46Signer: async function (nip46Token?: string) {
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       if (!nip46Token && !this.nip46Token.length) {
         nip46Token = (await prompt(
           "Enter your NIP-46 connection string",
@@ -1059,7 +1062,7 @@ export const useNostrStore = defineStore("nostr", {
     },
     fetchEventsFromUser: async function () {
       const filter: NDKFilter = { kinds: [1], authors: [this.pubkey] };
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       return await ndk.fetchEvents(filter);
     },
 
@@ -1069,7 +1072,7 @@ export const useNostrStore = defineStore("nostr", {
       pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [3], "#p": [pubkey] };
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       const events = await ndk.fetchEvents(filter);
       const authors = new Set<string>();
       events.forEach((ev) => authors.add(ev.pubkey));
@@ -1082,7 +1085,7 @@ export const useNostrStore = defineStore("nostr", {
       pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [3], authors: [pubkey] };
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       const events = await ndk.fetchEvents(filter);
       let latest: NDKEvent | undefined;
       events.forEach((ev) => {
@@ -1106,7 +1109,7 @@ export const useNostrStore = defineStore("nostr", {
       pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [0, 1], authors: [pubkey] };
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       const events = await ndk.fetchEvents(filter);
       let earliest: number | null = null;
       events.forEach((ev) => {
@@ -1131,7 +1134,7 @@ export const useNostrStore = defineStore("nostr", {
       pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [1], authors: [pubkey], limit: 1 };
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       const events = await ndk.fetchEvents(filter);
       let latest: NDKEvent | null = null;
       events.forEach((ev) => {
@@ -1154,7 +1157,7 @@ export const useNostrStore = defineStore("nostr", {
         authors: [pubkey],
         limit: 1,
       };
-      const ndk = await useNdk({ requireSigner: false });
+      const { ndk } = useNdk();
       const events = await ndk.fetchEvents(filter);
       let latest: NDKEvent | null = null;
       events.forEach((ev) => {
@@ -1177,7 +1180,7 @@ export const useNostrStore = defineStore("nostr", {
     },
     fetchMints: async function () {
       const filter: NDKFilter = { kinds: [38000 as NDKKind], limit: 2000 };
-      const ndk = await useNdk();
+      const { ndk } = useNdk();
       const events = await ndk.fetchEvents(filter);
       let mintUrls: string[] = [];
       events.forEach((event) => {
