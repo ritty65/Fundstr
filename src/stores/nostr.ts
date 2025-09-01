@@ -330,6 +330,61 @@ export function resetRelaySelection() {
   relayRotationIndex = 0;
 }
 
+// Relays that are known to reject DM kinds outright.
+// Extend this list as new incompatible relays are discovered.
+export const DM_RELAY_DENYLIST = new Set<string>([
+  "wss://relay.damus.io",
+]);
+
+const dmPolicyCache = new Map<string, boolean>();
+
+/**
+ * Checks whether a relay is willing to accept DM events.
+ * Uses NIP-11 information if available and caches the result.
+ */
+export async function relaySupportsDms(url: string): Promise<boolean> {
+  const normalized = url.replace(/\/+$/, "");
+  if (DM_RELAY_DENYLIST.has(normalized)) return false;
+  if (dmPolicyCache.has(normalized)) return dmPolicyCache.get(normalized)!;
+
+  let allowed = true;
+  try {
+    const httpUrl = normalized.replace(/^ws(s?):\/\//, "https://");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
+    const res = await fetch(httpUrl, {
+      headers: { Accept: "application/nostr+json" },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    const info = await res.json();
+    const restricted = info?.limitation?.restricted_kinds as number[] | undefined;
+    const authRequired = info?.limitation?.auth_required;
+    const paymentRequired = info?.limitation?.payment_required;
+    if (
+      (Array.isArray(restricted) && restricted.includes(4)) ||
+      authRequired ||
+      paymentRequired
+    ) {
+      allowed = false;
+    }
+  } catch {
+    // Network errors or missing NIP-11 docs -> assume allowed
+    allowed = true;
+  }
+  dmPolicyCache.set(normalized, allowed);
+  return allowed;
+}
+
+/** Filters out relays that are known or reported to reject DMs. */
+export async function filterDmRelays(relays: string[]): Promise<string[]> {
+  const out: string[] = [];
+  for (const r of relays) {
+    if (await relaySupportsDms(r)) out.push(r);
+  }
+  return out;
+}
+
 export async function selectPreferredRelays(
   relays: string[],
 ): Promise<string[]> {
