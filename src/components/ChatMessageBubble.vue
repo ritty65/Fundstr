@@ -178,8 +178,6 @@ const statusIcon = computed(() => {
       return "check";
     case "failed":
       return "error";
-    case "failed-decrypt":
-      return "lock";
     case "delivered":
       return "check";
     default:
@@ -190,7 +188,6 @@ const statusIcon = computed(() => {
 const statusColor = computed(() => {
   const status = props.message.status;
   if (status === "failed") return "negative";
-  if (status === "failed-decrypt") return "warning";
   return "grey";
 });
 
