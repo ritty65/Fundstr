@@ -31,7 +31,7 @@ import { subscriptionPayload } from "src/utils/receipt-utils";
 import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useNdk } from "src/composables/useNdk";
-import { NDKKind, NDKEvent } from "@nostr-dev-kit/ndk";
+import { NDKKind, NDKEvent, NDKPrivateKeySigner } from "@nostr-dev-kit/ndk";
 import { filterHealthyRelays } from "src/utils/relayHealth";
 
 function parseSubscriptionPaymentPayload(obj: any):
@@ -61,6 +61,90 @@ function generateContentTags(
       : "";
   const safeTags: string[][] = Array.isArray(tags) ? (tags as string[][]) : [];
   return { content: safeContent, tags: safeTags };
+}
+
+async function publishDmWithFallback(
+  recipient: string,
+  content: string,
+  dmRelays: string[],
+): Promise<{
+  protocolUsed: "nip17" | "nip04" | null;
+  event: NDKEvent | null;
+  results: Record<string, RelayAck>;
+}> {
+  const nostr = useNostrStore();
+  let canUseNip17 = true;
+  if (
+    nostr.signerType === SignerType.NIP07 ||
+    nostr.signerType === SignerType.NIP46
+  ) {
+    canUseNip17 =
+      nostr.signerCaps.nip44Encrypt && nostr.signerCaps.nip44Decrypt;
+  }
+
+  let protocolUsed: "nip17" | "nip04" | null = null;
+  let event: NDKEvent | null = null;
+  let results: Record<string, RelayAck> = {};
+
+  if (canUseNip17) {
+    try {
+      const ndk = await useNdk();
+      const rumor = new NDKEvent(ndk);
+      rumor.kind = 14 as NDKKind;
+      rumor.content = content;
+      rumor.tags = [["p", recipient]];
+      await rumor.sign(nostr.signer);
+
+      const seal = new NDKEvent(ndk);
+      seal.kind = 13 as NDKKind;
+      seal.content = await rumor.encrypt(await nostr.signer.user());
+      await seal.sign(nostr.signer);
+
+      const giftWrap = new NDKEvent(ndk);
+      giftWrap.kind = 1059 as NDKKind;
+      giftWrap.tags = [["p", recipient]];
+      giftWrap.content = await seal.toJson();
+      const ephemeralSigner = new NDKPrivateKeySigner();
+      await giftWrap.sign(ephemeralSigner);
+
+      const raw = await giftWrap.toNostrEvent();
+      results = await publishWithAcks(raw, dmRelays);
+      console.table(results);
+      if (Object.values(results).some((r) => r.ok)) {
+        protocolUsed = "nip17";
+        event = giftWrap;
+      }
+    } catch (e) {
+      console.error("Failed to send NIP-17 DM:", e);
+    }
+  }
+
+  if (!protocolUsed) {
+    try {
+      const key = nostr.privKeyHex;
+      const ndk = await useNdk();
+      const dmEvent = new NDKEvent(ndk);
+      dmEvent.kind = NDKKind.EncryptedDirectMessage;
+      dmEvent.content = await nostr.encryptDmContent(
+        key,
+        recipient,
+        content,
+      );
+      dmEvent.tags = [["p", recipient], ["p", nostr.pubkey]];
+      await dmEvent.sign(nostr.signer);
+      const raw = await dmEvent.toNostrEvent();
+      results = await publishWithAcks(raw, dmRelays);
+      console.table(results);
+      if (Object.values(results).some((r) => r.ok)) {
+        protocolUsed = "nip04";
+        event = dmEvent;
+      }
+    } catch (e) {
+      console.error("Failed to send legacy NIP-04 DM:", e);
+    }
+  }
+
+  return { protocolUsed, event, results };
 }
 
 export interface SubscriptionPayment {
@@ -314,77 +398,11 @@ export const useMessengerStore = defineStore("messenger", {
         this.sendQueue.push(msg);
         return { success: false, event: null };
       }
-      let canUseNip17 = true;
-      if (
-        nostr.signerType === SignerType.NIP07 ||
-        nostr.signerType === SignerType.NIP46
-      ) {
-        canUseNip17 =
-          nostr.signerCaps.nip44Encrypt && nostr.signerCaps.nip44Decrypt;
-      }
-
-      let protocolUsed: "nip17" | "nip04" | null = null;
-      let event: NDKEvent | null = null;
-      let results: Record<string, RelayAck> = {};
-
-      if (canUseNip17) {
-        try {
-          const ndk = await useNdk();
-          const rumor = new NDKEvent(ndk);
-          rumor.kind = 14 as NDKKind;
-          rumor.content = safeMessage;
-          rumor.tags = [["p", recipient]];
-          await rumor.sign(nostr.signer);
-
-          const seal = new NDKEvent(ndk);
-          seal.kind = 13 as NDKKind;
-          seal.content = await rumor.encrypt(await nostr.signer.user());
-          await seal.sign(nostr.signer);
-
-          const giftWrap = new NDKEvent(ndk);
-          giftWrap.kind = 1059 as NDKKind;
-          giftWrap.tags = [["p", recipient]];
-          const sealed = await seal.toNostrEvent();
-          giftWrap.content = JSON.stringify(sealed);
-          const ephemeralSigner = new NDKPrivateKeySigner();
-          await giftWrap.sign(ephemeralSigner);
-
-          const raw = await giftWrap.toNostrEvent();
-          results = await publishWithAcks(raw, dmRelays);
-          console.table(results);
-          if (Object.values(results).some((r) => r.ok)) {
-            protocolUsed = "nip17";
-            event = giftWrap;
-          }
-        } catch (e) {
-          console.error("Failed to send NIP-17 DM:", e);
-        }
-      }
-
-      if (!protocolUsed) {
-        try {
-          const key = nostr.privKeyHex;
-          const ndk = await useNdk();
-          const dmEvent = new NDKEvent(ndk);
-          dmEvent.kind = NDKKind.EncryptedDirectMessage;
-          dmEvent.content = await nostr.encryptDmContent(
-            key,
-            recipient,
-            safeMessage,
-          );
-          dmEvent.tags = [["p", recipient], ["p", nostr.pubkey]];
-          await dmEvent.sign(nostr.signer);
-          const raw = await dmEvent.toNostrEvent();
-          results = await publishWithAcks(raw, dmRelays);
-          console.table(results);
-          if (Object.values(results).some((r) => r.ok)) {
-            protocolUsed = "nip04";
-            event = dmEvent;
-          }
-        } catch (error) {
-          console.error("Failed to send legacy NIP-04 DM:", error);
-        }
-      }
+      const { protocolUsed, event, results } = await publishDmWithFallback(
+        recipient,
+        safeMessage,
+        dmRelays,
+      );
 
       const success = Object.values(results).some((r) => r.ok);
       msg.relayResults = results;
@@ -959,14 +977,6 @@ export const useMessengerStore = defineStore("messenger", {
           return;
         }
         const nostr = useNostrStore();
-        let canUseNip17 = true;
-        if (
-          nostr.signerType === SignerType.NIP07 ||
-          nostr.signerType === SignerType.NIP46
-        ) {
-          canUseNip17 =
-            nostr.signerCaps.nip44Encrypt && nostr.signerCaps.nip44Decrypt;
-        }
         for (const msg of [...this.sendQueue]) {
           try {
             const userRelays = await nostr.fetchUserRelays(msg.pubkey);
@@ -977,77 +987,20 @@ export const useMessengerStore = defineStore("messenger", {
               msg.status = "failed";
               continue;
             }
-
-            let protocol: "nip17" | "nip04" | null = null;
-            let results: Record<string, RelayAck> = {};
-            let event: NDKEvent | null = null;
-
-            if (canUseNip17) {
-              try {
-                const ndk = await useNdk();
-                const rumor = new NDKEvent(ndk);
-                rumor.kind = 14 as NDKKind;
-                rumor.content = msg.content;
-                rumor.tags = [["p", msg.pubkey]];
-                await rumor.sign(nostr.signer);
-
-                const seal = new NDKEvent(ndk);
-                seal.kind = 13 as NDKKind;
-                seal.content = await rumor.encrypt(await nostr.signer.user());
-                await seal.sign(nostr.signer);
-
-                const giftWrap = new NDKEvent(ndk);
-                giftWrap.kind = 1059 as NDKKind;
-                giftWrap.tags = [["p", msg.pubkey]];
-                const sealed = await seal.toNostrEvent();
-                giftWrap.content = JSON.stringify(sealed);
-                const ephemeralSigner = new NDKPrivateKeySigner();
-                await giftWrap.sign(ephemeralSigner);
-
-                const raw = await giftWrap.toNostrEvent();
-                results = await publishWithAcks(raw, dmRelays);
-                console.table(results);
-                if (Object.values(results).some((r) => r.ok)) {
-                  protocol = "nip17";
-                  event = giftWrap;
-                }
-              } catch (e) {
-                console.error("[messenger.retryFailedMessages] NIP-17", e);
-              }
-            }
-
-            if (!protocol) {
-              try {
-                const key = nostr.privKeyHex;
-                const ndk = await useNdk();
-                const dmEvent = new NDKEvent(ndk);
-                dmEvent.kind = NDKKind.EncryptedDirectMessage;
-                dmEvent.content = await nostr.encryptDmContent(
-                  key,
-                  msg.pubkey,
-                  msg.content,
-                );
-                dmEvent.tags = [["p", msg.pubkey], ["p", nostr.pubkey]];
-                await dmEvent.sign(nostr.signer);
-                const raw = await dmEvent.toNostrEvent();
-                results = await publishWithAcks(raw, dmRelays);
-                console.table(results);
-                if (Object.values(results).some((r) => r.ok)) {
-                  protocol = "nip04";
-                  event = dmEvent;
-                }
-              } catch (e) {
-                console.error("[messenger.retryFailedMessages]", e);
-              }
-            }
+            const { protocolUsed, event, results } =
+              await publishDmWithFallback(
+                msg.pubkey,
+                msg.content,
+                dmRelays,
+              );
 
             msg.relayResults = results;
-            if (protocol && event) {
+            if (protocolUsed && event) {
               msg.id = event.id;
               msg.created_at =
                 event.created_at ?? Math.floor(Date.now() / 1000);
               msg.status = "sent";
-              msg.protocol = protocol;
+              msg.protocol = protocolUsed;
               const idx = this.sendQueue.indexOf(msg);
               if (idx >= 0) this.sendQueue.splice(idx, 1);
             } else {
