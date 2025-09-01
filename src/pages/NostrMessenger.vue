@@ -32,14 +32,19 @@
         </q-banner>
         <NostrRelayErrorBanner />
         <q-banner
-          v-if="messenger.sendQueue.length"
+          v-if="(messenger.sendQueue || []).length"
           dense
           class="bg-orange-2 q-mb-sm"
         >
           <div class="row items-center no-wrap">
-            <span>{{ messenger.sendQueue.length }} message(s) failed</span>
+            <span>{{ (messenger.sendQueue || []).length }} message(s) failed</span>
             <q-space />
-            <q-btn flat dense label="Retry" @click="retryQueued" />
+            <q-btn
+              flat
+              dense
+              label="Retry"
+              @click="messenger.retryFailedMessages"
+            />
           </div>
         </q-banner>
         <div class="row justify-end q-mb-sm" v-if="!loading">
@@ -166,8 +171,6 @@ export default defineComponent({
     });
 
     const route = useRoute();
-
-    const retryQueued = () => messenger.retryFailedMessages();
 
     const openDrawer = () => {
       if ($q.screen.lt.md) {
@@ -310,7 +313,6 @@ export default defineComponent({
       switchAccount,
       openDrawer,
       ui,
-      retryQueued,
     };
   },
 });
