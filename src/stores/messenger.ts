@@ -342,7 +342,8 @@ export const useMessengerStore = defineStore("messenger", {
           const giftWrap = new NDKEvent(ndk);
           giftWrap.kind = 1059 as NDKKind;
           giftWrap.tags = [["p", recipient]];
-          giftWrap.content = await seal.toJson();
+          const sealed = await seal.toNostrEvent();
+          giftWrap.content = JSON.stringify(sealed);
           const ephemeralSigner = new NDKPrivateKeySigner();
           await giftWrap.sign(ephemeralSigner);
 
@@ -995,7 +996,8 @@ export const useMessengerStore = defineStore("messenger", {
                 const giftWrap = new NDKEvent(ndk);
                 giftWrap.kind = 1059 as NDKKind;
                 giftWrap.tags = [["p", msg.pubkey]];
-                giftWrap.content = await seal.toJson();
+                const sealed = await seal.toNostrEvent();
+                giftWrap.content = JSON.stringify(sealed);
                 const ephemeralSigner = new NDKPrivateKeySigner();
                 await giftWrap.sign(ephemeralSigner);
 
