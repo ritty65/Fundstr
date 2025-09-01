@@ -8,7 +8,6 @@ import {
   isNip44Ciphertext,
   publishWithAcks,
   RelayAck,
-  filterDmRelays,
 } from "./nostr";
 import { v4 as uuidv4 } from "uuid";
 import { useSettingsStore } from "./settings";
@@ -297,7 +296,6 @@ export const useMessengerStore = defineStore("messenger", {
       const userRelays = await nostr.fetchUserRelays(recipient);
       const targetRelays = relays || userRelays || (this.relays as any);
       const healthyRelays = await filterHealthyRelays(targetRelays);
-      const dmRelays = await filterDmRelays(healthyRelays);
 
       const msg = this.addOutgoingMessage(
         recipient,
@@ -309,7 +307,7 @@ export const useMessengerStore = defineStore("messenger", {
         tokenPayload,
       );
 
-      if (!dmRelays.length) {
+      if (!healthyRelays.length) {
         msg.status = "failed";
         this.sendQueue.push(msg);
         return { success: false, event: null };
@@ -350,7 +348,7 @@ export const useMessengerStore = defineStore("messenger", {
           await giftWrap.sign(ephemeralSigner);
 
           const raw = await giftWrap.toNostrEvent();
-          results = await publishWithAcks(raw, dmRelays);
+          results = await publishWithAcks(raw, healthyRelays);
           console.table(results);
           if (Object.values(results).some((r) => r.ok)) {
             protocolUsed = "nip17";
@@ -375,7 +373,7 @@ export const useMessengerStore = defineStore("messenger", {
           dmEvent.tags = [["p", recipient], ["p", nostr.pubkey]];
           await dmEvent.sign(nostr.signer);
           const raw = await dmEvent.toNostrEvent();
-          results = await publishWithAcks(raw, dmRelays);
+          results = await publishWithAcks(raw, healthyRelays);
           console.table(results);
           if (Object.values(results).some((r) => r.ok)) {
             protocolUsed = "nip04";
@@ -972,8 +970,7 @@ export const useMessengerStore = defineStore("messenger", {
             const userRelays = await nostr.fetchUserRelays(msg.pubkey);
             const targets = userRelays || (this.relays as any);
             const healthy = await filterHealthyRelays(targets);
-            const dmRelays = await filterDmRelays(healthy);
-            if (!dmRelays.length) {
+            if (!healthy.length) {
               msg.status = "failed";
               continue;
             }
@@ -1005,7 +1002,7 @@ export const useMessengerStore = defineStore("messenger", {
                 await giftWrap.sign(ephemeralSigner);
 
                 const raw = await giftWrap.toNostrEvent();
-                results = await publishWithAcks(raw, dmRelays);
+                results = await publishWithAcks(raw, healthy);
                 console.table(results);
                 if (Object.values(results).some((r) => r.ok)) {
                   protocol = "nip17";
@@ -1030,7 +1027,7 @@ export const useMessengerStore = defineStore("messenger", {
                 dmEvent.tags = [["p", msg.pubkey], ["p", nostr.pubkey]];
                 await dmEvent.sign(nostr.signer);
                 const raw = await dmEvent.toNostrEvent();
-                results = await publishWithAcks(raw, dmRelays);
+                results = await publishWithAcks(raw, healthy);
                 console.table(results);
                 if (Object.values(results).some((r) => r.ok)) {
                   protocol = "nip04";
