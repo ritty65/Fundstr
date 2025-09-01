@@ -402,69 +402,33 @@ export async function publishWithAcks(
   const pool = new SimplePool();
   const results: Record<string, RelayAck> = {};
   const pub = pool.publish(relays, event as any);
+  return await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      for (const r of relays) {
+        if (!results[r]) results[r] = { ok: false, reason: "timeout" };
+      }
+      resolve(results);
+    }, timeoutMs);
 
-  // Newer versions of nostr-tools return an array of Promises
-  if (Array.isArray(pub)) {
-    await Promise.all(
-      pub.map((p: Promise<any>, i: number) => {
-        const url = relays[i];
-        return new Promise<void>((resolve) => {
-          const timer = setTimeout(() => {
-            results[url] = { ok: false, reason: "timeout" };
-            resolve();
-          }, timeoutMs);
-
-          p.then(() => {
-            clearTimeout(timer);
-            results[url] = { ok: true };
-            resolve();
-          }).catch((err) => {
-            clearTimeout(timer);
-            results[url] = { ok: false, reason: String(err) };
-            resolve();
-          });
-        });
-      }),
-    );
-    return results;
-  }
-
-  // Older versions returned an event emitter
-  if (pub && typeof (pub as any).on === "function") {
-    return await new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        for (const r of relays) {
-          if (!results[r]) results[r] = { ok: false, reason: "timeout" };
-        }
+    const finish = () => {
+      if (Object.keys(results).length >= relays.length) {
+        clearTimeout(timer);
         resolve(results);
-      }, timeoutMs);
+      }
+    };
 
-      const finish = () => {
-        if (Object.keys(results).length >= relays.length) {
-          clearTimeout(timer);
-          resolve(results);
-        }
-      };
-
-      pub.on("ok", (relay: any) => {
-        const url = relay.url || relay;
-        results[url] = { ok: true };
-        finish();
-      });
-
-      pub.on("failed", (relay: any, reason: any) => {
-        const url = relay.url || relay;
-        results[url] = { ok: false, reason: String(reason) };
-        finish();
-      });
+    pub.on("ok", (relay: any) => {
+      const url = relay.url || relay;
+      results[url] = { ok: true };
+      finish();
     });
-  }
 
-  // Fallback: mark all as failed
-  for (const r of relays) {
-    results[r] = { ok: false, reason: "unknown" };
-  }
-  return results;
+    pub.on("failed", (relay: any, reason: any) => {
+      const url = relay.url || relay;
+      results[url] = { ok: false, reason: String(reason) };
+      finish();
+    });
+  });
 }
 
 /** Resolves once any relay in `ndk.pool` has `connected === true`. */
