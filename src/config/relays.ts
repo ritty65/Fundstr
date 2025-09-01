@@ -1,6 +1,7 @@
 export const FREE_RELAYS = [
   "wss://purplepag.es",
   "wss://relay.damus.io",
+  "wss://relay.primal.net",
   "wss://relay.nostr.band",
   "wss://relay.snort.social",
   "wss://nos.lol",
@@ -10,6 +11,7 @@ export const FREE_RELAYS = [
 export const DEFAULT_RELAYS = [
   "wss://purplepag.es",
   "wss://relay.damus.io",
+  "wss://relay.primal.net",
   "wss://relay.nostr.band",
   "wss://relay.snort.social",
   "wss://nos.lol",

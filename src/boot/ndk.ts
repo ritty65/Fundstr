@@ -7,6 +7,7 @@ import { useSettingsStore } from "src/stores/settings";
 import { DEFAULT_RELAYS, FREE_RELAYS } from "src/config/relays";
 import { filterHealthyRelays } from "src/utils/relayHealth";
 import { RelayWatchdog } from "src/js/nostr-runtime";
+import { mustConnectRequiredRelays } from "../nostr/relays";
 
 export type NdkBootErrorReason =
   | "no-signer"
@@ -103,6 +104,7 @@ async function createReadOnlyNdk(): Promise<NDK> {
   const ndk = new NDK({ explicitRelayUrls: relays });
   attachRelayErrorHandlers(ndk);
   mergeDefaultRelays(ndk);
+  mustConnectRequiredRelays(ndk);
   await safeConnect(ndk);
   healthyPromise.then(async (healthy) => {
     const healthySet = new Set(healthy);
@@ -145,10 +147,11 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
     ? settings.defaultNostrRelays
     : DEFAULT_RELAYS;
   const healthyPromise = filterHealthyRelays(relays).catch(() => []);
-  const ndk = new NDK({ explicitRelayUrls: relays });
-  attachRelayErrorHandlers(ndk);
-  mergeDefaultRelays(ndk);
-  ndk.signer = signer;
+    const ndk = new NDK({ explicitRelayUrls: relays });
+    attachRelayErrorHandlers(ndk);
+    mergeDefaultRelays(ndk);
+    mustConnectRequiredRelays(ndk);
+    ndk.signer = signer;
   await safeConnect(ndk);
   healthyPromise.then(async (healthy) => {
     const healthySet = new Set(healthy);
