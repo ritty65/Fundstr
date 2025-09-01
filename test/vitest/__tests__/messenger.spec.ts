@@ -95,21 +95,19 @@ beforeEach(() => {
 describe("messenger store", () => {
   it("publishes DM with relay acknowledgements", async () => {
     const messenger = useMessengerStore();
-    const hex = "f".repeat(64);
-    await messenger.sendDm(hex, "m");
+    await messenger.sendDm("r", "m");
     expect(publishWithAcksMock).toHaveBeenCalled();
   });
 
   it("decrypts incoming messages with global key", async () => {
     const messenger = useMessengerStore();
-    const hex = "e".repeat(64);
     await messenger.addIncomingMessage({
       id: "1",
-      pubkey: hex,
+      pubkey: "s",
       content: "c?iv=1",
       created_at: 1,
     } as any);
-    expect(decryptDm).toHaveBeenCalledWith("priv", hex, "c?iv=1");
+    expect(decryptDm).toHaveBeenCalledWith("priv", "s", "c?iv=1");
   });
 
   it("subscribes using global key on start", async () => {
@@ -135,10 +133,9 @@ describe("messenger store", () => {
   it("handles multi-line JSON messages", async () => {
     const messenger = useMessengerStore();
     (decryptDm as any).mockResolvedValue('{"a":1}\n{"b":2}');
-    const hex = "d".repeat(64);
     await messenger.addIncomingMessage({
       id: "1",
-      pubkey: hex,
+      pubkey: "s",
       content: "c",
       created_at: 1,
     } as any);
@@ -147,9 +144,8 @@ describe("messenger store", () => {
 
   it("handles malformed content when sending", async () => {
     const messenger = useMessengerStore();
-    const hex = "c".repeat(64);
-    await messenger.sendDm(hex, { bad: "obj" } as any);
+    await messenger.sendDm("r", { bad: "obj" } as any);
     expect(publishWithAcksMock).toHaveBeenCalled();
-    expect(messenger.conversations[hex][0].content).toBe("");
+    expect(messenger.conversations.r[0].content).toBe("");
   });
 });

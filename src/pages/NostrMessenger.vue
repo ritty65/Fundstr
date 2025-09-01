@@ -23,7 +23,6 @@
         <div class="row items-center q-gutter-sm">
           <span>
             Offline - {{ connectedCount }}/{{ totalRelays }} connected
-            <span v-if="messenger.sendQueue.length">. Message queued.</span>
             <span v-if="nextReconnectIn !== null">
               - reconnecting in {{ nextReconnectIn }}s
             </span>
@@ -38,7 +37,7 @@
           class="bg-orange-2 q-mb-sm"
         >
           <div class="row items-center no-wrap">
-            <span>{{ messenger.sendQueue.length }} message(s) failed or are queued while offline.</span>
+            <span>{{ messenger.sendQueue.length }} message(s) failed</span>
             <q-space />
             <q-btn flat dense label="Retry" @click="retryQueued" />
           </div>
@@ -79,7 +78,7 @@ import { useMessengerStore } from "src/stores/messenger";
 import { useNdk } from "src/composables/useNdk";
 import { useNostrStore } from "src/stores/nostr";
 import { useUiStore } from "src/stores/ui";
-import { normalizeToHexPubkey } from "src/utils/nostr-ids";
+import { nip19 } from "nostr-tools";
 import type NDK from "@nostr-dev-kit/ndk";
 import ActiveChatHeader from "components/ActiveChatHeader.vue";
 import MessageList from "components/MessageList.vue";
@@ -114,7 +113,14 @@ export default defineComponent({
     const now = ref(Date.now());
     let timer: ReturnType<typeof setInterval> | undefined;
 
-    
+    function bech32ToHex(pubkey: string): string {
+      try {
+        const decoded = nip19.decode(pubkey);
+        return typeof decoded.data === "string" ? decoded.data : pubkey;
+      } catch {
+        return pubkey;
+      }
+    }
 
     function timeout(ms: number) {
       return new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -134,13 +140,9 @@ export default defineComponent({
         loading.value = false;
         const qp = route.query.pubkey as string | undefined;
         if (qp) {
-          const hex = normalizeToHexPubkey(qp);
-          if (hex) {
-            messenger.startChat(hex);
-            messenger.setCurrentConversation(hex);
-          } else {
-            notifyError("Invalid Nostr pubkey");
-          }
+          const hex = bech32ToHex(qp);
+          messenger.startChat(hex);
+          messenger.setCurrentConversation(hex);
         }
       }
     }
@@ -260,7 +262,6 @@ export default defineComponent({
       connecting.value = true;
       try {
         await messenger.reconnectAll();
-        await messenger.retryFailedMessages();
       } catch (e) {
         console.error(e);
       } finally {
