@@ -13,11 +13,11 @@
             @click.stop="toggleMessengerDrawer"
           >
           <q-badge
-            v-if="messenger.sendQueue.length"
+            v-if="(messenger.sendQueue || []).length"
             color="negative"
             floating
           >
-            {{ messenger.sendQueue.length }}
+            {{ (messenger.sendQueue || []).length }}
           </q-badge>
           <q-tooltip>Chats</q-tooltip>
         </q-btn>
