@@ -1,16 +1,13 @@
 import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
 import { watch, computed } from "vue";
-import { Event as NostrEvent } from "nostr-tools";
-import { SignerType, useNostrStore, publishWithAcks, RelayAck } from "./nostr";
-import { buildDmPublishSet } from "../nostr/relays";
-import { publishDMSequential, AckOutcome } from "../nostr/publish";
-import { parseCipher } from "../nostr/crypto";
+import { Event as NostrEvent, SimplePool } from "nostr-tools";
+import { SignerType, useNostrStore, RelayAck } from "./nostr";
 import { v4 as uuidv4 } from "uuid";
 import { useSettingsStore } from "./settings";
 import { DEFAULT_RELAYS } from "src/config/relays";
 import { sanitizeMessage } from "src/js/message-utils";
-import { notifySuccess, notifyError, notifyWarning } from "src/js/notify";
+import { notifySuccess, notifyError } from "src/js/notify";
 import { useWalletStore } from "./wallet";
 import { useMintsStore } from "./mints";
 import { useProofsStore } from "./proofs";
@@ -27,8 +24,7 @@ import { subscriptionPayload } from "src/utils/receipt-utils";
 import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useNdk } from "src/composables/useNdk";
-import { NDKKind, NDKEvent } from "@nostr-dev-kit/ndk";
-import { filterHealthyRelays } from "src/utils/relayHealth";
+import { NDKEvent } from "@nostr-dev-kit/ndk";
 
 function parseSubscriptionPaymentPayload(obj: any):
   | {
@@ -127,10 +123,6 @@ export const useMessengerStore = defineStore("messenger", {
       storageKey("eventLog"),
       [] as MessengerMessage[],
     );
-    const sendQueue = useLocalStorage<MessengerMessage[]>(
-      storageKey("sendQueue"),
-      [] as MessengerMessage[],
-    );
     const drawerOpen = useLocalStorage<boolean>(storageKey("drawerOpen"), true);
     const drawerMini = useLocalStorage<boolean>(
       storageKey("drawerMini"),
@@ -145,7 +137,6 @@ export const useMessengerStore = defineStore("messenger", {
         pinned.value = {} as any;
         aliases.value = {} as any;
         eventLog.value = [] as any;
-        sendQueue.value = [] as any;
       },
     );
 
@@ -156,15 +147,11 @@ export const useMessengerStore = defineStore("messenger", {
       pinned,
       aliases,
       eventLog,
-      sendQueue,
       currentConversation: "",
       drawerOpen,
       drawerMini,
       started: false,
-      watchInitialized: false,
       dmUnsub: null as null | (() => void),
-      nip17DmUnsub: null as null | (() => void),
-      retryTimer: null as ReturnType<typeof setInterval> | null,
     };
   },
   getters: {
@@ -287,18 +274,7 @@ export const useMessengerStore = defineStore("messenger", {
       if (!recipient) return { success: false, event: null };
       await this.loadIdentity();
       const nostr = useNostrStore();
-
       const { content: safeMessage } = generateContentTags(message);
-
-      const userRelays = await nostr.fetchUserRelays(recipient);
-      const targetRelays = relays || userRelays || (this.relays as any);
-      const healthyRelays = await filterHealthyRelays(targetRelays);
-      const ndk = await useNdk();
-      const dmRelayUrls = buildDmPublishSet(healthyRelays);
-      const relayObjs = dmRelayUrls
-        .map((u) => ndk.pool.relays.get(u))
-        .filter(Boolean);
-
       const msg = this.addOutgoingMessage(
         recipient,
         safeMessage,
@@ -308,107 +284,51 @@ export const useMessengerStore = defineStore("messenger", {
         "pending",
         tokenPayload,
       );
-
-      if (!relayObjs.length) {
+      const ext: any = (window as any).nostr;
+      if (!ext?.nip04?.encrypt || !ext?.signEvent || !nostr.pubkey) {
         msg.status = "failed";
-        this.sendQueue.push(msg);
+        notifyError("No Nostr extension detected");
         return { success: false, event: null };
       }
-      let canUseNip17 = true;
-      if (
-        nostr.signerType === SignerType.NIP07 ||
-        nostr.signerType === SignerType.NIP46
-      ) {
-        canUseNip17 =
-          nostr.signerCaps.nip44Encrypt && nostr.signerCaps.nip44Decrypt;
-      }
-
-      let protocolUsed: "nip17" | "nip04" | null = null;
-      let event: NDKEvent | null = null;
-      let results: Record<string, RelayAck> = {};
-      const toAck = (out: Record<string, AckOutcome>): Record<string, RelayAck> => {
-        const map: Record<string, RelayAck> = {};
-        for (const [url, o] of Object.entries(out)) {
-          map[url] = o === 'ok' ? { ok: true } : { ok: false, reason: o };
-        }
-        return map;
-      };
-
-      if (canUseNip17) {
-        try {
-          const rumor = new NDKEvent(ndk);
-          rumor.kind = 14 as NDKKind;
-          rumor.content = safeMessage;
-          rumor.tags = [["p", recipient]];
-          await rumor.sign(nostr.signer);
-
-          const seal = new NDKEvent(ndk);
-          seal.kind = 13 as NDKKind;
-          seal.content = await rumor.encrypt(await nostr.signer.user());
-          await seal.sign(nostr.signer);
-
-          const giftWrap = new NDKEvent(ndk);
-          giftWrap.kind = 1059 as NDKKind;
-          giftWrap.tags = [["p", recipient]];
-          giftWrap.content = await seal.toJson();
-          const ephemeralSigner = new NDKPrivateKeySigner();
-          await giftWrap.sign(ephemeralSigner);
-
-          const raw = await giftWrap.toNostrEvent();
-          const pubRes = await publishDMSequential(relayObjs, raw, 2200);
-          results = toAck(pubRes.results);
-          console.table(results);
-          if (pubRes.ok) {
-            protocolUsed = "nip17";
-            event = giftWrap;
+      try {
+        const ciphertext = await ext.nip04.encrypt(recipient, safeMessage);
+        const event: NostrEvent = {
+          kind: 4,
+          pubkey: nostr.pubkey!,
+          content: ciphertext,
+          tags: [["p", recipient]],
+          created_at: Math.floor(Date.now() / 1000),
+        } as any;
+        const signed = await ext.signEvent(event);
+        const relayList = relays?.length ? relays : (this.relays as any);
+        let success = 0;
+        const pool = new SimplePool();
+        for (const r of relayList) {
+          try {
+            await pool.publish([r], signed);
+            success++;
+          } catch (e) {
+            console.warn(`[messenger.sendDm] publish failed on ${r}`, e);
           }
-        } catch (e) {
-          console.error("Failed to send NIP-17 DM:", e);
         }
-      }
-
-      if (!protocolUsed) {
-        try {
-          const key = nostr.privKeyHex;
-          const dmEvent = new NDKEvent(ndk);
-          dmEvent.kind = NDKKind.EncryptedDirectMessage;
-          dmEvent.content = await nostr.encryptDmContent(
-            key,
-            recipient,
-            safeMessage,
-          );
-          dmEvent.tags = [["p", recipient], ["p", nostr.pubkey]];
-          await dmEvent.sign(nostr.signer);
-          const raw = await dmEvent.toNostrEvent();
-          const pubRes = await publishDMSequential(relayObjs, raw, 2200);
-          results = toAck(pubRes.results);
-          console.table(results);
-          if (pubRes.ok) {
-            protocolUsed = "nip04";
-            event = dmEvent;
-          }
-        } catch (error) {
-          console.error("Failed to send legacy NIP-04 DM:", error);
+        if (success > 0) {
+          msg.id = signed.id;
+          msg.created_at = signed.created_at ?? msg.created_at;
+          msg.status = "sent";
+          this.pushOwnMessage(signed);
+          notifySuccess("DM sent");
+          return { success: true, event: signed };
+        } else {
+          msg.status = "failed";
+          notifyError("Failed to send DM");
+          return { success: false, event: null };
         }
-      }
-
-      const success = Object.values(results).some((r) => r.ok);
-      msg.relayResults = results;
-      if (success) {
-        msg.status = "sent";
-        msg.protocol = protocolUsed || undefined;
-        notifySuccess(
-          protocolUsed === "nip17"
-            ? "DM sent via NIP-17"
-            : "DM sent via NIP-04",
-        );
-      } else {
+      } catch (e) {
+        console.error("[messenger.sendDm]", e);
         msg.status = "failed";
-        this.sendQueue.push(msg);
         notifyError("Failed to send DM");
+        return { success: false, event: null };
       }
-
-      return { success, event };
     },
     async sendToken(
       recipient: string,
@@ -573,6 +493,44 @@ export const useMessengerStore = defineStore("messenger", {
         return false;
       }
     },
+    async retryMessage(msg: MessengerMessage) {
+      const nostr = useNostrStore();
+      const ext: any = (window as any).nostr;
+      if (!ext?.nip04?.encrypt || !ext?.signEvent || !nostr.pubkey) {
+        notifyError("Cannot retry – no Nostr extension");
+        return;
+      }
+      try {
+        const cipher = await ext.nip04.encrypt(msg.pubkey, msg.content);
+        const evt: NostrEvent = {
+          kind: 4,
+          pubkey: nostr.pubkey!,
+          content: cipher,
+          tags: [["p", msg.pubkey]],
+          created_at: Math.floor(Date.now() / 1000),
+        } as any;
+        const signed = await ext.signEvent(evt);
+        const pool = new SimplePool();
+        let sent = false;
+        for (const r of this.relays as any) {
+          try {
+            await pool.publish([r], signed);
+            sent = true;
+          } catch {}
+        }
+        if (sent) {
+          msg.id = signed.id;
+          msg.created_at = signed.created_at ?? msg.created_at;
+          msg.status = "sent";
+          notifySuccess("Message retried and sent successfully");
+        } else {
+          notifyError("Retry failed – message not sent");
+        }
+      } catch (e) {
+        console.error(e);
+        notifyError("Could not resend message: " + (e as Error).message);
+      }
+    },
     addOutgoingMessage(
       pubkey: string,
       content: string,
@@ -636,19 +594,11 @@ export const useMessengerStore = defineStore("messenger", {
       await this.loadIdentity();
       const nostr = useNostrStore();
       let privKey: string | undefined = undefined;
-      if (
-        nostr.signerType !== SignerType.NIP07 &&
-        nostr.signerType !== SignerType.NIP46
-      ) {
+      if (nostr.signerType !== SignerType.NIP07) {
         privKey = nostr.privKeyHex;
         if (!privKey) return;
       }
       if (event.pubkey === nostr.pubkey) {
-        return;
-      }
-      const parsed = parseCipher(event.content);
-      if (!plaintext && !parsed) {
-        notifyError("Encrypted message (undecryptable)");
         return;
       }
       let decrypted: string;
@@ -657,9 +607,7 @@ export const useMessengerStore = defineStore("messenger", {
           plaintext ??
           (await nostr.decryptDmContent(privKey, event.pubkey, event.content));
       } catch (e) {
-        notifyError(
-          "Unable to decrypt message. Update your signer and ensure NIP-44 permissions are enabled.",
-        );
+        notifyError("Failed to decrypt message – ensure your Nostr extension is unlocked");
         return;
       }
       let subscriptionInfo: SubscriptionPayment | undefined;
@@ -827,106 +775,30 @@ export const useMessengerStore = defineStore("messenger", {
     },
 
     async start() {
-      this.normalizeStoredConversations();
-      if (!this.watchInitialized) {
-        watch(
-          () => [useNostrStore().pubkey, this.relays],
-          () => {
-            if (this.started) {
-              this.started = false;
-              this.start();
-            }
-          },
-          { deep: true },
-        );
-        watch(
-          () => useNostrStore().connected,
-          (val) => {
-            if (val) this.retryFailedMessages();
-          },
-          { immediate: true },
-        );
-        this.watchInitialized = true;
-      }
-      if (this.started) {
-        return;
-      }
+      if (this.started) return;
       try {
         this.dmUnsub?.();
-        this.nip17DmUnsub?.();
         await this.loadIdentity();
         const nostr = useNostrStore();
-        const ext: any = (window as any)?.nostr;
-        if (
-          (nostr.signerType === SignerType.NIP07 ||
-            nostr.signerType === SignerType.NIP46) &&
-          !(ext?.nip44?.encrypt && ext?.nip44?.decrypt)
-        ) {
-          notifyWarning(
-            "NIP-44 support missing in signer. Messages may fail; update your signer and enable NIP-44 permissions.",
-          );
-        }
-        if (
-          nostr.signerType !== SignerType.NIP07 &&
-          nostr.signerType !== SignerType.NIP46 &&
-          !nostr.privKeyHex
-        ) {
-          notifyError("Unable to decrypt messages: no private key");
-        }
-
         const ndk = await useNdk();
-        const since =
-          this.eventLog[this.eventLog.length - 1]?.created_at || 0;
-
-        const sub04 = ndk.subscribe(
-          {
-            kinds: [4],
-            "#p": [nostr.pubkey],
-            since,
-          },
+        const since = this.eventLog[this.eventLog.length - 1]?.created_at || 0;
+        const sub = ndk.subscribe(
+          { kinds: [4], "#p": [nostr.pubkey], since },
           { closeOnEose: false, groupable: false },
         );
-        sub04.on("event", async (event: NDKEvent) => {
+        sub.on("event", async (event: NDKEvent) => {
           const raw = await event.toNostrEvent();
           this.addIncomingMessage(raw as NostrEvent);
         });
-
-        const sub17 = ndk.subscribe(
-          {
-            kinds: [1059 as NDKKind],
-            "#p": [nostr.pubkey],
-            since,
-          },
-          { closeOnEose: false, groupable: false },
-        );
-        sub17.on("event", async (event: NDKEvent) => {
-          try {
-            const sealJson = event.content;
-            const seal = new NDKEvent(ndk, JSON.parse(sealJson));
-            const rumorJson = await seal.decrypt(await nostr.signer.user());
-            const rumor = new NDKEvent(ndk, JSON.parse(rumorJson));
-            const raw = await rumor.toNostrEvent();
-            this.addIncomingMessage(raw as NostrEvent);
-          } catch (error) {
-            console.error("Failed to decrypt NIP-17 message:", error);
-          }
-        });
-
         this.dmUnsub = () => {
           try {
-            sub04.stop();
-          } catch {}
-        };
-        this.nip17DmUnsub = () => {
-          try {
-            sub17.stop();
+            sub.stop();
           } catch {}
         };
       } catch (e) {
         console.error("[messenger.start]", e);
       } finally {
         this.started = true;
-        this.retryFailedMessages();
       }
     },
 
@@ -955,127 +827,6 @@ export const useMessengerStore = defineStore("messenger", {
       nostr.disconnect();
     },
 
-    async retryFailedMessages() {
-      const attempt = async () => {
-        if (!this.isConnected() || !this.sendQueue.length) {
-          if (this.retryTimer) {
-            clearInterval(this.retryTimer);
-            this.retryTimer = null;
-          }
-          return;
-        }
-        const nostr = useNostrStore();
-        let canUseNip17 = true;
-        if (
-          nostr.signerType === SignerType.NIP07 ||
-          nostr.signerType === SignerType.NIP46
-        ) {
-          canUseNip17 =
-            nostr.signerCaps.nip44Encrypt && nostr.signerCaps.nip44Decrypt;
-        }
-        for (const msg of [...this.sendQueue]) {
-          try {
-            const userRelays = await nostr.fetchUserRelays(msg.pubkey);
-            const targets = userRelays || (this.relays as any);
-            const healthy = await filterHealthyRelays(targets);
-            if (!healthy.length) {
-              msg.status = "failed";
-              continue;
-            }
-
-            let protocol: "nip17" | "nip04" | null = null;
-            let results: Record<string, RelayAck> = {};
-            let event: NDKEvent | null = null;
-
-            if (canUseNip17) {
-              try {
-                const ndk = await useNdk();
-                const rumor = new NDKEvent(ndk);
-                rumor.kind = 14 as NDKKind;
-                rumor.content = msg.content;
-                rumor.tags = [["p", msg.pubkey]];
-                await rumor.sign(nostr.signer);
-
-                const seal = new NDKEvent(ndk);
-                seal.kind = 13 as NDKKind;
-                seal.content = await rumor.encrypt(await nostr.signer.user());
-                await seal.sign(nostr.signer);
-
-                const giftWrap = new NDKEvent(ndk);
-                giftWrap.kind = 1059 as NDKKind;
-                giftWrap.tags = [["p", msg.pubkey]];
-                giftWrap.content = await seal.toJson();
-                const ephemeralSigner = new NDKPrivateKeySigner();
-                await giftWrap.sign(ephemeralSigner);
-
-                const raw = await giftWrap.toNostrEvent();
-                results = await publishWithAcks(raw, healthy);
-                console.table(results);
-                if (Object.values(results).some((r) => r.ok)) {
-                  protocol = "nip17";
-                  event = giftWrap;
-                }
-              } catch (e) {
-                console.error("[messenger.retryFailedMessages] NIP-17", e);
-              }
-            }
-
-            if (!protocol) {
-              try {
-                const key = nostr.privKeyHex;
-                const ndk = await useNdk();
-                const dmEvent = new NDKEvent(ndk);
-                dmEvent.kind = NDKKind.EncryptedDirectMessage;
-                dmEvent.content = await nostr.encryptDmContent(
-                  key,
-                  msg.pubkey,
-                  msg.content,
-                );
-                dmEvent.tags = [["p", msg.pubkey], ["p", nostr.pubkey]];
-                await dmEvent.sign(nostr.signer);
-                const raw = await dmEvent.toNostrEvent();
-                results = await publishWithAcks(raw, healthy);
-                console.table(results);
-                if (Object.values(results).some((r) => r.ok)) {
-                  protocol = "nip04";
-                  event = dmEvent;
-                }
-              } catch (e) {
-                console.error("[messenger.retryFailedMessages]", e);
-              }
-            }
-
-            msg.relayResults = results;
-            if (protocol && event) {
-              msg.id = event.id;
-              msg.created_at =
-                event.created_at ?? Math.floor(Date.now() / 1000);
-              msg.status = "sent";
-              msg.protocol = protocol;
-              const idx = this.sendQueue.indexOf(msg);
-              if (idx >= 0) this.sendQueue.splice(idx, 1);
-            } else {
-              msg.status = "failed";
-            }
-          } catch (e) {
-            console.error("[messenger.retryFailedMessages]", e);
-            if (msg.status !== "sent") msg.status = "failed";
-          }
-        }
-        if (!this.sendQueue.length && this.retryTimer) {
-          clearInterval(this.retryTimer);
-          this.retryTimer = null;
-        }
-      };
-
-      await attempt();
-
-      if (this.sendQueue.length && !this.retryTimer) {
-        this.retryTimer = setInterval(() => {
-          attempt();
-        }, 5000);
-      }
-    },
 
     createConversation(pubkey: string) {
       pubkey = this.normalizeKey(pubkey);

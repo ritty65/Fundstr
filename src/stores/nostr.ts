@@ -18,7 +18,6 @@ import NDK, {
 } from "@nostr-dev-kit/ndk";
 import {
   nip19,
-  nip44,
   nip04,
   SimplePool,
   getEventHash as ntGetEventHash,
@@ -66,7 +65,7 @@ import { watch } from "vue";
 import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useMessengerStore } from "./messenger";
-import { encryptDM, decryptDM, parseCipher } from "../nostr/crypto";
+import { decryptDM } from "../nostr/crypto";
 import { useCreatorHubStore } from "./creatorHub";
 
 const STORAGE_SECRET = "cashu_ndk_storage_key";
@@ -161,10 +160,6 @@ export function npubToHex(s: string): string | null {
   return null;
 }
 
-export function isNip44Ciphertext(str: string): boolean {
-  return typeof str === "string" && parseCipher(str) !== null;
-}
-
 function encryptWithSharedSecret(
   shared: Uint8Array | string,
   message: string,
@@ -210,14 +205,6 @@ export async function encryptNip04(
     if (nostr?.nip04?.encrypt) {
       return await nostr.nip04.encrypt(recipient, message);
     }
-    if (nostr?.getSharedSecret) {
-      const shared = await nostr.getSharedSecret(recipient);
-      return encryptWithSharedSecretV2(shared, message);
-    }
-    if (nostr?.nip04?.getSharedSecret) {
-      const shared = await nostr.nip04.getSharedSecret(recipient);
-      return encryptWithSharedSecret(shared, message);
-    }
     throw new Error("Signer does not support NIP-04 encryption");
   }
   return await nip04.encrypt(privKey as any, recipient, message);
@@ -232,10 +219,6 @@ async function decryptNip04(
   if (!privKey) {
     if (nostr?.nip04?.decrypt) {
       return await nostr.nip04.decrypt(sender, content);
-    }
-    if (nostr?.nip04?.getSharedSecret) {
-      const shared = await nostr.nip04.getSharedSecret(sender);
-      return decryptWithSharedSecret(shared, content);
     }
     throw new Error("Signer does not support NIP-04 decryption");
   }
@@ -1434,12 +1417,9 @@ export const useNostrStore = defineStore("nostr", {
       recipient: string,
       message: string,
     ): Promise<string> {
-      const { content } = await encryptDM(
-        message,
-        recipient,
-        typeof privKey === 'string' ? privKey : undefined,
-      );
-      return content;
+      return await encryptNip04(recipient, message, {
+        privKey: typeof privKey === 'string' ? privKey : undefined,
+      });
     },
 
     decryptDmContent: async function (

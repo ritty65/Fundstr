@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
 
-var publishWithAcksMock: any;
+var publishMock: any;
+vi.mock("nostr-tools", async (orig) => {
+  const actual = await orig();
+  publishMock = vi.fn(async () => {});
+  return { ...actual, SimplePool: class { publish = publishMock } };
+});
+
 var walletSend: any;
 var walletMintWallet: any;
 var serializeProofs: any;
@@ -26,25 +32,15 @@ const lsStore: Record<string, string> = {};
 
 vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   const actual = await importOriginal();
-  publishWithAcksMock = vi.fn(async () => ({ r: { ok: true } }));
-  const signer = { sign: vi.fn(async () => {}), user: vi.fn(async () => ({})) };
-  return {
-    ...actual,
-    publishWithAcks: publishWithAcksMock,
-    useNostrStore: () => ({
-      initSignerIfNotSet: vi.fn(),
-      privKeyHex: "priv",
-      pubkey: "pub",
-      signerType: "seed",
-      signerCaps: { nip44Encrypt: true, nip44Decrypt: true },
-      signer,
-      connected: true,
-      lastError: null,
-      relays: [] as string[],
-      fetchUserRelays: vi.fn(async () => []),
-      encryptDmContent: vi.fn(async (_k, _r, m) => m),
-    }),
-  };
+  const store = {
+    initSignerIfNotSet: vi.fn(),
+    privKeyHex: "priv",
+    pubkey: "pub",
+    signerType: "NIP07",
+    connected: true,
+    fetchUserRelays: vi.fn(async () => []),
+  } as any;
+  return { ...actual, useNostrStore: () => store };
 });
 
 vi.mock("../../../src/stores/wallet", () => {
@@ -97,17 +93,21 @@ beforeEach(() => {
   const m = useMessengerStore();
   (m as any).eventLog = [];
   (m as any).conversations = {};
-  vi.clearAllMocks();
+  publishMock.mockClear();
 });
 
 describe("messenger.sendToken", () => {
   it("sends token DM and logs message", async () => {
     const store = useMessengerStore();
+    (globalThis as any).nostr = {
+      nip04: { encrypt: vi.fn(async () => "enc"), decrypt: vi.fn() },
+      signEvent: vi.fn(async (e) => ({ ...e, id: "id", sig: "sig" })),
+    };
     const success = await store.sendToken("receiver", 1, "b", "note");
     expect(success).toBe(true);
     expect(walletMintWallet).toHaveBeenCalledWith("mint", "sat");
     expect(walletSend).toHaveBeenCalled();
-    expect(publishWithAcksMock).toHaveBeenCalled();
+    expect(publishMock).toHaveBeenCalled();
     expect(addPending).toHaveBeenCalledWith({
       amount: -1,
       tokenStr: "TOKEN",
