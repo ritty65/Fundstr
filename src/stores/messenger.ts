@@ -159,6 +159,11 @@ export const useMessengerStore = defineStore("messenger", {
       const nostr = useNostrStore();
       return nostr.connected;
     },
+    sendQueue(): MessengerMessage[] {
+      return this.eventLog.filter(
+        (m) => m.outgoing && m.status === "failed",
+      );
+    },
   },
   actions: {
     normalizeKey(pk: string): string {
@@ -287,6 +292,9 @@ export const useMessengerStore = defineStore("messenger", {
       const ext: any = (window as any).nostr;
       if (!ext?.nip04?.encrypt || !ext?.signEvent || !nostr.pubkey) {
         msg.status = "failed";
+        if (!this.eventLog.some((m) => m.id === msg.id)) {
+          this.eventLog.push(msg);
+        }
         notifyError("No Nostr extension detected");
         return { success: false, event: null };
       }
@@ -320,12 +328,18 @@ export const useMessengerStore = defineStore("messenger", {
           return { success: true, event: signed };
         } else {
           msg.status = "failed";
+          if (!this.eventLog.some((m) => m.id === msg.id)) {
+            this.eventLog.push(msg);
+          }
           notifyError("Failed to send DM");
           return { success: false, event: null };
         }
       } catch (e) {
         console.error("[messenger.sendDm]", e);
         msg.status = "failed";
+        if (!this.eventLog.some((m) => m.id === msg.id)) {
+          this.eventLog.push(msg);
+        }
         notifyError("Failed to send DM");
         return { success: false, event: null };
       }
@@ -529,6 +543,11 @@ export const useMessengerStore = defineStore("messenger", {
       } catch (e) {
         console.error(e);
         notifyError("Could not resend message: " + (e as Error).message);
+      }
+    },
+    async retryFailedMessages() {
+      for (const msg of this.sendQueue) {
+        await this.retryMessage(msg);
       }
     },
     addOutgoingMessage(
