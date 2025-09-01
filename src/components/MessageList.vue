@@ -1,14 +1,14 @@
 <template>
   <q-virtual-scroll
     ref="scroll"
-    class="col column q-pa-md"
+    class="col column q-py-md"
     :items="messages"
     :virtual-scroll-slice-size="30"
     v-slot="{ item: msg, index: idx }"
   >
     <div
       v-if="showDateSeparator(idx)"
-      class="text-caption text-center q-my-md divider-text"
+      class="text-caption text-center q-my-md q-mx-sm divider-text"
     >
       {{ formatDay(msg.created_at) }}
     </div>

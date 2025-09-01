@@ -1,6 +1,6 @@
 <template>
   <div
-    class="row message-row"
+    class="row message-row q-mx-sm q-my-xs"
     :class="message.outgoing ? 'justify-end' : 'justify-start'"
   >
     <q-avatar
@@ -315,10 +315,6 @@ async function updateAutoRedeem(val: boolean) {
 </script>
 
 <style scoped>
-.message-row {
-  margin: 4px 0;
-}
-
 .bubble {
   padding: 8px 12px;
   width: fit-content;
