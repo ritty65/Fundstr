@@ -261,9 +261,7 @@ export default defineComponent({
     const reconnectAll = async () => {
       connecting.value = true;
       try {
-        messenger.disconnect();
-        messenger.started = false;
-        await messenger.start();
+        await messenger.reconnectAll();
       } catch (e) {
         console.error(e);
       } finally {
