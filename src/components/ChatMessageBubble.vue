@@ -12,7 +12,7 @@
       <span v-else>{{ initials }}</span>
     </q-avatar>
     <div
-      class="flex column"
+      class="column"
       :class="message.outgoing ? 'items-end' : 'items-start'"
     >
       <div
@@ -96,15 +96,15 @@
           :color="statusColor"
         />
       </div>
-      <q-avatar
-        v-if="message.outgoing && showAvatar"
-        size="32px"
-        class="q-ml-sm"
-      >
-        <img v-if="profile?.picture" :src="profile.picture" />
-        <span v-else>{{ initials }}</span>
-      </q-avatar>
     </div>
+    <q-avatar
+      v-if="message.outgoing && showAvatar"
+      size="32px"
+      class="q-ml-sm"
+    >
+      <img v-if="profile?.picture" :src="profile.picture" />
+      <span v-else>{{ initials }}</span>
+    </q-avatar>
   </div>
 </template>
 
