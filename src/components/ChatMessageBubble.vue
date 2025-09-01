@@ -320,8 +320,9 @@ async function updateAutoRedeem(val: boolean) {
 }
 
 .bubble {
-  padding: 18px;
-  max-width: 70%;
+  padding: 8px 12px;
+  width: fit-content;
+  max-width: 75%;
   word-break: break-word;
   margin: 2px 0;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
