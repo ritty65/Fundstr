@@ -634,8 +634,12 @@ export const useMessengerStore = defineStore("messenger", {
         privKey = nostr.privKeyHex;
         if (!privKey) return;
       }
-      if (!plaintext && !isNip44Ciphertext(event.content)) {
-        notifyError("Invalid encrypted message format (missing iv)");
+      if (
+        !plaintext &&
+        !isNip44Ciphertext(event.content) &&
+        !event.content.includes("?iv=")
+      ) {
+        notifyError("Invalid encrypted message format");
         return;
       }
       let decrypted: string;

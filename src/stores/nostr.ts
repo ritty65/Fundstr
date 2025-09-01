@@ -161,7 +161,14 @@ export function npubToHex(s: string): string | null {
 }
 
 export function isNip44Ciphertext(str: string): boolean {
-  return typeof str === "string" && /^[^?]+\?iv=[^?]+$/.test(str);
+  if (typeof str !== "string") return false;
+  if (str.includes("?iv=")) return false; // NIP-04 marker
+  try {
+    const decoded = base64.decode(str);
+    return decoded.length >= 60 && decoded[0] === 2;
+  } catch {
+    return false;
+  }
 }
 
 function encryptWithSharedSecret(
@@ -1439,19 +1446,17 @@ export const useNostrStore = defineStore("nostr", {
         if (nostr?.nip44?.encrypt) {
           try {
             const enc = await nostr.nip44.encrypt(recipient, message);
-            if (!isNip44Ciphertext(enc)) {
-              notifyError(
-                "Signer returned invalid NIP-44 format. Please update your signer and ensure NIP-44 permissions are enabled.",
-              );
-              throw new Error("Invalid NIP-44 ciphertext");
+            if (isNip44Ciphertext(enc)) {
+              return enc;
             }
-            return enc;
+            notifyWarning(
+              "Signer returned invalid NIP-44 format. Falling back to NIP-04.",
+            );
           } catch (e) {
             console.error("NIP-44 encryption failed:", e);
-            notifyError(
-              "Encryption failed. Please grant NIP-44 permissions in your Nostr extension.",
+            notifyWarning(
+              "NIP-44 encryption failed. Falling back to NIP-04.",
             );
-            throw new Error("Signer lacks NIP-44 support or permission was denied.");
           }
         } else {
           notifyWarning(
@@ -1477,13 +1482,11 @@ export const useNostrStore = defineStore("nostr", {
           message,
           nip44.v2.utils.getConversationKey(privKey as any, recipient as any),
         );
-        if (!isNip44Ciphertext(enc)) {
-          throw new Error("Invalid NIP-44 ciphertext");
+        if (isNip44Ciphertext(enc)) {
+          return enc;
         }
-        return enc;
-      } catch {
-        return await encryptNip04(recipient, message, { privKey });
-      }
+      } catch {}
+      return await encryptNip04(recipient, message, { privKey });
     },
 
     decryptDmContent: async function (
@@ -1494,20 +1497,21 @@ export const useNostrStore = defineStore("nostr", {
       const nostr = (window as any)?.nostr;
       // NIP-07/NIP-46 Signer (Browser Extension)
       if (!privKey) {
-        if (nostr?.nip44?.decrypt) {
-          try {
-            if (!isNip44Ciphertext(content)) {
-              throw new Error("Invalid encrypted format");
+        if (isNip44Ciphertext(content)) {
+          if (nostr?.nip44?.decrypt) {
+            try {
+              return await nostr.nip44.decrypt(sender, content);
+            } catch (e) {
+              console.error("NIP-44 decryption failed:", e);
+              notifyWarning(
+                "NIP-44 decryption failed. Attempting NIP-04.",
+              );
             }
-            return await nostr.nip44.decrypt(sender, content);
-          } catch (e) {
-            console.error("NIP-44 decryption failed:", e);
-            // fall through to NIP-04
+          } else {
+            notifyWarning(
+              "Signer does not expose NIP-44. Attempting NIP-04; update your signer to enable NIP-44.",
+            );
           }
-        } else {
-          notifyWarning(
-            "Signer does not expose NIP-44. Attempting NIP-04; update your signer to enable NIP-44.",
-          );
         }
         try {
           return await decryptNip04(sender, content);
@@ -1521,14 +1525,12 @@ export const useNostrStore = defineStore("nostr", {
         privKey as any,
         sender as any,
       );
-      try {
-        if (!isNip44Ciphertext(content)) {
-          throw new Error("Invalid encrypted format");
-        }
-        return await nip44.v2.decrypt(content, nip44Key);
-      } catch {
-        return await decryptNip04(sender, content, privKey);
+      if (isNip44Ciphertext(content)) {
+        try {
+          return await nip44.v2.decrypt(content, nip44Key);
+        } catch {}
       }
+      return await decryptNip04(sender, content, privKey);
     },
     sendDirectMessageUnified: async function (
       recipient: string,
