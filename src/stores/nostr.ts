@@ -737,8 +737,6 @@ export const useNostrStore = defineStore("nostr", {
         nip44Decrypt: false,
         getSharedSecret: false,
       }),
-      canNip44: false,
-      canNip04: false,
       nip07SignerAvailable: true,
       nip07Checked: false,
       nip07Warned: false,
@@ -1030,28 +1028,6 @@ export const useNostrStore = defineStore("nostr", {
         nip44Decrypt: typeof ext?.nip44?.decrypt === "function",
         getSharedSecret: typeof ext?.getSharedSecret === "function",
       };
-    },
-    detectEncryptionCapabilities: async function () {
-      if (this.privKeyHex) {
-        this.canNip44 = true;
-        this.canNip04 = true;
-        return;
-      }
-      const ext: any = (window as any)?.nostr;
-      this.canNip44 = false;
-      this.canNip04 = false;
-      try {
-        if (ext?.nip44?.encrypt) {
-          await ext.nip44.encrypt("00".repeat(32), "");
-          this.canNip44 = true;
-        }
-      } catch {}
-      try {
-        if (ext?.nip04?.encrypt) {
-          await ext.nip04.encrypt("00".repeat(32), "");
-          this.canNip04 = true;
-        }
-      } catch {}
     },
     setSigner: async function (signer: NDKSigner) {
       this.signer = signer;
@@ -1553,41 +1529,6 @@ export const useNostrStore = defineStore("nostr", {
       } catch {
         return await decryptNip04(sender, content, privKey);
       }
-    },
-    nip44Encrypt: async function (pubkey: string, plaintext: string) {
-      if (this.privKeyHex) {
-        return await nip44.v2.encrypt(
-          plaintext,
-          nip44.v2.utils.getConversationKey(this.privKeyHex as any, pubkey as any),
-        );
-      }
-      const ext: any = (window as any)?.nostr;
-      if (ext?.nip44?.encrypt) {
-        return await ext.nip44.encrypt(pubkey, plaintext);
-      }
-      throw new Error("NIP-44 encrypt unsupported");
-    },
-    nip44Decrypt: async function (pubkey: string, ciphertext: string) {
-      if (this.privKeyHex) {
-        const key = nip44.v2.utils.getConversationKey(
-          this.privKeyHex as any,
-          pubkey as any,
-        );
-        return await nip44.v2.decrypt(ciphertext, key);
-      }
-      const ext: any = (window as any)?.nostr;
-      if (ext?.nip44?.decrypt) {
-        return await ext.nip44.decrypt(pubkey, ciphertext);
-      }
-      throw new Error("NIP-44 decrypt unsupported");
-    },
-    nip04Encrypt: async function (pubkey: string, plaintext: string) {
-      return await encryptNip04(pubkey, plaintext, {
-        privKey: this.privKeyHex || undefined,
-      });
-    },
-    nip04Decrypt: async function (pubkey: string, ciphertext: string) {
-      return await decryptNip04(pubkey, ciphertext, this.privKeyHex || undefined);
     },
     sendDirectMessageUnified: async function (
       recipient: string,
