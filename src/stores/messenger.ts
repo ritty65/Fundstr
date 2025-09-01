@@ -2,13 +2,10 @@ import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
 import { watch, computed } from "vue";
 import { Event as NostrEvent } from "nostr-tools";
-import {
-  SignerType,
-  useNostrStore,
-  isNip44Ciphertext,
-  publishWithAcks,
-  RelayAck,
-} from "./nostr";
+import { SignerType, useNostrStore, publishWithAcks, RelayAck } from "./nostr";
+import { buildDmPublishSet } from "../nostr/relays";
+import { publishDMSequential, AckOutcome } from "../nostr/publish";
+import { parseCipher } from "../nostr/crypto";
 import { v4 as uuidv4 } from "uuid";
 import { useSettingsStore } from "./settings";
 import { DEFAULT_RELAYS } from "src/config/relays";
@@ -296,6 +293,11 @@ export const useMessengerStore = defineStore("messenger", {
       const userRelays = await nostr.fetchUserRelays(recipient);
       const targetRelays = relays || userRelays || (this.relays as any);
       const healthyRelays = await filterHealthyRelays(targetRelays);
+      const ndk = await useNdk();
+      const dmRelayUrls = buildDmPublishSet(healthyRelays);
+      const relayObjs = dmRelayUrls
+        .map((u) => ndk.pool.relays.get(u))
+        .filter(Boolean);
 
       const msg = this.addOutgoingMessage(
         recipient,
@@ -307,7 +309,7 @@ export const useMessengerStore = defineStore("messenger", {
         tokenPayload,
       );
 
-      if (!healthyRelays.length) {
+      if (!relayObjs.length) {
         msg.status = "failed";
         this.sendQueue.push(msg);
         return { success: false, event: null };
@@ -324,10 +326,16 @@ export const useMessengerStore = defineStore("messenger", {
       let protocolUsed: "nip17" | "nip04" | null = null;
       let event: NDKEvent | null = null;
       let results: Record<string, RelayAck> = {};
+      const toAck = (out: Record<string, AckOutcome>): Record<string, RelayAck> => {
+        const map: Record<string, RelayAck> = {};
+        for (const [url, o] of Object.entries(out)) {
+          map[url] = o === 'ok' ? { ok: true } : { ok: false, reason: o };
+        }
+        return map;
+      };
 
       if (canUseNip17) {
         try {
-          const ndk = await useNdk();
           const rumor = new NDKEvent(ndk);
           rumor.kind = 14 as NDKKind;
           rumor.content = safeMessage;
@@ -347,9 +355,10 @@ export const useMessengerStore = defineStore("messenger", {
           await giftWrap.sign(ephemeralSigner);
 
           const raw = await giftWrap.toNostrEvent();
-          results = await publishWithAcks(raw, healthyRelays);
+          const pubRes = await publishDMSequential(relayObjs, raw, 2200);
+          results = toAck(pubRes.results);
           console.table(results);
-          if (Object.values(results).some((r) => r.ok)) {
+          if (pubRes.ok) {
             protocolUsed = "nip17";
             event = giftWrap;
           }
@@ -361,7 +370,6 @@ export const useMessengerStore = defineStore("messenger", {
       if (!protocolUsed) {
         try {
           const key = nostr.privKeyHex;
-          const ndk = await useNdk();
           const dmEvent = new NDKEvent(ndk);
           dmEvent.kind = NDKKind.EncryptedDirectMessage;
           dmEvent.content = await nostr.encryptDmContent(
@@ -372,9 +380,10 @@ export const useMessengerStore = defineStore("messenger", {
           dmEvent.tags = [["p", recipient], ["p", nostr.pubkey]];
           await dmEvent.sign(nostr.signer);
           const raw = await dmEvent.toNostrEvent();
-          results = await publishWithAcks(raw, healthyRelays);
+          const pubRes = await publishDMSequential(relayObjs, raw, 2200);
+          results = toAck(pubRes.results);
           console.table(results);
-          if (Object.values(results).some((r) => r.ok)) {
+          if (pubRes.ok) {
             protocolUsed = "nip04";
             event = dmEvent;
           }
@@ -634,8 +643,12 @@ export const useMessengerStore = defineStore("messenger", {
         privKey = nostr.privKeyHex;
         if (!privKey) return;
       }
-      if (!plaintext && !isNip44Ciphertext(event.content)) {
-        notifyError("Invalid encrypted message format (missing iv)");
+      if (event.pubkey === nostr.pubkey) {
+        return;
+      }
+      const parsed = parseCipher(event.content);
+      if (!plaintext && !parsed) {
+        notifyError("Encrypted message (undecryptable)");
         return;
       }
       let decrypted: string;
