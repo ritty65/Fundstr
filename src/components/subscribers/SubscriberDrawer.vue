@@ -204,6 +204,8 @@ import { format, formatDistanceToNow } from "date-fns";
 import { useQuasar } from "quasar";
 import type { Subscriber } from "src/types/subscriber";
 import { copyNpub } from "src/utils/clipboard";
+import { normalizeToHexPubkey } from "src/utils/nostr-ids";
+import { notifyError } from "src/js/notify";
 
 const props = defineProps<{
   modelValue: boolean;
@@ -248,9 +250,14 @@ function copyCurrentNpub() {
 
 function dmSubscriber() {
   if (!props.subscriber) return;
+  const hex = normalizeToHexPubkey(props.subscriber.npub);
+  if (!hex) {
+    notifyError("Invalid Nostr pubkey");
+    return;
+  }
   router.push({
     path: "/nostr-messenger",
-    query: { pubkey: props.subscriber.npub },
+    query: { pubkey: hex },
   });
 }
 

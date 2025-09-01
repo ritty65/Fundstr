@@ -50,19 +50,8 @@ export async function decryptFrom(
 ): Promise<DecryptResult> {
   const nostr = useNostrStore();
   const tried: ('nip44' | 'nip04')[] = [];
-  if (looksLikeNip04(ciphertext) && nostr.canNip04) {
-    tried.push('nip04');
-    try {
-      return {
-        protocolTried: tried,
-        plaintext: await nostr.nip04Decrypt(pubkey, ciphertext),
-        protocol: 'nip04',
-      };
-    } catch {
-      /* ignore */
-    }
-  }
-  if (nostr.canNip44) {
+  const prefer44 = looksLikeNip44(ciphertext);
+  if (prefer44 && nostr.canNip44) {
     tried.push('nip44');
     try {
       return {
@@ -74,13 +63,25 @@ export async function decryptFrom(
       /* ignore */
     }
   }
-  if (looksLikeNip44(ciphertext) && nostr.canNip04 && !tried.includes('nip04')) {
+  if (nostr.canNip04) {
     tried.push('nip04');
     try {
       return {
         protocolTried: tried,
         plaintext: await nostr.nip04Decrypt(pubkey, ciphertext),
         protocol: 'nip04',
+      };
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!prefer44 && nostr.canNip44 && !tried.includes('nip44')) {
+    tried.push('nip44');
+    try {
+      return {
+        protocolTried: tried,
+        plaintext: await nostr.nip44Decrypt(pubkey, ciphertext),
+        protocol: 'nip44',
       };
     } catch {
       /* ignore */
