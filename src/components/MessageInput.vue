@@ -6,6 +6,7 @@
       dense
       outlined
       @keyup.enter="send"
+      @paste="onPaste"
     >
       <template v-slot:append>
         <q-btn
@@ -52,6 +53,7 @@
 
 <script lang="ts" setup>
 import { ref, computed } from "vue";
+import { notifyWarning } from "src/js/notify";
 import { Nut as NutIcon } from "lucide-vue-next";
 
 const emit = defineEmits(["send", "sendToken"]);
@@ -64,7 +66,10 @@ const fileInput = ref<HTMLInputElement>();
 
 const send = () => {
   const m = text.value.trim();
-  if (!m && !attachment.value) return;
+  if (!m && !attachment.value) {
+    notifyWarning("Message cannot be empty");
+    return;
+  }
   const payload: any = { text: m };
   if (attachment.value) {
     payload.attachment = {
@@ -98,6 +103,11 @@ const handleFile = (e: Event) => {
     attachmentType.value = files[0].type;
   };
   reader.readAsDataURL(files[0]);
+};
+
+const onPaste = (e: ClipboardEvent) => {
+  const txt = e.clipboardData?.getData("text") || "";
+  if (txt.trim().length === 0) e.preventDefault();
 };
 </script>
 

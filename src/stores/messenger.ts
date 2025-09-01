@@ -9,6 +9,7 @@ import {
   RelayAck,
 } from "./nostr";
 import { encryptFor, decryptFrom } from "src/utils/dm-crypto";
+import { normalizeToHexPubkey } from "src/utils/nostr-ids";
 import { v4 as uuidv4 } from "uuid";
 import { useSettingsStore } from "./settings";
 import { DEFAULT_RELAYS } from "src/config/relays";
@@ -32,6 +33,11 @@ import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useNdk } from "src/composables/useNdk";
 import { NDKKind, NDKEvent } from "@nostr-dev-kit/ndk";
 import { filterHealthyRelays } from "src/utils/relayHealth";
+
+const DEBUG = import.meta.env.VITE_DEBUG_NOSTR === "true";
+const dbg = (...args: any[]) => {
+  if (DEBUG) console.debug("[messenger]", ...args);
+};
 
 function normalizeRelayUrls(urls: string[]): string[] {
   const set = new Set<string>();
@@ -97,7 +103,12 @@ export type MessengerMessage = {
   content: string;
   created_at: number;
   outgoing: boolean;
-  status?: "pending" | "sent" | "delivered" | "failed";
+  status?:
+    | "pending"
+    | "sent"
+    | "delivered"
+    | "failed"
+    | "failed-decrypt";
   protocol?: "nip17" | "nip04";
   attachment?: MessageAttachment;
   subscriptionPayment?: SubscriptionPayment;
@@ -105,6 +116,7 @@ export type MessengerMessage = {
   autoRedeem?: boolean;
   rawContent?: string;
   relayResults?: Record<string, RelayAck>;
+  queueReason?: string;
 };
 
 export const useMessengerStore = defineStore("messenger", {
@@ -193,11 +205,9 @@ export const useMessengerStore = defineStore("messenger", {
   },
   actions: {
     normalizeKey(pk: string): string {
-      const ns: any = useNostrStore();
-      const resolved =
-        typeof ns?.resolvePubkey === "function" ? ns.resolvePubkey(pk) : pk;
+      const resolved = normalizeToHexPubkey(pk);
       if (!resolved) {
-        console.warn("[messenger] invalid pubkey", pk);
+        dbg("invalid pubkey", pk);
         return "";
       }
       return resolved;
@@ -302,24 +312,22 @@ export const useMessengerStore = defineStore("messenger", {
       attachment?: MessageAttachment,
       tokenPayload?: any,
     ) {
-      recipient = this.normalizeKey(recipient);
-      if (!recipient) return { success: false, event: null };
+      const hex = this.normalizeKey(recipient);
+      if (!hex) {
+        notifyError("Invalid Nostr pubkey");
+        return { success: false, event: null, reason: "invalid_pubkey" } as any;
+      }
       await this.loadIdentity();
       const nostr = useNostrStore();
 
       const { content: safeMessage } = generateContentTags(message);
       if (!safeMessage.trim()) {
-        return { success: false, event: null };
+        notifyWarning("Cannot send empty message");
+        return { success: false, event: null, reason: "empty" } as any;
       }
 
-      const userRelays = await nostr.fetchUserRelays(recipient);
-      const targetRelays = relays || userRelays || (this.relays as any);
-      const healthyRelays = await filterHealthyRelays(
-        normalizeRelayUrls(targetRelays),
-      );
-
       const msg = this.addOutgoingMessage(
-        recipient,
+        hex,
         safeMessage,
         undefined,
         undefined,
@@ -328,10 +336,31 @@ export const useMessengerStore = defineStore("messenger", {
         tokenPayload,
       );
 
-      if (!healthyRelays.length) {
-        msg.status = "failed";
+      const { connected, total } = await this.hasConnectedWriteRelays();
+      if (connected === 0) {
+        msg.queueReason = "no_relay";
         this.sendQueue.push(msg);
-        return { success: false, event: null };
+        notifyWarning(
+          `Offline – ${connected}/${total} relays connected. Message queued.`,
+        );
+        dbg("queued:no_relay", hex.slice(0, 6) + "…" + hex.slice(-6));
+        return { success: false, event: null, reason: "no_relay" } as any;
+      }
+
+      const userRelays = await nostr.fetchUserRelays(hex);
+      const targetRelays = relays || userRelays || (this.relays as any);
+      const healthyRelays = await filterHealthyRelays(
+        normalizeRelayUrls(targetRelays),
+      );
+
+      if (!healthyRelays.length) {
+        msg.queueReason = "no_relay";
+        this.sendQueue.push(msg);
+        notifyWarning(
+          `Offline – ${connected}/${total} relays connected. Message queued.`,
+        );
+        dbg("queued:no_healthy", hex.slice(0, 6) + "…" + hex.slice(-6));
+        return { success: false, event: null, reason: "no_relay" } as any;
       }
 
       let event: NDKEvent | null = null;
@@ -339,7 +368,12 @@ export const useMessengerStore = defineStore("messenger", {
       let protocolUsed: "nip17" | "nip04" | null = null;
 
       try {
-        const enc = await encryptFor(recipient, safeMessage);
+        const enc = await encryptFor(hex, safeMessage);
+        protocolUsed = enc.protocol === "nip44" ? "nip17" : "nip04";
+        dbg("encrypt", {
+          to: hex.slice(0, 6) + "…" + hex.slice(-6),
+          scheme: enc.protocol,
+        });
         const ndk = await useNdk();
         const dmEvent = new NDKEvent(ndk);
         dmEvent.kind =
@@ -349,16 +383,18 @@ export const useMessengerStore = defineStore("messenger", {
         dmEvent.content = enc.content;
         dmEvent.tags =
           enc.protocol === "nip44"
-            ? [["p", recipient]]
-            : [["p", recipient], ["p", nostr.pubkey]];
+            ? [["p", hex]]
+            : [["p", hex], ["p", nostr.pubkey]];
         await dmEvent.sign(nostr.signer);
         const raw = await dmEvent.toNostrEvent();
         results = await publishWithAcks(raw, healthyRelays);
-        const success = Object.values(results).some((r) => r.ok);
+        const okCount = Object.values(results).filter((r) => r.ok).length;
+        const errCount = Object.values(results).length - okCount;
+        dbg("publish", { ok: okCount, err: errCount });
+        const success = okCount > 0;
         msg.relayResults = results;
         if (success) {
           msg.status = "sent";
-          protocolUsed = enc.protocol === "nip44" ? "nip17" : "nip04";
           msg.protocol = protocolUsed;
           notifySuccess(
             protocolUsed === "nip17"
@@ -370,12 +406,14 @@ export const useMessengerStore = defineStore("messenger", {
           throw new Error("No relay accepted event");
         }
         return { success, event };
-      } catch (e) {
+      } catch (e: any) {
         console.error("Failed to send DM", e);
         msg.status = "failed";
+        msg.relayResults = results;
         this.sendQueue.push(msg);
         notifyError("Failed to send DM");
-        return { success: false, event: null };
+        dbg("send error", e?.message || e);
+        return { success: false, event: null, reason: e?.message } as any;
       }
     },
     async sendToken(
@@ -617,18 +655,21 @@ export const useMessengerStore = defineStore("messenger", {
         try {
           const res = await decryptFrom(event.pubkey, ciphertext);
           decrypted = res.plaintext;
+          if (!decrypted && res.error) {
+            dbg("decrypt failed", { id: event.id, reason: res.error });
+          }
         } catch (e) {
-          /* ignore */
+          dbg("decrypt exception", e);
         }
       }
       if (!decrypted) {
         const msg: MessengerMessage = {
           id: event.id,
           pubkey: event.pubkey,
-          content: "[Unable to decrypt]",
+          content: "Unable to decrypt",
           created_at: event.created_at,
           outgoing: false,
-          status: "failed",
+          status: "failed-decrypt",
           protocol: event.kind === 14 ? "nip17" : "nip04",
           rawContent: event.content,
         };
@@ -905,6 +946,14 @@ export const useMessengerStore = defineStore("messenger", {
       return nostr.connected;
     },
 
+    async hasConnectedWriteRelays(): Promise<{ connected: number; total: number }> {
+      const ndk = await useNdk({ requireSigner: false });
+      const relays = Array.from(ndk.pool.relays.values());
+      const writeRelays = relays.filter((r: any) => r.policy?.write !== false);
+      const connected = writeRelays.filter((r: any) => r.connected).length;
+      return { connected, total: writeRelays.length };
+    },
+
     async connect(relays: string[]) {
       const nostr = useNostrStore();
       const unique = normalizeRelayUrls(Array.from(new Set(relays)));
@@ -942,7 +991,8 @@ export const useMessengerStore = defineStore("messenger", {
 
     async retryFailedMessages() {
       const attempt = async () => {
-        if (!this.isConnected() || !this.sendQueue.length) {
+        const { connected } = await this.hasConnectedWriteRelays();
+        if (!connected || !this.sendQueue.length) {
           if (this.retryTimer) {
             clearInterval(this.retryTimer);
             this.retryTimer = null;
@@ -958,7 +1008,8 @@ export const useMessengerStore = defineStore("messenger", {
               normalizeRelayUrls(targets),
             );
             if (!healthy.length) {
-              msg.status = "failed";
+              msg.status = "pending";
+              msg.queueReason = "no_relay";
               continue;
             }
 
@@ -979,7 +1030,8 @@ export const useMessengerStore = defineStore("messenger", {
               await dmEvent.sign(nostr.signer);
               const raw = await dmEvent.toNostrEvent();
               results = await publishWithAcks(raw, healthy);
-              if (Object.values(results).some((r) => r.ok)) {
+              const ok = Object.values(results).some((r) => r.ok);
+              if (ok) {
                 msg.id = dmEvent.id;
                 msg.created_at =
                   dmEvent.created_at ?? Math.floor(Date.now() / 1000);

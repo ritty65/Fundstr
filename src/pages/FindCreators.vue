@@ -139,7 +139,7 @@ import {
   fetchNutzapProfile,
   RelayConnectionError,
 } from "stores/nostr";
-import { notifyWarning } from "src/js/notify";
+import { notifyWarning, notifyError } from "src/js/notify";
 import { useRouter, useRoute } from "vue-router";
 import { useMessengerStore } from "stores/messenger";
 import { useI18n } from "vue-i18n";
@@ -153,6 +153,7 @@ import {
   useQuasar,
 } from "quasar";
 import { nip19 } from "nostr-tools";
+import { normalizeToHexPubkey } from "src/utils/nostr-ids";
 
 const iframeEl = ref<HTMLIFrameElement | null>(null);
 const iframeLoaded = ref(false);
@@ -208,15 +209,6 @@ function getPrice(t: any): number {
   return t.price_sats ?? t.price ?? 0;
 }
 
-function bech32ToHex(pubkey: string): string {
-  try {
-    const decoded = nip19.decode(pubkey);
-    return typeof decoded.data === "string" ? decoded.data : pubkey;
-  } catch {
-    return pubkey;
-  }
-}
-
 function formatTs(ts: number): string {
   const d = new Date(ts * 1000);
   return `${d.getFullYear()}-${("0" + (d.getMonth() + 1)).slice(-2)}-${(
@@ -228,7 +220,12 @@ function formatTs(ts: number): string {
 
 async function onMessage(ev: MessageEvent) {
   if (ev.data && ev.data.type === "donate" && ev.data.pubkey) {
-    selectedPubkey.value = ev.data.pubkey; // keep hex
+    const hex = normalizeToHexPubkey(ev.data.pubkey);
+    if (!hex) {
+      notifyError("Invalid Nostr pubkey");
+      return;
+    }
+    selectedPubkey.value = hex;
     showDonateDialog.value = true;
   } else if (ev.data && ev.data.type === "viewProfile" && ev.data.pubkey) {
     loadingTiers.value = true;
@@ -238,10 +235,15 @@ async function onMessage(ev: MessageEvent) {
     tierTimeout = setTimeout(() => {
       loadingTiers.value = false;
     }, 5000);
-    await creators.fetchTierDefinitions(ev.data.pubkey);
-    dialogPubkey.value = ev.data.pubkey; // keep hex
+    const hex = normalizeToHexPubkey(ev.data.pubkey);
+    if (!hex) {
+      notifyError("Invalid Nostr pubkey");
+      return;
+    }
+    await creators.fetchTierDefinitions(hex);
+    dialogPubkey.value = hex;
     try {
-      const profile = await fetchNutzapProfile(ev.data.pubkey);
+      const profile = await fetchNutzapProfile(hex);
       nutzapProfile.value = profile;
     } catch (e: any) {
       if (e instanceof RelayConnectionError) {
@@ -255,7 +257,11 @@ async function onMessage(ev: MessageEvent) {
     await nextTick();
     showTierDialog.value = true;
   } else if (ev.data && ev.data.type === "startChat" && ev.data.pubkey) {
-    const pubkey = nostr.resolvePubkey(ev.data.pubkey);
+    const pubkey = normalizeToHexPubkey(ev.data.pubkey);
+    if (!pubkey) {
+      notifyError("Invalid Nostr pubkey");
+      return;
+    }
     router.push({ path: "/nostr-messenger", query: { pubkey } });
     const stop = watch(
       () => messenger.started,

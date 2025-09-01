@@ -98,6 +98,8 @@ import { useNutzapStore } from "src/stores/nutzap";
 import { useMessengerStore } from "src/stores/messenger";
 import { useUiStore } from "src/stores/ui";
 import { NAV_DRAWER_WIDTH, NAV_DRAWER_GUTTER } from "src/constants/layout";
+import { normalizeToHexPubkey } from "src/utils/nostr-ids";
+import { notifyError } from "src/js/notify";
 
 export default defineComponent({
   name: "MainLayout",
@@ -184,8 +186,13 @@ export default defineComponent({
     };
 
     const selectConversation = (pubkey) => {
-      messenger.markRead(pubkey);
-      messenger.setCurrentConversation(pubkey);
+      const hex = normalizeToHexPubkey(pubkey);
+      if (!hex) {
+        notifyError("Invalid Nostr pubkey");
+        return;
+      }
+      messenger.markRead(hex);
+      messenger.setCurrentConversation(hex);
       if ($q.screen.lt.md) {
         messenger.setDrawer(false);
       }
@@ -195,8 +202,13 @@ export default defineComponent({
     };
 
     const startChat = (pubkey) => {
-      messenger.startChat(pubkey);
-      selectConversation(pubkey);
+      const hex = normalizeToHexPubkey(pubkey);
+      if (!hex) {
+        notifyError("Invalid Nostr pubkey");
+        return;
+      }
+      messenger.startChat(hex);
+      selectConversation(hex);
     };
 
     const isMessengerRoute = computed(() =>
