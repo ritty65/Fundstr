@@ -46,7 +46,7 @@
       <div class="text-center q-mt-md">
         <q-btn
           color="primary"
-          :disable="!isDirty || !profilePub || !profileRelays.length"
+          :disable="!profilePub || !profileRelays.length"
           @click="saveProfile"
           >Save Changes</q-btn
         >
@@ -183,7 +183,7 @@ import { useUiStore } from "stores/ui";
 import { useMintsStore } from "stores/mints";
 import { useBucketsStore } from "stores/buckets";
 import { renderMarkdownSafe as renderMarkdownSafeFn } from "src/utils/safe-markdown";
-import { notifySuccess, notifyError } from "src/js/notify";
+import { notifySuccess, notifyError, notifyRefreshed } from "src/js/notify";
 import { shortenString } from "src/js/string-utils";
 import CreatorProfileForm from "components/CreatorProfileForm.vue";
 import P2PKDialog from "components/P2PKDialog.vue";
@@ -240,7 +240,7 @@ export default defineComponent({
     );
 
     async function initProfile() {
-      if (!nostr.hasIdentity) return;
+      if (!nostr.hasIdentity || !npub?.value) return;
       const p = await nostr.getProfile(npub.value);
       if (p) {
         if (p.picture && !isTrustedUrl(p.picture)) {
@@ -277,6 +277,11 @@ export default defineComponent({
     }
 
     async function saveProfile() {
+      if (!isDirty.value) {
+        notifyRefreshed("Profile already up to date");
+        await initProfile();
+        return;
+      }
       if (!profilePub.value) {
         notifyError("Pay-to-public-key key is required");
         return;

@@ -19,6 +19,7 @@ const nostrStore = vi.hoisted(() => ({
   getProfile: vi.fn(async () => null),
   initSignerIfNotSet: vi.fn(),
   signer: {},
+  npub: "",
 }));
 vi.mock("../../../src/stores/nostr", () => ({
   useNostrStore: () => nostrStore,
@@ -51,7 +52,8 @@ vi.mock("../../../src/stores/buckets", () => ({
 vi.mock("src/utils/safe-markdown", () => ({ renderMarkdownSafe: (s: string) => s }));
 const notifySuccess = vi.hoisted(() => vi.fn());
 const notifyError = vi.hoisted(() => vi.fn());
-vi.mock("src/js/notify", () => ({ notifySuccess, notifyError }));
+const notifyRefreshed = vi.hoisted(() => vi.fn());
+vi.mock("src/js/notify", () => ({ notifySuccess, notifyError, notifyRefreshed }));
 vi.mock("src/js/string-utils", () => ({ shortenString: (s: string) => s }));
 vi.mock("../../../src/components/CreatorProfileForm.vue", () => ({ default: {} }));
 vi.mock("../../../src/components/P2PKDialog.vue", () => ({ default: {} }));
@@ -64,6 +66,7 @@ describe("MyProfilePage saveProfile", () => {
     publishDiscoveryProfile.mockClear();
     notifySuccess.mockClear();
     notifyError.mockClear();
+    notifyRefreshed.mockClear();
     localStorage.clear();
   });
 
@@ -92,5 +95,25 @@ describe("MyProfilePage saveProfile", () => {
     });
     expect(notifySuccess).toHaveBeenCalled();
     expect(store.isDirty).toBe(false);
+  });
+
+  it("notifies when profile already up to date", async () => {
+    const store = useCreatorProfileStore();
+    store.setProfile({
+      display_name: "name",
+      picture: "",
+      about: "",
+      pubkey: "pub",
+      mints: "",
+      relays: ["wss://relay"],
+    });
+    store.markClean();
+    expect(store.isDirty).toBe(false);
+
+    const { saveProfile } = (MyProfilePage as any).setup();
+    await saveProfile();
+
+    expect(publishDiscoveryProfile).not.toHaveBeenCalled();
+    expect(notifyRefreshed).toHaveBeenCalled();
   });
 });
