@@ -16,6 +16,7 @@ import { v4 as uuidv4 } from "uuid";
 import { notifySuccess, notifyError } from "src/js/notify";
 import { filterValidMedia } from "src/utils/validateMedia";
 import { useNdk } from "src/composables/useNdk";
+import { filterHealthyRelays } from "src/utils/relayHealth";
 import type { Tier, TierMedia } from "./types";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 
@@ -237,6 +238,16 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       if (!nostr.signer) {
         throw new Error("Signer required to publish tier definitions");
       }
+
+      const filteredRelays = await filterHealthyRelays([...nostr.relays]);
+      if (filteredRelays.length === 0) {
+        notifyError(
+          "Unable to connect to any configured Nostr relays. Please update your relay list",
+        );
+        throw new Error("No relay connected");
+      }
+
+      await nostr.connect(filteredRelays as any);
 
       const ndk = await useNdk();
       if (!ndk) {
