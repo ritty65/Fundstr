@@ -123,7 +123,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         throw e;
       }
     },
-    addTier(tier: Partial<Tier> & { price?: number; perks?: string }) {
+    async addTier(tier: Partial<Tier> & { price?: number; perks?: string }) {
       let id = tier.id || uuidv4();
       while (this.tiers[id]) {
         id = uuidv4();
@@ -147,7 +147,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       if (!this.tierOrder.includes(id)) {
         this.tierOrder.push(id);
       }
-      maybeRepublishNutzapProfile();
+      await maybeRepublishNutzapProfile();
     },
     updateTier(
       id: string,
@@ -181,7 +181,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       if (data.id && this.tiers[data.id]) {
         this.updateTier(data.id, data);
       } else {
-        this.addTier(data);
+        await this.addTier(data);
       }
     },
     async saveTier(_tier: Tier) {
