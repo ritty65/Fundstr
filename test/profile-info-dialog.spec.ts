@@ -56,18 +56,18 @@ describe("ProfileInfoDialog", () => {
     await wrapper.setProps({ modelValue: true });
     await flushPromises();
     expect(fetchTiers).toHaveBeenCalledTimes(1);
-    expect(fetchTiers).toHaveBeenCalledWith("pk2");
+    expect(fetchTiers).toHaveBeenCalledWith("pk2", true);
   });
 
   it("reloads when pubkey changes while open", async () => {
     const wrapper = mountDialog({ modelValue: true, pubkey: "pk1" });
     await flushPromises();
     expect(fetchTiers).toHaveBeenCalledTimes(1);
-    expect(fetchTiers).toHaveBeenCalledWith("pk1");
+    expect(fetchTiers).toHaveBeenCalledWith("pk1", true);
 
     await wrapper.setProps({ pubkey: "pk2" });
     await flushPromises();
     expect(fetchTiers).toHaveBeenCalledTimes(2);
-    expect(fetchTiers).toHaveBeenLastCalledWith("pk2");
+    expect(fetchTiers).toHaveBeenLastCalledWith("pk2", true);
   });
 });

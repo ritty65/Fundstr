@@ -79,7 +79,7 @@ async function load() {
   following.value = await nostr.fetchFollowingCount(props.pubkey);
   joined.value = await nostr.fetchJoinDate(props.pubkey);
   recentPost.value = await nostr.fetchMostRecentPost(props.pubkey);
-  await creators.fetchTierDefinitions(props.pubkey);
+  await creators.fetchTierDefinitions(props.pubkey, true);
   tiers.value = creators.tiersMap[props.pubkey] || [];
 }
 
