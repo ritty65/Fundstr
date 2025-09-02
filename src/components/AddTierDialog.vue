@@ -23,6 +23,7 @@
           outlined
           dense
           class="q-mb-sm"
+          :disable="saving"
         />
         <q-input
           v-model.number="localTier.price_sats"
@@ -31,6 +32,7 @@
           outlined
           dense
           class="q-mb-sm"
+          :disable="saving"
         >
           <template #hint>
             <div v-if="bitcoinPrice">
@@ -59,6 +61,7 @@
           dense
           class="q-mb-sm"
           label="Interval"
+          :disable="saving"
         />
         <q-input
           v-model="localTier.description"
@@ -68,6 +71,7 @@
           outlined
           dense
           class="q-mb-sm"
+          :disable="saving"
         />
         <div class="text-caption text-grey q-mb-sm">
           Markdown formatting is supported.
@@ -80,6 +84,7 @@
           outlined
           dense
           class="q-mb-sm"
+          :disable="saving"
         />
         <div class="q-mt-md">
           <div class="row items-center justify-between q-mb-sm">
@@ -97,7 +102,14 @@
                 >Learn more</a
               >
             </div>
-            <q-btn flat dense icon="add" label="Add Media" @click="addMedia" />
+            <q-btn
+              flat
+              dense
+              icon="add"
+              label="Add Media"
+              @click="addMedia"
+              :disable="saving"
+            />
           </div>
           <div v-for="(m, idx) in localTier.media" :key="idx" class="q-mb-md">
             <div class="row items-center q-col-gutter-sm">
@@ -107,6 +119,7 @@
                 dense
                 outlined
                 class="col-2"
+                :disable="saving"
               />
               <q-input
                 v-model="m.url"
@@ -116,6 +129,7 @@
                 class="col"
                 :error="m.url ? !isTrustedUrl(m.url) : false"
                 error-message="Invalid URL"
+                :disable="saving"
               />
               <q-input
                 v-model="m.title"
@@ -123,11 +137,12 @@
                 outlined
                 dense
                 class="col-3"
+                :disable="saving"
               />
               <q-icon
                 name="delete"
                 class="cursor-pointer"
-                @click="removeMedia(idx)"
+                @click="!saving && removeMedia(idx)"
               />
             </div>
             <MediaPreview
@@ -139,10 +154,19 @@
         </div>
       </q-card-section>
       <q-card-actions align="between" class="q-pt-none">
-        <q-btn flat color="primary" @click="save">{{
-          $t("CreatorHub.dashboard.save_tier")
-        }}</q-btn>
-        <q-btn flat color="grey" v-close-popup>{{
+        <q-btn
+          label="Save"
+          color="primary"
+          :loading="saving"
+          :disable="saving"
+          @click="save"
+        />
+        <q-btn
+          flat
+          color="grey"
+          v-close-popup
+          :disable="saving"
+        >{{
           $t("global.actions.cancel.label")
         }}</q-btn>
       </q-card-actions>
@@ -151,7 +175,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, computed, reactive, watch } from "vue";
+import { defineComponent, computed, reactive, watch, ref } from "vue";
 import { useCreatorHubStore } from "stores/creatorHub";
 import type { Tier } from "stores/types";
 import { notifySuccess, notifyError } from "src/js/notify";
@@ -184,6 +208,7 @@ export default defineComponent({
     const uiStore = useUiStore();
     const creatorHub = useCreatorHubStore();
     const nostr = useNostrStore();
+    const saving = ref(false);
 
     const showLocal = computed({
       get: () => props.modelValue,
@@ -246,42 +271,43 @@ export default defineComponent({
     );
 
     const save = async () => {
-      if (!localTier.name || !localTier.name.trim()) {
-        notifyError("Tier name is required");
-        return;
-      }
-      if (!localTier.description || !localTier.description.trim()) {
-        notifyError("Description is required");
-        return;
-      }
-      if (!localTier.price_sats || localTier.price_sats <= 0) {
-        notifyError("Price must be a positive number");
-        return;
-      }
-      localTier.intervalDays = frequencyToDays(
-        (localTier.frequency as SubscriptionFrequency) || "monthly",
-      );
+      if (saving.value) return;
+      if (!localTier.name?.trim()) return notifyError("Tier name is required");
+      if (
+        !Number.isInteger(localTier.price_sats) ||
+        localTier.price_sats <= 0
+      )
+        return notifyError("Price must be a positive integer (sats)");
+      if (!localTier.description?.trim())
+        return notifyError("Description is required");
+
+      saving.value = true;
       try {
         await nostr.initSignerIfNotSet();
         if (!nostr.signer) {
-          notifyError(
+          throw new Error(
             "Please unlock or connect your Nostr signer before saving tiers",
           );
-          return;
         }
-        if (localTier.media) {
-          localTier.media = filterValidMedia(localTier.media);
-        }
-        await creatorHub.addOrUpdateTier({
+        const sanitized = {
           ...localTier,
-          media: localTier.media,
-        });
+          intervalDays: frequencyToDays(
+            (localTier.frequency as SubscriptionFrequency) || "monthly",
+          ),
+          media: filterValidMedia(localTier.media || []),
+        };
+        const id = await creatorHub.addOrUpdateTier(sanitized);
         await creatorHub.publishTierDefinitions();
-        notifySuccess("Tier saved & published");
-        emit("save");
+        emit("save", id as any);
         emit("update:modelValue", false);
+        notifySuccess("✅ Tier published to Nostr relays");
       } catch (e: any) {
-        notifyError(e.message);
+        notifyError(
+          e?.message ||
+            "Unable to publish to relays. Check signer/relays and try again.",
+        );
+      } finally {
+        saving.value = false;
       }
     };
 
@@ -301,6 +327,7 @@ export default defineComponent({
       mediaTypes,
       frequencyOptions,
       isTrustedUrl,
+      saving,
     };
   },
 });

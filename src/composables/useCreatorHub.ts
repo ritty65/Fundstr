@@ -214,14 +214,24 @@ export function useCreatorHub() {
     await nostr.connect(filteredRelays);
     publishing.value = true;
     try {
+      try {
+        await store.publishTierDefinitions();
+      } catch (e: any) {
+        notifyError(
+          e?.message ||
+            "Failed to publish tier definitions. Please check relay connectivity and try again.",
+        );
+        publishing.value = false;
+        return false;
+      }
       const timeoutMs = 30000;
       await Promise.race([
-          publishDiscoveryProfile({
-            profile: profile.value,
-            p2pkPub: profilePub.value,
-            mints: profileMints.value ? [profileMints.value] : [],
-            relays: filteredRelays,
-          }),
+        publishDiscoveryProfile({
+          profile: profile.value,
+          p2pkPub: profilePub.value,
+          mints: profileMints.value ? [profileMints.value] : [],
+          relays: filteredRelays,
+        }),
         new Promise((_, reject) =>
           setTimeout(() => reject(new PublishTimeoutError()), timeoutMs),
         ),
