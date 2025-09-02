@@ -189,11 +189,14 @@ export default defineComponent({
       get: () => props.modelValue,
       set: (val) => emit("update:modelValue", val),
     });
+    const defaultTier = () => ({
+      media: [],
+      frequency: "monthly",
+      intervalDays: 30,
+    });
 
     const localTier = reactive<Partial<Tier>>({
-      media: [],
-      frequency: "monthly" as SubscriptionFrequency,
-      intervalDays: 30,
+      ...defaultTier(),
       ...props.tier,
     });
 
@@ -218,16 +221,8 @@ export default defineComponent({
     watch(
       () => props.tier,
       (val) => {
-        Object.assign(
-          localTier,
-          {
-            media: [],
-            frequency: "monthly" as SubscriptionFrequency,
-            intervalDays: 30,
-          },
-        );
-        Object.assign(localTier, val);
-        if (!val?.id && "id" in localTier) delete (localTier as any).id;
+        Object.assign(localTier, defaultTier(), val);
+        if (!val.id) delete (localTier as any).id;
         if (!localTier.media) {
           localTier.media = [];
         }
