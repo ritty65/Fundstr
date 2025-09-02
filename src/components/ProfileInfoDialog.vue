@@ -84,9 +84,11 @@ async function load() {
 }
 
 watch(
-  () => props.pubkey,
-  () => {
-    load();
+  [() => props.modelValue, () => props.pubkey],
+  ([modelValue, pubkey], [oldModelValue, oldPubkey]) => {
+    if (modelValue && (!oldModelValue || pubkey !== oldPubkey)) {
+      load();
+    }
   },
   { immediate: true },
 );
