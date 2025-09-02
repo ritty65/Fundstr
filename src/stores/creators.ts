@@ -163,7 +163,7 @@ export const useCreatorsStore = defineStore("creators", {
       }
     },
 
-    async fetchTierDefinitions(creatorNpub: string) {
+    async fetchTierDefinitions(creatorNpub: string, silent = false) {
       this.tierFetchError = false;
 
       let hex = creatorNpub;
@@ -224,7 +224,7 @@ export const useCreatorsStore = defineStore("creators", {
         const indexerUrl = settings.tiersIndexerUrl;
         if (!indexerUrl) {
           this.tierFetchError = true;
-          notifyWarning("Unable to retrieve subscription tiers");
+          if (!silent) notifyWarning("Unable to retrieve subscription tiers");
           return;
         }
         const url = String(indexerUrl).includes("{pubkey}")
@@ -239,7 +239,7 @@ export const useCreatorsStore = defineStore("creators", {
           clearTimeout(id);
           if (!resp.ok) {
             this.tierFetchError = true;
-            notifyWarning("Unable to retrieve subscription tiers");
+            if (!silent) notifyWarning("Unable to retrieve subscription tiers");
             return;
           }
           const data = await resp.json();
@@ -257,7 +257,7 @@ export const useCreatorsStore = defineStore("creators", {
               : null);
           if (!event) {
             this.tierFetchError = true;
-            notifyWarning("Unable to retrieve subscription tiers");
+            if (!silent) notifyWarning("Unable to retrieve subscription tiers");
             return;
           }
           const tiersArray: Tier[] = JSON.parse(event.content).map(
@@ -279,7 +279,7 @@ export const useCreatorsStore = defineStore("creators", {
         } catch (e) {
           console.error("Indexer tier fetch error:", e);
           this.tierFetchError = true;
-          notifyWarning("Unable to retrieve subscription tiers");
+          if (!silent) notifyWarning("Unable to retrieve subscription tiers");
         }
       };
 

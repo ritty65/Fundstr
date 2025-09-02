@@ -166,7 +166,7 @@ export default defineComponent({
     const fetchTiers = async () => {
       loadingTiers.value = true;
       try {
-        await creators.fetchTierDefinitions(creatorHex);
+        await creators.fetchTierDefinitions(creatorHex, true);
       } finally {
         loadingTiers.value = false;
       }
