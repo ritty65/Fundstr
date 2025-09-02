@@ -15,7 +15,7 @@ import { useP2PKStore } from "stores/p2pk";
 import { useMintsStore } from "stores/mints";
 import { useCreatorProfileStore } from "stores/creatorProfile";
 import { notifySuccess, notifyError } from "src/js/notify";
-import { pingRelay } from "src/utils/relayHealth";
+import { filterHealthyRelays } from "src/utils/relayHealth";
 
 export const scanningMints = ref(false);
 
@@ -74,11 +74,6 @@ export async function scanForMints() {
   } finally {
     scanningMints.value = false;
   }
-}
-
-async function anyRelayReachable(urls: string[]): Promise<boolean> {
-  const results = await Promise.all(urls.map(pingRelay));
-  return results.some(Boolean);
 }
 
 export function useCreatorHub() {
@@ -199,10 +194,14 @@ export function useCreatorHub() {
       notifyError("Please configure at least one Nostr relay");
       return false;
     }
-    if (!(await anyRelayReachable(profileRelays.value))) {
-      notifyError("Unable to connect to any configured Nostr relays");
+    const filteredRelays = await filterHealthyRelays(profileRelays.value);
+    if (!filteredRelays.length) {
+      notifyError(
+        "Unable to connect to any configured Nostr relays. Please update your relay list",
+      );
       return false;
     }
+    await nostr.connect(filteredRelays);
     publishing.value = true;
     try {
       const timeoutMs = 30000;
@@ -211,7 +210,7 @@ export function useCreatorHub() {
             profile: profile.value,
             p2pkPub: profilePub.value,
             mints: profileMints.value ? [profileMints.value] : [],
-            relays: profileRelays.value,
+            relays: filteredRelays,
           }),
         new Promise((_, reject) =>
           setTimeout(() => reject(new PublishTimeoutError()), timeoutMs),
