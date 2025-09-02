@@ -32,6 +32,26 @@
         </q-banner>
         <NostrRelayErrorBanner />
         <q-banner
+          v-if="failedRelays.length"
+          dense
+          class="bg-red-2 q-mb-sm"
+        >
+          <div
+            v-for="url in failedRelays"
+            :key="url"
+            class="row items-center no-wrap"
+          >
+            <span>Relay {{ url }} unreachable</span>
+            <q-space />
+            <q-btn
+              flat
+              dense
+              label="Remove"
+              @click="removeRelay(url)"
+            />
+          </div>
+        </q-banner>
+        <q-banner
           v-if="(messenger.sendQueue || []).length"
           dense
           class="bg-orange-2 q-mb-sm"
@@ -203,6 +223,14 @@ export default defineComponent({
       }));
     });
 
+    const failedRelays = computed(() => nostr.failedRelays);
+
+    const removeRelay = (url: string) => {
+      messenger.removeRelay(url);
+      const idx = nostr.failedRelays.indexOf(url);
+      if (idx !== -1) nostr.failedRelays.splice(idx, 1);
+    };
+
     const nextReconnectIn = computed(() => {
       if (!ndkRef.value) return null;
       let earliest: number | null = null;
@@ -308,10 +336,12 @@ export default defineComponent({
       connectedCount,
       totalRelays,
       relayInfos,
+      failedRelays,
       nextReconnectIn,
       setupComplete,
       switchAccount,
       openDrawer,
+      removeRelay,
       ui,
     };
   },
