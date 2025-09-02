@@ -6,6 +6,30 @@
   border-radius: 8px;
 }
 
+:deep(.drag-handle) {
+  cursor: grab;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+:deep(.drag-handle:hover) {
+  background-color: var(--accent-200);
+}
+
+:deep(.drag-handle:active) {
+  cursor: grabbing;
+  background-color: var(--accent-600);
+  color: var(--text-inverse);
+}
+
+:deep(.drag-ghost) {
+  opacity: 0.5;
+}
+
 /* Dark slate gradient backgrounds */
 .gradient-dark-slate {
   background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
