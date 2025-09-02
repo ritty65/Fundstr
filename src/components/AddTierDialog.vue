@@ -283,6 +283,7 @@ export default defineComponent({
         });
         await creatorHub.publishTierDefinitions();
         notifySuccess("Tier saved & published");
+        emit("save");
         emit("update:modelValue", false);
       } catch (e: any) {
         notifyError(e.message);
