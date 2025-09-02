@@ -116,6 +116,7 @@ export function useCreatorHub() {
   const currentTier = ref<Partial<Tier>>({});
   const publishing = ref(false);
   const publishSuccess = ref(false);
+  const { publishRetryPending } = storeToRefs(store);
   const npub = computed(() =>
     nostr.pubkey ? nip19.npubEncode(nostr.pubkey) : "",
   );
@@ -342,6 +343,8 @@ export function useCreatorHub() {
     refreshTiers,
     removeTier,
     performDelete,
+    publishRetryPending,
+    retryPublishNow: () => store.retryPublishNow(),
     scanForMints,
     scanningMints,
   };

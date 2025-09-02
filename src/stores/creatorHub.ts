@@ -20,8 +20,34 @@ import type { Tier, TierMedia } from "./types";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { DEFAULT_RELAYS } from "src/config/relays";
 import { useSettingsStore } from "./settings";
+import { filterHealthyRelays } from "src/utils/relayHealth";
 
 const TIER_DEFINITIONS_KIND = 30000;
+
+let publishRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let publishRetryDelay = 2000;
+
+function schedulePublishRetry(store: any) {
+  if (publishRetryTimer) return;
+  const delay = publishRetryDelay;
+  publishRetryDelay = Math.min(publishRetryDelay * 2, 60_000);
+  publishRetryTimer = setTimeout(async () => {
+    publishRetryTimer = null;
+    try {
+      await store.publishTierDefinitions();
+      store.publishRetryPending = false;
+      publishRetryDelay = 2000;
+    } catch (e: any) {
+      if (e instanceof RelayConnectionError) {
+        schedulePublishRetry(store);
+      } else {
+        notifyError(e?.message ?? String(e));
+        store.publishRetryPending = false;
+        publishRetryDelay = 2000;
+      }
+    }
+  }, delay);
+}
 
 export async function maybeRepublishNutzapProfile() {
   const nostrStore = useNostrStore();
@@ -39,13 +65,35 @@ export async function maybeRepublishNutzapProfile() {
   }
   let current = null;
   try {
+    await ensureRelayConnectivity(ndk);
     current = await fetchNutzapProfile(nostrStore.pubkey);
   } catch (e: any) {
     if (e instanceof RelayConnectionError) {
-      notifyError("Unable to connect to Nostr relays");
-      return;
+      const settings = useSettingsStore();
+      const candidates = settings.defaultNostrRelays?.length
+        ? settings.defaultNostrRelays
+        : DEFAULT_RELAYS;
+      const healthy = await filterHealthyRelays(candidates).catch(() => []);
+      if (healthy.length) {
+        try {
+          await nostrStore.ensureNdkConnected(healthy as any);
+          await ensureRelayConnectivity(ndk);
+          current = await fetchNutzapProfile(nostrStore.pubkey);
+        } catch (err) {
+          notifyError(
+            `Unable to connect to Nostr relays: ${healthy.join(", ")}. Update your relay settings and try again.`,
+          );
+          return;
+        }
+      } else {
+        notifyError(
+          `Unable to connect to Nostr relays: attempted ${candidates.join(", ")}. Update your relay settings and try again.`,
+        );
+        return;
+      }
+    } else {
+      throw e;
     }
-    throw e;
   }
   const profileStore = useCreatorProfileStore();
   const desiredMint = profileStore.mints;
@@ -83,7 +131,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         }
       },
     );
-    return { tiers, tierOrder };
+    return { tiers, tierOrder, publishRetryPending: false };
   },
   actions: {
     async login(nsec?: string) {
@@ -248,36 +296,62 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       }
 
       await nostr.ensureNdkConnected();
-      try {
-        await ensureRelayConnectivity(ndk);
-      } catch (err) {
-        const defaults =
-          useSettingsStore().defaultNostrRelays || DEFAULT_RELAYS || [];
-        if (!defaults.length) throw err;
-        await nostr.ensureNdkConnected(defaults as any);
-        await ensureRelayConnectivity(ndk);
-      }
 
-      const ev = new NDKEvent(ndk);
-      ev.kind = TIER_DEFINITIONS_KIND as unknown as NDKKind;
-      ev.tags = [["d", "tiers"]];
-      ev.created_at = Math.floor(Date.now() / 1000);
-      ev.content = JSON.stringify(tiersArray);
-      await ev.sign(nostr.signer as any);
       try {
-        await ev.publish();
+        try {
+          await ensureRelayConnectivity(ndk);
+        } catch (err) {
+          const defaults =
+            useSettingsStore().defaultNostrRelays || DEFAULT_RELAYS || [];
+          if (!defaults.length) throw err;
+          await nostr.ensureNdkConnected(defaults as any);
+          await ensureRelayConnectivity(ndk);
+        }
+
+        const ev = new NDKEvent(ndk);
+        ev.kind = TIER_DEFINITIONS_KIND as unknown as NDKKind;
+        ev.tags = [["d", "tiers"]];
+        ev.created_at = Math.floor(Date.now() / 1000);
+        ev.content = JSON.stringify(tiersArray);
+        await ev.sign(nostr.signer as any);
+        try {
+          await ev.publish();
+        } catch (e: any) {
+          notifyError(e?.message ?? String(e));
+          throw e;
+        }
+
+        await db.creatorsTierDefinitions.put({
+          creatorNpub: nostr.pubkey,
+          tiers: tiersArray as any,
+          eventId: ev.id!,
+          updatedAt: ev.created_at!,
+          rawEventJson: JSON.stringify(ev.rawEvent()),
+        });
+
+        if (publishRetryTimer) {
+          clearTimeout(publishRetryTimer);
+          publishRetryTimer = null;
+        }
+        this.publishRetryPending = false;
+        publishRetryDelay = 2000;
       } catch (e: any) {
-        notifyError(e?.message ?? String(e));
+        if (e instanceof RelayConnectionError) {
+          this.publishRetryPending = true;
+          schedulePublishRetry(this);
+        }
         throw e;
       }
-
-      await db.creatorsTierDefinitions.put({
-        creatorNpub: nostr.pubkey,
-        tiers: tiersArray as any,
-        eventId: ev.id!,
-        updatedAt: ev.created_at!,
-        rawEventJson: JSON.stringify(ev.rawEvent()),
-      });
+    },
+    retryPublishNow() {
+      if (publishRetryTimer) {
+        clearTimeout(publishRetryTimer);
+        publishRetryTimer = null;
+      }
+      publishRetryDelay = 2000;
+      if (this.publishRetryPending) {
+        schedulePublishRetry(this);
+      }
     },
     setTierOrder(order: string[]) {
       this.tierOrder = [...order];

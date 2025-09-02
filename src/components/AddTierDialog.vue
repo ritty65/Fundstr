@@ -177,6 +177,7 @@
 <script lang="ts">
 import { defineComponent, computed, reactive, watch, ref } from "vue";
 import { useCreatorHubStore } from "stores/creatorHub";
+import { RelayConnectionError } from "stores/nostr";
 import type { Tier } from "stores/types";
 import { notifySuccess, notifyError } from "src/js/notify";
 import { useNostrStore } from "stores/nostr";
@@ -302,10 +303,16 @@ export default defineComponent({
         emit("update:modelValue", false);
         notifySuccess("✅ Tier published to Nostr relays");
       } catch (e: any) {
-        notifyError(
-          e?.message ||
-            "Unable to publish to relays. Check signer/relays and try again.",
-        );
+        if (e instanceof RelayConnectionError) {
+          notifyError(
+            "Tier saved locally. Unable to reach relays – will retry automatically.",
+          );
+        } else {
+          notifyError(
+            e?.message ||
+              "Unable to publish to relays. Check signer/relays and try again.",
+          );
+        }
       } finally {
         saving.value = false;
       }

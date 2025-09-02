@@ -1,6 +1,37 @@
 <template>
   <q-page class="bg-surface-1 q-pa-md">
     <q-card class="q-pa-lg bg-surface-2 shadow-4 full-width">
+      <NostrRelayErrorBanner />
+      <q-banner
+        v-if="!nostr.connected"
+        dense
+        class="bg-grey-3 q-mb-sm"
+      >
+        <div class="row items-center q-gutter-sm">
+          <span>Offline - {{ connectedCount }}/{{ totalRelays }} connected</span>
+          <q-btn flat dense label="Reconnect" @click="nostr.connect" />
+        </div>
+      </q-banner>
+      <q-banner
+        v-if="failedRelays.length"
+        dense
+        class="bg-red-2 q-mb-sm"
+      >
+        <div v-for="url in failedRelays" :key="url">
+          Relay {{ url }} unreachable
+        </div>
+      </q-banner>
+      <q-banner
+        v-if="publishRetryPending"
+        dense
+        class="bg-orange-2 q-mb-sm"
+      >
+        <div class="row items-center no-wrap">
+          <span>Tier changes queued - will publish when connected.</span>
+          <q-space />
+          <q-btn flat dense label="Retry Now" @click="retryPublishNow" />
+        </div>
+      </q-banner>
       <div class="row items-center justify-between q-mb-lg">
         <div class="text-h5">Creator Hub</div>
         <ThemeToggle />
@@ -142,7 +173,7 @@
 <script setup lang="ts">
 import Draggable from "vuedraggable";
 
-import { computed, ref } from "vue";
+import { computed, ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useCreatorHub } from "src/composables/useCreatorHub";
 import { useClipboard } from "src/composables/useClipboard";
@@ -152,6 +183,10 @@ import TierItem from "components/TierItem.vue";
 import AddTierDialog from "components/AddTierDialog.vue";
 import DeleteModal from "components/DeleteModal.vue";
 import ThemeToggle from "components/ThemeToggle.vue";
+import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
+import { useNostrStore } from "src/stores/nostr";
+import { useNdk } from "src/composables/useNdk";
+import type NDK from "@nostr-dev-kit/ndk";
 
 const {
   isMobile,
@@ -173,6 +208,8 @@ const {
   updateOrder,
   refreshTiers,
   performDelete,
+  publishRetryPending,
+  retryPublishNow,
 } = useCreatorHub();
 
 const nsec = ref("");
@@ -180,6 +217,21 @@ const nsec = ref("");
 const router = useRouter();
 const { copy } = useClipboard();
 const profileUrl = computed(() => buildProfileUrl(npub.value, router));
+
+const nostr = useNostrStore();
+const ndkRef = ref<NDK | null>(null);
+onMounted(async () => {
+  ndkRef.value = await useNdk();
+});
+
+const connectedCount = computed(() => {
+  if (!ndkRef.value) return 0;
+  return Array.from(ndkRef.value.pool.relays.values()).filter(
+    (r) => r.connected,
+  ).length;
+});
+const totalRelays = computed(() => ndkRef.value?.pool.relays.size || 0);
+const failedRelays = computed(() => nostr.failedRelays);
 </script>
 
 <style lang="scss" src="../css/creator-hub.scss" scoped></style>
