@@ -279,8 +279,17 @@ export function useCreatorHub() {
     deleteDialog.value = true;
   }
 
-  function updateOrder() {
+  async function updateOrder() {
     store.setTierOrder(draggableTiers.value.map((t) => t.id));
+    publishing.value = true;
+    try {
+      await store.publishTierDefinitions();
+      notifySuccess("Tier order updated");
+    } catch (e: any) {
+      notifyError(e?.message || "Failed to update tier order");
+    } finally {
+      publishing.value = false;
+    }
   }
 
   function refreshTiers() {
