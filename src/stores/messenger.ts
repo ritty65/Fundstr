@@ -123,6 +123,7 @@ export const useMessengerStore = defineStore("messenger", {
       storageKey("eventLog"),
       [] as MessengerMessage[],
     );
+    if (!Array.isArray(eventLog.value)) eventLog.value = [];
     const drawerOpen = useLocalStorage<boolean>(storageKey("drawerOpen"), true);
     const drawerMini = useLocalStorage<boolean>(
       storageKey("drawerMini"),
@@ -160,6 +161,7 @@ export const useMessengerStore = defineStore("messenger", {
       return nostr.connected;
     },
     sendQueue(): MessengerMessage[] {
+      if (!Array.isArray(this.eventLog)) this.eventLog = [];
       return this.eventLog.filter(
         (m) => m.outgoing && m.status === "failed",
       );
@@ -546,6 +548,7 @@ export const useMessengerStore = defineStore("messenger", {
       }
     },
     async retryFailedMessages() {
+      if (!Array.isArray(this.eventLog)) this.eventLog = [];
       for (const msg of this.sendQueue) {
         await this.retryMessage(msg);
       }
@@ -610,6 +613,7 @@ export const useMessengerStore = defineStore("messenger", {
       } catch {}
     },
     async addIncomingMessage(event: NostrEvent, plaintext?: string) {
+      if (!Array.isArray(this.eventLog)) this.eventLog = [];
       await this.loadIdentity();
       const nostr = useNostrStore();
       let privKey: string | undefined = undefined;

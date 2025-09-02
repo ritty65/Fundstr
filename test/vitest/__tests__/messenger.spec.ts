@@ -132,4 +132,15 @@ describe("messenger store", () => {
     expect(publishMock).toHaveBeenCalled();
     expect(messenger.conversations.r[0].content).toBe("");
   });
+
+  it("recovers from corrupted event log in localStorage", () => {
+    lsStore["cashu.messenger.pub.eventLog"] = "{\"bad\":1}";
+    setActivePinia(createPinia());
+    const messenger = useMessengerStore();
+    expect(Array.isArray(messenger.eventLog)).toBe(true);
+    expect(messenger.eventLog.length).toBe(0);
+    (messenger as any).eventLog = { bad: true } as any;
+    expect(messenger.sendQueue.length).toBe(0);
+    expect(Array.isArray(messenger.eventLog)).toBe(true);
+  });
 });
