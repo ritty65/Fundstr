@@ -44,7 +44,10 @@
     >
       <CreatorProfileForm />
       <div class="text-center q-mt-md">
-        <q-btn color="primary" :disable="!isDirty" @click="saveProfile"
+        <q-btn
+          color="primary"
+          :disable="!isDirty || !profilePub || !profileRelays.length"
+          @click="saveProfile"
           >Save Changes</q-btn
         >
       </div>
