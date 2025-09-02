@@ -26,6 +26,19 @@ import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useNdk } from "src/composables/useNdk";
 import { NDKEvent } from "@nostr-dev-kit/ndk";
 
+function ensureMap(ref: { value: any }) {
+  if (
+    !ref.value ||
+    typeof ref.value !== "object" ||
+    Array.isArray(ref.value) ||
+    Object.getPrototypeOf(ref.value) !== Object.prototype
+  ) {
+    ref.value = {};
+  }
+}
+
+let lastDecryptError = 0;
+
 function parseSubscriptionPaymentPayload(obj: any):
   | {
       token: string;
@@ -107,18 +120,22 @@ export const useMessengerStore = defineStore("messenger", {
       storageKey("conversations"),
       {} as Record<string, MessengerMessage[]>,
     );
+    ensureMap(conversations);
     const unreadCounts = useLocalStorage<Record<string, number>>(
       storageKey("unread"),
       {} as Record<string, number>,
     );
+    ensureMap(unreadCounts);
     const pinned = useLocalStorage<Record<string, boolean>>(
       storageKey("pinned"),
       {} as Record<string, boolean>,
     );
+    ensureMap(pinned);
     const aliases = useLocalStorage<Record<string, string>>(
       storageKey("aliases"),
       {} as Record<string, string>,
     );
+    ensureMap(aliases);
     const eventLog = useLocalStorage<MessengerMessage[]>(
       storageKey("eventLog"),
       [] as MessengerMessage[],
@@ -630,7 +647,18 @@ export const useMessengerStore = defineStore("messenger", {
           plaintext ??
           (await nostr.decryptDmContent(privKey, event.pubkey, event.content));
       } catch (e) {
-        notifyError("Failed to decrypt message – ensure your Nostr extension is unlocked");
+        const now = Date.now();
+        if (now - lastDecryptError > 30000) {
+          notifyError(
+            "Failed to decrypt message – ensure your Nostr extension is unlocked",
+          );
+          lastDecryptError = now;
+        } else {
+          console.warn(
+            "Failed to decrypt message – ensure your Nostr extension is unlocked",
+            e,
+          );
+        }
         return;
       }
       let subscriptionInfo: SubscriptionPayment | undefined;
@@ -799,23 +827,35 @@ export const useMessengerStore = defineStore("messenger", {
 
     async start() {
       if (this.started) return;
+      this.normalizeStoredConversations();
       try {
         this.dmUnsub?.();
         await this.loadIdentity();
         const nostr = useNostrStore();
         const ndk = await useNdk();
         const since = this.eventLog[this.eventLog.length - 1]?.created_at || 0;
-        const sub = ndk.subscribe(
+        const incomingSub = ndk.subscribe(
           { kinds: [4], "#p": [nostr.pubkey], since },
           { closeOnEose: false, groupable: false },
         );
-        sub.on("event", async (event: NDKEvent) => {
+        incomingSub.on("event", async (event: NDKEvent) => {
           const raw = await event.toNostrEvent();
           this.addIncomingMessage(raw as NostrEvent);
         });
+        const outgoingSub = ndk.subscribe(
+          { kinds: [4], authors: [nostr.pubkey], since },
+          { closeOnEose: false, groupable: false },
+        );
+        outgoingSub.on("event", async (event: NDKEvent) => {
+          const raw = await event.toNostrEvent();
+          this.pushOwnMessage(raw as NostrEvent);
+        });
         this.dmUnsub = () => {
           try {
-            sub.stop();
+            incomingSub.stop();
+          } catch {}
+          try {
+            outgoingSub.stop();
           } catch {}
         };
       } catch (e) {
