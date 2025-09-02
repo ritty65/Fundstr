@@ -104,7 +104,7 @@ watch(
 const displayName = computed(() => {
   if (!props.pubkey) return "";
   const alias = messenger.aliases[props.pubkey];
-  if (alias) return alias;
+  if (typeof alias === "string") return alias;
   const p: any = profile.value;
   if (p?.display_name) return p.display_name;
   if (p?.name) return p.name;
@@ -116,7 +116,9 @@ const displayName = computed(() => {
 });
 
 const initials = computed(() => {
-  const name = displayName.value.trim();
+  const name = (typeof displayName.value === "string"
+    ? displayName.value
+    : "").trim();
   if (!name) return "";
   const parts = name.split(" ");
   if (parts.length >= 2) {
