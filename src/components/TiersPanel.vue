@@ -5,6 +5,9 @@
       v-model="draggableTiers"
       item-key="id"
       handle=".drag-handle"
+      ghost-class="drag-ghost"
+      animation="200"
+      swap-threshold="0.65"
       class="space-y-4"
       @end="updateOrder"
     >

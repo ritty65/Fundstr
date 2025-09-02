@@ -62,6 +62,9 @@
                   v-model="draggableTiers"
                   item-key="id"
                   handle=".drag-handle"
+                  ghost-class="drag-ghost"
+                  animation="200"
+                  swap-threshold="0.65"
                   @end="updateOrder"
                 >
                   <template #item="{ element }">
@@ -100,6 +103,9 @@
                     v-model="draggableTiers"
                     item-key="id"
                     handle=".drag-handle"
+                    ghost-class="drag-ghost"
+                    animation="200"
+                    swap-threshold="0.65"
                     @end="updateOrder"
                   >
                     <template #item="{ element }">
