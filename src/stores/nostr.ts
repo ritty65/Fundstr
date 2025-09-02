@@ -724,6 +724,7 @@ export const useNostrStore = defineStore("nostr", {
       nip07SignerAvailable: true,
       nip07Checked: false,
       nip07Warned: false,
+      nip07RetryInterval: null as ReturnType<typeof setInterval> | null,
       mintRecommendations: useLocalStorage<MintRecommendation[]>(
         "cashu.ndk.mintRecommendations",
         [],
@@ -974,18 +975,17 @@ export const useNostrStore = defineStore("nostr", {
     },
     initSignerIfNotSet: async function () {
       await this.loadKeysFromStorage();
-      if (!this.signer) {
-        if (
-          this.signerType === SignerType.NIP07 &&
-          this.nip07Checked &&
-          !this.nip07SignerAvailable
-        ) {
+      if (this.signerType === SignerType.NIP07) {
+        const available = await this.checkNip07Signer();
+        if (!available && !this.signer) {
           if (!this.initialized) {
             await this.initNdkReadOnly();
             this.initialized = true;
           }
           return;
         }
+      }
+      if (!this.signer) {
         this.initialized = false; // force re-initialisation
       }
       if (!this.initialized) {
@@ -1144,7 +1144,7 @@ export const useNostrStore = defineStore("nostr", {
       if (this.nip07Checked && this.nip07SignerAvailable && !force) return true;
       const flag = localStorage.getItem("nip07.enabled");
       try {
-        if (!flag || force) {
+        if (!flag || force || !this.nip07SignerAvailable) {
           await (window as any).nostr?.enable?.();
         }
         const signer = new NDKNip07Signer();
@@ -1152,10 +1152,25 @@ export const useNostrStore = defineStore("nostr", {
         this.nip07SignerAvailable = true;
         this.nip07Checked = true;
         localStorage.setItem("nip07.enabled", "1");
+        if (this.nip07RetryInterval) {
+          clearInterval(this.nip07RetryInterval);
+          this.nip07RetryInterval = null;
+        }
       } catch (e) {
         this.nip07SignerAvailable = false;
         this.nip07Checked = false;
-        localStorage.removeItem("nip07.enabled");
+        if (this.signerType === SignerType.NIP07 && !this.nip07RetryInterval) {
+          this.nip07RetryInterval = window.setInterval(async () => {
+            const available = await this.checkNip07Signer();
+            if (available) {
+              if (this.nip07RetryInterval) {
+                clearInterval(this.nip07RetryInterval);
+                this.nip07RetryInterval = null;
+              }
+              await this.initSignerIfNotSet();
+            }
+          }, 3000);
+        }
       }
       return this.nip07SignerAvailable;
     },
