@@ -13,12 +13,13 @@ import { useP2PKStore } from "./p2pk";
 import { useCreatorProfileStore } from "./creatorProfile";
 import { db } from "./dexie";
 import { v4 as uuidv4 } from "uuid";
-import { notifySuccess, notifyError } from "src/js/notify";
+import { notifyError } from "src/js/notify";
 import { filterValidMedia } from "src/utils/validateMedia";
 import { useNdk } from "src/composables/useNdk";
-import { filterHealthyRelays } from "src/utils/relayHealth";
 import type { Tier, TierMedia } from "./types";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
+import { DEFAULT_RELAYS } from "src/config/relays";
+import { useSettingsStore } from "./settings";
 
 const TIER_DEFINITIONS_KIND = 30000;
 
@@ -148,6 +149,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         this.tierOrder.push(id);
       }
       await maybeRepublishNutzapProfile();
+      return id;
     },
     updateTier(
       id: string,
@@ -180,8 +182,9 @@ export const useCreatorHubStore = defineStore("creatorHub", {
     async addOrUpdateTier(data: Partial<Tier>) {
       if (data.id && this.tiers[data.id]) {
         this.updateTier(data.id, data);
+        return data.id;
       } else {
-        await this.addTier(data);
+        return await this.addTier(data);
       }
     },
     async saveTier(_tier: Tier) {
@@ -239,19 +242,20 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         throw new Error("Signer required to publish tier definitions");
       }
 
-      const filteredRelays = await filterHealthyRelays([...nostr.relays]);
-      if (filteredRelays.length === 0) {
-        notifyError(
-          "Unable to connect to any configured Nostr relays. Please update your relay list",
-        );
-        throw new Error("No relay connected");
-      }
-
-      await nostr.connect(filteredRelays as any);
-
       const ndk = await useNdk();
       if (!ndk) {
         throw new Error("NDK not initialised – cannot publish tiers");
+      }
+
+      await nostr.ensureNdkConnected();
+      try {
+        await ensureRelayConnectivity(ndk);
+      } catch (err) {
+        const defaults =
+          useSettingsStore().defaultNostrRelays || DEFAULT_RELAYS || [];
+        if (!defaults.length) throw err;
+        await nostr.ensureNdkConnected(defaults as any);
+        await ensureRelayConnectivity(ndk);
       }
 
       const ev = new NDKEvent(ndk);
@@ -261,7 +265,6 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       ev.content = JSON.stringify(tiersArray);
       await ev.sign(nostr.signer as any);
       try {
-        await ensureRelayConnectivity(ndk);
         await ev.publish();
       } catch (e: any) {
         notifyError(e?.message ?? String(e));
@@ -275,8 +278,6 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         updatedAt: ev.created_at!,
         rawEventJson: JSON.stringify(ev.rawEvent()),
       });
-
-      notifySuccess("Tiers published");
     },
     setTierOrder(order: string[]) {
       this.tierOrder = [...order];
