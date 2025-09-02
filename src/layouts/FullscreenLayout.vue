@@ -12,7 +12,9 @@
     <PublishBar
       v-if="loggedIn && showPublishBar"
       :publishing="publishing"
+      :published="publishSuccess"
       @publish="publishFullProfile"
+      @clear="clearPublishSuccess"
     />
   </q-layout>
 </template>
@@ -38,9 +40,15 @@ export default defineComponent({
     PublishBar,
   },
   setup() {
-    const { loggedIn, publishFullProfile, publishing } = useCreatorHub();
+    const { loggedIn, publishFullProfile, publishing, isDirty, publishSuccess } =
+      useCreatorHub();
     const route = useRoute();
-    const showPublishBar = computed(() => route.path === "/creator-hub");
+    const showPublishBar = computed(
+      () => route.path === "/creator-hub" && (isDirty.value || publishSuccess.value),
+    );
+    function clearPublishSuccess() {
+      publishSuccess.value = false;
+    }
 
     const $q = useQuasar();
     const ui = useUiStore();
@@ -56,6 +64,8 @@ export default defineComponent({
       loggedIn,
       publishFullProfile,
       publishing,
+      publishSuccess,
+      clearPublishSuccess,
       showPublishBar,
       navStyleVars,
       route,
