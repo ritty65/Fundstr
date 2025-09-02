@@ -71,6 +71,7 @@ import { useCreatorHubStore } from "./creatorHub";
 const STORAGE_SECRET = "cashu_ndk_storage_key";
 let cachedKey: CryptoKey | null = null;
 const RECONNECT_BACKOFF_MS = 15000; // 15s cooldown after failed attempts
+const MAX_RECONNECT_BACKOFF_MS = 5 * 60_000; // cap at 5 minutes
 
 async function getKey(): Promise<CryptoKey> {
   if (cachedKey) return cachedKey;
@@ -734,6 +735,8 @@ export const useNostrStore = defineStore("nostr", {
       lastError: "" as string | null,
       connectionFailed: false,
       reconnectBackoffUntil: 0,
+      reconnectFailures: 0,
+      failedRelays: [] as string[],
       lastNip04EventTimestamp,
       lastNip17EventTimestamp,
       nip17EventIdsWeHaveSeen: useLocalStorage<NostrEventLog[]>(
@@ -912,11 +915,18 @@ export const useNostrStore = defineStore("nostr", {
         this.connected = true;
         this.lastError = null;
         this.reconnectBackoffUntil = 0;
+        this.reconnectFailures = 0;
+        this.failedRelays = [];
         this.connectionFailed = false;
       } catch (e: any) {
         this.connected = false;
         this.lastError = e?.message ?? String(e);
-        this.reconnectBackoffUntil = Date.now() + RECONNECT_BACKOFF_MS;
+        this.reconnectFailures++;
+        const backoff = Math.min(
+          RECONNECT_BACKOFF_MS * 2 ** this.reconnectFailures,
+          MAX_RECONNECT_BACKOFF_MS,
+        );
+        this.reconnectBackoffUntil = Date.now() + backoff;
         this.connectionFailed = true;
         window.dispatchEvent(new Event("nostr-connect-failed"));
         notifyError(this.lastError);
@@ -930,15 +940,18 @@ export const useNostrStore = defineStore("nostr", {
         this.relays = [...this.relays];
       });
 
-      // 5. background logging – never throw
+      // 5. track relay health – never throw
       Promise.allSettled(connectPromises).then((res) =>
         res.forEach((r, i) => {
+          const url = relaysArr[i].url;
           if (r.status === "rejected") {
-            console.warn("[nostr] relay", relaysArr[i].url, "failed", r.reason);
-            notifyWarning(
-              `Relay ${relaysArr[i].url} failed`,
-              (r.reason as any)?.message ?? String(r.reason),
-            );
+            if (!this.failedRelays.includes(url)) {
+              this.failedRelays.push(url);
+              notifyWarning(`Relay ${url} unreachable`);
+            }
+          } else {
+            const idx = this.failedRelays.indexOf(url);
+            if (idx !== -1) this.failedRelays.splice(idx, 1);
           }
         }),
       );

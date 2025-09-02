@@ -102,12 +102,13 @@
 <script lang="ts" setup>
 import { ref, watch, computed, onMounted, onUnmounted } from "vue";
 import { useMessengerStore } from "src/stores/messenger";
-import { notifySuccess, notifyError } from "src/js/notify";
+import { notifySuccess, notifyError, notifyWarning } from "src/js/notify";
 import { useNdk } from "src/composables/useNdk";
 import { DEFAULT_RELAYS } from "src/config/relays";
 import type NDK from "@nostr-dev-kit/ndk";
 import { NDKRelayStatus } from "@nostr-dev-kit/ndk";
 import { useNostrStore } from "src/stores/nostr";
+import { filterHealthyRelays } from "src/utils/relayHealth";
 
 const messenger = useMessengerStore();
 const nostr = useNostrStore();
@@ -183,11 +184,14 @@ const connect = async () => {
     .filter(Boolean);
   const uniqueUrls = Array.from(new Set(urls));
   try {
+    const healthy = await filterHealthyRelays(uniqueUrls);
     const ndk = await useNdk({ requireSigner: false });
-    for (const url of uniqueUrls) {
+    for (const url of healthy) {
       ndk.addExplicitRelay(url);
     }
-    await messenger.connect(uniqueUrls);
+    await messenger.connect(healthy);
+    const failed = uniqueUrls.filter((u) => !healthy.includes(u));
+    failed.forEach((u) => notifyWarning(`Relay ${u} unreachable`));
     notifySuccess("Connected to relays");
   } catch (err: any) {
     notifyError(err?.message || "Failed to connect");
