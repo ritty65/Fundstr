@@ -218,11 +218,20 @@ export default defineComponent({
     watch(
       () => props.tier,
       (val) => {
+        Object.assign(
+          localTier,
+          {
+            media: [],
+            frequency: "monthly" as SubscriptionFrequency,
+            intervalDays: 30,
+          },
+        );
         Object.assign(localTier, val);
-        if (!val.media) {
+        if (!val?.id && "id" in localTier) delete (localTier as any).id;
+        if (!localTier.media) {
           localTier.media = [];
         }
-        if (!val.frequency) {
+        if (!localTier.frequency) {
           localTier.frequency = "monthly";
         }
         localTier.intervalDays = frequencyToDays(
