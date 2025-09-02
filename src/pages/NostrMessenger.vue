@@ -67,9 +67,6 @@
             />
           </div>
         </q-banner>
-        <div class="row justify-end q-mb-sm" v-if="!loading">
-          <q-btn flat dense label="Switch Account" @click="switchAccount" />
-        </div>
         <q-spinner v-if="loading" size="lg" color="primary" />
         <ActiveChatHeader :pubkey="selected" :relays="relayInfos" />
       <MessageList :messages="messages" class="col" />
@@ -112,7 +109,6 @@ import ChatSendTokenDialog from "components/ChatSendTokenDialog.vue";
 import NostrSetupWizard from "components/NostrSetupWizard.vue";
 import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 import { useQuasar, TouchSwipe } from "quasar";
-import { notifyWarning, notifyError } from "src/js/notify";
 
 export default defineComponent({
   name: "NostrMessenger",
@@ -308,20 +304,6 @@ export default defineComponent({
       await init();
     };
 
-    const switchAccount = async () => {
-      try {
-        const hasExt = await nostr.checkNip07Signer(true);
-        if (!hasExt) {
-          notifyWarning("No NIP-07 extension detected");
-          return;
-        }
-        await nostr.connectBrowserSigner();
-      } catch (e) {
-        console.error(e);
-        notifyError("Failed to connect NIP-07 provider");
-      }
-    };
-
     return {
       loading,
       connecting,
@@ -339,7 +321,6 @@ export default defineComponent({
       failedRelays,
       nextReconnectIn,
       setupComplete,
-      switchAccount,
       openDrawer,
       removeRelay,
       ui,
