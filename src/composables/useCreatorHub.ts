@@ -15,7 +15,9 @@ import { useP2PKStore } from "stores/p2pk";
 import { useMintsStore } from "stores/mints";
 import { useCreatorProfileStore } from "stores/creatorProfile";
 import { notifySuccess, notifyError } from "src/js/notify";
-import { filterHealthyRelays } from "src/utils/relayHealth";
+import { filterHealthyRelays, anyRelayReachable } from "src/utils/relayHealth";
+import { DEFAULT_RELAYS } from "src/config/relays";
+import { useSettingsStore } from "stores/settings";
 
 export const scanningMints = ref(false);
 
@@ -82,6 +84,7 @@ export function useCreatorHub() {
   const p2pkStore = useP2PKStore();
   const mintsStore = useMintsStore();
   const profileStore = useCreatorProfileStore();
+  const settings = useSettingsStore();
   const $q = useQuasar();
 
   const {
@@ -194,13 +197,20 @@ export function useCreatorHub() {
       notifyError("Please configure at least one Nostr relay");
       return false;
     }
-    const filteredRelays = await filterHealthyRelays(profileRelays.value);
-    if (!filteredRelays.length) {
-      notifyError(
-        "Unable to connect to any configured Nostr relays. Please update your relay list",
-      );
-      return false;
+
+    let relaysToUse = profileRelays.value;
+    if (!(await anyRelayReachable(relaysToUse))) {
+      relaysToUse = DEFAULT_RELAYS;
+      if (!(await anyRelayReachable(relaysToUse))) {
+        notifyError(
+          "Unable to connect to any configured Nostr relays. Please update your relay list",
+        );
+        return false;
+      }
     }
+
+    const filteredRelays = await filterHealthyRelays(relaysToUse);
+    settings.defaultNostrRelays = filteredRelays;
     await nostr.connect(filteredRelays);
     publishing.value = true;
     try {
