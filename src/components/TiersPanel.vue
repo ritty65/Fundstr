@@ -38,6 +38,7 @@ import TierCard from "./TierCard.vue";
 import { useCreatorHubStore } from "stores/creatorHub";
 import type { Tier } from "stores/types";
 import { v4 as uuidv4 } from "uuid";
+import { notifyError } from "src/js/notify";
 
 const store = useCreatorHubStore();
 const deleteDialog = ref(false);
@@ -56,17 +57,21 @@ function updateOrder() {
   store.setTierOrder(draggableTiers.value.map((t) => t.id));
 }
 
-function addTier() {
+async function addTier() {
   const id = uuidv4();
-  store.addTier({
-    id,
-    name: "",
-    price_sats: 0,
-    description: "",
-    welcomeMessage: "",
-    frequency: "monthly",
-    intervalDays: 30,
-  });
+  try {
+    await store.addTier({
+      id,
+      name: "",
+      price_sats: 0,
+      description: "",
+      welcomeMessage: "",
+      frequency: "monthly",
+      intervalDays: 30,
+    });
+  } catch (e: any) {
+    notifyError(e?.message || "Failed to add tier");
+  }
 }
 
 function confirmDelete(id: string) {
@@ -76,8 +81,12 @@ function confirmDelete(id: string) {
 
 async function performDelete() {
   if (!deleteId.value) return;
-  await store.removeTier(deleteId.value);
-  await store.publishTierDefinitions();
-  deleteDialog.value = false;
+  try {
+    await store.removeTier(deleteId.value);
+    await store.publishTierDefinitions();
+    deleteDialog.value = false;
+  } catch (e: any) {
+    notifyError(e?.message || "Failed to delete tier");
+  }
 }
 </script>

@@ -269,7 +269,7 @@ export function useCreatorHub() {
 
   async function removeTier(id: string) {
     try {
-      store.removeTier(id);
+      await store.removeTier(id);
       await store.publishTierDefinitions();
     } catch (e: any) {
       notifyError(e?.message || "Failed to delete tier");

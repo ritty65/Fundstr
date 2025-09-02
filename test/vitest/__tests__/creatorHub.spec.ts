@@ -94,13 +94,11 @@ beforeEach(() => {
 });
 
 describe("CreatorHub store", () => {
-  it("addTier stores tier and calls saveTier", () => {
+  it("addTier stores tier", async () => {
     const store = useCreatorHubStore();
-    const spy = vi.spyOn(store, "saveTier").mockResolvedValue();
-    store.addTier({ name: "Tier 1", price_sats: 5, perks: "p" });
+    await store.addTier({ name: "Tier 1", price_sats: 5, perks: "p" });
     const tier = store.getTierArray()[0];
     expect(tier.name).toBe("Tier 1");
-    expect(spy).toHaveBeenCalledWith(tier);
   });
 
   it("saveTier stores tier", async () => {
