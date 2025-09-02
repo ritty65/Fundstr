@@ -1,10 +1,18 @@
 import { describe, it, expect, vi } from "vitest";
 import { shallowMount } from "@vue/test-utils";
-import * as quasar from "quasar";
 
-vi.spyOn(quasar, "useQuasar").mockReturnValue({
-  screen: { lt: { md: false } },
+vi.mock("quasar", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    useQuasar: () => ({ screen: { lt: { md: false } } }),
+  };
 });
+
+let currentRoute = { path: "/creator-hub", meta: {} };
+vi.mock("vue-router", () => ({
+  useRoute: () => currentRoute,
+}));
 
 const creatorHubStoreMock = {
   tiers: {},
@@ -32,6 +40,7 @@ const nostrStoreMock = {
   relays: [] as string[],
   connected: true,
   lastError: null,
+  hasIdentity: true,
 };
 
 vi.mock("../../../src/stores/nostr", async (importOriginal) => {
@@ -62,6 +71,7 @@ const profileStoreMock = {
   relays: [] as string[],
   setProfile: vi.fn(),
   markClean: vi.fn(),
+  isDirty: true,
 };
 
 vi.mock("../../../src/stores/creatorProfile", () => ({
@@ -91,19 +101,39 @@ import CreatorHubPage from "../../../src/pages/CreatorHubPage.vue";
 import FullscreenLayout from "../../../src/layouts/FullscreenLayout.vue";
 
 describe("CreatorHubPage layout", () => {
-  it("renders PublishBar only on creator hub page", () => {
-    const wrapper = shallowMount(FullscreenLayout, {
+  it("renders PublishBar only when profile is dirty on creator hub page", () => {
+    profileStoreMock.isDirty = true;
+    currentRoute.path = "/creator-hub";
+    const wrapperDirty = shallowMount(FullscreenLayout, {
       global: {
-        stubs: { "router-view": CreatorHubPage },
-        mocks: { $route: { path: "/creator-hub" } },
+        stubs: {
+          "router-view": CreatorHubPage,
+          "q-layout": { template: "<div><slot /></div>" },
+        },
       },
     });
-    expect(wrapper.find("publish-bar-stub").exists()).toBe(true);
+    expect(wrapperDirty.find("publish-bar-stub").exists()).toBe(true);
 
+    profileStoreMock.isDirty = false;
+    currentRoute.path = "/creator-hub";
+    const wrapperClean = shallowMount(FullscreenLayout, {
+      global: {
+        stubs: {
+          "router-view": CreatorHubPage,
+          "q-layout": { template: "<div><slot /></div>" },
+        },
+      },
+    });
+    expect(wrapperClean.find("publish-bar-stub").exists()).toBe(false);
+
+    profileStoreMock.isDirty = true;
+    currentRoute.path = "/wallet";
     const wrapperOther = shallowMount(FullscreenLayout, {
       global: {
-        stubs: { "router-view": CreatorHubPage },
-        mocks: { $route: { path: "/wallet" } },
+        stubs: {
+          "router-view": CreatorHubPage,
+          "q-layout": { template: "<div><slot /></div>" },
+        },
       },
     });
     expect(wrapperOther.find("publish-bar-stub").exists()).toBe(false);
