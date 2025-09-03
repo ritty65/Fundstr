@@ -5,7 +5,11 @@
       <q-btn color="primary" :disable="!isDirty" @click="saveProfile"
         >Save Changes</q-btn
       >
-      <q-btn color="primary" outline :disable="!isDirty" @click="publishProfile"
+      <q-btn
+        color="primary"
+        outline
+        :disable="publishing || !hasSigner || !hasAnyRelay || !isDirty"
+        @click="publishProfile"
         >Publish Profile</q-btn
       >
     </div>
@@ -13,7 +17,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import CreatorProfileForm from "./CreatorProfileForm.vue";
 import { useCreatorHubStore } from "stores/creatorHub";
 import { useCreatorProfileStore } from "stores/creatorProfile";
@@ -41,7 +45,20 @@ const {
   isDirty,
 } = storeToRefs(profileStore);
 
+const publishing = ref(false);
+const hasSigner = computed(() => !!nostr.signer);
+const hasAnyRelay = computed(() => profileRelays.value.length > 0);
+
 async function publishProfile() {
+  if (!hasSigner.value) {
+    notifyError("You need to connect a Nostr signer before publishing your profile");
+    return;
+  }
+  if (!hasAnyRelay.value) {
+    notifyError("Add at least one Nostr relay before publishing your profile");
+    return;
+  }
+  publishing.value = true;
   try {
     await publishDiscoveryProfile({
       profile: {
@@ -61,6 +78,8 @@ async function publishProfile() {
     } else {
       notifyError(e?.message || "Failed to publish profile");
     }
+  } finally {
+    publishing.value = false;
   }
 }
 
