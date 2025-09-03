@@ -9,13 +9,12 @@ import {
   fetchNutzapProfile,
   publishDiscoveryProfile,
   RelayConnectionError,
-  PublishTimeoutError,
 } from "stores/nostr";
+import NDK from "@nostr-dev-kit/ndk";
 import { useP2PKStore } from "stores/p2pk";
 import { useMintsStore } from "stores/mints";
 import { useCreatorProfileStore } from "stores/creatorProfile";
 import { notifySuccess, notifyError } from "src/js/notify";
-import { pingRelay } from "src/utils/relayHealth";
 
 export const scanningMints = ref(false);
 
@@ -76,10 +75,6 @@ export async function scanForMints() {
   }
 }
 
-async function anyRelayReachable(urls: string[]): Promise<boolean> {
-  const results = await Promise.all(urls.map(pingRelay));
-  return results.some(Boolean);
-}
 
 export function useCreatorHub() {
   const store = useCreatorHubStore();
@@ -182,14 +177,9 @@ export function useCreatorHub() {
 
   async function saveAndPublish() {
     publishing.value = true;
-    const relayReachable = await anyRelayReachable(profileRelays.value);
-    if (!relayReachable) {
-      store.getTierArray().forEach((tier) => {
-        store.tiers[tier.id].publishStatus = "failed";
-      });
-      notifyError(
-        "Publish Failed: Could not connect to any of your configured Nostr relays.",
-      );
+
+    if (!profileRelays.value.length) {
+      notifyError("Please configure at least one Nostr relay");
       publishing.value = false;
       return false;
     }
@@ -200,43 +190,64 @@ export function useCreatorHub() {
       return false;
     }
 
-    await nostr.initSignerIfNotSet();
-
     if (!nostr.signer) {
       notifyError("Please connect a Nostr signer (NIP-07 or nsec)");
       publishing.value = false;
       return false;
     }
 
-    if (!profileRelays.value.length) {
-      notifyError("Please configure at least one Nostr relay");
-      publishing.value = false;
-      return false;
-    }
+    // 1. Create a NEW, temporary NDK instance for this action only.
+    const publisherNdk = new NDK({
+      explicitRelayUrls: profileRelays.value,
+    });
+
+    // Manually set the signer from the global nostr store
+    publisherNdk.signer = nostr.signer;
+
+    // Set all tiers to 'pending' for immediate UI feedback
+    store.getTierArray().forEach((tier) => {
+      if (store.tiers[tier.id]) {
+        store.tiers[tier.id].publishStatus = "pending";
+      }
+    });
+
     try {
-      const timeoutMs = 30000;
-      await Promise.race([
-        (async () => {
-          await publishDiscoveryProfile({
-            profile: profile.value,
-            p2pkPub: profilePub.value,
-            mints: profileMints.value ? [profileMints.value] : [],
-            relays: profileRelays.value,
-          });
-          const tiersOk = await store.publishTierDefinitions();
-          if (!tiersOk) throw new Error("tiers publish failed");
-          profileStore.markClean();
-        })(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new PublishTimeoutError()), timeoutMs),
-        ),
-      ]);
-      notifySuccess("Profile and tiers published!");
-      return true;
-    } catch (e: any) {
-      notifyError("Failed to publish. Check relay connections.");
-      return false;
+      // 2. Actively connect with a timeout. This is the crucial step.
+      await publisherNdk.connect(3000); // 3 second timeout
+
+      // 3. If connected, proceed to publish profile and tiers.
+      // We reuse the existing logic but target our new 'publisherNdk' instance.
+
+      const profileOk = await publishDiscoveryProfile({
+        profile: profile.value,
+        p2pkPub: profilePub.value,
+        mints: profileMints.value ? [profileMints.value] : [],
+        relays: profileRelays.value,
+        ndk: publisherNdk,
+      });
+
+      const tiersOk = await store.publishTierDefinitions(publisherNdk); // Pass instance here too
+
+      if (profileOk && tiersOk) {
+        notifySuccess("Profile and tiers published!");
+        profileStore.markClean();
+      } else {
+        throw new Error("One or more publishing actions failed.");
+      }
+    } catch (error) {
+      console.error("Publishing failed:", error);
+      notifyError(
+        "Publishing failed. Could not connect to relays or relays rejected the event.",
+      );
+      // Manually fail all tiers on error
+      store.getTierArray().forEach((tier) => {
+        if (store.tiers[tier.id]) {
+          store.tiers[tier.id].publishStatus = "failed";
+        }
+      });
     } finally {
+      // 4. Always disconnect and destroy the temporary instance.
+      publisherNdk.disconnect();
       publishing.value = false;
     }
   }
