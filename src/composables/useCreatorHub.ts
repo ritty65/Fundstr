@@ -250,7 +250,13 @@ export function useCreatorHub() {
       notifySuccess("Profile and tiers published!");
       return true;
     } catch (e: any) {
-      notifyError("Failed to publish. Check relay connections.");
+      if (e instanceof PublishTimeoutError) {
+        notifyError(
+          "Publishing timed out. Check relay connectivity and try again.",
+        );
+      } else {
+        notifyError("Failed to publish. Check relay connections.");
+      }
       return false;
     } finally {
       publishing.value = false;
