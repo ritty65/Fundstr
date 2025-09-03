@@ -15,9 +15,7 @@ import { useP2PKStore } from "stores/p2pk";
 import { useMintsStore } from "stores/mints";
 import { useCreatorProfileStore } from "stores/creatorProfile";
 import { notifySuccess, notifyError } from "src/js/notify";
-import { filterHealthyRelays, anyRelayReachable } from "src/utils/relayHealth";
-import { DEFAULT_RELAYS } from "src/config/relays";
-import { useSettingsStore } from "stores/settings";
+import { pingRelay } from "src/utils/relayHealth";
 
 export const scanningMints = ref(false);
 
@@ -78,13 +76,17 @@ export async function scanForMints() {
   }
 }
 
+async function anyRelayReachable(urls: string[]): Promise<boolean> {
+  const results = await Promise.all(urls.map(pingRelay));
+  return results.some(Boolean);
+}
+
 export function useCreatorHub() {
   const store = useCreatorHubStore();
   const nostr = useNostrStore();
   const p2pkStore = useP2PKStore();
   const mintsStore = useMintsStore();
   const profileStore = useCreatorProfileStore();
-  const settings = useSettingsStore();
   const $q = useQuasar();
 
   const {
@@ -116,7 +118,6 @@ export function useCreatorHub() {
   const currentTier = ref<Partial<Tier>>({});
   const publishing = ref(false);
   const publishSuccess = ref(false);
-  const { publishRetryPending } = storeToRefs(store);
   const npub = computed(() =>
     nostr.pubkey ? nip19.npubEncode(nostr.pubkey) : "",
   );
@@ -198,41 +199,20 @@ export function useCreatorHub() {
       notifyError("Please configure at least one Nostr relay");
       return false;
     }
-
-    let relaysToUse = profileRelays.value;
-    if (!(await anyRelayReachable(relaysToUse))) {
-      relaysToUse = DEFAULT_RELAYS;
-      if (!(await anyRelayReachable(relaysToUse))) {
-        notifyError(
-          "Unable to connect to any configured Nostr relays. Please update your relay list",
-        );
-        return false;
-      }
+    if (!(await anyRelayReachable(profileRelays.value))) {
+      notifyError("Unable to connect to any configured Nostr relays");
+      return false;
     }
-
-    const filteredRelays = await filterHealthyRelays(relaysToUse);
-    settings.defaultNostrRelays = filteredRelays;
-    await nostr.connect(filteredRelays);
     publishing.value = true;
     try {
-      try {
-        await store.publishTierDefinitions();
-      } catch (e: any) {
-        notifyError(
-          e?.message ||
-            "Failed to publish tier definitions. Please check relay connectivity and try again.",
-        );
-        publishing.value = false;
-        return false;
-      }
       const timeoutMs = 30000;
       await Promise.race([
-        publishDiscoveryProfile({
-          profile: profile.value,
-          p2pkPub: profilePub.value,
-          mints: profileMints.value ? [profileMints.value] : [],
-          relays: filteredRelays,
-        }),
+          publishDiscoveryProfile({
+            profile: profile.value,
+            p2pkPub: profilePub.value,
+            mints: profileMints.value ? [profileMints.value] : [],
+            relays: profileRelays.value,
+          }),
         new Promise((_, reject) =>
           setTimeout(() => reject(new PublishTimeoutError()), timeoutMs),
         ),
@@ -280,17 +260,8 @@ export function useCreatorHub() {
     deleteDialog.value = true;
   }
 
-  async function updateOrder() {
+  function updateOrder() {
     store.setTierOrder(draggableTiers.value.map((t) => t.id));
-    publishing.value = true;
-    try {
-      await store.publishTierDefinitions();
-      notifySuccess("Tier order updated");
-    } catch (e: any) {
-      notifyError(e?.message || "Failed to update tier order");
-    } finally {
-      publishing.value = false;
-    }
   }
 
   function refreshTiers() {
@@ -299,7 +270,7 @@ export function useCreatorHub() {
 
   async function removeTier(id: string) {
     try {
-      await store.removeTier(id);
+      store.removeTier(id);
       await store.publishTierDefinitions();
     } catch (e: any) {
       notifyError(e?.message || "Failed to delete tier");
@@ -343,8 +314,6 @@ export function useCreatorHub() {
     refreshTiers,
     removeTier,
     performDelete,
-    publishRetryPending,
-    retryPublishNow: () => store.retryPublishNow(),
     scanForMints,
     scanningMints,
   };
