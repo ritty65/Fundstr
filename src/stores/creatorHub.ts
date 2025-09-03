@@ -8,6 +8,8 @@ import {
   publishNutzapProfile,
   ensureRelayConnectivity,
   RelayConnectionError,
+  publishWithTimeout,
+  PublishTimeoutError,
 } from "./nostr";
 import { useP2PKStore } from "./p2pk";
 import { useCreatorProfileStore } from "./creatorProfile";
@@ -254,9 +256,13 @@ export const useCreatorHubStore = defineStore("creatorHub", {
 
     async publishTierDefinitions() {
       const tierIds = this.getTierArray().map((t) => t.id);
+      const prevStatuses = new Map<string, Tier["publishStatus"] | undefined>();
       tierIds.forEach((id) => {
         const t = this.tiers[id];
-        if (t) t.publishStatus = 'pending';
+        if (t) {
+          prevStatuses.set(id, t.publishStatus);
+          t.publishStatus = 'pending';
+        }
       });
 
       const tiersArray = this.getTierArray().map((t) => {
@@ -269,22 +275,35 @@ export const useCreatorHubStore = defineStore("creatorHub", {
           media: t.media ? filterValidMedia(t.media) : [],
         };
       });
+
       const nostr = useNostrStore();
+      const profileStore = useCreatorProfileStore();
+
+      const revertStatuses = () => {
+        prevStatuses.forEach((status, id) => {
+          const t = this.tiers[id];
+          if (t) t.publishStatus = status;
+        });
+      };
 
       if (!nostr.signer) {
-        tierIds.forEach((id) => {
-          const t = this.tiers[id];
-          if (t) t.publishStatus = 'failed';
-        });
+        notifyError(
+          'You need to connect a Nostr signer before publishing tiers',
+        );
+        revertStatuses();
+        return false;
+      }
+
+      if (!profileStore.relays.length) {
+        notifyError('Add at least one Nostr relay before publishing tiers');
+        revertStatuses();
         return false;
       }
 
       const ndk = await useNdk();
       if (!ndk) {
-        tierIds.forEach((id) => {
-          const t = this.tiers[id];
-          if (t) t.publishStatus = 'failed';
-        });
+        notifyError('Failed to initialise Nostr');
+        revertStatuses();
         return false;
       }
 
@@ -294,16 +313,25 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       ev.created_at = Math.floor(Date.now() / 1000);
       ev.content = JSON.stringify(tiersArray);
       await ev.sign(nostr.signer as any);
+
       try {
         await ensureRelayConnectivity(ndk);
-        await ev.publish();
+        await publishWithTimeout(ev, undefined, 30000);
       } catch (e: any) {
-        tierIds.forEach((id) => {
-          const t = this.tiers[id];
-          if (t) t.publishStatus = 'failed';
-        });
+        if (e instanceof PublishTimeoutError) {
+          notifyError('Publishing tier definitions timed out');
+        } else {
+          notifyError(e?.message || 'Failed to publish tier definitions');
+        }
+        console.warn('Failed to publish tier definitions', e);
+        revertStatuses();
         return false;
       }
+
+      const connectedRelays = Array.from(ndk.pool.relays.values())
+        .filter((r: any) => r.connected)
+        .map((r: any) => r.url);
+      console.debug('Published tier definitions', ev.id, ev.kind, connectedRelays);
 
       await db.creatorsTierDefinitions.put({
         creatorNpub: nostr.pubkey,
