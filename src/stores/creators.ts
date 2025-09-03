@@ -5,7 +5,6 @@ import {
   getEventHash,
   signEvent,
   publishEvent,
-  subscribeToNostr,
 } from "./nostr";
 import { useSettingsStore } from "./settings";
 import { DEFAULT_RELAYS } from "src/config/relays";
@@ -218,9 +217,7 @@ export const useCreatorsStore = defineStore("creators", {
         healthyRelays = [];
       }
 
-      let received = false;
       const fetchFromIndexer = async () => {
-        if (received) return;
         const indexerUrl = settings.tiersIndexerUrl;
         if (!indexerUrl) {
           this.tierFetchError = true;
@@ -289,43 +286,52 @@ export const useCreatorsStore = defineStore("creators", {
         return;
       }
 
-      const timeout = setTimeout(fetchFromIndexer, 5000);
+      const nostrStore = useNostrStore();
+      await nostrStore.initNdkReadOnly();
+      const ndk = await useNdk({ requireSigner: false });
 
-      const subscribed = await subscribeToNostr(
-        filter,
-        async (event) => {
-          try {
-            received = true;
-            clearTimeout(timeout);
-            this.tierFetchError = false;
-            const tiersArray: Tier[] = JSON.parse(event.content).map(
-              (t: any) => ({
-                ...t,
-                price_sats: t.price_sats ?? t.price ?? 0,
-                ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
-                media: t.media ? filterValidMedia(t.media) : [],
-              }),
-            );
-            this.tiersMap[hex] = tiersArray;
-            await db.creatorsTierDefinitions.put({
-              creatorNpub: hex,
-              tiers: tiersArray,
-              eventId: event.id!,
-              updatedAt: event.created_at,
-              rawEventJson: JSON.stringify(event),
-            });
-          } catch (e) {
-            console.error("Error parsing tier definitions JSON:", e);
-          }
-        },
-        healthyRelays,
-      );
-
-      if (!subscribed) {
-        // Subscription failed – query indexer without waiting
-        clearTimeout(timeout);
-        await fetchFromIndexer();
+      let events: Set<any> | null = null;
+      try {
+        const fetchPromise = ndk.fetchEvents(filter, {
+          closeOnEose: true,
+          urls: healthyRelays,
+        } as any);
+        const timeoutPromise = new Promise<null>((resolve) =>
+          setTimeout(() => resolve(null), 5000),
+        );
+        events = (await Promise.race([fetchPromise, timeoutPromise])) as any;
+      } catch {
+        events = null;
       }
+
+      if (events && events.size > 0) {
+        try {
+          const event = Array.from(events).sort(
+            (a: any, b: any) => b.created_at - a.created_at,
+          )[0];
+          const tiersArray: Tier[] = JSON.parse(event.content).map(
+            (t: any) => ({
+              ...t,
+              price_sats: t.price_sats ?? t.price ?? 0,
+              ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
+              media: t.media ? filterValidMedia(t.media) : [],
+            }),
+          );
+          this.tiersMap[hex] = tiersArray;
+          await db.creatorsTierDefinitions.put({
+            creatorNpub: hex,
+            tiers: tiersArray,
+            eventId: event.id!,
+            updatedAt: event.created_at,
+            rawEventJson: JSON.stringify(event),
+          });
+          return;
+        } catch (e) {
+          console.error("Error parsing tier definitions JSON:", e);
+        }
+      }
+
+      await fetchFromIndexer();
     },
 
     async publishTierDefinitions(tiersArray: Tier[]) {
