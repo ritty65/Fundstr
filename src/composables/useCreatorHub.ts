@@ -96,7 +96,7 @@ export function useCreatorHub() {
     pubkey: profilePub,
     mints: profileMints,
     relays: profileRelays,
-    isDirty,
+    isDirty: profileDirty,
   } = storeToRefs(profileStore);
 
   const profile = computed(() => ({
@@ -111,8 +111,8 @@ export function useCreatorHub() {
 
   const loggedIn = computed(() => useNostrStore().hasIdentity);
   const tierList = computed<Tier[]>(() => store.getTierArray());
-  const hasUnpublishedTier = computed(() =>
-    tierList.value.some((t) => t.publishStatus !== 'succeeded'),
+  const hasUnsavedChanges = computed(
+    () => profileDirty.value || store.isDirty,
   );
   const draggableTiers = ref<Tier[]>([]);
   const deleteDialog = ref(false);
@@ -293,8 +293,7 @@ export function useCreatorHub() {
     currentTier,
     publishing,
     npub,
-    isDirty,
-    hasUnpublishedTier,
+    hasUnsavedChanges,
     login,
     logout,
     initPage,
