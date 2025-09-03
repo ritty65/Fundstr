@@ -22,33 +22,15 @@ function snapshot(p: CreatorProfile) {
 }
 
 export const useCreatorProfileStore = defineStore("creatorProfile", {
-  state: () => {
-    const display_name = useLocalStorage<string>(
-      "creatorProfile.display_name",
-      "",
-    );
-    const picture = useLocalStorage<string>("creatorProfile.picture", "");
-    const about = useLocalStorage<string>("creatorProfile.about", "");
-    const pubkey = useLocalStorage<string>("creatorProfile.pubkey", "");
-    const mints = useLocalStorage<string>("creatorProfile.mints", "");
-    const relays = useLocalStorage<string[]>("creatorProfile.relays", []);
-    return {
-      display_name,
-      picture,
-      about,
-      pubkey,
-      mints,
-      relays,
-      _clean: snapshot({
-        display_name: display_name.value,
-        picture: picture.value,
-        about: about.value,
-        pubkey: pubkey.value,
-        mints: mints.value,
-        relays: relays.value,
-      } as CreatorProfile),
-    };
-  },
+  state: () => ({
+    display_name: useLocalStorage<string>("creatorProfile.display_name", ""),
+    picture: useLocalStorage<string>("creatorProfile.picture", ""),
+    about: useLocalStorage<string>("creatorProfile.about", ""),
+    pubkey: useLocalStorage<string>("creatorProfile.pubkey", ""),
+    mints: useLocalStorage<string>("creatorProfile.mints", ""),
+    relays: useLocalStorage<string[]>("creatorProfile.relays", []),
+    _clean: "",
+  }),
   getters: {
     profile(state): { display_name: string; picture: string; about: string } {
       return {

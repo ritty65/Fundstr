@@ -833,62 +833,7 @@ export const useMessengerStore = defineStore("messenger", {
         await this.loadIdentity();
         const nostr = useNostrStore();
         const ndk = await useNdk();
-
-        try {
-          const incomingEvents = await ndk.fetchEvents({
-            kinds: [4],
-            "#p": [nostr.pubkey],
-          });
-          for (const event of incomingEvents) {
-            const raw = await event.toNostrEvent();
-            if (!this.eventLog.some((m) => m.id === raw.id)) {
-              await this.addIncomingMessage(raw as NostrEvent);
-            }
-          }
-          const outgoingEvents = await ndk.fetchEvents({
-            kinds: [4],
-            authors: [nostr.pubkey],
-          });
-          let privKey: string | undefined = undefined;
-          if (nostr.signerType !== SignerType.NIP07) {
-            privKey = nostr.privKeyHex;
-          }
-          for (const event of outgoingEvents) {
-            const raw = await event.toNostrEvent();
-            const exists = this.eventLog.some((m) => m.id === raw.id);
-            const recipient = raw.tags.find((t) => t[0] === "p")?.[1];
-            if (!exists && recipient) {
-              try {
-                const plaintext = await nostr.decryptDmContent(
-                  privKey,
-                  recipient,
-                  raw.content,
-                );
-                this.addOutgoingMessage(
-                  recipient,
-                  plaintext,
-                  raw.created_at,
-                  raw.id,
-                  undefined,
-                  "sent",
-                );
-              } catch (e) {
-                console.warn(
-                  "[messenger.start] failed to decrypt outgoing message",
-                  e,
-                );
-              }
-            }
-            this.pushOwnMessage(raw as NostrEvent);
-          }
-        } catch (e) {
-          console.error("[messenger.start] fetchEvents", e);
-        }
-
-        const since = this.eventLog.reduce(
-          (max, m) => (m.created_at > max ? m.created_at : max),
-          0,
-        );
+        const since = this.eventLog[this.eventLog.length - 1]?.created_at || 0;
         const incomingSub = ndk.subscribe(
           { kinds: [4], "#p": [nostr.pubkey], since },
           { closeOnEose: false, groupable: false },

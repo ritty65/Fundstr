@@ -238,7 +238,7 @@ async function onMessage(ev: MessageEvent) {
     tierTimeout = setTimeout(() => {
       loadingTiers.value = false;
     }, 5000);
-    await creators.fetchTierDefinitions(ev.data.pubkey, true);
+    await creators.fetchTierDefinitions(ev.data.pubkey);
     dialogPubkey.value = ev.data.pubkey; // keep hex
     try {
       const profile = await fetchNutzapProfile(ev.data.pubkey);
@@ -309,7 +309,7 @@ function retryFetchTiers() {
   tierTimeout = setTimeout(() => {
     loadingTiers.value = false;
   }, 5000);
-  creators.fetchTierDefinitions(dialogPubkey.value, true);
+  creators.fetchTierDefinitions(dialogPubkey.value);
 }
 
 function confirmSubscribe({ bucketId, periods, amount, startDate, total }: any) {

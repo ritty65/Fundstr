@@ -79,16 +79,14 @@ async function load() {
   following.value = await nostr.fetchFollowingCount(props.pubkey);
   joined.value = await nostr.fetchJoinDate(props.pubkey);
   recentPost.value = await nostr.fetchMostRecentPost(props.pubkey);
-  await creators.fetchTierDefinitions(props.pubkey, true);
+  await creators.fetchTierDefinitions(props.pubkey);
   tiers.value = creators.tiersMap[props.pubkey] || [];
 }
 
 watch(
-  [() => props.modelValue, () => props.pubkey],
-  ([modelValue, pubkey], [oldModelValue, oldPubkey]) => {
-    if (modelValue && (!oldModelValue || pubkey !== oldPubkey)) {
-      load();
-    }
+  () => props.pubkey,
+  () => {
+    load();
   },
   { immediate: true },
 );
