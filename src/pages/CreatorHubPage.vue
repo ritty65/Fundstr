@@ -8,7 +8,7 @@
             color="primary"
             label="Save & Publish"
             :loading="publishing"
-            :disable="publishing || (!isDirty && !hasUnpublishedTier)"
+            :disable="!hasUnsavedChanges || publishing"
             @click="saveAndPublish"
           />
           <ThemeToggle />
@@ -177,8 +177,7 @@ const {
   refreshTiers,
   performDelete,
   publishing,
-  isDirty,
-  hasUnpublishedTier,
+  hasUnsavedChanges,
 } = useCreatorHub();
 
 const nsec = ref("");
