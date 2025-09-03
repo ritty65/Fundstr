@@ -76,11 +76,6 @@ export async function scanForMints() {
   }
 }
 
-async function anyRelayReachable(urls: string[]): Promise<boolean> {
-  const results = await Promise.all(urls.map(pingRelay));
-  return results.some(Boolean);
-}
-
 export function useCreatorHub() {
   const store = useCreatorHubStore();
   const nostr = useNostrStore();
@@ -108,6 +103,30 @@ export function useCreatorHub() {
   const isMobile = computed(() => $q.screen.lt.md);
   const splitterModel = ref(50);
   const tab = ref<"profile" | "tiers">("profile");
+
+  const relayStatus = ref({
+    status: "idle" as "idle" | "connecting" | "connected" | "failed",
+    connectedCount: 0,
+    totalCount: 0,
+  });
+
+  async function checkRelayHealth(relays: string[]) {
+    relayStatus.value = {
+      status: "connecting",
+      connectedCount: 0,
+      totalCount: relays.length,
+    };
+    const results = await Promise.allSettled(relays.map((r) => pingRelay(r)));
+    const successes = results.filter(
+      (r): r is PromiseFulfilledResult<boolean> =>
+        r.status === "fulfilled" && r.value,
+    ).length;
+    relayStatus.value = {
+      status: successes > 0 ? "connected" : "failed",
+      connectedCount: successes,
+      totalCount: relays.length,
+    };
+  }
 
   const loggedIn = computed(() => useNostrStore().hasIdentity);
   const tierList = computed<Tier[]>(() => store.getTierArray());
@@ -182,17 +201,6 @@ export function useCreatorHub() {
 
   async function saveAndPublish() {
     publishing.value = true;
-    const relayReachable = await anyRelayReachable(profileRelays.value);
-    if (!relayReachable) {
-      store.getTierArray().forEach((tier) => {
-        store.tiers[tier.id].publishStatus = "failed";
-      });
-      notifyError(
-        "Publish Failed: Could not connect to any of your configured Nostr relays.",
-      );
-      publishing.value = false;
-      return false;
-    }
 
     if (!profilePub.value) {
       notifyError("Pay-to-public-key pubkey is required");
@@ -288,6 +296,15 @@ export function useCreatorHub() {
 
   onMounted(() => {
     if (nostr.hasIdentity) initPage();
+    watch(
+      profileRelays,
+      (newRelays) => {
+        if (newRelays && newRelays.length > 0) {
+          checkRelayHealth(newRelays);
+        }
+      },
+      { immediate: true },
+    );
   });
 
   return {
@@ -303,6 +320,7 @@ export function useCreatorHub() {
     showTierDialog,
     currentTier,
     publishing,
+    relayStatus,
     npub,
     hasUnsavedChanges,
     login,
