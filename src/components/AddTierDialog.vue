@@ -242,11 +242,16 @@ export default defineComponent({
     );
 
     const save = async () => {
-      if (!localTier.name || !localTier.name.trim()) {
+      localTier.name = (localTier.name || "").trim();
+      localTier.description = (localTier.description || "")
+        .trim()
+        .slice(0, 2000);
+
+      if (!localTier.name) {
         notifyError("Tier name is required");
         return;
       }
-      if (!localTier.description || !localTier.description.trim()) {
+      if (!localTier.description) {
         notifyError("Description is required");
         return;
       }
@@ -265,9 +270,7 @@ export default defineComponent({
           );
           return;
         }
-        if (localTier.media) {
-          localTier.media = filterValidMedia(localTier.media);
-        }
+        localTier.media = filterValidMedia(localTier.media);
         await creatorHub.addOrUpdateTier({
           ...localTier,
           media: localTier.media,
