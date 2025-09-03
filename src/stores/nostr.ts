@@ -14,10 +14,12 @@ import NDK, {
   NDKTag,
   ProfilePointer,
   NDKSubscription,
+  NDKPublishError,
 } from "@nostr-dev-kit/ndk";
 import {
   nip19,
   nip04,
+  SimplePool,
   getEventHash as ntGetEventHash,
   finalizeEvent,
   verifyEvent,
@@ -38,30 +40,8 @@ import {
   Token,
 } from "@cashu/cashu-ts";
 import { useTokensStore } from "./tokens";
+import { filterHealthyRelays } from "src/utils/relayHealth";
 import { DEFAULT_RELAYS, FREE_RELAYS } from "src/config/relays";
-import {
-  selectPreferredRelays,
-  publishDmNip04,
-  publishWithTimeout,
-  publishWithAcks,
-  publishEvent,
-  subscribeToNostr,
-  resetRelaySelection,
-  PublishTimeoutError,
-  type RelayAck,
-} from "src/services/relayManager";
-
-export {
-  selectPreferredRelays,
-  publishDmNip04,
-  publishWithTimeout,
-  publishWithAcks,
-  publishEvent,
-  subscribeToNostr,
-  resetRelaySelection,
-  PublishTimeoutError,
-  type RelayAck,
-};
 import {
   notifyApiError,
   notifyError,
@@ -299,6 +279,135 @@ function connectWithTimeout(relay: any, ms = 6000): Promise<void> {
   });
 }
 
+export class PublishTimeoutError extends Error {
+  constructor(message = "Publish timed out") {
+    super(message);
+    this.name = "PublishTimeoutError";
+  }
+}
+
+export async function publishWithTimeout(
+  ev: NDKEvent,
+  relays?: NDKRelaySet,
+  timeoutMs = 30000,
+): Promise<void> {
+  await Promise.race([
+    ev.publish(relays),
+    new Promise<void>((_, reject) =>
+      setTimeout(() => reject(new PublishTimeoutError()), timeoutMs),
+    ),
+  ]);
+}
+
+const relayFailureCounts = new Map<string, number>();
+let relayRotationIndex = 0;
+const MAX_FAILURES = 3;
+
+export function resetRelaySelection() {
+  relayFailureCounts.clear();
+  relayRotationIndex = 0;
+}
+
+export async function selectPreferredRelays(
+  relays: string[],
+): Promise<string[]> {
+  const relayUrls = relays
+    .filter((r) => r.startsWith("wss://"))
+    .map((r) => r.replace(/\/+$/, ""));
+
+  const candidates = relayUrls.filter(
+    (r) => (relayFailureCounts.get(r) ?? 0) < MAX_FAILURES,
+  );
+
+  let healthy: string[] = [];
+  try {
+    healthy = await filterHealthyRelays(candidates);
+  } catch {
+    healthy = [];
+  }
+
+  const healthySet = new Set(healthy);
+  for (const url of candidates) {
+    if (healthySet.has(url)) {
+      relayFailureCounts.delete(url);
+    } else {
+      const count = (relayFailureCounts.get(url) ?? 0) + 1;
+      relayFailureCounts.set(url, count);
+    }
+  }
+
+  if (healthy.length === 0) return [];
+
+  const start = relayRotationIndex % healthy.length;
+  relayRotationIndex = (relayRotationIndex + 1) % healthy.length;
+  return healthy.slice(start).concat(healthy.slice(0, start));
+}
+
+export async function publishDmNip04(
+  ev: NDKEvent,
+  relays: string[],
+  timeoutMs = 30000,
+): Promise<boolean> {
+  const relaySet = await urlsToRelaySet(relays);
+  if (!relaySet) return false;
+  try {
+    await publishWithTimeout(ev, relaySet, timeoutMs);
+    notifySuccess("NIP-04 event published");
+    return true;
+  } catch (e) {
+    console.error(e);
+    if (e instanceof NDKPublishError) {
+      const urls = relaySet.relayUrls?.join(", ") || relays.join(", ");
+      notifyError(`Could not publish NIP-04 event to: ${urls}`);
+    } else if (e instanceof PublishTimeoutError) {
+      notifyError(
+        "Publishing NIP-04 event timed out. Check your network connection or relay availability.",
+      );
+    } else {
+      notifyError("Could not publish NIP-04 event");
+    }
+    return false;
+  }
+}
+
+export type RelayAck = { ok: boolean; reason?: string };
+
+export async function publishWithAcks(
+  event: NostrEvent,
+  relays: string[],
+  timeoutMs = 5000,
+): Promise<Record<string, RelayAck>> {
+  const pool = new SimplePool();
+  const results: Record<string, RelayAck> = {};
+  const pub = pool.publish(relays, event as any);
+  return await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      for (const r of relays) {
+        if (!results[r]) results[r] = { ok: false, reason: "timeout" };
+      }
+      resolve(results);
+    }, timeoutMs);
+
+    const finish = () => {
+      if (Object.keys(results).length >= relays.length) {
+        clearTimeout(timer);
+        resolve(results);
+      }
+    };
+
+    pub.on("ok", (relay: any) => {
+      const url = relay.url || relay;
+      results[url] = { ok: true };
+      finish();
+    });
+
+    pub.on("failed", (relay: any, reason: any) => {
+      const url = relay.url || relay;
+      results[url] = { ok: false, reason: String(reason) };
+      finish();
+    });
+  });
+}
 
 /** Resolves once any relay in `ndk.pool` has `connected === true`. */
 export function ensureRelayConnectivity(ndk: NDK): Promise<void> {
@@ -1939,3 +2048,61 @@ export async function signEvent(
   }
 }
 
+export async function publishEvent(event: NostrEvent): Promise<void> {
+  const relayUrls = useSettingsStore()
+    .defaultNostrRelays.filter((r) => r.startsWith("wss://"))
+    .map((r) => r.replace(/\/+$/, ""));
+  let healthyRelays: string[] = [];
+  try {
+    healthyRelays = await filterHealthyRelays(relayUrls);
+  } catch {
+    healthyRelays = [];
+  }
+  if (healthyRelays.length === 0) {
+    console.error("[nostr] publish failed: all relays unreachable");
+    return;
+  }
+  const pool = new SimplePool();
+  try {
+    await Promise.any(pool.publish(healthyRelays, event as any));
+  } catch (e) {
+    console.error("Failed to publish event", e);
+  }
+}
+
+export async function subscribeToNostr(
+  filter: any,
+  cb: (ev: NostrEvent) => void,
+  relays?: string[],
+): Promise<boolean> {
+  const relayUrls = (
+    relays && relays.length > 0 ? relays : useSettingsStore().defaultNostrRelays
+  )
+    .filter((r) => r.startsWith("wss://"))
+    .map((r) => r.replace(/\/+$/, ""));
+  if (!relayUrls || relayUrls.length === 0) {
+    console.warn("[nostr] subscribeMany called with empty relay list");
+    return false;
+  }
+
+  // Ensure at least one relay is reachable before subscribing
+  let healthy: string[] = [];
+  try {
+    healthy = await filterHealthyRelays(relayUrls);
+  } catch {
+    healthy = [];
+  }
+  if (healthy.length === 0) {
+    console.error("[nostr] subscription failed: all relays unreachable");
+    return false;
+  }
+
+  const pool = new SimplePool();
+  try {
+    pool.subscribeMany(healthy, [filter], { onevent: cb });
+    return true;
+  } catch (e) {
+    console.error("Failed to subscribe", e);
+    return false;
+  }
+}

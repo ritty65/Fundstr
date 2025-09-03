@@ -102,14 +102,6 @@ export interface SubscriberViewPref {
   activeViewId: string | null;
 }
 
-export interface RelayStat {
-  url: string;
-  successCount: number;
-  failureCount: number;
-  lastSuccess?: number;
-  lastFailure?: number;
-}
-
 // export interface Proof {
 //   id: string
 //   C: string
@@ -127,7 +119,6 @@ export class CashuDexie extends Dexie {
   lockedTokens!: Table<LockedToken, string>;
   subscriberViews!: Table<SubscriberView, string>;
   subscriberViewPrefs!: Table<SubscriberViewPref, string>;
-  relayStats!: Table<RelayStat, string>;
 
   constructor() {
     super("cashuDatabase");
@@ -597,20 +588,6 @@ export class CashuDexie extends Dexie {
         "&id, tokenString, owner, tierId, intervalKey, unlockTs, status, subscriptionEventId, subscriptionId, monthIndex, totalPeriods, autoRedeem, frequency, intervalDays",
       subscriberViews: "&name",
       subscriberViewPrefs: "&id",
-    });
-
-    this.version(24).stores({
-      proofs:
-        "secret, id, C, amount, reserved, quote, bucketId, label, description",
-      profiles: "pubkey",
-      creatorsTierDefinitions: "&creatorNpub, eventId, updatedAt",
-      subscriptions:
-        "&id, creatorNpub, tierId, status, createdAt, updatedAt, frequency, intervalDays",
-      lockedTokens:
-        "&id, tokenString, owner, tierId, intervalKey, unlockTs, status, subscriptionEventId, subscriptionId, monthIndex, totalPeriods, autoRedeem, frequency, intervalDays",
-      subscriberViews: "&name",
-      subscriberViewPrefs: "&id",
-      relayStats: "&url, successCount, failureCount, lastSuccess, lastFailure",
     });
   }
 }
