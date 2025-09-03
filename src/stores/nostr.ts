@@ -244,7 +244,7 @@ export class RelayConnectionError extends Error {
   }
 }
 
-async function urlsToRelaySet(
+export async function urlsToRelaySet(
   urls?: string[],
 ): Promise<NDKRelaySet | undefined> {
   if (!urls?.length) return undefined;

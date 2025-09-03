@@ -10,6 +10,7 @@ import {
   RelayConnectionError,
   publishWithTimeout,
   PublishTimeoutError,
+  urlsToRelaySet,
 } from "./nostr";
 import { useP2PKStore } from "./p2pk";
 import { useCreatorProfileStore } from "./creatorProfile";
@@ -225,7 +226,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         "#d": ["tiers"],
         limit: 1,
       };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const events = await ndk.fetchEvents(filter);
       events.forEach((ev) => {
         try {
@@ -307,6 +308,9 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         return false;
       }
 
+      await nostr.ensureNdkConnected(profileStore.relays);
+      const relaySet = await urlsToRelaySet(profileStore.relays);
+
       const ev = new NDKEvent(ndk);
       ev.kind = TIER_DEFINITIONS_KIND as unknown as NDKKind;
       ev.tags = [["d", "tiers"]];
@@ -316,7 +320,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
 
       try {
         await ensureRelayConnectivity(ndk);
-        await publishWithTimeout(ev, undefined, 30000);
+        await publishWithTimeout(ev, relaySet, 30000);
         console.debug('Tier publish ok', {
           id: ev.id,
           kind: ev.kind,
