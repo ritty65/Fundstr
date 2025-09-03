@@ -541,18 +541,14 @@ export async function publishDiscoveryProfile(opts: {
   p2pkPub: string;
   mints: string[];
   relays: string[];
-  ndk?: NDK;
 }) {
   const nostr = useNostrStore();
   if (!nostr.signer) {
     throw new Error("Signer required to publish a discoverable profile.");
   }
-  let ndk = opts.ndk;
-  if (!ndk) {
-    // Ensure we are connected to the relays we want to publish to.
-    await nostr.ensureNdkConnected(opts.relays);
-    ndk = await useNdk();
-  }
+  // Ensure we are connected to the relays we want to publish to.
+  await nostr.ensureNdkConnected(opts.relays);
+  const ndk = await useNdk();
   if (!ndk) {
     throw new Error("NDK not initialized. Cannot publish profile.");
   }
