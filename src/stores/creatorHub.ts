@@ -53,21 +53,22 @@ export async function maybeRepublishNutzapProfile() {
     throw e;
   }
   const profileStore = useCreatorProfileStore();
-  const desiredMint = profileStore.mints;
+  const desiredMints = profileStore.mints;
   const desiredP2PK = useP2PKStore().firstKey?.publicKey;
 
   if (!desiredP2PK) return;
 
-  const currentMint = current?.trustedMints?.[0] || "";
+  const currentMints = current?.trustedMints || [];
   const hasDiff =
     !current ||
     current.p2pkPubkey !== desiredP2PK ||
-    currentMint !== desiredMint;
+    JSON.stringify([...currentMints].sort()) !==
+      JSON.stringify([...desiredMints].sort());
 
   if (hasDiff) {
     await publishNutzapProfile({
       p2pkPub: desiredP2PK,
-      mints: desiredMint ? [desiredMint] : [],
+      mints: desiredMints,
       relays: [...profileStore.relays],
     });
   }
@@ -125,7 +126,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         picture: "",
         about: "",
         pubkey: "",
-        mints: "",
+        mints: [],
         relays: [],
       });
       profileStore.markClean();
