@@ -13,13 +13,13 @@ import { useP2PKStore } from "./p2pk";
 import { useCreatorProfileStore } from "./creatorProfile";
 import { db } from "./dexie";
 import { v4 as uuidv4 } from "uuid";
-import { notifySuccess, notifyError } from "src/js/notify";
+import { notifyError } from "src/js/notify";
 import { filterValidMedia } from "src/utils/validateMedia";
 import { useNdk } from "src/composables/useNdk";
 import type { Tier, TierMedia } from "./types";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 
-const TIER_DEFINITIONS_KIND = 30000;
+const TIER_DEFINITIONS_KIND = 30019;
 
 export async function maybeRepublishNutzapProfile() {
   const nostrStore = useNostrStore();
@@ -126,7 +126,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       tier: Partial<Tier> & {
         price?: number;
         perks?: string;
-        publishStatus?: 'pending' | 'published';
+        publishStatus?: 'pending' | 'succeeded' | 'failed';
       },
     ): string {
       let id = tier.id || uuidv4();
@@ -147,13 +147,12 @@ export const useCreatorHubStore = defineStore("creatorHub", {
           ? { benefits: tier.benefits || [(tier as any).perks] }
           : {}),
         media: tier.media ? filterValidMedia(tier.media as TierMedia[]) : [],
-        publishStatus: tier.publishStatus || 'published',
+        ...(tier.publishStatus ? { publishStatus: tier.publishStatus } : {}),
       };
       this.tiers[id] = newTier;
       if (!this.tierOrder.includes(id)) {
         this.tierOrder.push(id);
       }
-      maybeRepublishNutzapProfile();
       return id;
     },
     updateTier(
@@ -189,17 +188,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       if (id && this.tiers[id]) {
         this.updateTier(id, data);
       } else {
-        id = this.addTier({ ...data, publishStatus: 'pending' });
-      }
-      if (id && this.tiers[id]) {
-        this.tiers[id].publishStatus = 'pending';
-        const publishPromise = this.publishTierDefinitions();
-        publishPromise
-          .catch((e) => notifyError(e?.message ?? String(e)))
-          .finally(() => {
-            const t = this.tiers[id!];
-            if (t) t.publishStatus = 'published';
-          });
+        id = this.addTier(data);
       }
     },
     async saveTier(_tier: Tier) {
@@ -229,7 +218,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
               price_sats: t.price_sats ?? t.price ?? 0,
               ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
               media: t.media ? filterValidMedia(t.media) : [],
-              publishStatus: 'published',
+              publishStatus: 'succeeded',
             };
             obj[tier.id] = tier;
           });
@@ -243,13 +232,18 @@ export const useCreatorHubStore = defineStore("creatorHub", {
     async removeTier(id: string) {
       delete this.tiers[id];
       this.tierOrder = this.tierOrder.filter((t) => t !== id);
-      await maybeRepublishNutzapProfile();
     },
 
     async publishTierDefinitions() {
+      const tierIds = this.getTierArray().map((t) => t.id);
+      tierIds.forEach((id) => {
+        const t = this.tiers[id];
+        if (t) t.publishStatus = 'pending';
+      });
+
       const tiersArray = this.getTierArray().map((t) => {
         const { publishStatus, ...rest } = toRaw(t) as Tier & {
-          publishStatus?: 'pending' | 'published';
+          publishStatus?: 'pending' | 'succeeded' | 'failed';
         };
         return {
           ...rest,
@@ -260,12 +254,20 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       const nostr = useNostrStore();
 
       if (!nostr.signer) {
-        throw new Error("Signer required to publish tier definitions");
+        tierIds.forEach((id) => {
+          const t = this.tiers[id];
+          if (t) t.publishStatus = 'failed';
+        });
+        return false;
       }
 
       const ndk = await useNdk();
       if (!ndk) {
-        throw new Error("NDK not initialised – cannot publish tiers");
+        tierIds.forEach((id) => {
+          const t = this.tiers[id];
+          if (t) t.publishStatus = 'failed';
+        });
+        return false;
       }
 
       const ev = new NDKEvent(ndk);
@@ -278,8 +280,11 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         await ensureRelayConnectivity(ndk);
         await ev.publish();
       } catch (e: any) {
-        notifyError(e?.message ?? String(e));
-        throw e;
+        tierIds.forEach((id) => {
+          const t = this.tiers[id];
+          if (t) t.publishStatus = 'failed';
+        });
+        return false;
       }
 
       await db.creatorsTierDefinitions.put({
@@ -290,7 +295,11 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         rawEventJson: JSON.stringify(ev.rawEvent()),
       });
 
-      notifySuccess("Tiers published");
+      tierIds.forEach((id) => {
+        const t = this.tiers[id];
+        if (t) t.publishStatus = 'succeeded';
+      });
+      return true;
     },
     setTierOrder(order: string[]) {
       this.tierOrder = [...order];

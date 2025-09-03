@@ -16,5 +16,5 @@ export interface Tier {
   benefits?: string[];
   welcomeMessage?: string;
   media?: TierMedia[];
-  publishStatus?: 'pending' | 'published';
+  publishStatus?: 'pending' | 'succeeded' | 'failed';
 }

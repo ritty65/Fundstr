@@ -10,8 +10,22 @@
       v-if="tierData.publishStatus === 'pending'"
       color="primary"
       size="1em"
-      class="pending-indicator"
+      class="status-indicator"
     />
+    <q-icon
+      v-else-if="tierData.publishStatus === 'succeeded'"
+      name="check_circle"
+      color="positive"
+      class="status-indicator"
+    />
+    <q-icon
+      v-else-if="tierData.publishStatus === 'failed'"
+      name="warning"
+      color="negative"
+      class="status-indicator"
+    >
+      <q-tooltip>Failed to publish.</q-tooltip>
+    </q-icon>
   </div>
 </template>
 
@@ -27,7 +41,7 @@ const emit = defineEmits(["save", "delete", "update:tierData"]);
 .tier-wrapper {
   position: relative;
 }
-.pending-indicator {
+.status-indicator {
   position: absolute;
   top: 4px;
   right: 4px;
