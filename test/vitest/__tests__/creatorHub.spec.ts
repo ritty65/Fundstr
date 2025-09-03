@@ -120,7 +120,7 @@ describe("CreatorHub store", () => {
 });
 
 describe("publishTierDefinitions", () => {
-  it("creates a 30000 event with correct tags and content", async () => {
+  it("creates a 30019 event with correct tags and content", async () => {
     const store = useCreatorHubStore();
     store.tiers = {
       t1: {
@@ -134,11 +134,12 @@ describe("publishTierDefinitions", () => {
     } as any;
     store.tierOrder = ["t1"];
 
-    await store.publishTierDefinitions();
+    const res = await store.publishTierDefinitions();
+    expect(res).toBe(true);
 
     expect(createdEvents.length).toBe(1);
     const ev = createdEvents[0];
-    expect(ev.kind).toBe(30000);
+    expect(ev.kind).toBe(30019);
     expect(ev.tags).toEqual([["d", "tiers"]]);
     expect(ev.content).toBe(
       JSON.stringify([

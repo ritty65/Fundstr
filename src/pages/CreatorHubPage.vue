@@ -3,7 +3,16 @@
     <q-card class="q-pa-lg bg-surface-2 shadow-4 full-width">
       <div class="row items-center justify-between q-mb-lg">
         <div class="text-h5">Creator Hub</div>
-        <ThemeToggle />
+        <div class="row items-center q-gutter-sm">
+          <q-btn
+            color="primary"
+            label="Save & Publish"
+            :loading="publishing"
+            :disable="publishing || (!isDirty && !hasUnpublishedTier)"
+            @click="saveAndPublish"
+          />
+          <ThemeToggle />
+        </div>
       </div>
       <div v-if="!loggedIn" class="q-mt-lg q-mb-lg">
         <q-btn color="primary" class="full-width q-mb-md" @click="() => login()"
@@ -160,13 +169,16 @@ const {
   npub,
   login,
   logout,
-  publishFullProfile,
+  saveAndPublish,
   addTier,
   editTier,
   confirmDelete,
   updateOrder,
   refreshTiers,
   performDelete,
+  publishing,
+  isDirty,
+  hasUnpublishedTier,
 } = useCreatorHub();
 
 const nsec = ref("");

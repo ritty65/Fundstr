@@ -52,22 +52,24 @@
         Creator has no subscription tiers
       </div>
       <div v-else>
-        <q-card
+        <q-expansion-item
           v-for="t in tiers"
           :key="t.id"
-          flat
-          class="q-mb-md tier-card bg-surface-2"
+          class="q-mb-md tier-item bg-surface-2"
+          expand-separator
         >
-          <q-card-section class="row items-center justify-between">
-            <div class="text-subtitle1">{{ t.name }}</div>
-            <div class="text-subtitle2">
-              {{ getPrice(t) }} sats/month
-              <span v-if="priceStore.bitcoinPrice">
-                ({{ formatFiat(getPrice(t)) }})
-              </span>
+          <template #header>
+            <div class="row items-center justify-between full-width">
+              <div class="text-subtitle1">{{ t.name }}</div>
+              <div class="text-subtitle2">
+                {{ getPrice(t) }} sats/month
+                <span v-if="priceStore.bitcoinPrice">
+                  ({{ formatFiat(getPrice(t)) }})
+                </span>
+              </div>
             </div>
-          </q-card-section>
-          <q-card-section>
+          </template>
+          <div class="q-px-md q-pb-md">
             <div class="text-body1 q-mb-sm">{{ t.description }}</div>
             <div v-if="t.media && t.media.length">
               <MediaPreview
@@ -99,8 +101,8 @@
             >
               <div>Protected content visible to subscribers.</div>
             </PaywalledContent>
-          </q-card-section>
-        </q-card>
+          </div>
+        </q-expansion-item>
       </div>
     </div>
   </div>
@@ -300,24 +302,24 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.tier-card .subscribe-btn {
+.tier-item .subscribe-btn {
   display: inline-flex;
   background-color: var(--accent-500);
   color: var(--text-inverse);
   transition: opacity 0.2s, background-color 0.2s;
 }
 
-.tier-card .subscribe-btn:hover,
-.tier-card .subscribe-btn:active {
+.tier-item .subscribe-btn:hover,
+.tier-item .subscribe-btn:active {
   background-color: var(--accent-600);
 }
 
 @media (hover: hover) {
-  .tier-card .subscribe-btn {
+  .tier-item .subscribe-btn {
     opacity: 0;
   }
 
-  .tier-card:hover .subscribe-btn {
+  .tier-item:hover .subscribe-btn {
     opacity: 1;
   }
 }
