@@ -13,7 +13,7 @@ describe("CreatorProfileStore isDirty", () => {
       picture: "pic",
       about: "about",
       pubkey: "pub",
-      mints: "m1",
+      mints: ["m1"],
       relays: ["r1"],
     });
     store.markClean();
@@ -35,7 +35,7 @@ describe("CreatorProfileStore isDirty", () => {
     expect(store.isDirty).toBe(true);
     store.markClean();
 
-    store.mints = "m2";
+    store.mints = ["m2"];
     expect(store.isDirty).toBe(true);
     store.markClean();
 

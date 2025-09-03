@@ -70,13 +70,16 @@
     </div>
     <q-select
       v-model="profileMintsLocal"
+      multiple
       use-input
+      use-chips
       hide-dropdown-icon
+      new-value-mode="add-unique"
       :options="mintOptions"
       dense
       outlined
       persistent-hint
-      :rules="[urlRule]"
+      :rules="[mintUrlListRule]"
       :hint="$t('creatorHub.urlListHint')"
       :label="$t('creatorHub.trustedMints')"
     />
@@ -177,7 +180,7 @@ const profilePubLocal = computed({
 });
 const profileMintsLocal = computed({
   get: () => profileMints.value,
-  set: (val: string) => (profileMints.value = val),
+  set: (val: string[]) => (profileMints.value = val),
 });
 const profileRelaysLocal = computed({
   get: () => profileRelays.value,
@@ -189,4 +192,6 @@ const urlRule = (val: string) =>
   /^https?:\/\/.+/.test(val) || t("creatorHub.invalidUrl");
 const urlListRule = (val: string[]) =>
   val.every((u) => /^wss?:\/\//.test(u)) || t("creatorHub.invalidUrl");
+const mintUrlListRule = (val: string[]) =>
+  val.every((u) => /^https?:\/\//.test(u)) || t("creatorHub.invalidUrl");
 </script>

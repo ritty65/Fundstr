@@ -169,7 +169,7 @@ describe("maybeRepublishNutzapProfile", () => {
     const mints = useMintsStore();
     mints.mints = [{ url: "mint1" }, { url: "mint2" }] as any;
     const profileStore = useCreatorProfileStore();
-    profileStore.mints = "mint1";
+    profileStore.mints = ["mint1"];
 
     fetchNutzapProfileMock = vi.fn(async () => ({
       p2pkPubkey: "other",

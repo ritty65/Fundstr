@@ -358,8 +358,8 @@ export const useMintsStore = defineStore("mints", {
           await notifySuccess(this.t("wallet.mint.notifications.added"));
         }
         const profileStore = useCreatorProfileStore();
-        if (!profileStore.mints) {
-          profileStore.mints = url;
+        if (!profileStore.mints.length) {
+          profileStore.mints = [url];
         }
         await maybeRepublishNutzapProfile();
         return mintToAdd;
@@ -563,9 +563,7 @@ export const useMintsStore = defineStore("mints", {
         await this.activateMint(this.mints[0], false);
       }
       const profileStore = useCreatorProfileStore();
-      if (profileStore.mints === url) {
-        profileStore.mints = "";
-      }
+      profileStore.mints = profileStore.mints.filter((m) => m !== url);
       notifySuccess(this.t("wallet.mint.notifications.removed"));
     },
     assertMintError: function (response: { error?: any }, verbose = true) {
