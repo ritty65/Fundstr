@@ -197,7 +197,7 @@ export const useCreatorsStore = defineStore("creators", {
       }
       const filter = {
         authors: [hex],
-        kinds: [30000],
+        kinds: [30019],
         "#d": ["tiers"],
       };
       const settings = useSettingsStore();
@@ -250,7 +250,7 @@ export const useCreatorsStore = defineStore("creators", {
             (Array.isArray(data.events)
               ? data.events.find(
                   (e: any) =>
-                    e.kind === 30000 &&
+                    e.kind === 30019 &&
                     Array.isArray(e.tags) &&
                     e.tags.some((t: any[]) => t[0] === "d" && t[1] === "tiers"),
                 )
@@ -338,7 +338,7 @@ export const useCreatorsStore = defineStore("creators", {
       const event: Partial<NostrEvent> = {
         pubkey: creatorNpub,
         created_at,
-        kind: 30000,
+        kind: 30019,
         tags: [["d", "tiers"]],
         content,
       };

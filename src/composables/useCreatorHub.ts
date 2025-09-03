@@ -111,6 +111,9 @@ export function useCreatorHub() {
 
   const loggedIn = computed(() => useNostrStore().hasIdentity);
   const tierList = computed<Tier[]>(() => store.getTierArray());
+  const hasUnpublishedTier = computed(() =>
+    tierList.value.some((t) => t.publishStatus !== 'succeeded'),
+  );
   const draggableTiers = ref<Tier[]>([]);
   const deleteDialog = ref(false);
   const deleteId = ref("");
@@ -177,52 +180,51 @@ export function useCreatorHub() {
     profileStore.markClean();
   }
 
-  async function publishFullProfile() {
+  async function saveAndPublish() {
     if (!profilePub.value) {
       notifyError("Pay-to-public-key pubkey is required");
-      return;
+      return false;
     }
 
     await nostr.initSignerIfNotSet();
 
     if (!nostr.signer) {
       notifyError("Please connect a Nostr signer (NIP-07 or nsec)");
-      return;
+      return false;
     }
 
     if (!profileRelays.value.length) {
       notifyError("Please configure at least one Nostr relay");
-      return;
+      return false;
     }
     if (!(await anyRelayReachable(profileRelays.value))) {
       notifyError("Unable to connect to any configured Nostr relays");
-      return;
+      return false;
     }
     publishing.value = true;
     try {
       const timeoutMs = 30000;
       await Promise.race([
-          publishDiscoveryProfile({
+        (async () => {
+          await publishDiscoveryProfile({
             profile: profile.value,
             p2pkPub: profilePub.value,
             mints: profileMints.value ? [profileMints.value] : [],
             relays: profileRelays.value,
-          }),
+          });
+          const tiersOk = await store.publishTierDefinitions();
+          if (!tiersOk) throw new Error("tiers publish failed");
+          profileStore.markClean();
+        })(),
         new Promise((_, reject) =>
           setTimeout(() => reject(new PublishTimeoutError()), timeoutMs),
         ),
       ]);
-      notifySuccess("Profile updated");
-      profileStore.markClean();
+      notifySuccess("Profile and tiers published!");
+      return true;
     } catch (e: any) {
-      if (e instanceof PublishTimeoutError) {
-        notifyError("Publishing timed out");
-      } else {
-        let msg = e?.message || "Failed to publish profile";
-        if (!nostr.signer) msg += " (missing signer)";
-        if (!profileRelays.value.length) msg += " (no relays)";
-        notifyError(msg);
-      }
+      notifyError("Failed to publish. Check relay connections.");
+      return false;
     } finally {
       publishing.value = false;
     }
@@ -262,7 +264,6 @@ export function useCreatorHub() {
   async function removeTier(id: string) {
     try {
       store.removeTier(id);
-      await store.publishTierDefinitions();
     } catch (e: any) {
       notifyError(e?.message || "Failed to delete tier");
     }
@@ -293,10 +294,11 @@ export function useCreatorHub() {
     publishing,
     npub,
     isDirty,
+    hasUnpublishedTier,
     login,
     logout,
     initPage,
-    publishFullProfile,
+    saveAndPublish,
     addTier,
     editTier,
     confirmDelete,
