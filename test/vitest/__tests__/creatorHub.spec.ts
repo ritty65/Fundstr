@@ -133,6 +133,7 @@ describe("publishTierDefinitions", () => {
       },
     } as any;
     store.tierOrder = ["t1"];
+    useCreatorProfileStore().relays = ["wss://relay" as any];
 
     const res = await store.publishTierDefinitions();
     expect(res).toBe(true);
