@@ -42,7 +42,6 @@
         fill-input
         input-debounce="0"
         :label="$t('creatorHub.p2pkPublicKey')"
-        :rules="[(v) => !!v || t('creatorHub.required')]"
       >
         <template #append>
           <q-btn flat dense icon="add" @click="generateP2PK" />
@@ -102,7 +101,7 @@
       dense
       outlined
       persistent-hint
-      :rules="[urlListRule, (val) => val.length > 0 || t('creatorHub.required')]"
+      :rules="[urlListRule]"
       :hint="$t('creatorHub.urlListHint')"
     >
       <template #label>

@@ -117,7 +117,6 @@ export function useCreatorHub() {
   const showTierDialog = ref(false);
   const currentTier = ref<Partial<Tier>>({});
   const publishing = ref(false);
-  const publishSuccess = ref(false);
   const npub = computed(() =>
     nostr.pubkey ? nip19.npubEncode(nostr.pubkey) : "",
   );
@@ -129,10 +128,6 @@ export function useCreatorHub() {
     },
     { immediate: true },
   );
-
-  watch(isDirty, (val) => {
-    if (val) publishSuccess.value = false;
-  });
 
   async function login(nsec?: string) {
     await store.login(nsec);
@@ -182,26 +177,26 @@ export function useCreatorHub() {
     profileStore.markClean();
   }
 
-  async function publishFullProfile(): Promise<boolean> {
+  async function publishFullProfile() {
     if (!profilePub.value) {
       notifyError("Pay-to-public-key pubkey is required");
-      return false;
+      return;
     }
 
     await nostr.initSignerIfNotSet();
 
     if (!nostr.signer) {
       notifyError("Please connect a Nostr signer (NIP-07 or nsec)");
-      return false;
+      return;
     }
 
     if (!profileRelays.value.length) {
       notifyError("Please configure at least one Nostr relay");
-      return false;
+      return;
     }
     if (!(await anyRelayReachable(profileRelays.value))) {
       notifyError("Unable to connect to any configured Nostr relays");
-      return false;
+      return;
     }
     publishing.value = true;
     try {
@@ -219,8 +214,6 @@ export function useCreatorHub() {
       ]);
       notifySuccess("Profile updated");
       profileStore.markClean();
-      publishSuccess.value = true;
-      return true;
     } catch (e: any) {
       if (e instanceof PublishTimeoutError) {
         notifyError("Publishing timed out");
@@ -230,8 +223,6 @@ export function useCreatorHub() {
         if (!profileRelays.value.length) msg += " (no relays)";
         notifyError(msg);
       }
-      publishSuccess.value = false;
-      return false;
     } finally {
       publishing.value = false;
     }
@@ -300,7 +291,6 @@ export function useCreatorHub() {
     showTierDialog,
     currentTier,
     publishing,
-    publishSuccess,
     npub,
     isDirty,
     login,
