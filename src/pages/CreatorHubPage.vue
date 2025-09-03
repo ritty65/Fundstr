@@ -1,6 +1,30 @@
 <template>
   <q-page class="bg-surface-1 q-pa-md">
     <q-card class="q-pa-lg bg-surface-2 shadow-4 full-width">
+      <q-banner
+        v-if="relayStatus.status === 'connecting'"
+        class="text-white bg-orange"
+      >
+        <template v-slot:avatar><q-spinner /></template>
+        Connecting to your Nostr relays...
+      </q-banner>
+      <q-banner
+        v-if="relayStatus.status === 'failed'"
+        class="text-white bg-negative"
+      >
+        Connection Failed: 0 of {{ relayStatus.totalCount }} relays are reachable.
+        Publishing is disabled.
+        <template v-slot:action>
+          <q-btn flat label="Check Settings" @click="goToSettings" />
+        </template>
+      </q-banner>
+      <q-banner
+        v-if="relayStatus.status === 'connected'"
+        class="text-white bg-positive"
+      >
+        Connected to {{ relayStatus.connectedCount }} of
+        {{ relayStatus.totalCount }} relays. Ready to publish.
+      </q-banner>
       <div class="row items-center justify-between q-mb-lg">
         <div class="text-h5">Creator Hub</div>
         <div class="row items-center q-gutter-sm">
@@ -8,7 +32,7 @@
             color="primary"
             label="Save & Publish"
             :loading="publishing"
-            :disable="!hasUnsavedChanges || publishing"
+            :disable="!hasUnsavedChanges || publishing || relayStatus.status !== 'connected'"
             @click="saveAndPublish"
           />
           <ThemeToggle />
@@ -178,6 +202,7 @@ const {
   performDelete,
   publishing,
   hasUnsavedChanges,
+  relayStatus,
 } = useCreatorHub();
 
 const nsec = ref("");
@@ -185,6 +210,10 @@ const nsec = ref("");
 const router = useRouter();
 const { copy } = useClipboard();
 const profileUrl = computed(() => buildProfileUrl(npub.value, router));
+
+function goToSettings() {
+  router.push("/settings");
+}
 </script>
 
 <style lang="scss" src="../css/creator-hub.scss" scoped></style>
