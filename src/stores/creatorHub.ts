@@ -317,21 +317,21 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       try {
         await ensureRelayConnectivity(ndk);
         await publishWithTimeout(ev, undefined, 30000);
+        console.debug('Tier publish ok', {
+          id: ev.id,
+          kind: ev.kind,
+          relays: ndk.pool.connectedRelays(),
+        });
       } catch (e: any) {
         if (e instanceof PublishTimeoutError) {
           notifyError('Publishing tier definitions timed out');
         } else {
           notifyError(e?.message || 'Failed to publish tier definitions');
         }
-        console.warn('Failed to publish tier definitions', e);
+        console.warn('Tier publish failed', e);
         revertStatuses();
         return false;
       }
-
-      const connectedRelays = Array.from(ndk.pool.relays.values())
-        .filter((r: any) => r.connected)
-        .map((r: any) => r.url);
-      console.debug('Published tier definitions', ev.id, ev.kind, connectedRelays);
 
       await db.creatorsTierDefinitions.put({
         creatorNpub: nostr.pubkey,
