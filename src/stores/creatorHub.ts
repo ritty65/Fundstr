@@ -299,12 +299,6 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         return false;
       }
 
-      if (!profileStore.relays.length) {
-        notifyError('Add at least one Nostr relay before publishing tiers');
-        revertStatuses();
-        return false;
-      }
-
       const ndk = await useNdk();
       if (!ndk) {
         notifyError('Failed to initialise Nostr');
@@ -319,9 +313,16 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       ev.content = JSON.stringify(tiersArray);
       await ev.sign(nostr.signer as any);
 
-      // sanitize and build candidate writer targets
-      const userRelays = normalizeWsUrls(profileStore.relays);
+      // proceed even if user list is empty; we'll fall back to curated write relays
+
+      // sanitize and build candidate writer targets (user relays + curated write relays)
+      const userRelays = normalizeWsUrls(profileStore.relays || []);
       const candidates = Array.from(new Set([...userRelays, ...FREE_RELAYS]));
+      if (!candidates.length) {
+        notifyError('No candidate relays to publish to');
+        revertStatuses();
+        return false;
+      }
 
       try {
         // FAST PATH: try NDK relay set first (quick success if any ACK fast)
