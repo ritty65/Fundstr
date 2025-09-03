@@ -272,8 +272,7 @@ export default defineComponent({
           ...localTier,
           media: localTier.media,
         });
-        await creatorHub.publishTierDefinitions();
-        notifySuccess("Tier saved & published");
+        notifySuccess("Tier saved");
         emit("update:modelValue", false);
       } catch (e: any) {
         notifyError(e.message);

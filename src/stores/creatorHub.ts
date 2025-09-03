@@ -122,7 +122,13 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         throw e;
       }
     },
-    addTier(tier: Partial<Tier> & { price?: number; perks?: string }) {
+    addTier(
+      tier: Partial<Tier> & {
+        price?: number;
+        perks?: string;
+        publishStatus?: 'pending' | 'published';
+      },
+    ): string {
       let id = tier.id || uuidv4();
       while (this.tiers[id]) {
         id = uuidv4();
@@ -141,12 +147,14 @@ export const useCreatorHubStore = defineStore("creatorHub", {
           ? { benefits: tier.benefits || [(tier as any).perks] }
           : {}),
         media: tier.media ? filterValidMedia(tier.media as TierMedia[]) : [],
+        publishStatus: tier.publishStatus || 'published',
       };
       this.tiers[id] = newTier;
       if (!this.tierOrder.includes(id)) {
         this.tierOrder.push(id);
       }
       maybeRepublishNutzapProfile();
+      return id;
     },
     updateTier(
       id: string,
@@ -177,10 +185,21 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       };
     },
     async addOrUpdateTier(data: Partial<Tier>) {
-      if (data.id && this.tiers[data.id]) {
-        this.updateTier(data.id, data);
+      let id = data.id;
+      if (id && this.tiers[id]) {
+        this.updateTier(id, data);
       } else {
-        this.addTier(data);
+        id = this.addTier({ ...data, publishStatus: 'pending' });
+      }
+      if (id && this.tiers[id]) {
+        this.tiers[id].publishStatus = 'pending';
+        const publishPromise = this.publishTierDefinitions();
+        publishPromise
+          .catch((e) => notifyError(e?.message ?? String(e)))
+          .finally(() => {
+            const t = this.tiers[id!];
+            if (t) t.publishStatus = 'published';
+          });
       }
     },
     async saveTier(_tier: Tier) {
@@ -210,6 +229,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
               price_sats: t.price_sats ?? t.price ?? 0,
               ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
               media: t.media ? filterValidMedia(t.media) : [],
+              publishStatus: 'published',
             };
             obj[tier.id] = tier;
           });
@@ -227,11 +247,16 @@ export const useCreatorHubStore = defineStore("creatorHub", {
     },
 
     async publishTierDefinitions() {
-      const tiersArray = this.getTierArray().map((t) => ({
-        ...toRaw(t),
-        price: t.price_sats,
-        media: t.media ? filterValidMedia(t.media) : [],
-      }));
+      const tiersArray = this.getTierArray().map((t) => {
+        const { publishStatus, ...rest } = toRaw(t) as Tier & {
+          publishStatus?: 'pending' | 'published';
+        };
+        return {
+          ...rest,
+          price: t.price_sats,
+          media: t.media ? filterValidMedia(t.media) : [],
+        };
+      });
       const nostr = useNostrStore();
 
       if (!nostr.signer) {
