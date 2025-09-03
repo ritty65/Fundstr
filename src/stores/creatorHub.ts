@@ -302,17 +302,25 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         return false;
       }
 
-      const ndk = await useNdk();
-      if (!ndk) {
-        notifyError('Failed to initialise Nostr');
+      // sanitize relay URLs minimally
+      const unique = (arr: string[]) => Array.from(new Set(arr));
+      const trimSlash = (u: string) => u.replace(/\/+$/, '');
+      const sanitizedRelays = unique(
+        profileStore.relays
+          .map(String)
+          .map(trimSlash)
+          .filter((u) => u.startsWith('wss://'))
+      );
+
+      if (!sanitizedRelays.length) {
+        notifyError('No secure (wss://) relays configured for publishing');
         revertStatuses();
         return false;
       }
 
-      // Build a relay set for the user's configured relays and connect them.
-      const relaySet = await urlsToRelaySet(profileStore.relays, true);
-      if (!relaySet) {
-        notifyError('No relays configured for publishing');
+      const ndk = await useNdk();
+      if (!ndk) {
+        notifyError('Failed to initialise Nostr');
         revertStatuses();
         return false;
       }
@@ -324,25 +332,51 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       ev.content = JSON.stringify(tiersArray);
       await ev.sign(nostr.signer as any);
 
+      const tryPublish = async (relays: string[], timeoutMs: number) => {
+        const set = await urlsToRelaySet(relays, true);
+        if (!set) throw new Error('No relays to publish to');
+        await waitForRelaySetConnectivity(set, 4000);
+        await publishWithTimeout(ev, set, timeoutMs);
+      };
+
+      // 1st attempt: user's relays
       try {
-        // Wait for the selected relay set (not the whole pool).
-        await waitForRelaySetConnectivity(relaySet, 4000);
-        // Publish only to the user's selected relays.
-        await publishWithTimeout(ev, relaySet, 30000);
-        console.debug('Tier publish ok', {
+        await tryPublish(sanitizedRelays, 30000);
+        console.debug('Tier publish ok (user relays)', {
           id: ev.id,
           kind: ev.kind,
           relays: ndk.pool.connectedRelays(),
         });
       } catch (e: any) {
-        if (e instanceof PublishTimeoutError) {
-          notifyError('Publishing tier definitions timed out');
-        } else {
+        if (!(e instanceof PublishTimeoutError)) {
+          console.warn('Tier publish failed (user relays)', e);
           notifyError(e?.message || 'Failed to publish tier definitions');
+          revertStatuses();
+          return false;
         }
-        console.warn('Tier publish failed', e);
-        revertStatuses();
-        return false;
+
+        // Timeout → fallback to a tiny, fast set (do not remove Damus/Primal)
+        const FALLBACK_WRITE = ['wss://relay.snort.social','wss://relay.nostr.band','wss://nos.lol'];
+        const fallbackRelays = FALLBACK_WRITE.filter((u) => !sanitizedRelays.includes(u)).slice(0, 3);
+
+        try {
+          await tryPublish(fallbackRelays, 12000);
+          console.debug('Tier publish ok (fallback relays)', {
+            id: ev.id,
+            kind: ev.kind,
+            relays: ndk.pool.connectedRelays(),
+            fallbackRelays,
+          });
+        } catch (e2: any) {
+          console.warn('Tier publish failed (fallback relays)', e2);
+          notifyError(
+            e2 instanceof PublishTimeoutError
+              ? 'Publishing tier definitions timed out'
+              : (e2?.message || 'Failed to publish tier definitions')
+          );
+          revertStatuses();
+          return false;
+        }
       }
 
       await db.creatorsTierDefinitions.put({
