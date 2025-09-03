@@ -60,7 +60,7 @@ async function publishProfile() {
   }
   publishing.value = true;
   try {
-    await publishDiscoveryProfile({
+    const ids = await publishDiscoveryProfile({
       profile: {
         display_name: display_name.value,
         picture: picture.value,
@@ -68,6 +68,10 @@ async function publishProfile() {
       },
       p2pkPub: profilePub.value || "",
       mints: profileMints.value ? [profileMints.value] : [],
+      relays: profileRelays.value,
+    });
+    console.debug('Profile publish ok', {
+      id: ids,
       relays: profileRelays.value,
     });
     notifySuccess("Profile updated");
@@ -78,6 +82,7 @@ async function publishProfile() {
     } else {
       notifyError(e?.message || "Failed to publish profile");
     }
+    console.warn('Profile publish failed', e);
   } finally {
     publishing.value = false;
   }
