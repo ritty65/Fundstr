@@ -246,17 +246,45 @@ export class RelayConnectionError extends Error {
 
 export async function urlsToRelaySet(
   urls?: string[],
+  connectNow = true,
 ): Promise<NDKRelaySet | undefined> {
   if (!urls?.length) return undefined;
 
   const ndk = await useNdk({ requireSigner: false });
+  // Ensure selected relays exist in the pool
+  for (const u of urls) {
+    if (!ndk.pool.relays.has(u)) {
+      ndk.addExplicitRelay(u);
+    }
+  }
+
   const set = new NDKRelaySet(new Set(), ndk);
-  urls.forEach((u) =>
-    set.addRelay(
-      ndk.pool.getRelay(u) ?? new NDKRelay(u, undefined as any, ndk as any),
-    ),
-  );
+  for (const u of urls) {
+    const r = ndk.pool.getRelay(u);
+    if (r) set.addRelay(r);
+  }
+
+  if (connectNow) {
+    try {
+      await ndk.connect();
+    } catch {
+      // swallow; connectivity will be checked separately
+    }
+  }
+
   return set;
+}
+
+export async function waitForRelaySetConnectivity(
+  set: NDKRelaySet,
+  timeoutMs = 4000,
+): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if ([...set.relays].some((r: any) => r.connected === true)) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new RelayConnectionError("No selected relay connected");
 }
 
 /** Wraps relay.connect() in a timeout (ms) so it never hangs forever */
@@ -546,8 +574,14 @@ export async function publishDiscoveryProfile(opts: {
   if (!nostr.signer) {
     throw new Error("Signer required to publish a discoverable profile.");
   }
-  // Ensure we are connected to the relays we want to publish to.
-  await nostr.ensureNdkConnected(opts.relays);
+  const relaySet = await urlsToRelaySet(opts.relays, true);
+  if (relaySet) {
+    try {
+      await waitForRelaySetConnectivity(relaySet, 4000);
+    } catch (e: any) {
+      notifyWarning("Selected relays not reachable", e?.message ?? String(e));
+    }
+  }
   const ndk = await useNdk();
   if (!ndk) {
     throw new Error("NDK not initialized. Cannot publish profile.");
@@ -578,12 +612,6 @@ export async function publishDiscoveryProfile(opts: {
   await Promise.all(eventsToPublish.map((ev) => ev.sign()));
 
   // Publish all events
-  const relaySet = await urlsToRelaySet(opts.relays);
-  try {
-    await ensureRelayConnectivity(ndk);
-  } catch (e: any) {
-    notifyWarning("Relay connection failed", e?.message ?? String(e));
-  }
   try {
     await Promise.all(
       eventsToPublish.map((ev) => publishWithTimeout(ev, relaySet)),
