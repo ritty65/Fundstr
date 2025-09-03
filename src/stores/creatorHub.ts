@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { toRaw, watch } from "vue";
+import { toRaw, watch, ref } from "vue";
 import { useLocalStorage } from "@vueuse/core";
 import { NDKEvent, NDKKind, NDKFilter } from "@nostr-dev-kit/ndk";
 import {
@@ -70,18 +70,34 @@ export const useCreatorHubStore = defineStore("creatorHub", {
   state: () => {
     const tiers = useLocalStorage<Record<string, Tier>>("creatorHub.tiers", {});
     const tierOrder = useLocalStorage<string[]>("creatorHub.tierOrder", []);
+    const initialTierOrder = ref<string[]>([]);
     const nostr = useNostrStore();
     watch(
       () => nostr.pubkey,
       (newPubkey) => {
         tiers.value = {} as any;
         tierOrder.value = [] as any;
+        initialTierOrder.value = [] as any;
         if (newPubkey) {
           useCreatorHubStore().loadTiersFromNostr(newPubkey);
         }
       },
     );
-    return { tiers, tierOrder };
+    return { tiers, tierOrder, initialTierOrder };
+  },
+  getters: {
+    isDirty(): boolean {
+      const tiers = Object.values(this.tiers as Record<string, Tier>);
+      const hasUnpublished = tiers.some(
+        (t) => t.publishStatus !== "succeeded",
+      );
+      const orderChanged =
+        this.tierOrder.length !== this.initialTierOrder.length ||
+        this.tierOrder.some(
+          (id, idx) => id !== this.initialTierOrder[idx],
+        );
+      return hasUnpublished || orderChanged;
+    },
   },
   actions: {
     async login(nsec?: string) {
@@ -95,6 +111,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       nostr.setPubkey("");
       this.tiers = {} as any;
       this.tierOrder = [];
+      this.initialTierOrder = [];
       const profileStore = useCreatorProfileStore();
       profileStore.setProfile({
         display_name: "",
@@ -224,6 +241,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
           });
           this.tiers = obj as any;
           this.tierOrder = raw.map((t) => t.id);
+          this.initialTierOrder = [...this.tierOrder];
         } catch (e) {
           console.error(e);
         }
@@ -299,6 +317,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         const t = this.tiers[id];
         if (t) t.publishStatus = 'succeeded';
       });
+      this.initialTierOrder = [...this.tierOrder];
       return true;
     },
     setTierOrder(order: string[]) {
