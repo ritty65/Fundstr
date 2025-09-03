@@ -67,7 +67,7 @@ async function publishProfile() {
         about: about.value,
       },
       p2pkPub: profilePub.value || "",
-      mints: profileMints.value ? [profileMints.value] : [],
+      mints: profileMints.value,
       relays: profileRelays.value,
     });
     console.debug('Profile publish ok', {

@@ -2066,7 +2066,7 @@ export default defineComponent({
             about: profileStore.about,
           },
           p2pkPub: this.firstKey.publicKey,
-          mints: profileStore.mints ? [profileStore.mints] : [],
+          mints: profileStore.mints,
           relays: profileStore.relays,
         });
         notifySuccess("Profile published");

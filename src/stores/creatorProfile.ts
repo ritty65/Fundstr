@@ -6,7 +6,7 @@ export interface CreatorProfile {
   picture: string;
   about: string;
   pubkey: string;
-  mints: string;
+  mints: string[];
   relays: string[];
 }
 
@@ -27,7 +27,7 @@ export const useCreatorProfileStore = defineStore("creatorProfile", {
     picture: useLocalStorage<string>("creatorProfile.picture", ""),
     about: useLocalStorage<string>("creatorProfile.about", ""),
     pubkey: useLocalStorage<string>("creatorProfile.pubkey", ""),
-    mints: useLocalStorage<string>("creatorProfile.mints", ""),
+    mints: useLocalStorage<string[]>("creatorProfile.mints", []),
     relays: useLocalStorage<string[]>("creatorProfile.relays", []),
     _clean: "",
   }),
@@ -50,7 +50,7 @@ export const useCreatorProfileStore = defineStore("creatorProfile", {
       if (data.picture !== undefined) this.picture = data.picture;
       if (data.about !== undefined) this.about = data.about;
       if (data.pubkey !== undefined) this.pubkey = data.pubkey;
-      if (data.mints !== undefined) this.mints = data.mints;
+      if (data.mints !== undefined) this.mints = [...data.mints];
       if (data.relays !== undefined) this.relays = [...data.relays];
     },
     markClean() {
