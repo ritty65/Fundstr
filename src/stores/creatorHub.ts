@@ -12,7 +12,10 @@ import {
   PublishTimeoutError,
   urlsToRelaySet,
   waitForRelaySetConnectivity,
+  publishRawToAny,
+  normalizeWsUrls,
 } from "./nostr";
+import { FREE_RELAYS } from "src/config/relays";
 import { useP2PKStore } from "./p2pk";
 import { useCreatorProfileStore } from "./creatorProfile";
 import { db } from "./dexie";
@@ -302,22 +305,6 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         return false;
       }
 
-      // sanitize relay URLs minimally
-      const unique = (arr: string[]) => Array.from(new Set(arr));
-      const trimSlash = (u: string) => u.replace(/\/+$/, '');
-      const sanitizedRelays = unique(
-        profileStore.relays
-          .map(String)
-          .map(trimSlash)
-          .filter((u) => u.startsWith('wss://'))
-      );
-
-      if (!sanitizedRelays.length) {
-        notifyError('No secure (wss://) relays configured for publishing');
-        revertStatuses();
-        return false;
-      }
-
       const ndk = await useNdk();
       if (!ndk) {
         notifyError('Failed to initialise Nostr');
@@ -332,48 +319,37 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       ev.content = JSON.stringify(tiersArray);
       await ev.sign(nostr.signer as any);
 
-      const tryPublish = async (relays: string[], timeoutMs: number) => {
-        const set = await urlsToRelaySet(relays, true);
+      // sanitize and build candidate writer targets
+      const userRelays = normalizeWsUrls(profileStore.relays);
+      const candidates = Array.from(new Set([...userRelays, ...FREE_RELAYS]));
+
+      try {
+        // FAST PATH: try NDK relay set first (quick success if any ACK fast)
+        const set = await urlsToRelaySet(candidates, true);
         if (!set) throw new Error('No relays to publish to');
         await waitForRelaySetConnectivity(set, 4000);
-        await publishWithTimeout(ev, set, timeoutMs);
-      };
 
-      // 1st attempt: user's relays
-      try {
-        await tryPublish(sanitizedRelays, 30000);
-        console.debug('Tier publish ok (user relays)', {
-          id: ev.id,
-          kind: ev.kind,
-          relays: ndk.pool.connectedRelays(),
+        // Give the NDK set a short window to succeed so we don't wait on closed relays
+        await publishWithTimeout(ev, set, 10_000);
+
+        console.debug('[tiers] NDK publish OK', {
+          id: ev.id, kind: ev.kind, tried: candidates
         });
+
       } catch (e: any) {
-        if (!(e instanceof PublishTimeoutError)) {
-          console.warn('Tier publish failed (user relays)', e);
-          notifyError(e?.message || 'Failed to publish tier definitions');
-          revertStatuses();
-          return false;
-        }
+        console.warn('[tiers] NDK publish did not succeed; falling back to SimplePool', e);
 
-        // Timeout → fallback to a tiny, fast set (do not remove Damus/Primal)
-        const FALLBACK_WRITE = ['wss://relay.snort.social','wss://relay.nostr.band','wss://nos.lol'];
-        const fallbackRelays = FALLBACK_WRITE.filter((u) => !sanitizedRelays.includes(u)).slice(0, 3);
-
+        // SLOW BUT ROBUST: race all relays; resolve on first OK
         try {
-          await tryPublish(fallbackRelays, 12000);
-          console.debug('Tier publish ok (fallback relays)', {
-            id: ev.id,
-            kind: ev.kind,
-            relays: ndk.pool.connectedRelays(),
-            fallbackRelays,
-          });
+          const { okUrl } = await publishRawToAny(ev, candidates, 12_000);
+          console.debug('[tiers] SimplePool publish OK at', okUrl);
         } catch (e2: any) {
-          console.warn('Tier publish failed (fallback relays)', e2);
-          notifyError(
-            e2 instanceof PublishTimeoutError
-              ? 'Publishing tier definitions timed out'
-              : (e2?.message || 'Failed to publish tier definitions')
-          );
+          console.warn('[tiers] SimplePool publish failed', e2);
+          if (e2 instanceof PublishTimeoutError) {
+            notifyError('Publishing timed out. Check relay connectivity and try again.');
+          } else {
+            notifyError(e2?.message || 'Failed to publish tier definitions');
+          }
           revertStatuses();
           return false;
         }
