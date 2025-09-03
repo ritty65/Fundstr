@@ -5,8 +5,8 @@ import * as relayHealth from "../../../src/utils/relayHealth";
 const filterHealthyRelaysMock = vi.spyOn(relayHealth, "filterHealthyRelays");
 
 describe("selectPreferredRelays", () => {
-  beforeEach(async () => {
-    await resetRelaySelection();
+  beforeEach(() => {
+    resetRelaySelection();
     filterHealthyRelaysMock.mockReset();
   });
 
