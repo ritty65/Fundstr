@@ -181,8 +181,22 @@ export function useCreatorHub() {
   }
 
   async function saveAndPublish() {
+    publishing.value = true;
+    const relayReachable = await anyRelayReachable(profileRelays.value);
+    if (!relayReachable) {
+      store.getTierArray().forEach((tier) => {
+        store.tiers[tier.id].publishStatus = "failed";
+      });
+      notifyError(
+        "Publish Failed: Could not connect to any of your configured Nostr relays.",
+      );
+      publishing.value = false;
+      return false;
+    }
+
     if (!profilePub.value) {
       notifyError("Pay-to-public-key pubkey is required");
+      publishing.value = false;
       return false;
     }
 
@@ -190,18 +204,15 @@ export function useCreatorHub() {
 
     if (!nostr.signer) {
       notifyError("Please connect a Nostr signer (NIP-07 or nsec)");
+      publishing.value = false;
       return false;
     }
 
     if (!profileRelays.value.length) {
       notifyError("Please configure at least one Nostr relay");
+      publishing.value = false;
       return false;
     }
-    if (!(await anyRelayReachable(profileRelays.value))) {
-      notifyError("Unable to connect to any configured Nostr relays");
-      return false;
-    }
-    publishing.value = true;
     try {
       const timeoutMs = 30000;
       await Promise.race([
