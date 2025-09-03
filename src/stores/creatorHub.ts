@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { toRaw, watch, ref } from "vue";
 import { useLocalStorage } from "@vueuse/core";
-import { NDKEvent, NDKKind, NDKFilter } from "@nostr-dev-kit/ndk";
+import { NDKEvent, NDKKind, NDKFilter, NDK } from "@nostr-dev-kit/ndk";
 import {
   useNostrStore,
   fetchNutzapProfile,
@@ -252,7 +252,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       this.tierOrder = this.tierOrder.filter((t) => t !== id);
     },
 
-    async publishTierDefinitions() {
+    async publishTierDefinitions(ndkInstance?: NDK) {
       const tierIds = this.getTierArray().map((t) => t.id);
       tierIds.forEach((id) => {
         const t = this.tiers[id];
@@ -279,7 +279,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         return false;
       }
 
-      const ndk = await useNdk();
+      const ndk = ndkInstance || (await useNdk());
       if (!ndk) {
         tierIds.forEach((id) => {
           const t = this.tiers[id];
