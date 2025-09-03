@@ -327,6 +327,67 @@ export async function publishWithTimeout(
   ]);
 }
 
+export function normalizeWsUrls(urls: string[]): string[] {
+  return Array.from(
+    new Set(
+      urls
+        .filter(Boolean)
+        .map((u) => String(u).trim().replace(/\/+$/, ""))
+        .filter((u) => u.startsWith("ws")),
+    ),
+  );
+}
+
+/**
+ * Publish a signed NDKEvent to many relays and resolve as soon as ANY relay
+ * ACKs with "OK". Uses nostr-tools SimplePool so one bad relay can't stall.
+ */
+export async function publishRawToAny(
+  ev: NDKEvent,
+  urls: string[],
+  timeoutMs = 12_000,
+): Promise<{ okUrl: string }> {
+  const relays = normalizeWsUrls(urls);
+  if (!relays.length) throw new Error("No relay URLs provided");
+
+  const pool = new SimplePool();
+  const raw = ev.rawEvent();
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        reject(new PublishTimeoutError("Publish timed out"));
+      }
+    }, timeoutMs);
+
+    const pub = pool.publish(relays, raw as any);
+
+    pub.on("ok", (url: string) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve({ okUrl: url });
+      }
+    });
+
+    const failures = new Set<string>();
+    pub.on("failed", (url: string, reason: string) => {
+      failures.add(`${url}: ${reason}`);
+      if (!settled && failures.size === relays.length) {
+        settled = true;
+        clearTimeout(timer);
+        reject(
+          new Error(
+            `All relays refused: ${Array.from(failures).join(", ")}`,
+          ),
+        );
+      }
+    });
+  });
+}
+
 const relayFailureCounts = new Map<string, number>();
 let relayRotationIndex = 0;
 const MAX_FAILURES = 3;
