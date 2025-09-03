@@ -1,16 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-var subMock: any;
 var filterMock: any;
+var fetchEventsMock: any;
 
 vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   const actual = await importOriginal();
-  subMock = vi.fn();
   return {
     ...actual,
-    subscribeToNostr: (...args: any[]) => subMock(...args),
-    useNostrStore: () => ({ connected: true, lastError: null }),
+    useNostrStore: () => ({
+      initNdkReadOnly: vi.fn().mockResolvedValue(undefined),
+      connected: true,
+      lastError: null,
+    }),
   };
+});
+
+vi.mock("../../../src/composables/useNdk", () => {
+  fetchEventsMock = vi.fn().mockResolvedValue(new Set());
+  return { useNdk: vi.fn().mockResolvedValue({ fetchEvents: fetchEventsMock }) };
 });
 
 vi.mock("../../../src/utils/relayHealth", () => {
@@ -58,14 +65,14 @@ describe("fetchTierDefinitions fallback", () => {
     } as any);
     const store = useCreatorsStore();
     await store.fetchTierDefinitions("pub");
-    expect(subMock).not.toHaveBeenCalled();
+    expect(fetchEventsMock).not.toHaveBeenCalled();
     expect(store.tiersMap["pub"].length).toBe(1);
     fetchSpy.mockRestore();
   });
 
-  it("falls back immediately when subscription fails", async () => {
+  it("falls back when relay fetch returns no events", async () => {
     filterMock.mockResolvedValue(["wss://relay"]);
-    subMock.mockResolvedValue(false);
+    fetchEventsMock.mockResolvedValue(new Set());
     const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -80,7 +87,7 @@ describe("fetchTierDefinitions fallback", () => {
     } as any);
     const store = useCreatorsStore();
     await store.fetchTierDefinitions("pub");
-    expect(subMock).toHaveBeenCalled();
+    expect(fetchEventsMock).toHaveBeenCalled();
     expect(store.tiersMap["pub"].length).toBe(1);
     fetchSpy.mockRestore();
   });
