@@ -2,7 +2,7 @@ import { ref, computed, watch, onMounted } from "vue";
 import { useQuasar } from "quasar";
 import { storeToRefs } from "pinia";
 import { nip19 } from "nostr-tools";
-import { useCreatorHubStore } from "stores/creatorHub";
+import { useCreatorHubStore, maybeRepublishNutzapProfile } from "stores/creatorHub";
 import type { Tier } from "stores/types";
 import {
   useNostrStore,
@@ -14,7 +14,7 @@ import {
 import { useP2PKStore } from "stores/p2pk";
 import { useMintsStore } from "stores/mints";
 import { useCreatorProfileStore } from "stores/creatorProfile";
-import { notifySuccess, notifyError } from "src/js/notify";
+import { notifySuccess, notifyError, notifyWarning } from "src/js/notify";
 import { pingRelay } from "src/utils/relayHealth";
 
 export const scanningMints = ref(false);
@@ -233,6 +233,14 @@ export function useCreatorHub() {
           });
           const tiersOk = await store.publishTierDefinitions();
           if (!tiersOk) throw new Error("tiers publish failed");
+          try {
+            await maybeRepublishNutzapProfile();
+          } catch (e) {
+            notifyWarning(
+              "Tier saved, but updating payment profile failed. You can retry publishing your profile.",
+            );
+            console.warn(e);
+          }
           profileStore.markClean();
         })(),
         new Promise((_, reject) =>
