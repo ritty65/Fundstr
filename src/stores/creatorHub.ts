@@ -11,7 +11,11 @@ import {
   publishWithTimeout,
   PublishTimeoutError,
   urlsToRelaySet,
+  waitForRelaySetConnectivity,
+  publishRawToAny,
+  normalizeWsUrls,
 } from "./nostr";
+import { FREE_RELAYS } from "src/config/relays";
 import { useP2PKStore } from "./p2pk";
 import { useCreatorProfileStore } from "./creatorProfile";
 import { db } from "./dexie";
@@ -308,9 +312,6 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         return false;
       }
 
-      await nostr.ensureNdkConnected(profileStore.relays);
-      const relaySet = await urlsToRelaySet(profileStore.relays);
-
       const ev = new NDKEvent(ndk);
       ev.kind = TIER_DEFINITIONS_KIND as unknown as NDKKind;
       ev.tags = [["d", "tiers"]];
@@ -318,23 +319,40 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       ev.content = JSON.stringify(tiersArray);
       await ev.sign(nostr.signer as any);
 
+      // sanitize and build candidate writer targets
+      const userRelays = normalizeWsUrls(profileStore.relays);
+      const candidates = Array.from(new Set([...userRelays, ...FREE_RELAYS]));
+
       try {
-        await ensureRelayConnectivity(ndk);
-        await publishWithTimeout(ev, relaySet, 30000);
-        console.debug('Tier publish ok', {
-          id: ev.id,
-          kind: ev.kind,
-          relays: ndk.pool.connectedRelays(),
+        // FAST PATH: try NDK relay set first (quick success if any ACK fast)
+        const set = await urlsToRelaySet(candidates, true);
+        if (!set) throw new Error('No relays to publish to');
+        await waitForRelaySetConnectivity(set, 4000);
+
+        // Give the NDK set a short window to succeed so we don't wait on closed relays
+        await publishWithTimeout(ev, set, 10_000);
+
+        console.debug('[tiers] NDK publish OK', {
+          id: ev.id, kind: ev.kind, tried: candidates
         });
+
       } catch (e: any) {
-        if (e instanceof PublishTimeoutError) {
-          notifyError('Publishing tier definitions timed out');
-        } else {
-          notifyError(e?.message || 'Failed to publish tier definitions');
+        console.warn('[tiers] NDK publish did not succeed; falling back to SimplePool', e);
+
+        // SLOW BUT ROBUST: race all relays; resolve on first OK
+        try {
+          const { okUrl } = await publishRawToAny(ev, candidates, 12_000);
+          console.debug('[tiers] SimplePool publish OK at', okUrl);
+        } catch (e2: any) {
+          console.warn('[tiers] SimplePool publish failed', e2);
+          if (e2 instanceof PublishTimeoutError) {
+            notifyError('Publishing timed out. Check relay connectivity and try again.');
+          } else {
+            notifyError(e2?.message || 'Failed to publish tier definitions');
+          }
+          revertStatuses();
+          return false;
         }
-        console.warn('Tier publish failed', e);
-        revertStatuses();
-        return false;
       }
 
       await db.creatorsTierDefinitions.put({
