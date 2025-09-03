@@ -151,13 +151,6 @@ export async function pingRelay(url: string): Promise<boolean> {
   return false;
 }
 
-export async function anyRelayReachable(relays: string[]): Promise<boolean> {
-  for (const url of relays) {
-    if (await pingRelay(url)) return true;
-  }
-  return false;
-}
-
 export async function filterHealthyRelays(relays: string[]): Promise<string[]> {
   const key = relays.slice().sort().join("|");
   const cached = filterCache.get(key);

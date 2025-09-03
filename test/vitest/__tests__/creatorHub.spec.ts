@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import "fake-indexeddb/auto";
 import {
   useCreatorHubStore,
   maybeRepublishNutzapProfile,
@@ -8,8 +7,8 @@ import { useP2PKStore } from "../../../src/stores/p2pk";
 import { useMintsStore } from "../../../src/stores/mints";
 import { useCreatorProfileStore } from "../../../src/stores/creatorProfile";
 
-const notifySuccess = vi.hoisted(() => vi.fn());
-const notifyError = vi.hoisted(() => vi.fn());
+const notifySuccess = vi.fn();
+const notifyError = vi.fn();
 
 vi.mock("../../../src/js/notify", () => ({
   notifySuccess,
@@ -22,26 +21,23 @@ const publishMock = vi.fn();
 let fetchNutzapProfileMock: any;
 let publishNutzapProfileMock: any;
 let ensureRelayConnectivityMock: any;
-let filterHealthyRelaysMock: any;
 
 let ndkStub: any = {};
 
-const MockNDKEvent = vi.hoisted(() => {
-  return class MockNDKEvent {
-    kind: number | undefined;
-    tags: any[] = [];
-    created_at?: number;
-    content = "";
-    constructor(_ndk: any) {
-      createdEvents.push(this);
-    }
-    sign = signMock;
-    publish = publishMock;
-    rawEvent() {
-      return {} as any;
-    }
-  };
-});
+class MockNDKEvent {
+  kind: number | undefined;
+  tags: any[] = [];
+  created_at?: number;
+  content = "";
+  constructor(_ndk: any) {
+    createdEvents.push(this);
+  }
+  sign = signMock;
+  publish = publishMock;
+  rawEvent() {
+    return {} as any;
+  }
+}
 
 vi.mock("@nostr-dev-kit/ndk", async () => {
   const actual: any = await vi.importActual("@nostr-dev-kit/ndk");
@@ -57,10 +53,9 @@ const nostrStoreMock = {
   ndk: {},
   signer: "sig",
   pubkey: "pub",
-  relays: ["wss://relay"] as string[],
+  relays: [] as string[],
   connected: true,
   lastError: null,
-  connect: vi.fn(),
 };
 
 vi.mock("../../../src/stores/nostr", async (importOriginal) => {
@@ -76,29 +71,25 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   };
 });
 
-vi.mock("../../../src/utils/relayHealth", () => ({
-  filterHealthyRelays: (...args: any[]) => filterHealthyRelaysMock(...args),
-}));
-
 beforeEach(() => {
   createdEvents = [];
   signMock.mockClear();
   publishMock.mockClear();
   nostrStoreMock.initSignerIfNotSet.mockClear();
-  nostrStoreMock.connect.mockClear();
   fetchNutzapProfileMock = vi.fn(async () => null);
   publishNutzapProfileMock = vi.fn();
   ensureRelayConnectivityMock = vi.fn();
-  filterHealthyRelaysMock = vi.fn(async (r: string[]) => r);
   localStorage.clear();
 });
 
 describe("CreatorHub store", () => {
-  it("addTier stores tier", async () => {
+  it("addTier stores tier and calls saveTier", () => {
     const store = useCreatorHubStore();
-    await store.addTier({ name: "Tier 1", price_sats: 5, perks: "p" });
+    const spy = vi.spyOn(store, "saveTier").mockResolvedValue();
+    store.addTier({ name: "Tier 1", price_sats: 5, perks: "p" });
     const tier = store.getTierArray()[0];
     expect(tier.name).toBe("Tier 1");
+    expect(spy).toHaveBeenCalledWith(tier);
   });
 
   it("saveTier stores tier", async () => {
