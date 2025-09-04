@@ -10,13 +10,13 @@ import {
   publishDiscoveryProfile,
   RelayConnectionError,
   PublishTimeoutError,
-  anyRelayReachable,
 } from "stores/nostr";
 import { useP2PKStore } from "stores/p2pk";
 import { useMintsStore } from "stores/mints";
 import { useCreatorProfileStore } from "stores/creatorProfile";
 import { notifySuccess, notifyError, notifyWarning } from "src/js/notify";
-import { pingRelay } from "src/utils/relayHealth";
+import { useNdk } from "src/composables/useNdk";
+import type NDK from "@nostr-dev-kit/ndk";
 
 export const scanningMints = ref(false);
 
@@ -105,32 +105,25 @@ export function useCreatorHub() {
   const isMobile = computed(() => $q.screen.lt.md);
   const splitterModel = ref(50);
   const tab = ref<"profile" | "tiers">("profile");
+  const ndkRef = ref<NDK | null>(null);
 
-  const relayStatus = ref({
-    status: "idle" as "idle" | "connecting" | "connected" | "failed",
-    connectedCount: 0,
-    totalCount: 0,
+  const connectedCount = computed(() => {
+    // depend on nostr.relays to keep reactive
+    nostr.relays;
+    if (!ndkRef.value) return 0;
+    return Array.from(ndkRef.value.pool.relays.values()).filter(
+      (r) => r.connected,
+    ).length;
   });
 
-  async function checkRelayHealth(relays: string[]) {
-    relayStatus.value = {
-      status: "connecting",
-      connectedCount: 0,
-      totalCount: relays.length,
-    };
-    const results = await Promise.allSettled(relays.map((r) => pingRelay(r)));
-    const successes = results.filter(
-      (r): r is PromiseFulfilledResult<boolean> =>
-        r.status === "fulfilled" && r.value,
-    ).length;
-    relayStatus.value = {
-      status: successes > 0 ? "connected" : "failed",
-      connectedCount: successes,
-      totalCount: relays.length,
-    };
-  }
+  const totalRelays = computed(() => {
+    nostr.relays;
+    return ndkRef.value?.pool.relays.size || 0;
+  });
 
-  const loggedIn = computed(() => useNostrStore().hasIdentity);
+  const failedRelays = computed(() => nostr.failedRelays);
+
+  const loggedIn = computed(() => nostr.hasIdentity);
   const tierList = computed<Tier[]>(() => store.getTierArray());
   const isDirty = computed(() => profileDirty.value || store.isDirty);
   const draggableTiers = ref<Tier[]>([]);
@@ -201,6 +194,23 @@ export function useCreatorHub() {
     profileStore.markClean();
   }
 
+  async function ensureRelaysConnected(timeoutMs = 5000) {
+    if (nostr.connected) return true;
+    try {
+      await Promise.race([
+        nostr.connect(profileRelays.value).then(() =>
+          useNdk().then((n) => (ndkRef.value = n)),
+        ),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("timeout")), timeoutMs),
+        ),
+      ]);
+    } catch {
+      /* ignore */
+    }
+    return nostr.connected;
+  }
+
   async function publishFullProfile() {
     if (!profilePub.value) {
       notifyError("Pay-to-public-key pubkey is required");
@@ -215,8 +225,8 @@ export function useCreatorHub() {
       notifyError("Please configure at least one Nostr relay");
       return;
     }
-    if (!(await anyRelayReachable(profileRelays.value))) {
-      notifyError("Unable to connect to any configured Nostr relays");
+    if (!(await ensureRelaysConnected())) {
+      notifyError("Unable to connect to Nostr relays");
       return;
     }
     publishing.value = true;
@@ -271,6 +281,11 @@ export function useCreatorHub() {
 
     if (!profileRelays.value.length) {
       notifyError("Please configure at least one Nostr relay");
+      publishing.value = false;
+      return false;
+    }
+    if (!(await ensureRelaysConnected())) {
+      notifyError("Unable to connect to Nostr relays");
       publishing.value = false;
       return false;
     }
@@ -361,18 +376,23 @@ export function useCreatorHub() {
     deleteDialog.value = false;
   }
 
-  onMounted(() => {
-    if (nostr.hasIdentity) initPage();
-    watch(
-      profileRelays,
-      (newRelays) => {
-        if (newRelays && newRelays.length > 0) {
-          checkRelayHealth(newRelays);
-        }
-      },
-      { immediate: true },
-    );
+  onMounted(async () => {
+    if (nostr.hasIdentity) {
+      await initPage();
+      await nostr.connect(profileRelays.value);
+      ndkRef.value = await useNdk();
+    }
   });
+
+  watch(
+    profileRelays,
+    async (newRelays) => {
+      if (newRelays && newRelays.length > 0) {
+        await nostr.connect(newRelays);
+        ndkRef.value = await useNdk();
+      }
+    },
+  );
 
   return {
     profile,
@@ -387,7 +407,6 @@ export function useCreatorHub() {
     showTierDialog,
     currentTier,
     publishing,
-    relayStatus,
     npub,
     isDirty,
     login,
@@ -404,5 +423,10 @@ export function useCreatorHub() {
     performDelete,
     scanForMints,
     scanningMints,
+    connectedCount,
+    totalRelays,
+    failedRelays,
+    profileRelays,
+    nostr,
   };
 }
