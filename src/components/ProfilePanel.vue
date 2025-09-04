@@ -28,7 +28,7 @@ import {
 } from "stores/nostr";
 import { useMintsStore } from "stores/mints";
 import { storeToRefs } from "pinia";
-import { notifySuccess, notifyError } from "src/js/notify";
+import { notifySuccess, notifyError, notifyWarning } from "src/js/notify";
 
 const hub = useCreatorHubStore();
 const profileStore = useCreatorProfileStore();
@@ -60,7 +60,7 @@ async function publishProfile() {
   }
   publishing.value = true;
   try {
-    const ids = await publishDiscoveryProfile({
+    const { ids, failedRelays } = await publishDiscoveryProfile({
       profile: {
         display_name: display_name.value,
         picture: picture.value,
@@ -71,10 +71,17 @@ async function publishProfile() {
       relays: profileRelays.value,
     });
     console.debug('Profile publish ok', {
-      id: ids,
+      ids,
       relays: profileRelays.value,
+      failedRelays,
     });
-    notifySuccess("Profile updated");
+    if (failedRelays.length) {
+      notifyWarning(
+        `Published but some relays failed: ${failedRelays.join(", ")}`,
+      );
+    } else {
+      notifySuccess("Profile updated");
+    }
     profileStore.markClean();
   } catch (e: any) {
     if (e instanceof PublishTimeoutError) {

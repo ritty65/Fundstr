@@ -29,6 +29,30 @@
           <q-btn flat label="Check Settings" @click="goToSettings" />
         </template>
       </q-banner>
+      <q-banner
+        v-if="publishFailures.length"
+        class="text-white bg-orange"
+      >
+        <div>
+          Profile published, but these relays failed:
+          <ul class="q-pl-md">
+            <li
+              v-for="r in publishFailures"
+              :key="r"
+              style="word-break: break-all"
+            >
+              {{ r }}
+            </li>
+          </ul>
+        </div>
+        <template #action>
+          <q-btn
+            flat
+            label="Retry without failed relays"
+            @click="retryWithoutFailedRelays"
+          />
+        </template>
+      </q-banner>
       <div class="row items-center justify-between q-mb-lg">
         <div class="text-h5">Creator Hub</div>
         <div class="row items-center q-gutter-sm">
@@ -206,9 +230,11 @@ const {
   publishing,
   isDirty,
   publishFullProfile,
+  retryWithoutFailedRelays,
   connectedCount,
   totalRelays,
   failedRelays,
+  publishFailures,
   profileRelays,
   nostr,
 } = useCreatorHub();
