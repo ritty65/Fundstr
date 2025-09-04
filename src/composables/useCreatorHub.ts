@@ -17,6 +17,7 @@ import { useCreatorProfileStore } from "stores/creatorProfile";
 import { notifySuccess, notifyError, notifyWarning } from "src/js/notify";
 import { useNdk } from "src/composables/useNdk";
 import type NDK from "@nostr-dev-kit/ndk";
+import { sanitizeRelayUrls } from "src/utils/relay";
 
 export const scanningMints = ref(false);
 
@@ -110,6 +111,23 @@ export function useCreatorHub() {
   const now = ref(Date.now());
   let timer: ReturnType<typeof setInterval> | undefined;
 
+  async function connectCreatorRelays(relays: string[]) {
+    const unique = sanitizeRelayUrls(relays);
+    if (!unique.length) return null;
+    if (connecting.value) return ndkRef.value;
+    if (unique.join() === nostr.relays.join() && nostr.connected) {
+      ndkRef.value = await useNdk();
+      return ndkRef.value;
+    }
+    connecting.value = true;
+    try {
+      ndkRef.value = await nostr.connect(unique);
+      return ndkRef.value;
+    } finally {
+      connecting.value = false;
+    }
+  }
+
   const connectedCount = computed(() => {
     // depend on nostr.relays to keep reactive
     nostr.relays;
@@ -185,7 +203,7 @@ export function useCreatorHub() {
       profileMints.value = [...profileStore.mints];
     }
     if (profileStore.relays.length) {
-      profileRelays.value = [...profileStore.relays];
+      profileRelays.value = sanitizeRelayUrls(profileStore.relays);
     }
     let existing = null;
     try {
@@ -203,11 +221,11 @@ export function useCreatorHub() {
         ? [...existing.trustedMints]
         : [];
       profileRelays.value = existing.relays
-        ? [...existing.relays]
-        : [...nostr.relays];
+        ? sanitizeRelayUrls(existing.relays)
+        : sanitizeRelayUrls(nostr.relays);
     } else {
       if (!profileStore.relays.length) {
-        profileRelays.value = [...nostr.relays];
+        profileRelays.value = sanitizeRelayUrls(nostr.relays);
       }
       if (p2pkStore.firstKey) profilePub.value = p2pkStore.firstKey.publicKey;
       if (!profileStore.mints.length && mintsStore.mints.length > 0)
@@ -221,14 +239,14 @@ export function useCreatorHub() {
     if (!nostr.hasIdentity) return;
     await initPage();
     if (!profileRelays.value.length) return;
-    ndkRef.value = await nostr.connect(profileRelays.value);
+    await connectCreatorRelays(profileRelays.value);
   }
 
   async function ensureRelaysConnected(timeoutMs = 5000) {
     if (nostr.connected) return true;
     try {
       await Promise.race([
-        nostr.connect(profileRelays.value).then((ndk) => (ndkRef.value = ndk)),
+        connectCreatorRelays(profileRelays.value),
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error("timeout")), timeoutMs),
         ),
@@ -249,10 +267,12 @@ export function useCreatorHub() {
       notifyError("Please connect a Nostr signer (NIP-07 or nsec)");
       return;
     }
-    if (!profileRelays.value.length) {
+    const relays = sanitizeRelayUrls(profileRelays.value);
+    if (!relays.length) {
       notifyError("Please configure at least one Nostr relay");
       return;
     }
+    profileRelays.value = relays;
     if (!(await ensureRelaysConnected())) {
       notifyError("Unable to connect to Nostr relays");
       return;
@@ -260,24 +280,25 @@ export function useCreatorHub() {
     publishing.value = true;
     try {
       const timeoutMs = 30000;
-      await nostr.ensureNdkConnected(profileRelays.value);
+      await nostr.ensureNdkConnected(relays);
       await Promise.race([
         publishDiscoveryProfile({
           profile: profile.value,
           p2pkPub: profilePub.value,
           mints: profileMints.value,
-          relays: profileRelays.value,
+          relays,
         }),
         new Promise((_, reject) =>
           setTimeout(() => reject(new PublishTimeoutError()), timeoutMs),
         ),
       ]);
 
-      await nostr.ensureNdkConnected(profileRelays.value);
+      await nostr.ensureNdkConnected(relays);
       await store.publishTierDefinitions();
 
       notifySuccess("Profile and tiers updated");
       profileStore.markClean();
+      profileRelays.value = relays;
     } catch (e: any) {
       if (e instanceof PublishTimeoutError) {
         notifyError("Publishing timed out");
@@ -309,11 +330,13 @@ export function useCreatorHub() {
       return false;
     }
 
-    if (!profileRelays.value.length) {
+    const relays = sanitizeRelayUrls(profileRelays.value);
+    if (!relays.length) {
       notifyError("Please configure at least one Nostr relay");
       publishing.value = false;
       return false;
     }
+    profileRelays.value = relays;
     if (!(await ensureRelaysConnected())) {
       notifyError("Unable to connect to Nostr relays");
       publishing.value = false;
@@ -323,14 +346,14 @@ export function useCreatorHub() {
       const timeoutMs = 30000;
       await Promise.race([
         (async () => {
-          await nostr.ensureNdkConnected(profileRelays.value);
+          await nostr.ensureNdkConnected(relays);
           await publishDiscoveryProfile({
             profile: profile.value,
             p2pkPub: profilePub.value,
             mints: profileMints.value,
-            relays: profileRelays.value,
+            relays,
           });
-          await nostr.ensureNdkConnected(profileRelays.value);
+          await nostr.ensureNdkConnected(relays);
           const tiersOk = await store.publishTierDefinitions();
           if (!tiersOk) throw new Error("tiers publish failed");
           try {
@@ -348,6 +371,7 @@ export function useCreatorHub() {
         ),
       ]);
       notifySuccess("Profile and tiers published!");
+      profileRelays.value = relays;
       return true;
     } catch (e: any) {
       if (e instanceof PublishTimeoutError) {
@@ -427,7 +451,7 @@ export function useCreatorHub() {
         newRelays.length > 0 &&
         newRelays.join() !== nostr.relays.join()
       ) {
-        ndkRef.value = await nostr.connect(newRelays);
+        await connectCreatorRelays(newRelays);
       }
     },
   );
@@ -440,13 +464,7 @@ export function useCreatorHub() {
   );
 
   async function reconnectAll() {
-    if (connecting.value) return;
-    connecting.value = true;
-    try {
-      ndkRef.value = await nostr.connect(profileRelays.value);
-    } finally {
-      connecting.value = false;
-    }
+    await connectCreatorRelays(profileRelays.value);
   }
 
   return {
