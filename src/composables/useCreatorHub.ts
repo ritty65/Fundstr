@@ -20,8 +20,11 @@ import { notifySuccess, notifyError, notifyWarning } from "src/js/notify";
 import { useNdk } from "src/composables/useNdk";
 import type NDK from "@nostr-dev-kit/ndk";
 import { sanitizeRelayUrls } from "src/utils/relay";
+import { filterHealthyRelays } from "src/utils/relayHealth";
+import { DEFAULT_RELAYS } from "src/config/relays";
 
 export const scanningMints = ref(false);
+const MAX_RELAYS = 8;
 
 export async function scanForMints() {
   const nostr = useNostrStore();
@@ -115,9 +118,11 @@ export function useCreatorHub() {
   const publishFailures = ref<string[]>([]);
 
   async function connectCreatorRelays(relays: string[]) {
-    const unique = sanitizeRelayUrls(relays);
+    let unique = sanitizeRelayUrls(relays).slice(0, MAX_RELAYS);
     if (!unique.length) return null;
     if (connecting.value) return ndkRef.value;
+    unique = (await filterHealthyRelays(unique)).slice(0, MAX_RELAYS);
+    if (!unique.length) return null;
     if (unique.join() === nostr.relays.join() && nostr.connected) {
       ndkRef.value = await useNdk();
       return ndkRef.value;
@@ -206,7 +211,7 @@ export function useCreatorHub() {
       profileMints.value = [...profileStore.mints];
     }
     if (profileStore.relays.length) {
-      profileRelays.value = sanitizeRelayUrls(profileStore.relays);
+      profileRelays.value = sanitizeRelayUrls(profileStore.relays).slice(0, MAX_RELAYS);
     }
     let existing = null;
     try {
@@ -224,11 +229,14 @@ export function useCreatorHub() {
         ? [...existing.trustedMints]
         : [];
       profileRelays.value = existing.relays
-        ? sanitizeRelayUrls(existing.relays)
-        : sanitizeRelayUrls(nostr.relays);
+        ? sanitizeRelayUrls(existing.relays).slice(0, MAX_RELAYS)
+        : sanitizeRelayUrls(nostr.relays).slice(0, MAX_RELAYS);
     } else {
       if (!profileStore.relays.length) {
-        profileRelays.value = sanitizeRelayUrls(nostr.relays);
+        profileRelays.value = sanitizeRelayUrls(nostr.relays).slice(0, MAX_RELAYS);
+        if (!profileRelays.value.length) {
+          profileRelays.value = DEFAULT_RELAYS.slice(0, MAX_RELAYS);
+        }
       }
       if (p2pkStore.firstKey) profilePub.value = p2pkStore.firstKey.publicKey;
       if (!profileStore.mints.length && mintsStore.mints.length > 0)
@@ -272,7 +280,7 @@ export function useCreatorHub() {
       notifyError("Please connect a Nostr signer (NIP-07 or nsec)");
       return;
     }
-    const relays = sanitizeRelayUrls(profileRelays.value);
+    const relays = sanitizeRelayUrls(profileRelays.value).slice(0, MAX_RELAYS);
     if (!relays.length) {
       notifyError("Please configure at least one Nostr relay");
       return;
@@ -351,7 +359,7 @@ export function useCreatorHub() {
       return false;
     }
 
-    const relays = sanitizeRelayUrls(profileRelays.value);
+    const relays = sanitizeRelayUrls(profileRelays.value).slice(0, MAX_RELAYS);
     if (!relays.length) {
       notifyError("Please configure at least one Nostr relay");
       publishing.value = false;
