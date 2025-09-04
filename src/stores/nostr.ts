@@ -50,8 +50,7 @@ import {
   notifyWarning,
   notify,
 } from "src/js/notify";
-import { useNdk } from "src/composables/useNdk";
-import { rebuildNdk } from "boot/ndk";
+import { useNdk, rebuildNdk } from "src/composables/useNdk";
 import { useSendTokensStore } from "./sendTokensStore";
 import { usePRStore } from "./payment-request";
 import token from "../js/token";
@@ -1050,6 +1049,8 @@ export const useNostrStore = defineStore("nostr", {
           }
         }),
       );
+
+      return ndk;
     },
     ensureNdkConnected: async function (relays?: string[]) {
       const ndk = await useNdk();
