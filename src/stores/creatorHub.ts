@@ -8,25 +8,18 @@ import {
   publishNutzapProfile,
   ensureRelayConnectivity,
   RelayConnectionError,
-  publishWithTimeout,
-  PublishTimeoutError,
-  urlsToRelaySet,
-  waitForRelaySetConnectivity,
-  publishRawToAny,
-  normalizeWsUrls,
 } from "./nostr";
-import { FREE_RELAYS } from "src/config/relays";
 import { useP2PKStore } from "./p2pk";
 import { useCreatorProfileStore } from "./creatorProfile";
 import { db } from "./dexie";
 import { v4 as uuidv4 } from "uuid";
-import { notifyError } from "src/js/notify";
+import { notifyError, notifySuccess } from "src/js/notify";
 import { filterValidMedia } from "src/utils/validateMedia";
 import { useNdk } from "src/composables/useNdk";
 import type { Tier, TierMedia } from "./types";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 
-const TIER_DEFINITIONS_KIND = 30019;
+const TIER_DEFINITIONS_KIND = 30000;
 
 export async function maybeRepublishNutzapProfile() {
   const nostrStore = useNostrStore();
@@ -261,50 +254,20 @@ export const useCreatorHubStore = defineStore("creatorHub", {
     },
 
     async publishTierDefinitions() {
-      const tierIds = this.getTierArray().map((t) => t.id);
-      const prevStatuses = new Map<string, Tier["publishStatus"] | undefined>();
-      tierIds.forEach((id) => {
-        const t = this.tiers[id];
-        if (t) {
-          prevStatuses.set(id, t.publishStatus);
-          t.publishStatus = 'pending';
-        }
-      });
-
-      const tiersArray = this.getTierArray().map((t) => {
-        const { publishStatus, ...rest } = toRaw(t) as Tier & {
-          publishStatus?: 'pending' | 'succeeded' | 'failed';
-        };
-        return {
-          ...rest,
-          price: t.price_sats,
-          media: t.media ? filterValidMedia(t.media) : [],
-        };
-      });
-
+      const tiersArray = this.getTierArray().map((t) => ({
+        ...toRaw(t),
+        price: t.price_sats,
+        media: t.media ? filterValidMedia(t.media) : [],
+      }));
       const nostr = useNostrStore();
-      const profileStore = useCreatorProfileStore();
-
-      const revertStatuses = () => {
-        prevStatuses.forEach((status, id) => {
-          const t = this.tiers[id];
-          if (t) t.publishStatus = status;
-        });
-      };
 
       if (!nostr.signer) {
-        notifyError(
-          'You need to connect a Nostr signer before publishing tiers',
-        );
-        revertStatuses();
-        return false;
+        throw new Error("Signer required to publish tier definitions");
       }
 
       const ndk = await useNdk();
       if (!ndk) {
-        notifyError('Failed to initialise Nostr');
-        revertStatuses();
-        return false;
+        throw new Error("NDK not initialised – cannot publish tiers");
       }
 
       const ev = new NDKEvent(ndk);
@@ -313,48 +276,12 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       ev.created_at = Math.floor(Date.now() / 1000);
       ev.content = JSON.stringify(tiersArray);
       await ev.sign(nostr.signer as any);
-
-      // proceed even if user list is empty; we'll fall back to curated write relays
-
-      // sanitize and build candidate writer targets (user relays + curated write relays)
-      const userRelays = normalizeWsUrls(profileStore.relays || []);
-      const candidates = Array.from(new Set([...userRelays, ...FREE_RELAYS]));
-      if (!candidates.length) {
-        notifyError('No candidate relays to publish to');
-        revertStatuses();
-        return false;
-      }
-
       try {
-        // FAST PATH: try NDK relay set first (quick success if any ACK fast)
-        const set = await urlsToRelaySet(candidates, true);
-        if (!set) throw new Error('No relays to publish to');
-        await waitForRelaySetConnectivity(set, 4000);
-
-        // Give the NDK set a short window to succeed so we don't wait on closed relays
-        await publishWithTimeout(ev, set, 10_000);
-
-        console.debug('[tiers] NDK publish OK', {
-          id: ev.id, kind: ev.kind, tried: candidates
-        });
-
+        await ensureRelayConnectivity(ndk);
+        await ev.publish();
       } catch (e: any) {
-        console.warn('[tiers] NDK publish did not succeed; falling back to SimplePool', e);
-
-        // SLOW BUT ROBUST: race all relays; resolve on first OK
-        try {
-          const { okUrl } = await publishRawToAny(ev, candidates, 12_000);
-          console.debug('[tiers] SimplePool publish OK at', okUrl);
-        } catch (e2: any) {
-          console.warn('[tiers] SimplePool publish failed', e2);
-          if (e2 instanceof PublishTimeoutError) {
-            notifyError('Publishing timed out. Check relay connectivity and try again.');
-          } else {
-            notifyError(e2?.message || 'Failed to publish tier definitions');
-          }
-          revertStatuses();
-          return false;
-        }
+        notifyError(e?.message ?? String(e));
+        throw e;
       }
 
       await db.creatorsTierDefinitions.put({
@@ -365,12 +292,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         rawEventJson: JSON.stringify(ev.rawEvent()),
       });
 
-      tierIds.forEach((id) => {
-        const t = this.tiers[id];
-        if (t) t.publishStatus = 'succeeded';
-      });
-      this.initialTierOrder = [...this.tierOrder];
-      return true;
+      notifySuccess("Tiers published");
     },
     setTierOrder(order: string[]) {
       this.tierOrder = [...order];

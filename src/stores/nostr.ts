@@ -11,6 +11,7 @@ import NDK, {
   NDKKind,
   NDKRelaySet,
   NDKRelay,
+  NDKRelayStatus,
   NDKTag,
   ProfilePointer,
   NDKSubscription,
@@ -308,7 +309,7 @@ function connectWithTimeout(relay: any, ms = 6000): Promise<void> {
 }
 
 export class PublishTimeoutError extends Error {
-  constructor(message = "Publish timed out") {
+  constructor(message = "Publishing timed out") {
     super(message);
     this.name = "PublishTimeoutError";
   }
@@ -498,27 +499,32 @@ export async function publishWithAcks(
   });
 }
 
-/** Resolves once any relay in `ndk.pool` has `connected === true`. */
-export function ensureRelayConnectivity(ndk: NDK): Promise<void> {
-  const isConnected = () =>
-    Array.from(ndk.pool.relays.values()).some((r: any) => r.connected === true);
+export async function ensureRelayConnectivity(ndk: NDK) {
+  const connections = Object.values(ndk.pool.relays).map(
+    (r) =>
+      new Promise<void>((resolve, reject) => {
+        if (r.status === NDKRelayStatus.CONNECTED) {
+          resolve();
+          return;
+        }
+        const timeout = setTimeout(() => {
+          r.off("connect", connectCallback);
+          reject(new Error(`Timeout connecting to ${r.url}`));
+        }, 5000);
+        const connectCallback = () => {
+          clearTimeout(timeout);
+          r.off("connect", connectCallback);
+          resolve();
+        };
+        r.on("connect", connectCallback);
+      }),
+  );
+  await Promise.any(connections);
+}
 
-  if (isConnected()) return Promise.resolve();
-
-  const timeoutMs = 4000;
-
-  return new Promise((resolve, reject) => {
-    const expiry = Date.now() + timeoutMs;
-    const interval = setInterval(() => {
-      if (isConnected()) {
-        clearInterval(interval);
-        resolve();
-      } else if (Date.now() > expiry) {
-        clearInterval(interval);
-        reject(new Error("No relay connected"));
-      }
-    }, 100);
-  });
+export async function anyRelayReachable(relays: string[]): Promise<boolean> {
+  const healthy = await filterHealthyRelays(relays);
+  return healthy.length > 0;
 }
 
 /**

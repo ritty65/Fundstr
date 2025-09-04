@@ -28,13 +28,6 @@
       <div class="row items-center justify-between q-mb-lg">
         <div class="text-h5">Creator Hub</div>
         <div class="row items-center q-gutter-sm">
-          <q-btn
-            color="primary"
-            label="Save & Publish"
-            :loading="publishing"
-            :disable="!hasUnsavedChanges || publishing || relayStatus.status !== 'connected'"
-            @click="saveAndPublish"
-          />
           <ThemeToggle />
         </div>
       </div>
@@ -162,6 +155,11 @@
           @save="refreshTiers"
         />
       </div>
+      <PublishBar
+        v-if="isDirty"
+        :publishing="publishing"
+        @publish="publishFullProfile"
+      />
     </q-card>
   </q-page>
 </template>
@@ -179,6 +177,7 @@ import TierItem from "components/TierItem.vue";
 import AddTierDialog from "components/AddTierDialog.vue";
 import DeleteModal from "components/DeleteModal.vue";
 import ThemeToggle from "components/ThemeToggle.vue";
+import PublishBar from "components/PublishBar.vue";
 
 const {
   isMobile,
@@ -193,7 +192,6 @@ const {
   npub,
   login,
   logout,
-  saveAndPublish,
   addTier,
   editTier,
   confirmDelete,
@@ -201,7 +199,8 @@ const {
   refreshTiers,
   performDelete,
   publishing,
-  hasUnsavedChanges,
+  isDirty,
+  publishFullProfile,
   relayStatus,
 } = useCreatorHub();
 
