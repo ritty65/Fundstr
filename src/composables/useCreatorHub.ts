@@ -1,4 +1,4 @@
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useQuasar } from "quasar";
 import { storeToRefs } from "pinia";
 import { nip19 } from "nostr-tools";
@@ -106,6 +106,9 @@ export function useCreatorHub() {
   const splitterModel = ref(50);
   const tab = ref<"profile" | "tiers">("profile");
   const ndkRef = ref<NDK | null>(null);
+  const connecting = ref(false);
+  const now = ref(Date.now());
+  let timer: ReturnType<typeof setInterval> | undefined;
 
   const connectedCount = computed(() => {
     // depend on nostr.relays to keep reactive
@@ -122,6 +125,26 @@ export function useCreatorHub() {
   });
 
   const failedRelays = computed(() => nostr.failedRelays);
+
+  const nextReconnectIn = computed(() => {
+    if (!ndkRef.value) return null;
+    let earliest: number | null = null;
+    ndkRef.value.pool.relays.forEach((r) => {
+      if (r.status !== 5) {
+        const nr = (r as any).connectionStats?.nextReconnectAt;
+        if (nr && (earliest === null || nr < earliest)) earliest = nr;
+      }
+    });
+    return earliest
+      ? Math.max(0, Math.ceil((earliest - now.value) / 1000))
+      : null;
+  });
+
+  watch(nextReconnectIn, (val) => {
+    if (val === 0 && !nostr.connected && !connecting.value) {
+      reconnectAll();
+    }
+  });
 
   const loggedIn = computed(() => nostr.hasIdentity);
   const tierList = computed<Tier[]>(() => store.getTierArray());
@@ -146,7 +169,7 @@ export function useCreatorHub() {
 
   async function login(nsec?: string) {
     await store.login(nsec);
-    initPage();
+    await checkAndInit();
   }
 
   function logout() {
@@ -194,13 +217,18 @@ export function useCreatorHub() {
     profileStore.markClean();
   }
 
+  async function checkAndInit() {
+    if (!nostr.hasIdentity) return;
+    await initPage();
+    if (!profileRelays.value.length) return;
+    ndkRef.value = await nostr.connect(profileRelays.value);
+  }
+
   async function ensureRelaysConnected(timeoutMs = 5000) {
     if (nostr.connected) return true;
     try {
       await Promise.race([
-        nostr.connect(profileRelays.value).then(() =>
-          useNdk().then((n) => (ndkRef.value = n)),
-        ),
+        nostr.connect(profileRelays.value).then((ndk) => (ndkRef.value = ndk)),
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error("timeout")), timeoutMs),
         ),
@@ -232,6 +260,7 @@ export function useCreatorHub() {
     publishing.value = true;
     try {
       const timeoutMs = 30000;
+      await nostr.ensureNdkConnected(profileRelays.value);
       await Promise.race([
         publishDiscoveryProfile({
           profile: profile.value,
@@ -244,6 +273,7 @@ export function useCreatorHub() {
         ),
       ]);
 
+      await nostr.ensureNdkConnected(profileRelays.value);
       await store.publishTierDefinitions();
 
       notifySuccess("Profile and tiers updated");
@@ -293,12 +323,14 @@ export function useCreatorHub() {
       const timeoutMs = 30000;
       await Promise.race([
         (async () => {
+          await nostr.ensureNdkConnected(profileRelays.value);
           await publishDiscoveryProfile({
             profile: profile.value,
             p2pkPub: profilePub.value,
             mints: profileMints.value,
             relays: profileRelays.value,
           });
+          await nostr.ensureNdkConnected(profileRelays.value);
           const tiersOk = await store.publishTierDefinitions();
           if (!tiersOk) throw new Error("tiers publish failed");
           try {
@@ -377,22 +409,45 @@ export function useCreatorHub() {
   }
 
   onMounted(async () => {
+    timer = setInterval(() => (now.value = Date.now()), 1000);
     if (nostr.hasIdentity) {
-      await initPage();
-      await nostr.connect(profileRelays.value);
-      ndkRef.value = await useNdk();
+      await checkAndInit();
     }
+  });
+
+  onUnmounted(() => {
+    if (timer) clearInterval(timer);
   });
 
   watch(
     profileRelays,
     async (newRelays) => {
-      if (newRelays && newRelays.length > 0) {
-        await nostr.connect(newRelays);
-        ndkRef.value = await useNdk();
+      if (
+        newRelays &&
+        newRelays.length > 0 &&
+        newRelays.join() !== nostr.relays.join()
+      ) {
+        ndkRef.value = await nostr.connect(newRelays);
       }
     },
   );
+
+  watch(
+    () => nostr.relays,
+    async () => {
+      ndkRef.value = await useNdk();
+    },
+  );
+
+  async function reconnectAll() {
+    if (connecting.value) return;
+    connecting.value = true;
+    try {
+      ndkRef.value = await nostr.connect(profileRelays.value);
+    } finally {
+      connecting.value = false;
+    }
+  }
 
   return {
     profile,
@@ -426,6 +481,8 @@ export function useCreatorHub() {
     connectedCount,
     totalRelays,
     failedRelays,
+    nextReconnectIn,
+    reconnectAll,
     profileRelays,
     nostr,
   };
