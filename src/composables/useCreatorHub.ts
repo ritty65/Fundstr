@@ -110,6 +110,7 @@ export function useCreatorHub() {
   const connecting = ref(false);
   const now = ref(Date.now());
   let timer: ReturnType<typeof setInterval> | undefined;
+  const publishFailures = ref<string[]>([]);
 
   async function connectCreatorRelays(relays: string[]) {
     const unique = sanitizeRelayUrls(relays);
@@ -281,22 +282,30 @@ export function useCreatorHub() {
     try {
       const timeoutMs = 30000;
       await nostr.ensureNdkConnected(relays);
-      await Promise.race([
+      const result = await Promise.race([
         publishDiscoveryProfile({
           profile: profile.value,
           p2pkPub: profilePub.value,
           mints: profileMints.value,
           relays,
         }),
-        new Promise((_, reject) =>
+        new Promise<never>((_, reject) =>
           setTimeout(() => reject(new PublishTimeoutError()), timeoutMs),
         ),
       ]);
 
+      publishFailures.value = result.failedRelays;
+
       await nostr.ensureNdkConnected(relays);
       await store.publishTierDefinitions();
 
-      notifySuccess("Profile and tiers updated");
+      if (publishFailures.value.length) {
+        notifyWarning(
+          `Profile published but some relays failed: ${publishFailures.value.join(", ")}`,
+        );
+      } else {
+        notifySuccess("Profile and tiers updated");
+      }
       profileStore.markClean();
       profileRelays.value = relays;
     } catch (e: any) {
@@ -311,6 +320,14 @@ export function useCreatorHub() {
     } finally {
       publishing.value = false;
     }
+  }
+
+  function retryWithoutFailedRelays() {
+    if (!publishFailures.value.length) return;
+    profileRelays.value = profileRelays.value.filter(
+      (r) => !publishFailures.value.includes(r),
+    );
+    publishFullProfile();
   }
 
   async function saveAndPublish() {
@@ -487,6 +504,7 @@ export function useCreatorHub() {
     initPage,
     saveAndPublish,
     publishFullProfile,
+    retryWithoutFailedRelays,
     addTier,
     editTier,
     confirmDelete,
@@ -499,6 +517,7 @@ export function useCreatorHub() {
     connectedCount,
     totalRelays,
     failedRelays,
+    publishFailures,
     nextReconnectIn,
     reconnectAll,
     profileRelays,

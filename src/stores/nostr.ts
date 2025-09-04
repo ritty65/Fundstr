@@ -635,7 +635,8 @@ export async function publishDiscoveryProfile(opts: {
   p2pkPub: string;
   mints: string[];
   relays: string[];
-}) {
+  timeoutMs?: number;
+}): Promise<{ ids: string[]; failedRelays: string[] }> {
   const nostr = useNostrStore();
   if (!nostr.signer) {
     throw new Error("Signer required to publish a discoverable profile.");
@@ -677,17 +678,38 @@ export async function publishDiscoveryProfile(opts: {
   // Sign all events
   await Promise.all(eventsToPublish.map((ev) => ev.sign()));
 
-  // Publish all events
-  try {
-    await Promise.all(
-      eventsToPublish.map((ev) => publishWithTimeout(ev, relaySet)),
+  // Publish all events allowing partial relay failure
+  const failed = new Set<string>();
+  const timeoutMs = opts.timeoutMs ?? 8000;
+  for (const ev of eventsToPublish) {
+    const results = await Promise.all(
+      opts.relays.map(async (url) => {
+        try {
+          const set = await urlsToRelaySet([url], false);
+          await publishWithTimeout(ev, set, timeoutMs);
+          return { url, ok: true };
+        } catch {
+          return { url, ok: false };
+        }
+      }),
     );
-    notifySuccess("Profile published successfully to your relays!");
-  } catch (e: any) {
-    notifyError(e?.message ?? String(e));
-    throw e;
+    if (!results.some((r) => r.ok)) {
+      const err = new Error("Publish failed on all relays");
+      notifyError(err.message);
+      throw err;
+    }
+    results
+      .filter((r) => !r.ok)
+      .forEach((r) => failed.add(r.url));
   }
-  return eventsToPublish.map((ev) => ev.id);
+  if (failed.size) {
+    notifyWarning(
+      `Profile published with failures: ${Array.from(failed).join(", ")}`,
+    );
+  } else {
+    notifySuccess("Profile published successfully to your relays!");
+  }
+  return { ids: eventsToPublish.map((ev) => ev.id), failedRelays: Array.from(failed) };
 }
 
 /** Publishes a ‘kind:9321’ Nutzap event. */
