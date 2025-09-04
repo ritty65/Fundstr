@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { toRaw, watch, ref } from "vue";
-import { useLocalStorage } from "@vueuse/core";
+import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import { NDKEvent, NDKKind, NDKFilter } from "@nostr-dev-kit/ndk";
 import {
   useNostrStore,
@@ -69,8 +69,11 @@ export async function maybeRepublishNutzapProfile() {
 
 export const useCreatorHubStore = defineStore("creatorHub", {
   state: () => {
-    const tiers = useLocalStorage<Record<string, Tier>>("creatorHub.tiers", {});
-    const tierOrder = useLocalStorage<string[]>("creatorHub.tierOrder", []);
+    const tiers = safeUseLocalStorage<Record<string, Tier>>(
+      "creatorHub.tiers",
+      {},
+    );
+    const tierOrder = safeUseLocalStorage<string[]>("creatorHub.tierOrder", []);
     const initialTierOrder = ref<string[]>([]);
     const nostr = useNostrStore();
     watch(
