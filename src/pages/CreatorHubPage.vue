@@ -4,7 +4,7 @@
     <q-card class="q-pa-lg bg-surface-2 shadow-4 full-width">
       <q-banner v-if="!ndkConnected" class="text-white bg-orange">
         <template #avatar><q-spinner /></template>
-        Connecting to your Nostr relays...
+        Connecting to your Nostr relays ({{ connectedCount }} / {{ totalRelays }})...
         <template #action>
           <q-btn flat label="Reconnect" @click="() => localNdk.value?.connect()" />
         </template>
@@ -205,7 +205,7 @@
 <script setup lang="ts">
 import Draggable from "vuedraggable";
 
-import { computed, ref, onMounted, onUnmounted } from "vue";
+import { computed, ref, onMounted, onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useCreatorHub } from "src/composables/useCreatorHub";
 import { useClipboard } from "src/composables/useClipboard";
@@ -222,6 +222,7 @@ import NDK, { NDKEvent } from "@nostr-dev-kit/ndk";
 import { Notify } from "quasar";
 import { useCreatorProfileStore } from "stores/creatorProfile";
 import { storeToRefs } from "pinia";
+import { useNostrStore } from "stores/nostr";
 
 const {
   profile,
@@ -250,15 +251,26 @@ const {
 
 const profileStore = useCreatorProfileStore();
 const { mints: profileMints } = storeToRefs(profileStore);
+const nostr = useNostrStore();
 
 const localNdk = ref<NDK | null>(null);
 const publishFailures = ref<string[]>([]);
 const showRelayScanner = ref(false);
 
 onMounted(async () => {
-  localNdk.value = new NDK({ explicitRelayUrls: profileRelays.value });
+  localNdk.value = new NDK({
+    explicitRelayUrls: profileRelays.value,
+    signer: nostr.signer,
+  });
   await localNdk.value.connect();
 });
+
+watch(
+  () => nostr.signer,
+  (signer) => {
+    if (localNdk.value) localNdk.value.signer = signer || undefined;
+  },
+);
 
 onUnmounted(() => {
   if (localNdk.value) {
@@ -275,9 +287,7 @@ const totalRelays = computed(() =>
   localNdk.value ? localNdk.value.pool.relays.size : 0,
 );
 
-const ndkConnected = computed(
-  () => totalRelays.value > 0 && connectedCount.value === totalRelays.value,
-);
+const ndkConnected = computed(() => connectedCount.value > 0);
 
 const failedRelays = computed(() => {
   if (!localNdk.value) return [] as string[];
@@ -287,9 +297,9 @@ const failedRelays = computed(() => {
 });
 
 function onRelaysSelected(urls: string[]) {
-  profileRelays.value = urls;
+  profileRelays.value = urls.slice(0, 8);
   if (localNdk.value) {
-    localNdk.value.explicitRelayUrls = urls;
+    localNdk.value.explicitRelayUrls = profileRelays.value;
     localNdk.value.connect();
   }
 }
@@ -300,9 +310,10 @@ async function publishProfileBundle() {
     return;
   }
   if (!profileStore.pubkey) {
+    tab.value = "profile";
     Notify.create({
       type: "negative",
-      message: "Pay-to-public-key pubkey is required",
+      message: "Pay-to-public-key pubkey is required. Generate one in the profile form.",
     });
     return;
   }

@@ -54,16 +54,18 @@
           </q-item>
         </template>
       </q-select>
-      <div v-else class="row items-center q-gutter-sm">
-        <div class="text-caption">{{ $t("creatorHub.noP2pkPublicKey") }}</div>
-        <q-btn
-          flat
-          dense
-          color="primary"
-          :label="$t('creatorHub.generate')"
-          @click="generateP2PK"
-        />
-      </div>
+      <q-banner v-else class="bg-orange text-white">
+        {{ $t("creatorHub.noP2pkPublicKey") }}
+        <template #action>
+          <q-btn
+            flat
+            dense
+            color="white"
+            :label="$t('creatorHub.generate')"
+            @click="generateP2PK"
+          />
+        </template>
+      </q-banner>
       <div v-if="profilePubLocal" class="text-caption q-mt-xs">
         {{ selectedKeyShort }}
       </div>
@@ -185,7 +187,7 @@ const profileMintsLocal = computed({
 });
 const profileRelaysLocal = computed({
   get: () => profileRelays.value,
-  set: (val: string[]) => (profileRelays.value = sanitizeRelayUrls(val)),
+  set: (val: string[]) => (profileRelays.value = sanitizeRelayUrls(val).slice(0, 8)),
 });
 
 const validUrl = computed(() => /^https?:\/\/.+/.test(pictureLocal.value));
