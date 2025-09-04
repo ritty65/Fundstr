@@ -1,4 +1,5 @@
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { useDebounceFn } from "@vueuse/core";
 import { useQuasar } from "quasar";
 import { storeToRefs } from "pinia";
 import { nip19 } from "nostr-tools";
@@ -10,6 +11,7 @@ import {
   publishDiscoveryProfile,
   RelayConnectionError,
   PublishTimeoutError,
+  RELAY_CONNECT_TIMEOUT_MS,
 } from "stores/nostr";
 import { useP2PKStore } from "stores/p2pk";
 import { useMintsStore } from "stores/mints";
@@ -243,7 +245,9 @@ export function useCreatorHub() {
     await connectCreatorRelays(profileRelays.value);
   }
 
-  async function ensureRelaysConnected(timeoutMs = 5000) {
+  async function ensureRelaysConnected(
+    timeoutMs = RELAY_CONNECT_TIMEOUT_MS + 1000,
+  ) {
     if (nostr.connected) return true;
     try {
       await Promise.race([
@@ -460,17 +464,23 @@ export function useCreatorHub() {
     if (timer) clearInterval(timer);
   });
 
+  // Debounce relay changes to avoid reconnect loops
+  const debouncedConnectRelays = useDebounceFn(async (newRelays: string[]) => {
+    if (!newRelays || newRelays.length === 0) return;
+    const sanitized = sanitizeRelayUrls(newRelays);
+    const currentSet = new Set(nostr.relays);
+    const newSet = new Set(sanitized);
+    const same =
+      newSet.size === currentSet.size &&
+      [...newSet].every((r) => currentSet.has(r));
+    if (same) return;
+    await connectCreatorRelays(sanitized);
+  }, 500);
+
   watch(
     profileRelays,
-    async (newRelays) => {
-      if (
-        newRelays &&
-        newRelays.length > 0 &&
-        newRelays.join() !== nostr.relays.join()
-      ) {
-        await connectCreatorRelays(newRelays);
-      }
-    },
+    (newRelays) => debouncedConnectRelays(newRelays),
+    { deep: true },
   );
 
   watch(

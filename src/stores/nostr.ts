@@ -287,8 +287,13 @@ export async function waitForRelaySetConnectivity(
   throw new RelayConnectionError("No selected relay connected");
 }
 
+export const RELAY_CONNECT_TIMEOUT_MS = 6000;
+
 /** Wraps relay.connect() in a timeout (ms) so it never hangs forever */
-function connectWithTimeout(relay: any, ms = 6000): Promise<void> {
+function connectWithTimeout(
+  relay: any,
+  ms = RELAY_CONNECT_TIMEOUT_MS,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const t = setTimeout(
       () => reject(new Error(`[nostr] timeout ${relay?.url ?? ""}`)),
@@ -499,7 +504,11 @@ export async function publishWithAcks(
 }
 
 export async function ensureRelayConnectivity(ndk: NDK) {
-  const connections = Object.values(ndk.pool.relays).map(
+  const relays = Object.values(ndk.pool.relays);
+  if (relays.length === 0) {
+    throw new Error("No relays configured");
+  }
+  const connections = relays.map(
     (r) =>
       new Promise<void>((resolve, reject) => {
         if (r.status === NDKRelayStatus.CONNECTED) {

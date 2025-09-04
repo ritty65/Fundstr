@@ -296,6 +296,10 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       });
 
       notifySuccess("Tiers published");
+      Object.keys(this.tiers).forEach(
+        (id) => (this.tiers[id].publishStatus = "succeeded"),
+      );
+      this.initialTierOrder = [...this.tierOrder];
     },
     setTierOrder(order: string[]) {
       this.tierOrder = [...order];
