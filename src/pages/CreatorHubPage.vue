@@ -108,6 +108,29 @@
             </template>
           </q-input>
         </div>
+        <div class="q-mb-md">
+          <div class="text-subtitle1 q-mb-sm">Relays</div>
+          <q-list bordered>
+            <q-item v-for="url in profileRelays" :key="url">
+              <q-item-section avatar>
+                <q-icon
+                  :name="failedRelays.includes(url) ? 'cloud_off' : 'cloud_done'"
+                  :color="failedRelays.includes(url) ? 'negative' : 'positive'"
+                />
+              </q-item-section>
+              <q-item-section>{{ url }}</q-item-section>
+              <q-item-section side>
+                <q-btn
+                  flat
+                  round
+                  dense
+                  icon="close"
+                  @click="removeRelay(url)"
+                />
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </div>
         <q-splitter v-if="!isMobile" v-model="splitterModel">
           <template #before>
             <q-card class="section-card">
@@ -311,6 +334,14 @@ const failedRelays = computed(() => {
 
 function onRelaysSelected(urls: string[]) {
   profileRelays.value = urls.slice(0, 8);
+  if (localNdk.value) {
+    localNdk.value.explicitRelayUrls = profileRelays.value;
+    localNdk.value.connect();
+  }
+}
+
+function removeRelay(url: string) {
+  profileRelays.value = profileRelays.value.filter((r) => r !== url);
   if (localNdk.value) {
     localNdk.value.explicitRelayUrls = profileRelays.value;
     localNdk.value.connect();

@@ -116,9 +116,19 @@ export function useCreatorHub() {
   const now = ref(Date.now());
   let timer: ReturnType<typeof setInterval> | undefined;
   const publishFailures = ref<string[]>([]);
+  const relayAttemptTimestamps = new Map<string, number>();
+  const RELAY_RETRY_COOLDOWN_MS = 30_000;
 
   async function connectCreatorRelays(relays: string[]) {
     let unique = sanitizeRelayUrls(relays).slice(0, MAX_RELAYS);
+    if (!unique.length) return null;
+    const nowTs = Date.now();
+    // skip relays we recently tried or that failed
+    unique = unique.filter((url) => {
+      const last = relayAttemptTimestamps.get(url) || 0;
+      if (nowTs - last < RELAY_RETRY_COOLDOWN_MS) return false;
+      return !nostr.failedRelays.includes(url);
+    });
     if (!unique.length) return null;
     if (connecting.value) return ndkRef.value;
     unique = (await filterHealthyRelays(unique)).slice(0, MAX_RELAYS);
@@ -129,6 +139,7 @@ export function useCreatorHub() {
     }
     connecting.value = true;
     try {
+      unique.forEach((url) => relayAttemptTimestamps.set(url, nowTs));
       ndkRef.value = await nostr.connect(unique);
       return ndkRef.value;
     } finally {
@@ -291,6 +302,10 @@ export function useCreatorHub() {
     profileRelays.value = relays;
     if (!(await ensureRelaysConnected())) {
       notifyError("Unable to connect to Nostr relays");
+      return;
+    }
+    if (connectedCount.value === 0) {
+      notifyError("No reachable Nostr relays");
       return;
     }
     publishing.value = true;
