@@ -20,7 +20,7 @@ export default configure(() => ({
       viteConf.resolve = viteConf.resolve || {}
       viteConf.resolve.alias = {
         ...(viteConf.resolve.alias || {}),
-        buffer: 'buffer',
+        // The 'buffer' alias is now removed.
         process: 'process/browser',
         '@': path.resolve(__dirname, 'src'),
         '@cashu/cashu-ts': path.resolve(
@@ -32,7 +32,7 @@ export default configure(() => ({
         nodePolyfills({
           exclude: [],
           globals: {
-            Buffer: false,
+            Buffer: true,
             global: false,
             process: false,
           },
