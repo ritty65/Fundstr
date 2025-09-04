@@ -127,6 +127,7 @@ import { useP2PKStore } from "stores/p2pk";
 import { useMintsStore } from "stores/mints";
 import { scanForMints, scanningMints } from "src/composables/useCreatorHub";
 import { shortenString } from "src/js/string-utils";
+import { sanitizeRelayUrls } from "src/utils/relay";
 
 const { t } = useI18n();
 const profileStore = useCreatorProfileStore();
@@ -184,7 +185,7 @@ const profileMintsLocal = computed({
 });
 const profileRelaysLocal = computed({
   get: () => profileRelays.value,
-  set: (val: string[]) => (profileRelays.value = val),
+  set: (val: string[]) => (profileRelays.value = sanitizeRelayUrls(val)),
 });
 
 const validUrl = computed(() => /^https?:\/\/.+/.test(pictureLocal.value));
