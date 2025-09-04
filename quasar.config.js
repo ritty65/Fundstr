@@ -3,11 +3,12 @@
 import { configure } from 'quasar/wrappers'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { nodePolyfills } from 'vite-plugin-node-polyfills'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 export default configure(() => ({
-  boot: ['welcomeGate', 'cashu', 'i18n', 'node-globals', 'notify'],
+  boot: ['welcomeGate', 'cashu', 'i18n', 'notify'],
   css: ['app.scss', 'base.scss', 'buckets.scss'],
   extras: ['roboto-font', 'material-icons'],
   build: {
@@ -22,8 +23,22 @@ export default configure(() => ({
         buffer: 'buffer',
         process: 'process/browser',
         '@': path.resolve(__dirname, 'src'),
-        '@cashu/cashu-ts': path.resolve(__dirname, 'src/lib/cashu-ts/src/index.ts'),
+        '@cashu/cashu-ts': path.resolve(
+          __dirname,
+          'src/lib/cashu-ts/src/index.ts'
+        ),
       }
+      viteConf.plugins = (viteConf.plugins || []).concat([
+        nodePolyfills({
+          exclude: [],
+          globals: {
+            Buffer: false,
+            global: false,
+            process: false,
+          },
+          protocolImports: true,
+        })
+      ])
     }
   },
   framework: {
