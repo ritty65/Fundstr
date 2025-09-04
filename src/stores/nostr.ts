@@ -863,6 +863,8 @@ export const useNostrStore = defineStore("nostr", {
       reconnectBackoffUntil: 0,
       reconnectFailures: 0,
       failedRelays: [] as string[],
+      cachedNip07Relays: null as string[] | null,
+      pendingGetRelays: null as Promise<Record<string, any> | null> | null,
       lastNip04EventTimestamp,
       lastNip17EventTimestamp,
       nip17EventIdsWeHaveSeen: useLocalStorage<NostrEventLog[]>(
@@ -1337,14 +1339,24 @@ export const useNostrStore = defineStore("nostr", {
           this.setPubkey(user.pubkey);
           await this.setSigner(signer);
 
-          const relays = await signer.getRelays?.();
-          if (relays) {
-            const urls = sanitizeRelayUrls(Object.keys(relays));
-            if (urls.length) {
-              this.relays = urls;
-              const settings = useSettingsStore();
-              settings.defaultNostrRelays = urls;
+          let urls: string[] | null = null;
+          if (this.cachedNip07Relays) {
+            urls = this.cachedNip07Relays;
+          } else {
+            if (!this.pendingGetRelays) {
+              this.pendingGetRelays = signer.getRelays?.() || Promise.resolve(null);
             }
+            const relays = await this.pendingGetRelays;
+            this.pendingGetRelays = null;
+            if (relays) {
+              urls = sanitizeRelayUrls(Object.keys(relays));
+              if (urls.length) this.cachedNip07Relays = urls;
+            }
+          }
+          if (urls && urls.length) {
+            this.relays = urls;
+            const settings = useSettingsStore();
+            settings.defaultNostrRelays = urls;
           }
         }
       } catch (e) {

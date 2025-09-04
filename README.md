@@ -250,18 +250,18 @@ returned.
 
 You can also override the relays used by the creator search. Set
 `cashu.settings.defaultNostrRelays` in local storage with an array of relay
-URLs. If not defined, the search falls back to the following list:
+URLs. If not defined, the search falls back to a short curated list defined in
+[`src/config/relays.ts`](src/config/relays.ts):
 
 ```
 wss://relay.damus.io/
-wss://relay.primal.net/
-wss://eden.nostr.land/
 wss://nos.lol/
-wss://nostr-pub.wellorder.net/
-wss://nostr.bitcoiner.social/
-wss://relay.nostr.band/
+wss://relay.primal.net/
 wss://relay.snort.social/
 ```
+
+You can edit that file to customise or extend the defaults for your own
+deployment.
 
 ### Sharing Creator Links
 
