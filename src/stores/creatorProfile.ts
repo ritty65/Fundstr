@@ -53,7 +53,7 @@ export const useCreatorProfileStore = defineStore("creatorProfile", {
         this.display_name = data.display_name;
       if (data.picture !== undefined) this.picture = data.picture;
       if (data.about !== undefined) this.about = data.about;
-      if (data.pubkey !== undefined) this.pubkey = data.pubkey;
+      if (data.pubkey !== undefined) this.pubkey = data.pubkey.trim();
       if (data.mints !== undefined) this.mints = [...data.mints];
       if (data.relays !== undefined)
         this.relays = sanitizeRelayUrls(data.relays);

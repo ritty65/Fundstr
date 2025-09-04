@@ -2,11 +2,11 @@
   <q-page class="bg-surface-1 q-pa-md">
     <NostrRelayErrorBanner />
     <q-card class="q-pa-lg bg-surface-2 shadow-4 full-width">
-      <q-banner v-if="!nostr.connected" class="text-white bg-orange">
+      <q-banner v-if="!ndkConnected" class="text-white bg-orange">
         <template #avatar><q-spinner /></template>
         Connecting to your Nostr relays...
         <template #action>
-          <q-btn flat label="Reconnect" @click="() => nostr.connect(profileRelays)" />
+          <q-btn flat label="Reconnect" @click="() => localNdk.value?.connect()" />
         </template>
       </q-banner>
       <q-banner v-else class="text-white bg-positive">
@@ -57,6 +57,12 @@
         <div class="text-h5">Creator Hub</div>
         <div class="row items-center q-gutter-sm">
           <ThemeToggle />
+          <q-btn
+            flat
+            color="primary"
+            label="Find & Test Relays"
+            @click="showRelayScanner = true"
+          />
         </div>
       </div>
       <div v-if="!loggedIn" class="q-mt-lg q-mb-lg">
@@ -186,7 +192,11 @@
       <PublishBar
         v-if="isDirty"
         :publishing="publishing"
-        @publish="publishFullProfile"
+        @publish="publishProfileBundle"
+      />
+      <RelayScannerDialog
+        v-model="showRelayScanner"
+        @relays-selected="onRelaysSelected"
       />
     </q-card>
   </q-page>
@@ -195,7 +205,7 @@
 <script setup lang="ts">
 import Draggable from "vuedraggable";
 
-import { computed, ref } from "vue";
+import { computed, ref, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useCreatorHub } from "src/composables/useCreatorHub";
 import { useClipboard } from "src/composables/useClipboard";
@@ -207,8 +217,14 @@ import DeleteModal from "components/DeleteModal.vue";
 import ThemeToggle from "components/ThemeToggle.vue";
 import PublishBar from "components/PublishBar.vue";
 import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
+import RelayScannerDialog from "components/RelayScannerDialog.vue";
+import NDK, { NDKEvent } from "@nostr-dev-kit/ndk";
+import { Notify } from "quasar";
+import { useCreatorProfileStore } from "stores/creatorProfile";
+import { storeToRefs } from "pinia";
 
 const {
+  profile,
   isMobile,
   splitterModel,
   tab,
@@ -229,15 +245,151 @@ const {
   performDelete,
   publishing,
   isDirty,
-  publishFullProfile,
-  retryWithoutFailedRelays,
-  connectedCount,
-  totalRelays,
-  failedRelays,
-  publishFailures,
   profileRelays,
-  nostr,
 } = useCreatorHub();
+
+const profileStore = useCreatorProfileStore();
+const { mints: profileMints } = storeToRefs(profileStore);
+
+const localNdk = ref<NDK | null>(null);
+const publishFailures = ref<string[]>([]);
+const showRelayScanner = ref(false);
+
+onMounted(async () => {
+  localNdk.value = new NDK({ explicitRelayUrls: profileRelays.value });
+  await localNdk.value.connect();
+});
+
+onUnmounted(() => {
+  if (localNdk.value) {
+    localNdk.value.pool.relays.forEach((r) => r.disconnect());
+  }
+});
+
+const connectedCount = computed(() => {
+  if (!localNdk.value) return 0;
+  return Array.from(localNdk.value.pool.relays.values()).filter((r) => r.connected).length;
+});
+
+const totalRelays = computed(() =>
+  localNdk.value ? localNdk.value.pool.relays.size : 0,
+);
+
+const ndkConnected = computed(
+  () => totalRelays.value > 0 && connectedCount.value === totalRelays.value,
+);
+
+const failedRelays = computed(() => {
+  if (!localNdk.value) return [] as string[];
+  return Array.from(localNdk.value.pool.relays.values())
+    .filter((r) => !r.connected)
+    .map((r) => r.url);
+});
+
+function onRelaysSelected(urls: string[]) {
+  profileRelays.value = urls;
+  if (localNdk.value) {
+    localNdk.value.explicitRelayUrls = urls;
+    localNdk.value.connect();
+  }
+}
+
+async function publishProfileBundle() {
+  if (!localNdk.value?.signer) {
+    Notify.create({ type: "negative", message: "Please connect a Nostr signer" });
+    return;
+  }
+  if (!profileStore.pubkey) {
+    Notify.create({
+      type: "negative",
+      message: "Pay-to-public-key pubkey is required",
+    });
+    return;
+  }
+  const relays = profileRelays.value;
+  if (!relays.length) {
+    Notify.create({
+      type: "negative",
+      message: "Please configure at least one Nostr relay",
+    });
+    return;
+  }
+  publishing.value = true;
+  try {
+    localNdk.value.explicitRelayUrls = relays;
+    await localNdk.value.connect();
+
+    const kind0 = new NDKEvent(localNdk.value);
+    kind0.kind = 0;
+    kind0.content = JSON.stringify(profile.value);
+
+    const kind10002 = new NDKEvent(localNdk.value);
+    kind10002.kind = 10002;
+    kind10002.tags = relays.map((r) => ["r", r]);
+
+    const kind10019 = new NDKEvent(localNdk.value);
+    kind10019.kind = 10019;
+    kind10019.tags = [
+      ["pubkey", profileStore.pubkey],
+      ...profileMints.value.map((m) => ["mint", m]),
+      ...relays.map((r) => ["relay", r]),
+    ];
+
+    await Promise.all([kind0.sign(), kind10002.sign(), kind10019.sign()]);
+    const events = [kind0, kind10002, kind10019];
+    const failed = new Set<string>();
+    for (const ev of events) {
+      const results = await Promise.all(
+        relays.map(async (url) => {
+          try {
+            const relay =
+              localNdk.value!.pool.getRelay(url) || localNdk.value!.addExplicitRelay(url);
+            await ev.publish(relay);
+            return { url, ok: true };
+          } catch {
+            return { url, ok: false };
+          }
+        }),
+      );
+      if (!results.some((r) => r.ok)) {
+        throw new Error("Publish failed on all relays");
+      }
+      results.filter((r) => !r.ok).forEach((r) => failed.add(r.url));
+    }
+    publishFailures.value = Array.from(failed);
+    if (publishFailures.value.length) {
+      Notify.create({
+        type: "warning",
+        message: `Profile published but some relays failed: ${publishFailures.value.join(", ")}`,
+      });
+    } else {
+      Notify.create({
+        type: "positive",
+        message: "Profile and tiers updated",
+      });
+    }
+    profileStore.markClean();
+  } catch (e: any) {
+    Notify.create({
+      type: "negative",
+      message: e?.message || "Failed to publish profile",
+    });
+  } finally {
+    publishing.value = false;
+  }
+}
+
+function retryWithoutFailedRelays() {
+  if (!publishFailures.value.length) return;
+  profileRelays.value = profileRelays.value.filter(
+    (r) => !publishFailures.value.includes(r),
+  );
+  if (localNdk.value) {
+    localNdk.value.explicitRelayUrls = profileRelays.value;
+    localNdk.value.connect();
+  }
+  publishProfileBundle();
+}
 
 const nsec = ref("");
 
