@@ -10,6 +10,7 @@ import {
   publishDiscoveryProfile,
   RelayConnectionError,
   PublishTimeoutError,
+  anyRelayReachable,
 } from "stores/nostr";
 import { useP2PKStore } from "stores/p2pk";
 import { useMintsStore } from "stores/mints";
@@ -131,9 +132,7 @@ export function useCreatorHub() {
 
   const loggedIn = computed(() => useNostrStore().hasIdentity);
   const tierList = computed<Tier[]>(() => store.getTierArray());
-  const hasUnsavedChanges = computed(
-    () => profileDirty.value || store.isDirty,
-  );
+  const isDirty = computed(() => profileDirty.value || store.isDirty);
   const draggableTiers = ref<Tier[]>([]);
   const deleteDialog = ref(false);
   const deleteId = ref("");
@@ -200,6 +199,57 @@ export function useCreatorHub() {
     }
     await store.loadTiersFromNostr(nostr.pubkey);
     profileStore.markClean();
+  }
+
+  async function publishFullProfile() {
+    if (!profilePub.value) {
+      notifyError("Pay-to-public-key pubkey is required");
+      return;
+    }
+    await nostr.initSignerIfNotSet();
+    if (!nostr.signer) {
+      notifyError("Please connect a Nostr signer (NIP-07 or nsec)");
+      return;
+    }
+    if (!profileRelays.value.length) {
+      notifyError("Please configure at least one Nostr relay");
+      return;
+    }
+    if (!(await anyRelayReachable(profileRelays.value))) {
+      notifyError("Unable to connect to any configured Nostr relays");
+      return;
+    }
+    publishing.value = true;
+    try {
+      const timeoutMs = 30000;
+      await Promise.race([
+        publishDiscoveryProfile({
+          profile: profile.value,
+          p2pkPub: profilePub.value,
+          mints: profileMints.value,
+          relays: profileRelays.value,
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new PublishTimeoutError()), timeoutMs),
+        ),
+      ]);
+
+      await store.publishTierDefinitions();
+
+      notifySuccess("Profile and tiers updated");
+      profileStore.markClean();
+    } catch (e: any) {
+      if (e instanceof PublishTimeoutError) {
+        notifyError("Publishing timed out");
+      } else {
+        let msg = e?.message || "Failed to publish profile";
+        if (!nostr.signer) msg += " (missing signer)";
+        if (!profileRelays.value.length) msg += " (no relays)";
+        notifyError(msg);
+      }
+    } finally {
+      publishing.value = false;
+    }
   }
 
   async function saveAndPublish() {
@@ -339,11 +389,12 @@ export function useCreatorHub() {
     publishing,
     relayStatus,
     npub,
-    hasUnsavedChanges,
+    isDirty,
     login,
     logout,
     initPage,
     saveAndPublish,
+    publishFullProfile,
     addTier,
     editTier,
     confirmDelete,
