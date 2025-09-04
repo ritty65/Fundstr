@@ -6,8 +6,10 @@ export function safeUseLocalStorage<T>(key: string, defaultValue: T) {
     try {
       JSON.parse(raw);
     } catch (e) {
-      console.warn(`Invalid JSON for ${key}, resetting`, e);
-      localStorage.removeItem(key);
+      // Legacy values may be stored as plain strings. Wrap them in JSON so
+      // they can be read on the next access instead of dropping the data.
+      console.warn(`Invalid JSON for ${key}, migrating to JSON`, e);
+      localStorage.setItem(key, JSON.stringify(raw));
     }
   }
   const serializer = {
