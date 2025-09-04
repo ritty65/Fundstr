@@ -1,29 +1,33 @@
 <template>
   <q-page class="bg-surface-1 q-pa-md">
+    <NostrRelayErrorBanner />
     <q-card class="q-pa-lg bg-surface-2 shadow-4 full-width">
-      <q-banner
-        v-if="relayStatus.status === 'connecting'"
-        class="text-white bg-orange"
-      >
-        <template v-slot:avatar><q-spinner /></template>
+      <q-banner v-if="!nostr.connected" class="text-white bg-orange">
+        <template #avatar><q-spinner /></template>
         Connecting to your Nostr relays...
-      </q-banner>
-      <q-banner
-        v-if="relayStatus.status === 'failed'"
-        class="text-white bg-negative"
-      >
-        Connection Failed: 0 of {{ relayStatus.totalCount }} relays are reachable.
-        Publishing is disabled.
-        <template v-slot:action>
-          <q-btn flat label="Check Settings" @click="goToSettings" />
+        <template #action>
+          <q-btn flat label="Reconnect" @click="() => nostr.connect(profileRelays)" />
         </template>
       </q-banner>
-      <q-banner
-        v-if="relayStatus.status === 'connected'"
-        class="text-white bg-positive"
-      >
-        Connected to {{ relayStatus.connectedCount }} of
-        {{ relayStatus.totalCount }} relays. Ready to publish.
+      <q-banner v-else class="text-white bg-positive">
+        Connected to {{ connectedCount }} of {{ totalRelays }} relays. Ready to publish.
+      </q-banner>
+      <q-banner v-if="failedRelays.length" class="text-white bg-negative">
+        <div>
+          Failed relays:
+          <ul class="q-pl-md">
+            <li
+              v-for="r in failedRelays"
+              :key="r"
+              style="word-break: break-all"
+            >
+              {{ r }}
+            </li>
+          </ul>
+        </div>
+        <template #action>
+          <q-btn flat label="Check Settings" @click="goToSettings" />
+        </template>
       </q-banner>
       <div class="row items-center justify-between q-mb-lg">
         <div class="text-h5">Creator Hub</div>
@@ -178,6 +182,7 @@ import AddTierDialog from "components/AddTierDialog.vue";
 import DeleteModal from "components/DeleteModal.vue";
 import ThemeToggle from "components/ThemeToggle.vue";
 import PublishBar from "components/PublishBar.vue";
+import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 
 const {
   isMobile,
@@ -201,7 +206,11 @@ const {
   publishing,
   isDirty,
   publishFullProfile,
-  relayStatus,
+  connectedCount,
+  totalRelays,
+  failedRelays,
+  profileRelays,
+  nostr,
 } = useCreatorHub();
 
 const nsec = ref("");
