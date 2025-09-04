@@ -43,6 +43,7 @@ import {
 import { useTokensStore } from "./tokens";
 import { filterHealthyRelays } from "src/utils/relayHealth";
 import { DEFAULT_RELAYS, FREE_RELAYS } from "src/config/relays";
+import { sanitizeRelayUrls } from "src/utils/relay";
 import {
   notifyApiError,
   notifyError,
@@ -1335,6 +1336,16 @@ export const useNostrStore = defineStore("nostr", {
           this.signerType = SignerType.NIP07;
           this.setPubkey(user.pubkey);
           await this.setSigner(signer);
+
+          const relays = await signer.getRelays?.();
+          if (relays) {
+            const urls = sanitizeRelayUrls(Object.keys(relays));
+            if (urls.length) {
+              this.relays = urls;
+              const settings = useSettingsStore();
+              settings.defaultNostrRelays = urls;
+            }
+          }
         }
       } catch (e) {
         console.error("Failed to init NIP07 signer:", e);

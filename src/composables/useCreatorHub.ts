@@ -249,6 +249,9 @@ export function useCreatorHub() {
   async function checkAndInit() {
     if (!nostr.hasIdentity) return;
     await initPage();
+    if (!profileRelays.value.length && nostr.relays.length) {
+      profileRelays.value = sanitizeRelayUrls(nostr.relays).slice(0, MAX_RELAYS);
+    }
     if (!profileRelays.value.length) return;
     await connectCreatorRelays(profileRelays.value);
   }
