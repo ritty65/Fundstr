@@ -69,13 +69,16 @@ async function scan() {
       relays.value.map(async (r) => {
         try {
           await Promise.race([
-            new Promise<void>((resolve, reject) => {
+            new Promise<void>((resolve) => {
               const ws = new WebSocket(r.url);
               ws.onopen = () => {
                 ws.close();
                 resolve();
               };
-              ws.onerror = () => reject(new Error("error"));
+              ws.onerror = () => {
+                ws.close();
+                /* swallow error */
+              };
             }),
             new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000)),
           ]);
