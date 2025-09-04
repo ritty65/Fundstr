@@ -272,6 +272,19 @@ watch(
   },
 );
 
+watch(
+  profileRelays,
+  (urls) => {
+    if (!localNdk.value) return;
+    localNdk.value.explicitRelayUrls = urls;
+    localNdk.value.pool.relays.forEach((r) => {
+      if (!urls.includes(r.url)) r.disconnect();
+    });
+    localNdk.value.connect();
+  },
+  { immediate: true },
+);
+
 onUnmounted(() => {
   if (localNdk.value) {
     localNdk.value.pool.relays.forEach((r) => r.disconnect());
