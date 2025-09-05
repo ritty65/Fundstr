@@ -3,12 +3,12 @@ import { useDebounceFn } from "@vueuse/core";
 import { useQuasar } from "quasar";
 import { storeToRefs } from "pinia";
 import { nip19 } from "nostr-tools";
-import { useCreatorHubStore, maybeRepublishNutzapProfile } from "stores/creatorHub";
+import { useCreatorHubStore } from "stores/creatorHub";
 import type { Tier } from "stores/types";
 import {
   useNostrStore,
   fetchNutzapProfile,
-  publishDiscoveryProfile,
+  publishCreatorBundle,
   RelayConnectionError,
   PublishTimeoutError,
   RELAY_CONNECT_TIMEOUT_MS,
@@ -311,23 +311,14 @@ export function useCreatorHub() {
     publishing.value = true;
     try {
       const timeoutMs = 30000;
-      await nostr.ensureNdkConnected(relays);
       const result = await Promise.race([
-        publishDiscoveryProfile({
-          profile: profile.value,
-          p2pkPub: profilePub.value,
-          mints: profileMints.value,
-          relays,
-        }),
+        publishCreatorBundle({ publishTiers: "auto" }),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new PublishTimeoutError()), timeoutMs),
         ),
       ]);
 
       publishFailures.value = result.failedRelays;
-
-      await nostr.ensureNdkConnected(relays);
-      await store.publishTierDefinitions();
 
       if (publishFailures.value.length) {
         notifyWarning(
@@ -392,31 +383,12 @@ export function useCreatorHub() {
     try {
       const timeoutMs = 30000;
       await Promise.race([
-        (async () => {
-          await nostr.ensureNdkConnected(relays);
-          await publishDiscoveryProfile({
-            profile: profile.value,
-            p2pkPub: profilePub.value,
-            mints: profileMints.value,
-            relays,
-          });
-          await nostr.ensureNdkConnected(relays);
-          const tiersOk = await store.publishTierDefinitions();
-          if (!tiersOk) throw new Error("tiers publish failed");
-          try {
-            await maybeRepublishNutzapProfile();
-          } catch (e) {
-            notifyWarning(
-              "Tier saved, but updating payment profile failed. You can retry publishing your profile.",
-            );
-            console.warn(e);
-          }
-          profileStore.markClean();
-        })(),
+        publishCreatorBundle({ publishTiers: "auto" }),
         new Promise((_, reject) =>
           setTimeout(() => reject(new PublishTimeoutError()), timeoutMs),
         ),
       ]);
+      profileStore.markClean();
       notifySuccess("Profile and tiers published!");
       profileRelays.value = relays;
       return true;

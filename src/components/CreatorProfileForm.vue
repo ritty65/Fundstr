@@ -33,14 +33,14 @@
       <q-select
         v-if="hasP2PK"
         v-model="profilePubLocal"
-        filled
-        dense
-        map-options
-        emit-value
         :options="p2pkOptions"
-        use-input
-        fill-input
-        input-debounce="0"
+        option-value="value"
+        option-label="label"
+        emit-value
+        map-options
+        dense
+        filled
+        behavior="menu"
         :label="$t('creatorHub.p2pkPublicKey')"
       >
         <template #append>
@@ -66,9 +66,18 @@
           />
         </template>
       </q-banner>
-      <div v-if="profilePubLocal" class="text-caption q-mt-xs">
-        {{ selectedKeyShort }}
-      </div>
+      <q-input
+        v-if="profilePubLocal"
+        :model-value="profilePubLocal"
+        readonly
+        dense
+        outlined
+        class="q-mt-sm"
+      >
+        <template #append>
+          <q-btn flat dense icon="content_copy" @click="copy(profilePubLocal)" />
+        </template>
+      </q-input>
     </div>
     <q-select
       v-model="profileMintsLocal"
@@ -130,11 +139,13 @@ import { useMintsStore } from "stores/mints";
 import { scanForMints, scanningMints } from "src/composables/useCreatorHub";
 import { shortenString } from "src/js/string-utils";
 import { sanitizeRelayUrls } from "src/utils/relay";
+import { useClipboard } from "src/composables/useClipboard";
 
 const { t } = useI18n();
 const profileStore = useCreatorProfileStore();
 const p2pkStore = useP2PKStore();
 const mintsStore = useMintsStore();
+const { copy } = useClipboard();
 
 const {
   display_name,
@@ -151,9 +162,6 @@ const p2pkOptions = computed(() =>
     label: shortenString(k.publicKey, 16, 6),
     value: k.publicKey,
   })),
-);
-const selectedKeyShort = computed(() =>
-  profilePub.value ? shortenString(profilePub.value, 16, 6) : "",
 );
 
 const mintOptions = computed(() => mintsStore.mints.map((m) => m.url));

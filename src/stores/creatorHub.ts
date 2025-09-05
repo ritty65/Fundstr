@@ -8,6 +8,8 @@ import {
   publishNutzapProfile,
   ensureRelayConnectivity,
   RelayConnectionError,
+  publishWithTimeout,
+  urlsToRelaySet,
 } from "./nostr";
 import { useP2PKStore } from "./p2pk";
 import { useCreatorProfileStore } from "./creatorProfile";
@@ -287,6 +289,8 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         throw new Error("Signer required to publish tier definitions");
       }
 
+      const profileStore = useCreatorProfileStore();
+      await nostr.connect(profileStore.relays);
       const ndk = await useNdk();
       if (!ndk) {
         throw new Error("NDK not initialised – cannot publish tiers");
@@ -299,8 +303,8 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       ev.content = JSON.stringify(tiersArray);
       await ev.sign(nostr.signer as any);
       try {
-        await ensureRelayConnectivity(ndk);
-        await ev.publish();
+        const relaySet = await urlsToRelaySet(profileStore.relays);
+        await publishWithTimeout(ev, relaySet);
       } catch (e: any) {
         notifyError(e?.message ?? String(e));
         throw e;
