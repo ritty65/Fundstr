@@ -41,6 +41,7 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
     useNostrStore: () => nostrStoreMock,
     fetchNutzapProfile: vi.fn(async () => null),
     publishDiscoveryProfile: vi.fn(),
+    publishCreatorBundle: vi.fn(),
     RelayConnectionError: class RelayConnectionError extends Error {},
   };
 });

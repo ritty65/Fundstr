@@ -242,6 +242,7 @@ export default defineComponent({
           periods: periods.value,
           startDate: Math.floor(new Date(startDate.value).getTime() / 1000),
           relayList: profile.relays ?? [],
+          trustedMints: profile.trustedMints ?? [],
           frequency: frequency.value,
           intervalDays: intervalDays.value,
           tierName: props.tier?.name,

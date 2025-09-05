@@ -241,11 +241,11 @@ import ThemeToggle from "components/ThemeToggle.vue";
 import PublishBar from "components/PublishBar.vue";
 import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 import RelayScannerDialog from "components/RelayScannerDialog.vue";
-import NDK, { NDKEvent } from "@nostr-dev-kit/ndk";
+import NDK from "@nostr-dev-kit/ndk";
 import { Notify } from "quasar";
 import { useCreatorProfileStore } from "stores/creatorProfile";
 import { storeToRefs } from "pinia";
-import { useNostrStore } from "stores/nostr";
+import { useNostrStore, publishCreatorBundle } from "stores/nostr";
 
 const {
   profile,
@@ -371,58 +371,7 @@ async function publishProfileBundle() {
   }
   publishing.value = true;
   try {
-    localNdk.value.explicitRelayUrls = relays;
-    await localNdk.value.connect();
-
-    const kind0 = new NDKEvent(localNdk.value);
-    kind0.kind = 0;
-    kind0.content = JSON.stringify(profile.value);
-
-    const kind10002 = new NDKEvent(localNdk.value);
-    kind10002.kind = 10002;
-    kind10002.tags = relays.map((r) => ["r", r]);
-
-    const kind10019 = new NDKEvent(localNdk.value);
-    kind10019.kind = 10019;
-    kind10019.tags = [
-      ["pubkey", profileStore.pubkey],
-      ...profileMints.value.map((m) => ["mint", m]),
-      ...relays.map((r) => ["relay", r]),
-    ];
-
-    await Promise.all([kind0.sign(), kind10002.sign(), kind10019.sign()]);
-    const events = [kind0, kind10002, kind10019];
-    const failed = new Set<string>();
-    for (const ev of events) {
-      const results = await Promise.all(
-        relays.map(async (url) => {
-          try {
-            const relay =
-              localNdk.value!.pool.getRelay(url) || localNdk.value!.addExplicitRelay(url);
-            await ev.publish(relay);
-            return { url, ok: true };
-          } catch {
-            return { url, ok: false };
-          }
-        }),
-      );
-      if (!results.some((r) => r.ok)) {
-        throw new Error("Publish failed on all relays");
-      }
-      results.filter((r) => !r.ok).forEach((r) => failed.add(r.url));
-    }
-    publishFailures.value = Array.from(failed);
-    if (publishFailures.value.length) {
-      Notify.create({
-        type: "warning",
-        message: `Profile published but some relays failed: ${publishFailures.value.join(", ")}`,
-      });
-    } else {
-      Notify.create({
-        type: "positive",
-        message: "Profile and tiers updated",
-      });
-    }
+    await publishCreatorBundle({ publishTiers: "auto" });
     profileStore.markClean();
   } catch (e: any) {
     Notify.create({
