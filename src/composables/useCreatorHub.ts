@@ -32,6 +32,7 @@ import { sanitizeRelayUrls } from "src/utils/relay";
 import { filterHealthyRelays } from "src/utils/relayHealth";
 import { VETTED_OPEN_WRITE_RELAYS } from "src/config/relays";
 import { publishToRelaysWithAcks, selectPublishRelays, PublishReport, RelayResult } from "src/nostr/publish";
+import { getTrustedTime } from "src/utils/time";
 
 export const scanningMints = ref(false);
 const MAX_RELAYS = 8;
@@ -537,17 +538,52 @@ export function useCreatorHub() {
       if (!ndkConn) throw new Error("Unable to connect to Nostr relays");
       const relays = targets;
 
+      let createdAt = Math.floor(Date.now() / 1000);
+      const trustedMs = await getTrustedTime(ndkConn, relays);
+      if (
+        trustedMs &&
+        createdAt > Math.floor(trustedMs / 1000) + 5 * 60
+      ) {
+        const proceed = await new Promise<boolean>((resolve) => {
+          $q
+            .dialog({
+              title: "Clock mismatch",
+              message:
+                "System clock is too far ahead; adjust your device time.",
+              cancel: true,
+              ok: { label: "Use network time" },
+              persistent: true,
+            })
+            .onOk(() => resolve(true))
+            .onCancel(() => resolve(false))
+            .onDismiss(() => resolve(false));
+        });
+        if (!proceed) {
+          notifyError(
+            "System clock is too far ahead; adjust your device time.",
+          );
+          publishing.value = false;
+          return;
+        }
+        createdAt = Math.floor(trustedMs / 1000);
+      }
+
       const tiers = store.getTierArray();
       const payload = buildProfilePayload();
 
-      const kind0 = new NDKEvent(ndkConn, buildKind0Profile(nostr.pubkey, payload.profile));
+      const kind0 = new NDKEvent(
+        ndkConn,
+        buildKind0Profile(nostr.pubkey, payload.profile),
+      );
+      kind0.created_at = createdAt;
       const kind10002 = new NDKEvent(
         ndkConn,
         buildKind10002RelayList(
           nostr.pubkey,
-          relays.map((r) => ({ url: r, mode: "write" }))
-        )
+          relays.map((r) => ({ url: r, mode: "write" })),
+        ),
       );
+      kind10002.created_at = createdAt;
       const kind10019 = new NDKEvent(
         ndkConn,
         buildKind10019NutzapProfile(nostr.pubkey, {
@@ -555,15 +591,17 @@ export function useCreatorHub() {
           mints: payload.mints,
           relays,
           tierAddr: payload.tierAddr,
-        })
+        }),
       );
+      kind10019.created_at = createdAt;
 
       const events: any[] = [kind0, kind10002, kind10019];
       if (tiers.length) {
         const kind30000 = new NDKEvent(
           ndkConn,
-          buildKind30000Tiers(nostr.pubkey, tiers, "tiers")
+          buildKind30000Tiers(nostr.pubkey, tiers, "tiers"),
         );
+        kind30000.created_at = createdAt;
         events.push(kind30000);
       }
 
