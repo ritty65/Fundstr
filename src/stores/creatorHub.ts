@@ -278,11 +278,14 @@ export const useCreatorHubStore = defineStore("creatorHub", {
     },
 
     async publishTierDefinitions() {
-      const tiersArray = this.getTierArray().map((t) => ({
-        ...toRaw(t),
-        price: t.price_sats,
-        media: t.media ? filterValidMedia(t.media) : [],
-      }));
+      const tiersArray = this.getTierArray().map((t) => {
+        const { publishStatus, ...pureTier } = toRaw(t) as any;
+        return {
+          ...pureTier,
+          price: t.price_sats,
+          media: t.media ? filterValidMedia(t.media) : [],
+        };
+      });
       const nostr = useNostrStore();
 
       if (!nostr.signer) {
