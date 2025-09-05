@@ -196,5 +196,6 @@ const urlRule = (val: string) =>
 const urlListRule = (val: string[]) =>
   val.every((u) => /^wss?:\/\//.test(u)) || t("creatorHub.invalidUrl");
 const mintUrlListRule = (val: string[]) =>
-  val.every((u) => /^https?:\/\//.test(u)) || t("creatorHub.invalidUrl");
+  val.every((u) => /^https?:\/\/[^\s]+$/.test(u)) ||
+  t("creatorHub.invalidUrl");
 </script>

@@ -67,6 +67,7 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
       ensureRelayConnectivityMock(...args),
     fetchNutzapProfile: (...args: any[]) => fetchNutzapProfileMock(...args),
     publishNutzapProfile: (...args: any[]) => publishNutzapProfileMock(...args),
+    publishCreatorBundle: vi.fn(),
     RelayConnectionError: class RelayConnectionError extends Error {},
   };
 });
@@ -161,29 +162,63 @@ describe("publishTierDefinitions", () => {
 });
 
 describe("maybeRepublishNutzapProfile", () => {
-  it("calls publishNutzapProfile when profile differs", async () => {
+  it("republishes when relays differ", async () => {
     const p2pk = useP2PKStore();
     p2pk.p2pkKeys = [
       { publicKey: "pk", privateKey: "priv", used: false, usedCount: 0 },
     ];
-    const mints = useMintsStore();
-    mints.mints = [{ url: "mint1" }, { url: "mint2" }] as any;
     const profileStore = useCreatorProfileStore();
     profileStore.mints = ["mint1"];
+    profileStore.relays = ["wss://a" as any];
 
     fetchNutzapProfileMock = vi.fn(async () => ({
-      p2pkPubkey: "other",
+      p2pkPubkey: "pk",
+      trustedMints: ["mint1"],
+      relays: ["wss://b"],
+      hexPub: "pub",
+    }));
+
+    await maybeRepublishNutzapProfile();
+    expect(publishNutzapProfileMock).toHaveBeenCalled();
+  });
+
+  it("republishes when trusted mints differ", async () => {
+    const p2pk = useP2PKStore();
+    p2pk.p2pkKeys = [
+      { publicKey: "pk", privateKey: "priv", used: false, usedCount: 0 },
+    ];
+    const profileStore = useCreatorProfileStore();
+    profileStore.mints = ["mint1"];
+    profileStore.relays = [] as any;
+
+    fetchNutzapProfileMock = vi.fn(async () => ({
+      p2pkPubkey: "pk",
       trustedMints: ["mint2"],
       relays: [],
       hexPub: "pub",
     }));
 
     await maybeRepublishNutzapProfile();
+    expect(publishNutzapProfileMock).toHaveBeenCalled();
+  });
 
-    expect(publishNutzapProfileMock).toHaveBeenCalledWith({
-      p2pkPub: "pk",
-      mints: ["mint1"],
-      relays: nostrStoreMock.relays,
-    });
+  it("does not republish when data matches", async () => {
+    const p2pk = useP2PKStore();
+    p2pk.p2pkKeys = [
+      { publicKey: "pk", privateKey: "priv", used: false, usedCount: 0 },
+    ];
+    const profileStore = useCreatorProfileStore();
+    profileStore.mints = ["mint1", "mint2"];
+    profileStore.relays = ["wss://a", "wss://b"] as any;
+
+    fetchNutzapProfileMock = vi.fn(async () => ({
+      p2pkPubkey: "pk",
+      trustedMints: ["mint2", "mint1"],
+      relays: ["wss://b", "wss://a"],
+      hexPub: "pub",
+    }));
+
+    await maybeRepublishNutzapProfile();
+    expect(publishNutzapProfileMock).not.toHaveBeenCalled();
   });
 });

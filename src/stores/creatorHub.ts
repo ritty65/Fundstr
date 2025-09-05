@@ -47,22 +47,37 @@ export async function maybeRepublishNutzapProfile() {
   }
   const profileStore = useCreatorProfileStore();
   const desiredMints = profileStore.mints;
+  const desiredRelays = profileStore.relays;
   const desiredP2PK = useP2PKStore().firstKey?.publicKey;
 
   if (!desiredP2PK) return;
 
   const currentMints = current?.trustedMints || [];
+  const currentRelays = current?.relays || current?.relayHints || [];
+
+  function arraysDiffer(a?: string[], b?: string[]) {
+    const norm = (s: string) => s.trim().toLowerCase();
+    const A = new Set((a ?? []).map(norm));
+    const B = new Set((b ?? []).map(norm));
+    if (A.size !== B.size) return true;
+    for (const x of A) if (!B.has(x)) return true;
+    return false;
+  }
+
+  const mintsChanged = arraysDiffer(currentMints, desiredMints);
+  const relaysChanged = arraysDiffer(currentRelays, desiredRelays);
+
   const hasDiff =
     !current ||
     current.p2pkPubkey !== desiredP2PK ||
-    JSON.stringify([...currentMints].sort()) !==
-      JSON.stringify([...desiredMints].sort());
+    mintsChanged ||
+    relaysChanged;
 
   if (hasDiff) {
     await publishNutzapProfile({
       p2pkPub: desiredP2PK,
       mints: desiredMints,
-      relays: [...profileStore.relays],
+      relays: [...desiredRelays],
     });
   }
 }
@@ -75,6 +90,10 @@ export const useCreatorHubStore = defineStore("creatorHub", {
     );
     const tierOrder = safeUseLocalStorage<string[]>("creatorHub.tierOrder", []);
     const initialTierOrder = ref<string[]>([]);
+    const lastPublishedTiersHash = safeUseLocalStorage<string>(
+      "creatorHub.lastPublishedTiersHash",
+      "",
+    );
     const nostr = useNostrStore();
     watch(
       () => nostr.pubkey,
@@ -87,7 +106,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         }
       },
     );
-    return { tiers, tierOrder, initialTierOrder };
+    return { tiers, tierOrder, initialTierOrder, lastPublishedTiersHash };
   },
   getters: {
     isDirty(): boolean {
@@ -300,6 +319,8 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         (id) => (this.tiers[id].publishStatus = "succeeded"),
       );
       this.initialTierOrder = [...this.tierOrder];
+      this.lastPublishedTiersHash = JSON.stringify(tiersArray);
+      return true;
     },
     setTierOrder(order: string[]) {
       this.tierOrder = [...order];

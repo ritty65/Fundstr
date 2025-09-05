@@ -68,6 +68,7 @@ import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useMessengerStore } from "./messenger";
 import { decryptDM } from "../nostr/crypto";
 import { useCreatorHubStore } from "./creatorHub";
+import { useCreatorProfileStore } from "./creatorProfile";
 
 const STORAGE_SECRET = "cashu_ndk_storage_key";
 let cachedKey: CryptoKey | null = null;
@@ -645,6 +646,7 @@ export async function publishDiscoveryProfile(opts: {
   p2pkPub: string;
   mints: string[];
   relays: string[];
+  tierAddr?: string;
   timeoutMs?: number;
 }): Promise<{ ids: string[]; failedRelays: string[] }> {
   const nostr = useNostrStore();
@@ -668,11 +670,14 @@ export async function publishDiscoveryProfile(opts: {
   const kind0Event = new NDKEvent(ndk);
   kind0Event.kind = 0;
   kind0Event.content = JSON.stringify(opts.profile);
+  kind0Event.created_at = Math.floor(Date.now() / 1000);
 
   // --- 2. Prepare Kind 10002 (Relay List) ---
   const kind10002Event = new NDKEvent(ndk);
   kind10002Event.kind = 10002;
   kind10002Event.tags = opts.relays.map((r) => ["r", r]); // 'r' tag for each relay URL
+  kind10002Event.content = "";
+  kind10002Event.created_at = Math.floor(Date.now() / 1000);
 
   // --- 3. Prepare Kind 10019 (Nutzap/Payment Profile) ---
   const kind10019Event = new NDKEvent(ndk);
@@ -682,6 +687,11 @@ export async function publishDiscoveryProfile(opts: {
     ...opts.mints.map((m) => ["mint", m]),
     ...opts.relays.map((r) => ["relay", r]),
   ];
+  if (opts.tierAddr) {
+    kind10019Event.tags.push(["a", opts.tierAddr]);
+  }
+  kind10019Event.content = "";
+  kind10019Event.created_at = Math.floor(Date.now() / 1000);
 
   const eventsToPublish = [kind0Event, kind10002Event, kind10019Event];
 
@@ -720,6 +730,52 @@ export async function publishDiscoveryProfile(opts: {
     notifySuccess("Profile published successfully to your relays!");
   }
   return { ids: eventsToPublish.map((ev) => ev.id), failedRelays: Array.from(failed) };
+}
+
+export async function publishCreatorBundle(opts: {
+  publishTiers?: "auto" | "force" | "skip";
+} = {}): Promise<void> {
+  const mode = opts.publishTiers ?? "auto";
+  const hub = useCreatorHubStore();
+  const profile = useCreatorProfileStore();
+  const p2pk = useP2PKStore();
+  const nostr = useNostrStore();
+
+  await nostr.initSignerIfNotSet();
+  if (!nostr.signer) {
+    throw new Error("Signer required to publish profile");
+  }
+
+  const p2pkPub = p2pk.firstKey?.publicKey;
+  if (!p2pkPub) {
+    throw new Error("No Cashu P2PK key available");
+  }
+
+  const tiersArray = hub.getTierArray();
+  const tiersHash = JSON.stringify(tiersArray);
+  let tiersPublished = false;
+  if (
+    mode === "force" ||
+    (mode === "auto" && tiersHash !== hub.lastPublishedTiersHash)
+  ) {
+    await hub.publishTierDefinitions();
+    hub.lastPublishedTiersHash = tiersHash;
+    tiersPublished = true;
+  }
+
+  await publishDiscoveryProfile({
+    profile: profile.profile,
+    p2pkPub,
+    mints: profile.mints,
+    relays: profile.relays,
+    tierAddr: `30000:${nostr.pubkey}:tiers`,
+  });
+
+  if (tiersPublished) {
+    notifySuccess("Profile & tiers published.");
+  } else {
+    notifySuccess("Profile published: metadata, relays, payment profile.");
+  }
 }
 
 /** Publishes a ‘kind:9321’ Nutzap event. */

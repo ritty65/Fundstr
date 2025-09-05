@@ -5,6 +5,7 @@ import { subscriptionPayload } from "../src/utils/receipt-utils";
 
 let sendDm: any;
 let createHTLC: any;
+let findSpendableMint: any;
 
 vi.mock("../src/stores/messenger", () => ({
   useMessengerStore: () => ({
@@ -23,7 +24,7 @@ vi.mock("../src/js/token", () => ({
 
 vi.mock("../src/stores/wallet", () => ({
   useWalletStore: () => ({
-    findSpendableMint: () => ({ url: "mint" }),
+    findSpendableMint: (...args: any[]) => findSpendableMint(...args),
     sendToLock: vi.fn(async () => ({
       sendProofs: [],
       locked: { id: "1", tokenString: "t" },
@@ -59,6 +60,7 @@ beforeEach(async () => {
     token: JSON.stringify({ lockSecret: "pre" }),
     hash: "h",
   }));
+  findSpendableMint = vi.fn(() => ({ url: "mint" }));
 });
 
 describe("subscribeToTier", () => {
@@ -71,6 +73,7 @@ describe("subscribeToTier", () => {
       price: 1,
       startDate: 0,
       relayList: [],
+      trustedMints: [],
     });
     expect(sendDm).toHaveBeenCalled();
     const payload = JSON.parse(sendDm.mock.calls[0][1]);
@@ -81,5 +84,22 @@ describe("subscribeToTier", () => {
       total_months: 1,
     });
     expect(payload).toMatchObject(expected);
+  });
+
+  it("enforces trusted mints when provided", async () => {
+    const store = useNutzapStore();
+    findSpendableMint.mockReturnValue(null);
+    await expect(
+      store.subscribeToTier({
+        creator: { nostrPubkey: "c", cashuP2pk: "pk" },
+        tierId: "tier",
+        periods: 1,
+        price: 1,
+        startDate: 0,
+        relayList: [],
+        trustedMints: ["https://mintA"],
+      }),
+    ).rejects.toThrow(/creator-trusted mints/i);
+    expect(findSpendableMint).toHaveBeenCalledWith(1, ["https://mintA"]);
   });
 });
