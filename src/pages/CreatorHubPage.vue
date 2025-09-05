@@ -2,8 +2,10 @@
   <q-page class="bg-surface-1 q-pa-md">
     <NostrRelayErrorBanner
       :error="publishErrors"
+      :allow-replace="true"
       @retry="publishProfileBundle"
       @manage="openRelayManager"
+      @replace="replaceWithVettedRelays"
     />
     <q-card class="q-pa-lg bg-surface-2 shadow-4 full-width">
       <q-banner
@@ -260,6 +262,7 @@ const {
   failedRelays,
   reconnectAll,
   publishProfileBundle,
+  replaceWithVettedRelays,
 } = useCreatorHub();
 
 const profileStore = useCreatorProfileStore();
