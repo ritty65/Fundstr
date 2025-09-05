@@ -131,6 +131,7 @@ describe("publishTierDefinitions", () => {
         description: "",
         welcomeMessage: "",
         media: [],
+        publishStatus: "pending",
       },
     } as any;
     store.tierOrder = ["t1"];
@@ -156,6 +157,7 @@ describe("publishTierDefinitions", () => {
         },
       ]),
     );
+    expect(JSON.parse(ev.content)[0].publishStatus).toBeUndefined();
     expect(signMock).toHaveBeenCalledWith(nostrStoreMock.signer);
     expect(publishMock).toHaveBeenCalled();
   });
