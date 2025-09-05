@@ -34,6 +34,12 @@ Think Patreon, but built for the Nostr ecosystem and leveraging the privacy and 
 4. **Manage Your Hub** – A future dashboard for tracking supporters, funding and content.
 5. **Build Your Community** – Connect with supporters using integrated Nostr DMs.
 
+### Publishing & Trusted Mints
+
+- Use the **Publish** button in the Creator Hub to atomically publish your profile bundle (kinds 0, 10002, 10019) and tier definitions (`kind:30000` with `d="tiers"`). The payment profile (kind 10019) includes an `a` tag referencing your tier set (`30000:<pubkey>:tiers`).
+- Trusted mint URLs must begin with `http://` or `https://`; `wss://` endpoints are rejected.
+- If your trusted mint list is empty, supporters may pay from any mint.
+
 ## Key Features
 
 - **Seamless Cashu Wallet** – Mint, send and receive ecash.

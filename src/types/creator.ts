@@ -21,4 +21,5 @@ export interface SubscribeTierOptions {
   benefits?: string[];
   creatorName?: string;
   creatorAvatar?: string;
+  trustedMints?: string[];
 }
