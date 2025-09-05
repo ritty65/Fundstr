@@ -1,21 +1,27 @@
-// Curated public write relays used ONLY as fallback when user relays don't ACK.
-// Keep this list short to reduce latency and avoid closed/paid/whitelisted relays.
-export const FREE_RELAYS = [
-  "wss://nostr.fmt.wiz.biz",
-  "wss://nostr.oxtr.dev",
-  "wss://nostr.mom",
-  "wss://no.str.cr",
-  "wss://relay.nostr.bg",
-  "wss://offchain.pub",
-  "wss://relay.plebstr.com",
-  "wss://nostr.zebedee.cloud",
-];
-
-// This list should only contain relays that are known to be reliable and fast.
+// Curated default read relays – these are added at boot for read operations only.
 export const DEFAULT_RELAYS = [
   "wss://relay.damus.io",
-  "wss://nos.lol",
+  "wss://relay.snort.social",
   "wss://relay.primal.net",
+  "wss://nos.lol",
+];
+
+// Small set of known-open relays used as fallback for write operations.
+export const FREE_RELAYS = [
+  "wss://offchain.pub",
+  "wss://no.str.cr",
+  "wss://nostr.mom",
+  // Last resort large pools
+  "wss://relay.damus.io",
   "wss://relay.snort.social",
 ];
 
+// Optional: allow overrides via env (comma-separated)
+export function envRelayList(key: string, fallback: string[]): string[] {
+  const v = (import.meta as any).env?.[key];
+  if (!v) return fallback;
+  return v
+    .split(",")
+    .map((s: string) => s.trim())
+    .filter(Boolean);
+}
