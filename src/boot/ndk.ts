@@ -249,10 +249,11 @@ export async function createNdk(): Promise<NDK> {
 export async function rebuildNdk(
   relays: string[],
   signer?: NDKSigner,
+  explicitOnly = false,
 ): Promise<NDK> {
   const ndk = new NDK({ explicitRelayUrls: relays });
   attachRelayErrorHandlers(ndk);
-  mergeDefaultRelays(ndk);
+  if (!explicitOnly) mergeDefaultRelays(ndk);
   if (signer) ndk.signer = signer;
   await safeConnect(ndk);
   return ndk;

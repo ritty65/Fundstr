@@ -27,6 +27,7 @@ import {
   Event as NostrEvent,
 } from "nostr-tools";
 import { bytesToHex, hexToBytes, randomBytes } from "@noble/hashes/utils"; // already an installed dependency
+import { sha256 } from "@noble/hashes/sha256";
 import * as aes from '@noble/ciphers/aes.js';
 import { base64 } from "@scure/base";
 import { ensureCompressed } from "src/utils/ecash";
@@ -604,7 +605,7 @@ export async function publishNutzapProfile(opts: {
   if (!nostr.signer) {
     throw new Error("Signer required to publish Nutzap profile");
   }
-  await nostr.ensureNdkConnected(opts.relays);
+  await nostr.connect(opts.relays ?? nostr.relays);
   const tags: NDKTag[] = [["pubkey", opts.p2pkPub]];
   for (const url of opts.mints) tags.push(["mint", url]);
   if (opts.relays) for (const r of opts.relays) tags.push(["relay", r]);
@@ -653,6 +654,7 @@ export async function publishDiscoveryProfile(opts: {
   if (!nostr.signer) {
     throw new Error("Signer required to publish a discoverable profile.");
   }
+  await nostr.connect(opts.relays);
   const relaySet = await urlsToRelaySet(opts.relays, true);
   if (relaySet) {
     try {
@@ -734,7 +736,7 @@ export async function publishDiscoveryProfile(opts: {
 
 export async function publishCreatorBundle(opts: {
   publishTiers?: "auto" | "force" | "skip";
-} = {}): Promise<void> {
+} = {}): Promise<{ failedRelays: string[] }> {
   const mode = opts.publishTiers ?? "auto";
   const hub = useCreatorHubStore();
   const profile = useCreatorProfileStore();
@@ -752,7 +754,9 @@ export async function publishCreatorBundle(opts: {
   }
 
   const tiersArray = hub.getTierArray();
-  const tiersHash = JSON.stringify(tiersArray);
+  const tiersHash = bytesToHex(
+    sha256(new TextEncoder().encode(JSON.stringify(tiersArray))),
+  );
   let tiersPublished = false;
   if (
     mode === "force" ||
@@ -763,19 +767,38 @@ export async function publishCreatorBundle(opts: {
     tiersPublished = true;
   }
 
-  await publishDiscoveryProfile({
+  const tierAddr = tiersArray.length
+    ? `30000:${nostr.pubkey}:tiers`
+    : undefined;
+  const result = await publishDiscoveryProfile({
     profile: profile.profile,
     p2pkPub,
     mints: profile.mints,
     relays: profile.relays,
-    tierAddr: `30000:${nostr.pubkey}:tiers`,
+    tierAddr,
   });
 
   if (tiersPublished) {
-    notifySuccess("Profile & tiers published.");
+    if (result.failedRelays.length) {
+      notifyWarning(
+        `Profile & tiers published; failed: ${result.failedRelays.join(", ")}`,
+      );
+    } else {
+      notifySuccess("Profile & tiers published.");
+    }
   } else {
-    notifySuccess("Profile published: metadata, relays, payment profile.");
+    if (result.failedRelays.length) {
+      notifyWarning(
+        `Profile published but some relays failed: ${result.failedRelays.join(", ")}`,
+      );
+    } else {
+      notifySuccess(
+        "Profile published: metadata, relays, payment profile.",
+      );
+    }
   }
+
+  return { failedRelays: result.failedRelays };
 }
 
 /** Publishes a ‘kind:9321’ Nutzap event. */
@@ -786,7 +809,7 @@ export async function publishNutzap(opts: {
 }) {
   const nostr = useNostrStore();
   await nostr.initSignerIfNotSet();
-  await nostr.ensureNdkConnected(opts.relayHints);
+  await nostr.connect(opts.relayHints ?? nostr.relays);
   const ndk = await useNdk();
   if (!ndk) {
     throw new Error(
@@ -1087,7 +1110,8 @@ export const useNostrStore = defineStore("nostr", {
       if (relays) this.relays = relays as any;
 
       // 2. build a *new* NDK whose pool contains only those relays
-      const ndk = await rebuildNdk(this.relays, this.signer);
+      const ndk = await rebuildNdk(this.relays, this.signer, true);
+      ndk.explicitRelayUrls = this.relays;
 
       // 3. connect every relay with a 6-second guard, but do not await ndk.connect() again
       const relaysArr = Array.from(ndk.pool.relays.values());

@@ -6,7 +6,7 @@
         <template #avatar><q-spinner /></template>
         Connecting to your Nostr relays ({{ connectedCount }} / {{ totalRelays }})...
         <template #action>
-          <q-btn flat label="Reconnect" @click="() => localNdk.value?.connect()" />
+          <q-btn flat label="Reconnect" @click="reconnectAll" />
         </template>
       </q-banner>
       <q-banner v-else class="text-white bg-positive">
@@ -228,7 +228,7 @@
 <script setup lang="ts">
 import Draggable from "vuedraggable";
 
-import { computed, ref, onMounted, onUnmounted, watch } from "vue";
+import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useCreatorHub } from "src/composables/useCreatorHub";
 import { useClipboard } from "src/composables/useClipboard";
@@ -241,11 +241,9 @@ import ThemeToggle from "components/ThemeToggle.vue";
 import PublishBar from "components/PublishBar.vue";
 import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 import RelayScannerDialog from "components/RelayScannerDialog.vue";
-import NDK from "@nostr-dev-kit/ndk";
 import { Notify } from "quasar";
 import { useCreatorProfileStore } from "stores/creatorProfile";
-import { storeToRefs } from "pinia";
-import { useNostrStore, publishCreatorBundle } from "stores/nostr";
+import { publishCreatorBundle } from "stores/nostr";
 
 const {
   profile,
@@ -270,89 +268,27 @@ const {
   publishing,
   isDirty,
   profileRelays,
+  connectedCount,
+  totalRelays,
+  failedRelays,
+  publishFailures,
+  retryWithoutFailedRelays,
+  reconnectAll,
 } = useCreatorHub();
 
 const profileStore = useCreatorProfileStore();
-const { mints: profileMints } = storeToRefs(profileStore);
-const nostr = useNostrStore();
-
-const localNdk = ref<NDK | null>(null);
-const publishFailures = ref<string[]>([]);
 const showRelayScanner = ref(false);
-
-onMounted(async () => {
-  localNdk.value = new NDK({
-    explicitRelayUrls: profileRelays.value,
-    signer: nostr.signer,
-  });
-  await localNdk.value.connect();
-});
-
-watch(
-  () => nostr.signer,
-  (signer) => {
-    if (localNdk.value) localNdk.value.signer = signer || undefined;
-  },
-);
-
-watch(
-  profileRelays,
-  (urls) => {
-    if (!localNdk.value) return;
-    localNdk.value.explicitRelayUrls = urls;
-    localNdk.value.pool.relays.forEach((r) => {
-      if (!urls.includes(r.url)) r.disconnect();
-    });
-    localNdk.value.connect();
-  },
-  { immediate: true },
-);
-
-onUnmounted(() => {
-  if (localNdk.value) {
-    localNdk.value.pool.relays.forEach((r) => r.disconnect());
-  }
-});
-
-const connectedCount = computed(() => {
-  if (!localNdk.value) return 0;
-  return Array.from(localNdk.value.pool.relays.values()).filter((r) => r.connected).length;
-});
-
-const totalRelays = computed(() =>
-  localNdk.value ? localNdk.value.pool.relays.size : 0,
-);
-
 const ndkConnected = computed(() => connectedCount.value > 0);
-
-const failedRelays = computed(() => {
-  if (!localNdk.value) return [] as string[];
-  return Array.from(localNdk.value.pool.relays.values())
-    .filter((r) => !r.connected)
-    .map((r) => r.url);
-});
 
 function onRelaysSelected(urls: string[]) {
   profileRelays.value = urls.slice(0, 8);
-  if (localNdk.value) {
-    localNdk.value.explicitRelayUrls = profileRelays.value;
-    localNdk.value.connect();
-  }
 }
 
 function removeRelay(url: string) {
   profileRelays.value = profileRelays.value.filter((r) => r !== url);
-  if (localNdk.value) {
-    localNdk.value.explicitRelayUrls = profileRelays.value;
-    localNdk.value.connect();
-  }
 }
 
 async function publishProfileBundle() {
-  if (!localNdk.value?.signer) {
-    Notify.create({ type: "negative", message: "Please connect a Nostr signer" });
-    return;
-  }
   if (!profileStore.pubkey) {
     tab.value = "profile";
     Notify.create({
@@ -371,7 +307,8 @@ async function publishProfileBundle() {
   }
   publishing.value = true;
   try {
-    await publishCreatorBundle({ publishTiers: "auto" });
+    const result = await publishCreatorBundle({ publishTiers: "auto" });
+    publishFailures.value = result.failedRelays;
     profileStore.markClean();
   } catch (e: any) {
     Notify.create({
@@ -381,18 +318,6 @@ async function publishProfileBundle() {
   } finally {
     publishing.value = false;
   }
-}
-
-function retryWithoutFailedRelays() {
-  if (!publishFailures.value.length) return;
-  profileRelays.value = profileRelays.value.filter(
-    (r) => !publishFailures.value.includes(r),
-  );
-  if (localNdk.value) {
-    localNdk.value.explicitRelayUrls = profileRelays.value;
-    localNdk.value.connect();
-  }
-  publishProfileBundle();
 }
 
 const nsec = ref("");
