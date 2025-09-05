@@ -597,9 +597,13 @@ export function useCreatorHub() {
 
       const events: any[] = [kind0, kind10002, kind10019];
       if (tiers.length) {
+        const pureTiers = tiers.map((t) => {
+          const { publishStatus, ...pureTier } = t as any;
+          return pureTier;
+        });
         const kind30000 = new NDKEvent(
           ndkConn,
-          buildKind30000Tiers(nostr.pubkey, tiers, "tiers"),
+          buildKind30000Tiers(nostr.pubkey, pureTiers, "tiers"),
         );
         kind30000.created_at = createdAt;
         events.push(kind30000);

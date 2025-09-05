@@ -2,9 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@noble/ciphers/aes.js', () => ({}), { virtual: true });
 
 const hubStore = {
-  getTierArray: () => [{ id: 't1', name: 'Tier', price_sats: 1 }],
-  publishTierDefinitions: vi.fn(),
-  lastPublishedTiersHash: ''
+  getTierArray: () => [
+    { id: 't1', name: 'Tier', price_sats: 1, publishStatus: 'pending' },
+  ],
+  publishTierDefinitions: vi.fn(async () => {
+    const json = JSON.stringify(
+      hubStore.getTierArray().map(({ publishStatus, ...pure }) => pure),
+    );
+    expect(json).not.toContain('publishStatus');
+  }),
+  lastPublishedTiersHash: '',
 };
 
 vi.mock('../src/stores/creatorHub', () => ({
