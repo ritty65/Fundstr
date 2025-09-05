@@ -43,7 +43,8 @@ import {
 } from "@cashu/cashu-ts";
 import { useTokensStore } from "./tokens";
 import { filterHealthyRelays } from "src/utils/relayHealth";
-import { DEFAULT_RELAYS, FREE_RELAYS } from "src/config/relays";
+import { DEFAULT_RELAYS, FREE_RELAYS, VETTED_OPEN_WRITE_RELAYS } from "src/config/relays";
+import { publishToRelaysWithAcks, selectPublishRelays, PublishReport, RelayResult } from "src/nostr/publish";
 import { sanitizeRelayUrls } from "src/utils/relay";
 import { getNdk } from "src/boot/ndk";
 import {
@@ -882,20 +883,17 @@ export async function publishDiscoveryProfile(opts: {
   relays: string[];
   tierAddr?: string;
   timeoutMs?: number;
-}): Promise<{ ids: string[]; failedRelays: string[] }> {
+}): Promise<PublishReport> {
   const nostr = useNostrStore();
   if (!nostr.signer) {
     throw new Error("Signer required to publish a discoverable profile.");
   }
-  await nostr.connect(opts.relays);
-  const relaySet = await urlsToRelaySet(opts.relays, true);
-  if (relaySet) {
-    try {
-      await waitForRelaySetConnectivity(relaySet, 4000);
-    } catch (e: any) {
-      notifyWarning("Selected relays not reachable", e?.message ?? String(e));
-    }
-  }
+  const { targets, usedFallback } = selectPublishRelays(
+    opts.relays,
+    VETTED_OPEN_WRITE_RELAYS,
+    2,
+  );
+  await nostr.connect(targets);
   const ndk = await useNdk();
   if (!ndk) {
     throw new Error("NDK not initialized. Cannot publish profile.");
@@ -930,41 +928,35 @@ export async function publishDiscoveryProfile(opts: {
 
   const eventsToPublish = [kind0Event, kind10002Event, kind10019Event];
 
-  // Sign all events
   await Promise.all(eventsToPublish.map((ev) => ev.sign()));
 
-  // Publish all events allowing partial relay failure
-  const failed = new Set<string>();
-  const timeoutMs = opts.timeoutMs ?? 8000;
+  const aggregate = new Map<string, RelayResult>();
+  const fromFallback = new Set(usedFallback);
   for (const ev of eventsToPublish) {
-    const results = await Promise.all(
-      opts.relays.map(async (url) => {
-        try {
-          const set = await urlsToRelaySet([url], false);
-          await publishWithTimeout(ev, set, timeoutMs);
-          return { url, ok: true };
-        } catch {
-          return { url, ok: false };
-        }
-      }),
-    );
-    if (!results.some((r) => r.ok)) {
-      const err = new Error("Publish failed on all relays");
-      notifyError(err.message);
-      throw err;
-    }
-    results
-      .filter((r) => !r.ok)
-      .forEach((r) => failed.add(r.url));
+    const res = await publishToRelaysWithAcks(ndk, ev, targets, {
+      timeoutMs: opts.timeoutMs ?? 4000,
+      fromFallback,
+    });
+    res.perRelay.forEach((r) => {
+      const existing = aggregate.get(r.relay) || { url: r.relay, ok: true };
+      if (r.status !== "ok") {
+        existing.ok = false;
+        existing.err = r.status;
+      } else {
+        existing.ack = true;
+      }
+      aggregate.set(r.relay, existing);
+    });
   }
-  if (failed.size) {
-    notifyWarning(
-      `Profile published with failures: ${Array.from(failed).join(", ")}`,
-    );
-  } else {
-    notifySuccess("Profile published successfully to your relays!");
-  }
-  return { ids: eventsToPublish.map((ev) => ev.id), failedRelays: Array.from(failed) };
+
+  const byRelay = Array.from(aggregate.values());
+  return {
+    ids: eventsToPublish.map((e) => e.id),
+    relaysTried: targets.length,
+    byRelay,
+    anySuccess: byRelay.some((r) => r.ok),
+    usedFallback,
+  };
 }
 
 export async function publishCreatorBundle(opts: {
@@ -990,16 +982,6 @@ export async function publishCreatorBundle(opts: {
   const tiersHash = bytesToHex(
     sha256(new TextEncoder().encode(JSON.stringify(tiersArray))),
   );
-  let tiersPublished = false;
-  if (
-    mode === "force" ||
-    (mode === "auto" && tiersHash !== hub.lastPublishedTiersHash)
-  ) {
-    await hub.publishTierDefinitions();
-    hub.lastPublishedTiersHash = tiersHash;
-    tiersPublished = true;
-  }
-
   const tierAddr = tiersArray.length
     ? `30000:${nostr.pubkey}:tiers`
     : undefined;
@@ -1011,18 +993,30 @@ export async function publishCreatorBundle(opts: {
     tierAddr,
   });
 
+  const failedRelays = result.byRelay.filter((r) => !r.ok).map((r) => r.url);
+
+  let tiersPublished = false;
+  if (
+    mode === "force" ||
+    (mode === "auto" && tiersHash !== hub.lastPublishedTiersHash)
+  ) {
+    await hub.publishTierDefinitions();
+    hub.lastPublishedTiersHash = tiersHash;
+    tiersPublished = true;
+  }
+
   if (tiersPublished) {
-    if (result.failedRelays.length) {
+    if (failedRelays.length) {
       notifyWarning(
-        `Profile & tiers published; failed: ${result.failedRelays.join(", ")}`,
+        `Profile & tiers published; failed: ${failedRelays.join(", ")}`,
       );
     } else {
       notifySuccess("Profile & tiers published.");
     }
   } else {
-    if (result.failedRelays.length) {
+    if (failedRelays.length) {
       notifyWarning(
-        `Profile published but some relays failed: ${result.failedRelays.join(", ")}`,
+        `Profile published but some relays failed: ${failedRelays.join(", ")}`,
       );
     } else {
       notifySuccess(
@@ -1031,7 +1025,7 @@ export async function publishCreatorBundle(opts: {
     }
   }
 
-  return { failedRelays: result.failedRelays };
+  return { failedRelays };
 }
 
 /** Publishes a ‘kind:9321’ Nutzap event. */
@@ -1175,6 +1169,7 @@ export const useNostrStore = defineStore("nostr", {
       reconnectBackoffUntil: 0,
       reconnectFailures: 0,
       failedRelays: [] as string[],
+      connectedRelays: new Set<string>(),
       cachedNip07Relays: null as string[] | null,
       pendingGetRelays: null as Promise<Record<string, any> | null> | null,
       lastNip04EventTimestamp,
@@ -1237,8 +1232,12 @@ export const useNostrStore = defineStore("nostr", {
       }
     },
     hasIdentity: (state) => Boolean(state.pubkey && state.signerType),
+    numConnectedRelays: (state) => state.connectedRelays.size,
   },
   actions: {
+    getConnectedRelayUrls() {
+      return Array.from(this.connectedRelays);
+    },
     loadKeysFromStorage: async function () {
       if (this.secureStorageLoaded) return;
       const pk = await secureGetItem("cashu.ndk.pubkey");
@@ -1297,13 +1296,19 @@ export const useNostrStore = defineStore("nostr", {
       if (this.connected) return;
       try {
         await ndk.connect();
-        this.connected = true;
         this.lastError = null;
         this.connectionFailed = false;
+        ndk.pool.on("relay:connect", (r: any) => {
+          this.connectedRelays.add(r.url);
+          this.connected = this.connectedRelays.size > 0;
+        });
+        ndk.pool.on("relay:disconnect", (r: any) => {
+          this.connectedRelays.delete(r.url);
+          this.connected = this.connectedRelays.size > 0;
+        });
       } catch (e: any) {
         console.warn("[nostr] read-only connect failed", e);
         notifyWarning(`Failed to connect to relays`, e?.message ?? String(e));
-        this.connected = false;
         this.lastError = e?.message ?? String(e);
         this.connectionFailed = true;
         window.dispatchEvent(new Event("nostr-connect-failed"));
@@ -1314,6 +1319,7 @@ export const useNostrStore = defineStore("nostr", {
       for (const relay of ndk.pool.relays.values()) relay.disconnect();
       this.signer = undefined;
       this.connected = false;
+      this.connectedRelays.clear();
     },
     async connectBrowserSigner() {
       const nip07 = new NDKNip07Signer();
@@ -1348,19 +1354,18 @@ export const useNostrStore = defineStore("nostr", {
 
       // 3. connect every relay with a 6-second guard, but do not await ndk.connect() again
       const relaysArr = Array.from(ndk.pool.relays.values());
+      this.connectedRelays.clear();
       const connectPromises = relaysArr.map((r) => connectWithTimeout(r, 6000));
 
-      // flip Online as soon as one opens
+      // wait for any to connect to reset backoff
       try {
         await Promise.any(connectPromises);
-        this.connected = true;
         this.lastError = null;
         this.reconnectBackoffUntil = 0;
         this.reconnectFailures = 0;
         this.failedRelays = [];
         this.connectionFailed = false;
       } catch (e: any) {
-        this.connected = false;
         this.lastError = e?.message ?? String(e);
         this.reconnectFailures++;
         const backoff = Math.min(
@@ -1374,10 +1379,14 @@ export const useNostrStore = defineStore("nostr", {
       }
 
       // 4. keep icons in RelayManager.vue fresh
-      ndk.pool.on("relay:connect", () => {
+      ndk.pool.on("relay:connect", (r: any) => {
+        this.connectedRelays.add(r.url);
+        this.connected = this.connectedRelays.size > 0;
         this.relays = [...this.relays];
       });
-      ndk.pool.on("relay:disconnect", () => {
+      ndk.pool.on("relay:disconnect", (r: any) => {
+        this.connectedRelays.delete(r.url);
+        this.connected = this.connectedRelays.size > 0;
         this.relays = [...this.relays];
       });
 

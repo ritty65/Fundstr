@@ -1,5 +1,38 @@
 export type AckOutcome = 'ok' | 'failed' | 'timeout' | 'blocked';
 
+// Select relays for publishing, ensuring a minimum count by appending vetted fallbacks.
+export function selectPublishRelays(
+  preferred: string[],
+  vetted: string[],
+  min = 2,
+): { targets: string[]; usedFallback: string[] } {
+  const targets: string[] = [];
+  const usedFallback: string[] = [];
+
+  preferred.forEach((u) => {
+    if (!targets.includes(u)) targets.push(u);
+  });
+
+  for (const v of vetted) {
+    if (targets.length >= min) break;
+    if (!targets.includes(v)) {
+      targets.push(v);
+      usedFallback.push(v);
+    }
+  }
+
+  return { targets, usedFallback };
+}
+
+export type RelayResult = { url: string; ok: boolean; err?: string; ack?: boolean };
+export type PublishReport = {
+  ids?: string[];
+  relaysTried: number;
+  byRelay: RelayResult[];
+  anySuccess: boolean;
+  usedFallback: string[];
+};
+
 export async function publishWithAck(relay: any, event: any, timeoutMs = 2000): Promise<AckOutcome> {
   try {
     const res = relay.publish(event);
