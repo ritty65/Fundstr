@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename)
 
 export default configure(() => ({
   // 1. 'node-globals' boot file is removed. This is correct.
-  boot: ['welcomeGate', 'cashu', 'i18n', 'notify'],
+  boot: ['welcomeGate', 'cashu', 'i18n', 'notify', 'nostr-provider'],
 
   css: ['app.scss', 'base.scss', 'buckets.scss'],
   extras: ['roboto-font', 'material-icons'],
