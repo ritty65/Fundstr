@@ -22,14 +22,22 @@ export function buildKind10002RelayList(
   };
 }
 
-export function buildKind10019NutzapProfile(pubkey: string, np: any) {
+import type { NutzapProfilePayload } from "./nutzapProfile";
+
+export function buildKind10019NutzapProfile(
+  pubkey: string,
+  np: NutzapProfilePayload,
+) {
   return {
     kind: 10019,
     content: JSON.stringify({ v: 1, ...np }),
-    tags: [["t","nutzap-profile"], ["client","fundstr"]],
+    tags: [
+      ["t", "nutzap-profile"],
+      ["client", "fundstr"],
+    ],
     pubkey,
     created_at: Math.floor(Date.now() / 1000),
-  };
+  } as const;
 }
 
 export function buildKind30000Tiers(pubkey: string, tiers: any[], d = "tiers") {
