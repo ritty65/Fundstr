@@ -10,6 +10,13 @@
       >
         {{ $t("creatorHub.publish") }}
       </q-btn>
+      <q-banner
+        v-if="fallbackUsed.length"
+        dense
+        class="bg-warning text-black q-mt-sm"
+      >
+        Your relays were unhealthy; also used fallback: {{ fallbackUsed.join(', ') }}
+      </q-banner>
       <div v-if="table.length" class="q-mt-sm">
         <table class="text-caption">
           <thead>
@@ -41,9 +48,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-interface RelayRow { relay: string; status: string; latencyMs?: number; fromFallback?: boolean }
-const props = defineProps<{ publishing: boolean; results?: { kind: number; perRelay: RelayRow[] }[] }>();
+import type { PublishReport } from "src/nostr/publish";
+const props = defineProps<{ publishing: boolean; report?: PublishReport | null; fallbackUsed: string[] }>();
 const emit = defineEmits(["publish"]);
-const loading = computed(() => props.publishing && !(props.results && props.results.length));
-const table = computed(() => props.results?.[0]?.perRelay ?? []);
+const loading = computed(() => props.publishing && !props.report);
+const table = computed(() => props.report?.byRelay ?? []);
+const fallbackUsed = computed(() => props.fallbackUsed || []);
 </script>

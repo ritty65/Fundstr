@@ -60,7 +60,7 @@ async function publishProfile() {
   }
   publishing.value = true;
   try {
-    const { ids, failedRelays } = await publishDiscoveryProfile({
+    const { ids, byRelay } = await publishDiscoveryProfile({
       profile: {
         display_name: display_name.value,
         picture: picture.value,
@@ -70,6 +70,7 @@ async function publishProfile() {
       mints: profileMints.value,
       relays: profileRelays.value,
     });
+    const failedRelays = byRelay.filter((r) => !r.ok).map((r) => r.url);
     console.debug('Profile publish ok', {
       ids,
       relays: profileRelays.value,
