@@ -19,8 +19,16 @@ vi.mock('../src/stores/p2pk', () => ({
   useP2PKStore: () => ({ firstKey: { publicKey: 'pub' } })
 }));
 
+let publishDiscoveryProfileMock: any;
 vi.mock('../src/stores/nostr', async (importOriginal) => {
   const actual = await importOriginal();
+  publishDiscoveryProfileMock = vi.fn().mockResolvedValue({
+    ids: [],
+    relaysTried: 1,
+    byRelay: [],
+    anySuccess: true,
+    usedFallback: [],
+  });
   return {
     ...actual,
     useNostrStore: () => ({
@@ -29,7 +37,7 @@ vi.mock('../src/stores/nostr', async (importOriginal) => {
       pubkey: 'hex',
       connect: vi.fn()
     }),
-    publishDiscoveryProfile: vi.fn().mockResolvedValue({ ids: [], failedRelays: [] })
+    publishDiscoveryProfile: publishDiscoveryProfileMock,
   };
 });
 
@@ -41,7 +49,7 @@ describe('publishCreatorBundle', () => {
     hubStore.lastPublishedTiersHash = '';
   });
 
-  it('calls publishTierDefinitions only when tiers change', async () => {
+  it('calls publishTierDefinitions only when tiers change and after profile', async () => {
     await publishCreatorBundle();
     expect(hubStore.publishTierDefinitions).toHaveBeenCalledTimes(1);
     await publishCreatorBundle();
@@ -49,5 +57,9 @@ describe('publishCreatorBundle', () => {
     hubStore.lastPublishedTiersHash = 'different';
     await publishCreatorBundle();
     expect(hubStore.publishTierDefinitions).toHaveBeenCalledTimes(2);
+    expect(publishDiscoveryProfileMock).toHaveBeenCalled();
+    expect(
+      publishDiscoveryProfileMock.mock.invocationCallOrder[0]
+    ).toBeLessThan(hubStore.publishTierDefinitions.mock.invocationCallOrder[0]);
   });
 });

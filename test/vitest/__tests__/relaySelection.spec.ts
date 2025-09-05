@@ -1,5 +1,6 @@
 import { describe, it, beforeEach, expect, vi } from "vitest";
 import { selectPreferredRelays, resetRelaySelection } from "../../../src/stores/nostr";
+import { selectPublishRelays } from "../../../src/nostr/publish";
 import * as relayHealth from "../../../src/utils/relayHealth";
 
 const filterHealthyRelaysMock = vi.spyOn(relayHealth, "filterHealthyRelays");
@@ -28,5 +29,19 @@ describe("selectPreferredRelays", () => {
     filterHealthyRelaysMock.mockResolvedValue(["wss://good"]);
     const res = await selectPreferredRelays(["wss://bad", "wss://good"]);
     expect(res).toEqual(["wss://good"]);
+  });
+});
+
+describe("selectPublishRelays", () => {
+  it("uses vetted relays when preferred empty", () => {
+    const res = selectPublishRelays([], ["wss://a", "wss://b"], 2);
+    expect(res.targets).toEqual(["wss://a", "wss://b"]);
+    expect(res.usedFallback).toEqual(["wss://a", "wss://b"]);
+  });
+
+  it("appends fallback to reach minimum", () => {
+    const res = selectPublishRelays(["wss://user"], ["wss://a", "wss://b"], 2);
+    expect(res.targets).toEqual(["wss://user", "wss://a"]);
+    expect(res.usedFallback).toEqual(["wss://a"]);
   });
 });

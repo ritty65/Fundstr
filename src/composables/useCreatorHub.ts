@@ -29,9 +29,9 @@ import {
 import { useNdkBootStore } from "stores/ndkBoot";
 import { debug } from "src/js/logger";
 import { sanitizeRelayUrls } from "src/utils/relay";
-import { filterHealthyRelays, probeWriteHealth } from "src/utils/relayHealth";
-import { DEFAULT_RELAYS, VETTED_OPEN_WRITE_RELAYS, MIN_HEALTHY_WRITES } from "src/config/relays";
-import { publishToRelaysWithAcks } from "src/nostr/publish";
+import { filterHealthyRelays } from "src/utils/relayHealth";
+import { VETTED_OPEN_WRITE_RELAYS } from "src/config/relays";
+import { publishToRelaysWithAcks, selectPublishRelays, PublishReport, RelayResult } from "src/nostr/publish";
 
 export const scanningMints = ref(false);
 const MAX_RELAYS = 8;
@@ -158,19 +158,9 @@ export function useCreatorHub() {
     }
   }
 
-  const connectedCount = computed(() => {
-    // depend on nostr.relays to keep reactive
-    nostr.relays;
-    if (!ndkRef.value) return 0;
-    return Array.from(ndkRef.value.pool.relays.values()).filter(
-      (r) => r.connected,
-    ).length;
-  });
+  const connectedCount = computed(() => nostr.numConnectedRelays);
 
-  const totalRelays = computed(() => {
-    nostr.relays;
-    return ndkRef.value?.pool.relays.size || 0;
-  });
+  const totalRelays = computed(() => profileRelays.value.length);
 
   const failedRelays = computed(() => nostr.failedRelays);
 
@@ -207,9 +197,8 @@ export function useCreatorHub() {
     | { message: string; details?: any }
     | null
   >(null);
-  const publishResults = ref<any[]>([]);
+  const publishReport = ref<PublishReport | null>(null);
   const fallbackUsed = ref<string[]>([]);
-  const unhealthyUserRelays = ref<string[]>([]);
   const npub = computed(() =>
     nostr.pubkey ? nip19.npubEncode(nostr.pubkey) : "",
   );
@@ -526,9 +515,8 @@ export function useCreatorHub() {
     }
     publishing.value = true;
     publishErrors.value = null;
-    publishResults.value = [];
+    publishReport.value = null;
     fallbackUsed.value = [];
-    unhealthyUserRelays.value = [];
     debug("creatorHub:publishing:start");
     await ndkBootStore.whenReady?.();
     debug("creatorHub:publishing:ndk-ready");
@@ -537,19 +525,13 @@ export function useCreatorHub() {
       await nostr.initSignerIfNotSet();
       const ndk = await useNdk();
       const userRelays = sanitizeRelayUrls(profileStore.relays).slice(0, MAX_RELAYS);
-      const { healthy, unhealthy } = await probeWriteHealth(ndk, userRelays);
-      unhealthyUserRelays.value = unhealthy;
-      const targets = healthy.slice();
-      const fromFallback = new Set<string>();
-      if (healthy.length < MIN_HEALTHY_WRITES && VETTED_OPEN_WRITE_RELAYS.length) {
-        const { healthy: fbHealthy } = await probeWriteHealth(ndk, VETTED_OPEN_WRITE_RELAYS);
-        for (const r of fbHealthy) {
-          if (!targets.includes(r)) targets.push(r);
-          fromFallback.add(r);
-        }
-      }
-      fallbackUsed.value = Array.from(fromFallback);
-      debug("creatorHub:publishing:relays", { healthy: healthy.length, fallback: fromFallback.size });
+      const { targets, usedFallback } = selectPublishRelays(
+        userRelays,
+        VETTED_OPEN_WRITE_RELAYS,
+        2,
+      );
+      fallbackUsed.value = usedFallback;
+      debug("creatorHub:publishing:relays", { targets: targets.length, fallback: usedFallback.length });
 
       const ndkConn = await connectCreatorRelays(targets);
       if (!ndkConn) throw new Error("Unable to connect to Nostr relays");
@@ -587,23 +569,37 @@ export function useCreatorHub() {
 
       await Promise.all(events.map((e) => e.sign()));
 
-      const results: any[] = [];
+      const aggregate = new Map<string, RelayResult>();
+      const fromFallback = new Set(usedFallback);
       for (const ev of events) {
         const r = await publishToRelaysWithAcks(ndkConn, ev, relays, {
           timeoutMs: 4000,
           minAcks: 1,
           fromFallback,
         });
-        debug("creatorHub:publish:event", { kind: ev.kind, acks: r.acks, requiredAcks: r.requiredAcks });
-        results.push({ kind: ev.kind, ...r });
+        r.perRelay.forEach((pr) => {
+          const existing = aggregate.get(pr.relay) || { url: pr.relay, ok: true };
+          if (pr.status !== "ok") {
+            existing.ok = false;
+            existing.err = pr.status;
+          } else {
+            existing.ack = true;
+          }
+          aggregate.set(pr.relay, existing);
+        });
       }
-      publishResults.value = results;
+      publishReport.value = {
+        relaysTried: relays.length,
+        byRelay: Array.from(aggregate.values()),
+        anySuccess: Array.from(aggregate.values()).some((r) => r.ok),
+        usedFallback,
+      };
 
-      if (results.every((r) => r.ok)) {
+      if (publishReport.value.anySuccess) {
         profileStore.markClean();
         notifySuccess("Profile and tiers updated");
       } else {
-        publishErrors.value = { message: "Unable to publish to all relays", details: results };
+        publishErrors.value = { message: "Unable to publish to all relays", details: publishReport.value };
       }
     } catch (e: any) {
       publishErrors.value = { message: e?.message || String(e) };
@@ -632,9 +628,8 @@ export function useCreatorHub() {
     currentTier,
     publishing,
     publishErrors,
-    publishResults,
+    publishReport,
     fallbackUsed,
-    unhealthyUserRelays,
     npub,
     isDirty,
     login,

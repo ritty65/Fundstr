@@ -2,20 +2,21 @@
   <q-page class="bg-surface-1 q-pa-md">
     <NostrRelayErrorBanner
       :error="publishErrors"
-      :fallback-used="fallbackUsed.length > 0"
       @retry="publishProfileBundle"
       @manage="openRelayManager"
     />
     <q-card class="q-pa-lg bg-surface-2 shadow-4 full-width">
-      <q-banner v-if="!ndkConnected" class="text-white bg-orange">
-        <template #avatar><q-spinner /></template>
-        Connecting to your Nostr relays ({{ connectedCount }} / {{ totalRelays }})...
+      <q-banner
+        v-if="connectedCount === 0"
+        class="text-white bg-warning"
+      >
+        Connected to 0 of {{ totalRelays }} relays. Publishing will still try vetted relays.
         <template #action>
           <q-btn flat label="Reconnect" @click="reconnectAll" />
         </template>
       </q-banner>
       <q-banner v-else class="text-white bg-positive">
-        Connected to {{ connectedCount }} of {{ totalRelays }} relays. Ready to publish.
+        Connected to {{ connectedCount }} of {{ totalRelays }} relays.
       </q-banner>
       <q-banner v-if="failedRelays.length" class="text-white bg-negative">
         <div>
@@ -196,7 +197,8 @@
       <PublishBar
         v-if="isDirty"
         :publishing="publishing"
-        :results="publishResults"
+        :report="publishReport"
+        :fallback-used="fallbackUsed"
         @publish="publishProfileBundle"
       />
       <RelayScannerDialog
@@ -249,7 +251,7 @@ const {
   performDelete,
   publishing,
   publishErrors,
-  publishResults,
+  publishReport,
   fallbackUsed,
   isDirty,
   profileRelays,
@@ -262,7 +264,6 @@ const {
 
 const profileStore = useCreatorProfileStore();
 const showRelayScanner = ref(false);
-const ndkConnected = computed(() => connectedCount.value > 0);
 const relayManagerDialogRef = ref<InstanceType<typeof RelayManagerDialog> | null>(null);
 function openRelayManager() {
   relayManagerDialogRef.value?.show();
