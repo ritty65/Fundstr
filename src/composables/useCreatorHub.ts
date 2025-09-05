@@ -253,13 +253,31 @@ export function useCreatorHub() {
     } else {
       if (!profileStore.relays.length) {
         profileRelays.value = sanitizeRelayUrls(nostr.relays).slice(0, MAX_RELAYS);
-        if (!profileRelays.value.length) {
-          profileRelays.value = DEFAULT_RELAYS.slice(0, MAX_RELAYS);
-        }
       }
       if (p2pkStore.firstKey) profilePub.value = p2pkStore.firstKey.publicKey;
       if (!profileStore.mints.length && mintsStore.mints.length > 0)
         profileMints.value = [mintsStore.mints[0].url];
+    }
+
+    if (!profileRelays.value.length) {
+      try {
+        const signerRelays = await (nostr.signer as any)?.getRelays?.();
+        if (signerRelays) {
+          profileRelays.value = sanitizeRelayUrls(Object.keys(signerRelays)).slice(
+            0,
+            MAX_RELAYS,
+          );
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    if (!profileRelays.value.length) {
+      profileRelays.value = VETTED_OPEN_WRITE_RELAYS.slice(0, MAX_RELAYS);
+      notifyWarning(
+        "No relays supplied by signer; using default vetted relays.",
+      );
     }
     await store.loadTiersFromNostr(nostr.pubkey);
     profileStore.markClean();
