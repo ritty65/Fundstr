@@ -641,7 +641,11 @@ export function useCreatorHub() {
         profileStore.markClean();
         notifySuccess("Profile and tiers updated");
       } else {
-        publishErrors.value = { message: "Unable to publish to all relays", details: publishReport.value };
+        console.table(publishReport.value.byRelay);
+        publishErrors.value = {
+          message: "Unable to publish to all relays",
+          details: publishReport.value,
+        };
       }
     } catch (e: any) {
       publishErrors.value = { message: e?.message || String(e) };
@@ -649,6 +653,25 @@ export function useCreatorHub() {
     } finally {
       publishing.value = false;
       debug("creatorHub:publishing:done");
+    }
+  }
+
+  async function replaceWithVettedRelays() {
+    const proceed = await new Promise<boolean>((resolve) => {
+      $q
+        .dialog({
+          title: "Replace relays?",
+          message: "Replace your relay list with vetted open relays?",
+          cancel: true,
+          persistent: true,
+          ok: { label: "Replace" },
+        })
+        .onOk(() => resolve(true))
+        .onCancel(() => resolve(false))
+        .onDismiss(() => resolve(false));
+    });
+    if (proceed) {
+      profileRelays.value = VETTED_OPEN_WRITE_RELAYS.slice(0, MAX_RELAYS);
     }
   }
 
@@ -694,6 +717,7 @@ export function useCreatorHub() {
     nextReconnectIn,
     reconnectAll,
     profileRelays,
+    replaceWithVettedRelays,
     nostr,
   };
 }
