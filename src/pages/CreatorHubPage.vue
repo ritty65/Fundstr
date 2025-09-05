@@ -1,6 +1,6 @@
 <template>
   <q-page class="bg-surface-1 q-pa-md">
-    <NostrRelayErrorBanner />
+    <NostrRelayErrorBanner :error="publishErrors" @retry="publishProfileBundle" />
     <q-card class="q-pa-lg bg-surface-2 shadow-4 full-width">
       <q-banner v-if="!ndkConnected" class="text-white bg-orange">
         <template #avatar><q-spinner /></template>
@@ -27,30 +27,6 @@
         </div>
         <template #action>
           <q-btn flat label="Check Settings" @click="goToSettings" />
-        </template>
-      </q-banner>
-      <q-banner
-        v-if="publishFailures.length"
-        class="text-white bg-orange"
-      >
-        <div>
-          Profile published, but these relays failed:
-          <ul class="q-pl-md">
-            <li
-              v-for="r in publishFailures"
-              :key="r"
-              style="word-break: break-all"
-            >
-              {{ r }}
-            </li>
-          </ul>
-        </div>
-        <template #action>
-          <q-btn
-            flat
-            label="Retry without failed relays"
-            @click="retryWithoutFailedRelays"
-          />
         </template>
       </q-banner>
       <div class="row items-center justify-between q-mb-lg">
@@ -241,9 +217,7 @@ import ThemeToggle from "components/ThemeToggle.vue";
 import PublishBar from "components/PublishBar.vue";
 import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 import RelayScannerDialog from "components/RelayScannerDialog.vue";
-import { Notify } from "quasar";
 import { useCreatorProfileStore } from "stores/creatorProfile";
-import { publishCreatorBundle } from "stores/nostr";
 
 const {
   profile,
@@ -266,14 +240,14 @@ const {
   refreshTiers,
   performDelete,
   publishing,
+  publishErrors,
   isDirty,
   profileRelays,
   connectedCount,
   totalRelays,
   failedRelays,
-  publishFailures,
-  retryWithoutFailedRelays,
   reconnectAll,
+  publishProfileBundle,
 } = useCreatorHub();
 
 const profileStore = useCreatorProfileStore();
@@ -286,38 +260,6 @@ function onRelaysSelected(urls: string[]) {
 
 function removeRelay(url: string) {
   profileRelays.value = profileRelays.value.filter((r) => r !== url);
-}
-
-async function publishProfileBundle() {
-  if (!profileStore.pubkey) {
-    tab.value = "profile";
-    Notify.create({
-      type: "negative",
-      message: "Pay-to-public-key pubkey is required. Generate one in the profile form.",
-    });
-    return;
-  }
-  const relays = profileRelays.value;
-  if (!relays.length) {
-    Notify.create({
-      type: "negative",
-      message: "Please configure at least one Nostr relay",
-    });
-    return;
-  }
-  publishing.value = true;
-  try {
-    const result = await publishCreatorBundle({ publishTiers: "auto" });
-    publishFailures.value = result.failedRelays;
-    profileStore.markClean();
-  } catch (e: any) {
-    Notify.create({
-      type: "negative",
-      message: e?.message || "Failed to publish profile",
-    });
-  } finally {
-    publishing.value = false;
-  }
 }
 
 const nsec = ref("");
