@@ -8,6 +8,7 @@ import type { Tier } from "stores/types";
 import {
   useNostrStore,
   fetchNutzapProfile,
+  publishCreatorBundleBounded,
   publishCreatorBundle,
   RelayConnectionError,
   PublishTimeoutError,
@@ -192,6 +193,10 @@ export function useCreatorHub() {
   const showTierDialog = ref(false);
   const currentTier = ref<Partial<Tier>>({});
   const publishing = ref(false);
+  const publishErrors = ref<
+    | { message: string; details?: any }
+    | null
+  >(null);
   const npub = computed(() =>
     nostr.pubkey ? nip19.npubEncode(nostr.pubkey) : "",
   );
@@ -488,6 +493,60 @@ export function useCreatorHub() {
     },
   );
 
+  function buildProfilePayload() {
+    const tierAddr = store.getTierArray().length
+      ? `30000:${nostr.pubkey}:tiers`
+      : undefined;
+    return {
+      profile: profile.value,
+      p2pkPub: p2pkStore.firstKey?.publicKey || "",
+      mints: profileMints.value,
+      tierAddr,
+    };
+  }
+
+  async function publishProfileBundle() {
+    if (!profileStore.pubkey) {
+      tab.value = "profile";
+      notifyError("Pay-to-public-key pubkey is required");
+      return;
+    }
+    publishing.value = true;
+    publishErrors.value = null;
+    try {
+      await nostr.initSignerIfNotSet();
+      const tiers = store.getTierArray();
+      const result = await publishCreatorBundleBounded({
+        profile: buildProfilePayload(),
+        tiers: tiers.length ? tiers : undefined,
+        writeRelays: profileStore.relays,
+        forceRepublish: false,
+        ackTimeoutMs: 4000,
+        minConnected: 2,
+      });
+      if (result.okOn.length === 0) {
+        publishErrors.value = {
+          message: "Unable to publish to any relay.",
+          details: result,
+        };
+      } else if (result.missingAcks.length || result.failedOn.length) {
+        publishErrors.value = {
+          message:
+            "Published to some relays but others failed or did not ack.",
+          details: result,
+        };
+      } else {
+        profileStore.markClean();
+        notifySuccess("Profile and tiers updated");
+      }
+    } catch (e: any) {
+      publishErrors.value = { message: e?.message || String(e) };
+      notifyError(e?.message || "Failed to publish profile");
+    } finally {
+      publishing.value = false;
+    }
+  }
+
   async function reconnectAll() {
     await connectCreatorRelays(profileRelays.value);
   }
@@ -505,14 +564,13 @@ export function useCreatorHub() {
     showTierDialog,
     currentTier,
     publishing,
+    publishErrors,
     npub,
     isDirty,
     login,
     logout,
     initPage,
-    saveAndPublish,
-    publishFullProfile,
-    retryWithoutFailedRelays,
+    publishProfileBundle,
     addTier,
     editTier,
     confirmDelete,

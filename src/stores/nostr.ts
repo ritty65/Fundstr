@@ -45,6 +45,7 @@ import { useTokensStore } from "./tokens";
 import { filterHealthyRelays } from "src/utils/relayHealth";
 import { DEFAULT_RELAYS, FREE_RELAYS } from "src/config/relays";
 import { sanitizeRelayUrls } from "src/utils/relay";
+import { getNdk } from "src/boot/ndk";
 import {
   notifyApiError,
   notifyError,
@@ -70,6 +71,238 @@ import { useMessengerStore } from "./messenger";
 import { decryptDM } from "../nostr/crypto";
 import { useCreatorHubStore } from "./creatorHub";
 import { useCreatorProfileStore } from "./creatorProfile";
+
+// --- Relay connectivity helpers ---
+export type WriteConnectivity = {
+  urlsTried: string[];
+  urlsConnected: string[];
+  elapsedMs: number;
+};
+
+export async function ensureWriteConnectivity(
+  userUrls: string[],
+  {
+    minConnected = 2,
+    timeoutMs = 5000,
+    cap = 6,
+  }: { minConnected?: number; timeoutMs?: number; cap?: number } = {},
+): Promise<WriteConnectivity> {
+  const cleaned = sanitizeRelayUrls(userUrls);
+  const candidates = [...new Set([...cleaned, ...FREE_RELAYS])].slice(0, cap);
+
+  const ndk = await getNdk();
+  const pool = ndk.pool;
+
+  const started = Date.now();
+  const connected: string[] = [];
+  const tried: string[] = [];
+
+  for (const url of candidates) {
+    tried.push(url);
+    ndk.addExplicitRelay(url);
+  }
+
+  await new Promise<void>((resolve) => {
+    const t = setTimeout(resolve, timeoutMs);
+
+    function onConnect(relay: any) {
+      if (!connected.includes(relay.url)) connected.push(relay.url);
+      if (connected.length >= Math.min(minConnected, candidates.length)) {
+        pool.off("relay:connect", onConnect);
+        clearTimeout(t);
+        resolve();
+      }
+    }
+    pool.on("relay:connect", onConnect);
+
+    for (const r of pool.relays.values()) {
+      if (r.status === 1 /* OPEN */ && !connected.includes(r.url)) {
+        connected.push(r.url);
+      }
+    }
+    if (connected.length >= Math.min(minConnected, candidates.length)) {
+      pool.off("relay:connect", onConnect);
+      clearTimeout(t);
+      resolve();
+    }
+  });
+
+  return {
+    urlsTried: tried,
+    urlsConnected: connected,
+    elapsedMs: Date.now() - started,
+  };
+}
+
+export type PublishResult = {
+  okOn: string[];
+  failedOn: string[];
+  missingAcks: string[];
+  elapsedMs: number;
+};
+
+export interface CreatorProfilePayload {
+  profile: { display_name?: string; picture?: string; about?: string };
+  p2pkPub: string;
+  mints: string[];
+  tierAddr?: string;
+}
+
+export interface TierPayload {
+  id: string;
+  price: number;
+  [key: string]: any;
+}
+
+export async function publishCreatorBundleBounded(opts: {
+  profile: CreatorProfilePayload;
+  tiers?: TierPayload[];
+  writeRelays: string[];
+  forceRepublish?: boolean;
+  ackTimeoutMs?: number;
+  minConnected?: number;
+}): Promise<PublishResult> {
+  const {
+    writeRelays,
+    profile,
+    tiers,
+    forceRepublish = false,
+    ackTimeoutMs = 4000,
+    minConnected = 2,
+  } = opts;
+
+  const conn = await ensureWriteConnectivity(writeRelays, {
+    minConnected,
+    timeoutMs: 6000,
+    cap: 6,
+  });
+
+  if (conn.urlsConnected.length === 0) {
+    return {
+      okOn: [],
+      failedOn: conn.urlsTried,
+      missingAcks: [],
+      elapsedMs: conn.elapsedMs,
+    };
+  }
+
+  const started = Date.now();
+  const ndk = await getNdk();
+
+  if (tiers && tiers.length) {
+    await publishTierDefinitions(tiers, {
+      ndk,
+      force: forceRepublish,
+      relays: conn.urlsConnected,
+    });
+  }
+
+  const { okOn, failedOn, missingAcks } = await publishDiscoveryProfileWithAcks(
+    ndk,
+    profile,
+    {
+      ackTimeoutMs,
+      targetRelays: conn.urlsConnected,
+    },
+  );
+
+  return {
+    okOn,
+    failedOn,
+    missingAcks,
+    elapsedMs: Date.now() - started,
+  };
+}
+
+async function publishTierDefinitions(
+  tiers: TierPayload[],
+  opts: { ndk: NDK; relays: string[]; force?: boolean },
+): Promise<void> {
+  const { ndk, relays } = opts;
+  const ev = new NDKEvent(ndk);
+  ev.kind = 30000 as NDKKind;
+  ev.tags = [["d", "tiers"]];
+  ev.created_at = Math.floor(Date.now() / 1000);
+  ev.content = JSON.stringify(tiers);
+  await ev.sign();
+
+  const relaySet = await urlsToRelaySet(relays);
+  if (relaySet) {
+    await ev.publish(relaySet);
+  }
+}
+
+async function publishDiscoveryProfileWithAcks(
+  ndk: NDK,
+  payload: CreatorProfilePayload,
+  opts: { targetRelays: string[]; ackTimeoutMs: number },
+): Promise<{
+  okOn: string[];
+  failedOn: string[];
+  missingAcks: string[];
+}> {
+  const { targetRelays, ackTimeoutMs } = opts;
+
+  const kind0 = new NDKEvent(ndk);
+  kind0.kind = 0;
+  kind0.content = JSON.stringify(payload.profile);
+  kind0.created_at = Math.floor(Date.now() / 1000);
+
+  const kind10002 = new NDKEvent(ndk);
+  kind10002.kind = 10002;
+  kind10002.tags = targetRelays.map((r) => ["r", r]);
+  kind10002.created_at = kind0.created_at;
+
+  const kind10019 = new NDKEvent(ndk);
+  kind10019.kind = 10019;
+  kind10019.tags = [
+    ["pubkey", payload.p2pkPub],
+    ...payload.mints.map((m) => ["mint", m]),
+    ...targetRelays.map((r) => ["relay", r]),
+  ];
+  if (payload.tierAddr) {
+    kind10019.tags.push(["a", payload.tierAddr]);
+  }
+  kind10019.content = "";
+  kind10019.created_at = kind0.created_at;
+
+  await Promise.all([kind0.sign(), kind10002.sign(), kind10019.sign()]);
+
+  const okOn: string[] = [];
+  const failedOn: string[] = [];
+  const missingAcks: string[] = [];
+
+  const events = [kind0, kind10002, kind10019];
+  for (const url of targetRelays) {
+    const relay = ndk.pool.relays.get(url);
+    if (!relay) {
+      failedOn.push(url);
+      continue;
+    }
+    let allOk = true;
+    for (const ev of events) {
+      try {
+        await Promise.race([
+          relay.publish(ev),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("timeout")), ackTimeoutMs),
+          ),
+        ]);
+      } catch (e) {
+        if ((e as Error).message === "timeout") {
+          missingAcks.push(url);
+        } else {
+          failedOn.push(url);
+        }
+        allOk = false;
+        break;
+      }
+    }
+    if (allOk) okOn.push(url);
+  }
+
+  return { okOn, failedOn, missingAcks };
+}
 
 const STORAGE_SECRET = "cashu_ndk_storage_key";
 let cachedKey: CryptoKey | null = null;
