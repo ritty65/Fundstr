@@ -551,7 +551,7 @@ export function useCreatorHub() {
       const kind10019 = new NDKEvent(
         ndkConn,
         buildKind10019NutzapProfile(nostr.pubkey, {
-          p2pkPub: payload.p2pkPub,
+          p2pk: payload.p2pkPub,
           mints: payload.mints,
           relays,
           tierAddr: payload.tierAddr,
