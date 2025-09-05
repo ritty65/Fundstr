@@ -47,6 +47,7 @@ import { DEFAULT_RELAYS, FREE_RELAYS, VETTED_OPEN_WRITE_RELAYS } from "src/confi
 import { publishToRelaysWithAcks, selectPublishRelays, PublishReport, RelayResult } from "src/nostr/publish";
 import { sanitizeRelayUrls } from "src/utils/relay";
 import { getNdk } from "src/boot/ndk";
+import { getTrustedTime } from "src/utils/time";
 import {
   notifyApiError,
   notifyError,
@@ -936,6 +937,7 @@ export async function publishDiscoveryProfile(opts: {
   relays: string[];
   tierAddr?: string;
   timeoutMs?: number;
+  clampTime?: boolean;
 }): Promise<PublishReport> {
   const nostr = useNostrStore();
   if (!nostr.signer) {
@@ -952,18 +954,29 @@ export async function publishDiscoveryProfile(opts: {
     throw new Error("NDK not initialized. Cannot publish profile.");
   }
 
+  let now = Math.floor(Date.now() / 1000);
+  const trustedMs = await getTrustedTime(ndk, targets);
+  if (trustedMs && now > Math.floor(trustedMs / 1000) + 5 * 60) {
+    if (!opts.clampTime) {
+      throw new Error(
+        "System clock is too far ahead; adjust your device time.",
+      );
+    }
+    now = Math.floor(trustedMs / 1000);
+  }
+
   // --- 1. Prepare Kind 0 (Profile Metadata) ---
   const kind0Event = new NDKEvent(ndk);
   kind0Event.kind = 0;
   kind0Event.content = JSON.stringify(opts.profile);
-  kind0Event.created_at = Math.floor(Date.now() / 1000);
+  kind0Event.created_at = now;
 
   // --- 2. Prepare Kind 10002 (Relay List) ---
   const kind10002Event = new NDKEvent(ndk);
   kind10002Event.kind = 10002;
   kind10002Event.tags = opts.relays.map((r) => ["r", r]); // 'r' tag for each relay URL
   kind10002Event.content = "";
-  kind10002Event.created_at = Math.floor(Date.now() / 1000);
+  kind10002Event.created_at = now;
 
   // --- 3. Prepare Kind 10019 (Nutzap/Payment Profile) ---
   const kind10019Event = new NDKEvent(ndk);
@@ -979,7 +992,7 @@ export async function publishDiscoveryProfile(opts: {
   };
   if (opts.tierAddr) npBody.tierAddr = opts.tierAddr;
   kind10019Event.content = JSON.stringify({ v: 1, ...npBody });
-  kind10019Event.created_at = Math.floor(Date.now() / 1000);
+  kind10019Event.created_at = now;
 
   const eventsToPublish = [kind0Event, kind10002Event, kind10019Event];
 
