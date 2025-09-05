@@ -1,6 +1,11 @@
 <template>
   <q-page class="bg-surface-1 q-pa-md">
-    <NostrRelayErrorBanner :error="publishErrors" @retry="publishProfileBundle" />
+    <NostrRelayErrorBanner
+      :error="publishErrors"
+      :fallback-used="fallbackUsed.length > 0"
+      @retry="publishProfileBundle"
+      @manage="openRelayManager"
+    />
     <q-card class="q-pa-lg bg-surface-2 shadow-4 full-width">
       <q-banner v-if="!ndkConnected" class="text-white bg-orange">
         <template #avatar><q-spinner /></template>
@@ -191,12 +196,14 @@
       <PublishBar
         v-if="isDirty"
         :publishing="publishing"
+        :results="publishResults"
         @publish="publishProfileBundle"
       />
       <RelayScannerDialog
         v-model="showRelayScanner"
         @relays-selected="onRelaysSelected"
       />
+      <RelayManagerDialog ref="relayManagerDialogRef" />
     </q-card>
   </q-page>
 </template>
@@ -217,6 +224,7 @@ import ThemeToggle from "components/ThemeToggle.vue";
 import PublishBar from "components/PublishBar.vue";
 import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 import RelayScannerDialog from "components/RelayScannerDialog.vue";
+import RelayManagerDialog from "components/RelayManagerDialog.vue";
 import { useCreatorProfileStore } from "stores/creatorProfile";
 
 const {
@@ -241,6 +249,8 @@ const {
   performDelete,
   publishing,
   publishErrors,
+  publishResults,
+  fallbackUsed,
   isDirty,
   profileRelays,
   connectedCount,
@@ -253,6 +263,10 @@ const {
 const profileStore = useCreatorProfileStore();
 const showRelayScanner = ref(false);
 const ndkConnected = computed(() => connectedCount.value > 0);
+const relayManagerDialogRef = ref<InstanceType<typeof RelayManagerDialog> | null>(null);
+function openRelayManager() {
+  relayManagerDialogRef.value?.show();
+}
 
 function onRelaysSelected(urls: string[]) {
   profileRelays.value = urls.slice(0, 8);

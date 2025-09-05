@@ -16,6 +16,12 @@ export const FREE_RELAYS = [
   "wss://relay.snort.social",
 ];
 
+export const VETTED_OPEN_WRITE_RELAYS: string[] = [
+  // TODO(app-maintainer): add 3–6 vetted open write relays here (wss://...)
+];
+
+export const MIN_HEALTHY_WRITES = 1; // prefer 2 later, but keep minimal-risk default now
+
 // Optional: allow overrides via env (comma-separated)
 export function envRelayList(key: string, fallback: string[]): string[] {
   const v = (import.meta as any).env?.[key];

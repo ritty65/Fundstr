@@ -8,7 +8,6 @@ import type { Tier } from "stores/types";
 import {
   useNostrStore,
   fetchNutzapProfile,
-  publishCreatorBundleBounded,
   publishCreatorBundle,
   RelayConnectionError,
   PublishTimeoutError,
@@ -20,9 +19,19 @@ import { useCreatorProfileStore } from "stores/creatorProfile";
 import { notifySuccess, notifyError, notifyWarning } from "src/js/notify";
 import { useNdk } from "src/composables/useNdk";
 import type NDK from "@nostr-dev-kit/ndk";
+import { NDKEvent } from "@nostr-dev-kit/ndk";
+import {
+  buildKind0Profile,
+  buildKind10002RelayList,
+  buildKind10019NutzapProfile,
+  buildKind30000Tiers,
+} from "src/nostr/builders";
+import { useNdkBootStore } from "stores/ndkBoot";
+import { debug } from "src/js/logger";
 import { sanitizeRelayUrls } from "src/utils/relay";
-import { filterHealthyRelays } from "src/utils/relayHealth";
-import { DEFAULT_RELAYS } from "src/config/relays";
+import { filterHealthyRelays, probeWriteHealth } from "src/utils/relayHealth";
+import { DEFAULT_RELAYS, VETTED_OPEN_WRITE_RELAYS, MIN_HEALTHY_WRITES } from "src/config/relays";
+import { publishToRelaysWithAcks } from "src/nostr/publish";
 
 export const scanningMints = ref(false);
 const MAX_RELAYS = 8;
@@ -91,6 +100,7 @@ export function useCreatorHub() {
   const p2pkStore = useP2PKStore();
   const mintsStore = useMintsStore();
   const profileStore = useCreatorProfileStore();
+  const ndkBootStore = useNdkBootStore();
   const $q = useQuasar();
 
   const {
@@ -197,6 +207,9 @@ export function useCreatorHub() {
     | { message: string; details?: any }
     | null
   >(null);
+  const publishResults = ref<any[]>([]);
+  const fallbackUsed = ref<string[]>([]);
+  const unhealthyUserRelays = ref<string[]>([]);
   const npub = computed(() =>
     nostr.pubkey ? nip19.npubEncode(nostr.pubkey) : "",
   );
@@ -513,37 +526,91 @@ export function useCreatorHub() {
     }
     publishing.value = true;
     publishErrors.value = null;
+    publishResults.value = [];
+    fallbackUsed.value = [];
+    unhealthyUserRelays.value = [];
+    debug("creatorHub:publishing:start");
+    await ndkBootStore.whenReady?.();
+    debug("creatorHub:publishing:ndk-ready");
+    if ((store as any).commitDraft) await (store as any).commitDraft();
     try {
       await nostr.initSignerIfNotSet();
+      const ndk = await useNdk();
+      const userRelays = sanitizeRelayUrls(profileStore.relays).slice(0, MAX_RELAYS);
+      const { healthy, unhealthy } = await probeWriteHealth(ndk, userRelays);
+      unhealthyUserRelays.value = unhealthy;
+      const targets = healthy.slice();
+      const fromFallback = new Set<string>();
+      if (healthy.length < MIN_HEALTHY_WRITES && VETTED_OPEN_WRITE_RELAYS.length) {
+        const { healthy: fbHealthy } = await probeWriteHealth(ndk, VETTED_OPEN_WRITE_RELAYS);
+        for (const r of fbHealthy) {
+          if (!targets.includes(r)) targets.push(r);
+          fromFallback.add(r);
+        }
+      }
+      fallbackUsed.value = Array.from(fromFallback);
+      debug("creatorHub:publishing:relays", { healthy: healthy.length, fallback: fromFallback.size });
+
+      const ndkConn = await connectCreatorRelays(targets);
+      if (!ndkConn) throw new Error("Unable to connect to Nostr relays");
+      const relays = targets;
+
       const tiers = store.getTierArray();
-      const result = await publishCreatorBundleBounded({
-        profile: buildProfilePayload(),
-        tiers: tiers.length ? tiers : undefined,
-        writeRelays: profileStore.relays,
-        forceRepublish: false,
-        ackTimeoutMs: 4000,
-        minConnected: 2,
-      });
-      if (result.okOn.length === 0) {
-        publishErrors.value = {
-          message: "Unable to publish to any relay.",
-          details: result,
-        };
-      } else if (result.missingAcks.length || result.failedOn.length) {
-        publishErrors.value = {
-          message:
-            "Published to some relays but others failed or did not ack.",
-          details: result,
-        };
-      } else {
+      const payload = buildProfilePayload();
+
+      const kind0 = new NDKEvent(ndkConn, buildKind0Profile(nostr.pubkey, payload.profile));
+      const kind10002 = new NDKEvent(
+        ndkConn,
+        buildKind10002RelayList(
+          nostr.pubkey,
+          relays.map((r) => ({ url: r, mode: "write" }))
+        )
+      );
+      const kind10019 = new NDKEvent(
+        ndkConn,
+        buildKind10019NutzapProfile(nostr.pubkey, {
+          p2pkPub: payload.p2pkPub,
+          mints: payload.mints,
+          relays,
+          tierAddr: payload.tierAddr,
+        })
+      );
+
+      const events: any[] = [kind0, kind10002, kind10019];
+      if (tiers.length) {
+        const kind30000 = new NDKEvent(
+          ndkConn,
+          buildKind30000Tiers(nostr.pubkey, tiers, "tiers")
+        );
+        events.push(kind30000);
+      }
+
+      await Promise.all(events.map((e) => e.sign()));
+
+      const results: any[] = [];
+      for (const ev of events) {
+        const r = await publishToRelaysWithAcks(ndkConn, ev, relays, {
+          timeoutMs: 4000,
+          minAcks: 1,
+          fromFallback,
+        });
+        debug("creatorHub:publish:event", { kind: ev.kind, acks: r.acks, requiredAcks: r.requiredAcks });
+        results.push({ kind: ev.kind, ...r });
+      }
+      publishResults.value = results;
+
+      if (results.every((r) => r.ok)) {
         profileStore.markClean();
         notifySuccess("Profile and tiers updated");
+      } else {
+        publishErrors.value = { message: "Unable to publish to all relays", details: results };
       }
     } catch (e: any) {
       publishErrors.value = { message: e?.message || String(e) };
       notifyError(e?.message || "Failed to publish profile");
     } finally {
       publishing.value = false;
+      debug("creatorHub:publishing:done");
     }
   }
 
@@ -565,6 +632,9 @@ export function useCreatorHub() {
     currentTier,
     publishing,
     publishErrors,
+    publishResults,
+    fallbackUsed,
+    unhealthyUserRelays,
     npub,
     isDirty,
     login,
