@@ -65,7 +65,9 @@ describe('publishDiscoveryProfile', () => {
       tierAddr: '30000:pub:tiers'
     });
     const ev = createdEvents.find(e => e.kind === 10019);
-    expect(ev.tags).toContainEqual(['a', '30000:pub:tiers']);
+    const body = JSON.parse(ev.content);
+    expect(body.tierAddr).toBe('30000:pub:tiers');
+    expect(ev.tags).toContainEqual(['t','nutzap-profile']);
   });
 
   it('uses fallback relays when user relays fail', async () => {
