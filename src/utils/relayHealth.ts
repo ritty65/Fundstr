@@ -37,3 +37,25 @@ export async function filterHealthyRelays(relays: string[]): Promise<string[]> {
   cache.set(key, { ts: now, res });
   return res;
 }
+
+export async function probeWriteHealth(
+  ndk: any,
+  relays: string[],
+  { timeoutMs = 1200 }: { timeoutMs?: number } = {}
+): Promise<{ healthy: string[]; unhealthy: string[] }> {
+  const healthy: string[] = [];
+  const unhealthy: string[] = [];
+
+  await Promise.allSettled(relays.map(async (url) => {
+    try {
+      const relay = ndk.pool?.getRelay ? ndk.pool.getRelay(url, true) : null;
+      if (!relay) throw new Error("noRelay");
+      await relay.connect?.({ timeoutMs });
+      healthy.push(url);
+    } catch {
+      unhealthy.push(url);
+    }
+  }));
+
+  return { healthy, unhealthy };
+}

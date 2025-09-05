@@ -50,3 +50,74 @@ export async function publishDMSequential(relays: any[], event: any, timeoutMs =
   }
   return { ok: false, firstAck: null, results };
 }
+// --- ADD near the bottom of src/nostr/publish.ts ---
+
+export type RelayPublishStatus = "ok" | "timeout" | "rejected" | "notConnected" | "exception";
+
+export interface PerRelayResult {
+  relay: string;
+  status: RelayPublishStatus;
+  latencyMs?: number;
+  error?: string;
+  fromFallback?: boolean;
+}
+
+export interface PublishBundleResult {
+  perRelay: PerRelayResult[];
+  ok: boolean;        // acks >= requiredAcks
+  acks: number;
+  requiredAcks: number;
+}
+
+/**
+ * Publish a single Nostr event to many relays with per-relay timeouts and per-relay results.
+ * Minimal surface; does not change existing publish API.
+ */
+export async function publishToRelaysWithAcks(
+  ndk: any,                    // keep any to avoid ripple typing; use your NDK type if available
+  event: any,                  // ditto
+  relays: string[],
+  opts: { timeoutMs?: number; minAcks?: number; fromFallback?: Set<string> } = {}
+): Promise<PublishBundleResult> {
+  const timeoutMs = Math.max(500, opts.timeoutMs ?? 4000);
+  const requiredAcks = Math.max(1, opts.minAcks ?? 1);
+  const fromFallback = opts.fromFallback ?? new Set<string>();
+
+  const perRelay: PerRelayResult[] = [];
+  let acks = 0;
+
+  await Promise.allSettled(
+    relays.map(async (url) => {
+      const start = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+      const end = () => Math.round(((typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now()) - start);
+
+      try {
+        const relay = ndk.pool?.getRelay ? ndk.pool.getRelay(url, true) : null;
+        if (!relay) throw new Error("notConnected");
+        await relay.connect?.({ timeoutMs: 1200 }).catch(() => { throw new Error("notConnected"); });
+
+        const ack = await Promise.race<boolean>([
+          ndk.publish(event, { relays: [relay] }),
+          new Promise<boolean>((_, rej) => setTimeout(() => rej(new Error("timeout")), timeoutMs)),
+        ]);
+
+        if (ack) {
+          acks++;
+          perRelay.push({ relay: url, status: "ok", latencyMs: end(), fromFallback: fromFallback.has(url) });
+        } else {
+          perRelay.push({ relay: url, status: "rejected", latencyMs: end(), fromFallback: fromFallback.has(url) });
+        }
+      } catch (e: any) {
+        const msg = String(e?.message ?? e);
+        const status: RelayPublishStatus =
+          msg === "timeout" ? "timeout" :
+          msg === "notConnected" ? "notConnected" : "exception";
+
+        perRelay.push({ relay: url, status, latencyMs: end(), error: msg, fromFallback: fromFallback.has(url) });
+      }
+    })
+  );
+
+  return { perRelay, ok: acks >= requiredAcks, acks, requiredAcks };
+}
+
