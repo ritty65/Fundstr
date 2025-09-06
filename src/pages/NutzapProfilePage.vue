@@ -5,6 +5,13 @@
       <q-banner :class="bannerClass" class="text-white">
         Connected: {{ connectedCount }}/{{ totalRelays }} • {{ writableConnectedCount }} writable
         <template v-slot:action>
+          <q-toggle v-model="proxyMode" label="Proxy" dense class="q-mr-sm" />
+          <q-icon name="help_outline" size="16px" class="q-mr-sm">
+            <q-tooltip>
+              If WS fails, pause ad-blockers (uBlock/AdGuard) or try Proxy mode.
+              Brave Shields can block WS on some origins.
+            </q-tooltip>
+          </q-icon>
           <q-btn flat label="Reconnect" @click="reconnectAll" />
           <q-btn flat label="Use vetted" @click="useVetted" />
         </template>
@@ -14,11 +21,13 @@
           :rows="diagnostics"
           :columns="[
             { name: 'url', label: 'Relay', field: 'url' },
-            { name: 'status', label: 'Status', field: 'status' }
+            { name: 'kind', label: 'Kind', field: 'kind' },
+            { name: 'status', label: 'Status', field: 'status' },
+            { name: 'note', label: 'Note', field: 'note' }
           ]"
           flat
           dense
-          row-key="url"
+          :row-key="row => row.url + row.kind"
         />
         <q-btn dense flat label="Copy Debug JSON" class="q-mt-sm" @click="copyDebug" />
       </q-expansion-item>
@@ -142,6 +151,7 @@ const {
   publishing,
   lastPublishInfo,
   diagnostics,
+  proxyMode,
   // derived
   connectedCount,
   writableConnectedCount,
