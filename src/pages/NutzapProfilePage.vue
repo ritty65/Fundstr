@@ -4,6 +4,7 @@
       <div class="text-subtitle1 q-mb-sm">Relay Status</div>
       <q-banner :class="bannerClass" class="text-white">
         Connected: {{ connectedCount }}/{{ totalRelays }} • {{ writableConnectedCount }} writable
+        <span v-if="bannerHint">• {{ bannerHint }}</span>
         <template v-slot:action>
           <q-toggle v-model="proxyMode" label="Proxy" dense class="q-mr-sm" />
           <q-icon name="help_outline" size="16px" class="q-mr-sm">
@@ -14,6 +15,7 @@
           </q-icon>
           <q-btn flat label="Reconnect" @click="reconnectAll" />
           <q-btn flat label="Use vetted" @click="useVetted" />
+          <q-btn flat label="Single-connection mode" @click="singleConnectionMode" />
         </template>
       </q-banner>
       <q-expansion-item label="Diagnostics" dense class="q-mt-sm">
@@ -158,6 +160,7 @@ const {
   totalRelays,
   publishDisabled,
   bannerClass,
+  bannerHint,
   // actions
   editTier,
   removeTier,
@@ -165,6 +168,7 @@ const {
   publishAll,
   reconnectAll,
   useVetted,
+  singleConnectionMode,
   copyDebug,
 } = useNutzapProfile()
 </script>
