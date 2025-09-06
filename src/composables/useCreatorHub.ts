@@ -553,13 +553,32 @@ export function useCreatorHub() {
       debug("creatorHub:publishing:relays", { targets: targets.length, fallback: usedFallback.length });
 
       const ndkConn = await connectCreatorRelays(targets);
-      if (!ndkConn) throw new Error("Unable to connect to Nostr relays");
+      if (!ndkConn || nostr.numConnectedRelays === 0)
+        throw new Error("Unable to connect to any Nostr relays");
       const relays = targets;
 
       let createdAt = Math.floor(Date.now() / 1000);
       const trustedMs = await getTrustedTime(ndkConn, relays);
-      if (
-        trustedMs &&
+      if (!trustedMs) {
+        const proceed = await new Promise<boolean>((resolve) => {
+          $q
+            .dialog({
+              title: "Clock check failed",
+              message:
+                "Unable to verify network time; ensure your device clock is correct.",
+              cancel: true,
+              ok: { label: "Publish" },
+              persistent: true,
+            })
+            .onOk(() => resolve(true))
+            .onCancel(() => resolve(false))
+            .onDismiss(() => resolve(false));
+        });
+        if (!proceed) {
+          publishing.value = false;
+          return;
+        }
+      } else if (
         createdAt > Math.floor(trustedMs / 1000) + 5 * 60
       ) {
         const proceed = await new Promise<boolean>((resolve) => {

@@ -53,6 +53,6 @@ export default configure(() => ({
     config: {
       dark: true
     },
-    plugins: ['Notify', 'LocalStorage']
+    plugins: ['Notify', 'LocalStorage', 'Dialog']
   }
 }))
