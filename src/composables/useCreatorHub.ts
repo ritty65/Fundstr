@@ -24,7 +24,7 @@ import {
   buildKind0Profile,
   buildKind10002RelayList,
   buildKind10019NutzapProfile,
-  buildKind30019Tiers,
+  buildKind30000Tiers,
 } from "src/nostr/builders";
 import { useNdkBootStore } from "stores/ndkBoot";
 import { debug } from "src/js/logger";
@@ -119,13 +119,6 @@ export function useCreatorHub() {
     picture: picture.value,
     about: about.value,
   }));
-
-  const publishDisabled = computed(
-    () =>
-      !p2pkStore.isValidPubkey(
-        p2pkStore.selectedKey?.publicKey || profileStore.pubkey,
-      ),
-  );
 
   const isMobile = computed(() => $q.screen.lt.md);
   const splitterModel = ref(50);
@@ -523,37 +516,20 @@ export function useCreatorHub() {
 
   function buildProfilePayload() {
     const tierAddr = store.getTierArray().length
-      ? `30019:${nostr.pubkey}:tiers`
+      ? `30000:${nostr.pubkey}:tiers`
       : undefined;
     return {
       profile: profile.value,
-      p2pkPub:
-        p2pkStore.selectedKey?.publicKey || profileStore.pubkey || "",
+      p2pkPub: p2pkStore.firstKey?.publicKey || "",
       mints: profileMints.value,
       tierAddr,
     };
   }
 
   async function publishProfileBundle() {
-    const selectedPub =
-      p2pkStore.selectedKey?.publicKey || profileStore.pubkey;
-    if (!p2pkStore.isValidPubkey(selectedPub)) {
+    if (!profileStore.pubkey) {
       tab.value = "profile";
-      await new Promise<void>((resolve) => {
-        $q
-          .dialog({
-            title: "P2PK key required",
-            message:
-              "Generate or select a Pay-to-public-key key before publishing.",
-            cancel: true,
-            ok: { label: "Open key manager" },
-            persistent: true,
-          })
-          .onOk(() => {
-            p2pkStore.showP2PKDialog = true;
-          })
-          .onDismiss(() => resolve());
-      });
+      notifyError("Pay-to-public-key pubkey is required");
       return;
     }
     publishing.value = true;
@@ -567,48 +543,23 @@ export function useCreatorHub() {
     try {
       await nostr.initSignerIfNotSet();
       const ndk = await useNdk();
-      const userRelays = sanitizeRelayUrls(profileStore.relays).slice(
-        0,
-        MAX_RELAYS,
-      );
+      const userRelays = sanitizeRelayUrls(profileStore.relays).slice(0, MAX_RELAYS);
       const { targets, usedFallback } = selectPublishRelays(
         userRelays,
         VETTED_OPEN_WRITE_RELAYS,
         2,
       );
       fallbackUsed.value = usedFallback;
-      debug("creatorHub:publishing:relays", {
-        targets: targets.length,
-        fallback: usedFallback.length,
-      });
+      debug("creatorHub:publishing:relays", { targets: targets.length, fallback: usedFallback.length });
 
       const ndkConn = await connectCreatorRelays(targets);
-      if (!ndkConn || nostr.numConnectedRelays === 0)
-        throw new Error("Unable to connect to any Nostr relays");
-      const publishTargets = targets;
+      if (!ndkConn) throw new Error("Unable to connect to Nostr relays");
+      const relays = targets;
 
       let createdAt = Math.floor(Date.now() / 1000);
-      const trustedMs = await getTrustedTime(ndkConn, publishTargets);
-      if (!trustedMs) {
-        const proceed = await new Promise<boolean>((resolve) => {
-          $q
-            .dialog({
-              title: "Clock check failed",
-              message:
-                "Unable to verify network time; ensure your device clock is correct.",
-              cancel: true,
-              ok: { label: "Publish" },
-              persistent: true,
-            })
-            .onOk(() => resolve(true))
-            .onCancel(() => resolve(false))
-            .onDismiss(() => resolve(false));
-        });
-        if (!proceed) {
-          publishing.value = false;
-          return;
-        }
-      } else if (
+      const trustedMs = await getTrustedTime(ndkConn, relays);
+      if (
+        trustedMs &&
         createdAt > Math.floor(trustedMs / 1000) + 5 * 60
       ) {
         const proceed = await new Promise<boolean>((resolve) => {
@@ -647,7 +598,7 @@ export function useCreatorHub() {
         ndkConn,
         buildKind10002RelayList(
           nostr.pubkey,
-          userRelays.map((r) => ({ url: r, mode: "write" })),
+          relays.map((r) => ({ url: r, mode: "write" })),
         ),
       );
       kind10002.created_at = createdAt;
@@ -656,7 +607,7 @@ export function useCreatorHub() {
         buildKind10019NutzapProfile(nostr.pubkey, {
           p2pk: payload.p2pkPub,
           mints: payload.mints,
-          relays: userRelays,
+          relays,
           tierAddr: payload.tierAddr,
         }),
       );
@@ -668,12 +619,12 @@ export function useCreatorHub() {
           const { publishStatus, ...pureTier } = t as any;
           return pureTier;
         });
-        const kind30019 = new NDKEvent(
+        const kind30000 = new NDKEvent(
           ndkConn,
-          buildKind30019Tiers(nostr.pubkey, pureTiers, "tiers"),
+          buildKind30000Tiers(nostr.pubkey, pureTiers, "tiers"),
         );
-        kind30019.created_at = createdAt;
-        events.push(kind30019);
+        kind30000.created_at = createdAt;
+        events.push(kind30000);
       }
 
       await Promise.all(events.map((e) => e.sign()));
@@ -681,7 +632,7 @@ export function useCreatorHub() {
       const aggregate = new Map<string, RelayResult>();
       const fromFallback = new Set(usedFallback);
       for (const ev of events) {
-        const r = await publishToRelaysWithAcks(ndkConn, ev, publishTargets, {
+        const r = await publishToRelaysWithAcks(ndkConn, ev, relays, {
           timeoutMs: 4000,
           minAcks: 1,
           fromFallback,
@@ -698,7 +649,7 @@ export function useCreatorHub() {
         });
       }
       publishReport.value = {
-        relaysTried: publishTargets.length,
+        relaysTried: relays.length,
         byRelay: Array.from(aggregate.values()),
         anySuccess: Array.from(aggregate.values()).some((r) => r.ok),
         usedFallback,
@@ -764,7 +715,6 @@ export function useCreatorHub() {
     fallbackUsed,
     npub,
     isDirty,
-    publishDisabled,
     login,
     logout,
     initPage,

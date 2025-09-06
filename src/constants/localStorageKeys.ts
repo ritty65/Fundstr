@@ -44,7 +44,6 @@ export const LOCAL_STORAGE_KEYS = {
   CASHU_NWC_RELAYS: "cashu.nwc.relays",
   CASHU_NWC_SEENCOMMANDSUNTIL: "cashu.nwc.seenCommandsUntil",
   CASHU_OLDMNEMONICCOUNTERS: "cashu.oldMnemonicCounters",
-  CASHU_P2PK_SELECTEDKEY: "cashu.p2pk.selectedKey",
   CASHU_P2PK_SHOWP2PKBUTTONINDRAWER: "cashu.p2pk.showP2PkButtonInDrawer",
   CASHU_PR_ENABLE: "cashu.pr.enable",
   CASHU_PR_RECEIVE: "cashu.pr.receive",

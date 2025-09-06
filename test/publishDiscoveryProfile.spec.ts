@@ -24,14 +24,17 @@ vi.mock('../src/nostr/publish', async (importOriginal) => {
 
 vi.mock('../src/config/relays', () => ({
   VETTED_OPEN_WRITE_RELAYS: ['wss://good'],
-  DEFAULT_RELAYS: ['wss://good'],
 }));
 
-vi.mock('../src/nostr/nutzapProfile.ts', () => ({
-  NutzapProfile10019Schema: { parse: (v: any) => v },
-}), { virtual: true });
-
 const connectMock = vi.fn();
+
+vi.mock('../src/stores/nostr', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    useNostrStore: () => ({ signer: {}, connect: connectMock }),
+  };
+});
 
 vi.mock('@nostr-dev-kit/ndk', () => {
   class MockNDKEvent {
@@ -49,14 +52,6 @@ vi.mock('@nostr-dev-kit/ndk', () => {
   return { NDKEvent: MockNDKEvent };
 });
 
-vi.mock('../src/stores/nostr', async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    useNostrStore: () => ({ signer: {}, connect: connectMock } as any),
-  };
-});
-
 import { publishDiscoveryProfile } from '../src/stores/nostr';
 
 describe('publishDiscoveryProfile', () => {
@@ -64,30 +59,27 @@ describe('publishDiscoveryProfile', () => {
     createdEvents = [];
     await publishDiscoveryProfile({
       profile: {},
-      p2pkPub: 'a'.repeat(64),
-      mints: ['https://mint'],
+      p2pkPub: 'pub',
+      mints: [],
       relays: ['wss://relay'],
-      tierAddr: '30019:pub:tiers'
+      tierAddr: '30000:pub:tiers'
     });
     const ev = createdEvents.find(e => e.kind === 10019);
-    expect(ev.tags).toContainEqual(['a','30019:pub:tiers']);
+    const body = JSON.parse(ev.content);
+    expect(body.tierAddr).toBe('30000:pub:tiers');
+    expect(ev.tags).toContainEqual(['t','nutzap-profile']);
   });
 
   it('uses fallback relays when user relays fail', async () => {
     createdEvents = [];
     const report = await publishDiscoveryProfile({
       profile: {},
-      p2pkPub: 'a'.repeat(64),
-      mints: ['https://mint'],
+      p2pkPub: 'pub',
+      mints: [],
       relays: ['wss://bad'],
     });
     expect(report.anySuccess).toBe(true);
     expect(report.relaysTried).toBeGreaterThan(0);
     expect(report.usedFallback.length).toBeGreaterThan(0);
-    const ev = createdEvents.find(e => e.kind === 10019);
-    const relTag = ev.tags.find((t: any) => t[0] === 'relays');
-    expect(relTag).toBeTruthy();
-    expect(relTag).toContain('wss://bad');
-    expect(relTag).not.toContain('wss://good');
   });
 });

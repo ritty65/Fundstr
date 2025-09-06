@@ -7,14 +7,13 @@ import { useP2PKStore } from "../../../src/stores/p2pk";
 import { useMintsStore } from "../../../src/stores/mints";
 import { useCreatorProfileStore } from "../../../src/stores/creatorProfile";
 
-let notifySuccess: any;
-let notifyError: any;
+const notifySuccess = vi.fn();
+const notifyError = vi.fn();
 
-vi.mock("../../../src/js/notify", () => {
-  notifySuccess = vi.fn();
-  notifyError = vi.fn();
-  return { notifySuccess, notifyError };
-});
+vi.mock("../../../src/js/notify", () => ({
+  notifySuccess,
+  notifyError,
+}));
 
 let createdEvents: any[] = [];
 const signMock = vi.fn();
@@ -22,26 +21,26 @@ const publishMock = vi.fn();
 let fetchNutzapProfileMock: any;
 let publishNutzapProfileMock: any;
 let ensureRelayConnectivityMock: any;
-let ensureSignerMatchesLoggedInNpubMock: any;
 
 let ndkStub: any = {};
 
+class MockNDKEvent {
+  kind: number | undefined;
+  tags: any[] = [];
+  created_at?: number;
+  content = "";
+  constructor(_ndk: any) {
+    createdEvents.push(this);
+  }
+  sign = signMock;
+  publish = publishMock;
+  rawEvent() {
+    return {} as any;
+  }
+}
+
 vi.mock("@nostr-dev-kit/ndk", async () => {
   const actual: any = await vi.importActual("@nostr-dev-kit/ndk");
-  class MockNDKEvent {
-    kind: number | undefined;
-    tags: any[] = [];
-    created_at?: number;
-    content = "";
-    constructor(_ndk: any) {
-      createdEvents.push(this);
-    }
-    sign = signMock;
-    publish = publishMock;
-    rawEvent() {
-      return {} as any;
-    }
-  }
   return { ...actual, NDKEvent: MockNDKEvent };
 });
 
@@ -73,11 +72,6 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   };
 });
 
-vi.mock("../../../src/creatorHub/publishGuards", () => ({
-  ensureSignerMatchesLoggedInNpub: (...args: any[]) =>
-    ensureSignerMatchesLoggedInNpubMock(...args),
-}));
-
 beforeEach(() => {
   createdEvents = [];
   signMock.mockClear();
@@ -86,11 +80,6 @@ beforeEach(() => {
   fetchNutzapProfileMock = vi.fn(async () => null);
   publishNutzapProfileMock = vi.fn();
   ensureRelayConnectivityMock = vi.fn();
-  ensureSignerMatchesLoggedInNpubMock = vi.fn(async () => ({
-    kind: "nip07",
-    ndkSigner: nostrStoreMock.signer,
-    pubkeyHex: nostrStoreMock.pubkey,
-  }));
   localStorage.clear();
 });
 
@@ -142,7 +131,6 @@ describe("publishTierDefinitions", () => {
         description: "",
         welcomeMessage: "",
         media: [],
-        frequency: "monthly",
         publishStatus: "pending",
       },
     } as any;
@@ -150,26 +138,26 @@ describe("publishTierDefinitions", () => {
     useCreatorProfileStore().relays = ["wss://relay" as any];
 
     const res = await store.publishTierDefinitions();
-    expect(res).toHaveProperty('id');
+    expect(res).toBe(true);
 
     expect(createdEvents.length).toBe(1);
     const ev = createdEvents[0];
     expect(ev.kind).toBe(30019);
-    expect(ev.tags).toEqual([["d", "tiers"], ["version", "1"]]);
-    const content = JSON.parse(ev.content);
-    expect(content).toEqual([
-      {
-        description: "",
-        frequency: "monthly",
-        id: "t1",
-        media: [],
-        name: "Tier",
-        price: 1,
-        price_sats: 1,
-        welcomeMessage: "",
-      },
-    ]);
-    expect((content[0] as any).publishStatus).toBeUndefined();
+    expect(ev.tags).toEqual([["d", "tiers"]]);
+    expect(ev.content).toBe(
+      JSON.stringify([
+        {
+          id: "t1",
+          name: "Tier",
+          price_sats: 1,
+          price: 1,
+          description: "",
+          welcomeMessage: "",
+          media: [],
+        },
+      ]),
+    );
+    expect(JSON.parse(ev.content)[0].publishStatus).toBeUndefined();
     expect(signMock).toHaveBeenCalledWith(nostrStoreMock.signer);
     expect(publishMock).toHaveBeenCalled();
   });
