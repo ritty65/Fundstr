@@ -17,13 +17,11 @@ import { db } from "./dexie";
 import { v4 as uuidv4 } from "uuid";
 import { notifyError, notifySuccess } from "src/js/notify";
 import { filterValidMedia } from "src/utils/validateMedia";
-import { parseTierDefinitionEvent, pickTierDefinitionEvent } from "src/nostr/tiers";
 import { useNdk } from "src/composables/useNdk";
 import type { Tier, TierMedia } from "./types";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
-import { buildKind30019Tiers } from "src/nostr/builders";
-import { ensureSignerMatchesLoggedInNpub } from "src/creatorHub/publishGuards";
 
+const TIER_DEFINITIONS_KIND = 30000;
 
 export async function maybeRepublishNutzapProfile() {
   const nostrStore = useNostrStore();
@@ -245,31 +243,34 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       const author = pubkey || nostr.pubkey;
       if (!author) return;
       const filter: NDKFilter = {
-        kinds: [30019 as unknown as NDKKind, 30000 as unknown as NDKKind],
+        kinds: [TIER_DEFINITIONS_KIND as unknown as NDKKind],
         authors: [author],
         "#d": ["tiers"],
-        limit: 2,
+        limit: 1,
       };
       const ndk = await useNdk({ requireSigner: false });
       const events = await ndk.fetchEvents(filter);
-      const event = pickTierDefinitionEvent(Array.from(events) as any);
-      if (!event) return;
-      try {
-        const raw = parseTierDefinitionEvent(event);
-        const obj: Record<string, Tier> = {};
-        raw.forEach((t) => {
-          const tier: Tier = {
-            ...t,
-            publishStatus: 'succeeded',
-          } as any;
-          obj[tier.id] = tier;
-        });
-        this.tiers = obj as any;
-        this.tierOrder = raw.map((t) => t.id);
-        this.initialTierOrder = [...this.tierOrder];
-      } catch (e) {
-        console.error(e);
-      }
+      events.forEach((ev) => {
+        try {
+          const raw: any[] = JSON.parse(ev.content);
+          const obj: Record<string, Tier> = {};
+          raw.forEach((t) => {
+            const tier: Tier = {
+              ...t,
+              price_sats: t.price_sats ?? t.price ?? 0,
+              ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
+              media: t.media ? filterValidMedia(t.media) : [],
+              publishStatus: 'succeeded',
+            };
+            obj[tier.id] = tier;
+          });
+          this.tiers = obj as any;
+          this.tierOrder = raw.map((t) => t.id);
+          this.initialTierOrder = [...this.tierOrder];
+        } catch (e) {
+          console.error(e);
+        }
+      });
     },
     async removeTier(id: string) {
       delete this.tiers[id];
@@ -286,9 +287,11 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         };
       });
       const nostr = useNostrStore();
-      const signer = await ensureSignerMatchesLoggedInNpub({
-        getLoggedInNpub: () => nostr.pubkey,
-      });
+
+      if (!nostr.signer) {
+        throw new Error("Signer required to publish tier definitions");
+      }
+
       const profileStore = useCreatorProfileStore();
       await nostr.connect(profileStore.relays);
       const ndk = await useNdk();
@@ -296,15 +299,14 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         throw new Error("NDK not initialised – cannot publish tiers");
       }
 
-      const ev = new NDKEvent(
-        ndk,
-        buildKind30019Tiers(nostr.pubkey, tiersArray),
-      );
-      await ev.sign(signer.ndkSigner as any);
-      let relayUsed: string | undefined;
+      const ev = new NDKEvent(ndk);
+      ev.kind = TIER_DEFINITIONS_KIND as unknown as NDKKind;
+      ev.tags = [["d", "tiers"]];
+      ev.created_at = Math.floor(Date.now() / 1000);
+      ev.content = JSON.stringify(tiersArray);
+      await ev.sign(nostr.signer as any);
       try {
         const relaySet = await urlsToRelaySet(profileStore.relays);
-        relayUsed = profileStore.relays[0];
         await publishWithTimeout(ev, relaySet);
       } catch (e: any) {
         notifyError(e?.message ?? String(e));
@@ -325,7 +327,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       );
       this.initialTierOrder = [...this.tierOrder];
       this.lastPublishedTiersHash = JSON.stringify(tiersArray);
-      return { id: ev.id!, relay: relayUsed };
+      return true;
     },
     setTierOrder(order: string[]) {
       this.tierOrder = [...order];

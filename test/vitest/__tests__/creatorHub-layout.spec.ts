@@ -47,11 +47,7 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
 });
 
 vi.mock("../../../src/stores/p2pk", () => ({
-  useP2PKStore: () => ({
-    firstKey: null,
-    selectedKey: null,
-    isValidPubkey: () => false,
-  }),
+  useP2PKStore: () => ({ firstKey: null }),
 }));
 
 vi.mock("../../../src/stores/mints", () => ({
