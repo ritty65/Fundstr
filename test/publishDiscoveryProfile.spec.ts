@@ -24,17 +24,14 @@ vi.mock('../src/nostr/publish', async (importOriginal) => {
 
 vi.mock('../src/config/relays', () => ({
   VETTED_OPEN_WRITE_RELAYS: ['wss://good'],
+  DEFAULT_RELAYS: ['wss://good'],
 }));
 
-const connectMock = vi.fn();
+vi.mock('../src/nostr/nutzapProfile.ts', () => ({
+  NutzapProfileSchema: { parse: (v: any) => v },
+}), { virtual: true });
 
-vi.mock('../src/stores/nostr', async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    useNostrStore: () => ({ signer: {}, connect: connectMock }),
-  };
-});
+const connectMock = vi.fn();
 
 vi.mock('@nostr-dev-kit/ndk', () => {
   class MockNDKEvent {
@@ -52,7 +49,9 @@ vi.mock('@nostr-dev-kit/ndk', () => {
   return { NDKEvent: MockNDKEvent };
 });
 
-import { publishDiscoveryProfile } from '../src/stores/nostr';
+import * as nostrStore from '../src/stores/nostr';
+vi.spyOn(nostrStore, 'useNostrStore').mockReturnValue({ signer: {}, connect: connectMock } as any);
+const { publishDiscoveryProfile } = nostrStore;
 
 describe('publishDiscoveryProfile', () => {
   it('pushes tier address tag', async () => {
@@ -81,5 +80,9 @@ describe('publishDiscoveryProfile', () => {
     expect(report.anySuccess).toBe(true);
     expect(report.relaysTried).toBeGreaterThan(0);
     expect(report.usedFallback.length).toBeGreaterThan(0);
+    const ev = createdEvents.find(e => e.kind === 10019);
+    const body = JSON.parse(ev.content);
+    expect(body.relays).toEqual(['wss://bad']);
+    expect(body.relays).not.toContain('wss://good');
   });
 });
