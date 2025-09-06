@@ -4,24 +4,37 @@ export type AckOutcome = 'ok' | 'failed' | 'timeout' | 'blocked';
 export function selectPublishRelays(
   preferred: string[],
   vetted: string[],
-  min = 2,
+  min = 4, // Increased minimum
+  max = 8,   // Added maximum
 ): { targets: string[]; usedFallback: string[] } {
-  const targets: string[] = [];
+  const targets = new Set<string>();
   const usedFallback: string[] = [];
 
   preferred.forEach((u) => {
-    if (!targets.includes(u)) targets.push(u);
+    if (u) targets.add(u);
   });
 
-  for (const v of vetted) {
-    if (targets.length >= min) break;
-    if (!targets.includes(v)) {
-      targets.push(v);
+  // Shuffle the vetted relays to distribute the load
+  const shuffledVetted = [...vetted].sort(() => Math.random() - 0.5);
+
+  for (const v of shuffledVetted) {
+    if (targets.size >= max) break;
+    if (!targets.has(v)) {
+      targets.add(v);
       usedFallback.push(v);
     }
   }
 
-  return { targets, usedFallback };
+  // Ensure minimum is met
+  while(targets.size < min && shuffledVetted.length > 0) {
+    const nextRelay = shuffledVetted.pop();
+    if (nextRelay && !targets.has(nextRelay)) {
+      targets.add(nextRelay);
+      usedFallback.push(nextRelay);
+    }
+  }
+
+  return { targets: Array.from(targets), usedFallback };
 }
 
 export type RelayResult = { url: string; ok: boolean; err?: string; ack?: boolean };

@@ -159,6 +159,7 @@ import { useNostrStore } from "stores/nostr";
 import { usePriceStore } from "stores/price";
 import { useUiStore } from "stores/ui";
 import MediaPreview from "./MediaPreview.vue";
+import HelpPopup from "./HelpPopup.vue";
 import {
   type SubscriptionFrequency,
   frequencyToDays,
@@ -167,7 +168,7 @@ import { filterValidMedia, isTrustedUrl } from "src/utils/validateMedia";
 
 export default defineComponent({
   name: "AddTierDialog",
-  components: { MediaPreview },
+  components: { MediaPreview, HelpPopup },
   props: {
     modelValue: {
       type: Boolean,

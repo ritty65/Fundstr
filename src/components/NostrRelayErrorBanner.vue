@@ -2,8 +2,8 @@
   <div>
     <q-banner v-if="error" inline-actions dense class="bg-negative text-white">
       <div class="text-body2">
-        {{ error.message }}
-        <div v-if="table.length" class="q-mt-xs">
+        <strong>{{ error.message }}</strong>
+        <div v-if="table.length" class="q-mt-sm">
           <table class="text-caption">
             <thead>
               <tr>
@@ -20,6 +20,9 @@
               </tr>
             </tbody>
           </table>
+        </div>
+        <div v-else class="q-mt-xs text-caption">
+          No further details available. Please check your network and relay settings.
         </div>
       </div>
       <template #action>

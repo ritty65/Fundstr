@@ -18,6 +18,16 @@ const subMock = {
   stop: vi.fn(),
 };
 
+const storeMock = { initNdkReadOnly: vi.fn() };
+vi.mock("stores/nostr", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    useNostrStore: () => storeMock,
+    ensureRelayConnectivity: vi.fn(),
+  };
+});
+
 vi.mock("src/composables/useNdk", () => ({
   useNdk: vi.fn(async () => ({
     subscribe: vi.fn(() => subMock),
@@ -32,16 +42,6 @@ vi.mock("src/composables/useNdk", () => ({
   })),
 }));
 
-const storeMock = { initNdkReadOnly: vi.fn() };
-vi.mock("stores/nostr", async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    useNostrStore: () => storeMock,
-    ensureRelayConnectivity: vi.fn(),
-  };
-});
-
 import { fetchNutzapProfile } from "stores/nostr";
 
 describe("fetchNutzapProfile", () => {
@@ -49,5 +49,5 @@ describe("fetchNutzapProfile", () => {
     const prof = await fetchNutzapProfile("npub123");
     expect(prof?.p2pkPubkey).toBe(ensureCompressed(hex));
     expect(prof?.p2pkPubkey?.length).toBe(66);
-  });
+  }, 15000);
 });

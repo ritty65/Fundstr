@@ -685,8 +685,14 @@ export function useCreatorHub() {
         };
       }
     } catch (e: any) {
-      publishErrors.value = { message: e?.message || String(e) };
-      notifyError(e?.message || "Failed to publish profile");
+      let message = "Failed to publish profile. This can happen if all relays are offline or refusing connections.";
+      if (e.message.includes("Unable to connect")) {
+        message = "Could not connect to any relays. Please check your network connection and the relay URLs in your settings.";
+      } else if (e.message.includes("clock")) {
+        message = e.message;
+      }
+      publishErrors.value = { message: message, details: publishReport.value };
+      notifyError(message);
     } finally {
       publishing.value = false;
       debug("creatorHub:publishing:done");

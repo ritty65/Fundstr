@@ -65,9 +65,12 @@
 
 <script>
 import { defineComponent, computed } from "vue";
+import HelpPopup from "./HelpPopup.vue";
+import InfoTooltip from "./InfoTooltip.vue";
 
 export default defineComponent({
   name: "AddMintDialog",
+  components: { HelpPopup, InfoTooltip },
   props: {
     addMintData: {
       type: Object,
