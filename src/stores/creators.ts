@@ -14,6 +14,7 @@ import { nip19 } from "nostr-tools";
 import { Event as NostrEvent } from "nostr-tools";
 import { notifyWarning } from "src/js/notify";
 import { filterValidMedia } from "src/utils/validateMedia";
+import { parseTierDefinitionEvent, pickTierDefinitionEvent } from "src/nostr/tiers";
 import type { Tier } from "./types";
 
 export const FEATURED_CREATORS = [
@@ -196,7 +197,7 @@ export const useCreatorsStore = defineStore("creators", {
       }
       const filter = {
         authors: [hex],
-        kinds: [30019],
+        kinds: [30019, 30000],
         "#d": ["tiers"],
       };
       const settings = useSettingsStore();
@@ -240,38 +241,50 @@ export const useCreatorsStore = defineStore("creators", {
             return;
           }
           const data = await resp.json();
-          const event =
-            data.tiers ||
-            data.event ||
-            (data.profile && data.profile.tiers) ||
-            (Array.isArray(data.events)
-              ? data.events.find(
-                  (e: any) =>
-                    e.kind === 30019 &&
-                    Array.isArray(e.tags) &&
-                    e.tags.some((t: any[]) => t[0] === "d" && t[1] === "tiers"),
-                )
-              : null);
-          if (!event) {
+          let tiersArray: Tier[] | null = null;
+          let eventObj: any = null;
+          if (Array.isArray(data.tiers)) {
+            tiersArray = data.tiers
+              .map((t: any) => ({
+                ...t,
+                price_sats: t.price_sats ?? t.price ?? 0,
+                ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
+                media: t.media ? filterValidMedia(t.media) : [],
+              }))
+              .sort((a: Tier, b: Tier) => a.id.localeCompare(b.id));
+          } else {
+            eventObj =
+              data.event ||
+              (Array.isArray(data.events)
+                ? pickTierDefinitionEvent(
+                    data.events.filter(
+                      (e: any) =>
+                        Array.isArray(e.tags) &&
+                        e.tags.some(
+                          (t: any[]) => t[0] === "d" && t[1] === "tiers",
+                        ),
+                    ),
+                  )
+                : null);
+            if (!eventObj) {
+              this.tierFetchError = true;
+              notifyWarning("Unable to retrieve subscription tiers");
+              return;
+            }
+            tiersArray = parseTierDefinitionEvent(eventObj);
+          }
+          if (!tiersArray) {
             this.tierFetchError = true;
             notifyWarning("Unable to retrieve subscription tiers");
             return;
           }
-          const tiersArray: Tier[] = JSON.parse(event.content).map(
-            (t: any) => ({
-              ...t,
-              price_sats: t.price_sats ?? t.price ?? 0,
-              ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
-              media: t.media ? filterValidMedia(t.media) : [],
-            }),
-          );
           this.tiersMap[hex] = tiersArray;
           await db.creatorsTierDefinitions.put({
             creatorNpub: hex,
             tiers: tiersArray,
-            eventId: event.id!,
-            updatedAt: event.created_at,
-            rawEventJson: JSON.stringify(event),
+            eventId: eventObj?.id,
+            updatedAt: eventObj?.created_at,
+            rawEventJson: eventObj ? JSON.stringify(eventObj) : undefined,
           });
         } catch (e) {
           console.error("Indexer tier fetch error:", e);
@@ -306,17 +319,9 @@ export const useCreatorsStore = defineStore("creators", {
 
       if (events && events.size > 0) {
         try {
-          const event = Array.from(events).sort(
-            (a: any, b: any) => b.created_at - a.created_at,
-          )[0];
-          const tiersArray: Tier[] = JSON.parse(event.content).map(
-            (t: any) => ({
-              ...t,
-              price_sats: t.price_sats ?? t.price ?? 0,
-              ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
-              media: t.media ? filterValidMedia(t.media) : [],
-            }),
-          );
+          const event = pickTierDefinitionEvent(Array.from(events) as any);
+          if (!event) throw new Error("No tier definition event found");
+          const tiersArray: Tier[] = parseTierDefinitionEvent(event);
           this.tiersMap[hex] = tiersArray;
           await db.creatorsTierDefinitions.put({
             creatorNpub: hex,

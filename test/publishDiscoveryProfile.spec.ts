@@ -28,7 +28,7 @@ vi.mock('../src/config/relays', () => ({
 }));
 
 vi.mock('../src/nostr/nutzapProfile.ts', () => ({
-  NutzapProfileSchema: { parse: (v: any) => v },
+  NutzapProfile10019Schema: { parse: (v: any) => v },
 }), { virtual: true });
 
 const connectMock = vi.fn();
@@ -49,40 +49,45 @@ vi.mock('@nostr-dev-kit/ndk', () => {
   return { NDKEvent: MockNDKEvent };
 });
 
-import * as nostrStore from '../src/stores/nostr';
-vi.spyOn(nostrStore, 'useNostrStore').mockReturnValue({ signer: {}, connect: connectMock } as any);
-const { publishDiscoveryProfile } = nostrStore;
+vi.mock('../src/stores/nostr', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    useNostrStore: () => ({ signer: {}, connect: connectMock } as any),
+  };
+});
+
+import { publishDiscoveryProfile } from '../src/stores/nostr';
 
 describe('publishDiscoveryProfile', () => {
   it('pushes tier address tag', async () => {
     createdEvents = [];
     await publishDiscoveryProfile({
       profile: {},
-      p2pkPub: 'pub',
-      mints: [],
+      p2pkPub: 'a'.repeat(64),
+      mints: ['https://mint'],
       relays: ['wss://relay'],
-      tierAddr: '30000:pub:tiers'
+      tierAddr: '30019:pub:tiers'
     });
     const ev = createdEvents.find(e => e.kind === 10019);
-    const body = JSON.parse(ev.content);
-    expect(body.tierAddr).toBe('30000:pub:tiers');
-    expect(ev.tags).toContainEqual(['t','nutzap-profile']);
+    expect(ev.tags).toContainEqual(['a','30019:pub:tiers']);
   });
 
   it('uses fallback relays when user relays fail', async () => {
     createdEvents = [];
     const report = await publishDiscoveryProfile({
       profile: {},
-      p2pkPub: 'pub',
-      mints: [],
+      p2pkPub: 'a'.repeat(64),
+      mints: ['https://mint'],
       relays: ['wss://bad'],
     });
     expect(report.anySuccess).toBe(true);
     expect(report.relaysTried).toBeGreaterThan(0);
     expect(report.usedFallback.length).toBeGreaterThan(0);
     const ev = createdEvents.find(e => e.kind === 10019);
-    const body = JSON.parse(ev.content);
-    expect(body.relays).toEqual(['wss://bad']);
-    expect(body.relays).not.toContain('wss://good');
+    const relTag = ev.tags.find((t: any) => t[0] === 'relays');
+    expect(relTag).toBeTruthy();
+    expect(relTag).toContain('wss://bad');
+    expect(relTag).not.toContain('wss://good');
   });
 });

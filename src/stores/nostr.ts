@@ -73,7 +73,9 @@ import { useMessengerStore } from "./messenger";
 import { decryptDM } from "../nostr/crypto";
 import { useCreatorHubStore } from "./creatorHub";
 import { useCreatorProfileStore } from "./creatorProfile";
-import { NutzapProfileSchema, type NutzapProfilePayload } from "src/nostr/nutzapProfile";
+import { NutzapProfile10019Schema } from "src/nostr/nutzapProfile";
+import { buildKind10019NutzapProfile, buildKind30019Tiers } from "src/nostr/builders";
+const READBACK_VERIFY = false;
 
 // --- Relay connectivity helpers ---
 export type WriteConnectivity = {
@@ -193,7 +195,7 @@ export async function publishCreatorBundleBounded(opts: {
   const ndk = await getNdk();
 
   if (tiers && tiers.length) {
-    await publishTierDefinitions(tiers, {
+    await publishTierDefinitions(nostr.pubkey, tiers, {
       ndk,
       force: forceRepublish,
       relays: conn.urlsConnected,
@@ -218,15 +220,12 @@ export async function publishCreatorBundleBounded(opts: {
 }
 
 async function publishTierDefinitions(
+  pubkey: string,
   tiers: TierPayload[],
   opts: { ndk: NDK; relays: string[]; force?: boolean },
 ): Promise<void> {
   const { ndk, relays } = opts;
-  const ev = new NDKEvent(ndk);
-  ev.kind = 30000 as NDKKind;
-  ev.tags = [["d", "tiers"]];
-  ev.created_at = Math.floor(Date.now() / 1000);
-  ev.content = JSON.stringify(tiers);
+  const ev = new NDKEvent(ndk, buildKind30019Tiers(pubkey, tiers));
   await ev.sign();
 
   const relaySet = await urlsToRelaySet(relays);
@@ -807,7 +806,6 @@ export async function fetchNutzapProfile(
     {
       kinds: [10019],
       authors: [hex],
-      "#t": ["nutzap-profile"],
       limit: 1,
     },
     { closeOnEose: true },
@@ -815,49 +813,42 @@ export async function fetchNutzapProfile(
 
   return new Promise((resolve) => {
     sub.on("event", (ev: NostrEvent) => {
-      let data: NutzapProfilePayload | null = null;
-      if (ev.content) {
-        try {
-          const parsed = JSON.parse(ev.content);
-          data = NutzapProfileSchema.parse(parsed);
-        } catch (e) {
-          console.warn("Invalid Nutzap profile JSON", e);
+      const p2pk = ev.tags.find((t) => t[0] === "p2pk")?.[1];
+      const mints = ev.tags.filter((t) => t[0] === "mint").map((t) => t[1]);
+      const relaysTag = ev.tags.find((t) => t[0] === "relays");
+      const relays = relaysTag ? relaysTag.slice(1) : undefined;
+      let tierAddr = ev.tags.find((t) => t[0] === "a")?.[1];
+      if (!tierAddr) {
+        const metaTag = ev.tags.find((t) => t[0] === "meta")?.[1];
+        if (metaTag) {
+          try {
+            const metaObj = JSON.parse(metaTag);
+            if (metaObj && typeof metaObj.tierAddr === "string") {
+              tierAddr = metaObj.tierAddr;
+            }
+          } catch {
+            /* ignore */
+          }
         }
       }
-      if (!data) {
-        let p2pk = ev.tags.find((t) => t[0] === "pubkey")?.[1];
-        const mints = ev.tags
-          .filter((t) => t[0] === "mint")
-          .map((t) => t[1]);
-        const relays = ev.tags
-          .filter((t) => t[0] === "relay")
-          .map((t) => t[1]);
-        const tierAddr = ev.tags.find((t) => t[0] === "a")?.[1];
-        if (p2pk) data = { p2pk, mints, relays, tierAddr };
-      }
-
-      if (data) {
-        let p2pkPubkey = data.p2pk;
-        if (p2pkPubkey.startsWith("npub")) {
-          const hx = npubToHex(p2pkPubkey);
-          if (hx) p2pkPubkey = hx;
-        }
-        try {
-          p2pkPubkey = ensureCompressed(p2pkPubkey);
-        } catch (e) {
-          console.error("Invalid P2PK pubkey", e);
-          p2pkPubkey = "";
-        }
+      try {
+        const parsed = NutzapProfile10019Schema.parse({
+          p2pk,
+          mints,
+          relays,
+          tierAddr,
+        });
         const profile: NutzapProfile = {
           hexPub: hex,
-          p2pkPubkey,
-          trustedMints: data.mints || [],
-          relays: data.relays || undefined,
-          tierAddr: data.tierAddr,
+          p2pkPubkey: parsed.p2pk,
+          trustedMints: parsed.mints,
+          relays: parsed.relays,
+          tierAddr: parsed.tierAddr,
         };
         nutzapProfileCache.set(hex, profile);
         resolve(profile);
-      } else {
+      } catch (e) {
+        console.warn("Invalid Nutzap profile tags", e);
         nutzapProfileCache.set(hex, null);
         resolve(null);
       }
@@ -885,30 +876,21 @@ export async function publishNutzapProfile(opts: {
     throw new Error("Signer required to publish Nutzap profile");
   }
   await nostr.connect(opts.relays ?? nostr.relays);
-
-  const tags: NDKTag[] = [
-    ["t", "nutzap-profile"],
-    ["client", "fundstr"],
-  ];
-
-  const body: NutzapProfilePayload = {
-    p2pk: ensureCompressed(opts.p2pkPub),
-    mints: opts.mints,
-  };
-  if (opts.relays?.length) body.relays = opts.relays;
-  if (opts.tierAddr) body.tierAddr = opts.tierAddr;
-
   const ndk = await useNdk();
   if (!ndk) {
     throw new Error(
       "NDK not initialised \u2013 call initSignerIfNotSet() first",
     );
   }
-  const ev = new NDKEvent(ndk);
-  ev.kind = 10019;
-  ev.content = JSON.stringify({ v: 1, ...body });
-  ev.tags = tags;
-  ev.created_at = Math.floor(Date.now() / 1000);
+  const ev = new NDKEvent(
+    ndk,
+    buildKind10019NutzapProfile(nostr.pubkey, {
+      p2pk: opts.p2pkPub,
+      mints: opts.mints,
+      relays: opts.relays,
+      tierAddr: opts.tierAddr,
+    }),
+  );
   await ev.sign();
   const relaySet = await urlsToRelaySet(opts.relays);
   try {
@@ -979,19 +961,15 @@ export async function publishDiscoveryProfile(opts: {
   kind10002Event.created_at = now;
 
   // --- 3. Prepare Kind 10019 (Nutzap/Payment Profile) ---
-  const kind10019Event = new NDKEvent(ndk);
-  kind10019Event.kind = 10019;
-  kind10019Event.tags = [
-    ["t", "nutzap-profile"],
-    ["client", "fundstr"],
-  ];
-  const npBody: NutzapProfilePayload = {
-    p2pk: ensureCompressed(opts.p2pkPub),
-    mints: opts.mints,
-    relays: opts.relays,
-  };
-  if (opts.tierAddr) npBody.tierAddr = opts.tierAddr;
-  kind10019Event.content = JSON.stringify({ v: 1, ...npBody });
+  const kind10019Event = new NDKEvent(
+    ndk,
+    buildKind10019NutzapProfile(nostr.pubkey, {
+      p2pk: opts.p2pkPub,
+      mints: opts.mints,
+      relays: opts.relays,
+      tierAddr: opts.tierAddr,
+    }),
+  );
   kind10019Event.created_at = now;
 
   const eventsToPublish = [kind0Event, kind10002Event, kind10019Event];
@@ -1051,7 +1029,7 @@ export async function publishCreatorBundle(opts: {
     sha256(new TextEncoder().encode(JSON.stringify(tiersArray))),
   );
   const tierAddr = tiersArray.length
-    ? `30000:${nostr.pubkey}:tiers`
+    ? `30019:${nostr.pubkey}:tiers`
     : undefined;
   const result = await publishDiscoveryProfile({
     profile: profile.profile,
@@ -1064,11 +1042,12 @@ export async function publishCreatorBundle(opts: {
   const failedRelays = result.byRelay.filter((r) => !r.ok).map((r) => r.url);
 
   let tiersPublished = false;
+  let tierPublishInfo: { id: string; relay?: string } | null = null;
   if (
     mode === "force" ||
     (mode === "auto" && tiersHash !== hub.lastPublishedTiersHash)
   ) {
-    await hub.publishTierDefinitions();
+    tierPublishInfo = await hub.publishTierDefinitions();
     hub.lastPublishedTiersHash = tiersHash;
     tiersPublished = true;
   }
@@ -1090,6 +1069,27 @@ export async function publishCreatorBundle(opts: {
       notifySuccess(
         "Profile published: metadata, relays, payment profile.",
       );
+    }
+  }
+
+  if (READBACK_VERIFY) {
+    const ndk = await useNdk();
+    const ackRelay = result.byRelay.find((r) => r.ack)?.url;
+    if (ndk && ackRelay && result.ids[2]) {
+      const ev = await ndk.fetchEvent({ ids: [result.ids[2]] }, {
+        urls: [ackRelay],
+        closeOnEose: true,
+        timeout: 2000,
+      } as any);
+      if (!ev) notifyWarning("Published; relay may index later.");
+    }
+    if (tiersPublished && tierPublishInfo?.relay && tierPublishInfo.id && ndk) {
+      const ev = await ndk.fetchEvent({ ids: [tierPublishInfo.id] }, {
+        urls: [tierPublishInfo.relay],
+        closeOnEose: true,
+        timeout: 2000,
+      } as any);
+      if (!ev) notifyWarning("Published; relay may index later.");
     }
   }
 
