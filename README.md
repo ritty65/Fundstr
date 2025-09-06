@@ -36,7 +36,7 @@ Think Patreon, but built for the Nostr ecosystem and leveraging the privacy and 
 
 ### Publishing & Trusted Mints
 
-- Use the **Publish** button in the Creator Hub to atomically publish your profile bundle (kinds 0, 10002, 10019) and tier definitions (`kind:30000` with `d="tiers"`). The payment profile (kind 10019) includes a `tierAddr` field referencing your tier set (`30000:<pubkey>:tiers`). See [`docs/nutzap_profile.md`](docs/nutzap_profile.md) for the full schema.
+- Use the **Publish** button in the Creator Hub to atomically publish your profile bundle (kinds 0, 10002, 10019) and tier definitions (`kind:30019` with `d="tiers"`). The payment profile (kind 10019) includes a `tierAddr` field referencing your tier set (`30019:<pubkey>:tiers`). See [`docs/nutzap_profile.md`](docs/nutzap_profile.md) for the full schema.
 - Trusted mint URLs must begin with `http://` or `https://`; `wss://` endpoints are rejected.
 - If your trusted mint list is empty, supporters may pay from any mint.
 
@@ -180,7 +180,7 @@ You can also supply raw `<iframe>` snippets for custom embeds or include a `nost
 
 You can access this documentation from the Creator Hub: look for the "Learn more" link next to the Media Preview help icon when editing tiers.
 
-Example `kind:30000` event content:
+Example `kind:30019` event content:
 
 ```json
 [
