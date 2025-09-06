@@ -24,7 +24,7 @@ import {
   buildKind0Profile,
   buildKind10002RelayList,
   buildKind10019NutzapProfile,
-  buildKind30000Tiers,
+  buildKind30019Tiers,
 } from "src/nostr/builders";
 import { useNdkBootStore } from "stores/ndkBoot";
 import { debug } from "src/js/logger";
@@ -523,7 +523,7 @@ export function useCreatorHub() {
 
   function buildProfilePayload() {
     const tierAddr = store.getTierArray().length
-      ? `30000:${nostr.pubkey}:tiers`
+      ? `30019:${nostr.pubkey}:tiers`
       : undefined;
     return {
       profile: profile.value,
@@ -668,12 +668,12 @@ export function useCreatorHub() {
           const { publishStatus, ...pureTier } = t as any;
           return pureTier;
         });
-        const kind30000 = new NDKEvent(
+        const kind30019 = new NDKEvent(
           ndkConn,
-          buildKind30000Tiers(nostr.pubkey, pureTiers, "tiers"),
+          buildKind30019Tiers(nostr.pubkey, pureTiers, "tiers"),
         );
-        kind30000.created_at = createdAt;
-        events.push(kind30000);
+        kind30019.created_at = createdAt;
+        events.push(kind30019);
       }
 
       await Promise.all(events.map((e) => e.sign()));

@@ -24,23 +24,22 @@ let ensureRelayConnectivityMock: any;
 
 let ndkStub: any = {};
 
-class MockNDKEvent {
-  kind: number | undefined;
-  tags: any[] = [];
-  created_at?: number;
-  content = "";
-  constructor(_ndk: any) {
-    createdEvents.push(this);
-  }
-  sign = signMock;
-  publish = publishMock;
-  rawEvent() {
-    return {} as any;
-  }
-}
-
 vi.mock("@nostr-dev-kit/ndk", async () => {
   const actual: any = await vi.importActual("@nostr-dev-kit/ndk");
+  class MockNDKEvent {
+    kind: number | undefined;
+    tags: any[] = [];
+    created_at?: number;
+    content = "";
+    constructor(_ndk: any) {
+      createdEvents.push(this);
+    }
+    sign = signMock;
+    publish = publishMock;
+    rawEvent() {
+      return {} as any;
+    }
+  }
   return { ...actual, NDKEvent: MockNDKEvent };
 });
 
@@ -131,6 +130,7 @@ describe("publishTierDefinitions", () => {
         description: "",
         welcomeMessage: "",
         media: [],
+        frequency: "monthly",
         publishStatus: "pending",
       },
     } as any;
@@ -138,26 +138,26 @@ describe("publishTierDefinitions", () => {
     useCreatorProfileStore().relays = ["wss://relay" as any];
 
     const res = await store.publishTierDefinitions();
-    expect(res).toBe(true);
+    expect(res).toHaveProperty('id');
 
     expect(createdEvents.length).toBe(1);
     const ev = createdEvents[0];
     expect(ev.kind).toBe(30019);
-    expect(ev.tags).toEqual([["d", "tiers"]]);
-    expect(ev.content).toBe(
-      JSON.stringify([
-        {
-          id: "t1",
-          name: "Tier",
-          price_sats: 1,
-          price: 1,
-          description: "",
-          welcomeMessage: "",
-          media: [],
-        },
-      ]),
-    );
-    expect(JSON.parse(ev.content)[0].publishStatus).toBeUndefined();
+    expect(ev.tags).toEqual([["d", "tiers"], ["version", "1"]]);
+    const content = JSON.parse(ev.content);
+    expect(content).toEqual([
+      {
+        description: "",
+        frequency: "monthly",
+        id: "t1",
+        media: [],
+        name: "Tier",
+        price: 1,
+        price_sats: 1,
+        welcomeMessage: "",
+      },
+    ]);
+    expect((content[0] as any).publishStatus).toBeUndefined();
     expect(signMock).toHaveBeenCalledWith(nostrStoreMock.signer);
     expect(publishMock).toHaveBeenCalled();
   });
