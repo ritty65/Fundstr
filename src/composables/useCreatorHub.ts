@@ -617,7 +617,7 @@ export function useCreatorHub() {
         ndkConn,
         buildKind10002RelayList(
           nostr.pubkey,
-          relays.map((r) => ({ url: r, mode: "write" })),
+          relays.map((r) => ({ url: r, mode: "both" })),
         ),
       );
       kind10002.created_at = createdAt;

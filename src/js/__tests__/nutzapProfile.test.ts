@@ -19,7 +19,17 @@ const subMock = {
 };
 
 vi.mock("src/composables/useNdk", () => ({
-  useNdk: vi.fn(async () => ({ subscribe: vi.fn(() => subMock) })),
+  useNdk: vi.fn(async () => ({
+    subscribe: vi.fn(() => subMock),
+    pool: {
+      relays: new Map([
+        ['wss://ok', { status: 1, on: vi.fn(), off: vi.fn(), connect: vi.fn().mockResolvedValue(undefined) }]
+      ]),
+      on: vi.fn(),
+    },
+    assertSigner: vi.fn(),
+    connect: vi.fn(),
+  })),
 }));
 
 const storeMock = { initNdkReadOnly: vi.fn() };

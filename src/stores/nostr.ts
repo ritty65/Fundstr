@@ -746,7 +746,7 @@ export async function publishWithAcks(
 }
 
 export async function ensureRelayConnectivity(ndk: NDK) {
-  const relays = Object.values(ndk.pool.relays);
+  const relays = Array.from(ndk.pool.relays.values());
   if (relays.length === 0) {
     throw new Error("No relays configured");
   }

@@ -129,12 +129,12 @@ export async function publishToRelaysWithAcks(
         if (!relay) throw new Error("notConnected");
         await relay.connect?.({ timeoutMs: 1200 }).catch(() => { throw new Error("notConnected"); });
 
-        const ack = await Promise.race<boolean>([
+        const ack = await Promise.race<Set<any>>([
           ndk.publish(event, { relays: [relay] }),
-          new Promise<boolean>((_, rej) => setTimeout(() => rej(new Error("timeout")), timeoutMs)),
+          new Promise<Set<any>>((_, rej) => setTimeout(() => rej(new Error("timeout")), timeoutMs)),
         ]);
 
-        if (ack) {
+        if (ack.size > 0) {
           acks++;
           perRelay.push({ relay: url, status: "ok", latencyMs: end(), fromFallback: fromFallback.has(url) });
         } else {
