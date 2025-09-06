@@ -22,6 +22,7 @@ import { useNdk } from "src/composables/useNdk";
 import type { Tier, TierMedia } from "./types";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { buildKind30019Tiers } from "src/nostr/builders";
+import { ensureSignerMatchesLoggedInNpub } from "src/creatorHub/publishGuards";
 
 
 export async function maybeRepublishNutzapProfile() {
@@ -285,11 +286,9 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         };
       });
       const nostr = useNostrStore();
-
-      if (!nostr.signer) {
-        throw new Error("Signer required to publish tier definitions");
-      }
-
+      const signer = await ensureSignerMatchesLoggedInNpub({
+        getLoggedInNpub: () => nostr.pubkey,
+      });
       const profileStore = useCreatorProfileStore();
       await nostr.connect(profileStore.relays);
       const ndk = await useNdk();
@@ -301,7 +300,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         ndk,
         buildKind30019Tiers(nostr.pubkey, tiersArray),
       );
-      await ev.sign(nostr.signer as any);
+      await ev.sign(signer.ndkSigner as any);
       let relayUsed: string | undefined;
       try {
         const relaySet = await urlsToRelaySet(profileStore.relays);
