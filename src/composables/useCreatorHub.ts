@@ -120,6 +120,13 @@ export function useCreatorHub() {
     about: about.value,
   }));
 
+  const publishDisabled = computed(
+    () =>
+      !p2pkStore.isValidPubkey(
+        p2pkStore.selectedKey?.publicKey || profileStore.pubkey,
+      ),
+  );
+
   const isMobile = computed(() => $q.screen.lt.md);
   const splitterModel = ref(50);
   const tab = ref<"profile" | "tiers">("profile");
@@ -520,16 +527,33 @@ export function useCreatorHub() {
       : undefined;
     return {
       profile: profile.value,
-      p2pkPub: p2pkStore.firstKey?.publicKey || "",
+      p2pkPub:
+        p2pkStore.selectedKey?.publicKey || profileStore.pubkey || "",
       mints: profileMints.value,
       tierAddr,
     };
   }
 
   async function publishProfileBundle() {
-    if (!profileStore.pubkey) {
+    const selectedPub =
+      p2pkStore.selectedKey?.publicKey || profileStore.pubkey;
+    if (!p2pkStore.isValidPubkey(selectedPub)) {
       tab.value = "profile";
-      notifyError("Pay-to-public-key pubkey is required");
+      await new Promise<void>((resolve) => {
+        $q
+          .dialog({
+            title: "P2PK key required",
+            message:
+              "Generate or select a Pay-to-public-key key before publishing.",
+            cancel: true,
+            ok: { label: "Open key manager" },
+            persistent: true,
+          })
+          .onOk(() => {
+            p2pkStore.showP2PKDialog = true;
+          })
+          .onDismiss(() => resolve());
+      });
       return;
     }
     publishing.value = true;
@@ -543,22 +567,28 @@ export function useCreatorHub() {
     try {
       await nostr.initSignerIfNotSet();
       const ndk = await useNdk();
-      const userRelays = sanitizeRelayUrls(profileStore.relays).slice(0, MAX_RELAYS);
+      const userRelays = sanitizeRelayUrls(profileStore.relays).slice(
+        0,
+        MAX_RELAYS,
+      );
       const { targets, usedFallback } = selectPublishRelays(
         userRelays,
         VETTED_OPEN_WRITE_RELAYS,
         2,
       );
       fallbackUsed.value = usedFallback;
-      debug("creatorHub:publishing:relays", { targets: targets.length, fallback: usedFallback.length });
+      debug("creatorHub:publishing:relays", {
+        targets: targets.length,
+        fallback: usedFallback.length,
+      });
 
       const ndkConn = await connectCreatorRelays(targets);
       if (!ndkConn || nostr.numConnectedRelays === 0)
         throw new Error("Unable to connect to any Nostr relays");
-      const relays = targets;
+      const publishTargets = targets;
 
       let createdAt = Math.floor(Date.now() / 1000);
-      const trustedMs = await getTrustedTime(ndkConn, relays);
+      const trustedMs = await getTrustedTime(ndkConn, publishTargets);
       if (!trustedMs) {
         const proceed = await new Promise<boolean>((resolve) => {
           $q
@@ -617,7 +647,7 @@ export function useCreatorHub() {
         ndkConn,
         buildKind10002RelayList(
           nostr.pubkey,
-          relays.map((r) => ({ url: r, mode: "write" })),
+          userRelays.map((r) => ({ url: r, mode: "write" })),
         ),
       );
       kind10002.created_at = createdAt;
@@ -626,7 +656,7 @@ export function useCreatorHub() {
         buildKind10019NutzapProfile(nostr.pubkey, {
           p2pk: payload.p2pkPub,
           mints: payload.mints,
-          relays,
+          relays: userRelays,
           tierAddr: payload.tierAddr,
         }),
       );
@@ -651,7 +681,7 @@ export function useCreatorHub() {
       const aggregate = new Map<string, RelayResult>();
       const fromFallback = new Set(usedFallback);
       for (const ev of events) {
-        const r = await publishToRelaysWithAcks(ndkConn, ev, relays, {
+        const r = await publishToRelaysWithAcks(ndkConn, ev, publishTargets, {
           timeoutMs: 4000,
           minAcks: 1,
           fromFallback,
@@ -668,7 +698,7 @@ export function useCreatorHub() {
         });
       }
       publishReport.value = {
-        relaysTried: relays.length,
+        relaysTried: publishTargets.length,
         byRelay: Array.from(aggregate.values()),
         anySuccess: Array.from(aggregate.values()).some((r) => r.ok),
         usedFallback,
@@ -734,6 +764,7 @@ export function useCreatorHub() {
     fallbackUsed,
     npub,
     isDirty,
+    publishDisabled,
     login,
     logout,
     initPage,

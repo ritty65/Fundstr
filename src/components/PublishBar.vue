@@ -5,7 +5,7 @@
         color="primary"
         outline
         :loading="loading"
-        :disable="publishing"
+        :disable="publishing || disablePublish"
         @click="emit('publish')"
       >
         {{ $t("creatorHub.publish") }}
@@ -49,9 +49,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { PublishReport } from "src/nostr/publish";
-const props = defineProps<{ publishing: boolean; report?: PublishReport | null; fallbackUsed: string[] }>();
+const props = defineProps<{ publishing: boolean; report?: PublishReport | null; fallbackUsed: string[]; disablePublish?: boolean }>();
 const emit = defineEmits(["publish"]);
 const loading = computed(() => props.publishing && !props.report);
 const table = computed(() => props.report?.byRelay ?? []);
 const fallbackUsed = computed(() => props.fallbackUsed || []);
+const disablePublish = computed(() => props.disablePublish || false);
 </script>
