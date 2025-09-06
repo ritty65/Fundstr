@@ -17,7 +17,11 @@ export const FREE_RELAYS = [
 ];
 
 export const VETTED_OPEN_WRITE_RELAYS: string[] = [
-  // TODO(app-maintainer): add 3–6 vetted open write relays here (wss://...)
+  "wss://relay.damus.io",
+  "wss://relay.snort.social",
+  "wss://relay.primal.net",
+  "wss://nos.lol",
+  "wss://nostr-pub.wellorder.net",
 ];
 
 export const MIN_HEALTHY_WRITES = 1; // prefer 2 later, but keep minimal-risk default now
