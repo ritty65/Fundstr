@@ -201,6 +201,7 @@
         :publishing="publishing"
         :report="publishReport"
         :fallback-used="fallbackUsed"
+        :disable-publish="publishDisabled"
         @publish="publishProfileBundle"
       />
       <RelayScannerDialog
@@ -255,6 +256,7 @@ const {
   publishErrors,
   publishReport,
   fallbackUsed,
+  publishDisabled,
   isDirty,
   profileRelays,
   connectedCount,

@@ -79,6 +79,10 @@ export async function buildTimedOutputs(
 export const useP2PKStore = defineStore("p2pk", {
   state: () => ({
     p2pkKeys: useLocalStorage<P2PKKey[]>(LOCAL_STORAGE_KEYS.CASHU_P2PKKEYS, []),
+    selectedKey: useLocalStorage<P2PKKey | null>(
+      LOCAL_STORAGE_KEYS.CASHU_P2PK_SELECTEDKEY,
+      null,
+    ),
     showP2PkButtonInDrawer: useLocalStorage<boolean>(
       LOCAL_STORAGE_KEYS.CASHU_P2PK_SHOWP2PKBUTTONINDRAWER,
       false,
@@ -165,12 +169,22 @@ export const useP2PKStore = defineStore("p2pk", {
     },
     async createAndSelectNewKey() {
       const { pub, priv } = generateP2pkKeyPair();
-      this.p2pkKeys.unshift({
+      const key = {
         publicKey: pub,
         privateKey: priv,
         used: false,
         usedCount: 0,
-      });
+      };
+      this.p2pkKeys.unshift(key);
+      this.selectedKey = key;
+    },
+    selectKey(pub: string | null) {
+      if (!pub) {
+        this.selectedKey = null;
+        return;
+      }
+      const key = this.p2pkKeys.find((k) => k.publicKey === pub) || null;
+      this.selectedKey = key;
     },
     getSecretP2PKInfo: function (secret: string): {
       pubkey: string;

@@ -30,9 +30,9 @@
       outlined
     />
     <div>
-      <q-select
-        v-if="hasP2PK"
-        v-model="profilePubLocal"
+    <q-select
+      v-if="hasP2PK"
+      v-model="profilePubLocal"
         :options="p2pkOptions"
         option-value="value"
         option-label="label"
@@ -129,7 +129,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import InfoTooltip from "./InfoTooltip.vue";
@@ -168,8 +168,8 @@ const mintOptions = computed(() => mintsStore.mints.map((m) => m.url));
 
 async function generateP2PK() {
   await p2pkStore.createAndSelectNewKey();
-  if (p2pkStore.firstKey) {
-    profilePub.value = p2pkStore.firstKey.publicKey;
+  if (p2pkStore.selectedKey) {
+    profilePub.value = p2pkStore.selectedKey.publicKey;
   }
 }
 
@@ -186,8 +186,11 @@ const aboutLocal = computed({
   set: (val: string) => (about.value = val),
 });
 const profilePubLocal = computed({
-  get: () => profilePub.value,
-  set: (val: string | null) => (profilePub.value = val || ""),
+  get: () => p2pkStore.selectedKey?.publicKey || profilePub.value,
+  set: (val: string | null) => {
+    p2pkStore.selectKey(val);
+    profilePub.value = val || "";
+  },
 });
 const profileMintsLocal = computed({
   get: () => profileMints.value,
@@ -197,6 +200,12 @@ const profileRelaysLocal = computed({
   get: () => profileRelays.value,
   set: (val: string[]) => (profileRelays.value = sanitizeRelayUrls(val).slice(0, 8)),
 });
+
+watch(
+  () => profilePub.value,
+  (val) => p2pkStore.selectKey(val || null),
+  { immediate: true },
+);
 
 const validUrl = computed(() => /^https?:\/\/.+/.test(pictureLocal.value));
 const urlRule = (val: string) =>
