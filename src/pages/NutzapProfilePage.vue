@@ -9,11 +9,26 @@
           <q-btn flat label="Use vetted" @click="useVetted" />
         </template>
       </q-banner>
+      <q-expansion-item label="Diagnostics" dense class="q-mt-sm">
+        <q-table
+          :rows="diagnostics"
+          :columns="[
+            { name: 'url', label: 'Relay', field: 'url' },
+            { name: 'status', label: 'Status', field: 'status' }
+          ]"
+          flat
+          dense
+          row-key="url"
+        />
+        <q-btn dense flat label="Copy Debug JSON" class="q-mt-sm" @click="copyDebug" />
+      </q-expansion-item>
     </q-card>
 
     <q-card class="q-pa-md q-mb-md">
       <div class="text-subtitle1 q-mb-sm">Payment Profile (kind 10019)</div>
-      <q-input v-model="p2pkPub" label="P2PK Public Key" dense filled />
+      <q-input v-model="displayName" label="Display Name" dense filled />
+      <q-input v-model="pictureUrl" label="Picture URL" dense filled class="q-mt-sm" />
+      <q-input v-model="p2pkPub" label="P2PK Public Key" dense filled class="q-mt-sm" />
       <q-input
         v-model="mintsText"
         type="textarea"
@@ -117,6 +132,8 @@ import { useNutzapProfile } from 'src/composables/useNutzapProfile'
 
 const {
   // state
+  displayName,
+  pictureUrl,
   p2pkPub,
   mintsText,
   tiers,
@@ -124,6 +141,7 @@ const {
   showTierDialog,
   publishing,
   lastPublishInfo,
+  diagnostics,
   // derived
   connectedCount,
   writableConnectedCount,
@@ -137,5 +155,6 @@ const {
   publishAll,
   reconnectAll,
   useVetted,
+  copyDebug,
 } = useNutzapProfile()
 </script>
