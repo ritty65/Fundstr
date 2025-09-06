@@ -8,6 +8,9 @@ import NDK, {
 import { useNostrStore } from 'src/stores/nostr'
 import { notifySuccess, notifyError } from 'src/js/notify'
 
+const PROXY_BASE_WSS = 'wss://staging.fundstr.me/ws'
+const PROXY_BASE_HTTP = 'https://staging.fundstr.me/http'
+
 type Tier = {
   id: string
   title: string
@@ -109,7 +112,7 @@ export function useNutzapProfile() {
       if (r.status === NDKRelayStatus.CONNECTED) connected.add(r.url)
     })
     return relayCatalog.value.writable.filter(u =>
-      connected.has(proxify(u))
+      connected.has(proxifyWs(u))
     ).length
   })
 
@@ -124,6 +127,10 @@ export function useNutzapProfile() {
 
   const bannerClass = computed(() =>
     writableConnectedCount.value === 0 ? 'bg-warning' : 'bg-positive'
+  )
+
+  const bannerHint = computed(() =>
+    echoOk.value ? '' : 'WS likely blocked; try Proxy mode or pause blockers'
   )
 
   // -------- tier actions
@@ -179,71 +186,67 @@ export function useNutzapProfile() {
   }
 
   // -------- helpers
-  async function canOpenWs(url = 'wss://echo.websocket.events', ms = 3000) {
-    return new Promise<boolean>(resolve => {
-      let done = false
-      let ws: WebSocket | null = null
-      const t = setTimeout(() => {
-        if (!done) {
-          done = true
-          try {
-            ws?.close()
-          } catch {
-            /* ignore */
+  async function echoWsOk(): Promise<boolean> {
+    const hosts = ['wss://echo.websocket.events', 'wss://echo-websocket.fly.dev/']
+    for (const h of hosts) {
+      const ok = await new Promise<boolean>(resolve => {
+        let done = false,
+          t: any,
+          ws: WebSocket
+        try {
+          ws = new WebSocket(h)
+          t = setTimeout(() => {
+            if (!done) {
+              done = true
+              try {
+                ws.close()
+              } catch {}
+              resolve(false)
+            }
+          }, 2500)
+          ws.onopen = () => {
+            if (!done) {
+              done = true
+              clearTimeout(t)
+              ws.close()
+              resolve(true)
+            }
           }
+          ws.onerror = () => {
+            if (!done) {
+              done = true
+              clearTimeout(t)
+              resolve(false)
+            }
+          }
+        } catch {
           resolve(false)
         }
-      }, ms)
-      try {
-        ws = new WebSocket(url)
-        ws.onopen = () => {
-          if (!done) {
-            done = true
-            clearTimeout(t)
-            ws!.close()
-            resolve(true)
-          }
-        }
-        ws.onerror = () => {
-          if (!done) {
-            done = true
-            clearTimeout(t)
-            resolve(false)
-          }
-        }
-      } catch {
-        clearTimeout(t)
-        resolve(false)
-      }
-    })
+      })
+      if (ok) return true
+    }
+    return false
   }
 
-  async function nip11Probe(relayWssUrl: string, ms = 2000) {
-    const https = relayWssUrl.replace(/^wss:/, 'https:')
+  async function nip11Probe(urlWss: string, ms = 2000) {
+    const https = urlWss.replace(/^wss:/, 'https:')
+    const endpoint = proxyMode.value ? proxifyHttp(https) : https
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), ms)
     try {
-      const res = await fetch(https, {
+      const res = await fetch(endpoint, {
         headers: { Accept: 'application/nostr+json' },
         signal: controller.signal
       })
       clearTimeout(timer)
       if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` }
-      const json = await res.json().catch(() => null)
-      if (
-        !json ||
-        !Array.isArray(json.supported_nips) ||
-        !json.supported_nips.includes(1)
-      ) {
+      const j = await res.json().catch(() => null)
+      if (!j || !Array.isArray(j.supported_nips) || !j.supported_nips.includes(1))
         return { ok: false, reason: 'unsupported or malformed NIP-11' }
-      }
-      return { ok: true, info: json }
+      return { ok: true, info: j }
     } catch (e: any) {
       clearTimeout(timer)
-      return {
-        ok: false,
-        reason: e?.name === 'AbortError' ? 'timeout' : String(e)
-      }
+      return { ok: false, reason: e?.name === 'AbortError' ? 'timeout' : 'http_error' }
     }
   }
 
@@ -286,10 +289,16 @@ export function useNutzapProfile() {
     return { all, writable, targets: merged }
   }
 
-  function proxify(u: string) {
-    if (!proxyMode.value) return u
-    const base = `${location.origin.replace(/^http/, 'ws')}/ws`
-    return `${base}?target=${encodeURIComponent(u)}`
+  function proxifyWs(u: string) {
+    return proxyMode.value
+      ? `${PROXY_BASE_WSS}?target=${encodeURIComponent(u)}`
+      : u
+  }
+
+  function proxifyHttp(u: string) {
+    return proxyMode.value
+      ? `${PROXY_BASE_HTTP}?target=${encodeURIComponent(u)}`
+      : u
   }
 
   function unproxify(u: string) {
@@ -300,6 +309,32 @@ export function useNutzapProfile() {
     } catch {
       return u
     }
+  }
+
+  function pushDiag(d: RelayDiag) {
+    const idx = diagnostics.value.findIndex(
+      x => x.url === d.url && x.kind === d.kind
+    )
+    if (idx !== -1) diagnostics.value[idx] = d
+    else diagnostics.value.push(d)
+  }
+
+  function attachRelayListeners(ndk: NDK) {
+    ndk.pool.relays.forEach((r: any) => {
+      const conn = r.connectivity
+      if (conn && typeof conn.on === 'function') {
+        conn.on('close', refreshWsDiagnostics)
+        conn.on('connect', refreshWsDiagnostics)
+        conn.on('error', (e: any) =>
+          pushDiag({
+            url: unproxify(r.url),
+            kind: 'ws',
+            status: mapWsError(e),
+            note: String(e)
+          })
+        )
+      }
+    })
   }
 
   async function getLocalNdk(targetUrls: string[], withSigner: boolean) {
@@ -313,23 +348,7 @@ export function useNutzapProfile() {
     localNdk = new NDK({ explicitRelayUrls: targetUrls })
     if (withSigner) localNdk.signer = new NDKNip07Signer()
     await localNdk.connect({ timeout: 6000 })
-
-    // basic error listeners (best effort)
-    localNdk.pool.relays.forEach(r => {
-      const orig = unproxify(r.url)
-      r.connectivity.on('close', () => refreshDiagnostics())
-      r.connectivity.on('connect', () => refreshDiagnostics())
-      r.connectivity.on('error', e => {
-        diagnostics.value.push({
-          url: orig,
-          kind: 'ws',
-          status: mapWsError(e),
-          note: String(e)
-        })
-        refreshDiagnostics()
-      })
-    })
-
+    attachRelayListeners(localNdk)
     return localNdk
   }
 
@@ -350,24 +369,18 @@ export function useNutzapProfile() {
     throw new Error('No writable relay connected')
   }
 
-  function refreshDiagnostics() {
-    const base = diagnostics.value.filter(d => d.kind !== 'ws')
+  function refreshWsDiagnostics() {
+    diagnostics.value = diagnostics.value.filter(
+      d => d.kind !== 'ws' || targets.value.includes(d.url)
+    )
     targets.value.forEach(url => {
-      const r = localNdk?.pool.relays.get(proxify(url))
-      const existing = diagnostics.value.find(
-        d => d.kind === 'ws' && d.url === url
-      )
-      base.push({
+      const r = localNdk?.pool.relays.get(proxifyWs(url))
+      pushDiag({
         url,
         kind: 'ws',
-        status:
-          r && r.status === NDKRelayStatus.CONNECTED
-            ? 'ok'
-            : existing?.status || 'disconnected',
-        note: existing?.note
+        status: r && r.status === NDKRelayStatus.CONNECTED ? 'ok' : 'disconnected'
       })
     })
-    diagnostics.value = base
   }
 
   function mapWsError(e: unknown): DiagStatus {
@@ -383,8 +396,8 @@ export function useNutzapProfile() {
     try {
       const candidates = targets.value.length ? targets.value : VETTED_RELAYS
       diagnostics.value = []
-      echoOk.value = await canOpenWs()
-      diagnostics.value.push({
+      echoOk.value = await echoWsOk()
+      pushDiag({
         url: 'echo',
         kind: 'echo',
         status: echoOk.value ? 'ok' : 'blocked'
@@ -394,12 +407,12 @@ export function useNutzapProfile() {
         const r = await nip11Probe(url)
         const status = r.ok
           ? 'ok'
-          : r.reason?.includes('timeout')
+          : r.reason === 'timeout'
             ? 'timeout'
-            : r.reason?.startsWith('HTTP')
+            : r.reason === 'http_error'
               ? 'http_error'
               : 'unsupported'
-        diagnostics.value.push({
+        pushDiag({
           url,
           kind: 'nip11',
           status,
@@ -407,10 +420,11 @@ export function useNutzapProfile() {
         })
         if (r.ok) good.push(url)
       }
-      targets.value = good
-      if (!good.length) return
-      await getLocalNdk(good.map(proxify), false)
-      refreshDiagnostics()
+      const fallback = uniq([...candidates.slice(0, 2), VETTED_RELAYS[0]])
+      const goodOrFallback = good.length ? good : fallback
+      targets.value = goodOrFallback
+      await getLocalNdk(goodOrFallback.map(proxifyWs), false)
+      refreshWsDiagnostics()
     } catch (e) {
       console.warn('[nutzap-profile] reconnect error', e)
     }
@@ -423,6 +437,11 @@ export function useNutzapProfile() {
     )
     relayCatalog.value = { all, writable }
     targets.value = picked
+    await reconnectAll()
+  }
+
+  async function singleConnectionMode() {
+    targets.value = ['wss://filter.nostr.wine']
     await reconnectAll()
   }
 
@@ -520,9 +539,10 @@ export function useNutzapProfile() {
     try {
       const signer: any = nostr.signer
       const signerRelays = await signer?.getRelays?.()
-      const defaults = Array.isArray(nostr.relays) && nostr.relays.length
-        ? (nostr.relays as string[])
-        : VETTED_RELAYS
+      const defaults =
+        Array.isArray(nostr.relays) && nostr.relays.length
+          ? (nostr.relays as string[])
+          : VETTED_RELAYS
 
       const { all, writable, targets: picked } = buildRelayTargets(
         signerRelays as any,
@@ -530,8 +550,8 @@ export function useNutzapProfile() {
       )
 
       diagnostics.value = []
-      echoOk.value = await canOpenWs()
-      diagnostics.value.push({
+      echoOk.value = await echoWsOk()
+      pushDiag({
         url: 'echo',
         kind: 'echo',
         status: echoOk.value ? 'ok' : 'blocked'
@@ -541,12 +561,12 @@ export function useNutzapProfile() {
         const r = await nip11Probe(url)
         const status = r.ok
           ? 'ok'
-          : r.reason?.includes('timeout')
+          : r.reason === 'timeout'
             ? 'timeout'
-            : r.reason?.startsWith('HTTP')
+            : r.reason === 'http_error'
               ? 'http_error'
               : 'unsupported'
-        diagnostics.value.push({
+        pushDiag({
           url,
           kind: 'nip11',
           status,
@@ -554,22 +574,28 @@ export function useNutzapProfile() {
         })
         if (r.ok) good.push(url)
       }
-      targets.value = good
-      const writableHealthy = writable.filter(u => good.includes(u))
+
+      const signerWrites = signerRelays
+        ? Object.entries(signerRelays)
+            .filter(([, p]: any) => p?.write)
+            .map(([u]) => sanitizeUrl(u))
+        : []
+      const fallback = uniq([...signerWrites.slice(0, 2), VETTED_RELAYS[0]])
+      const goodOrFallback = good.length ? good : fallback
+      targets.value = goodOrFallback
+      const writableHealthy = writable.filter(u => goodOrFallback.includes(u))
       relayCatalog.value = { all, writable: writableHealthy }
 
-      if (!writableHealthy.length || !good.length) {
-        notifyError(
-          'No healthy relays (NIP-11 failed). Try Use Vetted or Proxy mode.'
-        )
+      if (!writableHealthy.length) {
+        notifyError('No healthy relays. Try Use Vetted or Proxy mode.')
         publishing.value = false
         return
       }
 
       currentStep.value = 'CONNECT'
-      const ndk = await getLocalNdk(good.map(proxify), true)
-      refreshDiagnostics()
-      await waitForWritableRelay(ndk, writableHealthy.map(proxify)).catch(() => {
+      const ndk = await getLocalNdk(goodOrFallback.map(proxifyWs), true)
+      refreshWsDiagnostics()
+      await waitForWritableRelay(ndk, writableHealthy.map(proxifyWs)).catch(() => {
         notifyError('No writable relay connected — cannot publish.')
         throw new Error('CONNECT_FAIL')
       })
@@ -590,7 +616,11 @@ export function useNutzapProfile() {
 
       currentStep.value = 'PUB_TIERS'
       try {
-        await publishToWritableWithAck(ndk, evTiers, writableHealthy.map(proxify))
+        await publishToWritableWithAck(
+          ndk,
+          evTiers,
+          writableHealthy.map(proxifyWs)
+        )
       } catch {
         notifyError('Publish failed: no relay accepted the tiers event.')
         throw new Error('PUB_FAIL')
@@ -620,7 +650,11 @@ export function useNutzapProfile() {
 
       currentStep.value = 'PUB_PROFILE'
       try {
-        await publishToWritableWithAck(ndk, evProf, writableHealthy.map(proxify))
+        await publishToWritableWithAck(
+          ndk,
+          evProf,
+          writableHealthy.map(proxifyWs)
+        )
       } catch {
         notifyError('Publish failed: no relay accepted the payment profile.')
         throw new Error('PUB_FAIL')
@@ -655,8 +689,10 @@ export function useNutzapProfile() {
   }
 
   // keep diagnostics updated
-  diagTimer = setInterval(() => refreshDiagnostics(), 2000)
-  watch(proxyMode, () => reconnectAll())
+  diagTimer = setInterval(() => refreshWsDiagnostics(), 2000)
+  watch(proxyMode, async () => {
+    await reconnectAll()
+  })
   onUnmounted(() => {
     if (diagTimer) clearInterval(diagTimer)
     try {
@@ -689,6 +725,7 @@ export function useNutzapProfile() {
     totalRelays,
     publishDisabled,
     bannerClass,
+    bannerHint,
     // actions
     editTier,
     removeTier,
@@ -696,6 +733,7 @@ export function useNutzapProfile() {
     publishAll,
     reconnectAll,
     useVetted,
+    singleConnectionMode,
     copyDebug,
     // debug
     currentStep,
