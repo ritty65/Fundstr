@@ -20,6 +20,15 @@ const DEFAULT_WRITE_RELAYS = [
   'wss://nos.lol'
 ]
 
+const VETTED_OPEN_WRITE_RELAYS = [
+  'wss://relay.damus.io',
+  'wss://relay.primal.net',
+  'wss://nos.lol',
+  'wss://relay.snort.social'
+]
+
+const MAX_TARGET_RELAYS = 6 // keep small to avoid WS exhaustion
+
 export function useNutzapProfile() {
   // -------- state
   const p2pkPub = ref('')
@@ -49,8 +58,10 @@ export function useNutzapProfile() {
     writable: string[]
   }>({ all: [], writable: [] })
 
-  const totalRelays = computed(() =>
-    relayCatalog.value.all.length || (nostr.relays?.length ?? DEFAULT_WRITE_RELAYS.length)
+  const targets = ref<string[]>([])
+
+  const totalRelays = computed(
+    () => targets.value.length || DEFAULT_WRITE_RELAYS.length
   )
 
   const connectedCount = computed(() => {
@@ -138,20 +149,44 @@ export function useNutzapProfile() {
   }
 
   // -------- helpers
-  function getSignerRelaysWithFallback(
-    signerRelays: Record<string, { read: boolean; write: boolean }> | undefined,
-    defaults: string[]
-  ) {
-    const all: { url: string; read: boolean; write: boolean }[] = []
-    if (signerRelays && Object.keys(signerRelays).length) {
-      for (const [url, perms] of Object.entries(signerRelays)) {
-        all.push({ url, read: !!perms.read, write: !!perms.write })
-      }
-    } else {
-      for (const url of defaults) all.push({ url, read: true, write: true })
+  function sanitizeUrl(u: string) {
+    if (!u) return ''
+    try {
+      const url = new URL(u.trim())
+      if (url.protocol !== 'wss:') return ''
+      url.hash = ''
+      url.search = ''
+      return url.href.replace(/\/+$/, '')
+    } catch {
+      return ''
     }
-    const writable = all.filter(r => r.write).map(r => r.url)
-    return { all, writable }
+  }
+
+  function uniq<T>(arr: T[]) {
+    return [...new Set(arr)]
+  }
+
+  function buildRelayTargets(
+    signerRelays: Record<string, { read: boolean; write: boolean }> | undefined,
+    defaultsFromSettings: string[] | undefined
+  ) {
+    const signerWrite = signerRelays
+      ? Object.entries(signerRelays)
+          .filter(([, p]) => !!p.write)
+          .map(([u]) => sanitizeUrl(u))
+      : []
+
+    const settings = (defaultsFromSettings ?? []).map(sanitizeUrl)
+    const vetted = VETTED_OPEN_WRITE_RELAYS.map(sanitizeUrl)
+
+    const combined = uniq([...signerWrite, ...settings, ...vetted])
+      .filter(Boolean)
+      .slice(0, MAX_TARGET_RELAYS)
+
+    const all = combined.map(u => ({ url: u, read: true, write: true }))
+    const writable = [...combined]
+
+    return { all, writable, targets: combined }
   }
 
   async function waitForWritableRelay(ndk: any, writableUrls: string[], ms = 7000) {
@@ -214,8 +249,19 @@ export function useNutzapProfile() {
 
   async function reconnectAll() {
     const ndk = await useNdk()
-    await nostr.connect(nostr.relays?.length ? nostr.relays : DEFAULT_WRITE_RELAYS)
+    await nostr.connect(
+      targets.value.length ? targets.value : DEFAULT_WRITE_RELAYS
+    )
     ;(window as any).__ndkRef = ndk
+  }
+
+  function useVetted() {
+    const { all, writable, targets: picked } = buildRelayTargets(
+      undefined,
+      VETTED_OPEN_WRITE_RELAYS
+    )
+    relayCatalog.value = { all, writable }
+    targets.value = picked
   }
 
   // -------- publish flow
@@ -242,10 +288,19 @@ export function useNutzapProfile() {
     publishing.value = true
     try {
       const signer: any = nostr.signer
-      const relays = await (signer?.getRelays?.() || null)
+      const signerRelays = await (signer?.getRelays?.() || undefined)
       const defaults =
-        nostr.relays && nostr.relays.length ? nostr.relays : DEFAULT_WRITE_RELAYS
-      relayCatalog.value = getSignerRelaysWithFallback(relays as any, defaults)
+        Array.isArray(nostr.relays) && nostr.relays.length
+          ? (nostr.relays as string[])
+          : DEFAULT_WRITE_RELAYS
+
+      const { all, writable, targets: picked } = buildRelayTargets(
+        signerRelays as any,
+        defaults
+      )
+      relayCatalog.value = { all, writable }
+      targets.value = picked
+
       if (relayCatalog.value.writable.length === 0) {
         notifyError('No writable relays configured. Add a relay with write access.')
         return
@@ -253,7 +308,7 @@ export function useNutzapProfile() {
 
       const ndk = await useNdk()
       ;(window as any).__ndkRef = ndk
-      await nostr.connect(relayCatalog.value.all.map(r => r.url))
+      await nostr.connect(targets.value)
       try {
         await waitForWritableRelay(ndk, relayCatalog.value.writable)
       } catch {
@@ -326,7 +381,8 @@ export function useNutzapProfile() {
     removeTier,
     saveTier,
     publishAll,
-    reconnectAll
+    reconnectAll,
+    useVetted
   }
 }
 

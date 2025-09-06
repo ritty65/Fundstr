@@ -6,6 +6,7 @@
         Connected: {{ connectedCount }}/{{ totalRelays }} • {{ writableConnectedCount }} writable
         <template v-slot:action>
           <q-btn flat label="Reconnect" @click="reconnectAll" />
+          <q-btn flat label="Use vetted" @click="useVetted" />
         </template>
       </q-banner>
     </q-card>
@@ -135,5 +136,6 @@ const {
   saveTier,
   publishAll,
   reconnectAll,
+  useVetted,
 } = useNutzapProfile()
 </script>
