@@ -17,6 +17,7 @@ import NDK, {
   NDKSubscription,
   NDKPublishError,
 } from "@nostr-dev-kit/ndk";
+import { ensureSignerMatchesLoggedInNpub } from "src/creatorHub/publishGuards";
 import {
   nip19,
   nip04,
@@ -872,9 +873,9 @@ export async function publishNutzapProfile(opts: {
   tierAddr?: string;
 }) {
   const nostr = useNostrStore();
-  if (!nostr.signer) {
-    throw new Error("Signer required to publish Nutzap profile");
-  }
+  const signer = await ensureSignerMatchesLoggedInNpub({
+    getLoggedInNpub: () => nostr.pubkey,
+  });
   await nostr.connect(opts.relays ?? nostr.relays);
   const ndk = await useNdk();
   if (!ndk) {
@@ -891,7 +892,7 @@ export async function publishNutzapProfile(opts: {
       tierAddr: opts.tierAddr,
     }),
   );
-  await ev.sign();
+  await ev.sign(signer.ndkSigner as any);
   const relaySet = await urlsToRelaySet(opts.relays);
   try {
     await ensureRelayConnectivity(ndk);

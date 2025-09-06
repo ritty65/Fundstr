@@ -7,13 +7,14 @@ import { useP2PKStore } from "../../../src/stores/p2pk";
 import { useMintsStore } from "../../../src/stores/mints";
 import { useCreatorProfileStore } from "../../../src/stores/creatorProfile";
 
-const notifySuccess = vi.fn();
-const notifyError = vi.fn();
+let notifySuccess: any;
+let notifyError: any;
 
-vi.mock("../../../src/js/notify", () => ({
-  notifySuccess,
-  notifyError,
-}));
+vi.mock("../../../src/js/notify", () => {
+  notifySuccess = vi.fn();
+  notifyError = vi.fn();
+  return { notifySuccess, notifyError };
+});
 
 let createdEvents: any[] = [];
 const signMock = vi.fn();
@@ -21,6 +22,7 @@ const publishMock = vi.fn();
 let fetchNutzapProfileMock: any;
 let publishNutzapProfileMock: any;
 let ensureRelayConnectivityMock: any;
+let ensureSignerMatchesLoggedInNpubMock: any;
 
 let ndkStub: any = {};
 
@@ -71,6 +73,11 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   };
 });
 
+vi.mock("../../../src/creatorHub/publishGuards", () => ({
+  ensureSignerMatchesLoggedInNpub: (...args: any[]) =>
+    ensureSignerMatchesLoggedInNpubMock(...args),
+}));
+
 beforeEach(() => {
   createdEvents = [];
   signMock.mockClear();
@@ -79,6 +86,11 @@ beforeEach(() => {
   fetchNutzapProfileMock = vi.fn(async () => null);
   publishNutzapProfileMock = vi.fn();
   ensureRelayConnectivityMock = vi.fn();
+  ensureSignerMatchesLoggedInNpubMock = vi.fn(async () => ({
+    kind: "nip07",
+    ndkSigner: nostrStoreMock.signer,
+    pubkeyHex: nostrStoreMock.pubkey,
+  }));
   localStorage.clear();
 });
 
