@@ -129,6 +129,14 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
+      <q-item v-if="!isGuest" clickable @click="gotoNutzapProfile">
+        <q-item-section avatar>
+          <q-icon name="assignment" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>Nutzap Profile</q-item-label>
+        </q-item-section>
+      </q-item>
       <q-item v-if="!isGuest" clickable @click="gotoChats">
         <q-item-section avatar>
           <q-icon name="chat" />
@@ -221,6 +229,7 @@ const gotoCreatorHub = () => goto("/creator-hub");
 const gotoMyProfile = () => goto("/my-profile");
 const gotoBuckets = () => goto("/buckets");
 const gotoSubscriptions = () => goto("/subscriptions");
+const gotoNutzapProfile = () => goto("/nutzap-profile");
 const gotoChats = () => goto("/nostr-messenger");
 const gotoNostrLogin = () => goto("/nostr-login");
 const gotoTerms = () => goto("/terms");
