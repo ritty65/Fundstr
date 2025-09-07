@@ -1,3 +1,11 @@
+export const PRIMARY_RELAY = 'wss://relay.fundstr.me';
+
+export const FALLBACK_RELAYS: string[] = [
+  'wss://relay.damus.io',
+  'wss://nos.lol',
+  'wss://relay.snort.social',
+]; // keep small and easy to rotate
+
 // Curated default read relays – these are added at boot for read operations only.
 export const DEFAULT_RELAYS = [
   "wss://relay.damus.io",
