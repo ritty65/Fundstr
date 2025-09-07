@@ -712,13 +712,15 @@ export function useNutzapProfile() {
       const finalTargets = targets.value.map(maybeProxyWs)
       const ndk = await getLocalNdk(finalTargets, true)
       refreshWsDiagnostics()
-      await waitForWritableRelay(
-        ndk,
-        writableHealthy.map(maybeProxyWs)
-      ).catch(() => {
-        notifyError('No writable relay connected — cannot publish.')
-        throw new Error('CONNECT_FAIL')
-      })
+      if (!proxyMode.value) {
+        await waitForWritableRelay(
+          ndk,
+          writableHealthy.map(maybeProxyWs)
+        ).catch(() => {
+          notifyError('No writable relay connected — cannot publish.')
+          throw new Error('CONNECT_FAIL')
+        })
+      }
 
       currentStep.value = 'SIGN_TIERS'
       const evTiers = new NDKEvent(
@@ -736,11 +738,16 @@ export function useNutzapProfile() {
 
       currentStep.value = 'PUB_TIERS'
       try {
-        await publishToWritableWithAck(
-          ndk,
-          evTiers,
-        writableHealthy.map(maybeProxyWs)
-        )
+        if (proxyMode.value && hasHttpProxy()) {
+          const signedEvent = evTiers.toNostrEvent() as Event
+          await publishWithFallback(signedEvent, { proxyMode: true })
+        } else {
+          await publishToWritableWithAck(
+            ndk,
+            evTiers,
+            writableHealthy.map(maybeProxyWs)
+          )
+        }
       } catch {
         notifyError('Publish failed: no relay accepted the tiers event.')
         throw new Error('PUB_FAIL')
