@@ -739,8 +739,9 @@ export function useNutzapProfile() {
       currentStep.value = 'PUB_TIERS'
       try {
         if (proxyMode.value && hasHttpProxy()) {
-          const signedEvent = evTiers.toNostrEvent() as Event
-          await publishWithFallback(signedEvent, { proxyMode: true })
+          const signedTier = evTiers.toNostrEvent() as Event
+          const res = await publishWithFallback(signedTier, { proxyMode: true })
+          if (!res.ok) throw new Error('PUB_FAIL')
         } else {
           await publishToWritableWithAck(
             ndk,

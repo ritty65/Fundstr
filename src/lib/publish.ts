@@ -5,12 +5,16 @@ import { PRIMARY_RELAY, FALLBACK_RELAYS } from '@/config/relays';
 const PROXY_BASE_HTTP = import.meta.env.VITE_PROXY_BASE_HTTP || '';
 const PROXY_BASE_WSS = import.meta.env.VITE_PROXY_BASE_WSS || '';
 
-function hasHttpProxy() {
+export function hasHttpProxy() {
   return !!PROXY_BASE_HTTP;
 }
 
-function hasWsProxy() {
+export function hasWsProxy() {
   return !!PROXY_BASE_WSS;
+}
+
+function proxifyHttp(): string {
+  return PROXY_BASE_HTTP;
 }
 
 // NIP-01: relays send ["OK", <event-id>, true/false, <msg>] on acceptance/rejection.
@@ -37,7 +41,7 @@ export async function publishWithFallback(
   if (proxyMode && hasHttpProxy()) {
     try {
       onStatus({ phase: 'connecting', relay: 'proxy' });
-      const r = await fetch(`${PROXY_BASE_HTTP}/event`, {
+      const r = await fetch(`${proxifyHttp()}/event`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(event),
@@ -46,7 +50,7 @@ export async function publishWithFallback(
         onStatus({ phase: 'failed', relay: 'proxy', reason: r.statusText });
         return { ok: false };
       }
-      const j = await r.json().catch(() => ({} as any));
+      const j = (await r.json().catch(() => ({}))) as any;
       if (!j?.ok) {
         onStatus({
           phase: 'failed',
