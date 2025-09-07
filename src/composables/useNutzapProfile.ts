@@ -5,8 +5,12 @@ import NDK, {
   NDKNip07Signer,
   NDKRelayStatus
 } from '@nostr-dev-kit/ndk'
+import { Event } from 'nostr-tools'
+import { publishWithFallback } from '@/lib/publish'
+import { fetchRelayInfo } from '@/lib/relayInfo'
+import { PRIMARY_RELAY } from '@/config/relays'
 import { useNostrStore } from 'src/stores/nostr'
-import { notifySuccess, notifyError } from 'src/js/notify'
+import { notify, notifySuccess, notifyError } from 'src/js/notify'
 
 const PROXY_BASE_WSS = 'wss://staging.fundstr.me/ws'
 const PROXY_BASE_HTTP = 'https://staging.fundstr.me/http'
@@ -649,14 +653,23 @@ export function useNutzapProfile() {
       }
 
       currentStep.value = 'PUB_PROFILE'
-      try {
-        await publishToWritableWithAck(
-          ndk,
-          evProf,
-          writableHealthy.map(proxifyWs)
+      const meta = await fetchRelayInfo(PRIMARY_RELAY)
+      if (!meta.ok) console.warn('[nutzap-profile] nip11', meta.reason)
+
+      const signedEvent = evProf.toNostrEvent() as Event
+      const res = await publishWithFallback(signedEvent, {
+        onStatus: s => {
+          console.log('[publish]', s)
+          if (s.phase === 'connecting') notify('Connecting to relay…')
+          else if (s.phase === 'publishing') notify('Publishing…')
+          else if (s.phase === 'ok')
+            notifySuccess(`Nutzap Profile published on ${s.relay}`)
+        }
+      })
+      if (!res.ok) {
+        notifyError(
+          'Failed to publish — no relay accepted the event (timeouts/errors)'
         )
-      } catch {
-        notifyError('Publish failed: no relay accepted the payment profile.')
         throw new Error('PUB_FAIL')
       }
 
@@ -665,7 +678,6 @@ export function useNutzapProfile() {
       }
 
       lastPublishInfo.value = `30019:${evTiers.id} • 10019:${evProf.id}`
-      notifySuccess('Nutzap profile & tiers published')
       currentStep.value = 'DONE'
     } catch (e) {
       console.warn('[nutzap-profile] publish error', e)
