@@ -12,10 +12,19 @@ import { PRIMARY_RELAY } from '@/config/relays'
 import { useNostrStore } from 'src/stores/nostr'
 import { notify, notifySuccess, notifyError } from 'src/js/notify'
 
-const PROXY_BASE_WSS = 'wss://staging.fundstr.me/ws'
-const PROXY_BASE_HTTP = 'https://staging.fundstr.me/http'
+const PROXY_BASE_HTTP = import.meta.env.VITE_PROXY_BASE_HTTP || ''
+const PROXY_BASE_WSS = import.meta.env.VITE_PROXY_BASE_WSS || ''
+
+function hasHttpProxy() {
+  return !!PROXY_BASE_HTTP
+}
+
+function hasWsProxy() {
+  return !!PROXY_BASE_WSS
+}
 
 async function fetchViaProxy(pubkey: string, kind: number) {
+  if (!hasHttpProxy()) return []
   try {
     const res = await fetch(
       `${PROXY_BASE_HTTP}/req?pubkey=${pubkey}&kind=${kind}`
@@ -39,7 +48,7 @@ type Tier = {
 
 type RelayMeta = { url: string; read: boolean; write: boolean }
 type RelayCatalog = { all: RelayMeta[]; writable: string[] }
-type DiagKind = 'echo' | 'nip11' | 'ws'
+type DiagKind = 'echo' | 'nip11' | 'ws' | 'proxy'
 type DiagStatus =
   | 'ok'
   | 'timeout'
@@ -50,6 +59,8 @@ type DiagStatus =
   | 'dns_fail'
   | 'invalid_cert'
   | 'disconnected'
+  | 'on'
+  | 'misconfigured'
 type RelayDiag = { url: string; kind: DiagKind; status: DiagStatus; note?: string }
 
 const MAX_TARGET_RELAYS = 6
@@ -130,9 +141,7 @@ export function useNutzapProfile() {
     localNdk.pool.relays.forEach(r => {
       if (r.status === NDKRelayStatus.CONNECTED) connected.add(r.url)
     })
-    return relayCatalog.value.writable.filter(u =>
-      connected.has(proxifyWs(u))
-    ).length
+    return relayCatalog.value.writable.filter(u => connected.has(maybeProxy(u))).length
   })
 
   const publishDisabled = computed(
@@ -249,7 +258,10 @@ export function useNutzapProfile() {
 
   async function nip11Probe(urlWss: string, ms = 2000) {
     const https = urlWss.replace(/^wss:/, 'https:')
-    const endpoint = proxyMode.value ? proxifyHttp(https) : https
+    let endpoint = https
+    if (proxyMode.value && urlWss === PRIMARY_RELAY && hasHttpProxy()) {
+      endpoint = `${PROXY_BASE_HTTP}/`
+    }
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), ms)
     try {
@@ -324,15 +336,17 @@ export function useNutzapProfile() {
   }
 
   function proxifyWs(u: string) {
-    return proxyMode.value
+    return hasWsProxy()
       ? `${PROXY_BASE_WSS}?target=${encodeURIComponent(u)}`
       : u
   }
 
-  function proxifyHttp(u: string) {
-    return proxyMode.value
-      ? `${PROXY_BASE_HTTP}?target=${encodeURIComponent(u)}`
-      : u
+  function proxifyHttp(_u: string) {
+    return PROXY_BASE_HTTP
+  }
+
+  function maybeProxy(u: string) {
+    return proxyMode.value && u === PRIMARY_RELAY ? proxifyWs(u) : u
   }
 
   function unproxify(u: string) {
@@ -408,7 +422,7 @@ export function useNutzapProfile() {
       d => d.kind !== 'ws' || targets.value.includes(d.url)
     )
     targets.value.forEach(url => {
-      const r = localNdk?.pool.relays.get(proxifyWs(url))
+      const r = localNdk?.pool.relays.get(maybeProxy(url))
       pushDiag({
         url,
         kind: 'ws',
@@ -458,17 +472,22 @@ export function useNutzapProfile() {
       const fallback = uniq([...candidates.slice(0, 2), VETTED_RELAYS[0]])
       const goodOrFallback = good.length ? good : fallback
       targets.value = goodOrFallback
-      const finalTargets = targets.value.map(proxifyWs)
+      const finalTargets = targets.value.map(maybeProxy)
       await getLocalNdk(finalTargets, false)
       refreshWsDiagnostics()
       setTimeout(async () => {
-        if (connectedCount.value === 0 && !proxyMode.value) {
+        if (
+          connectedCount.value === 0 &&
+          !proxyMode.value &&
+          hasHttpProxy()
+        ) {
           switchingProxy = true
           proxyMode.value = true
+          notify('Network blocks WebSockets – switched to Proxy mode')
           await reconnectAll()
           switchingProxy = false
         }
-      }, 2000)
+      }, 1700)
     } catch (e) {
       console.warn('[nutzap-profile] reconnect error', e)
     }
@@ -568,26 +587,45 @@ export function useNutzapProfile() {
   }
 
   async function verifyReadback(ndk: NDK, id: string, ms = 4000) {
-    return new Promise<string[]>(resolve => {
-      const confirmed: string[] = []
-      const sub = ndk.subscribe(
-        { ids: [id] },
-        { closeOnEose: true, groupable: false }
-      )
-      const t = setTimeout(() => {
-        sub.stop()
-        resolve(confirmed)
-      }, ms)
-      sub.on('event', (ev: NDKEvent) => {
-        const url = ev.relay?.url ? unproxify(ev.relay.url) : ''
-        if (url && !confirmed.includes(url)) confirmed.push(url)
+    if (connectedCount.value > 0) {
+      return new Promise<string[]>(resolve => {
+        const confirmed: string[] = []
+        const sub = ndk.subscribe(
+          { ids: [id] },
+          { closeOnEose: true, groupable: false }
+        )
+        const t = setTimeout(() => {
+          sub.stop()
+          resolve(confirmed)
+        }, ms)
+        sub.on('event', (ev: NDKEvent) => {
+          const url = ev.relay?.url ? unproxify(ev.relay.url) : ''
+          if (url && !confirmed.includes(url)) confirmed.push(url)
+        })
+        sub.on('eose', () => {
+          clearTimeout(t)
+          sub.stop()
+          resolve(confirmed)
+        })
       })
-      sub.on('eose', () => {
-        clearTimeout(t)
-        sub.stop()
-        resolve(confirmed)
-      })
-    })
+    } else if (proxyMode.value && hasHttpProxy()) {
+      try {
+        const res = await fetch(
+          `${PROXY_BASE_HTTP}/req?filters=${encodeURIComponent(
+            JSON.stringify([{ ids: [id] }])
+          )}`
+        )
+        if (res.ok) {
+          const j = await res.json().catch(() => null)
+          if (Array.isArray(j?.events) && j.events.length === 1) return ['proxy']
+        }
+      } catch {
+        /* ignore */
+      }
+      return []
+    } else {
+      return []
+    }
   }
 
   async function publishAll() {
@@ -669,10 +707,13 @@ export function useNutzapProfile() {
       }
 
       currentStep.value = 'CONNECT'
-      const finalTargets = targets.value.map(proxifyWs)
+      const finalTargets = targets.value.map(maybeProxy)
       const ndk = await getLocalNdk(finalTargets, true)
       refreshWsDiagnostics()
-      await waitForWritableRelay(ndk, writableHealthy.map(proxifyWs)).catch(() => {
+      await waitForWritableRelay(
+        ndk,
+        writableHealthy.map(maybeProxy)
+      ).catch(() => {
         notifyError('No writable relay connected — cannot publish.')
         throw new Error('CONNECT_FAIL')
       })
@@ -696,7 +737,7 @@ export function useNutzapProfile() {
         await publishToWritableWithAck(
           ndk,
           evTiers,
-          writableHealthy.map(proxifyWs)
+          writableHealthy.map(maybeProxy)
         )
       } catch {
         notifyError('Publish failed: no relay accepted the tiers event.')
@@ -738,8 +779,7 @@ export function useNutzapProfile() {
           else if (s.phase === 'ok')
             notifySuccess(`Nutzap Profile published on ${s.relay}`)
         },
-        proxyMode: proxyMode.value,
-        proxyBaseHttp: PROXY_BASE_HTTP
+        proxyMode: proxyMode.value
       })
       if (!res.ok) {
         notifyError(
@@ -785,6 +825,11 @@ export function useNutzapProfile() {
   // keep diagnostics updated
   diagTimer = setInterval(() => refreshWsDiagnostics(), 2000)
   watch(proxyMode, async (val, old) => {
+    if (val && !old) {
+      pushDiag({ url: 'proxy', kind: 'proxy', status: 'on' })
+      if (!hasHttpProxy())
+        pushDiag({ url: 'proxy-http', kind: 'proxy', status: 'misconfigured' })
+    }
     if (val !== old && !switchingProxy) await reconnectAll()
   })
   onUnmounted(() => {
