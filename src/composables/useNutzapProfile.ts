@@ -15,6 +15,19 @@ import { notify, notifySuccess, notifyError } from 'src/js/notify'
 const PROXY_BASE_WSS = 'wss://staging.fundstr.me/ws'
 const PROXY_BASE_HTTP = 'https://staging.fundstr.me/http'
 
+async function fetchViaProxy(pubkey: string, kind: number) {
+  try {
+    const res = await fetch(
+      `${PROXY_BASE_HTTP}/req?pubkey=${pubkey}&kind=${kind}`
+    )
+    if (!res.ok) return []
+    const j = await res.json().catch(() => null)
+    return Array.isArray(j?.events) ? j.events : []
+  } catch {
+    return []
+  }
+}
+
 type Tier = {
   id: string
   title: string
@@ -51,6 +64,7 @@ const VETTED_RELAYS = [
 
 let localNdk: NDK | null = null
 let diagTimer: ReturnType<typeof setInterval> | null = null
+let switchingProxy = false
 
 export function useNutzapProfile() {
   // -------- form state
@@ -96,6 +110,7 @@ export function useNutzapProfile() {
   const targets = ref<string[]>([])
   const diagnostics = ref<RelayDiag[]>([])
   const proxyMode = ref(false)
+  const creatorRelays = ref<string[]>([])
   const echoOk = ref(false)
 
   const totalRelays = computed(() => targets.value.length || VETTED_RELAYS.length)
@@ -271,6 +286,16 @@ export function useNutzapProfile() {
     return [...new Set(arr)]
   }
 
+  async function fetchCreatorRelayList(pubkey: string) {
+    const events = await fetchViaProxy(pubkey, 10002)
+    const e = events[0]
+    if (!e || !Array.isArray(e.tags)) return []
+    return e.tags
+      .filter((t: any) => t[0] === 'r' && t[1])
+      .map((t: any) => sanitizeUrl(t[1]))
+      .filter(Boolean)
+  }
+
   function buildRelayTargets(
     signerRelays: Record<string, { read: boolean; write: boolean }> | undefined,
     defaultsFromSettings: string[] | undefined
@@ -436,16 +461,25 @@ export function useNutzapProfile() {
       const finalTargets = targets.value.map(proxifyWs)
       await getLocalNdk(finalTargets, false)
       refreshWsDiagnostics()
+      setTimeout(async () => {
+        if (connectedCount.value === 0 && !proxyMode.value) {
+          switchingProxy = true
+          proxyMode.value = true
+          await reconnectAll()
+          switchingProxy = false
+        }
+      }, 2000)
     } catch (e) {
       console.warn('[nutzap-profile] reconnect error', e)
     }
   }
 
   async function useVetted() {
-    const merged = uniq([PRIMARY_RELAY, ...VETTED_RELAYS]).slice(
-      0,
-      MAX_TARGET_RELAYS
-    )
+    const merged = uniq([
+      PRIMARY_RELAY,
+      ...creatorRelays.value,
+      ...VETTED_RELAYS
+    ]).slice(0, MAX_TARGET_RELAYS)
     relayCatalog.value = {
       all: merged.map(u => ({ url: u, read: true, write: true })),
       writable: [...merged]
@@ -533,6 +567,29 @@ export function useNutzapProfile() {
     await Promise.any(pubs)
   }
 
+  async function verifyReadback(ndk: NDK, id: string, ms = 4000) {
+    return new Promise<string[]>(resolve => {
+      const confirmed: string[] = []
+      const sub = ndk.subscribe(
+        { ids: [id] },
+        { closeOnEose: true, groupable: false }
+      )
+      const t = setTimeout(() => {
+        sub.stop()
+        resolve(confirmed)
+      }, ms)
+      sub.on('event', (ev: NDKEvent) => {
+        const url = ev.relay?.url ? unproxify(ev.relay.url) : ''
+        if (url && !confirmed.includes(url)) confirmed.push(url)
+      })
+      sub.on('eose', () => {
+        clearTimeout(t)
+        sub.stop()
+        resolve(confirmed)
+      })
+    })
+  }
+
   async function publishAll() {
     if (!p2pkPub.value) {
       notifyError('P2PK public key is required')
@@ -565,7 +622,7 @@ export function useNutzapProfile() {
 
       const { all, writable, targets: picked } = buildRelayTargets(
         signerRelays as any,
-        defaults
+        [...defaults, ...creatorRelays.value]
       )
 
       diagnostics.value = []
@@ -680,7 +737,9 @@ export function useNutzapProfile() {
           else if (s.phase === 'publishing') notify('Publishing…')
           else if (s.phase === 'ok')
             notifySuccess(`Nutzap Profile published on ${s.relay}`)
-        }
+        },
+        proxyMode: proxyMode.value,
+        proxyBaseHttp: PROXY_BASE_HTTP
       })
       if (!res.ok) {
         notifyError(
@@ -689,11 +748,18 @@ export function useNutzapProfile() {
         throw new Error('PUB_FAIL')
       }
 
+      let verified: string[] = []
       if (readBackVerify.value) {
-        // optional: read-back verify placeholder
+        verified = await verifyReadback(ndk, evProf.id)
+        if (!verified.length) {
+          notifyError('Publish succeeded but event not found on any relay')
+          throw new Error('VERIFY_FAIL')
+        }
       }
 
-      lastPublishInfo.value = `30019:${evTiers.id} • 10019:${evProf.id}`
+      lastPublishInfo.value =
+        `30019:${evTiers.id} • 10019:${evProf.id}` +
+        (verified.length ? ` [${verified.join(', ')}]` : '')
       currentStep.value = 'DONE'
     } catch (e) {
       console.warn('[nutzap-profile] publish error', e)
@@ -718,8 +784,8 @@ export function useNutzapProfile() {
 
   // keep diagnostics updated
   diagTimer = setInterval(() => refreshWsDiagnostics(), 2000)
-  watch(proxyMode, async () => {
-    await reconnectAll()
+  watch(proxyMode, async (val, old) => {
+    if (val !== old && !switchingProxy) await reconnectAll()
   })
   onUnmounted(() => {
     if (diagTimer) clearInterval(diagTimer)
@@ -731,8 +797,11 @@ export function useNutzapProfile() {
     localNdk = null
   })
 
-  // initial vetted connect
-  useVetted()
+  // initial vetted connect with creator's relays
+  fetchCreatorRelayList(nostr.pubkey || '').then(list => {
+    creatorRelays.value = list
+    useVetted()
+  })
 
   return {
     // state

@@ -18,15 +18,39 @@ export async function publishWithFallback(
     fallbacks = FALLBACK_RELAYS,
     ackTimeoutMs = 8000,
     onStatus = (_: PublishStatus) => {},
-  } = {}
+    proxyMode = false,
+    proxyBaseHttp = '',
+  } = {},
 ): Promise<{ ok: boolean; relay?: string }> {
+  if (proxyMode && proxyBaseHttp) {
+    try {
+      onStatus({ phase: 'connecting', relay: 'proxy' });
+      const res = await fetch(`${proxyBaseHttp}/event`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(event),
+      });
+      if (!res.ok) {
+        onStatus({ phase: 'failed', relay: 'proxy', reason: `HTTP ${res.status}` });
+        return { ok: false };
+      }
+      onStatus({ phase: 'publishing', relay: 'proxy' });
+      onStatus({ phase: 'ok', relay: 'proxy' });
+      onStatus({ phase: 'done', okOn: 'proxy' });
+      return { ok: true, relay: 'proxy' };
+    } catch (e: any) {
+      onStatus({ phase: 'failed', relay: 'proxy', reason: e?.message || 'error' });
+      return { ok: false };
+    }
+  }
+
   const pool = new SimplePool(); // SimplePool is designed for multi-relay publish/list.
   const relays = [primary, ...fallbacks];
   let resolved = false;
   let okRelay: string | undefined;
 
   await Promise.allSettled(
-    relays.map(async (relay) => {
+    relays.map(async relay => {
       try {
         onStatus({ phase: 'connecting', relay });
 
@@ -55,11 +79,12 @@ export async function publishWithFallback(
       } catch (e: any) {
         if (!resolved) onStatus({ phase: 'failed', relay, reason: e?.message || 'error' });
       }
-    })
+    }),
   );
 
   // Give any pending 'ok' microtasks a breath; then close sockets.
-  await new Promise((r) => setTimeout(r, 25));
+  await new Promise(r => setTimeout(r, 25));
   pool.close(relays);
   return { ok: !!okRelay, relay: okRelay };
 }
+
