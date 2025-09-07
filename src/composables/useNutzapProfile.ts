@@ -282,9 +282,14 @@ export function useNutzapProfile() {
       : []
 
     const settings = (defaultsFromSettings ?? []).map(sanitizeUrl)
-    const vetted = VETTED_RELAYS.map(sanitizeUrl)
 
-    const merged = uniq([...signerWrite, ...settings, ...vetted])
+    // PRIMARY first, then signer write relays, settings, and vetted
+    const merged = uniq([
+      PRIMARY_RELAY,
+      ...signerWrite,
+      ...settings,
+      ...VETTED_RELAYS
+    ])
       .filter(Boolean)
       .slice(0, MAX_TARGET_RELAYS)
 
@@ -398,7 +403,8 @@ export function useNutzapProfile() {
   async function reconnectAll() {
     currentStep.value = 'CONNECT'
     try {
-      const candidates = targets.value.length ? targets.value : VETTED_RELAYS
+      const candidates =
+        targets.value.length ? targets.value : [PRIMARY_RELAY, ...VETTED_RELAYS]
       diagnostics.value = []
       echoOk.value = await echoWsOk()
       pushDiag({
@@ -427,7 +433,8 @@ export function useNutzapProfile() {
       const fallback = uniq([...candidates.slice(0, 2), VETTED_RELAYS[0]])
       const goodOrFallback = good.length ? good : fallback
       targets.value = goodOrFallback
-      await getLocalNdk(goodOrFallback.map(proxifyWs), false)
+      const finalTargets = targets.value.map(proxifyWs)
+      await getLocalNdk(finalTargets, false)
       refreshWsDiagnostics()
     } catch (e) {
       console.warn('[nutzap-profile] reconnect error', e)
@@ -435,17 +442,25 @@ export function useNutzapProfile() {
   }
 
   async function useVetted() {
-    const { all, writable, targets: picked } = buildRelayTargets(
-      undefined,
-      VETTED_RELAYS
+    const merged = uniq([PRIMARY_RELAY, ...VETTED_RELAYS]).slice(
+      0,
+      MAX_TARGET_RELAYS
     )
-    relayCatalog.value = { all, writable }
-    targets.value = picked
+    relayCatalog.value = {
+      all: merged.map(u => ({ url: u, read: true, write: true })),
+      writable: [...merged]
+    }
+    targets.value = merged
     await reconnectAll()
   }
 
   async function singleConnectionMode() {
-    targets.value = ['wss://filter.nostr.wine']
+    const only = [PRIMARY_RELAY]
+    relayCatalog.value = {
+      all: only.map(u => ({ url: u, read: true, write: true })),
+      writable: [...only]
+    }
+    targets.value = only
     await reconnectAll()
   }
 
@@ -597,7 +612,8 @@ export function useNutzapProfile() {
       }
 
       currentStep.value = 'CONNECT'
-      const ndk = await getLocalNdk(goodOrFallback.map(proxifyWs), true)
+      const finalTargets = targets.value.map(proxifyWs)
+      const ndk = await getLocalNdk(finalTargets, true)
       refreshWsDiagnostics()
       await waitForWritableRelay(ndk, writableHealthy.map(proxifyWs)).catch(() => {
         notifyError('No writable relay connected — cannot publish.')
