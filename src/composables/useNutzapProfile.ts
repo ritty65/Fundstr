@@ -23,13 +23,15 @@ function hasWsProxy() {
   return !!PROXY_BASE_WSS
 }
 
+// fetch creator relay list via HTTP bridge
 async function fetchViaProxy(pubkey: string, kind: number) {
   if (!hasHttpProxy()) return []
+  const filters = [{ authors: [pubkey], kinds: [kind], limit: 1 }]
+  const url = `${PROXY_BASE_HTTP}/req?filters=${encodeURIComponent(
+    JSON.stringify(filters)
+  )}`
   try {
-    const res = await fetch(
-      `${PROXY_BASE_HTTP}/req?pubkey=${pubkey}&kind=${kind}`
-    )
-    if (!res.ok) return []
+    const res = await fetch(url)
     const j = await res.json().catch(() => null)
     return Array.isArray(j?.events) ? j.events : []
   } catch {
@@ -141,7 +143,7 @@ export function useNutzapProfile() {
     localNdk.pool.relays.forEach(r => {
       if (r.status === NDKRelayStatus.CONNECTED) connected.add(r.url)
     })
-    return relayCatalog.value.writable.filter(u => connected.has(maybeProxy(u))).length
+    return relayCatalog.value.writable.filter(u => connected.has(maybeProxyWs(u))).length
   })
 
   const publishDisabled = computed(
@@ -150,7 +152,7 @@ export function useNutzapProfile() {
       !p2pkPub.value ||
       mintList.value.length === 0 ||
       tiers.value.length === 0 ||
-      writableConnectedCount.value === 0
+      (!proxyMode.value && writableConnectedCount.value === 0)
   )
 
   const bannerClass = computed(() =>
@@ -258,10 +260,10 @@ export function useNutzapProfile() {
 
   async function nip11Probe(urlWss: string, ms = 2000) {
     const https = urlWss.replace(/^wss:/, 'https:')
-    let endpoint = https
-    if (proxyMode.value && urlWss === PRIMARY_RELAY && hasHttpProxy()) {
-      endpoint = `${PROXY_BASE_HTTP}/`
-    }
+    const endpoint =
+      proxyMode.value && urlWss === PRIMARY_RELAY && hasHttpProxy()
+        ? proxifyHttp() + '/'
+        : https
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), ms)
     try {
@@ -341,11 +343,13 @@ export function useNutzapProfile() {
       : u
   }
 
-  function proxifyHttp(_u: string) {
+  // HTTP bridge base URL
+  function proxifyHttp(): string {
     return PROXY_BASE_HTTP
   }
 
-  function maybeProxy(u: string) {
+  // only proxy WS for the primary relay
+  function maybeProxyWs(u: string) {
     return proxyMode.value && u === PRIMARY_RELAY ? proxifyWs(u) : u
   }
 
@@ -422,7 +426,7 @@ export function useNutzapProfile() {
       d => d.kind !== 'ws' || targets.value.includes(d.url)
     )
     targets.value.forEach(url => {
-      const r = localNdk?.pool.relays.get(maybeProxy(url))
+      const r = localNdk?.pool.relays.get(maybeProxyWs(url))
       pushDiag({
         url,
         kind: 'ws',
@@ -472,14 +476,15 @@ export function useNutzapProfile() {
       const fallback = uniq([...candidates.slice(0, 2), VETTED_RELAYS[0]])
       const goodOrFallback = good.length ? good : fallback
       targets.value = goodOrFallback
-      const finalTargets = targets.value.map(maybeProxy)
+      const finalTargets = targets.value.map(maybeProxyWs)
       await getLocalNdk(finalTargets, false)
       refreshWsDiagnostics()
       setTimeout(async () => {
         if (
           connectedCount.value === 0 &&
           !proxyMode.value &&
-          hasHttpProxy()
+          hasHttpProxy() &&
+          !switchingProxy
         ) {
           switchingProxy = true
           proxyMode.value = true
@@ -487,7 +492,7 @@ export function useNutzapProfile() {
           await reconnectAll()
           switchingProxy = false
         }
-      }, 1700)
+      }, 1800)
     } catch (e) {
       console.warn('[nutzap-profile] reconnect error', e)
     }
@@ -609,20 +614,17 @@ export function useNutzapProfile() {
         })
       })
     } else if (proxyMode.value && hasHttpProxy()) {
+      const url = `${PROXY_BASE_HTTP}/req?filters=${encodeURIComponent(
+        JSON.stringify([{ ids: [id], limit: 1 }])
+      )}`
       try {
-        const res = await fetch(
-          `${PROXY_BASE_HTTP}/req?filters=${encodeURIComponent(
-            JSON.stringify([{ ids: [id] }])
-          )}`
-        )
-        if (res.ok) {
-          const j = await res.json().catch(() => null)
-          if (Array.isArray(j?.events) && j.events.length === 1) return ['proxy']
-        }
+        const r = await fetch(url)
+        const j = await r.json().catch(() => null)
+        const evs = Array.isArray(j?.events) ? j.events : []
+        return evs.length === 1 ? ['proxy'] : []
       } catch {
-        /* ignore */
+        return []
       }
-      return []
     } else {
       return []
     }
@@ -707,12 +709,12 @@ export function useNutzapProfile() {
       }
 
       currentStep.value = 'CONNECT'
-      const finalTargets = targets.value.map(maybeProxy)
+      const finalTargets = targets.value.map(maybeProxyWs)
       const ndk = await getLocalNdk(finalTargets, true)
       refreshWsDiagnostics()
       await waitForWritableRelay(
         ndk,
-        writableHealthy.map(maybeProxy)
+        writableHealthy.map(maybeProxyWs)
       ).catch(() => {
         notifyError('No writable relay connected — cannot publish.')
         throw new Error('CONNECT_FAIL')
@@ -737,7 +739,7 @@ export function useNutzapProfile() {
         await publishToWritableWithAck(
           ndk,
           evTiers,
-          writableHealthy.map(maybeProxy)
+        writableHealthy.map(maybeProxyWs)
         )
       } catch {
         notifyError('Publish failed: no relay accepted the tiers event.')
@@ -792,14 +794,14 @@ export function useNutzapProfile() {
       if (readBackVerify.value) {
         verified = await verifyReadback(ndk, evProf.id)
         if (!verified.length) {
-          notifyError('Publish succeeded but event not found on any relay')
+          notifyError('Publish verification failed')
           throw new Error('VERIFY_FAIL')
         }
       }
 
       lastPublishInfo.value =
         `30019:${evTiers.id} • 10019:${evProf.id}` +
-        (verified.length ? ` [${verified.join(', ')}]` : '')
+        (verified.length ? ` • ${verified.join(',')}` : '')
       currentStep.value = 'DONE'
     } catch (e) {
       console.warn('[nutzap-profile] publish error', e)
@@ -826,9 +828,13 @@ export function useNutzapProfile() {
   diagTimer = setInterval(() => refreshWsDiagnostics(), 2000)
   watch(proxyMode, async (val, old) => {
     if (val && !old) {
-      pushDiag({ url: 'proxy', kind: 'proxy', status: 'on' })
-      if (!hasHttpProxy())
-        pushDiag({ url: 'proxy-http', kind: 'proxy', status: 'misconfigured' })
+      pushDiag({
+        url: 'proxy',
+        kind: 'proxy',
+        status: hasHttpProxy() ? 'on' : 'misconfigured'
+      })
+    } else if (!val && old) {
+      diagnostics.value = diagnostics.value.filter(d => d.kind !== 'proxy')
     }
     if (val !== old && !switchingProxy) await reconnectAll()
   })
