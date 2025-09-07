@@ -1,10 +1,16 @@
 import { SimplePool, type Event } from 'nostr-tools';
 import { PRIMARY_RELAY, FALLBACK_RELAYS } from '@/config/relays';
 
+// environment-driven proxy config
 const PROXY_BASE_HTTP = import.meta.env.VITE_PROXY_BASE_HTTP || '';
+const PROXY_BASE_WSS = import.meta.env.VITE_PROXY_BASE_WSS || '';
 
 function hasHttpProxy() {
   return !!PROXY_BASE_HTTP;
+}
+
+function hasWsProxy() {
+  return !!PROXY_BASE_WSS;
 }
 
 // NIP-01: relays send ["OK", <event-id>, true/false, <msg>] on acceptance/rejection.
@@ -27,6 +33,7 @@ export async function publishWithFallback(
     proxyMode = false,
   } = {},
 ): Promise<{ ok: boolean; relay?: string }> {
+  // HTTP bridge path when WebSockets are blocked
   if (proxyMode && hasHttpProxy()) {
     try {
       onStatus({ phase: 'connecting', relay: 'proxy' });
@@ -37,6 +44,15 @@ export async function publishWithFallback(
       });
       if (!r.ok) {
         onStatus({ phase: 'failed', relay: 'proxy', reason: r.statusText });
+        return { ok: false };
+      }
+      const j = await r.json().catch(() => ({} as any));
+      if (!j?.ok) {
+        onStatus({
+          phase: 'failed',
+          relay: 'proxy',
+          reason: j?.error || 'bad-ack',
+        });
         return { ok: false };
       }
       onStatus({ phase: 'publishing', relay: 'proxy' });
