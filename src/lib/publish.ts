@@ -1,6 +1,12 @@
 import { SimplePool, type Event } from 'nostr-tools';
 import { PRIMARY_RELAY, FALLBACK_RELAYS } from '@/config/relays';
 
+const PROXY_BASE_HTTP = import.meta.env.VITE_PROXY_BASE_HTTP || '';
+
+function hasHttpProxy() {
+  return !!PROXY_BASE_HTTP;
+}
+
 // NIP-01: relays send ["OK", <event-id>, true/false, <msg>] on acceptance/rejection.
 // We resolve success on first OK.
 
@@ -19,19 +25,18 @@ export async function publishWithFallback(
     ackTimeoutMs = 8000,
     onStatus = (_: PublishStatus) => {},
     proxyMode = false,
-    proxyBaseHttp = '',
   } = {},
 ): Promise<{ ok: boolean; relay?: string }> {
-  if (proxyMode && proxyBaseHttp) {
+  if (proxyMode && hasHttpProxy()) {
     try {
       onStatus({ phase: 'connecting', relay: 'proxy' });
-      const res = await fetch(`${proxyBaseHttp}/event`, {
+      const r = await fetch(`${PROXY_BASE_HTTP}/event`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(event),
       });
-      if (!res.ok) {
-        onStatus({ phase: 'failed', relay: 'proxy', reason: `HTTP ${res.status}` });
+      if (!r.ok) {
+        onStatus({ phase: 'failed', relay: 'proxy', reason: r.statusText });
         return { ok: false };
       }
       onStatus({ phase: 'publishing', relay: 'proxy' });
