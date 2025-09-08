@@ -106,7 +106,6 @@ export function useNutzapProfile() {
     | 'PUB_TIERS'
     | 'SIGN_PROFILE'
     | 'PUB_PROFILE'
-    | 'PUB_SECURE'
     | 'DONE'
     | 'FAIL'
   >('IDLE')
@@ -698,104 +697,203 @@ export function useNutzapProfile() {
   }
 
   async function publishAll() {
-    publishing.value = true
-    currentStep.value = 'PREPARE'
-
-    // 1. --- All initial validation checks ---
-    if (!p2pkPub.value) return notifyError('P2PK public key is required')
-    if (mintList.value.length === 0)
-      return notifyError('At least one trusted mint is required')
-    if (tiers.value.length === 0) return notifyError('Add at least one tier')
+    if (!p2pkPub.value) {
+      notifyError('P2PK public key is required')
+      return
+    }
+    if (mintList.value.length === 0) {
+      notifyError('At least one trusted mint is required')
+      return
+    }
+    if (tiers.value.length === 0) {
+      notifyError('Add at least one tier')
+      return
+    }
 
     await nostr.initSignerIfNotSet?.()
     if (!nostr.signer || !nostr.pubkey) {
-      publishing.value = false
-      return notifyError(
-        'No Nostr signer available. Unlock/connect your NIP-07 extension.'
-      )
+      notifyError('No Nostr signer available. Unlock/connect your NIP-07 extension.')
+      return
     }
 
+    publishing.value = true
+    currentStep.value = 'PREPARE'
     try {
-      // 2. --- Build the raw, unsigned event objects ---
-      currentStep.value = 'SIGN_PROFILE' // Renaming step to cover all signing
-      notify('Signing profile and tier events...')
+      const signer: any = nostr.signer
+      const signerRelays = await signer?.getRelays?.()
+      const defaults =
+        Array.isArray(nostr.relays) && nostr.relays.length
+          ? (nostr.relays as string[])
+          : VETTED_RELAYS
 
-      const all = relayCatalog.value.all
-      const writableHealthy = relayCatalog.value.writable
+      const { all, writable, targets: picked } = buildRelayTargets(
+        signerRelays as any,
+        [...defaults, ...creatorRelays.value]
+      )
 
-      const unsignedTiersEvent = buildKind30019Tiers(nostr.pubkey, tiers.value)
-      const unsignedProfileEvent = buildKind10019NutzapProfile(nostr.pubkey, {
-        p2pk: p2pkPub.value,
-        mints: mintList.value,
-        relays: all.map(r => r.url),
-        tierAddr: `30019:${nostr.pubkey}:tiers`,
-        v: '1',
-        displayName: displayName.value || undefined,
-        picture: pictureUrl.value || undefined
+      diagnostics.value = []
+      echoOk.value = await echoWsOk()
+      pushDiag({
+        url: 'echo',
+        kind: 'echo',
+        status: echoOk.value ? 'ok' : 'blocked'
       })
+      const good: string[] = []
+      for (const url of picked) {
+        const r = await nip11Probe(url)
+        const status = r.ok
+          ? 'ok'
+          : r.reason === 'timeout'
+            ? 'timeout'
+            : r.reason === 'http_error'
+              ? 'http_error'
+              : 'unsupported'
+        pushDiag({
+          url,
+          kind: 'nip11',
+          status,
+          note: r.ok ? undefined : r.reason
+        })
+        if (r.ok) good.push(url)
+      }
 
-      const eventsToPublish = [unsignedTiersEvent, unsignedProfileEvent]
+      const signerWrites = signerRelays
+        ? Object.entries(signerRelays)
+            .filter(([, p]: any) => p?.write)
+            .map(([u]) => sanitizeUrl(u))
+        : []
+      const fallback = uniq([...signerWrites.slice(0, 2), VETTED_RELAYS[0]])
+      const goodOrFallback = good.length ? good : fallback
+      targets.value = goodOrFallback
+      const writableHealthy = writable.filter(u => goodOrFallback.includes(u))
+      relayCatalog.value = { all, writable: writableHealthy }
 
-      // 3. --- Securely publish to PRIMARY relay first ---
-      currentStep.value = 'PUB_SECURE' // A new, more descriptive step
-      notify('Securing profile on the primary relay...')
+      if (!writableHealthy.length) {
+        notifyError('No healthy relays. Try Use Vetted or Proxy mode.')
+        publishing.value = false
+        return
+      }
 
-      for (const unsignedEvent of eventsToPublish) {
-        // Create a temporary NDKEvent for signing and publishing
-        const tempEvent = new NDKEvent(undefined, unsignedEvent)
-        await tempEvent.sign(nostr.signer)
-        const result = await publishEventToPrimaryRelay(tempEvent)
+      currentStep.value = 'CONNECT'
+      const finalTargets = targets.value.map(maybeProxyWs)
+      const ndk = await getLocalNdk(finalTargets, true)
+      refreshWsDiagnostics()
+      if (!proxyMode.value) {
+        await waitForWritableRelay(
+          ndk,
+          writableHealthy.map(maybeProxyWs)
+        ).catch(() => {
+          notifyError('No writable relay connected — cannot publish.')
+          throw new Error('CONNECT_FAIL')
+        })
+      }
 
+      currentStep.value = 'SIGN_TIERS'
+      const evTiers = new NDKEvent(
+        ndk,
+        buildKind30019Tiers(nostr.pubkey, tiers.value)
+      )
+      try {
+        await evTiers.sign(ndk.signer!)
+      } catch {
+        notifyError(
+          'Signing failed. Unlock/approve your NIP-07 extension and try again.'
+        )
+        throw new Error('SIGN_FAIL')
+      }
+
+      currentStep.value = 'SIGN_PROFILE'
+      const evProf = new NDKEvent(
+        ndk,
+        buildKind10019NutzapProfile(nostr.pubkey, {
+          p2pk: p2pkPub.value,
+          mints: mintList.value,
+          relays: all.map(r => r.url),
+          tierAddr: `30019:${nostr.pubkey}:tiers`,
+          v: '1',
+          displayName: displayName.value || undefined,
+          picture: pictureUrl.value || undefined
+        })
+      )
+      try {
+        await evProf.sign(ndk.signer!)
+      } catch {
+        notifyError(
+          'Signing failed. Unlock/approve your NIP-07 extension and try again.'
+        )
+        throw new Error('SIGN_FAIL')
+      }
+
+      const eventsToPublish = [evTiers, evProf]
+      for (const event of eventsToPublish) {
+        const result = await publishEventToPrimaryRelay(event)
         if (!result.ok) {
-          throw new Error(
-            `Failed to save to secure relay: ${result.error || 'Unknown error'}`
-          )
+          notifyError(`Failed to save profile to secure relay: ${result.error}`)
+          throw new Error('PUB_FAIL')
         }
       }
-      notifySuccess('Profile secured successfully.')
 
-      // 4. --- Broadcast to USER'S relays for discovery ---
-      currentStep.value = 'PUB_TIERS' // Re-using existing steps for broadcast
-      notify('Broadcasting tiers to your relays...')
-
-      const ndk =
-        localNdk ?? (await getLocalNdk(writableHealthy.map(maybeProxyWs), true))
-      const evTiers = new NDKEvent(ndk, unsignedTiersEvent)
-      await evTiers.sign(nostr.signer)
-
-      // Use the existing global publishing logic
-      if (proxyMode.value && hasHttpProxy()) {
-        await publishWithFallback(evTiers.toNostrEvent() as Event, {
-          proxyMode: true
-        })
-      } else {
-        await publishToWritableWithAck(
-          ndk,
-          evTiers,
-          writableHealthy.map(maybeProxyWs)
-        )
+      currentStep.value = 'PUB_TIERS'
+      try {
+        if (proxyMode.value && hasHttpProxy()) {
+          const signedTier = evTiers.toNostrEvent() as Event
+          const res = await publishWithFallback(signedTier, { proxyMode: true })
+          if (!res.ok) throw new Error('PUB_FAIL')
+        } else {
+          await publishToWritableWithAck(
+            ndk,
+            evTiers,
+            writableHealthy.map(maybeProxyWs)
+          )
+        }
+      } catch {
+        notifyError('Publish failed: no relay accepted the tiers event.')
+        throw new Error('PUB_FAIL')
       }
 
       currentStep.value = 'PUB_PROFILE'
-      notify('Broadcasting profile to your relays...')
-      const evProf = new NDKEvent(ndk, unsignedProfileEvent)
-      await evProf.sign(nostr.signer)
+      const meta = await fetchRelayInfo(FUNDSTR_PRIMARY_RELAY)
+      if (!meta.ok) console.warn('[nutzap-profile] nip11', meta.reason)
 
-      await publishWithFallback(evProf.toNostrEvent() as Event, {
+      const signedEvent = evProf.toNostrEvent() as Event
+      const res = await publishWithFallback(signedEvent, {
+        onStatus: s => {
+          console.log('[publish]', s)
+          if (s.phase === 'connecting') notify('Connecting to relay…')
+          else if (s.phase === 'publishing') notify('Publishing…')
+          else if (s.phase === 'ok')
+            notifySuccess(`Nutzap Profile published on ${s.relay}`)
+        },
         proxyMode: proxyMode.value
       })
+      if (!res.ok) {
+        notifyError(
+          'Failed to publish — no relay accepted the event (timeouts/errors)'
+        )
+        throw new Error('PUB_FAIL')
+      }
 
-      // 5. --- Final Success ---
+      let verified: string[] = []
+      if (readBackVerify.value) {
+        verified = await verifyReadback(ndk, evProf.id)
+        if (!verified.length) {
+          notifyError('Publish verification failed')
+          throw new Error('VERIFY_FAIL')
+        }
+      }
+
+      lastPublishInfo.value =
+        `30019:${evTiers.id} • 10019:${evProf.id}` +
+        (verified.length ? ` • ${verified.join(',')}` : '')
       currentStep.value = 'DONE'
-      notifySuccess('Profile published and broadcast successfully!')
-    } catch (err) {
+    } catch (e) {
+      console.warn('[nutzap-profile] publish error', e)
       currentStep.value = 'FAIL'
-      console.error('[publishAll] A critical error occurred:', err)
-      notifyError((err as Error).message)
     } finally {
       publishing.value = false
     }
   }
+
   function copyDebug() {
     const payload = {
       echoOk: echoOk.value,
