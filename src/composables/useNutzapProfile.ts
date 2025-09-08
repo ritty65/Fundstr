@@ -3,12 +3,13 @@ import { v4 as uuidv4 } from 'uuid'
 import NDK, {
   NDKEvent,
   NDKNip07Signer,
+  NDKPrivateKeySigner,
   NDKRelayStatus
 } from '@nostr-dev-kit/ndk'
 import { Event } from 'nostr-tools'
 import { publishWithFallback } from '@/lib/publish'
 import { fetchRelayInfo } from '@/lib/relayInfo'
-import { PRIMARY_RELAY } from '@/config/relays'
+import { PRIMARY_RELAY, FUNDSTR_PRIMARY_RELAY } from '@/config/relays'
 import { useNostrStore } from 'src/stores/nostr'
 import { notify, notifySuccess, notifyError } from 'src/js/notify'
 
@@ -630,6 +631,49 @@ export function useNutzapProfile() {
     }
   }
 
+  /**
+   * Creates a temporary, single-purpose NDK instance to publish a single event
+   * to the primary secure relay, handling NIP-42 authentication.
+   * @param {NDKEvent} event - The signed event to publish.
+   * @returns {Promise<{ok: boolean, error?: string}>}
+   */
+  const publishEventToPrimaryRelay = async (
+    event: NDKEvent
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const nostrStore = useNostrStore()
+    if (nostrStore.signerType !== 'local' || !nostrStore.privkey) {
+      return {
+        ok: false,
+        error: 'A local private key is required to publish to the secure relay.'
+      }
+    }
+
+    const tempNdk = new NDK({
+      explicitRelayUrls: [FUNDSTR_PRIMARY_RELAY],
+      signer: new NDKPrivateKeySigner(nostrStore.privkey)
+    })
+
+    tempNdk.on('auth', (relay, challenge) => {
+      console.log(`Nutzap-Publisher: Responding to AUTH challenge for ${relay.url}`)
+      tempNdk.signer?.auth(relay, challenge)
+    })
+
+    try {
+      await tempNdk.connect(5000)
+      const relay = tempNdk.getRelay(FUNDSTR_PRIMARY_RELAY)
+      await relay.publish(event)
+      console.log(
+        `Nutzap-Publisher: Event ${event.id} published to primary relay. Success.`
+      )
+      return { ok: true }
+    } catch (e) {
+      console.error('Nutzap-Publisher: Failed to publish to primary relay.', e)
+      return { ok: false, error: (e as Error).message }
+    } finally {
+      tempNdk.disconnect()
+    }
+  }
+
   async function publishAll() {
     if (!p2pkPub.value) {
       notifyError('P2PK public key is required')
@@ -736,24 +780,6 @@ export function useNutzapProfile() {
         throw new Error('SIGN_FAIL')
       }
 
-      currentStep.value = 'PUB_TIERS'
-      try {
-        if (proxyMode.value && hasHttpProxy()) {
-          const signedTier = evTiers.toNostrEvent() as Event
-          const res = await publishWithFallback(signedTier, { proxyMode: true })
-          if (!res.ok) throw new Error('PUB_FAIL')
-        } else {
-          await publishToWritableWithAck(
-            ndk,
-            evTiers,
-            writableHealthy.map(maybeProxyWs)
-          )
-        }
-      } catch {
-        notifyError('Publish failed: no relay accepted the tiers event.')
-        throw new Error('PUB_FAIL')
-      }
-
       currentStep.value = 'SIGN_PROFILE'
       const evProf = new NDKEvent(
         ndk,
@@ -776,8 +802,35 @@ export function useNutzapProfile() {
         throw new Error('SIGN_FAIL')
       }
 
+      const eventsToPublish = [evTiers, evProf]
+      for (const event of eventsToPublish) {
+        const result = await publishEventToPrimaryRelay(event)
+        if (!result.ok) {
+          notifyError(`Failed to save profile to secure relay: ${result.error}`)
+          throw new Error('PUB_FAIL')
+        }
+      }
+
+      currentStep.value = 'PUB_TIERS'
+      try {
+        if (proxyMode.value && hasHttpProxy()) {
+          const signedTier = evTiers.toNostrEvent() as Event
+          const res = await publishWithFallback(signedTier, { proxyMode: true })
+          if (!res.ok) throw new Error('PUB_FAIL')
+        } else {
+          await publishToWritableWithAck(
+            ndk,
+            evTiers,
+            writableHealthy.map(maybeProxyWs)
+          )
+        }
+      } catch {
+        notifyError('Publish failed: no relay accepted the tiers event.')
+        throw new Error('PUB_FAIL')
+      }
+
       currentStep.value = 'PUB_PROFILE'
-      const meta = await fetchRelayInfo(PRIMARY_RELAY)
+      const meta = await fetchRelayInfo(FUNDSTR_PRIMARY_RELAY)
       if (!meta.ok) console.warn('[nutzap-profile] nip11', meta.reason)
 
       const signedEvent = evProf.toNostrEvent() as Event
