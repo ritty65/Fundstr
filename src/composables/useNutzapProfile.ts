@@ -647,6 +647,13 @@ export function useNutzapProfile() {
       }
     }
 
+    try {
+      await event.sign(nostrStore.signer)
+    } catch (signError) {
+      console.error('Nutzap-Publisher: Event signing failed.', signError)
+      return { ok: false, error: 'Event signing was rejected or failed.' }
+    }
+
     const tempNdk = new NDK({
       explicitRelayUrls: [FUNDSTR_PRIMARY_RELAY],
       signer: nostrStore.signer
