@@ -654,7 +654,7 @@ export function useNutzapProfile() {
     })
 
     tempNdk.on('auth', (relay, challenge) => {
-      console.log(`Nutzap-Publisher: Responding to AUTH challenge for ${relay.url}`)
+      console.log(`Nutzap-Publisher-WS: Responding to AUTH challenge for ${relay.url}`)
       tempNdk.signer?.auth(relay, challenge)
     })
 
@@ -662,13 +662,36 @@ export function useNutzapProfile() {
       await tempNdk.connect(5000)
       const relay = tempNdk.getRelay(FUNDSTR_PRIMARY_RELAY)
       await relay.publish(event)
-      console.log(
-        `Nutzap-Publisher: Event ${event.id} published to primary relay. Success.`
-      )
+      console.log(`Nutzap-Publisher-WS: Event ${event.id} published to primary relay. Success.`)
       return { ok: true }
-    } catch (e) {
-      console.error('Nutzap-Publisher: Failed to publish to primary relay.', e)
-      return { ok: false, error: (e as Error).message }
+    } catch (wsError) {
+      console.warn('Nutzap-Publisher-WS: WebSocket connection failed, falling back to HTTP bridge.', wsError)
+      try {
+        const httpEndpoint =
+          FUNDSTR_PRIMARY_RELAY.replace('wss://', 'https://') + '/event'
+        const rawEvent = event.toNostrEvent()
+        const response = await fetch(httpEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(rawEvent)
+        })
+        if (!response.ok) {
+          throw new Error(`HTTP publish failed with status: ${response.status}`)
+        }
+        const responseJson = await response.json()
+        if (responseJson.ok !== true) {
+          throw new Error(
+            `Relay bridge returned failure: ${responseJson.msg || 'Unknown error'}`
+          )
+        }
+        console.log(
+          `Nutzap-Publisher-HTTP: Event ${event.id} published to primary relay via fallback. Success.`
+        )
+        return { ok: true }
+      } catch (httpError) {
+        console.error('Nutzap-Publisher-HTTP: HTTP fallback also failed.', httpError)
+        return { ok: false, error: (httpError as Error).message }
+      }
     } finally {
       tempNdk.disconnect()
     }
