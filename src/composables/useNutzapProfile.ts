@@ -79,6 +79,10 @@ let localNdk: NDK | null = null
 let diagTimer: ReturnType<typeof setInterval> | null = null
 let switchingProxy = false
 
+function getLocalNdk(): NDK | null {
+  return localNdk
+}
+
 export function useNutzapProfile() {
   // -------- form state
   const displayName = ref('')
@@ -389,7 +393,7 @@ export function useNutzapProfile() {
     })
   }
 
-  async function getLocalNdk(targetUrls: string[], withSigner: boolean) {
+  async function initLocalNdk(targetUrls: string[], withSigner: boolean) {
     if (localNdk) {
       try {
         await localNdk.pool?.disconnect?.()
@@ -477,7 +481,7 @@ export function useNutzapProfile() {
       const goodOrFallback = good.length ? good : fallback
       targets.value = goodOrFallback
       const finalTargets = targets.value.map(maybeProxyWs)
-      await getLocalNdk(finalTargets, false)
+      await initLocalNdk(finalTargets, false)
       refreshWsDiagnostics()
       setTimeout(async () => {
         if (
@@ -579,18 +583,6 @@ export function useNutzapProfile() {
     }
   }
 
-  async function publishToWritableWithAck(
-    ndk: NDK,
-    ev: NDKEvent,
-    writableUrls: string[]
-  ) {
-    const chosen = new Set(writableUrls)
-    const pubs = [...ndk.pool.relays.values()]
-      .filter(r => chosen.has(r.url))
-      .map(r => r.publish(ev))
-    await Promise.any(pubs)
-  }
-
   async function verifyReadback(ndk: NDK, id: string, ms = 4000) {
     if (connectedCount.value > 0) {
       return new Promise<string[]>(resolve => {
@@ -630,177 +622,102 @@ export function useNutzapProfile() {
     }
   }
 
-  /**
-   * Creates a temporary, single-purpose NDK instance to publish a single event
-   * to the primary secure relay, handling NIP-42 authentication.
-   * @param {NDKEvent} event - The signed event to publish.
-   * @returns {Promise<{ok: boolean, error?: string}>}
-   */
-  const publishEventToPrimaryRelay = async (
-    event: NDKEvent
-  ): Promise<{ ok: boolean; error?: string }> => {
-    const nostrStore = useNostrStore()
-    if (!nostrStore.signer) {
-      return {
-        ok: false,
-        error: 'An active Nostr signer is required to publish.'
-      }
-    }
-
-    try {
-      await event.sign(nostrStore.signer)
-    } catch (signError) {
-      console.error('Nutzap-Publisher: Event signing failed.', signError)
-      return { ok: false, error: 'Event signing was rejected or failed.' }
-    }
-
-    const tempNdk = new NDK({
-      explicitRelayUrls: [FUNDSTR_PRIMARY_RELAY],
-      signer: nostrStore.signer
-    })
-
-    tempNdk.on('auth', (relay, challenge) => {
-      console.log(`Nutzap-Publisher-WS: Responding to AUTH challenge for ${relay.url}`)
-      tempNdk.signer?.auth(relay, challenge)
-    })
-
-    try {
-      await tempNdk.connect(5000)
-      const relay = tempNdk.getRelay(FUNDSTR_PRIMARY_RELAY)
-      await relay.publish(event)
-      console.log(`Nutzap-Publisher-WS: Event ${event.id} published to primary relay. Success.`)
-      return { ok: true }
-    } catch (wsError) {
-      console.warn('Nutzap-Publisher-WS: WebSocket connection failed, falling back to HTTP bridge.', wsError)
-      try {
-        const httpEndpoint =
-          FUNDSTR_PRIMARY_RELAY.replace('wss://', 'https://') + '/event'
-        const rawEvent = event.toNostrEvent()
-        const response = await fetch(httpEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(rawEvent)
-        })
-        if (!response.ok) {
-          throw new Error(`HTTP publish failed with status: ${response.status}`)
-        }
-        const responseJson = await response.json()
-        if (responseJson.ok !== true) {
-          throw new Error(
-            `Relay bridge returned failure: ${responseJson.msg || 'Unknown error'}`
-          )
-        }
-        console.log(
-          `Nutzap-Publisher-HTTP: Event ${event.id} published to primary relay via fallback. Success.`
-        )
-        return { ok: true }
-      } catch (httpError) {
-        console.error('Nutzap-Publisher-HTTP: HTTP fallback also failed.', httpError)
-        return { ok: false, error: (httpError as Error).message }
-      }
-    } finally {
-      tempNdk.disconnect()
-    }
-  }
-
   async function publishAll() {
-    publishing.value = true
-    currentStep.value = 'PREPARE'
+    publishing.value = true;
+    currentStep.value = 'PREPARE';
 
     // 1. --- All initial validation checks ---
-    if (!p2pkPub.value) return notifyError('P2PK public key is required')
-    if (mintList.value.length === 0)
-      return notifyError('At least one trusted mint is required')
-    if (tiers.value.length === 0) return notifyError('Add at least one tier')
+    if (!p2pkPub.value) {
+      publishing.value = false;
+      return notifyError('P2PK public key is required');
+    }
+    if (mintList.value.length === 0) {
+      publishing.value = false;
+      return notifyError('At least one trusted mint is required');
+    }
+    if (tiers.value.length === 0) {
+      publishing.value = false;
+      return notifyError('Add at least one tier');
+    }
 
-    await nostr.initSignerIfNotSet?.()
+    await nostr.initSignerIfNotSet?.();
     if (!nostr.signer || !nostr.pubkey) {
-      publishing.value = false
-      return notifyError(
-        'No Nostr signer available. Unlock/connect your NIP-07 extension.'
-      )
+      publishing.value = false;
+      return notifyError('No Nostr signer available. Unlock/connect your NIP-07 extension.');
+    }
+
+    const ndk = getLocalNdk(); // Use the existing, fully-initialized global NDK instance.
+    if (!ndk) {
+      publishing.value = false;
+      return notifyError('Nostr connection is not available.');
     }
 
     try {
-      // 2. --- Build the raw, unsigned event objects ---
-      currentStep.value = 'SIGN_PROFILE' // Renaming step to cover all signing
-      notify('Signing profile and tier events...')
+      // 2. --- Build and Sign Events ---
+      currentStep.value = 'SIGN_PROFILE';
+      notify('Signing profile and tier events...');
 
-      const all = relayCatalog.value.all
-      const writableHealthy = relayCatalog.value.writable
+      const unsignedTiersEvent = buildKind30019Tiers(nostr.pubkey, tiers.value);
+      const evTiers = new NDKEvent(ndk, unsignedTiersEvent);
+      await evTiers.sign(nostr.signer);
 
-      const unsignedTiersEvent = buildKind30019Tiers(
-        nostr.pubkey,
-        tiers.value
-      )
       const unsignedProfileEvent = buildKind10019NutzapProfile(nostr.pubkey, {
         p2pk: p2pkPub.value,
         mints: mintList.value,
-        relays: all.map(r => r.url),
+        relays: relayCatalog.value.all.map(r => r.url),
         tierAddr: `30019:${nostr.pubkey}:tiers`,
         v: '1',
         displayName: displayName.value || undefined,
-        picture: pictureUrl.value || undefined
-      })
+        picture: pictureUrl.value || undefined,
+      });
+      const evProf = new NDKEvent(ndk, unsignedProfileEvent);
+      await evProf.sign(nostr.signer);
 
-      const eventsToPublish = [unsignedTiersEvent, unsignedProfileEvent]
+      const eventsToPublish = [evTiers, evProf];
 
       // 3. --- Securely publish to PRIMARY relay first ---
-      currentStep.value = 'PUB_SECURE' // A new, more descriptive step
-      notify('Securing profile on the primary relay...')
+      currentStep.value = 'PUB_SECURE';
+      notify(`Securing profile on ${FUNDSTR_PRIMARY_RELAY}...`);
 
-      for (const unsignedEvent of eventsToPublish) {
-        // Create a temporary NDKEvent for signing and publishing
-        const tempEvent = new NDKEvent(undefined, unsignedEvent)
-        const result = await publishEventToPrimaryRelay(tempEvent)
+      // Temporarily add our secure relay to the global NDK pool
+      const primaryRelay = ndk.addRelay(FUNDSTR_PRIMARY_RELAY, true);
+      await primaryRelay.connect();
 
-        if (!result.ok) {
-          throw new Error(
-            `Failed to save to secure relay: ${result.error || 'Unknown error'}`
-          )
-        }
+      // NDK's publish method is smart. It will use the relay's `publish` method.
+      // We create a Set of relays we published to successfully.
+      const publishedTo = await ndk.publish(eventsToPublish[0], new Set([primaryRelay]));
+      if (!publishedTo.has(primaryRelay)) {
+        throw new Error('Failed to publish tiers to the secure relay.');
       }
-      notifySuccess('Profile secured successfully.')
+      const publishedTo2 = await ndk.publish(eventsToPublish[1], new Set([primaryRelay]));
+      if (!publishedTo2.has(primaryRelay)) {
+        throw new Error('Failed to publish profile to the secure relay.');
+      }
+
+      // Clean up by removing the temporary relay from the global pool
+      ndk.removeRelay(FUNDSTR_PRIMARY_RELAY);
+      notifySuccess('Profile secured successfully.');
 
       // 4. --- Broadcast to USER'S relays for discovery ---
-      currentStep.value = 'PUB_TIERS' // Re-using existing steps for broadcast
-      notify('Broadcasting tiers to your relays...')
+      currentStep.value = 'PUB_TIERS';
+      notify("Broadcasting to your relays...");
 
-      const ndk = localNdk as NDK
-      const evTiers = new NDKEvent(ndk, unsignedTiersEvent)
-      await evTiers.sign(nostr.signer)
-
-      // Use the existing global publishing logic
-      if (proxyMode.value && hasHttpProxy()) {
-        await publishWithFallback(evTiers.toNostrEvent() as Event, {
-          proxyMode: true
-        })
-      } else {
-        await publishToWritableWithAck(
-          ndk,
-          evTiers,
-          writableHealthy.map(maybeProxyWs)
-        )
-      }
-
-      currentStep.value = 'PUB_PROFILE'
-      notify('Broadcasting profile to your relays...')
-      const evProf = new NDKEvent(ndk, unsignedProfileEvent)
-      await evProf.sign(nostr.signer)
-
-      await publishWithFallback(evProf.toNostrEvent() as Event, {
-        proxyMode: proxyMode.value
-      })
+      // Use the existing, robust publishWithFallback on the already-signed events
+      await publishWithFallback(evTiers.toNostrEvent() as Event, { proxyMode: proxyMode.value });
+      await publishWithFallback(evProf.toNostrEvent() as Event, { proxyMode: proxyMode.value });
 
       // 5. --- Final Success ---
-      currentStep.value = 'DONE'
-      notifySuccess('Profile published and broadcast successfully!')
+      currentStep.value = 'DONE';
+      notifySuccess('Profile published and broadcast successfully!');
+
     } catch (err) {
-      currentStep.value = 'FAIL'
-      console.error('[publishAll] A critical error occurred:', err)
-      notifyError((err as Error).message)
+      currentStep.value = 'FAIL';
+      console.error('[publishAll] A critical error occurred:', err);
+      notifyError((err as Error).message);
     } finally {
-      publishing.value = false
+      // Ensure the primary relay is always removed from the pool, even on error.
+      ndk.removeRelay(FUNDSTR_PRIMARY_RELAY);
+      publishing.value = false;
     }
   }
 
