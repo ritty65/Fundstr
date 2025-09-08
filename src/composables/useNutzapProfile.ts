@@ -3,7 +3,6 @@ import { v4 as uuidv4 } from 'uuid'
 import NDK, {
   NDKEvent,
   NDKNip07Signer,
-  NDKPrivateKeySigner,
   NDKRelayStatus
 } from '@nostr-dev-kit/ndk'
 import { Event } from 'nostr-tools'
@@ -641,16 +640,16 @@ export function useNutzapProfile() {
     event: NDKEvent
   ): Promise<{ ok: boolean; error?: string }> => {
     const nostrStore = useNostrStore()
-    if (nostrStore.signerType !== 'local' || !nostrStore.privkey) {
+    if (!nostrStore.signer) {
       return {
         ok: false,
-        error: 'A local private key is required to publish to the secure relay.'
+        error: 'An active Nostr signer is required to publish.'
       }
     }
 
     const tempNdk = new NDK({
       explicitRelayUrls: [FUNDSTR_PRIMARY_RELAY],
-      signer: new NDKPrivateKeySigner(nostrStore.privkey)
+      signer: nostrStore.signer
     })
 
     tempNdk.on('auth', (relay, challenge) => {
