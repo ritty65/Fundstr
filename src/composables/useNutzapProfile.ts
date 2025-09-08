@@ -2,7 +2,6 @@ import { ref, computed, onUnmounted, watch } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import NDK, {
   NDKEvent,
-  NDKNip07Signer,
   NDKRelayStatus
 } from '@nostr-dev-kit/ndk'
 import { Event } from 'nostr-tools'
@@ -11,6 +10,7 @@ import { fetchRelayInfo } from '@/lib/relayInfo'
 import { PRIMARY_RELAY, FUNDSTR_PRIMARY_RELAY } from '@/config/relays'
 import { useNostrStore } from 'src/stores/nostr'
 import { notify, notifySuccess, notifyError } from 'src/js/notify'
+import { getNdk } from '@/boot/ndk'
 
 const PROXY_BASE_HTTP = import.meta.env.VITE_PROXY_BASE_HTTP || ''
 const PROXY_BASE_WSS = import.meta.env.VITE_PROXY_BASE_WSS || ''
@@ -78,10 +78,6 @@ const VETTED_RELAYS = [
 let localNdk: NDK | null = null
 let diagTimer: ReturnType<typeof setInterval> | null = null
 let switchingProxy = false
-
-function getLocalNdk(): NDK | null {
-  return localNdk
-}
 
 export function useNutzapProfile() {
   // -------- form state
@@ -393,21 +389,6 @@ export function useNutzapProfile() {
     })
   }
 
-  async function initLocalNdk(targetUrls: string[], withSigner: boolean) {
-    if (localNdk) {
-      try {
-        await localNdk.pool?.disconnect?.()
-      } catch {
-        /* ignore */
-      }
-    }
-    localNdk = new NDK({ explicitRelayUrls: targetUrls })
-    if (withSigner) localNdk.signer = new NDKNip07Signer()
-    await localNdk.connect({ timeout: 6000 })
-    attachRelayListeners(localNdk)
-    return localNdk
-  }
-
   async function waitForWritableRelay(
     ndk: NDK,
     writableUrls: string[],
@@ -481,7 +462,16 @@ export function useNutzapProfile() {
       const goodOrFallback = good.length ? good : fallback
       targets.value = goodOrFallback
       const finalTargets = targets.value.map(maybeProxyWs)
-      await initLocalNdk(finalTargets, false)
+      if (localNdk) {
+        try {
+          await localNdk.pool?.disconnect?.()
+        } catch {
+          /* ignore */
+        }
+      }
+      localNdk = new NDK({ explicitRelayUrls: finalTargets })
+      await localNdk.connect({ timeout: 6000 })
+      attachRelayListeners(localNdk)
       refreshWsDiagnostics()
       setTimeout(async () => {
         if (
@@ -646,7 +636,7 @@ export function useNutzapProfile() {
       return notifyError('No Nostr signer available. Unlock/connect your NIP-07 extension.');
     }
 
-    const ndk = getLocalNdk(); // Use the existing, fully-initialized global NDK instance.
+    const ndk = await getNdk();
     if (!ndk) {
       publishing.value = false;
       return notifyError('Nostr connection is not available.');
