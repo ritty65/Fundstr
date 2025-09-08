@@ -1,3 +1,4 @@
+export const FUNDSTR_PRIMARY_RELAY = 'wss://relay.fundstr.me';
 export const PRIMARY_RELAY = 'wss://relay.fundstr.me';
 
 export const FALLBACK_RELAYS: string[] = [
