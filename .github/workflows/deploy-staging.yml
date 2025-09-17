@@ -1,66 +1,50 @@
-name: Deploy staging (develop -> Hostinger)
+name: Deploy staging (Develop2 → Hostinger)
 
 on:
   push:
-    branches: [develop]
-
-concurrency:
-  group: deploy-staging
-  cancel-in-progress: true
+    branches: [Develop2]
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      # Install pnpm to match package.json "packageManager"
-      - uses: pnpm/action-setup@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          version: 8.15.7
-          run_install: false
+          node-version: '20'     # no 'cache: pnpm' here
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: 'pnpm-lock.yaml'
-
-      - name: Show versions
+      - name: Enable pnpm via Corepack
         run: |
-          node -v
-          pnpm -v
-          node -p "require('./package.json').packageManager"
+          corepack enable
+          corepack prepare pnpm@10.16.1 --activate
+          pnpm --version
+
+      - name: Use staging env
+        run: cp .env.staging .env
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
-      - name: Build Quasar SPA (staging)
-        run: |
-          cp .env.staging .env
-          pnpm dlx @quasar/cli build -m spa
-          test -f dist/spa/index.html || { echo "Build missing dist/spa/index.html"; exit 1; }
-          ls -lah dist/spa | sed -n '1,80p'
+      - name: Build (Quasar PWA)
+        run: pnpm run build
 
       - name: Add SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Trust Hostinger host key
+      - name: Trust remote host
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Rsync to Hostinger (staging)
+      - name: Deploy (rsync)
         run: |
-          rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" \
-            dist/spa/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}
-
-      - name: Drop deploy marker & perms
-        run: |
-          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
-            echo deployed \$(date -u) > '${{ secrets.SSH_TARGET_STAGING }}deploy.txt' ;
-            find '${{ secrets.SSH_TARGET_STAGING }}' -type d -exec chmod 755 {} \; ;
-            find '${{ secrets.SSH_TARGET_STAGING }}' -type f -exec chmod 644 {} \; ;
-          "
+          rsync -avz --delete \
+            -e "ssh -p ${{ secrets.SSH_PORT }}" \
+            dist/pwa/ \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
