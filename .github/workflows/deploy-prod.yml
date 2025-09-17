@@ -1,8 +1,8 @@
-name: Deploy staging (develop → Hostinger)
+name: Deploy production (main → Hostinger)
 
 on:
   push:
-    branches: [develop]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -19,8 +19,8 @@ jobs:
 
       - run: corepack enable
 
-      - name: Use staging env
-        run: cp .env.staging .env
+      - name: Use production env
+        run: cp .env.production .env
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
