@@ -1,84 +1,52 @@
 <template>
-  <q-page class="bg-surface-1 q-pa-md">
-    <q-card class="q-pa-md q-mb-md">
-      <div class="text-subtitle1 q-mb-sm">Relay Status</div>
-      <q-banner :class="bannerClass" class="text-white">
-        Connected: {{ connectedCount }}/{{ totalRelays }} • {{ writableConnectedCount }} writable
-        <span v-if="bannerHint">• {{ bannerHint }}</span>
-        <template v-slot:action>
-          <q-toggle v-model="proxyMode" label="Proxy" dense class="q-mr-sm" />
-          <q-icon name="help_outline" size="16px" class="q-mr-sm">
-            <q-tooltip>
-              If WS fails, pause ad-blockers (uBlock/AdGuard) or try Proxy mode.
-              Brave Shields can block WS on some origins.
-            </q-tooltip>
-          </q-icon>
-          <q-btn flat label="Reconnect" @click="reconnectAll" />
-          <q-btn flat label="Use vetted" @click="useVetted" />
-          <q-btn flat label="Single-connection mode" @click="singleConnectionMode" />
-        </template>
-      </q-banner>
-      <q-expansion-item label="Diagnostics" dense class="q-mt-sm">
-        <q-table
-          :rows="diagnostics"
-          :columns="[
-            { name: 'url', label: 'Relay', field: 'url' },
-            { name: 'kind', label: 'Kind', field: 'kind' },
-            { name: 'status', label: 'Status', field: 'status' },
-            { name: 'note', label: 'Note', field: 'note' }
-          ]"
-          flat
-          dense
-          :row-key="row => row.url + row.kind"
-        />
-        <q-btn dense flat label="Copy Debug JSON" class="q-mt-sm" @click="copyDebug" />
-      </q-expansion-item>
-    </q-card>
+  <q-page class="bg-surface-1 q-pa-md q-gutter-md column">
+    <div class="row items-center q-gutter-sm">
+      <RelayStatusIndicator />
+      <div class="text-caption text-2">Isolated relay: relay.fundstr.me (WS → HTTP fallback)</div>
+    </div>
 
-    <q-card class="q-pa-md q-mb-md">
+    <q-card class="q-pa-md">
       <div class="text-subtitle1 q-mb-sm">Payment Profile (kind 10019)</div>
-      <q-input v-model="displayName" label="Display Name" dense filled />
-      <q-input v-model="pictureUrl" label="Picture URL" dense filled class="q-mt-sm" />
-      <q-input v-model="p2pkPub" label="P2PK Public Key" dense filled class="q-mt-sm" />
+      <q-input v-model="displayName" label="Display Name" dense filled class="q-mb-sm" />
+      <q-input v-model="pictureUrl" label="Picture URL" dense filled class="q-mb-sm" />
+      <q-input v-model="p2pkPub" label="P2PK Public Key" dense filled class="q-mb-sm" />
       <q-input
         v-model="mintsText"
         type="textarea"
         label="Trusted Mints (one per line)"
         dense
         filled
-        class="q-mt-sm"
+        autogrow
       />
     </q-card>
 
-    <q-card class="q-pa-md q-mb-md">
-      <div class="row items-center justify-between">
-        <div class="text-subtitle1">Tiers (kind 30019 • d="tiers")</div>
-        <q-btn dense color="primary" label="Add Tier" @click="showTierDialog = true" />
+    <q-card class="q-pa-md">
+      <div class="row items-center justify-between q-mb-sm">
+        <div class="text-subtitle1">Tiers ({{ tiers.length }}) — kind {{ tierKindLabel }}</div>
+        <q-btn dense color="primary" label="Add Tier" @click="openNewTier" />
       </div>
-
-      <q-list bordered separator class="q-mt-sm">
-        <q-item v-for="t in tiers" :key="t.id">
+      <div class="text-caption text-2 q-mb-sm">
+        Each tier is published as parameterized replaceable event ["d","tiers"] on relay.fundstr.me.
+      </div>
+      <q-list bordered separator v-if="tiers.length">
+        <q-item v-for="tier in tiers" :key="tier.id">
           <q-item-section>
             <div class="text-body1">
-              {{ t.title }} — {{ t.price_sats }} sats ({{ t.frequency }})
+              {{ tier.title }} — {{ tier.price }} sats ({{ frequencyLabel(tier.frequency) }})
             </div>
-            <div class="text-caption">{{ t.description }}</div>
-            <div class="text-caption" v-if="t.media?.length">
-              Media: {{ t.media.join(', ') }}
+            <div class="text-caption" v-if="tier.description">{{ tier.description }}</div>
+            <div class="text-caption" v-if="tier.media?.length">
+              Media:
+              {{ tier.media.map(m => m.url).join(', ') }}
             </div>
           </q-item-section>
           <q-item-section side>
-            <q-btn dense flat icon="edit" @click="editTier(t)" />
-            <q-btn
-              dense
-              flat
-              icon="delete"
-              color="negative"
-              @click="removeTier(t.id)"
-            />
+            <q-btn dense flat icon="edit" @click="editTier(tier)" />
+            <q-btn dense flat icon="delete" color="negative" @click="removeTier(tier.id)" />
           </q-item-section>
         </q-item>
       </q-list>
+      <div v-else class="text-caption text-2">No tiers yet. Add at least one tier before publishing.</div>
     </q-card>
 
     <q-card class="q-pa-md">
@@ -90,29 +58,33 @@
         @click="publishAll"
       />
       <div class="text-caption q-mt-sm" v-if="lastPublishInfo">
-        Published: {{ lastPublishInfo }}
+        Last publish: {{ lastPublishInfo }}
       </div>
     </q-card>
 
-    <!-- Tier dialog -->
-    <q-dialog v-model="showTierDialog">
+    <q-dialog v-model="showTierDialog" @hide="resetTierForm">
       <q-card class="q-pa-md" style="min-width: 420px">
-        <q-input v-model="tierForm.title" label="Title" dense filled />
+        <div class="text-subtitle1 q-mb-sm">{{ tierForm.id ? 'Edit Tier' : 'Add Tier' }}</div>
+        <q-input v-model="tierForm.title" label="Title" dense filled class="q-mb-sm" />
         <q-input
-          v-model.number="tierForm.price_sats"
+          v-model.number="tierForm.price"
           type="number"
           label="Price (sats)"
           dense
           filled
-          class="q-mt-sm"
+          class="q-mb-sm"
         />
         <q-select
           v-model="tierForm.frequency"
-          :options="['weekly', 'monthly']"
+          :options="tierFrequencyOptions"
+          option-label="label"
+          option-value="value"
+          emit-value
+          map-options
           label="Frequency"
           dense
           filled
-          class="q-mt-sm"
+          class="q-mb-sm"
         />
         <q-input
           v-model="tierForm.description"
@@ -120,14 +92,14 @@
           label="Description"
           dense
           filled
-          class="q-mt-sm"
+          autogrow
+          class="q-mb-sm"
         />
         <q-input
           v-model="tierForm.mediaCsv"
           label="Media URLs (comma-separated)"
           dense
           filled
-          class="q-mt-sm"
         />
         <div class="row justify-end q-gutter-sm q-mt-md">
           <q-btn flat label="Cancel" v-close-popup />
@@ -138,11 +110,13 @@
   </q-page>
 </template>
 
-<script lang="ts" setup>
-import { useNutzapProfile } from 'src/composables/useNutzapProfile'
+<script setup lang="ts">
+import RelayStatusIndicator from 'src/nutzap/RelayStatusIndicator.vue';
+import { computed } from 'vue';
+import { useNutzapProfile } from 'src/composables/useNutzapProfile';
+import { NUTZAP_TIERS_KIND } from 'src/nutzap/relayConfig';
 
 const {
-  // state
   displayName,
   pictureUrl,
   p2pkPub,
@@ -152,23 +126,35 @@ const {
   showTierDialog,
   publishing,
   lastPublishInfo,
-  diagnostics,
-  proxyMode,
-  // derived
-  connectedCount,
-  writableConnectedCount,
-  totalRelays,
   publishDisabled,
-  bannerClass,
-  bannerHint,
-  // actions
+  tierFrequencies,
   editTier,
   removeTier,
   saveTier,
+  resetTierForm,
   publishAll,
-  reconnectAll,
-  useVetted,
-  singleConnectionMode,
-  copyDebug,
-} = useNutzapProfile()
+} = useNutzapProfile();
+
+const tierKindLabel = computed(() => NUTZAP_TIERS_KIND);
+
+const tierFrequencyOptions = computed(() =>
+  tierFrequencies.map(value => ({
+    value,
+    label:
+      value === 'one_time'
+        ? 'One-time'
+        : value === 'monthly'
+          ? 'Monthly'
+          : 'Yearly',
+  }))
+);
+
+function openNewTier() {
+  resetTierForm();
+  showTierDialog.value = true;
+}
+
+function frequencyLabel(value: (typeof tierFrequencies)[number]) {
+  return value === 'one_time' ? 'one-time' : value;
+}
 </script>

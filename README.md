@@ -279,17 +279,26 @@ You can share direct links to creator profiles by appending an `npub` query para
 
 When opened, Fundstr automatically loads the profile for the provided `npub`. If the visitor hasn't logged in or set up a wallet yet, the app will prompt them to authenticate and choose a wallet before they can send support.
 
-### Verify Nutzap Profile
+### Nutzap Private Relay Verification
 
-After publishing your `kind:10019` Nutzap profile, you can confirm that relays
-have received it. Run the helper script with your npub:
+After publishing from `/nutzap-profile`, run through this checklist to confirm the
+isolated relay flow:
 
-```bash
-npx ts-node scripts/verifyNutzapProfile.ts <your-npub>
-```
-
-The script connects read-only to your configured relays and prints the fetched
-profile data so you can double-check the values.
+1. **Build & Typecheck** – `pnpm install` then `pnpm build` (or the equivalent npm commands).
+2. **Relay Smoke Tests** – ensure the dedicated relay is reachable:
+   ```bash
+   curl -sH 'Accept: application/nostr+json' https://relay.fundstr.me/ | jq .
+   curl -s 'https://relay.fundstr.me/req?filters=%5B%5D'
+   ```
+3. **Page Behaviour** – load `/nutzap-profile`, publish tiers and profile, and verify the
+   publish acknowledgements (`via=ws` or `via=http`). Block WebSockets to confirm the HTTP
+   fallback still succeeds.
+4. **CLI Verification** – confirm your `kind:10019` profile lives on the private relay only:
+   ```bash
+   npm run verify:nutzap <creator_hex_pubkey>
+   ```
+5. **Regression Guard** – spot-check other areas (feeds, chat, discovery) to ensure their relay
+   behaviour is unchanged.
 
 ## Contributing
 
