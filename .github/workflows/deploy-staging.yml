@@ -1,8 +1,8 @@
-name: Deploy staging (develop → Hostinger)
+name: Deploy staging (Develop2 → Hostinger)
 
 on:
   push:
-    branches: [develop]
+    branches: [Develop2]
   workflow_dispatch:
 
 jobs:
