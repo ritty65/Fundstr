@@ -15,7 +15,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
+<<<<<<< HEAD
           node-version: '20'     # no 'cache: pnpm' here
+=======
+          node-version: '20'
+>>>>>>> ci/fix-pnpm-prod
 
       - name: Enable pnpm via Corepack
         run: |
