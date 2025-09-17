@@ -1,12 +1,12 @@
 import { ref, computed, onMounted } from 'vue';
 import { v4 as uuidv4 } from 'uuid';
-import { useNostrStore } from 'src/stores/nostr';
 import { notifyError, notifySuccess } from 'src/js/notify';
 import { publishNutzapProfile, publishTierDefinitions } from 'src/nutzap/publish';
 import { fetchTiers, fetchNutzapProfileEvent } from 'src/nutzap/fetch';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
 import { NUTZAP_RELAY_WSS } from 'src/nutzap/relayConfig';
 import type { Tier, NutzapProfileContent } from 'src/nutzap/types';
+import { useActiveNutzapSigner } from './signer';
 
 const tierFrequencies: Tier['frequency'][] = ['one_time', 'monthly', 'yearly'];
 
@@ -83,7 +83,7 @@ export function useNutzapProfile() {
   const publishing = ref(false);
   const lastPublishInfo = ref('');
 
-  const nostr = useNostrStore();
+  const { pubkey, signer } = useActiveNutzapSigner();
 
   const mintList = computed(() =>
     mintsText.value
@@ -153,11 +153,12 @@ export function useNutzapProfile() {
   }
 
   async function loadExisting() {
-    if (!nostr.pubkey) return;
+    const currentPubkey = pubkey.value;
+    if (!currentPubkey) return;
     try {
       const [tiersResult, profileResult] = await Promise.all([
-        fetchTiers(nostr.pubkey),
-        fetchNutzapProfileEvent(nostr.pubkey),
+        fetchTiers(currentPubkey),
+        fetchNutzapProfileEvent(currentPubkey),
       ]);
 
       const tierEvents = normalizeEvents(tiersResult);
@@ -212,7 +213,10 @@ export function useNutzapProfile() {
   }
 
   async function publishAll() {
-    if (!nostr.pubkey) {
+    const currentPubkey = pubkey.value;
+    const activeSigner = signer.value;
+
+    if (!currentPubkey) {
       notifyError('Connect a Nostr signer to publish.');
       return;
     }
@@ -231,13 +235,12 @@ export function useNutzapProfile() {
 
     publishing.value = true;
     try {
-      await nostr.initSignerIfNotSet?.();
-      if (!nostr.signer) {
+      if (!activeSigner) {
         throw new Error('No Nostr signer available. Unlock or connect your signer.');
       }
 
       const ndk = getNutzapNdk();
-      ndk.signer = nostr.signer;
+      ndk.signer = activeSigner;
 
       const tierPayload = tiers.value.map(t => ({
         id: t.id,
@@ -254,7 +257,7 @@ export function useNutzapProfile() {
         p2pk: p2pkPub.value.trim(),
         mints: mintList.value,
         relays: [NUTZAP_RELAY_WSS],
-        tierAddr: `30000:${nostr.pubkey}:tiers`,
+        tierAddr: `30000:${currentPubkey}:tiers`,
       };
 
       const tags: string[][] = [
