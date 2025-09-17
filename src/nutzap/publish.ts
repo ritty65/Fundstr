@@ -45,7 +45,7 @@ export async function publishNutzapProfile(
       // fall through to HTTP
     }
   }
-  const ack = await httpPublish(ev.rawEvent());
+  const ack = await httpPublish(ev.toNostrEvent());
   return { ...ack, via: 'http' as const };
 }
 
@@ -69,6 +69,6 @@ export async function publishTierDefinitions(tiers: Tier[]) {
       // fallback
     }
   }
-  const ack = await httpPublish(ev.rawEvent());
+  const ack = await httpPublish(ev.toNostrEvent());
   return { ...ack, via: 'http' as const };
 }

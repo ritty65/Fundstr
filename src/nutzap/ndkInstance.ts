@@ -1,4 +1,4 @@
-import { NDK } from '@nostr-dev-kit/ndk';
+import NDK from '@nostr-dev-kit/ndk';
 import { NUTZAP_RELAY_WSS } from './relayConfig';
 
 let nutzapNdk: NDK | null = null;
