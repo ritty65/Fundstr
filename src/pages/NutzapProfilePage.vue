@@ -113,7 +113,7 @@
 <script setup lang="ts">
 import RelayStatusIndicator from 'src/nutzap/RelayStatusIndicator.vue';
 import { computed } from 'vue';
-import { useNutzapProfile } from 'src/composables/useNutzapProfile';
+import { useNutzapProfile } from 'src/nutzap/useNutzapProfile';
 import { NUTZAP_TIERS_KIND } from 'src/nutzap/relayConfig';
 
 const {
