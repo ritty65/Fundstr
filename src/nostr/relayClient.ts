@@ -1,5 +1,7 @@
 import { nip19 } from "nostr-tools";
 import { bytesToHex } from "@noble/hashes/utils";
+import type { NostrEvent } from "./eventUtils";
+export type { NostrEvent } from "./eventUtils";
 
 export type Filter = {
   ids?: string[];
@@ -9,16 +11,6 @@ export type Filter = {
   until?: number;
   limit?: number;
   [key: `#${string}`]: string[] | number[] | undefined;
-};
-
-export type NostrEvent = {
-  id: string;
-  pubkey: string;
-  created_at: number;
-  kind: number;
-  tags: string[][];
-  content: string;
-  sig: string;
 };
 
 export type QueryOptions = {
@@ -434,6 +426,18 @@ export async function publishNostr(
   accepted?: boolean;
   message?: string;
 }> {
+  const valid =
+    !!evt &&
+    typeof evt.id === "string" &&
+    typeof evt.pubkey === "string" &&
+    typeof evt.created_at === "number" &&
+    typeof evt.kind === "number" &&
+    Array.isArray(evt.tags) &&
+    typeof evt.content === "string" &&
+    typeof evt.sig === "string";
+  if (!valid) {
+    return { ok: true, accepted: false, message: "client: bad event (missing fields)" };
+  }
   const res = await fetch(`${FUNDSTR.http}/event`, {
     method: "POST",
     headers: {

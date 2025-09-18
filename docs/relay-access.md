@@ -9,7 +9,7 @@ point for issuing queries and publishing Nutzap events.
 1. The client always **prefers the isolated Fundstr relay**
    (`wss://relay.fundstr.me`).
 2. Every query begins with a WebSocket REQ/EOSE round-trip. Connections are
-   bounded by an 8–12&nbsp;s timeout.
+   bounded by a ~1.5&nbsp;s timeout to keep the UI responsive.
 3. If the socket cannot be opened or returns no events, the client
    automatically performs the same query over HTTP:
    `https://relay.fundstr.me/req?filters=…`.
@@ -27,6 +27,15 @@ Publishing Nutzap events uses a direct HTTP POST to
 like `{ ok, id, accepted, message }`. Callers must treat a publish as successful
 **only** when `accepted === true`. When `accepted` is false the provided relay
 `message` should be surfaced to the user verbatim.
+
+**Important:** before publishing, always convert signed `NDKEvent` instances to
+plain NIP-01 events (`{id,pubkey,created_at,kind,tags,content,sig}`) and let the
+client-side guard reject malformed payloads. Fundstr continues to prefer the
+first-party websocket with the short timeout above and transparently falls back
+to `GET /req` when it cannot return data. Deep links such as
+`/creator/:npubOrHex` immediately open the tiers dialog, showing a spinner until
+profile/tier data resolves and surfacing the relay error banner + retry control
+if the lookup fails.
 
 ## Key normalisation
 
