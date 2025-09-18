@@ -4,6 +4,8 @@ Fundstr ships with a **client-managed relay access layer** that speaks raw
 Nostr. The module lives at `src/nostr/relayClient.ts` and is the single entry
 point for issuing queries and publishing Nutzap events.
 
+Publishes must send a fully signed NIP-01 event to /event; the client validates the payload and reports success only when accepted:true. Reads prefer Fundstr WS (1.5 s deadline) then fallback to /req; deep links open the tiers dialog immediately and surface relay errors with Retry.
+
 ## Transport flow
 
 1. The client always **prefers the isolated Fundstr relay**

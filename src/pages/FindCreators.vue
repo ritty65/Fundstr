@@ -205,6 +205,7 @@ const loadingProfile = ref(false);
 const lastRelayHints = ref<string[]>([]);
 let tierTimeout: ReturnType<typeof setTimeout> | null = null;
 
+// Deep-link: show tiers dialog immediately (spinner until data resolves)
 watch(
   () => props.npubOrHex,
   (value) => {
@@ -438,6 +439,7 @@ function onMessage(ev: MessageEvent) {
     }
     showDonateDialog.value = true;
   } else if (ev.data && ev.data.type === "viewProfile" && ev.data.pubkey) {
+    // Creator iframe deep link: open dialog first, populate once data loads
     showTierDialog.value = true;
     void viewCreatorProfile(ev.data.pubkey, { openDialog: false });
   } else if (ev.data && ev.data.type === "startChat" && ev.data.pubkey) {

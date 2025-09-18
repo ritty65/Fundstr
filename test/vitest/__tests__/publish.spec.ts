@@ -9,6 +9,7 @@ import {
   type NostrEvent,
 } from "@/nostr/relayClient";
 import { publishNutzapProfile } from "@/nutzap/publish";
+import type { NutzapProfileContent } from "@/nutzap/types";
 
 vi.mock("@/nutzap/ndkInstance", () => ({
   getNutzapNdk: vi.fn(() => ({})),
@@ -37,7 +38,7 @@ vi.mock("@nostr-dev-kit/ndk", () => {
       this.sig = `sig-${mockIdCounter}`;
     }
 
-    toNostrEvent() {
+    async toNostrEvent() {
       return {
         id: this.id || `mock-id-${mockIdCounter}`,
         pubkey: this.pubkey,
@@ -105,12 +106,15 @@ describe("publish safeguards", () => {
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    await expect(
-      publishNutzapProfile(
-        { p2pkPubkey: "p".repeat(64), relays: [], trustedMints: [] },
-        [],
-      ),
-    ).rejects.toThrow("AUTH required");
+    const content: NutzapProfileContent = {
+      v: 1,
+      p2pk: "p".repeat(64),
+      mints: [],
+      relays: [],
+      tierAddr: "30000:mock:tiers",
+    };
+
+    await expect(publishNutzapProfile(content, [])).rejects.toThrow("AUTH required");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
@@ -123,7 +127,7 @@ describe("transport fallbacks", () => {
     ];
 
     const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify(responseEvents), {
+      new Response(JSON.stringify({ ok: true, events: responseEvents }), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
