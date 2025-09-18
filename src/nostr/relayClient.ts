@@ -383,7 +383,7 @@ export async function queryNostr(
   const options: RequiredQueryOptions = {
     preferFundstr: opts.preferFundstr ?? true,
     fanout: uniqueUrls(opts.fanout ?? []),
-    wsTimeoutMs: opts.wsTimeoutMs ?? 8000,
+    wsTimeoutMs: opts.wsTimeoutMs ?? 1500,
     httpBase: opts.httpBase ?? FUNDSTR.http,
   };
 

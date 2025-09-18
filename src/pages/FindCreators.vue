@@ -56,20 +56,36 @@
           <div class="text-center">No Nutzap profile published</div>
         </QCardSection>
         <QCardSection>
-          <div v-if="loadingTiers" class="row justify-center q-pa-md">
+          <div
+            v-if="loadingTiers"
+            class="column items-center q-gutter-sm q-pa-md text-center"
+          >
             <q-spinner-hourglass />
+            <div class="text-caption text-2">Loading tiers…</div>
           </div>
-          <div v-else-if="tierFetchError" class="text-center">
-            Failed to load tiers – check relay connectivity
-            <div class="q-mt-md">
-              <q-btn flat color="primary" @click="retryFetchTiers">Retry</q-btn>
-            </div>
+          <div
+            v-else-if="tierFetchError"
+            class="column items-center q-pa-md q-gutter-md"
+          >
+            <QBanner
+              class="full-width"
+              dense
+              rounded
+              color="negative"
+              text-color="white"
+              icon="warning"
+            >
+              We couldn't load subscription tiers. Please check your connection and
+              try again.
+            </QBanner>
+            <QBtn flat color="primary" label="Retry" @click="retryFetchTiers" />
           </div>
-          <div v-else-if="!tiers.length" class="text-center">
-            Creator has no subscription tiers
-            <div class="q-mt-md">
-              <q-btn flat color="primary" @click="retryFetchTiers">Retry</q-btn>
-            </div>
+          <div
+            v-else-if="!tiers.length"
+            class="column items-center q-pa-md q-gutter-sm text-center"
+          >
+            <div class="full-width">Creator has no subscription tiers</div>
+            <QBtn flat color="primary" label="Retry" @click="retryFetchTiers" />
           </div>
           <div v-else>
             <QCard
@@ -145,6 +161,7 @@ import {
   QCardSection,
   QCardActions,
   QBtn,
+  QBanner,
   QSeparator,
   useQuasar,
 } from "quasar";
@@ -192,7 +209,8 @@ watch(
   () => props.npubOrHex,
   (value) => {
     if (typeof value === "string" && value.trim()) {
-      void viewCreatorProfile(value, { openDialog: true });
+      showTierDialog.value = true;
+      void viewCreatorProfile(value, { openDialog: false });
     }
   },
   { immediate: true },
@@ -411,7 +429,7 @@ async function viewCreatorProfile(
   }
 }
 
-async function onMessage(ev: MessageEvent) {
+function onMessage(ev: MessageEvent) {
   if (ev.data && ev.data.type === "donate" && ev.data.pubkey) {
     try {
       selectedPubkey.value = toHex(ev.data.pubkey);
@@ -420,7 +438,8 @@ async function onMessage(ev: MessageEvent) {
     }
     showDonateDialog.value = true;
   } else if (ev.data && ev.data.type === "viewProfile" && ev.data.pubkey) {
-    await viewCreatorProfile(ev.data.pubkey, { openDialog: true });
+    showTierDialog.value = true;
+    void viewCreatorProfile(ev.data.pubkey, { openDialog: false });
   } else if (ev.data && ev.data.type === "startChat" && ev.data.pubkey) {
     const pubkey = nostr.resolvePubkey(ev.data.pubkey);
     router.push({ path: "/nostr-messenger", query: { pubkey } });
