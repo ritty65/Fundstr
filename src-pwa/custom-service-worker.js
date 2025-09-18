@@ -38,5 +38,13 @@ registerRoute(
   ({ url }) =>
     url.origin === "https://relay.fundstr.me" &&
     (url.pathname.startsWith("/req") || url.pathname.startsWith("/event")),
-  new NetworkOnly({ cacheName: "fundstr-relay" }),
+  new NetworkOnly({
+    fetchOptions: {
+      cache: "no-store",
+      headers: {
+        "cache-control": "no-cache",
+        pragma: "no-cache",
+      },
+    },
+  }),
 );

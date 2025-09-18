@@ -11,7 +11,7 @@ import { nip19 } from "nostr-tools";
 import { Event as NostrEvent } from "nostr-tools";
 import { notifyWarning } from "src/js/notify";
 import type { Tier } from "./types";
-import { queryNutzapTiers } from "@/nostr/relayClient";
+import { queryNutzapTiers, toHex, type NostrEvent as RelayEvent } from "@/nostr/relayClient";
 import { fallbackDiscoverRelays } from "@/nostr/discovery";
 import { parseTierDefinitionEvent } from "src/nostr/tiers";
 
@@ -164,18 +164,11 @@ export const useCreatorsStore = defineStore("creators", {
     async fetchTierDefinitions(creatorNpub: string, opts: { relayHints?: string[] } = {}) {
       this.tierFetchError = false;
 
-      let hex = creatorNpub;
-      if (creatorNpub.startsWith("npub")) {
-        try {
-          const decoded = nip19.decode(creatorNpub);
-          hex =
-            typeof decoded.data === "string" ? (decoded.data as string) : "";
-        } catch (e) {
-          this.tierFetchError = true;
-          return;
-        }
-      }
-      if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+      let hex: string;
+      try {
+        hex = toHex(creatorNpub);
+      } catch (e) {
+        console.error("Invalid creator pubkey", e);
         this.tierFetchError = true;
         return;
       }
@@ -193,13 +186,30 @@ export const useCreatorsStore = defineStore("creators", {
         }));
         void rawEvent; // parsed for potential use
       }
-      const relayHints = new Set(opts.relayHints ?? []);
-      let event: NostrEvent | null = null;
+      const relayHints = new Set(
+        (opts.relayHints ?? [])
+          .map((url) => url.trim())
+          .filter((url) => !!url),
+      );
+      let event: RelayEvent | null = null;
       try {
-        event = await queryNutzapTiers(hex, {
-          fanout: Array.from(relayHints),
-        });
-        if (!event) {
+        event = await queryNutzapTiers(hex);
+      } catch (e) {
+        console.error("fetchTierDefinitions Fundstr query failed", e);
+      }
+
+      if (!event && relayHints.size) {
+        try {
+          event = await queryNutzapTiers(hex, {
+            fanout: Array.from(relayHints),
+          });
+        } catch (e) {
+          console.error("fetchTierDefinitions hinted query failed", e);
+        }
+      }
+
+      if (!event) {
+        try {
           const discovered = await fallbackDiscoverRelays(hex);
           discovered.forEach((url) => relayHints.add(url));
           if (relayHints.size) {
@@ -207,9 +217,9 @@ export const useCreatorsStore = defineStore("creators", {
               fanout: Array.from(relayHints),
             });
           }
+        } catch (e) {
+          console.error("NIP-65 discovery failed", e);
         }
-      } catch (e) {
-        console.error("fetchTierDefinitions failed", e);
       }
 
       if (!event) {

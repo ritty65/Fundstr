@@ -468,7 +468,7 @@ async function decryptNip04(
 // --- Nutzap helpers (NIP-61) ----------------------------------------------
 
 import type { NostrEvent } from "@nostr-dev-kit/ndk";
-import { queryNutzapProfile } from "@/nostr/relayClient";
+import { queryNutzapProfile, toHex } from "@/nostr/relayClient";
 import { fallbackDiscoverRelays } from "@/nostr/discovery";
 import type { NostrEvent as RelayEvent } from "@/nostr/relayClient";
 
@@ -786,8 +786,12 @@ export async function anyRelayReachable(relays: string[]): Promise<boolean> {
 export async function fetchNutzapProfile(
   npubOrHex: string,
 ): Promise<NutzapProfile | null> {
-  const hex = npubOrHex.startsWith("npub") ? npubToHex(npubOrHex) : npubOrHex;
-  if (!hex) throw new Error("Invalid npub");
+  let hex: string;
+  try {
+    hex = toHex(npubOrHex);
+  } catch (e) {
+    throw new Error("Invalid npub");
+  }
 
   if (nutzapProfileCache.has(hex)) {
     return nutzapProfileCache.get(hex) || null;

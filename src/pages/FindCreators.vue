@@ -149,7 +149,7 @@ import {
   useQuasar,
 } from "quasar";
 import { nip19 } from "nostr-tools";
-import { queryNutzapProfile } from "@/nostr/relayClient";
+import { queryNutzapProfile, toHex } from "@/nostr/relayClient";
 import type { NostrEvent } from "@/nostr/relayClient";
 import { fallbackDiscoverRelays } from "@/nostr/discovery";
 import { NutzapProfileSchema } from "@/nostr/nutzapProfile";
@@ -271,21 +271,34 @@ function parseNutzapProfileEvent(event: NostrEvent | null): NutzapProfileDetails
   };
 }
 
-async function fetchProfileWithFallback(pubkey: string) {
+async function fetchProfileWithFallback(pubkeyInput: string) {
+  let hex: string;
+  try {
+    hex = toHex(pubkeyInput);
+  } catch (err) {
+    console.error("Invalid pubkey for profile fetch", err);
+    return {
+      event: null,
+      details: null,
+      relayHints: [],
+      pubkeyHex: "",
+    };
+  }
+
   const relayHints = new Set<string>();
   let event: NostrEvent | null = null;
   try {
-    event = await queryNutzapProfile(pubkey);
+    event = await queryNutzapProfile(hex);
   } catch (e) {
     console.error("Failed to query Nutzap profile", e);
   }
 
   if (!event) {
     try {
-      const discovered = await fallbackDiscoverRelays(pubkey);
+      const discovered = await fallbackDiscoverRelays(hex);
       for (const url of discovered) relayHints.add(url);
       if (relayHints.size) {
-        event = await queryNutzapProfile(pubkey, {
+        event = await queryNutzapProfile(hex, {
           fanout: Array.from(relayHints),
         });
       }
@@ -303,30 +316,17 @@ async function fetchProfileWithFallback(pubkey: string) {
     event,
     details,
     relayHints: Array.from(relayHints),
+    pubkeyHex: hex,
   };
-}
-
-function bech32ToHex(pubkey: string): string {
-  try {
-    const decoded = nip19.decode(pubkey);
-    return typeof decoded.data === "string" ? decoded.data : pubkey;
-  } catch {
-    return pubkey;
-  }
-}
-
-function formatTs(ts: number): string {
-  const d = new Date(ts * 1000);
-  return `${d.getFullYear()}-${("0" + (d.getMonth() + 1)).slice(-2)}-${(
-    "0" + d.getDate()
-  ).slice(-2)} ${("0" + d.getHours()).slice(-2)}:${("0" + d.getMinutes()).slice(
-    -2,
-  )}`;
 }
 
 async function onMessage(ev: MessageEvent) {
   if (ev.data && ev.data.type === "donate" && ev.data.pubkey) {
-    selectedPubkey.value = ev.data.pubkey; // keep hex
+    try {
+      selectedPubkey.value = toHex(ev.data.pubkey);
+    } catch {
+      selectedPubkey.value = ev.data.pubkey;
+    }
     showDonateDialog.value = true;
   } else if (ev.data && ev.data.type === "viewProfile" && ev.data.pubkey) {
     loadingTiers.value = true;
@@ -337,14 +337,20 @@ async function onMessage(ev: MessageEvent) {
     tierTimeout = setTimeout(() => {
       loadingTiers.value = false;
     }, 5000);
-    const hexPubkey = ev.data.pubkey;
-    dialogPubkey.value = hexPubkey; // keep hex
+    const profileResult = await fetchProfileWithFallback(ev.data.pubkey);
+    const hexPubkey = profileResult.pubkeyHex;
+    if (!hexPubkey) {
+      if (tierTimeout) clearTimeout(tierTimeout);
+      loadingProfile.value = false;
+      loadingTiers.value = false;
+      return;
+    }
+    dialogPubkey.value = hexPubkey;
     try {
-      const { details, relayHints } = await fetchProfileWithFallback(hexPubkey);
-      if (details) {
-        nutzapProfile.value = details;
+      if (profileResult.details) {
+        nutzapProfile.value = profileResult.details;
       }
-      lastRelayHints.value = relayHints;
+      lastRelayHints.value = profileResult.relayHints;
     } finally {
       loadingProfile.value = false;
     }
