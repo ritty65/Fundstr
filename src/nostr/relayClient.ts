@@ -1,3 +1,6 @@
+import { nip19 } from "nostr-tools";
+import { bytesToHex } from "@noble/hashes/utils";
+
 export type Filter = {
   ids?: string[];
   authors?: string[];
@@ -43,6 +46,48 @@ const PUBLIC_POOL = [
   "wss://nos.lol",
   "wss://relay.damus.io",
 ];
+
+const HEX_REGEX = /^[0-9a-fA-F]{64}$/;
+
+export function toHex(pubOrNpub: string): string {
+  const trimmed = pubOrNpub.trim();
+  if (!trimmed) {
+    throw new Error("Empty pubkey");
+  }
+
+  if (HEX_REGEX.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  try {
+    const decoded = nip19.decode(trimmed);
+    const data = decoded.data;
+    if (typeof data === "string" && HEX_REGEX.test(data)) {
+      return data.toLowerCase();
+    }
+    if (
+      typeof data === "object" &&
+      data !== null &&
+      "pubkey" in data &&
+      typeof (data as { pubkey?: unknown }).pubkey === "string"
+    ) {
+      const pk = (data as { pubkey: string }).pubkey;
+      if (HEX_REGEX.test(pk)) {
+        return pk.toLowerCase();
+      }
+    }
+    if (data instanceof Uint8Array) {
+      const hex = bytesToHex(data);
+      if (HEX_REGEX.test(hex)) {
+        return hex.toLowerCase();
+      }
+    }
+  } catch (err) {
+    void err;
+  }
+
+  throw new Error("Invalid npub or hex pubkey");
+}
 
 function isReplaceableKind(kind: number) {
   return kind === 0 || kind === 3 || (kind >= 10000 && kind < 20000);
@@ -310,6 +355,31 @@ export async function queryNostr(
   filters: Filter[],
   opts: QueryOptions = {},
 ): Promise<NostrEvent[]> {
+  const normalizedFilters = filters.map((filter) => {
+    const copy: Filter = { ...filter };
+    if (filter.authors) {
+      const normalizedAuthors: string[] = [];
+      for (const author of filter.authors) {
+        if (!author) continue;
+        try {
+          normalizedAuthors.push(toHex(author));
+        } catch (err) {
+          if (HEX_REGEX.test(author)) {
+            normalizedAuthors.push(author.toLowerCase());
+          } else {
+            throw err instanceof Error ? err : new Error(String(err));
+          }
+        }
+      }
+      if (normalizedAuthors.length) {
+        copy.authors = normalizedAuthors;
+      } else {
+        delete copy.authors;
+      }
+    }
+    return copy;
+  });
+
   const options: RequiredQueryOptions = {
     preferFundstr: opts.preferFundstr ?? false,
     fanout: uniqueUrls(opts.fanout ?? []),
@@ -322,7 +392,7 @@ export async function queryNostr(
   if (options.preferFundstr) {
     try {
       const fundstrEvents = await tryWsFirstThenHttp(
-        filters,
+        normalizedFilters,
         FUNDSTR.ws,
         FUNDSTR.http,
         options.wsTimeoutMs,
@@ -331,7 +401,7 @@ export async function queryNostr(
       if (!fundstrEvents.length) {
         const more = await queryWsPool(
           [...options.fanout, ...PUBLIC_POOL],
-          filters,
+          normalizedFilters,
           options.wsTimeoutMs,
         );
         collected.push(...more);
@@ -339,7 +409,7 @@ export async function queryNostr(
     } catch (e) {
       const more = await queryWsPool(
         [...options.fanout, ...PUBLIC_POOL],
-        filters,
+        normalizedFilters,
         options.wsTimeoutMs,
       );
       collected.push(...more);
@@ -347,14 +417,14 @@ export async function queryNostr(
   } else {
     const pool = await queryWsPool(
       [...options.fanout, ...PUBLIC_POOL],
-      filters,
+      normalizedFilters,
       options.wsTimeoutMs,
     );
     collected.push(...pool);
     if (!collected.length) {
       try {
         const fallback = await tryWsFirstThenHttp(
-          filters,
+          normalizedFilters,
           FUNDSTR.ws,
           options.httpBase,
           options.wsTimeoutMs,
@@ -407,9 +477,10 @@ export async function publishNostr(
 }
 
 export async function queryNutzapProfile(
-  pubkey: string,
+  pubkeyInput: string,
   opts: { fanout?: string[] } = {},
 ): Promise<NostrEvent | null> {
+  const pubkey = toHex(pubkeyInput);
   const filters: Filter[] = [
     { kinds: [10019], authors: [pubkey], limit: 1 },
   ];
@@ -421,9 +492,10 @@ export async function queryNutzapProfile(
 }
 
 export async function queryNutzapTiers(
-  pubkey: string,
+  pubkeyInput: string,
   opts: { fanout?: string[] } = {},
 ): Promise<NostrEvent | null> {
+  const pubkey = toHex(pubkeyInput);
   const filters: Filter[] = [
     { kinds: [30019], authors: [pubkey], ["#d"]: ["tiers"], limit: 1 },
   ];

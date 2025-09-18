@@ -8,23 +8,32 @@ point for issuing queries and publishing Nutzap events.
 
 1. The client always **prefers the isolated Fundstr relay**
    (`wss://relay.fundstr.me`).
-2. Each request attempts a WebSocket REQ/EOSE round-trip first. Connections are
-   bounded by an 8&nbsp;s timeout.
-3. If the socket cannot be opened or no events arrive before timeout, the client
-   automatically falls back to the HTTP bridge exposed by the relay at
+2. Every query begins with a WebSocket REQ/EOSE round-trip. Connections are
+   bounded by an 8–12&nbsp;s timeout.
+3. If the socket cannot be opened or returns no events, the client
+   automatically performs the same query over HTTP:
    `https://relay.fundstr.me/req?filters=…`.
-4. When Fundstr returns no data the client will fan out across a vetted pool of
+4. When Fundstr returns no data the client fans out across a vetted pool of
    public relays (`relay.primal.net`, `relay.f7z.io`, `nos.lol`,
-   `relay.damus.io`). The pool is also used for general discovery when the
-   operation does not explicitly require Fundstr.
+   `relay.damus.io`). This pool is also used when discovery explicitly prefers
+   public relays.
 
-All fetches use `cache: 'no-store'` with `cache-control: no-cache` headers so
-service workers never cache responses.
+All fetches, including the service-worker passthrough, use
+`cache: 'no-store'` together with `cache-control: no-cache` headers so the
+responses are never cached.
 
 Publishing Nutzap events uses a direct HTTP POST to
 `https://relay.fundstr.me/event`. The relay responds with a JSON payload shaped
-like `{ ok, id, accepted, message }`. UI surfaces should display the message when
-`ok` is false or `accepted` is false.
+like `{ ok, id, accepted, message }`. Callers must treat a publish as successful
+**only** when `accepted === true`. When `accepted` is false the provided relay
+`message` should be surfaced to the user verbatim.
+
+## Key normalisation
+
+All helpers accept both hex and npub style keys. `toHex(pubOrNpub)` converts the
+input to a 64-character lowercase hex string and throws for invalid values.
+`queryNostr` automatically normalises any `authors` filters to hex before
+sending requests, which keeps Fundstr and public relays happy.
 
 ## Replaceable event handling
 
@@ -38,7 +47,8 @@ The relay layer implements deduplication and NIP-01 replaceable semantics:
 
 Helpers are exposed for consumers that want the latest Nutzap profile and tier
 definitions: `queryNutzapProfile` (kind `10019`) and `queryNutzapTiers` (kind
-`30019` with `d:"tiers"`).
+`30019` with `d:"tiers"`). Both helpers accept npub/hex input and will retry
+against relay hints (NIP-65 or `relay` tags) when Fundstr returns no data.
 
 ## Discovery fallbacks
 
