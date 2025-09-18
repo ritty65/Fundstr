@@ -375,7 +375,7 @@ export async function queryNostr(
   const options: RequiredQueryOptions = {
     preferFundstr: opts.preferFundstr ?? true,
     fanout: uniqueUrls(opts.fanout ?? []),
-    wsTimeoutMs: opts.wsTimeoutMs ?? 1500,
+    wsTimeoutMs: opts.wsTimeoutMs ?? 1500, // 1.5s Fundstr-first deadline
     httpBase: opts.httpBase ?? FUNDSTR.http,
   };
 
@@ -427,7 +427,7 @@ export async function publishNostr(
   message?: string;
 }> {
   const valid =
-    !!evt &&
+    evt &&
     typeof evt.id === "string" &&
     typeof evt.pubkey === "string" &&
     typeof evt.created_at === "number" &&

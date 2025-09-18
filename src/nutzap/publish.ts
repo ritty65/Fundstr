@@ -16,7 +16,7 @@ export async function publishNutzapProfile(
   ev.content = JSON.stringify(content);
   ev.tags = tags;
   await ev.sign(); // must have signer configured globally or via NDK signer
-  const nostrEvent = toPlainNostrEvent(ev);
+  const nostrEvent = await toPlainNostrEvent(ev);
   const ack = await publishNostr(nostrEvent);
   if (!ack.accepted) {
     throw new Error(ack.message || "Relay rejected Nutzap profile");
@@ -35,7 +35,7 @@ export async function publishTierDefinitions(tiers: Tier[]) {
   ];
   ev.content = JSON.stringify(tiers);
   await ev.sign();
-  const nostrEvent = toPlainNostrEvent(ev);
+  const nostrEvent = await toPlainNostrEvent(ev);
   const ack = await publishNostr(nostrEvent);
   if (!ack.accepted) {
     throw new Error(ack.message || "Relay rejected tier definitions");

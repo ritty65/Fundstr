@@ -8,14 +8,17 @@ export type NostrEvent = {
   sig: string;
 };
 
-export function toPlainNostrEvent(ev: any): NostrEvent {
-  // Prefer toNostrEvent() (NDK >= 0.8), fallback rawEvent() (older NDK), else assume plain.
-  const e = typeof ev?.toNostrEvent === 'function'
-    ? ev.toNostrEvent()
-    : (typeof ev?.rawEvent === 'function' ? ev.rawEvent() : ev);
+export async function toPlainNostrEvent(ev: any): Promise<NostrEvent> {
+  // NDK >= 0.8: toNostrEvent() async; older NDK: rawEvent(); else assume ev is plain.
+  const candidate =
+    typeof ev?.toNostrEvent === 'function' ? ev.toNostrEvent()
+    : typeof ev?.rawEvent === 'function' ? ev.rawEvent()
+    : ev;
 
-  const ok = e &&
-    typeof e.id === 'string' &&
+  const e = await Promise.resolve(candidate);
+
+  const ok =
+    e && typeof e.id === 'string' &&
     typeof e.pubkey === 'string' &&
     typeof e.created_at === 'number' &&
     typeof e.kind === 'number' &&
