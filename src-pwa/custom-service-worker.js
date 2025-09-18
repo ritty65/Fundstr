@@ -13,6 +13,7 @@ import {
   createHandlerBoundToURL,
 } from "workbox-precaching";
 import { registerRoute, NavigationRoute } from "workbox-routing";
+import { NetworkOnly } from "workbox-strategies";
 
 self.skipWaiting();
 clientsClaim();
@@ -32,3 +33,10 @@ if (process.env.MODE !== "ssr" || process.env.PROD) {
     ),
   );
 }
+
+registerRoute(
+  ({ url }) =>
+    url.origin === "https://relay.fundstr.me" &&
+    (url.pathname.startsWith("/req") || url.pathname.startsWith("/event")),
+  new NetworkOnly({ cacheName: "fundstr-relay" }),
+);

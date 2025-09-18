@@ -134,11 +134,7 @@ defineOptions({ components: { MediaPreview } });
 import { useSendTokensStore } from "stores/sendTokensStore";
 import { useDonationPresetsStore } from "stores/donationPresets";
 import { useCreatorsStore } from "stores/creators";
-import {
-  useNostrStore,
-  fetchNutzapProfile,
-  RelayConnectionError,
-} from "stores/nostr";
+import { useNostrStore } from "stores/nostr";
 import { notifyWarning } from "src/js/notify";
 import { useRouter, useRoute } from "vue-router";
 import { useMessengerStore } from "stores/messenger";
@@ -153,6 +149,10 @@ import {
   useQuasar,
 } from "quasar";
 import { nip19 } from "nostr-tools";
+import { queryNutzapProfile } from "@/nostr/relayClient";
+import type { NostrEvent } from "@/nostr/relayClient";
+import { fallbackDiscoverRelays } from "@/nostr/discovery";
+import { NutzapProfileSchema } from "@/nostr/nutzapProfile";
 
 const iframeEl = ref<HTMLIFrameElement | null>(null);
 const iframeLoaded = ref(false);
@@ -183,6 +183,7 @@ const showSubscribeDialog = ref(false);
 const selectedTier = ref<any>(null);
 const nutzapProfile = ref<any | null>(null);
 const loadingProfile = ref(false);
+const lastRelayHints = ref<string[]>([]);
 let tierTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function sendTheme() {
@@ -206,6 +207,103 @@ watch(
 
 function getPrice(t: any): number {
   return t.price_sats ?? t.price ?? 0;
+}
+
+type NutzapProfileDetails = {
+  p2pkPubkey: string;
+  trustedMints: string[];
+  relays: string[];
+};
+
+function parseNutzapProfileEvent(event: NostrEvent | null): NutzapProfileDetails | null {
+  if (!event) return null;
+  const relays = new Set<string>();
+  const mints: string[] = [];
+  let p2pk = "";
+
+  if (event.content) {
+    try {
+      const parsedJson = JSON.parse(event.content);
+      const safe = NutzapProfileSchema.safeParse(parsedJson);
+      if (safe.success) {
+        const data = safe.data;
+        p2pk = typeof data.p2pk === "string" ? data.p2pk : p2pk;
+        if (Array.isArray(data.mints)) {
+          for (const mint of data.mints) {
+            if (typeof mint === "string" && mint) mints.push(mint);
+          }
+        }
+        if (Array.isArray(data.relays)) {
+          for (const relay of data.relays) {
+            if (typeof relay === "string" && relay) relays.add(relay);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[nutzap] failed to parse profile JSON", e);
+    }
+  }
+
+  const tags = Array.isArray(event.tags) ? event.tags : [];
+  for (const tag of tags) {
+    if (tag[0] === "mint" && typeof tag[1] === "string" && tag[1]) {
+      mints.push(tag[1]);
+    }
+    if (tag[0] === "relay" && typeof tag[1] === "string" && tag[1]) {
+      relays.add(tag[1]);
+    }
+    if (!p2pk && tag[0] === "pubkey" && typeof tag[1] === "string" && tag[1]) {
+      p2pk = tag[1];
+    }
+  }
+
+  const uniqueMints = Array.from(new Set(mints.filter((m) => !!m)));
+  const uniqueRelays = Array.from(relays);
+
+  if (!p2pk && uniqueMints.length === 0 && uniqueRelays.length === 0) {
+    return null;
+  }
+
+  return {
+    p2pkPubkey: p2pk,
+    trustedMints: uniqueMints,
+    relays: uniqueRelays,
+  };
+}
+
+async function fetchProfileWithFallback(pubkey: string) {
+  const relayHints = new Set<string>();
+  let event: NostrEvent | null = null;
+  try {
+    event = await queryNutzapProfile(pubkey);
+  } catch (e) {
+    console.error("Failed to query Nutzap profile", e);
+  }
+
+  if (!event) {
+    try {
+      const discovered = await fallbackDiscoverRelays(pubkey);
+      for (const url of discovered) relayHints.add(url);
+      if (relayHints.size) {
+        event = await queryNutzapProfile(pubkey, {
+          fanout: Array.from(relayHints),
+        });
+      }
+    } catch (e) {
+      console.error("NIP-65 discovery failed", e);
+    }
+  }
+
+  const details = parseNutzapProfileEvent(event);
+  if (details) {
+    for (const relay of details.relays) relayHints.add(relay);
+  }
+
+  return {
+    event,
+    details,
+    relayHints: Array.from(relayHints),
+  };
 }
 
 function bech32ToHex(pubkey: string): string {
@@ -234,23 +332,28 @@ async function onMessage(ev: MessageEvent) {
     loadingTiers.value = true;
     loadingProfile.value = true;
     nutzapProfile.value = null;
+    lastRelayHints.value = [];
     if (tierTimeout) clearTimeout(tierTimeout);
     tierTimeout = setTimeout(() => {
       loadingTiers.value = false;
     }, 5000);
-    await creators.fetchTierDefinitions(ev.data.pubkey);
-    dialogPubkey.value = ev.data.pubkey; // keep hex
+    const hexPubkey = ev.data.pubkey;
+    dialogPubkey.value = hexPubkey; // keep hex
     try {
-      const profile = await fetchNutzapProfile(ev.data.pubkey);
-      nutzapProfile.value = profile;
-    } catch (e: any) {
-      if (e instanceof RelayConnectionError) {
-        notifyWarning("Unable to connect to Nostr relays");
-      } else {
-        console.error(e);
+      const { details, relayHints } = await fetchProfileWithFallback(hexPubkey);
+      if (details) {
+        nutzapProfile.value = details;
       }
+      lastRelayHints.value = relayHints;
     } finally {
       loadingProfile.value = false;
+    }
+    try {
+      await creators.fetchTierDefinitions(hexPubkey, {
+        relayHints: lastRelayHints.value,
+      });
+    } catch (e) {
+      console.error("Failed to fetch tier definitions", e);
     }
     await nextTick();
     showTierDialog.value = true;
@@ -294,6 +397,7 @@ watch(showTierDialog, (val) => {
   if (!val) {
     nutzapProfile.value = null;
     loadingProfile.value = false;
+    lastRelayHints.value = [];
   }
 });
 
@@ -309,7 +413,9 @@ function retryFetchTiers() {
   tierTimeout = setTimeout(() => {
     loadingTiers.value = false;
   }, 5000);
-  creators.fetchTierDefinitions(dialogPubkey.value);
+  creators.fetchTierDefinitions(dialogPubkey.value, {
+    relayHints: lastRelayHints.value,
+  });
 }
 
 function confirmSubscribe({ bucketId, periods, amount, startDate, total }: any) {
