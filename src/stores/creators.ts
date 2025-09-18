@@ -6,15 +6,14 @@ import {
   signEvent,
   publishEvent,
 } from "./nostr";
-import { useSettingsStore } from "./settings";
-import { DEFAULT_RELAYS } from "src/config/relays";
-import { filterHealthyRelays } from "src/utils/relayHealth";
 import { useNdk } from "src/composables/useNdk";
 import { nip19 } from "nostr-tools";
 import { Event as NostrEvent } from "nostr-tools";
 import { notifyWarning } from "src/js/notify";
-import { filterValidMedia } from "src/utils/validateMedia";
 import type { Tier } from "./types";
+import { queryNutzapTiers } from "@/nostr/relayClient";
+import { fallbackDiscoverRelays } from "@/nostr/discovery";
+import { parseTierDefinitionEvent } from "src/nostr/tiers";
 
 export const FEATURED_CREATORS = [
   "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
@@ -162,7 +161,7 @@ export const useCreatorsStore = defineStore("creators", {
       }
     },
 
-    async fetchTierDefinitions(creatorNpub: string) {
+    async fetchTierDefinitions(creatorNpub: string, opts: { relayHints?: string[] } = {}) {
       this.tierFetchError = false;
 
       let hex = creatorNpub;
@@ -194,144 +193,49 @@ export const useCreatorsStore = defineStore("creators", {
         }));
         void rawEvent; // parsed for potential use
       }
-      const filter = {
-        authors: [hex],
-        kinds: [30019],
-        "#d": ["tiers"],
-      };
-      const settings = useSettingsStore();
-      const relayUrls = Array.from(
-        new Set([
-          ...(Array.isArray(settings.defaultNostrRelays)
-            ? settings.defaultNostrRelays
-            : []),
-          ...DEFAULT_RELAYS,
-        ]),
-      );
-
-      // Filter out unreachable relays before subscribing
-      let healthyRelays: string[] = [];
+      const relayHints = new Set(opts.relayHints ?? []);
+      let event: NostrEvent | null = null;
       try {
-        healthyRelays = await filterHealthyRelays(relayUrls);
-      } catch {
-        healthyRelays = [];
+        event = await queryNutzapTiers(hex, {
+          fanout: Array.from(relayHints),
+        });
+        if (!event) {
+          const discovered = await fallbackDiscoverRelays(hex);
+          discovered.forEach((url) => relayHints.add(url));
+          if (relayHints.size) {
+            event = await queryNutzapTiers(hex, {
+              fanout: Array.from(relayHints),
+            });
+          }
+        }
+      } catch (e) {
+        console.error("fetchTierDefinitions failed", e);
       }
 
-      const fetchFromIndexer = async () => {
-        const indexerUrl = settings.tiersIndexerUrl;
-        if (!indexerUrl) {
-          this.tierFetchError = true;
-          notifyWarning("Unable to retrieve subscription tiers");
-          return;
-        }
-        const url = String(indexerUrl).includes("{pubkey}")
-          ? indexerUrl.replace("{pubkey}", hex)
-          : `${indexerUrl}${
-              String(indexerUrl).includes("?") ? "&" : "?"
-            }pubkey=${hex}`;
-        try {
-          const controller = new AbortController();
-          const id = setTimeout(() => controller.abort(), 8000);
-          const resp = await fetch(url, { signal: controller.signal });
-          clearTimeout(id);
-          if (!resp.ok) {
-            this.tierFetchError = true;
-            notifyWarning("Unable to retrieve subscription tiers");
-            return;
-          }
-          const data = await resp.json();
-          const event =
-            data.tiers ||
-            data.event ||
-            (data.profile && data.profile.tiers) ||
-            (Array.isArray(data.events)
-              ? data.events.find(
-                  (e: any) =>
-                    e.kind === 30019 &&
-                    Array.isArray(e.tags) &&
-                    e.tags.some((t: any[]) => t[0] === "d" && t[1] === "tiers"),
-                )
-              : null);
-          if (!event) {
-            this.tierFetchError = true;
-            notifyWarning("Unable to retrieve subscription tiers");
-            return;
-          }
-          const tiersArray: Tier[] = JSON.parse(event.content).map(
-            (t: any) => ({
-              ...t,
-              price_sats: t.price_sats ?? t.price ?? 0,
-              ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
-              media: t.media ? filterValidMedia(t.media) : [],
-            }),
-          );
-          this.tiersMap[hex] = tiersArray;
-          await db.creatorsTierDefinitions.put({
-            creatorNpub: hex,
-            tiers: tiersArray,
-            eventId: event.id!,
-            updatedAt: event.created_at,
-            rawEventJson: JSON.stringify(event),
-          });
-        } catch (e) {
-          console.error("Indexer tier fetch error:", e);
-          this.tierFetchError = true;
-          notifyWarning("Unable to retrieve subscription tiers");
-        }
-      };
-
-      if (healthyRelays.length === 0) {
-        // No healthy relays found – fallback immediately
-        await fetchFromIndexer();
+      if (!event) {
+        this.tierFetchError = true;
+        notifyWarning("Unable to retrieve subscription tiers");
         return;
       }
 
-      const nostrStore = useNostrStore();
-      await nostrStore.initNdkReadOnly();
-      const ndk = await useNdk({ requireSigner: false });
-
-      let events: Set<any> | null = null;
+      let tiersArray: Tier[] = [];
       try {
-        const fetchPromise = ndk.fetchEvents(filter, {
-          closeOnEose: true,
-          urls: healthyRelays,
-        } as any);
-        const timeoutPromise = new Promise<null>((resolve) =>
-          setTimeout(() => resolve(null), 5000),
-        );
-        events = (await Promise.race([fetchPromise, timeoutPromise])) as any;
-      } catch {
-        events = null;
+        tiersArray = parseTierDefinitionEvent(event);
+      } catch (e) {
+        console.error("Failed to parse tier event", e);
+        this.tierFetchError = true;
+        notifyWarning("Unable to retrieve subscription tiers");
+        return;
       }
 
-      if (events && events.size > 0) {
-        try {
-          const event = Array.from(events).sort(
-            (a: any, b: any) => b.created_at - a.created_at,
-          )[0];
-          const tiersArray: Tier[] = JSON.parse(event.content).map(
-            (t: any) => ({
-              ...t,
-              price_sats: t.price_sats ?? t.price ?? 0,
-              ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
-              media: t.media ? filterValidMedia(t.media) : [],
-            }),
-          );
-          this.tiersMap[hex] = tiersArray;
-          await db.creatorsTierDefinitions.put({
-            creatorNpub: hex,
-            tiers: tiersArray,
-            eventId: event.id!,
-            updatedAt: event.created_at,
-            rawEventJson: JSON.stringify(event),
-          });
-          return;
-        } catch (e) {
-          console.error("Error parsing tier definitions JSON:", e);
-        }
-      }
-
-      await fetchFromIndexer();
+      this.tiersMap[hex] = tiersArray;
+      await db.creatorsTierDefinitions.put({
+        creatorNpub: hex,
+        tiers: tiersArray as any,
+        eventId: event.id,
+        updatedAt: event.created_at,
+        rawEventJson: JSON.stringify(event),
+      });
     },
 
     async publishTierDefinitions(tiersArray: Tier[]) {

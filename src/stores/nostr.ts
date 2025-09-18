@@ -468,6 +468,9 @@ async function decryptNip04(
 // --- Nutzap helpers (NIP-61) ----------------------------------------------
 
 import type { NostrEvent } from "@nostr-dev-kit/ndk";
+import { queryNutzapProfile } from "@/nostr/relayClient";
+import { fallbackDiscoverRelays } from "@/nostr/discovery";
+import type { NostrEvent as RelayEvent } from "@/nostr/relayClient";
 
 interface NutzapProfile {
   hexPub: string;
@@ -783,94 +786,88 @@ export async function anyRelayReachable(relays: string[]): Promise<boolean> {
 export async function fetchNutzapProfile(
   npubOrHex: string,
 ): Promise<NutzapProfile | null> {
-  const nostr = useNostrStore();
-  await nostr.initNdkReadOnly();
-  const ndk = await useNdk();
-  if (!ndk) {
-    throw new Error(
-      "NDK not initialised \u2013 call initSignerIfNotSet() first",
-    );
-  }
-  try {
-    await ensureRelayConnectivity(ndk);
-  } catch (e: any) {
-    throw new RelayConnectionError(e?.message);
-  }
   const hex = npubOrHex.startsWith("npub") ? npubToHex(npubOrHex) : npubOrHex;
   if (!hex) throw new Error("Invalid npub");
 
   if (nutzapProfileCache.has(hex)) {
     return nutzapProfileCache.get(hex) || null;
   }
+  let event: RelayEvent | null = null;
+  let lastError: unknown = null;
 
-  const sub = ndk.subscribe(
-    {
-      kinds: [10019],
-      authors: [hex],
-      "#t": ["nutzap-profile"],
-      limit: 1,
-    },
-    { closeOnEose: true },
-  );
+  try {
+    event = await queryNutzapProfile(hex);
+  } catch (e) {
+    lastError = e;
+  }
 
-  return new Promise((resolve) => {
-    sub.on("event", (ev: NostrEvent) => {
-      let data: NutzapProfilePayload | null = null;
-      if (ev.content) {
-        try {
-          const parsed = JSON.parse(ev.content);
-          data = NutzapProfileSchema.parse(parsed);
-        } catch (e) {
-          console.warn("Invalid Nutzap profile JSON", e);
-        }
+  if (!event) {
+    try {
+      const discovered = await fallbackDiscoverRelays(hex);
+      if (discovered.length) {
+        event = await queryNutzapProfile(hex, { fanout: discovered });
       }
-      if (!data) {
-        let p2pk = ev.tags.find((t) => t[0] === "pubkey")?.[1];
-        const mints = ev.tags
-          .filter((t) => t[0] === "mint")
-          .map((t) => t[1]);
-        const relays = ev.tags
-          .filter((t) => t[0] === "relay")
-          .map((t) => t[1]);
-        const tierAddr = ev.tags.find((t) => t[0] === "a")?.[1];
-        if (p2pk) data = { p2pk, mints, relays, tierAddr };
-      }
+    } catch (e) {
+      lastError = e;
+    }
+  }
 
-      if (data) {
-        let p2pkPubkey = data.p2pk;
-        if (p2pkPubkey.startsWith("npub")) {
-          const hx = npubToHex(p2pkPubkey);
-          if (hx) p2pkPubkey = hx;
-        }
-        try {
-          p2pkPubkey = ensureCompressed(p2pkPubkey);
-        } catch (e) {
-          console.error("Invalid P2PK pubkey", e);
-          p2pkPubkey = "";
-        }
-        const profile: NutzapProfile = {
-          hexPub: hex,
-          p2pkPubkey,
-          trustedMints: data.mints || [],
-          relays: data.relays || undefined,
-          tierAddr: data.tierAddr,
-        };
-        nutzapProfileCache.set(hex, profile);
-        resolve(profile);
-      } else {
-        nutzapProfileCache.set(hex, null);
-        resolve(null);
-      }
-      sub.stop();
-    });
+  if (!event) {
+    if (lastError instanceof Error) {
+      throw new RelayConnectionError(lastError.message);
+    }
+    nutzapProfileCache.set(hex, null);
+    return null;
+  }
 
-    // timeout after 10 s
-    setTimeout(() => {
-      sub.stop();
-      nutzapProfileCache.set(hex, null);
-      resolve(null);
-    }, 10_000);
-  });
+  let data: NutzapProfilePayload | null = null;
+  if (event.content) {
+    try {
+      const parsed = JSON.parse(event.content);
+      data = NutzapProfileSchema.parse(parsed);
+    } catch (e) {
+      console.warn("Invalid Nutzap profile JSON", e);
+    }
+  }
+
+  if (!data) {
+    let p2pk = event.tags.find((t) => t[0] === "pubkey")?.[1];
+    const mints = event.tags
+      .filter((t) => t[0] === "mint")
+      .map((t) => t[1]);
+    const relays = event.tags
+      .filter((t) => t[0] === "relay")
+      .map((t) => t[1]);
+    const tierAddr = event.tags.find((t) => t[0] === "a")?.[1];
+    if (p2pk) data = { p2pk, mints, relays, tierAddr };
+  }
+
+  if (!data) {
+    nutzapProfileCache.set(hex, null);
+    return null;
+  }
+
+  let p2pkPubkey = data.p2pk;
+  if (p2pkPubkey.startsWith("npub")) {
+    const hx = npubToHex(p2pkPubkey);
+    if (hx) p2pkPubkey = hx;
+  }
+  try {
+    p2pkPubkey = ensureCompressed(p2pkPubkey);
+  } catch (e) {
+    console.error("Invalid P2PK pubkey", e);
+    p2pkPubkey = "";
+  }
+
+  const profile: NutzapProfile = {
+    hexPub: hex,
+    p2pkPubkey,
+    trustedMints: data.mints || [],
+    relays: data.relays || undefined,
+    tierAddr: data.tierAddr,
+  };
+  nutzapProfileCache.set(hex, profile);
+  return profile;
 }
 
 /** Publishes a ‘kind:10019’ Nutzap profile event. */

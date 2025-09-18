@@ -1,29 +1,8 @@
 import { NDKEvent } from '@nostr-dev-kit/ndk';
-import {
-  NUTZAP_ALLOW_WSS_WRITES,
-  NUTZAP_PROFILE_KIND,
-  NUTZAP_TIERS_KIND,
-  NUTZAP_WS_TIMEOUT_MS,
-} from './relayConfig';
-import { httpPublish } from './relayHttp';
+import { NUTZAP_PROFILE_KIND, NUTZAP_TIERS_KIND } from './relayConfig';
 import { getNutzapNdk } from './ndkInstance';
 import type { Tier, NutzapProfileContent } from './types';
-
-function raceTimeout<T>(p: Promise<T>, ms: number) {
-  return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('ws-timeout')), ms);
-    p.then(
-      v => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      e => {
-        clearTimeout(t);
-        reject(e);
-      }
-    );
-  });
-}
+import { publishNostr } from '@/nostr/relayClient';
 
 /** Publish kind:10019 Nutzap profile; WS first (if allowed), else HTTP. */
 export async function publishNutzapProfile(
@@ -36,16 +15,7 @@ export async function publishNutzapProfile(
   ev.content = JSON.stringify(content);
   ev.tags = tags;
   await ev.sign(); // must have signer configured globally or via NDK signer
-
-  if (NUTZAP_ALLOW_WSS_WRITES) {
-    try {
-      await raceTimeout(ev.publish(), NUTZAP_WS_TIMEOUT_MS);
-      return { ok: true, via: 'ws' as const };
-    } catch (e) {
-      // fall through to HTTP
-    }
-  }
-  const ack = await httpPublish(ev.toNostrEvent());
+  const ack = await publishNostr(ev.toNostrEvent());
   return { ...ack, via: 'http' as const };
 }
 
@@ -60,15 +30,6 @@ export async function publishTierDefinitions(tiers: Tier[]) {
   ];
   ev.content = JSON.stringify(tiers);
   await ev.sign();
-
-  if (NUTZAP_ALLOW_WSS_WRITES) {
-    try {
-      await raceTimeout(ev.publish(), NUTZAP_WS_TIMEOUT_MS);
-      return { ok: true, via: 'ws' as const };
-    } catch (e) {
-      // fallback
-    }
-  }
-  const ack = await httpPublish(ev.toNostrEvent());
+  const ack = await publishNostr(ev.toNostrEvent());
   return { ...ack, via: 'http' as const };
 }

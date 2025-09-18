@@ -2,7 +2,7 @@ import { ref, computed, onMounted } from 'vue';
 import { v4 as uuidv4 } from 'uuid';
 import { notifyError, notifySuccess } from 'src/js/notify';
 import { publishNutzapProfile, publishTierDefinitions } from 'src/nutzap/publish';
-import { fetchTiers, fetchNutzapProfileEvent } from 'src/nutzap/fetch';
+import { queryNutzapProfile, queryNutzapTiers } from '@/nostr/relayClient';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
 import { NUTZAP_RELAY_WSS } from 'src/nutzap/relayConfig';
 import type { Tier, NutzapProfileContent } from 'src/nutzap/types';
@@ -25,14 +25,6 @@ function toMediaCsv(media?: { type: string; url: string }[]) {
     .map(m => m?.url)
     .filter((u): u is string => typeof u === 'string' && !!u)
     .join(', ');
-}
-
-function normalizeEvents(result: unknown): any[] {
-  if (Array.isArray(result)) return result;
-  if (result && typeof result === 'object' && Array.isArray((result as any).events)) {
-    return (result as any).events;
-  }
-  return [];
 }
 
 function mapJsonTier(raw: any): Tier | null {
@@ -156,13 +148,11 @@ export function useNutzapProfile() {
     const currentPubkey = pubkey.value;
     if (!currentPubkey) return;
     try {
-      const [tiersResult, profileResult] = await Promise.all([
-        fetchTiers(currentPubkey),
-        fetchNutzapProfileEvent(currentPubkey),
+      const [tierEvent, profileEvent] = await Promise.all([
+        queryNutzapTiers(currentPubkey),
+        queryNutzapProfile(currentPubkey),
       ]);
 
-      const tierEvents = normalizeEvents(tiersResult);
-      const tierEvent = tierEvents[0];
       if (tierEvent?.content) {
         try {
           const parsed = JSON.parse(tierEvent.content);
@@ -176,8 +166,6 @@ export function useNutzapProfile() {
         }
       }
 
-      const profileEvents = normalizeEvents(profileResult);
-      const profileEvent = profileEvents[0];
       if (profileEvent) {
         try {
           const content = profileEvent.content ? JSON.parse(profileEvent.content) : {};
