@@ -3,6 +3,7 @@ import { NUTZAP_PROFILE_KIND, NUTZAP_TIERS_KIND } from './relayConfig';
 import { getNutzapNdk } from './ndkInstance';
 import type { Tier, NutzapProfileContent } from './types';
 import { publishNostr } from '@/nostr/relayClient';
+import { toPlainNostrEvent } from '@/nostr/eventUtils';
 
 /** Publish kind:10019 Nutzap profile; WS first (if allowed), else HTTP. */
 export async function publishNutzapProfile(
@@ -15,7 +16,8 @@ export async function publishNutzapProfile(
   ev.content = JSON.stringify(content);
   ev.tags = tags;
   await ev.sign(); // must have signer configured globally or via NDK signer
-  const ack = await publishNostr(ev.toNostrEvent());
+  const nostrEvent = toPlainNostrEvent(ev);
+  const ack = await publishNostr(nostrEvent);
   if (!ack.accepted) {
     throw new Error(ack.message || "Relay rejected Nutzap profile");
   }
@@ -33,7 +35,8 @@ export async function publishTierDefinitions(tiers: Tier[]) {
   ];
   ev.content = JSON.stringify(tiers);
   await ev.sign();
-  const ack = await publishNostr(ev.toNostrEvent());
+  const nostrEvent = toPlainNostrEvent(ev);
+  const ack = await publishNostr(nostrEvent);
   if (!ack.accepted) {
     throw new Error(ack.message || "Relay rejected tier definitions");
   }
