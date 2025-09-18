@@ -23,6 +23,24 @@ const routes = [
     ],
   },
   {
+    path: "/creator/:npubOrHex",
+    component: () => import("layouts/FullscreenLayout.vue"),
+    children: [
+      {
+        path: "",
+        name: "creator-deeplink",
+        component: () => import("src/pages/FindCreators.vue"),
+        props: true,
+      },
+      {
+        path: "profile",
+        name: "PublicCreatorProfile",
+        component: () => import("src/pages/PublicCreatorProfilePage.vue"),
+        props: true,
+      },
+    ],
+  },
+  {
     path: "/creator-hub",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
@@ -57,17 +75,6 @@ const routes = [
         path: "",
         name: "NutzapProfile",
         component: () => import("src/pages/NutzapProfilePage.vue"),
-      },
-    ],
-  },
-  {
-    path: "/creator/:npub",
-    component: () => import("layouts/FullscreenLayout.vue"),
-    children: [
-      {
-        path: "",
-        name: "PublicCreatorProfile",
-        component: () => import("src/pages/PublicCreatorProfilePage.vue"),
       },
     ],
   },

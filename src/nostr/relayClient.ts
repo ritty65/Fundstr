@@ -21,7 +21,7 @@ export type NostrEvent = {
   sig: string;
 };
 
-type QueryOptions = {
+export type QueryOptions = {
   preferFundstr?: boolean;
   fanout?: string[];
   wsTimeoutMs?: number;
@@ -381,7 +381,7 @@ export async function queryNostr(
   });
 
   const options: RequiredQueryOptions = {
-    preferFundstr: opts.preferFundstr ?? false,
+    preferFundstr: opts.preferFundstr ?? true,
     fanout: uniqueUrls(opts.fanout ?? []),
     wsTimeoutMs: opts.wsTimeoutMs ?? 8000,
     httpBase: opts.httpBase ?? FUNDSTR.http,
@@ -394,7 +394,7 @@ export async function queryNostr(
       const fundstrEvents = await tryWsFirstThenHttp(
         normalizedFilters,
         FUNDSTR.ws,
-        FUNDSTR.http,
+        options.httpBase,
         options.wsTimeoutMs,
       );
       collected.push(...fundstrEvents);
@@ -421,19 +421,6 @@ export async function queryNostr(
       options.wsTimeoutMs,
     );
     collected.push(...pool);
-    if (!collected.length) {
-      try {
-        const fallback = await tryWsFirstThenHttp(
-          normalizedFilters,
-          FUNDSTR.ws,
-          options.httpBase,
-          options.wsTimeoutMs,
-        );
-        collected.push(...fallback);
-      } catch {
-        // ignore final failure
-      }
-    }
   }
 
   return normalizeEvents(collected);
