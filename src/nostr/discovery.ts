@@ -22,7 +22,8 @@ export async function fallbackDiscoverRelays(pubkey: string): Promise<string[]> 
   const urls = new Set<string>();
   for (const tag of latest.tags || []) {
     if (tag[0] === "r" && typeof tag[1] === "string" && tag[1]) {
-      urls.add(tag[1]);
+      const cleaned = tag[1].trim();
+      if (cleaned) urls.add(cleaned);
     }
   }
   return Array.from(urls);

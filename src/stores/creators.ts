@@ -161,7 +161,10 @@ export const useCreatorsStore = defineStore("creators", {
       }
     },
 
-    async fetchTierDefinitions(creatorNpub: string, opts: { relayHints?: string[] } = {}) {
+    async fetchTierDefinitions(
+      creatorNpub: string,
+      opts: { relayHints?: string[] } = {},
+    ) {
       this.tierFetchError = false;
 
       let hex: string;
@@ -170,6 +173,7 @@ export const useCreatorsStore = defineStore("creators", {
       } catch (e) {
         console.error("Invalid creator pubkey", e);
         this.tierFetchError = true;
+        notifyWarning("Unable to retrieve subscription tiers");
         return;
       }
 
@@ -184,17 +188,22 @@ export const useCreatorsStore = defineStore("creators", {
           ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
           media: t.media ? [...t.media] : [],
         }));
-        void rawEvent; // parsed for potential use
+        void rawEvent;
       }
+
       const relayHints = new Set(
         (opts.relayHints ?? [])
           .map((url) => url.trim())
           .filter((url) => !!url),
       );
+
       let event: RelayEvent | null = null;
+      let lastError: unknown = null;
+
       try {
         event = await queryNutzapTiers(hex);
       } catch (e) {
+        lastError = e;
         console.error("fetchTierDefinitions Fundstr query failed", e);
       }
 
@@ -204,6 +213,7 @@ export const useCreatorsStore = defineStore("creators", {
             fanout: Array.from(relayHints),
           });
         } catch (e) {
+          lastError = e;
           console.error("fetchTierDefinitions hinted query failed", e);
         }
       }
@@ -211,26 +221,36 @@ export const useCreatorsStore = defineStore("creators", {
       if (!event) {
         try {
           const discovered = await fallbackDiscoverRelays(hex);
-          discovered.forEach((url) => relayHints.add(url));
+          for (const url of discovered) relayHints.add(url);
           if (relayHints.size) {
             event = await queryNutzapTiers(hex, {
               fanout: Array.from(relayHints),
             });
           }
         } catch (e) {
+          lastError = e;
           console.error("NIP-65 discovery failed", e);
         }
       }
 
       if (!event) {
-        this.tierFetchError = true;
-        notifyWarning("Unable to retrieve subscription tiers");
+        if (lastError) {
+          this.tierFetchError = true;
+          notifyWarning("Unable to retrieve subscription tiers");
+        } else {
+          this.tierFetchError = false;
+          this.tiersMap[hex] = [];
+          await db.creatorsTierDefinitions.delete(hex);
+        }
         return;
       }
 
       let tiersArray: Tier[] = [];
       try {
-        tiersArray = parseTierDefinitionEvent(event);
+        tiersArray = parseTierDefinitionEvent(event).map((tier) => ({
+          ...tier,
+          price_sats: tier.price_sats ?? (tier as any).price ?? 0,
+        }));
       } catch (e) {
         console.error("Failed to parse tier event", e);
         this.tierFetchError = true;
@@ -246,6 +266,7 @@ export const useCreatorsStore = defineStore("creators", {
         updatedAt: event.created_at,
         rawEventJson: JSON.stringify(event),
       });
+      this.tierFetchError = false;
     },
 
     async publishTierDefinitions(tiersArray: Tier[]) {

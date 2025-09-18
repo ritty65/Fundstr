@@ -824,34 +824,50 @@ export async function fetchNutzapProfile(
     return null;
   }
 
-  let data: NutzapProfilePayload | null = null;
+  let parsedPayload: NutzapProfilePayload | null = null;
   if (event.content) {
     try {
       const parsed = JSON.parse(event.content);
-      data = NutzapProfileSchema.parse(parsed);
+      parsedPayload = NutzapProfileSchema.parse(parsed);
     } catch (e) {
       console.warn("Invalid Nutzap profile JSON", e);
     }
   }
 
-  if (!data) {
-    let p2pk = event.tags.find((t) => t[0] === "pubkey")?.[1];
-    const mints = event.tags
-      .filter((t) => t[0] === "mint")
-      .map((t) => t[1]);
-    const relays = event.tags
-      .filter((t) => t[0] === "relay")
-      .map((t) => t[1]);
-    const tierAddr = event.tags.find((t) => t[0] === "a")?.[1];
-    if (p2pk) data = { p2pk, mints, relays, tierAddr };
+  const relaySet = new Set<string>();
+  const mintSet = new Set<string>();
+  let tierAddr: string | undefined = parsedPayload?.tierAddr;
+  let p2pkValue = parsedPayload?.p2pk ?? "";
+
+  if (Array.isArray(parsedPayload?.relays)) {
+    for (const relay of parsedPayload!.relays) {
+      if (typeof relay === "string" && relay) relaySet.add(relay);
+    }
+  }
+  if (Array.isArray(parsedPayload?.mints)) {
+    for (const mint of parsedPayload!.mints) {
+      if (typeof mint === "string" && mint) mintSet.add(mint);
+    }
   }
 
-  if (!data) {
+  for (const tag of event.tags || []) {
+    if (tag[0] === "mint" && typeof tag[1] === "string" && tag[1]) {
+      mintSet.add(tag[1]);
+    } else if (tag[0] === "relay" && typeof tag[1] === "string" && tag[1]) {
+      relaySet.add(tag[1]);
+    } else if (tag[0] === "a" && typeof tag[1] === "string" && tag[1]) {
+      if (!tierAddr) tierAddr = tag[1];
+    } else if (tag[0] === "pubkey" && typeof tag[1] === "string" && tag[1]) {
+      if (!p2pkValue) p2pkValue = tag[1];
+    }
+  }
+
+  if (!p2pkValue && !mintSet.size && !relaySet.size) {
     nutzapProfileCache.set(hex, null);
     return null;
   }
 
-  let p2pkPubkey = data.p2pk;
+  let p2pkPubkey = p2pkValue;
   if (p2pkPubkey.startsWith("npub")) {
     const hx = npubToHex(p2pkPubkey);
     if (hx) p2pkPubkey = hx;
@@ -866,9 +882,9 @@ export async function fetchNutzapProfile(
   const profile: NutzapProfile = {
     hexPub: hex,
     p2pkPubkey,
-    trustedMints: data.mints || [],
-    relays: data.relays || undefined,
-    tierAddr: data.tierAddr,
+    trustedMints: Array.from(mintSet),
+    relays: relaySet.size ? Array.from(relaySet) : undefined,
+    tierAddr,
   };
   nutzapProfileCache.set(hex, profile);
   return profile;

@@ -56,7 +56,9 @@ When Fundstr cannot serve a Nutzap profile the client asks the public pool for a
 kind `10002` relay list (NIP-65). Any discovered URLs are queued as additional
 targets for subsequent `queryNostr` calls. Screens such as “Find Creators” and
 the creators store feed these hints back into the relay layer so parameterised
-events (tiers) can be sourced from a creator’s preferred relays.
+events (tiers) can be sourced from a creator’s preferred relays. We also honour
+any `relay` tags present on the Nutzap profile (`kind:10019`) so a creator’s
+self-declared relays are queried before falling back to the public pool.
 
 ## Service worker considerations
 

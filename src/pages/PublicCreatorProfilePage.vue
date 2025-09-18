@@ -134,7 +134,9 @@ export default defineComponent({
   setup() {
     const route = useRoute();
     const router = useRouter();
-    const creatorNpub = route.params.npub as string;
+    const creatorParam =
+      (route.params.npubOrHex ?? route.params.npub) as string;
+    const creatorNpub = creatorParam;
     let creatorHex = creatorNpub;
     try {
       const decoded = nip19.decode(creatorNpub);
@@ -225,7 +227,7 @@ export default defineComponent({
           openSubscribe(t)
           router.replace({
             name: 'PublicCreatorProfile',
-            params: { npub: creatorNpub },
+            params: { npubOrHex: creatorNpub },
           })
           return true
         }

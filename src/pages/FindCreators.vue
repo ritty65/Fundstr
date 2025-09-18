@@ -154,6 +154,8 @@ import type { NostrEvent } from "@/nostr/relayClient";
 import { fallbackDiscoverRelays } from "@/nostr/discovery";
 import { NutzapProfileSchema } from "@/nostr/nutzapProfile";
 
+const props = defineProps<{ npubOrHex?: string }>();
+
 const iframeEl = ref<HTMLIFrameElement | null>(null);
 const iframeLoaded = ref(false);
 const showDonateDialog = ref(false);
@@ -185,6 +187,16 @@ const nutzapProfile = ref<any | null>(null);
 const loadingProfile = ref(false);
 const lastRelayHints = ref<string[]>([]);
 let tierTimeout: ReturnType<typeof setTimeout> | null = null;
+
+watch(
+  () => props.npubOrHex,
+  (value) => {
+    if (typeof value === "string" && value.trim()) {
+      void viewCreatorProfile(value, { openDialog: true });
+    }
+  },
+  { immediate: true },
+);
 
 function sendTheme() {
   iframeEl.value?.contentWindow?.postMessage(
@@ -307,6 +319,14 @@ async function fetchProfileWithFallback(pubkeyInput: string) {
     }
   }
 
+  if (event) {
+    for (const tag of event.tags || []) {
+      if (tag[0] === "relay" && typeof tag[1] === "string" && tag[1]) {
+        relayHints.add(tag[1]);
+      }
+    }
+  }
+
   const details = parseNutzapProfileEvent(event);
   if (details) {
     for (const relay of details.relays) relayHints.add(relay);
@@ -320,6 +340,77 @@ async function fetchProfileWithFallback(pubkeyInput: string) {
   };
 }
 
+async function viewCreatorProfile(
+  pubkeyInput: string,
+  opts: { openDialog?: boolean } = {},
+) {
+  const trimmed = typeof pubkeyInput === "string" ? pubkeyInput.trim() : "";
+  if (!trimmed) return;
+
+  const { openDialog = true } = opts;
+  nutzapProfile.value = null;
+  lastRelayHints.value = [];
+  selectedTier.value = null;
+  loadingProfile.value = true;
+  loadingTiers.value = true;
+  if (tierTimeout) clearTimeout(tierTimeout);
+  tierTimeout = setTimeout(() => {
+    loadingTiers.value = false;
+  }, 5000);
+
+  let profileResult: Awaited<ReturnType<typeof fetchProfileWithFallback>>;
+  try {
+    profileResult = await fetchProfileWithFallback(trimmed);
+  } catch (e) {
+    console.error("Failed to fetch creator profile", e);
+    loadingProfile.value = false;
+    if (tierTimeout) {
+      clearTimeout(tierTimeout);
+      tierTimeout = null;
+    }
+    loadingTiers.value = false;
+    return;
+  }
+
+  const { pubkeyHex, details, relayHints } = profileResult;
+  if (!pubkeyHex) {
+    loadingProfile.value = false;
+    if (tierTimeout) {
+      clearTimeout(tierTimeout);
+      tierTimeout = null;
+    }
+    loadingTiers.value = false;
+    return;
+  }
+
+  dialogPubkey.value = pubkeyHex;
+  selectedPubkey.value = pubkeyHex;
+  lastRelayHints.value = relayHints;
+  if (details) {
+    nutzapProfile.value = details;
+  }
+  loadingProfile.value = false;
+
+  try {
+    await creators.fetchTierDefinitions(pubkeyHex, {
+      relayHints: lastRelayHints.value,
+    });
+  } catch (e) {
+    console.error("Failed to fetch tier definitions", e);
+  } finally {
+    if (tierTimeout) {
+      clearTimeout(tierTimeout);
+      tierTimeout = null;
+    }
+    loadingTiers.value = false;
+  }
+
+  if (openDialog) {
+    await nextTick();
+    showTierDialog.value = true;
+  }
+}
+
 async function onMessage(ev: MessageEvent) {
   if (ev.data && ev.data.type === "donate" && ev.data.pubkey) {
     try {
@@ -329,40 +420,7 @@ async function onMessage(ev: MessageEvent) {
     }
     showDonateDialog.value = true;
   } else if (ev.data && ev.data.type === "viewProfile" && ev.data.pubkey) {
-    loadingTiers.value = true;
-    loadingProfile.value = true;
-    nutzapProfile.value = null;
-    lastRelayHints.value = [];
-    if (tierTimeout) clearTimeout(tierTimeout);
-    tierTimeout = setTimeout(() => {
-      loadingTiers.value = false;
-    }, 5000);
-    const profileResult = await fetchProfileWithFallback(ev.data.pubkey);
-    const hexPubkey = profileResult.pubkeyHex;
-    if (!hexPubkey) {
-      if (tierTimeout) clearTimeout(tierTimeout);
-      loadingProfile.value = false;
-      loadingTiers.value = false;
-      return;
-    }
-    dialogPubkey.value = hexPubkey;
-    try {
-      if (profileResult.details) {
-        nutzapProfile.value = profileResult.details;
-      }
-      lastRelayHints.value = profileResult.relayHints;
-    } finally {
-      loadingProfile.value = false;
-    }
-    try {
-      await creators.fetchTierDefinitions(hexPubkey, {
-        relayHints: lastRelayHints.value,
-      });
-    } catch (e) {
-      console.error("Failed to fetch tier definitions", e);
-    }
-    await nextTick();
-    showTierDialog.value = true;
+    await viewCreatorProfile(ev.data.pubkey, { openDialog: true });
   } else if (ev.data && ev.data.type === "startChat" && ev.data.pubkey) {
     const pubkey = nostr.resolvePubkey(ev.data.pubkey);
     router.push({ path: "/nostr-messenger", query: { pubkey } });
@@ -475,7 +533,10 @@ onMounted(async () => {
   if (typeof npub === "string" && npub) {
     try {
       nip19.decode(npub);
-      router.replace({ name: "PublicCreatorProfile", params: { npub } });
+      router.replace({
+        name: "PublicCreatorProfile",
+        params: { npubOrHex: npub },
+      });
       return;
     } catch {
       if (iframeEl.value) {
