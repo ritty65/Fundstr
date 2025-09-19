@@ -123,17 +123,18 @@ export function pickLatestReplaceable(
 
 export function pickLatestAddrReplaceable(
   events: readonly NostrEvent[],
-  key: { kind: number; pubkey: string; d: string },
+  key: { kind: number | number[]; pubkey: string; d: string },
 ): NostrEvent | null {
+  const kinds = Array.isArray(key.kind) ? key.kind : [key.kind];
   return (
     events
       .filter(
         (ev) =>
-          ev.kind === key.kind &&
+          kinds.includes(ev.kind) &&
           ev.pubkey === key.pubkey &&
           firstDTag(ev) === key.d,
       )
-      .sort((a, b) => b.created_at - a.created_at)[0] || null
+      .sort((a, b) => b.created_at - a.created_at || (b.id > a.id ? 1 : -1))[0] || null
   );
 }
 
@@ -488,14 +489,19 @@ export async function queryNutzapTiers(
 ): Promise<NostrEvent | null> {
   const pubkey = toHex(pubkeyInput);
   const filters: Filter[] = [
-    { kinds: [30019], authors: [pubkey], ["#d"]: ["tiers"], limit: 1 },
+    {
+      kinds: [30019, 30000],
+      authors: [pubkey],
+      ["#d"]: ["tiers"],
+      limit: 2,
+    },
   ];
   const events = await queryNostr(filters, {
     preferFundstr: true,
     fanout: opts.fanout,
   });
   return pickLatestAddrReplaceable(events, {
-    kind: 30019,
+    kind: [30019, 30000],
     pubkey,
     d: "tiers",
   });

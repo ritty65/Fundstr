@@ -1,29 +1,67 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-var filterMock: any;
-var fetchEventsMock: any;
+let filterMock = vi.fn();
+let fetchEventsMock = vi.fn();
+let queryNutzapTiersMock = vi.fn().mockResolvedValue(null);
 
-vi.mock("../../../src/stores/nostr", async (importOriginal) => {
-  const actual = await importOriginal();
+vi.mock("zod", () => {
+  const make = () => ({
+    optional: () => make(),
+    array: () => make(),
+  });
   return {
-    ...actual,
-    useNostrStore: () => ({
-      initNdkReadOnly: vi.fn().mockResolvedValue(undefined),
-      connected: true,
-      lastError: null,
-    }),
+    z: {
+      object: () => make(),
+      string: () => make(),
+      number: () => make(),
+      array: () => make(),
+    },
   };
 });
 
-vi.mock("../../../src/composables/useNdk", () => {
-  fetchEventsMock = vi.fn().mockResolvedValue(new Set());
-  return { useNdk: vi.fn().mockResolvedValue({ fetchEvents: fetchEventsMock }) };
+vi.mock("../../../src/stores/dexie", () => {
+  const tierCollection = {
+    get: vi.fn().mockResolvedValue(null),
+    put: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue(undefined),
+  };
+  const cashuDb = {
+    open: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn().mockResolvedValue(undefined),
+    creatorsTierDefinitions: tierCollection,
+  };
+  return {
+    cashuDb,
+    db: cashuDb,
+  };
 });
 
-vi.mock("../../../src/utils/relayHealth", () => {
-  filterMock = vi.fn();
+vi.mock("../../../src/stores/nostr", () => ({
+  useNostrStore: () => ({
+    initNdkReadOnly: vi.fn().mockResolvedValue(undefined),
+    connected: true,
+    lastError: null,
+  }),
+  getEventHash: vi.fn(),
+  signEvent: vi.fn(),
+  publishEvent: vi.fn(),
+}));
+
+vi.mock("../../../src/composables/useNdk", () => ({
+  useNdk: vi.fn().mockResolvedValue({
+    fetchEvents: (...args: any[]) => fetchEventsMock(...args),
+  }),
+}));
+
+vi.mock("../../../src/utils/relayHealth", () => ({
+  filterHealthyRelays: (...args: any[]) => filterMock(...args),
+}));
+
+vi.mock("../../../src/nostr/relayClient", async (importOriginal) => {
+  const actual = await importOriginal();
   return {
-    filterHealthyRelays: (...args: any[]) => filterMock(...args),
+    ...actual,
+    queryNutzapTiers: (...args: any[]) => queryNutzapTiersMock(...args),
   };
 });
 
@@ -41,77 +79,64 @@ vi.mock("../../../src/js/notify", () => ({
 import { useCreatorsStore } from "../../../src/stores/creators";
 import { cashuDb as db } from "../../../src/stores/dexie";
 
+const CREATOR_HEX = "a".repeat(64);
+
 beforeEach(async () => {
   vi.clearAllMocks();
   localStorage.clear();
+  filterMock = vi.fn();
+  fetchEventsMock = vi.fn().mockResolvedValue(new Set());
+  queryNutzapTiersMock = vi.fn().mockResolvedValue(null);
   await db.close();
   await db.open();
 });
 
-describe("fetchTierDefinitions fallback", () => {
-  it("uses indexer when no relays healthy", async () => {
-    filterMock.mockResolvedValue([]);
-    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        event: {
-          id: "1",
-          created_at: 1,
-          content:
-            '[{"id":"t","name":"T","price_sats":1,"description":"d","benefits":[]}]',
-          tags: [["d", "tiers"]],
-        },
-      }),
-    } as any);
+describe("fetchTierDefinitions", () => {
+  const modernEvent = {
+    id: "modern",
+    pubkey: CREATOR_HEX,
+    created_at: 10,
+    kind: 30019,
+    tags: [["d", "tiers"]],
+    content:
+      '[{"id":"t","name":"Tier","price_sats":1,"perks":"Modern","media":[{"url":"https://ok"}]}]',
+  } as any;
+  const legacyEvent = {
+    id: "legacy",
+    pubkey: CREATOR_HEX,
+    created_at: 5,
+    kind: 30000,
+    tags: [["d", "tiers"]],
+    content: '{"tiers":[{"id":"t","name":"Tier","price":2,"perks":"Legacy"}]}',
+  } as any;
+
+  it("stores tiers from modern kind 30019 events", async () => {
+    queryNutzapTiersMock.mockResolvedValueOnce(modernEvent);
     const store = useCreatorsStore();
-    await store.fetchTierDefinitions("pub");
-    expect(fetchEventsMock).not.toHaveBeenCalled();
-    expect(store.tiersMap["pub"].length).toBe(1);
-    fetchSpy.mockRestore();
+    await store.fetchTierDefinitions(CREATOR_HEX);
+    expect(queryNutzapTiersMock).toHaveBeenCalled();
+    expect(queryNutzapTiersMock.mock.calls[0][0]).toBe(CREATOR_HEX);
+    expect(store.tiersMap[CREATOR_HEX].length).toBe(1);
+    expect(store.tiersMap[CREATOR_HEX][0].benefits).toEqual(["Modern"]);
+    expect(store.tiersMap[CREATOR_HEX][0].media).toEqual([{ url: "https://ok" }]);
   });
 
-  it("falls back when relay fetch returns no events", async () => {
-    filterMock.mockResolvedValue(["wss://relay"]);
-    fetchEventsMock.mockResolvedValue(new Set());
-    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        event: {
-          id: "1",
-          created_at: 1,
-          content:
-            '[{"id":"t","name":"T","price_sats":1,"description":"d","benefits":[]}]',
-          tags: [["d", "tiers"]],
-        },
-      }),
-    } as any);
+  it("normalizes legacy kind 30000 tiers", async () => {
+    queryNutzapTiersMock.mockResolvedValueOnce(legacyEvent);
     const store = useCreatorsStore();
-    await store.fetchTierDefinitions("pub");
-    expect(fetchEventsMock).toHaveBeenCalled();
-    expect(store.tiersMap["pub"].length).toBe(1);
-    fetchSpy.mockRestore();
+    await store.fetchTierDefinitions(CREATOR_HEX);
+    expect(queryNutzapTiersMock).toHaveBeenCalled();
+    expect(store.tiersMap[CREATOR_HEX][0].price_sats).toBe(2);
+    expect(store.tiersMap[CREATOR_HEX][0].benefits).toEqual(["Legacy"]);
   });
 
-  it("decodes npub and stores using hex", async () => {
-    filterMock.mockResolvedValue([]);
-    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        event: {
-          id: "1",
-          created_at: 1,
-          content:
-            '[{"id":"t","name":"T","price_sats":1,"description":"d","benefits":[]}]',
-          tags: [["d", "tiers"]],
-        },
-      }),
-    } as any);
+  it("decodes npub inputs before storing tiers", async () => {
     const { nip19 } = await import("nostr-tools");
-    const hex = "f".repeat(64);
-    const npub = nip19.npubEncode(hex);
+    queryNutzapTiersMock.mockResolvedValueOnce(modernEvent);
     const store = useCreatorsStore();
-    await store.fetchTierDefinitions(npub);
-    expect(store.tiersMap[hex].length).toBe(1);
-    fetchSpy.mockRestore();
+    await store.fetchTierDefinitions(nip19.npubEncode(CREATOR_HEX));
+    expect(queryNutzapTiersMock).toHaveBeenCalled();
+    expect(queryNutzapTiersMock.mock.calls[0][0]).toBe(CREATOR_HEX);
+    expect(store.tiersMap[CREATOR_HEX].length).toBe(1);
   });
 });
