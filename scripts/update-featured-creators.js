@@ -12,6 +12,7 @@ function NostrWebSocket(url, opts) {
 useWebSocketImplementation(NostrWebSocket);
 
 const DEFAULT_RELAYS = [
+  'wss://relay.fundstr.me',
   'wss://relay.damus.io',
   'wss://relay.primal.net',
   'wss://relay.snort.social',

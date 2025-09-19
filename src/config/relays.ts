@@ -9,6 +9,7 @@ export const FALLBACK_RELAYS: string[] = [
 
 // Curated default read relays – these are added at boot for read operations only.
 export const DEFAULT_RELAYS = [
+  "wss://relay.fundstr.me",
   "wss://relay.damus.io",
   "wss://relay.snort.social",
   "wss://relay.primal.net",
