@@ -171,14 +171,15 @@ import { notifyError, notifySuccess } from 'src/js/notify';
 import type { Tier } from 'src/nutzap/types';
 import { useActiveNutzapSigner } from 'src/nutzap/signer';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
-import { NUTZAP_RELAY_WSS } from 'src/nutzap/relayConfig';
 import {
+  FUNDSTR_WS_URL,
   fundstrFirstQuery,
   normalizeAuthor,
   pickLatestParamReplaceable,
   pickLatestReplaceable,
-  publishTierDefinitions,
+  publishTiers as publishTiersToRelay,
   publishNostrEvent,
+  parseTiersContent,
 } from './nutzap-profile/nostrHelpers';
 
 type TierKind = 30019 | 30000;
@@ -199,7 +200,7 @@ const displayName = ref('');
 const pictureUrl = ref('');
 const p2pkPub = ref('');
 const mintsText = ref('');
-const relaysText = ref(NUTZAP_RELAY_WSS);
+const relaysText = ref(FUNDSTR_WS_URL);
 const tiers = ref<Tier[]>([]);
 const tierKind = ref<TierKind>(30019);
 const tierForm = ref<TierFormState>({
@@ -232,8 +233,9 @@ const relayList = computed(() => {
     .split('\n')
     .map(s => s.trim())
     .filter(Boolean);
-  const base = entries.length ? entries : [NUTZAP_RELAY_WSS];
-  return Array.from(new Set(base));
+  const set = new Set(entries);
+  set.add(FUNDSTR_WS_URL);
+  return Array.from(set);
 });
 
 const tierKindOptions = [
@@ -345,41 +347,6 @@ function saveTier() {
   resetTierForm();
 }
 
-function mapJsonTier(raw: any): Tier | null {
-  if (!raw) return null;
-  const id = typeof raw.id === 'string' && raw.id ? raw.id : uuidv4();
-  const title = typeof raw.title === 'string' ? raw.title : '';
-  const price = Number(raw.price ?? raw.price_sats ?? 0);
-  const frequency = tierFrequencies.includes(raw.frequency)
-    ? raw.frequency
-    : 'monthly';
-  const description = typeof raw.description === 'string' && raw.description ? raw.description : undefined;
-  let media: { type: string; url: string }[] | undefined;
-  if (Array.isArray(raw.media)) {
-    const normalized = raw.media
-      .map((entry: any) => {
-        if (!entry) return null;
-        if (typeof entry === 'string') {
-          return { type: 'link', url: entry };
-        }
-        const url = typeof entry.url === 'string' ? entry.url : '';
-        if (!url) return null;
-        const type = typeof entry.type === 'string' ? entry.type : 'link';
-        return { type, url };
-      })
-      .filter((entry): entry is { type: string; url: string } => !!entry && !!entry.url);
-    media = normalized.length ? normalized : undefined;
-  }
-  return {
-    id,
-    title,
-    price,
-    frequency,
-    description,
-    media,
-  };
-}
-
 async function loadTiers(authorHex: string) {
   try {
     let activeKind: TierKind | null = null;
@@ -393,7 +360,7 @@ async function loadTiers(authorHex: string) {
       events = await fundstrFirstQuery([
         { kinds: [30000], authors: [authorHex], '#d': ['tiers'], limit: 1 },
       ]);
-      latest = pickLatestReplaceable(events);
+      latest = pickLatestParamReplaceable(events);
       if (latest) {
         activeKind = 30000;
       }
@@ -408,16 +375,7 @@ async function loadTiers(authorHex: string) {
       tierKind.value = activeKind;
     }
 
-    try {
-      const parsed = latest.content ? JSON.parse(latest.content) : {};
-      const rawTiers = Array.isArray(parsed?.tiers) ? parsed.tiers : [];
-      tiers.value = rawTiers
-        .map(mapJsonTier)
-        .filter((tier): tier is Tier => !!tier);
-    } catch (err) {
-      console.warn('[nutzap] failed to parse tiers content', err);
-      tiers.value = [];
-    }
+    tiers.value = parseTiersContent(latest.content);
   } catch (err) {
     console.error('[nutzap] failed to load tiers', err);
     throw err instanceof Error ? err : new Error(String(err));
@@ -441,12 +399,12 @@ async function loadProfile(authorHex: string) {
     pictureUrl.value = '';
     p2pkPub.value = '';
     mintsText.value = '';
-    relaysText.value = NUTZAP_RELAY_WSS;
+    relaysText.value = FUNDSTR_WS_URL;
     return;
   }
 
   if (latest.pubkey) {
-    authorInput.value = latest.pubkey;
+    authorInput.value = latest.pubkey.toLowerCase();
   }
 
   try {
@@ -458,9 +416,15 @@ async function loadProfile(authorHex: string) {
       mintsText.value = parsed.mints.join('\n');
     }
     if (Array.isArray(parsed.relays) && parsed.relays.length > 0) {
-      relaysText.value = parsed.relays.join('\n');
+      const relays = new Set(
+        parsed.relays
+          .map((entry: unknown) => (typeof entry === 'string' ? entry.trim() : ''))
+          .filter(Boolean)
+      );
+      relays.add(FUNDSTR_WS_URL);
+      relaysText.value = Array.from(relays).join('\n');
     } else {
-      relaysText.value = NUTZAP_RELAY_WSS;
+      relaysText.value = FUNDSTR_WS_URL;
     }
     if (typeof parsed.tierAddr === 'string') {
       const [kindPart, , dPart] = parsed.tierAddr.split(':');
@@ -487,8 +451,14 @@ async function loadProfile(authorHex: string) {
     mintsText.value = mintTags.map((t: any) => t[1]).join('\n');
   }
   const relayTags = tags.filter((t: any) => Array.isArray(t) && t[0] === 'relay' && t[1]);
-  if ((!relaysText.value || relaysText.value === NUTZAP_RELAY_WSS) && relayTags.length) {
-    relaysText.value = Array.from(new Set(relayTags.map((t: any) => t[1]))).join('\n');
+  if ((!relaysText.value || relaysText.value === FUNDSTR_WS_URL) && relayTags.length) {
+    const relays = new Set(
+      relayTags
+        .map((t: any) => (typeof t[1] === 'string' ? t[1] : ''))
+        .filter(Boolean)
+    );
+    relays.add(FUNDSTR_WS_URL);
+    relaysText.value = Array.from(relays).join('\n');
   }
   if (!p2pkPub.value) {
     const pkTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'pubkey' && t[1]);
@@ -533,35 +503,17 @@ async function publishTiers() {
 
   publishingTiers.value = true;
   try {
-    const payload = tiers.value.map(tier => {
-      const mediaUrls = Array.isArray(tier.media)
-        ? tier.media.map(m => m.url).filter(Boolean)
-        : [];
-      const record: Record<string, unknown> = {
-        id: tier.id,
-        title: tier.title,
-        price: tier.price,
-        frequency: tier.frequency,
-      };
-      if (tier.description) {
-        record.description = tier.description;
-      }
-      if (mediaUrls.length) {
-        record.media = mediaUrls;
-      }
-      return record;
-    });
-
-    const ack = await publishTierDefinitions(payload, tierKind.value);
-    const signerPubkey = ack.event?.pubkey;
+    const { ack, event } = await publishTiersToRelay(tiers.value, tierKind.value);
+    const signerPubkey = event?.pubkey;
     const reloadKey = typeof signerPubkey === 'string' && signerPubkey ? signerPubkey : authorHex;
     if (signerPubkey && signerPubkey !== authorInput.value) {
       authorInput.value = signerPubkey;
     }
-    const eventId = ack.id ?? ack.event?.id;
+    const eventId = ack?.id ?? event?.id;
+    const relayMessage = typeof ack?.message === 'string' && ack.message ? ` — ${ack.message}` : '';
     lastTiersPublishInfo.value = eventId
-      ? `Tiers published (kind ${tierKind.value}) — id ${eventId}`
-      : `Tiers published (kind ${tierKind.value}).`;
+      ? `Tiers published (kind ${tierKind.value}) — id ${eventId}${relayMessage}`
+      : `Tiers published (kind ${tierKind.value})${relayMessage}`;
     notifySuccess('Subscription tiers published to relay.fundstr.me.');
     await loadTiers(reloadKey);
   } catch (err) {
@@ -611,6 +563,7 @@ async function publishProfile() {
       ...mintList.value.map(mint => ['mint', mint, 'sat']),
       ...relays.map(relay => ['relay', relay]),
     ];
+    tags.push(['a', `${tierKind.value}:${authorHex}:tiers`]);
     if (displayName.value.trim()) {
       tags.push(['name', displayName.value.trim()]);
     }
@@ -618,16 +571,17 @@ async function publishProfile() {
       tags.push(['picture', pictureUrl.value.trim()]);
     }
 
-    const ack = await publishNostrEvent({ kind: 10019, tags, content });
-    const signerPubkey = ack.event?.pubkey;
+    const { ack, event } = await publishNostrEvent({ kind: 10019, tags, content });
+    const signerPubkey = event?.pubkey;
     const reloadKey = typeof signerPubkey === 'string' && signerPubkey ? signerPubkey : authorHex;
     if (signerPubkey && signerPubkey !== authorInput.value) {
       authorInput.value = signerPubkey;
     }
-    const eventId = ack.id ?? ack.event?.id;
+    const eventId = ack?.id ?? event?.id;
+    const relayMessage = typeof ack?.message === 'string' && ack.message ? ` — ${ack.message}` : '';
     lastProfilePublishInfo.value = eventId
-      ? `Profile published — id ${eventId}`
-      : 'Profile published to relay.fundstr.me.';
+      ? `Profile published — id ${eventId}${relayMessage}`
+      : `Profile published to relay.fundstr.me.${relayMessage}`;
     notifySuccess('Nutzap profile published to relay.fundstr.me.');
     await loadProfile(reloadKey);
   } catch (err) {
@@ -663,7 +617,7 @@ watch(pubkey, newPubkey => {
 
 onMounted(() => {
   if (!relaysText.value) {
-    relaysText.value = NUTZAP_RELAY_WSS;
+    relaysText.value = FUNDSTR_WS_URL;
   }
   if (pubkey.value && !authorInput.value) {
     authorInput.value = pubkey.value;

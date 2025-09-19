@@ -1,9 +1,25 @@
 import { nip19 } from 'nostr-tools';
 import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
+import type { Tier } from 'src/nutzap/types';
+
+export const FUNDSTR_WS_URL = 'wss://relay.fundstr.me';
+export const FUNDSTR_REQ_URL = 'https://relay.fundstr.me/req';
+export const FUNDSTR_EVT_URL = 'https://relay.fundstr.me/event';
+export const WS_FIRST_TIMEOUT_MS = 3000;
 
 const HEX_64_REGEX = /^[0-9a-f]{64}$/i;
 const HEX_128_REGEX = /^[0-9a-f]{128}$/i;
+
+type RawTier = {
+  id?: string;
+  title?: string;
+  price?: number | string;
+  price_sats?: number | string;
+  frequency?: Tier['frequency'];
+  description?: string;
+  media?: Array<string | { type?: string; url?: string }>;
+};
 
 export type NostrEvent = {
   id: string;
@@ -33,166 +49,241 @@ export function normalizeAuthor(input: string): string {
   }
 
   if (trimmed.toLowerCase().startsWith('npub')) {
-    const decoded = nip19.decode(trimmed);
-    if (decoded.type !== 'npub') {
-      throw new Error('Only npub identifiers are supported.');
+    try {
+      const decoded = nip19.decode(trimmed);
+      if (decoded.type !== 'npub') {
+        throw new Error('Only npub identifiers are supported.');
+      }
+      const data = decoded.data;
+      let hex: string;
+      if (typeof data === 'string') {
+        hex = data;
+      } else if (data instanceof Uint8Array) {
+        hex = Array.from(data)
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+      } else {
+        throw new Error('Invalid npub payload.');
+      }
+      if (!HEX_64_REGEX.test(hex)) {
+        throw new Error('Invalid npub payload.');
+      }
+      return hex.toLowerCase();
+    } catch (err) {
+      throw new Error(err instanceof Error ? err.message : 'Invalid npub');
     }
-    const data = decoded.data;
-    if (typeof data !== 'string' || !HEX_64_REGEX.test(data)) {
-      throw new Error('Invalid npub payload.');
-    }
-    return data.toLowerCase();
   }
 
-  throw new Error('Author must be a 64-char hex pubkey or npub.');
+  throw new Error('Author must be a 64-character hex pubkey or npub.');
 }
 
 export function isNostrEvent(e: any): e is NostrEvent {
   if (!e || typeof e !== 'object') return false;
-  if (!HEX_64_REGEX.test(e.id ?? '')) return false;
-  if (!HEX_64_REGEX.test(e.pubkey ?? '')) return false;
-  if (typeof e.created_at !== 'number' || !Number.isFinite(e.created_at)) return false;
-  if (typeof e.kind !== 'number') return false;
-  if (!Array.isArray(e.tags)) return false;
-  if (typeof e.content !== 'string') return false;
-  if (!HEX_128_REGEX.test(e.sig ?? '')) return false;
+  const { id, pubkey, created_at, kind, tags, content, sig } = e as Partial<NostrEvent>;
+  if (!HEX_64_REGEX.test(id ?? '')) return false;
+  if (!HEX_64_REGEX.test(pubkey ?? '')) return false;
+  if (typeof created_at !== 'number' || !Number.isFinite(created_at)) return false;
+  if (typeof kind !== 'number' || !Number.isInteger(kind)) return false;
+  if (!Array.isArray(tags)) return false;
+  if (typeof content !== 'string') return false;
+  if (!HEX_128_REGEX.test(sig ?? '')) return false;
   return true;
 }
 
-export function pickLatestReplaceable<T extends { created_at?: number }>(events: T[]): T | null {
-  let latest: T | null = null;
-  for (const event of events) {
-    if (!event || typeof (event as any).kind !== 'number' || typeof (event as any).pubkey !== 'string') {
-      continue;
-    }
-    if (!latest || (event.created_at ?? 0) > (latest.created_at ?? 0)) {
-      latest = event;
+function selectLatestByKey(events: any[], keyFn: (event: any) => string): any | null {
+  const map = new Map<string, any>();
+  for (const event of events ?? []) {
+    if (!event || typeof event !== 'object') continue;
+    const kind = (event as any).kind;
+    const pubkey = (event as any).pubkey;
+    if (typeof kind !== 'number' || typeof pubkey !== 'string') continue;
+    const key = keyFn(event);
+    if (!key) continue;
+    const current = map.get(key);
+    if (!current || ((event as any).created_at ?? 0) > ((current as any).created_at ?? 0)) {
+      map.set(key, event);
     }
   }
-  return latest;
+
+  const latest = Array.from(map.values()).sort(
+    (a, b) => ((b as any).created_at ?? 0) - ((a as any).created_at ?? 0)
+  );
+  return latest[0] ?? null;
 }
 
-export function pickLatestParamReplaceable<T extends { created_at?: number; tags?: any[] }>(events: T[]): T | null {
-  let latest: T | null = null;
-  let latestKey = '';
-  for (const event of events) {
-    if (!event || typeof (event as any).kind !== 'number' || typeof (event as any).pubkey !== 'string') {
-      continue;
-    }
+export function pickLatestReplaceable(events: any[]): any {
+  return selectLatestByKey(events, event => {
+    const kind = (event as any).kind;
+    const pubkey = String((event as any).pubkey ?? '').toLowerCase();
+    return typeof kind === 'number' && pubkey ? `${kind}:${pubkey}` : '';
+  });
+}
+
+export function pickLatestParamReplaceable(events: any[]): any {
+  return selectLatestByKey(events, event => {
+    const kind = (event as any).kind;
+    const pubkey = String((event as any).pubkey ?? '').toLowerCase();
     const tags = Array.isArray((event as any).tags) ? (event as any).tags : [];
-    const dTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'd' && typeof t[1] === 'string');
-    const key = `${(event as any).kind}:${(event as any).pubkey}:${dTag ? dTag[1] : ''}`;
-    if (!latest || key !== latestKey || (event.created_at ?? 0) > (latest.created_at ?? 0)) {
-      latest = event;
-      latestKey = key;
-    }
-  }
-  return latest;
+    const dTag = tags.find(tag => Array.isArray(tag) && tag[0] === 'd');
+    const dValue = typeof dTag?.[1] === 'string' ? dTag[1] : '';
+    return typeof kind === 'number' && pubkey ? `${kind}:${pubkey}:${dValue}` : '';
+  });
 }
 
-export async function fundstrFirstQuery(filters: NostrFilter[], wsTimeoutMs = 1500): Promise<any[]> {
-  const wsUrl = 'wss://relay.fundstr.me';
-  let events: any[] = [];
+function serializeMinimal(tiers: Tier[]) {
+  return tiers.map(tier => {
+    const media = Array.isArray(tier.media)
+      ? tier.media
+          .map(entry => (typeof entry?.url === 'string' ? entry.url : ''))
+          .filter(url => !!url)
+      : undefined;
 
-  try {
-    events = await new Promise<any[]>((resolve, reject) => {
-      const collected: any[] = [];
-      let settled = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const subId = Math.random().toString(36).slice(2);
-      let socket: WebSocket | null = null;
+    const numericPrice = Number(tier.price);
+    const price = Number.isFinite(numericPrice) ? Math.round(numericPrice) : 0;
 
-      const finalize = (result: any[], error?: unknown) => {
-        if (settled) return;
-        settled = true;
-        if (timer) {
-          clearTimeout(timer);
+    return {
+      id: tier.id,
+      title: tier.title,
+      price,
+      frequency: tier.frequency,
+      ...(tier.description ? { description: tier.description } : {}),
+      ...(media && media.length ? { media } : {}),
+    };
+  });
+}
+
+function normalizeRawTier(raw: RawTier): Tier | null {
+  if (!raw) return null;
+  const id = typeof raw.id === 'string' && raw.id ? raw.id : '';
+  const title = typeof raw.title === 'string' ? raw.title : '';
+  const priceSource = raw.price ?? raw.price_sats ?? 0;
+  const price = Number(priceSource);
+  const frequency: Tier['frequency'] = ['one_time', 'monthly', 'yearly'].includes(
+    raw.frequency as Tier['frequency']
+  )
+    ? (raw.frequency as Tier['frequency'])
+    : 'monthly';
+  const description = typeof raw.description === 'string' && raw.description ? raw.description : undefined;
+  let media: Tier['media'];
+  if (Array.isArray(raw.media)) {
+    const normalized = raw.media
+      .map(entry => {
+        if (!entry) return null;
+        if (typeof entry === 'string') {
+          return { type: 'link', url: entry };
         }
-        if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-          try {
-            socket.close();
-          } catch (closeErr) {
-            console.warn('[nutzap] ws close failed', closeErr);
-          }
-        }
-        if (error) {
-          const err = error instanceof Error ? error : new Error(String(error));
-          reject(err);
-        } else {
-          resolve(result);
-        }
-      };
-
-      try {
-        socket = new WebSocket(wsUrl);
-      } catch (err) {
-        finalize([], err);
-        return;
-      }
-
-      timer = setTimeout(() => finalize(collected), wsTimeoutMs);
-
-      socket.onopen = () => {
-        try {
-          socket?.send(JSON.stringify(['REQ', subId, ...filters]));
-        } catch (err) {
-          finalize(collected, err);
-        }
-      };
-
-      socket.onmessage = ev => {
-        try {
-          const data = JSON.parse(ev.data);
-          if (!Array.isArray(data)) return;
-          const [type, sub, payload] = data;
-          if (sub !== subId) return;
-          if (type === 'EVENT') {
-            collected.push(payload);
-          } else if (type === 'EOSE') {
-            finalize(collected);
-          }
-        } catch (err) {
-          console.warn('[nutzap] ws message parse failed', err);
-        }
-      };
-
-      socket.onerror = err => {
-        finalize(collected, err instanceof Error ? err : new Error('WebSocket error'));
-      };
-
-      socket.onclose = () => {
-        finalize(collected);
-      };
-    });
-  } catch (err) {
-    console.warn('[nutzap] ws query failed', err);
+        const url = typeof entry.url === 'string' ? entry.url : '';
+        if (!url) return null;
+        const type = typeof entry.type === 'string' ? entry.type : 'link';
+        return { type, url };
+      })
+      .filter((item): item is { type: string; url: string } => !!item && !!item.url);
+    media = normalized.length ? normalized : undefined;
   }
 
-  if (!Array.isArray(events) || events.length === 0) {
+  const globalCrypto = (globalThis as any)?.crypto;
+  return {
+    id: id || globalCrypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+    title,
+    price: Number.isFinite(price) ? price : 0,
+    frequency,
+    description,
+    media,
+  };
+}
+
+export async function fundstrFirstQuery(filters: NostrFilter[], wsTimeoutMs = WS_FIRST_TIMEOUT_MS): Promise<any[]> {
+  const results: any[] = [];
+  const WSImpl = typeof WebSocket !== 'undefined' ? WebSocket : (globalThis as any)?.WebSocket;
+
+  if (WSImpl) {
     try {
-      const response = await fetch(
-        `https://relay.fundstr.me/req?filters=${encodeURIComponent(JSON.stringify(filters))}`
-      );
-      if (!response.ok) {
-        throw new Error(`HTTP query failed with status ${response.status}`);
-      }
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        events = data;
-      } else if (Array.isArray(data?.events)) {
-        events = data.events;
-      } else {
-        events = [];
+      const eventsFromWs = await new Promise<any[]>((resolve, reject) => {
+        const collected: any[] = [];
+        let settled = false;
+        const subId = `fundstr-${Math.random().toString(36).slice(2)}`;
+        const socket = new WSImpl(FUNDSTR_WS_URL);
+        const finalize = (value: any[], error?: unknown) => {
+          if (settled) return;
+          settled = true;
+          try {
+            if (socket.readyState === WSImpl.OPEN || socket.readyState === WSImpl.CONNECTING) {
+              socket.close();
+            }
+          } catch {
+            /* noop */
+          }
+          clearTimeout(timer);
+          if (error) {
+            reject(error instanceof Error ? error : new Error(String(error)));
+          } else {
+            resolve(value);
+          }
+        };
+
+        const timer = setTimeout(() => finalize(collected), wsTimeoutMs);
+
+        socket.onopen = () => {
+          try {
+            socket.send(JSON.stringify(['REQ', subId, ...filters]));
+          } catch (err) {
+            finalize(collected, err);
+          }
+        };
+
+        socket.onmessage = event => {
+          try {
+            const payload = JSON.parse(event.data);
+            if (!Array.isArray(payload)) return;
+            const [type, sub, body] = payload;
+            if (sub !== subId) return;
+            if (type === 'EVENT') {
+              collected.push(body);
+            }
+            if (type === 'EOSE') {
+              finalize(collected);
+            }
+          } catch (err) {
+            console.warn('[nutzap] failed to parse relay message', err);
+          }
+        };
+
+        socket.onerror = err => {
+          finalize(collected, err instanceof Event ? new Error('WebSocket error') : err);
+        };
+
+        socket.onclose = () => {
+          finalize(collected);
+        };
+      });
+
+      if (Array.isArray(eventsFromWs) && eventsFromWs.length) {
+        results.push(...eventsFromWs);
       }
     } catch (err) {
-      console.warn('[nutzap] http query failed', err);
-      if (!Array.isArray(events) || events.length === 0) {
-        throw err instanceof Error ? err : new Error(String(err));
-      }
+      console.warn('[nutzap] WS query failed', err);
     }
   }
 
-  return Array.isArray(events) ? events : [];
+  if (!results.length) {
+    const url = new URL(FUNDSTR_REQ_URL);
+    url.searchParams.set('filters', JSON.stringify(filters));
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP query failed with status ${response.status}`);
+    }
+    const data = await response.json();
+    if (Array.isArray(data)) {
+      results.push(...data);
+    } else if (Array.isArray(data?.events)) {
+      results.push(...data.events);
+    }
+  }
+
+  return results;
 }
 
 export async function publishNostrEvent(template: {
@@ -208,16 +299,16 @@ export async function publishNostrEvent(template: {
     signed = await window.nostr.signEvent({ ...template, created_at });
   } else {
     const ndk = getNutzapNdk();
-    const ev = new NDKEvent(ndk, { ...template, created_at });
-    await ev.sign();
-    signed = await ev.toNostrEvent();
+    const event = new NDKEvent(ndk, { ...template, created_at });
+    await event.sign();
+    signed = await event.toNostrEvent();
   }
 
   if (!isNostrEvent(signed)) {
-    throw new Error('Not a signed NIP-01 event');
+    throw new Error('Signing failed — invalid NIP-01 event');
   }
 
-  const response = await fetch('https://relay.fundstr.me/event', {
+  const response = await fetch(FUNDSTR_EVT_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(signed),
@@ -228,19 +319,38 @@ export async function publishNostrEvent(template: {
   }
 
   const ack = await response.json();
-  if (!ack?.accepted) {
-    throw new Error(ack?.message || 'Relay rejected');
+  if (!ack || ack.accepted !== true) {
+    const message = typeof ack?.message === 'string' ? ack.message : 'Relay rejected event';
+    throw new Error(message);
   }
 
-  return { ...ack, event: signed };
+  return { ack, event: signed };
 }
 
-export async function publishTierDefinitions(tiers: any[], kind: number) {
+export async function publishTiers(tiers: Tier[], kind: 30019 | 30000) {
   const tags = [
     ['d', 'tiers'],
     ['t', 'nutzap-tiers'],
     ['client', 'fundstr'],
   ];
-  const content = JSON.stringify({ v: 1, tiers });
+  const content = JSON.stringify({ v: 1, tiers: serializeMinimal(tiers) });
   return publishNostrEvent({ kind, tags, content });
+}
+
+export function parseTiersContent(content: string | undefined): Tier[] {
+  if (!content) return [];
+  try {
+    const parsed = JSON.parse(content) as { tiers?: RawTier[] } | RawTier[];
+    const rawTiers = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.tiers)
+        ? parsed.tiers
+        : [];
+    return rawTiers
+      .map(normalizeRawTier)
+      .filter((tier): tier is Tier => !!tier && !!tier.title);
+  } catch (err) {
+    console.warn('[nutzap] failed to parse tiers content', err);
+    return [];
+  }
 }
