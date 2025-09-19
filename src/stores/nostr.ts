@@ -1391,6 +1391,18 @@ export const useNostrStore = defineStore("nostr", {
           this.connectedRelays.delete(r.url);
           this.connected = this.connectedRelays.size > 0;
         });
+        (ndk.pool as any).on?.("relay:stalled", (r: any) => {
+          if (!this.failedRelays.includes(r.url)) {
+            this.failedRelays.push(r.url);
+            notifyWarning(`Relay ${r.url} stalled, reconnecting`);
+          }
+          this.connectedRelays.delete(r.url);
+          this.connected = this.connectedRelays.size > 0;
+        });
+        (ndk.pool as any).on?.("relay:heartbeat", (r: any) => {
+          const idx = this.failedRelays.indexOf(r.url);
+          if (idx !== -1) this.failedRelays.splice(idx, 1);
+        });
       } catch (e: any) {
         console.warn("[nostr] read-only connect failed", e);
         notifyWarning(`Failed to connect to relays`, e?.message ?? String(e));
@@ -1473,6 +1485,19 @@ export const useNostrStore = defineStore("nostr", {
         this.connectedRelays.delete(r.url);
         this.connected = this.connectedRelays.size > 0;
         this.relays = [...this.relays];
+      });
+      (ndk.pool as any).on?.("relay:stalled", (r: any) => {
+        if (!this.failedRelays.includes(r.url)) {
+          this.failedRelays.push(r.url);
+          notifyWarning(`Relay ${r.url} stalled, reconnecting`);
+        }
+        this.connectedRelays.delete(r.url);
+        this.connected = this.connectedRelays.size > 0;
+        this.relays = [...this.relays];
+      });
+      (ndk.pool as any).on?.("relay:heartbeat", (r: any) => {
+        const idx = this.failedRelays.indexOf(r.url);
+        if (idx !== -1) this.failedRelays.splice(idx, 1);
       });
 
       // 5. track relay health – never throw
