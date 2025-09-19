@@ -76,6 +76,13 @@ describe("relayClient dedup & replaceable handling", () => {
         created_at: 80,
         tags: [["d", "tiers"]],
       }),
+      makeEvent({
+        id: "tiers-legacy",
+        kind: 30000,
+        pubkey: "alice",
+        created_at: 85,
+        tags: [["d", "tiers"]],
+      }),
     ];
 
     const deduped = dedup(events);
@@ -98,11 +105,11 @@ describe("relayClient dedup & replaceable handling", () => {
     expect(latestProfile?.id).toBe("profile-new");
 
     const latestTiers = pickLatestAddrReplaceable(normalized, {
-      kind: 30019,
+      kind: [30019, 30000],
       pubkey: "alice",
       d: "tiers",
     });
-    expect(latestTiers?.id).toBe("tiers-new");
+    expect(latestTiers?.id).toBe("tiers-legacy");
   });
 });
 

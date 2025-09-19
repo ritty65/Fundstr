@@ -180,6 +180,13 @@ describe("replaceable semantics", () => {
       created_at: 80,
       tags: [["d", "tiers"]],
     });
+    const tiersLegacy = makeEvent({
+      id: "tiers-legacy",
+      kind: 30000,
+      pubkey: "alice",
+      created_at: 90,
+      tags: [["d", "tiers"]],
+    });
 
     const events: NostrEvent[] = [
       duplicate,
@@ -188,6 +195,7 @@ describe("replaceable semantics", () => {
       profileNew,
       tiersOld,
       tiersNew,
+      tiersLegacy,
     ];
 
     const deduped = dedup(events);
@@ -199,12 +207,12 @@ describe("replaceable semantics", () => {
       pubkey: "alice",
     });
     const latestTiers = pickLatestAddrReplaceable(normalized, {
-      kind: 30019,
+      kind: [30019, 30000],
       pubkey: "alice",
       d: "tiers",
     });
 
     expect(latestProfile?.id).toBe("profile-new");
-    expect(latestTiers?.id).toBe("tiers-new");
+    expect(latestTiers?.id).toBe("tiers-legacy");
   });
 });
