@@ -1,14 +1,70 @@
 import { ref, computed, onMounted } from 'vue';
+import { nip19 } from 'nostr-tools';
 import { v4 as uuidv4 } from 'uuid';
 import { notifyError, notifySuccess } from 'src/js/notify';
 import { publishNutzapProfile, publishTierDefinitions } from 'src/nutzap/publish';
 import { queryNutzapProfile, queryNutzapTiers } from '@/nostr/relayClient';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
-import { NUTZAP_RELAY_WSS } from 'src/nutzap/relayConfig';
+import { NUTZAP_RELAY_WSS, NUTZAP_TIERS_KIND } from 'src/nutzap/relayConfig';
 import type { Tier, NutzapProfileContent } from 'src/nutzap/types';
 import { useActiveNutzapSigner } from './signer';
 
 const tierFrequencies: Tier['frequency'][] = ['one_time', 'monthly', 'yearly'];
+
+const CANONICAL_TIER_KIND = 30019;
+const LEGACY_TIER_KIND = 30000;
+
+const tierKindChoices = [NUTZAP_TIERS_KIND, CANONICAL_TIER_KIND, LEGACY_TIER_KIND].filter(
+  (value, index, arr) => arr.indexOf(value) === index
+);
+
+const tierKindLabels = new Map<number, string>([
+  [CANONICAL_TIER_KIND, 'Canonical (30019)'],
+  [LEGACY_TIER_KIND, 'Legacy (30000)'],
+]);
+
+const tierKindOptions = tierKindChoices.map(value => ({
+  value,
+  label: tierKindLabels.get(value) ?? `Kind ${value}`,
+}));
+
+const tierKindSet = new Set(tierKindChoices);
+
+function parseTierKindFromAddress(address?: string | null) {
+  if (!address) return null;
+  const trimmed = address.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.includes(':')) {
+    const [kindPart, , identifier] = trimmed.split(':');
+    const maybeKind = Number(kindPart);
+    if (identifier === 'tiers' && Number.isFinite(maybeKind) && tierKindSet.has(maybeKind)) {
+      return maybeKind;
+    }
+    return null;
+  }
+
+  if (trimmed.startsWith('naddr')) {
+    try {
+      const decoded = nip19.decode(trimmed);
+      if (decoded.type === 'naddr') {
+        const data = decoded.data as { kind?: number; identifier?: string };
+        const maybeKind = typeof data.kind === 'number' ? data.kind : Number(data.kind);
+        if (data.identifier === 'tiers' && Number.isFinite(maybeKind) && tierKindSet.has(maybeKind)) {
+          return maybeKind;
+        }
+      }
+    } catch (err) {
+      console.warn('[nutzap] failed to decode tierAddr naddr', err);
+    }
+  }
+
+  return null;
+}
+
+function buildTierAddr(kind: number, pubkey: string) {
+  return `${kind}:${pubkey}:tiers`;
+}
 
 type TierFormState = {
   id: string;
@@ -63,6 +119,7 @@ export function useNutzapProfile() {
   const p2pkPub = ref('');
   const mintsText = ref('');
   const tiers = ref<Tier[]>([]);
+  const tierKind = ref<number>(tierKindOptions[0]?.value ?? NUTZAP_TIERS_KIND);
   const tierForm = ref<TierFormState>({
     id: '',
     title: '',
@@ -167,6 +224,7 @@ export function useNutzapProfile() {
       }
 
       if (profileEvent) {
+        let tierAddrFromContent: string | undefined;
         try {
           const content = profileEvent.content ? JSON.parse(profileEvent.content) : {};
           if (typeof content.p2pk === 'string') {
@@ -178,6 +236,13 @@ export function useNutzapProfile() {
           if (Array.isArray(content.relays) && content.relays.length > 0) {
             // keep for future if we expose relay editing
           }
+          if (typeof content.tierAddr === 'string') {
+            const parsedKind = parseTierKindFromAddress(content.tierAddr);
+            if (parsedKind !== null) {
+              tierKind.value = parsedKind;
+            }
+            tierAddrFromContent = content.tierAddr;
+          }
         } catch (e) {
           console.warn('[nutzap] failed to parse profile content', e);
         }
@@ -187,6 +252,15 @@ export function useNutzapProfile() {
         const mintTags = tags.filter((t: any) => Array.isArray(t) && t[0] === 'mint' && t[1]);
         if (!mintsText.value && mintTags.length) {
           mintsText.value = mintTags.map((t: any) => t[1]).join('\n');
+        }
+        if (!tierAddrFromContent) {
+          const addrTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'a' && t[1]);
+          if (addrTag && typeof addrTag[1] === 'string') {
+            const parsedKind = parseTierKindFromAddress(addrTag[1]);
+            if (parsedKind !== null) {
+              tierKind.value = parsedKind;
+            }
+          }
         }
         if (nameTag) displayName.value = nameTag[1];
         if (pictureTag) pictureUrl.value = pictureTag[1];
@@ -238,14 +312,17 @@ export function useNutzapProfile() {
         description: t.description,
         media: t.media,
       }));
-      const tierResult = await publishTierDefinitions(tierPayload);
+      const selectedTierKind = tierKind.value;
+      const tierResult = await publishTierDefinitions(tierPayload, {
+        kind: selectedTierKind,
+      });
 
       const content: NutzapProfileContent = {
         v: 1,
         p2pk: p2pkPub.value.trim(),
         mints: mintList.value,
         relays: [NUTZAP_RELAY_WSS],
-        tierAddr: `30000:${currentPubkey}:tiers`,
+        tierAddr: buildTierAddr(selectedTierKind, currentPubkey),
       };
 
       const tags: string[][] = [
@@ -296,6 +373,8 @@ export function useNutzapProfile() {
     lastPublishInfo,
     publishDisabled,
     mintList,
+    tierKind,
+    tierKindOptions,
     tierFrequencies,
     editTier,
     removeTier,
