@@ -25,10 +25,14 @@ export async function publishNutzapProfile(
 }
 
 /** Publish tiers as parameterized replaceable event ("d":"tiers"). */
-export async function publishTierDefinitions(tiers: Tier[]) {
+export async function publishTierDefinitions(
+  tiers: Tier[],
+  opts?: { kind?: number }
+) {
   const ndk = getNutzapNdk();
   const ev = new NDKEvent(ndk);
-  ev.kind = NUTZAP_TIERS_KIND; // 30019 by default; switch to 30000 if desired
+  const tierKind = typeof opts?.kind === 'number' ? opts.kind : NUTZAP_TIERS_KIND;
+  ev.kind = tierKind; // defaults to env-configured kind
   ev.tags = [
     ['d', 'tiers'],
     ['t', 'nutzap-tiers'],
