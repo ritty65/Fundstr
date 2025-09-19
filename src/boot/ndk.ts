@@ -59,11 +59,26 @@ function attachRelayErrorHandlers(ndk: NDK) {
   ndk.pool.on("notice", (relay: any, notice: string) => {
     console.debug(`[NDK] notice from ${relay.url}: ${notice}`);
   });
+  (ndk.pool as any).on?.("relay:stalled", (relay: any) => {
+    console.warn(`[NDK] heartbeat stalled on ${relay.url}`);
+  });
+  (ndk.pool as any).on?.("relay:heartbeat", (relay: any) => {
+    console.debug(`[NDK] heartbeat recovered on ${relay.url}`);
+  });
 }
 
 let ndkInstance: NDK | undefined;
 let ndkPromise: Promise<NDK> | undefined;
 let relayWatchdog: RelayWatchdog | undefined;
+
+function startRelayWatchdog(ndk: NDK) {
+  if (relayWatchdog) {
+    relayWatchdog.updateNdk(ndk);
+  } else {
+    relayWatchdog = new RelayWatchdog(ndk);
+  }
+  relayWatchdog.start(2, FREE_RELAYS);
+}
 
 export async function safeConnect(
   ndk: NDK,
@@ -134,10 +149,7 @@ async function createReadOnlyNdk(): Promise<NDK> {
     }
     await safeConnect(ndk);
   }
-  if (!relayWatchdog) {
-    relayWatchdog = new RelayWatchdog(ndk);
-    relayWatchdog.start(2, FREE_RELAYS);
-  }
+  startRelayWatchdog(ndk);
   return ndk;
 }
 
@@ -181,10 +193,7 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
     }
     await safeConnect(ndk);
   }
-  if (!relayWatchdog) {
-    relayWatchdog = new RelayWatchdog(ndk);
-    relayWatchdog.start(2, FREE_RELAYS);
-  }
+  startRelayWatchdog(ndk);
   return ndk;
 }
 
@@ -233,16 +242,13 @@ export async function createNdk(): Promise<NDK> {
   await new Promise((r) => setTimeout(r, 3000));
   if (![...ndk.pool.relays.values()].some((r: any) => r.connected)) {
     for (const url of FREE_RELAYS) {
-      if (!ndk.pool.relays.has(url)) {
+  if (!ndk.pool.relays.has(url)) {
         ndk.addExplicitRelay(url);
       }
     }
     await safeConnect(ndk);
   }
-  if (!relayWatchdog) {
-    relayWatchdog = new RelayWatchdog(ndk);
-    relayWatchdog.start(2, FREE_RELAYS);
-  }
+  startRelayWatchdog(ndk);
   return ndk;
 }
 
