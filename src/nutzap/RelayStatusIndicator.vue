@@ -5,11 +5,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue';
-import { getNutzapNdk } from './ndkInstance';
-import { NUTZAP_RELAY_WSS } from './relayConfig';
+import { computed } from 'vue';
+import { useFundstrRelayStatus } from './FundstrRelaySocket';
 
-const status = ref<'connecting' | 'connected' | 'disconnected'>('connecting');
+const status = useFundstrRelayStatus();
 
 const label = computed(() => {
   switch (status.value) {
@@ -23,21 +22,6 @@ const label = computed(() => {
 });
 
 const statusClass = computed(() => `status-${status.value}`);
-
-let timer: any;
-onMounted(() => {
-  const ndk = getNutzapNdk();
-  timer = setInterval(() => {
-    const relay = (ndk as any).pool?.relays?.get?.(NUTZAP_RELAY_WSS);
-    const connected = relay?.connected || relay?.status === 1;
-    status.value = connected
-      ? 'connected'
-      : status.value === 'connected'
-        ? 'disconnected'
-        : 'connecting';
-  }, 1000);
-});
-onUnmounted(() => clearInterval(timer));
 </script>
 
 <style scoped>
