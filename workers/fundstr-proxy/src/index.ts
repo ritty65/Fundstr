@@ -10,8 +10,8 @@ type Env = {
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': '*',
-  'Access-Control-Allow-Methods': 'GET,HEAD,OPTIONS',
+  'Access-Control-Allow-Headers': 'content-type',
+  'Access-Control-Allow-Methods': 'GET,HEAD,OPTIONS,POST',
 };
 
 export default { fetch: handle };
@@ -21,6 +21,13 @@ async function handle(req: Request, env: Env, _ctx: unknown): Promise<Response> 
 
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
+  if (url.pathname === '/event') {
+    if (req.method !== 'POST') {
+      return new Response('method not allowed', { status: 405, headers: CORS_HEADERS });
+    }
+    return handleEvent(req, url, env);
   }
 
   // WS bridge: browser -> (your domain) -> relay
@@ -182,6 +189,15 @@ function buildReqUrl(target: string, filtersJson: string): URL {
   return upstream;
 }
 
+function buildEventUrl(target: string): URL {
+  const upstream = new URL(target);
+  if (!/\/event\/?$/i.test(upstream.pathname)) {
+    const trimmed = upstream.pathname.replace(/\/?$/, '');
+    upstream.pathname = `${trimmed}/event`;
+  }
+  return upstream;
+}
+
 async function proxyHttpReq(upstreamUrl: URL): Promise<Response> {
   const resp = await fetch(upstreamUrl.toString(), {
     headers: {
@@ -214,6 +230,48 @@ async function proxyHttpReq(upstreamUrl: URL): Promise<Response> {
   }
 
   return jsonResponse(normalizeUpstreamPayload(parsed));
+}
+
+async function handleEvent(req: Request, url: URL, env: Env): Promise<Response> {
+  const target = pickHttpTarget(url, env);
+  if (!target) {
+    return jsonResponse({ ok: false, message: 'no-upstream' }, 502);
+  }
+
+  const upstreamUrl = buildEventUrl(target);
+  const body = await req.arrayBuffer();
+
+  let upstreamResp: Response;
+  try {
+    upstreamResp = await fetch(upstreamUrl.toString(), {
+      method: 'POST',
+      body,
+      headers: {
+        Accept: 'application/json, application/nostr+json',
+        'Content-Type': req.headers.get('content-type') ?? 'application/json',
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return jsonResponse({ ok: false, message }, 502);
+  }
+
+  const text = await upstreamResp.text();
+  const headers = new Headers({
+    ...CORS_HEADERS,
+    'Cache-Control': 'no-store',
+  });
+  const contentType = upstreamResp.headers.get('Content-Type');
+  if (contentType) {
+    headers.set('Content-Type', contentType);
+  } else {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  return new Response(text, {
+    status: upstreamResp.status,
+    headers,
+  });
 }
 
 function normalizeUpstreamPayload(payload: unknown): unknown {
