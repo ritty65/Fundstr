@@ -494,10 +494,34 @@ export async function fundstrFirstQuery(
       method: 'GET',
       headers: { Accept: 'application/json' },
     });
+    const bodyText = await response.text();
+    const normalizeSnippet = (input: string) =>
+      input
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 200);
+
     if (!response.ok) {
-      throw new Error(`HTTP query failed with status ${response.status}`);
+      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
+      const baseMessage = `HTTP query failed with status ${response.status}`;
+      throw new Error(`${baseMessage}: ${snippet}`);
     }
-    const data = await response.json();
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.toLowerCase().includes('application/json')) {
+      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
+      const typeLabel = contentType || 'unknown content-type';
+      throw new Error(`Unexpected response (${response.status}, ${typeLabel}): ${snippet}`);
+    }
+
+    let data: any;
+    try {
+      data = JSON.parse(bodyText);
+    } catch (err) {
+      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
+      const message = `HTTP ${response.status} returned invalid JSON: ${snippet}`;
+      throw new Error(message, { cause: err });
+    }
     if (Array.isArray(data)) {
       results.push(...data);
     } else if (Array.isArray(data?.events)) {
