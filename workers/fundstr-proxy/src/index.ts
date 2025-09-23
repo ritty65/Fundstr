@@ -274,23 +274,26 @@ async function handleEvent(req: Request, url: URL, env: Env): Promise<Response> 
   });
 }
 
-function normalizeUpstreamPayload(payload: unknown): unknown {
+type NormalizedUpstream = {
+  ok: boolean;
+  events: unknown[];
+  [key: string]: unknown;
+};
+
+function normalizeUpstreamPayload(payload: unknown): NormalizedUpstream {
   if (Array.isArray(payload)) {
-    return payload;
+    return { ok: true, events: payload };
   }
 
   if (payload && typeof payload === 'object') {
     const copy: Record<string, unknown> = { ...(payload as Record<string, unknown>) };
-    if (!Array.isArray(copy.events)) {
-      copy.events = [];
-    }
-    if (typeof copy.ok !== 'boolean') {
-      copy.ok = true;
-    }
-    return copy;
+    const events = Array.isArray(copy.events) ? copy.events : [];
+    copy.events = events;
+    copy.ok = typeof copy.ok === 'boolean' ? copy.ok : true;
+    return copy as NormalizedUpstream;
   }
 
-  return [];
+  return { ok: true, events: [] };
 }
 
 async function queryViaWebSocket(target: string, filters: unknown[], timeoutMs: number): Promise<unknown[]> {
