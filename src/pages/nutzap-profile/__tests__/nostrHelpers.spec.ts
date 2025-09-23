@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nip19 } from 'nostr-tools';
 import {
+  fundstrFirstQuery,
   normalizeAuthor,
   isNostrEvent,
   pickLatestReplaceable,
@@ -83,5 +84,42 @@ describe('replaceable selectors', () => {
     ];
     const latest = pickLatestParamReplaceable(events);
     expect(latest?.created_at).toBe(10);
+  });
+});
+
+describe('fundstrFirstQuery', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('throws a readable error when the HTTP bridge responds with non-JSON', async () => {
+    const globalAny = globalThis as Record<string, unknown>;
+    const hadWebSocket = Object.prototype.hasOwnProperty.call(globalAny, 'WebSocket');
+    const originalWebSocket = globalAny.WebSocket;
+    delete globalAny.WebSocket;
+
+    const htmlBody = '<!doctype html><html><body>Upstream failure</body></html>';
+    const response = new Response(htmlBody, {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    });
+
+    const fetchSpy = vi
+      .spyOn(globalThis as { fetch: typeof fetch }, 'fetch')
+      .mockResolvedValue(response);
+
+    try {
+      const queryPromise = fundstrFirstQuery([{ kinds: [10019] }], 0);
+      await expect(queryPromise).rejects.toThrowError(/Unexpected response \(200, text\/html\)/);
+      await expect(queryPromise).rejects.toThrowError(/Upstream failure/);
+    } finally {
+      if (hadWebSocket) {
+        globalAny.WebSocket = originalWebSocket;
+      } else {
+        delete globalAny.WebSocket;
+      }
+    }
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });
