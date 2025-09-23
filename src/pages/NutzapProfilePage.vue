@@ -167,7 +167,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { v4 as uuidv4 } from 'uuid';
 import RelayStatusIndicator from 'src/nutzap/RelayStatusIndicator.vue';
-import { notifyError, notifySuccess } from 'src/js/notify';
+import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
 import type { Tier } from 'src/nutzap/types';
 import { useActiveNutzapSigner } from 'src/nutzap/signer';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
@@ -182,6 +182,7 @@ import {
   publishNostrEvent,
   parseTiersContent,
 } from './nutzap-profile/nostrHelpers';
+import { sanitizeRelayUrls } from 'src/utils/relay';
 
 type TierKind = 30019 | 30000;
 
@@ -377,6 +378,30 @@ function applyTiersEvent(event: any | null, overrideKind?: TierKind | null) {
   tiers.value = parseTiersContent(content);
 }
 
+function buildRelayList(rawRelays: string[]) {
+  const sanitizedEntries: string[] = [];
+  const droppedEntries: string[] = [];
+
+  for (const relay of rawRelays) {
+    const sanitized = sanitizeRelayUrls([relay], 1)[0];
+    if (sanitized) {
+      sanitizedEntries.push(sanitized);
+    } else {
+      droppedEntries.push(relay);
+    }
+  }
+
+  const sanitizedSet = new Set<string>();
+  for (const relay of sanitizedEntries) {
+    sanitizedSet.add(relay);
+  }
+  if (!sanitizedSet.has(FUNDSTR_WS_URL)) {
+    sanitizedSet.add(FUNDSTR_WS_URL);
+  }
+
+  return { sanitized: Array.from(sanitizedSet), dropped: droppedEntries };
+}
+
 function applyProfileEvent(latest: any | null) {
   if (!latest) {
     displayName.value = '';
@@ -400,13 +425,19 @@ function applyProfileEvent(latest: any | null) {
       mintsText.value = parsed.mints.join('\n');
     }
     if (Array.isArray(parsed.relays) && parsed.relays.length > 0) {
-      const relays = new Set(
-        parsed.relays
-          .map((entry: unknown) => (typeof entry === 'string' ? entry.trim() : ''))
-          .filter(Boolean)
-      );
-      relays.add(FUNDSTR_WS_URL);
-      relaysText.value = Array.from(relays).join('\n');
+      const rawRelays = parsed.relays
+        .map((entry: unknown) => (typeof entry === 'string' ? entry.trim() : ''))
+        .filter(Boolean);
+      const { sanitized, dropped } = buildRelayList(rawRelays);
+      if (dropped.length > 0) {
+        notifyWarning(
+          dropped.length === 1
+            ? 'Discarded invalid relay URL'
+            : 'Discarded invalid relay URLs',
+          dropped.join(', ')
+        );
+      }
+      relaysText.value = sanitized.join('\n');
     } else {
       relaysText.value = FUNDSTR_WS_URL;
     }
@@ -436,13 +467,19 @@ function applyProfileEvent(latest: any | null) {
   }
   const relayTags = tags.filter((t: any) => Array.isArray(t) && t[0] === 'relay' && t[1]);
   if ((!relaysText.value || relaysText.value === FUNDSTR_WS_URL) && relayTags.length) {
-    const relays = new Set(
-      relayTags
-        .map((t: any) => (typeof t[1] === 'string' ? t[1] : ''))
-        .filter(Boolean)
-    );
-    relays.add(FUNDSTR_WS_URL);
-    relaysText.value = Array.from(relays).join('\n');
+    const rawRelays = relayTags
+      .map((t: any) => (typeof t[1] === 'string' ? t[1].trim() : ''))
+      .filter(Boolean);
+    const { sanitized, dropped } = buildRelayList(rawRelays);
+    if (dropped.length > 0) {
+      notifyWarning(
+        dropped.length === 1
+          ? 'Discarded invalid relay URL'
+          : 'Discarded invalid relay URLs',
+        dropped.join(', ')
+      );
+    }
+    relaysText.value = sanitized.join('\n');
   }
   if (!p2pkPub.value) {
     const pkTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'pubkey' && t[1]);
