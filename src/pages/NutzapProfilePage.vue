@@ -479,7 +479,9 @@ async function loadTiers(authorHex: string) {
     applyTiersEvent(latest, activeKind);
   } catch (err) {
     console.error('[nutzap] failed to load tiers', err);
-    throw err instanceof Error ? err : new Error(String(err));
+    const message = err instanceof Error ? err.message : String(err);
+    notifyError(message);
+    throw err instanceof Error ? err : new Error(message);
   }
 }
 
@@ -491,7 +493,9 @@ async function loadProfile(authorHex: string) {
     ]);
   } catch (err) {
     console.error('[nutzap] failed to load profile', err);
-    throw err instanceof Error ? err : new Error(String(err));
+    const message = err instanceof Error ? err.message : String(err);
+    notifyError(message);
+    throw err instanceof Error ? err : new Error(message);
   }
 
   const latest = pickLatestReplaceable(events);
@@ -663,7 +667,10 @@ async function loadAll() {
   try {
     await Promise.all([loadTiers(authorHex), loadProfile(authorHex)]);
   } catch (err) {
-    notifyError(err instanceof Error ? err.message : 'Failed to load Nutzap profile.');
+    console.error('[nutzap] failed to load Nutzap profile', err);
+    if (!(err instanceof Error)) {
+      notifyError('Failed to load Nutzap profile.');
+    }
   } finally {
     loading.value = false;
   }
