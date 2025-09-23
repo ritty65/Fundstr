@@ -164,7 +164,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { v4 as uuidv4 } from 'uuid';
 import RelayStatusIndicator from 'src/nutzap/RelayStatusIndicator.vue';
 import { notifyError, notifySuccess } from 'src/js/notify';
@@ -173,6 +173,7 @@ import { useActiveNutzapSigner } from 'src/nutzap/signer';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
 import {
   FUNDSTR_WS_URL,
+  FundstrRelaySocket,
   fundstrFirstQuery,
   normalizeAuthor,
   pickLatestParamReplaceable,
@@ -220,6 +221,14 @@ const lastTiersPublishInfo = ref('');
 const hasAutoLoaded = ref(false);
 
 const { pubkey, signer } = useActiveNutzapSigner();
+
+const relaySocket = FundstrRelaySocket.getInstance();
+let profileSubId: string | null = null;
+let tiersSubId: string | null = null;
+let stopRelayStatusListener: (() => void) | null = null;
+let hasRelayConnected = false;
+let reloadAfterReconnect = false;
+let activeAuthorHex: string | null = null;
 
 const mintList = computed(() =>
   mintsText.value
@@ -347,53 +356,28 @@ function saveTier() {
   resetTierForm();
 }
 
-async function loadTiers(authorHex: string) {
-  try {
-    let activeKind: TierKind | null = null;
-    let events = await fundstrFirstQuery([
-      { kinds: [30019], authors: [authorHex], '#d': ['tiers'], limit: 1 },
-    ]);
-    let latest = pickLatestParamReplaceable(events);
-    if (latest) {
-      activeKind = 30019;
-    } else {
-      events = await fundstrFirstQuery([
-        { kinds: [30000], authors: [authorHex], '#d': ['tiers'], limit: 1 },
-      ]);
-      latest = pickLatestParamReplaceable(events);
-      if (latest) {
-        activeKind = 30000;
-      }
-    }
-
-    if (!latest) {
-      tiers.value = [];
-      return;
-    }
-
-    if (activeKind) {
-      tierKind.value = activeKind;
-    }
-
-    tiers.value = parseTiersContent(latest.content);
-  } catch (err) {
-    console.error('[nutzap] failed to load tiers', err);
-    throw err instanceof Error ? err : new Error(String(err));
+function applyTiersEvent(event: any | null, overrideKind?: TierKind | null) {
+  if (!event) {
+    tiers.value = [];
+    return;
   }
+
+  const eventKind =
+    overrideKind && (overrideKind === 30019 || overrideKind === 30000)
+      ? overrideKind
+      : typeof event?.kind === 'number' && (event.kind === 30019 || event.kind === 30000)
+        ? (event.kind as TierKind)
+        : null;
+
+  if (eventKind) {
+    tierKind.value = eventKind;
+  }
+
+  const content = typeof event?.content === 'string' ? event.content : undefined;
+  tiers.value = parseTiersContent(content);
 }
 
-async function loadProfile(authorHex: string) {
-  let events;
-  try {
-    events = await fundstrFirstQuery([
-      { kinds: [10019], authors: [authorHex], limit: 1 },
-    ]);
-  } catch (err) {
-    console.error('[nutzap] failed to load profile', err);
-    throw err instanceof Error ? err : new Error(String(err));
-  }
-
-  const latest = pickLatestReplaceable(events);
+function applyProfileEvent(latest: any | null) {
   if (!latest) {
     displayName.value = '';
     pictureUrl.value = '';
@@ -403,7 +387,7 @@ async function loadProfile(authorHex: string) {
     return;
   }
 
-  if (latest.pubkey) {
+  if (typeof latest.pubkey === 'string' && latest.pubkey) {
     authorInput.value = latest.pubkey.toLowerCase();
   }
 
@@ -468,6 +452,204 @@ async function loadProfile(authorHex: string) {
   }
 }
 
+async function loadTiers(authorHex: string) {
+  try {
+    let activeKind: TierKind | null = null;
+    let events = await fundstrFirstQuery([
+      { kinds: [30019], authors: [authorHex], '#d': ['tiers'], limit: 1 },
+    ]);
+    let latest = pickLatestParamReplaceable(events);
+    if (latest) {
+      activeKind = 30019;
+    } else {
+      events = await fundstrFirstQuery([
+        { kinds: [30000], authors: [authorHex], '#d': ['tiers'], limit: 1 },
+      ]);
+      latest = pickLatestParamReplaceable(events);
+      if (latest) {
+        activeKind = 30000;
+      }
+    }
+
+    if (!latest) {
+      applyTiersEvent(null);
+      return;
+    }
+
+    applyTiersEvent(latest, activeKind);
+  } catch (err) {
+    console.error('[nutzap] failed to load tiers', err);
+    throw err instanceof Error ? err : new Error(String(err));
+  }
+}
+
+async function loadProfile(authorHex: string) {
+  let events;
+  try {
+    events = await fundstrFirstQuery([
+      { kinds: [10019], authors: [authorHex], limit: 1 },
+    ]);
+  } catch (err) {
+    console.error('[nutzap] failed to load profile', err);
+    throw err instanceof Error ? err : new Error(String(err));
+  }
+
+  const latest = pickLatestReplaceable(events);
+  applyProfileEvent(latest);
+}
+
+function cleanupSubscriptions() {
+  if (profileSubId) {
+    relaySocket.unsubscribe(profileSubId);
+    profileSubId = null;
+  }
+  if (tiersSubId) {
+    relaySocket.unsubscribe(tiersSubId);
+    tiersSubId = null;
+  }
+}
+
+function ensureRelayStatusListener() {
+  if (!relaySocket.isSupported || stopRelayStatusListener) {
+    return;
+  }
+
+  stopRelayStatusListener = relaySocket.onStatusChange(status => {
+    if (status === 'connected') {
+      if (hasRelayConnected && reloadAfterReconnect && activeAuthorHex) {
+        reloadAfterReconnect = false;
+        void loadAll();
+      }
+      hasRelayConnected = true;
+    } else if (
+      hasRelayConnected &&
+      (status === 'reconnecting' || status === 'connecting' || status === 'closed')
+    ) {
+      if (activeAuthorHex) {
+        reloadAfterReconnect = true;
+      }
+    }
+  });
+}
+
+function setupSubscriptions(authorHex: string) {
+  if (!relaySocket.isSupported) {
+    return;
+  }
+
+  ensureRelayStatusListener();
+
+  const normalized = authorHex.toLowerCase();
+
+  let profileSeen = false;
+  let profileLatestAt = 0;
+
+  try {
+    profileSubId = relaySocket.subscribe(
+      [{ kinds: [10019], authors: [normalized], limit: 1 }],
+      event => {
+        if (!event || typeof event.kind !== 'number' || event.kind !== 10019) {
+          return;
+        }
+        const eventAuthor = typeof event.pubkey === 'string' ? event.pubkey.toLowerCase() : '';
+        if (eventAuthor !== normalized) {
+          return;
+        }
+        const createdAt = typeof event.created_at === 'number' ? event.created_at : 0;
+        if (!profileSeen || createdAt >= profileLatestAt) {
+          profileSeen = true;
+          profileLatestAt = createdAt;
+          applyProfileEvent(event);
+        }
+      },
+      () => {
+        if (!profileSeen) {
+          applyProfileEvent(null);
+        }
+      }
+    );
+  } catch (err) {
+    console.warn('[nutzap] failed to subscribe to profile', err);
+    profileSubId = null;
+  }
+
+  let tierSeen = false;
+  let tierLatestAt = 0;
+
+  try {
+    tiersSubId = relaySocket.subscribe(
+      [
+        {
+          kinds: [30019, 30000],
+          authors: [normalized],
+          '#d': ['tiers'],
+          limit: 1,
+        },
+      ],
+      event => {
+        if (!event || typeof event.kind !== 'number') {
+          return;
+        }
+        if (event.kind !== 30019 && event.kind !== 30000) {
+          return;
+        }
+        const eventAuthor = typeof event.pubkey === 'string' ? event.pubkey.toLowerCase() : '';
+        if (eventAuthor !== normalized) {
+          return;
+        }
+        const createdAt = typeof event.created_at === 'number' ? event.created_at : 0;
+        if (!tierSeen || createdAt >= tierLatestAt) {
+          tierSeen = true;
+          tierLatestAt = createdAt;
+          applyTiersEvent(event);
+        }
+      },
+      () => {
+        if (!tierSeen) {
+          applyTiersEvent(null);
+        }
+      }
+    );
+  } catch (err) {
+    console.warn('[nutzap] failed to subscribe to tiers', err);
+    tiersSubId = null;
+  }
+}
+
+function refreshSubscriptions(force = false) {
+  let nextHex: string | null = null;
+  try {
+    nextHex = normalizeAuthor(authorInput.value);
+  } catch {
+    nextHex = null;
+  }
+
+  if (!force && nextHex === activeAuthorHex) {
+    return;
+  }
+
+  const previousHex = activeAuthorHex;
+  activeAuthorHex = nextHex;
+
+  cleanupSubscriptions();
+
+  if (!nextHex) {
+    reloadAfterReconnect = false;
+    if (previousHex) {
+      applyProfileEvent(null);
+      applyTiersEvent(null);
+    }
+    return;
+  }
+
+  if (previousHex && previousHex !== nextHex) {
+    applyProfileEvent(null);
+    applyTiersEvent(null);
+  }
+
+  setupSubscriptions(nextHex);
+}
+
 async function loadAll() {
   let authorHex: string;
   try {
@@ -516,6 +698,7 @@ async function publishTiers() {
       : `Tiers published (kind ${tierKind.value})${relayMessage}`;
     notifySuccess('Subscription tiers published to relay.fundstr.me.');
     await loadTiers(reloadKey);
+    refreshSubscriptions(true);
   } catch (err) {
     console.error('[nutzap] publish tiers failed', err);
     notifyError(err instanceof Error ? err.message : 'Unable to publish tiers.');
@@ -584,6 +767,7 @@ async function publishProfile() {
       : `Profile published to relay.fundstr.me.${relayMessage}`;
     notifySuccess('Nutzap profile published to relay.fundstr.me.');
     await loadProfile(reloadKey);
+    refreshSubscriptions(true);
   } catch (err) {
     console.error('[nutzap] publish profile failed', err);
     notifyError(err instanceof Error ? err.message : 'Unable to publish Nutzap profile.');
@@ -595,6 +779,14 @@ async function publishProfile() {
 function frequencyLabel(value: Tier['frequency']) {
   return value === 'one_time' ? 'one-time' : value;
 }
+
+watch(
+  () => authorInput.value,
+  () => {
+    refreshSubscriptions();
+  },
+  { immediate: true }
+);
 
 watch(
   signer,
@@ -626,5 +818,15 @@ onMounted(() => {
     hasAutoLoaded.value = true;
     void loadAll();
   }
+  ensureRelayStatusListener();
+});
+
+onBeforeUnmount(() => {
+  cleanupSubscriptions();
+  if (stopRelayStatusListener) {
+    stopRelayStatusListener();
+    stopRelayStatusListener = null;
+  }
+  reloadAfterReconnect = false;
 });
 </script>
