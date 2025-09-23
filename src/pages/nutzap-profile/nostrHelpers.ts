@@ -11,6 +11,248 @@ export const WS_FIRST_TIMEOUT_MS = 3000;
 const HEX_64_REGEX = /^[0-9a-f]{64}$/i;
 const HEX_128_REGEX = /^[0-9a-f]{128}$/i;
 
+export type FundstrRelayStatus = 'connecting' | 'connected' | 'reconnecting' | 'closed';
+
+type SubscriptionHandlers = {
+  onEvent: (event: any) => void;
+  onEose?: () => void;
+  receivedEvent: boolean;
+};
+
+const MAX_RECONNECT_DELAY_MS = 30000;
+const INITIAL_RECONNECT_DELAY_MS = 500;
+
+export class FundstrRelaySocket {
+  private static instance: FundstrRelaySocket | null = null;
+
+  static getInstance(): FundstrRelaySocket {
+    if (!FundstrRelaySocket.instance) {
+      FundstrRelaySocket.instance = new FundstrRelaySocket();
+    }
+    return FundstrRelaySocket.instance;
+  }
+
+  private readonly WSImpl: typeof WebSocket | undefined;
+  private socket?: WebSocket;
+  public readonly subscriptions = new Map<string, NostrFilter[]>();
+  private readonly handlers = new Map<string, SubscriptionHandlers>();
+  private reconnectAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+  private status: FundstrRelayStatus = 'closed';
+  private readonly statusListeners = new Set<(status: FundstrRelayStatus) => void>();
+
+  private constructor() {
+    this.WSImpl = typeof WebSocket !== 'undefined' ? WebSocket : (globalThis as any)?.WebSocket;
+  }
+
+  get isSupported(): boolean {
+    return !!this.WSImpl;
+  }
+
+  get currentStatus(): FundstrRelayStatus {
+    return this.status;
+  }
+
+  onStatusChange(listener: (status: FundstrRelayStatus) => void): () => void {
+    this.statusListeners.add(listener);
+    listener(this.status);
+    return () => {
+      this.statusListeners.delete(listener);
+    };
+  }
+
+  subscribe(
+    filters: NostrFilter[],
+    onEvent: SubscriptionHandlers['onEvent'],
+    onEose?: SubscriptionHandlers['onEose']
+  ): string {
+    const subId = `fundstr-${Math.random().toString(36).slice(2)}`;
+    this.subscriptions.set(subId, filters);
+    this.handlers.set(subId, { onEvent, onEose, receivedEvent: false });
+
+    if (!this.WSImpl) {
+      const notify = () => {
+        this.handlers.get(subId)?.onEose?.();
+      };
+      if (typeof queueMicrotask === 'function') {
+        queueMicrotask(notify);
+      } else {
+        Promise.resolve().then(notify).catch(() => {
+          /* noop */
+        });
+      }
+      return subId;
+    }
+
+    this.connect();
+    if (this.socket?.readyState === this.WSImpl.OPEN) {
+      this.send(['REQ', subId, ...filters]);
+    }
+
+    return subId;
+  }
+
+  unsubscribe(subId: string) {
+    const filters = this.subscriptions.get(subId);
+    this.subscriptions.delete(subId);
+    this.handlers.delete(subId);
+
+    if (!this.WSImpl) {
+      return;
+    }
+
+    if (filters && this.socket?.readyState === this.WSImpl.OPEN) {
+      this.send(['CLOSE', subId]);
+    }
+
+    if (!this.subscriptions.size) {
+      this.teardown();
+    }
+  }
+
+  private connect() {
+    if (!this.WSImpl) {
+      return;
+    }
+
+    if (
+      this.socket &&
+      (this.socket.readyState === this.WSImpl.OPEN || this.socket.readyState === this.WSImpl.CONNECTING)
+    ) {
+      return;
+    }
+
+    const status = this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting';
+    this.setStatus(status);
+
+    this.socket = new this.WSImpl(FUNDSTR_WS_URL);
+    this.attachSocketHandlers(this.socket);
+  }
+
+  private attachSocketHandlers(socket: WebSocket) {
+    socket.onopen = () => {
+      this.clearReconnectTimer();
+      this.reconnectAttempts = 0;
+      this.setStatus('connected');
+
+      for (const [subId, filters] of this.subscriptions.entries()) {
+        const handler = this.handlers.get(subId);
+        if (handler) {
+          handler.receivedEvent = false;
+        }
+        this.send(['REQ', subId, ...filters]);
+      }
+    };
+
+    socket.onmessage = event => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (!Array.isArray(payload)) return;
+        const [type, subId, body] = payload;
+        if (typeof subId !== 'string') return;
+        const handler = this.handlers.get(subId);
+        if (!handler) return;
+
+        if (type === 'EVENT') {
+          handler.receivedEvent = true;
+          try {
+            handler.onEvent(body);
+          } catch (err) {
+            console.warn('[nutzap] relay event handler failed', err);
+          }
+        } else if (type === 'EOSE') {
+          try {
+            handler.onEose?.();
+          } catch (err) {
+            console.warn('[nutzap] relay eose handler failed', err);
+          }
+        }
+      } catch (err) {
+        console.warn('[nutzap] failed to parse relay message', err);
+      }
+    };
+
+    socket.onerror = err => {
+      console.warn('[nutzap] relay socket error', err);
+    };
+
+    socket.onclose = () => {
+      this.socket = undefined;
+      this.setStatus('closed');
+      if (this.subscriptions.size) {
+        this.scheduleReconnect();
+      }
+    };
+  }
+
+  private scheduleReconnect() {
+    if (!this.WSImpl || this.reconnectTimer) {
+      return;
+    }
+
+    this.reconnectAttempts = Math.max(this.reconnectAttempts, 1);
+    const delay = Math.min(
+      INITIAL_RECONNECT_DELAY_MS * Math.pow(2, this.reconnectAttempts - 1),
+      MAX_RECONNECT_DELAY_MS
+    );
+    this.setStatus('reconnecting');
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined;
+      this.reconnectAttempts += 1;
+      this.connect();
+    }, delay);
+  }
+
+  private clearReconnectTimer() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
+  }
+
+  private teardown() {
+    this.clearReconnectTimer();
+    if (this.socket && this.WSImpl) {
+      try {
+        if (
+          this.socket.readyState === this.WSImpl.OPEN ||
+          this.socket.readyState === this.WSImpl.CONNECTING
+        ) {
+          this.socket.close();
+        }
+      } catch {
+        /* noop */
+      }
+    }
+    this.socket = undefined;
+    this.reconnectAttempts = 0;
+    this.setStatus('closed');
+  }
+
+  private send(payload: any[]) {
+    if (!this.socket || !this.WSImpl || this.socket.readyState !== this.WSImpl.OPEN) {
+      return;
+    }
+    try {
+      this.socket.send(JSON.stringify(payload));
+    } catch (err) {
+      console.warn('[nutzap] failed to send relay message', err);
+    }
+  }
+
+  private setStatus(status: FundstrRelayStatus) {
+    if (this.status === status) return;
+    this.status = status;
+    for (const listener of Array.from(this.statusListeners)) {
+      try {
+        listener(status);
+      } catch (err) {
+        console.warn('[nutzap] status listener failed', err);
+      }
+    }
+  }
+}
+
 type RawTier = {
   id?: string;
   title?: string;
@@ -192,28 +434,31 @@ function normalizeRawTier(raw: RawTier): Tier | null {
   };
 }
 
-export async function fundstrFirstQuery(filters: NostrFilter[], wsTimeoutMs = WS_FIRST_TIMEOUT_MS): Promise<any[]> {
+export async function fundstrFirstQuery(
+  filters: NostrFilter[],
+  wsTimeoutMs = WS_FIRST_TIMEOUT_MS
+): Promise<any[]> {
   const results: any[] = [];
-  const WSImpl = typeof WebSocket !== 'undefined' ? WebSocket : (globalThis as any)?.WebSocket;
+  const relay = FundstrRelaySocket.getInstance();
 
-  if (WSImpl) {
+  if (relay.isSupported) {
     try {
       const eventsFromWs = await new Promise<any[]>((resolve, reject) => {
         const collected: any[] = [];
         let settled = false;
-        const subId = `fundstr-${Math.random().toString(36).slice(2)}`;
-        const socket = new WSImpl(FUNDSTR_WS_URL);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let subId: string | undefined;
+
         const finalize = (value: any[], error?: unknown) => {
           if (settled) return;
           settled = true;
-          try {
-            if (socket.readyState === WSImpl.OPEN || socket.readyState === WSImpl.CONNECTING) {
-              socket.close();
-            }
-          } catch {
-            /* noop */
+          if (timer) {
+            clearTimeout(timer);
+            timer = undefined;
           }
-          clearTimeout(timer);
+          if (subId) {
+            relay.unsubscribe(subId);
+          }
           if (error) {
             reject(error instanceof Error ? error : new Error(String(error)));
           } else {
@@ -221,40 +466,17 @@ export async function fundstrFirstQuery(filters: NostrFilter[], wsTimeoutMs = WS
           }
         };
 
-        const timer = setTimeout(() => finalize(collected), wsTimeoutMs);
-
-        socket.onopen = () => {
-          try {
-            socket.send(JSON.stringify(['REQ', subId, ...filters]));
-          } catch (err) {
-            finalize(collected, err);
-          }
+        const onEvent = (event: any) => {
+          collected.push(event);
         };
-
-        socket.onmessage = event => {
-          try {
-            const payload = JSON.parse(event.data);
-            if (!Array.isArray(payload)) return;
-            const [type, sub, body] = payload;
-            if (sub !== subId) return;
-            if (type === 'EVENT') {
-              collected.push(body);
-            }
-            if (type === 'EOSE') {
-              finalize(collected);
-            }
-          } catch (err) {
-            console.warn('[nutzap] failed to parse relay message', err);
-          }
-        };
-
-        socket.onerror = err => {
-          finalize(collected, err instanceof Event ? new Error('WebSocket error') : err);
-        };
-
-        socket.onclose = () => {
-          finalize(collected);
-        };
+        const onEose = () => finalize(collected);
+        try {
+          subId = relay.subscribe(filters, onEvent, onEose);
+        } catch (err) {
+          finalize([], err);
+          return;
+        }
+        timer = setTimeout(() => finalize(collected), wsTimeoutMs);
       });
 
       if (Array.isArray(eventsFromWs) && eventsFromWs.length) {
