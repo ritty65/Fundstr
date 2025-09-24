@@ -1,6 +1,8 @@
+import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { getCurrentScope, onScopeDispose, readonly, ref, type Ref } from 'vue';
 import { getNutzapNdk } from './ndkInstance';
-import { NUTZAP_RELAY_WSS } from './relayConfig';
+import { NUTZAP_ALLOW_WSS_WRITES, NUTZAP_RELAY_WSS } from './relayConfig';
+import { FUNDSTR_EVT_URL, HTTP_FALLBACK_TIMEOUT_MS, WS_FIRST_TIMEOUT_MS } from './relayEndpoints';
 
 export type FundstrRelayStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 
@@ -20,6 +22,35 @@ export type NostrFilter = {
   '#d'?: string[];
   limit?: number;
   [key: `#${string}`]: unknown;
+};
+
+export type FundstrRelayPublishTemplate = {
+  kind: number;
+  tags: any[];
+  content: string;
+  created_at?: number;
+};
+
+export type FundstrRelayPublishAck = {
+  id: string;
+  accepted: boolean;
+  message?: string;
+  via: 'websocket' | 'http';
+};
+
+export type NostrEvent = {
+  id: string;
+  pubkey: string;
+  created_at: number;
+  kind: number;
+  tags: any[];
+  content: string;
+  sig: string;
+};
+
+export type FundstrRelayPublishResult = {
+  ack: FundstrRelayPublishAck;
+  event: NostrEvent;
 };
 
 type SubscriptionHandlers = {
@@ -51,6 +82,43 @@ const INITIAL_RECONNECT_DELAY_MS = 500;
 const DEFAULT_HTTP_ACCEPT =
   'application/nostr+json, application/json;q=0.9, */*;q=0.1';
 
+const HEX_64_REGEX = /^[0-9a-f]{64}$/i;
+const HEX_128_REGEX = /^[0-9a-f]{128}$/i;
+
+class RelayPublishSendError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'RelayPublishSendError';
+  }
+}
+
+export class RelayPublishError extends Error {
+  readonly ack: FundstrRelayPublishAck;
+  readonly event: NostrEvent;
+
+  constructor(message: string, result: { ack: FundstrRelayPublishAck; event: NostrEvent }) {
+    super(message);
+    this.name = 'RelayPublishError';
+    this.ack = result.ack;
+    this.event = result.event;
+  }
+}
+
+type PendingPublish = {
+  event: NostrEvent;
+  socket: WebSocket;
+  resolve: (ack: FundstrRelayPublishAck) => void;
+  reject: (error: Error) => void;
+  timer?: ReturnType<typeof setTimeout>;
+};
+
+type SocketWaiter = {
+  socket: WebSocket;
+  resolve: (socket: WebSocket) => void;
+  reject: (error: Error) => void;
+  timer?: ReturnType<typeof setTimeout>;
+};
+
 export class FundstrRelayClient {
   private readonly targetUrl = normalizeRelayUrl(this.relayUrl);
   private readonly WSImpl: typeof WebSocket | undefined;
@@ -61,6 +129,9 @@ export class FundstrRelayClient {
   private readonly handlers = new Map<string, SubscriptionHandlers>();
   private readonly statusListeners = new Set<StatusListener>();
   private readonly logListeners = new Set<(entry: FundstrRelayLogEntry) => void>();
+  private readonly pendingPublishes = new Map<string, PendingPublish>();
+  private readonly socketWaiters = new Set<SocketWaiter>();
+  private allowWsWrites = NUTZAP_ALLOW_WSS_WRITES;
   private ndkAttached = false;
   private ndkStatus: 'connecting' | 'connected' | 'disconnected' = 'connecting';
   private wsStatus: 'connecting' | 'connected' | 'reconnecting' | 'disconnected' = 'connecting';
@@ -187,6 +258,27 @@ export class FundstrRelayClient {
     return [];
   }
 
+  async publish(eventTemplate: FundstrRelayPublishTemplate): Promise<FundstrRelayPublishResult> {
+    const event = await this.signEvent(eventTemplate);
+
+    if (!this.WSImpl || !this.allowWsWrites) {
+      const ack = await this.publishViaHttp(event);
+      return { ack, event };
+    }
+
+    try {
+      const ack = await this.publishViaWebSocket(event);
+      return { ack, event };
+    } catch (err) {
+      if (err instanceof RelayPublishError) {
+        throw err;
+      }
+      this.pushLog('warn', 'WebSocket publish failed, using HTTP fallback', err);
+      const ack = await this.publishViaHttp(event);
+      return { ack, event };
+    }
+  }
+
   unsubscribe(subId: string): void {
     const filters = this.subscriptions.get(subId);
     this.subscriptions.delete(subId);
@@ -267,6 +359,19 @@ export class FundstrRelayClient {
     this.handlers.clear();
     this.statusListeners.clear();
     this.logListeners.clear();
+    this.allowWsWrites = NUTZAP_ALLOW_WSS_WRITES;
+    for (const pending of this.pendingPublishes.values()) {
+      if (pending.timer) {
+        clearTimeout(pending.timer);
+      }
+    }
+    this.pendingPublishes.clear();
+    for (const waiter of this.socketWaiters.values()) {
+      if (waiter.timer) {
+        clearTimeout(waiter.timer);
+      }
+    }
+    this.socketWaiters.clear();
     this.reconnectAttempts = 0;
     this.clearReconnectTimer();
     this.ndkStatus = 'connecting';
@@ -275,6 +380,355 @@ export class FundstrRelayClient {
     this.setStatus(this.computeStatus());
     this.logRef.value = [];
     this.logSequence = 0;
+  }
+
+  private async signEvent(template: FundstrRelayPublishTemplate): Promise<NostrEvent> {
+    const created_at = template.created_at ?? Math.floor(Date.now() / 1000);
+    let signed: unknown;
+
+    const maybeWindow = typeof window !== 'undefined' ? (window as any) : (globalThis as any)?.window;
+    const nostrSigner = maybeWindow?.nostr;
+
+    if (nostrSigner?.signEvent) {
+      signed = await nostrSigner.signEvent({ ...template, created_at });
+    } else {
+      const ndk = getNutzapNdk();
+      const event = new NDKEvent(ndk, { ...template, created_at });
+      await event.sign();
+      signed = await event.toNostrEvent();
+    }
+
+    return this.assertNostrEvent(signed);
+  }
+
+  private async publishViaWebSocket(event: NostrEvent): Promise<FundstrRelayPublishAck> {
+    const socket = await this.ensureSocketOpen();
+    const normalizedId = this.normalizeEventId(event.id);
+    if (!normalizedId) {
+      const ack: FundstrRelayPublishAck = {
+        id: event.id,
+        accepted: false,
+        message: 'Invalid event identifier',
+        via: 'websocket',
+      };
+      throw new RelayPublishError(ack.message, { ack, event });
+    }
+
+    return await new Promise<FundstrRelayPublishAck>((resolve, reject) => {
+      const cleanup = () => {
+        const current = this.pendingPublishes.get(normalizedId);
+        if (current && current === pending) {
+          this.pendingPublishes.delete(normalizedId);
+        }
+        if (pending.timer) {
+          clearTimeout(pending.timer);
+          pending.timer = undefined;
+        }
+      };
+
+      const pending: PendingPublish = {
+        event,
+        socket,
+        resolve: ack => {
+          cleanup();
+          resolve(ack);
+        },
+        reject: error => {
+          cleanup();
+          reject(error);
+        },
+      };
+
+      if (WS_FIRST_TIMEOUT_MS > 0) {
+        pending.timer = setTimeout(() => {
+          const ack: FundstrRelayPublishAck = {
+            id: event.id,
+            accepted: false,
+            message: 'Timed out waiting for relay OK',
+            via: 'websocket',
+          };
+          this.pushLog('warn', `Relay ack timeout for event ${event.id}`, ack);
+          pending.reject(new RelayPublishError(ack.message!, { ack, event }));
+        }, WS_FIRST_TIMEOUT_MS);
+      }
+
+      this.pendingPublishes.set(normalizedId, pending);
+
+      try {
+        socket.send(JSON.stringify(['EVENT', event]));
+        this.pushLog('info', `Sent EVENT ${event.id} to relay`);
+      } catch (err) {
+        pending.reject(
+          new RelayPublishSendError('Failed to send event over websocket', {
+            cause: err instanceof Error ? err : undefined,
+          }),
+        );
+      }
+    });
+  }
+
+  private async ensureSocketOpen(): Promise<WebSocket> {
+    if (!this.WSImpl) {
+      throw new RelayPublishSendError('WebSocket unsupported');
+    }
+
+    this.connect();
+
+    const socket = this.socket;
+    if (!socket) {
+      throw new RelayPublishSendError('Relay socket unavailable');
+    }
+
+    if (socket.readyState === this.WSImpl.OPEN) {
+      return socket;
+    }
+
+    if (socket.readyState === this.WSImpl.CLOSING || socket.readyState === this.WSImpl.CLOSED) {
+      throw new RelayPublishSendError('Relay socket unavailable');
+    }
+
+    return await new Promise<WebSocket>((resolve, reject) => {
+      const waiter: SocketWaiter = {
+        socket,
+        resolve: openedSocket => {
+          cleanup();
+          resolve(openedSocket);
+        },
+        reject: error => {
+          cleanup();
+          reject(error);
+        },
+      };
+
+      const cleanup = () => {
+        if (waiter.timer) {
+          clearTimeout(waiter.timer);
+          waiter.timer = undefined;
+        }
+        this.socketWaiters.delete(waiter);
+      };
+
+      if (WS_FIRST_TIMEOUT_MS > 0) {
+        waiter.timer = setTimeout(() => {
+          waiter.reject(new RelayPublishSendError('Timed out waiting for relay socket'));
+        }, WS_FIRST_TIMEOUT_MS);
+      }
+
+      this.socketWaiters.add(waiter);
+    });
+  }
+
+  private async publishViaHttp(event: NostrEvent): Promise<FundstrRelayPublishAck> {
+    const { controller, dispose } = this.createAbortController(HTTP_FALLBACK_TIMEOUT_MS);
+    let response: Response | undefined;
+    let bodyText = '';
+
+    try {
+      response = await fetch(FUNDSTR_EVT_URL, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Accept: DEFAULT_HTTP_ACCEPT,
+        },
+        body: JSON.stringify(event),
+        cache: 'no-store',
+        signal: controller?.signal,
+      });
+      bodyText = await response.text();
+    } catch (err) {
+      dispose();
+      if (this.isAbortError(err)) {
+        throw new Error(`Publish request timed out after ${HTTP_FALLBACK_TIMEOUT_MS}ms`);
+      }
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+
+    dispose();
+
+    if (!response) {
+      throw new Error('Relay publish failed: no response received');
+    }
+
+    const normalizeSnippet = (input: string) => input.replace(/\s+/g, ' ').trim().slice(0, 200) || '[empty response body]';
+
+    if (!response.ok) {
+      const snippet = normalizeSnippet(bodyText);
+      throw new Error(`Relay rejected with status ${response.status}: ${snippet}`);
+    }
+
+    let ackRaw: any = null;
+    if (bodyText) {
+      try {
+        ackRaw = JSON.parse(bodyText);
+      } catch (err) {
+        throw new Error('Relay returned invalid JSON', { cause: err });
+      }
+    }
+
+    const ack: FundstrRelayPublishAck = {
+      id: typeof ackRaw?.id === 'string' && ackRaw.id ? ackRaw.id : event.id,
+      accepted: ackRaw?.accepted === true,
+      message: typeof ackRaw?.message === 'string' ? ackRaw.message : undefined,
+      via: 'http',
+    };
+
+    if (!ack.accepted) {
+      throw new RelayPublishError(ack.message ?? 'Relay rejected event', { ack, event });
+    }
+
+    this.pushLog('info', `HTTP publish accepted for event ${ack.id}`);
+    return ack;
+  }
+
+  private handlePublishOk(eventId: unknown, okValue: unknown, message: unknown) {
+    const normalizedId = this.normalizeEventId(eventId);
+    if (!normalizedId) {
+      this.pushLog('warn', 'Relay OK message missing event id', {
+        eventId,
+        okValue,
+        message,
+      });
+      return;
+    }
+
+    const pending = this.pendingPublishes.get(normalizedId);
+    if (!pending) {
+      this.pushLog('info', `Relay OK for unknown event ${normalizedId}`, {
+        ok: okValue,
+        message,
+      });
+      return;
+    }
+
+    const accepted = okValue === true || okValue === 'true' || okValue === 1;
+    const ack: FundstrRelayPublishAck = {
+      id: pending.event.id,
+      accepted,
+      message: typeof message === 'string' && message ? message : undefined,
+      via: 'websocket',
+    };
+
+    if (accepted) {
+      this.pushLog(
+        'info',
+        ack.message
+          ? `Relay accepted event ${ack.id} — ${ack.message}`
+          : `Relay accepted event ${ack.id}`,
+        ack,
+      );
+      pending.resolve(ack);
+    } else {
+      const errorMessage = ack.message ?? 'Relay rejected event';
+      this.pushLog(
+        'warn',
+        ack.message
+          ? `Relay rejected event ${ack.id} — ${ack.message}`
+          : `Relay rejected event ${ack.id}`,
+        ack,
+      );
+      pending.reject(new RelayPublishError(errorMessage, { ack, event: pending.event }));
+    }
+  }
+
+  private handlePublishNotice(notice: unknown) {
+    const message = typeof notice === 'string' ? notice : String(notice ?? '');
+    const normalizedId = this.extractEventIdFromNotice(message);
+
+    if (normalizedId) {
+      const pending = this.pendingPublishes.get(normalizedId);
+      if (pending) {
+        const ack: FundstrRelayPublishAck = {
+          id: pending.event.id,
+          accepted: false,
+          message: message || undefined,
+          via: 'websocket',
+        };
+        this.pushLog(
+          'warn',
+          message ? `Relay NOTICE for event ${ack.id} — ${message}` : `Relay NOTICE for event ${ack.id}`,
+          ack,
+        );
+        pending.reject(new RelayPublishError(ack.message ?? 'Relay NOTICE', { ack, event: pending.event }));
+        return;
+      }
+    }
+
+    this.pushLog('warn', 'Relay NOTICE', message);
+  }
+
+  private resolveSocketWaiters(socket: WebSocket) {
+    for (const waiter of Array.from(this.socketWaiters)) {
+      if (waiter.socket !== socket) continue;
+      this.socketWaiters.delete(waiter);
+      if (waiter.timer) {
+        clearTimeout(waiter.timer);
+        waiter.timer = undefined;
+      }
+      try {
+        waiter.resolve(socket);
+      } catch (err) {
+        this.pushLog('warn', 'Socket waiter resolve failed', err);
+      }
+    }
+  }
+
+  private rejectSocketWaiters(socket: WebSocket, error: Error) {
+    for (const waiter of Array.from(this.socketWaiters)) {
+      if (waiter.socket !== socket) continue;
+      this.socketWaiters.delete(waiter);
+      if (waiter.timer) {
+        clearTimeout(waiter.timer);
+        waiter.timer = undefined;
+      }
+      try {
+        waiter.reject(error);
+      } catch (err) {
+        this.pushLog('warn', 'Socket waiter reject failed', err);
+      }
+    }
+  }
+
+  private rejectPendingPublishesForSocket(socket: WebSocket, error: Error) {
+    for (const [id, pending] of Array.from(this.pendingPublishes.entries())) {
+      if (pending.socket !== socket) continue;
+      this.pendingPublishes.delete(id);
+      if (pending.timer) {
+        clearTimeout(pending.timer);
+        pending.timer = undefined;
+      }
+      pending.reject(error);
+    }
+  }
+
+  private assertNostrEvent(input: unknown): NostrEvent {
+    if (!this.isNostrEvent(input)) {
+      throw new Error('Signing failed — invalid NIP-01 event');
+    }
+    return input;
+  }
+
+  private isNostrEvent(value: unknown): value is NostrEvent {
+    if (!value || typeof value !== 'object') return false;
+    const event = value as Partial<NostrEvent>;
+    if (!HEX_64_REGEX.test(String(event.id ?? ''))) return false;
+    if (!HEX_64_REGEX.test(String(event.pubkey ?? ''))) return false;
+    if (typeof event.created_at !== 'number' || !Number.isFinite(event.created_at)) return false;
+    if (typeof event.kind !== 'number' || !Number.isInteger(event.kind)) return false;
+    if (!Array.isArray(event.tags)) return false;
+    if (typeof event.content !== 'string') return false;
+    if (!HEX_128_REGEX.test(String(event.sig ?? ''))) return false;
+    return true;
+  }
+
+  private normalizeEventId(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim().toLowerCase();
+    return HEX_64_REGEX.test(trimmed) ? trimmed : null;
+  }
+
+  private extractEventIdFromNotice(message: string): string | null {
+    const match = message.match(/[0-9a-f]{64}/i);
+    return match ? match[0].toLowerCase() : null;
   }
 
   private requestOnceViaWs(filters: NostrFilter[], timeoutMs: number) {
@@ -464,30 +918,49 @@ export class FundstrRelayClient {
         }
         this.send(['REQ', subId, ...filters]);
       }
+
+      this.resolveSocketWaiters(socket);
     };
 
     socket.onmessage = event => {
       try {
         const payload = JSON.parse(event.data);
-        if (!Array.isArray(payload)) return;
-        const [type, subId, body] = payload;
-        if (typeof subId !== 'string') return;
-        const handler = this.handlers.get(subId);
-        if (!handler) return;
+        if (!Array.isArray(payload) || payload.length === 0) return;
+        const [type, ...rest] = payload;
 
-        if (type === 'EVENT') {
-          handler.receivedEvent = true;
-          try {
-            handler.onEvent(body);
-          } catch (err) {
-            this.pushLog('warn', 'Relay event handler failed', err);
+        if (type === 'EVENT' || type === 'EOSE') {
+          const [subId, body] = rest;
+          if (typeof subId !== 'string') return;
+          const handler = this.handlers.get(subId);
+          if (!handler) return;
+
+          if (type === 'EVENT') {
+            handler.receivedEvent = true;
+            try {
+              handler.onEvent(body);
+            } catch (err) {
+              this.pushLog('warn', 'Relay event handler failed', err);
+            }
+          } else {
+            try {
+              handler.onEose?.();
+            } catch (err) {
+              this.pushLog('warn', 'Relay EOSE handler failed', err);
+            }
           }
-        } else if (type === 'EOSE') {
-          try {
-            handler.onEose?.();
-          } catch (err) {
-            this.pushLog('warn', 'Relay EOSE handler failed', err);
-          }
+          return;
+        }
+
+        if (type === 'OK') {
+          const [eventId, okValue, message] = rest;
+          this.handlePublishOk(eventId, okValue, message);
+          return;
+        }
+
+        if (type === 'NOTICE') {
+          const [noticeMessage] = rest;
+          this.handlePublishNotice(noticeMessage);
+          return;
         }
       } catch (err) {
         this.pushLog('warn', 'Failed to parse relay message', err);
@@ -496,6 +969,9 @@ export class FundstrRelayClient {
 
     socket.onerror = err => {
       this.pushLog('warn', 'Relay socket error', err);
+      this.rejectSocketWaiters(socket, new RelayPublishSendError('Relay socket error', {
+        cause: err instanceof Error ? err : undefined,
+      }));
     };
 
     socket.onclose = () => {
@@ -504,6 +980,14 @@ export class FundstrRelayClient {
       }
       this.pushLog('info', 'Relay connection closed');
       this.setWsStatus('disconnected');
+      this.rejectSocketWaiters(
+        socket,
+        new RelayPublishSendError('Relay socket closed before acknowledgement'),
+      );
+      this.rejectPendingPublishesForSocket(
+        socket,
+        new RelayPublishSendError('Relay socket closed before acknowledgement'),
+      );
       if (this.subscriptions.size) {
         this.scheduleReconnect();
       }

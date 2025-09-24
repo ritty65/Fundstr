@@ -1,6 +1,25 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nip19 } from 'nostr-tools';
-import { fundstrRelayClient, type FundstrRelayStatus } from 'src/nutzap/relayClient';
+import {
+  fundstrRelayClient,
+  RelayPublishError,
+  type FundstrRelayStatus,
+} from 'src/nutzap/relayClient';
+
+vi.hoisted(() => {
+  vi.stubEnv('VITE_NUTZAP_ALLOW_WSS_WRITES', 'true');
+  return undefined;
+});
+
+const relayConfigMock = vi.hoisted(() => ({
+  NUTZAP_RELAY_WSS: 'wss://relay.fundstr.me',
+  NUTZAP_RELAY_HTTP: 'https://relay.fundstr.me',
+  NUTZAP_ALLOW_WSS_WRITES: true,
+  NUTZAP_WS_TIMEOUT_MS: 500,
+  NUTZAP_HTTP_TIMEOUT_MS: 75,
+}));
+
+vi.mock('src/nutzap/relayConfig', () => relayConfigMock);
 
 const ndkMock = vi.hoisted(() => {
   const listeners = new Map<string, Set<(relay: any) => void>>();
@@ -81,6 +100,7 @@ class MockWebSocket {
 describe('fundstrRelayClient', () => {
   const globalAny = globalThis as Record<string, unknown>;
   let originalWebSocket: unknown;
+  let originalWindow: unknown;
 
   beforeEach(() => {
     ndkMock.reset();
@@ -88,13 +108,19 @@ describe('fundstrRelayClient', () => {
     originalWebSocket = globalAny.WebSocket;
     globalAny.WebSocket = MockWebSocket as unknown as typeof WebSocket;
     (fundstrRelayClient as any).WSImpl = MockWebSocket;
+    originalWindow = globalAny.window;
+    globalAny.window = { nostr: { signEvent: vi.fn() } };
     fundstrRelayClient.clearForTests();
+    (fundstrRelayClient as any).allowWsWrites = true;
+    expect((fundstrRelayClient as any).WSImpl).toBe(MockWebSocket);
+    expect((fundstrRelayClient as any).allowWsWrites).toBe(true);
   });
 
   afterEach(() => {
     fundstrRelayClient.clearForTests();
     (fundstrRelayClient as any).WSImpl = undefined;
     globalAny.WebSocket = originalWebSocket;
+    globalAny.window = originalWindow;
     vi.useRealTimers();
   });
 
@@ -226,6 +252,108 @@ describe('fundstrRelayClient', () => {
 
         await expect(promise).rejects.toThrow(/Unexpected response \(200, text\/html\)/);
         await expect(promise).rejects.toThrow(/Upstream failure/);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+  });
+
+  describe('publish', () => {
+    const signedEvent = {
+      id: 'aa'.repeat(32),
+      pubkey: 'bb'.repeat(32),
+      created_at: Math.floor(Date.now() / 1000),
+      kind: 1,
+      tags: [],
+      content: 'hello',
+      sig: 'cc'.repeat(64),
+    };
+
+    it('sends EVENT and resolves on OK ack', async () => {
+      (globalAny.window as any).nostr.signEvent = vi.fn().mockImplementation(() => signedEvent);
+
+      const promise = fundstrRelayClient.publish({ kind: 1, tags: [], content: 'hello' });
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(MockWebSocket.instances).toHaveLength(1);
+      const socket = MockWebSocket.instances[0];
+      const originalSend = socket.send.bind(socket);
+      socket.send = (data: string) => {
+        originalSend(data);
+        const [, payload] = JSON.parse(data) as [string, any];
+        socket.emitMessage(['OK', payload.id, true, 'ack message']);
+      };
+      socket.open();
+      await Promise.resolve();
+
+      const result = await promise;
+      expect(result.event.id).toBe(signedEvent.id);
+      expect(result.ack).toEqual({
+        id: signedEvent.id,
+        accepted: true,
+        message: 'ack message',
+        via: 'websocket',
+      });
+
+      const sent = socket.sentMessages.find(msg => msg.includes('"EVENT"'));
+      expect(sent).toBeTruthy();
+      const [, payload] = JSON.parse(sent as string) as [string, any];
+      expect(payload.id).toBe(signedEvent.id);
+    });
+
+    it('rejects with RelayPublishError when relay returns OK false', async () => {
+      (globalAny.window as any).nostr.signEvent = vi.fn().mockImplementation(() => signedEvent);
+
+      const promise = fundstrRelayClient.publish({ kind: 1, tags: [], content: 'oops' });
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(MockWebSocket.instances).toHaveLength(1);
+      const socket = MockWebSocket.instances[0];
+      const originalSend = socket.send.bind(socket);
+      socket.send = (data: string) => {
+        originalSend(data);
+        const [, payload] = JSON.parse(data) as [string, any];
+        socket.emitMessage(['OK', payload.id, false, 'duplicate']);
+      };
+      socket.open();
+      await Promise.resolve();
+
+      await promise.catch(err => {
+        expect(err).toBeInstanceOf(RelayPublishError);
+        const rejection = err as RelayPublishError;
+        expect(rejection.ack.accepted).toBe(false);
+        expect(rejection.ack.message).toBe('duplicate');
+        expect(rejection.ack.id).toBe(signedEvent.id);
+      });
+
+      const sent = socket.sentMessages.find(msg => msg.includes('"EVENT"'));
+      expect(sent).toBeTruthy();
+    });
+
+    it('falls back to HTTP when websocket is unavailable', async () => {
+      (fundstrRelayClient as any).WSImpl = undefined;
+      MockWebSocket.instances = [];
+      (globalAny.window as any).nostr.signEvent = vi.fn().mockImplementation(() => signedEvent);
+
+      const fetchSpy = vi
+        .spyOn(globalThis as { fetch: typeof fetch }, 'fetch')
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ id: signedEvent.id, accepted: true, message: 'http ok' }),
+            {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            }
+          )
+        );
+
+      try {
+        const result = await fundstrRelayClient.publish({ kind: 1, tags: [], content: 'hi' });
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect(result.ack.via).toBe('http');
+        expect(result.ack.message).toBe('http ok');
       } finally {
         fetchSpy.mockRestore();
       }

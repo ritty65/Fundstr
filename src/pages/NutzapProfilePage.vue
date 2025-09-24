@@ -183,7 +183,7 @@ import {
   publishNostrEvent,
   parseTiersContent,
 } from './nutzap-profile/nostrHelpers';
-import { fundstrRelayClient } from 'src/nutzap/relayClient';
+import { fundstrRelayClient, RelayPublishError } from 'src/nutzap/relayClient';
 import { sanitizeRelayUrls } from 'src/utils/relay';
 
 type TierKind = 30019 | 30000;
@@ -747,12 +747,24 @@ async function publishTiers() {
     lastTiersPublishInfo.value = eventId
       ? `Tiers published (kind ${tierKind.value}) — id ${eventId}${relayMessage}`
       : `Tiers published (kind ${tierKind.value})${relayMessage}`;
-    notifySuccess('Subscription tiers published to relay.fundstr.me.');
+    const successMessage =
+      typeof ack?.message === 'string' && ack.message
+        ? `Relay accepted tiers — ${ack.message}`
+        : 'Subscription tiers published to relay.fundstr.me.';
+    notifySuccess(successMessage);
     await loadTiers(reloadKey);
     refreshSubscriptions(true);
   } catch (err) {
     console.error('[nutzap] publish tiers failed', err);
-    notifyError(err instanceof Error ? err.message : 'Unable to publish tiers.');
+    if (err instanceof RelayPublishError) {
+      const message = err.ack.message ?? 'Relay rejected event.';
+      lastTiersPublishInfo.value = `Tiers publish rejected — id ${err.ack.id}${
+        err.ack.message ? ` — ${err.ack.message}` : ''
+      }`;
+      notifyError(message);
+    } else {
+      notifyError(err instanceof Error ? err.message : 'Unable to publish tiers.');
+    }
   } finally {
     publishingTiers.value = false;
   }
@@ -816,12 +828,24 @@ async function publishProfile() {
     lastProfilePublishInfo.value = eventId
       ? `Profile published — id ${eventId}${relayMessage}`
       : `Profile published to relay.fundstr.me.${relayMessage}`;
-    notifySuccess('Nutzap profile published to relay.fundstr.me.');
+    const successMessage =
+      typeof ack?.message === 'string' && ack.message
+        ? `Relay accepted profile — ${ack.message}`
+        : 'Nutzap profile published to relay.fundstr.me.';
+    notifySuccess(successMessage);
     await loadProfile(reloadKey);
     refreshSubscriptions(true);
   } catch (err) {
     console.error('[nutzap] publish profile failed', err);
-    notifyError(err instanceof Error ? err.message : 'Unable to publish Nutzap profile.');
+    if (err instanceof RelayPublishError) {
+      const message = err.ack.message ?? 'Relay rejected event.';
+      lastProfilePublishInfo.value = `Profile publish rejected — id ${err.ack.id}${
+        err.ack.message ? ` — ${err.ack.message}` : ''
+      }`;
+      notifyError(message);
+    } else {
+      notifyError(err instanceof Error ? err.message : 'Unable to publish Nutzap profile.');
+    }
   } finally {
     publishingProfile.value = false;
   }
