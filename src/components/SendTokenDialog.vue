@@ -616,7 +616,7 @@
   </q-dialog>
 </template>
 <script lang="ts">import windowMixin from 'src/mixins/windowMixin'
-import { defineComponent, defineAsyncComponent } from "vue";
+import { defineComponent } from "vue";
 
 import { useClipboard } from "src/composables/useClipboard";
 import { debug } from "src/js/logger";
@@ -668,10 +668,7 @@ import {
 } from "src/js/notify.ts";
 import { Dialog } from "quasar";
 import { useDmChatsStore } from "src/stores/dmChats";
-
-const VueQrcode = defineAsyncComponent(
-  () => import("@chenfengyuan/vue-qrcode"),
-);
+import VueQrcode from "@chenfengyuan/vue-qrcode";
 export default defineComponent({
   name: "SendTokenDialog",
   mixins: [windowMixin],
