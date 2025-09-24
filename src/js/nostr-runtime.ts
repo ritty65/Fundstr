@@ -143,9 +143,28 @@ export class RelayWatchdog {
       relaySet,
     }, false as any);
 
-    const cleanup = () => {
+    let timeout: ReturnType<typeof setTimeout>;
+    let stopped = false;
+    let acked = false;
+
+    const finalize = () => {
       if (this.pendingHeartbeats.get(url)?.sub === sub) {
         this.pendingHeartbeats.delete(url);
+      }
+    };
+
+    const onClose = () => {
+      clearTimeout(timeout);
+      finalize();
+    };
+
+    const stopSub = () => {
+      if (stopped) return;
+      stopped = true;
+      try {
+        sub.off?.("close", onClose);
+      } catch (err) {
+        console.debug("[RelayWatchdog] failed to detach close listener", err);
       }
       try {
         sub.stop?.();
@@ -154,25 +173,31 @@ export class RelayWatchdog {
       }
     };
 
-    const timeout = setTimeout(() => {
-      cleanup();
+    const cleanup = (shouldStop: boolean) => {
+      finalize();
+      if (shouldStop) {
+        stopSub();
+      }
+    };
+
+    timeout = setTimeout(() => {
+      cleanup(true);
       this.handleHeartbeatTimeout(relay);
     }, this.options.heartbeatAckTimeoutMs);
 
     this.pendingHeartbeats.set(url, { timeout, sub });
 
     const ack = () => {
+      if (acked) return;
+      acked = true;
       clearTimeout(timeout);
-      cleanup();
+      cleanup(false);
       this.handleHeartbeatAck(relay);
     };
 
     sub.on?.("eose", ack);
     sub.on?.("event", ack);
-    sub.on?.("close", () => {
-      clearTimeout(timeout);
-      cleanup();
-    });
+    sub.on?.("close", onClose);
 
     sub.start?.();
   }

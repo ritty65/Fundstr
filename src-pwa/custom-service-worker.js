@@ -41,10 +41,6 @@ registerRoute(
   new NetworkOnly({
     fetchOptions: {
       cache: "no-store",
-      headers: {
-        "cache-control": "no-cache",
-        pragma: "no-cache",
-      },
     },
   }),
 );

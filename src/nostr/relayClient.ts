@@ -272,8 +272,6 @@ async function httpReq(httpBase: string, filters: Filter[]): Promise<NostrEvent[
     method: "GET",
     headers: {
       accept: "application/json",
-      "cache-control": "no-cache",
-      pragma: "no-cache",
     },
     cache: "no-store",
   });
@@ -443,8 +441,6 @@ export async function publishNostr(
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "cache-control": "no-cache",
-      pragma: "no-cache",
     },
     cache: "no-store",
     body: JSON.stringify(evt),
