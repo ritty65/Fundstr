@@ -567,8 +567,6 @@ export async function fundstrFirstQuery(
         method: 'GET',
         headers: {
           Accept: 'application/nostr+json, application/json;q=0.9, */*;q=0.1',
-          'cache-control': 'no-cache',
-          pragma: 'no-cache',
         },
         cache: 'no-store',
         signal,
@@ -655,8 +653,6 @@ export async function publishNostrEvent(template: {
       headers: {
         'content-type': 'application/json',
         Accept: 'application/json, application/nostr+json;q=0.9, */*;q=0.1',
-        'cache-control': 'no-cache',
-        pragma: 'no-cache',
       },
       body: JSON.stringify(signed),
       cache: 'no-store',
