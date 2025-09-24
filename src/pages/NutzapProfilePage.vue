@@ -173,7 +173,6 @@ import { useActiveNutzapSigner } from 'src/nutzap/signer';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
 import {
   FUNDSTR_WS_URL,
-  FundstrRelaySocket,
   fundstrFirstQuery,
   normalizeAuthor,
   pickLatestParamReplaceable,
@@ -182,6 +181,7 @@ import {
   publishNostrEvent,
   parseTiersContent,
 } from './nutzap-profile/nostrHelpers';
+import { fundstrRelayClient } from 'src/nutzap/relayClient';
 import { sanitizeRelayUrls } from 'src/utils/relay';
 
 type TierKind = 30019 | 30000;
@@ -223,7 +223,7 @@ const hasAutoLoaded = ref(false);
 
 const { pubkey, signer } = useActiveNutzapSigner();
 
-const relaySocket = FundstrRelaySocket.getInstance();
+const relaySocket = fundstrRelayClient;
 let profileSubId: string | null = null;
 let tiersSubId: string | null = null;
 let stopRelayStatusListener: (() => void) | null = null;
@@ -564,7 +564,7 @@ function ensureRelayStatusListener() {
       hasRelayConnected = true;
     } else if (
       hasRelayConnected &&
-      (status === 'reconnecting' || status === 'connecting' || status === 'closed')
+      (status === 'reconnecting' || status === 'connecting' || status === 'disconnected')
     ) {
       if (activeAuthorHex) {
         reloadAfterReconnect = true;

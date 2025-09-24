@@ -1,5 +1,161 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nip19 } from 'nostr-tools';
+import { fundstrRelayClient, type FundstrRelayStatus } from 'src/nutzap/relayClient';
+
+const ndkMock = vi.hoisted(() => {
+  const listeners = new Map<string, Set<(relay: any) => void>>();
+  const relay = { url: 'wss://relay.fundstr.me', connected: false };
+  const pool = {
+    relays: new Map([[relay.url, relay]]),
+    on(event: string, cb: (relay: any) => void) {
+      if (!listeners.has(event)) {
+        listeners.set(event, new Set());
+      }
+      listeners.get(event)!.add(cb);
+    },
+  };
+  return {
+    pool,
+    relay,
+    emit(event: string) {
+      if (event === 'relay:connect' || event === 'relay:heartbeat') {
+        relay.connected = true;
+      } else if (event === 'relay:disconnect' || event === 'relay:stalled') {
+        relay.connected = false;
+      }
+      const set = listeners.get(event);
+      if (!set) return;
+      for (const cb of Array.from(set)) {
+        cb(relay);
+      }
+    },
+    reset() {
+      listeners.clear();
+      relay.connected = false;
+      pool.relays = new Map([[relay.url, relay]]);
+    },
+  };
+});
+
+vi.mock('src/nutzap/ndkInstance', () => ({
+  getNutzapNdk: () => ({ pool: ndkMock.pool }),
+}));
+
+class MockWebSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+  static instances: MockWebSocket[] = [];
+
+  readyState = MockWebSocket.CONNECTING;
+  sentMessages: string[] = [];
+  onopen: (() => void) | null = null;
+  onclose: ((ev?: any) => void) | null = null;
+  onerror: ((err: any) => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+
+  constructor(public url: string) {
+    MockWebSocket.instances.push(this);
+  }
+
+  open() {
+    this.readyState = MockWebSocket.OPEN;
+    this.onopen?.();
+  }
+
+  close() {
+    this.readyState = MockWebSocket.CLOSED;
+    this.onclose?.({});
+  }
+
+  send(data: string) {
+    this.sentMessages.push(data);
+  }
+
+  emitMessage(payload: unknown) {
+    this.onmessage?.({ data: JSON.stringify(payload) });
+  }
+}
+
+describe('fundstrRelayClient', () => {
+  const globalAny = globalThis as Record<string, unknown>;
+  let originalWebSocket: unknown;
+
+  beforeEach(() => {
+    ndkMock.reset();
+    MockWebSocket.instances = [];
+    originalWebSocket = globalAny.WebSocket;
+    globalAny.WebSocket = MockWebSocket as unknown as typeof WebSocket;
+    (fundstrRelayClient as any).WSImpl = MockWebSocket;
+    fundstrRelayClient.clearForTests();
+  });
+
+  afterEach(() => {
+    fundstrRelayClient.clearForTests();
+    (fundstrRelayClient as any).WSImpl = undefined;
+    globalAny.WebSocket = originalWebSocket;
+    vi.useRealTimers();
+  });
+
+  it('sends REQ and CLOSE messages around subscription lifecycle', () => {
+    const statuses: FundstrRelayStatus[] = [];
+    const stop = fundstrRelayClient.onStatusChange(status => {
+      statuses.push(status);
+    });
+
+    const subId = fundstrRelayClient.subscribe([{ kinds: [42] }], () => {});
+    expect(MockWebSocket.instances).toHaveLength(1);
+
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+
+    expect(statuses).toContain('connected');
+    expect(socket.sentMessages).toContain(JSON.stringify(['REQ', subId, { kinds: [42] }]));
+
+    fundstrRelayClient.unsubscribe(subId);
+    expect(socket.sentMessages).toContain(JSON.stringify(['CLOSE', subId]));
+
+    stop();
+  });
+
+  it('emits reconnect status when the socket closes unexpectedly', () => {
+    vi.useFakeTimers();
+    const statuses: FundstrRelayStatus[] = [];
+    const stop = fundstrRelayClient.onStatusChange(status => {
+      statuses.push(status);
+    });
+
+    const subA = fundstrRelayClient.subscribe([{ kinds: [1] }], () => {});
+    const subB = fundstrRelayClient.subscribe([{ kinds: [2] }], () => {});
+    expect(MockWebSocket.instances).toHaveLength(1);
+
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    ndkMock.emit('relay:connect');
+    expect(statuses).toContain('connected');
+
+    socket.close();
+    expect(statuses).toContain('reconnecting');
+
+    vi.runOnlyPendingTimers();
+    expect(MockWebSocket.instances).toHaveLength(2);
+
+    const nextSocket = MockWebSocket.instances[1];
+    nextSocket.open();
+
+    expect(nextSocket.sentMessages).toEqual(
+      expect.arrayContaining([
+        JSON.stringify(['REQ', subA, { kinds: [1] }]),
+        JSON.stringify(['REQ', subB, { kinds: [2] }]),
+      ])
+    );
+
+    fundstrRelayClient.unsubscribe(subA);
+    fundstrRelayClient.unsubscribe(subB);
+    stop();
+  });
+});
 import {
   fundstrFirstQuery,
   normalizeAuthor,
