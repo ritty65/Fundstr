@@ -155,13 +155,91 @@ describe('fundstrRelayClient', () => {
     fundstrRelayClient.unsubscribe(subB);
     stop();
   });
+
+  describe('requestOnce', () => {
+    it('falls back to HTTP when the websocket times out', async () => {
+      vi.useFakeTimers();
+      const fetchSpy = vi
+        .spyOn(globalThis as { fetch: typeof fetch }, 'fetch')
+        .mockResolvedValue(
+          new Response(JSON.stringify([{ id: 'evt1' }]), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+        );
+
+      try {
+        const promise = fundstrRelayClient.requestOnce(
+          [{ kinds: [1], authors: ['abc'] }],
+          {
+            timeoutMs: 25,
+            httpFallback: {
+              url: FUNDSTR_REQ_URL,
+              timeoutMs: HTTP_FALLBACK_TIMEOUT_MS,
+            },
+          }
+        );
+
+        expect(MockWebSocket.instances).toHaveLength(1);
+        const socket = MockWebSocket.instances[0];
+        socket.open();
+
+        vi.advanceTimersByTime(25);
+
+        const events = await promise;
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect(events).toEqual([{ id: 'evt1' }]);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('throws a readable error when HTTP fallback responds with non-JSON', async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis as { fetch: typeof fetch }, 'fetch')
+        .mockResolvedValue(
+          new Response('<!doctype html><html><body>Upstream failure</body></html>', {
+            status: 200,
+            headers: { 'content-type': 'text/html' },
+          })
+        );
+
+      try {
+        const promise = fundstrRelayClient.requestOnce(
+          [{ kinds: [1], authors: ['abc'] }],
+          {
+            timeoutMs: WS_FIRST_TIMEOUT_MS,
+            httpFallback: {
+              url: FUNDSTR_REQ_URL,
+              timeoutMs: HTTP_FALLBACK_TIMEOUT_MS,
+            },
+          }
+        );
+
+        expect(MockWebSocket.instances).toHaveLength(1);
+        const socket = MockWebSocket.instances[0];
+        socket.open();
+        const reqMessage = socket.sentMessages.find(msg => msg.includes('"REQ"'));
+        expect(reqMessage).toBeTruthy();
+        const [, subId] = JSON.parse(reqMessage as string) as [string, string];
+        socket.emitMessage(['EOSE', subId]);
+
+        await expect(promise).rejects.toThrow(/Unexpected response \(200, text\/html\)/);
+        await expect(promise).rejects.toThrow(/Upstream failure/);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+  });
 });
 import {
-  fundstrFirstQuery,
   normalizeAuthor,
   isNostrEvent,
   pickLatestReplaceable,
   pickLatestParamReplaceable,
+  FUNDSTR_REQ_URL,
+  WS_FIRST_TIMEOUT_MS,
+  HTTP_FALLBACK_TIMEOUT_MS,
 } from '../nostrHelpers';
 
 describe('normalizeAuthor', () => {
@@ -243,39 +321,3 @@ describe('replaceable selectors', () => {
   });
 });
 
-describe('fundstrFirstQuery', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('throws a readable error when the HTTP bridge responds with non-JSON', async () => {
-    const globalAny = globalThis as Record<string, unknown>;
-    const hadWebSocket = Object.prototype.hasOwnProperty.call(globalAny, 'WebSocket');
-    const originalWebSocket = globalAny.WebSocket;
-    delete globalAny.WebSocket;
-
-    const htmlBody = '<!doctype html><html><body>Upstream failure</body></html>';
-    const response = new Response(htmlBody, {
-      status: 200,
-      headers: { 'content-type': 'text/html' },
-    });
-
-    const fetchSpy = vi
-      .spyOn(globalThis as { fetch: typeof fetch }, 'fetch')
-      .mockResolvedValue(response);
-
-    try {
-      const queryPromise = fundstrFirstQuery([{ kinds: [10019] }], 0);
-      await expect(queryPromise).rejects.toThrowError(/Unexpected response \(200, text\/html\)/);
-      await expect(queryPromise).rejects.toThrowError(/Upstream failure/);
-    } finally {
-      if (hadWebSocket) {
-        globalAny.WebSocket = originalWebSocket;
-      } else {
-        delete globalAny.WebSocket;
-      }
-    }
-
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-  });
-});
