@@ -16,7 +16,7 @@ Publishes must send a fully signed NIP-01 event to /event; the client validates 
    automatically performs the same query over HTTP:
    `https://relay.fundstr.me/req?filters=…`.
 4. When Fundstr returns no data the client fans out across a vetted pool of
-   public relays (`relay.primal.net`, `relay.f7z.io`, `nos.lol`,
+   public relays (`relay.primal.net`, `relay.fundstr.me`, `nos.lol`,
    `relay.damus.io`). This pool is also used when discovery explicitly prefers
    public relays.
 

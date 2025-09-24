@@ -492,7 +492,9 @@ export async function fundstrFirstQuery(
     url.searchParams.set('filters', JSON.stringify(filters));
     const response = await fetch(url.toString(), {
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/nostr+json, application/json;q=0.9, */*;q=0.1',
+      },
     });
     const bodyText = await response.text();
     const normalizeSnippet = (input: string) =>
@@ -508,7 +510,11 @@ export async function fundstrFirstQuery(
     }
 
     const contentType = response.headers.get('content-type') || '';
-    if (!contentType.toLowerCase().includes('application/json')) {
+    const normalizedType = contentType.toLowerCase();
+    const isJson =
+      normalizedType.includes('application/json') ||
+      normalizedType.includes('application/nostr+json');
+    if (!isJson) {
       const snippet = normalizeSnippet(bodyText) || '[empty response body]';
       const typeLabel = contentType || 'unknown content-type';
       throw new Error(`Unexpected response (${response.status}, ${typeLabel}): ${snippet}`);

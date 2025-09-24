@@ -34,7 +34,7 @@ const FUNDSTR = {
 
 const PUBLIC_POOL = [
   "wss://relay.primal.net",
-  "wss://relay.f7z.io",
+  "wss://relay.fundstr.me",
   "wss://nos.lol",
   "wss://relay.damus.io",
 ];
