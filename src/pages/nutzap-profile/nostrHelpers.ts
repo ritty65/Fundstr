@@ -1,85 +1,24 @@
 import { nip19 } from 'nostr-tools';
-import { NDKEvent } from '@nostr-dev-kit/ndk';
-import { getNutzapNdk } from 'src/nutzap/ndkInstance';
+import { fundstrRelayClient, type FundstrRelayPublishResult } from 'src/nutzap/relayClient';
 import type { Tier } from 'src/nutzap/types';
 import {
-  NUTZAP_RELAY_WSS,
-  NUTZAP_RELAY_HTTP,
-  NUTZAP_WS_TIMEOUT_MS,
-  NUTZAP_HTTP_TIMEOUT_MS,
-} from 'src/nutzap/relayConfig';
+  FUNDSTR_WS_URL,
+  FUNDSTR_REQ_URL,
+  FUNDSTR_EVT_URL,
+  WS_FIRST_TIMEOUT_MS,
+  HTTP_FALLBACK_TIMEOUT_MS,
+} from 'src/nutzap/relayEndpoints';
 
-const DEFAULT_WS_TIMEOUT_MS = 3000;
-const DEFAULT_HTTP_TIMEOUT_MS = 5000;
-
-function stripTrailingSlashes(input: string): string {
-  return input.replace(/\/+$/, '');
-}
-
-function joinRelayPath(base: string, path: string): string {
-  const normalizedBase = stripTrailingSlashes(base || '');
-  const normalizedPath = path.replace(/^\/+/, '');
-  if (!normalizedBase) {
-    return `/${normalizedPath}`;
-  }
-  return `${normalizedBase}/${normalizedPath}`;
-}
-
-function toPositiveNumber(value: unknown, fallback: number): number {
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-    return value;
-  }
-  const parsed = typeof value === 'string' ? Number(value) : NaN;
-  if (Number.isFinite(parsed) && parsed > 0) {
-    return parsed;
-  }
-  return fallback;
-}
-
-export const FUNDSTR_WS_URL = NUTZAP_RELAY_WSS;
-const FUNDSTR_HTTP_BASE = stripTrailingSlashes(NUTZAP_RELAY_HTTP);
-export const FUNDSTR_REQ_URL = joinRelayPath(FUNDSTR_HTTP_BASE, 'req');
-export const FUNDSTR_EVT_URL = joinRelayPath(FUNDSTR_HTTP_BASE, 'event');
-export const WS_FIRST_TIMEOUT_MS = toPositiveNumber(
-  NUTZAP_WS_TIMEOUT_MS,
-  DEFAULT_WS_TIMEOUT_MS,
-);
-export const HTTP_FALLBACK_TIMEOUT_MS = toPositiveNumber(
-  NUTZAP_HTTP_TIMEOUT_MS,
-  DEFAULT_HTTP_TIMEOUT_MS,
-);
+export {
+  FUNDSTR_WS_URL,
+  FUNDSTR_REQ_URL,
+  FUNDSTR_EVT_URL,
+  WS_FIRST_TIMEOUT_MS,
+  HTTP_FALLBACK_TIMEOUT_MS,
+};
 
 const HEX_64_REGEX = /^[0-9a-f]{64}$/i;
 const HEX_128_REGEX = /^[0-9a-f]{128}$/i;
-
-function createAbortSignal(timeoutMs: number): {
-  signal: AbortSignal | undefined;
-  dispose: () => void;
-} {
-  if (typeof AbortController === 'undefined' || timeoutMs <= 0) {
-    return { signal: undefined, dispose: () => {} };
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
-
-  return {
-    signal: controller.signal,
-    dispose: () => {
-      clearTimeout(timer);
-    },
-  };
-}
-
-function isAbortError(err: unknown): boolean {
-  if (!err || typeof err !== 'object') {
-    return false;
-  }
-  const name = (err as { name?: unknown }).name;
-  return name === 'AbortError';
-}
 
 type RawTier = {
   id?: string;
@@ -267,71 +206,8 @@ export async function publishNostrEvent(template: {
   tags: any[];
   content: string;
   created_at?: number;
-}) {
-  const created_at = template.created_at ?? Math.floor(Date.now() / 1000);
-  let signed: unknown;
-
-  if (typeof window !== 'undefined' && window.nostr?.signEvent) {
-    signed = await window.nostr.signEvent({ ...template, created_at });
-  } else {
-    const ndk = getNutzapNdk();
-    const event = new NDKEvent(ndk, { ...template, created_at });
-    await event.sign();
-    signed = await event.toNostrEvent();
-  }
-
-  if (!isNostrEvent(signed)) {
-    throw new Error('Signing failed — invalid NIP-01 event');
-  }
-
-  const { signal, dispose } = createAbortSignal(HTTP_FALLBACK_TIMEOUT_MS);
-  let ack: any = null;
-  let response: Response | undefined;
-  let bodyText = '';
-  try {
-    response = await fetch(FUNDSTR_EVT_URL, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        Accept: 'application/json, application/nostr+json;q=0.9, */*;q=0.1',
-      },
-      body: JSON.stringify(signed),
-      cache: 'no-store',
-      signal,
-    });
-    bodyText = await response.text();
-  } catch (err) {
-    if (isAbortError(err)) {
-      throw new Error(`Publish request timed out after ${HTTP_FALLBACK_TIMEOUT_MS}ms`);
-    }
-    throw err instanceof Error ? err : new Error(String(err));
-  } finally {
-    dispose();
-  }
-
-  if (!response) {
-    throw new Error('Relay publish failed: no response received');
-  }
-
-  if (!response.ok) {
-    const snippet = bodyText.replace(/\s+/g, ' ').trim().slice(0, 200) || '[empty response body]';
-    throw new Error(`Relay rejected with status ${response.status}: ${snippet}`);
-  }
-
-  if (bodyText) {
-    try {
-      ack = JSON.parse(bodyText);
-    } catch (err) {
-      throw new Error('Relay returned invalid JSON', { cause: err });
-    }
-  }
-
-  if (!ack || ack.accepted !== true) {
-    const message = typeof ack?.message === 'string' ? ack.message : 'Relay rejected event';
-    throw new Error(message);
-  }
-
-  return { ack, event: signed };
+}): Promise<FundstrRelayPublishResult> {
+  return fundstrRelayClient.publish(template);
 }
 
 export async function publishTiers(tiers: Tier[], kind: 30019 | 30000) {
