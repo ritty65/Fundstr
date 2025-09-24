@@ -173,7 +173,9 @@ import { useActiveNutzapSigner } from 'src/nutzap/signer';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
 import {
   FUNDSTR_WS_URL,
-  fundstrFirstQuery,
+  FUNDSTR_REQ_URL,
+  WS_FIRST_TIMEOUT_MS,
+  HTTP_FALLBACK_TIMEOUT_MS,
   normalizeAuthor,
   pickLatestParamReplaceable,
   pickLatestReplaceable,
@@ -491,29 +493,27 @@ function applyProfileEvent(latest: any | null) {
 
 async function loadTiers(authorHex: string) {
   try {
-    let activeKind: TierKind | null = null;
-    let events = await fundstrFirstQuery([
-      { kinds: [30019], authors: [authorHex], '#d': ['tiers'], limit: 1 },
-    ]);
-    let latest = pickLatestParamReplaceable(events);
-    if (latest) {
-      activeKind = 30019;
-    } else {
-      events = await fundstrFirstQuery([
-        { kinds: [30000], authors: [authorHex], '#d': ['tiers'], limit: 1 },
-      ]);
-      latest = pickLatestParamReplaceable(events);
-      if (latest) {
-        activeKind = 30000;
+    const normalized = authorHex.toLowerCase();
+    const events = await relaySocket.requestOnce(
+      [
+        {
+          kinds: [30019, 30000],
+          authors: [normalized],
+          '#d': ['tiers'],
+          limit: 2,
+        },
+      ],
+      {
+        timeoutMs: WS_FIRST_TIMEOUT_MS,
+        httpFallback: {
+          url: FUNDSTR_REQ_URL,
+          timeoutMs: HTTP_FALLBACK_TIMEOUT_MS,
+        },
       }
-    }
+    );
 
-    if (!latest) {
-      applyTiersEvent(null);
-      return;
-    }
-
-    applyTiersEvent(latest, activeKind);
+    const latest = pickLatestParamReplaceable(events);
+    applyTiersEvent(latest);
   } catch (err) {
     console.error('[nutzap] failed to load tiers', err);
     const message = err instanceof Error ? err.message : String(err);
@@ -523,20 +523,27 @@ async function loadTiers(authorHex: string) {
 }
 
 async function loadProfile(authorHex: string) {
-  let events;
   try {
-    events = await fundstrFirstQuery([
-      { kinds: [10019], authors: [authorHex], limit: 1 },
-    ]);
+    const normalized = authorHex.toLowerCase();
+    const events = await relaySocket.requestOnce(
+      [{ kinds: [10019], authors: [normalized], limit: 1 }],
+      {
+        timeoutMs: WS_FIRST_TIMEOUT_MS,
+        httpFallback: {
+          url: FUNDSTR_REQ_URL,
+          timeoutMs: HTTP_FALLBACK_TIMEOUT_MS,
+        },
+      }
+    );
+
+    const latest = pickLatestReplaceable(events);
+    applyProfileEvent(latest);
   } catch (err) {
     console.error('[nutzap] failed to load profile', err);
     const message = err instanceof Error ? err.message : String(err);
     notifyError(message);
     throw err instanceof Error ? err : new Error(message);
   }
-
-  const latest = pickLatestReplaceable(events);
-  applyProfileEvent(latest);
 }
 
 function cleanupSubscriptions() {

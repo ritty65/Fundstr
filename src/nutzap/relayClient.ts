@@ -30,6 +30,17 @@ type SubscriptionHandlers = {
 
 type StatusListener = (status: FundstrRelayStatus) => void;
 
+type RequestOnceHttpFallback = {
+  url: string;
+  timeoutMs?: number;
+  headers?: Record<string, string>;
+};
+
+export type RequestOnceOptions = {
+  timeoutMs?: number;
+  httpFallback?: RequestOnceHttpFallback;
+};
+
 function normalizeRelayUrl(url?: string): string {
   return (url ?? '').replace(/\s+/g, '').replace(/\/+$/, '').toLowerCase();
 }
@@ -37,6 +48,8 @@ function normalizeRelayUrl(url?: string): string {
 const MAX_LOG_ENTRIES = 200;
 const MAX_RECONNECT_DELAY_MS = 30000;
 const INITIAL_RECONNECT_DELAY_MS = 500;
+const DEFAULT_HTTP_ACCEPT =
+  'application/nostr+json, application/json;q=0.9, */*;q=0.1';
 
 export class FundstrRelayClient {
   private readonly targetUrl = normalizeRelayUrl(this.relayUrl);
@@ -127,6 +140,53 @@ export class FundstrRelayClient {
     return subId;
   }
 
+  async requestOnce(
+    filters: NostrFilter[],
+    options: RequestOnceOptions = {}
+  ): Promise<any[]> {
+    const timeoutMs = options.timeoutMs ?? 0;
+    let wsResult: { events: any[]; reason: 'eose' | 'timeout' } | null = null;
+    let wsError: Error | null = null;
+
+    try {
+      wsResult = await this.requestOnceViaWs(filters, timeoutMs);
+      if (wsResult.events.length > 0 || !options.httpFallback) {
+        return wsResult.events;
+      }
+    } catch (err) {
+      wsError = err instanceof Error ? err : new Error(String(err));
+      if (!options.httpFallback) {
+        throw wsError;
+      }
+    }
+
+    if (options.httpFallback) {
+      try {
+        const fallbackEvents = await this.requestOnceViaHttp(filters, options.httpFallback);
+        if (fallbackEvents.length > 0) {
+          return fallbackEvents;
+        }
+        if (wsResult) {
+          return wsResult.events;
+        }
+        if (wsError) {
+          throw wsError;
+        }
+        return [];
+      } catch (err) {
+        throw err instanceof Error ? err : new Error(String(err));
+      }
+    }
+
+    if (wsResult) {
+      return wsResult.events;
+    }
+    if (wsError) {
+      throw wsError;
+    }
+    return [];
+  }
+
   unsubscribe(subId: string): void {
     const filters = this.subscriptions.get(subId);
     this.subscriptions.delete(subId);
@@ -215,6 +275,179 @@ export class FundstrRelayClient {
     this.setStatus(this.computeStatus());
     this.logRef.value = [];
     this.logSequence = 0;
+  }
+
+  private requestOnceViaWs(filters: NostrFilter[], timeoutMs: number) {
+    return new Promise<{ events: any[]; reason: 'eose' | 'timeout' }>((resolve, reject) => {
+      const collected: any[] = [];
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let subId: string | null = null;
+
+      const finalize = (
+        reason: 'eose' | 'timeout',
+        error?: Error
+      ) => {
+        if (settled) return;
+        settled = true;
+        if (timer) {
+          clearTimeout(timer);
+          timer = undefined;
+        }
+        if (subId) {
+          this.unsubscribe(subId);
+          subId = null;
+        }
+        if (error) {
+          reject(error);
+        } else {
+          resolve({ events: collected.slice(), reason });
+        }
+      };
+
+      const onEvent = (event: any) => {
+        collected.push(event);
+      };
+
+      const onEose = () => {
+        finalize('eose');
+      };
+
+      try {
+        subId = this.subscribe(filters, onEvent, onEose);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        finalize('eose', error);
+        return;
+      }
+
+      if (timeoutMs > 0) {
+        timer = setTimeout(() => {
+          finalize('timeout');
+        }, timeoutMs);
+      }
+    });
+  }
+
+  private async requestOnceViaHttp(
+    filters: NostrFilter[],
+    fallback: RequestOnceHttpFallback
+  ): Promise<any[]> {
+    const requestUrl = this.buildRequestUrl(fallback.url, filters);
+    const timeoutMs = fallback.timeoutMs ?? 0;
+    const { controller, dispose } = this.createAbortController(timeoutMs);
+    let response: Response | undefined;
+    let bodyText = '';
+
+    try {
+      response = await fetch(requestUrl, {
+        method: 'GET',
+        headers: {
+          Accept: DEFAULT_HTTP_ACCEPT,
+          ...(fallback.headers ?? {}),
+        },
+        cache: 'no-store',
+        signal: controller?.signal,
+      });
+      bodyText = await response.text();
+    } catch (err) {
+      dispose();
+      if (this.isAbortError(err)) {
+        throw new Error(`HTTP fallback timed out after ${timeoutMs}ms`);
+      }
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+
+    dispose();
+
+    if (!response) {
+      return [];
+    }
+
+    const normalizeSnippet = (input: string) =>
+      input
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 200);
+
+    if (!response.ok) {
+      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
+      throw new Error(
+        `HTTP query failed with status ${response.status}: ${snippet}`
+      );
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    const normalizedType = contentType.toLowerCase();
+    const isJson =
+      normalizedType.includes('application/json') ||
+      normalizedType.includes('application/nostr+json');
+
+    if (!isJson) {
+      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
+      const typeLabel = contentType || 'unknown content-type';
+      throw new Error(
+        `Unexpected response (${response.status}, ${typeLabel}): ${snippet}`
+      );
+    }
+
+    let data: any = null;
+    try {
+      data = bodyText ? JSON.parse(bodyText) : null;
+    } catch (err) {
+      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
+      throw new Error(
+        `HTTP ${response.status} returned invalid JSON: ${snippet}`,
+        { cause: err }
+      );
+    }
+
+    if (Array.isArray(data)) {
+      return data;
+    }
+    if (data && Array.isArray((data as any).events)) {
+      return (data as any).events as any[];
+    }
+    return [];
+  }
+
+  private buildRequestUrl(base: string, filters: NostrFilter[]): string {
+    const serialized = JSON.stringify(filters);
+    try {
+      const url = new URL(base);
+      url.searchParams.set('filters', serialized);
+      return url.toString();
+    } catch {
+      const separator = base.includes('?') ? '&' : '?';
+      return `${base}${separator}filters=${encodeURIComponent(serialized)}`;
+    }
+  }
+
+  private createAbortController(timeoutMs: number): {
+    controller: AbortController | null;
+    dispose: () => void;
+  } {
+    if (typeof AbortController === 'undefined' || timeoutMs <= 0) {
+      return { controller: null, dispose: () => {} };
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      controller.abort();
+    }, timeoutMs);
+    return {
+      controller,
+      dispose: () => {
+        clearTimeout(timer);
+      },
+    };
+  }
+
+  private isAbortError(err: unknown): boolean {
+    if (!err || typeof err !== 'object') {
+      return false;
+    }
+    const name = (err as { name?: unknown }).name;
+    return name === 'AbortError';
   }
 
   private attachSocketHandlers(socket: WebSocket) {

@@ -61,15 +61,16 @@ to legacy mode.
 
 ## Transport strategy
 
-1. **Reads** use `fundstrFirstQuery(filters)`.
-   * Open a WebSocket to `wss://relay.fundstr.me` and send
+1. **Reads** use `fundstrRelayClient.requestOnce(filters, options)`.
+   * Reuse the shared WebSocket connection to send
      `['REQ', <subId>, ...filters]`.
    * Collect `['EVENT', …]` frames until the relay replies with
      `['EOSE', <subId>]` or a **3 second** timeout elapses (see
      `WS_FIRST_TIMEOUT_MS`).
-   * If no events were received, fall back to
-     `GET https://relay.fundstr.me/req?filters=<urlencoded JSON>` and return the
-     JSON body (`{ ok: true, events:[…] }`).
+   * When no events arrive (or the request times out), fall back to
+     `GET https://relay.fundstr.me/req?filters=<urlencoded JSON>` with the
+     `HTTP_FALLBACK_TIMEOUT_MS` deadline and return the JSON body
+     (`{ ok: true, events:[…] }`).
 2. **Writes** call `publishNostrEvent(template)`.
    * Sign the template either via `window.nostr.signEvent` or the NDK signer.
    * Validate the signed event with `isNostrEvent` before sending.
