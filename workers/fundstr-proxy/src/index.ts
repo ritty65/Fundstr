@@ -3,16 +3,26 @@ type Env = {
   RELAY_WS_TARGET?: string;
   UPSTREAM_RELAY_HTTP?: string;
   UPSTREAM_RELAY_WS?: string;
+  PROXY_BASE?: string;
   PROXY_BASE_HTTP?: string;
   PROXY_BASE_WSS?: string;
   RELAY_REQ_TIMEOUT_MS?: string;
 };
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'content-type',
-  'Access-Control-Allow-Methods': 'GET,HEAD,OPTIONS,POST',
-};
+const FALLBACK_ALLOW_HEADERS = 'content-type,accept,cache-control';
+
+function buildCorsHeaders(req?: Request): Record<string, string> {
+  const requested = req?.headers.get('Access-Control-Request-Headers');
+  const allowHeaders = requested && requested.trim().length ? requested : FALLBACK_ALLOW_HEADERS;
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': allowHeaders,
+    'Access-Control-Allow-Methods': 'GET,HEAD,OPTIONS,POST',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
+const DEFAULT_CORS_HEADERS = buildCorsHeaders();
 
 export default { fetch: handle };
 
@@ -20,12 +30,12 @@ async function handle(req: Request, env: Env, _ctx: unknown): Promise<Response> 
   const url = new URL(req.url);
 
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: CORS_HEADERS });
+    return new Response(null, { status: 204, headers: buildCorsHeaders(req) });
   }
 
   if (url.pathname === '/event') {
     if (req.method !== 'POST') {
-      return new Response('method not allowed', { status: 405, headers: CORS_HEADERS });
+      return new Response('method not allowed', { status: 405, headers: DEFAULT_CORS_HEADERS });
     }
     return handleEvent(req, url, env);
   }
@@ -34,7 +44,7 @@ async function handle(req: Request, env: Env, _ctx: unknown): Promise<Response> 
   if (url.pathname === '/ws' && req.headers.get('Upgrade') === 'websocket') {
     const target = url.searchParams.get('target');
     if (!target || !target.startsWith('wss://')) {
-      return new Response('bad target', { status: 400, headers: CORS_HEADERS });
+      return new Response('bad target', { status: 400, headers: DEFAULT_CORS_HEADERS });
     }
 
     const pair = new WebSocketPair();
@@ -47,7 +57,7 @@ async function handle(req: Request, env: Env, _ctx: unknown): Promise<Response> 
       headers: { Upgrade: 'websocket', Connection: 'Upgrade' },
     });
     const upstream = (upstreamResp as any).webSocket as WebSocket;
-    if (!upstream) return new Response('upstream failed', { status: 502, headers: CORS_HEADERS });
+    if (!upstream) return new Response('upstream failed', { status: 502, headers: DEFAULT_CORS_HEADERS });
     upstream.accept();
 
     // Pipe frames both ways
@@ -63,7 +73,7 @@ async function handle(req: Request, env: Env, _ctx: unknown): Promise<Response> 
   if (url.pathname === '/http') {
     const target = url.searchParams.get('target');
     if (!target || !/^https:\/\/[^?]+$/.test(target)) {
-      return new Response('bad target', { status: 400, headers: CORS_HEADERS });
+      return new Response('bad target', { status: 400, headers: DEFAULT_CORS_HEADERS });
     }
 
     const resp = await fetch(target, {
@@ -77,7 +87,7 @@ async function handle(req: Request, env: Env, _ctx: unknown): Promise<Response> 
     return new Response(body, {
       status: resp.status,
       headers: {
-        ...CORS_HEADERS,
+        ...DEFAULT_CORS_HEADERS,
         'Content-Type': resp.headers.get('Content-Type') ?? 'application/json',
       },
     });
@@ -88,7 +98,7 @@ async function handle(req: Request, env: Env, _ctx: unknown): Promise<Response> 
   }
 
   // Health check / default
-  return new Response('ok', { headers: CORS_HEADERS });
+  return new Response('ok', { headers: DEFAULT_CORS_HEADERS });
 }
 
 async function handleReq(url: URL, env: Env): Promise<Response> {
@@ -145,12 +155,14 @@ function parseFilters(raw: string | null):
 }
 
 function pickHttpTarget(url: URL, env: Env): string | undefined {
+  const derivedProxy = deriveProxyBaseHttp(env, url);
   const candidates = [
     url.searchParams.get('httpTarget'),
     url.searchParams.get('target'),
     env.RELAY_HTTP_TARGET,
     env.UPSTREAM_RELAY_HTTP,
     env.PROXY_BASE_HTTP,
+    derivedProxy,
   ];
 
   for (const candidate of candidates) {
@@ -162,11 +174,13 @@ function pickHttpTarget(url: URL, env: Env): string | undefined {
 }
 
 function pickWsTarget(url: URL, env: Env): string | undefined {
+  const derivedProxy = deriveProxyBaseWss(env, url);
   const candidates = [
     url.searchParams.get('wsTarget'),
     env.RELAY_WS_TARGET,
     env.UPSTREAM_RELAY_WS,
     env.PROXY_BASE_WSS,
+    derivedProxy,
   ];
 
   for (const candidate of candidates) {
@@ -258,7 +272,7 @@ async function handleEvent(req: Request, url: URL, env: Env): Promise<Response> 
 
   const text = await upstreamResp.text();
   const headers = new Headers({
-    ...CORS_HEADERS,
+    ...DEFAULT_CORS_HEADERS,
     'Cache-Control': 'no-store',
   });
   const contentType = upstreamResp.headers.get('Content-Type');
@@ -403,9 +417,84 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
-      ...CORS_HEADERS,
+      ...DEFAULT_CORS_HEADERS,
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
     },
   });
+}
+
+function deriveProxyBaseHttp(env: Env, requestUrl: URL): string | undefined {
+  const base = env.PROXY_BASE?.trim();
+  if (!base) return undefined;
+  if (/^https?:\/\//i.test(base)) {
+    try {
+      const candidate = new URL(base);
+      if (candidate.host === requestUrl.host) {
+        return undefined;
+      }
+      return candidate.toString();
+    } catch {
+      return undefined;
+    }
+  }
+  if (/^wss?:\/\//i.test(base)) {
+    const converted = base.replace(/^ws/i, 'http').replace(/^wss/i, 'https');
+    try {
+      const candidate = new URL(converted);
+      if (candidate.host === requestUrl.host) {
+        return undefined;
+      }
+      return candidate.toString();
+    } catch {
+      return undefined;
+    }
+  }
+  const normalized = `https://${base}`;
+
+  try {
+    const derived = new URL(normalized);
+    if (derived.host === requestUrl.host) {
+      return undefined;
+    }
+    return derived.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function deriveProxyBaseWss(env: Env, requestUrl: URL): string | undefined {
+  const base = env.PROXY_BASE?.trim();
+  if (!base) return undefined;
+  if (/^wss?:\/\//i.test(base)) {
+    try {
+      const candidate = new URL(base.replace(/^ws/i, 'wss'));
+      if (candidate.host === requestUrl.host) {
+        return undefined;
+      }
+      return candidate.toString();
+    } catch {
+      return undefined;
+    }
+  }
+  if (/^https?:\/\//i.test(base)) {
+    try {
+      const candidate = new URL(base.replace(/^http/i, 'ws').replace(/^https/i, 'wss'));
+      if (candidate.host === requestUrl.host) {
+        return undefined;
+      }
+      return candidate.toString();
+    } catch {
+      return undefined;
+    }
+  }
+  try {
+    const candidate = new URL(`wss://${base}`);
+    if (candidate.host === requestUrl.host) {
+      return undefined;
+    }
+    return candidate.toString();
+  } catch {
+    return undefined;
+  }
 }
