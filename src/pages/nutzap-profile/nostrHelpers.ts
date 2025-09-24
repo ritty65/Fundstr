@@ -2,16 +2,86 @@ import { nip19 } from 'nostr-tools';
 import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
 import type { Tier } from 'src/nutzap/types';
+import {
+  NUTZAP_RELAY_WSS,
+  NUTZAP_RELAY_HTTP,
+  NUTZAP_WS_TIMEOUT_MS,
+  NUTZAP_HTTP_TIMEOUT_MS,
+} from 'src/nutzap/relayConfig';
 
-export const FUNDSTR_WS_URL = 'wss://relay.fundstr.me';
-export const FUNDSTR_REQ_URL = 'https://relay.fundstr.me/req';
-export const FUNDSTR_EVT_URL = 'https://relay.fundstr.me/event';
-export const WS_FIRST_TIMEOUT_MS = 3000;
+const DEFAULT_WS_TIMEOUT_MS = 3000;
+const DEFAULT_HTTP_TIMEOUT_MS = 5000;
+
+function stripTrailingSlashes(input: string): string {
+  return input.replace(/\/+$/, '');
+}
+
+function joinRelayPath(base: string, path: string): string {
+  const normalizedBase = stripTrailingSlashes(base || '');
+  const normalizedPath = path.replace(/^\/+/, '');
+  if (!normalizedBase) {
+    return `/${normalizedPath}`;
+  }
+  return `${normalizedBase}/${normalizedPath}`;
+}
+
+function toPositiveNumber(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  const parsed = typeof value === 'string' ? Number(value) : NaN;
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+  return fallback;
+}
+
+export const FUNDSTR_WS_URL = NUTZAP_RELAY_WSS;
+const FUNDSTR_HTTP_BASE = stripTrailingSlashes(NUTZAP_RELAY_HTTP);
+export const FUNDSTR_REQ_URL = joinRelayPath(FUNDSTR_HTTP_BASE, 'req');
+export const FUNDSTR_EVT_URL = joinRelayPath(FUNDSTR_HTTP_BASE, 'event');
+export const WS_FIRST_TIMEOUT_MS = toPositiveNumber(
+  NUTZAP_WS_TIMEOUT_MS,
+  DEFAULT_WS_TIMEOUT_MS,
+);
+const HTTP_FALLBACK_TIMEOUT_MS = toPositiveNumber(
+  NUTZAP_HTTP_TIMEOUT_MS,
+  DEFAULT_HTTP_TIMEOUT_MS,
+);
 
 const HEX_64_REGEX = /^[0-9a-f]{64}$/i;
 const HEX_128_REGEX = /^[0-9a-f]{128}$/i;
 
 export type FundstrRelayStatus = 'connecting' | 'connected' | 'reconnecting' | 'closed';
+
+function createAbortSignal(timeoutMs: number): {
+  signal: AbortSignal | undefined;
+  dispose: () => void;
+} {
+  if (typeof AbortController === 'undefined' || timeoutMs <= 0) {
+    return { signal: undefined, dispose: () => {} };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      clearTimeout(timer);
+    },
+  };
+}
+
+function isAbortError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') {
+    return false;
+  }
+  const name = (err as { name?: unknown }).name;
+  return name === 'AbortError';
+}
 
 type SubscriptionHandlers = {
   onEvent: (event: any) => void;
@@ -490,48 +560,63 @@ export async function fundstrFirstQuery(
   if (!results.length) {
     const url = new URL(FUNDSTR_REQ_URL);
     url.searchParams.set('filters', JSON.stringify(filters));
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        Accept: 'application/nostr+json, application/json;q=0.9, */*;q=0.1',
-      },
-    });
-    const bodyText = await response.text();
-    const normalizeSnippet = (input: string) =>
-      input
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 200);
-
-    if (!response.ok) {
-      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
-      const baseMessage = `HTTP query failed with status ${response.status}`;
-      throw new Error(`${baseMessage}: ${snippet}`);
-    }
-
-    const contentType = response.headers.get('content-type') || '';
-    const normalizedType = contentType.toLowerCase();
-    const isJson =
-      normalizedType.includes('application/json') ||
-      normalizedType.includes('application/nostr+json');
-    if (!isJson) {
-      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
-      const typeLabel = contentType || 'unknown content-type';
-      throw new Error(`Unexpected response (${response.status}, ${typeLabel}): ${snippet}`);
-    }
-
-    let data: any;
+    const { signal, dispose } = createAbortSignal(HTTP_FALLBACK_TIMEOUT_MS);
+    let bodyText = '';
     try {
-      data = JSON.parse(bodyText);
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          Accept: 'application/nostr+json, application/json;q=0.9, */*;q=0.1',
+          'cache-control': 'no-cache',
+          pragma: 'no-cache',
+        },
+        cache: 'no-store',
+        signal,
+      });
+      bodyText = await response.text();
+      const normalizeSnippet = (input: string) =>
+        input
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 200);
+
+      if (!response.ok) {
+        const snippet = normalizeSnippet(bodyText) || '[empty response body]';
+        const baseMessage = `HTTP query failed with status ${response.status}`;
+        throw new Error(`${baseMessage}: ${snippet}`);
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      const normalizedType = contentType.toLowerCase();
+      const isJson =
+        normalizedType.includes('application/json') ||
+        normalizedType.includes('application/nostr+json');
+      if (!isJson) {
+        const snippet = normalizeSnippet(bodyText) || '[empty response body]';
+        const typeLabel = contentType || 'unknown content-type';
+        throw new Error(`Unexpected response (${response.status}, ${typeLabel}): ${snippet}`);
+      }
+
+      let data: any;
+      try {
+        data = JSON.parse(bodyText);
+      } catch (err) {
+        const snippet = normalizeSnippet(bodyText) || '[empty response body]';
+        const message = `HTTP ${response.status} returned invalid JSON: ${snippet}`;
+        throw new Error(message, { cause: err });
+      }
+      if (Array.isArray(data)) {
+        results.push(...data);
+      } else if (Array.isArray(data?.events)) {
+        results.push(...data.events);
+      }
     } catch (err) {
-      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
-      const message = `HTTP ${response.status} returned invalid JSON: ${snippet}`;
-      throw new Error(message, { cause: err });
-    }
-    if (Array.isArray(data)) {
-      results.push(...data);
-    } else if (Array.isArray(data?.events)) {
-      results.push(...data.events);
+      if (isAbortError(err)) {
+        throw new Error(`HTTP fallback timed out after ${HTTP_FALLBACK_TIMEOUT_MS}ms`);
+      }
+      throw err instanceof Error ? err : new Error(String(err));
+    } finally {
+      dispose();
     }
   }
 
@@ -560,17 +645,50 @@ export async function publishNostrEvent(template: {
     throw new Error('Signing failed — invalid NIP-01 event');
   }
 
-  const response = await fetch(FUNDSTR_EVT_URL, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(signed),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Relay rejected with status ${response.status}`);
+  const { signal, dispose } = createAbortSignal(HTTP_FALLBACK_TIMEOUT_MS);
+  let ack: any = null;
+  let response: Response | undefined;
+  let bodyText = '';
+  try {
+    response = await fetch(FUNDSTR_EVT_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        Accept: 'application/json, application/nostr+json;q=0.9, */*;q=0.1',
+        'cache-control': 'no-cache',
+        pragma: 'no-cache',
+      },
+      body: JSON.stringify(signed),
+      cache: 'no-store',
+      signal,
+    });
+    bodyText = await response.text();
+  } catch (err) {
+    if (isAbortError(err)) {
+      throw new Error(`Publish request timed out after ${HTTP_FALLBACK_TIMEOUT_MS}ms`);
+    }
+    throw err instanceof Error ? err : new Error(String(err));
+  } finally {
+    dispose();
   }
 
-  const ack = await response.json();
+  if (!response) {
+    throw new Error('Relay publish failed: no response received');
+  }
+
+  if (!response.ok) {
+    const snippet = bodyText.replace(/\s+/g, ' ').trim().slice(0, 200) || '[empty response body]';
+    throw new Error(`Relay rejected with status ${response.status}: ${snippet}`);
+  }
+
+  if (bodyText) {
+    try {
+      ack = JSON.parse(bodyText);
+    } catch (err) {
+      throw new Error('Relay returned invalid JSON', { cause: err });
+    }
+  }
+
   if (!ack || ack.accepted !== true) {
     const message = typeof ack?.message === 'string' ? ack.message : 'Relay rejected event';
     throw new Error(message);
