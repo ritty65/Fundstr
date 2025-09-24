@@ -6,7 +6,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useFundstrRelayStatus } from './FundstrRelaySocket';
+import { useFundstrRelayStatus } from './relayClient';
 
 const status = useFundstrRelayStatus();
 
@@ -16,12 +16,16 @@ const label = computed(() => {
       return 'Connected';
     case 'disconnected':
       return 'Disconnected';
+    case 'reconnecting':
+      return 'Reconnecting…';
     default:
       return 'Connecting…';
   }
 });
 
-const statusClass = computed(() => `status-${status.value}`);
+const statusClass = computed(() =>
+  status.value === 'reconnecting' ? 'status-connecting' : `status-${status.value}`
+);
 </script>
 
 <style scoped>
