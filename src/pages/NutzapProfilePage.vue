@@ -2,10 +2,52 @@
   <q-page class="nutzap-profile-page bg-surface-1 q-pa-lg">
     <div class="status-banner q-mb-md">
       <RelayStatusIndicator />
+      <q-chip dense :color="relayStatusColor" text-color="white" class="status-chip">
+        {{ relayStatusLabel }}
+      </q-chip>
       <div class="text-caption text-2">Isolated relay: relay.fundstr.me (WS → HTTP fallback)</div>
     </div>
 
     <div class="profile-grid">
+      <q-card class="grid-card relay-card">
+        <q-card-section class="q-gutter-xs">
+          <div class="text-h6">Relay Connection</div>
+          <div class="text-caption text-2">Control the live WebSocket session used for publishing events.</div>
+        </q-card-section>
+        <q-separator />
+        <q-card-section class="column q-gutter-md">
+          <q-input
+            v-model="relayUrlInput"
+            label="Relay URL"
+            dense
+            filled
+            :disable="!relaySupported"
+            autocomplete="off"
+          />
+          <div class="row items-center wrap q-gutter-sm">
+            <q-btn
+              color="primary"
+              label="Connect"
+              :disable="!relaySupported || !relayUrlInputValid"
+              @click="handleRelayConnect"
+            />
+            <q-btn
+              color="primary"
+              outline
+              label="Disconnect"
+              :disable="!relaySupported || !relayIsConnected"
+              @click="handleRelayDisconnect"
+            />
+            <q-toggle
+              v-model="relayAutoReconnect"
+              label="Auto reconnect"
+              dense
+              :disable="!relaySupported"
+            />
+          </div>
+        </q-card-section>
+      </q-card>
+
       <q-card class="grid-card keys-card">
         <q-card-section class="q-gutter-xs">
           <div class="text-h6">Keys</div>
@@ -215,45 +257,35 @@
       <q-card class="grid-card activity-card">
         <q-card-section class="q-gutter-xs">
           <div class="text-h6">Activity Log</div>
-          <div class="text-caption text-2">Monitor publish attempts and loading status.</div>
+          <div class="text-caption text-2">Monitor relay connection state and publish acknowledgements.</div>
         </q-card-section>
         <q-separator />
         <q-card-section class="q-pa-none">
-          <q-list bordered separator dense>
-            <q-item>
+          <q-list
+            v-if="relayActivity.length"
+            bordered
+            separator
+            dense
+            class="activity-log-list"
+          >
+            <q-item v-for="entry in relayActivity" :key="entry.id">
               <q-item-section>
-                <div class="text-body2">Profile publish</div>
-                <div class="text-caption text-2">
-                  {{ lastProfilePublishInfo || 'No profile publish yet.' }}
+                <div class="row items-center no-wrap q-gutter-sm">
+                  <span class="text-caption text-2">{{ formatActivityTime(entry.timestamp) }}</span>
+                  <q-badge :color="activityLevelColor(entry.level)" outline size="sm">
+                    {{ entry.level }}
+                  </q-badge>
+                  <span class="text-body2">{{ entry.message }}</span>
                 </div>
-              </q-item-section>
-              <q-item-section side v-if="publishingProfile">
-                <q-spinner size="16px" color="primary" />
-              </q-item-section>
-            </q-item>
-            <q-item>
-              <q-item-section>
-                <div class="text-body2">Tiers publish</div>
-                <div class="text-caption text-2">
-                  {{ lastTiersPublishInfo || 'No tier definitions published yet.' }}
-                </div>
-              </q-item-section>
-              <q-item-section side v-if="publishingTiers">
-                <q-spinner size="16px" color="primary" />
-              </q-item-section>
-            </q-item>
-            <q-item>
-              <q-item-section>
-                <div class="text-body2">Data loader</div>
-                <div class="text-caption text-2">
-                  {{ loading ? 'Loading profile and tiers…' : 'Idle' }}
-                </div>
-              </q-item-section>
-              <q-item-section side v-if="loading">
-                <q-spinner size="16px" color="primary" />
+                <div class="text-caption text-2" v-if="entry.context">{{ entry.context }}</div>
               </q-item-section>
             </q-item>
           </q-list>
+          <div v-else class="q-pa-md text-caption text-2">No relay activity yet.</div>
+        </q-card-section>
+        <q-separator />
+        <q-card-section class="row justify-end q-pa-sm">
+          <q-btn flat label="Clear Log" size="sm" :disable="!relayActivity.length" @click="clearRelayActivity" />
         </q-card-section>
       </q-card>
     </div>
@@ -330,6 +362,10 @@ import {
 } from './nutzap-profile/nostrHelpers';
 import { fundstrRelayClient, RelayPublishError } from 'src/nutzap/relayClient';
 import { sanitizeRelayUrls } from 'src/utils/relay';
+import {
+  useRelayConnection,
+  type RelayActivityLevel,
+} from 'src/nutzap/onepage/useRelayConnection';
 
 type TierKind = 30019 | 30000;
 
@@ -377,6 +413,95 @@ const hasStoredSecret = ref(false);
 
 const SECRET_STORAGE_KEY = 'nutzap.profile.secretHex';
 const isBrowser = typeof window !== 'undefined';
+
+const {
+  relayUrl: relayConnectionUrl,
+  status: relayConnectionStatus,
+  autoReconnect: relayAutoReconnect,
+  activityLog: relayActivity,
+  connect: connectRelay,
+  disconnect: disconnectRelay,
+  publishEvent: publishEventToRelay,
+  clearActivity: clearRelayActivity,
+  isSupported: relaySupported,
+  isConnected: relayIsConnected,
+} = useRelayConnection();
+
+const relayUrlInput = ref(relayConnectionUrl.value);
+const relayUrlInputValid = computed(() => relayUrlInput.value.trim().length > 0);
+
+watch(relayConnectionUrl, value => {
+  relayUrlInput.value = value;
+});
+
+const relayStatusLabel = computed(() => {
+  switch (relayConnectionStatus.value) {
+    case 'connected':
+      return 'Connected';
+    case 'connecting':
+      return 'Connecting';
+    case 'reconnecting':
+      return 'Reconnecting';
+    case 'disconnected':
+      return 'Disconnected';
+    default:
+      return 'Idle';
+  }
+});
+
+const relayStatusColor = computed(() => {
+  switch (relayConnectionStatus.value) {
+    case 'connected':
+      return 'positive';
+    case 'connecting':
+    case 'reconnecting':
+      return 'warning';
+    case 'disconnected':
+      return 'negative';
+    default:
+      return 'grey-6';
+  }
+});
+
+const activityTimeFormatter =
+  typeof Intl !== 'undefined'
+    ? new Intl.DateTimeFormat(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    : null;
+
+function formatActivityTime(timestamp: number) {
+  if (!activityTimeFormatter) {
+    return new Date(timestamp).toISOString();
+  }
+  return activityTimeFormatter.format(new Date(timestamp));
+}
+
+function activityLevelColor(level: RelayActivityLevel) {
+  switch (level) {
+    case 'success':
+      return 'positive';
+    case 'warning':
+      return 'warning';
+    case 'error':
+      return 'negative';
+    default:
+      return 'primary';
+  }
+}
+
+function handleRelayConnect() {
+  const trimmed = relayUrlInput.value.trim();
+  relayConnectionUrl.value = trimmed || FUNDSTR_WS_URL;
+  relayUrlInput.value = relayConnectionUrl.value;
+  connectRelay();
+}
+
+function handleRelayDisconnect() {
+  disconnectRelay();
+}
 
 function updateStoredSecretPresence() {
   if (!isBrowser) return;
@@ -995,7 +1120,9 @@ async function publishTiers() {
 
   publishingTiers.value = true;
   try {
-    const { ack, event } = await publishTiersToRelay(tiers.value, tierKind.value);
+    const { ack, event } = await publishTiersToRelay(tiers.value, tierKind.value, {
+      send: publishEventToRelay,
+    });
     const signerPubkey = event?.pubkey;
     const reloadKey = typeof signerPubkey === 'string' && signerPubkey ? signerPubkey : authorHex;
     if (signerPubkey && signerPubkey !== authorInput.value) {
@@ -1076,7 +1203,10 @@ async function publishProfile() {
       tags.push(['picture', pictureUrl.value.trim()]);
     }
 
-    const { ack, event } = await publishNostrEvent({ kind: 10019, tags, content });
+    const { ack, event } = await publishNostrEvent(
+      { kind: 10019, tags, content },
+      { send: publishEventToRelay }
+    );
     const signerPubkey = event?.pubkey;
     const reloadKey = typeof signerPubkey === 'string' && signerPubkey ? signerPubkey : authorHex;
     if (signerPubkey && signerPubkey !== authorInput.value) {
@@ -1155,6 +1285,9 @@ onMounted(() => {
     hasAutoLoaded.value = true;
     void loadAll();
   }
+  if (relaySupported) {
+    connectRelay();
+  }
   ensureRelayStatusListener();
 });
 
@@ -1182,6 +1315,11 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 
+.status-chip {
+  text-transform: capitalize;
+  font-weight: 600;
+}
+
 .profile-grid {
   display: grid;
   gap: 16px;
@@ -1192,13 +1330,25 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
+.relay-card,
+.activity-card {
+  grid-column: span 2;
+}
+
 .publisher-card {
   grid-column: span 2;
 }
 
 @media (max-width: 1200px) {
+  .relay-card,
+  .activity-card,
   .publisher-card {
     grid-column: span 1;
   }
+}
+
+.activity-log-list {
+  max-height: 260px;
+  overflow-y: auto;
 }
 </style>

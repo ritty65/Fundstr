@@ -1,5 +1,10 @@
+import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { nip19 } from 'nostr-tools';
-import { fundstrRelayClient, type FundstrRelayPublishResult } from 'src/nutzap/relayClient';
+import {
+  fundstrRelayClient,
+  type FundstrRelayPublishAck,
+  type FundstrRelayPublishResult,
+} from 'src/nutzap/relayClient';
 import type { Tier } from 'src/nutzap/types';
 import {
   FUNDSTR_WS_URL,
@@ -8,6 +13,7 @@ import {
   WS_FIRST_TIMEOUT_MS,
   HTTP_FALLBACK_TIMEOUT_MS,
 } from 'src/nutzap/relayEndpoints';
+import { getNutzapNdk } from 'src/nutzap/ndkInstance';
 
 export {
   FUNDSTR_WS_URL,
@@ -38,6 +44,10 @@ export type NostrEvent = {
   tags: any[];
   content: string;
   sig: string;
+};
+
+export type PublishNostrEventOptions = {
+  send?: (event: NostrEvent) => Promise<FundstrRelayPublishAck>;
 };
 
 export type NostrFilter = {
@@ -201,23 +211,63 @@ function normalizeRawTier(raw: RawTier): Tier | null {
   };
 }
 
-export async function publishNostrEvent(template: {
+async function signPublishTemplate(template: {
   kind: number;
   tags: any[];
   content: string;
   created_at?: number;
-}): Promise<FundstrRelayPublishResult> {
-  return fundstrRelayClient.publish(template);
+}): Promise<NostrEvent> {
+  const created_at = template.created_at ?? Math.floor(Date.now() / 1000);
+  const maybeWindow = typeof window !== 'undefined' ? (window as any) : (globalThis as any)?.window;
+  const nostrSigner = maybeWindow?.nostr;
+  let signed: unknown;
+
+  if (nostrSigner?.signEvent) {
+    signed = await nostrSigner.signEvent({ ...template, created_at });
+  } else {
+    const ndk = getNutzapNdk();
+    const event = new NDKEvent(ndk, { ...template, created_at });
+    await event.sign();
+    signed = await event.toNostrEvent();
+  }
+
+  if (!isNostrEvent(signed)) {
+    throw new Error('Signed event is invalid');
+  }
+
+  return signed;
 }
 
-export async function publishTiers(tiers: Tier[], kind: 30019 | 30000) {
+export async function publishNostrEvent(
+  template: {
+    kind: number;
+    tags: any[];
+    content: string;
+    created_at?: number;
+  },
+  options?: PublishNostrEventOptions
+): Promise<FundstrRelayPublishResult> {
+  if (!options?.send) {
+    return fundstrRelayClient.publish(template);
+  }
+
+  const event = await signPublishTemplate(template);
+  const ack = await options.send(event);
+  return { ack, event };
+}
+
+export async function publishTiers(
+  tiers: Tier[],
+  kind: 30019 | 30000,
+  options?: PublishNostrEventOptions
+) {
   const tags = [
     ['d', 'tiers'],
     ['t', 'nutzap-tiers'],
     ['client', 'fundstr'],
   ];
   const content = JSON.stringify({ v: 1, tiers: serializeMinimal(tiers) });
-  return publishNostrEvent({ kind, tags, content });
+  return publishNostrEvent({ kind, tags, content }, options);
 }
 
 export function parseTiersContent(content: string | undefined): Tier[] {
