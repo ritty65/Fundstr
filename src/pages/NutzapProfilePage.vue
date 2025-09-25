@@ -161,6 +161,19 @@
         </q-card-section>
       </q-card>
 
+      <q-card class="grid-card explorer-card">
+        <q-card-section class="q-gutter-xs">
+          <div class="text-h6">Explorer v2</div>
+          <div class="text-caption text-2">
+            Query profiles, notes, or parameterized events across multiple relays.
+          </div>
+        </q-card-section>
+        <q-separator />
+        <q-card-section>
+          <NutzapExplorerSearch />
+        </q-card-section>
+      </q-card>
+
       <q-card class="grid-card publisher-card">
         <q-card-section class="q-gutter-xs">
           <div class="text-h6">Publisher</div>
@@ -343,6 +356,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { v4 as uuidv4 } from 'uuid';
 import RelayStatusIndicator from 'src/nutzap/RelayStatusIndicator.vue';
+import NutzapExplorerSearch from 'src/nutzap/onepage/NutzapExplorerSearch.vue';
 import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
 import type { Tier } from 'src/nutzap/types';
 import { useActiveNutzapSigner } from 'src/nutzap/signer';
