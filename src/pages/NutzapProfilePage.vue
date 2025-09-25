@@ -1,119 +1,262 @@
 <template>
-  <q-page class="bg-surface-1 q-pa-md q-gutter-md column">
-    <div class="row items-center q-gutter-sm">
+  <q-page class="nutzap-profile-page bg-surface-1 q-pa-lg">
+    <div class="status-banner q-mb-md">
       <RelayStatusIndicator />
       <div class="text-caption text-2">Isolated relay: relay.fundstr.me (WS → HTTP fallback)</div>
     </div>
 
-    <q-card class="q-pa-md">
-      <div class="text-subtitle1 q-mb-sm">Author</div>
-      <q-input
-        v-model="authorInput"
-        label="Author (npub or hex pubkey)"
-        dense
-        filled
-        autocomplete="off"
-      />
-      <div class="row items-center q-gutter-sm q-mt-sm">
-        <q-btn
-          color="primary"
-          label="Load Data"
-          :disable="!authorInput.trim() || loading"
-          :loading="loading"
-          @click="loadAll"
-        />
-      </div>
-      <div class="text-caption text-2 q-mt-sm">
-        Tier address preview: {{ tierAddressPreview }}
-      </div>
-    </q-card>
-
-    <q-card class="q-pa-md">
-      <div class="text-subtitle1 q-mb-sm">Payment Profile (kind 10019)</div>
-      <q-input v-model="displayName" label="Display Name" dense filled class="q-mb-sm" />
-      <q-input v-model="pictureUrl" label="Picture URL" dense filled class="q-mb-sm" />
-      <q-input v-model="p2pkPub" label="P2PK Public Key" dense filled class="q-mb-sm" />
-      <q-input
-        v-model="mintsText"
-        type="textarea"
-        label="Trusted Mints (one per line)"
-        dense
-        filled
-        autogrow
-        class="q-mb-sm"
-      />
-      <q-input
-        v-model="relaysText"
-        type="textarea"
-        label="Relay Hints (optional, one per line)"
-        dense
-        filled
-        autogrow
-      />
-      <div class="row justify-end q-gutter-sm q-mt-md">
-        <q-btn
-          color="primary"
-          label="Publish Profile"
-          :disable="profilePublishDisabled"
-          :loading="publishingProfile"
-          @click="publishProfile"
-        />
-      </div>
-      <div class="text-caption q-mt-sm" v-if="lastProfilePublishInfo">
-        {{ lastProfilePublishInfo }}
-      </div>
-    </q-card>
-
-    <q-card class="q-pa-md">
-      <div class="row items-center justify-between q-mb-sm">
-        <div>
-          <div class="text-subtitle1">Tiers ({{ tiers.length }})</div>
-          <div class="text-caption text-2">
-            Publishing as {{ tierKindLabel }} — parameterized replaceable ["d","tiers"].
+    <div class="profile-grid">
+      <q-card class="grid-card keys-card">
+        <q-card-section class="q-gutter-xs">
+          <div class="text-h6">Keys</div>
+          <div class="text-caption text-2">Manage the publishing identity for Nutzap events.</div>
+        </q-card-section>
+        <q-separator />
+        <q-card-section class="column q-gutter-md">
+          <div class="column q-gutter-sm">
+            <q-input
+              v-model="keyImportValue"
+              label="Secret key (nsec or 64-char hex)"
+              dense
+              filled
+              autocomplete="off"
+            />
+            <div class="row q-gutter-sm">
+              <q-btn color="primary" label="Generate" @click="generateNewSecret" />
+              <q-btn color="primary" outline label="Import" @click="importSecretKey" />
+            </div>
           </div>
-        </div>
-        <div class="row items-center q-gutter-sm">
-          <q-btn-toggle
-            v-model="tierKind"
-            :options="tierKindOptions"
+          <div class="column q-gutter-sm">
+            <q-input
+              :model-value="keySecretHex"
+              label="Secret key (hex)"
+              type="textarea"
+              dense
+              filled
+              readonly
+              autogrow
+            />
+            <q-input
+              :model-value="keyNsec"
+              label="Secret key (nsec)"
+              type="textarea"
+              dense
+              filled
+              readonly
+              autogrow
+            />
+            <q-input
+              :model-value="keyPublicHex"
+              label="Public key (hex)"
+              type="textarea"
+              dense
+              filled
+              readonly
+              autogrow
+            />
+            <q-input
+              :model-value="keyNpub"
+              label="Public key (npub)"
+              type="textarea"
+              dense
+              filled
+              readonly
+              autogrow
+            />
+          </div>
+          <div class="row wrap q-gutter-sm">
+            <q-btn
+              color="primary"
+              label="Save to Browser"
+              :disable="!keySecretHex"
+              @click="saveSecretToBrowser"
+            />
+            <q-btn
+              color="primary"
+              outline
+              label="Load from Browser"
+              :disable="!hasStoredSecret"
+              @click="loadSecretFromBrowser"
+            />
+            <q-btn
+              color="negative"
+              outline
+              label="Forget Stored Key"
+              :disable="!hasStoredSecret"
+              @click="forgetStoredSecret"
+            />
+          </div>
+        </q-card-section>
+      </q-card>
+
+      <q-card class="grid-card explorer-card">
+        <q-card-section class="q-gutter-xs">
+          <div class="text-h6">Explorer</div>
+          <div class="text-caption text-2">Lookup an author and preview their Nutzap profile.</div>
+        </q-card-section>
+        <q-separator />
+        <q-card-section class="column q-gutter-md">
+          <q-input
+            v-model="authorInput"
+            label="Author (npub or hex pubkey)"
             dense
-            toggle-color="primary"
-            unelevated
+            filled
+            autocomplete="off"
           />
-          <q-btn dense color="primary" label="Add Tier" @click="openNewTier" />
-        </div>
-      </div>
-      <q-list bordered separator v-if="tiers.length">
-        <q-item v-for="tier in tiers" :key="tier.id">
-          <q-item-section>
-            <div class="text-body1">
-              {{ tier.title }} — {{ tier.price }} sats ({{ frequencyLabel(tier.frequency) }})
+          <div class="row items-center q-gutter-sm">
+            <q-btn
+              color="primary"
+              label="Load Data"
+              :disable="!authorInput.trim() || loading"
+              :loading="loading"
+              @click="loadAll"
+            />
+            <q-badge color="accent" align="middle" v-if="loading">Loading…</q-badge>
+          </div>
+          <div class="text-caption text-2">
+            Tier address preview: <span class="text-1 text-weight-medium">{{ tierAddressPreview }}</span>
+          </div>
+        </q-card-section>
+      </q-card>
+
+      <q-card class="grid-card publisher-card">
+        <q-card-section class="q-gutter-xs">
+          <div class="text-h6">Publisher</div>
+          <div class="text-caption text-2">Compose metadata and tiers before publishing to relay.fundstr.me.</div>
+        </q-card-section>
+        <q-separator />
+        <q-card-section class="column q-gutter-md">
+          <div class="text-subtitle2">Payment Profile (kind 10019)</div>
+          <q-input v-model="displayName" label="Display Name" dense filled />
+          <q-input v-model="pictureUrl" label="Picture URL" dense filled />
+          <q-input v-model="p2pkPub" label="P2PK Public Key" dense filled />
+          <q-input
+            v-model="mintsText"
+            type="textarea"
+            label="Trusted Mints (one per line)"
+            dense
+            filled
+            autogrow
+          />
+          <q-input
+            v-model="relaysText"
+            type="textarea"
+            label="Relay Hints (optional, one per line)"
+            dense
+            filled
+            autogrow
+          />
+          <div class="row justify-end q-gutter-sm">
+            <q-btn
+              color="primary"
+              label="Publish Profile"
+              :disable="profilePublishDisabled"
+              :loading="publishingProfile"
+              @click="publishProfile"
+            />
+          </div>
+          <div class="text-caption text-2" v-if="lastProfilePublishInfo">
+            {{ lastProfilePublishInfo }}
+          </div>
+        </q-card-section>
+        <q-separator />
+        <q-card-section class="column q-gutter-md">
+          <div class="row items-center justify-between">
+            <div>
+              <div class="text-subtitle2">Tiers ({{ tiers.length }})</div>
+              <div class="text-caption text-2">
+                Publishing as {{ tierKindLabel }} — parameterized replaceable ["d", "tiers"].
+              </div>
             </div>
-            <div class="text-caption" v-if="tier.description">{{ tier.description }}</div>
-            <div class="text-caption" v-if="tier.media?.length">
-              Media: {{ tier.media.map(m => m.url).join(', ') }}
+            <div class="row items-center q-gutter-sm">
+              <q-btn-toggle
+                v-model="tierKind"
+                :options="tierKindOptions"
+                dense
+                toggle-color="primary"
+                unelevated
+              />
+              <q-btn dense color="primary" label="Add Tier" @click="openNewTier" />
             </div>
-          </q-item-section>
-          <q-item-section side>
-            <q-btn dense flat icon="edit" @click="editTier(tier)" />
-            <q-btn dense flat icon="delete" color="negative" @click="removeTier(tier.id)" />
-          </q-item-section>
-        </q-item>
-      </q-list>
-      <div v-else class="text-caption text-2">No tiers yet. Add at least one tier before publishing.</div>
-      <div class="row justify-end q-gutter-sm q-mt-md">
-        <q-btn
-          color="primary"
-          label="Publish Tiers"
-          :disable="tiersPublishDisabled"
-          :loading="publishingTiers"
-          @click="publishTiers"
-        />
-      </div>
-      <div class="text-caption q-mt-sm" v-if="lastTiersPublishInfo">
-        {{ lastTiersPublishInfo }}
-      </div>
-    </q-card>
+          </div>
+          <q-list bordered separator v-if="tiers.length">
+            <q-item v-for="tier in tiers" :key="tier.id">
+              <q-item-section>
+                <div class="text-body1">
+                  {{ tier.title }} — {{ tier.price }} sats ({{ frequencyLabel(tier.frequency) }})
+                </div>
+                <div class="text-caption" v-if="tier.description">{{ tier.description }}</div>
+                <div class="text-caption" v-if="tier.media?.length">
+                  Media: {{ tier.media.map(m => m.url).join(', ') }}
+                </div>
+              </q-item-section>
+              <q-item-section side class="row items-center q-gutter-xs">
+                <q-btn dense flat icon="edit" @click="editTier(tier)" />
+                <q-btn dense flat icon="delete" color="negative" @click="removeTier(tier.id)" />
+              </q-item-section>
+            </q-item>
+          </q-list>
+          <div v-else class="text-caption text-2">No tiers yet. Add at least one tier before publishing.</div>
+          <div class="row justify-end q-gutter-sm">
+            <q-btn
+              color="primary"
+              label="Publish Tiers"
+              :disable="tiersPublishDisabled"
+              :loading="publishingTiers"
+              @click="publishTiers"
+            />
+          </div>
+          <div class="text-caption text-2" v-if="lastTiersPublishInfo">
+            {{ lastTiersPublishInfo }}
+          </div>
+        </q-card-section>
+      </q-card>
+
+      <q-card class="grid-card activity-card">
+        <q-card-section class="q-gutter-xs">
+          <div class="text-h6">Activity Log</div>
+          <div class="text-caption text-2">Monitor publish attempts and loading status.</div>
+        </q-card-section>
+        <q-separator />
+        <q-card-section class="q-pa-none">
+          <q-list bordered separator dense>
+            <q-item>
+              <q-item-section>
+                <div class="text-body2">Profile publish</div>
+                <div class="text-caption text-2">
+                  {{ lastProfilePublishInfo || 'No profile publish yet.' }}
+                </div>
+              </q-item-section>
+              <q-item-section side v-if="publishingProfile">
+                <q-spinner size="16px" color="primary" />
+              </q-item-section>
+            </q-item>
+            <q-item>
+              <q-item-section>
+                <div class="text-body2">Tiers publish</div>
+                <div class="text-caption text-2">
+                  {{ lastTiersPublishInfo || 'No tier definitions published yet.' }}
+                </div>
+              </q-item-section>
+              <q-item-section side v-if="publishingTiers">
+                <q-spinner size="16px" color="primary" />
+              </q-item-section>
+            </q-item>
+            <q-item>
+              <q-item-section>
+                <div class="text-body2">Data loader</div>
+                <div class="text-caption text-2">
+                  {{ loading ? 'Loading profile and tiers…' : 'Idle' }}
+                </div>
+              </q-item-section>
+              <q-item-section side v-if="loading">
+                <q-spinner size="16px" color="primary" />
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </q-card-section>
+      </q-card>
+    </div>
 
     <q-dialog v-model="showTierDialog" @hide="resetTierForm">
       <q-card class="q-pa-md" style="min-width: 420px">
@@ -165,12 +308,14 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { v4 as uuidv4 } from 'uuid';
 import RelayStatusIndicator from 'src/nutzap/RelayStatusIndicator.vue';
 import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
 import type { Tier } from 'src/nutzap/types';
 import { useActiveNutzapSigner } from 'src/nutzap/signer';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
+import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
 import {
   FUNDSTR_WS_URL,
   FUNDSTR_REQ_URL,
@@ -222,6 +367,120 @@ const publishingTiers = ref(false);
 const lastProfilePublishInfo = ref('');
 const lastTiersPublishInfo = ref('');
 const hasAutoLoaded = ref(false);
+
+const keyImportValue = ref('');
+const keySecretHex = ref('');
+const keyPublicHex = ref('');
+const keyNpub = ref('');
+const keyNsec = ref('');
+const hasStoredSecret = ref(false);
+
+const SECRET_STORAGE_KEY = 'nutzap.profile.secretHex';
+const isBrowser = typeof window !== 'undefined';
+
+function updateStoredSecretPresence() {
+  if (!isBrowser) return;
+  hasStoredSecret.value = !!localStorage.getItem(SECRET_STORAGE_KEY);
+}
+
+function applySecretBytes(sk: Uint8Array) {
+  const secretHex = bytesToHex(sk);
+  const publicHex = getPublicKey(sk);
+  keySecretHex.value = secretHex;
+  keyPublicHex.value = publicHex;
+  keyNpub.value = nip19.npubEncode(publicHex);
+  keyNsec.value = nip19.nsecEncode(sk);
+  keyImportValue.value = '';
+  authorInput.value = publicHex;
+}
+
+function generateNewSecret() {
+  const secret = generateSecretKey();
+  applySecretBytes(secret);
+  notifySuccess('Generated new secret key.');
+}
+
+function importSecretKey() {
+  const trimmed = keyImportValue.value.trim();
+  if (!trimmed) {
+    notifyWarning('Enter a private key to import.');
+    return;
+  }
+
+  try {
+    if (/^nsec/i.test(trimmed)) {
+      const decoded = nip19.decode(trimmed);
+      if (decoded.type !== 'nsec' || !decoded.data) {
+        throw new Error('Invalid nsec key.');
+      }
+      const data = decoded.data instanceof Uint8Array ? decoded.data : hexToBytes(String(decoded.data));
+      applySecretBytes(data);
+      notifySuccess('Secret key imported.');
+      return;
+    }
+
+    if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+      applySecretBytes(hexToBytes(trimmed));
+      notifySuccess('Secret key imported.');
+      return;
+    }
+
+    throw new Error('Enter a valid nsec or 64-character hex secret key.');
+  } catch (err) {
+    notifyError(err instanceof Error ? err.message : 'Unable to import key.');
+  }
+}
+
+function saveSecretToBrowser() {
+  if (!keySecretHex.value) {
+    notifyWarning('Generate or import a secret key first.');
+    return;
+  }
+  if (!isBrowser) {
+    notifyError('Browser storage is unavailable.');
+    return;
+  }
+
+  localStorage.setItem(SECRET_STORAGE_KEY, keySecretHex.value);
+  updateStoredSecretPresence();
+  notifySuccess('Secret key saved to browser storage.');
+}
+
+function loadSecretFromBrowser() {
+  if (!isBrowser) {
+    notifyError('Browser storage is unavailable.');
+    return;
+  }
+
+  const stored = localStorage.getItem(SECRET_STORAGE_KEY);
+  if (!stored) {
+    notifyWarning('No stored secret key found.');
+    return;
+  }
+  if (!/^[0-9a-fA-F]{64}$/.test(stored)) {
+    notifyError('Stored secret key is invalid.');
+    return;
+  }
+
+  applySecretBytes(hexToBytes(stored));
+  updateStoredSecretPresence();
+  notifySuccess('Secret key loaded from browser storage.');
+}
+
+function forgetStoredSecret() {
+  if (!isBrowser) {
+    notifyError('Browser storage is unavailable.');
+    return;
+  }
+  if (!hasStoredSecret.value) {
+    notifyWarning('No stored secret key to forget.');
+    return;
+  }
+
+  localStorage.removeItem(SECRET_STORAGE_KEY);
+  updateStoredSecretPresence();
+  notifySuccess('Stored secret key removed.');
+}
 
 const { pubkey, signer } = useActiveNutzapSigner();
 
@@ -883,6 +1142,9 @@ watch(pubkey, newPubkey => {
 });
 
 onMounted(() => {
+  if (isBrowser) {
+    updateStoredSecretPresence();
+  }
   if (!relaysText.value) {
     relaysText.value = FUNDSTR_WS_URL;
   }
@@ -905,3 +1167,38 @@ onBeforeUnmount(() => {
   reloadAfterReconnect = false;
 });
 </script>
+
+<style scoped>
+.nutzap-profile-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.status-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.profile-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.grid-card {
+  height: 100%;
+}
+
+.publisher-card {
+  grid-column: span 2;
+}
+
+@media (max-width: 1200px) {
+  .publisher-card {
+    grid-column: span 1;
+  }
+}
+</style>
