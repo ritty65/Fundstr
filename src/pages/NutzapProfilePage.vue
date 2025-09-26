@@ -60,7 +60,7 @@
         </q-card-section>
         <q-separator />
         <q-card-section class="column q-gutter-md">
-          <div class="column q-gutter-sm">
+          <div v-if="!usingStoreIdentity" class="column q-gutter-sm">
             <q-input
               v-model="keyImportValue"
               label="Secret key (nsec or 64-char hex)"
@@ -79,6 +79,9 @@
                 @click="importSecretKey"
               />
             </div>
+          </div>
+          <div v-else class="text-caption text-2">
+            Shared signer active — manual key import is disabled while using your Fundstr identity.
           </div>
           <div class="column q-gutter-sm">
             <q-input
@@ -118,7 +121,7 @@
               autogrow
             />
           </div>
-          <div class="row wrap q-gutter-sm">
+          <div v-if="!usingStoreIdentity" class="row wrap q-gutter-sm">
             <q-btn
               color="primary"
               label="Save to Browser"
@@ -871,6 +874,28 @@ const lastSyncedPubkey = ref('');
 const lastSyncedSecretHex = ref('');
 const lastSyncedNsec = ref('');
 
+let ensureSharedSignerPromise: Promise<void> | null = null;
+
+async function ensureSharedSignerInitialized() {
+  if (ensureSharedSignerPromise) {
+    return ensureSharedSignerPromise;
+  }
+
+  ensureSharedSignerPromise = (async () => {
+    try {
+      await nostrStore.initSignerIfNotSet();
+    } catch (err) {
+      console.error('[nutzap] failed to initialize shared signer', err);
+    } finally {
+      const ndk = getNutzapNdk();
+      ndk.signer = (nostrStore.signer as any) ?? undefined;
+      ensureSharedSignerPromise = null;
+    }
+  })();
+
+  return ensureSharedSignerPromise;
+}
+
 const relaySocket = fundstrRelayClient;
 let profileSubId: string | null = null;
 let tiersSubId: string | null = null;
@@ -903,6 +928,17 @@ const tierKindOptions = [
 
 const tierKindLabel = computed(() =>
   tierKind.value === 30019 ? 'Canonical (30019)' : 'Legacy (30000)'
+);
+
+watch(
+  usingStoreIdentity,
+  value => {
+    if (!value) {
+      return;
+    }
+    void ensureSharedSignerInitialized();
+  },
+  { immediate: true }
 );
 
 watch(
