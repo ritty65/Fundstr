@@ -31,6 +31,36 @@ jobs:
       - name: Build (Quasar SPA)
         run: pnpm quasar build -m spa
 
+      - name: Validate built asset references
+        run: |
+          set -euo pipefail
+          mapfile -t assets < <(
+            grep -oE '(src|href)="/assets/[^"]+' dist/spa/index.html |
+              sed -E 's/^(src|href)="//' |
+              sort -u || true
+          )
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "No /assets references found in dist/spa/index.html"
+            exit 0
+          fi
+
+          echo "Assets referenced in index.html:"
+          for asset in "${assets[@]}"; do
+            echo "  $asset"
+          done
+
+          missing=0
+          for asset in "${assets[@]}"; do
+            if [ ! -f "dist/spa${asset}" ]; then
+              echo "Missing asset referenced in index.html: dist/spa${asset}" >&2
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
       - name: Add SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
