@@ -1,8 +1,22 @@
-export const NUTZAP_RELAY_WSS =
-  import.meta.env.VITE_NUTZAP_PRIMARY_RELAY_WSS ?? 'wss://relay.fundstr.me';
+function pickRelayEnv(value: unknown, fallback: string): string {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return fallback;
+}
 
-export const NUTZAP_RELAY_HTTP =
-  import.meta.env.VITE_NUTZAP_PRIMARY_RELAY_HTTP ?? 'https://relay.fundstr.me';
+export const NUTZAP_RELAY_WSS = pickRelayEnv(
+  import.meta.env.VITE_NUTZAP_PRIMARY_RELAY_WSS,
+  'wss://relay.fundstr.me',
+);
+
+export const NUTZAP_RELAY_HTTP = pickRelayEnv(
+  import.meta.env.VITE_NUTZAP_PRIMARY_RELAY_HTTP,
+  'https://relay.fundstr.me',
+);
 
 export const NUTZAP_ALLOW_WSS_WRITES =
   (import.meta.env.VITE_NUTZAP_ALLOW_WSS_WRITES ?? 'false') === 'true';
