@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { nip19 } from 'nostr-tools';
 import {
   fundstrRelayClient,
@@ -8,18 +8,16 @@ import {
 
 vi.hoisted(() => {
   vi.stubEnv('VITE_NUTZAP_ALLOW_WSS_WRITES', 'true');
+  vi.stubEnv('VITE_NUTZAP_PRIMARY_RELAY_WSS', 'wss://relay.fundstr.me');
+  vi.stubEnv('VITE_NUTZAP_PRIMARY_RELAY_HTTP', 'https://relay.fundstr.me');
+  vi.stubEnv('VITE_NUTZAP_WS_TIMEOUT_MS', '500');
+  vi.stubEnv('VITE_NUTZAP_HTTP_TIMEOUT_MS', '75');
   return undefined;
 });
 
-const relayConfigMock = vi.hoisted(() => ({
-  NUTZAP_RELAY_WSS: 'wss://relay.fundstr.me',
-  NUTZAP_RELAY_HTTP: 'https://relay.fundstr.me',
-  NUTZAP_ALLOW_WSS_WRITES: true,
-  NUTZAP_WS_TIMEOUT_MS: 500,
-  NUTZAP_HTTP_TIMEOUT_MS: 75,
-}));
-
-vi.mock('src/nutzap/relayConfig', () => relayConfigMock);
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 
 const ndkMock = vi.hoisted(() => {
   const listeners = new Map<string, Set<(relay: any) => void>>();
@@ -446,6 +444,25 @@ describe('replaceable selectors', () => {
     ];
     const latest = pickLatestParamReplaceable(events);
     expect(latest?.created_at).toBe(10);
+  });
+});
+
+describe('relay endpoint defaults', () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+  });
+
+  it('uses default relay URLs when environment variables are blank', async () => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+    vi.stubEnv('VITE_NUTZAP_ALLOW_WSS_WRITES', 'true');
+    vi.stubEnv('VITE_NUTZAP_PRIMARY_RELAY_HTTP', '   ');
+    vi.stubEnv('VITE_NUTZAP_PRIMARY_RELAY_WSS', '\n');
+
+    const { FUNDSTR_REQ_URL, FUNDSTR_WS_URL } = await import('../nostrHelpers');
+    expect(FUNDSTR_WS_URL).toBe('wss://relay.fundstr.me');
+    expect(FUNDSTR_REQ_URL).toBe('https://relay.fundstr.me/req');
   });
 });
 
