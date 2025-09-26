@@ -26,6 +26,13 @@
           :disable="!canSearch || loading"
           @click="runSearch"
         />
+        <q-btn
+          color="negative"
+          label="Stop"
+          flat
+          :disable="!loading"
+          @click="cancelSearch"
+        />
       </div>
     </div>
 
@@ -154,6 +161,7 @@ const pointerSummary = ref('');
 const results = ref<NostrEvent[]>([]);
 const activeRelays = ref<string[]>(sanitizeRelayUrls(DEFAULT_RELAYS));
 const resultRelays = reactive<Record<string, string[]>>({});
+const searchController = ref<AbortController | null>(null);
 
 const modeOptions = [
   { label: 'Profiles', value: 'profiles' },
@@ -319,7 +327,34 @@ async function buildFilters(): Promise<{
   return { filters, pointer, pointerRelays, forcedMode };
 }
 
+function cancelSearch(): void {
+  if (!searchController.value) {
+    return;
+  }
+  if (loading.value) {
+    errorMessage.value = 'Stopping…';
+  }
+  searchController.value.abort();
+}
+
 async function runSearch(): Promise<void> {
+  if (searchController.value) {
+    searchController.value.abort();
+  }
+
+  const controller = new AbortController();
+  searchController.value = controller;
+  let aborted = false;
+
+  const onAbort = () => {
+    aborted = true;
+    if (loading.value) {
+      errorMessage.value = 'Stopping…';
+    }
+  };
+
+  controller.signal.addEventListener('abort', onAbort, { once: true });
+
   loading.value = true;
   errorMessage.value = '';
   timedOut.value = false;
@@ -346,6 +381,7 @@ async function runSearch(): Promise<void> {
       pointer,
       additionalRelays: pointerRelays,
       timeoutMs: 5000,
+      signal: controller.signal,
       onEvent: (event, relay) => {
         if (!relay) return;
         if (!resultRelays[event.id]) {
@@ -365,7 +401,15 @@ async function runSearch(): Promise<void> {
   } catch (err) {
     errorMessage.value = err instanceof Error ? err.message : 'Search failed.';
   } finally {
-    loading.value = false;
+    controller.signal.removeEventListener('abort', onAbort);
+    const isCurrent = searchController.value === controller;
+    if (isCurrent) {
+      searchController.value = null;
+      loading.value = false;
+      if (aborted) {
+        errorMessage.value = 'Stopped';
+      }
+    }
   }
 }
 </script>
