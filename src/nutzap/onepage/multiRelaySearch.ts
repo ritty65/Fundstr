@@ -38,6 +38,69 @@ export type MultiRelaySearchResult = {
 const DEFAULT_TIMEOUT_MS = 7000;
 const SUBSCRIPTION_PREFIX = 'multi-relay';
 
+const DEFAULT_WS_CLOSING_STATE = 2;
+const DEFAULT_WS_CLOSED_STATE = 3;
+
+function isPromiseLike<T = unknown>(value: unknown): value is Promise<T> {
+  return !!value && typeof (value as Promise<T>).then === 'function';
+}
+
+function isClosingState(state: number | undefined): boolean {
+  if (typeof state !== 'number') {
+    return false;
+  }
+  const closingState =
+    typeof WebSocket !== 'undefined' && typeof WebSocket.CLOSING === 'number'
+      ? WebSocket.CLOSING
+      : DEFAULT_WS_CLOSING_STATE;
+  const closedState =
+    typeof WebSocket !== 'undefined' && typeof WebSocket.CLOSED === 'number'
+      ? WebSocket.CLOSED
+      : DEFAULT_WS_CLOSED_STATE;
+  return state >= closingState && state <= closedState;
+}
+
+function isIgnorableCloseError(err: unknown): boolean {
+  if (!err) {
+    return false;
+  }
+  const message =
+    err instanceof Error
+      ? err.message
+      : typeof err === 'string'
+        ? err
+        : undefined;
+  if (!message) {
+    return false;
+  }
+  return /CLOSING|CLOSED/i.test(message);
+}
+
+function safelyCloseCloser(closer: Closeable | undefined, reason: string): void {
+  if (!closer || typeof closer.close !== 'function') {
+    return;
+  }
+  try {
+    const result = closer.close(reason);
+    if (isPromiseLike(result)) {
+      result.catch(err => {
+        if (!isIgnorableCloseError(err)) {
+          console.warn('Failed to close pool subscription', err);
+        }
+      });
+    }
+  } catch (err) {
+    if (!isIgnorableCloseError(err)) {
+      console.warn('Failed to close pool subscription', err);
+    }
+  }
+}
+
+function shouldCloseSocket(socket: WebSocket): boolean {
+  const readyState = (socket as { readyState?: number }).readyState;
+  return !isClosingState(readyState);
+}
+
 function normalizeRelay(url: string): string {
   return url.trim().replace(/\s+/g, '').replace(/\/+$/, '').toLowerCase();
 }
@@ -116,9 +179,7 @@ async function searchWithPool(
         timedOut = timeoutTriggered;
         clearTimeout(timer);
         signal?.removeEventListener('abort', onAbort);
-        if (closer) {
-          Promise.resolve(closer.close('completed')).catch(() => undefined);
-        }
+        safelyCloseCloser(closer, 'completed');
         resolve({ events: sortEvents(ordered), usedRelays: relays, timedOut });
       };
 
@@ -204,10 +265,15 @@ async function searchWithManual(
       clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
       for (const socket of sockets) {
+        if (!shouldCloseSocket(socket)) {
+          continue;
+        }
         try {
           socket.close();
         } catch (err) {
-          console.warn('Failed to close relay socket', err);
+          if (!isIgnorableCloseError(err)) {
+            console.warn('Failed to close relay socket', err);
+          }
         }
       }
       resolve({ events: sortEvents(ordered), usedRelays: relays, timedOut });
