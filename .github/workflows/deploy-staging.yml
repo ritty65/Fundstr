@@ -71,9 +71,39 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
+      - name: Log remote assets before deploy
+        run: |
+          ssh -p "${{ secrets.SSH_PORT }}" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "set -euo pipefail; ls -R \"${{ secrets.SSH_TARGET_STAGING }}/assets\" | head"
+
       - name: Deploy (rsync)
         run: |
           rsync -avz --delete \
             -e "ssh -p ${{ secrets.SSH_PORT }}" \
             dist/spa/ \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
+
+      - name: Log remote assets after deploy
+        run: |
+          ssh -p "${{ secrets.SSH_PORT }}" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "set -euo pipefail; ls -R \"${{ secrets.SSH_TARGET_STAGING }}/assets\" | head"
+
+      - name: Verify remote assets mirror local build
+        run: |
+          set -euo pipefail
+          local_listing="$(mktemp)"
+          remote_listing="$(mktemp)"
+
+          (cd dist/spa/assets && find . -type f | sort) > "$local_listing"
+
+          ssh -p "${{ secrets.SSH_PORT }}" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "set -euo pipefail; cd \"${{ secrets.SSH_TARGET_STAGING }}/assets\" && find . -type f | sort" \
+            > "$remote_listing"
+
+          if ! diff -u "$local_listing" "$remote_listing"; then
+            echo 'Remote assets differ from local build.' >&2
+            exit 1
+          fi
