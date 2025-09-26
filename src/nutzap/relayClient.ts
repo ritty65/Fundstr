@@ -840,9 +840,13 @@ export class FundstrRelayClient {
     if (!isJson) {
       const snippet = normalizeSnippet(bodyText) || '[empty response body]';
       const typeLabel = contentType || 'unknown content-type';
-      throw new Error(
-        `Unexpected response (${response.status}, ${typeLabel}): ${snippet}`
-      );
+      this.pushLog('warn', 'HTTP fallback returned non-JSON payload', {
+        status: response.status,
+        contentType: typeLabel,
+        snippet,
+        url: requestUrl,
+      });
+      return [];
     }
 
     let data: any = null;
