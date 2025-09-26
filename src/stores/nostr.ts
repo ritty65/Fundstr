@@ -28,7 +28,7 @@ import {
 } from "nostr-tools";
 import { bytesToHex, hexToBytes, randomBytes } from "@noble/hashes/utils"; // already an installed dependency
 import { sha256 } from "@noble/hashes/sha256";
-import { base64 } from "@scure/base";
+import { decodeBase64, encodeBase64 } from "src/utils/base64";
 import { ensureCompressed } from "src/utils/ecash";
 import { useWalletStore } from "./wallet";
 import { generateSecretKey, getPublicKey } from "nostr-tools";
@@ -485,8 +485,8 @@ async function encryptWithSharedSecret(
   const iv = randomBytes(AES_BLOCK_SIZE);
   const plaintext = new TextEncoder().encode(message);
   const ciphertext = await aesCbcEncrypt(key, iv, plaintext);
-  const ctb64 = base64.encode(ciphertext);
-  const ivb64 = base64.encode(iv);
+  const ctb64 = encodeBase64(ciphertext);
+  const ivb64 = encodeBase64(iv);
   return `${ctb64}?iv=${ivb64}`;
 }
 
@@ -497,8 +497,8 @@ async function decryptWithSharedSecret(
   const ss = typeof shared === "string" ? hexToBytes(shared) : shared;
   const key = ss.length === 32 ? ss : ss.slice(1, 33);
   const [ctb64, ivb64] = data.split("?iv=");
-  const iv = base64.decode(ivb64);
-  const ciphertext = base64.decode(ctb64);
+  const iv = decodeBase64(ivb64);
+  const ciphertext = decodeBase64(ctb64);
   const plaintext = await aesCbcDecrypt(key, iv, ciphertext);
   return new TextDecoder().decode(plaintext);
 }

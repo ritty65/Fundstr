@@ -46,7 +46,6 @@ export default defineConfig({
         "src/lib/cashu-ts/src/index.ts",
       ),
       "@noble/ciphers/aes.js": path.resolve(__dirname, "test/mocks/aes.js"),
-      "@scure/base": path.resolve(__dirname, "test/mocks/base.js"),
     },
   },
   plugins: [
