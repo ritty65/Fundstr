@@ -14,3 +14,6 @@
     Header set Expires "0"
   </FilesMatch>
 </IfModule>
+<IfModule mod_mime.c>
+  AddType application/javascript .js
+</IfModule>

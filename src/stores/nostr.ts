@@ -28,7 +28,6 @@ import {
 } from "nostr-tools";
 import { bytesToHex, hexToBytes, randomBytes } from "@noble/hashes/utils"; // already an installed dependency
 import { sha256 } from "@noble/hashes/sha256";
-import * as aes from '@noble/ciphers/aes.js';
 import { base64 } from "@scure/base";
 import { ensureCompressed } from "src/utils/ecash";
 import { useWalletStore } from "./wallet";
@@ -400,37 +399,114 @@ export function npubToHex(s: string): string | null {
   return null;
 }
 
-function encryptWithSharedSecret(
+const AES_BLOCK_SIZE = 16;
+
+function getSubtleCrypto(): SubtleCrypto {
+  const globalCrypto: Crypto | undefined =
+    (globalThis as any)?.crypto ?? (globalThis as any)?.webcrypto;
+  const subtle: SubtleCrypto | undefined =
+    globalCrypto?.subtle ?? (globalCrypto as any)?.webcrypto?.subtle;
+  if (!subtle) {
+    throw new Error("WebCrypto SubtleCrypto API is unavailable");
+  }
+  return subtle;
+}
+
+function pkcs7Pad(data: Uint8Array): Uint8Array {
+  const padLength = AES_BLOCK_SIZE - (data.length % AES_BLOCK_SIZE || AES_BLOCK_SIZE);
+  const padded = new Uint8Array(data.length + padLength);
+  padded.set(data);
+  padded.fill(padLength, data.length);
+  return padded;
+}
+
+function pkcs7Unpad(data: Uint8Array): Uint8Array {
+  if (data.length === 0 || data.length % AES_BLOCK_SIZE !== 0) {
+    throw new Error("Invalid AES-CBC payload");
+  }
+  const padLength = data[data.length - 1];
+  if (padLength === 0 || padLength > AES_BLOCK_SIZE) {
+    throw new Error("Invalid PKCS#7 padding");
+  }
+  const end = data.length - padLength;
+  for (let i = end; i < data.length; i += 1) {
+    if (data[i] !== padLength) {
+      throw new Error("Malformed PKCS#7 padding");
+    }
+  }
+  return data.subarray(0, end);
+}
+
+async function aesCbcEncrypt(
+  key: Uint8Array,
+  iv: Uint8Array,
+  plaintext: Uint8Array,
+): Promise<Uint8Array> {
+  const subtle = getSubtleCrypto();
+  const cryptoKey = await subtle.importKey(
+    "raw",
+    key,
+    { name: "AES-CBC" },
+    false,
+    ["encrypt"],
+  );
+  const padded = pkcs7Pad(plaintext);
+  const ciphertext = await subtle.encrypt({ name: "AES-CBC", iv }, cryptoKey, padded);
+  return new Uint8Array(ciphertext);
+}
+
+async function aesCbcDecrypt(
+  key: Uint8Array,
+  iv: Uint8Array,
+  ciphertext: Uint8Array,
+): Promise<Uint8Array> {
+  const subtle = getSubtleCrypto();
+  const cryptoKey = await subtle.importKey(
+    "raw",
+    key,
+    { name: "AES-CBC" },
+    false,
+    ["decrypt"],
+  );
+  const plaintext = await subtle.decrypt(
+    { name: "AES-CBC", iv },
+    cryptoKey,
+    ciphertext,
+  );
+  return pkcs7Unpad(new Uint8Array(plaintext));
+}
+
+async function encryptWithSharedSecret(
   shared: Uint8Array | string,
   message: string,
-): string {
+): Promise<string> {
   const ss = typeof shared === "string" ? hexToBytes(shared) : shared;
   const key = ss.length === 32 ? ss : ss.slice(1, 33);
-  const iv = randomBytes(16);
+  const iv = randomBytes(AES_BLOCK_SIZE);
   const plaintext = new TextEncoder().encode(message);
-  const ciphertext = aes.cbc(key, iv).encrypt(plaintext);
-  const ctb64 = base64.encode(new Uint8Array(ciphertext));
-  const ivb64 = base64.encode(new Uint8Array(iv.buffer));
+  const ciphertext = await aesCbcEncrypt(key, iv, plaintext);
+  const ctb64 = base64.encode(ciphertext);
+  const ivb64 = base64.encode(iv);
   return `${ctb64}?iv=${ivb64}`;
 }
 
-function decryptWithSharedSecret(
+async function decryptWithSharedSecret(
   shared: Uint8Array | string,
   data: string,
-): string {
+): Promise<string> {
   const ss = typeof shared === "string" ? hexToBytes(shared) : shared;
   const key = ss.length === 32 ? ss : ss.slice(1, 33);
   const [ctb64, ivb64] = data.split("?iv=");
   const iv = base64.decode(ivb64);
   const ciphertext = base64.decode(ctb64);
-  const plaintext = aes.cbc(key, iv).decrypt(ciphertext);
+  const plaintext = await aesCbcDecrypt(key, iv, ciphertext);
   return new TextDecoder().decode(plaintext);
 }
 
-function encryptWithSharedSecretV2(
+async function encryptWithSharedSecretV2(
   shared: Uint8Array | string,
   message: string,
-): string {
+): Promise<string> {
   return encryptWithSharedSecret(shared, message);
 }
 

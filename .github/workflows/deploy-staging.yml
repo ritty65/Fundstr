@@ -28,8 +28,8 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
-      - name: Build (Quasar PWA)
-        run: pnpm run build
+      - name: Build (Quasar SPA)
+        run: pnpm quasar build -m spa
 
       - name: Add SSH key
         uses: webfactory/ssh-agent@v0.9.0
@@ -45,5 +45,5 @@ jobs:
         run: |
           rsync -avz --delete \
             -e "ssh -p ${{ secrets.SSH_PORT }}" \
-            dist/pwa/ \
+            dist/spa/ \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
