@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, readonly, ref, shallowRef, type Ref } from 'vue';
 import {
+  FUNDSTR_REQ_URL,
   FUNDSTR_WS_URL,
   WS_FIRST_TIMEOUT_MS,
 } from '../relayEndpoints';
@@ -43,6 +44,8 @@ const ACK_TIMEOUT_MS = Math.max(WS_FIRST_TIMEOUT_MS || 0, ACK_TIMEOUT_FALLBACK_M
 const wsImpl: typeof WebSocket | undefined =
   typeof WebSocket !== 'undefined' ? WebSocket : (globalThis as any)?.WebSocket;
 
+let hasLoggedRelayEndpoints = false;
+
 export function useRelayConnection() {
   const relayUrl = ref(FUNDSTR_WS_URL);
   const status = ref<RelayConnectionStatus>(wsImpl ? 'idle' : 'disconnected');
@@ -55,6 +58,33 @@ export function useRelayConnection() {
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let manualDisconnect = false;
   let activitySequence = 0;
+
+  if (!hasLoggedRelayEndpoints) {
+    hasLoggedRelayEndpoints = true;
+    const mode = import.meta.env.MODE;
+    const wsUrl = relayUrl.value || '(empty)';
+    const httpUrl = FUNDSTR_REQ_URL || '(empty)';
+    const logMessage = `[Nutzap] Relay endpoints resolved (mode=${mode}): ws=${wsUrl}, http=${httpUrl}`;
+    const logInfo = console.info ? console.info.bind(console) : console.log.bind(console);
+    const logDebug = console.debug ? console.debug.bind(console) : console.log.bind(console);
+
+    if (mode === 'production') {
+      logInfo(logMessage);
+      const expectedHost = 'relay.fundstr.me';
+      if (wsUrl !== '(empty)' && !wsUrl.includes(expectedHost)) {
+        console.warn(
+          `[Nutzap] Unexpected production relay WebSocket URL: ${wsUrl}`,
+        );
+      }
+      if (httpUrl !== '(empty)' && !httpUrl.includes(expectedHost)) {
+        console.warn(
+          `[Nutzap] Unexpected production relay HTTP URL: ${httpUrl}`,
+        );
+      }
+    } else {
+      logDebug(logMessage);
+    }
+  }
 
   const appendActivity = (level: RelayActivityLevel, message: string, context?: string) => {
     const entry: RelayActivityEntry = {
