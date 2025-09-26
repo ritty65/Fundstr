@@ -459,6 +459,9 @@ const handleOpen = () => {
     clearActivity() {
       activityLog.value = [];
     },
+    logActivity(level: RelayActivityLevel, message: string, context?: string) {
+      appendActivity(level, message, context);
+    },
     isSupported: !!wsImpl,
     isConnected: computed(() => status.value === 'connected'),
   };

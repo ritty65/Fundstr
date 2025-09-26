@@ -184,7 +184,27 @@
           <div class="text-subtitle2">Payment Profile (kind 10019)</div>
           <q-input v-model="displayName" label="Display Name" dense filled />
           <q-input v-model="pictureUrl" label="Picture URL" dense filled />
+          <q-input
+            v-model="p2pkPriv"
+            label="P2PK Private Key (hex)"
+            dense
+            filled
+            autocomplete="off"
+          />
+          <div class="row q-gutter-sm">
+            <q-btn color="primary" label="Derive Public Key" @click="deriveP2pkPublicKey" />
+            <q-btn color="primary" outline label="Generate Keypair" @click="generateP2pkKeypair" />
+          </div>
           <q-input v-model="p2pkPub" label="P2PK Public Key" dense filled />
+          <q-input
+            :model-value="p2pkDerivedPub"
+            label="Derived P2PK Public Key"
+            type="textarea"
+            dense
+            filled
+            readonly
+            autogrow
+          />
           <q-input
             v-model="mintsText"
             type="textarea"
@@ -234,6 +254,17 @@
               <q-btn dense color="primary" label="Add Tier" @click="openNewTier" />
             </div>
           </div>
+          <q-input
+            v-model="tiersJson"
+            type="textarea"
+            label="Tiers JSON"
+            dense
+            filled
+            autogrow
+            spellcheck="false"
+            :error="!!tiersJsonError"
+            :error-message="tiersJsonError || ''"
+          />
           <q-list bordered separator v-if="tiers.length">
             <q-item v-for="tier in tiers" :key="tier.id">
               <q-item-section>
@@ -354,6 +385,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
+import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
 import { v4 as uuidv4 } from 'uuid';
 import RelayStatusIndicator from 'src/nutzap/RelayStatusIndicator.vue';
 import NutzapExplorerSearch from 'src/nutzap/onepage/NutzapExplorerSearch.vue';
@@ -361,7 +393,7 @@ import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
 import type { Tier } from 'src/nutzap/types';
 import { useActiveNutzapSigner } from 'src/nutzap/signer';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
-import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
+import { generateSecretKey, getPublicKey as getNostrPublicKey, nip19 } from 'nostr-tools';
 import {
   FUNDSTR_WS_URL,
   FUNDSTR_REQ_URL,
@@ -398,6 +430,8 @@ const authorInput = ref('');
 const displayName = ref('');
 const pictureUrl = ref('');
 const p2pkPub = ref('');
+const p2pkPriv = ref('');
+const p2pkDerivedPub = ref('');
 const mintsText = ref('');
 const relaysText = ref(FUNDSTR_WS_URL);
 const tiers = ref<Tier[]>([]);
@@ -418,6 +452,9 @@ const lastProfilePublishInfo = ref('');
 const lastTiersPublishInfo = ref('');
 const hasAutoLoaded = ref(false);
 
+const tiersJson = ref('');
+const tiersJsonError = ref<string | null>(null);
+
 const keyImportValue = ref('');
 const keySecretHex = ref('');
 const keyPublicHex = ref('');
@@ -428,6 +465,17 @@ const hasStoredSecret = ref(false);
 const SECRET_STORAGE_KEY = 'nutzap.profile.secretHex';
 const isBrowser = typeof window !== 'undefined';
 
+let isUpdatingJsonFromTiers = false;
+let isUpdatingTiersFromJson = false;
+let tiersJsonEdited = false;
+let lastTiersJsonErrorNotified: string | null = null;
+const scheduleMicrotask =
+  typeof queueMicrotask === 'function'
+    ? queueMicrotask
+    : (fn: () => void) => {
+        Promise.resolve().then(fn);
+      };
+
 const {
   relayUrl: relayConnectionUrl,
   status: relayConnectionStatus,
@@ -437,6 +485,7 @@ const {
   disconnect: disconnectRelay,
   publishEvent: publishEventToRelay,
   clearActivity: clearRelayActivity,
+  logActivity,
   isSupported: relaySupported,
   isConnected: relayIsConnected,
 } = useRelayConnection();
@@ -524,7 +573,7 @@ function updateStoredSecretPresence() {
 
 function applySecretBytes(sk: Uint8Array) {
   const secretHex = bytesToHex(sk);
-  const publicHex = getPublicKey(sk);
+  const publicHex = getNostrPublicKey(sk);
   keySecretHex.value = secretHex;
   keyPublicHex.value = publicHex;
   keyNpub.value = nip19.npubEncode(publicHex);
@@ -621,6 +670,150 @@ function forgetStoredSecret() {
   notifySuccess('Stored secret key removed.');
 }
 
+function setDerivedP2pk(pubHex: string) {
+  const normalized = pubHex.trim().toLowerCase();
+  p2pkDerivedPub.value = normalized;
+  p2pkPub.value = normalized;
+}
+
+function deriveP2pkPublicKey() {
+  const trimmed = p2pkPriv.value.trim();
+  if (!trimmed) {
+    notifyWarning('Enter a P2PK private key to derive.');
+    return;
+  }
+  if (!/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+    notifyError('P2PK private key must be 64 hexadecimal characters.');
+    return;
+  }
+
+  try {
+    const privBytes = hexToBytes(trimmed);
+    const pubBytes = getSecpPublicKey(privBytes, true);
+    const pubHex = bytesToHex(pubBytes);
+    p2pkPriv.value = trimmed.toLowerCase();
+    setDerivedP2pk(pubHex);
+    notifySuccess('Derived P2PK public key.');
+  } catch (err) {
+    console.error('[nutzap] failed to derive P2PK public key', err);
+    notifyError('Unable to derive P2PK public key.');
+  }
+}
+
+function generateP2pkKeypair() {
+  const privBytes = secpUtils.randomPrivateKey();
+  const pubBytes = getSecpPublicKey(privBytes, true);
+  const privHex = bytesToHex(privBytes);
+  const pubHex = bytesToHex(pubBytes);
+  p2pkPriv.value = privHex;
+  setDerivedP2pk(pubHex);
+  notifySuccess('Generated new P2PK keypair.');
+}
+
+function applyTiersJsonError(message: string | null) {
+  tiersJsonError.value = message;
+  if (!message) {
+    lastTiersJsonErrorNotified = null;
+    return;
+  }
+  if (!tiersJsonEdited) {
+    return;
+  }
+  if (lastTiersJsonErrorNotified === message) {
+    return;
+  }
+  lastTiersJsonErrorNotified = message;
+  logActivity('error', 'Tier JSON validation failed', message);
+  notifyError(`Tier JSON invalid — ${message}`);
+}
+
+function buildTiersJsonPayload(entries: Tier[]) {
+  return {
+    v: 1,
+    tiers: entries.map(tier => {
+      const media = Array.isArray(tier.media)
+        ? tier.media
+            .map(entry => (typeof entry?.url === 'string' ? entry.url : ''))
+            .filter(url => !!url)
+        : undefined;
+      const priceNumber = Number(tier.price);
+      const price = Number.isFinite(priceNumber) ? Math.round(priceNumber) : 0;
+
+      return {
+        id: tier.id,
+        title: tier.title,
+        price,
+        frequency: tier.frequency,
+        ...(tier.description ? { description: tier.description } : {}),
+        ...(media && media.length ? { media } : {}),
+      };
+    }),
+  };
+}
+
+watch(
+  tiers,
+  newTiers => {
+    if (isUpdatingTiersFromJson) {
+      scheduleMicrotask(() => {
+        isUpdatingTiersFromJson = false;
+      });
+      return;
+    }
+    const payload = buildTiersJsonPayload(newTiers);
+    isUpdatingJsonFromTiers = true;
+    tiersJson.value = JSON.stringify(payload, null, 2);
+    scheduleMicrotask(() => {
+      isUpdatingJsonFromTiers = false;
+    });
+    applyTiersJsonError(null);
+  },
+  { deep: true, immediate: true }
+);
+
+watch(tiersJson, value => {
+  if (isUpdatingJsonFromTiers) {
+    return;
+  }
+  tiersJsonEdited = true;
+  const trimmed = value.trim();
+  if (!trimmed) {
+    applyTiersJsonError('Tier JSON is required.');
+    return;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (err) {
+    applyTiersJsonError(err instanceof Error ? err.message : 'Invalid JSON.');
+    return;
+  }
+  const rawTiers = Array.isArray(parsed) ? parsed : (parsed as any)?.tiers;
+  if (!Array.isArray(rawTiers)) {
+    applyTiersJsonError('JSON must be an array or include a "tiers" array.');
+    return;
+  }
+  const normalized = parseTiersContent(trimmed);
+  if (rawTiers.length > 0 && normalized.length === 0) {
+    applyTiersJsonError('No valid tiers found in JSON payload.');
+    return;
+  }
+  applyTiersJsonError(null);
+  isUpdatingTiersFromJson = true;
+  tiers.value = normalized;
+  scheduleMicrotask(() => {
+    isUpdatingTiersFromJson = false;
+  });
+});
+
+watch(
+  p2pkPub,
+  value => {
+    p2pkDerivedPub.value = value.trim();
+  },
+  { immediate: true }
+);
+
 const { pubkey, signer } = useActiveNutzapSigner();
 
 const relaySocket = fundstrRelayClient;
@@ -671,13 +864,17 @@ const profilePublishDisabled = computed(
     publishingProfile.value ||
     !authorInput.value.trim() ||
     !p2pkPub.value.trim() ||
+    !!tiersJsonError.value ||
     mintList.value.length === 0 ||
     tiers.value.length === 0
 );
 
 const tiersPublishDisabled = computed(
   () =>
-    publishingTiers.value || !authorInput.value.trim() || tiers.value.length === 0
+    publishingTiers.value ||
+    !authorInput.value.trim() ||
+    !!tiersJsonError.value ||
+    tiers.value.length === 0
 );
 
 const tierFrequencyOptions = computed(() =>
@@ -807,6 +1004,8 @@ function applyProfileEvent(latest: any | null) {
     displayName.value = '';
     pictureUrl.value = '';
     p2pkPub.value = '';
+    p2pkPriv.value = '';
+    p2pkDerivedPub.value = '';
     mintsText.value = '';
     relaysText.value = FUNDSTR_WS_URL;
     return;
@@ -819,7 +1018,7 @@ function applyProfileEvent(latest: any | null) {
   try {
     const parsed = latest.content ? JSON.parse(latest.content) : {};
     if (typeof parsed.p2pk === 'string') {
-      p2pkPub.value = parsed.p2pk;
+      setDerivedP2pk(parsed.p2pk);
     }
     if (Array.isArray(parsed.mints)) {
       mintsText.value = parsed.mints.join('\n');
@@ -1131,6 +1330,10 @@ async function publishTiers() {
     notifyError('Add at least one tier before publishing.');
     return;
   }
+  if (tiersJsonError.value) {
+    notifyError('Fix tier JSON before publishing tiers.');
+    return;
+  }
 
   publishingTiers.value = true;
   try {
@@ -1191,13 +1394,19 @@ async function publishProfile() {
     notifyError('Add at least one tier before publishing.');
     return;
   }
+  if (tiersJsonError.value) {
+    notifyError('Fix tier JSON before publishing the profile.');
+    return;
+  }
 
   publishingProfile.value = true;
   try {
     const relays = relayList.value;
+    const p2pkHex = p2pkPub.value.trim();
+    const tagPubkey = (p2pkDerivedPub.value || p2pkHex).trim();
     const content = JSON.stringify({
       v: 1,
-      p2pk: p2pkPub.value.trim(),
+      p2pk: p2pkHex,
       mints: mintList.value,
       relays,
       tierAddr: `${tierKind.value}:${authorHex}:tiers`,
@@ -1209,6 +1418,9 @@ async function publishProfile() {
       ...mintList.value.map(mint => ['mint', mint, 'sat']),
       ...relays.map(relay => ['relay', relay]),
     ];
+    if (tagPubkey) {
+      tags.push(['pubkey', tagPubkey]);
+    }
     tags.push(['a', `${tierKind.value}:${authorHex}:tiers`]);
     if (displayName.value.trim()) {
       tags.push(['name', displayName.value.trim()]);
