@@ -334,6 +334,34 @@
       </q-card>
     </div>
 
+    <div class="diagnostic-tools column q-gutter-lg q-mt-xl">
+      <q-card class="grid-card diagnostic-card">
+        <q-card-section class="q-gutter-xs">
+          <div class="text-h6">Legacy Explorer</div>
+          <div class="text-caption text-2">
+            Issue single-relay REQ subscriptions and inspect EOSE vs timeout behaviour.
+          </div>
+        </q-card-section>
+        <q-separator />
+        <q-card-section>
+          <NutzapLegacyExplorer />
+        </q-card-section>
+      </q-card>
+
+      <q-card class="grid-card diagnostic-card">
+        <q-card-section class="q-gutter-xs">
+          <div class="text-h6">Client Self-tests</div>
+          <div class="text-caption text-2">
+            Verify browser capabilities required for Nutzap authoring without hitting the network.
+          </div>
+        </q-card-section>
+        <q-separator />
+        <q-card-section>
+          <NutzapSelfTests />
+        </q-card-section>
+      </q-card>
+    </div>
+
     <q-dialog v-model="showTierDialog" @hide="resetTierForm">
       <q-card class="q-pa-md" style="min-width: 420px">
         <div class="text-subtitle1 q-mb-sm">{{ tierForm.id ? 'Edit Tier' : 'Add Tier' }}</div>
@@ -389,6 +417,8 @@ import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/sec
 import { v4 as uuidv4 } from 'uuid';
 import RelayStatusIndicator from 'src/nutzap/RelayStatusIndicator.vue';
 import NutzapExplorerSearch from 'src/nutzap/onepage/NutzapExplorerSearch.vue';
+import NutzapLegacyExplorer from 'src/nutzap/onepage/NutzapLegacyExplorer.vue';
+import NutzapSelfTests from 'src/nutzap/onepage/NutzapSelfTests.vue';
 import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
 import type { Tier } from 'src/nutzap/types';
 import { useActiveNutzapSigner } from 'src/nutzap/signer';
