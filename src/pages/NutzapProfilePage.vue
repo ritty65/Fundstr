@@ -51,7 +51,12 @@
       <q-card class="grid-card keys-card">
         <q-card-section class="q-gutter-xs">
           <div class="text-h6">Keys</div>
-          <div class="text-caption text-2">Manage the publishing identity for Nutzap events.</div>
+          <div class="text-caption text-2">
+            Manage the publishing identity for Nutzap events.
+            <template v-if="usingStoreIdentity">
+              Active signer details are mirrored from your global Nostr identity.
+            </template>
+          </div>
         </q-card-section>
         <q-separator />
         <q-card-section class="column q-gutter-md">
@@ -62,10 +67,17 @@
               dense
               filled
               autocomplete="off"
+              :disable="usingStoreSecret"
             />
             <div class="row q-gutter-sm">
-              <q-btn color="primary" label="Generate" @click="generateNewSecret" />
-              <q-btn color="primary" outline label="Import" @click="importSecretKey" />
+              <q-btn color="primary" label="Generate" :disable="usingStoreSecret" @click="generateNewSecret" />
+              <q-btn
+                color="primary"
+                outline
+                label="Import"
+                :disable="usingStoreSecret"
+                @click="importSecretKey"
+              />
             </div>
           </div>
           <div class="column q-gutter-sm">
@@ -110,21 +122,21 @@
             <q-btn
               color="primary"
               label="Save to Browser"
-              :disable="!keySecretHex"
+              :disable="!keySecretHex || usingStoreSecret"
               @click="saveSecretToBrowser"
             />
             <q-btn
               color="primary"
               outline
               label="Load from Browser"
-              :disable="!hasStoredSecret"
+              :disable="!hasStoredSecret || usingStoreSecret"
               @click="loadSecretFromBrowser"
             />
             <q-btn
               color="negative"
               outline
               label="Forget Stored Key"
-              :disable="!hasStoredSecret"
+              :disable="!hasStoredSecret || usingStoreSecret"
               @click="forgetStoredSecret"
             />
           </div>
@@ -442,6 +454,7 @@ import {
   useRelayConnection,
   type RelayActivityLevel,
 } from 'src/nutzap/onepage/useRelayConnection';
+import { useNostrStore } from 'src/stores/nostr';
 
 type TierKind = 30019 | 30000;
 
@@ -845,6 +858,18 @@ watch(
 );
 
 const { pubkey, signer } = useActiveNutzapSigner();
+const nostrStore = useNostrStore();
+
+const storeNpub = computed(() => nostrStore.npub || '');
+const storePrivKeyHex = computed(() => nostrStore.privKeyHex || '');
+const storeActiveNsec = computed(() => nostrStore.activePrivateKeyNsec || '');
+
+const usingStoreIdentity = computed(() => !!pubkey.value);
+const usingStoreSecret = computed(() => usingStoreIdentity.value && !!storePrivKeyHex.value);
+
+const lastSyncedPubkey = ref('');
+const lastSyncedSecretHex = ref('');
+const lastSyncedNsec = ref('');
 
 const relaySocket = fundstrRelayClient;
 let profileSubId: string | null = null;
@@ -880,6 +905,74 @@ const tierKindLabel = computed(() =>
   tierKind.value === 30019 ? 'Canonical (30019)' : 'Legacy (30000)'
 );
 
+watch(
+  [pubkey, storeNpub],
+  ([newPubkey, storeNpubValue]) => {
+    const normalizedPubkey = typeof newPubkey === 'string' ? newPubkey.trim().toLowerCase() : '';
+    const encodedNpub = normalizedPubkey
+      ? storeNpubValue || safeEncodeNpub(normalizedPubkey)
+      : '';
+
+    if (normalizedPubkey) {
+      keyPublicHex.value = normalizedPubkey;
+      keyNpub.value = encodedNpub;
+      if (!authorInput.value || authorInput.value === lastSyncedPubkey.value) {
+        authorInput.value = normalizedPubkey;
+      }
+      lastSyncedPubkey.value = normalizedPubkey;
+
+      if (!hasAutoLoaded.value) {
+        hasAutoLoaded.value = true;
+        void loadAll();
+      }
+    } else {
+      if (keyPublicHex.value === lastSyncedPubkey.value) {
+        keyPublicHex.value = '';
+        keyNpub.value = '';
+      }
+      if (authorInput.value === lastSyncedPubkey.value) {
+        authorInput.value = '';
+      }
+      lastSyncedPubkey.value = '';
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  [storePrivKeyHex, storeActiveNsec],
+  ([privHex, activeNsec]) => {
+    const normalizedHex = typeof privHex === 'string' ? privHex.trim().toLowerCase() : '';
+    const normalizedNsec = typeof activeNsec === 'string' ? activeNsec.trim() : '';
+
+    if (normalizedHex) {
+      keySecretHex.value = normalizedHex;
+      lastSyncedSecretHex.value = normalizedHex;
+    } else if (lastSyncedSecretHex.value && keySecretHex.value === lastSyncedSecretHex.value) {
+      keySecretHex.value = '';
+      lastSyncedSecretHex.value = '';
+    }
+
+    if (normalizedNsec) {
+      keyNsec.value = normalizedNsec;
+      lastSyncedNsec.value = normalizedNsec;
+    } else if (normalizedHex) {
+      const derived = safeEncodeNsec(normalizedHex);
+      if (derived) {
+        keyNsec.value = derived;
+        lastSyncedNsec.value = derived;
+      } else if (lastSyncedNsec.value && keyNsec.value === lastSyncedNsec.value) {
+        keyNsec.value = '';
+        lastSyncedNsec.value = '';
+      }
+    } else if (lastSyncedNsec.value && keyNsec.value === lastSyncedNsec.value) {
+      keyNsec.value = '';
+      lastSyncedNsec.value = '';
+    }
+  },
+  { immediate: true }
+);
+
 const tierAddressPreview = computed(() => {
   try {
     const authorHex = normalizeAuthor(authorInput.value);
@@ -888,6 +981,22 @@ const tierAddressPreview = computed(() => {
     return `${tierKind.value}:<author>:tiers`;
   }
 });
+
+function safeEncodeNpub(pubHex: string) {
+  try {
+    return nip19.npubEncode(pubHex);
+  } catch {
+    return '';
+  }
+}
+
+function safeEncodeNsec(secretHex: string) {
+  try {
+    return nip19.nsecEncode(hexToBytes(secretHex));
+  } catch {
+    return '';
+  }
+}
 
 const profilePublishDisabled = computed(
   () =>
@@ -1516,16 +1625,6 @@ watch(
   },
   { immediate: true }
 );
-
-watch(pubkey, newPubkey => {
-  if (newPubkey && !authorInput.value) {
-    authorInput.value = newPubkey;
-  }
-  if (newPubkey && !hasAutoLoaded.value) {
-    hasAutoLoaded.value = true;
-    void loadAll();
-  }
-});
 
 onMounted(() => {
   if (isBrowser) {
