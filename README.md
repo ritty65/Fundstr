@@ -130,7 +130,7 @@ Fundstr can be installed like a native app on browsers that support service work
   ```bash
   pnpm install
   pnpm dev                      # start dev server with service worker
-  pnpm dlx @quasar/cli build -m pwa
+  pnpm build                    # SPA bundle (Quasar build -m spa)
   ```
 
 Troubleshooting: Some browsers block the `beforeinstallprompt` event. If no install prompt appears, ensure pop-ups aren't blocked, confirm you're not in private/incognito mode, or install manually through the browser menu.
