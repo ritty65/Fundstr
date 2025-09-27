@@ -1,16 +1,141 @@
 <template>
-  <div class="explorer-v2 column q-gutter-md">
-    <div class="row items-end q-col-gutter-md">
-      <q-input
-        v-model="query"
-        class="col-12 col-md"
+  <div class="nutzap-explorer column q-gutter-lg">
+    <section class="column q-gutter-sm quick-lookup">
+      <div class="row items-end q-col-gutter-md">
+        <q-input
+          v-model="authorModel"
+          class="col-12 col-md"
+          dense
+          filled
+          label="Author (npub or hex pubkey)"
+          autocomplete="off"
+          placeholder="Paste an author pointer to hydrate the composer"
+        />
+        <div class="col-12 col-md-auto row items-center q-gutter-sm">
+          <q-btn
+            color="primary"
+            label="Load author data"
+            :disable="!authorModel.trim() || loadingAuthor"
+            :loading="loadingAuthor"
+            @click="emitLoadAuthor"
+          />
+          <q-btn
+            dense
+            flat
+            icon="tune"
+            label="Advanced options"
+            class="q-ml-none q-ml-sm-md"
+            @click="advancedOpen = true"
+          />
+        </div>
+      </div>
+      <div class="text-caption text-2">
+        Paste a signer, npub, or hex public key to pull the latest Nutzap author + tier metadata from your relays.
+      </div>
+      <div class="text-caption text-2">
+        Tier address preview:
+        <span class="text-1 text-weight-medium">{{ tierAddressPreview || '—' }}</span>
+      </div>
+    </section>
+
+    <section class="column q-gutter-md">
+      <div class="row items-end q-col-gutter-md">
+        <q-input
+          v-model="query"
+          class="col-12 col-md"
+          dense
+          filled
+          label="Relay search query"
+          autocomplete="off"
+          placeholder="npub, nprofile, naddr, note, hex id, or NIP-05"
+        />
+        <div class="col-12 col-md-auto row items-center q-gutter-sm">
+          <q-btn
+            color="primary"
+            :label="loading ? 'Searching…' : 'Run search'"
+            :loading="loading"
+            :disable="!canSearch || loading"
+            @click="runSearch"
+          />
+          <q-btn
+            color="negative"
+            label="Stop"
+            flat
+            :disable="!loading"
+            @click="cancelSearch"
+          />
+        </div>
+      </div>
+      <div class="row items-center justify-between text-caption text-2 filter-summary">
+        <div class="col column col-auto">
+          <div>
+            Mode:
+            <span class="text-1 text-weight-medium">{{ currentModeLabel }}</span>
+            · Time span:
+            <span class="text-1 text-weight-medium">{{ daysBackSummary }}</span>
+          </div>
+          <div>
+            Relays:
+            <span class="text-1">{{ relaySummary }}</span>
+          </div>
+        </div>
+        <div class="col-shrink">
+          <q-btn dense flat icon="edit" label="Edit filters" @click="advancedOpen = true" />
+        </div>
+      </div>
+
+      <q-banner v-if="errorMessage" class="bg-negative text-white">
+        {{ errorMessage }}
+      </q-banner>
+      <q-banner v-else-if="pointerSummary" class="bg-surface-2 text-2">
+        {{ pointerSummary }}
+      </q-banner>
+      <q-banner v-if="timedOut" class="bg-warning text-black">
+        Partial results returned before timeout.
+      </q-banner>
+
+      <q-table
+        :rows="tableRows"
+        :columns="tableColumns"
+        row-key="id"
+        flat
         dense
-        filled
-        label="Query or pointer"
-        autocomplete="off"
-        placeholder="npub, nprofile, naddr, note, hex, or NIP-05"
-      />
-      <div class="col-12 col-md-auto row items-center q-gutter-sm">
+        virtual-scroll
+        :rows-per-page-options="[10, 25, 50, 100]"
+        :loading="loading"
+        no-data-label="No results yet. Enter a query or pointer and run the search."
+      >
+        <template #body-cell-summary="props">
+          <q-td :props="props">
+            <div class="text-body2 text-1">{{ props.row.summary }}</div>
+            <div v-if="props.row.details" class="text-caption text-2">{{ props.row.details }}</div>
+          </q-td>
+        </template>
+        <template #body-cell-created_at="props">
+          <q-td :props="props">
+            <div class="text-caption text-2">{{ props.row.createdAt }}</div>
+          </q-td>
+        </template>
+        <template #loading>
+          <q-inner-loading showing color="primary" />
+        </template>
+      </q-table>
+    </section>
+
+    <q-drawer
+      v-model="advancedOpen"
+      side="right"
+      overlay
+      bordered
+      :width="360"
+      class="advanced-drawer"
+    >
+      <q-toolbar class="bg-surface-2 text-1">
+        <q-toolbar-title>Advanced options</q-toolbar-title>
+        <q-btn flat dense round icon="close" @click="advancedOpen = false" />
+      </q-toolbar>
+      <q-separator />
+      <div class="q-pa-md column q-gutter-md">
         <q-btn-toggle
           v-model="mode"
           :options="modeOptions"
@@ -19,124 +144,38 @@
           toggle-color="primary"
           class="mode-toggle"
         />
-        <q-btn
-          color="primary"
-          :label="loading ? 'Searching…' : 'Run search'"
-          :loading="loading"
-          :disable="!canSearch || loading"
-          @click="runSearch"
+        <q-input
+          v-model.number="limit"
+          dense
+          type="number"
+          filled
+          label="Result limit"
+          :min="1"
+          :max="500"
         />
-        <q-btn
-          color="negative"
-          label="Stop"
-          flat
-          :disable="!loading"
-          @click="cancelSearch"
+        <q-input
+          v-model.number="daysBack"
+          dense
+          type="number"
+          filled
+          label="Days back"
+          :min="0"
         />
+        <q-input
+          v-model="relayInput"
+          dense
+          filled
+          type="textarea"
+          autogrow
+          label="Relay list"
+          hint="Comma or newline separated"
+        />
+        <q-banner class="bg-surface-2 text-2">
+          Searches merge the relays above with any hints on decoded pointers or NIP-05 records.
+        </q-banner>
+        <q-btn flat dense icon="restart_alt" label="Reset filters" @click="resetFilters" />
       </div>
-    </div>
-
-    <div class="row q-col-gutter-md">
-      <q-input
-        v-model.number="limit"
-        class="col-12 col-sm-4"
-        dense
-        type="number"
-        filled
-        label="Result limit"
-        :min="1"
-        :max="200"
-      />
-      <q-input
-        v-model.number="daysBack"
-        class="col-12 col-sm-4"
-        dense
-        type="number"
-        filled
-        label="Days back"
-        :min="0"
-      />
-      <q-input
-        v-model="relayInput"
-        class="col-12 col-sm-4"
-        dense
-        filled
-        type="textarea"
-        autogrow
-        label="Relay list"
-        hint="Comma or newline separated"
-      />
-    </div>
-
-    <div class="text-caption text-2">
-      Active relays:
-      <span class="text-1">
-        {{ activeRelays.length ? activeRelays.join(', ') : 'None' }}
-      </span>
-    </div>
-
-    <q-banner v-if="errorMessage" class="bg-negative text-white">
-      {{ errorMessage }}
-    </q-banner>
-
-    <div v-if="pointerSummary" class="text-caption text-2">
-      Pointer: <span class="text-1">{{ pointerSummary }}</span>
-    </div>
-
-    <div v-if="timedOut" class="text-caption text-warning">
-      Partial results returned before timeout.
-    </div>
-
-    <div v-if="loading" class="column items-center q-gutter-sm q-py-md">
-      <q-spinner color="primary" size="24px" />
-      <div class="text-caption text-2">Fetching from relays…</div>
-    </div>
-
-    <div v-else>
-      <div v-if="!results.length" class="text-caption text-2">
-        No results yet. Enter a pointer or query to search the relay set.
-      </div>
-      <div v-else class="column q-gutter-md">
-        <q-card v-for="event in results" :key="event.id" class="bg-surface-2 result-card">
-          <q-card-section>
-            <div class="row items-center q-gutter-sm">
-              <q-chip dense outline color="accent">Kind {{ event.kind }}</q-chip>
-              <span class="text-caption text-2">{{ formatTimestamp(event.created_at) }}</span>
-              <span class="text-caption text-2">{{ shorten(event.id) }}</span>
-            </div>
-          </q-card-section>
-          <q-separator inset />
-          <q-card-section v-if="event.kind === 0">
-            <div class="row q-col-gutter-md">
-              <div class="col-auto">
-                <q-avatar size="64px" square>
-                  <img :src="profileDetails(event).picture" alt="Profile picture" />
-                </q-avatar>
-              </div>
-              <div class="col column q-gutter-xs">
-                <div class="text-subtitle1 text-1">{{ profileDetails(event).name || 'Unnamed profile' }}</div>
-                <div class="text-caption text-2" v-if="profileDetails(event).about">
-                  {{ profileDetails(event).about }}
-                </div>
-                <div class="text-caption text-2" v-if="profileDetails(event).nip05">
-                  {{ profileDetails(event).nip05 }}
-                </div>
-              </div>
-            </div>
-          </q-card-section>
-          <q-card-section v-else>
-            <div class="text-body2 text-1 whitespace-pre-wrap">{{ event.content }}</div>
-          </q-card-section>
-          <q-separator inset />
-          <q-card-actions align="between" class="text-caption text-2">
-            <span>Author: {{ shorten(event.pubkey) }}</span>
-            <span v-if="resultRelays[event.id]?.length">
-              Relays: {{ resultRelays[event.id].join(', ') }}
-            </span>
-          </q-card-actions>
-        </q-card>
-      </div>
-    </div>
+    </q-drawer>
   </div>
 </template>
 
@@ -148,6 +187,22 @@ import { multiRelaySearch, mergeRelayHints } from './multiRelaySearch';
 import { sanitizeRelayUrls } from 'src/utils/relay';
 
 const DEFAULT_RELAYS = ['wss://relay.fundstr.me', 'wss://relay.damus.io'];
+
+const props = defineProps<{
+  modelValue: string;
+  loadingAuthor: boolean;
+  tierAddressPreview: string;
+}>();
+
+const emit = defineEmits<{
+  (event: 'update:modelValue', value: string): void;
+  (event: 'load-author'): void;
+}>();
+
+const authorModel = computed({
+  get: () => props.modelValue,
+  set: value => emit('update:modelValue', value),
+});
 
 const query = ref('');
 const mode = ref<'profiles' | 'notes' | 'address'>('profiles');
@@ -162,6 +217,7 @@ const results = ref<NostrEvent[]>([]);
 const activeRelays = ref<string[]>(sanitizeRelayUrls(DEFAULT_RELAYS));
 const resultRelays = reactive<Record<string, string[]>>({});
 const searchController = ref<AbortController | null>(null);
+const advancedOpen = ref(false);
 
 const modeOptions = [
   { label: 'Profiles', value: 'profiles' },
@@ -173,7 +229,25 @@ const HEX_64 = /^[0-9a-f]{64}$/i;
 
 const sanitizedRelayList = computed(() => sanitizeRelayUrls(relayInput.value.split(/[\s,]+/).filter(Boolean)));
 
-const canSearch = computed(() => Boolean(query.value.trim()) || sanitizedRelayList.value.length > 0);
+const canSearch = computed(() => Boolean(query.value.trim() || sanitizedRelayList.value.length));
+
+const currentModeLabel = computed(() => modeOptions.find(option => option.value === mode.value)?.label ?? 'Profiles');
+
+const daysBackSummary = computed(() => (daysBack.value > 0 ? `${daysBack.value} day${daysBack.value === 1 ? '' : 's'} back` : 'All time'));
+
+const relaySummary = computed(() => (activeRelays.value.length ? activeRelays.value.join(', ') : 'No relays configured'));
+
+const tableColumns = [
+  { name: 'kind', label: 'Kind', field: 'kind', align: 'left', sortable: true },
+  { name: 'created_at', label: 'Seen', field: 'createdAt', align: 'left', sortable: true },
+  { name: 'summary', label: 'Summary', field: 'summary', align: 'left' },
+  { name: 'author', label: 'Author', field: 'author', align: 'left' },
+  { name: 'relays', label: 'Relays', field: 'relays', align: 'left' },
+];
+
+function emitLoadAuthor(): void {
+  emit('load-author');
+}
 
 function shorten(value: string): string {
   if (!value) return '';
@@ -412,22 +486,71 @@ async function runSearch(): Promise<void> {
     }
   }
 }
+
+const tableRows = computed(() =>
+  results.value.map(event => {
+    const relays = resultRelays[event.id]?.join(', ') ?? '';
+    const createdAt = formatTimestamp(event.created_at);
+    const author = shorten(event.pubkey);
+
+    if (event.kind === 0) {
+      const details = profileDetails(event);
+      const summary = details.name || 'Unnamed profile';
+      const extra = [details.about, details.nip05].filter(Boolean).join(' · ');
+      return {
+        id: event.id,
+        kind: event.kind,
+        createdAt,
+        summary,
+        details: extra,
+        author,
+        relays,
+      };
+    }
+
+    const content = (event.content || '').trim();
+    const summary = content ? content.slice(0, 120) + (content.length > 120 ? '…' : '') : 'No content';
+    return {
+      id: event.id,
+      kind: event.kind,
+      createdAt,
+      summary,
+      details: '',
+      author,
+      relays,
+    };
+  })
+);
+
+function resetFilters(): void {
+  mode.value = 'profiles';
+  limit.value = 20;
+  daysBack.value = 7;
+  relayInput.value = DEFAULT_RELAYS.join('\n');
+  activeRelays.value = sanitizeRelayUrls(DEFAULT_RELAYS);
+}
+
+const loadingAuthor = computed(() => props.loadingAuthor);
 </script>
 
 <style scoped>
-.explorer-v2 {
+.nutzap-explorer {
+  position: relative;
+}
+
+.quick-lookup {
   border-radius: 12px;
+}
+
+.filter-summary {
+  gap: 12px;
 }
 
 .mode-toggle {
   min-width: 200px;
 }
 
-.result-card {
-  border: 1px solid var(--surface-contrast-border, rgba(255, 255, 255, 0.08));
-}
-
-.whitespace-pre-wrap {
-  white-space: pre-wrap;
+.advanced-drawer {
+  max-width: 100vw;
 }
 </style>
