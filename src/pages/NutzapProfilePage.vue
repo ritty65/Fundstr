@@ -77,89 +77,127 @@
               </q-card-section>
               <q-separator />
               <q-card-section class="column q-gutter-md">
-                <div v-if="!usingStoreIdentity" class="column q-gutter-sm">
-                  <q-input
-                    v-model="keyImportValue"
-                    label="Secret key (nsec or 64-char hex)"
-                    dense
-                    filled
-                    autocomplete="off"
-                    :disable="usingStoreSecret"
-                  />
-                  <div class="row q-gutter-sm">
-                    <q-btn color="primary" label="Generate" :disable="usingStoreSecret" @click="generateNewSecret" />
-                    <q-btn
-                      color="primary"
-                      outline
-                      label="Import"
-                      :disable="usingStoreSecret"
-                      @click="importSecretKey"
-                    />
+                <div v-if="usingStoreIdentity" class="column q-gutter-xs">
+                  <div class="text-body2 text-1">
+                    Connected as
+                    <span class="text-weight-medium">{{ connectedIdentitySummary || 'Fundstr identity' }}</span>
+                  </div>
+                  <div class="text-caption text-2">
+                    Keys mirror your global Fundstr signer. Open the advanced tools below to inspect or export.
                   </div>
                 </div>
-                <div v-else class="text-caption text-2">
-                  Shared signer active — manual key import is disabled while using your Fundstr identity.
+                <div v-else class="column q-gutter-xs">
+                  <div class="text-body2 text-1">Using a dedicated Nutzap key</div>
+                  <div class="text-caption text-2">
+                    Generate or import a key to publish with a standalone identity.
+                  </div>
                 </div>
-                <div class="column q-gutter-sm">
-                  <q-input
-                    :model-value="keySecretHex"
-                    label="Secret key (hex)"
-                    type="textarea"
-                    dense
-                    filled
-                    readonly
-                    autogrow
-                  />
-                  <q-input
-                    :model-value="keyNsec"
-                    label="Secret key (nsec)"
-                    type="textarea"
-                    dense
-                    filled
-                    readonly
-                    autogrow
-                  />
-                  <q-input
-                    :model-value="keyPublicHex"
-                    label="Public key (hex)"
-                    type="textarea"
-                    dense
-                    filled
-                    readonly
-                    autogrow
-                  />
-                  <q-input
-                    :model-value="keyNpub"
-                    label="Public key (npub)"
-                    type="textarea"
-                    dense
-                    filled
-                    readonly
-                    autogrow
-                  />
-                </div>
-                <div v-if="!usingStoreIdentity" class="row wrap q-gutter-sm">
-                  <q-btn
-                    color="primary"
-                    label="Save to Browser"
-                    :disable="!keySecretHex || usingStoreSecret"
-                    @click="saveSecretToBrowser"
-                  />
-                  <q-btn
-                    color="primary"
-                    outline
-                    label="Load from Browser"
-                    :disable="!hasStoredSecret || usingStoreSecret"
-                    @click="loadSecretFromBrowser"
-                  />
-                  <q-btn
-                    color="negative"
-                    outline
-                    label="Forget Stored Key"
-                    :disable="!hasStoredSecret || usingStoreSecret"
-                    @click="forgetStoredSecret"
-                  />
-                </div>
+                <q-expansion-item
+                  v-model="advancedKeyManagementOpen"
+                  expand-separator
+                  dense
+                  icon="tune"
+                  label="Advanced key management"
+                >
+                  <div class="column q-gutter-md q-mt-sm">
+                    <q-banner dense rounded class="bg-surface-2 text-2">
+                      Generate a fresh key for Nutzap-only publishing or paste an existing secret to reuse another
+                      signer.
+                    </q-banner>
+                    <div v-if="!usingStoreIdentity" class="column q-gutter-sm">
+                      <q-input
+                        v-model="keyImportValue"
+                        label="Secret key (nsec or 64-char hex)"
+                        dense
+                        filled
+                        autocomplete="off"
+                        :disable="usingStoreSecret"
+                      />
+                      <div class="row q-gutter-sm">
+                        <q-btn
+                          color="primary"
+                          label="Generate"
+                          :disable="usingStoreSecret"
+                          @click="generateNewSecret"
+                        />
+                        <q-btn
+                          color="primary"
+                          outline
+                          label="Import"
+                          :disable="usingStoreSecret"
+                          @click="importSecretKey"
+                        />
+                      </div>
+                    </div>
+                    <div v-else class="text-caption text-2">
+                      Shared signer active — manual key import is disabled while using your Fundstr identity.
+                    </div>
+                    <div class="column q-gutter-sm">
+                      <q-input
+                        :model-value="keySecretHex"
+                        label="Secret key (hex)"
+                        type="textarea"
+                        dense
+                        filled
+                        readonly
+                        autogrow
+                      />
+                      <q-input
+                        :model-value="keyNsec"
+                        label="Secret key (nsec)"
+                        type="textarea"
+                        dense
+                        filled
+                        readonly
+                        autogrow
+                      />
+                      <q-input
+                        :model-value="keyPublicHex"
+                        label="Public key (hex)"
+                        type="textarea"
+                        dense
+                        filled
+                        readonly
+                        autogrow
+                      />
+                      <q-input
+                        :model-value="keyNpub"
+                        label="Public key (npub)"
+                        type="textarea"
+                        dense
+                        filled
+                        readonly
+                        autogrow
+                      />
+                    </div>
+                    <q-banner dense rounded class="bg-surface-2 text-2">
+                      Save keys to this browser when you want the device to remember them, or clear the stored copy when
+                      finished.
+                    </q-banner>
+                    <div v-if="!usingStoreIdentity" class="row wrap q-gutter-sm">
+                      <q-btn
+                        color="primary"
+                        label="Save to Browser"
+                        :disable="!keySecretHex || usingStoreSecret"
+                        @click="saveSecretToBrowser"
+                      />
+                      <q-btn
+                        color="primary"
+                        outline
+                        label="Load from Browser"
+                        :disable="!hasStoredSecret || usingStoreSecret"
+                        @click="loadSecretFromBrowser"
+                      />
+                      <q-btn
+                        color="negative"
+                        outline
+                        label="Forget Stored Key"
+                        :disable="!hasStoredSecret || usingStoreSecret"
+                        @click="forgetStoredSecret"
+                      />
+                    </div>
+                  </div>
+                </q-expansion-item>
               </q-card-section>
             </q-card>
 
@@ -471,6 +509,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import type { WatchStopHandle } from 'vue';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
 import { v4 as uuidv4 } from 'uuid';
@@ -551,6 +590,7 @@ const keyPublicHex = ref('');
 const keyNpub = ref('');
 const keyNsec = ref('');
 const hasStoredSecret = ref(false);
+const advancedKeyManagementOpen = ref(false);
 const activeProfileStep = ref<'connect' | 'author' | 'tiers' | 'explore' | 'diagnostics'>('connect');
 
 const SECRET_STORAGE_KEY = 'nutzap.profile.secretHex';
@@ -674,12 +714,18 @@ function applySecretBytes(sk: Uint8Array) {
 }
 
 function generateNewSecret() {
+  if (!advancedKeyManagementOpen.value) {
+    return;
+  }
   const secret = generateSecretKey();
   applySecretBytes(secret);
   notifySuccess('Generated new secret key.');
 }
 
 function importSecretKey() {
+  if (!advancedKeyManagementOpen.value) {
+    return;
+  }
   const trimmed = keyImportValue.value.trim();
   if (!trimmed) {
     notifyWarning('Enter a private key to import.');
@@ -711,6 +757,9 @@ function importSecretKey() {
 }
 
 function saveSecretToBrowser() {
+  if (!advancedKeyManagementOpen.value) {
+    return;
+  }
   if (!keySecretHex.value) {
     notifyWarning('Generate or import a secret key first.');
     return;
@@ -726,6 +775,9 @@ function saveSecretToBrowser() {
 }
 
 function loadSecretFromBrowser() {
+  if (!advancedKeyManagementOpen.value) {
+    return;
+  }
   if (!isBrowser) {
     notifyError('Browser storage is unavailable.');
     return;
@@ -747,6 +799,9 @@ function loadSecretFromBrowser() {
 }
 
 function forgetStoredSecret() {
+  if (!advancedKeyManagementOpen.value) {
+    return;
+  }
   if (!isBrowser) {
     notifyError('Browser storage is unavailable.');
     return;
@@ -914,6 +969,27 @@ const storeActiveNsec = computed(() => nostrStore.activePrivateKeyNsec || '');
 
 const usingStoreIdentity = computed(() => !!pubkey.value);
 const usingStoreSecret = computed(() => usingStoreIdentity.value && !!storePrivKeyHex.value);
+const connectedIdentitySummary = computed(() => {
+  if (!usingStoreIdentity.value) {
+    return '';
+  }
+  if (storeNpub.value) {
+    return shortenKey(storeNpub.value);
+  }
+  const activePub = typeof pubkey.value === 'string' ? pubkey.value.trim() : '';
+  if (!activePub) {
+    return '';
+  }
+  return shortenKey(activePub);
+});
+
+function shortenKey(value: string) {
+  const trimmed = value.trim();
+  if (trimmed.length <= 16) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, 8)}…${trimmed.slice(-4)}`;
+}
 
 const lastSyncedPubkey = ref('');
 const lastSyncedSecretHex = ref('');
@@ -1020,35 +1096,61 @@ watch(
   { immediate: true }
 );
 
-watch(
-  [storePrivKeyHex, storeActiveNsec],
-  ([privHex, activeNsec]) => {
-    const normalizedHex = typeof privHex === 'string' ? privHex.trim().toLowerCase() : '';
-    const normalizedNsec = typeof activeNsec === 'string' ? activeNsec.trim() : '';
+let stopStoreKeySync: WatchStopHandle | null = null;
 
-    if (normalizedHex) {
-      keySecretHex.value = normalizedHex;
-      lastSyncedSecretHex.value = normalizedHex;
-    } else if (lastSyncedSecretHex.value && keySecretHex.value === lastSyncedSecretHex.value) {
-      keySecretHex.value = '';
-      lastSyncedSecretHex.value = '';
-    }
+function stopStoreKeySyncWatcher() {
+  if (stopStoreKeySync) {
+    stopStoreKeySync();
+    stopStoreKeySync = null;
+  }
+}
 
-    if (normalizedNsec) {
-      keyNsec.value = normalizedNsec;
-      lastSyncedNsec.value = normalizedNsec;
-    } else if (normalizedHex) {
-      const derived = safeEncodeNsec(normalizedHex);
-      if (derived) {
-        keyNsec.value = derived;
-        lastSyncedNsec.value = derived;
+function startStoreKeySyncWatcher() {
+  if (stopStoreKeySync) {
+    return;
+  }
+  stopStoreKeySync = watch(
+    [storePrivKeyHex, storeActiveNsec],
+    ([privHex, activeNsec]) => {
+      const normalizedHex = typeof privHex === 'string' ? privHex.trim().toLowerCase() : '';
+      const normalizedNsec = typeof activeNsec === 'string' ? activeNsec.trim() : '';
+
+      if (normalizedHex) {
+        keySecretHex.value = normalizedHex;
+        lastSyncedSecretHex.value = normalizedHex;
+      } else if (lastSyncedSecretHex.value && keySecretHex.value === lastSyncedSecretHex.value) {
+        keySecretHex.value = '';
+        lastSyncedSecretHex.value = '';
+      }
+
+      if (normalizedNsec) {
+        keyNsec.value = normalizedNsec;
+        lastSyncedNsec.value = normalizedNsec;
+      } else if (normalizedHex) {
+        const derived = safeEncodeNsec(normalizedHex);
+        if (derived) {
+          keyNsec.value = derived;
+          lastSyncedNsec.value = derived;
+        } else if (lastSyncedNsec.value && keyNsec.value === lastSyncedNsec.value) {
+          keyNsec.value = '';
+          lastSyncedNsec.value = '';
+        }
       } else if (lastSyncedNsec.value && keyNsec.value === lastSyncedNsec.value) {
         keyNsec.value = '';
         lastSyncedNsec.value = '';
       }
-    } else if (lastSyncedNsec.value && keyNsec.value === lastSyncedNsec.value) {
-      keyNsec.value = '';
-      lastSyncedNsec.value = '';
+    },
+    { immediate: true }
+  );
+}
+
+watch(
+  advancedKeyManagementOpen,
+  value => {
+    if (value) {
+      startStoreKeySyncWatcher();
+    } else {
+      stopStoreKeySyncWatcher();
     }
   },
   { immediate: true }
@@ -1729,6 +1831,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   cleanupSubscriptions();
+  stopStoreKeySyncWatcher();
   if (stopRelayStatusListener) {
     stopRelayStatusListener();
     stopRelayStatusListener = null;
