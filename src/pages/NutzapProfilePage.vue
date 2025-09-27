@@ -386,32 +386,18 @@
         </q-tab-panel>
 
         <q-tab-panel name="diagnostics" class="profile-panel">
-          <div class="panel-grid">
-            <q-card class="grid-card diagnostic-card">
-              <q-card-section class="q-gutter-xs">
-                <div class="text-h6">Legacy Explorer</div>
-                <div class="text-caption text-2">
-                  Issue single-relay REQ subscriptions and inspect EOSE vs timeout behaviour.
+          <div class="diagnostics-banner-wrapper">
+            <q-banner dense rounded class="diagnostics-banner bg-surface-2 text-2">
+              <div class="row items-center justify-between q-gutter-md no-wrap">
+                <div class="column q-gutter-xs">
+                  <div class="text-body1 text-1">Need deeper troubleshooting?</div>
+                  <div class="text-caption text-2">
+                    Jump to the dedicated diagnostics workspace for relay inspectors and self-tests.
+                  </div>
                 </div>
-              </q-card-section>
-              <q-separator />
-              <q-card-section>
-                <NutzapLegacyExplorer />
-              </q-card-section>
-            </q-card>
-
-            <q-card class="grid-card diagnostic-card">
-              <q-card-section class="q-gutter-xs">
-                <div class="text-h6">Client Self-tests</div>
-                <div class="text-caption text-2">
-                  Verify browser capabilities required for Nutzap authoring without hitting the network.
-                </div>
-              </q-card-section>
-              <q-separator />
-              <q-card-section>
-                <NutzapSelfTests />
-              </q-card-section>
-            </q-card>
+                <q-btn color="primary" label="Open tools" to="/nutzap-tools" />
+              </div>
+            </q-banner>
           </div>
         </q-tab-panel>
       </q-tab-panels>
@@ -427,8 +413,6 @@ import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
 import RelayStatusIndicator from 'src/nutzap/RelayStatusIndicator.vue';
 import NutzapExplorerPanel from 'src/nutzap/onepage/NutzapExplorerPanel.vue';
-import NutzapLegacyExplorer from 'src/nutzap/onepage/NutzapLegacyExplorer.vue';
-import NutzapSelfTests from 'src/nutzap/onepage/NutzapSelfTests.vue';
 import TierComposer from './nutzap-profile/TierComposer.vue';
 import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
 import type { Tier } from 'src/nutzap/types';
@@ -1641,6 +1625,14 @@ onBeforeUnmount(() => {
 
 .grid-card {
   height: 100%;
+}
+
+.diagnostics-banner-wrapper {
+  padding: 16px;
+}
+
+.diagnostics-banner {
+  border: 1px solid var(--surface-contrast-border);
 }
 
 .relay-card,
