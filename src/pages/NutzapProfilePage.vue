@@ -1,12 +1,14 @@
 <template>
-  <q-page class="nutzap-profile-page bg-surface-1 q-pa-lg">
-    <div class="status-banner q-mb-md">
+  <q-page class="nutzap-profile-page bg-surface-1 q-pa-xl">
+    <div class="status-banner bg-surface-2 text-1">
       <RelayStatusIndicator />
       <q-chip dense :color="relayStatusColor" text-color="white" class="status-chip">
         {{ relayStatusLabel }}
       </q-chip>
-      <div class="text-caption text-2">Isolated relay: relay.fundstr.me (WS → HTTP fallback)</div>
+      <div class="status-meta text-body2 text-2">Isolated relay: relay.fundstr.me (WS → HTTP fallback)</div>
     </div>
+
+    <q-separator spaced class="group-separator" />
 
     <div class="profile-steps">
       <q-tabs
@@ -20,7 +22,6 @@
         <q-tab name="author" label="Author profile" />
         <q-tab name="tiers" label="Manage tiers" />
         <q-tab name="explore" label="Explore data" />
-        <q-tab name="diagnostics" label="Advanced diagnostics" />
       </q-tabs>
 
       <q-tab-panels v-model="activeProfileStep" animated class="profile-panels">
@@ -28,8 +29,10 @@
           <div class="panel-grid">
             <q-card class="grid-card relay-card">
               <q-card-section class="q-gutter-xs">
-                <div class="text-h6">Relay Connection</div>
-                <div class="text-caption text-2">Control the live WebSocket session used for publishing events.</div>
+                <div class="panel-title text-subtitle1 text-weight-medium text-1">Relay Connection</div>
+                <div class="panel-subtitle text-body2 text-2">
+                  Control the live WebSocket session used for publishing events.
+                </div>
               </q-card-section>
               <q-separator />
               <q-card-section class="column q-gutter-md">
@@ -67,8 +70,8 @@
 
             <q-card class="grid-card keys-card">
               <q-card-section class="q-gutter-xs">
-                <div class="text-h6">Keys</div>
-                <div class="text-caption text-2">
+                <div class="panel-title text-subtitle1 text-weight-medium text-1">Keys</div>
+                <div class="panel-subtitle text-body2 text-2">
                   Manage the publishing identity for Nutzap events.
                   <template v-if="usingStoreIdentity">
                     Active signer details are mirrored from your global Nostr identity.
@@ -78,17 +81,17 @@
               <q-separator />
               <q-card-section class="column q-gutter-md">
                 <div v-if="usingStoreIdentity" class="column q-gutter-xs">
-                  <div class="text-body2 text-1">
+                  <div class="text-body1 text-1">
                     Connected as
                     <span class="text-weight-medium">{{ connectedIdentitySummary || 'Fundstr identity' }}</span>
                   </div>
-                  <div class="text-caption text-2">
+                  <div class="text-body2 text-2">
                     Keys mirror your global Fundstr signer. Open the advanced tools below to inspect or export.
                   </div>
                 </div>
                 <div v-else class="column q-gutter-xs">
-                  <div class="text-body2 text-1">Using a dedicated Nutzap key</div>
-                  <div class="text-caption text-2">
+                  <div class="text-body1 text-1">Using a dedicated Nutzap key</div>
+                  <div class="text-body2 text-2">
                     Generate or import a key to publish with a standalone identity.
                   </div>
                 </div>
@@ -100,7 +103,7 @@
                   label="Advanced key management"
                 >
                   <div class="column q-gutter-md q-mt-sm">
-                    <q-banner dense rounded class="bg-surface-2 text-2">
+                    <q-banner dense rounded class="bg-surface-2 text-body2 text-2">
                       Generate a fresh key for Nutzap-only publishing or paste an existing secret to reuse another
                       signer.
                     </q-banner>
@@ -170,7 +173,7 @@
                         autogrow
                       />
                     </div>
-                    <q-banner dense rounded class="bg-surface-2 text-2">
+                    <q-banner dense rounded class="bg-surface-2 text-body2 text-2">
                       Save keys to this browser when you want the device to remember them, or clear the stored copy when
                       finished.
                     </q-banner>
@@ -203,8 +206,8 @@
 
             <q-card class="grid-card activity-card">
               <q-card-section class="q-gutter-xs">
-                <div class="text-h6">Activity Log</div>
-                <div class="text-caption text-2">Monitor relay connection state and publish acknowledgements.</div>
+                <div class="panel-title text-subtitle1 text-weight-medium text-1">Activity Log</div>
+                <div class="panel-subtitle text-body2 text-2">Monitor relay connection state and publish acknowledgements.</div>
               </q-card-section>
               <q-separator />
               <q-card-section class="q-pa-none">
@@ -222,7 +225,7 @@
                         <q-badge :color="activityLevelColor(entry.level)" outline size="sm">
                           {{ entry.level }}
                         </q-badge>
-                        <span class="text-body2">{{ entry.message }}</span>
+                        <span class="text-body2 text-1">{{ entry.message }}</span>
                       </div>
                       <div class="text-caption text-2" v-if="entry.context">{{ entry.context }}</div>
                     </q-item-section>
@@ -248,12 +251,12 @@
           <div class="panel-grid">
             <q-card class="grid-card publisher-card">
               <q-card-section class="q-gutter-xs">
-                <div class="text-h6">Publisher</div>
-                <div class="text-caption text-2">Compose metadata and tiers before publishing to relay.fundstr.me.</div>
+                <div class="panel-title text-subtitle1 text-weight-medium text-1">Publisher</div>
+                <div class="panel-subtitle text-body2 text-2">Compose metadata and tiers before publishing to relay.fundstr.me.</div>
               </q-card-section>
               <q-separator />
               <q-card-section class="column q-gutter-md">
-                <div class="text-subtitle2">Payment Profile (kind 10019)</div>
+                <div class="text-subtitle2 text-1">Payment Profile (kind 10019)</div>
                 <q-input v-model="displayName" label="Display Name" dense filled />
                 <q-input v-model="pictureUrl" label="Picture URL" dense filled />
                 <q-input
@@ -302,7 +305,7 @@
                     @click="publishProfile"
                   />
                 </div>
-                <div class="text-caption text-2" v-if="lastProfilePublishInfo">
+                <div class="text-body2 text-2" v-if="lastProfilePublishInfo">
                   {{ lastProfilePublishInfo }}
                 </div>
               </q-card-section>
@@ -314,15 +317,15 @@
           <div class="panel-grid">
             <q-card class="grid-card tiers-card">
               <q-card-section class="q-gutter-xs">
-                <div class="text-h6">Tiers</div>
-                <div class="text-caption text-2">
+                <div class="panel-title text-subtitle1 text-weight-medium text-1">Tiers</div>
+                <div class="panel-subtitle text-body2 text-2">
                   Publishing as {{ tierKindLabel }} — parameterized replaceable ["d", "tiers"].
                 </div>
               </q-card-section>
               <q-separator />
               <q-card-section class="column q-gutter-md">
                 <div class="row items-center justify-between">
-                  <div class="text-subtitle2">Tier kind</div>
+                  <div class="text-subtitle2 text-1">Tier kind</div>
                   <q-btn-toggle
                     v-model="tierKind"
                     :options="tierKindOptions"
@@ -355,7 +358,7 @@
                     @click="publishTiers"
                   />
                 </div>
-                <div class="text-caption text-2" v-if="lastTiersPublishInfo">
+                <div class="text-body2 text-2" v-if="lastTiersPublishInfo">
                   {{ lastTiersPublishInfo }}
                 </div>
               </q-card-section>
@@ -367,8 +370,8 @@
           <div class="panel-grid">
             <q-card class="grid-card explorer-card">
               <q-card-section class="q-gutter-xs">
-                <div class="text-h6">Explorer</div>
-                <div class="text-caption text-2">
+                <div class="panel-title text-subtitle1 text-weight-medium text-1">Explorer</div>
+                <div class="panel-subtitle text-body2 text-2">
                   Quickly hydrate the composer with author data and inspect events across your relay set.
                 </div>
               </q-card-section>
@@ -384,24 +387,20 @@
             </q-card>
           </div>
         </q-tab-panel>
-
-        <q-tab-panel name="diagnostics" class="profile-panel">
-          <div class="diagnostics-banner-wrapper">
-            <q-banner dense rounded class="diagnostics-banner bg-surface-2 text-2">
-              <div class="row items-center justify-between q-gutter-md no-wrap">
-                <div class="column q-gutter-xs">
-                  <div class="text-body1 text-1">Need deeper troubleshooting?</div>
-                  <div class="text-caption text-2">
-                    Jump to the dedicated diagnostics workspace for relay inspectors and self-tests.
-                  </div>
-                </div>
-                <q-btn color="primary" label="Open tools" to="/nutzap-tools" />
-              </div>
-            </q-banner>
-          </div>
-        </q-tab-panel>
       </q-tab-panels>
     </div>
+
+    <q-separator spaced class="group-separator" />
+
+    <section class="optional-tools bg-surface-2 text-1">
+      <div class="optional-tools-header">
+        <div class="text-subtitle1 text-weight-medium">Optional tools</div>
+        <div class="text-body2 text-2">
+          Need deeper troubleshooting? Jump into diagnostics when you want relay inspectors and self-tests.
+        </div>
+      </div>
+      <q-btn color="primary" label="Open diagnostics workspace" to="/nutzap-tools" class="optional-tools-action" />
+    </section>
 
   </q-page>
 </template>
@@ -466,7 +465,7 @@ const keyNpub = ref('');
 const keyNsec = ref('');
 const hasStoredSecret = ref(false);
 const advancedKeyManagementOpen = ref(false);
-const activeProfileStep = ref<'connect' | 'author' | 'tiers' | 'explore' | 'diagnostics'>('connect');
+const activeProfileStep = ref<'connect' | 'author' | 'tiers' | 'explore'>('connect');
 
 const SECRET_STORAGE_KEY = 'nutzap.profile.secretHex';
 const isBrowser = typeof window !== 'undefined';
@@ -1577,14 +1576,17 @@ onBeforeUnmount(() => {
 .nutzap-profile-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 32px;
 }
 
 .status-banner {
   display: flex;
   align-items: center;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: 12px 16px;
+  padding: 20px 24px;
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 16px;
 }
 
 .status-chip {
@@ -1592,19 +1594,32 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
+.status-meta {
+  flex-basis: 100%;
+}
+
+.group-separator {
+  --q-separator-color: var(--surface-contrast-border);
+  background: transparent;
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
+}
 
 .profile-steps {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
 }
 
 .profile-tabs {
-  padding: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 16px;
 }
 
 .profile-panels {
-  border-radius: 12px;
+  border-radius: 16px;
   background: transparent;
 }
 
@@ -1614,9 +1629,10 @@ onBeforeUnmount(() => {
 
 .panel-grid {
   display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  padding: 16px;
+  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 480px));
+  justify-content: center;
+  padding: 24px;
 }
 
 .panel-grid > * {
@@ -1625,14 +1641,31 @@ onBeforeUnmount(() => {
 
 .grid-card {
   height: 100%;
-}
-
-.diagnostics-banner-wrapper {
-  padding: 16px;
-}
-
-.diagnostics-banner {
+  background: var(--surface-2);
   border: 1px solid var(--surface-contrast-border);
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+.optional-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 16px;
+  max-width: 640px;
+  margin: 0 auto 48px;
+}
+
+.optional-tools-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.optional-tools-action {
+  align-self: flex-start;
 }
 
 .relay-card,
