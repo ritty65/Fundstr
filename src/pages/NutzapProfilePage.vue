@@ -322,47 +322,30 @@
               <q-separator />
               <q-card-section class="column q-gutter-md">
                 <div class="row items-center justify-between">
-                  <div class="text-subtitle2">Manage Tiers ({{ tiers.length }})</div>
-                  <div class="row items-center q-gutter-sm">
-                    <q-btn-toggle
-                      v-model="tierKind"
-                      :options="tierKindOptions"
-                      dense
-                      toggle-color="primary"
-                      unelevated
-                    />
-                    <q-btn dense color="primary" label="Add Tier" @click="openNewTier" />
-                  </div>
+                  <div class="text-subtitle2">Tier kind</div>
+                  <q-btn-toggle
+                    v-model="tierKind"
+                    :options="tierKindOptions"
+                    dense
+                    toggle-color="primary"
+                    unelevated
+                  />
                 </div>
+                <TierComposer
+                  v-model:tiers="tiers"
+                  :frequency-options="tierFrequencyOptions"
+                  @validation-changed="handleTierValidation"
+                />
                 <q-input
-                  v-model="tiersJson"
+                  :model-value="tiersJsonPreview"
                   type="textarea"
-                  label="Tiers JSON"
+                  label="Tiers JSON preview"
                   dense
                   filled
                   autogrow
+                  readonly
                   spellcheck="false"
-                  :error="!!tiersJsonError"
-                  :error-message="tiersJsonError || ''"
                 />
-                <q-list bordered separator v-if="tiers.length">
-                  <q-item v-for="tier in tiers" :key="tier.id">
-                    <q-item-section>
-                      <div class="text-body1">
-                        {{ tier.title }} — {{ tier.price }} sats ({{ frequencyLabel(tier.frequency) }})
-                      </div>
-                      <div class="text-caption" v-if="tier.description">{{ tier.description }}</div>
-                      <div class="text-caption" v-if="tier.media?.length">
-                        Media: {{ tier.media.map(m => m.url).join(', ') }}
-                      </div>
-                    </q-item-section>
-                    <q-item-section side class="row items-center q-gutter-xs">
-                      <q-btn dense flat icon="edit" @click="editTier(tier)" />
-                      <q-btn dense flat icon="delete" color="negative" @click="removeTier(tier.id)" />
-                    </q-item-section>
-                  </q-item>
-                </q-list>
-                <div v-else class="text-caption text-2">No tiers yet. Add at least one tier before publishing.</div>
                 <div class="row justify-end q-gutter-sm">
                   <q-btn
                     color="primary"
@@ -459,51 +442,6 @@
       </q-tab-panels>
     </div>
 
-    <q-dialog v-model="showTierDialog" @hide="resetTierForm">
-      <q-card class="q-pa-md" style="min-width: 420px">
-        <div class="text-subtitle1 q-mb-sm">{{ tierForm.id ? 'Edit Tier' : 'Add Tier' }}</div>
-        <q-input v-model="tierForm.title" label="Title" dense filled class="q-mb-sm" />
-        <q-input
-          v-model.number="tierForm.price"
-          type="number"
-          label="Price (sats)"
-          dense
-          filled
-          class="q-mb-sm"
-        />
-        <q-select
-          v-model="tierForm.frequency"
-          :options="tierFrequencyOptions"
-          option-label="label"
-          option-value="value"
-          emit-value
-          map-options
-          label="Frequency"
-          dense
-          filled
-          class="q-mb-sm"
-        />
-        <q-input
-          v-model="tierForm.description"
-          type="textarea"
-          label="Description"
-          dense
-          filled
-          autogrow
-          class="q-mb-sm"
-        />
-        <q-input
-          v-model="tierForm.mediaCsv"
-          label="Media URLs (comma-separated)"
-          dense
-          filled
-        />
-        <div class="row justify-end q-gutter-sm q-mt-md">
-          <q-btn flat label="Cancel" v-close-popup />
-          <q-btn color="primary" label="Save" @click="saveTier" v-close-popup />
-        </div>
-      </q-card>
-    </q-dialog>
   </q-page>
 </template>
 
@@ -512,11 +450,11 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { WatchStopHandle } from 'vue';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
-import { v4 as uuidv4 } from 'uuid';
 import RelayStatusIndicator from 'src/nutzap/RelayStatusIndicator.vue';
 import NutzapExplorerSearch from 'src/nutzap/onepage/NutzapExplorerSearch.vue';
 import NutzapLegacyExplorer from 'src/nutzap/onepage/NutzapLegacyExplorer.vue';
 import NutzapSelfTests from 'src/nutzap/onepage/NutzapSelfTests.vue';
+import TierComposer from './nutzap-profile/TierComposer.vue';
 import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
 import type { Tier } from 'src/nutzap/types';
 import { useActiveNutzapSigner } from 'src/nutzap/signer';
@@ -534,6 +472,7 @@ import {
   publishNostrEvent,
   parseTiersContent,
 } from './nutzap-profile/nostrHelpers';
+import { hasTierErrors, tierFrequencies, type TierFieldErrors } from './nutzap-profile/tierComposerUtils';
 import { fundstrRelayClient, RelayPublishError } from 'src/nutzap/relayClient';
 import { sanitizeRelayUrls } from 'src/utils/relay';
 import {
@@ -543,17 +482,6 @@ import {
 import { useNostrStore } from 'src/stores/nostr';
 
 type TierKind = 30019 | 30000;
-
-const tierFrequencies: Tier['frequency'][] = ['one_time', 'monthly', 'yearly'];
-
-type TierFormState = {
-  id: string;
-  title: string;
-  price: number;
-  frequency: Tier['frequency'];
-  description: string;
-  mediaCsv: string;
-};
 
 const authorInput = ref('');
 const displayName = ref('');
@@ -565,24 +493,12 @@ const mintsText = ref('');
 const relaysText = ref(FUNDSTR_WS_URL);
 const tiers = ref<Tier[]>([]);
 const tierKind = ref<TierKind>(30019);
-const tierForm = ref<TierFormState>({
-  id: '',
-  title: '',
-  price: 0,
-  frequency: 'monthly',
-  description: '',
-  mediaCsv: '',
-});
-const showTierDialog = ref(false);
 const loading = ref(false);
 const publishingProfile = ref(false);
 const publishingTiers = ref(false);
 const lastProfilePublishInfo = ref('');
 const lastTiersPublishInfo = ref('');
 const hasAutoLoaded = ref(false);
-
-const tiersJson = ref('');
-const tiersJsonError = ref<string | null>(null);
 
 const keyImportValue = ref('');
 const keySecretHex = ref('');
@@ -596,17 +512,6 @@ const activeProfileStep = ref<'connect' | 'author' | 'tiers' | 'explore' | 'diag
 const SECRET_STORAGE_KEY = 'nutzap.profile.secretHex';
 const isBrowser = typeof window !== 'undefined';
 
-let isUpdatingJsonFromTiers = false;
-let isUpdatingTiersFromJson = false;
-let tiersJsonEdited = false;
-let lastTiersJsonErrorNotified: string | null = null;
-const scheduleMicrotask =
-  typeof queueMicrotask === 'function'
-    ? queueMicrotask
-    : (fn: () => void) => {
-        Promise.resolve().then(fn);
-      };
-
 const {
   relayUrl: relayConnectionUrl,
   status: relayConnectionStatus,
@@ -616,7 +521,6 @@ const {
   disconnect: disconnectRelay,
   publishEvent: publishEventToRelay,
   clearActivity: clearRelayActivity,
-  logActivity,
   isSupported: relaySupported,
   isConnected: relayIsConnected,
 } = useRelayConnection();
@@ -856,23 +760,6 @@ function generateP2pkKeypair() {
   notifySuccess('Generated new P2PK keypair.');
 }
 
-function applyTiersJsonError(message: string | null) {
-  tiersJsonError.value = message;
-  if (!message) {
-    lastTiersJsonErrorNotified = null;
-    return;
-  }
-  if (!tiersJsonEdited) {
-    return;
-  }
-  if (lastTiersJsonErrorNotified === message) {
-    return;
-  }
-  lastTiersJsonErrorNotified = message;
-  logActivity('error', 'Tier JSON validation failed', message);
-  notifyError(`Tier JSON invalid — ${message}`);
-}
-
 function buildTiersJsonPayload(entries: Tier[]) {
   return {
     v: 1,
@@ -896,61 +783,6 @@ function buildTiersJsonPayload(entries: Tier[]) {
     }),
   };
 }
-
-watch(
-  tiers,
-  newTiers => {
-    if (isUpdatingTiersFromJson) {
-      scheduleMicrotask(() => {
-        isUpdatingTiersFromJson = false;
-      });
-      return;
-    }
-    const payload = buildTiersJsonPayload(newTiers);
-    isUpdatingJsonFromTiers = true;
-    tiersJson.value = JSON.stringify(payload, null, 2);
-    scheduleMicrotask(() => {
-      isUpdatingJsonFromTiers = false;
-    });
-    applyTiersJsonError(null);
-  },
-  { deep: true, immediate: true }
-);
-
-watch(tiersJson, value => {
-  if (isUpdatingJsonFromTiers) {
-    return;
-  }
-  tiersJsonEdited = true;
-  const trimmed = value.trim();
-  if (!trimmed) {
-    applyTiersJsonError('Tier JSON is required.');
-    return;
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch (err) {
-    applyTiersJsonError(err instanceof Error ? err.message : 'Invalid JSON.');
-    return;
-  }
-  const rawTiers = Array.isArray(parsed) ? parsed : (parsed as any)?.tiers;
-  if (!Array.isArray(rawTiers)) {
-    applyTiersJsonError('JSON must be an array or include a "tiers" array.');
-    return;
-  }
-  const normalized = parseTiersContent(trimmed);
-  if (rawTiers.length > 0 && normalized.length === 0) {
-    applyTiersJsonError('No valid tiers found in JSON payload.');
-    return;
-  }
-  applyTiersJsonError(null);
-  isUpdatingTiersFromJson = true;
-  tiers.value = normalized;
-  scheduleMicrotask(() => {
-    isUpdatingTiersFromJson = false;
-  });
-});
 
 watch(
   p2pkPub,
@@ -1186,7 +1018,7 @@ const profilePublishDisabled = computed(
     publishingProfile.value ||
     !authorInput.value.trim() ||
     !p2pkPub.value.trim() ||
-    !!tiersJsonError.value ||
+    tiersHaveErrors.value ||
     mintList.value.length === 0 ||
     tiers.value.length === 0
 );
@@ -1195,7 +1027,7 @@ const tiersPublishDisabled = computed(
   () =>
     publishingTiers.value ||
     !authorInput.value.trim() ||
-    !!tiersJsonError.value ||
+    tiersHaveErrors.value ||
     tiers.value.length === 0
 );
 
@@ -1211,69 +1043,15 @@ const tierFrequencyOptions = computed(() =>
   }))
 );
 
-function toMediaCsv(media?: { type: string; url: string }[]) {
-  if (!media) return '';
-  return media
-    .map(m => m?.url)
-    .filter((u): u is string => typeof u === 'string' && !!u)
-    .join(', ');
-}
+const tierValidationResults = ref<TierFieldErrors[]>([]);
+const tiersHaveErrors = computed(() =>
+  tierValidationResults.value.some(result => hasTierErrors(result))
+);
 
-function resetTierForm() {
-  tierForm.value = {
-    id: '',
-    title: '',
-    price: 0,
-    frequency: 'monthly',
-    description: '',
-    mediaCsv: '',
-  };
-}
+const tiersJsonPreview = computed(() => JSON.stringify(buildTiersJsonPayload(tiers.value), null, 2));
 
-function openNewTier() {
-  resetTierForm();
-  showTierDialog.value = true;
-}
-
-function editTier(tier: Tier) {
-  tierForm.value = {
-    id: tier.id,
-    title: tier.title,
-    price: tier.price,
-    frequency: tier.frequency,
-    description: tier.description ?? '',
-    mediaCsv: toMediaCsv(tier.media),
-  };
-  showTierDialog.value = true;
-}
-
-function removeTier(id: string) {
-  tiers.value = tiers.value.filter(t => t.id !== id);
-}
-
-function saveTier() {
-  const form = tierForm.value;
-  const media = form.mediaCsv
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean)
-    .map(url => ({ type: 'link', url }));
-  const tier: Tier = {
-    id: form.id || uuidv4(),
-    title: form.title.trim(),
-    price: Number(form.price) || 0,
-    frequency: form.frequency,
-    description: form.description ? form.description.trim() : undefined,
-    media: media.length ? media : undefined,
-  };
-
-  if (form.id) {
-    tiers.value = tiers.value.map(t => (t.id === form.id ? tier : t));
-  } else {
-    tiers.value = [...tiers.value, tier];
-  }
-
-  resetTierForm();
+function handleTierValidation(results: TierFieldErrors[]) {
+  tierValidationResults.value = results;
 }
 
 function applyTiersEvent(event: any | null, overrideKind?: TierKind | null) {
@@ -1652,8 +1430,8 @@ async function publishTiers() {
     notifyError('Add at least one tier before publishing.');
     return;
   }
-  if (tiersJsonError.value) {
-    notifyError('Fix tier JSON before publishing tiers.');
+  if (tiersHaveErrors.value) {
+    notifyError('Fix tier validation errors before publishing tiers.');
     return;
   }
 
@@ -1716,8 +1494,8 @@ async function publishProfile() {
     notifyError('Add at least one tier before publishing.');
     return;
   }
-  if (tiersJsonError.value) {
-    notifyError('Fix tier JSON before publishing the profile.');
+  if (tiersHaveErrors.value) {
+    notifyError('Fix tier validation errors before publishing the profile.');
     return;
   }
 
@@ -1786,10 +1564,6 @@ async function publishProfile() {
   } finally {
     publishingProfile.value = false;
   }
-}
-
-function frequencyLabel(value: Tier['frequency']) {
-  return value === 'one_time' ? 'one-time' : value;
 }
 
 watch(
