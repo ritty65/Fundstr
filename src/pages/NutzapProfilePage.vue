@@ -368,43 +368,18 @@
             <q-card class="grid-card explorer-card">
               <q-card-section class="q-gutter-xs">
                 <div class="text-h6">Explorer</div>
-                <div class="text-caption text-2">Lookup an author and preview their Nutzap profile.</div>
-              </q-card-section>
-              <q-separator />
-              <q-card-section class="column q-gutter-md">
-                <q-input
-                  v-model="authorInput"
-                  label="Author (npub or hex pubkey)"
-                  dense
-                  filled
-                  autocomplete="off"
-                />
-                <div class="row items-center q-gutter-sm">
-                  <q-btn
-                    color="primary"
-                    label="Load Data"
-                    :disable="!authorInput.trim() || loading"
-                    :loading="loading"
-                    @click="loadAll"
-                  />
-                  <q-badge color="accent" align="middle" v-if="loading">Loading…</q-badge>
-                </div>
                 <div class="text-caption text-2">
-                  Tier address preview: <span class="text-1 text-weight-medium">{{ tierAddressPreview }}</span>
-                </div>
-              </q-card-section>
-            </q-card>
-
-            <q-card class="grid-card explorer-card">
-              <q-card-section class="q-gutter-xs">
-                <div class="text-h6">Explorer v2</div>
-                <div class="text-caption text-2">
-                  Query profiles, notes, or parameterized events across multiple relays.
+                  Quickly hydrate the composer with author data and inspect events across your relay set.
                 </div>
               </q-card-section>
               <q-separator />
               <q-card-section>
-                <NutzapExplorerSearch />
+                <NutzapExplorerPanel
+                  v-model="authorInput"
+                  :loading-author="loading"
+                  :tier-address-preview="tierAddressPreview"
+                  @load-author="loadAll"
+                />
               </q-card-section>
             </q-card>
           </div>
@@ -451,7 +426,7 @@ import type { WatchStopHandle } from 'vue';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
 import RelayStatusIndicator from 'src/nutzap/RelayStatusIndicator.vue';
-import NutzapExplorerSearch from 'src/nutzap/onepage/NutzapExplorerSearch.vue';
+import NutzapExplorerPanel from 'src/nutzap/onepage/NutzapExplorerPanel.vue';
 import NutzapLegacyExplorer from 'src/nutzap/onepage/NutzapLegacyExplorer.vue';
 import NutzapSelfTests from 'src/nutzap/onepage/NutzapSelfTests.vue';
 import TierComposer from './nutzap-profile/TierComposer.vue';
