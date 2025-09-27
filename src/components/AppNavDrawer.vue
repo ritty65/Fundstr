@@ -137,6 +137,14 @@
           <q-item-label>Nutzap Profile</q-item-label>
         </q-item-section>
       </q-item>
+      <q-item v-if="!isGuest" clickable @click="gotoNutzapDiagnostics">
+        <q-item-section avatar>
+          <q-icon name="tune" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>Advanced diagnostics</q-item-label>
+        </q-item-section>
+      </q-item>
       <q-item v-if="!isGuest" clickable @click="gotoChats">
         <q-item-section avatar>
           <q-icon name="chat" />
@@ -230,6 +238,7 @@ const gotoMyProfile = () => goto("/my-profile");
 const gotoBuckets = () => goto("/buckets");
 const gotoSubscriptions = () => goto("/subscriptions");
 const gotoNutzapProfile = () => goto("/nutzap-profile");
+const gotoNutzapDiagnostics = () => goto("/nutzap-tools");
 const gotoChats = () => goto("/nostr-messenger");
 const gotoNostrLogin = () => goto("/nostr-login");
 const gotoTerms = () => goto("/terms");
