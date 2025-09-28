@@ -1,5 +1,5 @@
 <template>
-  <div class="nutzap-explorer column q-gutter-lg">
+  <div :class="['nutzap-explorer column q-gutter-lg', { 'nutzap-explorer--condensed': condensed }]">
     <section class="column q-gutter-sm quick-lookup">
       <div class="row items-end q-col-gutter-md">
         <q-input
@@ -23,7 +23,7 @@
             dense
             flat
             icon="tune"
-            label="Advanced options"
+            :label="condensed ? 'Options' : 'Advanced options'"
             class="q-ml-none q-ml-sm-md"
             @click="advancedOpen = true"
           />
@@ -101,7 +101,7 @@
         flat
         dense
         virtual-scroll
-        :rows-per-page-options="[10, 25, 50, 100]"
+        :rows-per-page-options="rowsPerPageOptions"
         :loading="loading"
         no-data-label="No results yet. Enter a query or pointer and run the search."
       >
@@ -192,12 +192,15 @@ const props = defineProps<{
   modelValue: string;
   loadingAuthor: boolean;
   tierAddressPreview: string;
+  condensed?: boolean;
 }>();
 
 const emit = defineEmits<{
   (event: 'update:modelValue', value: string): void;
   (event: 'load-author'): void;
 }>();
+
+const condensed = computed(() => Boolean(props.condensed));
 
 const authorModel = computed({
   get: () => props.modelValue,
@@ -244,6 +247,8 @@ const tableColumns = [
   { name: 'author', label: 'Author', field: 'author', align: 'left' },
   { name: 'relays', label: 'Relays', field: 'relays', align: 'left' },
 ];
+
+const rowsPerPageOptions = computed(() => (condensed.value ? [5, 10, 25, 50] : [10, 25, 50, 100]));
 
 function emitLoadAuthor(): void {
   emit('load-author');
@@ -540,6 +545,25 @@ const loadingAuthor = computed(() => props.loadingAuthor);
 
 .quick-lookup {
   border-radius: 12px;
+}
+
+.nutzap-explorer--condensed {
+  gap: 16px;
+}
+
+.nutzap-explorer--condensed .quick-lookup {
+  background: var(--surface-2);
+  border: 1px solid var(--surface-contrast-border);
+  padding: 12px;
+}
+
+.nutzap-explorer--condensed .q-table {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+}
+
+.nutzap-explorer--condensed .q-table tbody tr {
+  font-size: 13px;
 }
 
 .filter-summary {
