@@ -3,10 +3,10 @@
     <div class="profile-layout">
       <aside class="profile-rail">
         <div class="status-banner bg-surface-2 text-1">
-          <RelayStatusIndicator />
-          <q-chip dense :color="relayStatusColor" text-color="white" class="status-chip">
-            {{ relayStatusLabel }}
-          </q-chip>
+          <div class="status-summary">
+            <span class="status-dot" :class="relayStatusDotClass" aria-hidden="true"></span>
+            <span class="status-label text-caption text-weight-medium">{{ relayStatusLabel }}</span>
+          </div>
           <div class="status-meta text-body2 text-2">Isolated relay: relay.fundstr.me (WS → HTTP fallback)</div>
         </div>
 
@@ -39,42 +39,103 @@
         <q-tab-panels v-model="activeProfileStep" animated class="profile-panels">
           <q-tab-panel name="connect" class="profile-panel">
             <div class="panel-sections">
-              <section class="section-card">
+              <section class="section-card connection-module">
                 <div class="section-header">
-                  <div class="section-title text-subtitle1 text-weight-medium text-1">Relay connection</div>
+                  <div class="section-title text-subtitle1 text-weight-medium text-1">Connection</div>
                   <div class="section-subtitle text-body2 text-2">
-                    Control the live WebSocket session used for publishing events.
+                    Control the live WebSocket session used for publishing events and monitor relay activity.
                   </div>
                 </div>
-                <div class="section-body column q-gutter-md">
-                  <q-input
-                    v-model="relayUrlInput"
-                    label="Relay URL"
-                    dense
-                    filled
-                    :disable="!relaySupported"
-                    autocomplete="off"
-                  />
-                  <div class="row items-center wrap q-gutter-sm">
-                    <q-btn
-                      color="primary"
-                      label="Connect"
-                      :disable="!relaySupported || !relayUrlInputValid"
-                      @click="handleRelayConnect"
-                    />
-                    <q-btn
-                      color="primary"
-                      outline
-                      label="Disconnect"
-                      :disable="!relaySupported || !relayIsConnected"
-                      @click="handleRelayDisconnect"
-                    />
-                    <q-toggle
-                      v-model="relayAutoReconnect"
-                      label="Auto reconnect"
+                <div class="section-body column q-gutter-lg">
+                  <div class="connection-status column q-gutter-xs">
+                    <div class="status-indicators row items-center wrap q-gutter-sm">
+                      <RelayStatusIndicator class="connection-status-indicator" />
+                      <q-chip dense :color="relayStatusColor" text-color="white" class="status-chip">
+                        {{ relayStatusLabel }}
+                      </q-chip>
+                    </div>
+                    <div v-if="latestRelayActivity" class="latest-activity text-caption">
+                      <span class="text-2">Latest update:</span>
+                      <span class="text-weight-medium text-1">{{ latestRelayActivity.message }}</span>
+                      <span class="text-2">({{ formatActivityTime(latestRelayActivity.timestamp) }})</span>
+                    </div>
+                    <div v-else class="latest-activity text-caption text-2">No relay activity yet.</div>
+                  </div>
+
+                  <div class="connection-controls column q-gutter-sm">
+                    <q-input
+                      v-model="relayUrlInput"
+                      label="Relay URL"
                       dense
+                      filled
                       :disable="!relaySupported"
+                      autocomplete="off"
                     />
+                    <div class="row items-center wrap q-gutter-sm">
+                      <q-btn
+                        color="primary"
+                        label="Connect"
+                        :disable="!relaySupported || !relayUrlInputValid"
+                        @click="handleRelayConnect"
+                      />
+                      <q-btn
+                        color="primary"
+                        outline
+                        label="Disconnect"
+                        :disable="!relaySupported || !relayIsConnected"
+                        @click="handleRelayDisconnect"
+                      />
+                      <q-toggle
+                        v-model="relayAutoReconnect"
+                        label="Auto reconnect"
+                        dense
+                        :disable="!relaySupported"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="connection-activity column q-gutter-xs">
+                    <q-expansion-item
+                      dense
+                      expand-separator
+                      icon="history"
+                      label="Activity timeline"
+                      header-class="activity-expansion-header"
+                      :disable="!relayActivity.length"
+                    >
+                      <div v-if="relayActivityTimeline.length" class="activity-timeline column q-gutter-md q-mt-sm">
+                        <div
+                          v-for="entry in relayActivityTimeline"
+                          :key="entry.id"
+                          class="timeline-entry row no-wrap"
+                        >
+                          <div class="timeline-marker" :class="`timeline-marker--${entry.level}`"></div>
+                          <div class="timeline-content column q-gutter-xs">
+                            <div class="timeline-header row items-center q-gutter-sm">
+                              <span class="text-caption text-2">{{ formatActivityTime(entry.timestamp) }}</span>
+                              <q-badge :color="activityLevelColor(entry.level)" outline size="sm">
+                                {{ entry.level }}
+                              </q-badge>
+                            </div>
+                            <div class="timeline-message text-body2 text-1">{{ entry.message }}</div>
+                            <div v-if="entry.context" class="timeline-context text-caption text-2">{{ entry.context }}</div>
+                          </div>
+                        </div>
+                        <div class="timeline-actions row justify-end">
+                          <q-btn
+                            flat
+                            label="Clear log"
+                            size="sm"
+                            :disable="!relayActivity.length"
+                            @click="clearRelayActivity"
+                          />
+                        </div>
+                      </div>
+                      <div v-else class="section-empty text-caption text-2 q-mt-sm">No relay activity yet.</div>
+                    </q-expansion-item>
+                    <div v-if="!relayActivity.length" class="text-caption text-2">
+                      Activity will appear once the relay connection initializes.
+                    </div>
                   </div>
                 </div>
               </section>
@@ -211,47 +272,6 @@
                       </div>
                     </div>
                   </q-expansion-item>
-                </div>
-              </section>
-
-              <section class="section-card">
-                <div class="section-header">
-                  <div class="section-title text-subtitle1 text-weight-medium text-1">Relay activity</div>
-                  <div class="section-subtitle text-body2 text-2">
-                    Monitor connection state changes and publish acknowledgements.
-                  </div>
-                </div>
-                <div class="section-body column q-gutter-md">
-                  <q-list
-                    v-if="relayActivity.length"
-                    bordered
-                    separator
-                    dense
-                    class="activity-log-list"
-                  >
-                    <q-item v-for="entry in relayActivity" :key="entry.id">
-                      <q-item-section>
-                        <div class="row items-center no-wrap q-gutter-sm">
-                          <span class="text-caption text-2">{{ formatActivityTime(entry.timestamp) }}</span>
-                          <q-badge :color="activityLevelColor(entry.level)" outline size="sm">
-                            {{ entry.level }}
-                          </q-badge>
-                          <span class="text-body2 text-1">{{ entry.message }}</span>
-                        </div>
-                        <div class="text-caption text-2" v-if="entry.context">{{ entry.context }}</div>
-                      </q-item-section>
-                    </q-item>
-                  </q-list>
-                  <div v-else class="section-empty text-caption text-2">No relay activity yet.</div>
-                  <div class="row justify-end">
-                    <q-btn
-                      flat
-                      label="Clear Log"
-                      size="sm"
-                      :disable="!relayActivity.length"
-                      @click="clearRelayActivity"
-                    />
-                  </div>
                 </div>
               </section>
             </div>
@@ -595,6 +615,27 @@ const relayStatusColor = computed(() => {
       return 'grey-6';
   }
 });
+
+const relayStatusDotClass = computed(() => {
+  switch (relayConnectionStatus.value) {
+    case 'connected':
+      return 'status-dot--positive';
+    case 'connecting':
+    case 'reconnecting':
+      return 'status-dot--warning';
+    case 'disconnected':
+      return 'status-dot--negative';
+    default:
+      return 'status-dot--idle';
+  }
+});
+
+const latestRelayActivity = computed(() => {
+  const entries = relayActivity.value;
+  return entries.length ? entries[entries.length - 1] : null;
+});
+
+const relayActivityTimeline = computed(() => relayActivity.value.slice().reverse());
 
 const activityTimeFormatter =
   typeof Intl !== 'undefined'
@@ -1677,12 +1718,45 @@ onBeforeUnmount(() => {
 
 .status-banner {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px 16px;
-  padding: 20px 24px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
   border: 1px solid var(--surface-contrast-border);
   border-radius: 16px;
+}
+
+.status-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: var(--surface-contrast-border);
+  transition: background-color 150ms ease;
+}
+
+.status-dot--positive {
+  background: #21ba45;
+}
+
+.status-dot--warning {
+  background: #f2c037;
+}
+
+.status-dot--negative {
+  background: #c10015;
+}
+
+.status-dot--idle {
+  background: var(--surface-contrast-border);
+}
+
+.status-label {
+  text-transform: capitalize;
 }
 
 .status-chip {
@@ -1691,7 +1765,90 @@ onBeforeUnmount(() => {
 }
 
 .status-meta {
-  flex-basis: 100%;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+
+.connection-status-indicator {
+  min-width: 160px;
+}
+
+.latest-activity {
+  color: var(--text-2);
+}
+
+.activity-expansion-header {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.activity-timeline {
+  position: relative;
+  padding-left: 4px;
+}
+
+.timeline-entry {
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.timeline-marker {
+  position: relative;
+  width: 12px;
+  min-width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  margin-top: 6px;
+  background: var(--accent-500);
+}
+
+.timeline-marker::after {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: calc(100% + 12px);
+  background: var(--surface-contrast-border);
+}
+
+.timeline-entry:last-child .timeline-marker::after {
+  display: none;
+}
+
+.timeline-marker--success {
+  background: #21ba45;
+}
+
+.timeline-marker--info {
+  background: var(--accent-500);
+}
+
+.timeline-marker--warning {
+  background: #f2c037;
+}
+
+.timeline-marker--error {
+  background: #c10015;
+}
+
+.timeline-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.timeline-message {
+  word-break: break-word;
+}
+
+.timeline-context {
+  word-break: break-word;
+}
+
+.timeline-actions {
+  padding-top: 8px;
 }
 
 
@@ -1846,11 +2003,6 @@ onBeforeUnmount(() => {
 
 .optional-tools-action {
   align-self: flex-start;
-}
-
-.activity-log-list {
-  max-height: 260px;
-  overflow-y: auto;
 }
 
 @media (max-width: 1100px) {
