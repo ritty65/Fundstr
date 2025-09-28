@@ -611,6 +611,30 @@
                         @click="publishAll"
                       />
                     </div>
+                    <div
+                      v-if="publicProfileUrl"
+                      class="share-inline row items-center q-gutter-sm"
+                      data-testid="publish-summary-share"
+                    >
+                      <q-input
+                        :model-value="publicProfileUrl"
+                        dense
+                        filled
+                        readonly
+                        class="col"
+                        data-testid="publish-public-profile-url"
+                      >
+                        <template #append>
+                          <q-btn
+                            flat
+                            color="primary"
+                            label="Copy link"
+                            data-testid="publish-copy-public-profile-url"
+                            @click="copy(publicProfileUrl)"
+                          />
+                        </template>
+                      </q-input>
+                    </div>
                     <div class="text-body2 text-2" v-if="lastPublishInfo">
                       {{ lastPublishInfo }}
                     </div>
@@ -648,6 +672,30 @@
                           P2PK pointer:
                           <span class="text-weight-medium text-1">{{ summaryP2pkPointer }}</span>
                         </div>
+                      </div>
+                      <div
+                        v-if="publicProfileUrl"
+                        class="summary-block"
+                        data-testid="explore-summary-share"
+                      >
+                        <div class="summary-label text-caption text-2">Public profile link</div>
+                        <q-input
+                          :model-value="publicProfileUrl"
+                          dense
+                          filled
+                          readonly
+                          data-testid="public-profile-url"
+                        >
+                          <template #append>
+                            <q-btn
+                              flat
+                              color="primary"
+                              label="Copy link"
+                              data-testid="copy-public-profile-url"
+                              @click="copy(publicProfileUrl)"
+                            />
+                          </template>
+                        </q-input>
                       </div>
                       <div class="summary-block" data-testid="explore-summary-mints">
                         <div class="summary-label text-caption text-2">Trusted mints</div>
@@ -795,7 +843,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { RouteLocationRaw } from 'vue-router';
+import { useRouter, type RouteLocationRaw } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
@@ -807,6 +855,8 @@ import type { Tier } from 'src/nutzap/types';
 import { useActiveNutzapSigner } from 'src/nutzap/signer';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
 import { generateSecretKey, getPublicKey as getNostrPublicKey, nip19 } from 'nostr-tools';
+import { useClipboard } from 'src/composables/useClipboard';
+import { buildProfileUrl } from 'src/utils/profileUrl';
 import {
   FUNDSTR_WS_URL,
   FUNDSTR_REQ_URL,
@@ -844,6 +894,42 @@ const loading = ref(false);
 const publishingAll = ref(false);
 const lastPublishInfo = ref('');
 const hasAutoLoaded = ref(false);
+
+const router = useRouter();
+const { copy } = useClipboard();
+
+const authorHexForShare = computed(() => {
+  const input = authorInput.value;
+  if (!input.trim()) {
+    return '';
+  }
+
+  try {
+    return normalizeAuthor(input);
+  } catch {
+    return '';
+  }
+});
+
+const authorNpubForShare = computed(() => {
+  if (!authorHexForShare.value) {
+    return '';
+  }
+
+  return safeEncodeNpub(authorHexForShare.value);
+});
+
+const publicProfileUrl = computed(() => {
+  if (!authorNpubForShare.value) {
+    return '';
+  }
+
+  if (!router || typeof window === 'undefined' || !window.location) {
+    return '';
+  }
+
+  return buildProfileUrl(authorNpubForShare.value, router);
+});
 
 const identitySectionOpen = ref(true);
 const optionalMetadataSectionOpen = ref(true);
