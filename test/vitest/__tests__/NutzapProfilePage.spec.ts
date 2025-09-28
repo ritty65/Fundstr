@@ -236,6 +236,10 @@ async function mountPage() {
         NutzapLegacyExplorer: true,
         NutzapSelfTests: true,
         'router-link': true,
+        'q-page': { template: '<div class="q-page"><slot /></div>' },
+        'q-chip': { template: '<span class="q-chip"><slot /></span>' },
+        'q-tab-panels': { template: '<div class="q-tab-panels"><slot /></div>' },
+        'q-tab-panel': { template: '<div class="q-tab-panel"><slot /></div>' },
         transition: false,
         teleport: false,
       },
@@ -287,6 +291,50 @@ beforeEach(() => {
   state.relayStatusHandler = null;
   state.lastRelayClientInstance = undefined;
   localStorage.clear();
+});
+
+describe("NutzapProfilePage explore summary", () => {
+  it("renders profile, mint, relay, and tier summaries", async () => {
+    const wrapper = await mountPage();
+
+    (wrapper.vm as any).activeProfileStep = "explore";
+    (wrapper.vm as any).displayName = "Fundstr Hero";
+    (wrapper.vm as any).authorInput = VALID_HEX;
+    (wrapper.vm as any).p2pkPub = "ff".repeat(32);
+    (wrapper.vm as any).mintsText = "https://mint.one\nhttps://mint.two";
+    (wrapper.vm as any).relaysText = "wss://relay.alt";
+    (wrapper.vm as any).tiers = [
+      { id: "tier-1", title: "Tier One", price: 100, frequency: "monthly", description: "Monthly support", media: [] },
+      { id: "tier-2", title: "Tier Two", price: 500, frequency: "yearly", description: "", media: [] },
+    ];
+
+    await wrapper.vm.$nextTick();
+    await flushPromises();
+
+    const summaryCard = wrapper.find('[data-testid="explore-summary"]');
+    expect(summaryCard.exists()).toBe(true);
+    expect(summaryCard.text()).toContain("Fundstr Hero");
+    expect(summaryCard.text()).toContain("Author:");
+    expect(summaryCard.text()).toContain("P2PK pointer:");
+
+    const mintChips = summaryCard.findAll('[data-testid="explore-mint-chip"]');
+    expect(mintChips).toHaveLength(2);
+    expect(mintChips.map(node => node.text())).toEqual(
+      expect.arrayContaining(["https://mint.one", "https://mint.two"])
+    );
+
+    const relayChips = summaryCard.findAll('[data-testid="explore-relay-chip"]');
+    expect(relayChips.length).toBeGreaterThanOrEqual(2);
+    expect(relayChips.map(node => node.text())).toEqual(
+      expect.arrayContaining(["wss://relay.alt", "wss://relay.fundstr.me"])
+    );
+
+    const tierItems = summaryCard.findAll('[data-testid="explore-tier-item"]');
+    expect(tierItems).toHaveLength(2);
+    expect(tierItems[0].text()).toContain("Tier One");
+    expect(tierItems[0].text()).toContain("100 sats");
+    expect(tierItems[0].text()).toContain("Monthly");
+  });
 });
 
 describe("NutzapProfilePage publishing", () => {
