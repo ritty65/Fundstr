@@ -1,407 +1,454 @@
 <template>
   <q-page class="nutzap-profile-page bg-surface-1 q-pa-xl">
-    <div class="status-banner bg-surface-2 text-1">
-      <RelayStatusIndicator />
-      <q-chip dense :color="relayStatusColor" text-color="white" class="status-chip">
-        {{ relayStatusLabel }}
-      </q-chip>
-      <div class="status-meta text-body2 text-2">Isolated relay: relay.fundstr.me (WS → HTTP fallback)</div>
-    </div>
+    <div class="profile-layout">
+      <aside class="profile-rail">
+        <div class="status-banner bg-surface-2 text-1">
+          <RelayStatusIndicator />
+          <q-chip dense :color="relayStatusColor" text-color="white" class="status-chip">
+            {{ relayStatusLabel }}
+          </q-chip>
+          <div class="status-meta text-body2 text-2">Isolated relay: relay.fundstr.me (WS → HTTP fallback)</div>
+        </div>
 
-    <q-separator spaced class="group-separator" />
+        <section class="progress-overview bg-surface-2 text-1">
+          <div class="progress-header text-subtitle1 text-weight-medium">Workflow</div>
+          <ol class="progress-steps" role="list">
+            <li
+              v-for="(step, index) in workflowSteps"
+              :key="step.name"
+              :class="['progress-step-item', stepClasses(index)]"
+            >
+              <button
+                type="button"
+                class="progress-step-button"
+                :aria-current="index === activeStepIndex ? 'step' : undefined"
+                @click="activeProfileStep = step.name"
+              >
+                <span class="step-number">{{ index + 1 }}</span>
+                <span class="step-copy">
+                  <span class="step-label text-body1 text-weight-medium">{{ step.label }}</span>
+                  <span class="step-description text-caption text-2">{{ step.description }}</span>
+                </span>
+              </button>
+            </li>
+          </ol>
+        </section>
+      </aside>
 
-    <div class="profile-steps">
-      <q-tabs
-        v-model="activeProfileStep"
-        class="profile-tabs bg-surface-2 text-1 rounded-borders"
-        dense
-        active-color="primary"
-        indicator-color="primary"
-      >
-        <q-tab name="connect" label="Connect" />
-        <q-tab name="author" label="Author profile" />
-        <q-tab name="tiers" label="Manage tiers" />
-        <q-tab name="explore" label="Explore data" />
-      </q-tabs>
-
-      <q-tab-panels v-model="activeProfileStep" animated class="profile-panels">
-        <q-tab-panel name="connect" class="profile-panel">
-          <div class="panel-grid">
-            <q-card class="grid-card relay-card">
-              <q-card-section class="q-gutter-xs">
-                <div class="panel-title text-subtitle1 text-weight-medium text-1">Relay Connection</div>
-                <div class="panel-subtitle text-body2 text-2">
-                  Control the live WebSocket session used for publishing events.
+      <div class="profile-content">
+        <q-tab-panels v-model="activeProfileStep" animated class="profile-panels">
+          <q-tab-panel name="connect" class="profile-panel">
+            <div class="panel-sections">
+              <section class="section-card">
+                <div class="section-header">
+                  <div class="section-title text-subtitle1 text-weight-medium text-1">Relay connection</div>
+                  <div class="section-subtitle text-body2 text-2">
+                    Control the live WebSocket session used for publishing events.
+                  </div>
                 </div>
-              </q-card-section>
-              <q-separator />
-              <q-card-section class="column q-gutter-md">
-                <q-input
-                  v-model="relayUrlInput"
-                  label="Relay URL"
-                  dense
-                  filled
-                  :disable="!relaySupported"
-                  autocomplete="off"
-                />
-                <div class="row items-center wrap q-gutter-sm">
-                  <q-btn
-                    color="primary"
-                    label="Connect"
-                    :disable="!relaySupported || !relayUrlInputValid"
-                    @click="handleRelayConnect"
-                  />
-                  <q-btn
-                    color="primary"
-                    outline
-                    label="Disconnect"
-                    :disable="!relaySupported || !relayIsConnected"
-                    @click="handleRelayDisconnect"
-                  />
-                  <q-toggle
-                    v-model="relayAutoReconnect"
-                    label="Auto reconnect"
+                <div class="section-body column q-gutter-md">
+                  <q-input
+                    v-model="relayUrlInput"
+                    label="Relay URL"
                     dense
+                    filled
                     :disable="!relaySupported"
+                    autocomplete="off"
                   />
+                  <div class="row items-center wrap q-gutter-sm">
+                    <q-btn
+                      color="primary"
+                      label="Connect"
+                      :disable="!relaySupported || !relayUrlInputValid"
+                      @click="handleRelayConnect"
+                    />
+                    <q-btn
+                      color="primary"
+                      outline
+                      label="Disconnect"
+                      :disable="!relaySupported || !relayIsConnected"
+                      @click="handleRelayDisconnect"
+                    />
+                    <q-toggle
+                      v-model="relayAutoReconnect"
+                      label="Auto reconnect"
+                      dense
+                      :disable="!relaySupported"
+                    />
+                  </div>
                 </div>
-              </q-card-section>
-            </q-card>
+              </section>
 
-            <q-card class="grid-card keys-card">
-              <q-card-section class="q-gutter-xs">
-                <div class="panel-title text-subtitle1 text-weight-medium text-1">Keys</div>
-                <div class="panel-subtitle text-body2 text-2">
-                  Manage the publishing identity for Nutzap events.
-                  <template v-if="usingStoreIdentity">
-                    Active signer details are mirrored from your global Nostr identity.
-                  </template>
-                </div>
-              </q-card-section>
-              <q-separator />
-              <q-card-section class="column q-gutter-md">
-                <div v-if="usingStoreIdentity" class="column q-gutter-xs">
-                  <div class="text-body1 text-1">
-                    Connected as
-                    <span class="text-weight-medium">{{ connectedIdentitySummary || 'Fundstr identity' }}</span>
-                  </div>
-                  <div class="text-body2 text-2">
-                    Keys mirror your global Fundstr signer. Open the advanced tools below to inspect or export.
+              <section class="section-card">
+                <div class="section-header">
+                  <div class="section-title text-subtitle1 text-weight-medium text-1">Key status</div>
+                  <div class="section-subtitle text-body2 text-2">
+                    Manage the publishing identity for Nutzap events.
+                    <template v-if="usingStoreIdentity">
+                      Active signer details are mirrored from your global Nostr identity.
+                    </template>
                   </div>
                 </div>
-                <div v-else class="column q-gutter-xs">
-                  <div class="text-body1 text-1">Using a dedicated Nutzap key</div>
-                  <div class="text-body2 text-2">
-                    Generate or import a key to publish with a standalone identity.
+                <div class="section-body column q-gutter-md">
+                  <div v-if="usingStoreIdentity" class="column q-gutter-xs">
+                    <div class="text-body1 text-1">
+                      Connected as
+                      <span class="text-weight-medium">{{ connectedIdentitySummary || 'Fundstr identity' }}</span>
+                    </div>
+                    <div class="text-body2 text-2">
+                      Keys mirror your global Fundstr signer. Open the advanced tools below to inspect or export.
+                    </div>
                   </div>
-                </div>
-                <q-expansion-item
-                  v-model="advancedKeyManagementOpen"
-                  expand-separator
-                  dense
-                  icon="tune"
-                  label="Advanced key management"
-                >
-                  <div class="column q-gutter-md q-mt-sm">
-                    <q-banner dense rounded class="bg-surface-2 text-body2 text-2">
-                      Generate a fresh key for Nutzap-only publishing or paste an existing secret to reuse another
-                      signer.
-                    </q-banner>
-                    <div v-if="!usingStoreIdentity" class="column q-gutter-sm">
-                      <q-input
-                        v-model="keyImportValue"
-                        label="Secret key (nsec or 64-char hex)"
-                        dense
-                        filled
-                        autocomplete="off"
-                        :disable="usingStoreSecret"
-                      />
-                      <div class="row q-gutter-sm">
+                  <div v-else class="column q-gutter-xs">
+                    <div class="text-body1 text-1">Using a dedicated Nutzap key</div>
+                    <div class="text-body2 text-2">
+                      Generate or import a key to publish with a standalone identity.
+                    </div>
+                  </div>
+                  <q-expansion-item
+                    v-model="advancedKeyManagementOpen"
+                    expand-separator
+                    dense
+                    icon="tune"
+                    label="Advanced key management"
+                  >
+                    <div class="column q-gutter-md q-mt-sm">
+                      <q-banner dense rounded class="bg-surface-2 text-body2 text-2">
+                        Generate a fresh key for Nutzap-only publishing or paste an existing secret to reuse another
+                        signer.
+                      </q-banner>
+                      <div v-if="!usingStoreIdentity" class="column q-gutter-sm">
+                        <q-input
+                          v-model="keyImportValue"
+                          label="Secret key (nsec or 64-char hex)"
+                          dense
+                          filled
+                          autocomplete="off"
+                          :disable="usingStoreSecret"
+                        />
+                        <div class="row q-gutter-sm">
+                          <q-btn
+                            color="primary"
+                            label="Generate"
+                            :disable="usingStoreSecret"
+                            @click="generateNewSecret"
+                          />
+                          <q-btn
+                            color="primary"
+                            outline
+                            label="Import"
+                            :disable="usingStoreSecret"
+                            @click="importSecretKey"
+                          />
+                        </div>
+                      </div>
+                      <div v-else class="text-caption text-2">
+                        Shared signer active — manual key import is disabled while using your Fundstr identity.
+                      </div>
+                      <div class="column q-gutter-sm">
+                        <q-input
+                          :model-value="keySecretHex"
+                          label="Secret key (hex)"
+                          type="textarea"
+                          dense
+                          filled
+                          readonly
+                          autogrow
+                        />
+                        <q-input
+                          :model-value="keyNsec"
+                          label="Secret key (nsec)"
+                          type="textarea"
+                          dense
+                          filled
+                          readonly
+                          autogrow
+                        />
+                        <q-input
+                          :model-value="keyPublicHex"
+                          label="Public key (hex)"
+                          type="textarea"
+                          dense
+                          filled
+                          readonly
+                          autogrow
+                        />
+                        <q-input
+                          :model-value="keyNpub"
+                          label="Public key (npub)"
+                          type="textarea"
+                          dense
+                          filled
+                          readonly
+                          autogrow
+                        />
+                      </div>
+                      <q-banner dense rounded class="bg-surface-2 text-body2 text-2">
+                        Save keys to this browser when you want the device to remember them, or clear the stored copy
+                        when finished.
+                      </q-banner>
+                      <div v-if="!usingStoreIdentity" class="row wrap q-gutter-sm">
                         <q-btn
                           color="primary"
-                          label="Generate"
-                          :disable="usingStoreSecret"
-                          @click="generateNewSecret"
+                          label="Save to Browser"
+                          :disable="!keySecretHex || usingStoreSecret"
+                          @click="saveSecretToBrowser"
                         />
                         <q-btn
                           color="primary"
                           outline
-                          label="Import"
-                          :disable="usingStoreSecret"
-                          @click="importSecretKey"
+                          label="Load from Browser"
+                          :disable="!hasStoredSecret || usingStoreSecret"
+                          @click="loadSecretFromBrowser"
+                        />
+                        <q-btn
+                          color="negative"
+                          outline
+                          label="Forget Stored Key"
+                          :disable="!hasStoredSecret || usingStoreSecret"
+                          @click="forgetStoredSecret"
                         />
                       </div>
                     </div>
-                    <div v-else class="text-caption text-2">
-                      Shared signer active — manual key import is disabled while using your Fundstr identity.
-                    </div>
-                    <div class="column q-gutter-sm">
-                      <q-input
-                        :model-value="keySecretHex"
-                        label="Secret key (hex)"
-                        type="textarea"
-                        dense
-                        filled
-                        readonly
-                        autogrow
-                      />
-                      <q-input
-                        :model-value="keyNsec"
-                        label="Secret key (nsec)"
-                        type="textarea"
-                        dense
-                        filled
-                        readonly
-                        autogrow
-                      />
-                      <q-input
-                        :model-value="keyPublicHex"
-                        label="Public key (hex)"
-                        type="textarea"
-                        dense
-                        filled
-                        readonly
-                        autogrow
-                      />
-                      <q-input
-                        :model-value="keyNpub"
-                        label="Public key (npub)"
-                        type="textarea"
-                        dense
-                        filled
-                        readonly
-                        autogrow
-                      />
-                    </div>
-                    <q-banner dense rounded class="bg-surface-2 text-body2 text-2">
-                      Save keys to this browser when you want the device to remember them, or clear the stored copy when
-                      finished.
-                    </q-banner>
-                    <div v-if="!usingStoreIdentity" class="row wrap q-gutter-sm">
-                      <q-btn
-                        color="primary"
-                        label="Save to Browser"
-                        :disable="!keySecretHex || usingStoreSecret"
-                        @click="saveSecretToBrowser"
-                      />
-                      <q-btn
-                        color="primary"
-                        outline
-                        label="Load from Browser"
-                        :disable="!hasStoredSecret || usingStoreSecret"
-                        @click="loadSecretFromBrowser"
-                      />
-                      <q-btn
-                        color="negative"
-                        outline
-                        label="Forget Stored Key"
-                        :disable="!hasStoredSecret || usingStoreSecret"
-                        @click="forgetStoredSecret"
-                      />
-                    </div>
+                  </q-expansion-item>
+                </div>
+              </section>
+
+              <section class="section-card">
+                <div class="section-header">
+                  <div class="section-title text-subtitle1 text-weight-medium text-1">Relay activity</div>
+                  <div class="section-subtitle text-body2 text-2">
+                    Monitor connection state changes and publish acknowledgements.
                   </div>
-                </q-expansion-item>
-              </q-card-section>
-            </q-card>
-
-            <q-card class="grid-card activity-card">
-              <q-card-section class="q-gutter-xs">
-                <div class="panel-title text-subtitle1 text-weight-medium text-1">Activity Log</div>
-                <div class="panel-subtitle text-body2 text-2">Monitor relay connection state and publish acknowledgements.</div>
-              </q-card-section>
-              <q-separator />
-              <q-card-section class="q-pa-none">
-                <q-list
-                  v-if="relayActivity.length"
-                  bordered
-                  separator
-                  dense
-                  class="activity-log-list"
-                >
-                  <q-item v-for="entry in relayActivity" :key="entry.id">
-                    <q-item-section>
-                      <div class="row items-center no-wrap q-gutter-sm">
-                        <span class="text-caption text-2">{{ formatActivityTime(entry.timestamp) }}</span>
-                        <q-badge :color="activityLevelColor(entry.level)" outline size="sm">
-                          {{ entry.level }}
-                        </q-badge>
-                        <span class="text-body2 text-1">{{ entry.message }}</span>
-                      </div>
-                      <div class="text-caption text-2" v-if="entry.context">{{ entry.context }}</div>
-                    </q-item-section>
-                  </q-item>
-                </q-list>
-                <div v-else class="q-pa-md text-caption text-2">No relay activity yet.</div>
-              </q-card-section>
-              <q-separator />
-              <q-card-section class="row justify-end q-pa-sm">
-                <q-btn
-                  flat
-                  label="Clear Log"
-                  size="sm"
-                  :disable="!relayActivity.length"
-                  @click="clearRelayActivity"
-                />
-              </q-card-section>
-            </q-card>
-          </div>
-        </q-tab-panel>
-
-        <q-tab-panel name="author" class="profile-panel">
-          <div class="panel-grid">
-            <q-card class="grid-card publisher-card">
-              <q-card-section class="q-gutter-xs">
-                <div class="panel-title text-subtitle1 text-weight-medium text-1">Publisher</div>
-                <div class="panel-subtitle text-body2 text-2">Compose metadata and tiers before publishing to relay.fundstr.me.</div>
-              </q-card-section>
-              <q-separator />
-              <q-card-section class="column q-gutter-md">
-                <div class="text-subtitle2 text-1">Payment Profile (kind 10019)</div>
-                <q-input v-model="displayName" label="Display Name" dense filled />
-                <q-input v-model="pictureUrl" label="Picture URL" dense filled />
-                <q-input
-                  v-model="p2pkPriv"
-                  label="P2PK Private Key (hex)"
-                  dense
-                  filled
-                  autocomplete="off"
-                />
-                <div class="row q-gutter-sm">
-                  <q-btn color="primary" label="Derive Public Key" @click="deriveP2pkPublicKey" />
-                  <q-btn color="primary" outline label="Generate Keypair" @click="generateP2pkKeypair" />
                 </div>
-                <q-input v-model="p2pkPub" label="P2PK Public Key" dense filled />
-                <q-input
-                  :model-value="p2pkDerivedPub"
-                  label="Derived P2PK Public Key"
-                  type="textarea"
-                  dense
-                  filled
-                  readonly
-                  autogrow
-                />
-                <q-input
-                  v-model="mintsText"
-                  type="textarea"
-                  label="Trusted Mints (one per line)"
-                  dense
-                  filled
-                  autogrow
-                />
-                <q-input
-                  v-model="relaysText"
-                  type="textarea"
-                  label="Relay Hints (optional, one per line)"
-                  dense
-                  filled
-                  autogrow
-                />
-                <div class="row justify-end q-gutter-sm">
-                  <q-btn
-                    color="primary"
-                    label="Publish Profile"
-                    :disable="profilePublishDisabled"
-                    :loading="publishingProfile"
-                    @click="publishProfile"
-                  />
-                </div>
-                <div class="text-body2 text-2" v-if="lastProfilePublishInfo">
-                  {{ lastProfilePublishInfo }}
-                </div>
-              </q-card-section>
-            </q-card>
-          </div>
-        </q-tab-panel>
-
-        <q-tab-panel name="tiers" class="profile-panel">
-          <div class="panel-grid">
-            <q-card class="grid-card tiers-card">
-              <q-card-section class="q-gutter-xs">
-                <div class="panel-title text-subtitle1 text-weight-medium text-1">Tiers</div>
-                <div class="panel-subtitle text-body2 text-2">
-                  Publishing as {{ tierKindLabel }} — parameterized replaceable ["d", "tiers"].
-                </div>
-              </q-card-section>
-              <q-separator />
-              <q-card-section class="column q-gutter-md">
-                <div class="row items-center justify-between">
-                  <div class="text-subtitle2 text-1">Tier kind</div>
-                  <q-btn-toggle
-                    v-model="tierKind"
-                    :options="tierKindOptions"
+                <div class="section-body column q-gutter-md">
+                  <q-list
+                    v-if="relayActivity.length"
+                    bordered
+                    separator
                     dense
-                    toggle-color="primary"
-                    unelevated
+                    class="activity-log-list"
+                  >
+                    <q-item v-for="entry in relayActivity" :key="entry.id">
+                      <q-item-section>
+                        <div class="row items-center no-wrap q-gutter-sm">
+                          <span class="text-caption text-2">{{ formatActivityTime(entry.timestamp) }}</span>
+                          <q-badge :color="activityLevelColor(entry.level)" outline size="sm">
+                            {{ entry.level }}
+                          </q-badge>
+                          <span class="text-body2 text-1">{{ entry.message }}</span>
+                        </div>
+                        <div class="text-caption text-2" v-if="entry.context">{{ entry.context }}</div>
+                      </q-item-section>
+                    </q-item>
+                  </q-list>
+                  <div v-else class="section-empty text-caption text-2">No relay activity yet.</div>
+                  <div class="row justify-end">
+                    <q-btn
+                      flat
+                      label="Clear Log"
+                      size="sm"
+                      :disable="!relayActivity.length"
+                      @click="clearRelayActivity"
+                    />
+                  </div>
+                </div>
+              </section>
+            </div>
+          </q-tab-panel>
+
+          <q-tab-panel name="author" class="profile-panel">
+            <div class="panel-sections">
+              <section class="section-card">
+                <div class="section-header">
+                  <div class="section-title text-subtitle1 text-weight-medium text-1">Author metadata</div>
+                  <div class="section-subtitle text-body2 text-2">
+                    Compose profile details that will be published alongside your tiers.
+                  </div>
+                </div>
+                <div class="section-body column q-gutter-md">
+                  <div class="text-subtitle2 text-1">Payment Profile (kind 10019)</div>
+                  <q-input v-model="displayName" label="Display Name" dense filled />
+                  <q-input v-model="pictureUrl" label="Picture URL" dense filled />
+                  <q-input v-model="mintsText" type="textarea" label="Trusted Mints (one per line)" dense filled autogrow />
+                  <q-input
+                    v-model="relaysText"
+                    type="textarea"
+                    label="Relay Hints (optional, one per line)"
+                    dense
+                    filled
+                    autogrow
                   />
                 </div>
-                <TierComposer
-                  v-model:tiers="tiers"
-                  :frequency-options="tierFrequencyOptions"
-                  @validation-changed="handleTierValidation"
-                />
-                <q-input
-                  :model-value="tiersJsonPreview"
-                  type="textarea"
-                  label="Tiers JSON preview"
-                  dense
-                  filled
-                  autogrow
-                  readonly
-                  spellcheck="false"
-                />
-                <div class="row justify-end q-gutter-sm">
-                  <q-btn
-                    color="primary"
-                    label="Publish Tiers"
-                    :disable="tiersPublishDisabled"
-                    :loading="publishingTiers"
-                    @click="publishTiers"
+              </section>
+
+              <section class="section-card">
+                <div class="section-header">
+                  <div class="section-title text-subtitle1 text-weight-medium text-1">P2PK keys</div>
+                  <div class="section-subtitle text-body2 text-2">
+                    Generate or derive the payment pointer used by your Nutzap profile.
+                  </div>
+                </div>
+                <div class="section-body column q-gutter-md">
+                  <q-input
+                    v-model="p2pkPriv"
+                    label="P2PK Private Key (hex)"
+                    dense
+                    filled
+                    autocomplete="off"
+                  />
+                  <div class="row q-gutter-sm">
+                    <q-btn color="primary" label="Derive Public Key" @click="deriveP2pkPublicKey" />
+                    <q-btn color="primary" outline label="Generate Keypair" @click="generateP2pkKeypair" />
+                  </div>
+                  <q-input v-model="p2pkPub" label="P2PK Public Key" dense filled />
+                  <q-input
+                    :model-value="p2pkDerivedPub"
+                    label="Derived P2PK Public Key"
+                    type="textarea"
+                    dense
+                    filled
+                    readonly
+                    autogrow
                   />
                 </div>
-                <div class="text-body2 text-2" v-if="lastTiersPublishInfo">
-                  {{ lastTiersPublishInfo }}
+              </section>
+
+              <section class="section-card">
+                <div class="section-header">
+                  <div class="section-title text-subtitle1 text-weight-medium text-1">Publish profile</div>
+                  <div class="section-subtitle text-body2 text-2">
+                    Confirm details and push the latest payment profile to relay.fundstr.me.
+                  </div>
                 </div>
-              </q-card-section>
-            </q-card>
-          </div>
-        </q-tab-panel>
-
-        <q-tab-panel name="explore" class="profile-panel">
-          <div class="panel-grid">
-            <q-card class="grid-card explorer-card">
-              <q-card-section class="q-gutter-xs">
-                <div class="panel-title text-subtitle1 text-weight-medium text-1">Explorer</div>
-                <div class="panel-subtitle text-body2 text-2">
-                  Quickly hydrate the composer with author data and inspect events across your relay set.
+                <div class="section-body column q-gutter-md">
+                  <div class="text-body2 text-2">
+                    Publishing updates with tier address <span class="text-weight-medium text-1">{{ tierAddressPreview }}</span>.
+                  </div>
+                  <div class="row justify-end q-gutter-sm">
+                    <q-btn
+                      color="primary"
+                      label="Publish Profile"
+                      :disable="profilePublishDisabled"
+                      :loading="publishingProfile"
+                      @click="publishProfile"
+                    />
+                  </div>
+                  <div class="text-body2 text-2" v-if="lastProfilePublishInfo">
+                    {{ lastProfilePublishInfo }}
+                  </div>
                 </div>
-              </q-card-section>
-              <q-separator />
-              <q-card-section>
-                <NutzapExplorerPanel
-                  v-model="authorInput"
-                  :loading-author="loading"
-                  :tier-address-preview="tierAddressPreview"
-                  @load-author="loadAll"
-                />
-              </q-card-section>
-            </q-card>
+              </section>
+            </div>
+          </q-tab-panel>
+
+          <q-tab-panel name="tiers" class="profile-panel">
+            <div class="panel-sections">
+              <section class="section-card">
+                <div class="section-header">
+                  <div class="section-title text-subtitle1 text-weight-medium text-1">Tier strategy</div>
+                  <div class="section-subtitle text-body2 text-2">
+                    Publishing as {{ tierKindLabel }} — parameterized replaceable ["d", "tiers"].
+                  </div>
+                </div>
+                <div class="section-body column q-gutter-md">
+                  <div class="row items-center justify-between wrap q-gutter-sm">
+                    <div class="text-subtitle2 text-1">Tier kind</div>
+                    <q-btn-toggle
+                      v-model="tierKind"
+                      :options="tierKindOptions"
+                      dense
+                      toggle-color="primary"
+                      unelevated
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section class="section-card">
+                <div class="section-header">
+                  <div class="section-title text-subtitle1 text-weight-medium text-1">Compose tiers</div>
+                  <div class="section-subtitle text-body2 text-2">
+                    Draft pricing, benefits, and cadence before publishing downstream.
+                  </div>
+                </div>
+                <div class="section-body column q-gutter-md">
+                  <TierComposer
+                    v-model:tiers="tiers"
+                    :frequency-options="tierFrequencyOptions"
+                    @validation-changed="handleTierValidation"
+                  />
+                </div>
+              </section>
+
+              <section class="section-card">
+                <div class="section-header">
+                  <div class="section-title text-subtitle1 text-weight-medium text-1">Review and publish</div>
+                  <div class="section-subtitle text-body2 text-2">
+                    Inspect the JSON payload before pushing updates to the relay.
+                  </div>
+                </div>
+                <div class="section-body column q-gutter-md">
+                  <q-input
+                    :model-value="tiersJsonPreview"
+                    type="textarea"
+                    label="Tiers JSON preview"
+                    dense
+                    filled
+                    autogrow
+                    readonly
+                    spellcheck="false"
+                  />
+                  <div class="row justify-end q-gutter-sm">
+                    <q-btn
+                      color="primary"
+                      label="Publish Tiers"
+                      :disable="tiersPublishDisabled"
+                      :loading="publishingTiers"
+                      @click="publishTiers"
+                    />
+                  </div>
+                  <div class="text-body2 text-2" v-if="lastTiersPublishInfo">
+                    {{ lastTiersPublishInfo }}
+                  </div>
+                </div>
+              </section>
+            </div>
+          </q-tab-panel>
+
+          <q-tab-panel name="explore" class="profile-panel">
+            <div class="panel-sections">
+              <section class="section-card">
+                <div class="section-header">
+                  <div class="section-title text-subtitle1 text-weight-medium text-1">Review workspace</div>
+                  <div class="section-subtitle text-body2 text-2">
+                    Quickly hydrate the composer with author data and inspect events across your relay set.
+                  </div>
+                </div>
+                <div class="section-body">
+                  <NutzapExplorerPanel
+                    v-model="authorInput"
+                    :loading-author="loading"
+                    :tier-address-preview="tierAddressPreview"
+                    @load-author="loadAll"
+                  />
+                </div>
+              </section>
+            </div>
+          </q-tab-panel>
+        </q-tab-panels>
+
+        <section class="optional-tools bg-surface-2 text-1">
+          <div class="optional-tools-header">
+            <div class="text-subtitle1 text-weight-medium">Optional tools</div>
+            <div class="text-body2 text-2">
+              Need deeper troubleshooting? Jump into diagnostics when you want relay inspectors and self-tests.
+            </div>
           </div>
-        </q-tab-panel>
-      </q-tab-panels>
-    </div>
-
-    <q-separator spaced class="group-separator" />
-
-    <section class="optional-tools bg-surface-2 text-1">
-      <div class="optional-tools-header">
-        <div class="text-subtitle1 text-weight-medium">Optional tools</div>
-        <div class="text-body2 text-2">
-          Need deeper troubleshooting? Jump into diagnostics when you want relay inspectors and self-tests.
-        </div>
+          <q-btn color="primary" label="Open diagnostics workspace" to="/nutzap-tools" class="optional-tools-action" />
+        </section>
       </div>
-      <q-btn color="primary" label="Open diagnostics workspace" to="/nutzap-tools" class="optional-tools-action" />
-    </section>
-
+    </div>
   </q-page>
 </template>
 
@@ -465,7 +512,37 @@ const keyNpub = ref('');
 const keyNsec = ref('');
 const hasStoredSecret = ref(false);
 const advancedKeyManagementOpen = ref(false);
-const activeProfileStep = ref<'connect' | 'author' | 'tiers' | 'explore'>('connect');
+const workflowSteps = [
+  {
+    name: 'connect',
+    label: 'Connect',
+    description: 'Establish relay access and signer status.',
+  },
+  {
+    name: 'author',
+    label: 'Author',
+    description: 'Shape profile metadata before publishing.',
+  },
+  {
+    name: 'tiers',
+    label: 'Tiers',
+    description: 'Compose benefits and cadence options.',
+  },
+  {
+    name: 'explore',
+    label: 'Review',
+    description: 'Inspect stored events and author data.',
+  },
+] as const;
+
+type ProfileStep = (typeof workflowSteps)[number]['name'];
+
+const activeProfileStep = ref<ProfileStep>('connect');
+const activeStepIndex = computed(() => workflowSteps.findIndex(step => step.name === activeProfileStep.value));
+const stepClasses = (index: number) => ({
+  'is-active': index === activeStepIndex.value,
+  'is-complete': index < activeStepIndex.value,
+});
 
 const SECRET_STORAGE_KEY = 'nutzap.profile.secretHex';
 const isBrowser = typeof window !== 'undefined';
@@ -1574,6 +1651,25 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .nutzap-profile-page {
+  display: block;
+}
+
+.profile-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 32px;
+}
+
+.profile-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  position: sticky;
+  top: 32px;
+  align-self: flex-start;
+}
+
+.profile-content {
   display: flex;
   flex-direction: column;
   gap: 32px;
@@ -1598,24 +1694,91 @@ onBeforeUnmount(() => {
   flex-basis: 100%;
 }
 
-.group-separator {
-  --q-separator-color: var(--surface-contrast-border);
-  background: transparent;
-  max-width: 960px;
-  margin-left: auto;
-  margin-right: auto;
-}
 
-.profile-steps {
+.progress-overview {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-}
-
-.profile-tabs {
-  padding: 8px 12px;
+  gap: 16px;
+  padding: 20px 24px;
   border: 1px solid var(--surface-contrast-border);
   border-radius: 16px;
+}
+
+.progress-steps {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.progress-step-item {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.progress-step-item:hover {
+  border-color: var(--accent-200);
+}
+
+.progress-step-item.is-active {
+  border-color: var(--accent-500);
+  background: color-mix(in srgb, var(--accent-500) 18%, transparent);
+}
+
+.progress-step-item.is-complete {
+  border-color: var(--accent-200);
+}
+
+.progress-step-item.is-active .step-number {
+  background: var(--accent-600);
+}
+
+.progress-step-item.is-active .step-label {
+  color: var(--accent-500);
+}
+
+.progress-step-button {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.progress-step-button:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: 2px;
+}
+
+.step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--accent-500);
+  color: var(--text-inverse);
+  font-weight: 600;
+}
+
+.progress-step-item.is-complete .step-number {
+  background: var(--accent-200);
+  color: var(--text-1);
+}
+
+.step-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .profile-panels {
@@ -1627,24 +1790,40 @@ onBeforeUnmount(() => {
   padding: 0;
 }
 
-.panel-grid {
-  display: grid;
-  gap: 24px;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 480px));
-  justify-content: center;
-  padding: 24px;
+.panel-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 4px;
 }
 
-.panel-grid > * {
-  min-width: 0;
-}
-
-.grid-card {
-  height: 100%;
+.section-card {
   background: var(--surface-2);
   border: 1px solid var(--surface-contrast-border);
   border-radius: 16px;
-  box-shadow: none;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section-empty {
+  padding: 12px 0;
+  border: 1px dashed var(--surface-contrast-border);
+  border-radius: 12px;
+  text-align: center;
 }
 
 .optional-tools {
@@ -1655,7 +1834,8 @@ onBeforeUnmount(() => {
   border: 1px solid var(--surface-contrast-border);
   border-radius: 16px;
   max-width: 640px;
-  margin: 0 auto 48px;
+  align-self: flex-start;
+  margin-bottom: 48px;
 }
 
 .optional-tools-header {
@@ -1668,25 +1848,29 @@ onBeforeUnmount(() => {
   align-self: flex-start;
 }
 
-.relay-card,
-.activity-card {
-  grid-column: span 2;
-}
-
-.publisher-card {
-  grid-column: span 2;
-}
-
-@media (max-width: 1200px) {
-  .relay-card,
-  .activity-card,
-  .publisher-card {
-    grid-column: span 1;
-  }
-}
-
 .activity-log-list {
   max-height: 260px;
   overflow-y: auto;
+}
+
+@media (max-width: 1100px) {
+  .profile-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-rail {
+    position: static;
+  }
+}
+
+@media (max-width: 768px) {
+  .section-card {
+    padding: 16px 18px;
+  }
+
+  .progress-overview,
+  .status-banner {
+    padding: 16px 18px;
+  }
 }
 </style>
