@@ -1,33 +1,68 @@
 <template>
   <q-page class="nutzap-profile-page bg-surface-1 q-pa-xl">
-    <div class="status-banner bg-surface-2 text-1">
-      <RelayStatusIndicator />
-      <q-chip dense :color="relayStatusColor" text-color="white" class="status-chip">
-        {{ relayStatusLabel }}
-      </q-chip>
-      <div class="status-meta text-body2 text-2">Isolated relay: relay.fundstr.me (WS → HTTP fallback)</div>
-    </div>
+    <div class="profile-layout">
+      <aside class="profile-rail bg-surface-2 text-1">
+        <div class="rail-header">
+          <RelayStatusIndicator />
+          <div class="rail-status">
+            <q-chip dense :color="relayStatusColor" text-color="white" class="status-chip">
+              {{ relayStatusLabel }}
+            </q-chip>
+            <div class="status-meta text-body2 text-2">
+              Isolated relay: relay.fundstr.me (WS → HTTP fallback)
+            </div>
+          </div>
+        </div>
 
-    <q-separator spaced class="group-separator" />
+        <q-stepper
+          v-model="activeProfileStep"
+          vertical
+          flat
+          animated
+          header-nav
+          color="primary"
+          class="profile-stepper"
+        >
+          <q-step
+            name="connect"
+            title="Connect"
+            icon="link"
+            :done="connectStepDone"
+          >
+            <div class="step-description text-caption text-2">Manage relay session and signer keys.</div>
+          </q-step>
+          <q-step
+            name="author"
+            title="Author profile"
+            icon="person_outline"
+            :done="profileStepDone"
+          >
+            <div class="step-description text-caption text-2">Compose and publish author metadata.</div>
+          </q-step>
+          <q-step
+            name="tiers"
+            title="Manage tiers"
+            icon="layers"
+            :done="tiersStepDone"
+          >
+            <div class="step-description text-caption text-2">Curate tier pricing and publish updates.</div>
+          </q-step>
+          <q-step
+            name="explore"
+            title="Explore data"
+            icon="travel_explore"
+            :done="exploreStepDone"
+          >
+            <div class="step-description text-caption text-2">Inspect relay content and hydrate composers.</div>
+          </q-step>
+        </q-stepper>
+      </aside>
 
-    <div class="profile-steps">
-      <q-tabs
-        v-model="activeProfileStep"
-        class="profile-tabs bg-surface-2 text-1 rounded-borders"
-        dense
-        active-color="primary"
-        indicator-color="primary"
-      >
-        <q-tab name="connect" label="Connect" />
-        <q-tab name="author" label="Author profile" />
-        <q-tab name="tiers" label="Manage tiers" />
-        <q-tab name="explore" label="Explore data" />
-      </q-tabs>
-
-      <q-tab-panels v-model="activeProfileStep" animated class="profile-panels">
-        <q-tab-panel name="connect" class="profile-panel">
-          <div class="panel-grid">
-            <q-card class="grid-card relay-card">
+      <div class="profile-content">
+        <q-tab-panels v-model="activeProfileStep" animated class="profile-panels">
+          <q-tab-panel name="connect" class="profile-panel">
+            <div class="panel-grid">
+              <q-card class="grid-card relay-card">
               <q-card-section class="q-gutter-xs">
                 <div class="panel-title text-subtitle1 text-weight-medium text-1">Relay Connection</div>
                 <div class="panel-subtitle text-body2 text-2">
@@ -376,32 +411,33 @@
                 </div>
               </q-card-section>
               <q-separator />
-              <q-card-section>
+              <q-card-section class="column q-gutter-lg">
                 <NutzapExplorerPanel
                   v-model="authorInput"
                   :loading-author="loading"
                   :tier-address-preview="tierAddressPreview"
                   @load-author="loadAll"
                 />
+                <div class="optional-tools bg-surface-2 text-1">
+                  <div class="optional-tools-header">
+                    <div class="text-subtitle1 text-weight-medium">Optional tools</div>
+                    <div class="text-body2 text-2">
+                      Need deeper troubleshooting? Jump into diagnostics when you want relay inspectors and self-tests.
+                    </div>
+                  </div>
+                  <q-btn
+                    color="primary"
+                    label="Open diagnostics workspace"
+                    to="/nutzap-tools"
+                    class="optional-tools-action"
+                  />
+                </div>
               </q-card-section>
             </q-card>
           </div>
         </q-tab-panel>
       </q-tab-panels>
     </div>
-
-    <q-separator spaced class="group-separator" />
-
-    <section class="optional-tools bg-surface-2 text-1">
-      <div class="optional-tools-header">
-        <div class="text-subtitle1 text-weight-medium">Optional tools</div>
-        <div class="text-body2 text-2">
-          Need deeper troubleshooting? Jump into diagnostics when you want relay inspectors and self-tests.
-        </div>
-      </div>
-      <q-btn color="primary" label="Open diagnostics workspace" to="/nutzap-tools" class="optional-tools-action" />
-    </section>
-
   </q-page>
 </template>
 
@@ -518,6 +554,13 @@ const relayStatusColor = computed(() => {
       return 'grey-6';
   }
 });
+
+const connectStepDone = computed(() => relayIsConnected.value);
+const profileStepDone = computed(() =>
+  lastProfilePublishInfo.value.toLowerCase().includes('published')
+);
+const tiersStepDone = computed(() => lastTiersPublishInfo.value.toLowerCase().includes('published'));
+const exploreStepDone = computed(() => hasAutoLoaded.value);
 
 const activityTimeFormatter =
   typeof Intl !== 'undefined'
@@ -1579,16 +1622,6 @@ onBeforeUnmount(() => {
   gap: 32px;
 }
 
-.status-banner {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px 16px;
-  padding: 20px 24px;
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 16px;
-}
-
 .status-chip {
   text-transform: capitalize;
   font-weight: 600;
@@ -1598,24 +1631,69 @@ onBeforeUnmount(() => {
   flex-basis: 100%;
 }
 
-.group-separator {
-  --q-separator-color: var(--surface-contrast-border);
-  background: transparent;
-  max-width: 960px;
-  margin-left: auto;
-  margin-right: auto;
+.profile-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 32px;
+  align-items: flex-start;
 }
 
-.profile-steps {
+.profile-rail {
+  position: sticky;
+  top: 32px;
   display: flex;
   flex-direction: column;
   gap: 24px;
-}
-
-.profile-tabs {
-  padding: 8px 12px;
+  padding: 24px;
   border: 1px solid var(--surface-contrast-border);
   border-radius: 16px;
+}
+
+.rail-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.rail-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.status-chip {
+  align-self: flex-start;
+  text-transform: capitalize;
+  font-weight: 600;
+}
+
+.profile-stepper {
+  padding: 0;
+}
+
+.profile-stepper :deep(.q-stepper__tab) {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.profile-stepper :deep(.q-stepper__dot) {
+  border-width: 2px;
+}
+
+.profile-stepper :deep(.q-stepper__step-content) {
+  padding-left: 0;
+  padding-right: 0;
+  padding-bottom: 16px;
+}
+
+.step-description {
+  margin-left: 32px;
+}
+
+.profile-content {
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
 }
 
 .profile-panels {
@@ -1654,8 +1732,7 @@ onBeforeUnmount(() => {
   padding: 24px;
   border: 1px solid var(--surface-contrast-border);
   border-radius: 16px;
-  max-width: 640px;
-  margin: 0 auto 48px;
+  width: 100%;
 }
 
 .optional-tools-header {
@@ -1682,6 +1759,20 @@ onBeforeUnmount(() => {
   .activity-card,
   .publisher-card {
     grid-column: span 1;
+  }
+}
+
+@media (max-width: 1024px) {
+  .profile-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-rail {
+    position: static;
+  }
+
+  .step-description {
+    margin-left: 24px;
   }
 }
 
