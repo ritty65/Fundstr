@@ -33,9 +33,67 @@
             </li>
           </ol>
         </section>
+
+        <section class="context-help bg-surface-2 text-1">
+          <div class="context-help-header">
+            <div class="text-subtitle1 text-weight-medium">Workspace help</div>
+            <q-btn
+              v-if="diagnosticsAttention"
+              flat
+              dense
+              round
+              icon="close"
+              class="context-help-dismiss"
+              aria-label="Dismiss diagnostic alert"
+              @click="dismissDiagnosticsAttention"
+            />
+          </div>
+          <div class="context-help-body text-body2 text-2">
+            Pull relay history without leaving the composer and jump into diagnostics when deeper inspection is needed.
+          </div>
+          <q-banner
+            v-if="diagnosticsAttention"
+            class="context-help-alert"
+            :class="`context-help-alert--${diagnosticsAttention.level}`"
+          >
+            <div class="context-help-alert-title text-body1 text-weight-medium text-1">
+              {{ diagnosticsAttention.title }}
+            </div>
+            <div class="context-help-alert-detail text-caption text-2">
+              {{ diagnosticsAttention.detail }}
+            </div>
+            <q-btn
+              color="primary"
+              class="q-mt-sm"
+              label="Open diagnostics workspace"
+              :to="diagnosticsRoute"
+              @click="dismissDiagnosticsAttention"
+            />
+          </q-banner>
+          <q-btn
+            v-else
+            outline
+            color="primary"
+            icon="science"
+            label="Diagnostics workspace"
+            :to="diagnosticsRoute"
+            class="context-help-action"
+          />
+        </section>
       </aside>
 
-      <div class="profile-content">
+      <div class="profile-main">
+        <div class="profile-content">
+          <div class="profile-content-toolbar">
+            <q-btn
+              outline
+              dense
+              :icon="dataExplorerToggleIcon"
+              class="data-explorer-toggle"
+              :label="dataExplorerToggleLabel"
+              @click="toggleDataExplorer"
+            />
+          </div>
         <q-tab-panels v-model="activeProfileStep" animated class="profile-panels">
           <q-tab-panel name="connect" class="profile-panel">
             <div class="panel-sections">
@@ -645,24 +703,54 @@
             </div>
           </q-tab-panel>
         </q-tab-panels>
-
-        <section class="optional-tools bg-surface-2 text-1">
-          <div class="optional-tools-header">
-            <div class="text-subtitle1 text-weight-medium">Optional tools</div>
-            <div class="text-body2 text-2">
-              Need deeper troubleshooting? Jump into diagnostics when you want relay inspectors and self-tests.
+        </div>
+        <transition name="explorer-fade">
+          <aside
+            v-if="dataExplorerOpen"
+            class="data-explorer-sidebar bg-surface-2 text-1"
+            :class="{ 'is-floating': isExplorerFloating }"
+          >
+            <div class="data-explorer-header">
+              <div class="text-subtitle1 text-weight-medium">Data explorer</div>
+              <q-btn
+                flat
+                dense
+                round
+                icon="close"
+                aria-label="Close data explorer"
+                @click="closeDataExplorer"
+              />
             </div>
-          </div>
-          <q-btn color="primary" label="Open diagnostics workspace" to="/nutzap-tools" class="optional-tools-action" />
-        </section>
+            <div class="data-explorer-body">
+              <NutzapExplorerPanel
+                v-model="authorInput"
+                :loading-author="loading"
+                :tier-address-preview="tierAddressPreview"
+                :condensed="true"
+                @load-author="loadAll"
+              />
+            </div>
+            <div class="data-explorer-footer text-caption text-2">
+              Need more tooling? <router-link to="/nutzap-tools">Open diagnostics workspace</router-link>.
+            </div>
+          </aside>
+        </transition>
       </div>
     </div>
+    <div
+      v-if="dataExplorerOpen && isExplorerFloating"
+      class="data-explorer-backdrop"
+      role="presentation"
+      @click="closeDataExplorer"
+    ></div>
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { WatchStopHandle } from 'vue';
+import type { RouteLocationRaw } from 'vue-router';
+import { useQuasar } from 'quasar';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
 import RelayStatusIndicator from 'src/nutzap/RelayStatusIndicator.vue';
@@ -760,6 +848,61 @@ const stepClasses = (index: number) => ({
 const SECRET_STORAGE_KEY = 'nutzap.profile.secretHex';
 const isBrowser = typeof window !== 'undefined';
 
+type DiagnosticsAttention = {
+  id: number;
+  source: 'relay' | 'publish';
+  title: string;
+  detail: string;
+  level: 'error' | 'warning';
+};
+
+const $q = useQuasar();
+
+const isExplorerFloating = computed(() => $q.screen.lt.lg);
+const dataExplorerOpen = ref(!$q.screen.lt.lg);
+const dataExplorerToggleLabel = computed(() =>
+  dataExplorerOpen.value ? 'Hide data explorer' : 'Open data explorer'
+);
+const dataExplorerToggleIcon = computed(() =>
+  dataExplorerOpen.value ? 'close_fullscreen' : 'travel_explore'
+);
+
+const diagnosticsAttention = ref<DiagnosticsAttention | null>(null);
+let diagnosticsAttentionSequence = 0;
+let lastRelayAlertId = 0;
+
+const diagnosticsRoute = computed<RouteLocationRaw>(() =>
+  diagnosticsAttention.value
+    ? { path: '/nutzap-tools', query: { focus: diagnosticsAttention.value.source } }
+    : { path: '/nutzap-tools' }
+);
+
+function toggleDataExplorer() {
+  dataExplorerOpen.value = !dataExplorerOpen.value;
+}
+
+function closeDataExplorer() {
+  dataExplorerOpen.value = false;
+}
+
+function dismissDiagnosticsAttention() {
+  diagnosticsAttention.value = null;
+}
+
+function flagDiagnosticsAttention(
+  source: 'relay' | 'publish',
+  detail: string,
+  level: 'error' | 'warning' = 'error'
+) {
+  diagnosticsAttention.value = {
+    id: ++diagnosticsAttentionSequence,
+    source,
+    title: source === 'relay' ? 'Relay connection issue detected' : 'Publish attempt rejected',
+    detail,
+    level,
+  };
+}
+
 const {
   relayUrl: relayConnectionUrl,
   status: relayConnectionStatus,
@@ -778,6 +921,19 @@ const relayUrlInputValid = computed(() => relayUrlInput.value.trim().length > 0)
 
 watch(relayConnectionUrl, value => {
   relayUrlInput.value = value;
+});
+
+watch(
+  () => $q.screen.lt.lg,
+  value => {
+    dataExplorerOpen.value = value ? false : true;
+  }
+);
+
+watch(activeProfileStep, step => {
+  if (step === 'explore' && !dataExplorerOpen.value) {
+    dataExplorerOpen.value = true;
+  }
 });
 
 const relayStatusLabel = computed(() => {
@@ -829,6 +985,21 @@ const latestRelayActivity = computed(() => {
 });
 
 const relayActivityTimeline = computed(() => relayActivity.value.slice().reverse());
+
+watch(
+  relayActivity,
+  entries => {
+    const latestError = [...entries].reverse().find(entry => entry.level === 'error');
+    if (latestError && latestError.id !== lastRelayAlertId) {
+      lastRelayAlertId = latestError.id;
+      const detail = latestError.context
+        ? `${latestError.message} — ${latestError.context}`
+        : latestError.message;
+      flagDiagnosticsAttention('relay', detail);
+    }
+  },
+  { deep: true }
+);
 
 const activityTimeFormatter =
   typeof Intl !== 'undefined'
@@ -1784,8 +1955,11 @@ async function publishTiers() {
         err.ack.message ? ` — ${err.ack.message}` : ''
       }`;
       notifyError(message);
+      flagDiagnosticsAttention('publish', message);
     } else {
-      notifyError(err instanceof Error ? err.message : 'Unable to publish tiers.');
+      const fallback = err instanceof Error ? err.message : 'Unable to publish tiers.';
+      notifyError(fallback);
+      flagDiagnosticsAttention('publish', fallback);
     }
   } finally {
     publishingTiers.value = false;
@@ -1877,8 +2051,11 @@ async function publishProfile() {
         err.ack.message ? ` — ${err.ack.message}` : ''
       }`;
       notifyError(message);
+      flagDiagnosticsAttention('publish', message);
     } else {
-      notifyError(err instanceof Error ? err.message : 'Unable to publish Nutzap profile.');
+      const fallback = err instanceof Error ? err.message : 'Unable to publish Nutzap profile.';
+      notifyError(fallback);
+      flagDiagnosticsAttention('publish', fallback);
     }
   } finally {
     publishingProfile.value = false;
@@ -1953,10 +2130,17 @@ onBeforeUnmount(() => {
   align-self: flex-start;
 }
 
+.profile-main {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
 .profile-content {
   display: flex;
   flex-direction: column;
   gap: 32px;
+  flex: 1;
 }
 
 .status-banner {
@@ -2011,6 +2195,133 @@ onBeforeUnmount(() => {
   font-size: 13px;
   line-height: 1.4;
   color: var(--text-2);
+}
+
+.profile-content-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.data-explorer-toggle {
+  align-self: flex-end;
+}
+
+.data-explorer-sidebar {
+  width: 360px;
+  max-width: 100%;
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 16px;
+  padding: 16px 18px 20px;
+  box-shadow: 0 16px 40px rgba(10, 14, 35, 0.18);
+  position: sticky;
+  top: 32px;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+}
+
+.data-explorer-sidebar.is-floating {
+  position: fixed;
+  top: 32px;
+  right: 32px;
+  bottom: 32px;
+  left: auto;
+  max-height: calc(100vh - 64px);
+  width: min(380px, 90vw);
+  z-index: 11;
+  box-shadow: 0 28px 48px rgba(12, 18, 36, 0.35);
+}
+
+.data-explorer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.data-explorer-body {
+  overflow-y: auto;
+  max-height: calc(100% - 64px);
+}
+
+.data-explorer-footer {
+  margin-top: 12px;
+  line-height: 1.4;
+}
+
+.data-explorer-footer a {
+  color: var(--accent-500);
+  font-weight: 600;
+}
+
+.data-explorer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 16, 28, 0.55);
+  z-index: 10;
+  backdrop-filter: blur(2px);
+}
+
+.explorer-fade-enter-active,
+.explorer-fade-leave-active {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.explorer-fade-enter-from,
+.explorer-fade-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.context-help {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 16px;
+}
+
+.context-help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.context-help-body {
+  line-height: 1.5;
+}
+
+.context-help-action {
+  align-self: flex-start;
+}
+
+.context-help-dismiss {
+  margin-left: auto;
+}
+
+.context-help-alert {
+  border-radius: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--surface-contrast-border);
+  background: color-mix(in srgb, var(--surface-2) 94%, transparent);
+}
+
+.context-help-alert--error {
+  border-color: #c10015;
+}
+
+.context-help-alert--warning {
+  border-color: #f2c037;
+}
+
+.context-help-alert-title {
+  margin-bottom: 4px;
+}
+
+.context-help-alert-detail {
+  line-height: 1.4;
 }
 
 .connection-status-indicator {
@@ -2336,28 +2647,6 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
-.optional-tools {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 24px;
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 16px;
-  max-width: 640px;
-  align-self: flex-start;
-  margin-bottom: 48px;
-}
-
-.optional-tools-header {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.optional-tools-action {
-  align-self: flex-start;
-}
-
 .advanced-key-drawer {
   width: 420px;
   max-width: 90vw;
@@ -2379,6 +2668,10 @@ onBeforeUnmount(() => {
   .profile-rail {
     position: static;
   }
+
+  .profile-main {
+    flex-direction: column;
+  }
 }
 
 @media (max-width: 768px) {
@@ -2389,6 +2682,14 @@ onBeforeUnmount(() => {
   .progress-overview,
   .status-banner {
     padding: 16px 18px;
+  }
+
+  .data-explorer-sidebar.is-floating {
+    top: 16px;
+    right: 16px;
+    left: 16px;
+    bottom: 16px;
+    width: auto;
   }
 }
 </style>
