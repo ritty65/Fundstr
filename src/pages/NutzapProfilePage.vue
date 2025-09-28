@@ -393,22 +393,27 @@
                             <div class="nested-title text-body1 text-weight-medium text-1">Identity basics</div>
                             <div class="nested-subtitle text-caption">
                               Provide a display name and avatar for your payment profile (kind 10019).
+                              These are optional but help supporters recognize you.
                             </div>
                           </div>
                           <q-chip
                             dense
                             size="sm"
-                            :color="identityBasicsComplete ? 'positive' : 'warning'"
+                            :color="identityBasicsComplete ? 'positive' : 'grey-6'"
                             :text-color="identityBasicsComplete ? 'white' : 'black'"
                             class="status-chip"
                           >
-                            {{ identityBasicsComplete ? 'Complete' : 'Required' }}
+                            {{ identityBasicsComplete ? 'Added' : 'Optional' }}
                           </q-chip>
                         </div>
                       </template>
                       <div class="nested-section-body column q-gutter-md">
                         <q-input v-model="displayName" label="Display Name" dense filled />
                         <q-input v-model="pictureUrl" label="Picture URL" dense filled />
+                        <div class="text-caption text-2">
+                          Display name and picture are nice-to-have details, but leaving them blank
+                          won’t block publishing.
+                        </div>
                       </div>
                     </q-expansion-item>
 
@@ -417,29 +422,24 @@
                       switch-toggle-side
                       dense
                       expand-separator
-                      :disable="!identityBasicsComplete"
-                      :class="['nested-section', { 'is-disabled': !identityBasicsComplete }]"
+                      class="nested-section"
                     >
                       <template #header>
                         <div class="nested-header">
                           <div class="nested-header__titles">
                             <div class="nested-title text-body1 text-weight-medium text-1">Optional relay &amp; mint metadata</div>
                             <div class="nested-subtitle text-caption">
-                              {{
-                                identityBasicsComplete
-                                  ? 'List trusted mints (required for publishing) and add optional relay hints.'
-                                  : 'Complete identity basics to unlock mint settings.'
-                              }}
+                              List trusted mints (required for publishing) and add optional relay hints.
                             </div>
                           </div>
                           <q-chip
                             dense
                             size="sm"
-                            :color="optionalMetadataComplete ? 'positive' : identityBasicsComplete ? 'warning' : 'grey-6'"
+                            :color="optionalMetadataComplete ? 'positive' : 'warning'"
                             :text-color="optionalMetadataComplete ? 'white' : 'black'"
                             class="status-chip"
                           >
-                            {{ optionalMetadataComplete ? 'Ready' : identityBasicsComplete ? 'Add mint' : 'Locked' }}
+                            {{ optionalMetadataComplete ? 'Ready' : 'Required' }}
                           </q-chip>
                         </div>
                       </template>
@@ -468,29 +468,24 @@
                       switch-toggle-side
                       dense
                       expand-separator
-                      :disable="!optionalMetadataComplete"
-                      :class="['nested-section', { 'is-disabled': !optionalMetadataComplete }]"
+                      class="nested-section"
                     >
                       <template #header>
                         <div class="nested-header">
                           <div class="nested-header__titles">
                             <div class="nested-title text-body1 text-weight-medium text-1">Advanced encryption</div>
                             <div class="nested-subtitle text-caption">
-                              {{
-                                optionalMetadataComplete
-                                  ? 'Generate or derive the P2PK pointer required for Nutzap payments.'
-                                  : 'Add at least one trusted mint to unlock encryption tools.'
-                              }}
+                              Generate or derive the P2PK pointer required for Nutzap payments.
                             </div>
                           </div>
                           <q-chip
                             dense
                             size="sm"
-                            :color="advancedEncryptionComplete ? 'positive' : optionalMetadataComplete ? 'warning' : 'grey-6'"
+                            :color="advancedEncryptionComplete ? 'positive' : 'warning'"
                             :text-color="advancedEncryptionComplete ? 'white' : 'black'"
                             class="status-chip"
                           >
-                            {{ advancedEncryptionComplete ? 'Ready' : optionalMetadataComplete ? 'Pending' : 'Locked' }}
+                            {{ advancedEncryptionComplete ? 'Ready' : 'Required' }}
                           </q-chip>
                         </div>
                       </template>
@@ -537,7 +532,7 @@
                     </li>
                     <li :class="['readiness-item', { 'is-complete': identityBasicsComplete }]">
                       <q-icon :name="identityBasicsComplete ? 'task_alt' : 'radio_button_unchecked'" aria-hidden="true" />
-                      <span>Identity basics filled in</span>
+                      <span>Identity basics {{ identityBasicsComplete ? 'added' : '(optional)' }}</span>
                     </li>
                     <li :class="['readiness-item', { 'is-complete': optionalMetadataComplete }]">
                       <q-icon :name="optionalMetadataComplete ? 'task_alt' : 'radio_button_unchecked'" aria-hidden="true" />
@@ -802,7 +797,7 @@ const lastTiersPublishInfo = ref('');
 const hasAutoLoaded = ref(false);
 
 const identitySectionOpen = ref(true);
-const optionalMetadataSectionOpen = ref(false);
+const optionalMetadataSectionOpen = ref(true);
 const advancedEncryptionSectionOpen = ref(false);
 const reviewPublishSectionOpen = ref(false);
 
@@ -1306,7 +1301,7 @@ const mintList = computed(() =>
 );
 
 const identityBasicsComplete = computed(
-  () => displayName.value.trim().length > 0 && pictureUrl.value.trim().length > 0
+  () => displayName.value.trim().length > 0 || pictureUrl.value.trim().length > 0
 );
 
 const optionalMetadataComplete = computed(() => mintList.value.length > 0);
@@ -1340,24 +1335,12 @@ const tiersHaveErrors = computed(() =>
 const tiersReady = computed(() => tiers.value.length > 0 && !tiersHaveErrors.value);
 
 watch(
-  identityBasicsComplete,
-  complete => {
-    if (!complete) {
-      optionalMetadataSectionOpen.value = false;
-      advancedEncryptionSectionOpen.value = false;
-    } else if (!optionalMetadataSectionOpen.value) {
-      optionalMetadataSectionOpen.value = true;
-    }
-  },
-  { immediate: true }
-);
-
-watch(
   optionalMetadataComplete,
   complete => {
-    if (!complete) {
-      advancedEncryptionSectionOpen.value = false;
-    } else if (!advancedEncryptionSectionOpen.value) {
+    if (!optionalMetadataSectionOpen.value && complete) {
+      optionalMetadataSectionOpen.value = true;
+    }
+    if (complete && !advancedEncryptionSectionOpen.value) {
       advancedEncryptionSectionOpen.value = true;
     }
   },
