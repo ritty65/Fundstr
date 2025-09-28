@@ -39,20 +39,73 @@ jobs:
               sed -E 's/^(src|href)="//' |
               sort -u || true
           )
+
           if [ "${#assets[@]}" -eq 0 ]; then
             echo "No /assets references found in dist/spa/index.html"
-            exit 0
+          else
+            echo "Assets referenced in index.html:"
+            for asset in "${assets[@]}"; do
+              echo "  $asset"
+            done
           fi
-
-          echo "Assets referenced in index.html:"
-          for asset in "${assets[@]}"; do
-            echo "  $asset"
-          done
 
           missing=0
           for asset in "${assets[@]}"; do
             if [ ! -f "dist/spa${asset}" ]; then
               echo "Missing asset referenced in index.html: dist/spa${asset}" >&2
+              missing=1
+            fi
+          done
+
+          manifest_file="dist/spa/manifest.json"
+          mapfile -t manifest_assets < <(
+            if [ -f "$manifest_file" ]; then
+              python3 - <<'PY'
+import json
+from pathlib import Path
+
+manifest_path = Path("dist/spa/manifest.json")
+data = json.loads(manifest_path.read_text())
+
+results = set()
+
+def collect(value):
+    if isinstance(value, str) and value.startswith("assets/"):
+        results.add(value)
+    elif isinstance(value, dict):
+        for item in value.values():
+            collect(item)
+    elif isinstance(value, list):
+        for item in value:
+            collect(item)
+
+collect(data)
+
+for entry in sorted(results):
+    print(entry)
+PY
+            else
+              find dist/spa/assets -type f -printf 'assets/%P\n' | sort -u
+            fi
+          )
+
+          if [ -f "$manifest_file" ]; then
+            echo "Assets referenced in manifest.json:"
+          else
+            echo "manifest.json not found; validating discovered files under dist/spa/assets"
+          fi
+
+          if [ "${#manifest_assets[@]}" -eq 0 ]; then
+            echo "No additional assets discovered for validation"
+          else
+            for entry in "${manifest_assets[@]}"; do
+              echo "  $entry"
+            done
+          fi
+
+          for entry in "${manifest_assets[@]}"; do
+            if [ ! -f "dist/spa/${entry}" ]; then
+              echo "Missing asset referenced in manifest/assets listing: dist/spa/${entry}" >&2
               missing=1
             fi
           done
