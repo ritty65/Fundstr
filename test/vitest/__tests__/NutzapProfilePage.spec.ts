@@ -4,6 +4,29 @@ import { Ref, ref } from "vue";
 
 import NutzapProfilePage from "../../../src/pages/NutzapProfilePage.vue";
 
+const routerResolveMock = vi.fn((location?: any) => ({
+  href: `/creator/${location?.params?.npubOrHex ?? "missing"}/profile`,
+}));
+const routerPushMock = vi.fn();
+let clipboardWriteTextMock: ReturnType<typeof vi.fn>;
+
+vi.mock("vue-router", async () => {
+  const actual = await vi.importActual<any>("vue-router");
+  return {
+    ...actual,
+    useRouter: () => ({
+      resolve: routerResolveMock,
+      push: routerPushMock,
+    }),
+  };
+});
+
+vi.mock("vue-i18n", () => ({
+  useI18n: () => ({
+    t: (key: string) => key,
+  }),
+}));
+
 type StatusHandler = (status: "connected" | "connecting" | "reconnecting" | "disconnected" | "idle") => void;
 
 type SharedState = {
@@ -108,6 +131,7 @@ function ensureShared(): SharedState {
 const notifySuccessMock = vi.fn();
 const notifyErrorMock = vi.fn();
 const notifyWarningMock = vi.fn();
+const notifyCreateMock = vi.fn();
 
 vi.mock("../../../src/js/notify", () => ({
   notifySuccess: (...args: any[]) => notifySuccessMock(...args),
@@ -119,6 +143,9 @@ vi.mock("quasar", async () => {
   const actual = await vi.importActual<any>("quasar");
   return {
     ...actual,
+    Notify: {
+      create: (...args: any[]) => notifyCreateMock(...args),
+    },
     useQuasar: () => ({
       screen: {
         lt: {
@@ -240,6 +267,31 @@ async function mountPage() {
         'q-chip': { template: '<span class="q-chip"><slot /></span>' },
         'q-tab-panels': { template: '<div class="q-tab-panels"><slot /></div>' },
         'q-tab-panel': { template: '<div class="q-tab-panel"><slot /></div>' },
+        'q-input': {
+          inheritAttrs: false,
+          props: {
+            modelValue: { type: [String, Number, Boolean, Object], default: '' },
+          },
+          emits: ['update:modelValue'],
+          template:
+            '<div class="q-input" v-bind="$attrs">' +
+            '<span class="q-input__value">{{ modelValue }}</span>' +
+            '<slot />' +
+            '<slot name="append" />' +
+            '</div>',
+        },
+        'q-btn': {
+          inheritAttrs: false,
+          props: {
+            label: { type: String, default: '' },
+          },
+          emits: ['click'],
+          template:
+            '<button class="q-btn" v-bind="$attrs" @click="$emit(\'click\')">' +
+            '<slot />' +
+            '<span v-if="!$slots.default && label">{{ label }}</span>' +
+            '</button>',
+        },
         transition: false,
         teleport: false,
       },
@@ -250,6 +302,16 @@ async function mountPage() {
 }
 
 beforeEach(() => {
+  routerResolveMock.mockClear();
+  routerPushMock.mockClear();
+  notifyCreateMock.mockReset();
+
+  clipboardWriteTextMock = vi.fn(() => Promise.resolve());
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: clipboardWriteTextMock },
+  });
+
   const state = ensureShared();
   notifySuccessMock.mockReset();
   notifyErrorMock.mockReset();
@@ -334,6 +396,44 @@ describe("NutzapProfilePage explore summary", () => {
     expect(tierItems[0].text()).toContain("Tier One");
     expect(tierItems[0].text()).toContain("100 sats");
     expect(tierItems[0].text()).toContain("Monthly");
+  });
+});
+
+describe("NutzapProfilePage share link", () => {
+  it("renders a shareable profile URL and copies it to the clipboard", async () => {
+    const wrapper = await mountPage();
+
+    (wrapper.vm as any).activeProfileStep = "explore";
+    (wrapper.vm as any).authorInput = VALID_HEX;
+
+    await wrapper.vm.$nextTick();
+    await flushPromises();
+
+    const expectedNpub = (wrapper.vm as any).authorNpubForShare;
+    expect(expectedNpub).toBeTruthy();
+
+    const expectedUrl = new URL(`/creator/${expectedNpub}/profile`, window.location.origin).href;
+
+    expect(routerResolveMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "PublicCreatorProfile",
+        params: { npubOrHex: expectedNpub },
+      })
+    );
+
+    const summaryShare = wrapper.find('[data-testid="explore-summary-share"]');
+    expect(summaryShare.exists()).toBe(true);
+    expect(summaryShare.find('[data-testid="public-profile-url"]').exists()).toBe(true);
+
+    expect(summaryShare.html()).toContain(expectedUrl);
+
+    const copyButton = wrapper.find('[data-testid="copy-public-profile-url"]');
+    expect(copyButton.exists()).toBe(true);
+
+    await copyButton.trigger("click");
+    await flushPromises();
+
+    expect(clipboardWriteTextMock).toHaveBeenCalledWith(expectedUrl);
   });
 });
 
