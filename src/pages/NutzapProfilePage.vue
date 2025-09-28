@@ -1332,6 +1332,13 @@ const tierKindLabel = computed(() =>
   tierKind.value === 30019 ? 'Canonical (30019)' : 'Legacy (30000)'
 );
 
+const tierValidationResults = ref<TierFieldErrors[]>([]);
+const tiersHaveErrors = computed(() =>
+  tierValidationResults.value.some(result => hasTierErrors(result))
+);
+
+const tiersReady = computed(() => tiers.value.length > 0 && !tiersHaveErrors.value);
+
 watch(
   identityBasicsComplete,
   complete => {
@@ -1528,13 +1535,6 @@ const tierFrequencyOptions = computed(() =>
           : 'Yearly',
   }))
 );
-
-const tierValidationResults = ref<TierFieldErrors[]>([]);
-const tiersHaveErrors = computed(() =>
-  tierValidationResults.value.some(result => hasTierErrors(result))
-);
-
-const tiersReady = computed(() => tiers.value.length > 0 && !tiersHaveErrors.value);
 
 const authorKeyReady = computed(() => authorInput.value.trim().length > 0);
 
