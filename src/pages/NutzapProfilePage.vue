@@ -151,127 +151,161 @@
                   </div>
                 </div>
                 <div class="section-body column q-gutter-md">
-                  <div v-if="usingStoreIdentity" class="column q-gutter-xs">
+                  <div class="column q-gutter-xs">
                     <div class="text-body1 text-1">
-                      Connected as
-                      <span class="text-weight-medium">{{ connectedIdentitySummary || 'Fundstr identity' }}</span>
+                      <template v-if="usingStoreIdentity">
+                        Connected as
+                        <span class="text-weight-medium">{{ connectedIdentitySummary || 'Fundstr identity' }}</span>
+                      </template>
+                      <template v-else>Using a dedicated Nutzap key</template>
                     </div>
-                    <div class="text-body2 text-2">
-                      Keys mirror your global Fundstr signer. Open the advanced tools below to inspect or export.
+                    <div v-if="usingStoreIdentity" class="text-body2 text-2">
+                      Your Fundstr signer is ready to publish Nutzap events. Stick with this shared identity unless you
+                      need a separate persona or want to keep a secret key off the global store.
                     </div>
+                    <div v-if="usingStoreIdentity" class="text-body2 text-2">
+                      Choose a dedicated key when delegating publishing, testing against staging relays, or isolating
+                      collectibles under a different author.
+                    </div>
+                    <div v-else class="text-body2 text-2">
+                      This workspace is scoped to a standalone key, so Nutzap activity stays independent from your
+                      Fundstr profile.
+                    </div>
+                    <q-banner
+                      v-if="usingStoreIdentity && !storeHasPrivateKey"
+                      dense
+                      rounded
+                      class="bg-surface-2 text-warning"
+                    >
+                      The shared Fundstr signer is missing a stored private key on this device. Open the dedicated key
+                      tools to import or generate one before publishing.
+                    </q-banner>
                   </div>
-                  <div v-else class="column q-gutter-xs">
-                    <div class="text-body1 text-1">Using a dedicated Nutzap key</div>
-                    <div class="text-body2 text-2">
-                      Generate or import a key to publish with a standalone identity.
-                    </div>
+                  <div class="row items-center q-gutter-sm">
+                    <q-btn
+                      v-if="usingStoreIdentity"
+                      color="primary"
+                      outline
+                      label="Need a dedicated key?"
+                      @click="advancedKeyManagementOpen = true"
+                    />
+                    <q-btn
+                      v-else
+                      color="primary"
+                      outline
+                      label="Manage key tools"
+                      @click="advancedKeyManagementOpen = true"
+                    />
                   </div>
-                  <q-expansion-item
-                    v-model="advancedKeyManagementOpen"
-                    expand-separator
-                    dense
-                    icon="tune"
-                    label="Advanced key management"
-                  >
-                    <div class="column q-gutter-md q-mt-sm">
-                      <q-banner dense rounded class="bg-surface-2 text-body2 text-2">
-                        Generate a fresh key for Nutzap-only publishing or paste an existing secret to reuse another
-                        signer.
-                      </q-banner>
-                      <div v-if="!usingStoreIdentity" class="column q-gutter-sm">
-                        <q-input
-                          v-model="keyImportValue"
-                          label="Secret key (nsec or 64-char hex)"
-                          dense
-                          filled
-                          autocomplete="off"
-                          :disable="usingStoreSecret"
-                        />
-                        <div class="row q-gutter-sm">
+                  <q-dialog v-model="advancedKeyManagementOpen" position="right">
+                    <q-card class="advanced-key-drawer bg-surface-1">
+                      <q-card-section class="row items-center justify-between q-gutter-sm">
+                        <div class="text-subtitle1 text-weight-medium text-1">Dedicated key tools</div>
+                        <q-btn icon="close" flat round dense v-close-popup aria-label="Close key tools" />
+                      </q-card-section>
+                      <q-separator />
+                      <q-card-section class="advanced-key-drawer__body column q-gutter-lg">
+                        <div class="column q-gutter-sm">
+                          <div class="text-body2 text-2">
+                            Generate a fresh key for Nutzap-only publishing or paste an existing secret to reuse another
+                            signer.
+                          </div>
+                          <div v-if="usingStoreIdentity" class="text-caption text-2">
+                            Shared signer active — manual key import is disabled while using your Fundstr identity.
+                          </div>
+                        </div>
+                        <div v-if="!usingStoreIdentity" class="column q-gutter-sm">
+                          <q-input
+                            v-model="keyImportValue"
+                            label="Secret key (nsec or 64-char hex)"
+                            dense
+                            filled
+                            autocomplete="off"
+                            :disable="usingStoreSecret"
+                          />
+                          <div class="row q-gutter-sm">
+                            <q-btn
+                              color="primary"
+                              label="Generate"
+                              :disable="usingStoreSecret"
+                              @click="generateNewSecret"
+                            />
+                            <q-btn
+                              color="primary"
+                              outline
+                              label="Import"
+                              :disable="usingStoreSecret"
+                              @click="importSecretKey"
+                            />
+                          </div>
+                        </div>
+                        <div class="column q-gutter-sm">
+                          <q-input
+                            :model-value="keySecretHex"
+                            label="Secret key (hex)"
+                            type="textarea"
+                            dense
+                            filled
+                            readonly
+                            autogrow
+                          />
+                          <q-input
+                            :model-value="keyNsec"
+                            label="Secret key (nsec)"
+                            type="textarea"
+                            dense
+                            filled
+                            readonly
+                            autogrow
+                          />
+                          <q-input
+                            :model-value="keyPublicHex"
+                            label="Public key (hex)"
+                            type="textarea"
+                            dense
+                            filled
+                            readonly
+                            autogrow
+                          />
+                          <q-input
+                            :model-value="keyNpub"
+                            label="Public key (npub)"
+                            type="textarea"
+                            dense
+                            filled
+                            readonly
+                            autogrow
+                          />
+                        </div>
+                        <q-banner dense rounded class="bg-surface-2 text-body2 text-2">
+                          Save keys to this browser when you want the device to remember them, or clear the stored copy
+                          when finished.
+                        </q-banner>
+                        <div v-if="!usingStoreIdentity" class="row wrap q-gutter-sm">
                           <q-btn
                             color="primary"
-                            label="Generate"
-                            :disable="usingStoreSecret"
-                            @click="generateNewSecret"
+                            label="Save to Browser"
+                            :disable="!keySecretHex || usingStoreSecret"
+                            @click="saveSecretToBrowser"
                           />
                           <q-btn
                             color="primary"
                             outline
-                            label="Import"
-                            :disable="usingStoreSecret"
-                            @click="importSecretKey"
+                            label="Load from Browser"
+                            :disable="!hasStoredSecret || usingStoreSecret"
+                            @click="loadSecretFromBrowser"
+                          />
+                          <q-btn
+                            color="negative"
+                            outline
+                            label="Forget Stored Key"
+                            :disable="!hasStoredSecret || usingStoreSecret"
+                            @click="forgetStoredSecret"
                           />
                         </div>
-                      </div>
-                      <div v-else class="text-caption text-2">
-                        Shared signer active — manual key import is disabled while using your Fundstr identity.
-                      </div>
-                      <div class="column q-gutter-sm">
-                        <q-input
-                          :model-value="keySecretHex"
-                          label="Secret key (hex)"
-                          type="textarea"
-                          dense
-                          filled
-                          readonly
-                          autogrow
-                        />
-                        <q-input
-                          :model-value="keyNsec"
-                          label="Secret key (nsec)"
-                          type="textarea"
-                          dense
-                          filled
-                          readonly
-                          autogrow
-                        />
-                        <q-input
-                          :model-value="keyPublicHex"
-                          label="Public key (hex)"
-                          type="textarea"
-                          dense
-                          filled
-                          readonly
-                          autogrow
-                        />
-                        <q-input
-                          :model-value="keyNpub"
-                          label="Public key (npub)"
-                          type="textarea"
-                          dense
-                          filled
-                          readonly
-                          autogrow
-                        />
-                      </div>
-                      <q-banner dense rounded class="bg-surface-2 text-body2 text-2">
-                        Save keys to this browser when you want the device to remember them, or clear the stored copy
-                        when finished.
-                      </q-banner>
-                      <div v-if="!usingStoreIdentity" class="row wrap q-gutter-sm">
-                        <q-btn
-                          color="primary"
-                          label="Save to Browser"
-                          :disable="!keySecretHex || usingStoreSecret"
-                          @click="saveSecretToBrowser"
-                        />
-                        <q-btn
-                          color="primary"
-                          outline
-                          label="Load from Browser"
-                          :disable="!hasStoredSecret || usingStoreSecret"
-                          @click="loadSecretFromBrowser"
-                        />
-                        <q-btn
-                          color="negative"
-                          outline
-                          label="Forget Stored Key"
-                          :disable="!hasStoredSecret || usingStoreSecret"
-                          @click="forgetStoredSecret"
-                        />
-                      </div>
-                    </div>
-                  </q-expansion-item>
+                      </q-card-section>
+                    </q-card>
+                  </q-dialog>
                 </div>
               </section>
             </div>
@@ -877,6 +911,7 @@ const storeActiveNsec = computed(() => nostrStore.activePrivateKeyNsec || '');
 
 const usingStoreIdentity = computed(() => !!pubkey.value);
 const usingStoreSecret = computed(() => usingStoreIdentity.value && !!storePrivKeyHex.value);
+const storeHasPrivateKey = computed(() => !!storePrivKeyHex.value || !!storeActiveNsec.value);
 const connectedIdentitySummary = computed(() => {
   if (!usingStoreIdentity.value) {
     return '';
@@ -2003,6 +2038,19 @@ onBeforeUnmount(() => {
 
 .optional-tools-action {
   align-self: flex-start;
+}
+
+.advanced-key-drawer {
+  width: 420px;
+  max-width: 90vw;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.advanced-key-drawer__body {
+  flex: 1;
+  overflow-y: auto;
 }
 
 @media (max-width: 1100px) {
