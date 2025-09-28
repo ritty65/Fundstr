@@ -625,21 +625,133 @@
 
           <q-tab-panel name="explore" class="profile-panel">
             <div class="panel-sections">
-              <section class="section-card">
+              <section class="section-card explore-summary-card" data-testid="explore-summary">
                 <div class="section-header">
                   <div class="section-title text-subtitle1 text-weight-medium text-1">Review workspace</div>
                   <div class="section-subtitle text-body2 text-2">
-                    Quickly hydrate the composer with author data and inspect events across your relay set.
+                    High-level overview of the active author alongside tier readiness details.
                   </div>
                 </div>
-                <div class="section-body">
-                  <NutzapExplorerPanel
-                    v-model="authorInput"
-                    :loading-author="loading"
-                    :tier-address-preview="tierAddressPreview"
-                    @load-author="loadAll"
-                  />
+                <div class="section-body explore-summary-body">
+                  <div class="explore-summary-grid">
+                    <div class="explore-summary-overview column q-gutter-lg">
+                      <div class="summary-block" data-testid="explore-summary-identity">
+                        <div class="summary-label text-caption text-2">Profile identity</div>
+                        <div class="summary-value text-body1 text-weight-medium text-1">
+                          {{ summaryDisplayName }}
+                        </div>
+                        <div v-if="summaryAuthorKey" class="summary-meta text-caption text-2">
+                          Author:
+                          <span class="text-weight-medium text-1">{{ summaryAuthorKey }}</span>
+                        </div>
+                        <div v-if="summaryP2pkPointer" class="summary-meta text-caption text-2">
+                          P2PK pointer:
+                          <span class="text-weight-medium text-1">{{ summaryP2pkPointer }}</span>
+                        </div>
+                      </div>
+                      <div class="summary-block" data-testid="explore-summary-mints">
+                        <div class="summary-label text-caption text-2">Trusted mints</div>
+                        <div v-if="mintList.length" class="summary-chips" data-testid="explore-mint-list">
+                          <q-chip
+                            v-for="mint in mintList"
+                            :key="mint"
+                            dense
+                            outline
+                            class="summary-chip"
+                            data-testid="explore-mint-chip"
+                          >
+                            {{ mint }}
+                          </q-chip>
+                        </div>
+                        <div v-else class="summary-empty text-caption text-2">No mints configured.</div>
+                      </div>
+                      <div class="summary-block" data-testid="explore-summary-relays">
+                        <div class="summary-label text-caption text-2">Preferred relays</div>
+                        <div class="summary-chips" data-testid="explore-relay-list">
+                          <q-chip
+                            v-for="relay in relayList"
+                            :key="relay"
+                            dense
+                            outline
+                            class="summary-chip"
+                            data-testid="explore-relay-chip"
+                          >
+                            {{ relay }}
+                          </q-chip>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="explore-tier-overview" data-testid="explore-tier-overview">
+                      <div class="summary-label text-caption text-2">Tier lineup</div>
+                      <ol
+                        v-if="tierSummaryList.length"
+                        class="explore-tier-list"
+                        data-testid="explore-tier-list"
+                        role="list"
+                      >
+                        <li
+                          v-for="(tier, index) in tierSummaryList"
+                          :key="tier.id || index"
+                          class="explore-tier-item"
+                          data-testid="explore-tier-item"
+                        >
+                          <div class="tier-rank text-caption text-2">#{{ index + 1 }}</div>
+                          <div class="tier-details">
+                            <div class="tier-title text-body1 text-weight-medium text-1">{{ tier.title }}</div>
+                            <div class="tier-meta text-caption text-2">
+                              <span class="tier-price text-weight-medium text-1">{{ tier.priceLabel }}</span>
+                              <q-chip dense size="sm" outline class="tier-frequency-chip">
+                                {{ tier.frequencyLabel }}
+                              </q-chip>
+                            </div>
+                            <div v-if="tier.description" class="tier-description text-caption text-2">
+                              {{ tier.description }}
+                            </div>
+                          </div>
+                        </li>
+                      </ol>
+                      <div v-else class="summary-empty text-caption text-2">
+                        No tiers loaded yet — fetch data from an author to review.
+                      </div>
+                    </div>
+                  </div>
                 </div>
+              </section>
+              <section class="section-card explore-tools-card" data-testid="explore-inline-tools">
+                <template v-if="isExplorerFloating">
+                  <q-expansion-item
+                    v-model="dataExplorerOpen"
+                    switch-toggle-side
+                    dense
+                    expand-separator
+                    icon="travel_explore"
+                    class="explore-inline-expansion"
+                  >
+                    <template #header>
+                      <div class="inline-explorer-header">
+                        <div class="text-body1 text-weight-medium text-1">Explorer tools</div>
+                        <div class="text-caption text-2">
+                          Inspect stored events without leaving the summary.
+                        </div>
+                      </div>
+                    </template>
+                    <div class="inline-explorer-body">
+                      <NutzapExplorerPanel
+                        v-model="authorInput"
+                        :loading-author="loading"
+                        :tier-address-preview="tierAddressPreview"
+                        :condensed="true"
+                        @load-author="loadAll"
+                      />
+                    </div>
+                  </q-expansion-item>
+                </template>
+                <template v-else>
+                  <div class="explore-tools-desktop text-body2 text-2">
+                    The data explorer is available from the side drawer. Use the toggle above to keep it beside this
+                    summary.
+                  </div>
+                </template>
               </section>
             </div>
           </q-tab-panel>
@@ -647,7 +759,7 @@
         </div>
         <transition name="explorer-fade">
           <aside
-            v-if="dataExplorerOpen"
+            v-if="dataExplorerOpen && !isExplorerFloating"
             class="data-explorer-sidebar bg-surface-2 text-1"
             :class="{ 'is-floating': isExplorerFloating }"
           >
@@ -678,12 +790,6 @@
         </transition>
       </div>
     </div>
-    <div
-      v-if="dataExplorerOpen && isExplorerFloating"
-      class="data-explorer-backdrop"
-      role="presentation"
-      @click="closeDataExplorer"
-    ></div>
   </q-page>
 </template>
 
@@ -1185,6 +1291,56 @@ const relayList = computed(() => {
   set.add(FUNDSTR_WS_URL);
   return Array.from(set);
 });
+
+const summaryDisplayName = computed(() => {
+  const trimmedName = displayName.value.trim();
+  if (trimmedName) {
+    return trimmedName;
+  }
+  if (usingStoreIdentity.value) {
+    return 'Fundstr identity';
+  }
+  if (authorInput.value.trim()) {
+    return 'Nutzap author';
+  }
+  return 'Author not loaded';
+});
+
+const summaryAuthorKey = computed(() => {
+  if (connectedIdentitySummary.value) {
+    return connectedIdentitySummary.value;
+  }
+  const trimmed = authorInput.value.trim();
+  return trimmed ? shortenKey(trimmed) : '';
+});
+
+const summaryP2pkPointer = computed(() => {
+  const trimmed = p2pkPub.value.trim();
+  return trimmed ? shortenKey(trimmed) : '';
+});
+
+const tierFrequencyLabelMap: Record<Tier['frequency'], string> = {
+  one_time: 'One-time',
+  monthly: 'Monthly',
+  yearly: 'Yearly',
+};
+
+const tierSummaryList = computed(() =>
+  tiers.value.map(tier => {
+    const title = tier.title?.trim() || 'Untitled tier';
+    const price = Number.isFinite(tier.price) ? tier.price : 0;
+    const description = typeof tier.description === 'string' ? tier.description.trim() : '';
+    const frequency = tier.frequency && tierFrequencyLabelMap[tier.frequency] ? tier.frequency : 'monthly';
+
+    return {
+      id: tier.id,
+      title,
+      priceLabel: `${price.toLocaleString()} sats`,
+      frequencyLabel: tierFrequencyLabelMap[frequency],
+      ...(description ? { description } : {}),
+    };
+  })
+);
 
 const tierKindOptions = [
   { label: 'Canonical (30019)', value: 30019 },
@@ -2029,12 +2185,136 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-.data-explorer-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(12, 16, 28, 0.55);
-  z-index: 10;
-  backdrop-filter: blur(2px);
+.explore-summary-card .section-body {
+  gap: 0;
+}
+
+.explore-summary-grid {
+  display: grid;
+  gap: 24px;
+}
+
+@media (min-width: 1024px) {
+  .explore-summary-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  }
+}
+
+.explore-summary-overview {
+  gap: 16px;
+}
+
+.summary-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
+}
+
+.summary-label {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+
+.summary-meta {
+  line-height: 1.4;
+}
+
+.summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.summary-chip {
+  border-color: var(--surface-contrast-border);
+}
+
+.summary-empty {
+  padding: 8px 0;
+}
+
+.explore-tier-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.explore-tier-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+}
+
+.explore-tier-item {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
+}
+
+.tier-rank {
+  width: 32px;
+  flex-shrink: 0;
+  text-align: center;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+
+.tier-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tier-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tier-frequency-chip {
+  border-color: var(--surface-contrast-border);
+  color: var(--text-2);
+}
+
+.tier-description {
+  line-height: 1.4;
+}
+
+.explore-tools-card {
+  gap: 12px;
+}
+
+.inline-explorer-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inline-explorer-body {
+  margin-top: 12px;
+}
+
+.explore-inline-expansion .q-item {
+  padding: 0;
+}
+
+.explore-inline-expansion .q-item__section {
+  padding: 0;
+}
+
+.explore-tools-desktop {
+  line-height: 1.5;
 }
 
 .explorer-fade-enter-active,
