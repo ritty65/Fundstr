@@ -290,10 +290,12 @@ beforeEach(() => {
 });
 
 describe("NutzapProfilePage publishing", () => {
-  it("publishing tiers shows success, refreshes subscriptions, and rewrites author input", async () => {
+  it("publishes profile and tiers together, rewriting author input", async () => {
     const wrapper = await mountPage();
 
     (wrapper.vm as any).authorInput = VALID_HEX;
+    (wrapper.vm as any).p2pkPub = "ff".repeat(32);
+    (wrapper.vm as any).mintsText = "https://mint.example";
     (wrapper.vm as any).tiers = [
       { id: "tier", title: "Tier", price: 100, frequency: "monthly", media: [] },
     ];
@@ -301,28 +303,41 @@ describe("NutzapProfilePage publishing", () => {
 
     await (wrapper.vm as any).refreshSubscriptions(true);
     await flushPromises();
+
     const state = ensureShared();
+    state.signerRef.value = { sign: vi.fn() };
     state.publishTiersToRelayMock.mockResolvedValue({
-      ack: { id: "event-id", message: "ack" },
+      ack: { id: "tier-id", message: "tiers-ack" },
+      event: { pubkey: OTHER_HEX },
+    });
+    state.publishNostrEventMock.mockResolvedValue({
+      ack: { id: "profile-id", message: "profile-ack" },
       event: { pubkey: OTHER_HEX },
     });
 
     notifySuccessMock.mockClear();
     notifyErrorMock.mockClear();
 
-    await (wrapper.vm as any).publishTiers();
+    await (wrapper.vm as any).publishAll();
     await flushPromises();
 
     expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(1);
-    expect((wrapper.vm as any).lastTiersPublishInfo).toContain("Tiers published");
+    expect(state.publishNostrEventMock).toHaveBeenCalledTimes(1);
+    expect((wrapper.vm as any).lastPublishInfo).toContain("Tiers published");
+    expect((wrapper.vm as any).lastPublishInfo).toContain("Profile published");
     expect((wrapper.vm as any).authorInput).toBe(OTHER_HEX);
-    expect(notifySuccessMock).toHaveBeenCalledWith("Relay accepted tiers — ack");
+    expect(notifySuccessMock).toHaveBeenCalledWith(
+      "Nutzap profile published (profile profile-ack, tiers tiers-ack)."
+    );
     expect(notifyErrorMock).not.toHaveBeenCalled();
   });
 
-  it("publishing tiers reports relay failures", async () => {
+  it("stops the workflow when tier publishing fails", async () => {
     const wrapper = await mountPage();
+
     (wrapper.vm as any).authorInput = VALID_HEX;
+    (wrapper.vm as any).p2pkPub = "ff".repeat(32);
+    (wrapper.vm as any).mintsText = "https://mint.example";
     (wrapper.vm as any).tiers = [
       { id: "tier", title: "Tier", price: 100, frequency: "monthly", media: [] },
     ];
@@ -332,23 +347,26 @@ describe("NutzapProfilePage publishing", () => {
     await flushPromises();
 
     const state = ensureShared();
-    const client = state.lastRelayClientInstance ?? state.relayClientMock;
+    state.signerRef.value = { sign: vi.fn() };
     const RelayPublishError = state.RelayPublishErrorCtor;
     state.publishTiersToRelayMock.mockRejectedValue(
-      new RelayPublishError({ id: "123", message: "Relay rejected event." })
+      new RelayPublishError({ id: "tier", message: "Relay rejected event." })
     );
 
     notifySuccessMock.mockClear();
     notifyErrorMock.mockClear();
 
-    await (wrapper.vm as any).publishTiers();
+    await (wrapper.vm as any).publishAll();
     await flushPromises();
 
-    expect(notifyErrorMock).toHaveBeenCalledWith("Relay publish failed");
+    expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(1);
+    expect(state.publishNostrEventMock).not.toHaveBeenCalled();
+    expect((wrapper.vm as any).lastPublishInfo).toContain("Publish rejected — id tier");
+    expect(notifyErrorMock).toHaveBeenCalledWith("Relay rejected event.");
     expect(notifySuccessMock).not.toHaveBeenCalled();
   });
 
-  it("publishing profile refreshes data and handles signer rewrites", async () => {
+  it("surfaces profile publishing failures after tier success", async () => {
     const wrapper = await mountPage();
 
     (wrapper.vm as any).authorInput = VALID_HEX;
@@ -363,39 +381,12 @@ describe("NutzapProfilePage publishing", () => {
     await flushPromises();
 
     const state = ensureShared();
-    state.publishNostrEventMock.mockResolvedValue({
-      ack: { id: "profile-id", message: "accepted" },
+    state.signerRef.value = { sign: vi.fn() };
+    const RelayPublishError = state.RelayPublishErrorCtor;
+    state.publishTiersToRelayMock.mockResolvedValue({
+      ack: { id: "tier-id", message: "tiers-ack" },
       event: { pubkey: OTHER_HEX },
     });
-
-    notifySuccessMock.mockClear();
-    notifyErrorMock.mockClear();
-
-    await (wrapper.vm as any).publishProfile();
-    await flushPromises();
-
-    expect(state.publishNostrEventMock).toHaveBeenCalledTimes(1);
-    expect((wrapper.vm as any).lastProfilePublishInfo).toContain("Profile published");
-    expect((wrapper.vm as any).authorInput).toBe(OTHER_HEX);
-    expect(notifySuccessMock).toHaveBeenCalledWith("Relay accepted profile — accepted");
-    expect(notifyErrorMock).not.toHaveBeenCalled();
-  });
-
-  it("publishing profile surfaces relay rejection", async () => {
-    const wrapper = await mountPage();
-    (wrapper.vm as any).authorInput = VALID_HEX;
-    (wrapper.vm as any).p2pkPub = "ff".repeat(32);
-    (wrapper.vm as any).mintsText = "https://mint.example";
-    (wrapper.vm as any).tiers = [
-      { id: "tier", title: "Tier", price: 100, frequency: "monthly", media: [] },
-    ];
-    (wrapper.vm as any).tiersJsonError = null;
-
-    await (wrapper.vm as any).refreshSubscriptions(true);
-    await flushPromises();
-
-    const state = ensureShared();
-    const RelayPublishError = state.RelayPublishErrorCtor;
     state.publishNostrEventMock.mockRejectedValue(
       new RelayPublishError({ id: "profile", message: "Relay rejected event." })
     );
@@ -403,10 +394,14 @@ describe("NutzapProfilePage publishing", () => {
     notifySuccessMock.mockClear();
     notifyErrorMock.mockClear();
 
-    await (wrapper.vm as any).publishProfile();
+    await (wrapper.vm as any).publishAll();
     await flushPromises();
 
-    expect(notifyErrorMock).toHaveBeenCalledWith("Relay publish failed");
+    expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(1);
+    expect(state.publishNostrEventMock).toHaveBeenCalledTimes(1);
+    expect((wrapper.vm as any).lastPublishInfo).toContain("Tiers published");
+    expect((wrapper.vm as any).lastPublishInfo).toContain("Publish rejected — id profile");
+    expect(notifyErrorMock).toHaveBeenCalledWith("Relay rejected event.");
     expect(notifySuccessMock).not.toHaveBeenCalled();
   });
 });
