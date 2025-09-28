@@ -115,6 +115,20 @@ vi.mock("../../../src/js/notify", () => ({
   notifyWarning: (...args: any[]) => notifyWarningMock(...args),
 }));
 
+vi.mock("quasar", async () => {
+  const actual = await vi.importActual<any>("quasar");
+  return {
+    ...actual,
+    useQuasar: () => ({
+      screen: {
+        lt: {
+          lg: false,
+        },
+      },
+    }),
+  };
+});
+
 vi.mock("../../../src/nutzap/onepage/useRelayConnection", () => ({
   useRelayConnection: () => ({
     relayUrl: ensureShared().relayUrlRef,
@@ -221,6 +235,7 @@ async function mountPage() {
         NutzapExplorerSearch: true,
         NutzapLegacyExplorer: true,
         NutzapSelfTests: true,
+        'router-link': true,
         transition: false,
         teleport: false,
       },
@@ -397,22 +412,21 @@ describe("NutzapProfilePage publishing", () => {
 });
 
 describe("NutzapProfilePage edge cases", () => {
-  it("logs validation errors for invalid tier JSON", async () => {
-    const wrapper = await mountPage();
-    notifyErrorMock.mockClear();
+  it("initializes Fundstr signer identity on mount", async () => {
     const state = ensureShared();
-    state.logActivityMock.mockClear();
+    state.nostrStoreMock.npub = "npub1fundstridentity";
+    state.pubkeyRef.value = "";
 
-    (wrapper.vm as any).tiersJson = "not-json";
+    const wrapper = await mountPage();
+
+    expect(state.nostrStoreMock.initSignerIfNotSet).toHaveBeenCalled();
+
+    state.pubkeyRef.value = VALID_HEX;
     await flushPromises();
 
-    expect((wrapper.vm as any).tiersJsonError).toMatch(/not valid json/i);
-    expect(state.logActivityMock).toHaveBeenCalledWith(
-      "error",
-      "Tier JSON validation failed",
-      expect.stringMatching(/json/i)
-    );
-    expect(notifyErrorMock).toHaveBeenCalledWith(expect.stringMatching(/Tier JSON invalid/i));
+    expect((wrapper.vm as any).authorInput).toBe(VALID_HEX);
+    expect((wrapper.vm as any).keyPublicHex).toBe(VALID_HEX);
+    expect((wrapper.vm as any).keyNpub).toBe("npub1fundstridentity");
   });
 
   it("reloads data after relay reconnects", async () => {
@@ -432,25 +446,4 @@ describe("NutzapProfilePage edge cases", () => {
     await flushPromises();
   });
 
-  it("persists secrets to browser storage", async () => {
-    const wrapper = await mountPage();
-
-    (wrapper.vm as any).keySecretHex = VALID_HEX;
-
-    notifySuccessMock.mockClear();
-    await (wrapper.vm as any).saveSecretToBrowser();
-    expect(localStorage.getItem("nutzap.profile.secretHex")).toBe(VALID_HEX);
-    expect(notifySuccessMock).toHaveBeenCalledWith("Secret key saved to browser storage.");
-
-    notifySuccessMock.mockClear();
-    (wrapper.vm as any).keySecretHex = "";
-    await (wrapper.vm as any).loadSecretFromBrowser();
-    expect((wrapper.vm as any).keySecretHex).toBe(VALID_HEX);
-    expect(notifySuccessMock).toHaveBeenCalledWith("Secret key loaded from browser storage.");
-
-    notifySuccessMock.mockClear();
-    await (wrapper.vm as any).forgetStoredSecret();
-    expect(localStorage.getItem("nutzap.profile.secretHex")).toBeNull();
-    expect(notifySuccessMock).toHaveBeenCalledWith("Stored secret key removed.");
-  });
 });

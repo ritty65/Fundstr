@@ -229,33 +229,19 @@
                       This workspace is scoped to a standalone key, so Nutzap activity stays independent from your
                       Fundstr profile.
                     </div>
-                    <q-banner
-                      v-if="usingStoreIdentity && !storeHasPrivateKey"
-                      dense
-                      rounded
-                      class="bg-surface-2 text-warning"
-                    >
-                      The shared Fundstr signer is missing a stored private key on this device. Open the dedicated key
-                      tools to import or generate one before publishing.
-                    </q-banner>
                   </div>
-                  <div class="row items-center q-gutter-sm">
+                  <div v-if="!usingStoreIdentity" class="row items-center q-gutter-sm">
                     <q-btn
-                      v-if="usingStoreIdentity"
                       color="primary"
                       outline
-                      label="Need a dedicated key?"
-                      @click="advancedKeyManagementOpen = true"
-                    />
-                    <q-btn
-                      v-else
-                      color="primary"
-                      outline
-                      label="Manage key tools"
+                      label="Manage dedicated key"
                       @click="advancedKeyManagementOpen = true"
                     />
                   </div>
-                  <q-dialog v-model="advancedKeyManagementOpen" position="right">
+                  <div v-else class="text-caption text-2">
+                    Dedicated key tools become available when no Fundstr signer is connected.
+                  </div>
+                  <q-dialog v-if="!usingStoreIdentity" v-model="advancedKeyManagementOpen" position="right">
                     <q-card class="advanced-key-drawer bg-surface-1">
                       <q-card-section class="row items-center justify-between q-gutter-sm">
                         <div class="text-subtitle1 text-weight-medium text-1">Dedicated key tools</div>
@@ -268,31 +254,25 @@
                             Generate a fresh key for Nutzap-only publishing or paste an existing secret to reuse another
                             signer.
                           </div>
-                          <div v-if="usingStoreIdentity" class="text-caption text-2">
-                            Shared signer active — manual key import is disabled while using your Fundstr identity.
-                          </div>
                         </div>
-                        <div v-if="!usingStoreIdentity" class="column q-gutter-sm">
+                        <div class="column q-gutter-sm">
                           <q-input
                             v-model="keyImportValue"
                             label="Secret key (nsec or 64-char hex)"
                             dense
                             filled
                             autocomplete="off"
-                            :disable="usingStoreSecret"
                           />
                           <div class="row q-gutter-sm">
                             <q-btn
                               color="primary"
                               label="Generate"
-                              :disable="usingStoreSecret"
                               @click="generateNewSecret"
                             />
                             <q-btn
                               color="primary"
                               outline
                               label="Import"
-                              :disable="usingStoreSecret"
                               @click="importSecretKey"
                             />
                           </div>
@@ -333,32 +313,6 @@
                             filled
                             readonly
                             autogrow
-                          />
-                        </div>
-                        <q-banner dense rounded class="bg-surface-2 text-body2 text-2">
-                          Save keys to this browser when you want the device to remember them, or clear the stored copy
-                          when finished.
-                        </q-banner>
-                        <div v-if="!usingStoreIdentity" class="row wrap q-gutter-sm">
-                          <q-btn
-                            color="primary"
-                            label="Save to Browser"
-                            :disable="!keySecretHex || usingStoreSecret"
-                            @click="saveSecretToBrowser"
-                          />
-                          <q-btn
-                            color="primary"
-                            outline
-                            label="Load from Browser"
-                            :disable="!hasStoredSecret || usingStoreSecret"
-                            @click="loadSecretFromBrowser"
-                          />
-                          <q-btn
-                            color="negative"
-                            outline
-                            label="Forget Stored Key"
-                            :disable="!hasStoredSecret || usingStoreSecret"
-                            @click="forgetStoredSecret"
                           />
                         </div>
                       </q-card-section>
@@ -744,7 +698,6 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { WatchStopHandle } from 'vue';
 import type { RouteLocationRaw } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
@@ -807,7 +760,6 @@ const keySecretHex = ref('');
 const keyPublicHex = ref('');
 const keyNpub = ref('');
 const keyNsec = ref('');
-const hasStoredSecret = ref(false);
 const advancedKeyManagementOpen = ref(false);
 const workflowSteps = [
   {
@@ -840,9 +792,6 @@ const stepClasses = (index: number) => ({
   'is-active': index === activeStepIndex.value,
   'is-complete': index < activeStepIndex.value,
 });
-
-const SECRET_STORAGE_KEY = 'nutzap.profile.secretHex';
-const isBrowser = typeof window !== 'undefined';
 
 type DiagnosticsAttention = {
   id: number;
@@ -1037,11 +986,6 @@ function handleRelayDisconnect() {
   disconnectRelay();
 }
 
-function updateStoredSecretPresence() {
-  if (!isBrowser) return;
-  hasStoredSecret.value = !!localStorage.getItem(SECRET_STORAGE_KEY);
-}
-
 function applySecretBytes(sk: Uint8Array) {
   const secretHex = bytesToHex(sk);
   const publicHex = getNostrPublicKey(sk);
@@ -1094,66 +1038,6 @@ function importSecretKey() {
   } catch (err) {
     notifyError(err instanceof Error ? err.message : 'Unable to import key.');
   }
-}
-
-function saveSecretToBrowser() {
-  if (!advancedKeyManagementOpen.value) {
-    return;
-  }
-  if (!keySecretHex.value) {
-    notifyWarning('Generate or import a secret key first.');
-    return;
-  }
-  if (!isBrowser) {
-    notifyError('Browser storage is unavailable.');
-    return;
-  }
-
-  localStorage.setItem(SECRET_STORAGE_KEY, keySecretHex.value);
-  updateStoredSecretPresence();
-  notifySuccess('Secret key saved to browser storage.');
-}
-
-function loadSecretFromBrowser() {
-  if (!advancedKeyManagementOpen.value) {
-    return;
-  }
-  if (!isBrowser) {
-    notifyError('Browser storage is unavailable.');
-    return;
-  }
-
-  const stored = localStorage.getItem(SECRET_STORAGE_KEY);
-  if (!stored) {
-    notifyWarning('No stored secret key found.');
-    return;
-  }
-  if (!/^[0-9a-fA-F]{64}$/.test(stored)) {
-    notifyError('Stored secret key is invalid.');
-    return;
-  }
-
-  applySecretBytes(hexToBytes(stored));
-  updateStoredSecretPresence();
-  notifySuccess('Secret key loaded from browser storage.');
-}
-
-function forgetStoredSecret() {
-  if (!advancedKeyManagementOpen.value) {
-    return;
-  }
-  if (!isBrowser) {
-    notifyError('Browser storage is unavailable.');
-    return;
-  }
-  if (!hasStoredSecret.value) {
-    notifyWarning('No stored secret key to forget.');
-    return;
-  }
-
-  localStorage.removeItem(SECRET_STORAGE_KEY);
-  updateStoredSecretPresence();
-  notifySuccess('Stored secret key removed.');
 }
 
 function setDerivedP2pk(pubHex: string) {
@@ -1232,12 +1116,8 @@ const { pubkey, signer } = useActiveNutzapSigner();
 const nostrStore = useNostrStore();
 
 const storeNpub = computed(() => nostrStore.npub || '');
-const storePrivKeyHex = computed(() => nostrStore.privKeyHex || '');
-const storeActiveNsec = computed(() => nostrStore.activePrivateKeyNsec || '');
 
 const usingStoreIdentity = computed(() => !!pubkey.value);
-const usingStoreSecret = computed(() => usingStoreIdentity.value && !!storePrivKeyHex.value);
-const storeHasPrivateKey = computed(() => !!storePrivKeyHex.value || !!storeActiveNsec.value);
 const connectedIdentitySummary = computed(() => {
   if (!usingStoreIdentity.value) {
     return '';
@@ -1261,8 +1141,6 @@ function shortenKey(value: string) {
 }
 
 const lastSyncedPubkey = ref('');
-const lastSyncedSecretHex = ref('');
-const lastSyncedNsec = ref('');
 
 let ensureSharedSignerPromise: Promise<void> | null = null;
 
@@ -1374,10 +1252,12 @@ watch(
 watch(
   usingStoreIdentity,
   value => {
-    if (!value) {
-      return;
+    if (value) {
+      advancedKeyManagementOpen.value = false;
+      void ensureSharedSignerInitialized();
+    } else {
+      advancedKeyManagementOpen.value = true;
     }
-    void ensureSharedSignerInitialized();
   },
   { immediate: true }
 );
@@ -1416,66 +1296,6 @@ watch(
   { immediate: true }
 );
 
-let stopStoreKeySync: WatchStopHandle | null = null;
-
-function stopStoreKeySyncWatcher() {
-  if (stopStoreKeySync) {
-    stopStoreKeySync();
-    stopStoreKeySync = null;
-  }
-}
-
-function startStoreKeySyncWatcher() {
-  if (stopStoreKeySync) {
-    return;
-  }
-  stopStoreKeySync = watch(
-    [storePrivKeyHex, storeActiveNsec],
-    ([privHex, activeNsec]) => {
-      const normalizedHex = typeof privHex === 'string' ? privHex.trim().toLowerCase() : '';
-      const normalizedNsec = typeof activeNsec === 'string' ? activeNsec.trim() : '';
-
-      if (normalizedHex) {
-        keySecretHex.value = normalizedHex;
-        lastSyncedSecretHex.value = normalizedHex;
-      } else if (lastSyncedSecretHex.value && keySecretHex.value === lastSyncedSecretHex.value) {
-        keySecretHex.value = '';
-        lastSyncedSecretHex.value = '';
-      }
-
-      if (normalizedNsec) {
-        keyNsec.value = normalizedNsec;
-        lastSyncedNsec.value = normalizedNsec;
-      } else if (normalizedHex) {
-        const derived = safeEncodeNsec(normalizedHex);
-        if (derived) {
-          keyNsec.value = derived;
-          lastSyncedNsec.value = derived;
-        } else if (lastSyncedNsec.value && keyNsec.value === lastSyncedNsec.value) {
-          keyNsec.value = '';
-          lastSyncedNsec.value = '';
-        }
-      } else if (lastSyncedNsec.value && keyNsec.value === lastSyncedNsec.value) {
-        keyNsec.value = '';
-        lastSyncedNsec.value = '';
-      }
-    },
-    { immediate: true }
-  );
-}
-
-watch(
-  advancedKeyManagementOpen,
-  value => {
-    if (value) {
-      startStoreKeySyncWatcher();
-    } else {
-      stopStoreKeySyncWatcher();
-    }
-  },
-  { immediate: true }
-);
-
 const tierAddressPreview = computed(() => {
   try {
     const authorHex = normalizeAuthor(authorInput.value);
@@ -1488,14 +1308,6 @@ const tierAddressPreview = computed(() => {
 function safeEncodeNpub(pubHex: string) {
   try {
     return nip19.npubEncode(pubHex);
-  } catch {
-    return '';
-  }
-}
-
-function safeEncodeNsec(secretHex: string) {
-  try {
-    return nip19.nsecEncode(hexToBytes(secretHex));
   } catch {
     return '';
   }
@@ -2078,9 +1890,7 @@ watch(
 );
 
 onMounted(() => {
-  if (isBrowser) {
-    updateStoredSecretPresence();
-  }
+  void ensureSharedSignerInitialized();
   if (!relaysText.value) {
     relaysText.value = FUNDSTR_WS_URL;
   }
@@ -2099,7 +1909,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   cleanupSubscriptions();
-  stopStoreKeySyncWatcher();
   if (stopRelayStatusListener) {
     stopRelayStatusListener();
     stopRelayStatusListener = null;
