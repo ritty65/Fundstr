@@ -504,17 +504,8 @@
                   <div class="text-body2 text-2">
                     Publishing updates with tier address <span class="text-weight-medium text-1">{{ tierAddressPreview }}</span>.
                   </div>
-                  <div class="row justify-end q-gutter-sm">
-                    <q-btn
-                      color="primary"
-                      label="Publish Profile"
-                      :disable="profilePublishDisabled"
-                      :loading="publishingProfile"
-                      @click="publishProfile"
-                    />
-                  </div>
-                  <div class="text-body2 text-2" v-if="lastProfilePublishInfo">
-                    {{ lastProfilePublishInfo }}
+                  <div class="text-body2 text-2">
+                    Publishing happens from the Review &amp; Publish section once tiers and signer are ready.
                   </div>
                 </div>
               </section>
@@ -614,14 +605,14 @@
                     <div class="row justify-end q-gutter-sm">
                       <q-btn
                         color="primary"
-                        label="Publish Tiers"
-                        :disable="tiersPublishDisabled"
-                        :loading="publishingTiers"
-                        @click="publishTiers"
+                        label="Publish profile &amp; tiers"
+                        :disable="publishDisabled"
+                        :loading="publishingAll"
+                        @click="publishAll"
                       />
                     </div>
-                    <div class="text-body2 text-2" v-if="lastTiersPublishInfo">
-                      {{ lastTiersPublishInfo }}
+                    <div class="text-body2 text-2" v-if="lastPublishInfo">
+                      {{ lastPublishInfo }}
                     </div>
                   </div>
                 </q-expansion-item>
@@ -744,10 +735,8 @@ const relaysText = ref(FUNDSTR_WS_URL);
 const tiers = ref<Tier[]>([]);
 const tierKind = ref<TierKind>(30019);
 const loading = ref(false);
-const publishingProfile = ref(false);
-const publishingTiers = ref(false);
-const lastProfilePublishInfo = ref('');
-const lastTiersPublishInfo = ref('');
+const publishingAll = ref(false);
+const lastPublishInfo = ref('');
 const hasAutoLoaded = ref(false);
 
 const identitySectionOpen = ref(true);
@@ -1313,22 +1302,15 @@ function safeEncodeNpub(pubHex: string) {
   }
 }
 
-const profilePublishDisabled = computed(
+const publishDisabled = computed(
   () =>
-    publishingProfile.value ||
+    publishingAll.value ||
     !authorInput.value.trim() ||
     !p2pkPub.value.trim() ||
-    tiersHaveErrors.value ||
     mintList.value.length === 0 ||
-    tiers.value.length === 0
-);
-
-const tiersPublishDisabled = computed(
-  () =>
-    publishingTiers.value ||
-    !authorInput.value.trim() ||
+    tiers.value.length === 0 ||
     tiersHaveErrors.value ||
-    tiers.value.length === 0
+    !signer.value
 );
 
 const tierFrequencyOptions = computed(() =>
@@ -1714,12 +1696,17 @@ async function loadAll() {
   }
 }
 
-async function publishTiers() {
+async function publishAll() {
   let authorHex: string;
   try {
     authorHex = normalizeAuthor(authorInput.value);
   } catch (err) {
     notifyError(err instanceof Error ? err.message : String(err));
+    return;
+  }
+
+  if (!signer.value) {
+    notifyError('Connect a Nostr signer to publish.');
     return;
   }
 
@@ -1729,61 +1716,11 @@ async function publishTiers() {
     return;
   }
   if (tiersHaveErrors.value) {
-    notifyError('Fix tier validation errors before publishing tiers.');
+    notifyError('Fix tier validation errors before publishing.');
     return;
   }
 
   showTierValidation.value = false;
-
-  publishingTiers.value = true;
-  try {
-    const { ack, event } = await publishTiersToRelay(tiers.value, tierKind.value, {
-      send: publishEventToRelay,
-    });
-    const signerPubkey = event?.pubkey;
-    const reloadKey = typeof signerPubkey === 'string' && signerPubkey ? signerPubkey : authorHex;
-    if (signerPubkey && signerPubkey !== authorInput.value) {
-      authorInput.value = signerPubkey;
-    }
-    const eventId = ack?.id ?? event?.id;
-    const relayMessage = typeof ack?.message === 'string' && ack.message ? ` — ${ack.message}` : '';
-    lastTiersPublishInfo.value = eventId
-      ? `Tiers published (kind ${tierKind.value}) — id ${eventId}${relayMessage}`
-      : `Tiers published (kind ${tierKind.value})${relayMessage}`;
-    const successMessage =
-      typeof ack?.message === 'string' && ack.message
-        ? `Relay accepted tiers — ${ack.message}`
-        : 'Subscription tiers published to relay.fundstr.me.';
-    notifySuccess(successMessage);
-    await loadTiers(reloadKey);
-    refreshSubscriptions(true);
-  } catch (err) {
-    console.error('[nutzap] publish tiers failed', err);
-    if (err instanceof RelayPublishError) {
-      const message = err.ack.message ?? 'Relay rejected event.';
-      lastTiersPublishInfo.value = `Tiers publish rejected — id ${err.ack.id}${
-        err.ack.message ? ` — ${err.ack.message}` : ''
-      }`;
-      notifyError(message);
-      flagDiagnosticsAttention('publish', message);
-    } else {
-      const fallback = err instanceof Error ? err.message : 'Unable to publish tiers.';
-      notifyError(fallback);
-      flagDiagnosticsAttention('publish', fallback);
-    }
-  } finally {
-    publishingTiers.value = false;
-  }
-}
-
-async function publishProfile() {
-  let authorHex: string;
-  try {
-    authorHex = normalizeAuthor(authorInput.value);
-  } catch (err) {
-    notifyError(err instanceof Error ? err.message : String(err));
-    return;
-  }
 
   if (!p2pkPub.value.trim()) {
     notifyError('P2PK public key is required.');
@@ -1793,17 +1730,26 @@ async function publishProfile() {
     notifyError('Add at least one trusted mint URL.');
     return;
   }
-  if (tiers.value.length === 0) {
-    notifyError('Add at least one tier before publishing.');
-    return;
-  }
-  if (tiersHaveErrors.value) {
-    notifyError('Fix tier validation errors before publishing the profile.');
-    return;
-  }
 
-  publishingProfile.value = true;
+  publishingAll.value = true;
+  lastPublishInfo.value = '';
+
+  let tierSummary = '';
+
   try {
+    const tierResult = await publishTiersToRelay(tiers.value, tierKind.value, {
+      send: publishEventToRelay,
+    });
+
+    const tierEventId = tierResult.ack?.id ?? tierResult.event?.id;
+    const tierRelayMessage =
+      typeof tierResult.ack?.message === 'string' && tierResult.ack.message
+        ? ` — ${tierResult.ack.message}`
+        : '';
+    tierSummary = tierEventId
+      ? `Tiers published (kind ${tierKind.value}) — id ${tierEventId}${tierRelayMessage}`
+      : `Tiers published (kind ${tierKind.value})${tierRelayMessage}`;
+
     const relays = relayList.value;
     const p2pkHex = p2pkPub.value.trim();
     const tagPubkey = (p2pkDerivedPub.value || p2pkHex).trim();
@@ -1832,43 +1778,65 @@ async function publishProfile() {
       tags.push(['picture', pictureUrl.value.trim()]);
     }
 
-    const { ack, event } = await publishNostrEvent(
+    const profileResult = await publishNostrEvent(
       { kind: 10019, tags, content },
       { send: publishEventToRelay }
     );
-    const signerPubkey = event?.pubkey;
+
+    const signerPubkey = profileResult.event?.pubkey || tierResult.event?.pubkey;
     const reloadKey = typeof signerPubkey === 'string' && signerPubkey ? signerPubkey : authorHex;
     if (signerPubkey && signerPubkey !== authorInput.value) {
       authorInput.value = signerPubkey;
     }
-    const eventId = ack?.id ?? event?.id;
-    const relayMessage = typeof ack?.message === 'string' && ack.message ? ` — ${ack.message}` : '';
-    lastProfilePublishInfo.value = eventId
-      ? `Profile published — id ${eventId}${relayMessage}`
-      : `Profile published to relay.fundstr.me.${relayMessage}`;
-    const successMessage =
-      typeof ack?.message === 'string' && ack.message
-        ? `Relay accepted profile — ${ack.message}`
-        : 'Nutzap profile published to relay.fundstr.me.';
-    notifySuccess(successMessage);
-    await loadProfile(reloadKey);
+
+    const profileEventId = profileResult.ack?.id ?? profileResult.event?.id;
+    const profileRelayMessage =
+      typeof profileResult.ack?.message === 'string' && profileResult.ack.message
+        ? ` — ${profileResult.ack.message}`
+        : '';
+    const profileSummary = profileEventId
+      ? `Profile published — id ${profileEventId}${profileRelayMessage}`
+      : `Profile published to relay.fundstr.me.${profileRelayMessage}`;
+
+    lastPublishInfo.value = `${tierSummary} ${profileSummary}`.trim();
+
+    const tierAckLabel =
+      typeof tierResult.ack?.message === 'string' && tierResult.ack.message
+        ? tierResult.ack.message
+        : 'accepted';
+    const profileAckLabel =
+      typeof profileResult.ack?.message === 'string' && profileResult.ack.message
+        ? profileResult.ack.message
+        : 'accepted';
+    notifySuccess(
+      `Nutzap profile published (profile ${profileAckLabel}, tiers ${tierAckLabel}).`
+    );
+
+    await Promise.all([loadTiers(reloadKey), loadProfile(reloadKey)]);
     refreshSubscriptions(true);
   } catch (err) {
-    console.error('[nutzap] publish profile failed', err);
-    if (err instanceof RelayPublishError) {
-      const message = err.ack.message ?? 'Relay rejected event.';
-      lastProfilePublishInfo.value = `Profile publish rejected — id ${err.ack.id}${
-        err.ack.message ? ` — ${err.ack.message}` : ''
+    console.error('[nutzap] publish profile workflow failed', err);
+    const ack = (err as any)?.ack as { id?: string; message?: string } | undefined;
+    const isRelayError = err instanceof RelayPublishError || (ack && typeof ack.id === 'string');
+    if (isRelayError) {
+      const message = ack?.message ?? 'Relay rejected event.';
+      const ackId = ack?.id ?? 'unknown';
+      const rejectionDetail = `Publish rejected — id ${ackId}${
+        ack?.message ? ` — ${ack?.message}` : ''
       }`;
+      lastPublishInfo.value = tierSummary
+        ? `${tierSummary} ${rejectionDetail}`
+        : rejectionDetail;
       notifyError(message);
       flagDiagnosticsAttention('publish', message);
     } else {
       const fallback = err instanceof Error ? err.message : 'Unable to publish Nutzap profile.';
+      lastPublishInfo.value = tierSummary ? `${tierSummary} ${fallback}` : fallback;
       notifyError(fallback);
       flagDiagnosticsAttention('publish', fallback);
     }
   } finally {
-    publishingProfile.value = false;
+    publishingAll.value = false;
   }
 }
 
