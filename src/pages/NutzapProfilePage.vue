@@ -612,6 +612,7 @@
                   <TierComposer
                     v-model:tiers="tiers"
                     :frequency-options="tierFrequencyOptions"
+                    :show-errors="showTierValidation"
                     @validation-changed="handleTierValidation"
                   />
                 </div>
@@ -1328,11 +1329,22 @@ const tierKindLabel = computed(() =>
 );
 
 const tierValidationResults = ref<TierFieldErrors[]>([]);
+const showTierValidation = ref(false);
 const tiersHaveErrors = computed(() =>
   tierValidationResults.value.some(result => hasTierErrors(result))
 );
 
 const tiersReady = computed(() => tiers.value.length > 0 && !tiersHaveErrors.value);
+
+watch(
+  tiersHaveErrors,
+  hasErrors => {
+    if (!hasErrors) {
+      showTierValidation.value = false;
+    }
+  },
+  { immediate: true }
+);
 
 watch(
   optionalMetadataComplete,
@@ -1899,6 +1911,7 @@ async function publishTiers() {
     return;
   }
 
+  showTierValidation.value = true;
   if (tiers.value.length === 0) {
     notifyError('Add at least one tier before publishing.');
     return;
@@ -1907,6 +1920,8 @@ async function publishTiers() {
     notifyError('Fix tier validation errors before publishing tiers.');
     return;
   }
+
+  showTierValidation.value = false;
 
   publishingTiers.value = true;
   try {

@@ -22,7 +22,7 @@ export function createEmptyDraft(overrides: Partial<TierDraft> = {}): TierDraft 
   return {
     id: overrides.id ?? '',
     title: overrides.title ?? '',
-    price: overrides.price ?? '',
+    price: overrides.price ?? '1000',
     frequency: overrides.frequency ?? 'monthly',
     description: overrides.description ?? '',
     media: overrides.media ? [...overrides.media] : [],
@@ -80,7 +80,7 @@ export function validateTierDraft(draft: TierDraft): TierFieldErrors {
     const mediaErrors = draft.media.map(url => {
       const trimmed = url.trim();
       if (!trimmed) {
-        return 'Enter a URL or remove the empty media row.';
+        return null;
       }
       if (!/^https?:\/\//i.test(trimmed)) {
         return 'Media URLs must start with http:// or https://';
