@@ -313,58 +313,154 @@
 
           <q-tab-panel name="author" class="profile-panel">
             <div class="panel-sections">
-              <section class="section-card">
+              <section class="section-card author-profile-card">
                 <div class="section-header">
                   <div class="section-title text-subtitle1 text-weight-medium text-1">Author metadata</div>
                   <div class="section-subtitle text-body2 text-2">
                     Compose profile details that will be published alongside your tiers.
                   </div>
                 </div>
-                <div class="section-body column q-gutter-md">
-                  <div class="text-subtitle2 text-1">Payment Profile (kind 10019)</div>
-                  <q-input v-model="displayName" label="Display Name" dense filled />
-                  <q-input v-model="pictureUrl" label="Picture URL" dense filled />
-                  <q-input v-model="mintsText" type="textarea" label="Trusted Mints (one per line)" dense filled autogrow />
-                  <q-input
-                    v-model="relaysText"
-                    type="textarea"
-                    label="Relay Hints (optional, one per line)"
-                    dense
-                    filled
-                    autogrow
-                  />
-                </div>
-              </section>
+                <div class="section-body">
+                  <div class="nested-sections">
+                    <q-expansion-item
+                      v-model="identitySectionOpen"
+                      switch-toggle-side
+                      dense
+                      expand-separator
+                      class="nested-section"
+                    >
+                      <template #header>
+                        <div class="nested-header">
+                          <div class="nested-header__titles">
+                            <div class="nested-title text-body1 text-weight-medium text-1">Identity basics</div>
+                            <div class="nested-subtitle text-caption">
+                              Provide a display name and avatar for your payment profile (kind 10019).
+                            </div>
+                          </div>
+                          <q-chip
+                            dense
+                            size="sm"
+                            :color="identityBasicsComplete ? 'positive' : 'warning'"
+                            :text-color="identityBasicsComplete ? 'white' : 'black'"
+                            class="status-chip"
+                          >
+                            {{ identityBasicsComplete ? 'Complete' : 'Required' }}
+                          </q-chip>
+                        </div>
+                      </template>
+                      <div class="nested-section-body column q-gutter-md">
+                        <q-input v-model="displayName" label="Display Name" dense filled />
+                        <q-input v-model="pictureUrl" label="Picture URL" dense filled />
+                      </div>
+                    </q-expansion-item>
 
-              <section class="section-card">
-                <div class="section-header">
-                  <div class="section-title text-subtitle1 text-weight-medium text-1">P2PK keys</div>
-                  <div class="section-subtitle text-body2 text-2">
-                    Generate or derive the payment pointer used by your Nutzap profile.
+                    <q-expansion-item
+                      v-model="optionalMetadataSectionOpen"
+                      switch-toggle-side
+                      dense
+                      expand-separator
+                      :disable="!identityBasicsComplete"
+                      :class="['nested-section', { 'is-disabled': !identityBasicsComplete }]"
+                    >
+                      <template #header>
+                        <div class="nested-header">
+                          <div class="nested-header__titles">
+                            <div class="nested-title text-body1 text-weight-medium text-1">Optional relay &amp; mint metadata</div>
+                            <div class="nested-subtitle text-caption">
+                              {{
+                                identityBasicsComplete
+                                  ? 'List trusted mints (required for publishing) and add optional relay hints.'
+                                  : 'Complete identity basics to unlock mint settings.'
+                              }}
+                            </div>
+                          </div>
+                          <q-chip
+                            dense
+                            size="sm"
+                            :color="optionalMetadataComplete ? 'positive' : identityBasicsComplete ? 'warning' : 'grey-6'"
+                            :text-color="optionalMetadataComplete ? 'white' : 'black'"
+                            class="status-chip"
+                          >
+                            {{ optionalMetadataComplete ? 'Ready' : identityBasicsComplete ? 'Add mint' : 'Locked' }}
+                          </q-chip>
+                        </div>
+                      </template>
+                      <div class="nested-section-body column q-gutter-md">
+                        <q-input
+                          v-model="mintsText"
+                          type="textarea"
+                          label="Trusted Mints (one per line)"
+                          dense
+                          filled
+                          autogrow
+                        />
+                        <q-input
+                          v-model="relaysText"
+                          type="textarea"
+                          label="Relay Hints (optional, one per line)"
+                          dense
+                          filled
+                          autogrow
+                        />
+                      </div>
+                    </q-expansion-item>
+
+                    <q-expansion-item
+                      v-model="advancedEncryptionSectionOpen"
+                      switch-toggle-side
+                      dense
+                      expand-separator
+                      :disable="!optionalMetadataComplete"
+                      :class="['nested-section', { 'is-disabled': !optionalMetadataComplete }]"
+                    >
+                      <template #header>
+                        <div class="nested-header">
+                          <div class="nested-header__titles">
+                            <div class="nested-title text-body1 text-weight-medium text-1">Advanced encryption</div>
+                            <div class="nested-subtitle text-caption">
+                              {{
+                                optionalMetadataComplete
+                                  ? 'Generate or derive the P2PK pointer required for Nutzap payments.'
+                                  : 'Add at least one trusted mint to unlock encryption tools.'
+                              }}
+                            </div>
+                          </div>
+                          <q-chip
+                            dense
+                            size="sm"
+                            :color="advancedEncryptionComplete ? 'positive' : optionalMetadataComplete ? 'warning' : 'grey-6'"
+                            :text-color="advancedEncryptionComplete ? 'white' : 'black'"
+                            class="status-chip"
+                          >
+                            {{ advancedEncryptionComplete ? 'Ready' : optionalMetadataComplete ? 'Pending' : 'Locked' }}
+                          </q-chip>
+                        </div>
+                      </template>
+                      <div class="nested-section-body column q-gutter-md">
+                        <q-input
+                          v-model="p2pkPriv"
+                          label="P2PK Private Key (hex)"
+                          dense
+                          filled
+                          autocomplete="off"
+                        />
+                        <div class="row q-gutter-sm">
+                          <q-btn color="primary" label="Derive Public Key" @click="deriveP2pkPublicKey" />
+                          <q-btn color="primary" outline label="Generate Keypair" @click="generateP2pkKeypair" />
+                        </div>
+                        <q-input v-model="p2pkPub" label="P2PK Public Key" dense filled />
+                        <q-input
+                          :model-value="p2pkDerivedPub"
+                          label="Derived P2PK Public Key"
+                          type="textarea"
+                          dense
+                          filled
+                          readonly
+                          autogrow
+                        />
+                      </div>
+                    </q-expansion-item>
                   </div>
-                </div>
-                <div class="section-body column q-gutter-md">
-                  <q-input
-                    v-model="p2pkPriv"
-                    label="P2PK Private Key (hex)"
-                    dense
-                    filled
-                    autocomplete="off"
-                  />
-                  <div class="row q-gutter-sm">
-                    <q-btn color="primary" label="Derive Public Key" @click="deriveP2pkPublicKey" />
-                    <q-btn color="primary" outline label="Generate Keypair" @click="generateP2pkKeypair" />
-                  </div>
-                  <q-input v-model="p2pkPub" label="P2PK Public Key" dense filled />
-                  <q-input
-                    :model-value="p2pkDerivedPub"
-                    label="Derived P2PK Public Key"
-                    type="textarea"
-                    dense
-                    filled
-                    readonly
-                    autogrow
-                  />
                 </div>
               </section>
 
@@ -376,6 +472,28 @@
                   </div>
                 </div>
                 <div class="section-body column q-gutter-md">
+                  <ul class="readiness-checklist" role="list">
+                    <li :class="['readiness-item', { 'is-complete': authorKeyReady }]">
+                      <q-icon :name="authorKeyReady ? 'task_alt' : 'radio_button_unchecked'" aria-hidden="true" />
+                      <span>Author public key linked</span>
+                    </li>
+                    <li :class="['readiness-item', { 'is-complete': identityBasicsComplete }]">
+                      <q-icon :name="identityBasicsComplete ? 'task_alt' : 'radio_button_unchecked'" aria-hidden="true" />
+                      <span>Identity basics filled in</span>
+                    </li>
+                    <li :class="['readiness-item', { 'is-complete': optionalMetadataComplete }]">
+                      <q-icon :name="optionalMetadataComplete ? 'task_alt' : 'radio_button_unchecked'" aria-hidden="true" />
+                      <span>Trusted mint configured</span>
+                    </li>
+                    <li :class="['readiness-item', { 'is-complete': advancedEncryptionComplete }]">
+                      <q-icon :name="advancedEncryptionComplete ? 'task_alt' : 'radio_button_unchecked'" aria-hidden="true" />
+                      <span>P2PK pointer ready</span>
+                    </li>
+                    <li :class="['readiness-item', { 'is-complete': tiersReady }]">
+                      <q-icon :name="tiersReady ? 'task_alt' : 'radio_button_unchecked'" aria-hidden="true" />
+                      <span>Tiers validated</span>
+                    </li>
+                  </ul>
                   <div class="text-body2 text-2">
                     Publishing updates with tier address <span class="text-weight-medium text-1">{{ tierAddressPreview }}</span>.
                   </div>
@@ -420,11 +538,22 @@
               </section>
 
               <section class="section-card">
-                <div class="section-header">
-                  <div class="section-title text-subtitle1 text-weight-medium text-1">Compose tiers</div>
-                  <div class="section-subtitle text-body2 text-2">
-                    Draft pricing, benefits, and cadence before publishing downstream.
+                <div class="section-header section-header--with-status">
+                  <div class="section-header-primary">
+                    <div class="section-title text-subtitle1 text-weight-medium text-1">Compose tiers</div>
+                    <div class="section-subtitle text-body2 text-2">
+                      Draft pricing, benefits, and cadence before publishing downstream.
+                    </div>
                   </div>
+                  <q-chip
+                    dense
+                    size="sm"
+                    :color="tiersReady ? 'positive' : 'warning'"
+                    :text-color="tiersReady ? 'white' : 'black'"
+                    class="status-chip"
+                  >
+                    {{ tiersReady ? 'Valid' : 'Needs review' }}
+                  </q-chip>
                 </div>
                 <div class="section-body column q-gutter-md">
                   <TierComposer
@@ -436,35 +565,60 @@
               </section>
 
               <section class="section-card">
-                <div class="section-header">
-                  <div class="section-title text-subtitle1 text-weight-medium text-1">Review and publish</div>
-                  <div class="section-subtitle text-body2 text-2">
-                    Inspect the JSON payload before pushing updates to the relay.
-                  </div>
-                </div>
-                <div class="section-body column q-gutter-md">
-                  <q-input
-                    :model-value="tiersJsonPreview"
-                    type="textarea"
-                    label="Tiers JSON preview"
-                    dense
-                    filled
-                    autogrow
-                    readonly
-                    spellcheck="false"
-                  />
-                  <div class="row justify-end q-gutter-sm">
-                    <q-btn
-                      color="primary"
-                      label="Publish Tiers"
-                      :disable="tiersPublishDisabled"
-                      :loading="publishingTiers"
-                      @click="publishTiers"
+                <q-expansion-item
+                  v-model="reviewPublishSectionOpen"
+                  switch-toggle-side
+                  dense
+                  expand-separator
+                  :disable="!tiersReady"
+                  :class="['nested-section', 'review-expansion', { 'is-disabled': !tiersReady }]"
+                >
+                  <template #header>
+                    <div class="nested-header">
+                      <div class="nested-header__titles">
+                        <div class="nested-title text-body1 text-weight-medium text-1">Review &amp; Publish</div>
+                        <div class="nested-subtitle text-caption">
+                          Inspect the JSON payload before pushing updates to the relay.
+                        </div>
+                      </div>
+                      <q-chip
+                        dense
+                        size="sm"
+                        :color="tiersReady ? 'positive' : 'grey-6'"
+                        :text-color="tiersReady ? 'white' : 'black'"
+                        class="status-chip"
+                      >
+                        {{ tiersReady ? 'Ready' : 'Locked' }}
+                      </q-chip>
+                    </div>
+                  </template>
+                  <div class="nested-section-body column q-gutter-md">
+                    <q-input
+                      :model-value="tiersJsonPreview"
+                      type="textarea"
+                      label="Tiers JSON preview"
+                      dense
+                      filled
+                      autogrow
+                      readonly
+                      spellcheck="false"
                     />
+                    <div class="row justify-end q-gutter-sm">
+                      <q-btn
+                        color="primary"
+                        label="Publish Tiers"
+                        :disable="tiersPublishDisabled"
+                        :loading="publishingTiers"
+                        @click="publishTiers"
+                      />
+                    </div>
+                    <div class="text-body2 text-2" v-if="lastTiersPublishInfo">
+                      {{ lastTiersPublishInfo }}
+                    </div>
                   </div>
-                  <div class="text-body2 text-2" v-if="lastTiersPublishInfo">
-                    {{ lastTiersPublishInfo }}
-                  </div>
+                </q-expansion-item>
+                <div v-if="!tiersReady" class="review-lock-message text-caption text-2">
+                  Add at least one valid tier to unlock review and publishing.
                 </div>
               </section>
             </div>
@@ -558,6 +712,11 @@ const publishingTiers = ref(false);
 const lastProfilePublishInfo = ref('');
 const lastTiersPublishInfo = ref('');
 const hasAutoLoaded = ref(false);
+
+const identitySectionOpen = ref(true);
+const optionalMetadataSectionOpen = ref(false);
+const advancedEncryptionSectionOpen = ref(false);
+const reviewPublishSectionOpen = ref(false);
 
 const keyImportValue = ref('');
 const keySecretHex = ref('');
@@ -975,6 +1134,14 @@ const mintList = computed(() =>
     .filter(Boolean)
 );
 
+const identityBasicsComplete = computed(
+  () => displayName.value.trim().length > 0 && pictureUrl.value.trim().length > 0
+);
+
+const optionalMetadataComplete = computed(() => mintList.value.length > 0);
+
+const advancedEncryptionComplete = computed(() => p2pkPub.value.trim().length > 0);
+
 const relayList = computed(() => {
   const entries = relaysText.value
     .split('\n')
@@ -992,6 +1159,43 @@ const tierKindOptions = [
 
 const tierKindLabel = computed(() =>
   tierKind.value === 30019 ? 'Canonical (30019)' : 'Legacy (30000)'
+);
+
+watch(
+  identityBasicsComplete,
+  complete => {
+    if (!complete) {
+      optionalMetadataSectionOpen.value = false;
+      advancedEncryptionSectionOpen.value = false;
+    } else if (!optionalMetadataSectionOpen.value) {
+      optionalMetadataSectionOpen.value = true;
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  optionalMetadataComplete,
+  complete => {
+    if (!complete) {
+      advancedEncryptionSectionOpen.value = false;
+    } else if (!advancedEncryptionSectionOpen.value) {
+      advancedEncryptionSectionOpen.value = true;
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  tiersReady,
+  ready => {
+    if (!ready) {
+      reviewPublishSectionOpen.value = false;
+    } else if (!reviewPublishSectionOpen.value) {
+      reviewPublishSectionOpen.value = true;
+    }
+  },
+  { immediate: true }
 );
 
 watch(
@@ -1158,6 +1362,10 @@ const tierValidationResults = ref<TierFieldErrors[]>([]);
 const tiersHaveErrors = computed(() =>
   tierValidationResults.value.some(result => hasTierErrors(result))
 );
+
+const tiersReady = computed(() => tiers.value.length > 0 && !tiersHaveErrors.value);
+
+const authorKeyReady = computed(() => authorInput.value.trim().length > 0);
 
 const tiersJsonPreview = computed(() => JSON.stringify(buildTiersJsonPayload(tiers.value), null, 2));
 
@@ -2009,6 +2217,116 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.author-profile-card .section-body {
+  gap: 0;
+}
+
+.nested-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.nested-section {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+  overflow: hidden;
+}
+
+.nested-section.is-disabled {
+  opacity: 0.6;
+}
+
+.nested-section .q-item {
+  padding: 12px 16px;
+  min-height: auto;
+}
+
+.nested-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.nested-header__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nested-subtitle {
+  color: var(--text-2);
+}
+
+.nested-section-body {
+  padding: 12px 16px 16px;
+}
+
+.nested-section .q-expansion-item__content {
+  padding: 0;
+}
+
+.section-header--with-status {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.section-header--with-status .section-header-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.readiness-checklist {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.readiness-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 0.875rem;
+}
+
+.readiness-item .q-icon {
+  font-size: 18px;
+  color: var(--disabled-text);
+}
+
+.readiness-item.is-complete {
+  color: var(--text-1);
+}
+
+.readiness-item.is-complete .q-icon {
+  color: var(--accent-500);
+}
+
+.review-expansion {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+}
+
+.review-expansion.is-disabled {
+  opacity: 0.6;
+}
+
+.review-lock-message {
+  margin-top: 12px;
 }
 
 .section-empty {
