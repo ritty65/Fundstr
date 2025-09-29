@@ -8,6 +8,8 @@
 </IfModule>
 
 <IfModule mod_headers.c>
+  Header always set Vary "Accept-Encoding"
+
   <Files "sw.js">
     Header always unset Cache-Control
     Header always unset Expires
@@ -30,7 +32,7 @@
     Header always set Expires "0"
   </FilesMatch>
   <FilesMatch "^(?!sw\.js$|workbox-.*\.js$).*\.(js|mjs|css|png|jpe?g|svg|gif|webp|ico|woff2?|ttf|map)$">
-    Header always set Cache-Control "public, max-age=31536000, immutable"
+    Header always set Cache-Control "public, max-age=31536000, immutable, no-transform"
   </FilesMatch>
 </IfModule>
 
