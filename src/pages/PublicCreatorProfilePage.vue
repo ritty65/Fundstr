@@ -22,7 +22,7 @@
     <SubscribeDialog
       v-model="showSubscribeDialog"
       :tier="selectedTier"
-      :creator-pubkey="creatorHex"
+      :creator-pubkey="creatorHex || ''"
       @confirm="confirmSubscribe"
     />
     <SetupRequiredDialog v-model="showSetupDialog" :tier-id="selectedTier?.id" />
@@ -42,6 +42,9 @@
       <div v-if="loadingTiers" class="row justify-center q-pa-md">
         <q-spinner-hourglass />
       </div>
+      <q-banner v-else-if="decodeError" class="q-mb-md bg-surface-2">
+        {{ decodeError }}
+      </q-banner>
       <q-banner v-else-if="tierFetchError" class="q-mb-md bg-surface-2">
         Failed to load tiers – check relay connectivity
         <template #action>
@@ -95,6 +98,7 @@
               </q-btn>
             </div>
             <PaywalledContent
+              v-if="creatorHex"
               :creator-npub="creatorHex"
               :tier-id="t.id"
               class="q-mt-md"
@@ -114,7 +118,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useCreatorsStore } from "stores/creators";
 import { useNostrStore } from "stores/nostr";
 import { buildProfileUrl } from "src/utils/profileUrl";
-import { nip19 } from "nostr-tools";
+import { deriveCreatorKeys } from "src/utils/nostrKeys";
 
 import { usePriceStore } from "stores/price";
 import { useUiStore } from "stores/ui";
@@ -135,16 +139,17 @@ export default defineComponent({
     const route = useRoute();
     const router = useRouter();
     const creatorParam =
-      (route.params.npubOrHex ?? route.params.npub) as string;
-    const creatorNpub = creatorParam;
-    let creatorHex = creatorNpub;
+      (route.params.npubOrHex ?? route.params.npub) as string | undefined;
+    const decodeError = ref<string | null>(null);
+    let creatorNpub = creatorParam ?? "";
+    let creatorHex: string | null = null;
     try {
-      const decoded = nip19.decode(creatorNpub);
-      if (typeof decoded.data === "string") {
-        creatorHex = decoded.data;
-      }
-    } catch (e) {
-      // ignore decode error and keep original value
+      const keys = deriveCreatorKeys(creatorParam);
+      creatorNpub = keys.npub;
+      creatorHex = keys.hex;
+    } catch (err) {
+      decodeError.value =
+        "We couldn't load this creator profile. Double-check the link and try again.";
     }
     const creators = useCreatorsStore();
     const nostr = useNostrStore();
@@ -155,7 +160,9 @@ export default defineComponent({
     const { copy } = useClipboard();
     const bitcoinPrice = computed(() => priceStore.bitcoinPrice);
     const profile = ref<any>({});
-    const tiers = computed(() => creators.tiersMap[creatorHex] || []);
+    const tiers = computed(() =>
+      creatorHex ? creators.tiersMap[creatorHex] || [] : [],
+    );
     const showSubscribeDialog = ref(false);
     const showSetupDialog = ref(false);
     const showReceiptDialog = ref(false);
@@ -170,6 +177,7 @@ export default defineComponent({
     const fetchTiers = async () => {
       loadingTiers.value = true;
       try {
+        if (!creatorHex) return;
         await creators.fetchTierDefinitions(creatorHex);
       } finally {
         loadingTiers.value = false;
@@ -178,6 +186,7 @@ export default defineComponent({
 
     const loadProfile = async () => {
       await fetchTiers()
+      if (!creatorHex) return
       const p = await nostr.getProfile(creatorHex)
       if (p) {
         if (p.picture && !isTrustedUrl(p.picture)) {
@@ -191,10 +200,13 @@ export default defineComponent({
     // initialization handled in onMounted
 
     const retryFetchTiers = () => {
-      fetchTiers()
+      void fetchTiers()
     }
 
     const openSubscribe = (tier: any) => {
+      if (!creatorHex) {
+        return
+      }
       selectedTier.value = tier
       if (isGuest.value || !welcomeStore.welcomeCompleted) {
         showSetupDialog.value = true
@@ -219,6 +231,7 @@ export default defineComponent({
       }
       await loadProfile()
 
+      if (!creatorHex) return
       const tierId = route.query.tierId as string | undefined
       if (!nostr.hasIdentity || !tierId) return
       const tryOpen = () => {
@@ -275,6 +288,7 @@ export default defineComponent({
     return {
       creatorNpub,
       creatorHex,
+      decodeError,
       profile,
       tiers,
       showSubscribeDialog,
