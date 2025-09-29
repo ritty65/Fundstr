@@ -21,20 +21,20 @@ import { useNostrStore } from "src/stores/nostr";
 
 export default route(async function (/* { store, ssrContext } */) {
   await useNostrStore().loadKeysFromStorage();
-  const createHistory = process.env.SERVER
-    ? createMemoryHistory
+  const history = process.env.SERVER
+    ? createMemoryHistory(process.env.VUE_ROUTER_BASE)
     : process.env.VUE_ROUTER_MODE === "history"
-    ? createWebHistory
-    : createWebHashHistory;
+    ? createWebHistory(import.meta.env.BASE_URL)
+    : createWebHashHistory(process.env.VUE_ROUTER_BASE);
 
   const Router = createRouter({
     scrollBehavior: () => ({ left: 0, top: 0 }),
     routes,
 
-    // Leave this as is and make changes in quasar.conf.js instead!
-    // quasar.conf.js -> build -> vueRouterMode
-    // quasar.conf.js -> build -> publicPath
-    history: createHistory(process.env.VUE_ROUTER_BASE),
+    // Leave this as is and make changes in quasar.config.js instead!
+    // quasar.config.js -> build -> vueRouterMode
+    // quasar.config.js -> build -> publicPath
+    history,
   });
 
   Router.beforeEach((to, _from, next) => {
