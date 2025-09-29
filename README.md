@@ -81,6 +81,15 @@ The app includes a built-in Nostr messenger for private chat.
 - **Nostr Protocol**: Nostr Dev Kit (NDK), `nip04` for encryption
 - **Storage**: Dexie.js (IndexedDB)
 
+## Deployment contract for `/creator-hub`
+
+- Builds **must** use `PUBLIC_PATH=/creator-hub/` so every asset reference becomes `/creator-hub/...`.
+- Upload the contents of `dist/pwa/` to the Hostinger path `/public_html/creator-hub/`.
+- Ensure LiteSpeed/Apache or any fronting proxy applies the rules in [`docs/deploy/creator-hub.htaccess`](docs/deploy/creator-hub.htaccess) or [`docs/deploy/nginx.md`](docs/deploy/nginx.md) so `/creator-hub/assets/*` is never rewritten to HTML.
+- Do not long-cache `index.html` or `sw.js`; hashed assets under `/creator-hub/assets/` can be cached for a year with `immutable`.
+- After each deployment run [`scripts/smoke-tests.sh`](scripts/smoke-tests.sh) to verify headers and service-worker availability, and purge only the HTML/service worker cache if needed.
+- See [`docs/subpath-deploy.md`](docs/subpath-deploy.md) for full instructions, rollback guidance, and troubleshooting.
+
 ## Current Status
 
 Fundstr is currently in Alpha/Beta.

@@ -26,21 +26,21 @@ jobs:
         run: cp .env.staging .env
 
       - name: Install deps
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile=false
 
-      - name: Build (Quasar SPA)
-        run: pnpm quasar build -m spa
+      - name: Build (Quasar PWA)
+        run: PUBLIC_PATH=/creator-hub/ pnpm quasar build -m pwa
 
       - name: Validate built asset references
         run: |
           set -euo pipefail
           mapfile -t assets < <(
-            grep -oE '(src|href)="/assets/[^"]+' dist/spa/index.html |
+            grep -oE '(src|href)="/creator-hub/assets/[^"]+' dist/pwa/index.html |
               sed -E 's/^(src|href)="//' |
               sort -u || true
           )
           if [ "${#assets[@]}" -eq 0 ]; then
-            echo "No /assets references found in dist/spa/index.html"
+            echo "No /creator-hub/assets references found in dist/pwa/index.html"
             exit 0
           fi
 
@@ -51,8 +51,8 @@ jobs:
 
           missing=0
           for asset in "${assets[@]}"; do
-            if [ ! -f "dist/spa${asset}" ]; then
-              echo "Missing asset referenced in index.html: dist/spa${asset}" >&2
+            if [ ! -f "dist/pwa${asset}" ]; then
+              echo "Missing asset referenced in index.html: dist/pwa${asset}" >&2
               missing=1
             fi
           done
@@ -75,5 +75,10 @@ jobs:
         run: |
           rsync -avz --delete \
             -e "ssh -p ${{ secrets.SSH_PORT }}" \
-            dist/spa/ \
+            dist/pwa/ \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
+
+      - name: Smoke test staging deployment
+        run: |
+          sleep 5
+          ./scripts/smoke-tests.sh

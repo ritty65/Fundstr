@@ -1,0 +1,44 @@
+name: Deploy Fundstr creator hub
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@8.15.7 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build PWA for /creator-hub
+        run: PUBLIC_PATH=/creator-hub/ pnpm quasar build -m pwa
+
+      - name: Deploy via rsync
+        env:
+          SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          SSH_HOST: ${{ secrets.HOSTINGER_HOST }}
+          SSH_PORT: ${{ secrets.HOSTINGER_PORT }}
+          SSH_USER: ${{ secrets.HOSTINGER_USER }}
+          TARGET: ${{ secrets.HOSTINGER_TARGET }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts
+          rsync -avz --delete -e "ssh -p $SSH_PORT" dist/pwa/ "$SSH_USER@$SSH_HOST:$TARGET/"
+
+      - name: Smoke test staging site
+        env:
+          BASE_URL: https://staging.fundstr.me/creator-hub
+        run: ./scripts/smoke-tests.sh

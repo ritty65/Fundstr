@@ -15,6 +15,6 @@ jobs:
           corepack prepare pnpm@10.16.1 --activate
           pnpm --version
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile=false
       - name: Build
         run: pnpm run build

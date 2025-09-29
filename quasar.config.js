@@ -3,10 +3,12 @@
 import { configure } from 'quasar/wrappers'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import legacy from '@vitejs/plugin-legacy'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+const PUBLIC_PATH = process.env.PUBLIC_PATH || '/creator-hub/'
 
 export default configure(() => ({
   // 1. 'node-globals' boot file is removed. This is correct.
@@ -15,9 +17,9 @@ export default configure(() => ({
   css: ['app.scss', 'base.scss', 'buckets.scss'],
   extras: ['roboto-font', 'material-icons'],
   build: {
-    target: { browser: ['es2022'] },
+    target: { browser: ['es2019'] },
     sourcemap: true,
-    publicPath: '/',
+    publicPath: PUBLIC_PATH,
     vueRouterMode: 'history',
     extendViteConf (viteConf) {
       viteConf.resolve = viteConf.resolve || {}
@@ -31,6 +33,10 @@ export default configure(() => ({
         ),
       }
       viteConf.plugins = (viteConf.plugins || []).concat([
+        legacy({
+          targets: ['defaults', 'not IE 11', 'Safari >= 13'],
+          modernPolyfills: true
+        }),
         // 3. This is the correct, complete configuration for the polyfill plugin.
         // It makes Buffer and process available to modules that import them
         // without dangerously injecting them into the global 'window' object.
@@ -54,5 +60,17 @@ export default configure(() => ({
       dark: true
     },
     plugins: ['Notify', 'LocalStorage']
+  },
+  pwa: {
+    workboxMode: 'generateSW',
+    manifest: {
+      scope: PUBLIC_PATH,
+      start_url: PUBLIC_PATH
+    },
+    extendGenerateSW (cfg) {
+      cfg.skipWaiting = true
+      cfg.clientsClaim = true
+      cfg.cleanupOutdatedCaches = true
+    }
   }
 }))

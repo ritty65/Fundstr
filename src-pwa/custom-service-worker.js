@@ -18,6 +18,12 @@ import { NetworkOnly } from "workbox-strategies";
 self.skipWaiting();
 clientsClaim();
 
+self.addEventListener("message", (event) => {
+  if (event && event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
 // Use with precache injection
 precacheAndRoute(self.__WB_MANIFEST);
 
@@ -29,7 +35,14 @@ if (process.env.MODE !== "ssr" || process.env.PROD) {
   registerRoute(
     new NavigationRoute(
       createHandlerBoundToURL(process.env.PWA_FALLBACK_HTML),
-      { denylist: [/sw\.js$/, /workbox-(.)*\.js$/] },
+      {
+        denylist: [
+          /\/assets\//,
+          /sw\.js$/,
+          /workbox-(.)*\.js$/,
+          /manifest\.json$/,
+        ],
+      },
     ),
   );
 }
