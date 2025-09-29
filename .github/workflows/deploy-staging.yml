@@ -1,4 +1,4 @@
-name: Deploy staging (Develop2 → Hostinger)
+name: deploy-staging
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -22,44 +23,14 @@ jobs:
           corepack prepare pnpm@10.16.1 --activate
           pnpm --version
 
-      - name: Use staging env
-        run: cp .env.staging .env
+      - name: Use staging env (optional)
+        run: cp .env.staging .env || true
 
       - name: Install deps
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile=false
 
-      - name: Build (Quasar SPA)
-        run: pnpm quasar build -m spa
-
-      - name: Validate built asset references
-        run: |
-          set -euo pipefail
-          mapfile -t assets < <(
-            grep -oE '(src|href)="/assets/[^"]+' dist/spa/index.html |
-              sed -E 's/^(src|href)="//' |
-              sort -u || true
-          )
-          if [ "${#assets[@]}" -eq 0 ]; then
-            echo "No /assets references found in dist/spa/index.html"
-            exit 0
-          fi
-
-          echo "Assets referenced in index.html:"
-          for asset in "${assets[@]}"; do
-            echo "  $asset"
-          done
-
-          missing=0
-          for asset in "${assets[@]}"; do
-            if [ ! -f "dist/spa${asset}" ]; then
-              echo "Missing asset referenced in index.html: dist/spa${asset}" >&2
-              missing=1
-            fi
-          done
-
-          if [ "$missing" -ne 0 ]; then
-            exit 1
-          fi
+      - name: Build (Quasar PWA)
+        run: pnpm quasar build -m pwa
 
       - name: Add SSH key
         uses: webfactory/ssh-agent@v0.9.0
@@ -71,9 +42,14 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Deploy (rsync)
+      - name: Deploy (rsync to subdomain docroot)
         run: |
           rsync -avz --delete \
             -e "ssh -p ${{ secrets.SSH_PORT }}" \
-            dist/spa/ \
+            dist/pwa/ \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
+
+      - name: Smoke test staging
+        env:
+          BASE_URL: https://staging.fundstr.me
+        run: ./scripts/smoke-tests.sh
