@@ -10,9 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
@@ -21,7 +19,6 @@ jobs:
           set -e
           corepack enable
           corepack prepare pnpm@10.16.1 --activate
-          pnpm --version
 
       - name: Install system deps (rsync, ssh)
         run: |
@@ -38,28 +35,18 @@ jobs:
       - name: Build (Quasar PWA)
         run: pnpm quasar build -m pwa
 
-      # Enforce final .htaccess (cache policy + rewrites) into the BUILT bundle
       - name: Enforce .htaccess with cache headers (in built bundle)
         run: |
           cat > dist/pwa/.htaccess <<'EOF'
           <IfModule mod_rewrite.c>
             Options -MultiViews
             RewriteEngine On
-            # Never rewrite static assets
             RewriteRule ^assets/ - [L]
-            # SPA fallback only if not a real file/dir
             RewriteCond %{REQUEST_FILENAME} !-f
             RewriteCond %{REQUEST_FILENAME} !-d
             RewriteRule ^ index.html [QSA,L]
           </IfModule>
-
           <IfModule mod_headers.c>
-            # 1) Immutable cache for versioned assets (safe to cache forever)
-            <FilesMatch "\.(js|mjs|css|png|jpe?g|svg|gif|webp|ico|woff2?|ttf|map)$">
-              Header always set Cache-Control "public, max-age=31536000, immutable"
-            </FilesMatch>
-
-            # 2) Strong NO-CACHE for SW, workbox helpers, manifest, and HTML (MUST revalidate)
             <Files "sw.js">
               Header always unset Cache-Control
               Header always unset Expires
@@ -81,16 +68,17 @@ jobs:
               Header always set Pragma "no-cache"
               Header always set Expires "0"
             </FilesMatch>
+            <FilesMatch "^(?!sw\.js$|workbox-.*\.js$).*\.(js|mjs|css|png|jpe?g|svg|gif|webp|ico|woff2?|ttf|map)$">
+              Header always set Cache-Control "public, max-age=31536000, immutable"
+            </FilesMatch>
           </IfModule>
-
           <IfModule mod_mime.c>
             AddType application/javascript .js .mjs
             AddType application/wasm .wasm
           </IfModule>
           EOF
 
-      - name: Add SSH key
-        uses: webfactory/ssh-agent@v0.9.0
+      - uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
