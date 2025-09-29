@@ -206,6 +206,25 @@ describe("PublicCreatorProfilePage", () => {
     expect(router.currentRoute.value.query.tierId).toBeUndefined();
   });
 
+  it("normalizes hex route params and uses them for lookups", async () => {
+    const sampleHex = "d".repeat(64);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+      ],
+    });
+    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleHex } });
+    await router.isReady();
+
+    const wrapper = mountPage(router);
+    await flushPromises();
+
+    expect(fetchTierDefinitions).toHaveBeenCalledWith(sampleHex);
+    expect(wrapper.vm.creatorHex).toBe(sampleHex);
+    expect(wrapper.vm.creatorNpub).toBe(nip19.npubEncode(sampleHex));
+  });
+
   it("copies the profile URL when the copy button is clicked", async () => {
     const sampleHex = "b".repeat(64);
     const sampleNpub = nip19.npubEncode(sampleHex);
@@ -257,5 +276,23 @@ describe("PublicCreatorProfilePage", () => {
       ?.trigger("click");
 
     expect(fetchTierDefinitions).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a friendly error when the pubkey cannot be decoded", async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+      ],
+    });
+    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: "invalid" } });
+    await router.isReady();
+
+    const wrapper = mountPage(router);
+    await flushPromises();
+
+    const banners = wrapper.findAll(".q-banner");
+    expect(banners.some((b) => b.text().includes("We couldn't load this creator profile"))).toBe(true);
+    expect(fetchTierDefinitions).not.toHaveBeenCalled();
   });
 });
