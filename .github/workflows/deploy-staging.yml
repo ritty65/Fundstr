@@ -38,6 +38,7 @@ jobs:
       - name: Build (Quasar PWA)
         run: pnpm quasar build -m pwa
 
+      # Enforce final .htaccess (cache policy + rewrites) into the BUILT bundle
       - name: Enforce .htaccess with cache headers (in built bundle)
         run: |
           cat > dist/pwa/.htaccess <<'EOF'
@@ -52,21 +53,33 @@ jobs:
             RewriteRule ^ index.html [QSA,L]
           </IfModule>
 
-          # Caching policy: HTML & SW no-cache; hashed assets long-lived
           <IfModule mod_headers.c>
-            # HTML shell is always fresh
-            <FilesMatch "\.(html)$">
-              Header set Cache-Control "no-cache, no-store, must-revalidate"
-              Header set Pragma "no-cache"
-              Header set Expires "0"
-            </FilesMatch>
-            # Service worker / workbox / manifest must always revalidate
-            <FilesMatch "^(sw\.js|workbox.*\.js|manifest\.json)$">
-              Header set Cache-Control "no-cache, no-store, must-revalidate"
-            </FilesMatch>
-            # Versioned static assets can be cached forever
+            # 1) Immutable cache for versioned assets (safe to cache forever)
             <FilesMatch "\.(js|mjs|css|png|jpe?g|svg|gif|webp|ico|woff2?|ttf|map)$">
-              Header set Cache-Control "public, max-age=31536000, immutable"
+              Header always set Cache-Control "public, max-age=31536000, immutable"
+            </FilesMatch>
+
+            # 2) Strong NO-CACHE for SW, workbox helpers, manifest, and HTML (MUST revalidate)
+            <Files "sw.js">
+              Header always unset Cache-Control
+              Header always unset Expires
+              Header always unset Pragma
+              Header always set Cache-Control "no-cache, no-store, must-revalidate"
+              Header always set Pragma "no-cache"
+              Header always set Expires "0"
+            </Files>
+            <FilesMatch "^workbox-.*\.js$">
+              Header always unset Cache-Control
+              Header always set Cache-Control "no-cache, no-store, must-revalidate"
+            </FilesMatch>
+            <Files "manifest.json">
+              Header always unset Cache-Control
+              Header always set Cache-Control "no-cache, no-store, must-revalidate"
+            </Files>
+            <FilesMatch "\.(html)$">
+              Header always set Cache-Control "no-cache, no-store, must-revalidate"
+              Header always set Pragma "no-cache"
+              Header always set Expires "0"
             </FilesMatch>
           </IfModule>
 
@@ -90,8 +103,6 @@ jobs:
       - name: Deploy (rsync to subdomain docroot)
         run: |
           set -e
-          which rsync
-          rsync --version
           rsync -avz --delete \
             -e "ssh -p ${{ secrets.SSH_PORT }}" \
             dist/pwa/ \
@@ -100,4 +111,6 @@ jobs:
       - name: Smoke test staging
         env:
           BASE_URL: https://staging.fundstr.me
-        run: ./scripts/smoke-tests.sh
+        run: |
+          chmod +x scripts/smoke-tests.sh
+          ./scripts/smoke-tests.sh
