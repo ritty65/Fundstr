@@ -11,20 +11,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+        with: { node-version: '20' }
 
       - name: Enable pnpm via Corepack
         run: |
-          set -e
           corepack enable
           corepack prepare pnpm@10.16.1 --activate
 
-      - name: Install system deps (rsync, ssh)
+      - name: Install rsync + ssh-client
         run: |
-          set -e
           sudo apt-get update
           sudo apt-get install -y rsync openssh-client
+
+      - name: Set build id
+        run: echo "VITE_BUILD_ID=${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
 
       - name: Use staging env (optional)
         run: cp .env.staging .env || true
@@ -79,26 +79,22 @@ jobs:
           EOF
 
       - uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+        with: { ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }} }
 
       - name: Trust remote host
         run: |
-          set -e
           mkdir -p ~/.ssh
           ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Deploy (rsync to subdomain docroot)
         run: |
-          set -e
           rsync -avz --delete \
             -e "ssh -p ${{ secrets.SSH_PORT }}" \
             dist/pwa/ \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
 
       - name: Smoke test staging
-        env:
-          BASE_URL: https://staging.fundstr.me
+        env: { BASE_URL: https://staging.fundstr.me }
         run: |
           chmod +x scripts/smoke-tests.sh
           ./scripts/smoke-tests.sh
