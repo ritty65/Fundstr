@@ -172,6 +172,15 @@
         padding: 1.5rem;
         font-style: italic;
       }
+      .relay-warning {
+        margin-top: 1rem;
+        padding: 0.75rem 1rem;
+        background-color: #fef3c7;
+        border: 1px solid #f6ad55;
+        border-radius: 0.5rem;
+        color: #b7791f;
+        font-weight: 600;
+      }
       .retry-button {
         margin: 0 auto;
         margin-top: -1rem;
@@ -308,11 +317,12 @@
         <p id="featuredStatusMessage" class="status-message hidden"></p>
       </div>
 
+      <p id="relayWarning" class="relay-warning hidden"></p>
       <div class="relay-info">Connecting to: <span id="relayList"></span></div>
     </div>
 
     <script type="module" defer>
-      import { filterHealthyRelays } from "./relayHealth.js";
+      import { filterHealthyRelays, pingRelay } from "./relayHealth.js";
       const FUNDSTR_RELAY = "wss://relay.fundstr.me";
       const DEFAULT_RELAYS = [
         FUNDSTR_RELAY,
@@ -323,6 +333,7 @@
         "wss://relay.nostr.band",
       ];
       const statusMessageElement = document.getElementById("statusMessage");
+      const relayWarningElement = document.getElementById("relayWarning");
       const retryButtonElement = document.getElementById("retryButton");
       // --- Nostr Tools ---
       if (!window.NostrTools) {
@@ -349,6 +360,7 @@
       async function refreshRelays() {
         try {
           const healthy = await filterHealthyRelays(DEFAULT_RELAYS);
+          const fundstrReachable = await pingRelay(FUNDSTR_RELAY);
           const prioritized = [
             FUNDSTR_RELAY,
             ...healthy.filter((relay) => relay !== FUNDSTR_RELAY),
@@ -357,6 +369,14 @@
           relayFailureCount = 0;
           document.getElementById("relayList").textContent = RELAYS.join(", ");
           statusMessageElement.classList.add("hidden");
+          if (fundstrReachable) {
+            relayWarningElement.classList.add("hidden");
+            relayWarningElement.textContent = "";
+          } else {
+            relayWarningElement.textContent =
+              "Fundstr relay is temporarily unreachable. We'll keep retrying while temporarily using backups.";
+            relayWarningElement.classList.remove("hidden");
+          }
         } catch {
           relayFailureCount++;
           if (relayFailureCount >= 3) {
@@ -367,6 +387,8 @@
             statusMessageElement.textContent =
               "Network error: could not reach relays.";
             statusMessageElement.classList.remove("hidden");
+            relayWarningElement.classList.add("hidden");
+            relayWarningElement.textContent = "";
             clearInterval(relayInterval);
           }
         }
