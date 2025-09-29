@@ -17,22 +17,41 @@
       .container {
         width: 100%;
         min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: clamp(2rem, 4vw, 3rem);
-        padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 4vw, 2.5rem);
+        display: grid;
+        grid-auto-rows: min-content;
+        align-content: start;
+        gap: clamp(2rem, 3vw, 3rem);
+        padding: clamp(1.5rem, 4vw, 3rem) clamp(1.5rem, 5vw, 4rem);
         box-sizing: border-box;
+      }
+      @media (min-width: 1024px) {
+        .container {
+          grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+          gap: clamp(2rem, 3vw, 3.5rem);
+          align-items: start;
+        }
       }
       .search-container,
       .featured-creators-container {
-        width: min(100%, clamp(320px, 85vw, 1100px));
-        margin: 0 auto;
+        width: 100%;
         padding: clamp(1.5rem, 4vw, 2.5rem);
         background-color: white;
         border-radius: 0.75rem; /* Tailwind rounded-xl */
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
           0 4px 6px -2px rgba(0, 0, 0, 0.05); /* Tailwind shadow-lg */
+        display: flex;
+        flex-direction: column;
+        gap: clamp(1rem, 2vw, 1.75rem);
+      }
+      @media (min-width: 1024px) {
+        .search-container {
+          grid-column: 1 / 2;
+        }
+        .featured-creators-container {
+          grid-column: 2 / 3;
+          position: sticky;
+          top: clamp(1.5rem, 5vw, 4rem);
+        }
       }
       .search-input {
         width: 100%;
@@ -53,26 +72,26 @@
         margin-top: 1.5rem;
         list-style: none;
         padding: 0;
+        display: grid;
+        gap: 1.5rem;
+      }
+      .results-list {
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
       }
       .featured-creators-grid {
-        display: grid;
-        grid-template-columns: repeat(
-          auto-fill,
-          minmax(280px, 1fr)
-        ); /* Responsive grid */
-        gap: 1.5rem;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       }
       .result-item,
       .creator-card {
         padding: 1.25rem;
         border: 1px solid #e2e8f0; /* Tailwind gray-300 */
         border-radius: 0.75rem; /* Tailwind rounded-xl */
-        margin-bottom: 1rem;
         background-color: #fdfdff; /* Slightly off-white */
         transition: all 0.2s ease-in-out;
         display: flex;
         flex-direction: column; /* Ensure actions container is below info */
         gap: 0.5rem; /* Reduced gap for tighter layout within card */
+        height: 100%;
       }
       .creator-card {
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.07),
@@ -213,6 +232,7 @@
         padding: 0.75rem;
         background-color: #edf2f7;
         border-radius: 0.5rem;
+        grid-column: 1 / -1;
       }
       .copy-button {
         background-color: #edf2f7;
@@ -249,6 +269,7 @@
       body.dark .featured-creators-container {
         background-color: #2d3748;
         color: #e2e8f0;
+        box-shadow: 0 20px 45px -20px rgba(15, 23, 42, 0.6);
       }
       body.dark .search-input {
         background-color: #2d3748;
@@ -273,6 +294,11 @@
       }
       body.dark .profile-header .info .nip05 {
         color: #63b3ed;
+      }
+      body.dark .relay-info {
+        background-color: #2d3748;
+        color: #cbd5f5;
+        border: 1px solid #4a5568;
       }
     </style>
   </head>
