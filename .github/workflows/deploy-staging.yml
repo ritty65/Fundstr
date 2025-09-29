@@ -1,4 +1,4 @@
-name: deploy-staging
+name: Deploy staging (Develop2 → Hostinger)
 
 on:
   push:
@@ -6,14 +6,15 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with:
+          node-version: '20'
 
       - name: Enable pnpm via Corepack
         run: |
@@ -29,8 +30,8 @@ jobs:
       - name: Build (Quasar PWA)
         run: pnpm quasar build -m pwa
 
-      # ENFORCE GOOD .htaccess IN BUILD
-      - name: Enforce safe .htaccess in build
+      # Enforce correct .htaccess + cache headers in the built bundle
+      - name: Enforce .htaccess with cache headers
         run: |
           cat > dist/pwa/.htaccess <<'EOF'
           <IfModule mod_rewrite.c>
@@ -61,8 +62,9 @@ jobs:
           EOF
 
       - name: Add SSH key
-        uses: webfactory/ssh-agent@0.9.0
-        with: { ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }} }
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Trust remote host
         run: |
@@ -77,5 +79,6 @@ jobs:
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
 
       - name: Smoke test staging
-        env: { BASE_URL: https://staging.fundstr.me }
+        env:
+          BASE_URL: https://staging.fundstr.me
         run: ./scripts/smoke-tests.sh
