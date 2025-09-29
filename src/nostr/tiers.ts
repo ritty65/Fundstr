@@ -11,22 +11,34 @@ function firstDTag(event: NostrEvent): string | undefined {
   return undefined;
 }
 
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
+  );
+}
+
 export function parseTierDefinitionEvent(event: NostrEvent): Tier[] {
-  let raw: any[] = [];
+  let parsed: unknown = [];
   try {
-    if (event.kind === 30019) {
-      raw = JSON.parse(event.content);
-    } else {
-      const obj = JSON.parse(event.content || "{}");
-      raw = Array.isArray(obj.tiers) ? obj.tiers : [];
-    }
+    const fallback = event.kind === 30019 ? "[]" : "{}";
+    parsed = JSON.parse(event.content || fallback);
   } catch {
-    raw = [];
+    parsed = [];
   }
-  const tiers = raw
-    .map((t: any) => ({
+
+  const rawArray: unknown[] = Array.isArray(parsed)
+    ? parsed
+    : isPlainObject(parsed) && Array.isArray((parsed as any).tiers)
+      ? ((parsed as any).tiers as unknown[])
+      : [];
+
+  const tiers = rawArray
+    .filter(isPlainObject)
+    .map((t) => ({
       ...t,
-      price_sats: t.price_sats ?? t.price ?? 0,
+      price_sats: t.price_sats ?? (t as any).price ?? 0,
       ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
       media: t.media ? filterValidMedia(t.media) : [],
     }))

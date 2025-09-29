@@ -109,6 +109,22 @@ describe("fetchTierDefinitions", () => {
     tags: [["d", "tiers"]],
     content: '{"tiers":[{"id":"t","name":"Tier","price":2,"perks":"Legacy"}]}',
   } as any;
+  const malformedObjectEvent = {
+    id: "malformed",
+    pubkey: CREATOR_HEX,
+    created_at: 6,
+    kind: 30000,
+    tags: [["d", "tiers"]],
+    content: '{"tiers":{"id":"bad","name":"Broken"}}',
+  } as any;
+  const stringifiedSingletonEvent = {
+    id: "stringified",
+    pubkey: CREATOR_HEX,
+    created_at: 7,
+    kind: 30019,
+    tags: [["d", "tiers"]],
+    content: '"{\\"id\\":\\"alone\\",\\"name\\":\\"Lonely\\"}"',
+  } as any;
 
   it("stores tiers from modern kind 30019 events", async () => {
     queryNutzapTiersMock.mockResolvedValueOnce(modernEvent);
@@ -138,5 +154,27 @@ describe("fetchTierDefinitions", () => {
     expect(queryNutzapTiersMock).toHaveBeenCalled();
     expect(queryNutzapTiersMock.mock.calls[0][0]).toBe(CREATOR_HEX);
     expect(store.tiersMap[CREATOR_HEX].length).toBe(1);
+  });
+
+  it("ignores non-array tier payloads without errors", async () => {
+    queryNutzapTiersMock.mockResolvedValueOnce(malformedObjectEvent);
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const store = useCreatorsStore();
+    await store.fetchTierDefinitions(CREATOR_HEX);
+    expect(store.tiersMap[CREATOR_HEX]).toEqual([]);
+    expect(store.tierFetchError).toBe(false);
+    expect(consoleSpy).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it("skips stringified tier objects without errors", async () => {
+    queryNutzapTiersMock.mockResolvedValueOnce(stringifiedSingletonEvent);
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const store = useCreatorsStore();
+    await store.fetchTierDefinitions(CREATOR_HEX);
+    expect(store.tiersMap[CREATOR_HEX]).toEqual([]);
+    expect(store.tierFetchError).toBe(false);
+    expect(consoleSpy).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 });
