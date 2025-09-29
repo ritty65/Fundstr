@@ -1,4 +1,6 @@
+const FUNDSTR_RELAY = "wss://relay.fundstr.me";
 const FREE_RELAYS = [
+  FUNDSTR_RELAY,
   "wss://relay.damus.io",
   "wss://relay.primal.net",
   "wss://relayable.org",

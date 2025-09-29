@@ -307,8 +307,9 @@
 
     <script type="module" defer>
       import { filterHealthyRelays } from "./relayHealth.js";
+      const FUNDSTR_RELAY = "wss://relay.fundstr.me";
       const DEFAULT_RELAYS = [
-        "wss://relay.fundstr.me",
+        FUNDSTR_RELAY,
         "wss://relay.damus.io",
         "wss://relay.primal.net",
         "wss://relay.snort.social",
@@ -342,7 +343,11 @@
       async function refreshRelays() {
         try {
           const healthy = await filterHealthyRelays(DEFAULT_RELAYS);
-          RELAYS = healthy;
+          const prioritized = [
+            FUNDSTR_RELAY,
+            ...healthy.filter((relay) => relay !== FUNDSTR_RELAY),
+          ];
+          RELAYS = prioritized;
           relayFailureCount = 0;
           document.getElementById("relayList").textContent = RELAYS.join(", ");
           statusMessageElement.classList.add("hidden");
