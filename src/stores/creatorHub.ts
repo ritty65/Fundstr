@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
-import { toRaw } from "vue";
-import { useLocalStorage } from "@vueuse/core";
+import { toRaw, watch, ref } from "vue";
+import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import { NDKEvent, NDKKind, NDKFilter } from "@nostr-dev-kit/ndk";
 import {
   useNostrStore,
@@ -8,12 +8,14 @@ import {
   publishNutzapProfile,
   ensureRelayConnectivity,
   RelayConnectionError,
+  publishWithTimeout,
+  urlsToRelaySet,
 } from "./nostr";
 import { useP2PKStore } from "./p2pk";
 import { useCreatorProfileStore } from "./creatorProfile";
 import { db } from "./dexie";
 import { v4 as uuidv4 } from "uuid";
-import { notifySuccess, notifyError } from "src/js/notify";
+import { notifyError, notifySuccess } from "src/js/notify";
 import { filterValidMedia } from "src/utils/validateMedia";
 import { useNdk } from "src/composables/useNdk";
 import type { Tier, TierMedia } from "./types";
@@ -46,44 +48,105 @@ export async function maybeRepublishNutzapProfile() {
     throw e;
   }
   const profileStore = useCreatorProfileStore();
-  const desiredMints = profileStore.mints.sort().join(",");
+  const desiredMints = profileStore.mints;
+  const desiredRelays = profileStore.relays;
   const desiredP2PK = useP2PKStore().firstKey?.publicKey;
 
   if (!desiredP2PK) return;
 
+  const currentMints = current?.trustedMints || [];
+  const currentRelays = current?.relays || current?.relayHints || [];
+
+  function arraysDiffer(a?: string[], b?: string[]) {
+    const norm = (s: string) => s.trim().toLowerCase();
+    const A = new Set((a ?? []).map(norm));
+    const B = new Set((b ?? []).map(norm));
+    if (A.size !== B.size) return true;
+    for (const x of A) if (!B.has(x)) return true;
+    return false;
+  }
+
+  const mintsChanged = arraysDiffer(currentMints, desiredMints);
+  const relaysChanged = arraysDiffer(currentRelays, desiredRelays);
+
   const hasDiff =
     !current ||
     current.p2pkPubkey !== desiredP2PK ||
-    current.trustedMints.sort().join(",") !== desiredMints;
+    mintsChanged ||
+    relaysChanged;
 
   if (hasDiff) {
     await publishNutzapProfile({
       p2pkPub: desiredP2PK,
-      mints: [...profileStore.mints],
-      relays: [...profileStore.relays],
+      mints: desiredMints,
+      relays: [...desiredRelays],
     });
   }
 }
 
 export const useCreatorHubStore = defineStore("creatorHub", {
-  state: () => ({
-    loggedInNpub: useLocalStorage<string>("creatorHub.loggedInNpub", ""),
-    tiers: useLocalStorage<Record<string, Tier>>("creatorHub.tiers", {}),
-    tierOrder: useLocalStorage<string[]>("creatorHub.tierOrder", []),
-  }),
-  actions: {
-    async loginWithNip07() {
-      const nostr = useNostrStore();
-      await nostr.initNip07Signer();
-      this.loggedInNpub = nostr.pubkey;
+  state: () => {
+    const tiers = safeUseLocalStorage<Record<string, Tier>>(
+      "creatorHub.tiers",
+      {},
+    );
+    const tierOrder = safeUseLocalStorage<string[]>("creatorHub.tierOrder", []);
+    const initialTierOrder = ref<string[]>([]);
+    const lastPublishedTiersHash = safeUseLocalStorage<string>(
+      "creatorHub.lastPublishedTiersHash",
+      "",
+    );
+    const nostr = useNostrStore();
+    watch(
+      () => nostr.pubkey,
+      (newPubkey) => {
+        tiers.value = {} as any;
+        tierOrder.value = [] as any;
+        initialTierOrder.value = [] as any;
+        if (newPubkey) {
+          useCreatorHubStore().loadTiersFromNostr(newPubkey);
+        }
+      },
+    );
+    return { tiers, tierOrder, initialTierOrder, lastPublishedTiersHash };
+  },
+  getters: {
+    isDirty(): boolean {
+      const tiers = Object.values(this.tiers as Record<string, Tier>);
+      const hasUnpublished = tiers.some(
+        (t) => t.publishStatus !== "succeeded",
+      );
+      const orderChanged =
+        this.tierOrder.length !== this.initialTierOrder.length ||
+        this.tierOrder.some(
+          (id, idx) => id !== this.initialTierOrder[idx],
+        );
+      return hasUnpublished || orderChanged;
     },
-    async loginWithNsec(nsec: string) {
+  },
+  actions: {
+    async login(nsec?: string) {
       const nostr = useNostrStore();
-      await nostr.initPrivateKeySigner(nsec);
-      this.loggedInNpub = nostr.pubkey;
+      if (nsec) await nostr.initPrivateKeySigner(nsec);
+      else await nostr.initNip07Signer();
     },
     logout() {
-      this.loggedInNpub = "";
+      const nostr = useNostrStore();
+      nostr.disconnect();
+      nostr.setPubkey("");
+      this.tiers = {} as any;
+      this.tierOrder = [];
+      this.initialTierOrder = [];
+      const profileStore = useCreatorProfileStore();
+      profileStore.setProfile({
+        display_name: "",
+        picture: "",
+        about: "",
+        pubkey: "",
+        mints: [],
+        relays: [],
+      });
+      profileStore.markClean();
     },
     async updateProfile(profile: any) {
       const nostr = useNostrStore();
@@ -101,7 +164,13 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         throw e;
       }
     },
-    addTier(tier: Partial<Tier> & { price?: number; perks?: string }) {
+    addTier(
+      tier: Partial<Tier> & {
+        price?: number;
+        perks?: string;
+        publishStatus?: 'pending' | 'succeeded' | 'failed';
+      },
+    ): string {
       let id = tier.id || uuidv4();
       while (this.tiers[id]) {
         id = uuidv4();
@@ -120,12 +189,13 @@ export const useCreatorHubStore = defineStore("creatorHub", {
           ? { benefits: tier.benefits || [(tier as any).perks] }
           : {}),
         media: tier.media ? filterValidMedia(tier.media as TierMedia[]) : [],
+        ...(tier.publishStatus ? { publishStatus: tier.publishStatus } : {}),
       };
       this.tiers[id] = newTier;
       if (!this.tierOrder.includes(id)) {
         this.tierOrder.push(id);
       }
-      maybeRepublishNutzapProfile();
+      return id;
     },
     updateTier(
       id: string,
@@ -156,10 +226,11 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       };
     },
     async addOrUpdateTier(data: Partial<Tier>) {
-      if (data.id && this.tiers[data.id]) {
-        this.updateTier(data.id, data);
+      let id = data.id;
+      if (id && this.tiers[id]) {
+        this.updateTier(id, data);
       } else {
-        this.addTier(data);
+        id = this.addTier(data);
       }
     },
     async saveTier(_tier: Tier) {
@@ -169,7 +240,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
     async loadTiersFromNostr(pubkey?: string) {
       const nostr = useNostrStore();
       await nostr.initNdkReadOnly();
-      const author = pubkey || this.loggedInNpub || nostr.pubkey;
+      const author = pubkey || nostr.pubkey;
       if (!author) return;
       const filter: NDKFilter = {
         kinds: [TIER_DEFINITIONS_KIND as unknown as NDKKind],
@@ -177,7 +248,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         "#d": ["tiers"],
         limit: 1,
       };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const events = await ndk.fetchEvents(filter);
       events.forEach((ev) => {
         try {
@@ -189,11 +260,13 @@ export const useCreatorHubStore = defineStore("creatorHub", {
               price_sats: t.price_sats ?? t.price ?? 0,
               ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
               media: t.media ? filterValidMedia(t.media) : [],
+              publishStatus: 'succeeded',
             };
             obj[tier.id] = tier;
           });
           this.tiers = obj as any;
           this.tierOrder = raw.map((t) => t.id);
+          this.initialTierOrder = [...this.tierOrder];
         } catch (e) {
           console.error(e);
         }
@@ -202,21 +275,25 @@ export const useCreatorHubStore = defineStore("creatorHub", {
     async removeTier(id: string) {
       delete this.tiers[id];
       this.tierOrder = this.tierOrder.filter((t) => t !== id);
-      await maybeRepublishNutzapProfile();
     },
 
     async publishTierDefinitions() {
-      const tiersArray = this.getTierArray().map((t) => ({
-        ...toRaw(t),
-        price: t.price_sats,
-        media: t.media ? filterValidMedia(t.media) : [],
-      }));
+      const tiersArray = this.getTierArray().map((t) => {
+        const { publishStatus, ...pureTier } = toRaw(t) as any;
+        return {
+          ...pureTier,
+          price: t.price_sats,
+          media: t.media ? filterValidMedia(t.media) : [],
+        };
+      });
       const nostr = useNostrStore();
 
       if (!nostr.signer) {
         throw new Error("Signer required to publish tier definitions");
       }
 
+      const profileStore = useCreatorProfileStore();
+      await nostr.connect(profileStore.relays);
       const ndk = await useNdk();
       if (!ndk) {
         throw new Error("NDK not initialised – cannot publish tiers");
@@ -229,8 +306,8 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       ev.content = JSON.stringify(tiersArray);
       await ev.sign(nostr.signer as any);
       try {
-        await ensureRelayConnectivity(ndk);
-        await ev.publish();
+        const relaySet = await urlsToRelaySet(profileStore.relays);
+        await publishWithTimeout(ev, relaySet);
       } catch (e: any) {
         notifyError(e?.message ?? String(e));
         throw e;
@@ -245,6 +322,12 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       });
 
       notifySuccess("Tiers published");
+      Object.keys(this.tiers).forEach(
+        (id) => (this.tiers[id].publishStatus = "succeeded"),
+      );
+      this.initialTierOrder = [...this.tierOrder];
+      this.lastPublishedTiersHash = JSON.stringify(tiersArray);
+      return true;
     },
     setTierOrder(order: string[]) {
       this.tierOrder = [...order];

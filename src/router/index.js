@@ -6,8 +6,9 @@ import {
   createWebHashHistory,
 } from "vue-router";
 import routes from "./routes";
-import { useWelcomeStore } from "src/stores/welcome";
+import { hasSeenWelcome } from "src/composables/useWelcomeGate";
 import { useRestoreStore } from "src/stores/restore";
+import { useNostrStore } from "src/stores/nostr";
 
 /*
  * If not building with SSR mode, you can
@@ -18,7 +19,8 @@ import { useRestoreStore } from "src/stores/restore";
  * with the Router instance.
  */
 
-export default route(function (/* { store, ssrContext } */) {
+export default route(async function (/* { store, ssrContext } */) {
+  await useNostrStore().loadKeysFromStorage();
   const createHistory = process.env.SERVER
     ? createMemoryHistory
     : process.env.VUE_ROUTER_MODE === "history"
@@ -35,18 +37,36 @@ export default route(function (/* { store, ssrContext } */) {
     history: createHistory(process.env.VUE_ROUTER_BASE),
   });
 
-  Router.beforeEach((to, from, next) => {
-    const welcome = useWelcomeStore();
+  Router.beforeEach((to, _from, next) => {
+    const seen = hasSeenWelcome();
+    const isWelcome = to.path.startsWith("/welcome");
+    const isPublicProfile =
+      to.matched.some((r) => r.name === "PublicCreatorProfile") ||
+      to.path.startsWith("/creator/");
+    const isPublicDiscover = to.path === "/find-creators";
     const restore = useRestoreStore();
+
+    const env = import.meta.env.VITE_APP_ENV;
+    const allow =
+      to.query.allow === "1" && (env === "development" || env === "staging");
+
     if (
-      to.path !== '/welcome' &&
-      !welcome.welcomeCompleted &&
+      !seen &&
+      !isWelcome &&
       !restore.restoringState &&
-      to.path !== '/restore'
+      to.path !== "/restore" &&
+      !isPublicProfile &&
+      !isPublicDiscover
     ) {
-      next('/welcome?first=1');
+      next({ path: "/welcome", query: { first: "1" } });
       return;
     }
+
+    if (seen && isWelcome && !allow) {
+      next("/about");
+      return;
+    }
+
     next();
   });
 

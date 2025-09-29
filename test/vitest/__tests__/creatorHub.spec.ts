@@ -5,6 +5,7 @@ import {
 } from "../../../src/stores/creatorHub";
 import { useP2PKStore } from "../../../src/stores/p2pk";
 import { useMintsStore } from "../../../src/stores/mints";
+import { useCreatorProfileStore } from "../../../src/stores/creatorProfile";
 
 const notifySuccess = vi.fn();
 const notifyError = vi.fn();
@@ -66,6 +67,7 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
       ensureRelayConnectivityMock(...args),
     fetchNutzapProfile: (...args: any[]) => fetchNutzapProfileMock(...args),
     publishNutzapProfile: (...args: any[]) => publishNutzapProfileMock(...args),
+    publishCreatorBundle: vi.fn(),
     RelayConnectionError: class RelayConnectionError extends Error {},
   };
 });
@@ -119,7 +121,7 @@ describe("CreatorHub store", () => {
 });
 
 describe("publishTierDefinitions", () => {
-  it("creates a 30000 event with correct tags and content", async () => {
+  it("creates a 30019 event with correct tags and content", async () => {
     const store = useCreatorHubStore();
     store.tiers = {
       t1: {
@@ -129,15 +131,18 @@ describe("publishTierDefinitions", () => {
         description: "",
         welcomeMessage: "",
         media: [],
+        publishStatus: "pending",
       },
     } as any;
     store.tierOrder = ["t1"];
+    useCreatorProfileStore().relays = ["wss://relay" as any];
 
-    await store.publishTierDefinitions();
+    const res = await store.publishTierDefinitions();
+    expect(res).toBe(true);
 
     expect(createdEvents.length).toBe(1);
     const ev = createdEvents[0];
-    expect(ev.kind).toBe(30000);
+    expect(ev.kind).toBe(30019);
     expect(ev.tags).toEqual([["d", "tiers"]]);
     expect(ev.content).toBe(
       JSON.stringify([
@@ -152,33 +157,70 @@ describe("publishTierDefinitions", () => {
         },
       ]),
     );
+    expect(JSON.parse(ev.content)[0].publishStatus).toBeUndefined();
     expect(signMock).toHaveBeenCalledWith(nostrStoreMock.signer);
     expect(publishMock).toHaveBeenCalled();
   });
 });
 
 describe("maybeRepublishNutzapProfile", () => {
-  it("calls publishNutzapProfile when profile differs", async () => {
+  it("republishes when relays differ", async () => {
     const p2pk = useP2PKStore();
     p2pk.p2pkKeys = [
       { publicKey: "pk", privateKey: "priv", used: false, usedCount: 0 },
     ];
-    const mints = useMintsStore();
-    mints.mints = [{ url: "mint1" }, { url: "mint2" }] as any;
+    const profileStore = useCreatorProfileStore();
+    profileStore.mints = ["mint1"];
+    profileStore.relays = ["wss://a" as any];
 
     fetchNutzapProfileMock = vi.fn(async () => ({
-      p2pkPubkey: "other",
+      p2pkPubkey: "pk",
       trustedMints: ["mint1"],
+      relays: ["wss://b"],
+      hexPub: "pub",
+    }));
+
+    await maybeRepublishNutzapProfile();
+    expect(publishNutzapProfileMock).toHaveBeenCalled();
+  });
+
+  it("republishes when trusted mints differ", async () => {
+    const p2pk = useP2PKStore();
+    p2pk.p2pkKeys = [
+      { publicKey: "pk", privateKey: "priv", used: false, usedCount: 0 },
+    ];
+    const profileStore = useCreatorProfileStore();
+    profileStore.mints = ["mint1"];
+    profileStore.relays = [] as any;
+
+    fetchNutzapProfileMock = vi.fn(async () => ({
+      p2pkPubkey: "pk",
+      trustedMints: ["mint2"],
       relays: [],
       hexPub: "pub",
     }));
 
     await maybeRepublishNutzapProfile();
+    expect(publishNutzapProfileMock).toHaveBeenCalled();
+  });
 
-    expect(publishNutzapProfileMock).toHaveBeenCalledWith({
-      p2pkPub: "pk",
-      mints: ["mint1", "mint2"],
-      relays: nostrStoreMock.relays,
-    });
+  it("does not republish when data matches", async () => {
+    const p2pk = useP2PKStore();
+    p2pk.p2pkKeys = [
+      { publicKey: "pk", privateKey: "priv", used: false, usedCount: 0 },
+    ];
+    const profileStore = useCreatorProfileStore();
+    profileStore.mints = ["mint1", "mint2"];
+    profileStore.relays = ["wss://a", "wss://b"] as any;
+
+    fetchNutzapProfileMock = vi.fn(async () => ({
+      p2pkPubkey: "pk",
+      trustedMints: ["mint2", "mint1"],
+      relays: ["wss://b", "wss://a"],
+      hexPub: "pub",
+    }));
+
+    await maybeRepublishNutzapProfile();
+    expect(publishNutzapProfileMock).not.toHaveBeenCalled();
   });
 });

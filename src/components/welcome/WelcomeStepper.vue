@@ -43,7 +43,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useWelcomeStore } from 'src/stores/welcome'
 import TaskModalIdentity from './TaskModalIdentity.vue'
 import TaskModalMint from './TaskModalMint.vue'
@@ -52,6 +52,7 @@ import Coachmark from './Coachmark.vue'
 
 const welcome = useWelcomeStore()
 const router = useRouter()
+const route = useRoute()
 const step = ref(1)
 
 function nextIf(cond: boolean) {
@@ -60,6 +61,14 @@ function nextIf(cond: boolean) {
 
 function finish() {
   welcome.markWelcomeCompleted()
-  router.push('/wallet')
+  const redirect =
+    typeof route.query.redirect === 'string'
+      ? decodeURIComponent(route.query.redirect)
+      : undefined
+  if (redirect) {
+    router.replace(redirect)
+  } else {
+    router.push('/wallet')
+  }
 }
 </script>

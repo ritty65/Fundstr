@@ -1,7 +1,8 @@
 .section-card {
   padding: 24px;
-  background-color: var(--q-color-grey-9);
+  background-color: var(--surface-2);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border: var(--surface-contrast-border);
   border-radius: 8px;
 }
 
@@ -23,7 +24,7 @@
 
 /* Subtle border helpers */
 .border-subtle {
-  border: var(--border-subtle);
+  border: var(--surface-contrast-border);
 }
 
 /* Rounded card helpers */
@@ -36,13 +37,13 @@
 
 /* Chip variants */
 .chip-outline {
-  border: var(--border-subtle);
+  border: var(--surface-contrast-border);
   background-color: transparent;
-  color: var(--q-color-grey-8);
+  color: var(--text-2);
 }
 .chip-solid {
-  background-color: var(--q-color-grey-8);
-  color: #fff;
+  background-color: var(--chip-bg);
+  color: var(--chip-text);
   border: none;
 }
 .chip-filled {

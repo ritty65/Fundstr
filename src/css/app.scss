@@ -118,6 +118,20 @@ body,
   --due-soon-bg-dark: color-mix(in srgb, var(--q-warning) 30%, transparent);
   --due-soon-bg-light: color-mix(in srgb, var(--q-warning) 15%, transparent);
   --border-subtle: 1px solid var(--border-subtle-light);
+  /* theme token defaults */
+  --text-1: #111827;
+  --text-2: #6b7280;
+  --text-inverse: #ffffff;
+  --surface-1: #f9fafb;
+  --surface-2: #ffffff;
+  --surface-contrast-border: var(--border-subtle-light);
+  --accent-500: var(--q-primary);
+  --accent-600: color-mix(in srgb, var(--q-primary) 85%, black);
+  --accent-200: color-mix(in srgb, var(--q-primary) 25%, white);
+  --bubble-outgoing-text: var(--text-inverse);
+  --tab-active: var(--q-primary);
+  --tab-inactive: #6b7280;
+  --disabled-text: #9ca3af;
 }
 
 body.body--dark {
@@ -137,6 +151,19 @@ body.body--dark {
   --progress-ring-fill: var(--progress-ring-fill-dark);
   --progress-ring-track: var(--progress-ring-track-dark);
   --due-soon-bg: var(--due-soon-bg-dark);
+  --text-1: #f9fafb;
+  --text-2: #9ca3af;
+  --text-inverse: #000000;
+  --surface-1: #0e141b;
+  --surface-2: var(--panel-dark);
+  --surface-contrast-border: var(--border-subtle-dark);
+  --accent-500: var(--q-primary);
+  --accent-600: color-mix(in srgb, var(--q-primary) 80%, white);
+  --accent-200: color-mix(in srgb, var(--q-primary) 25%, black);
+  --bubble-outgoing-text: var(--text-1);
+  --tab-active: var(--q-primary);
+  --tab-inactive: var(--muted-dark);
+  --disabled-text: var(--q-color-grey-6);
 }
 
 body.body--light {
@@ -153,9 +180,39 @@ body.body--light {
   --border-subtle: 1px solid var(--border-subtle-light);
   --chip-bg: var(--chip-bg-light);
   --chip-text: var(--chip-text-light);
+  --bubble-outgoing-text: var(--text-inverse);
   --progress-ring-fill: var(--progress-ring-fill-light);
   --progress-ring-track: var(--progress-ring-track-light);
   --due-soon-bg: var(--due-soon-bg-light);
+  --text-1: #111827;
+  --text-2: #6b7280;
+  --text-inverse: #ffffff;
+  --surface-1: #f9fafb;
+  --surface-2: var(--panel-light);
+  --surface-contrast-border: var(--border-subtle-light);
+  --accent-500: var(--q-primary);
+  --accent-600: color-mix(in srgb, var(--q-primary) 85%, black);
+  --accent-200: color-mix(in srgb, var(--q-primary) 25%, white);
+  --tab-active: var(--q-primary);
+  --tab-inactive: var(--muted-light);
+  --disabled-text: var(--q-color-grey-5);
+}
+
+.themed-icon {
+  color: #111827;
+}
+.body--dark .themed-icon {
+  color: #ffffff;
+}
+
+/* Welcome navigation icon sizing */
+.nav-map-icon {
+  /* Use font-size so child SVGs sized 1em follow this */
+  font-size: 24px;
+  line-height: 1;
+  display: inline-block;
+  width: 1em;
+  height: 1em;
 }
 
 /* Utility components */
@@ -272,6 +329,45 @@ body.body--dark .received {
   border-radius: 4px;
   padding: 4px 12px;
   font-weight: 500;
+}
+
+/* utility classes for theme tokens */
+.text-1 {
+  color: var(--text-1) !important;
+}
+
+.text-2 {
+  color: var(--text-2) !important;
+}
+
+.text-inverse {
+  color: var(--text-inverse) !important;
+}
+
+.bg-surface-1 {
+  background-color: var(--surface-1) !important;
+}
+
+.bg-surface-2 {
+  background-color: var(--surface-2) !important;
+  border: 1px solid var(--surface-contrast-border);
+}
+
+.q-chip {
+  background-color: var(--chip-bg) !important;
+  color: var(--chip-text) !important;
+}
+
+.q-tab {
+  color: var(--tab-inactive);
+}
+
+.q-tab.q-tab--active {
+  color: var(--tab-active);
+}
+
+.q-tab__indicator {
+  background: var(--tab-active);
 }
 
 .bucket-card,

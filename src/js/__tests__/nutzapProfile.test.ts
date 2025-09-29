@@ -6,10 +6,11 @@ const hex = "11".repeat(32);
 const npub = nip19.npubEncode(hex);
 
 const event = {
-  tags: [
-    ["pubkey", npub],
-    ["mint", "https://mint"],
-  ],
+  content: JSON.stringify({
+    p2pk: npub,
+    mints: ["https://mint"],
+  }),
+  tags: [["t", "nutzap-profile"], ["client", "fundstr"]],
 } as any;
 
 const subMock = {

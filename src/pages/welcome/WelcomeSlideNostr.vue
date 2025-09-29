@@ -37,11 +37,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useQuasar } from 'quasar'
 import { useNostrStore } from 'src/stores/nostr'
 import { useWelcomeStore } from 'src/stores/welcome'
+import { useCreatorHubStore } from 'src/stores/creatorHub'
 import NostrBackupDialog from 'src/components/welcome/NostrBackupDialog.vue'
 import { nip19 } from 'nostr-tools'
 import { hexToBytes } from '@noble/hashes/utils'
@@ -50,6 +51,7 @@ const { t } = useI18n()
 const $q = useQuasar()
 const nostr = useNostrStore()
 const welcome = useWelcomeStore()
+const creatorHubStore = useCreatorHubStore()
 const id = 'welcome-nostr-title'
 
 const nsec = ref('')
@@ -60,7 +62,19 @@ const backupNsec = ref('')
 const connecting = ref(false)
 const connected = ref(false)
 
-const hasNip07 = computed(() => typeof window !== 'undefined' && !!(window as any).nostr?.getPublicKey)
+const hasNip07 = ref(false)
+onMounted(() => {
+  const check = () => {
+    if (typeof window !== 'undefined' && (window as any).nostr?.getPublicKey) {
+      hasNip07.value = true
+      clearInterval(interval)
+      clearTimeout(timeout)
+    }
+  }
+  const interval = setInterval(check, 500)
+  const timeout = setTimeout(() => clearInterval(interval), 5000)
+  check()
+})
 
 type BrowserKind = 'chromium' | 'firefox' | 'safari' | 'unknown'
 const browser = ref<BrowserKind>('unknown')
@@ -121,9 +135,12 @@ async function connectNip07() {
   error.value = ''
   connecting.value = true
   try {
+    const available = await nostr.checkNip07Signer(true)
+    if (!available) throw new Error('NIP-07 unavailable')
     if (!nostr.signer) {
       await nostr.connectBrowserSigner()
     }
+    await creatorHubStore.login()
     welcome.nostrSetupCompleted = true
     npub.value = nostr.npub
     connected.value = true
@@ -137,14 +154,15 @@ async function connectNip07() {
   }
 }
 
-async function generate() {
-  error.value = ''
-  await nostr.initWalletSeedPrivateKeySigner()
-  welcome.nostrSetupCompleted = true
-  npub.value = nostr.npub
-  backupNsec.value = nostr.activePrivateKeyNsec
-  nsec.value = nostr.activePrivateKeyNsec
-  showBackup.value = true
+  async function generate() {
+    error.value = ''
+    await nostr.initWalletSeedPrivateKeySigner()
+    await creatorHubStore.login(nostr.activePrivateKeyNsec)
+    welcome.nostrSetupCompleted = true
+    npub.value = nostr.npub
+    backupNsec.value = nostr.activePrivateKeyNsec
+    nsec.value = nostr.activePrivateKeyNsec
+    showBackup.value = true
 }
 
 async function importKey() {
@@ -170,13 +188,14 @@ async function importKey() {
     error.value = t('Welcome.nostr.errorInvalid')
     return
   }
-  try {
-    await nostr.initPrivateKeySigner(nsecToUse)
-    welcome.nostrSetupCompleted = true
-    npub.value = nostr.npub
-    backupNsec.value = nostr.activePrivateKeyNsec
-    showBackup.value = true
-    nsec.value = ''
+    try {
+      await nostr.initPrivateKeySigner(nsecToUse)
+      await creatorHubStore.login(nostr.activePrivateKeyNsec)
+      welcome.nostrSetupCompleted = true
+      npub.value = nostr.npub
+      backupNsec.value = nostr.activePrivateKeyNsec
+      showBackup.value = true
+      nsec.value = ''
   } catch {
     error.value = t('Welcome.nostr.errorInvalid')
   }

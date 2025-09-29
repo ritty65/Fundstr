@@ -1,6 +1,12 @@
 <template>
   <div class="row no-wrap items-center q-pa-sm">
-    <q-input v-model="text" class="col" dense outlined @keyup.enter="send">
+    <q-input
+      v-model="text"
+      class="col message-input"
+      dense
+      outlined
+      @keyup.enter="send"
+    >
       <template v-slot:append>
         <q-btn
           flat
@@ -8,8 +14,15 @@
           color="primary"
           @click="selectFile"
           icon="attach_file"
+          aria-label="Attach file"
         />
-        <q-btn flat round color="primary" @click="sendToken">
+        <q-btn
+          flat
+          round
+          color="primary"
+          @click="sendToken"
+          aria-label="Send token"
+        >
           <NutIcon />
         </q-btn>
         <q-btn
@@ -20,6 +33,7 @@
           class="q-ml-sm"
           :disable="!text.trim() && !attachment"
           @click="send"
+          aria-label="Send message"
         />
       </template>
     </q-input>
@@ -86,3 +100,10 @@ const handleFile = (e: Event) => {
   reader.readAsDataURL(files[0]);
 };
 </script>
+
+<style scoped>
+.message-input .q-field__control {
+  border-color: var(--surface-contrast-border);
+  background: var(--surface-1);
+}
+</style>

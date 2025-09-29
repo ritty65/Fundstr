@@ -171,8 +171,9 @@
   </div>
 </template>
 
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent } from "vue";
+
 import { mapActions, mapState, mapWritableState } from "pinia";
 import { useMintsStore, MintClass } from "src/stores/mints";
 import { useRestoreStore } from "src/stores/restore";

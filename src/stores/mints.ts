@@ -151,7 +151,6 @@ export const useMintsStore = defineStore("mints", {
     if (!isValidUrl(activeMintUrl.value)) {
       activeMintUrl.value = "";
       uiStoreGlobal.setTab("mints");
-      showAddMintDialog.value = true;
     }
 
     return {
@@ -359,8 +358,8 @@ export const useMintsStore = defineStore("mints", {
           await notifySuccess(this.t("wallet.mint.notifications.added"));
         }
         const profileStore = useCreatorProfileStore();
-        if (!profileStore.mints.includes(url)) {
-          profileStore.mints.push(url);
+        if (!profileStore.mints.length) {
+          profileStore.mints = [url];
         }
         await maybeRepublishNutzapProfile();
         return mintToAdd;

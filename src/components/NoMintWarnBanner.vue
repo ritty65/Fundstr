@@ -39,8 +39,9 @@
     </q-card-section>
   </q-card>
 </template>
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent, ref } from "vue";
+
 import { getShortUrl } from "src/js/wallet-helpers";
 import { useUiStore } from "src/stores/ui";
 import { mapWritableState } from "pinia";

@@ -2,7 +2,7 @@
   <q-page class="q-pa-md flex flex-center">
     <div style="width:100%;max-width:600px">
       <div class="row items-center justify-between q-mb-md">
-        <div></div>
+        <ThemeToggle />
         <q-btn dense flat icon="checklist" @click="showChecklist = true" />
       </div>
       <div class="text-center q-mb-md">
@@ -52,9 +52,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import WelcomeSlideFeatures from './welcome/WelcomeSlideFeatures.vue'
 import WelcomeSlideNostr from './welcome/WelcomeSlideNostr.vue'
@@ -67,20 +67,34 @@ import TaskChecklist from 'src/components/welcome/TaskChecklist.vue'
 import RevealSeedDialog from 'src/components/welcome/RevealSeedDialog.vue'
 import type { WelcomeTask } from 'src/types/welcome'
 import { useWelcomeStore, LAST_WELCOME_SLIDE } from 'src/stores/welcome'
+import { markWelcomeSeen, hasSeenWelcome } from 'src/composables/useWelcomeGate'
 import { useMnemonicStore } from 'src/stores/mnemonic'
 import { useStorageStore } from 'src/stores/storage'
 import { useNostrStore } from 'src/stores/nostr'
 import { useNdk } from 'src/composables/useNdk'
+import ThemeToggle from 'src/components/ThemeToggle.vue'
+import { usePwaInstall } from 'src/composables/usePwaInstall'
 
 const { t } = useI18n()
 const welcome = useWelcomeStore()
 const router = useRouter()
+const route = useRoute()
 const $q = useQuasar()
 const mnemonicStore = useMnemonicStore()
 const storageStore = useStorageStore()
 const nostr = useNostrStore()
 const showSeedDialog = ref(false)
 const showChecklist = ref(false)
+const { deferredPrompt } = usePwaInstall()
+
+onMounted(() => {
+  const env = import.meta.env.VITE_APP_ENV
+  const allow =
+    route.query.allow === '1' && (env === 'development' || env === 'staging')
+  if (route.path.startsWith('/welcome') && hasSeenWelcome() && !allow) {
+    router.replace('/about')
+  }
+})
 
 function revealSeed() {
   showSeedDialog.value = true
@@ -90,16 +104,19 @@ function downloadBackup() {
   storageStore.exportWalletState()
 }
 
-function finishOnboarding() {
+async function finishOnboarding() {
   showChecklist.value = false
   welcome.closeWelcome()
-  router.push('/')
+  // remember that the welcome flow has been completed on this device
+  markWelcomeSeen()
+  await nextTick()
+  router.replace('/about')
 }
 
 const slides = [
   { component: WelcomeSlideFeatures },
   { component: WelcomeSlideNostr },
-  { component: WelcomeSlidePwa },
+  { component: WelcomeSlidePwa, props: { deferredPrompt } },
   {
     component: WelcomeSlideBackup,
     props: { onRevealSeed: revealSeed, onDownloadBackup: downloadBackup },
@@ -128,9 +145,9 @@ function runTask(task: WelcomeTask) {
   showChecklist.value = false
 }
 
-function next() {
+async function next() {
   if (welcome.currentSlide === LAST_WELCOME_SLIDE) {
-    finishOnboarding()
+    await finishOnboarding()
   } else if (welcome.canProceed(welcome.currentSlide)) {
     welcome.currentSlide++
   }
@@ -156,4 +173,6 @@ onMounted(() => {
     })
     .catch(() => {})
 })
+
+
 </script>

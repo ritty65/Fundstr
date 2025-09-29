@@ -175,8 +175,9 @@
     </q-dialog>
   </div>
 </template>
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { debug } from "src/js/logger";
+
 import { defineComponent } from "vue";
 import { shortenString } from "src/js/string-utils";
 import { formatDistanceToNow, parseISO } from "date-fns";

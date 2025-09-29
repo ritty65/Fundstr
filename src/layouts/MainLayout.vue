@@ -1,11 +1,11 @@
 <template>
   <q-layout
     view="lHh Lpr lFf"
-    :class="$q.dark.isActive ? 'bg-dark text-white' : 'bg-white text-dark'"
+    class="bg-surface-1 text-1"
     :style="navStyleVars"
   >
-    <MainHeader />
-    <AppNavDrawer />
+    <MainHeader v-if="!route.meta.hideHeader" />
+    <AppNavDrawer v-if="!route.meta.hideHeader" />
     <q-drawer
       v-if="isMessengerRoute"
       v-model="messenger.drawerOpen"
@@ -83,9 +83,10 @@
   </q-layout>
 </template>
 
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent, ref, computed, watch } from "vue";
-import { useRouter } from "vue-router";
+
+import { useRouter, useRoute } from "vue-router";
 import { useQuasar, LocalStorage } from "quasar";
 import MainHeader from "components/MainHeader.vue";
 import AppNavDrawer from "components/AppNavDrawer.vue";
@@ -111,6 +112,7 @@ export default defineComponent({
   setup() {
     const messenger = useMessengerStore();
     const router = useRouter();
+    const route = useRoute();
     const conversationSearch = ref("");
     const newChatDialogRef = ref(null);
     const $q = useQuasar();
@@ -212,6 +214,7 @@ export default defineComponent({
       computedDrawerWidth,
       onResizeStart,
       navStyleVars,
+      route,
     };
   },
   async mounted() {

@@ -100,7 +100,7 @@ const $q = useQuasar()
 const welcome = useWelcomeStore()
 const mints = useMintsStore()
 const id = 'welcome-mints-title'
-const url = ref((process.env.RECOMMENDED_MINT_URL as string) || '')
+const url = ref((import.meta.env.VITE_RECOMMENDED_MINT_URL as string) || '')
 const error = ref('')
 const loading = ref(false)
 const connected = ref<any[]>([])
@@ -115,26 +115,26 @@ async function loadRecommendedMints() {
     recommendedMints.value = Array.isArray(data)
       ? data.map((m: any) => ({ url: m.url, label: m.label || m.url }))
       : []
-    if (!recommendedMints.value.length && process.env.RECOMMENDED_MINTS) {
-      recommendedMints.value = (process.env.RECOMMENDED_MINTS as string)
+    if (!recommendedMints.value.length && import.meta.env.VITE_RECOMMENDED_MINTS) {
+      recommendedMints.value = (import.meta.env.VITE_RECOMMENDED_MINTS as string)
         .split(',')
         .map((u) => ({ url: u.trim(), label: u.trim() }))
     }
-    if (!recommendedMints.value.length && process.env.RECOMMENDED_MINT_URL) {
+    if (!recommendedMints.value.length && import.meta.env.VITE_RECOMMENDED_MINT_URL) {
       recommendedMints.value.push({
-        url: process.env.RECOMMENDED_MINT_URL as string,
-        label: process.env.RECOMMENDED_MINT_URL as string,
+        url: import.meta.env.VITE_RECOMMENDED_MINT_URL as string,
+        label: import.meta.env.VITE_RECOMMENDED_MINT_URL as string,
       })
     }
   } catch {
-    if (process.env.RECOMMENDED_MINTS) {
-      recommendedMints.value = (process.env.RECOMMENDED_MINTS as string)
+    if (import.meta.env.VITE_RECOMMENDED_MINTS) {
+      recommendedMints.value = (import.meta.env.VITE_RECOMMENDED_MINTS as string)
         .split(',')
         .map((u) => ({ url: u.trim(), label: u.trim() }))
-    } else if (process.env.RECOMMENDED_MINT_URL) {
+    } else if (import.meta.env.VITE_RECOMMENDED_MINT_URL) {
       recommendedMints.value.push({
-        url: process.env.RECOMMENDED_MINT_URL as string,
-        label: process.env.RECOMMENDED_MINT_URL as string,
+        url: import.meta.env.VITE_RECOMMENDED_MINT_URL as string,
+        label: import.meta.env.VITE_RECOMMENDED_MINT_URL as string,
       })
     } else {
       $q.notify({ type: 'negative', message: t('Welcome.mints.errorLoad') })

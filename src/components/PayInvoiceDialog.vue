@@ -312,8 +312,9 @@
     </q-card>
   </q-dialog>
 </template>
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { debug } from "src/js/logger";
+
 import { defineComponent } from "vue";
 import { useWalletStore } from "src/stores/wallet";
 import { useUiStore } from "src/stores/ui";

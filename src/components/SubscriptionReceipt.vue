@@ -87,8 +87,9 @@
   </q-dialog>
 </template>
 
-<script lang="ts">
+<script lang="ts">import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent } from "vue";
+
 import { useClipboard } from "src/composables/useClipboard";
 
 export default defineComponent({

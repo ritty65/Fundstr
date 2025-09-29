@@ -229,7 +229,10 @@ const profile = computed(() => {
   return entry?.profile ?? entry ?? {};
 });
 
-const alias = computed(() => messenger.aliases[props.pubkey]);
+const alias = computed(() => {
+  const a = messenger.aliases[props.pubkey];
+  return typeof a === "string" ? a : "";
+});
 const profileName = computed(() => {
   const p: any = profile.value;
   return (
@@ -239,10 +242,14 @@ const profileName = computed(() => {
     props.pubkey.slice(0, 8) + "…"
   );
 });
-const displayName = computed(() => alias.value || profileName.value);
+const displayName = computed(() => {
+  const name = alias.value || profileName.value;
+  return typeof name === "string" ? name : "";
+});
 
 const initials = computed(() => {
   const name = displayName.value;
+  if (typeof name !== "string") return "";
   const words = name.split(/\s+/).filter(Boolean);
   const letters = words.slice(0, 2).map((w) => w[0]);
   return letters.join("").toUpperCase();
@@ -305,7 +312,8 @@ const deleteItem = () => emit("delete", nostr.resolvePubkey(props.pubkey));
   pointer-events: none; /* don’t block avatar clicks */
 }
 .conversation-item.selected {
-  background-color: color-mix(in srgb, var(--q-primary), transparent 92%);
+  background-color: var(--accent-200);
+  color: var(--text-1);
 }
 .conversation-item:focus {
   border-left: 2px solid var(--q-primary);

@@ -1,11 +1,11 @@
 <template>
-  <q-layout
-    view="lHh Lpr lFf"
-    :class="$q.dark.isActive ? 'bg-dark text-white' : 'bg-white text-dark'"
-    :style="navStyleVars"
-  >
-    <MainHeader />
-    <AppNavDrawer />
+    <q-layout
+      view="lHh Lpr lFf"
+      class="bg-surface-1 text-1"
+      :style="navStyleVars"
+    >
+    <MainHeader v-if="!route.meta.hideHeader" />
+    <AppNavDrawer v-if="!route.meta.hideHeader" />
     <q-page-container class="text-body1">
       <div class="max-w-7xl mx-auto">
         <router-view />
@@ -14,8 +14,10 @@
   </q-layout>
 </template>
 
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent, computed } from "vue";
+import { useRoute } from "vue-router";
+
 import MainHeader from "components/MainHeader.vue";
 import AppNavDrawer from "components/AppNavDrawer.vue";
 import { useUiStore } from "src/stores/ui";
@@ -32,6 +34,7 @@ export default defineComponent({
   setup() {
     const ui = useUiStore();
     const $q = useQuasar();
+    const route = useRoute();
     const navStyleVars = computed(() => ({
       "--nav-drawer-width": `${NAV_DRAWER_WIDTH}px`,
       "--nav-offset-x":
@@ -40,7 +43,7 @@ export default defineComponent({
           : "0px",
     }));
 
-    return { ui, navStyleVars };
+    return { ui, navStyleVars, route };
   },
 });
 </script>

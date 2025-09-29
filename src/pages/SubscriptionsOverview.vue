@@ -1,5 +1,6 @@
 <template>
   <div class="q-pa-md">
+    <NostrRelayErrorBanner />
     <div class="row items-center justify-between q-mb-md">
       <h5 class="q-my-none">{{ $t("SubscriptionsOverview.title") }}</h5>
       <q-btn
@@ -269,7 +270,10 @@
                   <q-item
                     clickable
                     v-close-popup
-                    :to="`/creator/${pubkeyNpub(row.creator)}`"
+                    :to="{
+                      name: 'PublicCreatorProfile',
+                      params: { npubOrHex: pubkeyNpub(row.creator) },
+                    }"
                   >
                     <q-item-section>{{
                       $t("FindCreators.actions.view_profile.label")
@@ -438,6 +442,7 @@ import { useProofsStore } from "stores/proofs";
 import { useSendTokensStore } from "stores/sendTokensStore";
 import token from "src/js/token";
 import SubscriptionReceipt from "components/SubscriptionReceipt.vue";
+import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 import { cashuDb } from "stores/dexie";
 import { useClipboard } from "src/composables/useClipboard";
 import profileCache from "src/js/profile-cache";

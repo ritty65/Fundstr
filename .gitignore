@@ -53,3 +53,31 @@ node_modules/
 
 # ignore editor/backups
 *.bak
+
+# env & builds
+.env
+.env.*
+node_modules/
+dist/
+dist-ssr/
+
+# env & builds
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+dist-ssr/
+*.zip
+*.tar.gz
+
+# editor/backups
+*.bak
+*.tmp
+
+# allowlist envs safe to commit
+!.env.staging
+!.env.production
+
+# local deploy bundles
+fundstr-pwa.tgz

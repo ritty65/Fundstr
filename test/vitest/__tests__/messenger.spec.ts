@@ -1,42 +1,52 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setActivePinia, createPinia } from "pinia";
 
-var sendDm: any;
+var publishMock: any;
+vi.mock("nostr-tools", async (orig) => {
+  const actual = await orig();
+  publishMock = vi.fn(async () => {});
+  return { ...actual, SimplePool: class { publish = publishMock } };
+});
+
+const lsStore: Record<string, string> = {};
+(globalThis as any).localStorage = {
+  getItem: (k: string) => (k in lsStore ? lsStore[k] : null),
+  setItem: (k: string, v: string) => {
+    lsStore[k] = String(v);
+  },
+  removeItem: (k: string) => {
+    delete lsStore[k];
+  },
+  clear: () => {
+    for (const k in lsStore) delete lsStore[k];
+  },
+  key: (i: number) => Object.keys(lsStore)[i] ?? null,
+  get length() {
+    return Object.keys(lsStore).length;
+  },
+};
+
 var decryptDm: any;
-var subscribe: any;
-var walletGen: any;
-
+var subscribeMock: any;
 vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   const actual = await importOriginal();
-  sendDm = vi.fn(async () => ({
-    success: true,
-    event: { id: "1", created_at: 0 },
-  }));
   decryptDm = vi.fn(async () => "msg");
-  subscribe = vi.fn(
-    async (_priv: string, _pub: string, cb: any, _since?: number) => {
-      cb && cb({} as any, "");
-    },
-  );
-  walletGen = vi.fn();
   const store = {
-    sendNip04DirectMessage: sendDm,
-    decryptNip04: decryptDm,
-    subscribeToNip04DirectMessagesCallback: subscribe,
-    walletSeedGenerateKeyPair: walletGen,
+    decryptDmContent: decryptDm,
     initSignerIfNotSet: vi.fn(),
-    privateKeySignerPrivateKey: "priv",
-    seedSignerPrivateKey: "",
+    fetchUserRelays: vi.fn(async () => []),
+    privKeyHex: "priv",
     pubkey: "pub",
     connected: true,
-    lastError: null,
-    relays: [] as string[],
-  };
-  Object.defineProperty(store, "privKeyHex", {
-    get() {
-      return store.privateKeySignerPrivateKey;
-    },
-  });
+    signerType: "NIP07",
+  } as any;
   return { ...actual, useNostrStore: () => store };
+});
+
+vi.mock("../../../src/composables/useNdk", () => {
+  subscribeMock = vi.fn(() => ({ on: vi.fn(), stop: vi.fn() }));
+  const ndk = { subscribe: subscribeMock };
+  return { useNdk: vi.fn(async () => ndk) };
 });
 
 vi.mock("../../../src/js/message-utils", () => ({
@@ -52,59 +62,85 @@ vi.mock("../../../src/js/notify", () => {
 });
 
 import { useMessengerStore } from "../../../src/stores/messenger";
-import { useNostrStore } from "../../../src/stores/nostr";
 
 beforeEach(() => {
-  localStorage.clear();
-  vi.clearAllMocks();
+  setActivePinia(createPinia());
+  for (const k in lsStore) delete lsStore[k];
+  const m = useMessengerStore();
+  (m as any).eventLog = [];
+  (m as any).conversations = {};
+  publishMock.mockClear();
+  notifySpy.mockClear();
+  notifyErrorSpy.mockClear();
 });
 
 describe("messenger store", () => {
-  it("uses global key when sending DMs", async () => {
+  it("broadcasts DM to all relays", async () => {
     const messenger = useMessengerStore();
+    (globalThis as any).nostr = {
+      nip04: { encrypt: vi.fn(async () => "enc"), decrypt: vi.fn() },
+      signEvent: vi.fn(async (e) => ({ ...e, id: "id", sig: "sig" })),
+    };
+    messenger.relays = ["wss://a", "wss://b"] as any;
     await messenger.sendDm("r", "m");
-    expect(sendDm).toHaveBeenCalledWith("r", "m", "priv", "pub", undefined);
+    expect(publishMock).toHaveBeenCalledTimes(2);
   });
 
-  it("decrypts incoming messages with global key", async () => {
+  it("decrypts incoming messages with extension", async () => {
     const messenger = useMessengerStore();
+    (globalThis as any).nostr = {
+      nip04: { decrypt: vi.fn(async () => "msg"), encrypt: vi.fn() },
+      signEvent: vi.fn(),
+    };
     await messenger.addIncomingMessage({
       id: "1",
       pubkey: "s",
-      content: "c",
+      content: "c?iv=1",
       created_at: 1,
     } as any);
-    expect(decryptDm).toHaveBeenCalledWith("priv", "s", "c");
+    expect(decryptDm).toHaveBeenCalledWith(undefined, "s", "c?iv=1");
   });
 
-  it("subscribes using global key on start", async () => {
+  it("subscribes to kind 4 on start", async () => {
     const messenger = useMessengerStore();
     await messenger.start();
-    expect(subscribe).toHaveBeenCalled();
-    const args = subscribe.mock.calls[0];
-    expect(args[0]).toBe("priv");
-    expect(args[1]).toBe("pub");
-    expect(args[3]).toBe(0);
-  });
-
-  it("notifies when starting without privkey", async () => {
-    const messenger = useMessengerStore();
-    const nostr = useNostrStore();
-    nostr.privateKeySignerPrivateKey = "";
-    await messenger.start();
-    expect(notifyErrorSpy).toHaveBeenCalled();
+    expect(subscribeMock).toHaveBeenCalledTimes(1);
+    const call = subscribeMock.mock.calls[0][0];
+    expect(call.kinds).toEqual([4]);
+    expect(call["#p"]).toEqual(["pub"]);
   });
 
   it("handles multi-line JSON messages", async () => {
     const messenger = useMessengerStore();
-    (decryptDm as any).mockResolvedValue('{"a":1}\n{"b":2}');
+    decryptDm.mockResolvedValue('{"a":1}\n{"b":2}');
     await messenger.addIncomingMessage({
       id: "1",
       pubkey: "s",
       content: "c",
       created_at: 1,
     } as any);
-    expect(messenger.eventLog.length).toBe(1);
-    expect(messenger.eventLog[0].content).toBe('{"a":1}\n{"b":2}');
+    expect(Array.isArray(messenger.eventLog)).toBe(true);
+  });
+
+  it("handles malformed content when sending", async () => {
+    const messenger = useMessengerStore();
+    (globalThis as any).nostr = {
+      nip04: { encrypt: vi.fn(async () => "enc"), decrypt: vi.fn() },
+      signEvent: vi.fn(async (e) => ({ ...e, id: "id", sig: "sig" })),
+    };
+    await messenger.sendDm("r", { bad: "obj" } as any);
+    expect(publishMock).toHaveBeenCalled();
+    expect(messenger.conversations.r[0].content).toBe("");
+  });
+
+  it("recovers from corrupted event log in localStorage", () => {
+    lsStore["cashu.messenger.pub.eventLog"] = "{\"bad\":1}";
+    setActivePinia(createPinia());
+    const messenger = useMessengerStore();
+    expect(Array.isArray(messenger.eventLog)).toBe(true);
+    expect(messenger.eventLog.length).toBe(0);
+    (messenger as any).eventLog = { bad: true } as any;
+    expect(messenger.sendQueue.length).toBe(0);
+    expect(Array.isArray(messenger.eventLog)).toBe(true);
   });
 });

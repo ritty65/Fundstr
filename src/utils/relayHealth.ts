@@ -1,94 +1,61 @@
+import { getNdk } from "src/boot/ndk";
+import { sanitizeRelayUrls } from "./relay";
 import { FREE_RELAYS } from "src/config/relays";
 
-// keep track of relays that have already produced a constructor error so we only
-// emit a single console message per relay. This keeps startup logs readable when
-// many relays are unreachable.
-const reportedFailures = new Map<string, number>();
-let aggregateTimer: ReturnType<typeof setTimeout> | null = null;
-
-function scheduleFailureLog() {
-  if (aggregateTimer) return;
-  aggregateTimer = setTimeout(() => {
-    const entries = Array.from(reportedFailures.entries());
-    reportedFailures.clear();
-    aggregateTimer = null;
-    if (!entries.length) return;
-    const summary = entries
-      .map(([u, c]) => (c > 1 ? `${u} (x${c})` : u))
-      .join(", ");
-    console.error(`WebSocket ping failed for: ${summary}`);
-  }, 0);
-}
-
-export async function pingRelay(url: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    let settled = false;
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(url);
-    } catch (err) {
-      // Catch constructor errors (e.g. invalid URL or security issues) and log
-      // them in an aggregated fashion instead of flooding the console.
-      reportedFailures.set(url, (reportedFailures.get(url) ?? 0) + 1);
-      scheduleFailureLog();
-      resolve(false);
-      return;
-    }
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        try {
-          ws.close();
-        } catch {}
-        resolve(false);
-      }
-    }, 1000);
-    ws.onopen = () => {
-      if (!settled) {
-        settled = true;
-        clearTimeout(timer);
-        ws.close();
-        resolve(true);
-      }
-    };
-    ws.onerror = () => {
-      if (!settled) {
-        settled = true;
-        clearTimeout(timer);
-        // aggregate error rather than letting each failed relay spam the console
-        reportedFailures.set(url, (reportedFailures.get(url) ?? 0) + 1);
-        scheduleFailureLog();
-        resolve(false);
-      }
-    };
-    ws.onmessage = (ev) => {
-      if (
-        !settled &&
-        typeof ev.data === "string" &&
-        ev.data.startsWith("restricted:")
-      ) {
-        settled = true;
-        clearTimeout(timer);
-        ws.close();
-        resolve(false);
-      }
-    };
-  });
-}
+const CACHE_TTL_MS = 60_000;
+const cache = new Map<string, { ts: number; res: string[] }>();
 
 export async function filterHealthyRelays(relays: string[]): Promise<string[]> {
-  const healthy: string[] = [];
-  // Process relays in small batches to avoid exhausting browser resources
-  const batchSize = 10;
+  const cleaned = sanitizeRelayUrls(relays);
+  const key = cleaned.slice().sort().join(",");
+  const now = Date.now();
+  const cached = cache.get(key);
+  if (cached && now - cached.ts < CACHE_TTL_MS) return cached.res;
 
-  for (let i = 0; i < relays.length; i += batchSize) {
-    const batch = relays.slice(i, i + batchSize);
-    const results = await Promise.all(
-      batch.map(async (u) => ((await pingRelay(u)) ? u : null)),
-    );
-    const batchHealthy = results.filter((u): u is string => !!u);
-    healthy.push(...batchHealthy);
+  const ndk = await getNdk();
+  const pool = ndk.pool;
+
+  for (const url of cleaned) {
+    ndk.addExplicitRelay(url);
   }
 
-  return healthy.length >= 2 ? healthy : FREE_RELAYS;
+  const connected: string[] = [];
+  await new Promise<void>((resolve) => {
+    const t = setTimeout(resolve, 1500);
+    function onConnect(relay: any) {
+      if (!connected.includes(relay.url)) connected.push(relay.url);
+    }
+    pool.on("relay:connect", onConnect);
+    setTimeout(() => {
+      pool.off("relay:connect", onConnect);
+      clearTimeout(t);
+      resolve();
+    }, 1500);
+  });
+
+  const res = connected.length >= 2 ? connected : FREE_RELAYS;
+  cache.set(key, { ts: now, res });
+  return res;
+}
+
+export async function probeWriteHealth(
+  ndk: any,
+  relays: string[],
+  { timeoutMs = 1200 }: { timeoutMs?: number } = {}
+): Promise<{ healthy: string[]; unhealthy: string[] }> {
+  const healthy: string[] = [];
+  const unhealthy: string[] = [];
+
+  await Promise.allSettled(relays.map(async (url) => {
+    try {
+      const relay = ndk.pool?.getRelay ? ndk.pool.getRelay(url, true) : null;
+      if (!relay) throw new Error("noRelay");
+      await relay.connect?.({ timeoutMs });
+      healthy.push(url);
+    } catch {
+      unhealthy.push(url);
+    }
+  }));
+
+  return { healthy, unhealthy };
 }

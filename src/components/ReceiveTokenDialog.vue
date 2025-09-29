@@ -295,8 +295,9 @@
   </q-dialog>
 </template>
 
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent } from "vue";
+
 import { useReceiveTokensStore } from "src/stores/receiveTokensStore";
 import { useWalletStore } from "src/stores/wallet";
 import { useUiStore } from "src/stores/ui";
@@ -488,6 +489,9 @@ export default defineComponent({
       "pasteToParseDialog",
     ]),
     shortenString,
+    formatCurrency(amount, unit, showBalance = false) {
+      return useUiStore().formatCurrency(amount, unit, showBalance);
+    },
     // TOKEN METHODS
     decodePeanut: function (peanut) {
       try {

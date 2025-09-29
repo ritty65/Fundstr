@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
-import { useLocalStorage } from "@vueuse/core";
+import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
+import { sanitizeRelayUrls } from "src/utils/relay";
 
 export interface CreatorProfile {
   display_name: string;
@@ -23,12 +24,15 @@ function snapshot(p: CreatorProfile) {
 
 export const useCreatorProfileStore = defineStore("creatorProfile", {
   state: () => ({
-    display_name: useLocalStorage<string>("creatorProfile.display_name", ""),
-    picture: useLocalStorage<string>("creatorProfile.picture", ""),
-    about: useLocalStorage<string>("creatorProfile.about", ""),
-    pubkey: useLocalStorage<string>("creatorProfile.pubkey", ""),
-    mints: useLocalStorage<string[]>("creatorProfile.mints", []),
-    relays: useLocalStorage<string[]>("creatorProfile.relays", []),
+    display_name: safeUseLocalStorage<string>(
+      "creatorProfile.display_name",
+      "",
+    ),
+    picture: safeUseLocalStorage<string>("creatorProfile.picture", ""),
+    about: safeUseLocalStorage<string>("creatorProfile.about", ""),
+    pubkey: safeUseLocalStorage<string>("creatorProfile.pubkey", ""),
+    mints: safeUseLocalStorage<string[]>("creatorProfile.mints", []),
+    relays: safeUseLocalStorage<string[]>("creatorProfile.relays", []),
     _clean: "",
   }),
   getters: {
@@ -49,9 +53,10 @@ export const useCreatorProfileStore = defineStore("creatorProfile", {
         this.display_name = data.display_name;
       if (data.picture !== undefined) this.picture = data.picture;
       if (data.about !== undefined) this.about = data.about;
-      if (data.pubkey !== undefined) this.pubkey = data.pubkey;
+      if (data.pubkey !== undefined) this.pubkey = data.pubkey.trim();
       if (data.mints !== undefined) this.mints = [...data.mints];
-      if (data.relays !== undefined) this.relays = [...data.relays];
+      if (data.relays !== undefined)
+        this.relays = sanitizeRelayUrls(data.relays);
     },
     markClean() {
       this._clean = snapshot(this as CreatorProfile);

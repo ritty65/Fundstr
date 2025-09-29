@@ -7,13 +7,11 @@ vi.spyOn(quasar, "useQuasar").mockReturnValue({
 });
 
 const creatorHubStoreMock = {
-  loggedInNpub: "pubkey",
   tiers: {},
   tierOrder: [] as string[],
   getTierArray: () => [] as any[],
   addTier: vi.fn(),
-  loginWithNip07: vi.fn(),
-  loginWithNsec: vi.fn(),
+  login: vi.fn(),
   logout: vi.fn(),
   loadTiersFromNostr: vi.fn(),
   updateTier: vi.fn(),
@@ -28,6 +26,7 @@ vi.mock("../../../src/stores/creatorHub", () => ({
 }));
 
 const nostrStoreMock = {
+  pubkey: "pubkey",
   initSignerIfNotSet: vi.fn(),
   getProfile: vi.fn(async () => null),
   relays: [] as string[],
@@ -42,6 +41,7 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
     useNostrStore: () => nostrStoreMock,
     fetchNutzapProfile: vi.fn(async () => null),
     publishDiscoveryProfile: vi.fn(),
+    publishCreatorBundle: vi.fn(),
     RelayConnectionError: class RelayConnectionError extends Error {},
   };
 });

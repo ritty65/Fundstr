@@ -1,0 +1,55 @@
+name: deploy-staging
+
+on:
+  push:
+    branches: [Develop2]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Enable pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.16.1 --activate
+          pnpm --version
+
+      - name: Use staging env (optional)
+        run: cp .env.staging .env || true
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build (Quasar PWA)
+        run: pnpm quasar build -m pwa
+
+      - name: Add SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Trust remote host
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy (rsync to subdomain docroot)
+        run: |
+          rsync -avz --delete \
+            -e "ssh -p ${{ secrets.SSH_PORT }}" \
+            dist/pwa/ \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
+
+      - name: Smoke test staging
+        env:
+          BASE_URL: https://staging.fundstr.me
+        run: ./scripts/smoke-tests.sh

@@ -1,30 +1,15 @@
 <template>
-  <q-page
-    :class="[
-      $q.dark.isActive ? 'bg-dark text-white' : 'bg-white text-dark',
-      'q-pa-md',
-    ]"
-  >
+  <q-page class="q-pa-md bg-surface-1 text-1">
     <div class="q-gutter-md">
-      <q-card
-        :class="
-          $q.dark.isActive ? 'bg-grey-9 text-white' : 'bg-white text-dark'
-        "
-        class="q-pa-md"
-      >
+    <q-card class="q-pa-md bg-surface-2 text-1">
         <div class="text-h5">Buckets</div>
-        <div class="text-subtitle2 text-grey-6 q-mb-md">
+        <div class="text-subtitle2 text-2 q-mb-md">
           Organize your tokens
         </div>
         <SummaryStats :total="totalActiveBalance" :active-count="activeCount" />
       </q-card>
 
-      <q-card
-        :class="
-          $q.dark.isActive ? 'bg-grey-9 text-white' : 'bg-white text-dark'
-        "
-        class="q-pa-md"
-      >
+    <q-card class="q-pa-md bg-surface-2 text-1">
         <BucketManager />
       </q-card>
     </div>

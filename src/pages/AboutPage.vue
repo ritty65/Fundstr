@@ -1,686 +1,401 @@
 <template>
-  <!-- Quasar page wrapper so it inherits your app header/drawer/layout spacing -->
-  <q-page class="about-theme" :class="{ dark: isDark }">
-    <div ref="rootEl" class="antialiased">
-      <div class="mx-auto px-4 lg:px-8 max-w-screen-lg">
-        <!-- Hero + Alpha warning -->
-        <section id="hero" class="pt-20 md:pt-28 pb-8 fade-in-section">
-          <div class="grid lg:grid-cols-2 gap-8 items-center">
-            <div class="text-center lg:text-left">
-              <h1 class="text-5xl md:text-6xl font-extrabold mb-4 leading-tight">
-                About <span class="gradient-text">Fundstr</span>
-              </h1>
-              <p class="text-lg md:text-xl max-w-prose mx-auto lg:mx-0">
-                A privacy‑first Bitcoin wallet, social chat, and creator‑monetisation hub
-                built on the open‑source Cashu ecash protocol and the decentralised Nostr network.
+  <q-page class="about theme" :class="{ dark: isDark }">
+    <div ref="root" class="container">
+      <!-- Hero -->
+      <section class="section fade" id="hero">
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <h1 class="h1">About <span class="grad">Fundstr</span></h1>
+            <p class="lead">
+              A privacy-first Bitcoin wallet, social chat, and creator-monetisation hub
+              built on the open-source Cashu ecash protocol and the decentralised Nostr network.
+            </p>
+          </div>
+          <div class="hero-alert">
+            <div class="alpha">
+              <span aria-hidden="true" class="alpha-icon">⚠️</span>
+              <p>
+                Fundstr is experimental alpha software. Features may break or change,
+                and loss of funds is possible. Use only small amounts you can afford to lose.
               </p>
-            </div>
-
-            <div class="lg:flex lg:justify-end">
-              <div class="alpha-warning flex items-start gap-3" role="alert" aria-live="polite">
-                <span class="text-3xl">⚠️</span>
-                <p class="text-sm">
-                  Fundstr is experimental alpha software. Features may break or change, and loss
-                  of funds is possible. Use only small amounts you can afford to lose.
-                </p>
-              </div>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <!-- Vision -->
-        <section id="vision" class="py-12 md:py-20 fade-in-section">
-          <div class="grid lg:grid-cols-2 gap-8 items-center">
-            <div class="text-center lg:text-left">
-              <h2 class="text-3xl md:text-5xl font-extrabold mb-6 gradient-text">
-                Your Money, Your Network
-              </h2>
-              <p class="text-lg md:text-xl max-w-prose mx-auto lg:mx-0">
-                We believe in a world where your financial life and social interactions are truly your own.
-                Fundstr is an experiment in creating a parallel, peer‑to‑peer economy—free from corporate
-                gatekeepers, surveillance, and unpredictable fees. It’s a gateway to a more sovereign way of
-                connecting and transacting.
-              </p>
+      <!-- Vision -->
+      <section class="section fade" id="vision">
+        <div class="two-col">
+          <div>
+            <h2 class="h2 grad">Your Money, Your Network</h2>
+            <p class="lead">
+              We believe in a world where your financial life and social interactions are truly your own.
+              Fundstr is an experiment in creating a parallel, peer-to-peer economy—free from corporate
+              gatekeepers, surveillance, and unpredictable fees.
+            </p>
+          </div>
+          <div class="feature-grid text-1">
+            <div class="feature">
+              <q-icon name="lock" class="feature-icon" />
+              <span>Private payments</span>
             </div>
+            <div class="feature">
+              <q-icon name="public" class="feature-icon" />
+              <span>Open protocols</span>
+            </div>
+            <div class="feature">
+              <q-icon name="block" class="feature-icon" />
+              <span>No gatekeepers</span>
+            </div>
+            <div class="feature">
+              <q-icon name="money_off" class="feature-icon" />
+              <span>No fees</span>
+            </div>
+          </div>
+        </div>
+      </section>
 
-            <ul class="list-disc list-inside space-y-2 text-left text-lg pl-8">
-              <li>Private payments</li>
-              <li>Open protocols</li>
-              <li>No gatekeepers</li>
-              <li>Low fees</li>
+      <!-- Site Overview -->
+      <section class="section fade" id="site-overview">
+        <h2 class="h2 grad center">Site Overview</h2>
+        <div class="cards cards--4">
+          <article class="card">
+            <header class="card-head"><span class="emj">💰</span><h3>Money</h3></header>
+            <ul class="links">
+              <li><router-link to="/wallet"><span class="emj">💳</span>Wallet</router-link></li>
+              <li><router-link to="/buckets"><span class="emj">📦</span>Buckets</router-link></li>
+              <li><router-link to="/subscriptions"><span class="emj">📄</span>Subscriptions</router-link></li>
             </ul>
-          </div>
-        </section>
+          </article>
 
-        <!-- Site Overview -->
-        <section id="site-overview" class="py-12 md:py-20 fade-in-section">
-          <h2 class="text-3xl md:text-5xl font-extrabold mb-12 text-center gradient-text">
-            Site Overview
-          </h2>
+          <article class="card">
+            <header class="card-head"><span class="emj">⭐</span><h3>Creators</h3></header>
+            <ul class="links">
+              <li><router-link to="/find-creators"><span class="emj">🔍</span>Find Creators</router-link></li>
+              <li><router-link to="/creator-hub"><span class="emj">👩‍🎨</span>Creator Hub</router-link></li>
+              <li><router-link to="/my-profile"><span class="emj">👤</span>My Profile</router-link></li>
+            </ul>
+          </article>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 text-left">
-            <!-- Money -->
-            <article class="interactive-card p-6 rounded-2xl flex flex-col h-full">
-              <header class="flex items-center gap-3 mb-3">
-                <span class="text-2xl">💰</span>
-                <h3 class="font-semibold text-xl">Money</h3>
-              </header>
-              <ul class="space-y-2 text-base">
-                <li>
-                  <router-link class="row-link" to="/wallet"><span>💳</span> Wallet</router-link>
-                </li>
-                <li>
-                  <router-link class="row-link" to="/buckets"><span>📦</span> Buckets</router-link>
-                </li>
-                <li>
-                  <router-link class="row-link" to="/subscriptions"><span>📄</span> Subscriptions</router-link>
-                </li>
+          <article class="card">
+            <header class="card-head"><span class="emj">💬</span><h3>Comms</h3></header>
+            <ul class="links">
+              <li><router-link to="/nostr-messenger"><span class="emj">💬</span>Nostr Messenger</router-link></li>
+              <li><router-link to="/nostr-login"><span class="emj">🔑</span>Nostr Login</router-link></li>
+            </ul>
+          </article>
+
+          <article class="card">
+            <header class="card-head"><span class="emj">⚙️</span><h3>System</h3></header>
+            <ul class="links">
+              <li><router-link to="/settings"><span class="emj">⚙️</span>Settings</router-link></li>
+              <li><router-link to="/restore"><span class="emj">🔄</span>Restore</router-link></li>
+              <li><router-link to="/already-running"><span class="emj">⚠️</span>Already Running</router-link></li>
+              <li><router-link to="/welcome"><span class="emj">ℹ️</span>Welcome</router-link></li>
+              <li><router-link to="/terms"><span class="emj">⚖️</span>Terms</router-link></li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <!-- How it works -->
+      <section class="section fade" id="how-it-works">
+        <h2 class="h2 grad center">How Ecash Works</h2>
+        <p class="lead center">Bitcoin in → private e-cash out → social payments everywhere.</p>
+        <div class="cards cards--3 rail">
+          <div class="card step"><span class="emj xl">₿</span><h3>Your Bitcoin</h3><p>From any wallet</p></div>
+          <div class="card step"><span class="emj xl">🏦</span><h3>The Mint</h3><p>Issues ecash tokens</p></div>
+          <div class="card step"><span class="emj xl">👛</span><h3>Fundstr Wallet</h3><p>Spend privately</p></div>
+        </div>
+      </section>
+
+      <!-- For whom -->
+      <section class="section fade" id="who-for">
+        <h2 class="h2 grad center">Built for the Sovereign Individual</h2>
+        <div class="cards cards--2">
+          <div class="card tcenter"><span class="pill">Creators</span><span class="emj xl">🎨</span><h3>Content Creators</h3><p>Monetize your audience directly, free from de-platforming and high fees.</p></div>
+          <div class="card tcenter"><span class="pill">Privacy</span><span class="emj xl">🛡️</span><h3>Privacy Advocates</h3><p>Transact with confidence that your financial life isn't being tracked.</p></div>
+          <div class="card tcenter"><span class="pill">Nostr Users</span><span class="emj xl">🔗</span><h3>Nostr Users</h3><p>Upgrade your zaps to be truly private and integrate payments seamlessly.</p></div>
+          <div class="card tcenter"><span class="pill">Global Citizens</span><span class="emj xl">🌍</span><h3>Global Citizens</h3><p>Move value across borders instantly, without relying on traditional banking.</p></div>
+        </div>
+      </section>
+
+      <!-- Trust -->
+      <section class="section fade" id="trust">
+        <h2 class="h2 grad center">Trust Through Transparency</h2>
+        <div class="cards cards--4">
+          <details class="card">
+            <summary class="card-summary">
+              <span class="emj xl">💻</span>
+              <span class="summary-text">
+                <span class="summary-title">Open Source &amp; Verifiable</span>
+                <span class="summary-desc">Fundstr is open-source. Inspect, verify, and contribute.</span>
+              </span>
+            </summary>
+            <div class="detail">
+              <p>Audit our wallet & mint implementations or reproduce our builds.</p>
+              <ul class="bullet">
+                <li><a class="ext" href="https://opensource.org/osd" target="_blank" rel="noopener">Open Source Definition</a></li>
+                <li><a class="ext" href="https://github.com/cashubtc" target="_blank" rel="noopener">Cashu on GitHub</a></li>
+                <li><a class="ext" href="https://delvingbitcoin.org/t/building-intuition-for-the-cashu-blind-signature-scheme/506" target="_blank" rel="noopener">Cashu blind signature scheme</a></li>
               </ul>
-            </article>
+            </div>
+          </details>
 
-            <!-- Creators -->
-            <article class="interactive-card p-6 rounded-2xl flex flex-col h-full">
-              <header class="flex items-center gap-3 mb-3">
-                <span class="text-2xl">⭐</span>
-                <h3 class="font-semibold text-xl">Creators</h3>
-              </header>
-              <ul class="space-y-2 text-base">
-                <li>
-                  <router-link class="row-link" to="/find-creators"><span>🔍</span> Find Creators</router-link>
-                </li>
-                <li>
-                  <router-link class="row-link" to="/creator-hub"><span>👩‍🎨</span> Creator Hub</router-link>
-                </li>
-                <li>
-                  <router-link class="row-link" to="/my-profile"><span>👤</span> My Profile</router-link>
-                </li>
+          <details class="card">
+            <summary class="card-summary">
+              <span class="emj xl">🔑</span>
+              <span class="summary-text">
+                <span class="summary-title">You Hold the Keys</span>
+                <span class="summary-desc">You control your ecash tokens and Nostr identity.</span>
+              </span>
+            </summary>
+            <div class="detail">
+              <p>Only you can authorise payments or posts.</p>
+              <ul class="bullet">
+                <li><a class="ext" href="https://www.coindesk.com/learn/what-is-crypto-custody" target="_blank" rel="noopener">What is crypto custody?</a></li>
+                <li><a class="ext" href="https://github.com/nostr-protocol/nips" target="_blank" rel="noopener">Nostr NIPs</a></li>
               </ul>
-            </article>
+            </div>
+          </details>
 
-            <!-- Comms -->
-            <article class="interactive-card p-6 rounded-2xl flex flex-col h-full">
-              <header class="flex items-center gap-3 mb-3">
-                <span class="text-2xl">💬</span>
-                <h3 class="font-semibold text-xl">Comms</h3>
-              </header>
-              <ul class="space-y-2 text-base">
-                <li>
-                  <router-link class="row-link" to="/nostr-messenger"><span>💬</span> Nostr Messenger</router-link>
-                </li>
-                <li>
-                  <router-link class="row-link" to="/nostr-login"><span>🔑</span> Nostr Login</router-link>
-                </li>
+          <details class="card">
+            <summary class="card-summary">
+              <span class="emj xl">🛡️</span>
+              <span class="summary-text">
+                <span class="summary-title">Unbreakable Privacy</span>
+                <span class="summary-desc">Chaumian blind signatures de-link deposits from withdrawals.</span>
+              </span>
+            </summary>
+            <div class="detail">
+              <ul class="bullet">
+                <li><a class="ext" href="https://bitcoin.design/guide/how-it-works/ecash/cashu/" target="_blank" rel="noopener">Bitcoin Design Guide: Cashu</a></li>
+                <li><a class="ext" href="https://blog.cashu.space/buckets-of-blind-signatures/" target="_blank" rel="noopener">Buckets of blind signatures</a></li>
               </ul>
-            </article>
+            </div>
+          </details>
 
-            <!-- System -->
-            <article class="interactive-card p-6 rounded-2xl flex flex-col h-full">
-              <header class="flex items-center gap-3 mb-3">
-                <span class="text-2xl">⚙️</span>
-                <h3 class="font-semibold text-xl">System</h3>
-              </header>
-              <ul class="space-y-2 text-base">
-                <li><router-link class="row-link" to="/settings"><span>⚙️</span> Settings</router-link></li>
-                <li><router-link class="row-link" to="/restore"><span>🔄</span> Restore</router-link></li>
-                <li><router-link class="row-link" to="/already-running"><span>⚠️</span> Already Running</router-link></li>
-                <li><router-link class="row-link" to="/welcome"><span>ℹ️</span> Welcome</router-link></li>
-                <li><router-link class="row-link" to="/terms"><span>⚖️</span> Terms</router-link></li>
+          <details class="card">
+            <summary class="card-summary">
+              <span class="emj xl">👛</span>
+              <span class="summary-text">
+                <span class="summary-title">Mint Diversification</span>
+                <span class="summary-desc">Use multiple mints and watch for odd behaviour.</span>
+              </span>
+            </summary>
+            <div class="detail">
+              <ul class="bullet">
+                <li><a class="ext" href="https://docs.cashu.space/mints" target="_blank" rel="noopener">Cashu docs: mints</a></li>
+                <li><a class="ext" href="https://github.com/cashubtc/awesome-cashu" target="_blank" rel="noopener">Awesome Cashu</a></li>
               </ul>
-            </article>
-          </div>
-        </section>
-
-        <!-- How Ecash Works -->
-        <section id="how-it-works" class="py-12 md:py-20 fade-in-section">
-          <h2 class="text-3xl md:text-5xl font-extrabold mb-6 text-center gradient-text">
-            How Ecash Works
-          </h2>
-          <p class="text-lg md:text-xl mb-12 max-w-prose mx-auto text-center">
-            The loop is simple: Bitcoin in → private e‑cash out → social payments everywhere.
-          </p>
-
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div class="how-step interactive-card p-6 flex flex-col items-center text-center h-full rounded-2xl">
-              <span class="mb-4 text-4xl">₿</span>
-              <h3 class="font-bold text-xl mb-1">Your Bitcoin</h3>
-              <p class="text-base">From any wallet</p>
             </div>
-            <div class="how-step interactive-card p-6 flex flex-col items-center text-center h-full rounded-2xl">
-              <span class="mb-4 text-4xl">🏦</span>
-              <h3 class="font-bold text-xl mb-1">The Mint</h3>
-              <p class="text-base">Issues ecash tokens</p>
-            </div>
-            <div class="how-step interactive-card p-6 flex flex-col items-center text-center h-full rounded-2xl">
-              <span class="mb-4 text-4xl">👛</span>
-              <h3 class="font-bold text-xl mb-1">Fundstr Wallet</h3>
-              <p class="text-base">Spend privately</p>
-            </div>
-          </div>
-        </section>
+          </details>
+        </div>
+      </section>
 
-        <!-- Built for the Sovereign Individual -->
-        <section id="who-for" class="py-12 md:py-20 fade-in-section">
-          <h2 class="text-3xl md:text-5xl font-extrabold mb-12 text-center gradient-text">
-            Built for the Sovereign Individual
-          </h2>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div class="interactive-card p-6 flex flex-col items-center text-center h-full rounded-2xl">
-              <span class="badge badge-accent mb-2">Creators</span>
-              <span class="mb-4 text-4xl">🎨</span>
-              <h3 class="font-bold text-xl mb-2">Content Creators</h3>
-              <p class="text-base">
-                Monetize your audience directly, free from de‑platforming and high fees.
-              </p>
-            </div>
+      <!-- FAQ -->
+      <section class="section fade" id="faq">
+        <h2 class="h2 grad center">Frequently Asked Questions</h2>
 
-            <div class="interactive-card p-6 flex flex-col items-center text-center h-full rounded-2xl">
-              <span class="badge badge-accent mb-2">Privacy</span>
-              <span class="mb-4 text-4xl">🛡️</span>
-              <h3 class="font-bold text-xl mb-2">Privacy Advocates</h3>
-              <p class="text-base">
-                Transact with confidence that your financial life isn't being tracked.
-              </p>
-            </div>
+        <div class="faq-search">
+          <input
+            v-model="faqQuery"
+            class="input"
+            type="text"
+            placeholder="Search questions"
+            aria-label="Search FAQ"
+          />
+        </div>
 
-            <div class="interactive-card p-6 flex flex-col items-center text-center h-full rounded-2xl">
-              <span class="badge badge-accent mb-2">Nostr Users</span>
-              <span class="mb-4 text-4xl">🔗</span>
-              <h3 class="font-bold text-xl mb-2">Nostr Users</h3>
-              <p class="text-base">
-                Upgrade your zaps to be truly private and integrate payments seamlessly.
-              </p>
-            </div>
+        <div class="cards cards--3">
+          <details v-for="(f, i) in filteredFaqs" :key="i" class="card">
+            <summary class="faq-q">{{ f.q }}</summary>
+            <div class="faq-a" v-html="f.a"></div>
+          </details>
+        </div>
+      </section>
 
-            <div class="interactive-card p-6 flex flex-col items-center text-center h-full rounded-2xl">
-              <span class="badge badge-accent mb-2">Global Citizens</span>
-              <span class="mb-4 text-4xl">🌍</span>
-              <h3 class="font-bold text-xl mb-2">Global Citizens</h3>
-              <p class="text-base">
-                Move value across borders instantly, without relying on traditional banking.
-              </p>
-            </div>
-          </div>
-        </section>
+      <!-- Community + CTA -->
+      <section class="section fade" id="community">
+        <h2 class="h2 grad center">Join the Conversation</h2>
+        <p class="center">Follow the project and its creator on Nostr to connect with the community.</p>
 
-        <!-- Trust Through Transparency -->
-        <section id="trust" class="py-12 md:py-20 fade-in-section">
-          <h2 class="text-3xl md:text-5xl font-extrabold mb-12 text-center gradient-text">
-            Trust Through Transparency
-          </h2>
+        <div class="cards cards--3">
+          <a
+            href="https://primal.net/p/nprofile1qqsdndspt5x07jhp5vrs0s4a7z0spwl4v28su0263vdjmwfmumxdygc6lzn8y"
+            target="_blank"
+            rel="noopener"
+            class="card tcenter"
+          >
+            <span class="emj xl">🧡</span><h3>Fundstr on Nostr</h3><p>Project profile ↗️</p>
+          </a>
+          <a href="https://primal.net/KalonAxiarch" target="_blank" rel="noopener" class="card tcenter">
+            <span class="emj xl">👤</span><h3>Creator’s Profile</h3><p>Primal profile ↗️</p>
+          </a>
+          <router-link
+            to="/find-creators?npub=npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m"
+            class="card tcenter"
+          >
+            <span class="emj xl">💵</span><h3>View KalonAxiarch’s Tiers</h3><p>Support the creator</p>
+          </router-link>
+        </div>
+      </section>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
-            <details class="interactive-card p-6 text-left rounded-2xl">
-              <summary class="cursor-pointer">
-                <span class="mb-4 text-4xl block">💻</span>
-                <span class="block font-bold text-xl mb-2">Open Source &amp; Verifiable</span>
-                <span class="block text-base">
-                  Fundstr is built on open‑source code. We invite you to inspect, verify, and contribute.
-                  Transparency is our core principle.
-                </span>
-              </summary>
-              <div class="mt-4 text-sm space-y-2">
-                <p>Anyone can audit our wallet and mint implementations or even reproduce the exact binaries we ship.</p>
-                <ul class="list-disc pl-6 space-y-1">
-                  <li><a class="ext-link" href="https://opensource.org/osd" target="_blank" rel="noopener">Open Source Definition</a></li>
-                  <li><a class="ext-link" href="https://github.com/cashubtc" target="_blank" rel="noopener">Cashu organisation on GitHub</a></li>
-                  <li><a class="ext-link" href="https://delvingbitcoin.org/t/building-intuition-for-the-cashu-blind-signature-scheme/506" target="_blank" rel="noopener">Building intuition for Cashu’s scheme</a></li>
-                </ul>
-              </div>
-            </details>
-
-            <details class="interactive-card p-6 text-left rounded-2xl">
-              <summary class="cursor-pointer">
-                <span class="mb-4 text-4xl block">🔑</span>
-                <span class="block font-bold text-xl mb-2">You Hold the Keys</span>
-                <span class="block text-base">
-                  You are the sole holder of your ecash tokens and Nostr identity.
-                  Mints act as custodians for underlying Bitcoin, but only you can spend your ecash.
-                </span>
-              </summary>
-              <div class="mt-4 text-sm space-y-2">
-                <p>Owning your private key means only you can authorise payments or posts.</p>
-                <ul class="list-disc pl-6 space-y-1">
-                  <li><a class="ext-link" href="https://www.coindesk.com/learn/what-is-crypto-custody" target="_blank" rel="noopener">What is crypto custody?</a></li>
-                  <li><a class="ext-link" href="https://github.com/nostr-protocol/nips" target="_blank" rel="noopener">Nostr Implementation Possibilities</a></li>
-                </ul>
-              </div>
-            </details>
-
-            <details class="interactive-card p-6 text-left rounded-2xl">
-              <summary class="cursor-pointer">
-                <span class="mb-4 text-4xl block">🛡️</span>
-                <span class="block font-bold text-xl mb-2">Unbreakable Privacy</span>
-                <span class="block text-base">
-                  Thanks to Chaumian blind signatures, mints cannot link your deposits to your withdrawals.
-                  Your spending habits remain completely private.
-                </span>
-              </summary>
-              <div class="mt-4 text-sm space-y-2">
-                <p>Blind signatures break the trail between your deposits and spends, even from the mint itself.</p>
-                <ul class="list-disc pl-6 space-y-1">
-                  <li><a class="ext-link" href="https://bitcoin.design/guide/how-it-works/ecash/cashu/" target="_blank" rel="noopener">Bitcoin Design Guide: Cashu</a></li>
-                  <li><a class="ext-link" href="https://blog.cashu.space/buckets-of-blind-signatures/" target="_blank" rel="noopener">Buckets of blind signatures</a></li>
-                </ul>
-              </div>
-            </details>
-
-            <details class="interactive-card p-6 text-left rounded-2xl">
-              <summary class="cursor-pointer">
-                <span class="mb-4 text-4xl block">👛</span>
-                <span class="block font-bold text-xl mb-2">Mint Diversification</span>
-                <span class="block text-base">
-                  Fundstr supports multiple mints, allowing you to diversify your holdings.
-                  Our audit tools warn you of any unusual mint behaviour.
-                </span>
-              </summary>
-              <div class="mt-4 text-sm space-y-2">
-                <p>Spreading tokens across independent mints limits custodial risk.</p>
-                <ul class="list-disc pl-6 space-y-1">
-                  <li><a class="ext-link" href="https://docs.cashu.space/mints" target="_blank" rel="noopener">Cashu docs: mints</a></li>
-                  <li><a class="ext-link" href="https://github.com/cashubtc/awesome-cashu" target="_blank" rel="noopener">Awesome Cashu resources</a></li>
-                </ul>
-              </div>
-            </details>
-          </div>
-        </section>
-
-        <!-- FAQ -->
-        <section id="faq" class="py-12 md:py-20 fade-in-section">
-          <h2 class="text-3xl md:text-5xl font-extrabold mb-12 text-center gradient-text">
-            Frequently Asked Questions
-          </h2>
-
-          <div class="mb-6 max-w-lg mx-auto">
-            <input
-              v-model="faqQuery"
-              type="text"
-              placeholder="Search questions"
-              class="w-full p-3 rounded-xl border focus:outline-none focus:ring-2"
-              aria-label="Search FAQ"
-            />
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <details
-              v-for="(f, i) in filteredFaqs"
-              :key="i"
-              class="interactive-card p-4 w-full rounded-2xl"
-            >
-              <summary class="cursor-pointer font-semibold text-lg">{{ f.q }}</summary>
-              <div class="mt-4 text-sm" v-html="f.a"></div>
-            </details>
-          </div>
-        </section>
-
-        <!-- Community / CTA -->
-        <footer id="community" class="px-0">
-          <section class="py-16 fade-in-section">
-            <div class="text-center">
-              <h2 class="text-3xl md:text-5xl font-extrabold mb-6 gradient-text">
-                Join the Conversation
-              </h2>
-              <p class="mb-6">
-                Follow the project and its creator on Nostr to stay up‑to‑date and connect with the community.
-              </p>
-
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <a
-                  href="https://primal.net/KalonAxiarch"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="interactive-card p-6 flex flex-col items-center text-center h-full focus:outline-none focus:ring-2 rounded-2xl"
-                >
-                  <span class="mb-2 text-3xl">👤</span>
-                  <span class="font-semibold">Creator's Profile</span>
-                  <span class="mt-2">↗️</span>
-                </a>
-
-                <router-link
-                  to="/find-creators?npub=npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m"
-                  class="interactive-card p-6 flex flex-col items-center text-center h-full focus:outline-none focus:ring-2 rounded-2xl"
-                >
-                  <span class="mb-2 text-3xl">💵</span>
-                  <span class="font-semibold">View KalonAxiarch's Tiers</span>
-                </router-link>
-              </div>
-            </div>
-          </section>
-
-          <!-- Quote -->
-          <section class="py-16 fade-in-section">
-            <div class="max-w-4xl mx-auto text-center">
-              <blockquote>
-                Fundstr is powered by open‑source code and an open community. Whether you’re a
-                storyteller earning sats or a fan supporting work you love, we hope this guide
-                helps you navigate every page with confidence — and makes your next payment feel
-                as effortless as a like, comment, or retweet.
-              </blockquote>
-            </div>
-          </section>
-
-          <!-- CTA band -->
-          <section id="cta" class="py-16 fade-in-section cta-band rounded-2xl">
-            <div class="text-center">
-              <h2 class="text-3xl md:text-5xl font-extrabold mb-6 gradient-text">
-                Ready to Join the Movement?
-              </h2>
-              <p class="mb-8">
-                Install the PWA, explore the code, or help fund development.
-              </p>
-
-              <div class="flex flex-col md:flex-row items-center justify-center gap-4">
-                <button
-                  @click="handleInstallPwa"
-                  class="px-8 py-4 font-bold text-white rounded-lg shadow-lg transition-colors btn-accent-solid"
-                >
-                  Install PWA
-                </button>
-
-                <a
-                  href="https://github.com/cashubtc"
-                  target="_blank"
-                  rel="noopener"
-                  class="px-8 py-4 font-bold rounded-lg transition-colors btn-accent-outline"
-                >
-                  View Code
-                </a>
-
-                <router-link
-                  to="/creator-hub"
-                  class="px-8 py-4 font-bold rounded-lg transition-colors btn-accent-outline"
-                >
-                  Support Fundstr
-                </router-link>
-              </div>
-            </div>
-          </section>
-        </footer>
-      </div>
+      <section class="section fade cta">
+        <h2 class="h2 grad center">Ready to Join the Movement?</h2>
+        <p class="center">Install the PWA, explore the code, or help fund development.</p>
+        <div class="cta-row">
+          <button class="btn solid" @click="installPwa">Install PWA</button>
+          <a class="btn outline" href="https://github.com/ritty65/Fundstr" target="_blank" rel="noopener">View Code</a>
+          <router-link class="btn outline" to="/creator-hub">Support Fundstr</router-link>
+        </div>
+      </section>
     </div>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, computed, watchEffect } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watchEffect } from 'vue'
 import { useQuasar } from 'quasar'
+import { usePwaInstall } from 'src/composables/usePwaInstall'
 
 const $q = useQuasar()
 const isDark = ref($q.dark.isActive)
 watchEffect(() => (isDark.value = $q.dark.isActive))
 
-const rootEl = ref<HTMLElement | null>(null)
-let observer: IntersectionObserver | null = null
+const root = ref<HTMLElement | null>(null)
+let io: IntersectionObserver | null = null
+
+const { deferredPrompt, promptInstall } = usePwaInstall()
 
 onMounted(() => {
-  // fade-in animation per section
-  observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((e) => {
-        if (e.isIntersecting) {
-          e.target.classList.add('is-visible')
-          observer?.unobserve(e.target)
-        }
-      })
-    },
-    { threshold: 0.1 }
-  )
-  rootEl.value?.querySelectorAll<HTMLElement>('.fade-in-section').forEach((el) => {
-    observer?.observe(el)
-  })
+  io = new IntersectionObserver((entries) => {
+    entries.forEach((e) => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible')
+        io?.unobserve(e.target)
+      }
+    })
+  }, { threshold: 0.12 })
+  root.value?.querySelectorAll<HTMLElement>('.fade').forEach(el => io?.observe(el))
 })
+onBeforeUnmount(() => io?.disconnect())
 
-onBeforeUnmount(() => {
-  observer?.disconnect()
-  observer = null
-})
-
-/** FAQ (simple in-component data so no store dependency) */
 const faqQuery = ref('')
-const faqs = ref<Array<{ q: string; a: string }>>([
-  {
-    q: 'What if a fan stops paying?',
-    a: 'Creator view » Their timelocked token never unlocks for you. Fundstr flags the user as “Expired” and hides future paid posts. Fan view » You simply don’t renew. No recurring pull, no surprise charges.'
-  },
-  {
-    q: 'Can I withdraw to a Lightning wallet?',
-    a: 'Yes. Go to Wallet → Send → Lightning Invoice, paste the invoice from any external wallet; Fundstr melts the tokens at the mint and pays it.'
-  },
-  {
-    q: 'How private is this really?',
-    a: `<ul class="list-disc pl-6 space-y-1">
-          <li>Mints see withdraw/redeem events but cannot correlate them.</li>
-          <li>Nostr chats are E2E encrypted; Nutzaps use P2PK so only the intended receiver can claim them.</li>
-          <li>Choose different mints or buckets to compartmentalise further.</li>
-        </ul>`
-  },
-  {
-    q: 'What exactly is Cashu and how is it different from regular Bitcoin or Lightning wallets?',
-    a: 'Cashu uses Chaumian e‑cash, allowing the mint to issue anonymised tokens. Unlike typical wallets, your transactions never appear on the blockchain, and the mint cannot link where your tokens are spent.'
-  },
-  {
-    q: 'Do I need to trust a mint, and what happens if a mint goes offline?',
-    a: 'A mint is required to issue and redeem tokens. If it disappears, any tokens it issued become unusable. Reduce risk: hold small balances, spread funds across multiple mints, and withdraw/swap if you suspect a mint might fail.'
-  },
-  {
-    q: 'How can I back up or restore my wallet?',
-    a: 'During setup you can generate a BIP‑39 seed. Record it safely; if your device is lost, reinstall the app, enter the seed, and reconnect to your mints to restore unspent tokens.'
-  },
-  {
-    q: 'What are “Buckets” and why would I use them?',
-    a: 'Buckets act like sub‑accounts. Allocate tokens to categories (e.g., savings, subscriptions) and move funds instantly—useful for budgeting or keeping project funds separate.'
-  },
-  {
-    q: 'How does the Nostr integration work?',
-    a: 'The app can generate or import a Nostr key pair, connect to relays, and send encrypted DMs. This enables token transfers and tipping directly through Nostr events.'
-  },
-  {
-    q: 'What are Nutzaps and how do I receive them?',
-    a: 'Nutzaps let users send Cashu tokens as Nostr “zap” events. Publish your NIP‑61 profile (the app guides you), and others can tip you using ecash locked to your Nostr wallet key.'
-  },
-  {
-    q: 'Can I connect the wallet to other Nostr‑enabled apps?',
-    a: 'Yes. Nostr Wallet Connect (NWC) provides a QR code and secret key. Pair it with supported apps; they can request payments or signatures that you approve inside the wallet.'
-  },
-  {
-    q: 'Are there any fees for using Cashu tokens?',
-    a: 'Sending tokens between users is free. Fees may apply when minting/melting via Lightning, depending on the mint’s policy and Lightning network costs.'
-  },
-  {
-    q: 'Does the app work offline?',
-    a: 'You can view balances, buckets, and message history offline. Creating/redeeming tokens, chatting, and nutzap processing require connectivity to mints and relays.'
-  },
-  {
-    q: 'Is the code open source and can I run it myself?',
-    a: 'Yes. The whole project is MIT‑licensed. You can review, fork, self‑host, and even run your own mint and point the wallet at it.'
-  }
+const faqs = ref([
+  { q: 'What if a fan stops paying?', a: 'Creator view » Their timelocked token never unlocks for you. Fundstr flags the user as “Expired” and hides future paid posts. Fan view » You simply don’t renew. No recurring pull, no surprise charges.' },
+  { q: 'Can I withdraw to a Lightning wallet?', a: 'Yes. Wallet → Send → Lightning Invoice. Paste the invoice from any external wallet; Fundstr melts tokens at the mint and pays it.' },
+  { q: 'How private is this really?', a: `<ul class="bullet"><li>Mints see withdraw/redeem events but cannot correlate them.</li><li>Nostr chats are E2E encrypted; Nutzaps use P2PK so only the intended receiver can claim them.</li><li>Use different mints/buckets to compartmentalise further.</li></ul>` },
+  { q: 'What exactly is Cashu?', a: 'Chaumian e-cash. The mint issues anonymised tokens; transactions never touch the blockchain and the mint cannot link where your tokens are spent.' },
+  { q: 'Do I need to trust a mint?', a: 'A mint is required to issue/redeem tokens. Reduce risk by holding small balances, spreading across mints, and withdrawing if a mint looks risky.' },
+  { q: 'How can I back up or restore?', a: 'Generate a BIP-39 seed during setup. Keep it safe. Reinstall the app, enter the seed, reconnect to your mints to restore unspent tokens.' },
+  { q: 'What are “Buckets”?', a: 'Sub-accounts for budgeting (e.g., savings, subscriptions). Move funds instantly and keep project funds separate.' },
+  { q: 'How does the Nostr integration work?', a: 'Generate/import a Nostr keypair, connect to relays, and send encrypted DMs—enabling token transfers and tipping through Nostr events.' },
+  { q: 'What are Nutzaps?', a: 'Cashu tokens sent via Nostr “zap” events. Publish your NIP-61 profile and others can tip ecash locked to your Nostr wallet key.' },
+  { q: 'Are there any fees?', a: 'Peer-to-peer token sends are free. Fees may apply when minting/melting via Lightning, depending on the mint and network conditions.' },
+  { q: 'Does the app work offline?', a: 'Balances/buckets/messages are visible offline. Creating/redeeming tokens, chatting, and Nutzaps require mint/relay connectivity.' },
+  { q: 'Is the code open source?', a: 'Yes, MIT-licensed. Review, fork, self-host, even run your own mint and point the wallet at it.' },
 ])
-
 const filteredFaqs = computed(() => {
   const q = faqQuery.value.trim().toLowerCase()
-  if (!q) return faqs.value
-  return faqs.value.filter((f) => f.q.toLowerCase().includes(q))
+  return q ? faqs.value.filter(f => f.q.toLowerCase().includes(q)) : faqs.value
 })
 
-/** PWA install helper: give useful feedback even if the prompt is unavailable */
-function handleInstallPwa() {
-  // If you already capture the beforeinstallprompt event elsewhere, you can store it
-  // as window.deferredPWAInstallPrompt and trigger here. Otherwise provide guidance.
-  const promptEvt: any = (window as any).deferredPWAInstallPrompt
-  if (promptEvt && typeof promptEvt.prompt === 'function') {
-    promptEvt.prompt()
-    promptEvt.userChoice?.then(() => ((window as any).deferredPWAInstallPrompt = null))
+function installPwa () {
+  if (deferredPrompt.value) {
+    promptInstall()
   } else {
-    $q.notify({
-      message:
-        'To install: use your browser menu → “Install app” / “Add to Home Screen”.',
-      color: 'primary',
-      icon: 'download'
-    })
+    $q.notify({ message: 'Use your browser menu → “Install app” / “Add to Home Screen”.', color: 'primary', icon: 'download' })
   }
 }
 </script>
 
 <style scoped>
-/* ---------- Local theme tokens (scoped so they don't leak) ---------- */
-.about-theme {
-  --surface-1: #0a0d15;
-  --surface-2: #141824;
-  --text-1: #e0e7ff;
-  --accent-500: #8b5cf6; /* violet-500 */
-  --accent-200: #a855f7; /* violet-400/500 mix */
-  --accent-rgb: 168, 85, 247;
-  color: var(--text-1);
+/* Theme tokens (scoped) */
+.theme {
+  --s1:#0a0d15; --s2:#141824; --txt:#e0e7ff;
+  --ac500:#8b5cf6; --acRGB:168,85,247;
+  color:var(--txt);
 }
-.about-theme:not(.dark) {
-  --surface-1: #ffffff;
-  --surface-2: #f3f4f6;
-  --text-1: #0f172a;
-  --accent-500: #7c3aed;
-  --accent-200: #8b5cf6;
-  --accent-rgb: 139, 92, 246;
-  color: var(--text-1);
+.theme:not(.dark){ --s1:#fff; --s2:#f3f4f6; --txt:#0f172a; --ac500:#7c3aed; --acRGB:139,92,246; color:var(--txt);}
+
+/* Layout */
+.container{max-width:1080px; margin:0 auto; padding:0 1.25rem;}
+.section{padding:4rem 0;}
+.center{text-align:center;}
+.tcenter{text-align:center;}
+
+.h1{font-weight:800; font-size:clamp(2.25rem,3vw+1rem,3.5rem); margin:0 0 1rem;}
+.h2{font-weight:800; font-size:clamp(1.75rem,2vw+1rem,2.75rem); margin:0 0 1.25rem;}
+.lead{font-size:1.1rem; line-height:1.65;}
+.grad{background:linear-gradient(90deg,#a855f7,#4f46e5,#0ea5e9); -webkit-background-clip:text; -webkit-text-fill-color:transparent;}
+
+.hero-grid{display:grid; grid-template-columns:1.3fr .7fr; gap:2rem}
+@media (max-width: 960px){ .hero-grid{grid-template-columns:1fr; } }
+
+.alpha{background:var(--s2); border:1px solid rgba(var(--acRGB),.35); border-radius:1rem; padding:1rem 1.25rem; box-shadow:0 0 16px rgba(var(--acRGB),.15);}
+.alpha-icon{font-size:1.75rem; margin-right:.5rem;}
+
+/* Grid helpers */
+.cards{display:grid; gap:1rem}
+.cards--2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.cards--3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.cards--4{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width: 1024px){ .cards--3,.cards--4{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width: 640px){ .cards--2,.cards--3,.cards--4{grid-template-columns:1fr} }
+
+.two-col{display:grid; grid-template-columns:1fr 1fr; gap:2rem}
+@media (max-width: 960px){ .two-col{grid-template-columns:1fr} }
+
+.feature-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:1rem}
+@media (max-width:600px){ .feature-grid{grid-template-columns:1fr} }
+
+.feature{display:flex; flex-direction:column; align-items:center; text-align:center; gap:.5rem}
+.feature-icon{display:flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,var(--ac500),#4f46e5); color:#fff}
+
+/* Cards */
+.card{background:var(--s2); border:1px solid rgba(var(--acRGB),.18); border-radius:1rem; padding:1.25rem; box-shadow:0 4px 10px rgba(0,0,0,.25); transition:transform .2s, box-shadow .2s, border-color .2s;}
+.card:hover{transform:translateY(-6px); box-shadow:0 12px 22px rgba(0,0,0,.3); border-color:rgba(var(--acRGB),.35)}
+.card-head{display:flex; align-items:center; gap:.5rem; margin-bottom:.5rem}
+.card-summary{display:flex; align-items:flex-start; gap:.5rem}
+.summary-text{display:flex; flex-direction:column; white-space:normal; /* ensure wrapping */}
+.links{list-style:none; padding:0; margin:0}
+.links a{display:inline-flex; align-items:center; gap:.5rem; text-decoration:none}
+.links a:hover{text-decoration:underline}
+.emj{font-size:1.25rem}
+.emj.xl{font-size:2rem}
+.pill{display:inline-block; padding:.35rem .75rem; border-radius:999px; font-weight:700; letter-spacing:.02em; background:rgba(var(--acRGB),.15); color:var(--ac500); border:1px solid var(--ac500); margin-bottom:.5rem}
+
+/* Rail connectors for steps */
+.rail .step{position:relative}
+@media (min-width:768px){
+  .rail .step:not(:last-child)::after{content:""; position:absolute; top:50%; right:-20px; width:40px; height:2px; background:currentColor; opacity:.25; transform:translateY(-50%)}
+}
+@media (max-width:767px){
+  .rail .step:not(:last-child)::after{content:""; position:absolute; left:50%; bottom:-20px; width:2px; height:40px; background:currentColor; opacity:.25; transform:translateX(-50%)}
 }
 
-/* ---------- Decorative helpers ---------- */
-.gradient-text {
-  background: linear-gradient(90deg, #a855f7, #4f46e5, #0ea5e9);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
+/* FAQ */
+.faq-search{max-width:520px; margin:0 auto 1rem}
+.input{width:100%; padding:.75rem .9rem; border-radius:.75rem; border:1px solid rgba(var(--acRGB),.28); background:var(--s2); color:var(--txt)}
+.input:focus{outline:none; box-shadow:0 0 0 3px rgba(var(--acRGB),.35)}
 
-.fade-in-section {
-  opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.8s ease-out, transform 0.8s ease-out;
-}
-.fade-in-section.is-visible {
-  opacity: 1;
-  transform: none;
-}
+.faq-q{font-weight:700; font-size:1.05rem}
+.faq-a{margin-top:.75rem; font-size:.92rem}
+.bullet{list-style:none; display:flex; flex-direction:column; gap:.5rem; padding:0; margin:0}
+.bullet li{position:relative; padding-left:1.25rem}
+.bullet li::before{content:""; position:absolute; left:0; top:0.6em; width:.5rem; height:.5rem; border-radius:50%; background:var(--ac500); transform:translateY(-50%)}
+@media (max-width:600px){ .bullet{align-items:center} }
 
-blockquote {
-  border-left: 4px solid var(--accent-500);
-  padding-left: 1.5rem;
-  font-style: italic;
-}
+/* CTA */
+.cta{background:linear-gradient(90deg,rgba(var(--acRGB),.10),rgba(var(--acRGB),.05)); border-radius:1rem}
+.cta-row{display:flex; gap:.75rem; flex-wrap:wrap; justify-content:center; margin-top:1rem}
+.btn{font-weight:700; padding:.9rem 1.25rem; border-radius:.6rem; border:2px solid var(--ac500); text-decoration:none}
+.btn.solid{background:var(--ac500); color:#fff}
+.btn.outline{color:var(--ac500)}
+.btn.outline:hover{background:var(--ac500); color:#fff}
 
-/* ---------- Cards / Links / Badges ---------- */
-.alpha-warning {
-  background-color: var(--surface-2);
-  border: 1px solid rgba(var(--accent-rgb), 0.4);
-  border-radius: 1rem;
-  padding: 1.25rem 1.5rem;
-  box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.16);
-}
-
-.interactive-card {
-  background-color: var(--surface-2);
-  border: 1px solid rgba(var(--accent-rgb), 0.18);
-  border-radius: 1rem;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.24);
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
-}
-.interactive-card:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.28);
-  border-color: rgba(var(--accent-rgb), 0.35);
-}
-
-.row-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  text-decoration: none;
-}
-.row-link:hover {
-  text-decoration: underline;
-}
-
-/* small category pill */
-.badge {
-  display: inline-block;
-  padding: 0.35rem 0.75rem;
-  font-size: 0.8rem;
-  font-weight: 700;
-  border-radius: 1rem;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-.badge-accent {
-  background-color: rgba(var(--accent-rgb), 0.15);
-  color: var(--accent-500);
-  border: 1px solid var(--accent-200);
-}
-
-/* CTA band + buttons */
-.cta-band {
-  background: linear-gradient(
-    90deg,
-    rgba(var(--accent-rgb), 0.10),
-    rgba(var(--accent-rgb), 0.05)
-  );
-}
-.btn-accent-solid {
-  background-color: var(--accent-500);
-}
-.btn-accent-solid:hover {
-  filter: brightness(0.92);
-}
-.btn-accent-outline {
-  color: var(--accent-500);
-  border: 2px solid var(--accent-500);
-}
-.btn-accent-outline:hover {
-  background-color: var(--accent-500);
-  color: white;
-}
-
-/* How-it-works connector lines */
-#how-it-works .how-step {
-  position: relative;
-}
-@media (max-width: 767px) {
-  #how-it-works .how-step:not(:last-child)::after {
-    content: "";
-    position: absolute;
-    left: 50%;
-    bottom: -20px;
-    width: 2px;
-    height: 40px;
-    transform: translateX(-50%);
-    background-color: currentColor;
-    opacity: 0.25;
-  }
-}
-@media (min-width: 768px) {
-  #how-it-works .how-step:not(:last-child)::after {
-    content: "";
-    position: absolute;
-    top: 50%;
-    right: -20px;
-    width: 40px;
-    height: 2px;
-    transform: translateY(-50%);
-    background-color: currentColor;
-    opacity: 0.25;
-  }
-}
-
-/* Inputs */
-input[type="text"] {
-  background-color: var(--surface-2);
-  border-color: rgba(var(--accent-rgb), 0.22);
-  color: var(--text-1);
-}
-input[type="text"]:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.35);
-  border-color: rgba(var(--accent-rgb), 0.35);
-}
-
-/* External link look */
-.ext-link {
-  text-decoration: underline;
-}
+/* Fade in on enter */
+.fade{opacity:0; transform:translateY(18px); transition:opacity .6s ease, transform .6s ease}
+.fade.visible{opacity:1; transform:none}
 </style>
-

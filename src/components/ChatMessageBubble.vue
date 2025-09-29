@@ -1,6 +1,6 @@
 <template>
   <div
-    class="row message-row"
+    class="row message-row q-mx-sm q-my-xs"
     :class="message.outgoing ? 'justify-end' : 'justify-start'"
   >
     <q-avatar
@@ -12,7 +12,7 @@
       <span v-else>{{ initials }}</span>
     </q-avatar>
     <div
-      class="flex column"
+      class="column"
       :class="message.outgoing ? 'items-end' : 'items-start'"
     >
       <div
@@ -89,22 +89,22 @@
           <q-tooltip>{{ isoTime }}</q-tooltip>
         </span>
         <q-icon
-          v-if="deliveryStatus"
-          :name="deliveryIcon"
+          v-if="message.outgoing"
+          :name="statusIcon"
           size="16px"
           class="q-ml-xs"
-          :color="deliveryColor"
+          :color="statusColor"
         />
       </div>
-      <q-avatar
-        v-if="message.outgoing && showAvatar"
-        size="32px"
-        class="q-ml-sm"
-      >
-        <img v-if="profile?.picture" :src="profile.picture" />
-        <span v-else>{{ initials }}</span>
-      </q-avatar>
     </div>
+    <q-avatar
+      v-if="message.outgoing && showAvatar"
+      size="32px"
+      class="q-ml-sm"
+    >
+      <img v-if="profile?.picture" :src="profile.picture" />
+      <span v-else>{{ initials }}</span>
+    </q-avatar>
   </div>
 </template>
 
@@ -112,11 +112,6 @@
 import { computed, ref, onMounted, onUnmounted } from "vue";
 import { formatDistanceToNow } from "date-fns";
 
-import {
-  mdiCheck,
-  mdiCheckAll,
-  mdiAlertCircleOutline,
-} from "@quasar/extras/mdi-v6";
 import type { MessengerMessage } from "src/stores/messenger";
 import TokenCarousel from "components/TokenCarousel.vue";
 import TokenInformation from "components/TokenInformation.vue";
@@ -131,7 +126,6 @@ import { nip19 } from "nostr-tools";
 
 const props = defineProps<{
   message: MessengerMessage;
-  deliveryStatus?: "sent" | "delivered" | "failed";
   prevMessage?: MessengerMessage;
 }>();
 
@@ -175,13 +169,27 @@ const time = computed(() =>
 const isoTime = computed(() =>
   new Date(props.message.created_at * 1000).toISOString(),
 );
-const deliveryIcon = computed(() => {
-  if (props.deliveryStatus === "failed") return mdiAlertCircleOutline;
-  return props.deliveryStatus === "delivered" ? mdiCheckAll : mdiCheck;
+const statusIcon = computed(() => {
+  const status = props.message.status;
+  switch (status) {
+    case "pending":
+      return "query_builder";
+    case "sent":
+      return "check";
+    case "failed":
+      return "error";
+    case "delivered":
+      return "check";
+    default:
+      return "";
+  }
 });
-const deliveryColor = computed(() =>
-  props.deliveryStatus === "failed" ? "negative" : undefined,
-);
+
+const statusColor = computed(() => {
+  const status = props.message.status;
+  if (status === "failed") return "negative";
+  return "grey";
+});
 
 const isDataUrl = computed(() => props.message.content.startsWith("data:"));
 const isSafeDataUrl = computed(() =>
@@ -307,13 +315,10 @@ async function updateAutoRedeem(val: boolean) {
 </script>
 
 <style scoped>
-.message-row {
-  margin: 4px 0;
-}
-
 .bubble {
-  padding: 18px;
-  max-width: 70%;
+  padding: 8px 12px;
+  width: fit-content;
+  max-width: 75%;
   word-break: break-word;
   margin: 2px 0;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -334,15 +339,16 @@ async function updateAutoRedeem(val: boolean) {
 }
 
 .bubble-outgoing {
-  background-color: var(--q-primary);
-  color: #ffffff;
+  background-color: var(--accent-500);
+  color: var(--bubble-outgoing-text);
   border-radius: 12px 0 12px 12px;
 }
 
 .bubble-incoming {
-  background-color: var(--q-secondary);
-  color: #000000;
+  background-color: color-mix(in srgb, var(--surface-2), white 15%);
+  color: var(--text-1);
   border-radius: 0 12px 12px 12px;
+  border: 1px solid var(--surface-contrast-border);
 }
 
 .token-wrapper {

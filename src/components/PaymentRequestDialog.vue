@@ -110,14 +110,12 @@
   </q-dialog>
 </template>
 
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent } from "vue";
+
 import { mapActions, mapState, mapWritableState } from "pinia";
 import { useClipboard } from "src/composables/useClipboard";
-import { defineAsyncComponent } from "vue";
-const VueQrcode = defineAsyncComponent(() =>
-  import("@chenfengyuan/vue-qrcode"),
-);
+import VueQrcode from "@chenfengyuan/vue-qrcode";
 
 import { usePRStore } from "src/stores/payment-request";
 import { useMintsStore } from "../stores/mints";

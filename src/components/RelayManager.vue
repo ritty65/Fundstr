@@ -8,36 +8,85 @@
       dense
     />
     <div class="q-mb-sm" v-if="relayStatuses.length">
-      <div
-        v-for="s in relayStatuses"
-        :key="s.url"
-        class="row items-center q-my-xs"
+      <div class="text-subtitle2 q-mb-xs" aria-live="polite">
+        {{ connectedCount }} / {{ relayStatuses.length }} connected
+      </div>
+      <q-expansion-item
+        v-if="connectedRelays.length"
+        dense
+        expand-separator
+        label="Connected"
+        default-opened
       >
-        <q-icon
-          :name="s.connected ? 'check_circle' : 'warning'"
-          :color="s.connected ? 'positive' : 'negative'"
-          size="sm"
-          class="q-mr-xs"
-        />
-        <span class="text-caption">{{ s.url }}</span>
-        <span class="text-caption q-ml-sm">
-          {{ s.status }}
-          <span v-if="!s.connected && s.nextReconnectAt">
-            - reconnect in
+        <div
+          v-for="s in connectedRelays"
+          :key="s.url"
+          class="row items-center q-my-xs"
+        >
+          <q-badge
+            class="q-mr-sm"
+            rounded
+            :color="statusColor(s.status)"
+            :label="statusLabel(s.status)"
+          />
+          <span class="text-caption">{{ s.url }}</span>
+          <q-btn
+            flat
+            dense
+            round
+            icon="delete_outline"
+            class="q-ml-xs"
+            @click="removeRelay(s.url)"
+            aria-label="Remove relay"
+          />
+        </div>
+      </q-expansion-item>
+      <q-expansion-item
+        v-if="disconnectedRelays.length"
+        dense
+        expand-separator
+        label="Disconnected"
+      >
+        <div
+          v-for="s in disconnectedRelays"
+          :key="s.url"
+          class="row items-center q-my-xs"
+        >
+          <q-badge
+            class="q-mr-sm"
+            rounded
+            :color="statusColor(s.status)"
+            :label="statusLabel(s.status)"
+          />
+          <span class="text-caption">{{ s.url }}</span>
+          <span
+            class="text-caption q-ml-sm"
+            v-if="s.nextReconnectAt"
+          >
+            reconnect in
             {{ Math.max(0, Math.ceil((s.nextReconnectAt - now) / 1000)) }}s
           </span>
-        </span>
-        <q-icon
-          name="delete_outline"
-          size="sm"
-          class="q-ml-xs cursor-pointer"
-          @click="removeRelay(s.url)"
-        />
-      </div>
+          <q-btn
+            flat
+            dense
+            round
+            icon="delete_outline"
+            class="q-ml-xs"
+            @click="removeRelay(s.url)"
+            aria-label="Remove relay"
+          />
+        </div>
+      </q-expansion-item>
     </div>
     <div class="row q-gutter-sm">
       <q-btn label="Connect" color="primary" @click="connect" dense />
       <q-btn label="Disconnect" color="primary" @click="disconnect" dense />
+      <q-btn
+        label="Save to Profile"
+        color="secondary"
+        @click="saveToProfile"
+        dense
+      />
     </div>
     <div class="q-mt-sm">
       <q-btn
@@ -53,13 +102,16 @@
 <script lang="ts" setup>
 import { ref, watch, computed, onMounted, onUnmounted } from "vue";
 import { useMessengerStore } from "src/stores/messenger";
-import { notifySuccess, notifyError } from "src/js/notify";
+import { notifySuccess, notifyError, notifyWarning } from "src/js/notify";
 import { useNdk } from "src/composables/useNdk";
 import { DEFAULT_RELAYS } from "src/config/relays";
 import type NDK from "@nostr-dev-kit/ndk";
 import { NDKRelayStatus } from "@nostr-dev-kit/ndk";
+import { useNostrStore } from "src/stores/nostr";
+import { filterHealthyRelays } from "src/utils/relayHealth";
 
 const messenger = useMessengerStore();
+const nostr = useNostrStore();
 
 const relayText = ref((messenger.relays ?? []).join("\n"));
 
@@ -93,6 +145,31 @@ const relayStatuses = computed(() =>
   }),
 );
 
+const connectedRelays = computed(() =>
+  relayStatuses.value.filter((s) => s.connected),
+);
+const disconnectedRelays = computed(() =>
+  relayStatuses.value.filter((s) => !s.connected),
+);
+const connectedCount = computed(() => connectedRelays.value.length);
+
+const statusMap: Record<string, { label: string; color: string }> = {
+  CONNECTED: { label: "Connected", color: "positive" },
+  CONNECTING: { label: "Connecting", color: "warning" },
+  RECONNECTING: { label: "Retrying…", color: "warning" },
+  DISCONNECTED: { label: "Disconnected", color: "negative" },
+  FAILED: { label: "Failed", color: "negative" },
+  UNKNOWN: { label: "Unknown", color: "grey" },
+};
+
+function statusLabel(status: string) {
+  return statusMap[status]?.label || status;
+}
+
+function statusColor(status: string) {
+  return statusMap[status]?.color || "grey";
+}
+
 watch(
   () => messenger.relays,
   (r) => {
@@ -105,12 +182,16 @@ const connect = async () => {
     .split(/\r?\n/)
     .map((r) => r.trim())
     .filter(Boolean);
+  const uniqueUrls = Array.from(new Set(urls));
   try {
+    const healthy = await filterHealthyRelays(uniqueUrls);
     const ndk = await useNdk({ requireSigner: false });
-    for (const url of urls) {
+    for (const url of healthy) {
       ndk.addExplicitRelay(url);
     }
-    await messenger.connect(urls);
+    await messenger.connect(healthy);
+    const failed = uniqueUrls.filter((u) => !healthy.includes(u));
+    failed.forEach((u) => notifyWarning(`Relay ${u} unreachable`));
     notifySuccess("Connected to relays");
   } catch (err: any) {
     notifyError(err?.message || "Failed to connect");
@@ -129,4 +210,12 @@ const disconnect = async () => {
 const removeRelay = (url: string) => {
   messenger.removeRelay(url);
 };
+
+async function saveToProfile() {
+  const relays = relayText.value
+    .split("\n")
+    .map((r) => r.trim())
+    .filter(Boolean);
+  await nostr.publishRelayList(relays);
+}
 </script>

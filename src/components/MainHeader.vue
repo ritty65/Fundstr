@@ -1,39 +1,44 @@
 <template>
-  <q-header class="bg-transparent">
+  <q-header class="bg-transparent" style="z-index: 2000">
     <q-toolbar class="app-toolbar" dense>
       <div class="left-controls row items-center no-wrap" v-if="!isWelcomePage">
-        <q-btn
-          v-if="isMessengerPage"
-          flat
-          dense
-          round
-          icon="menu"
-          :color="chatButtonColor"
-          aria-label="Toggle Chats"
-          @click.stop="toggleMessengerDrawer"
-        >
+          <q-btn
+            v-if="isMessengerPage"
+            flat
+            dense
+            round
+            icon="chat"
+            :color="chatButtonColor"
+            aria-label="Toggle Chats"
+            @click.stop="toggleMessengerDrawer"
+          >
+          <q-badge
+            v-if="(messenger.sendQueue || []).length"
+            color="negative"
+            floating
+          >
+            {{ (messenger.sendQueue || []).length }}
+          </q-badge>
           <q-tooltip>Chats</q-tooltip>
         </q-btn>
-        <q-btn
-          flat
-          dense
-          round
-          icon="menu"
-          color="primary"
-          aria-label="Toggle main menu"
-          :aria-expanded="String(ui.mainNavOpen)"
-          aria-controls="app-nav"
-          @click="ui.toggleMainNav"
-          ref="mainNavBtn"
-          :disable="ui.globalMutexLock"
-        >
+          <q-btn
+            flat
+            dense
+            round
+            :icon="ui.mainNavOpen ? 'close' : 'menu'"
+            color="primary"
+            aria-label="Toggle navigation"
+            :aria-expanded="String(ui.mainNavOpen)"
+            aria-controls="app-nav"
+            @click="ui.toggleMainNav"
+            ref="mainNavBtn"
+            :disable="ui.globalMutexLock"
+          >
           <q-tooltip>Menu</q-tooltip>
         </q-btn>
       </div>
 
-      <q-toolbar-title class="app-title text-center">
-        {{ isWelcomePage ? appName : currentTitle }}
-      </q-toolbar-title>
+      <q-toolbar-title class="app-title" />
 
       <div
         class="right-controls row items-center no-wrap"
@@ -45,7 +50,7 @@
           leave-active-class="animated fadeOut"
         >
           <q-badge
-            v-if="g.offline"
+            v-if="ui.offline"
             color="red"
             text-color="black"
             class="q-mr-sm"
@@ -114,67 +119,77 @@
       </div>
     </q-toolbar>
   </q-header>
-  <div v-if="$q.screen.lt.md" class="mobile-nav-toggle">
-    <q-btn
-      ref="mobileNavBtn"
-      round
-      flat
-      :icon="ui.mainNavOpen ? 'close' : 'menu'"
-      color="primary"
-      class="mobile-nav-btn"
-      aria-label="Toggle main menu"
-      aria-controls="app-nav"
-      :aria-expanded="String(ui.mainNavOpen)"
-      @click="ui.toggleMainNav"
-    />
-  </div>
 </template>
 
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import {
+
   defineComponent,
   ref,
   computed,
-  getCurrentInstance,
   onMounted,
   onBeforeUnmount,
   nextTick,
+  watch,
 } from "vue";
 import { useRoute } from "vue-router";
 import { useUiStore } from "src/stores/ui";
 import { useMessengerStore } from "src/stores/messenger";
 import { useQuasar } from "quasar";
+import {
+  notifySuccess,
+  notify,
+  notifyWarning,
+  notifyRefreshed,
+} from "src/js/notify";
 
 export default defineComponent({
   name: "MainHeader",
   mixins: [windowMixin],
   setup() {
-    const vm = getCurrentInstance()?.proxy;
     const ui = useUiStore();
     const route = useRoute();
     const messenger = useMessengerStore();
     const $q = useQuasar();
     const mainNavBtn = ref(null);
-    const mobileNavBtn = ref(null);
 
     const focusNavBtn = () => {
-      (mobileNavBtn.value || mainNavBtn.value)?.focus();
+      const btn = mainNavBtn.value;
+      if (!btn) return;
+      if (typeof btn.focus === "function") {
+        btn.focus();
+      } else {
+        btn.$el?.focus();
+      }
     };
     const onKeydown = (e) => {
       if (e.key === "Escape" && ui.mainNavOpen) {
         ui.closeMainNav();
-        nextTick(focusNavBtn);
+        nextTick(() => {
+          if (mainNavBtn.value) focusNavBtn();
+        });
       }
     };
 
     onMounted(() => window.addEventListener("keydown", onKeydown));
     onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
 
+    watch(
+      () => ui.mainNavOpen,
+      (open) => {
+        if (!open) {
+          nextTick(() => {
+            if (mainNavBtn.value) focusNavBtn();
+          });
+        }
+      },
+    );
+
     const toggleDarkMode = () => {
       console.log("toggleDarkMode", $q.dark.isActive);
       $q.dark.toggle();
       $q.localStorage.set("cashu.darkMode", $q.dark.isActive);
-      vm?.notifySuccess(
+      notifySuccess(
         $q.dark.isActive ? "Dark mode enabled" : "Dark mode disabled",
       );
     };
@@ -185,12 +200,6 @@ export default defineComponent({
       route.path.startsWith("/nostr-messenger"),
     );
     const isWelcomePage = computed(() => route.path.startsWith("/welcome"));
-    const appName = "Fundstr";
-    const currentTitle = computed(() => {
-      if (isMessengerPage.value) return "Nostr Messenger";
-      if (route.path.startsWith("/wallet")) return "Wallet";
-      return "Cashu";
-    });
     const chatButtonColor = computed(() =>
       $q.dark.isActive ? "white" : "primary",
     );
@@ -203,7 +212,7 @@ export default defineComponent({
         messenger.setDrawer(!messenger.drawerOpen);
       } else {
         messenger.toggleDrawer();
-        vm?.notify(
+        notify(
           messenger.drawerMini ? "Messenger collapsed" : "Messenger expanded",
         );
       }
@@ -226,7 +235,7 @@ export default defineComponent({
           clearInterval(countdownInterval);
           countdown.value = 0;
           reloading.value = false;
-          vm?.notifyWarning("Reload cancelled");
+          notifyWarning("Reload cancelled");
         } finally {
           ui.unlockMutex();
         }
@@ -236,12 +245,12 @@ export default defineComponent({
       ui.lockMutex();
       reloading.value = true;
       countdown.value = 3;
-      vm?.notify("Reloading in 3 seconds…");
+      notify("Reloading in 3 seconds…");
       countdownInterval = setInterval(() => {
         countdown.value--;
         if (countdown.value === 0) {
           clearInterval(countdownInterval);
-          vm?.notifyRefreshed("Reloading…");
+          notifyRefreshed("Reloading…");
           try {
             location.reload();
           } finally {
@@ -257,16 +266,14 @@ export default defineComponent({
       countdown,
       reloading,
       ui,
-      currentTitle,
       isWelcomePage,
-      appName,
       isMessengerPage,
       toggleMessengerDrawer,
       toggleDarkMode,
       darkIcon,
       chatButtonColor,
       mainNavBtn,
-      mobileNavBtn,
+      messenger,
     };
   },
 });
@@ -275,8 +282,8 @@ export default defineComponent({
 .q-header {
   position: sticky;
   top: 0;
-  /* Keep header above Quasar drawer/scrim layers on mobile overlays */
-  z-index: 11000;
+  /* Allow navigation drawer overlay to sit above the header */
+  z-index: 950;
   overflow-x: hidden;
 }
 
@@ -307,15 +314,4 @@ export default defineComponent({
   transform: translateX(var(--nav-offset-x, 0));
 }
 
-.mobile-nav-toggle {
-  position: fixed;
-  top: calc(env(safe-area-inset-top) + 8px);
-  left: calc(env(safe-area-inset-left) + 8px);
-  z-index: 12000;
-}
-
-.mobile-nav-btn {
-  width: 44px;
-  height: 44px;
-}
 </style>

@@ -166,13 +166,17 @@ export const messages = {
           title: "Fundstr's Creator",
           caption: "primal.net/KalonAxiarch",
         },
+        fundstrNostr: {
+          title: "Fundstr Nostr",
+          caption: "primal.net/fundstr",
+        },
         cashuSpace: {
           title: "Cashu.space",
           caption: "cashu.space",
         },
         github: {
           title: "Github",
-          caption: "github.com/cashubtc",
+          caption: "github.com/ritty65/Fundstr",
         },
         telegram: {
           title: "Telegram",
@@ -502,8 +506,12 @@ export const messages = {
             'This wallet marks pending outgoing ecash as reserved (and subtracts it from your balance) to prevent double-spend attempts. This button will unset all reserved tokens so they can be used again. If you do this, your wallet might include spent proofs. Press the "Remove spent proofs" button to get rid of them.',
         },
         show_onboarding: {
-          button: "Show onboarding",
-          description: "Show the onboarding screen again.",
+          button: "Replay tutorial",
+          description: "Restart the onboarding tour from the beginning.",
+        },
+        reset_onboarding: {
+          button: "Reset onboarding",
+          description: "Clear onboarding status for this browser.",
         },
         reset_wallet: {
           button: "Reset wallet data",
@@ -2005,7 +2013,7 @@ export const messages = {
         openWallet: "Start using wallet",
       },
     },
-  },
+    },
   onb: {
     1: {
       title: "Private money for the open internet",

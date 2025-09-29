@@ -17,21 +17,41 @@
     @hide="ui.closeMainNav()"
     @keyup.esc="ui.closeMainNav()"
   >
+    <div>
+      <q-btn
+        flat
+        dense
+        round
+        icon="close"
+        color="primary"
+        aria-label="Close navigation"
+        @click="ui.closeMainNav()"
+        class="q-mb-sm"
+      >
+        <q-tooltip>Close</q-tooltip>
+      </q-btn>
+    </div>
     <q-list>
       <q-item-label header>{{
         $t("MainHeader.menu.settings.title")
       }}</q-item-label>
-      <q-item clickable @click="gotoWallet">
+      <q-item v-if="isGuest" clickable @click="gotoWelcome">
+        <q-item-section avatar>
+          <q-icon name="login" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>Finish setup</q-item-label>
+        </q-item-section>
+      </q-item>
+      <q-item v-if="!isGuest" clickable @click="gotoWallet">
         <q-item-section avatar>
           <q-icon name="account_balance_wallet" />
         </q-item-section>
         <q-item-section>
-          <q-item-label>{{
-            $t("FullscreenHeader.actions.back.label")
-          }}</q-item-label>
+          <q-item-label>{{ $t("MainHeader.menu.wallet.title") }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoSettings">
+      <q-item v-if="!isGuest" clickable @click="gotoSettings">
         <q-item-section avatar>
           <q-icon name="settings" />
         </q-item-section>
@@ -46,7 +66,7 @@
       </q-item>
       <q-item clickable @click="gotoFindCreators">
         <q-item-section avatar>
-          <q-icon name="img:icons/find-creators.svg" color="white" />
+          <FindCreatorsIcon class="themed-icon q-icon" />
         </q-item-section>
         <q-item-section>
           <q-item-label>{{
@@ -57,9 +77,9 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoCreatorHub">
+      <q-item v-if="!isGuest" clickable @click="gotoCreatorHub">
         <q-item-section avatar>
-          <q-icon name="img:icons/creator-hub.svg" color="white" />
+          <CreatorHubIcon class="themed-icon q-icon" />
         </q-item-section>
         <q-item-section>
           <q-item-label>{{
@@ -70,7 +90,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoMyProfile">
+      <q-item v-if="!isGuest" clickable @click="gotoMyProfile">
         <q-item-section avatar>
           <q-icon name="person" />
         </q-item-section>
@@ -83,7 +103,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoBuckets">
+      <q-item v-if="!isGuest" clickable @click="gotoBuckets">
         <q-item-section avatar>
           <q-icon name="inventory_2" />
         </q-item-section>
@@ -96,7 +116,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoSubscriptions">
+      <q-item v-if="!isGuest" clickable @click="gotoSubscriptions">
         <q-item-section avatar>
           <q-icon name="auto_awesome_motion" />
         </q-item-section>
@@ -109,7 +129,23 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item clickable @click="gotoChats">
+      <q-item v-if="!isGuest" clickable @click="gotoNutzapProfile">
+        <q-item-section avatar>
+          <q-icon name="assignment" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>Nutzap Profile</q-item-label>
+        </q-item-section>
+      </q-item>
+      <q-item v-if="!isGuest" clickable @click="gotoNutzapDiagnostics">
+        <q-item-section avatar>
+          <q-icon name="tune" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>Advanced diagnostics</q-item-label>
+        </q-item-section>
+      </q-item>
+      <q-item v-if="!isGuest" clickable @click="gotoChats">
         <q-item-section avatar>
           <q-icon name="chat" />
         </q-item-section>
@@ -117,7 +153,7 @@
           <q-item-label>Chats</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item v-if="needsNostrLogin" clickable @click="gotoNostrLogin">
+      <q-item v-if="!isGuest && needsNostrLogin" clickable @click="gotoNostrLogin">
         <q-item-section avatar>
           <q-icon name="vpn_key" />
         </q-item-section>
@@ -175,14 +211,18 @@ import { computed } from "vue";
 import { useRouter } from "vue-router";
 import { useUiStore } from "src/stores/ui";
 import { useNostrStore } from "src/stores/nostr";
+import { useWelcomeStore } from "src/stores/welcome";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import EssentialLink from "components/EssentialLink.vue";
 import { NAV_DRAWER_WIDTH } from "src/constants/layout";
+import FindCreatorsIcon from "src/components/icons/FindCreatorsIcon.vue";
+import CreatorHubIcon from "src/components/icons/CreatorHubIcon.vue";
 
 const ui = useUiStore();
 const router = useRouter();
 const nostrStore = useNostrStore();
+const welcomeStore = useWelcomeStore();
 const { t } = useI18n();
 const $q = useQuasar();
 
@@ -197,12 +237,16 @@ const gotoCreatorHub = () => goto("/creator-hub");
 const gotoMyProfile = () => goto("/my-profile");
 const gotoBuckets = () => goto("/buckets");
 const gotoSubscriptions = () => goto("/subscriptions");
+const gotoNutzapProfile = () => goto("/nutzap-profile");
+const gotoNutzapDiagnostics = () => goto("/nutzap-tools");
 const gotoChats = () => goto("/nostr-messenger");
 const gotoNostrLogin = () => goto("/nostr-login");
 const gotoTerms = () => goto("/terms");
 const gotoAbout = () => goto("/about");
+const gotoWelcome = () => goto("/welcome");
 
-const needsNostrLogin = computed(() => !nostrStore.privateKeySignerPrivateKey);
+const needsNostrLogin = computed(() => !nostrStore.hasIdentity);
+const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 
 const drawerContentClass = computed(() =>
   $q.screen.lt.md ? "main-nav-safe" : "q-pt-sm"
@@ -216,6 +260,12 @@ const essentialLinks = [
     link: "https://primal.net/KalonAxiarch",
   },
   {
+    title: t("MainHeader.menu.links.fundstrNostr.title"),
+    caption: t("MainHeader.menu.links.fundstrNostr.caption"),
+    icon: "link",
+    link: "https://primal.net/p/nprofile1qqsdndspt5x07jhp5vrs0s4a7z0spwl4v28su0263vdjmwfmumxdygc6lzn8y",
+  },
+  {
     title: t("MainHeader.menu.links.cashuSpace.title"),
     caption: t("MainHeader.menu.links.cashuSpace.caption"),
     icon: "web",
@@ -225,7 +275,7 @@ const essentialLinks = [
     title: t("MainHeader.menu.links.github.title"),
     caption: t("MainHeader.menu.links.github.caption"),
     icon: "code",
-    link: "https://github.com/cashubtc/Fundstr",
+    link: "https://github.com/ritty65/Fundstr",
   },
   {
     title: t("MainHeader.menu.links.telegram.title"),
@@ -262,7 +312,7 @@ const essentialLinks = [
 }
 
 .main-nav-safe {
-  padding-left: calc(env(safe-area-inset-left) + 60px);
+  padding-left: calc(env(safe-area-inset-left) + 8px);
   padding-top: calc(env(safe-area-inset-top) + 8px);
 }
 </style>

@@ -23,6 +23,24 @@ const routes = [
     ],
   },
   {
+    path: "/creator/:npubOrHex",
+    component: () => import("layouts/FullscreenLayout.vue"),
+    children: [
+      {
+        path: "",
+        name: "creator-deeplink",
+        component: () => import("src/pages/FindCreators.vue"),
+        props: true,
+      },
+      {
+        path: "profile",
+        name: "PublicCreatorProfile",
+        component: () => import("src/pages/PublicCreatorProfilePage.vue"),
+        props: true,
+      },
+    ],
+  },
+  {
     path: "/creator-hub",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
@@ -50,13 +68,24 @@ const routes = [
     ],
   },
   {
-    path: "/creator/:npub",
+    path: "/nutzap-profile",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
       {
         path: "",
-        name: "PublicCreatorProfile",
-        component: () => import("src/pages/PublicCreatorProfilePage.vue"),
+        name: "NutzapProfile",
+        component: () => import("src/pages/NutzapProfilePage.vue"),
+      },
+    ],
+  },
+  {
+    path: "/nutzap-tools",
+    component: () => import("layouts/FullscreenLayout.vue"),
+    children: [
+      {
+        path: "",
+        name: "NutzapDiagnostics",
+        component: () => import("src/pages/NutzapDiagnosticsPage.vue"),
       },
     ],
   },
@@ -94,11 +123,13 @@ const routes = [
   {
     path: "/restore",
     component: () => import("layouts/FullscreenLayout.vue"),
+    meta: { hideHeader: true },
     children: [{ path: "", component: () => import("src/pages/Restore.vue") }],
   },
   {
     path: "/already-running",
     component: () => import("layouts/BlankLayout.vue"),
+    meta: { hideHeader: true },
     children: [
       { path: "", component: () => import("src/pages/AlreadyRunning.vue") },
     ],
@@ -106,13 +137,10 @@ const routes = [
   {
     path: "/welcome",
     component: () => import("layouts/BlankLayout.vue"),
+    meta: { hideHeader: true },
     children: [
       { path: "", component: () => import("src/pages/WelcomePage.vue") },
     ],
-  },
-  {
-    path: "/onboarding",
-    redirect: "/welcome?first=1",
   },
   {
     path: "/terms",

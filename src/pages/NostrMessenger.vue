@@ -15,11 +15,11 @@
       <q-banner v-if="connecting && !loading" dense class="bg-grey-3">
         Connecting...
       </q-banner>
-      <q-banner
-        v-else-if="!messenger.connected && !loading"
-        dense
-        class="bg-grey-3"
-      >
+        <q-banner
+          v-else-if="!messenger.connected && !loading"
+          dense
+          class="bg-grey-3"
+        >
         <div class="row items-center q-gutter-sm">
           <span>
             Offline - {{ connectedCount }}/{{ totalRelays }} connected
@@ -29,9 +29,46 @@
           </span>
           <q-btn flat dense label="Reconnect All" @click="reconnectAll" />
         </div>
-      </q-banner>
-      <q-spinner v-if="loading" size="lg" color="primary" />
-      <ActiveChatHeader :pubkey="selected" />
+        </q-banner>
+        <NostrRelayErrorBanner />
+        <q-banner
+          v-if="failedRelays.length"
+          dense
+          class="bg-red-2 q-mb-sm"
+        >
+          <div
+            v-for="url in failedRelays"
+            :key="url"
+            class="row items-center no-wrap"
+          >
+            <span>Relay {{ url }} unreachable</span>
+            <q-space />
+            <q-btn
+              flat
+              dense
+              label="Remove"
+              @click="removeRelay(url)"
+            />
+          </div>
+        </q-banner>
+        <q-banner
+          v-if="(messenger.sendQueue || []).length"
+          dense
+          class="bg-orange-2 q-mb-sm"
+        >
+          <div class="row items-center no-wrap">
+            <span>{{ (messenger.sendQueue || []).length }} message(s) failed</span>
+            <q-space />
+            <q-btn
+              flat
+              dense
+              label="Retry"
+              @click="messenger.retryFailedMessages"
+            />
+          </div>
+        </q-banner>
+        <q-spinner v-if="loading" size="lg" color="primary" />
+        <ActiveChatHeader :pubkey="selected" :relays="relayInfos" />
       <MessageList :messages="messages" class="col" />
       <MessageInput @send="sendMessage" @sendToken="openSendTokenDialog" />
       <ChatSendTokenDialog ref="chatSendTokenDialogRef" :recipient="selected" />
@@ -70,6 +107,7 @@ import MessageList from "components/MessageList.vue";
 import MessageInput from "components/MessageInput.vue";
 import ChatSendTokenDialog from "components/ChatSendTokenDialog.vue";
 import NostrSetupWizard from "components/NostrSetupWizard.vue";
+import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 import { useQuasar, TouchSwipe } from "quasar";
 
 export default defineComponent({
@@ -81,6 +119,7 @@ export default defineComponent({
     MessageInput,
     ChatSendTokenDialog,
     NostrSetupWizard,
+    NostrRelayErrorBanner,
   },
   setup() {
     const loading = ref(true);
@@ -130,7 +169,7 @@ export default defineComponent({
     }
 
     async function checkAndInit() {
-      if (!nostr.pubkey || nostr.relays.length === 0) {
+      if (!nostr.hasIdentity || nostr.relays.length === 0) {
         loading.value = false;
         showSetupWizard.value = true;
         return;
@@ -172,6 +211,22 @@ export default defineComponent({
 
     const totalRelays = computed(() => ndkRef.value?.pool.relays.size || 0);
 
+    const relayInfos = computed(() => {
+      if (!ndkRef.value) return [] as { url: string; connected: boolean }[];
+      return Array.from(ndkRef.value.pool.relays.values()).map((r) => ({
+        url: r.url,
+        connected: r.connected,
+      }));
+    });
+
+    const failedRelays = computed(() => nostr.failedRelays);
+
+    const removeRelay = (url: string) => {
+      messenger.removeRelay(url);
+      const idx = nostr.failedRelays.indexOf(url);
+      if (idx !== -1) nostr.failedRelays.splice(idx, 1);
+    };
+
     const nextReconnectIn = computed(() => {
       if (!ndkRef.value) return null;
       let earliest: number | null = null;
@@ -191,6 +246,16 @@ export default defineComponent({
         reconnectAll();
       }
     });
+
+    watch(
+      () => nostr.pubkey,
+      async (newVal, oldVal) => {
+        if (newVal && newVal !== oldVal && !loading.value) {
+          await messenger.loadIdentity();
+          await messenger.start();
+        }
+      },
+    );
 
     const sendMessage = (
       payload:
@@ -252,9 +317,12 @@ export default defineComponent({
       reconnectAll,
       connectedCount,
       totalRelays,
+      relayInfos,
+      failedRelays,
       nextReconnectIn,
       setupComplete,
       openDrawer,
+      removeRelay,
       ui,
     };
   },

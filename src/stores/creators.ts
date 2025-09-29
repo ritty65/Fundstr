@@ -5,17 +5,15 @@ import {
   getEventHash,
   signEvent,
   publishEvent,
-  subscribeToNostr,
 } from "./nostr";
-import { useSettingsStore } from "./settings";
-import { DEFAULT_RELAYS } from "src/config/relays";
-import { filterHealthyRelays } from "src/utils/relayHealth";
 import { useNdk } from "src/composables/useNdk";
 import { nip19 } from "nostr-tools";
 import { Event as NostrEvent } from "nostr-tools";
 import { notifyWarning } from "src/js/notify";
-import { filterValidMedia } from "src/utils/validateMedia";
 import type { Tier } from "./types";
+import { queryNutzapTiers, toHex, type NostrEvent as RelayEvent } from "@/nostr/relayClient";
+import { fallbackDiscoverRelays } from "@/nostr/discovery";
+import { parseTierDefinitionEvent } from "src/nostr/tiers";
 
 export const FEATURED_CREATORS = [
   "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
@@ -163,22 +161,19 @@ export const useCreatorsStore = defineStore("creators", {
       }
     },
 
-    async fetchTierDefinitions(creatorNpub: string) {
+    async fetchTierDefinitions(
+      creatorNpub: string,
+      opts: { relayHints?: string[] } = {},
+    ) {
       this.tierFetchError = false;
 
-      let hex = creatorNpub;
-      if (creatorNpub.startsWith("npub")) {
-        try {
-          const decoded = nip19.decode(creatorNpub);
-          hex =
-            typeof decoded.data === "string" ? (decoded.data as string) : "";
-        } catch (e) {
-          this.tierFetchError = true;
-          return;
-        }
-      }
-      if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+      let hex: string;
+      try {
+        hex = toHex(creatorNpub);
+      } catch (e) {
+        console.error("Invalid creator pubkey", e);
         this.tierFetchError = true;
+        notifyWarning("Unable to retrieve subscription tiers");
         return;
       }
 
@@ -193,134 +188,85 @@ export const useCreatorsStore = defineStore("creators", {
           ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
           media: t.media ? [...t.media] : [],
         }));
-        void rawEvent; // parsed for potential use
+        void rawEvent;
       }
-      const filter = {
-        authors: [hex],
-        kinds: [30000],
-        "#d": ["tiers"],
-      };
-      const settings = useSettingsStore();
-      const relayUrls = Array.from(
-        new Set([
-          ...(Array.isArray(settings.defaultNostrRelays)
-            ? settings.defaultNostrRelays
-            : []),
-          ...DEFAULT_RELAYS,
-        ]),
+
+      const relayHints = new Set(
+        (opts.relayHints ?? [])
+          .map((url) => url.trim())
+          .filter((url) => !!url),
       );
 
-      // Filter out unreachable relays before subscribing
-      const healthyRelays = await filterHealthyRelays(relayUrls);
+      let event: RelayEvent | null = null;
+      let lastError: unknown = null;
 
-      let received = false;
-      const fetchFromIndexer = async () => {
-        if (received) return;
-        const indexerUrl = settings.tiersIndexerUrl;
-        if (!indexerUrl) {
-          this.tierFetchError = true;
-          notifyWarning("Unable to retrieve subscription tiers");
-          return;
-        }
-        const url = String(indexerUrl).includes("{pubkey}")
-          ? indexerUrl.replace("{pubkey}", hex)
-          : `${indexerUrl}${
-              String(indexerUrl).includes("?") ? "&" : "?"
-            }pubkey=${hex}`;
+      try {
+        event = await queryNutzapTiers(hex);
+      } catch (e) {
+        lastError = e;
+        console.error("fetchTierDefinitions Fundstr query failed", e);
+      }
+
+      if (!event && relayHints.size) {
         try {
-          const controller = new AbortController();
-          const id = setTimeout(() => controller.abort(), 8000);
-          const resp = await fetch(url, { signal: controller.signal });
-          clearTimeout(id);
-          if (!resp.ok) {
-            this.tierFetchError = true;
-            notifyWarning("Unable to retrieve subscription tiers");
-            return;
-          }
-          const data = await resp.json();
-          const event =
-            data.tiers ||
-            data.event ||
-            (data.profile && data.profile.tiers) ||
-            (Array.isArray(data.events)
-              ? data.events.find(
-                  (e: any) =>
-                    e.kind === 30000 &&
-                    Array.isArray(e.tags) &&
-                    e.tags.some((t: any[]) => t[0] === "d" && t[1] === "tiers"),
-                )
-              : null);
-          if (!event) {
-            this.tierFetchError = true;
-            notifyWarning("Unable to retrieve subscription tiers");
-            return;
-          }
-          const tiersArray: Tier[] = JSON.parse(event.content).map(
-            (t: any) => ({
-              ...t,
-              price_sats: t.price_sats ?? t.price ?? 0,
-              ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
-              media: t.media ? filterValidMedia(t.media) : [],
-            }),
-          );
-          this.tiersMap[hex] = tiersArray;
-          await db.creatorsTierDefinitions.put({
-            creatorNpub: hex,
-            tiers: tiersArray,
-            eventId: event.id!,
-            updatedAt: event.created_at,
-            rawEventJson: JSON.stringify(event),
+          event = await queryNutzapTiers(hex, {
+            fanout: Array.from(relayHints),
           });
         } catch (e) {
-          console.error("Indexer tier fetch error:", e);
+          lastError = e;
+          console.error("fetchTierDefinitions hinted query failed", e);
+        }
+      }
+
+      if (!event) {
+        try {
+          const discovered = await fallbackDiscoverRelays(hex);
+          for (const url of discovered) relayHints.add(url);
+          if (relayHints.size) {
+            event = await queryNutzapTiers(hex, {
+              fanout: Array.from(relayHints),
+            });
+          }
+        } catch (e) {
+          lastError = e;
+          console.error("NIP-65 discovery failed", e);
+        }
+      }
+
+      if (!event) {
+        if (lastError) {
           this.tierFetchError = true;
           notifyWarning("Unable to retrieve subscription tiers");
+        } else {
+          this.tierFetchError = false;
+          this.tiersMap[hex] = [];
+          await db.creatorsTierDefinitions.delete(hex);
         }
-      };
-
-      if (healthyRelays.length === 0) {
-        // No healthy relays found – fallback immediately
-        await fetchFromIndexer();
         return;
       }
 
-      const timeout = setTimeout(fetchFromIndexer, 5000);
-
-      const subscribed = await subscribeToNostr(
-        filter,
-        async (event) => {
-          try {
-            received = true;
-            clearTimeout(timeout);
-            this.tierFetchError = false;
-            const tiersArray: Tier[] = JSON.parse(event.content).map(
-              (t: any) => ({
-                ...t,
-                price_sats: t.price_sats ?? t.price ?? 0,
-                ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
-                media: t.media ? filterValidMedia(t.media) : [],
-              }),
-            );
-            this.tiersMap[hex] = tiersArray;
-            await db.creatorsTierDefinitions.put({
-              creatorNpub: hex,
-              tiers: tiersArray,
-              eventId: event.id!,
-              updatedAt: event.created_at,
-              rawEventJson: JSON.stringify(event),
-            });
-          } catch (e) {
-            console.error("Error parsing tier definitions JSON:", e);
-          }
-        },
-        healthyRelays,
-      );
-
-      if (!subscribed) {
-        // Subscription failed – query indexer without waiting
-        clearTimeout(timeout);
-        await fetchFromIndexer();
+      let tiersArray: Tier[] = [];
+      try {
+        tiersArray = parseTierDefinitionEvent(event).map((tier) => ({
+          ...tier,
+          price_sats: tier.price_sats ?? (tier as any).price ?? 0,
+        }));
+      } catch (e) {
+        console.error("Failed to parse tier event", e);
+        this.tierFetchError = true;
+        notifyWarning("Unable to retrieve subscription tiers");
+        return;
       }
+
+      this.tiersMap[hex] = tiersArray;
+      await db.creatorsTierDefinitions.put({
+        creatorNpub: hex,
+        tiers: tiersArray as any,
+        eventId: event.id,
+        updatedAt: event.created_at,
+        rawEventJson: JSON.stringify(event),
+      });
+      this.tierFetchError = false;
     },
 
     async publishTierDefinitions(tiersArray: Tier[]) {
@@ -333,7 +279,7 @@ export const useCreatorsStore = defineStore("creators", {
       const event: Partial<NostrEvent> = {
         pubkey: creatorNpub,
         created_at,
-        kind: 30000,
+        kind: 30019,
         tags: [["d", "tiers"]],
         content,
       };

@@ -15,17 +15,17 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { useCreatorHubStore } from "stores/creatorHub";
+import { useCreatorHub } from "src/composables/useCreatorHub";
 
-const store = useCreatorHubStore();
+const { login } = useCreatorHub();
 const nsec = ref("");
 
 async function loginWithNip07() {
-  await store.loginWithNip07();
+  await login();
 }
 
 async function loginNsec() {
   if (!nsec.value) return;
-  await store.loginWithNsec(nsec.value);
+  await login(nsec.value);
 }
 </script>

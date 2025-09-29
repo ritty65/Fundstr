@@ -615,8 +615,9 @@
     </q-card>
   </q-dialog>
 </template>
-<script lang="ts">
-import { defineComponent, defineAsyncComponent } from "vue";
+<script lang="ts">import windowMixin from 'src/mixins/windowMixin'
+import { defineComponent } from "vue";
+
 import { useClipboard } from "src/composables/useClipboard";
 import { debug } from "src/js/logger";
 import { useSendTokensStore } from "src/stores/sendTokensStore";
@@ -667,10 +668,7 @@ import {
 } from "src/js/notify.ts";
 import { Dialog } from "quasar";
 import { useDmChatsStore } from "src/stores/dmChats";
-
-const VueQrcode = defineAsyncComponent(
-  () => import("@chenfengyuan/vue-qrcode"),
-);
+import VueQrcode from "@chenfengyuan/vue-qrcode";
 export default defineComponent({
   name: "SendTokenDialog",
   mixins: [windowMixin],
@@ -730,6 +728,7 @@ export default defineComponent({
       "canPasteFromClipboard",
       "globalMutexLock",
       "ndefSupported",
+      "offline",
     ]),
     ...mapWritableState(useUiStore, ["showNumericKeyboard"]),
     ...mapState(useMintsStore, [
@@ -1216,7 +1215,7 @@ export default defineComponent({
             };
             const dmContent = JSON.stringify(payload);
             const { success, event } =
-              await useNostrStore().sendNip04DirectMessage(
+              await useNostrStore().sendDirectMessageUnified(
                 recipient,
                 dmContent,
               );
@@ -1280,7 +1279,7 @@ export default defineComponent({
           this.$router.push("/find-creators");
         });
 
-        if (!this.g.offline) {
+        if (!this.offline) {
           this.onTokenPaid(historyToken);
         }
       } catch (error) {
@@ -1370,7 +1369,7 @@ export default defineComponent({
             };
             const dmContent2 = JSON.stringify(payload2);
             const { success, event } =
-              await useNostrStore().sendNip04DirectMessage(
+              await useNostrStore().sendDirectMessageUnified(
                 recipient,
                 dmContent2,
               );
@@ -1418,7 +1417,7 @@ export default defineComponent({
         this.addPendingToken({ ...historyToken, tokenStr: historyToken.token });
         this.sendData.historyToken = historyToken;
 
-        if (!this.g.offline) {
+        if (!this.offline) {
           this.onTokenPaid(historyToken);
         }
       } catch (error) {

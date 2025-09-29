@@ -1,38 +1,32 @@
-import { boot } from "quasar/wrappers";
-import { createI18n } from "vue-i18n";
-import { loadMessages } from "src/i18n";
+import { boot } from 'quasar/wrappers'
+import { createI18n } from 'vue-i18n'
 
-const fallbackLocale = "en-US";
-let locale =
-  localStorage.getItem("cashu.language") ||
-  navigator.language ||
-  fallbackLocale;
+const modules = import.meta.glob('../i18n/*/index.{ts,js}', { eager: true })
 
-const messages = {};
-
-try {
-  messages[locale] = await loadMessages(locale);
-} catch (err) {
-  console.warn(
-    `Failed to load locale ${locale}, falling back to ${fallbackLocale}`,
-    err,
-  );
-  locale = fallbackLocale;
-  messages[locale] = await loadMessages(fallbackLocale);
+const messages = {}
+for (const p in modules) {
+  const mod = modules[p]
+  const m = mod.default || mod
+  const match = p.match(/\.\.\/i18n\/([^/]+)\/index\.(?:ts|js)$/)
+  if (match) messages[match[1]] = m
 }
 
-if (locale !== fallbackLocale) {
-  messages[fallbackLocale] = await loadMessages(fallbackLocale);
+const fallbackLocale = 'en-US'
+let locale = (typeof navigator !== 'undefined' && (navigator.language || navigator.userLanguage)) || fallbackLocale
+if (!messages[locale]) {
+  const short = locale.split('-')[0].toLowerCase()
+  const candidate = Object.keys(messages).find(k => k.toLowerCase().startsWith(short))
+  locale = candidate || fallbackLocale
 }
 
 export const i18n = createI18n({
   legacy: false,
+  globalInjection: true,
   locale,
   fallbackLocale,
-  globalInjection: true,
-  messages,
-});
+  messages
+})
 
 export default boot(({ app }) => {
-  app.use(i18n);
-});
+  app.use(i18n)
+})

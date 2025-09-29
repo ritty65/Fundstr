@@ -1,28 +1,23 @@
 <template>
-  <q-layout
-    view="lHh Lpr lFf"
-    :class="$q.dark.isActive ? 'bg-dark text-white' : 'bg-white text-dark'"
-    :style="navStyleVars"
-  >
-    <MainHeader />
-    <AppNavDrawer />
+    <q-layout
+      view="lHh Lpr lFf"
+      class="bg-surface-1 text-1"
+      :style="navStyleVars"
+    >
+    <MainHeader v-if="!route.meta.hideHeader" />
+    <AppNavDrawer v-if="!route.meta.hideHeader" />
     <q-page-container class="text-body1">
       <router-view />
     </q-page-container>
-    <PublishBar
-      v-if="loggedIn && showPublishBar"
-      :publishing="publishing"
-      @publish="publishFullProfile"
-    />
   </q-layout>
 </template>
 
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent, computed } from "vue";
+
 import { useRoute } from "vue-router";
 import MainHeader from "components/MainHeader.vue";
 import AppNavDrawer from "components/AppNavDrawer.vue";
-import PublishBar from "components/PublishBar.vue";
 import { useCreatorHub } from "src/composables/useCreatorHub";
 import { useQuasar } from "quasar";
 import { useUiStore } from "src/stores/ui";
@@ -34,12 +29,10 @@ export default defineComponent({
   components: {
     MainHeader,
     AppNavDrawer,
-    PublishBar,
   },
   setup() {
-    const { loggedIn, publishFullProfile, publishing } = useCreatorHub();
+    const { loggedIn } = useCreatorHub();
     const route = useRoute();
-    const showPublishBar = computed(() => route.path === "/creator-hub");
 
     const $q = useQuasar();
     const ui = useUiStore();
@@ -53,10 +46,8 @@ export default defineComponent({
 
     return {
       loggedIn,
-      publishFullProfile,
-      publishing,
-      showPublishBar,
       navStyleVars,
+      route,
     };
   },
 });

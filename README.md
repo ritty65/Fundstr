@@ -34,6 +34,12 @@ Think Patreon, but built for the Nostr ecosystem and leveraging the privacy and 
 4. **Manage Your Hub** – A future dashboard for tracking supporters, funding and content.
 5. **Build Your Community** – Connect with supporters using integrated Nostr DMs.
 
+### Publishing & Trusted Mints
+
+- Use the **Publish** button in the Creator Hub to atomically publish your profile bundle (kinds 0, 10002, 10019) and tier definitions (`kind:30000` with `d="tiers"`). The payment profile (kind 10019) includes a `tierAddr` field referencing your tier set (`30000:<pubkey>:tiers`). See [`docs/nutzap_profile.md`](docs/nutzap_profile.md) for the full schema.
+- Trusted mint URLs must begin with `http://` or `https://`; `wss://` endpoints are rejected.
+- If your trusted mint list is empty, supporters may pay from any mint.
+
 ## Key Features
 
 - **Seamless Cashu Wallet** – Mint, send and receive ecash.
@@ -85,6 +91,11 @@ Fundstr is currently in Alpha/Beta.
 - Informational learn cards explain the main app sections without leaving the page.
 - To change the default mint suggested during onboarding, set the `RECOMMENDED_MINT_URL` environment variable.
 
+### Onboarding tour startup
+
+- The tour boot now waits up to 5s for elements with `[data-tour]` using a `MutationObserver`.
+- If no targets appear, the `tourStarted` flag resets so the app can retry launching the tour on later navigation.
+
 **What's Working**
 
 - Core Cashu wallet functionality (send, receive, mint management)
@@ -108,6 +119,21 @@ Fundstr is currently in Alpha/Beta.
 
 - **Web/PWA**: visit your Fundstr URL
 - **Android/iOS**: use the store link or build instructions
+
+### Install Fundstr as a PWA
+
+Fundstr can be installed like a native app on browsers that support service workers (Chrome, Edge, Firefox for Android, Safari on iOS 16+). The site must be served over HTTPS so the service worker can register.
+
+- Click the **Install** button when it appears in the app header, or use your browser menu → **Add to Home Screen** / **Install App**.
+- Local build steps:
+
+  ```bash
+  pnpm install
+  pnpm dev                      # start dev server with service worker
+  pnpm dlx @quasar/cli build -m pwa
+  ```
+
+Troubleshooting: Some browsers block the `beforeinstallprompt` event. If no install prompt appears, ensure pop-ups aren't blocked, confirm you're not in private/incognito mode, or install manually through the browser menu.
 
 ### 2. For Supporters
 
@@ -230,30 +256,49 @@ returned.
 
 You can also override the relays used by the creator search. Set
 `cashu.settings.defaultNostrRelays` in local storage with an array of relay
-URLs. If not defined, the search falls back to the following list:
+URLs. If not defined, the search falls back to a short curated list defined in
+[`src/config/relays.ts`](src/config/relays.ts):
 
 ```
 wss://relay.damus.io/
-wss://relay.primal.net/
-wss://eden.nostr.land/
 wss://nos.lol/
-wss://nostr-pub.wellorder.net/
-wss://nostr.bitcoiner.social/
-wss://relay.nostr.band/
+wss://relay.primal.net/
 wss://relay.snort.social/
 ```
 
-### Verify Nutzap Profile
+You can edit that file to customise or extend the defaults for your own
+deployment.
 
-After publishing your `kind:10019` Nutzap profile, you can confirm that relays
-have received it. Run the helper script with your npub:
+### Sharing Creator Links
 
-```bash
-npx ts-node scripts/verifyNutzapProfile.ts <your-npub>
+You can share direct links to creator profiles by appending an `npub` query parameter to the search page:
+
+```
+/#/find-creators?npub=<npub>
 ```
 
-The script connects read-only to your configured relays and prints the fetched
-profile data so you can double-check the values.
+When opened, Fundstr automatically loads the profile for the provided `npub`. If the visitor hasn't logged in or set up a wallet yet, the app will prompt them to authenticate and choose a wallet before they can send support.
+
+### Nutzap Private Relay Verification
+
+After publishing from `/nutzap-profile`, run through this checklist to confirm the
+isolated relay flow:
+
+1. **Build & Typecheck** – `pnpm install` then `pnpm build` (or the equivalent npm commands).
+2. **Relay Smoke Tests** – ensure the dedicated relay is reachable:
+   ```bash
+   curl -sH 'Accept: application/nostr+json' https://relay.fundstr.me/ | jq .
+   curl -s 'https://relay.fundstr.me/req?filters=%5B%5D'
+   ```
+3. **Page Behaviour** – load `/nutzap-profile`, publish tiers and profile, and verify the
+   publish acknowledgements (`via=ws` or `via=http`). Block WebSockets to confirm the HTTP
+   fallback still succeeds.
+4. **CLI Verification** – confirm your `kind:10019` profile lives on the private relay only:
+   ```bash
+   npm run verify:nutzap <creator_hex_pubkey>
+   ```
+5. **Regression Guard** – spot-check other areas (feeds, chat, discovery) to ensure their relay
+   behaviour is unchanged.
 
 ## Contributing
 

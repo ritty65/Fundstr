@@ -33,6 +33,7 @@ export const useUiStore = defineStore("ui", {
     showMissingSignerModal: false,
     showNumericKeyboard: false,
     activityOrb: false,
+    offline: !navigator.onLine,
     tab: useLocalStorage("cashu.ui.tab", "history" as string),
     expandHistory: useLocalStorage("cashu.ui.expandHistory", true as boolean),
     expandProfileDetails: useLocalStorage(
@@ -49,6 +50,15 @@ export const useUiStore = defineStore("ui", {
     lastBalanceCached: useLocalStorage("cashu.ui.lastBalanceCached", 0),
   }),
   actions: {
+    initNetworkWatcher() {
+      this.offline = !navigator.onLine;
+      window.addEventListener('online', () => {
+        this.offline = false;
+      });
+      window.addEventListener('offline', () => {
+        this.offline = true;
+      });
+    },
     toggleMainNav() {
       this.mainNavOpen = !this.mainNavOpen;
     },

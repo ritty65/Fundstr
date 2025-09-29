@@ -18,7 +18,7 @@
     </q-toolbar>
   </q-header>
 </template>
-<script>
+<script>import windowMixin from 'src/mixins/windowMixin'
 import { defineComponent, ref } from "vue";
 
 export default defineComponent({

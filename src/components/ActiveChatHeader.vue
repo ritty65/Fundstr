@@ -1,5 +1,5 @@
 <template>
-  <div class="row items-center justify-between q-pt-xs q-pb-none q-px-sm">
+  <div class="column q-pt-xs q-pb-none q-px-sm">
     <div class="row items-center">
       <q-btn
         flat
@@ -8,6 +8,7 @@
         icon="payments"
         class="q-mr-sm"
         @click="openSendTokenDialog"
+        aria-label="Send token"
       />
       <template v-if="pubkey">
         <q-avatar size="md" class="q-mr-sm relative-position">
@@ -34,6 +35,7 @@
           icon="more_vert"
           class="q-ml-xs"
           @click="showProfileDialog = true"
+          aria-label="More options"
         />
         <q-btn
           flat
@@ -42,6 +44,7 @@
           icon="rss_feed"
           class="q-ml-xs"
           @click="openRelayDialog"
+          aria-label="Manage relays"
         />
         <ProfileInfoDialog
           v-model="showProfileDialog"
@@ -52,6 +55,13 @@
       <template v-else>
         <div class="text-grey-6">Select a conversation to start chatting.</div>
       </template>
+    </div>
+    <div
+      v-if="connectedRelayHosts.length"
+      class="text-caption text-2 ellipsis q-mt-xs"
+    >
+      Relays: {{ connectedRelayHosts.join(', ') }}
+      <q-tooltip>{{ connectedRelayHosts.join(', ') }}</q-tooltip>
     </div>
     <ChatSendTokenDialog
       ref="chatSendTokenDialogRef"
@@ -70,7 +80,7 @@ import { nip19 } from "nostr-tools";
 import ProfileInfoDialog from "./ProfileInfoDialog.vue";
 import RelayManagerDialog from "./RelayManagerDialog.vue";
 
-const props = defineProps<{ pubkey: string }>();
+const props = defineProps<{ pubkey: string; relays: { url: string; connected: boolean }[] }>();
 const nostr = useNostrStore();
 const messenger = useMessengerStore();
 const profile = ref<any>(null);
@@ -94,7 +104,7 @@ watch(
 const displayName = computed(() => {
   if (!props.pubkey) return "";
   const alias = messenger.aliases[props.pubkey];
-  if (alias) return alias;
+  if (typeof alias === "string") return alias;
   const p: any = profile.value;
   if (p?.display_name) return p.display_name;
   if (p?.name) return p.name;
@@ -106,7 +116,9 @@ const displayName = computed(() => {
 });
 
 const initials = computed(() => {
-  const name = displayName.value.trim();
+  const name = (typeof displayName.value === "string"
+    ? displayName.value
+    : "").trim();
   if (!name) return "";
   const parts = name.split(" ");
   if (parts.length >= 2) {
@@ -122,6 +134,18 @@ const relayManagerDialogRef = ref<InstanceType<
   typeof RelayManagerDialog
 > | null>(null);
 const showProfileDialog = ref(false);
+
+const connectedRelayHosts = computed(() =>
+  (props.relays || [])
+    .filter((r) => r.connected)
+    .map((r) => {
+      try {
+        return new URL(r.url).host;
+      } catch {
+        return r.url;
+      }
+    })
+);
 
 function openSendTokenDialog() {
   if (!props.pubkey) return;

@@ -195,6 +195,7 @@ export const useNutzapStore = defineStore("nutzap", {
       creatorAvatar,
       frequency,
       intervalDays,
+      trustedMints = [],
     }: SubscribeTierOptions): Promise<boolean> {
       intervalDays =
         intervalDays ??
@@ -219,11 +220,20 @@ export const useNutzapStore = defineStore("nutzap", {
       const lockedTokens: DexieLockedToken[] = [];
 
       for (let i = 0; i < periods; i++) {
-        const unlockDate = calcUnlock(startDate, i, intervalDays, frequency as SubscriptionFrequency);
-        const mint = wallet.findSpendableMint(price);
+        const unlockDate = calcUnlock(
+          startDate,
+          i,
+          intervalDays,
+          frequency as SubscriptionFrequency,
+        );
+        const mint = trustedMints.length
+          ? wallet.findSpendableMint(price, trustedMints)
+          : wallet.findSpendableMint(price);
         if (!mint)
           throw new Error(
-            "Insufficient balance in a mint that the creator trusts.",
+            trustedMints.length
+              ? "No balance on creator-trusted mints. Move or swap funds to a trusted mint, or ask the creator to accept your mint."
+              : "Insufficient balance",
           );
         const { sendProofs, locked } = await useP2PKStore().sendToLock(
           price,

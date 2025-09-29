@@ -165,13 +165,17 @@ export const messages = {
           title: "Fundstr's Creator",
           caption: "primal.net/KalonAxiarch",
         },
+        fundstrNostr: {
+          title: "Fundstr Nostr",
+          caption: "primal.net/fundstr",
+        },
         cashuSpace: {
           title: "Cashu.space",
           caption: "cashu.space",
         },
         github: {
           title: "Github",
-          caption: "github.com/cashubtc",
+          caption: "github.com/ritty65/Fundstr",
         },
         telegram: {
           title: "Telegram",
@@ -503,6 +507,10 @@ export const messages = {
         show_onboarding: {
           button: "Show onboarding",
           description: "Show the onboarding screen again.",
+        },
+        reset_onboarding: {
+          button: "Reset onboarding",
+          description: "Clear onboarding status for this browser.",
         },
         reset_wallet: {
           button: "Reset wallet data",

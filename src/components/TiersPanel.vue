@@ -38,6 +38,7 @@ import TierCard from "./TierCard.vue";
 import { useCreatorHubStore } from "stores/creatorHub";
 import type { Tier } from "stores/types";
 import { v4 as uuidv4 } from "uuid";
+import { Dialog } from "quasar";
 
 const store = useCreatorHubStore();
 const deleteDialog = ref(false);
@@ -54,6 +55,13 @@ watch(
 
 function updateOrder() {
   store.setTierOrder(draggableTiers.value.map((t) => t.id));
+  Dialog.create({
+    title: "Publish tiers",
+    message: "Tier order changed. Publish tiers now?",
+    cancel: true,
+  }).onOk(async () => {
+    await store.publishTierDefinitions();
+  });
 }
 
 function addTier() {

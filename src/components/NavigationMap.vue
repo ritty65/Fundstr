@@ -4,20 +4,21 @@
       v-model="mode"
       align="center"
       dense
-      class="mb-6"
+      class="mb-6 md:hidden"
       aria-label="Toggle between fan and creator modes"
       :active-color="mode === 'fan' ? 'accent' : 'primary'"
       :indicator-color="mode === 'fan' ? 'accent' : 'primary'"
+      :indicator-style="{ height: '3px' }"
     >
       <q-tab name="fan" label="Fan" :aria-selected="mode === 'fan'" />
       <q-tab name="creator" label="Creator" :aria-selected="mode === 'creator'" />
     </q-tabs>
-    <q-list class="accordion">
+    <q-list class="accordion grid md:grid-cols-2 gap-4">
       <q-expansion-item
         v-for="(item, idx) in items"
         :key="item.id"
-        :label="item.menuItem"
-        :icon="item.icon"
+        :label="item.iconComponent ? void 0 : item.menuItem"
+        :icon="item.iconComponent ? void 0 : item.icon"
         group="navigation"
         class="border-b accordion-item"
         :class="{ open: openIndex === idx }"
@@ -26,7 +27,17 @@
         expand-icon="keyboard_arrow_down"
         expanded-icon="keyboard_arrow_down"
       >
-        <div class="px-4 pb-4 text-sm">
+        <template v-if="item.iconComponent" #header>
+          <q-item-section avatar>
+            <component
+              :is="item.iconComponent"
+              class="themed-icon nav-map-icon"
+              aria-hidden="true"
+            />
+          </q-item-section>
+          <q-item-section>{{ item.menuItem }}</q-item-section>
+        </template>
+        <div class="px-4 pb-4 text-sm md:grid md:grid-cols-2 md:gap-4">
           <div class="fan-content">
             <h4 class="font-semibold mb-2">{{ $t('AboutPage.navigation.fanPerspective') }}</h4>
             <p>{{ item.fanText }}</p>
@@ -74,10 +85,12 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.fan-mode .creator-content {
-  display: none;
-}
-.creator-mode .fan-content {
-  display: none;
+@media (max-width: 767px) {
+  .fan-mode .creator-content {
+    display: none;
+  }
+  .creator-mode .fan-content {
+    display: none;
+  }
 }
 </style>

@@ -5,6 +5,7 @@
       'fullscreen text-center q-pa-md flex flex-center',
     ]"
   >
+    <ThemeToggle class="absolute-top-right q-ma-md" />
     <div>
       <div class="text-h3">{{ $t("AlreadyRunning.title") }}</div>
       <div class="text-h5 q-ma-lg text-grey">
@@ -25,8 +26,10 @@
 
 <script>
 import { defineComponent } from "vue";
+import ThemeToggle from "components/ThemeToggle.vue";
 
 export default defineComponent({
   name: "AlreadyRunning",
+  components: { ThemeToggle },
 });
 </script>

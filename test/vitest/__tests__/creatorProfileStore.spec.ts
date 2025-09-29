@@ -35,7 +35,7 @@ describe("CreatorProfileStore isDirty", () => {
     expect(store.isDirty).toBe(true);
     store.markClean();
 
-    store.mints = ["m1", "m2"];
+    store.mints = ["m2"];
     expect(store.isDirty).toBe(true);
     store.markClean();
 

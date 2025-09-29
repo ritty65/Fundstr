@@ -22,7 +22,8 @@ export const LOCAL_STORAGE_KEYS = {
   CASHU_MIGRATIONS_VERSION: "cashu.migrations.version",
   CASHU_MINTS: "cashu.mints",
   CASHU_MNEMONIC: "cashu.mnemonic",
-  CASHU_NDK_LASTEVENTTIMESTAMP: "cashu.ndk.lastEventTimestamp",
+  CASHU_NDK_NIP04_LASTEVENTTIMESTAMP: "cashu.ndk.nip04.lastEventTimestamp",
+  CASHU_NDK_NIP17_LASTEVENTTIMESTAMP: "cashu.ndk.nip17.lastEventTimestamp",
   CASHU_NDK_MINTRECOMMENDATIONS: "cashu.ndk.mintRecommendations",
   CASHU_NDK_NIP17EVENTIDSWEHAVESEEN: "cashu.ndk.nip17EventIdsWeHaveSeen",
   CASHU_NDK_NIP46TOKEN: "cashu.ndk.nip46Token",
@@ -88,7 +89,6 @@ export const LOCAL_STORAGE_KEYS = {
   CASHU_WORKER_INVOICES_LASTPENDINGINVOICECHECK:
     "cashu.worker.invoices.lastPendingInvoiceCheck",
   CASHU_WORKER_INVOICES_QUOTESQUEUE: "cashu.worker.invoices.quotesQueue",
-  CREATORHUB_LOGGEDINNPUB: "creatorHub.loggedInNpub",
   CREATORHUB_TIERORDER: "creatorHub.tierOrder",
   CREATORHUB_TIERS: "creatorHub.tiers",
   CREATORPROFILE_ABOUT: "creatorProfile.about",
@@ -97,4 +97,9 @@ export const LOCAL_STORAGE_KEYS = {
   CREATORPROFILE_PICTURE: "creatorProfile.picture",
   CREATORPROFILE_PUBKEY: "creatorProfile.pubkey",
   CREATORPROFILE_RELAYS: "creatorProfile.relays",
+  FIRST_RUN_DONE: "fundstr:firstRunDone",
+  FUNDSTR_BROWSER_ID: "fundstr:browserId",
+  DONATION_OPT_OUT: "fundstr:donationOptOut",
+  DONATION_LAST_PROMPT: "fundstr:lastDonationPromptTime",
+  DONATION_LAUNCH_COUNT: "fundstr:donationLaunchCount",
 } as const;

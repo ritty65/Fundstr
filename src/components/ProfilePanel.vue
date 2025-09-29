@@ -5,7 +5,11 @@
       <q-btn color="primary" :disable="!isDirty" @click="saveProfile"
         >Save Changes</q-btn
       >
-      <q-btn color="primary" outline :disable="!isDirty" @click="publishProfile"
+      <q-btn
+        color="primary"
+        outline
+        :disable="publishing || !hasSigner || !hasAnyRelay || !isDirty"
+        @click="publishProfile"
         >Publish Profile</q-btn
       >
     </div>
@@ -13,7 +17,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import CreatorProfileForm from "./CreatorProfileForm.vue";
 import { useCreatorHubStore } from "stores/creatorHub";
 import { useCreatorProfileStore } from "stores/creatorProfile";
@@ -24,7 +28,7 @@ import {
 } from "stores/nostr";
 import { useMintsStore } from "stores/mints";
 import { storeToRefs } from "pinia";
-import { notifySuccess, notifyError } from "src/js/notify";
+import { notifySuccess, notifyError, notifyWarning } from "src/js/notify";
 
 const hub = useCreatorHubStore();
 const profileStore = useCreatorProfileStore();
@@ -41,9 +45,22 @@ const {
   isDirty,
 } = storeToRefs(profileStore);
 
+const publishing = ref(false);
+const hasSigner = computed(() => !!nostr.signer);
+const hasAnyRelay = computed(() => profileRelays.value.length > 0);
+
 async function publishProfile() {
+  if (!hasSigner.value) {
+    notifyError("You need to connect a Nostr signer before publishing your profile");
+    return;
+  }
+  if (!hasAnyRelay.value) {
+    notifyError("Add at least one Nostr relay before publishing your profile");
+    return;
+  }
+  publishing.value = true;
   try {
-    await publishDiscoveryProfile({
+    const { ids, byRelay } = await publishDiscoveryProfile({
       profile: {
         display_name: display_name.value,
         picture: picture.value,
@@ -53,7 +70,19 @@ async function publishProfile() {
       mints: profileMints.value,
       relays: profileRelays.value,
     });
-    notifySuccess("Profile updated");
+    const failedRelays = byRelay.filter((r) => !r.ok).map((r) => r.url);
+    console.debug('Profile publish ok', {
+      ids,
+      relays: profileRelays.value,
+      failedRelays,
+    });
+    if (failedRelays.length) {
+      notifyWarning(
+        `Published but some relays failed: ${failedRelays.join(", ")}`,
+      );
+    } else {
+      notifySuccess("Profile updated");
+    }
     profileStore.markClean();
   } catch (e: any) {
     if (e instanceof PublishTimeoutError) {
@@ -61,6 +90,9 @@ async function publishProfile() {
     } else {
       notifyError(e?.message || "Failed to publish profile");
     }
+    console.warn('Profile publish failed', e);
+  } finally {
+    publishing.value = false;
   }
 }
 

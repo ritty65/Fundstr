@@ -16,6 +16,7 @@
       </q-card-section>
       <q-card-actions vertical class="q-gutter-sm">
         <q-btn color="primary" @click="submitKey">Use Key</q-btn>
+        <q-btn color="primary" @click="useNip07">Use NIP-07</q-btn>
         <q-btn flat color="primary" @click="createIdentity"
           >Create Identity</q-btn
         >
@@ -26,7 +27,8 @@
 
 <script lang="ts">
 import { defineComponent, ref, computed } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
+import { useCreatorHubStore } from "stores/creatorHub";
 import { useNostrStore } from "stores/nostr";
 import { generateSecretKey, nip19 } from "nostr-tools";
 import { hexToBytes } from "@noble/hashes/utils";
@@ -35,9 +37,17 @@ export default defineComponent({
   name: "NostrLogin",
   setup() {
     const nostr = useNostrStore();
+    const creatorHubStore = useCreatorHubStore();
     const key = ref(nostr.activePrivateKeyNsec || nostr.privKeyHex || "");
     const hasExistingKey = computed(() => !!key.value);
     const router = useRouter();
+    const route = useRoute();
+    const redirect =
+      typeof route.query.redirect === "string"
+        ? decodeURIComponent(route.query.redirect)
+        : undefined;
+    const tierId =
+      typeof route.query.tierId === "string" ? route.query.tierId : undefined;
 
     const normalizeKey = (input: string): string => {
       const trimmed = input.trim();
@@ -49,18 +59,44 @@ export default defineComponent({
 
     const submitKey = async () => {
       if (!key.value.trim()) return;
-      await nostr.initPrivateKeySigner(normalizeKey(key.value));
-      if (nostr.pubkey) router.push("/wallet");
+      await nostr.updateIdentity(normalizeKey(key.value));
+      if (!nostr.hasIdentity) return;
+      if (redirect) {
+        router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
+      } else {
+        router.replace("/wallet");
+      }
     };
 
     const createIdentity = async () => {
       const sk = generateSecretKey();
       const nsec = nip19.nsecEncode(sk);
-      await nostr.initPrivateKeySigner(nsec);
-      if (nostr.pubkey) router.push("/wallet");
+      await nostr.updateIdentity(nsec);
+      if (!nostr.hasIdentity) return;
+      if (redirect) {
+        router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
+      } else {
+        router.replace("/wallet");
+      }
     };
 
-    return { key, hasExistingKey, submitKey, createIdentity };
+    const useNip07 = async () => {
+      const available = await nostr.checkNip07Signer(true);
+      if (!available) return;
+      try {
+        await nostr.connectBrowserSigner();
+        await creatorHubStore.login();
+        if (redirect) {
+          router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
+        } else {
+          router.replace("/wallet");
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    return { key, hasExistingKey, submitKey, createIdentity, useNip07 };
   },
 });
 </script>

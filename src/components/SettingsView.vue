@@ -1537,12 +1537,12 @@
                       >
                     </div>
                   </div>
-                </q-item-section>
-              </q-item>
-              <q-item>
-                <q-item-section>
-                  <div class="row">
-                    <q-btn
+              </q-item-section>
+            </q-item>
+            <q-item>
+              <q-item-section>
+                <div class="row">
+                  <q-btn
                       dense
                       flat
                       outline
@@ -1672,26 +1672,6 @@
               <q-item>
                 <q-item-section>
                   <div class="row">
-                    <q-btn dense flat outline click @click="showOnboarding">
-                      {{
-                        $t("Settings.advanced.developer.show_onboarding.button")
-                      }}
-                    </q-btn>
-                  </div>
-                  <div class="row">
-                    <q-item-label class="q-px-sm" caption
-                      >{{
-                        $t(
-                          "Settings.advanced.developer.show_onboarding.description",
-                        )
-                      }}
-                    </q-item-label>
-                  </div>
-                </q-item-section>
-              </q-item>
-              <q-item>
-                <q-item-section>
-                  <div class="row">
                     <q-btn
                       v-if="!confirmNuke"
                       dense
@@ -1779,9 +1759,10 @@
   <!-- NWC DIALOG -->
   <NWCDialog v-model="showNWCDialog" />
 </template>
-<script lang="ts">
+<script lang="ts">import windowMixin from 'src/mixins/windowMixin'
 import { debug } from "src/js/logger";
-import { defineComponent } from "vue";
+
+import { defineComponent, watch } from "vue";
 import { useClipboard } from "src/composables/useClipboard";
 import P2PKDialog from "./P2PKDialog.vue";
 import NWCDialog from "./NWCDialog.vue";
@@ -1805,7 +1786,6 @@ import { usePRStore } from "../stores/payment-request";
 import { useRestoreStore } from "src/stores/restore";
 import { useDexieStore } from "../stores/dexie";
 import { useReceiveTokensStore } from "../stores/receiveTokensStore";
-import { useWelcomeStore } from "src/stores/welcome";
 import { useStorageStore } from "src/stores/storage";
 import { useI18n } from "vue-i18n";
 
@@ -2016,6 +1996,10 @@ export default defineComponent({
       this.$q.dark.toggle();
       this.$q.localStorage.set("cashu.darkMode", this.$q.dark.isActive);
     },
+    changeColor: function (newValue) {
+      document.body.setAttribute("data-theme", newValue);
+      this.$q.localStorage.set("cashu.theme", newValue);
+    },
     unsetAllReservedProofs: async function () {
       // mark all this.proofs as reserved=false
       const proofsStore = useProofsStore();
@@ -2114,11 +2098,6 @@ export default defineComponent({
       await this.resetNip46Signer();
       await this.generateNPCConnection();
     },
-    showOnboarding: function () {
-      const store = useWelcomeStore();
-      store.welcomeCompleted = false;
-      this.$router.push("/welcome?first=1");
-    },
     nukeWallet: async function () {
       // create a backup just in case
       await this.exportWalletState();
@@ -2195,6 +2174,12 @@ export default defineComponent({
   created: async function () {
     this.nip07SignerAvailable = await this.checkNip07Signer();
     debug("Nip07 signer available", this.nip07SignerAvailable);
+    watch(
+      () => useNostrStore().pubkey,
+      async () => {
+        this.nip07SignerAvailable = await this.checkNip07Signer();
+      },
+    );
     // Set the initial selected language based on the current locale
     const currentLocale =
       this.$i18n.locale === "en" ? "en-US" : this.$i18n.locale;

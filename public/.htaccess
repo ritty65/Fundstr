@@ -1,0 +1,17 @@
+<IfModule mod_rewrite.c>
+  Options -MultiViews
+  RewriteEngine On
+
+  # Never rewrite static assets
+  RewriteRule ^assets/ - [L]
+
+  # SPA fallback only if not a real file/dir
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.html [QSA,L]
+</IfModule>
+
+<IfModule mod_mime.c>
+  AddType application/javascript .js .mjs
+  AddType application/wasm .wasm
+</IfModule>
