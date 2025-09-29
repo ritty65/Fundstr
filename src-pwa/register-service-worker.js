@@ -1,35 +1,22 @@
 import { register } from "register-service-worker";
 
-// Vite-compatible: 'import.meta.env.PROD' instead of process.env.NODE_ENV === 'production'
 if (import.meta.env.PROD) {
-  register("/sw.js", {
-    ready() {
-      console.log("[PWA] App is being served from cache by a service worker.");
-    },
-    registered() {
-      console.log("[PWA] Service worker has been registered.");
-    },
-    cached() {
-      console.log("[PWA] Content has been cached for offline use.");
-    },
-    updatefound() {
-      console.log("[PWA] New content is downloading.");
-    },
-    updated(registration) {
-      console.log("[PWA] New content is available; refreshing...");
-      // Simple strategy: refresh when a new SW takes control
-      if (registration && registration.waiting) {
-        registration.waiting.postMessage({ type: "SKIP_WAITING" });
-      }
+  const base = window.location.origin + import.meta.env.BASE_URL;
+  const version = (import.meta.env.VITE_BUILD_ID || Date.now().toString());
+  const swUrl = new URL(`sw.js?v=${encodeURIComponent(version)}`, base).toString();
+
+  register(swUrl, {
+    registrationOptions: { scope: import.meta.env.BASE_URL },
+    ready() { console.log("[PWA] ready"); },
+    registered() { console.log("[PWA] registered", swUrl); },
+    cached() { console.log("[PWA] cached"); },
+    updatefound() { console.log("[PWA] update found"); },
+    updated(reg) {
+      console.log("[PWA] updated, forcing activation");
+      if (reg && reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
       window.location.reload();
     },
-    offline() {
-      console.log(
-        "[PWA] No internet connection found. App is running in offline mode.",
-      );
-    },
-    error(error) {
-      console.error("[PWA] Error during service worker registration:", error);
-    },
+    offline() { console.log("[PWA] offline"); },
+    error(e) { console.error("[PWA] registration error", e); },
   });
 }
