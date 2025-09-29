@@ -1,5 +1,5 @@
 <template>
-  <div class="find-creators-wrapper">
+  <QPage class="find-creators-wrapper">
     <NostrRelayErrorBanner />
     <iframe
       ref="iframeEl"
@@ -128,7 +128,7 @@
         </QCardSection>
       </QCard>
     </QDialog>
-  </div>
+  </QPage>
 </template>
 
 <script setup lang="ts">
@@ -163,6 +163,7 @@ import {
   QBtn,
   QBanner,
   QSeparator,
+  QPage,
   useQuasar,
 } from "quasar";
 import { nip19 } from "nostr-tools";
@@ -587,7 +588,10 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .find-creators-wrapper {
-  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
   padding: 0;
   margin: 0;
 }
@@ -595,7 +599,8 @@ onBeforeUnmount(() => {
 .find-creators-frame {
   border: none;
   width: 100%;
-  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .tier-dialog {
