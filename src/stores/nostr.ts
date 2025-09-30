@@ -77,6 +77,7 @@ import {
   NUTZAP_TIERS_KIND,
 } from "src/nutzap/relayConfig";
 import { mapInternalTierToWire } from "src/nostr/tiers";
+import { buildKind10019NutzapProfile } from "src/nostr/builders";
 import { NutzapProfileSchema, type NutzapProfilePayload } from "src/nostr/nutzapProfile";
 
 // --- Relay connectivity helpers ---
@@ -1078,18 +1079,20 @@ export async function publishDiscoveryProfile(opts: {
 
   // --- 3. Prepare Kind 10019 (Nutzap/Payment Profile) ---
   const kind10019Event = new NDKEvent(ndk);
-  kind10019Event.kind = 10019;
-  kind10019Event.tags = [
-    ["t", "nutzap-profile"],
-    ["client", "fundstr"],
-  ];
   const npBody: NutzapProfilePayload = {
     p2pk: ensureCompressed(opts.p2pkPub),
     mints: opts.mints,
     relays: opts.relays,
   };
   if (opts.tierAddr) npBody.tierAddr = opts.tierAddr;
-  kind10019Event.content = JSON.stringify({ v: 1, ...npBody });
+  const kind10019Payload = buildKind10019NutzapProfile(
+    nostr.pubkey,
+    npBody,
+    opts.profile,
+  );
+  kind10019Event.kind = kind10019Payload.kind;
+  kind10019Event.tags = kind10019Payload.tags;
+  kind10019Event.content = kind10019Payload.content;
   kind10019Event.created_at = now;
 
   const eventsToPublish = [kind0Event, kind10002Event, kind10019Event];

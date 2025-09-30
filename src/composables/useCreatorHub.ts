@@ -619,12 +619,16 @@ export function useCreatorHub() {
       kind10002.created_at = createdAt;
       const kind10019 = new NDKEvent(
         ndkConn,
-        buildKind10019NutzapProfile(nostr.pubkey, {
-          p2pk: payload.p2pkPub,
-          mints: payload.mints,
-          relays,
-          tierAddr: payload.tierAddr,
-        }),
+        buildKind10019NutzapProfile(
+          nostr.pubkey,
+          {
+            p2pk: payload.p2pkPub,
+            mints: payload.mints,
+            relays,
+            tierAddr: payload.tierAddr,
+          },
+          payload.profile,
+        ),
       );
       kind10019.created_at = createdAt;
 
