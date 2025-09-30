@@ -174,9 +174,18 @@ export function useCreatorHub() {
   const relayAttemptTimestamps = new Map<string, number>();
   const RELAY_RETRY_COOLDOWN_MS = 30_000;
 
-  async function connectCreatorRelays(relays: string[]) {
-    let unique = sanitizeRelayUrls(relays).slice(0, MAX_RELAYS);
+  async function connectCreatorRelays(
+    relays: string[],
+  ): Promise<{ ndk: NDK | null; relays: string[] } | null> {
+    let unique = sanitizeRelayUrls(relays, MAX_RELAYS * 2);
     if (!unique.length) return null;
+    if (!unique.includes(REQUIRED_FUNDSTR_RELAY)) {
+      const capacity = Math.max(MAX_RELAYS - 1, 0);
+      unique = capacity > 0 ? unique.slice(0, capacity) : [];
+      unique.push(REQUIRED_FUNDSTR_RELAY);
+    }
+    unique = unique.slice(0, MAX_RELAYS);
+    const withRequired = unique.slice();
     const nowTs = Date.now();
     // skip relays we recently tried or that failed
     unique = unique.filter((url) => {
@@ -185,18 +194,41 @@ export function useCreatorHub() {
       return !nostr.failedRelays.includes(url);
     });
     if (!unique.length) return null;
-    if (connecting.value) return ndkRef.value;
-    unique = (await filterHealthyRelays(unique)).slice(0, MAX_RELAYS);
+    const ensureRequired = (urls: string[]) => {
+      const cleaned = sanitizeRelayUrls(urls, MAX_RELAYS * 2);
+      if (!cleaned.length) return cleaned;
+      if (cleaned.includes(REQUIRED_FUNDSTR_RELAY)) {
+        return cleaned.slice(0, MAX_RELAYS);
+      }
+      if (!withRequired.includes(REQUIRED_FUNDSTR_RELAY)) {
+        return cleaned.slice(0, MAX_RELAYS);
+      }
+      const capacity = Math.max(MAX_RELAYS - 1, 0);
+      const trimmed = capacity > 0 ? cleaned.slice(0, capacity) : [];
+      trimmed.push(REQUIRED_FUNDSTR_RELAY);
+      return trimmed.slice(0, MAX_RELAYS);
+    };
+
+    if (connecting.value) {
+      const existingNdk = ndkRef.value ?? (await useNdk());
+      const activeRelays = ensureRequired(
+        nostr.relays.length ? nostr.relays : unique,
+      );
+      return { ndk: existingNdk, relays: activeRelays };
+    }
+
+    unique = ensureRequired(await filterHealthyRelays(unique));
     if (!unique.length) return null;
     if (unique.join() === nostr.relays.join() && nostr.connected) {
-      ndkRef.value = await useNdk();
-      return ndkRef.value;
+      const ndk = await useNdk();
+      ndkRef.value = ndk;
+      return { ndk, relays: unique };
     }
     connecting.value = true;
     try {
       unique.forEach((url) => relayAttemptTimestamps.set(url, nowTs));
       ndkRef.value = await nostr.connect(unique);
-      return ndkRef.value;
+      return { ndk: ndkRef.value, relays: unique };
     } finally {
       connecting.value = false;
     }
@@ -610,9 +642,9 @@ export function useCreatorHub() {
       fallbackUsed.value = usedFallback;
       debug("creatorHub:publishing:relays", { targets: targets.length, fallback: usedFallback.length });
 
-      const ndkConn = await connectCreatorRelays(targets);
-      if (!ndkConn) throw new Error("Unable to connect to Nostr relays");
-      const relays = targets;
+      const connection = await connectCreatorRelays(targets);
+      if (!connection?.ndk) throw new Error("Unable to connect to Nostr relays");
+      const { ndk: ndkConn, relays } = connection;
 
       let createdAt = Math.floor(Date.now() / 1000);
       const trustedMs = await getTrustedTime(ndkConn, relays);
