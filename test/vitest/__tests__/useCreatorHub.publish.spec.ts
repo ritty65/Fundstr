@@ -99,7 +99,10 @@ vi.mock("stores/ndkBoot", () => ({
   useNdkBootStore: () => ({ whenReady: vi.fn(async () => undefined) }),
 }));
 
-const fundstrRelayClientMock = vi.hoisted(() => ({ connect: vi.fn() }));
+const fundstrRelayClientMock = vi.hoisted(() => ({
+  connect: vi.fn(),
+  publish: vi.fn(),
+}));
 
 vi.mock("src/nutzap/relayClient", () => ({
   fundstrRelayClient: fundstrRelayClientMock,
@@ -167,6 +170,20 @@ const MockNDKEvent = vi.hoisted(
       rawEvent() {
         return this.event;
       }
+      async toNostrEvent() {
+        return {
+          id: this.event?.id ?? `${this.event?.kind ?? 0}-id`,
+          pubkey: "nostr-pub",
+          created_at:
+            this.created_at !== undefined
+              ? this.created_at
+              : Math.floor(Date.now() / 1000),
+          kind: this.event?.kind ?? 0,
+          tags: Array.isArray(this.event?.tags) ? this.event.tags : [],
+          content: this.event?.content ?? "",
+          sig: "sig",
+        };
+      }
     },
 );
 
@@ -198,9 +215,28 @@ describe("publishProfileBundle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     filterHealthyRelaysMock.mockImplementation(async (relays: string[]) => relays);
+    selectPublishRelaysMock.mockImplementation(() => ({
+      targets: ["wss://relay"],
+      usedFallback: [],
+    }));
+    publishToRelaysWithAcksMock.mockImplementation(async (_ndk: any, _event: any, relays: string[]) => ({
+      perRelay: relays.map((url) => ({ relay: url, status: "ok" })),
+    }));
     profileStoreMock.pubkey = "";
     profileStoreMock.relays = ["wss://relay"];
     profileStoreMock.mints = ["mint1"];
+    fundstrRelayClientMock.publish.mockResolvedValue({
+      ack: { id: "id", accepted: true, via: "websocket" },
+      event: {
+        id: "id",
+        pubkey: "nostr-pub",
+        created_at: Math.floor(Date.now() / 1000),
+        kind: 0,
+        tags: [],
+        content: "",
+        sig: "sig",
+      },
+    });
   });
 
   it("uses the profile pubkey when publishing", async () => {
@@ -257,6 +293,60 @@ describe("publishProfileBundle", () => {
     const [, payload] = buildKind10019NutzapProfileMock.mock.calls.at(-1)!;
     expect(payload.relays).toEqual(["wss://relay.fundstr.me"]);
     expect(publishToRelaysWithAcksMock).toHaveBeenCalled();
+    expect(vm.publishReport.anySuccess).toBe(true);
+
+    wrapper.unmount();
+  });
+
+  it("counts Fundstr HTTP fallback ack as success when websocket publish fails", async () => {
+    profileStoreMock.pubkey = "creator-pub";
+    profileStoreMock.relays = [
+      "wss://relay.fundstr.me",
+      "wss://relay.other",
+    ];
+    selectPublishRelaysMock.mockReturnValueOnce({
+      targets: ["wss://relay.fundstr.me", "wss://relay.other"],
+      usedFallback: [],
+    });
+    fundstrRelayClientMock.publish.mockResolvedValueOnce({
+      ack: { id: "fundstr", accepted: true, via: "http" },
+      event: {
+        id: "fundstr",
+        pubkey: "nostr-pub",
+        created_at: Math.floor(Date.now() / 1000),
+        kind: 0,
+        tags: [],
+        content: "",
+        sig: "sig",
+      },
+    });
+    publishToRelaysWithAcksMock.mockImplementation(async (_ndk: any, _event: any, relays: string[]) => ({
+      perRelay: relays.map((url) =>
+        url === "wss://relay.fundstr.me"
+          ? { relay: url, status: "timeout" }
+          : { relay: url, status: "ok" },
+      ),
+    }));
+
+    const TestComponent = defineComponent({
+      setup() {
+        return useCreatorHub();
+      },
+      template: "<div />",
+    });
+
+    const wrapper = mount(TestComponent);
+    const vm: any = wrapper.vm;
+    await nextTick();
+
+    await vm.publishProfileBundle();
+
+    expect(fundstrRelayClientMock.publish).toHaveBeenCalled();
+    const fundstrResult = vm.publishReport.byRelay.find(
+      (r: any) => r.url === "wss://relay.fundstr.me",
+    );
+    expect(fundstrResult?.ack).toBe(true);
+    expect(fundstrResult?.ok).toBe(true);
     expect(vm.publishReport.anySuccess).toBe(true);
 
     wrapper.unmount();
