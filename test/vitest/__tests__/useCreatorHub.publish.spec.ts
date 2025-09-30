@@ -110,8 +110,12 @@ vi.mock("src/utils/relay", () => ({
   sanitizeRelayUrls: (relays: string[]) => relays,
 }));
 
+const filterHealthyRelaysMock = vi.hoisted(() =>
+  vi.fn(async (relays: string[]) => relays),
+);
+
 vi.mock("src/utils/relayHealth", () => ({
-  filterHealthyRelays: async (relays: string[]) => relays,
+  filterHealthyRelays: filterHealthyRelaysMock,
 }));
 
 vi.mock("src/utils/time", () => ({
@@ -193,6 +197,7 @@ import { useCreatorHub } from "../../../src/composables/useCreatorHub";
 describe("publishProfileBundle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    filterHealthyRelaysMock.mockImplementation(async (relays: string[]) => relays);
     profileStoreMock.pubkey = "";
     profileStoreMock.relays = ["wss://relay"];
     profileStoreMock.mints = ["mint1"];
@@ -217,6 +222,42 @@ describe("publishProfileBundle", () => {
     expect(payload.p2pk).toBe("non-first-key");
     expect(publishToRelaysWithAcksMock).toHaveBeenCalledTimes(3);
     expect(notifyError).not.toHaveBeenCalled();
+
+    wrapper.unmount();
+  });
+
+  it("marks publish as successful when only the Fundstr relay is healthy", async () => {
+    profileStoreMock.pubkey = "creator-pub";
+    profileStoreMock.relays = [
+      "wss://relay.other",
+      "wss://relay.fundstr.me",
+    ];
+    filterHealthyRelaysMock.mockImplementation(async (relays: string[]) =>
+      relays.filter((url) => url === "wss://relay.fundstr.me"),
+    );
+    selectPublishRelaysMock.mockReturnValueOnce({
+      targets: ["wss://relay.other", "wss://relay.fundstr.me"],
+      usedFallback: [],
+    });
+
+    const TestComponent = defineComponent({
+      setup() {
+        return useCreatorHub();
+      },
+      template: "<div />",
+    });
+
+    const wrapper = mount(TestComponent);
+    const vm: any = wrapper.vm;
+    await nextTick();
+
+    await vm.publishProfileBundle();
+
+    expect(buildKind10019NutzapProfileMock).toHaveBeenCalled();
+    const [, payload] = buildKind10019NutzapProfileMock.mock.calls.at(-1)!;
+    expect(payload.relays).toEqual(["wss://relay.fundstr.me"]);
+    expect(publishToRelaysWithAcksMock).toHaveBeenCalled();
+    expect(vm.publishReport.anySuccess).toBe(true);
 
     wrapper.unmount();
   });
