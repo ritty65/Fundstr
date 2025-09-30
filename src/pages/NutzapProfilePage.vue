@@ -134,106 +134,25 @@
           <q-tab-panels v-model="activeProfileStep" animated class="profile-panels">
             <q-tab-panel name="connect" class="profile-panel">
               <div class="panel-sections">
-                <section class="section-card connection-module">
-                  <div class="section-header">
-                    <div class="section-title text-subtitle1 text-weight-medium text-1">Connection</div>
-                    <div class="section-subtitle text-body2 text-2">
-                      Control the live WebSocket session used for publishing events and monitor relay activity.
-                    </div>
-                  </div>
-                  <div class="section-body column q-gutter-lg">
-                    <div class="connection-status column q-gutter-xs">
-                      <div class="status-indicators row items-center wrap q-gutter-sm">
-                        <RelayStatusIndicator class="connection-status-indicator" />
-                        <q-chip dense :color="relayStatusColor" text-color="white" class="status-chip">
-                          {{ relayStatusLabel }}
-                        </q-chip>
-                      </div>
-                      <div v-if="latestRelayActivity" class="latest-activity text-caption">
-                        <span class="text-2">Latest update:</span>
-                        <span class="text-weight-medium text-1">{{ latestRelayActivity.message }}</span>
-                        <span class="text-2">({{ formatActivityTime(latestRelayActivity.timestamp) }})</span>
-                      </div>
-                      <div v-else class="latest-activity text-caption text-2">No relay activity yet.</div>
-                    </div>
-
-                    <div class="connection-controls column q-gutter-sm">
-                      <q-input
-                        v-model="relayUrlInput"
-                        label="Relay URL"
-                        dense
-                        filled
-                        :disable="!relaySupported"
-                        autocomplete="off"
-                      />
-                      <div class="row items-center wrap q-gutter-sm">
-                        <q-btn
-                          color="primary"
-                          label="Connect"
-                          :disable="!relaySupported || !relayUrlInputValid"
-                          @click="handleRelayConnect"
-                        />
-                        <q-btn
-                          color="primary"
-                          outline
-                          label="Disconnect"
-                          :disable="!relaySupported || !relayIsConnected"
-                          @click="handleRelayDisconnect"
-                        />
-                        <q-toggle
-                          v-model="relayAutoReconnect"
-                          label="Auto reconnect"
-                          dense
-                          :disable="!relaySupported"
-                        />
-                      </div>
-                    </div>
-
-                    <div class="connection-activity column q-gutter-xs">
-                      <q-expansion-item
-                        dense
-                        expand-separator
-                        icon="history"
-                        label="Activity timeline"
-                        header-class="activity-expansion-header"
-                        :disable="!relayActivity.length"
-                      >
-                        <div v-if="relayActivityTimeline.length" class="activity-timeline column q-gutter-md q-mt-sm">
-                          <div
-                            v-for="entry in relayActivityTimeline"
-                            :key="entry.id"
-                            class="timeline-entry row no-wrap"
-                          >
-                            <div class="timeline-marker" :class="`timeline-marker--${entry.level}`"></div>
-                            <div class="timeline-content column q-gutter-xs">
-                              <div class="timeline-header row items-center q-gutter-sm">
-                                <span class="text-caption text-2">{{ formatActivityTime(entry.timestamp) }}</span>
-                                <q-badge :color="activityLevelColor(entry.level)" outline size="sm">
-                                  {{ entry.level }}
-                                </q-badge>
-                              </div>
-                              <div class="timeline-message text-body2 text-1">{{ entry.message }}</div>
-                              <div v-if="entry.context" class="timeline-context text-caption text-2">{{ entry.context }}</div>
-                            </div>
-                          </div>
-                          <div class="timeline-actions row justify-end">
-                            <q-btn
-                              flat
-                              label="Clear log"
-                              size="sm"
-                              :disable="!relayActivity.length"
-                              @click="clearRelayActivity"
-                            />
-                          </div>
-                        </div>
-                        <div v-else class="section-empty text-caption text-2 q-mt-sm">No relay activity yet.</div>
-                      </q-expansion-item>
-                      <div v-if="!relayActivity.length" class="text-caption text-2">
-                        Activity will appear once the relay connection initializes.
-                      </div>
-                    </div>
-                  </div>
-                </section>
+                <ConnectionPanel
+                  :status-label="relayStatusLabel"
+                  :status-color="relayStatusColor"
+                  :status-dot-class="relayStatusDotClass"
+                  :latest-activity="latestRelayActivity"
+                  :activity-timeline="relayActivityTimeline"
+                  :relay-url="relayUrlInput"
+                  :relay-url-valid="relayUrlInputValid"
+                  :relay-supported="relaySupported"
+                  :relay-is-connected="relayIsConnected"
+                  :relay-auto-reconnect="relayAutoReconnect"
+                  :format-activity-time="formatActivityTime"
+                  :activity-level-color="activityLevelColor"
+                  @update:relay-url="value => (relayUrlInput.value = value)"
+                  @update:auto-reconnect="value => (relayAutoReconnect.value = value)"
+                  @connect="handleRelayConnect"
+                  @disconnect="handleRelayDisconnect"
+                  @clear-activity="clearRelayActivity"
+                />
 
               <section class="section-card">
                 <div class="section-header">
@@ -362,151 +281,38 @@
 
             <q-tab-panel name="author" class="profile-panel">
               <div class="panel-sections">
-                <section class="section-card author-profile-card">
-                <div class="section-header">
-                  <div class="section-title text-subtitle1 text-weight-medium text-1">Author metadata</div>
-                  <div class="section-subtitle text-body2 text-2">
-                    Compose profile details that will be published alongside your tiers.
-                  </div>
-                </div>
-                <div class="section-body">
-                  <div class="nested-sections">
-                    <q-expansion-item
-                      v-model="identitySectionOpen"
-                      switch-toggle-side
-                      dense
-                      expand-separator
-                      class="nested-section"
-                    >
-                      <template #header>
-                        <div class="nested-header">
-                          <div class="nested-header__titles">
-                            <div class="nested-title text-body1 text-weight-medium text-1">Identity basics</div>
-                            <div class="nested-subtitle text-caption">
-                              Provide a display name and avatar for your payment profile (kind 10019).
-                              These are optional but help supporters recognize you.
-                            </div>
-                          </div>
-                          <q-chip
-                            dense
-                            size="sm"
-                            :color="identityBasicsComplete ? 'positive' : 'grey-6'"
-                            :text-color="identityBasicsComplete ? 'white' : 'black'"
-                            class="status-chip"
-                          >
-                            {{ identityBasicsComplete ? 'Added' : 'Optional' }}
-                          </q-chip>
-                        </div>
-                      </template>
-                      <div class="nested-section-body column q-gutter-md">
-                        <q-input v-model="displayName" label="Display Name" dense filled />
-                        <q-input v-model="pictureUrl" label="Picture URL" dense filled />
-                        <div class="text-caption text-2">
-                          Display name and picture are nice-to-have details, but leaving them blank
-                          won’t block publishing.
-                        </div>
-                      </div>
-                    </q-expansion-item>
-
-                    <q-expansion-item
-                      v-model="optionalMetadataSectionOpen"
-                      switch-toggle-side
-                      dense
-                      expand-separator
-                      class="nested-section"
-                    >
-                      <template #header>
-                        <div class="nested-header">
-                          <div class="nested-header__titles">
-                            <div class="nested-title text-body1 text-weight-medium text-1">Optional relay &amp; mint metadata</div>
-                            <div class="nested-subtitle text-caption">
-                              List trusted mints (required for publishing) and add optional relay hints.
-                            </div>
-                          </div>
-                          <q-chip
-                            dense
-                            size="sm"
-                            :color="optionalMetadataComplete ? 'positive' : 'warning'"
-                            :text-color="optionalMetadataComplete ? 'white' : 'black'"
-                            class="status-chip"
-                          >
-                            {{ optionalMetadataComplete ? 'Ready' : 'Required' }}
-                          </q-chip>
-                        </div>
-                      </template>
-                      <div class="nested-section-body column q-gutter-md">
-                        <q-input
-                          v-model="mintsText"
-                          type="textarea"
-                          label="Trusted Mints (one per line)"
-                          dense
-                          filled
-                          autogrow
-                        />
-                        <q-input
-                          v-model="relaysText"
-                          type="textarea"
-                          label="Relay Hints (optional, one per line)"
-                          dense
-                          filled
-                          autogrow
-                        />
-                      </div>
-                    </q-expansion-item>
-
-                    <q-expansion-item
-                      v-model="advancedEncryptionSectionOpen"
-                      switch-toggle-side
-                      dense
-                      expand-separator
-                      class="nested-section"
-                    >
-                      <template #header>
-                        <div class="nested-header">
-                          <div class="nested-header__titles">
-                            <div class="nested-title text-body1 text-weight-medium text-1">Advanced encryption</div>
-                            <div class="nested-subtitle text-caption">
-                              Generate or derive the P2PK pointer required for Nutzap payments.
-                            </div>
-                          </div>
-                          <q-chip
-                            dense
-                            size="sm"
-                            :color="advancedEncryptionComplete ? 'positive' : 'warning'"
-                            :text-color="advancedEncryptionComplete ? 'white' : 'black'"
-                            class="status-chip"
-                          >
-                            {{ advancedEncryptionComplete ? 'Ready' : 'Required' }}
-                          </q-chip>
-                        </div>
-                      </template>
-                      <div class="nested-section-body column q-gutter-md">
-                        <q-input
-                          v-model="p2pkPriv"
-                          label="P2PK Private Key (hex)"
-                          dense
-                          filled
-                          autocomplete="off"
-                        />
-                        <div class="row q-gutter-sm">
-                          <q-btn color="primary" label="Derive Public Key" @click="deriveP2pkPublicKey" />
-                          <q-btn color="primary" outline label="Generate Keypair" @click="generateP2pkKeypair" />
-                        </div>
-                        <q-input v-model="p2pkPub" label="P2PK Public Key" dense filled />
-                        <q-input
-                          :model-value="p2pkDerivedPub"
-                          label="Derived P2PK Public Key"
-                          type="textarea"
-                          dense
-                          filled
-                          readonly
-                          autogrow
-                        />
-                      </div>
-                    </q-expansion-item>
-                  </div>
-                </div>
-              </section>
+              <AuthorMetadataPanel
+                :display-name="displayName"
+                :picture-url="pictureUrl"
+                :mints-text="mintsText"
+                :relays-text="relaysText"
+                :p2pk-priv="p2pkPriv"
+                :p2pk-pub="p2pkPub"
+                :p2pk-derived-pub="p2pkDerivedPub"
+                :key-secret-hex="keySecretHex"
+                :key-nsec="keyNsec"
+                :key-public-hex="keyPublicHex"
+                :key-npub="keyNpub"
+                :key-import-value="keyImportValue"
+                :using-store-identity="usingStoreIdentity"
+                :connected-identity-summary="connectedIdentitySummary"
+                :identity-basics-complete="identityBasicsComplete"
+                :optional-metadata-complete="optionalMetadataComplete"
+                :advanced-encryption-complete="advancedEncryptionComplete"
+                :advanced-key-management-open="advancedKeyManagementOpen"
+                @update:display-name="value => (displayName.value = value)"
+                @update:picture-url="value => (pictureUrl.value = value)"
+                @update:mints-text="value => (mintsText.value = value)"
+                @update:relays-text="value => (relaysText.value = value)"
+                @update:p2pk-priv="value => (p2pkPriv.value = value)"
+                @update:p2pk-pub="value => (p2pkPub.value = value)"
+                @update:key-import-value="value => (keyImportValue.value = value)"
+                @update:advanced-key-management-open="value => (advancedKeyManagementOpen.value = value)"
+                @request-derive-p2pk="deriveP2pkPublicKey"
+                @request-generate-p2pk="generateP2pkKeypair"
+                @request-generate-secret="generateNewSecret"
+                @request-import-secret="importSecretKey"
+              />
 
               <section class="section-card">
                 <div class="section-header">
@@ -554,115 +360,26 @@
                 </div>
               </section>
 
-              <section class="section-card">
-                <div class="section-header section-header--with-status">
-                  <div class="section-header-primary">
-                    <div class="section-title text-subtitle1 text-weight-medium text-1">Compose tiers</div>
-                    <div class="section-subtitle text-body2 text-2">
-                      Draft pricing, benefits, and cadence before publishing downstream.
-                    </div>
-                  </div>
-                  <q-chip
-                    dense
-                    size="sm"
-                    :color="tiersReady ? 'positive' : 'warning'"
-                    :text-color="tiersReady ? 'white' : 'black'"
-                    class="status-chip"
-                  >
-                    {{ tiersReady ? 'Valid' : 'Needs review' }}
-                  </q-chip>
-                </div>
-                <div class="section-body column q-gutter-md">
-                  <TierComposer
-                    v-model:tiers="tiers"
-                    :frequency-options="tierFrequencyOptions"
-                    :show-errors="showTierValidation"
-                    @validation-changed="handleTierValidation"
-                  />
-                </div>
-              </section>
+              <TierComposerCard
+                :tiers="tiers"
+                :frequency-options="tierFrequencyOptions"
+                :show-errors="showTierValidation"
+                :tiers-ready="tiersReady"
+                @update:tiers="value => (tiers.value = value)"
+                @validation-changed="handleTierValidation"
+              />
 
-              <section class="section-card">
-                <q-expansion-item
-                  v-model="reviewPublishSectionOpen"
-                  switch-toggle-side
-                  dense
-                  expand-separator
-                  :disable="!tiersReady"
-                  :class="['nested-section', 'review-expansion', { 'is-disabled': !tiersReady }]"
-                >
-                  <template #header>
-                    <div class="nested-header">
-                      <div class="nested-header__titles">
-                        <div class="nested-title text-body1 text-weight-medium text-1">Review &amp; Publish</div>
-                        <div class="nested-subtitle text-caption">
-                          Inspect the JSON payload before pushing updates to the relay.
-                        </div>
-                      </div>
-                      <q-chip
-                        dense
-                        size="sm"
-                        :color="tiersReady ? 'positive' : 'grey-6'"
-                        :text-color="tiersReady ? 'white' : 'black'"
-                        class="status-chip"
-                      >
-                        {{ tiersReady ? 'Ready' : 'Locked' }}
-                      </q-chip>
-                    </div>
-                  </template>
-                  <div class="nested-section-body column q-gutter-md">
-                    <q-input
-                      :model-value="tiersJsonPreview"
-                      type="textarea"
-                      label="Tiers JSON preview"
-                      dense
-                      filled
-                      autogrow
-                      readonly
-                      spellcheck="false"
-                    />
-                    <div class="row justify-end q-gutter-sm">
-                      <q-btn
-                        color="primary"
-                        label="Publish profile &amp; tiers"
-                        :disable="publishDisabled"
-                        :loading="publishingAll"
-                        @click="publishAll"
-                      />
-                    </div>
-                    <div
-                      v-if="publicProfileUrl"
-                      class="share-inline row items-center q-gutter-sm"
-                      data-testid="publish-summary-share"
-                    >
-                      <q-input
-                        :model-value="publicProfileUrl"
-                        dense
-                        filled
-                        readonly
-                        class="col"
-                        data-testid="publish-public-profile-url"
-                      >
-                        <template #append>
-                          <q-btn
-                            flat
-                            color="primary"
-                            label="Copy link"
-                            data-testid="publish-copy-public-profile-url"
-                            @click="copy(publicProfileUrl)"
-                          />
-                        </template>
-                      </q-input>
-                    </div>
-                    <div class="text-body2 text-2" v-if="lastPublishInfo">
-                      {{ lastPublishInfo }}
-                    </div>
-                  </div>
-                </q-expansion-item>
-                <div v-if="!tiersReady" class="review-lock-message text-caption text-2">
-                  Add at least one valid tier to unlock review and publishing.
-                </div>
-                </section>
+              <ReviewPublishCard
+                v-model:open="reviewPublishSectionOpen"
+                :tiers-ready="tiersReady"
+                :tiers-json-preview="tiersJsonPreview"
+                :publish-disabled="publishDisabled"
+                :publishing="publishingAll"
+                :public-profile-url="publicProfileUrl"
+                :last-publish-info="lastPublishInfo"
+                @publish="publishAll"
+                @copy-link="copy(publicProfileUrl)"
+              />
               </div>
             </q-tab-panel>
 
@@ -863,12 +580,13 @@ import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
-import RelayStatusIndicator from 'src/nutzap/RelayStatusIndicator.vue';
+import ConnectionPanel from './nutzap-profile/ConnectionPanel.vue';
+import AuthorMetadataPanel from './nutzap-profile/AuthorMetadataPanel.vue';
+import TierComposerCard from './nutzap-profile/TierComposerCard.vue';
+import ReviewPublishCard from './nutzap-profile/ReviewPublishCard.vue';
 import NutzapExplorerPanel from 'src/nutzap/onepage/NutzapExplorerPanel.vue';
-import TierComposer from './nutzap-profile/TierComposer.vue';
 import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
 import type { Tier } from 'src/nutzap/types';
-import { useActiveNutzapSigner } from 'src/nutzap/signer';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
 import { generateSecretKey, getPublicKey as getNostrPublicKey, nip19 } from 'nostr-tools';
 import { useClipboard } from 'src/composables/useClipboard';
@@ -888,11 +606,8 @@ import {
 import { hasTierErrors, tierFrequencies, type TierFieldErrors } from './nutzap-profile/tierComposerUtils';
 import { fundstrRelayClient, RelayPublishError } from 'src/nutzap/relayClient';
 import { sanitizeRelayUrls } from 'src/utils/relay';
-import {
-  useRelayConnection,
-  type RelayActivityLevel,
-} from 'src/nutzap/onepage/useRelayConnection';
-import { useNostrStore } from 'src/stores/nostr';
+import { useNutzapRelayTelemetry } from 'src/nutzap/useNutzapRelayTelemetry';
+import { useNutzapSignerWorkspace } from 'src/nutzap/useNutzapSignerWorkspace';
 
 type TierKind = 30019 | 30000;
 
@@ -947,17 +662,7 @@ const publicProfileUrl = computed(() => {
   return buildProfileUrl(authorNpubForShare.value, router);
 });
 
-const identitySectionOpen = ref(true);
-const optionalMetadataSectionOpen = ref(true);
-const advancedEncryptionSectionOpen = ref(false);
 const reviewPublishSectionOpen = ref(false);
-
-const keyImportValue = ref('');
-const keySecretHex = ref('');
-const keyPublicHex = ref('');
-const keyNpub = ref('');
-const keyNsec = ref('');
-const advancedKeyManagementOpen = ref(false);
 
 type ProfileStep = 'connect' | 'author' | 'tiers' | 'explore';
 
@@ -1012,8 +717,6 @@ const helpBannerDismissed = ref(false);
 const showContextHelpBanner = computed(
   () => !helpBannerDismissed.value || !!diagnosticsAttention.value
 );
-let lastRelayAlertId = 0;
-
 function toggleDataExplorer() {
   dataExplorerOpen.value = !dataExplorerOpen.value;
 }
@@ -1063,23 +766,31 @@ watch(diagnosticsAttention, value => {
 });
 
 const {
-  relayUrl: relayConnectionUrl,
-  status: relayConnectionStatus,
-  autoReconnect: relayAutoReconnect,
-  activityLog: relayActivity,
-  connect: connectRelay,
-  disconnect: disconnectRelay,
-  publishEvent: publishEventToRelay,
-  clearActivity: clearRelayActivity,
-  isSupported: relaySupported,
-  isConnected: relayIsConnected,
-} = useRelayConnection();
-
-const relayUrlInput = ref(relayConnectionUrl.value);
-const relayUrlInputValid = computed(() => relayUrlInput.value.trim().length > 0);
-
-watch(relayConnectionUrl, value => {
-  relayUrlInput.value = value;
+  relayConnectionUrl,
+  relayConnectionStatus,
+  relayAutoReconnect,
+  relayActivity,
+  connectRelay,
+  disconnectRelay,
+  publishEventToRelay,
+  clearRelayActivity,
+  relaySupported,
+  relayIsConnected,
+  relayUrlInput,
+  relayUrlInputValid,
+  relayStatusLabel,
+  relayStatusColor,
+  relayStatusDotClass,
+  latestRelayActivity,
+  relayActivityTimeline,
+  formatActivityTime,
+  activityLevelColor,
+  applyRelayUrlInput,
+} = useNutzapRelayTelemetry({
+  onRelayAlert: entry => {
+    const detail = entry.context ? `${entry.message} — ${entry.context}` : entry.message;
+    flagDiagnosticsAttention('relay', detail);
+  },
 });
 
 watch(
@@ -1095,104 +806,8 @@ watch(activeProfileStep, step => {
   }
 });
 
-const relayStatusLabel = computed(() => {
-  switch (relayConnectionStatus.value) {
-    case 'connected':
-      return 'Connected';
-    case 'connecting':
-      return 'Connecting';
-    case 'reconnecting':
-      return 'Reconnecting';
-    case 'disconnected':
-      return 'Disconnected';
-    default:
-      return 'Idle';
-  }
-});
-
-const relayStatusColor = computed(() => {
-  switch (relayConnectionStatus.value) {
-    case 'connected':
-      return 'positive';
-    case 'connecting':
-    case 'reconnecting':
-      return 'warning';
-    case 'disconnected':
-      return 'negative';
-    default:
-      return 'grey-6';
-  }
-});
-
-const relayStatusDotClass = computed(() => {
-  switch (relayConnectionStatus.value) {
-    case 'connected':
-      return 'status-dot--positive';
-    case 'connecting':
-    case 'reconnecting':
-      return 'status-dot--warning';
-    case 'disconnected':
-      return 'status-dot--negative';
-    default:
-      return 'status-dot--idle';
-  }
-});
-
-const latestRelayActivity = computed(() => {
-  const entries = relayActivity.value;
-  return entries.length ? entries[entries.length - 1] : null;
-});
-
-const relayActivityTimeline = computed(() => relayActivity.value.slice().reverse());
-
-watch(
-  relayActivity,
-  entries => {
-    const latestError = [...entries].reverse().find(entry => entry.level === 'error');
-    if (latestError && latestError.id !== lastRelayAlertId) {
-      lastRelayAlertId = latestError.id;
-      const detail = latestError.context
-        ? `${latestError.message} — ${latestError.context}`
-        : latestError.message;
-      flagDiagnosticsAttention('relay', detail);
-    }
-  },
-  { deep: true }
-);
-
-const activityTimeFormatter =
-  typeof Intl !== 'undefined'
-    ? new Intl.DateTimeFormat(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      })
-    : null;
-
-function formatActivityTime(timestamp: number) {
-  if (!activityTimeFormatter) {
-    return new Date(timestamp).toISOString();
-  }
-  return activityTimeFormatter.format(new Date(timestamp));
-}
-
-function activityLevelColor(level: RelayActivityLevel) {
-  switch (level) {
-    case 'success':
-      return 'positive';
-    case 'warning':
-      return 'warning';
-    case 'error':
-      return 'negative';
-    default:
-      return 'primary';
-  }
-}
-
 function handleRelayConnect() {
-  const trimmed = relayUrlInput.value.trim();
-  relayConnectionUrl.value = trimmed || FUNDSTR_WS_URL;
-  relayUrlInput.value = relayConnectionUrl.value;
+  applyRelayUrlInput();
   connectRelay();
 }
 
@@ -1326,24 +941,25 @@ watch(
   { immediate: true }
 );
 
-const { pubkey, signer } = useActiveNutzapSigner();
-const nostrStore = useNostrStore();
-
-const storeNpub = computed(() => nostrStore.npub || '');
-
-const usingStoreIdentity = computed(() => !!pubkey.value);
-const connectedIdentitySummary = computed(() => {
-  if (!usingStoreIdentity.value) {
-    return '';
-  }
-  if (storeNpub.value) {
-    return shortenKey(storeNpub.value);
-  }
-  const activePub = typeof pubkey.value === 'string' ? pubkey.value.trim() : '';
-  if (!activePub) {
-    return '';
-  }
-  return shortenKey(activePub);
+const {
+  pubkey,
+  signer,
+  keySecretHex,
+  keyNsec,
+  keyPublicHex,
+  keyNpub,
+  keyImportValue,
+  advancedKeyManagementOpen,
+  usingStoreIdentity,
+  connectedIdentitySummary,
+  ensureSharedSignerInitialized,
+} = useNutzapSignerWorkspace(authorInput, {
+  onSignerActivated: () => {
+    if (!hasAutoLoaded.value) {
+      hasAutoLoaded.value = true;
+      void loadAll();
+    }
+  },
 });
 
 function shortenKey(value: string) {
@@ -1352,30 +968,6 @@ function shortenKey(value: string) {
     return trimmed;
   }
   return `${trimmed.slice(0, 8)}…${trimmed.slice(-4)}`;
-}
-
-const lastSyncedPubkey = ref('');
-
-let ensureSharedSignerPromise: Promise<void> | null = null;
-
-async function ensureSharedSignerInitialized() {
-  if (ensureSharedSignerPromise) {
-    return ensureSharedSignerPromise;
-  }
-
-  ensureSharedSignerPromise = (async () => {
-    try {
-      await nostrStore.initSignerIfNotSet();
-    } catch (err) {
-      console.error('[nutzap] failed to initialize shared signer', err);
-    } finally {
-      const ndk = getNutzapNdk();
-      ndk.signer = (nostrStore.signer as any) ?? undefined;
-      ensureSharedSignerPromise = null;
-    }
-  })();
-
-  return ensureSharedSignerPromise;
 }
 
 const relaySocket = fundstrRelayClient;
@@ -1483,78 +1075,6 @@ watch(
   hasErrors => {
     if (!hasErrors) {
       showTierValidation.value = false;
-    }
-  },
-  { immediate: true }
-);
-
-watch(
-  optionalMetadataComplete,
-  complete => {
-    if (!optionalMetadataSectionOpen.value && complete) {
-      optionalMetadataSectionOpen.value = true;
-    }
-    if (complete && !advancedEncryptionSectionOpen.value) {
-      advancedEncryptionSectionOpen.value = true;
-    }
-  },
-  { immediate: true }
-);
-
-watch(
-  tiersReady,
-  ready => {
-    if (!ready) {
-      reviewPublishSectionOpen.value = false;
-    } else if (!reviewPublishSectionOpen.value) {
-      reviewPublishSectionOpen.value = true;
-    }
-  },
-  { immediate: true }
-);
-
-watch(
-  usingStoreIdentity,
-  value => {
-    if (value) {
-      advancedKeyManagementOpen.value = false;
-      void ensureSharedSignerInitialized();
-    } else {
-      advancedKeyManagementOpen.value = true;
-    }
-  },
-  { immediate: true }
-);
-
-watch(
-  [pubkey, storeNpub],
-  ([newPubkey, storeNpubValue]) => {
-    const normalizedPubkey = typeof newPubkey === 'string' ? newPubkey.trim().toLowerCase() : '';
-    const encodedNpub = normalizedPubkey
-      ? storeNpubValue || safeEncodeNpub(normalizedPubkey)
-      : '';
-
-    if (normalizedPubkey) {
-      keyPublicHex.value = normalizedPubkey;
-      keyNpub.value = encodedNpub;
-      if (!authorInput.value || authorInput.value === lastSyncedPubkey.value) {
-        authorInput.value = normalizedPubkey;
-      }
-      lastSyncedPubkey.value = normalizedPubkey;
-
-      if (!hasAutoLoaded.value) {
-        hasAutoLoaded.value = true;
-        void loadAll();
-      }
-    } else {
-      if (keyPublicHex.value === lastSyncedPubkey.value) {
-        keyPublicHex.value = '';
-        keyNpub.value = '';
-      }
-      if (authorInput.value === lastSyncedPubkey.value) {
-        authorInput.value = '';
-      }
-      lastSyncedPubkey.value = '';
     }
   },
   { immediate: true }
