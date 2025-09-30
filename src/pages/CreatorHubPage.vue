@@ -12,13 +12,27 @@
         v-if="connectedCount === 0"
         class="text-white bg-warning"
       >
-        Connected to 0 of {{ totalRelays }} relays. Publishing will still try vetted relays.
+        <div>
+          Connected to 0 of {{ totalRelays }} relays. Publishing will still try vetted relays.
+        </div>
+        <div class="text-caption q-mt-xs">
+          Fundstr relay status:
+          <span :class="`text-${fundstrRelayStatusColor}`">
+            {{ fundstrRelayStatusLabel }}
+          </span>
+        </div>
         <template #action>
           <q-btn flat label="Reconnect" @click="reconnectAll" />
         </template>
       </q-banner>
       <q-banner v-else class="text-white bg-positive">
-        Connected to {{ connectedCount }} of {{ totalRelays }} relays.
+        <div>Connected to {{ connectedCount }} of {{ totalRelays }} relays.</div>
+        <div class="text-caption q-mt-xs">
+          Fundstr relay status:
+          <span :class="`text-${fundstrRelayStatusColor}`">
+            {{ fundstrRelayStatusLabel }}
+          </span>
+        </div>
       </q-banner>
       <q-banner v-if="failedRelays.length" class="text-white bg-negative">
         <div>
@@ -263,6 +277,7 @@ const {
   reconnectAll,
   publishProfileBundle,
   replaceWithVettedRelays,
+  fundstrRelayStatus,
 } = useCreatorHub();
 
 const profileStore = useCreatorProfileStore();
@@ -285,6 +300,30 @@ const nsec = ref("");
 const router = useRouter();
 const { copy } = useClipboard();
 const profileUrl = computed(() => buildProfileUrl(npub.value, router));
+
+const fundstrRelayStatusLabel = computed(() => {
+  switch (fundstrRelayStatus.value) {
+    case "connected":
+      return "Connected";
+    case "disconnected":
+      return "Disconnected";
+    case "reconnecting":
+      return "Reconnecting…";
+    default:
+      return "Connecting…";
+  }
+});
+
+const fundstrRelayStatusColor = computed(() => {
+  switch (fundstrRelayStatus.value) {
+    case "connected":
+      return "positive";
+    case "disconnected":
+      return "negative";
+    default:
+      return "warning";
+  }
+});
 
 function goToSettings() {
   router.push("/settings");
