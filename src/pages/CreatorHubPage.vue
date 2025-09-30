@@ -8,59 +8,78 @@
       @replace="replaceWithVettedRelays"
     />
     <q-card class="q-pa-lg bg-surface-2 shadow-4 full-width">
-      <q-banner
-        v-if="connectedCount === 0"
-        class="text-white bg-warning"
+      <div
+        class="creator-status-header q-mb-lg"
+        :class="`creator-status-header--${statusVariant}`"
       >
-        <div>
-          Connected to 0 of {{ totalRelays }} relays. Publishing will still try vetted relays.
-        </div>
-        <div class="text-caption q-mt-xs">
-          Fundstr relay status:
-          <span :class="`text-${fundstrRelayStatusColor}`">
-            {{ fundstrRelayStatusLabel }}
-          </span>
-        </div>
-        <template #action>
-          <q-btn flat label="Reconnect" @click="reconnectAll" />
-        </template>
-      </q-banner>
-      <q-banner v-else class="text-white bg-positive">
-        <div>Connected to {{ connectedCount }} of {{ totalRelays }} relays.</div>
-        <div class="text-caption q-mt-xs">
-          Fundstr relay status:
-          <span :class="`text-${fundstrRelayStatusColor}`">
-            {{ fundstrRelayStatusLabel }}
-          </span>
-        </div>
-      </q-banner>
-      <q-banner v-if="failedRelays.length" class="text-white bg-negative">
-        <div>
-          Failed relays:
-          <ul class="q-pl-md">
-            <li
-              v-for="r in failedRelays"
-              :key="r"
-              style="word-break: break-all"
+        <div class="creator-status-header__summary">
+          <div class="creator-status-header__title">
+            <q-icon :name="connectionIcon" :color="connectionIconColor" size="md" />
+            <div class="text-h6 text-1">
+              {{ connectionSummary }}
+            </div>
+          </div>
+          <div
+            v-if="connectionSubtitle"
+            class="creator-status-header__subtitle text-caption text-2"
+          >
+            {{ connectionSubtitle }}
+          </div>
+          <div class="creator-status-header__chips">
+            <q-chip
+              dense
+              class="status-chip"
+              :class="`status-chip--${fundstrChipVariant}`"
+              icon="hub"
             >
-              {{ r }}
-            </li>
-          </ul>
+              Fundstr relay: {{ fundstrRelayStatusLabel }}
+            </q-chip>
+            <q-chip
+              dense
+              class="status-chip"
+              :class="`status-chip--${failureChipVariant}`"
+              :icon="hasFailures ? 'warning' : 'check_circle'"
+            >
+              {{ failureChipLabel }}
+            </q-chip>
+          </div>
+          <div v-if="hasFailures" class="creator-status-header__failure-list">
+            <div class="text-caption text-negative q-mb-xs">Failed relays</div>
+            <ul class="creator-status-header__failure-items">
+              <li v-for="r in failedRelays" :key="r">{{ r }}</li>
+            </ul>
+          </div>
         </div>
-        <template #action>
-          <q-btn flat label="Check Settings" @click="goToSettings" />
-        </template>
-      </q-banner>
-      <div class="row items-center justify-between q-mb-lg">
-        <div class="text-h5">Creator Hub</div>
-        <div class="row items-center q-gutter-sm">
-          <ThemeToggle />
+        <div class="creator-status-header__actions">
+          <q-btn
+            v-if="showReconnect"
+            flat
+            dense
+            color="primary"
+            label="Reconnect"
+            @click="reconnectAll"
+          />
+          <q-btn
+            v-if="hasFailures"
+            flat
+            dense
+            color="negative"
+            label="Check Settings"
+            @click="goToSettings"
+          />
           <q-btn
             flat
+            dense
             color="primary"
             label="Find & Test Relays"
             @click="showRelayScanner = true"
           />
+        </div>
+      </div>
+      <div class="row items-center justify-between q-mb-lg">
+        <div class="text-h5">Creator Hub</div>
+        <div class="row items-center q-gutter-sm">
+          <ThemeToggle />
         </div>
       </div>
       <div v-if="!loggedIn" class="q-mt-lg q-mb-lg">
@@ -314,16 +333,103 @@ const fundstrRelayStatusLabel = computed(() => {
   }
 });
 
-const fundstrRelayStatusColor = computed(() => {
+const hasFailures = computed(() => failedRelays.value.length > 0);
+
+const connectionStateVariant = computed(() => {
+  if (totalRelays.value === 0) {
+    return "neutral";
+  }
+  if (connectedCount.value === 0) {
+    return "negative";
+  }
+  if (connectedCount.value < totalRelays.value) {
+    return "warning";
+  }
+  return "positive";
+});
+
+const statusVariant = computed(() => {
+  if (hasFailures.value || connectionStateVariant.value === "negative") {
+    return "alert";
+  }
+  if (connectionStateVariant.value === "positive") {
+    return "success";
+  }
+  return "neutral";
+});
+
+const connectionIcon = computed(() => {
+  switch (connectionStateVariant.value) {
+    case "positive":
+      return "cloud_done";
+    case "warning":
+      return "cloud_queue";
+    case "negative":
+      return "cloud_off";
+    default:
+      return "cloud";
+  }
+});
+
+const connectionIconColor = computed(() => {
+  switch (connectionStateVariant.value) {
+    case "positive":
+      return "positive";
+    case "warning":
+      return "warning";
+    case "negative":
+      return "negative";
+    default:
+      return "primary";
+  }
+});
+
+const connectionSummary = computed(() => {
+  if (totalRelays.value === 0) {
+    return "No relays configured yet";
+  }
+  return `Connected to ${connectedCount.value} of ${totalRelays.value} relays`;
+});
+
+const connectionSubtitle = computed(() => {
+  if (totalRelays.value === 0) {
+    return "Add relays to start publishing to your network.";
+  }
+  if (connectedCount.value === 0) {
+    return "Publishing will still try vetted relays.";
+  }
+  if (connectedCount.value < totalRelays.value) {
+    return "Some relays are still reconnecting.";
+  }
+  return "";
+});
+
+const fundstrChipVariant = computed(() => {
   switch (fundstrRelayStatus.value) {
     case "connected":
       return "positive";
     case "disconnected":
       return "negative";
-    default:
+    case "reconnecting":
       return "warning";
+    default:
+      return "neutral";
   }
 });
+
+const failureChipVariant = computed(() => (hasFailures.value ? "negative" : "positive"));
+
+const failureChipLabel = computed(() => {
+  if (!hasFailures.value) {
+    return "No relay failures";
+  }
+  const count = failedRelays.value.length;
+  return count === 1 ? "1 relay failed" : `${count} relays failed`;
+});
+
+const showReconnect = computed(
+  () => totalRelays.value > 0 && connectedCount.value < totalRelays.value
+);
 
 function goToSettings() {
   router.push("/settings");
