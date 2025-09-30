@@ -72,6 +72,11 @@ import { useMessengerStore } from "./messenger";
 import { decryptDM } from "../nostr/crypto";
 import { useCreatorHubStore } from "./creatorHub";
 import { useCreatorProfileStore } from "./creatorProfile";
+import {
+  LEGACY_NUTZAP_TIERS_KIND,
+  NUTZAP_TIERS_KIND,
+} from "src/nutzap/relayConfig";
+import { mapInternalTierToWire } from "src/nostr/tiers";
 import { NutzapProfileSchema, type NutzapProfilePayload } from "src/nostr/nutzapProfile";
 
 // --- Relay connectivity helpers ---
@@ -1140,11 +1145,14 @@ export async function publishCreatorBundle(opts: {
   }
 
   const tiersArray = hub.getTierArray();
-  const tiersHash = bytesToHex(
-    sha256(new TextEncoder().encode(JSON.stringify(tiersArray))),
-  );
+  const canonicalTiers = tiersArray.map((tier) => mapInternalTierToWire(tier));
+  const tiersFingerprint = JSON.stringify(canonicalTiers);
+  const preferredKind =
+    hub.tierDefinitionKind && hub.tierDefinitionKind === LEGACY_NUTZAP_TIERS_KIND
+      ? LEGACY_NUTZAP_TIERS_KIND
+      : NUTZAP_TIERS_KIND;
   const tierAddr = tiersArray.length
-    ? `30000:${nostr.pubkey}:tiers`
+    ? `${preferredKind}:${nostr.pubkey}:tiers`
     : undefined;
   const result = await publishDiscoveryProfile({
     profile: profile.profile,
@@ -1159,10 +1167,10 @@ export async function publishCreatorBundle(opts: {
   let tiersPublished = false;
   if (
     mode === "force" ||
-    (mode === "auto" && tiersHash !== hub.lastPublishedTiersHash)
+    (mode === "auto" && tiersFingerprint !== hub.lastPublishedTiersHash)
   ) {
     await hub.publishTierDefinitions();
-    hub.lastPublishedTiersHash = tiersHash;
+    hub.lastPublishedTiersHash = tiersFingerprint;
     tiersPublished = true;
   }
 

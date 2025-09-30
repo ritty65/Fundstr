@@ -32,3 +32,5 @@ export const NUTZAP_PROFILE_KIND =
 
 export const NUTZAP_TIERS_KIND =
   Number(import.meta.env.VITE_NUTZAP_TIERS_KIND ?? 30019);
+
+export const LEGACY_NUTZAP_TIERS_KIND = 30000;

@@ -24,6 +24,7 @@ import {
   buildKind0Profile,
   buildKind10002RelayList,
   buildKind10019NutzapProfile,
+  buildKind30019Tiers,
   buildKind30000Tiers,
 } from "src/nostr/builders";
 import { useNdkBootStore } from "stores/ndkBoot";
@@ -33,6 +34,14 @@ import { filterHealthyRelays } from "src/utils/relayHealth";
 import { VETTED_OPEN_WRITE_RELAYS } from "src/config/relays";
 import { publishToRelaysWithAcks, selectPublishRelays, PublishReport, RelayResult } from "src/nostr/publish";
 import { getTrustedTime } from "src/utils/time";
+import {
+  NUTZAP_TIERS_KIND,
+  LEGACY_NUTZAP_TIERS_KIND,
+} from "src/nutzap/relayConfig";
+import {
+  mapInternalTierToLegacy,
+  mapInternalTierToWire,
+} from "src/nostr/tiers";
 
 export const scanningMints = ref(false);
 const MAX_RELAYS = 8;
@@ -515,8 +524,14 @@ export function useCreatorHub() {
   );
 
   function buildProfilePayload() {
-    const tierAddr = store.getTierArray().length
-      ? `30000:${nostr.pubkey}:tiers`
+    const tiers = store.getTierArray();
+    const hasTiers = tiers.length > 0;
+    const preferredKind =
+      store.tierDefinitionKind && store.tierDefinitionKind === LEGACY_NUTZAP_TIERS_KIND
+        ? LEGACY_NUTZAP_TIERS_KIND
+        : NUTZAP_TIERS_KIND;
+    const tierAddr = hasTiers
+      ? `${preferredKind}:${nostr.pubkey}:tiers`
       : undefined;
     return {
       profile: profile.value,
@@ -615,13 +630,23 @@ export function useCreatorHub() {
 
       const events: any[] = [kind0, kind10002, kind10019];
       if (tiers.length) {
-        const pureTiers = tiers.map((t) => {
-          const { publishStatus, ...pureTier } = t as any;
-          return pureTier;
-        });
+        const canonicalTiers = tiers.map((tier) =>
+          mapInternalTierToWire(tier),
+        );
+        const legacyTiers = tiers.map((tier) =>
+          mapInternalTierToLegacy(tier),
+        );
+
+        const kind30019 = new NDKEvent(
+          ndkConn,
+          buildKind30019Tiers(nostr.pubkey, canonicalTiers, "tiers"),
+        );
+        kind30019.created_at = createdAt;
+        events.push(kind30019);
+
         const kind30000 = new NDKEvent(
           ndkConn,
-          buildKind30000Tiers(nostr.pubkey, pureTiers, "tiers"),
+          buildKind30000Tiers(nostr.pubkey, legacyTiers, "tiers"),
         );
         kind30000.created_at = createdAt;
         events.push(kind30000);
@@ -656,6 +681,7 @@ export function useCreatorHub() {
       };
 
       if (publishReport.value.anySuccess) {
+        store.tierDefinitionKind = NUTZAP_TIERS_KIND;
         profileStore.markClean();
         notifySuccess("Profile and tiers updated");
       } else {

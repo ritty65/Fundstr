@@ -1,6 +1,25 @@
 import type { Event as NostrEvent } from "nostr-tools";
-import type { Tier } from "src/stores/types";
+import type { Tier, TierMedia } from "src/stores/types";
+import type { SubscriptionFrequency } from "src/constants/subscriptionFrequency";
 import { filterValidMedia } from "src/utils/validateMedia";
+
+export type NutzapWireTier = {
+  id: string;
+  title: string;
+  price: number;
+  frequency?: string;
+  description?: string;
+  media?: TierMedia[];
+  benefits?: string[];
+  welcomeMessage?: string;
+  intervalDays?: number;
+};
+
+const INTERNAL_FREQUENCIES: SubscriptionFrequency[] = [
+  "weekly",
+  "biweekly",
+  "monthly",
+];
 
 function firstDTag(event: NostrEvent): string | undefined {
   for (const tag of event.tags || []) {
@@ -19,31 +38,113 @@ function isPlainObject(value: unknown): value is Record<string, any> {
   );
 }
 
-export function parseTierDefinitionEvent(event: NostrEvent): Tier[] {
-  let parsed: unknown = [];
+export function decodeTierContent(content: string): unknown[] {
+  if (!content) return [];
+  let parsed: unknown;
   try {
-    const fallback = event.kind === 30019 ? "[]" : "{}";
-    parsed = JSON.parse(event.content || fallback);
+    parsed = JSON.parse(content);
   } catch {
-    parsed = [];
+    return [];
   }
+  if (Array.isArray(parsed)) return parsed;
+  if (isPlainObject(parsed) && Array.isArray((parsed as any).tiers)) {
+    return (parsed as any).tiers as unknown[];
+  }
+  return [];
+}
 
-  const rawArray: unknown[] = Array.isArray(parsed)
-    ? parsed
-    : isPlainObject(parsed) && Array.isArray((parsed as any).tiers)
-      ? ((parsed as any).tiers as unknown[])
-      : [];
+function normalizeString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
 
-  const tiers = rawArray
-    .filter(isPlainObject)
-    .map((t) => ({
-      ...t,
-      price_sats: t.price_sats ?? (t as any).price ?? 0,
-      ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
-      media: t.media ? filterValidMedia(t.media) : [],
-    }))
-    .sort((a: Tier, b: Tier) => a.id.localeCompare(b.id));
-  return tiers as Tier[];
+function normalizePositiveNumber(value: unknown): number | undefined {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return undefined;
+  return num;
+}
+
+export function mapWireTierToInternal(raw: unknown): Tier | null {
+  if (!isPlainObject(raw)) return null;
+
+  const id = normalizeString(raw.id);
+  if (!id) return null;
+
+  const title = normalizeString(raw.title ?? raw.name);
+  const price = normalizePositiveNumber(raw.price ?? raw.price_sats) ?? 0;
+  const description = normalizeString(raw.description);
+  const perks = normalizeString(raw.perks);
+  const welcomeMessage = normalizeString(raw.welcomeMessage);
+  let benefits = Array.isArray(raw.benefits)
+    ? raw.benefits
+        .map((b) => normalizeString(b))
+        .filter((b): b is string => !!b)
+    : undefined;
+  if ((!benefits || benefits.length === 0) && perks) {
+    benefits = [perks];
+  }
+  const media = raw.media ? filterValidMedia(raw.media as TierMedia[]) : [];
+  const frequencyString = normalizeString(raw.frequency);
+  const frequency = INTERNAL_FREQUENCIES.includes(
+    frequencyString as SubscriptionFrequency,
+  )
+    ? (frequencyString as SubscriptionFrequency)
+    : undefined;
+  const intervalDays = normalizePositiveNumber(raw.intervalDays);
+
+  const tier: Tier = {
+    id,
+    name: title || id,
+    price_sats: Math.max(0, Math.round(price)),
+    description,
+    ...(frequency ? { frequency } : {}),
+    ...(intervalDays ? { intervalDays } : {}),
+    ...(benefits && benefits.length ? { benefits } : {}),
+    ...(welcomeMessage ? { welcomeMessage } : {}),
+    media,
+  };
+
+  return tier;
+}
+
+export function mapInternalTierToWire(tier: Tier): NutzapWireTier {
+  const media = tier.media ? filterValidMedia(tier.media) : [];
+  const description = (tier.description ?? "").trim();
+  return {
+    id: tier.id,
+    title: tier.name?.trim() ?? "",
+    price: tier.price_sats,
+    ...(tier.frequency ? { frequency: tier.frequency } : {}),
+    description,
+    media,
+    ...(tier.benefits && tier.benefits.length
+      ? { benefits: [...tier.benefits] }
+      : {}),
+    ...(tier.welcomeMessage ? { welcomeMessage: tier.welcomeMessage } : {}),
+    ...(typeof tier.intervalDays === "number"
+      ? { intervalDays: tier.intervalDays }
+      : {}),
+  };
+}
+
+export function mapInternalTierToLegacy(tier: Tier) {
+  const wire = mapInternalTierToWire(tier);
+  return {
+    ...wire,
+    name: tier.name,
+    price_sats: tier.price_sats,
+  };
+}
+
+export function parseTierDefinitionEvent(event: NostrEvent): Tier[] {
+  const rawArray = decodeTierContent(event.content || "");
+  return rawArray
+    .map(mapWireTierToInternal)
+    .filter((tier): tier is Tier => tier !== null)
+    .map((tier) => ({
+      ...tier,
+      description: tier.description ?? "",
+      media: tier.media ? filterValidMedia(tier.media) : [],
+    }));
 }
 
 export function pickTierDefinitionEvent(events: NostrEvent[]): NostrEvent | null {
