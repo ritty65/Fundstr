@@ -1,57 +1,60 @@
 <template>
   <q-page class="nutzap-profile-page bg-surface-1 q-pa-xl">
-    <div class="profile-layout">
-      <aside class="profile-rail">
-        <div class="status-banner bg-surface-2 text-1">
-          <div class="status-summary">
-            <span class="status-dot" :class="relayStatusDotClass" aria-hidden="true"></span>
-            <span class="status-label text-caption text-weight-medium">{{ relayStatusLabel }}</span>
+    <div class="nutzap-profile-container">
+      <q-card class="profile-card bg-surface-2 shadow-4 full-width">
+        <div class="profile-card-header">
+          <div class="status-banner text-1">
+            <div class="status-summary">
+              <span class="status-dot" :class="relayStatusDotClass" aria-hidden="true"></span>
+              <span class="status-label text-caption text-weight-medium">{{ relayStatusLabel }}</span>
+            </div>
+            <div class="status-meta text-body2 text-2">
+              Isolated relay: relay.fundstr.me (WS → HTTP fallback)
+            </div>
           </div>
-          <div class="status-meta text-body2 text-2">Isolated relay: relay.fundstr.me (WS → HTTP fallback)</div>
-        </div>
-
-        <section class="progress-overview bg-surface-2 text-1">
-          <div class="progress-header text-subtitle1 text-weight-medium">Workflow</div>
-          <ol class="progress-steps" role="list">
-            <li
+          <q-tabs
+            v-model="activeProfileStep"
+            dense
+            no-caps
+            class="profile-tabs"
+            active-color="primary"
+            indicator-color="primary"
+          >
+            <q-tab
               v-for="(step, index) in workflowSteps"
               :key="step.name"
-              :class="['progress-step-item', stepClasses(index)]"
-            >
-              <button
-                type="button"
-                class="progress-step-button"
-                :aria-current="index === activeStepIndex ? 'step' : undefined"
-                @click="activeProfileStep = step.name"
-              >
-                <span class="step-number">{{ index + 1 }}</span>
-                <span class="step-copy">
-                  <span class="step-label text-body1 text-weight-medium">{{ step.label }}</span>
-                  <span class="step-description text-caption text-2">{{ step.description }}</span>
-                </span>
-              </button>
-            </li>
-          </ol>
-        </section>
-
-        <section class="context-help bg-surface-2 text-1">
-          <div class="context-help-header">
-            <div class="text-subtitle1 text-weight-medium">Workspace help</div>
-            <q-btn
-              v-if="diagnosticsAttention"
-              flat
-              dense
-              round
-              icon="close"
-              class="context-help-dismiss"
-              aria-label="Dismiss diagnostic alert"
-              @click="dismissDiagnosticsAttention"
+              :name="step.name"
+              :label="`${index + 1}. ${step.label}`"
+              :caption="step.description"
+              class="profile-tab"
             />
-          </div>
-          <div class="context-help-body text-body2 text-2">
-            Pull relay history without leaving the composer and jump into diagnostics when deeper inspection is needed.
-          </div>
-            <q-banner
+          </q-tabs>
+        </div>
+        <q-banner
+          v-if="showContextHelpBanner"
+          dense
+          rounded
+          inline-actions
+          class="context-help-banner bg-surface-1 text-1"
+        >
+          <div class="context-help-banner__content">
+            <div class="context-help-banner__header">
+              <div class="text-subtitle1 text-weight-medium">Workspace help</div>
+              <q-btn
+                flat
+                dense
+                round
+                icon="close"
+                class="context-help-banner__dismiss"
+                aria-label="Hide workspace help"
+                @click="dismissHelpBanner"
+              />
+            </div>
+            <div class="context-help-banner__body text-body2 text-2">
+              Pull relay history without leaving the composer and jump into diagnostics when deeper inspection is
+              needed.
+            </div>
+            <div
               v-if="diagnosticsAttention"
               class="context-help-alert"
               :class="`context-help-alert--${diagnosticsAttention.level}`"
@@ -62,27 +65,29 @@
               <div class="context-help-alert-detail text-caption text-2">
                 {{ diagnosticsAttention.detail }}
               </div>
-              <q-btn
-                color="primary"
-                class="q-mt-sm"
-                label="Open data explorer"
-                @click="handleDiagnosticsAlertCta"
-              />
-            </q-banner>
-          <q-btn
-            v-else
-            outline
-            color="primary"
-            icon="science"
-            label="Open data explorer"
-            class="context-help-action"
-            @click="openDataExplorer"
-          />
-        </section>
-      </aside>
-
-      <div class="profile-main">
-        <div class="profile-content">
+            </div>
+          </div>
+          <template #action>
+            <q-btn
+              v-if="diagnosticsAttention"
+              color="primary"
+              flat
+              class="context-help-banner__cta"
+              label="Open data explorer"
+              @click="handleDiagnosticsAlertCta"
+            />
+            <q-btn
+              v-else
+              color="primary"
+              flat
+              class="context-help-banner__cta"
+              icon="science"
+              label="Open data explorer"
+              @click="openDataExplorer"
+            />
+          </template>
+        </q-banner>
+        <div class="profile-card-body">
           <div class="profile-content-toolbar">
             <q-btn
               outline
@@ -93,109 +98,109 @@
               @click="toggleDataExplorer"
             />
           </div>
-        <q-tab-panels v-model="activeProfileStep" animated class="profile-panels">
-          <q-tab-panel name="connect" class="profile-panel">
-            <div class="panel-sections">
-              <section class="section-card connection-module">
-                <div class="section-header">
-                  <div class="section-title text-subtitle1 text-weight-medium text-1">Connection</div>
-                  <div class="section-subtitle text-body2 text-2">
-                    Control the live WebSocket session used for publishing events and monitor relay activity.
-                  </div>
-                </div>
-                <div class="section-body column q-gutter-lg">
-                  <div class="connection-status column q-gutter-xs">
-                    <div class="status-indicators row items-center wrap q-gutter-sm">
-                      <RelayStatusIndicator class="connection-status-indicator" />
-                      <q-chip dense :color="relayStatusColor" text-color="white" class="status-chip">
-                        {{ relayStatusLabel }}
-                      </q-chip>
+          <q-tab-panels v-model="activeProfileStep" animated class="profile-panels">
+            <q-tab-panel name="connect" class="profile-panel">
+              <div class="panel-sections">
+                <section class="section-card connection-module">
+                  <div class="section-header">
+                    <div class="section-title text-subtitle1 text-weight-medium text-1">Connection</div>
+                    <div class="section-subtitle text-body2 text-2">
+                      Control the live WebSocket session used for publishing events and monitor relay activity.
                     </div>
-                    <div v-if="latestRelayActivity" class="latest-activity text-caption">
-                      <span class="text-2">Latest update:</span>
-                      <span class="text-weight-medium text-1">{{ latestRelayActivity.message }}</span>
-                      <span class="text-2">({{ formatActivityTime(latestRelayActivity.timestamp) }})</span>
-                    </div>
-                    <div v-else class="latest-activity text-caption text-2">No relay activity yet.</div>
                   </div>
+                  <div class="section-body column q-gutter-lg">
+                    <div class="connection-status column q-gutter-xs">
+                      <div class="status-indicators row items-center wrap q-gutter-sm">
+                        <RelayStatusIndicator class="connection-status-indicator" />
+                        <q-chip dense :color="relayStatusColor" text-color="white" class="status-chip">
+                          {{ relayStatusLabel }}
+                        </q-chip>
+                      </div>
+                      <div v-if="latestRelayActivity" class="latest-activity text-caption">
+                        <span class="text-2">Latest update:</span>
+                        <span class="text-weight-medium text-1">{{ latestRelayActivity.message }}</span>
+                        <span class="text-2">({{ formatActivityTime(latestRelayActivity.timestamp) }})</span>
+                      </div>
+                      <div v-else class="latest-activity text-caption text-2">No relay activity yet.</div>
+                    </div>
 
-                  <div class="connection-controls column q-gutter-sm">
-                    <q-input
-                      v-model="relayUrlInput"
-                      label="Relay URL"
-                      dense
-                      filled
-                      :disable="!relaySupported"
-                      autocomplete="off"
-                    />
-                    <div class="row items-center wrap q-gutter-sm">
-                      <q-btn
-                        color="primary"
-                        label="Connect"
-                        :disable="!relaySupported || !relayUrlInputValid"
-                        @click="handleRelayConnect"
-                      />
-                      <q-btn
-                        color="primary"
-                        outline
-                        label="Disconnect"
-                        :disable="!relaySupported || !relayIsConnected"
-                        @click="handleRelayDisconnect"
-                      />
-                      <q-toggle
-                        v-model="relayAutoReconnect"
-                        label="Auto reconnect"
+                    <div class="connection-controls column q-gutter-sm">
+                      <q-input
+                        v-model="relayUrlInput"
+                        label="Relay URL"
                         dense
+                        filled
                         :disable="!relaySupported"
+                        autocomplete="off"
                       />
+                      <div class="row items-center wrap q-gutter-sm">
+                        <q-btn
+                          color="primary"
+                          label="Connect"
+                          :disable="!relaySupported || !relayUrlInputValid"
+                          @click="handleRelayConnect"
+                        />
+                        <q-btn
+                          color="primary"
+                          outline
+                          label="Disconnect"
+                          :disable="!relaySupported || !relayIsConnected"
+                          @click="handleRelayDisconnect"
+                        />
+                        <q-toggle
+                          v-model="relayAutoReconnect"
+                          label="Auto reconnect"
+                          dense
+                          :disable="!relaySupported"
+                        />
+                      </div>
                     </div>
-                  </div>
 
-                  <div class="connection-activity column q-gutter-xs">
-                    <q-expansion-item
-                      dense
-                      expand-separator
-                      icon="history"
-                      label="Activity timeline"
-                      header-class="activity-expansion-header"
-                      :disable="!relayActivity.length"
-                    >
-                      <div v-if="relayActivityTimeline.length" class="activity-timeline column q-gutter-md q-mt-sm">
-                        <div
-                          v-for="entry in relayActivityTimeline"
-                          :key="entry.id"
-                          class="timeline-entry row no-wrap"
-                        >
-                          <div class="timeline-marker" :class="`timeline-marker--${entry.level}`"></div>
-                          <div class="timeline-content column q-gutter-xs">
-                            <div class="timeline-header row items-center q-gutter-sm">
-                              <span class="text-caption text-2">{{ formatActivityTime(entry.timestamp) }}</span>
-                              <q-badge :color="activityLevelColor(entry.level)" outline size="sm">
-                                {{ entry.level }}
-                              </q-badge>
+                    <div class="connection-activity column q-gutter-xs">
+                      <q-expansion-item
+                        dense
+                        expand-separator
+                        icon="history"
+                        label="Activity timeline"
+                        header-class="activity-expansion-header"
+                        :disable="!relayActivity.length"
+                      >
+                        <div v-if="relayActivityTimeline.length" class="activity-timeline column q-gutter-md q-mt-sm">
+                          <div
+                            v-for="entry in relayActivityTimeline"
+                            :key="entry.id"
+                            class="timeline-entry row no-wrap"
+                          >
+                            <div class="timeline-marker" :class="`timeline-marker--${entry.level}`"></div>
+                            <div class="timeline-content column q-gutter-xs">
+                              <div class="timeline-header row items-center q-gutter-sm">
+                                <span class="text-caption text-2">{{ formatActivityTime(entry.timestamp) }}</span>
+                                <q-badge :color="activityLevelColor(entry.level)" outline size="sm">
+                                  {{ entry.level }}
+                                </q-badge>
+                              </div>
+                              <div class="timeline-message text-body2 text-1">{{ entry.message }}</div>
+                              <div v-if="entry.context" class="timeline-context text-caption text-2">{{ entry.context }}</div>
                             </div>
-                            <div class="timeline-message text-body2 text-1">{{ entry.message }}</div>
-                            <div v-if="entry.context" class="timeline-context text-caption text-2">{{ entry.context }}</div>
+                          </div>
+                          <div class="timeline-actions row justify-end">
+                            <q-btn
+                              flat
+                              label="Clear log"
+                              size="sm"
+                              :disable="!relayActivity.length"
+                              @click="clearRelayActivity"
+                            />
                           </div>
                         </div>
-                        <div class="timeline-actions row justify-end">
-                          <q-btn
-                            flat
-                            label="Clear log"
-                            size="sm"
-                            :disable="!relayActivity.length"
-                            @click="clearRelayActivity"
-                          />
-                        </div>
+                        <div v-else class="section-empty text-caption text-2 q-mt-sm">No relay activity yet.</div>
+                      </q-expansion-item>
+                      <div v-if="!relayActivity.length" class="text-caption text-2">
+                        Activity will appear once the relay connection initializes.
                       </div>
-                      <div v-else class="section-empty text-caption text-2 q-mt-sm">No relay activity yet.</div>
-                    </q-expansion-item>
-                    <div v-if="!relayActivity.length" class="text-caption text-2">
-                      Activity will appear once the relay connection initializes.
                     </div>
                   </div>
-                </div>
-              </section>
+                </section>
 
               <section class="section-card">
                 <div class="section-header">
@@ -318,13 +323,13 @@
                     </q-card>
                   </q-dialog>
                 </div>
-              </section>
-            </div>
-          </q-tab-panel>
+                </section>
+              </div>
+            </q-tab-panel>
 
-          <q-tab-panel name="author" class="profile-panel">
-            <div class="panel-sections">
-              <section class="section-card author-profile-card">
+            <q-tab-panel name="author" class="profile-panel">
+              <div class="panel-sections">
+                <section class="section-card author-profile-card">
                 <div class="section-header">
                   <div class="section-title text-subtitle1 text-weight-medium text-1">Author metadata</div>
                   <div class="section-subtitle text-body2 text-2">
@@ -507,13 +512,13 @@
                     Publishing happens from the Review &amp; Publish section once tiers and signer are ready.
                   </div>
                 </div>
-              </section>
-            </div>
-          </q-tab-panel>
+                </section>
+              </div>
+            </q-tab-panel>
 
-          <q-tab-panel name="tiers" class="profile-panel">
-            <div class="panel-sections">
-              <section class="section-card">
+            <q-tab-panel name="tiers" class="profile-panel">
+              <div class="panel-sections">
+                <section class="section-card">
                 <div class="section-header">
                   <div class="section-title text-subtitle1 text-weight-medium text-1">Tier strategy</div>
                   <div class="section-subtitle text-body2 text-2">
@@ -642,13 +647,13 @@
                 <div v-if="!tiersReady" class="review-lock-message text-caption text-2">
                   Add at least one valid tier to unlock review and publishing.
                 </div>
-              </section>
-            </div>
-          </q-tab-panel>
+                </section>
+              </div>
+            </q-tab-panel>
 
-          <q-tab-panel name="explore" class="profile-panel">
-            <div class="panel-sections">
-              <section class="section-card explore-summary-card" data-testid="explore-summary">
+            <q-tab-panel name="explore" class="profile-panel">
+              <div class="panel-sections">
+                <section class="section-card explore-summary-card" data-testid="explore-summary">
                 <div class="section-header">
                   <div class="section-title text-subtitle1 text-weight-medium text-1">Review workspace</div>
                   <div class="section-subtitle text-body2 text-2">
@@ -799,40 +804,40 @@
                     summary.
                   </div>
                 </template>
-              </section>
-            </div>
-          </q-tab-panel>
-        </q-tab-panels>
+                </section>
+              </div>
+            </q-tab-panel>
+          </q-tab-panels>
         </div>
-        <transition name="explorer-fade">
-          <aside
-            v-if="dataExplorerOpen && !isExplorerFloating"
-            class="data-explorer-sidebar bg-surface-2 text-1"
-            :class="{ 'is-floating': isExplorerFloating }"
-          >
-            <div class="data-explorer-header">
-              <div class="text-subtitle1 text-weight-medium">Data explorer</div>
-              <q-btn
-                flat
-                dense
-                round
-                icon="close"
-                aria-label="Close data explorer"
-                @click="closeDataExplorer"
-              />
-            </div>
-            <div class="data-explorer-body">
-              <NutzapExplorerPanel
-                v-model="authorInput"
-                :loading-author="loading"
-                :tier-address-preview="tierAddressPreview"
-                :condensed="true"
-                @load-author="loadAll"
-              />
-            </div>
-          </aside>
-        </transition>
-      </div>
+      </q-card>
+      <transition name="explorer-fade">
+        <aside
+          v-if="dataExplorerOpen && !isExplorerFloating"
+          class="data-explorer-sidebar bg-surface-2 text-1"
+          :class="{ 'is-floating': isExplorerFloating }"
+        >
+          <div class="data-explorer-header">
+            <div class="text-subtitle1 text-weight-medium">Data explorer</div>
+            <q-btn
+              flat
+              dense
+              round
+              icon="close"
+              aria-label="Close data explorer"
+              @click="closeDataExplorer"
+            />
+          </div>
+          <div class="data-explorer-body">
+            <NutzapExplorerPanel
+              v-model="authorInput"
+              :loading-author="loading"
+              :tier-address-preview="tierAddressPreview"
+              :condensed="true"
+              @load-author="loadAll"
+            />
+          </div>
+        </aside>
+      </transition>
     </div>
   </q-page>
 </template>
@@ -964,11 +969,6 @@ const workflowSteps = [
 type ProfileStep = (typeof workflowSteps)[number]['name'];
 
 const activeProfileStep = ref<ProfileStep>('connect');
-const activeStepIndex = computed(() => workflowSteps.findIndex(step => step.name === activeProfileStep.value));
-const stepClasses = (index: number) => ({
-  'is-active': index === activeStepIndex.value,
-  'is-complete': index < activeStepIndex.value,
-});
 
 type DiagnosticsAttention = {
   id: number;
@@ -991,6 +991,10 @@ const dataExplorerToggleIcon = computed(() =>
 
 const diagnosticsAttention = ref<DiagnosticsAttention | null>(null);
 let diagnosticsAttentionSequence = 0;
+const helpBannerDismissed = ref(false);
+const showContextHelpBanner = computed(
+  () => !helpBannerDismissed.value || !!diagnosticsAttention.value
+);
 let lastRelayAlertId = 0;
 
 function toggleDataExplorer() {
@@ -1014,6 +1018,13 @@ function dismissDiagnosticsAttention() {
   diagnosticsAttention.value = null;
 }
 
+function dismissHelpBanner() {
+  helpBannerDismissed.value = true;
+  if (diagnosticsAttention.value) {
+    dismissDiagnosticsAttention();
+  }
+}
+
 function flagDiagnosticsAttention(
   source: 'relay' | 'publish',
   detail: string,
@@ -1027,6 +1038,12 @@ function flagDiagnosticsAttention(
     level,
   };
 }
+
+watch(diagnosticsAttention, value => {
+  if (value) {
+    helpBannerDismissed.value = false;
+  }
+});
 
 const {
   relayUrl: relayConnectionUrl,
@@ -2131,41 +2148,43 @@ onBeforeUnmount(() => {
   display: block;
 }
 
-.profile-layout {
-  display: grid;
-  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
-  gap: 32px;
-}
-
-.profile-rail {
+.nutzap-profile-container {
   display: flex;
-  flex-direction: column;
-  gap: 24px;
-  position: sticky;
-  top: 32px;
-  align-self: flex-start;
-}
-
-.profile-main {
-  display: flex;
+  flex-wrap: wrap;
   gap: 24px;
   align-items: flex-start;
 }
 
-.profile-content {
+.profile-card {
+  flex: 1 1 0%;
+  width: 100%;
+  padding: 24px 28px;
+  border-radius: 20px;
   display: flex;
   flex-direction: column;
-  gap: 32px;
-  flex: 1;
+  gap: 24px;
+}
+
+.profile-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.profile-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 .status-banner {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 12px 16px;
+  padding: 16px 18px;
   border: 1px solid var(--surface-contrast-border);
   border-radius: 16px;
+  background: color-mix(in srgb, var(--surface-2) 94%, transparent);
 }
 
 .status-summary {
@@ -2213,6 +2232,71 @@ onBeforeUnmount(() => {
   color: var(--text-2);
 }
 
+.profile-tabs {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  padding: 4px;
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+}
+
+.profile-tabs :deep(.q-tabs__content) {
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.profile-tabs :deep(.q-tabs__indicator) {
+  display: none;
+}
+
+.profile-tab {
+  flex: 1 1 220px;
+  border-radius: 10px;
+  padding: 4px;
+  border: 1px solid transparent;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.profile-tab:hover {
+  border-color: var(--accent-200);
+}
+
+.profile-tab.q-tab--active {
+  border-color: var(--accent-500);
+  background: color-mix(in srgb, var(--accent-500) 16%, transparent);
+}
+
+.profile-tab :deep(.q-focus-helper) {
+  border-radius: 10px;
+}
+
+.profile-tab :deep(.q-tab__content) {
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 4px;
+  text-align: left;
+}
+
+.profile-tab :deep(.q-tab__label) {
+  font-weight: 600;
+  color: var(--tab-inactive);
+}
+
+.profile-tab.q-tab--active :deep(.q-tab__label) {
+  color: var(--tab-active);
+}
+
+.profile-tab :deep(.q-tab__caption) {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  white-space: normal;
+}
+
+.profile-tab.q-tab--active :deep(.q-tab__caption) {
+  color: var(--text-1);
+}
+
 .profile-content-toolbar {
   display: flex;
   justify-content: flex-end;
@@ -2223,6 +2307,7 @@ onBeforeUnmount(() => {
 }
 
 .data-explorer-sidebar {
+  flex-shrink: 0;
   width: 360px;
   max-width: 100%;
   border: 1px solid var(--surface-contrast-border);
@@ -2403,32 +2488,30 @@ onBeforeUnmount(() => {
   transform: translateY(12px);
 }
 
-.context-help {
+.context-help-banner {
+  border: 1px solid var(--surface-contrast-border);
+  gap: 12px;
+}
+
+.context-help-banner__content {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 20px;
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 16px;
 }
 
-.context-help-header {
+.context-help-banner__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.context-help-body {
+.context-help-banner__body {
   line-height: 1.5;
 }
 
-.context-help-action {
-  align-self: flex-start;
-}
-
-.context-help-dismiss {
-  margin-left: auto;
+.context-help-banner__cta {
+  margin-left: 8px;
 }
 
 .context-help-alert {
@@ -2535,92 +2618,6 @@ onBeforeUnmount(() => {
   padding-top: 8px;
 }
 
-
-.progress-overview {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 20px 24px;
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 16px;
-}
-
-.progress-steps {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-}
-
-.progress-step-item {
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 12px;
-  transition: border-color 120ms ease, background-color 120ms ease;
-}
-
-.progress-step-item:hover {
-  border-color: var(--accent-200);
-}
-
-.progress-step-item.is-active {
-  border-color: var(--accent-500);
-  background: color-mix(in srgb, var(--accent-500) 18%, transparent);
-}
-
-.progress-step-item.is-complete {
-  border-color: var(--accent-200);
-}
-
-.progress-step-item.is-active .step-number {
-  background: var(--accent-600);
-}
-
-.progress-step-item.is-active .step-label {
-  color: var(--accent-500);
-}
-
-.progress-step-button {
-  width: 100%;
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 12px 16px;
-  background: transparent;
-  border: none;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.progress-step-button:focus-visible {
-  outline: 2px solid var(--accent-500);
-  outline-offset: 2px;
-}
-
-.step-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: var(--accent-500);
-  color: var(--text-inverse);
-  font-weight: 600;
-}
-
-.progress-step-item.is-complete .step-number {
-  background: var(--accent-200);
-  color: var(--text-1);
-}
-
-.step-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
 
 .profile-panels {
   border-radius: 16px;
@@ -2791,26 +2788,32 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 1100px) {
-  .profile-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .profile-rail {
-    position: static;
-  }
-
-  .profile-main {
+  .nutzap-profile-container {
     flex-direction: column;
+  }
+
+  .data-explorer-sidebar {
+    position: static;
+    top: auto;
+    max-height: none;
+    width: 100%;
   }
 }
 
 @media (max-width: 768px) {
-  .section-card {
-    padding: 16px 18px;
+  .profile-card {
+    padding: 18px;
   }
 
-  .progress-overview,
   .status-banner {
+    padding: 14px 16px;
+  }
+
+  .profile-tab {
+    flex: 1 1 160px;
+  }
+
+  .section-card {
     padding: 16px 18px;
   }
 
