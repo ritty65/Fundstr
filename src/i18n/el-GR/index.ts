@@ -1878,6 +1878,9 @@ export const messages = {
   },
   creatorHub: {
     publish: "Publish Profile",
+    publishBar: {
+      unsavedChanges: "Unsaved changes",
+    },
     profileHeader: "Profile details",
     displayName: "Display Name",
     profilePictureUrl: "Profile Picture URL",
