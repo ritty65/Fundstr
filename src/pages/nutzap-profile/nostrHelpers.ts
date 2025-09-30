@@ -1,9 +1,9 @@
 import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { nip19 } from 'nostr-tools';
-import {
-  fundstrRelayClient,
-  type FundstrRelayPublishAck,
-  type FundstrRelayPublishResult,
+import type {
+  FundstrRelayClient,
+  FundstrRelayPublishAck,
+  FundstrRelayPublishResult,
 } from 'src/nutzap/relayClient';
 import type { Tier } from 'src/nutzap/types';
 import {
@@ -49,6 +49,18 @@ export type NostrEvent = {
 export type PublishNostrEventOptions = {
   send?: (event: NostrEvent) => Promise<FundstrRelayPublishAck>;
 };
+
+let fundstrRelayClientPromise: Promise<FundstrRelayClient> | null = null;
+
+async function ensureFundstrRelayClient(): Promise<FundstrRelayClient> {
+  if (!fundstrRelayClientPromise) {
+    fundstrRelayClientPromise = import('src/nutzap/relayClient').then(
+      module => module.fundstrRelayClient
+    );
+  }
+
+  return fundstrRelayClientPromise;
+}
 
 export type NostrFilter = {
   kinds: number[];
@@ -248,7 +260,8 @@ export async function publishNostrEvent(
   options?: PublishNostrEventOptions
 ): Promise<FundstrRelayPublishResult> {
   if (!options?.send) {
-    return fundstrRelayClient.publish(template);
+    const client = await ensureFundstrRelayClient();
+    return client.publish(template);
   }
 
   const event = await signPublishTemplate(template);
