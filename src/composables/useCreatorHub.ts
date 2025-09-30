@@ -574,9 +574,10 @@ export function useCreatorHub() {
     const tierAddr = hasTiers
       ? `${preferredKind}:${nostr.pubkey}:tiers`
       : undefined;
+    const p2pkPub = profilePub.value || p2pkStore.firstKey?.publicKey || "";
     return {
       profile: profile.value,
-      p2pkPub: p2pkStore.firstKey?.publicKey || "",
+      p2pkPub,
       mints: profileMints.value,
       tierAddr,
     };
