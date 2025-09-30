@@ -51,33 +51,32 @@
           <div class="context-help-body text-body2 text-2">
             Pull relay history without leaving the composer and jump into diagnostics when deeper inspection is needed.
           </div>
-          <q-banner
-            v-if="diagnosticsAttention"
-            class="context-help-alert"
-            :class="`context-help-alert--${diagnosticsAttention.level}`"
-          >
-            <div class="context-help-alert-title text-body1 text-weight-medium text-1">
-              {{ diagnosticsAttention.title }}
-            </div>
-            <div class="context-help-alert-detail text-caption text-2">
-              {{ diagnosticsAttention.detail }}
-            </div>
-            <q-btn
-              color="primary"
-              class="q-mt-sm"
-              label="Open diagnostics workspace"
-              :to="diagnosticsRoute"
-              @click="dismissDiagnosticsAttention"
-            />
-          </q-banner>
+            <q-banner
+              v-if="diagnosticsAttention"
+              class="context-help-alert"
+              :class="`context-help-alert--${diagnosticsAttention.level}`"
+            >
+              <div class="context-help-alert-title text-body1 text-weight-medium text-1">
+                {{ diagnosticsAttention.title }}
+              </div>
+              <div class="context-help-alert-detail text-caption text-2">
+                {{ diagnosticsAttention.detail }}
+              </div>
+              <q-btn
+                color="primary"
+                class="q-mt-sm"
+                label="Open data explorer"
+                @click="handleDiagnosticsAlertCta"
+              />
+            </q-banner>
           <q-btn
             v-else
             outline
             color="primary"
             icon="science"
-            label="Diagnostics workspace"
-            :to="diagnosticsRoute"
+            label="Open data explorer"
             class="context-help-action"
+            @click="openDataExplorer"
           />
         </section>
       </aside>
@@ -831,9 +830,6 @@
                 @load-author="loadAll"
               />
             </div>
-            <div class="data-explorer-footer text-caption text-2">
-              Need more tooling? <router-link to="/nutzap-tools">Open diagnostics workspace</router-link>.
-            </div>
           </aside>
         </transition>
       </div>
@@ -843,7 +839,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { useRouter, type RouteLocationRaw } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
@@ -997,18 +993,21 @@ const diagnosticsAttention = ref<DiagnosticsAttention | null>(null);
 let diagnosticsAttentionSequence = 0;
 let lastRelayAlertId = 0;
 
-const diagnosticsRoute = computed<RouteLocationRaw>(() =>
-  diagnosticsAttention.value
-    ? { path: '/nutzap-tools', query: { focus: diagnosticsAttention.value.source } }
-    : { path: '/nutzap-tools' }
-);
-
 function toggleDataExplorer() {
   dataExplorerOpen.value = !dataExplorerOpen.value;
 }
 
 function closeDataExplorer() {
   dataExplorerOpen.value = false;
+}
+
+function openDataExplorer() {
+  dataExplorerOpen.value = true;
+}
+
+function handleDiagnosticsAlertCta() {
+  openDataExplorer();
+  dismissDiagnosticsAttention();
 }
 
 function dismissDiagnosticsAttention() {
@@ -2259,16 +2258,6 @@ onBeforeUnmount(() => {
 .data-explorer-body {
   overflow-y: auto;
   max-height: calc(100% - 64px);
-}
-
-.data-explorer-footer {
-  margin-top: 12px;
-  line-height: 1.4;
-}
-
-.data-explorer-footer a {
-  color: var(--accent-500);
-  font-weight: 600;
 }
 
 .explore-summary-card .section-body {

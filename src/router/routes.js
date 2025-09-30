@@ -79,17 +79,6 @@ const routes = [
     ],
   },
   {
-    path: "/nutzap-tools",
-    component: () => import("layouts/FullscreenLayout.vue"),
-    children: [
-      {
-        path: "",
-        name: "NutzapDiagnostics",
-        component: () => import("src/pages/NutzapDiagnosticsPage.vue"),
-      },
-    ],
-  },
-  {
     path: "/buckets",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
