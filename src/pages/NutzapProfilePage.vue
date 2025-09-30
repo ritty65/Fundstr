@@ -12,23 +12,56 @@
               Isolated relay: relay.fundstr.me (WS → HTTP fallback)
             </div>
           </div>
-          <q-tabs
-            v-model="activeProfileStep"
-            dense
-            no-caps
-            class="profile-tabs"
-            active-color="primary"
-            indicator-color="primary"
-          >
-            <q-tab
-              v-for="(step, index) in workflowSteps"
-              :key="step.name"
-              :name="step.name"
-              :label="`${index + 1}. ${step.label}`"
-              :caption="step.description"
-              class="profile-tab"
-            />
-          </q-tabs>
+          <div class="profile-tabs-header">
+            <q-tabs
+              v-model="activeProfileStep"
+              dense
+              no-caps
+              class="profile-tabs"
+              active-color="primary"
+              indicator-color="primary"
+            >
+              <q-tab
+                v-for="tab in profileTabs"
+                :key="tab.name"
+                :name="tab.name"
+                :label="tab.label"
+                class="profile-tab"
+              >
+                <template #default>
+                  <div class="profile-tab__content">
+                    <div class="profile-tab__title-row">
+                      <span class="profile-tab__label text-weight-medium">{{ tab.label }}</span>
+                      <q-chip
+                        v-if="tab.readiness"
+                        dense
+                        size="sm"
+                        :icon="tab.readiness.icon"
+                        :class="['profile-tab__chip', `is-${tab.readiness.state}`]"
+                      >
+                        {{ tab.readiness.label }}
+                      </q-chip>
+                    </div>
+                    <div class="profile-tab__caption text-caption text-2">
+                      {{ tab.caption }}
+                    </div>
+                  </div>
+                </template>
+              </q-tab>
+            </q-tabs>
+            <div class="profile-readiness-chips" role="status" aria-live="polite">
+              <q-chip
+                v-for="chip in readinessChips"
+                :key="chip.key"
+                dense
+                size="sm"
+                :icon="chip.icon"
+                :class="['profile-readiness-chip', `is-${chip.state}`]"
+              >
+                {{ chip.label }}
+              </q-chip>
+            </div>
+          </div>
         </div>
         <q-banner
           v-if="showContextHelpBanner"
@@ -483,28 +516,10 @@
                   </div>
                 </div>
                 <div class="section-body column q-gutter-md">
-                  <ul class="readiness-checklist" role="list">
-                    <li :class="['readiness-item', { 'is-complete': authorKeyReady }]">
-                      <q-icon :name="authorKeyReady ? 'task_alt' : 'radio_button_unchecked'" aria-hidden="true" />
-                      <span>Author public key linked</span>
-                    </li>
-                    <li :class="['readiness-item', { 'is-complete': identityBasicsComplete }]">
-                      <q-icon :name="identityBasicsComplete ? 'task_alt' : 'radio_button_unchecked'" aria-hidden="true" />
-                      <span>Identity basics {{ identityBasicsComplete ? 'added' : '(optional)' }}</span>
-                    </li>
-                    <li :class="['readiness-item', { 'is-complete': optionalMetadataComplete }]">
-                      <q-icon :name="optionalMetadataComplete ? 'task_alt' : 'radio_button_unchecked'" aria-hidden="true" />
-                      <span>Trusted mint configured</span>
-                    </li>
-                    <li :class="['readiness-item', { 'is-complete': advancedEncryptionComplete }]">
-                      <q-icon :name="advancedEncryptionComplete ? 'task_alt' : 'radio_button_unchecked'" aria-hidden="true" />
-                      <span>P2PK pointer ready</span>
-                    </li>
-                    <li :class="['readiness-item', { 'is-complete': tiersReady }]">
-                      <q-icon :name="tiersReady ? 'task_alt' : 'radio_button_unchecked'" aria-hidden="true" />
-                      <span>Tiers validated</span>
-                    </li>
-                  </ul>
+                  <div class="publish-readiness-note text-body2 text-2">
+                    Workflow tabs now surface signer, metadata, and tier readiness. Follow the highlighted chips above to
+                    resolve outstanding requirements before publishing.
+                  </div>
                   <div class="text-body2 text-2">
                     Publishing updates with tier address <span class="text-weight-medium text-1">{{ tierAddressPreview }}</span>.
                   </div>
@@ -943,30 +958,32 @@ const keyPublicHex = ref('');
 const keyNpub = ref('');
 const keyNsec = ref('');
 const advancedKeyManagementOpen = ref(false);
-const workflowSteps = [
-  {
-    name: 'connect',
-    label: 'Connect',
-    description: 'Establish relay access and signer status.',
-  },
-  {
-    name: 'author',
-    label: 'Author',
-    description: 'Shape profile metadata before publishing.',
-  },
-  {
-    name: 'tiers',
-    label: 'Tiers',
-    description: 'Compose benefits and cadence options.',
-  },
-  {
-    name: 'explore',
-    label: 'Review',
-    description: 'Inspect stored events and author data.',
-  },
-] as const;
 
-type ProfileStep = (typeof workflowSteps)[number]['name'];
+type ProfileStep = 'connect' | 'author' | 'tiers' | 'explore';
+
+type ReadinessChipState = 'ready' | 'todo' | 'optional';
+type ReadinessChipKey = 'authorKey' | 'identity' | 'mint' | 'p2pk' | 'tiers';
+
+type ReadinessChip = {
+  key: ReadinessChipKey;
+  label: string;
+  state: ReadinessChipState;
+  icon: string;
+  required: boolean;
+};
+
+type ProfileTabReadiness = {
+  label: string;
+  state: ReadinessChipState;
+  icon: string;
+};
+
+type ProfileTab = {
+  name: ProfileStep;
+  label: string;
+  caption: string;
+  readiness: ProfileTabReadiness | null;
+};
 
 const activeProfileStep = ref<ProfileStep>('connect');
 
@@ -1584,6 +1601,148 @@ const tierFrequencyOptions = computed(() =>
 );
 
 const authorKeyReady = computed(() => authorInput.value.trim().length > 0);
+
+const readinessChips = computed<ReadinessChip[]>(() => {
+  const entries = [
+    {
+      key: 'authorKey',
+      ready: authorKeyReady.value,
+      required: true,
+      readyLabel: 'Signer ready',
+      actionLabel: 'Link signer',
+      readyIcon: 'task_alt',
+      actionIcon: 'vpn_key_off',
+    },
+    {
+      key: 'identity',
+      ready: identityBasicsComplete.value,
+      required: false,
+      readyLabel: 'Identity noted',
+      actionLabel: 'Identity optional',
+      readyIcon: 'badge',
+      actionIcon: 'tips_and_updates',
+    },
+    {
+      key: 'mint',
+      ready: optionalMetadataComplete.value,
+      required: true,
+      readyLabel: 'Mint configured',
+      actionLabel: 'Add mint',
+      readyIcon: 'payments',
+      actionIcon: 'add_card',
+    },
+    {
+      key: 'p2pk',
+      ready: advancedEncryptionComplete.value,
+      required: true,
+      readyLabel: 'P2PK ready',
+      actionLabel: 'Add P2PK pointer',
+      readyIcon: 'key',
+      actionIcon: 'key_off',
+    },
+    {
+      key: 'tiers',
+      ready: tiersReady.value,
+      required: true,
+      readyLabel: 'Tiers validated',
+      actionLabel: 'Review tiers',
+      readyIcon: 'task_alt',
+      actionIcon: 'playlist_add',
+    },
+  ] as const;
+
+  return entries.map(entry =>
+    entry.ready
+      ? {
+          key: entry.key,
+          label: entry.readyLabel,
+          state: 'ready' as ReadinessChipState,
+          icon: entry.readyIcon,
+          required: entry.required,
+        }
+      : {
+          key: entry.key,
+          label: entry.actionLabel,
+          state: entry.required ? ('todo' as ReadinessChipState) : ('optional' as ReadinessChipState),
+          icon: entry.actionIcon,
+          required: entry.required,
+        }
+  );
+});
+
+const profileTabs = computed<ProfileTab[]>(() => {
+  const readinessMap = new Map<ReadinessChipKey, ReadinessChip>();
+  for (const chip of readinessChips.value) {
+    readinessMap.set(chip.key, chip);
+  }
+
+  const aggregate = (keys: ReadonlyArray<ReadinessChipKey>): ProfileTabReadiness | null => {
+    if (!keys.length) {
+      return null;
+    }
+
+    const entries = keys
+      .map(key => readinessMap.get(key))
+      .filter((entry): entry is ReadinessChip => !!entry);
+
+    if (!entries.length) {
+      return null;
+    }
+
+    const missingRequired = entries.filter(entry => entry.required && entry.state !== 'ready');
+    if (missingRequired.length) {
+      const first = missingRequired[0];
+      return {
+        label: first.label,
+        state: first.state,
+        icon: first.icon,
+      };
+    }
+
+    const pendingOptional = entries.filter(entry => !entry.required && entry.state !== 'ready');
+    if (pendingOptional.length) {
+      const firstOptional = pendingOptional[0];
+      return {
+        label: firstOptional.label,
+        state: firstOptional.state,
+        icon: firstOptional.icon,
+      };
+    }
+
+    return {
+      label: 'Ready',
+      state: 'ready',
+      icon: 'task_alt',
+    };
+  };
+
+  return [
+    {
+      name: 'connect',
+      label: 'Connect',
+      caption: 'Establish relay access and signer status.',
+      readiness: aggregate(['authorKey'] as const),
+    },
+    {
+      name: 'author',
+      label: 'Author',
+      caption: 'Shape profile metadata before publishing.',
+      readiness: aggregate(['identity', 'mint', 'p2pk'] as const),
+    },
+    {
+      name: 'tiers',
+      label: 'Tiers',
+      caption: 'Compose benefits and cadence options.',
+      readiness: aggregate(['tiers'] as const),
+    },
+    {
+      name: 'explore',
+      label: 'Review',
+      caption: 'Inspect stored events and author data.',
+      readiness: null,
+    },
+  ];
+});
 
 const tiersJsonPreview = computed(() => JSON.stringify(buildTiersJsonPayload(tiers.value), null, 2));
 
@@ -2232,6 +2391,12 @@ onBeforeUnmount(() => {
   color: var(--text-2);
 }
 
+.profile-tabs-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .profile-tabs {
   border: 1px solid var(--surface-contrast-border);
   border-radius: 12px;
@@ -2277,24 +2442,96 @@ onBeforeUnmount(() => {
   text-align: left;
 }
 
-.profile-tab :deep(.q-tab__label) {
-  font-weight: 600;
+.profile-tab__content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.profile-tab__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-tab__label {
+  font-size: 0.95rem;
   color: var(--tab-inactive);
 }
 
-.profile-tab.q-tab--active :deep(.q-tab__label) {
+.profile-tab.q-tab--active .profile-tab__label {
   color: var(--tab-active);
 }
 
-.profile-tab :deep(.q-tab__caption) {
+.profile-tab__caption {
   font-size: 0.75rem;
   line-height: 1.4;
   color: var(--text-2);
-  white-space: normal;
 }
 
-.profile-tab.q-tab--active :deep(.q-tab__caption) {
+.profile-tab.q-tab--active .profile-tab__caption {
   color: var(--text-1);
+}
+
+.profile-tab__chip,
+.profile-readiness-chip {
+  --q-chip-padding: 2px 10px;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  background-color: var(--chip-bg);
+  color: var(--chip-text);
+  border: 1px solid var(--surface-contrast-border);
+  font-weight: 600;
+  gap: 4px;
+}
+
+.profile-tab__chip :deep(.q-chip__icon),
+.profile-readiness-chip :deep(.q-chip__icon) {
+  font-size: 16px;
+}
+
+.profile-tab__chip.is-ready,
+.profile-readiness-chip.is-ready {
+  background-color: var(--accent-500);
+  color: var(--text-inverse);
+  border-color: var(--accent-500);
+}
+
+.profile-tab__chip.is-todo,
+.profile-readiness-chip.is-todo {
+  background-color: color-mix(in srgb, var(--accent-200) 35%, transparent);
+  color: var(--accent-600);
+  border-color: color-mix(in srgb, var(--accent-200) 55%, transparent);
+}
+
+.profile-tab__chip.is-optional,
+.profile-readiness-chip.is-optional {
+  background-color: color-mix(in srgb, var(--surface-2) 85%, transparent);
+  color: var(--text-2);
+  border-color: var(--surface-contrast-border);
+}
+
+.profile-readiness-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.publish-readiness-note {
+  line-height: 1.5;
+}
+
+@media (min-width: 1100px) {
+  .profile-tabs-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .profile-readiness-chips {
+    justify-content: flex-end;
+  }
 }
 
 .profile-content-toolbar {
@@ -2721,36 +2958,6 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 6px;
   flex: 1;
-}
-
-.readiness-checklist {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-}
-
-.readiness-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-2);
-  font-size: 0.875rem;
-}
-
-.readiness-item .q-icon {
-  font-size: 18px;
-  color: var(--disabled-text);
-}
-
-.readiness-item.is-complete {
-  color: var(--text-1);
-}
-
-.readiness-item.is-complete .q-icon {
-  color: var(--accent-500);
 }
 
 .review-expansion {
