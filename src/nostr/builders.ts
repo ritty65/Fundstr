@@ -23,6 +23,7 @@ export function buildKind10002RelayList(
 }
 
 import type { NutzapProfilePayload } from "./nutzapProfile";
+import type { NutzapWireTier } from "./tiers";
 
 export function buildKind10019NutzapProfile(
   pubkey: string,
@@ -48,4 +49,21 @@ export function buildKind30000Tiers(pubkey: string, tiers: any[], d = "tiers") {
     pubkey,
     created_at: Math.floor(Date.now() / 1000),
   };
+}
+
+export function buildKind30019Tiers(
+  pubkey: string,
+  tiers: NutzapWireTier[],
+  d = "tiers",
+) {
+  return {
+    kind: 30019,
+    content: JSON.stringify({ v: 1, tiers }),
+    tags: [
+      ["d", d],
+      ["t", "nutzap-tiers"],
+    ],
+    pubkey,
+    created_at: Math.floor(Date.now() / 1000),
+  } as const;
 }

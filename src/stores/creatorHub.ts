@@ -20,8 +20,20 @@ import { filterValidMedia } from "src/utils/validateMedia";
 import { useNdk } from "src/composables/useNdk";
 import type { Tier, TierMedia } from "./types";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
+import {
+  LEGACY_NUTZAP_TIERS_KIND,
+  NUTZAP_TIERS_KIND,
+} from "src/nutzap/relayConfig";
+import {
+  decodeTierContent,
+  mapInternalTierToLegacy,
+  mapInternalTierToWire,
+  mapWireTierToInternal,
+  pickTierDefinitionEvent,
+} from "src/nostr/tiers";
+import type { Event as NostrEvent } from "nostr-tools";
 
-const TIER_DEFINITIONS_KIND = 30000;
+const TIER_DEFINITIONS_KIND = LEGACY_NUTZAP_TIERS_KIND;
 
 export async function maybeRepublishNutzapProfile() {
   const nostrStore = useNostrStore();
@@ -96,6 +108,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       "creatorHub.lastPublishedTiersHash",
       "",
     );
+    const tierDefinitionKind = ref<number | null>(null);
     const nostr = useNostrStore();
     watch(
       () => nostr.pubkey,
@@ -103,12 +116,19 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         tiers.value = {} as any;
         tierOrder.value = [] as any;
         initialTierOrder.value = [] as any;
+        tierDefinitionKind.value = null;
         if (newPubkey) {
           useCreatorHubStore().loadTiersFromNostr(newPubkey);
         }
       },
     );
-    return { tiers, tierOrder, initialTierOrder, lastPublishedTiersHash };
+    return {
+      tiers,
+      tierOrder,
+      initialTierOrder,
+      lastPublishedTiersHash,
+      tierDefinitionKind,
+    };
   },
   getters: {
     isDirty(): boolean {
@@ -137,6 +157,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       this.tiers = {} as any;
       this.tierOrder = [];
       this.initialTierOrder = [];
+      this.tierDefinitionKind = null;
       const profileStore = useCreatorProfileStore();
       profileStore.setProfile({
         display_name: "",
@@ -177,7 +198,7 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       }
       const newTier: Tier = {
         id,
-        name: tier.name || "",
+        name: (tier.name ?? (tier as any).title ?? "") as string,
         price_sats: (tier as any).price_sats ?? (tier as any).price ?? 0,
         description: (tier as any).description || "",
         frequency: (tier as any).frequency || "monthly",
@@ -243,34 +264,43 @@ export const useCreatorHubStore = defineStore("creatorHub", {
       const author = pubkey || nostr.pubkey;
       if (!author) return;
       const filter: NDKFilter = {
-        kinds: [TIER_DEFINITIONS_KIND as unknown as NDKKind],
+        kinds: [
+          NUTZAP_TIERS_KIND as unknown as NDKKind,
+          TIER_DEFINITIONS_KIND as unknown as NDKKind,
+        ],
         authors: [author],
         "#d": ["tiers"],
-        limit: 1,
+        limit: 2,
       };
       const ndk = await useNdk({ requireSigner: false });
       const events = await ndk.fetchEvents(filter);
-      events.forEach((ev) => {
-        try {
-          const raw: any[] = JSON.parse(ev.content);
-          const obj: Record<string, Tier> = {};
-          raw.forEach((t) => {
-            const tier: Tier = {
-              ...t,
-              price_sats: t.price_sats ?? t.price ?? 0,
-              ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
-              media: t.media ? filterValidMedia(t.media) : [],
-              publishStatus: 'succeeded',
-            };
-            obj[tier.id] = tier;
-          });
-          this.tiers = obj as any;
-          this.tierOrder = raw.map((t) => t.id);
-          this.initialTierOrder = [...this.tierOrder];
-        } catch (e) {
-          console.error(e);
-        }
+      const nostrEvents: NostrEvent[] = Array.from(events)
+        .map((event) => event.rawEvent())
+        .filter((event): event is NostrEvent => !!event);
+      const selected = pickTierDefinitionEvent(nostrEvents);
+      if (!selected) {
+        this.tierDefinitionKind = null;
+        return;
+      }
+
+      const rawTiers = decodeTierContent(selected.content ?? "");
+      const obj: Record<string, Tier> = {};
+      const order: string[] = [];
+      rawTiers.forEach((rawTier) => {
+        const tier = mapWireTierToInternal(rawTier);
+        if (!tier) return;
+        const sanitizedMedia = tier.media ? filterValidMedia(tier.media) : [];
+        obj[tier.id] = {
+          ...tier,
+          media: sanitizedMedia,
+          publishStatus: 'succeeded',
+        };
+        order.push(tier.id);
       });
+      this.tiers = obj as any;
+      this.tierOrder = order;
+      this.initialTierOrder = [...order];
+      this.tierDefinitionKind = selected.kind;
     },
     async removeTier(id: string) {
       delete this.tiers[id];
@@ -278,14 +308,20 @@ export const useCreatorHubStore = defineStore("creatorHub", {
     },
 
     async publishTierDefinitions() {
-      const tiersArray = this.getTierArray().map((t) => {
-        const { publishStatus, ...pureTier } = toRaw(t) as any;
+      const internalTiers = this.getTierArray().map((tier) => {
+        const { publishStatus, ...pureTier } = toRaw(tier) as Tier;
+        const media = pureTier.media ? filterValidMedia(pureTier.media) : [];
         return {
           ...pureTier,
-          price: t.price_sats,
-          media: t.media ? filterValidMedia(t.media) : [],
-        };
+          media,
+        } as Tier;
       });
+      const canonicalTiers = internalTiers.map((tier) =>
+        mapInternalTierToWire(tier),
+      );
+      const legacyTiers = internalTiers.map((tier) =>
+        mapInternalTierToLegacy(tier),
+      );
       const nostr = useNostrStore();
 
       if (!nostr.signer) {
@@ -299,15 +335,34 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         throw new Error("NDK not initialised – cannot publish tiers");
       }
 
-      const ev = new NDKEvent(ndk);
-      ev.kind = TIER_DEFINITIONS_KIND as unknown as NDKKind;
-      ev.tags = [["d", "tiers"]];
-      ev.created_at = Math.floor(Date.now() / 1000);
-      ev.content = JSON.stringify(tiersArray);
-      await ev.sign(nostr.signer as any);
+      const createdAt = Math.floor(Date.now() / 1000);
+
+      const canonicalEvent = new NDKEvent(ndk);
+      canonicalEvent.kind = NUTZAP_TIERS_KIND as unknown as NDKKind;
+      canonicalEvent.tags = [
+        ["d", "tiers"],
+        ["t", "nutzap-tiers"],
+      ];
+      canonicalEvent.created_at = createdAt;
+      canonicalEvent.content = JSON.stringify({ v: 1, tiers: canonicalTiers });
+
+      const legacyEvent = new NDKEvent(ndk);
+      legacyEvent.kind = TIER_DEFINITIONS_KIND as unknown as NDKKind;
+      legacyEvent.tags = [
+        ["d", "tiers"],
+        ["t", "nutzap-tiers"],
+      ];
+      legacyEvent.created_at = createdAt;
+      legacyEvent.content = JSON.stringify({ v: 1, tiers: legacyTiers });
+
+      await Promise.all([
+        canonicalEvent.sign(nostr.signer as any),
+        legacyEvent.sign(nostr.signer as any),
+      ]);
       try {
         const relaySet = await urlsToRelaySet(profileStore.relays);
-        await publishWithTimeout(ev, relaySet);
+        await publishWithTimeout(canonicalEvent, relaySet);
+        await publishWithTimeout(legacyEvent, relaySet);
       } catch (e: any) {
         notifyError(e?.message ?? String(e));
         throw e;
@@ -315,10 +370,10 @@ export const useCreatorHubStore = defineStore("creatorHub", {
 
       await db.creatorsTierDefinitions.put({
         creatorNpub: nostr.pubkey,
-        tiers: tiersArray as any,
-        eventId: ev.id!,
-        updatedAt: ev.created_at!,
-        rawEventJson: JSON.stringify(ev.rawEvent()),
+        tiers: internalTiers as any,
+        eventId: canonicalEvent.id!,
+        updatedAt: canonicalEvent.created_at!,
+        rawEventJson: JSON.stringify(canonicalEvent.rawEvent()),
       });
 
       notifySuccess("Tiers published");
@@ -326,7 +381,8 @@ export const useCreatorHubStore = defineStore("creatorHub", {
         (id) => (this.tiers[id].publishStatus = "succeeded"),
       );
       this.initialTierOrder = [...this.tierOrder];
-      this.lastPublishedTiersHash = JSON.stringify(tiersArray);
+      this.lastPublishedTiersHash = JSON.stringify(canonicalTiers);
+      this.tierDefinitionKind = NUTZAP_TIERS_KIND;
       return true;
     },
     setTierOrder(order: string[]) {
