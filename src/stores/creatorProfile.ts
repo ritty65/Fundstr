@@ -48,9 +48,11 @@ export const useCreatorProfileStore = defineStore("creatorProfile", {
     },
   },
   actions: {
-    setProfile(data: Partial<CreatorProfile>) {
+    setProfile(data: Partial<CreatorProfile> & { name?: string }) {
       if (data.display_name !== undefined)
         this.display_name = data.display_name;
+      else if (typeof data.name === "string")
+        this.display_name = data.name.trim();
       if (data.picture !== undefined) this.picture = data.picture;
       if (data.about !== undefined) this.about = data.about;
       if (data.pubkey !== undefined) this.pubkey = data.pubkey.trim();
