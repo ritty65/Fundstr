@@ -13,12 +13,6 @@ import {
   HTTP_FALLBACK_TIMEOUT_MS,
 } from 'src/nutzap/relayEndpoints';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
-export {
-  normalizeAuthor,
-  pickLatestParamReplaceable,
-  pickLatestReplaceable,
-  parseTiersContent,
-} from 'src/nutzap/profileEvents';
 
 export {
   FUNDSTR_WS_URL,

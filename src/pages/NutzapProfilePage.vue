@@ -568,8 +568,8 @@ import {
 } from './nutzap-profile/nostrHelpers';
 import {
   normalizeAuthor,
-  pickLatestParamReplaceable,
   pickLatestReplaceable,
+  pickLatestParamReplaceable,
   parseTiersContent,
 } from 'src/nutzap/profileEvents';
 import { hasTierErrors, tierFrequencies, type TierFieldErrors } from './nutzap-profile/tierComposerUtils';
