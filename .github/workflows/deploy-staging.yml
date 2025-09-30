@@ -21,7 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with:
+          node-version: '20'
 
       - name: Enable pnpm via Corepack
         run: |
@@ -33,7 +34,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y rsync openssh-client
 
-      - name: Set build id  # used to version sw.js in register-service-worker.js
+      - name: Set build id  # used by register-service-worker.js to version sw.js
         run: echo "VITE_BUILD_ID=${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
 
       - name: Use staging env (optional)
@@ -45,7 +46,6 @@ jobs:
       - name: Build (Quasar PWA)
         run: pnpm quasar build -m pwa
 
-      # Enforce the final .htaccess into the built bundle (matches server)
       - name: Enforce .htaccess with cache headers (in built bundle)
         run: |
           cat > dist/pwa/.htaccess <<'EOF'
@@ -57,8 +57,10 @@ jobs:
             RewriteCond %{REQUEST_FILENAME} !-d
             RewriteRule ^ index.html [QSA,L]
           </IfModule>
+
           <IfModule mod_headers.c>
             Header always set Vary "Accept-Encoding"
+
             <Files "sw.js">
               Header always unset Cache-Control
               Header always unset Expires
@@ -67,23 +69,28 @@ jobs:
               Header always set Pragma "no-cache"
               Header always set Expires "0"
             </Files>
+
             <FilesMatch "^workbox-.*\.js$">
               Header always unset Cache-Control
               Header always set Cache-Control "no-cache, no-store, must-revalidate"
             </FilesMatch>
+
             <Files "manifest.json">
               Header always unset Cache-Control
               Header always set Cache-Control "no-cache, no-store, must-revalidate"
             </Files>
+
             <FilesMatch "\.(html)$">
               Header always set Cache-Control "no-cache, no-store, must-revalidate"
               Header always set Pragma "no-cache"
               Header always set Expires "0"
             </FilesMatch>
+
             <FilesMatch "^(?!sw\.js$|workbox-.*\.js$).*\.(js|mjs|css|png|jpe?g|svg|gif|webp|ico|woff2?|ttf|map)$">
               Header always set Cache-Control "public, max-age=31536000, immutable, no-transform"
             </FilesMatch>
           </IfModule>
+
           <IfModule mod_mime.c>
             AddType application/javascript .js .mjs
             AddType application/wasm .wasm
@@ -91,7 +98,8 @@ jobs:
           EOF
 
       - uses: webfactory/ssh-agent@v0.9.0
-        with: { ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }} }
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Trust remote host
         run: |
@@ -106,7 +114,8 @@ jobs:
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
 
       - name: Smoke test staging (edge-resilient)
-        env: { BASE_URL: https://staging.fundstr.me }
+        env:
+          BASE_URL: https://staging.fundstr.me
         run: |
           chmod +x scripts/smoke-tests.sh
           ./scripts/smoke-tests.sh
