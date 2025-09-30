@@ -199,6 +199,11 @@ vi.mock("../../../src/pages/nutzap-profile/nostrHelpers", () => ({
   FUNDSTR_REQ_URL: "https://relay.fundstr.me/req",
   WS_FIRST_TIMEOUT_MS: 5000,
   HTTP_FALLBACK_TIMEOUT_MS: 5000,
+  publishTiers: (...args: any[]) => ensureShared().publishTiersToRelayMock(...args),
+  publishNostrEvent: (...args: any[]) => ensureShared().publishNostrEventMock(...args),
+}));
+
+vi.mock("src/nutzap/profileEvents", () => ({
   normalizeAuthor: (input: string) => {
     const trimmed = input.trim();
     if (!trimmed) {
@@ -211,8 +216,6 @@ vi.mock("../../../src/pages/nutzap-profile/nostrHelpers", () => ({
   },
   pickLatestReplaceable: (...args: any[]) => pickLatestReplaceableMock(...args),
   pickLatestParamReplaceable: (...args: any[]) => pickLatestParamReplaceableMock(...args),
-  publishTiers: (...args: any[]) => ensureShared().publishTiersToRelayMock(...args),
-  publishNostrEvent: (...args: any[]) => ensureShared().publishNostrEventMock(...args),
   parseTiersContent: (json?: string | null) => {
     if (!json) {
       return [];

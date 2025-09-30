@@ -563,13 +563,15 @@ import {
   FUNDSTR_REQ_URL,
   WS_FIRST_TIMEOUT_MS,
   HTTP_FALLBACK_TIMEOUT_MS,
+  publishTiers as publishTiersToRelay,
+  publishNostrEvent,
+} from './nutzap-profile/nostrHelpers';
+import {
   normalizeAuthor,
   pickLatestParamReplaceable,
   pickLatestReplaceable,
-  publishTiers as publishTiersToRelay,
-  publishNostrEvent,
   parseTiersContent,
-} from './nutzap-profile/nostrHelpers';
+} from 'src/nutzap/profileEvents';
 import { hasTierErrors, tierFrequencies, type TierFieldErrors } from './nutzap-profile/tierComposerUtils';
 import { fundstrRelayClient, RelayPublishError } from 'src/nutzap/relayClient';
 import { sanitizeRelayUrls } from 'src/utils/relay';

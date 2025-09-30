@@ -359,14 +359,16 @@ describe('fundstrRelayClient', () => {
   });
 });
 import {
-  normalizeAuthor,
   isNostrEvent,
-  pickLatestReplaceable,
-  pickLatestParamReplaceable,
   FUNDSTR_REQ_URL,
   WS_FIRST_TIMEOUT_MS,
   HTTP_FALLBACK_TIMEOUT_MS,
 } from '../nostrHelpers';
+import {
+  normalizeAuthor,
+  pickLatestReplaceable,
+  pickLatestParamReplaceable,
+} from 'src/nutzap/profileEvents';
 
 describe('normalizeAuthor', () => {
   const hexKey = '5015f8a13449bcc6e21b54de0dc6be037ce8e90c96582343c5c8f668c67515e8';
