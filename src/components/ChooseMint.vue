@@ -97,7 +97,6 @@ import { mapActions, mapState, mapWritableState } from "pinia";
 import { useMintsStore } from "stores/mints";
 import { MintClass } from "stores/mints";
 import { i18n } from "../boot/i18n";
-import { title } from "process";
 
 export default defineComponent({
   name: "ChooseMint",
