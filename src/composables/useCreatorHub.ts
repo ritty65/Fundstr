@@ -734,22 +734,77 @@ export function useCreatorHub() {
       await Promise.all(events.map((e) => e.sign()));
 
       const aggregate = new Map<string, RelayResult>();
+      const ensureRelayEntry = (url: string): RelayResult => {
+        const existing = aggregate.get(url);
+        if (existing) return existing;
+        const created: RelayResult = { url, ok: false };
+        aggregate.set(url, created);
+        return created;
+      };
+      const recordAck = (url: string) => {
+        const entry = ensureRelayEntry(url);
+        entry.ok = true;
+        entry.ack = true;
+        if (entry.err) delete entry.err;
+        aggregate.set(url, entry);
+      };
+      const recordFailure = (url: string, reason: string) => {
+        const entry = ensureRelayEntry(url);
+        if (!entry.ack) {
+          entry.ok = false;
+        }
+        entry.err = reason;
+        aggregate.set(url, entry);
+      };
+
       const fromFallback = new Set(usedFallback);
+      const includesFundstr = relays.includes(REQUIRED_FUNDSTR_RELAY);
+
       for (const ev of events) {
+        if (includesFundstr) {
+          try {
+            const nostrEvent =
+              typeof (ev as any).toNostrEvent === "function"
+                ? await (ev as any).toNostrEvent()
+                : {
+                    kind: (ev as any).kind,
+                    tags: (ev as any).tags ?? [],
+                    content: (ev as any).content ?? "",
+                    created_at: (ev as any).created_at,
+                  };
+            const { ack } = await fundstrRelayClient.publish({
+              kind: nostrEvent.kind,
+              tags: Array.isArray(nostrEvent.tags) ? nostrEvent.tags : [],
+              content: nostrEvent.content ?? "",
+              created_at: nostrEvent.created_at,
+            });
+            if (ack.accepted) {
+              recordAck(REQUIRED_FUNDSTR_RELAY);
+            } else {
+              recordFailure(
+                REQUIRED_FUNDSTR_RELAY,
+                ack.message || "rejected",
+              );
+            }
+          } catch (err: any) {
+            recordFailure(
+              REQUIRED_FUNDSTR_RELAY,
+              err?.message || String(err),
+            );
+          }
+        }
+
         const r = await publishToRelaysWithAcks(ndkConn, ev, relays, {
           timeoutMs: 4000,
           minAcks: 1,
           fromFallback,
         });
         r.perRelay.forEach((pr) => {
-          const existing = aggregate.get(pr.relay) || { url: pr.relay, ok: true };
-          if (pr.status !== "ok") {
-            existing.ok = false;
-            existing.err = pr.status;
+          if (pr.status === "ok") {
+            recordAck(pr.relay);
           } else {
-            existing.ack = true;
+            recordFailure(pr.relay, pr.status);
           }
-          aggregate.set(pr.relay, existing);
         });
       }
       publishReport.value = {
