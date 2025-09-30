@@ -63,72 +63,15 @@
             </div>
           </div>
         </div>
-        <q-banner
-          v-if="showContextHelpBanner"
-          dense
-          rounded
-          inline-actions
-          class="context-help-banner bg-surface-1 text-1"
-        >
-          <div class="context-help-banner__content">
-            <div class="context-help-banner__header">
-              <div class="text-subtitle1 text-weight-medium">Workspace help</div>
-              <q-btn
-                flat
-                dense
-                round
-                icon="close"
-                class="context-help-banner__dismiss"
-                aria-label="Hide workspace help"
-                @click="dismissHelpBanner"
-              />
-            </div>
-            <div class="context-help-banner__body text-body2 text-2">
-              Pull relay history without leaving the composer and jump into diagnostics when deeper inspection is
-              needed.
-            </div>
-            <div
-              v-if="diagnosticsAttention"
-              class="context-help-alert"
-              :class="`context-help-alert--${diagnosticsAttention.level}`"
-            >
-              <div class="context-help-alert-title text-body1 text-weight-medium text-1">
-                {{ diagnosticsAttention.title }}
-              </div>
-              <div class="context-help-alert-detail text-caption text-2">
-                {{ diagnosticsAttention.detail }}
-              </div>
-            </div>
-          </div>
-          <template #action>
-            <q-btn
-              v-if="diagnosticsAttention"
-              color="primary"
-              flat
-              class="context-help-banner__cta"
-              label="Open data explorer"
-              @click="handleDiagnosticsAlertCta"
-            />
-            <q-btn
-              v-else
-              color="primary"
-              flat
-              class="context-help-banner__cta"
-              icon="science"
-              label="Open data explorer"
-              @click="openDataExplorer"
-            />
-          </template>
-        </q-banner>
         <div class="profile-card-body">
           <div class="profile-content-toolbar">
             <q-btn
               outline
               dense
-              :icon="dataExplorerToggleIcon"
-              class="data-explorer-toggle"
-              :label="dataExplorerToggleLabel"
-              @click="toggleDataExplorer"
+              icon="travel_explore"
+              class="data-explorer-trigger"
+              label="Open data explorer"
+              @click="requestExplorerOpen('toolbar')"
             />
           </div>
           <q-tab-panels v-model="activeProfileStep" animated class="profile-panels">
@@ -322,6 +265,58 @@
                   </div>
                 </div>
                 <div class="section-body column q-gutter-md">
+                  <div
+                    v-if="showContextHelpBanner"
+                    class="context-help-inline bg-surface-1 text-1"
+                  >
+                    <div class="context-help-inline__header">
+                      <div class="text-subtitle1 text-weight-medium">Workspace help</div>
+                      <q-btn
+                        flat
+                        dense
+                        round
+                        icon="close"
+                        class="context-help-inline__dismiss"
+                        aria-label="Hide workspace help"
+                        @click="dismissHelpBanner"
+                      />
+                    </div>
+                    <div class="context-help-inline__body text-body2 text-2">
+                      Pull relay history without leaving the composer and jump into diagnostics when deeper inspection is
+                      needed.
+                    </div>
+                    <div
+                      v-if="diagnosticsAttention"
+                      class="context-help-alert"
+                      :class="`context-help-alert--${diagnosticsAttention.level}`"
+                    >
+                      <div class="context-help-alert-title text-body1 text-weight-medium text-1">
+                        {{ diagnosticsAttention.title }}
+                      </div>
+                      <div class="context-help-alert-detail text-caption text-2">
+                        {{ diagnosticsAttention.detail }}
+                      </div>
+                    </div>
+                    <div class="context-help-inline__actions">
+                      <q-btn
+                        v-if="diagnosticsAttention"
+                        color="primary"
+                        flat
+                        class="context-help-inline__cta"
+                        label="Open data explorer"
+                        @click="handleDiagnosticsAlertCta"
+                      />
+                      <q-btn
+                        v-else
+                        color="primary"
+                        flat
+                        class="context-help-inline__cta"
+                        icon="science"
+                        label="Open data explorer"
+                        @click="requestExplorerOpen('banner')"
+                      />
+                    </div>
+                  </div>
                   <div class="publish-readiness-note text-body2 text-2">
                     Workflow tabs now surface signer, metadata, and tier readiness. Follow the highlighted chips above to
                     resolve outstanding requirements before publishing.
@@ -502,53 +497,24 @@
                 </div>
               </section>
               <section class="section-card explore-tools-card" data-testid="explore-inline-tools">
-                <template v-if="isExplorerFloating">
-                  <q-expansion-item
-                    v-model="dataExplorerOpen"
-                    switch-toggle-side
-                    dense
-                    expand-separator
-                    icon="travel_explore"
-                    class="explore-inline-expansion"
-                  >
-                    <template #header>
-                      <div class="inline-explorer-header">
-                        <div class="text-body1 text-weight-medium text-1">Explorer tools</div>
-                        <div class="text-caption text-2">
-                          Inspect stored events without leaving the summary.
-                        </div>
-                      </div>
-                    </template>
-                    <div class="inline-explorer-body">
-                      <NutzapExplorerPanel
-                        v-model="authorInput"
-                        :loading-author="loading"
-                        :tier-address-preview="tierAddressPreview"
-                        :condensed="true"
-                        @load-author="loadAll"
-                      />
-                    </div>
-                  </q-expansion-item>
-                </template>
-                <template v-else>
-                  <div class="explore-tools-desktop text-body2 text-2">
-                    The data explorer is available from the side drawer. Use the toggle above to keep it beside this
-                    summary.
-                  </div>
-                </template>
-                </section>
+                <div class="explore-tools-desktop text-body2 text-2">
+                  Launch the data explorer from the toolbar button above to inspect relay events alongside this summary.
+                </div>
+              </section>
               </div>
             </q-tab-panel>
           </q-tab-panels>
         </div>
       </q-card>
-      <transition name="explorer-fade">
-        <aside
-          v-if="dataExplorerOpen && !isExplorerFloating"
-          class="data-explorer-sidebar bg-surface-2 text-1"
-          :class="{ 'is-floating': isExplorerFloating }"
-        >
-          <div class="data-explorer-header">
+      <q-dialog
+        v-model="dataExplorerDialogOpen"
+        :position="explorerDialogPosition"
+        :maximized="$q.screen.lt.md"
+        :transition-show="explorerDialogTransitions.show"
+        :transition-hide="explorerDialogTransitions.hide"
+      >
+        <q-card :class="['data-explorer-drawer', $q.screen.lt.md ? 'is-mobile' : '']" class="bg-surface-2 text-1">
+          <div class="data-explorer-drawer__header">
             <div class="text-subtitle1 text-weight-medium">Data explorer</div>
             <q-btn
               flat
@@ -556,10 +522,10 @@
               round
               icon="close"
               aria-label="Close data explorer"
-              @click="closeDataExplorer"
+              @click="dataExplorerDialogOpen = false"
             />
           </div>
-          <div class="data-explorer-body">
+          <div class="data-explorer-drawer__body">
             <NutzapExplorerPanel
               v-model="authorInput"
               :loading-author="loading"
@@ -568,8 +534,8 @@
               @load-author="loadAll"
             />
           </div>
-        </aside>
-      </transition>
+        </q-card>
+      </q-dialog>
     </div>
   </q-page>
 </template>
@@ -578,6 +544,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
+import { useEventBus } from '@vueuse/core';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
 import ConnectionPanel from './nutzap-profile/ConnectionPanel.vue';
@@ -702,14 +669,27 @@ type DiagnosticsAttention = {
 
 const $q = useQuasar();
 
-const isExplorerFloating = computed(() => $q.screen.lt.lg);
-const dataExplorerOpen = ref(!$q.screen.lt.lg);
-const dataExplorerToggleLabel = computed(() =>
-  dataExplorerOpen.value ? 'Hide data explorer' : 'Open data explorer'
+type ExplorerOpenSource = 'toolbar' | 'banner' | 'diagnostics' | 'publish-error';
+type ExplorerEvent = { type: 'open'; source: ExplorerOpenSource };
+
+const explorerBus = useEventBus<ExplorerEvent>('nutzap:explorer');
+const dataExplorerDialogOpen = ref(false);
+const explorerDialogPosition = computed(() => ($q.screen.lt.md ? 'bottom' : 'right'));
+const explorerDialogTransitions = computed(() =>
+  $q.screen.lt.md
+    ? { show: 'slide-up', hide: 'slide-down' }
+    : { show: 'slide-right', hide: 'slide-right' }
 );
-const dataExplorerToggleIcon = computed(() =>
-  dataExplorerOpen.value ? 'close_fullscreen' : 'travel_explore'
-);
+
+const stopExplorerBus = explorerBus.on(event => {
+  if (event.type === 'open') {
+    dataExplorerDialogOpen.value = true;
+  }
+});
+
+function requestExplorerOpen(source: ExplorerOpenSource) {
+  explorerBus.emit({ type: 'open', source });
+}
 
 const diagnosticsAttention = ref<DiagnosticsAttention | null>(null);
 let diagnosticsAttentionSequence = 0;
@@ -717,20 +697,8 @@ const helpBannerDismissed = ref(false);
 const showContextHelpBanner = computed(
   () => !helpBannerDismissed.value || !!diagnosticsAttention.value
 );
-function toggleDataExplorer() {
-  dataExplorerOpen.value = !dataExplorerOpen.value;
-}
-
-function closeDataExplorer() {
-  dataExplorerOpen.value = false;
-}
-
-function openDataExplorer() {
-  dataExplorerOpen.value = true;
-}
-
 function handleDiagnosticsAlertCta() {
-  openDataExplorer();
+  requestExplorerOpen('diagnostics');
   dismissDiagnosticsAttention();
 }
 
@@ -791,19 +759,6 @@ const {
     const detail = entry.context ? `${entry.message} — ${entry.context}` : entry.message;
     flagDiagnosticsAttention('relay', detail);
   },
-});
-
-watch(
-  () => $q.screen.lt.lg,
-  value => {
-    dataExplorerOpen.value = value ? false : true;
-  }
-);
-
-watch(activeProfileStep, step => {
-  if (step === 'explore' && !dataExplorerOpen.value) {
-    dataExplorerOpen.value = true;
-  }
 });
 
 function handleRelayConnect() {
@@ -1766,11 +1721,13 @@ async function publishAll() {
         : rejectionDetail;
       notifyError(message);
       flagDiagnosticsAttention('publish', message);
+      requestExplorerOpen('publish-error');
     } else {
       const fallback = err instanceof Error ? err.message : 'Unable to publish Nutzap profile.';
       lastPublishInfo.value = tierSummary ? `${tierSummary} ${fallback}` : fallback;
       notifyError(fallback);
       flagDiagnosticsAttention('publish', fallback);
+      requestExplorerOpen('publish-error');
     }
   } finally {
     publishingAll.value = false;
@@ -1813,6 +1770,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  stopExplorerBus();
   cleanupSubscriptions();
   if (stopRelayStatusListener) {
     stopRelayStatusListener();
@@ -2059,47 +2017,40 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
 }
 
-.data-explorer-toggle {
+.data-explorer-trigger {
   align-self: flex-end;
 }
 
-.data-explorer-sidebar {
-  flex-shrink: 0;
-  width: 360px;
-  max-width: 100%;
-  border: 1px solid var(--surface-contrast-border);
+.data-explorer-drawer {
+  width: 420px;
+  max-width: 90vw;
+  max-height: 100vh;
   border-radius: 16px;
-  padding: 16px 18px 20px;
-  box-shadow: 0 16px 40px rgba(10, 14, 35, 0.18);
-  position: sticky;
-  top: 32px;
-  max-height: calc(100vh - 64px);
-  overflow-y: auto;
+  border: 1px solid var(--surface-contrast-border);
+  box-shadow: 0 20px 44px rgba(10, 14, 35, 0.22);
+  display: flex;
+  flex-direction: column;
 }
 
-.data-explorer-sidebar.is-floating {
-  position: fixed;
-  top: 32px;
-  right: 32px;
-  bottom: 32px;
-  left: auto;
-  max-height: calc(100vh - 64px);
-  width: min(380px, 90vw);
-  z-index: 11;
-  box-shadow: 0 28px 48px rgba(12, 18, 36, 0.35);
+.data-explorer-drawer.is-mobile {
+  width: 100vw;
+  max-width: 100vw;
+  height: 100vh;
+  border-radius: 0;
 }
 
-.data-explorer-header {
+.data-explorer-drawer__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  padding: 16px 20px 12px;
 }
 
-.data-explorer-body {
+.data-explorer-drawer__body {
+  flex: 1;
   overflow-y: auto;
-  max-height: calc(100% - 64px);
+  padding: 0 20px 20px;
 }
 
 .explore-summary-card .section-body {
@@ -2208,67 +2159,44 @@ onBeforeUnmount(() => {
   line-height: 1.4;
 }
 
+
 .explore-tools-card {
   gap: 12px;
-}
-
-.inline-explorer-header {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.inline-explorer-body {
-  margin-top: 12px;
-}
-
-.explore-inline-expansion .q-item {
-  padding: 0;
-}
-
-.explore-inline-expansion .q-item__section {
-  padding: 0;
 }
 
 .explore-tools-desktop {
   line-height: 1.5;
 }
 
-.explorer-fade-enter-active,
-.explorer-fade-leave-active {
-  transition: opacity 180ms ease, transform 180ms ease;
-}
-
-.explorer-fade-enter-from,
-.explorer-fade-leave-to {
-  opacity: 0;
-  transform: translateY(12px);
-}
-
-.context-help-banner {
+.context-help-inline {
   border: 1px solid var(--surface-contrast-border);
-  gap: 12px;
-}
-
-.context-help-banner__content {
+  border-radius: 16px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
 }
 
-.context-help-banner__header {
+.context-help-inline__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.context-help-banner__body {
+.context-help-inline__body {
   line-height: 1.5;
 }
 
-.context-help-banner__cta {
-  margin-left: 8px;
+.context-help-inline__actions {
+  display: flex;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.context-help-inline__cta {
+  margin-top: 4px;
 }
 
 .context-help-alert {
@@ -2518,13 +2446,6 @@ onBeforeUnmount(() => {
   .nutzap-profile-container {
     flex-direction: column;
   }
-
-  .data-explorer-sidebar {
-    position: static;
-    top: auto;
-    max-height: none;
-    width: 100%;
-  }
 }
 
 @media (max-width: 768px) {
@@ -2544,12 +2465,12 @@ onBeforeUnmount(() => {
     padding: 16px 18px;
   }
 
-  .data-explorer-sidebar.is-floating {
-    top: 16px;
-    right: 16px;
-    left: 16px;
-    bottom: 16px;
-    width: auto;
+  .data-explorer-drawer__header {
+    padding: 16px 16px 12px;
+  }
+
+  .data-explorer-drawer__body {
+    padding: 0 16px 16px;
   }
 }
 </style>
