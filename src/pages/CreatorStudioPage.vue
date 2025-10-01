@@ -329,15 +329,43 @@
                   <q-btn color="primary" label="Generate" @click="generateP2pkKeypair" />
                 </div>
                 <div class="col-12">
-                  <q-input
-                    v-model="p2pkPub.value"
-                    label="Publishing P2PK public"
-                    dense
-                    filled
-                    readonly
-                    :error="!!p2pkPubError"
-                    :error-message="p2pkPubError"
-                  />
+                  <div class="row q-col-gutter-sm items-start">
+                    <div class="col">
+                      <q-input
+                        v-model="p2pkPub.value"
+                        label="Publishing P2PK public"
+                        dense
+                        filled
+                        readonly
+                        :error="!!p2pkPubError"
+                        :error-message="p2pkPubError"
+                      />
+                    </div>
+                    <div class="col-auto self-start">
+                      <q-btn
+                        outline
+                        color="primary"
+                        icon="verified"
+                        label="Verify pointer"
+                        :loading="verifyingP2pkPointer"
+                        :disable="!p2pkPointerReady || verifyingP2pkPointer"
+                        @click="handleVerifyP2pkPointer"
+                      />
+                    </div>
+                  </div>
+                  <div
+                    v-if="p2pkVerificationHelper"
+                    class="text-caption q-mt-xs row items-center no-wrap"
+                    :class="p2pkVerificationHelperClass"
+                  >
+                    <q-icon
+                      v-if="p2pkVerificationHelperIcon"
+                      :name="p2pkVerificationHelperIcon"
+                      size="16px"
+                      class="q-mr-xs"
+                    />
+                    <span>{{ p2pkVerificationHelper.message }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -552,7 +580,7 @@
 </template>
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref } from 'vue';
-import { useEventBus, useLocalStorage } from '@vueuse/core';
+import { useEventBus, useLocalStorage, useNow } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
@@ -592,8 +620,11 @@ import { useMintsStore } from 'src/stores/mints';
 import { maybeRepublishNutzapProfile } from 'src/stores/creatorHub';
 import { useNostrStore } from 'src/stores/nostr';
 import { useUiStore } from 'src/stores/ui';
+import { useP2pkDiagnostics } from 'src/composables/useP2pkDiagnostics';
 
 type TierKind = 30019 | 30000;
+
+const P2PK_VERIFICATION_STALE_MS = 1000 * 60 * 60 * 24 * 7;
 
 const authorInput = ref('');
 const displayName = ref('');
@@ -605,6 +636,7 @@ const selectedP2pkPub = ref('');
 const p2pkPubError = ref('');
 const addingNewP2pkKey = ref(false);
 const hasManuallyToggledP2pk = ref(false);
+const verifyingP2pkPointer = ref(false);
 let previousSelectedP2pkPub = '';
 const cachedMintsText = useLocalStorage<string>('nutzap.profile.mintsDraft', '');
 const mintsText = ref(cachedMintsText.value || '');
@@ -618,6 +650,7 @@ const hasAutoLoaded = ref(false);
 const previewTab = ref<'preview' | 'profile' | 'tiers'>('preview');
 const mintDraft = ref('');
 const relayDraft = ref('');
+const now = useNow({ interval: 60_000 });
 const lastExportProfile = ref('');
 const lastExportTiers = ref('');
 
@@ -650,6 +683,7 @@ function getRelayClientIfReady(): FundstrRelayClient | null {
 
 const p2pkStore = useP2PKStore();
 const walletStore = useWalletStore();
+const { verifyPointer } = useP2pkDiagnostics();
 const { firstKey, p2pkKeys } = storeToRefs(p2pkStore);
 
 const p2pkSelectOptions = computed(() => {
@@ -682,6 +716,10 @@ watch(
 
 const mintsStore = useMintsStore();
 const { activeMintUrl: storeActiveMintUrl, mints: storedMints } = storeToRefs(mintsStore);
+const activeMintUrlTrimmed = computed(() => {
+  const value = storeActiveMintUrl.value;
+  return typeof value === 'string' ? value.trim() : '';
+});
 
 const nostrStore = useNostrStore();
 const { npub: storeNpub } = storeToRefs(nostrStore);
@@ -932,6 +970,36 @@ function setDerivedP2pk(pubHex: string) {
   const normalized = pubHex.trim().toLowerCase();
   p2pkDerivedPub.value = normalized;
   p2pkPub.value = normalized;
+}
+
+async function handleVerifyP2pkPointer() {
+  if (verifyingP2pkPointer.value) {
+    return;
+  }
+  const trimmed = p2pkPub.value.trim();
+  if (!trimmed) {
+    p2pkPubError.value = 'Add a P2PK public key before verifying.';
+    notifyWarning('Add a P2PK public key before verifying.');
+    return;
+  }
+
+  verifyingP2pkPointer.value = true;
+  try {
+    const result = await verifyPointer(trimmed);
+    setDerivedP2pk(result.normalizedPubkey);
+    p2pkPubError.value = '';
+    p2pkStore.recordVerification(result.normalizedPubkey, {
+      timestamp: result.timestamp,
+      mint: result.mintUrl,
+    });
+    notifySuccess('Pointer verified with active mint.', result.mintUrl);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    p2pkPubError.value = message;
+    notifyWarning('Pointer verification failed', message);
+  } finally {
+    verifyingP2pkPointer.value = false;
+  }
 }
 
 function persistComposerKeyToStore(pubHex: string, privHex: string) {
@@ -1299,6 +1367,98 @@ const advancedEncryptionComplete = computed(
   () => p2pkPub.value.trim().length > 0 && !p2pkPubError.value
 );
 
+const hasP2pkPointer = computed(() => p2pkPub.value.trim().length > 0);
+const p2pkPointerReady = computed(() => hasP2pkPointer.value && !p2pkPubError.value);
+
+const p2pkVerificationRecord = computed(() => {
+  if (!p2pkPointerReady.value) {
+    return null;
+  }
+  const trimmed = p2pkPub.value.trim();
+  return p2pkStore.getVerificationRecord(trimmed);
+});
+
+const p2pkLastVerifiedLabel = computed(() => {
+  const record = p2pkVerificationRecord.value;
+  if (!record) {
+    return '';
+  }
+  const formatted = new Date(record.timestamp).toLocaleString();
+  if (record.mint) {
+    return `Last verified ${formatted} — ${record.mint}`;
+  }
+  return `Last verified ${formatted}`;
+});
+
+const p2pkVerificationNeedsRefresh = computed(() => {
+  if (!p2pkPointerReady.value) {
+    return false;
+  }
+  const record = p2pkVerificationRecord.value;
+  if (!record) {
+    return true;
+  }
+  const nowMs = now.value.getTime();
+  const age = nowMs - record.timestamp;
+  const isStaleByAge = age > P2PK_VERIFICATION_STALE_MS;
+  const recordMint = record.mint?.trim().toLowerCase();
+  const activeMint = activeMintUrlTrimmed.value.toLowerCase();
+  const mintMatchesActive = recordMint ? recordMint === activeMint : true;
+  const mintMatchesList = recordMint
+    ? mintList.value.some(mint => mint.toLowerCase() === recordMint)
+    : true;
+  const mintMismatch = recordMint ? !(mintMatchesActive || mintMatchesList) : false;
+  return isStaleByAge || mintMismatch;
+});
+
+const p2pkVerificationHelper = computed(() => {
+  if (!p2pkPointerReady.value) {
+    return null;
+  }
+  const record = p2pkVerificationRecord.value;
+  if (!record) {
+    return {
+      message: 'Verify the pointer with your active mint to confirm acceptance.',
+      tone: 'warning' as const,
+    };
+  }
+  const label = p2pkLastVerifiedLabel.value;
+  if (p2pkVerificationNeedsRefresh.value) {
+    return {
+      message: `${label}. Re-verify to keep this pointer fresh.`,
+      tone: 'warning' as const,
+    };
+  }
+  return {
+    message: label,
+    tone: 'positive' as const,
+  };
+});
+
+const p2pkVerificationHelperClass = computed(() => {
+  const helper = p2pkVerificationHelper.value;
+  if (!helper) {
+    return 'text-2';
+  }
+  if (helper.tone === 'warning') {
+    return 'text-warning';
+  }
+  if (helper.tone === 'positive') {
+    return 'text-positive';
+  }
+  return 'text-2';
+});
+
+const p2pkVerificationHelperIcon = computed(() => {
+  if (!p2pkPointerReady.value) {
+    return '';
+  }
+  if (!p2pkVerificationRecord.value) {
+    return 'help_outline';
+  }
+  return p2pkVerificationNeedsRefresh.value ? 'warning' : 'check_circle';
+});
+
 const relayList = computed(() => {
   const entries = relaysText.value
     .split('\n')
@@ -1446,6 +1606,10 @@ const publishBlockers = computed<string[]>(() => {
 
   if (p2pkPubError.value) {
     blockers.push('Resolve P2PK key error');
+  }
+
+  if (p2pkPointerReady.value && p2pkVerificationNeedsRefresh.value) {
+    blockers.push(p2pkVerificationRecord.value ? 'Re-verify Cashu pointer' : 'Verify Cashu pointer');
   }
 
   if (mintList.value.length === 0) {
