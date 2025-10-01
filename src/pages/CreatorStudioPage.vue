@@ -683,10 +683,16 @@ function flagDiagnosticsAttention(
   detail: string,
   level: 'error' | 'warning' = 'error'
 ) {
+  const title =
+    source === 'relay'
+      ? 'Relay connection issue detected'
+      : level === 'warning'
+        ? 'Publish fallback notice'
+        : 'Publish attempt rejected';
   diagnosticsAttention.value = {
     id: ++diagnosticsAttentionSequence,
     source,
-    title: source === 'relay' ? 'Relay connection issue detected' : 'Publish attempt rejected',
+    title,
     detail,
     level,
   };
@@ -735,6 +741,7 @@ const {
   formatActivityTime,
   activityLevelColor,
   applyRelayUrlInput,
+  logRelayActivity,
 } = relayTelemetry;
 
 relayNeedsAttentionRef = relayNeedsAttention;
@@ -1733,6 +1740,60 @@ async function loadAll() {
   }
 }
 
+const SOCKET_UNAVAILABLE_PATTERNS = [
+  'websocket unsupported',
+  'relay socket unavailable',
+  'relay connection closed',
+  'relay disconnected',
+  'timed out waiting for relay socket',
+  'timed out waiting for relay ack',
+  'failed to send event',
+  'failed to open relay socket',
+  'relay ack timeout',
+  'relay disconnected before ack',
+];
+
+function matchesSocketUnavailable(message?: string | null) {
+  if (!message) {
+    return false;
+  }
+  const normalized = message.toLowerCase();
+  return SOCKET_UNAVAILABLE_PATTERNS.some(pattern => normalized.includes(pattern));
+}
+
+function shouldUseHttpFallback(error: unknown): boolean {
+  if (error instanceof RelayPublishError) {
+    if (matchesSocketUnavailable(error.ack?.message)) {
+      return true;
+    }
+    return matchesSocketUnavailable(error.message);
+  }
+  if (error instanceof Error) {
+    if (matchesSocketUnavailable(error.message)) {
+      return true;
+    }
+    const causeMessage =
+      typeof (error as any)?.cause?.message === 'string' ? (error as any).cause.message : undefined;
+    if (matchesSocketUnavailable(causeMessage)) {
+      return true;
+    }
+  }
+  if (typeof error === 'string') {
+    return matchesSocketUnavailable(error);
+  }
+  return false;
+}
+
+function describeFallbackReason(error: unknown): string {
+  if (error instanceof RelayPublishError) {
+    return error.ack?.message || error.message || 'Relay publish failed';
+  }
+  if (error instanceof Error) {
+    return error.message || 'Relay publish failed';
+  }
+  return typeof error === 'string' ? error : 'Relay publish failed';
+}
+
 async function publishAll() {
   let authorHex: string;
   try {
@@ -1774,18 +1835,38 @@ async function publishAll() {
   let tierSummary = '';
 
   try {
-    const tierResult = await publishTiersToRelay(tiers.value, tierKind.value, {
-      send: publishEventToRelay,
-    });
+    const fallbackNotices: string[] = [];
 
+    const tierOutcome = await (async () => {
+      try {
+        const result = await publishTiersToRelay(tiers.value, tierKind.value, {
+          send: publishEventToRelay,
+        });
+        return { result, usedFallback: false as const };
+      } catch (err) {
+        if (!shouldUseHttpFallback(err)) {
+          throw err;
+        }
+        const fallbackResult = await publishTiersToRelay(tiers.value, tierKind.value);
+        const reason = describeFallbackReason(err);
+        fallbackNotices.push(
+          `Tiers publish used HTTP fallback${reason ? ` — ${reason}` : ''}.`
+        );
+        return { result: fallbackResult, usedFallback: true as const };
+      }
+    })();
+
+    const tierResult = tierOutcome.result;
     const tierEventId = tierResult.ack?.id ?? tierResult.event?.id;
     const tierRelayMessage =
       typeof tierResult.ack?.message === 'string' && tierResult.ack.message
         ? ` — ${tierResult.ack.message}`
         : '';
+    const tierFallbackNote =
+      tierOutcome.usedFallback || tierResult.ack?.via === 'http' ? ' via HTTP fallback' : '';
     tierSummary = tierEventId
-      ? `Tiers published (kind ${tierKind.value}) — id ${tierEventId}${tierRelayMessage}`
-      : `Tiers published (kind ${tierKind.value})${tierRelayMessage}`;
+      ? `Tiers published${tierFallbackNote} (kind ${tierKind.value}) — id ${tierEventId}${tierRelayMessage}`
+      : `Tiers published${tierFallbackNote} (kind ${tierKind.value})${tierRelayMessage}`;
 
     const relays = relayList.value;
     const p2pkHex = p2pkPub.value.trim();
@@ -1815,11 +1896,27 @@ async function publishAll() {
       tags.push(['picture', pictureUrl.value.trim()]);
     }
 
-    const profileResult = await publishNostrEvent(
-      { kind: 10019, tags, content },
-      { send: publishEventToRelay }
-    );
+    const profileTemplate = { kind: 10019, tags, content };
 
+    const profileOutcome = await (async () => {
+      try {
+        const result = await publishNostrEvent(profileTemplate, { send: publishEventToRelay });
+        return { result, usedFallback: false as const };
+      } catch (err) {
+        if (!shouldUseHttpFallback(err)) {
+          throw err;
+        }
+        const fallbackClient = await ensureRelayClientInitialized();
+        const fallbackResult = await fallbackClient.publish(profileTemplate);
+        const reason = describeFallbackReason(err);
+        fallbackNotices.push(
+          `Profile publish used HTTP fallback${reason ? ` — ${reason}` : ''}.`
+        );
+        return { result: fallbackResult, usedFallback: true as const };
+      }
+    })();
+
+    const profileResult = profileOutcome.result;
     const signerPubkey = profileResult.event?.pubkey || tierResult.event?.pubkey;
     const reloadKey = typeof signerPubkey === 'string' && signerPubkey ? signerPubkey : authorHex;
     if (signerPubkey && signerPubkey !== authorInput.value) {
@@ -1831,9 +1928,11 @@ async function publishAll() {
       typeof profileResult.ack?.message === 'string' && profileResult.ack.message
         ? ` — ${profileResult.ack.message}`
         : '';
+    const profileFallbackNote =
+      profileOutcome.usedFallback || profileResult.ack?.via === 'http' ? ' via HTTP fallback' : '';
     const profileSummary = profileEventId
-      ? `Profile published — id ${profileEventId}${profileRelayMessage}`
-      : `Profile published to relay.fundstr.me.${profileRelayMessage}`;
+      ? `Profile published${profileFallbackNote} — id ${profileEventId}${profileRelayMessage}`
+      : `Profile published${profileFallbackNote} to relay.fundstr.me.${profileRelayMessage}`;
 
     lastPublishInfo.value = `${tierSummary} ${profileSummary}`.trim();
 
@@ -1848,6 +1947,12 @@ async function publishAll() {
     notifySuccess(
       `Nutzap profile published (profile ${profileAckLabel}, tiers ${tierAckLabel}).`
     );
+
+    if (fallbackNotices.length) {
+      const detail = fallbackNotices.join(' ');
+      logRelayActivity('warning', 'Publish used HTTP fallback', detail);
+      flagDiagnosticsAttention('publish', detail, 'warning');
+    }
 
     await Promise.all([loadTiers(reloadKey), loadProfile(reloadKey)]);
     await refreshSubscriptions(true);

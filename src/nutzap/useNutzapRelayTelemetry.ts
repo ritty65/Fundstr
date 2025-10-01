@@ -24,6 +24,7 @@ export function useNutzapRelayTelemetry(options: UseNutzapRelayTelemetryOptions 
     disconnect: disconnectRelay,
     publishEvent: publishEventToRelay,
     clearActivity: clearRelayActivity,
+    logActivity: logRelayActivity,
     isSupported: relaySupported,
     isConnected: relayIsConnected,
   } = useRelayConnection();
@@ -135,6 +136,7 @@ export function useNutzapRelayTelemetry(options: UseNutzapRelayTelemetryOptions 
     disconnectRelay,
     publishEventToRelay,
     clearRelayActivity,
+    logRelayActivity,
     relaySupported,
     relayIsConnected,
     relayUrlInput,
