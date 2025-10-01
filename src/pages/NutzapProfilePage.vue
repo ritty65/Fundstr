@@ -312,7 +312,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useEventBus, useLocalStorage } from '@vueuse/core';
@@ -370,6 +370,33 @@ const loading = ref(false);
 const publishingAll = ref(false);
 const lastPublishInfo = ref('');
 const hasAutoLoaded = ref(false);
+
+const relayClientRef = shallowRef<FundstrRelayClient | null>(null);
+let relayClientPromise: Promise<FundstrRelayClient> | null = null;
+
+function setResolvedRelayClient(client: FundstrRelayClient): FundstrRelayClient {
+  relayClientRef.value = client;
+  return client;
+}
+
+function ensureRelayClientInitialized(): Promise<FundstrRelayClient> {
+  if (!relayClientPromise) {
+    relayClientPromise = ensureFundstrRelayClient().then(setResolvedRelayClient);
+  }
+  return relayClientPromise;
+}
+
+async function getRelayClient(): Promise<FundstrRelayClient> {
+  const existing = relayClientRef.value;
+  if (existing) {
+    return existing;
+  }
+  return await ensureRelayClientInitialized();
+}
+
+function getRelayClientIfReady(): FundstrRelayClient | null {
+  return relayClientRef.value;
+}
 
 const p2pkStore = useP2PKStore();
 const { firstKey, p2pkKeys } = storeToRefs(p2pkStore);
@@ -797,30 +824,6 @@ function shortenKey(value: string) {
     return trimmed;
   }
   return `${trimmed.slice(0, 8)}…${trimmed.slice(-4)}`;
-}
-
-let resolvedRelayClient: FundstrRelayClient | null = null;
-let relayClientPromise: Promise<FundstrRelayClient> | null = null;
-
-function ensureRelayClientInitialized() {
-  if (!relayClientPromise) {
-    relayClientPromise = ensureFundstrRelayClient().then(client => {
-      resolvedRelayClient = client;
-      return client;
-    });
-  }
-  return relayClientPromise;
-}
-
-async function getRelayClient(): Promise<FundstrRelayClient> {
-  if (resolvedRelayClient) {
-    return resolvedRelayClient;
-  }
-  return await ensureRelayClientInitialized();
-}
-
-function getRelayClientIfReady(): FundstrRelayClient | null {
-  return resolvedRelayClient;
 }
 
 let profileSubId: string | null = null;
