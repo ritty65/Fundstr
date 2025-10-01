@@ -342,15 +342,33 @@
               </div>
             </div>
 
-            <div class="studio-advanced-link" v-if="!usingStoreIdentity.value">
-              <q-btn
-                outline
-                color="primary"
-                icon="vpn_key"
-                label="Manage Nostr signer"
-                :to="{ name: 'NutzapProfile' }"
-              />
-            </div>
+            <q-banner
+              dense
+              rounded
+              class="studio-signer-hint bg-surface-2 text-1"
+            >
+              <template #avatar>
+                <q-icon name="vpn_key" color="primary" />
+              </template>
+              <div class="studio-signer-hint__content">
+                <span>{{ signerStatusMessage }}</span>
+                <span
+                  v-if="usingStoreIdentity.value && connectedIdentitySummary.value"
+                  class="studio-signer-hint__summary text-caption text-2"
+                >
+                  Connected as {{ connectedIdentitySummary.value }}
+                </span>
+              </div>
+              <template v-if="!usingStoreIdentity.value" #action>
+                <q-btn
+                  flat
+                  dense
+                  color="primary"
+                  label="Connect signer"
+                  @click="openSharedSignerModal"
+                />
+              </template>
+            </q-banner>
           </div>
         </q-card>
 
@@ -573,6 +591,7 @@ import { useWalletStore } from 'src/stores/wallet';
 import { useMintsStore } from 'src/stores/mints';
 import { maybeRepublishNutzapProfile } from 'src/stores/creatorHub';
 import { useNostrStore } from 'src/stores/nostr';
+import { useUiStore } from 'src/stores/ui';
 
 type TierKind = 30019 | 30000;
 
@@ -666,6 +685,7 @@ const { activeMintUrl: storeActiveMintUrl, mints: storedMints } = storeToRefs(mi
 
 const nostrStore = useNostrStore();
 const { npub: storeNpub } = storeToRefs(nostrStore);
+const uiStore = useUiStore();
 
 watch(mintsText, value => {
   cachedMintsText.value = value;
@@ -1205,6 +1225,18 @@ const {
     }
   },
 });
+
+const signerStatusMessage = computed(() => {
+  if (usingStoreIdentity.value) {
+    return 'Shared Fundstr signer connected for this workspace.';
+  }
+  return 'No shared signer is active. Use “Connect signer” to open the shared signer modal.';
+});
+
+function openSharedSignerModal() {
+  uiStore.showMissingSignerModal = true;
+  void ensureSharedSignerInitialized();
+}
 
 const routeAuthorQuery = computed(() => {
   const queryValue = route.query?.npub;
@@ -2701,8 +2733,17 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 6px rgba(252, 165, 165, 0.15);
 }
 
-.studio-advanced-link {
+.studio-signer-hint {
+  margin-top: 8px;
+}
+
+.studio-signer-hint__content {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.studio-signer-hint__summary {
+  display: inline-block;
 }
 </style>
