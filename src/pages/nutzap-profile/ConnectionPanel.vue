@@ -1,9 +1,9 @@
 <template>
   <section class="section-card connection-module">
     <div class="section-header">
-      <div class="section-title text-subtitle1 text-weight-medium text-1">Connection</div>
+      <div class="section-title text-subtitle1 text-weight-medium text-1">Relay connection</div>
       <div class="section-subtitle text-body2 text-2">
-        Control the live WebSocket session used for publishing events and monitor relay activity.
+        Verify the Fundstr relay before configuring payouts. We'll surface alerts if anything needs attention.
       </div>
     </div>
     <div class="section-body column q-gutter-lg">
