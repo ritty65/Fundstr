@@ -374,6 +374,7 @@ const advancedEncryptionComplete = computed(() => props.advancedEncryptionComple
   display: flex;
   flex-direction: column;
   gap: 16px;
+  height: 100%;
 }
 
 .section-footer {

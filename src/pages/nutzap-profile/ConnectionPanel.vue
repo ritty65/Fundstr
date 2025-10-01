@@ -176,6 +176,14 @@ const {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  height: 100%;
+}
+
+.connection-module .section-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .connection-status-indicator {
@@ -210,6 +218,13 @@ const {
 .status-chip {
   text-transform: capitalize;
   font-weight: 600;
+}
+
+.connection-activity {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .timeline-entry {

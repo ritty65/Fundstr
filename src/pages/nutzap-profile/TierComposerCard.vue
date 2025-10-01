@@ -1,5 +1,5 @@
 <template>
-  <section class="section-card">
+  <section class="section-card tier-composer-card">
     <div class="section-header section-header--with-status">
       <div class="section-header-primary">
         <div class="section-title text-subtitle1 text-weight-medium text-1">Compose tiers</div>
@@ -54,3 +54,18 @@ const emit = defineEmits<{
 
 const { tiers, frequencyOptions, showErrors, tiersReady } = toRefs(props);
 </script>
+
+<style scoped>
+.tier-composer-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
+.tier-composer-card .section-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+</style>
