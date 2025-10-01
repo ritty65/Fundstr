@@ -573,7 +573,7 @@ import {
   pickLatestReplaceable,
   pickLatestParamReplaceable,
   parseTiersContent,
-} from 'src/nutzap/profileEvents';
+} from 'src/nutzap/profileShared';
 import { hasTierErrors, tierFrequencies, type TierFieldErrors } from './nutzap-profile/tierComposerUtils';
 import { RelayPublishError, type FundstrRelayClient } from 'src/nutzap/relayClient';
 import { sanitizeRelayUrls } from 'src/utils/relay';

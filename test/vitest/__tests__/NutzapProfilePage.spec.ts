@@ -203,7 +203,7 @@ vi.mock("../../../src/pages/nutzap-profile/nostrHelpers", () => ({
   publishNostrEvent: (...args: any[]) => ensureShared().publishNostrEventMock(...args),
 }));
 
-vi.mock("src/nutzap/profileEvents", () => ({
+vi.mock("src/nutzap/profileShared", () => ({
   normalizeAuthor: (input: string) => {
     const trimmed = input.trim();
     if (!trimmed) {

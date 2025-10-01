@@ -368,7 +368,7 @@ import {
   normalizeAuthor,
   pickLatestReplaceable,
   pickLatestParamReplaceable,
-} from 'src/nutzap/profileEvents';
+} from 'src/nutzap/profileShared';
 
 describe('normalizeAuthor', () => {
   const hexKey = '5015f8a13449bcc6e21b54de0dc6be037ce8e90c96582343c5c8f668c67515e8';
