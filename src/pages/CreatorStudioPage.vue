@@ -413,11 +413,11 @@
     </div>
 
     <q-dialog
-      v-model="dataExplorerDialogOpen.value"
-      :position="explorerDialogPosition.value"
+      v-model="dataExplorerDialogOpen"
+      :position="explorerDialogPosition"
       :maximized="$q.screen.lt.md"
-      :transition-show="explorerDialogTransitions.value.show"
-      :transition-hide="explorerDialogTransitions.value.hide"
+      :transition-show="explorerDialogTransitions.show"
+      :transition-hide="explorerDialogTransitions.hide"
     >
       <q-card :class="['studio-explorer', $q.screen.lt.md ? 'is-mobile' : '']" class="bg-surface-2 text-1">
         <div class="studio-explorer__header">
