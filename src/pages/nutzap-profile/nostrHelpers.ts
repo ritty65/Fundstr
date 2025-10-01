@@ -41,7 +41,7 @@ export type PublishNostrEventOptions = {
 
 let fundstrRelayClientPromise: Promise<FundstrRelayClient> | null = null;
 
-async function ensureFundstrRelayClient(): Promise<FundstrRelayClient> {
+export async function ensureFundstrRelayClient(): Promise<FundstrRelayClient> {
   if (!fundstrRelayClientPromise) {
     fundstrRelayClientPromise = import('src/nutzap/relayClient').then(
       module => module.fundstrRelayClient

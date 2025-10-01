@@ -566,6 +566,7 @@ import {
   HTTP_FALLBACK_TIMEOUT_MS,
   publishTiers as publishTiersToRelay,
   publishNostrEvent,
+  ensureFundstrRelayClient,
 } from './nutzap-profile/nostrHelpers';
 import {
   normalizeAuthor,
@@ -574,7 +575,7 @@ import {
   parseTiersContent,
 } from 'src/nutzap/profileEvents';
 import { hasTierErrors, tierFrequencies, type TierFieldErrors } from './nutzap-profile/tierComposerUtils';
-import { fundstrRelayClient, RelayPublishError } from 'src/nutzap/relayClient';
+import { RelayPublishError, type FundstrRelayClient } from 'src/nutzap/relayClient';
 import { sanitizeRelayUrls } from 'src/utils/relay';
 import { useNutzapRelayTelemetry } from 'src/nutzap/useNutzapRelayTelemetry';
 import { useNutzapSignerWorkspace } from 'src/nutzap/useNutzapSignerWorkspace';
@@ -1044,7 +1045,30 @@ function shortenKey(value: string) {
   return `${trimmed.slice(0, 8)}…${trimmed.slice(-4)}`;
 }
 
-const relaySocket = fundstrRelayClient;
+let resolvedRelayClient: FundstrRelayClient | null = null;
+let relayClientPromise: Promise<FundstrRelayClient> | null = null;
+
+function ensureRelayClientInitialized() {
+  if (!relayClientPromise) {
+    relayClientPromise = ensureFundstrRelayClient().then(client => {
+      resolvedRelayClient = client;
+      return client;
+    });
+  }
+  return relayClientPromise;
+}
+
+async function getRelayClient(): Promise<FundstrRelayClient> {
+  if (resolvedRelayClient) {
+    return resolvedRelayClient;
+  }
+  return await ensureRelayClientInitialized();
+}
+
+function getRelayClientIfReady(): FundstrRelayClient | null {
+  return resolvedRelayClient;
+}
+
 let profileSubId: string | null = null;
 let tiersSubId: string | null = null;
 let stopRelayStatusListener: (() => void) | null = null;
@@ -1490,6 +1514,7 @@ function applyProfileEvent(latest: any | null) {
 async function loadTiers(authorHex: string) {
   try {
     const normalized = authorHex.toLowerCase();
+    const relaySocket = await getRelayClient();
     const events = await relaySocket.requestOnce(
       [
         {
@@ -1521,6 +1546,7 @@ async function loadTiers(authorHex: string) {
 async function loadProfile(authorHex: string) {
   try {
     const normalized = authorHex.toLowerCase();
+    const relaySocket = await getRelayClient();
     const events = await relaySocket.requestOnce(
       [{ kinds: [10019], authors: [normalized], limit: 1 }],
       {
@@ -1543,6 +1569,13 @@ async function loadProfile(authorHex: string) {
 }
 
 function cleanupSubscriptions() {
+  const relaySocket = getRelayClientIfReady();
+  if (!relaySocket) {
+    profileSubId = null;
+    tiersSubId = null;
+    return;
+  }
+
   if (profileSubId) {
     relaySocket.unsubscribe(profileSubId);
     profileSubId = null;
@@ -1553,7 +1586,7 @@ function cleanupSubscriptions() {
   }
 }
 
-function ensureRelayStatusListener() {
+function attachRelayStatusListener(relaySocket: FundstrRelayClient) {
   if (!relaySocket.isSupported || stopRelayStatusListener) {
     return;
   }
@@ -1576,12 +1609,33 @@ function ensureRelayStatusListener() {
   });
 }
 
-function setupSubscriptions(authorHex: string) {
+function ensureRelayStatusListenerOnce() {
+  if (stopRelayStatusListener) {
+    return;
+  }
+
+  const existingClient = getRelayClientIfReady();
+  if (existingClient) {
+    attachRelayStatusListener(existingClient);
+    return;
+  }
+
+  void ensureRelayClientInitialized()
+    .then(client => {
+      attachRelayStatusListener(client);
+    })
+    .catch(err => {
+      console.warn('[nutzap] failed to attach relay status listener', err);
+    });
+}
+
+async function setupSubscriptions(authorHex: string) {
+  const relaySocket = await getRelayClient();
   if (!relaySocket.isSupported) {
     return;
   }
 
-  ensureRelayStatusListener();
+  attachRelayStatusListener(relaySocket);
 
   const normalized = authorHex.toLowerCase();
 
@@ -1660,7 +1714,7 @@ function setupSubscriptions(authorHex: string) {
   }
 }
 
-function refreshSubscriptions(force = false) {
+async function refreshSubscriptions(force = false) {
   let nextHex: string | null = null;
   try {
     nextHex = normalizeAuthor(authorInput.value);
@@ -1691,7 +1745,11 @@ function refreshSubscriptions(force = false) {
     applyTiersEvent(null);
   }
 
-  setupSubscriptions(nextHex);
+  try {
+    await setupSubscriptions(nextHex);
+  } catch (err) {
+    console.warn('[nutzap] failed to refresh subscriptions', err);
+  }
 }
 
 async function loadAll() {
@@ -1833,7 +1891,7 @@ async function publishAll() {
     );
 
     await Promise.all([loadTiers(reloadKey), loadProfile(reloadKey)]);
-    refreshSubscriptions(true);
+    await refreshSubscriptions(true);
   } catch (err) {
     console.error('[nutzap] publish profile workflow failed', err);
     const ack = (err as any)?.ack as { id?: string; message?: string } | undefined;
@@ -1865,7 +1923,7 @@ async function publishAll() {
 watch(
   () => authorInput.value,
   () => {
-    refreshSubscriptions();
+    void refreshSubscriptions();
   },
   { immediate: true }
 );
@@ -1894,7 +1952,7 @@ onMounted(() => {
   if (relaySupported) {
     connectRelay();
   }
-  ensureRelayStatusListener();
+  ensureRelayStatusListenerOnce();
 });
 
 onBeforeUnmount(() => {
