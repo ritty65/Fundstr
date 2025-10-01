@@ -12,44 +12,9 @@
               Isolated relay: relay.fundstr.me (WS → HTTP fallback)
             </div>
           </div>
-          <div class="profile-tabs-header">
-            <q-tabs
-              v-model="activeProfileStep"
-              dense
-              no-caps
-              class="profile-tabs"
-              active-color="primary"
-              indicator-color="primary"
-            >
-              <q-tab
-                v-for="tab in profileTabs"
-                :key="tab.name"
-                :name="tab.name"
-                :label="tab.label"
-                class="profile-tab"
-              >
-                <template #default>
-                  <div class="profile-tab__content">
-                    <div class="profile-tab__title-row">
-                      <span class="profile-tab__label text-weight-medium">{{ tab.label }}</span>
-                      <q-chip
-                        v-if="tab.readiness"
-                        dense
-                        size="sm"
-                        :icon="tab.readiness.icon"
-                        :class="['profile-tab__chip', `is-${tab.readiness.state}`]"
-                      >
-                        {{ tab.readiness.label }}
-                      </q-chip>
-                    </div>
-                    <div class="profile-tab__caption text-caption text-2">
-                      {{ tab.caption }}
-                    </div>
-                  </div>
-                </template>
-              </q-tab>
-            </q-tabs>
-            <div class="profile-readiness-chips" role="status" aria-live="polite">
+          <div class="profile-readiness" role="status" aria-live="polite">
+            <div class="profile-readiness-title text-caption text-2">Workspace readiness</div>
+            <div class="profile-readiness-chips">
               <q-chip
                 v-for="chip in readinessChips"
                 :key="chip.key"
@@ -74,436 +39,248 @@
               @click="requestExplorerOpen('toolbar')"
             />
           </div>
-          <q-tab-panels v-model="activeProfileStep" animated class="profile-panels">
-            <q-tab-panel name="connect" class="profile-panel">
-              <div class="panel-sections">
-                <ConnectionPanel
-                  :status-label="relayStatusLabel"
-                  :status-color="relayStatusColor"
-                  :status-dot-class="relayStatusDotClass"
-                  :latest-activity="latestRelayActivity"
-                  :activity-timeline="relayActivityTimeline"
-                  :relay-url="relayUrlInput"
-                  :relay-url-valid="relayUrlInputValid"
-                  :relay-supported="relaySupported"
-                  :relay-is-connected="relayIsConnected"
-                  :relay-auto-reconnect="relayAutoReconnect"
-                  :format-activity-time="formatActivityTime"
-                  :activity-level-color="activityLevelColor"
-                  @update:relay-url="value => (relayUrlInput.value = value)"
-                  @update:auto-reconnect="value => (relayAutoReconnect.value = value)"
-                  @connect="handleRelayConnect"
-                  @disconnect="handleRelayDisconnect"
-                  @clear-activity="clearRelayActivity"
-                />
+          <div class="profile-main-grid">
+            <ConnectionPanel
+              class="profile-grid-item profile-grid-item--connection"
+              :status-label="relayStatusLabel"
+              :status-color="relayStatusColor"
+              :status-dot-class="relayStatusDotClass"
+              :latest-activity="latestRelayActivity"
+              :activity-timeline="relayActivityTimeline"
+              :relay-url="relayUrlInput"
+              :relay-url-valid="relayUrlInputValid"
+              :relay-supported="relaySupported"
+              :relay-is-connected="relayIsConnected"
+              :relay-auto-reconnect="relayAutoReconnect"
+              :format-activity-time="formatActivityTime"
+              :activity-level-color="activityLevelColor"
+              @update:relay-url="value => (relayUrlInput.value = value)"
+              @update:auto-reconnect="value => (relayAutoReconnect.value = value)"
+              @connect="handleRelayConnect"
+              @disconnect="handleRelayDisconnect"
+              @clear-activity="clearRelayActivity"
+            />
 
-              <section class="section-card">
-                <div class="section-header">
-                  <div class="section-title text-subtitle1 text-weight-medium text-1">Key status</div>
-                  <div class="section-subtitle text-body2 text-2">
-                    Manage the publishing identity for Nutzap events.
-                    <template v-if="usingStoreIdentity">
-                      Active signer details are mirrored from your global Nostr identity.
-                    </template>
-                  </div>
+            <section class="section-card share-summary-card profile-grid-item profile-grid-item--share">
+              <div class="section-header">
+                <div class="section-title text-subtitle1 text-weight-medium text-1">Share &amp; snapshot</div>
+                <div class="section-subtitle text-body2 text-2">
+                  Copy your supporter-facing link and confirm key profile details.
                 </div>
-                <div class="section-body column q-gutter-md">
-                  <div class="column q-gutter-xs">
-                    <div class="text-body1 text-1">
-                      <template v-if="usingStoreIdentity">
-                        Connected as
-                        <span class="text-weight-medium">{{ connectedIdentitySummary || 'Fundstr identity' }}</span>
-                      </template>
-                      <template v-else>Using a dedicated Nutzap key</template>
-                    </div>
-                    <div v-if="usingStoreIdentity" class="text-body2 text-2">
-                      Your Fundstr signer is ready to publish Nutzap events. Stick with this shared identity unless you
-                      need a separate persona or want to keep a secret key off the global store.
-                    </div>
-                    <div v-if="usingStoreIdentity" class="text-body2 text-2">
-                      Choose a dedicated key when delegating publishing, testing against staging relays, or isolating
-                      collectibles under a different author.
-                    </div>
-                    <div v-else class="text-body2 text-2">
-                      This workspace is scoped to a standalone key, so Nutzap activity stays independent from your
-                      Fundstr profile.
-                    </div>
-                  </div>
-                  <div v-if="!usingStoreIdentity" class="row items-center q-gutter-sm">
-                    <q-btn
-                      color="primary"
-                      outline
-                      label="Manage dedicated key"
-                      @click="advancedKeyManagementOpen = true"
-                    />
-                  </div>
-                  <div v-else class="text-caption text-2">
-                    Dedicated key tools become available when no Fundstr signer is connected.
-                  </div>
-                  <q-dialog v-if="!usingStoreIdentity" v-model="advancedKeyManagementOpen" position="right">
-                    <q-card class="advanced-key-drawer bg-surface-1">
-                      <q-card-section class="row items-center justify-between q-gutter-sm">
-                        <div class="text-subtitle1 text-weight-medium text-1">Dedicated key tools</div>
-                        <q-btn icon="close" flat round dense v-close-popup aria-label="Close key tools" />
-                      </q-card-section>
-                      <q-separator />
-                      <q-card-section class="advanced-key-drawer__body column q-gutter-lg">
-                        <div class="column q-gutter-sm">
-                          <div class="text-body2 text-2">
-                            Generate a fresh key for Nutzap-only publishing or paste an existing secret to reuse another
-                            signer.
-                          </div>
-                        </div>
-                        <div class="column q-gutter-sm">
-                          <q-input
-                            v-model="keyImportValue"
-                            label="Secret key (nsec or 64-char hex)"
-                            dense
-                            filled
-                            autocomplete="off"
-                          />
-                          <div class="row q-gutter-sm">
-                            <q-btn
-                              color="primary"
-                              label="Generate"
-                              @click="generateNewSecret"
-                            />
-                            <q-btn
-                              color="primary"
-                              outline
-                              label="Import"
-                              @click="importSecretKey"
-                            />
-                          </div>
-                        </div>
-                        <div class="column q-gutter-sm">
-                          <q-input
-                            :model-value="keySecretHex"
-                            label="Secret key (hex)"
-                            type="textarea"
-                            dense
-                            filled
-                            readonly
-                            autogrow
-                          />
-                          <q-input
-                            :model-value="keyNsec"
-                            label="Secret key (nsec)"
-                            type="textarea"
-                            dense
-                            filled
-                            readonly
-                            autogrow
-                          />
-                          <q-input
-                            :model-value="keyPublicHex"
-                            label="Public key (hex)"
-                            type="textarea"
-                            dense
-                            filled
-                            readonly
-                            autogrow
-                          />
-                          <q-input
-                            :model-value="keyNpub"
-                            label="Public key (npub)"
-                            type="textarea"
-                            dense
-                            filled
-                            readonly
-                            autogrow
-                          />
-                        </div>
-                      </q-card-section>
-                    </q-card>
-                  </q-dialog>
-                </div>
-                </section>
               </div>
-            </q-tab-panel>
-
-            <q-tab-panel name="author" class="profile-panel">
-              <div class="panel-sections">
-              <AuthorMetadataPanel
-                :display-name="displayName"
-                :picture-url="pictureUrl"
-                :mints-text="mintsText"
-                :relays-text="relaysText"
-                :p2pk-priv="p2pkPriv"
-                :p2pk-pub="p2pkPub"
-                :p2pk-derived-pub="p2pkDerivedPub"
-                :key-secret-hex="keySecretHex"
-                :key-nsec="keyNsec"
-                :key-public-hex="keyPublicHex"
-                :key-npub="keyNpub"
-                :key-import-value="keyImportValue"
-                :using-store-identity="usingStoreIdentity"
-                :connected-identity-summary="connectedIdentitySummary"
-                :identity-basics-complete="identityBasicsComplete"
-                :optional-metadata-complete="optionalMetadataComplete"
-                :advanced-encryption-complete="advancedEncryptionComplete"
-                :advanced-key-management-open="advancedKeyManagementOpen"
-                @update:display-name="value => (displayName.value = value)"
-                @update:picture-url="value => (pictureUrl.value = value)"
-                @update:mints-text="value => (mintsText.value = value)"
-                @update:relays-text="value => (relaysText.value = value)"
-                @update:p2pk-priv="value => (p2pkPriv.value = value)"
-                @update:p2pk-pub="value => (p2pkPub.value = value)"
-                @update:key-import-value="value => (keyImportValue.value = value)"
-                @update:advanced-key-management-open="value => (advancedKeyManagementOpen.value = value)"
-                @request-derive-p2pk="deriveP2pkPublicKey"
-                @request-generate-p2pk="generateP2pkKeypair"
-                @request-generate-secret="generateNewSecret"
-                @request-import-secret="importSecretKey"
-              />
-
-              <section class="section-card">
-                <div class="section-header">
-                  <div class="section-title text-subtitle1 text-weight-medium text-1">Publish profile</div>
-                  <div class="section-subtitle text-body2 text-2">
-                    Confirm details and push the latest payment profile to relay.fundstr.me.
-                  </div>
-                </div>
-                <div class="section-body column q-gutter-md">
-                  <div
-                    v-if="showContextHelpBanner"
-                    class="context-help-inline bg-surface-1 text-1"
+              <div class="section-body column q-gutter-lg">
+                <div class="share-link-block" data-testid="profile-share-block">
+                  <div class="share-link-label text-caption text-2">Public profile link</div>
+                  <q-input
+                    :model-value="publicProfileUrl"
+                    dense
+                    filled
+                    readonly
+                    :disable="!publicProfileUrl"
+                    data-testid="public-profile-url"
                   >
-                    <div class="context-help-inline__header">
-                      <div class="text-subtitle1 text-weight-medium">Workspace help</div>
+                    <template #append>
                       <q-btn
                         flat
-                        dense
-                        round
-                        icon="close"
-                        class="context-help-inline__dismiss"
-                        aria-label="Hide workspace help"
-                        @click="dismissHelpBanner"
-                      />
-                    </div>
-                    <div class="context-help-inline__body text-body2 text-2">
-                      Pull relay history without leaving the composer and jump into diagnostics when deeper inspection is
-                      needed.
-                    </div>
-                    <div
-                      v-if="diagnosticsAttention"
-                      class="context-help-alert"
-                      :class="`context-help-alert--${diagnosticsAttention.level}`"
-                    >
-                      <div class="context-help-alert-title text-body1 text-weight-medium text-1">
-                        {{ diagnosticsAttention.title }}
-                      </div>
-                      <div class="context-help-alert-detail text-caption text-2">
-                        {{ diagnosticsAttention.detail }}
-                      </div>
-                    </div>
-                    <div class="context-help-inline__actions">
-                      <q-btn
-                        v-if="diagnosticsAttention"
                         color="primary"
-                        flat
-                        class="context-help-inline__cta"
-                        label="Open data explorer"
-                        @click="handleDiagnosticsAlertCta"
+                        label="Copy link"
+                        :disable="!publicProfileUrl"
+                        data-testid="copy-public-profile-url"
+                        @click="publicProfileUrl && copy(publicProfileUrl)"
                       />
-                      <q-btn
-                        v-else
-                        color="primary"
-                        flat
-                        class="context-help-inline__cta"
-                        icon="science"
-                        label="Open data explorer"
-                        @click="requestExplorerOpen('banner')"
-                      />
+                    </template>
+                  </q-input>
+                  <div v-if="lastPublishInfo" class="share-meta text-caption text-2">{{ lastPublishInfo }}</div>
+                </div>
+                <div class="share-summary-grid">
+                  <div class="share-summary-column column q-gutter-md">
+                    <div class="summary-block" data-testid="summary-identity">
+                      <div class="summary-label text-caption text-2">Profile identity</div>
+                      <div class="summary-value text-body1 text-weight-medium text-1">
+                        {{ summaryDisplayName }}
+                      </div>
+                      <div v-if="summaryAuthorKey" class="summary-meta text-caption text-2">
+                        Author:
+                        <span class="text-weight-medium text-1">{{ summaryAuthorKey }}</span>
+                      </div>
+                      <div v-if="summaryP2pkPointer" class="summary-meta text-caption text-2">
+                        P2PK pointer:
+                        <span class="text-weight-medium text-1">{{ summaryP2pkPointer }}</span>
+                      </div>
+                    </div>
+                    <div class="summary-block" data-testid="summary-tiers">
+                      <div class="summary-label text-caption text-2">Tier address</div>
+                      <div class="summary-value text-body2 text-1">{{ tierAddressPreview }}</div>
+                      <div class="summary-meta text-caption text-2">
+                        Publishing as {{ tierKindLabel }} — parameterized replaceable ["d", "tiers"].
+                      </div>
                     </div>
                   </div>
-                  <div class="publish-readiness-note text-body2 text-2">
-                    Workflow tabs now surface signer, metadata, and tier readiness. Follow the highlighted chips above to
-                    resolve outstanding requirements before publishing.
-                  </div>
-                  <div class="text-body2 text-2">
-                    Publishing updates with tier address <span class="text-weight-medium text-1">{{ tierAddressPreview }}</span>.
-                  </div>
-                  <div class="text-body2 text-2">
-                    Publishing happens from the Review &amp; Publish section once tiers and signer are ready.
+                  <div class="share-summary-column column q-gutter-md">
+                    <div class="summary-block" data-testid="summary-mints">
+                      <div class="summary-label text-caption text-2">Trusted mints</div>
+                      <div v-if="mintList.length" class="summary-chips" data-testid="summary-mints-list">
+                        <q-chip
+                          v-for="mint in mintList"
+                          :key="mint"
+                          dense
+                          outline
+                          class="summary-chip"
+                        >
+                          {{ mint }}
+                        </q-chip>
+                      </div>
+                      <div v-else class="summary-empty text-caption text-2">No mints configured.</div>
+                    </div>
+                    <div class="summary-block" data-testid="summary-relays">
+                      <div class="summary-label text-caption text-2">Preferred relays</div>
+                      <div class="summary-chips" data-testid="summary-relay-list">
+                        <q-chip
+                          v-for="relay in relayList"
+                          :key="relay"
+                          dense
+                          outline
+                          class="summary-chip"
+                        >
+                          {{ relay }}
+                        </q-chip>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                </section>
-              </div>
-            </q-tab-panel>
-
-            <q-tab-panel name="tiers" class="profile-panel">
-              <div class="panel-sections">
-                <section class="section-card">
-                <div class="section-header">
-                  <div class="section-title text-subtitle1 text-weight-medium text-1">Tier strategy</div>
-                  <div class="section-subtitle text-body2 text-2">
-                    Publishing as {{ tierKindLabel }} — parameterized replaceable ["d", "tiers"].
-                  </div>
-                </div>
-                <div class="section-body column q-gutter-md">
-                  <div class="row items-center justify-between wrap q-gutter-sm">
-                    <div class="text-subtitle2 text-1">Tier kind</div>
-                    <q-btn-toggle
-                      v-model="tierKind"
-                      :options="tierKindOptions"
+                <div
+                  v-if="showContextHelpBanner"
+                  class="context-help-inline bg-surface-1 text-1"
+                >
+                  <div class="context-help-inline__header">
+                    <div class="text-subtitle1 text-weight-medium">Workspace help</div>
+                    <q-btn
+                      flat
                       dense
-                      toggle-color="primary"
-                      unelevated
+                      round
+                      icon="close"
+                      class="context-help-inline__dismiss"
+                      aria-label="Hide workspace help"
+                      @click="dismissHelpBanner"
+                    />
+                  </div>
+                  <div class="context-help-inline__body text-body2 text-2">
+                    Pull relay history without leaving the composer and jump into diagnostics when deeper inspection is
+                    needed.
+                  </div>
+                  <div
+                    v-if="diagnosticsAttention"
+                    class="context-help-alert"
+                    :class="`context-help-alert--${diagnosticsAttention.level}`"
+                  >
+                    <div class="context-help-alert-title text-body1 text-weight-medium text-1">
+                      {{ diagnosticsAttention.title }}
+                    </div>
+                    <div class="context-help-alert-detail text-caption text-2">
+                      {{ diagnosticsAttention.detail }}
+                    </div>
+                  </div>
+                  <div class="context-help-inline__actions">
+                    <q-btn
+                      v-if="diagnosticsAttention"
+                      color="primary"
+                      flat
+                      class="context-help-inline__cta"
+                      label="Open data explorer"
+                      @click="handleDiagnosticsAlertCta"
+                    />
+                    <q-btn
+                      v-else
+                      color="primary"
+                      flat
+                      class="context-help-inline__cta"
+                      icon="science"
+                      label="Open data explorer"
+                      @click="requestExplorerOpen('banner')"
                     />
                   </div>
                 </div>
-              </section>
-
-              <TierComposerCard
-                :tiers="tiers"
-                :frequency-options="tierFrequencyOptions"
-                :show-errors="showTierValidation"
-                :tiers-ready="tiersReady"
-                @update:tiers="value => (tiers.value = value)"
-                @validation-changed="handleTierValidation"
-              />
-
-              <ReviewPublishCard
-                v-model:open="reviewPublishSectionOpen"
-                :tiers-ready="tiersReady"
-                :tiers-json-preview="tiersJsonPreview"
-                :publish-disabled="publishDisabled"
-                :publishing="publishingAll"
-                :public-profile-url="publicProfileUrl"
-                :last-publish-info="lastPublishInfo"
-                @publish="publishAll"
-                @copy-link="copy(publicProfileUrl)"
-              />
               </div>
-            </q-tab-panel>
+            </section>
 
-            <q-tab-panel name="explore" class="profile-panel">
-              <div class="panel-sections">
-                <section class="section-card explore-summary-card" data-testid="explore-summary">
-                <div class="section-header">
-                  <div class="section-title text-subtitle1 text-weight-medium text-1">Review workspace</div>
-                  <div class="section-subtitle text-body2 text-2">
-                    High-level overview of the active author alongside tier readiness details.
-                  </div>
+            <AuthorMetadataPanel
+              class="profile-grid-item profile-grid-item--author"
+              :display-name="displayName"
+              :picture-url="pictureUrl"
+              :mints-text="mintsText"
+              :relays-text="relaysText"
+              :p2pk-priv="p2pkPriv"
+              :p2pk-pub="p2pkPub"
+              :p2pk-derived-pub="p2pkDerivedPub"
+              :key-secret-hex="keySecretHex"
+              :key-nsec="keyNsec"
+              :key-public-hex="keyPublicHex"
+              :key-npub="keyNpub"
+              :key-import-value="keyImportValue"
+              :using-store-identity="usingStoreIdentity"
+              :connected-identity-summary="connectedIdentitySummary"
+              :identity-basics-complete="identityBasicsComplete"
+              :optional-metadata-complete="optionalMetadataComplete"
+              :advanced-encryption-complete="advancedEncryptionComplete"
+              :advanced-key-management-open="advancedKeyManagementOpen"
+              @update:display-name="value => (displayName.value = value)"
+              @update:picture-url="value => (pictureUrl.value = value)"
+              @update:mints-text="value => (mintsText.value = value)"
+              @update:relays-text="value => (relaysText.value = value)"
+              @update:p2pk-priv="value => (p2pkPriv.value = value)"
+              @update:p2pk-pub="value => (p2pkPub.value = value)"
+              @update:key-import-value="value => (keyImportValue.value = value)"
+              @update:advanced-key-management-open="value => (advancedKeyManagementOpen.value = value)"
+              @request-derive-p2pk="deriveP2pkPublicKey"
+              @request-generate-p2pk="generateP2pkKeypair"
+              @request-generate-secret="generateNewSecret"
+              @request-import-secret="importSecretKey"
+            />
+
+            <section class="section-card tier-kind-card profile-grid-item profile-grid-item--tier-kind">
+              <div class="section-header">
+                <div class="section-title text-subtitle1 text-weight-medium text-1">Tier strategy</div>
+                <div class="section-subtitle text-body2 text-2">
+                  Publishing as {{ tierKindLabel }} — parameterized replaceable ["d", "tiers"].
                 </div>
-                <div class="section-body explore-summary-body">
-                  <div class="explore-summary-grid">
-                    <div class="explore-summary-overview column q-gutter-lg">
-                      <div class="summary-block" data-testid="explore-summary-identity">
-                        <div class="summary-label text-caption text-2">Profile identity</div>
-                        <div class="summary-value text-body1 text-weight-medium text-1">
-                          {{ summaryDisplayName }}
-                        </div>
-                        <div v-if="summaryAuthorKey" class="summary-meta text-caption text-2">
-                          Author:
-                          <span class="text-weight-medium text-1">{{ summaryAuthorKey }}</span>
-                        </div>
-                        <div v-if="summaryP2pkPointer" class="summary-meta text-caption text-2">
-                          P2PK pointer:
-                          <span class="text-weight-medium text-1">{{ summaryP2pkPointer }}</span>
-                        </div>
-                      </div>
-                      <div
-                        v-if="publicProfileUrl"
-                        class="summary-block"
-                        data-testid="explore-summary-share"
-                      >
-                        <div class="summary-label text-caption text-2">Public profile link</div>
-                        <q-input
-                          :model-value="publicProfileUrl"
-                          dense
-                          filled
-                          readonly
-                          data-testid="public-profile-url"
-                        >
-                          <template #append>
-                            <q-btn
-                              flat
-                              color="primary"
-                              label="Copy link"
-                              data-testid="copy-public-profile-url"
-                              @click="copy(publicProfileUrl)"
-                            />
-                          </template>
-                        </q-input>
-                      </div>
-                      <div class="summary-block" data-testid="explore-summary-mints">
-                        <div class="summary-label text-caption text-2">Trusted mints</div>
-                        <div v-if="mintList.length" class="summary-chips" data-testid="explore-mint-list">
-                          <q-chip
-                            v-for="mint in mintList"
-                            :key="mint"
-                            dense
-                            outline
-                            class="summary-chip"
-                            data-testid="explore-mint-chip"
-                          >
-                            {{ mint }}
-                          </q-chip>
-                        </div>
-                        <div v-else class="summary-empty text-caption text-2">No mints configured.</div>
-                      </div>
-                      <div class="summary-block" data-testid="explore-summary-relays">
-                        <div class="summary-label text-caption text-2">Preferred relays</div>
-                        <div class="summary-chips" data-testid="explore-relay-list">
-                          <q-chip
-                            v-for="relay in relayList"
-                            :key="relay"
-                            dense
-                            outline
-                            class="summary-chip"
-                            data-testid="explore-relay-chip"
-                          >
-                            {{ relay }}
-                          </q-chip>
-                        </div>
-                      </div>
-                    </div>
-                    <div class="explore-tier-overview" data-testid="explore-tier-overview">
-                      <div class="summary-label text-caption text-2">Tier lineup</div>
-                      <ol
-                        v-if="tierSummaryList.length"
-                        class="explore-tier-list"
-                        data-testid="explore-tier-list"
-                        role="list"
-                      >
-                        <li
-                          v-for="(tier, index) in tierSummaryList"
-                          :key="tier.id || index"
-                          class="explore-tier-item"
-                          data-testid="explore-tier-item"
-                        >
-                          <div class="tier-rank text-caption text-2">#{{ index + 1 }}</div>
-                          <div class="tier-details">
-                            <div class="tier-title text-body1 text-weight-medium text-1">{{ tier.title }}</div>
-                            <div class="tier-meta text-caption text-2">
-                              <span class="tier-price text-weight-medium text-1">{{ tier.priceLabel }}</span>
-                              <q-chip dense size="sm" outline class="tier-frequency-chip">
-                                {{ tier.frequencyLabel }}
-                              </q-chip>
-                            </div>
-                            <div v-if="tier.description" class="tier-description text-caption text-2">
-                              {{ tier.description }}
-                            </div>
-                          </div>
-                        </li>
-                      </ol>
-                      <div v-else class="summary-empty text-caption text-2">
-                        No tiers loaded yet — fetch data from an author to review.
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-              <section class="section-card explore-tools-card" data-testid="explore-inline-tools">
-                <div class="explore-tools-desktop text-body2 text-2">
-                  Launch the data explorer from the toolbar button above to inspect relay events alongside this summary.
-                </div>
-              </section>
               </div>
-            </q-tab-panel>
-          </q-tab-panels>
+              <div class="section-body column q-gutter-md">
+                <div class="row items-center justify-between wrap q-gutter-sm">
+                  <div class="text-subtitle2 text-1">Tier kind</div>
+                  <q-btn-toggle
+                    v-model="tierKind"
+                    :options="tierKindOptions"
+                    dense
+                    toggle-color="primary"
+                    unelevated
+                  />
+                </div>
+              </div>
+            </section>
+
+            <TierComposerCard
+              class="profile-grid-item profile-grid-item--tiers"
+              :tiers="tiers"
+              :frequency-options="tierFrequencyOptions"
+              :show-errors="showTierValidation"
+              :tiers-ready="tiersReady"
+              @update:tiers="value => (tiers.value = value)"
+              @validation-changed="handleTierValidation"
+            />
+
+            <ReviewPublishCard
+              class="profile-grid-item profile-grid-item--publish"
+              v-model:open="reviewPublishSectionOpen"
+              :tiers-ready="tiersReady"
+              :tiers-json-preview="tiersJsonPreview"
+              :publish-disabled="publishDisabled"
+              :publishing="publishingAll"
+              :public-profile-url="publicProfileUrl"
+              :last-publish-info="lastPublishInfo"
+              @publish="publishAll"
+              @copy-link="copy(publicProfileUrl)"
+            />
+          </div>
         </div>
       </q-card>
       <q-dialog
@@ -522,17 +299,11 @@
               round
               icon="close"
               aria-label="Close data explorer"
-              @click="dataExplorerDialogOpen = false"
+              v-close-popup
             />
           </div>
           <div class="data-explorer-drawer__body">
-            <NutzapExplorerPanel
-              v-model="authorInput"
-              :loading-author="loading"
-              :tier-address-preview="tierAddressPreview"
-              :condensed="true"
-              @load-author="loadAll"
-            />
+            <RelayExplorer />
           </div>
         </q-card>
       </q-dialog>
@@ -684,8 +455,6 @@ const publicProfileUrl = computed(() => {
 
 const reviewPublishSectionOpen = ref(false);
 
-type ProfileStep = 'connect' | 'author' | 'tiers' | 'explore';
-
 type ReadinessChipState = 'ready' | 'todo' | 'optional';
 type ReadinessChipKey = 'authorKey' | 'identity' | 'mint' | 'p2pk' | 'tiers';
 
@@ -696,21 +465,6 @@ type ReadinessChip = {
   icon: string;
   required: boolean;
 };
-
-type ProfileTabReadiness = {
-  label: string;
-  state: ReadinessChipState;
-  icon: string;
-};
-
-type ProfileTab = {
-  name: ProfileStep;
-  label: string;
-  caption: string;
-  readiness: ProfileTabReadiness | null;
-};
-
-const activeProfileStep = ref<ProfileStep>('connect');
 
 type DiagnosticsAttention = {
   id: number;
@@ -1292,80 +1046,6 @@ const readinessChips = computed<ReadinessChip[]>(() => {
           required: entry.required,
         }
   );
-});
-
-const profileTabs = computed<ProfileTab[]>(() => {
-  const readinessMap = new Map<ReadinessChipKey, ReadinessChip>();
-  for (const chip of readinessChips.value) {
-    readinessMap.set(chip.key, chip);
-  }
-
-  const aggregate = (keys: ReadonlyArray<ReadinessChipKey>): ProfileTabReadiness | null => {
-    if (!keys.length) {
-      return null;
-    }
-
-    const entries = keys
-      .map(key => readinessMap.get(key))
-      .filter((entry): entry is ReadinessChip => !!entry);
-
-    if (!entries.length) {
-      return null;
-    }
-
-    const missingRequired = entries.filter(entry => entry.required && entry.state !== 'ready');
-    if (missingRequired.length) {
-      const first = missingRequired[0];
-      return {
-        label: first.label,
-        state: first.state,
-        icon: first.icon,
-      };
-    }
-
-    const pendingOptional = entries.filter(entry => !entry.required && entry.state !== 'ready');
-    if (pendingOptional.length) {
-      const firstOptional = pendingOptional[0];
-      return {
-        label: firstOptional.label,
-        state: firstOptional.state,
-        icon: firstOptional.icon,
-      };
-    }
-
-    return {
-      label: 'Ready',
-      state: 'ready',
-      icon: 'task_alt',
-    };
-  };
-
-  return [
-    {
-      name: 'connect',
-      label: 'Connect',
-      caption: 'Establish relay access and signer status.',
-      readiness: aggregate(['authorKey'] as const),
-    },
-    {
-      name: 'author',
-      label: 'Author',
-      caption: 'Shape profile metadata before publishing.',
-      readiness: aggregate(['identity', 'mint', 'p2pk'] as const),
-    },
-    {
-      name: 'tiers',
-      label: 'Tiers',
-      caption: 'Compose benefits and cadence options.',
-      readiness: aggregate(['tiers'] as const),
-    },
-    {
-      name: 'explore',
-      label: 'Review',
-      caption: 'Inspect stored events and author data.',
-      readiness: null,
-    },
-  ];
 });
 
 const tiersJsonPreview = computed(() => JSON.stringify(buildTiersJsonPayload(tiers.value), null, 2));
@@ -1994,12 +1674,6 @@ onBeforeUnmount(() => {
   gap: 16px;
 }
 
-.profile-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
 .status-banner {
   display: flex;
   flex-direction: column;
@@ -2044,101 +1718,35 @@ onBeforeUnmount(() => {
   text-transform: capitalize;
 }
 
-.status-chip {
-  text-transform: capitalize;
-  font-weight: 600;
-}
-
 .status-meta {
   font-size: 13px;
   line-height: 1.4;
   color: var(--text-2);
 }
 
-.profile-tabs-header {
+.profile-readiness {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-
-.profile-tabs {
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 12px;
-  padding: 4px;
-  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
-}
-
-.profile-tabs :deep(.q-tabs__content) {
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-}
-
-.profile-tabs :deep(.q-tabs__indicator) {
-  display: none;
-}
-
-.profile-tab {
-  flex: 1 1 220px;
-  border-radius: 10px;
-  padding: 4px;
-  border: 1px solid transparent;
-  transition: border-color 150ms ease, background-color 150ms ease;
-}
-
-.profile-tab:hover {
-  border-color: var(--accent-200);
-}
-
-.profile-tab.q-tab--active {
-  border-color: var(--accent-500);
-  background: color-mix(in srgb, var(--accent-500) 16%, transparent);
-}
-
-.profile-tab :deep(.q-focus-helper) {
-  border-radius: 10px;
-}
-
-.profile-tab :deep(.q-tab__content) {
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 4px;
-  text-align: left;
-}
-
-.profile-tab__content {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 100%;
-}
-
-.profile-tab__title-row {
-  display: flex;
-  align-items: center;
   gap: 8px;
+  padding: 16px 18px;
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
 }
 
-.profile-tab__label {
-  font-size: 0.95rem;
-  color: var(--tab-inactive);
-}
-
-.profile-tab.q-tab--active .profile-tab__label {
-  color: var(--tab-active);
-}
-
-.profile-tab__caption {
+.profile-readiness-title {
+  text-transform: uppercase;
   font-size: 0.75rem;
-  line-height: 1.4;
+  letter-spacing: 0.04em;
   color: var(--text-2);
 }
 
-.profile-tab.q-tab--active .profile-tab__caption {
-  color: var(--text-1);
+.profile-readiness-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.profile-tab__chip,
 .profile-readiness-chip {
   --q-chip-padding: 2px 10px;
   font-size: 0.75rem;
@@ -2150,52 +1758,32 @@ onBeforeUnmount(() => {
   gap: 4px;
 }
 
-.profile-tab__chip :deep(.q-chip__icon),
 .profile-readiness-chip :deep(.q-chip__icon) {
   font-size: 16px;
 }
 
-.profile-tab__chip.is-ready,
 .profile-readiness-chip.is-ready {
   background-color: var(--accent-500);
   color: var(--text-inverse);
   border-color: var(--accent-500);
 }
 
-.profile-tab__chip.is-todo,
 .profile-readiness-chip.is-todo {
   background-color: color-mix(in srgb, var(--accent-200) 35%, transparent);
   color: var(--accent-600);
   border-color: color-mix(in srgb, var(--accent-200) 55%, transparent);
 }
 
-.profile-tab__chip.is-optional,
 .profile-readiness-chip.is-optional {
   background-color: color-mix(in srgb, var(--surface-2) 85%, transparent);
   color: var(--text-2);
   border-color: var(--surface-contrast-border);
 }
 
-.profile-readiness-chips {
+.profile-card-body {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.publish-readiness-note {
-  line-height: 1.5;
-}
-
-@media (min-width: 1100px) {
-  .profile-tabs-header {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .profile-readiness-chips {
-    justify-content: flex-end;
-  }
+  flex-direction: column;
+  gap: 24px;
 }
 
 .profile-content-toolbar {
@@ -2205,6 +1793,181 @@ onBeforeUnmount(() => {
 
 .data-explorer-trigger {
   align-self: flex-end;
+}
+
+.profile-main-grid {
+  display: grid;
+  gap: 24px;
+}
+
+.profile-grid-item {
+  min-width: 0;
+}
+
+.share-link-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.share-link-label {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+}
+
+.share-meta {
+  color: var(--text-2);
+}
+
+.share-summary-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.share-summary-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.summary-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
+}
+
+.summary-label {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+}
+
+.summary-value {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.summary-meta {
+  line-height: 1.4;
+  color: var(--text-2);
+}
+
+.summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.summary-chip {
+  border-color: var(--surface-contrast-border);
+}
+
+.summary-empty {
+  padding: 4px 0;
+  color: var(--text-2);
+}
+
+.context-help-inline {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.context-help-inline__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.context-help-inline__dismiss {
+  color: var(--text-2);
+}
+
+.context-help-inline__body {
+  line-height: 1.5;
+}
+
+.context-help-inline__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.context-help-inline__cta {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.context-help-alert {
+  border-left: 3px solid var(--accent-500);
+  padding-left: 12px;
+  margin-left: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.context-help-alert--error {
+  border-color: #c10015;
+}
+
+.context-help-alert--warning {
+  border-color: #f2c037;
+}
+
+.context-help-alert-title {
+  margin-bottom: 4px;
+}
+
+.context-help-alert-detail {
+  line-height: 1.4;
+}
+
+.section-card {
+  background: var(--surface-2);
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 16px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.section-title {
+  font-size: 1.05rem;
+}
+
+.section-subtitle {
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tier-kind-card .section-body {
+  gap: 12px;
 }
 
 .data-explorer-drawer {
@@ -2239,424 +2002,91 @@ onBeforeUnmount(() => {
   padding: 0 20px 20px;
 }
 
-.explore-summary-card .section-body {
-  gap: 0;
-}
-
-.explore-summary-grid {
-  display: grid;
-  gap: 24px;
-}
-
-@media (min-width: 1024px) {
-  .explore-summary-grid {
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+@media (min-width: 600px) {
+  .profile-readiness {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
   }
 }
 
-.explore-summary-overview {
-  gap: 16px;
-}
-
-.summary-block {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 16px;
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
-}
-
-.summary-label {
-  text-transform: uppercase;
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
-}
-
-.summary-meta {
-  line-height: 1.4;
-}
-
-.summary-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.summary-chip {
-  border-color: var(--surface-contrast-border);
-}
-
-.summary-empty {
-  padding: 8px 0;
-}
-
-.explore-tier-overview {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.explore-tier-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin: 0;
-  padding: 0;
-}
-
-.explore-tier-item {
-  display: flex;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
-}
-
-.tier-rank {
-  width: 32px;
-  flex-shrink: 0;
-  text-align: center;
-  line-height: 1.4;
-  color: var(--text-2);
-}
-
-.tier-details {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.tier-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.tier-frequency-chip {
-  border-color: var(--surface-contrast-border);
-  color: var(--text-2);
-}
-
-.tier-description {
-  line-height: 1.4;
-}
-
-
-.explore-tools-card {
-  gap: 12px;
-}
-
-.explore-tools-desktop {
-  line-height: 1.5;
-}
-
-.context-help-inline {
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 16px;
-  padding: 16px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
-}
-
-.context-help-inline__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.context-help-inline__body {
-  line-height: 1.5;
-}
-
-.context-help-inline__actions {
-  display: flex;
-  justify-content: flex-start;
-  gap: 8px;
-}
-
-.context-help-inline__cta {
-  margin-top: 4px;
-}
-
-.context-help-alert {
-  border-radius: 12px;
-  padding: 12px 16px;
-  border: 1px solid var(--surface-contrast-border);
-  background: color-mix(in srgb, var(--surface-2) 94%, transparent);
-}
-
-.context-help-alert--error {
-  border-color: #c10015;
-}
-
-.context-help-alert--warning {
-  border-color: #f2c037;
-}
-
-.context-help-alert-title {
-  margin-bottom: 4px;
-}
-
-.context-help-alert-detail {
-  line-height: 1.4;
-}
-
-.connection-status-indicator {
-  min-width: 160px;
-}
-
-.latest-activity {
-  color: var(--text-2);
-}
-
-.activity-expansion-header {
-  padding-left: 0;
-  padding-right: 0;
-}
-
-.activity-timeline {
-  position: relative;
-  padding-left: 4px;
-}
-
-.timeline-entry {
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.timeline-marker {
-  position: relative;
-  width: 12px;
-  min-width: 12px;
-  height: 12px;
-  border-radius: 9999px;
-  margin-top: 6px;
-  background: var(--accent-500);
-}
-
-.timeline-marker::after {
-  content: '';
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 2px;
-  height: calc(100% + 12px);
-  background: var(--surface-contrast-border);
-}
-
-.timeline-entry:last-child .timeline-marker::after {
-  display: none;
-}
-
-.timeline-marker--success {
-  background: #21ba45;
-}
-
-.timeline-marker--info {
-  background: var(--accent-500);
-}
-
-.timeline-marker--warning {
-  background: #f2c037;
-}
-
-.timeline-marker--error {
-  background: #c10015;
-}
-
-.timeline-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.timeline-message {
-  word-break: break-word;
-}
-
-.timeline-context {
-  word-break: break-word;
-}
-
-.timeline-actions {
-  padding-top: 8px;
-}
-
-
-.profile-panels {
-  border-radius: 16px;
-  background: transparent;
-}
-
-.profile-panel {
-  padding: 0;
-}
-
-.panel-sections {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 4px;
-}
-
-.section-card {
-  background: var(--surface-2);
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 16px;
-  padding: 20px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.section-header {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.section-body {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.author-profile-card .section-body {
-  gap: 0;
-}
-
-.nested-sections {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.nested-section {
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
-  overflow: hidden;
-}
-
-.nested-section.is-disabled {
-  opacity: 0.6;
-}
-
-.nested-section .q-item {
-  padding: 12px 16px;
-  min-height: auto;
-}
-
-.nested-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-}
-
-.nested-header__titles {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.nested-subtitle {
-  color: var(--text-2);
-}
-
-.nested-section-body {
-  padding: 12px 16px 16px;
-}
-
-.nested-section .q-expansion-item__content {
-  padding: 0;
-}
-
-.section-header--with-status {
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.section-header--with-status .section-header-primary {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-}
-
-.review-expansion {
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
-}
-
-.review-expansion.is-disabled {
-  opacity: 0.6;
-}
-
-.review-lock-message {
-  margin-top: 12px;
-}
-
-.section-empty {
-  padding: 12px 0;
-  border: 1px dashed var(--surface-contrast-border);
-  border-radius: 12px;
-  text-align: center;
-}
-
-.advanced-key-drawer {
-  width: 420px;
-  max-width: 90vw;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.advanced-key-drawer__body {
-  flex: 1;
-  overflow-y: auto;
-}
-
-@media (max-width: 1100px) {
-  .nutzap-profile-container {
-    flex-direction: column;
+@media (min-width: 768px) {
+  .profile-card-header {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .status-banner,
+  .profile-readiness {
+    flex: 1 1 0%;
+  }
+
+  .profile-main-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .profile-grid-item--connection {
+    grid-column: span 6;
+  }
+
+  .profile-grid-item--share {
+    grid-column: span 6;
+  }
+
+  .profile-grid-item--author {
+    grid-column: span 6;
+  }
+
+  .profile-grid-item--tier-kind {
+    grid-column: span 6;
+  }
+
+  .profile-grid-item--tiers {
+    grid-column: span 6;
+  }
+
+  .profile-grid-item--publish {
+    grid-column: span 6;
+  }
+
+  .share-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 768px) {
-  .profile-card {
-    padding: 18px;
+@media (min-width: 1200px) {
+  .profile-main-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
   }
 
-  .status-banner {
-    padding: 14px 16px;
+  .profile-grid-item--connection {
+    grid-column: span 5;
   }
 
-  .profile-tab {
-    flex: 1 1 160px;
+  .profile-grid-item--share {
+    grid-column: span 7;
   }
 
-  .section-card {
-    padding: 16px 18px;
+  .profile-grid-item--author {
+    grid-column: span 6;
   }
 
-  .data-explorer-drawer__header {
-    padding: 16px 16px 12px;
+  .profile-grid-item--tier-kind {
+    grid-column: span 6;
   }
 
-  .data-explorer-drawer__body {
-    padding: 0 16px 16px;
+  .profile-grid-item--tiers {
+    grid-column: span 7;
+  }
+
+  .profile-grid-item--publish {
+    grid-column: span 5;
+  }
+
+  .profile-readiness {
+    align-items: flex-start;
   }
 }
 </style>
+

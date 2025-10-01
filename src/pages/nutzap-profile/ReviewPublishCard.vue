@@ -1,5 +1,5 @@
 <template>
-  <section class="section-card">
+  <section class="section-card review-card">
     <q-expansion-item
       v-model="internalOpen"
       switch-toggle-side
@@ -131,6 +131,33 @@ const tiersReady = computed(() => props.tiersReady);
 </script>
 
 <style scoped>
+.review-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
+.review-card :deep(.q-expansion-item__container) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.review-card :deep(.q-expansion-item__content) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.review-card .nested-section-body {
+  flex: 1;
+}
+
+.share-inline {
+  width: 100%;
+}
+
 .review-expansion.is-disabled {
   opacity: 0.6;
   pointer-events: none;
