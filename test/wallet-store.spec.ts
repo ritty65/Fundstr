@@ -1,18 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useWalletStore } from "stores/wallet";
 import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
+import { bytesToHex } from "@noble/hashes/utils";
+import { getPublicKey } from "@noble/secp256k1";
 
-let proofsStoreMock: any;
-let uiStoreMock: any;
+const proofsStoreMock: any = {};
+const uiStoreMock: any = {};
+const receiveStoreMock: any = {};
+const prStoreMock: any = {};
+const p2pkStoreMock: any = {};
 
-vi.mock("stores/proofs", () => {
-  proofsStoreMock = {
-    addProofs: vi.fn(),
-    removeProofs: vi.fn(),
-    setReserved: vi.fn(),
-  };
-  return { useProofsStore: () => proofsStoreMock };
-});
+vi.mock("stores/receiveTokensStore", () => ({
+  useReceiveTokensStore: () => receiveStoreMock,
+}));
+
+vi.mock("stores/payment-request", () => ({
+  usePRStore: () => prStoreMock,
+}));
+
+vi.mock("stores/p2pk", () => ({
+  useP2PKStore: () => p2pkStoreMock,
+}));
+
+vi.mock("stores/proofs", () => ({
+  useProofsStore: () => proofsStoreMock,
+}));
 
 vi.mock("stores/mints", () => ({
   useMintsStore: () => ({
@@ -25,13 +37,9 @@ vi.mock("stores/mints", () => ({
   }),
 }));
 
-vi.mock("stores/ui", () => {
-  uiStoreMock = {
-    lockMutex: vi.fn(async () => {}),
-    unlockMutex: vi.fn(),
-  };
-  return { useUiStore: () => uiStoreMock };
-});
+vi.mock("stores/ui", () => ({
+  useUiStore: () => uiStoreMock,
+}));
 
 vi.mock("stores/signer", () => ({
   useSignerStore: () => ({ reset: vi.fn(), method: null }),
@@ -45,6 +53,32 @@ vi.mock("src/js/notify", () => ({
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  Object.assign(receiveStoreMock, {
+    receiveData: {
+      tokensBase64: "",
+      p2pkPrivateKey: "",
+      bucketId: DEFAULT_BUCKET_ID,
+      label: "",
+      description: "",
+    },
+    showReceiveTokens: false,
+  });
+  Object.assign(prStoreMock, { showPRKData: "" });
+  Object.assign(p2pkStoreMock, {
+    p2pkKeys: [] as any[],
+    isValidPubkey: vi.fn(() => true),
+    getPrivateKeyForP2PKEncodedToken: vi.fn(() => "priv"),
+    setPrivateKeyUsed: vi.fn(),
+  });
+  Object.assign(proofsStoreMock, {
+    addProofs: vi.fn(),
+    removeProofs: vi.fn(),
+    setReserved: vi.fn(),
+  });
+  Object.assign(uiStoreMock, {
+    lockMutex: vi.fn(async () => {}),
+    unlockMutex: vi.fn(),
+  });
 });
 
 describe("wallet store", () => {
@@ -92,5 +126,59 @@ describe("wallet store", () => {
     await walletStore.redeem("token");
 
     expect(attempt).toHaveBeenCalledTimes(2);
+  });
+
+  it("sets active P2PK pointer and refreshes dependent caches", () => {
+    const walletStore = useWalletStore();
+    const priv = "1".repeat(64);
+    const pub = bytesToHex(getPublicKey(priv, true));
+
+    walletStore.payInvoiceData.bucketId = "custom-bucket" as any;
+    walletStore.payInvoiceData.input.request = "pending";
+    walletStore.payInvoiceData.meltQuote.payload.request = "old";
+    walletStore.payInvoiceData.meltQuote.response.quote = "quoted";
+    walletStore.payInvoiceData.meltQuote.response.amount = 42;
+    walletStore.payInvoiceData.meltQuote.response.fee_reserve = 2;
+    walletStore.payInvoiceData.meltQuote.error = "err";
+    walletStore.payInvoiceData.bolt11 = "bolt";
+    receiveStoreMock.receiveData.p2pkPrivateKey = "legacy";
+    prStoreMock.showPRKData = "encoded";
+    p2pkStoreMock.p2pkKeys = [
+      { publicKey: pub, privateKey: priv, used: false, usedCount: 0 },
+    ];
+
+    walletStore.setActiveP2pk(pub, priv);
+
+    expect(walletStore.activeP2pk.publicKey).toBe(pub);
+    expect(walletStore.activeP2pk.privateKey).toBe(priv);
+    expect(receiveStoreMock.receiveData.p2pkPrivateKey).toBe(priv);
+    expect(walletStore.payInvoiceData.bucketId).toBe("custom-bucket");
+    expect(walletStore.payInvoiceData.input.request).toBe("");
+    expect(walletStore.payInvoiceData.meltQuote.payload.request).toBe("");
+    expect(walletStore.payInvoiceData.meltQuote.response.quote).toBe("");
+    expect(walletStore.payInvoiceData.meltQuote.response.amount).toBe(0);
+    expect(walletStore.payInvoiceData.meltQuote.response.fee_reserve).toBe(0);
+    expect(walletStore.payInvoiceData.meltQuote.error).toBe("");
+    expect(walletStore.payInvoiceData.bolt11).toBe("");
+    expect(prStoreMock.showPRKData).toBe("");
+
+    walletStore.payInvoiceData.input.request = "again";
+    prStoreMock.showPRKData = "again";
+    walletStore.setActiveP2pk("", "");
+
+    expect(walletStore.activeP2pk.publicKey).toBe("");
+    expect(walletStore.activeP2pk.privateKey).toBe("");
+    expect(receiveStoreMock.receiveData.p2pkPrivateKey).toBe("");
+    expect(walletStore.payInvoiceData.bucketId).toBe("custom-bucket");
+    expect(walletStore.payInvoiceData.input.request).toBe("");
+    expect(prStoreMock.showPRKData).toBe("");
+
+    prStoreMock.showPRKData = "again";
+    walletStore.setActiveP2pk(pub, "");
+
+    expect(walletStore.activeP2pk.publicKey).toBe(pub);
+    expect(walletStore.activeP2pk.privateKey).toBe(priv);
+    expect(receiveStoreMock.receiveData.p2pkPrivateKey).toBe(priv);
+    expect(prStoreMock.showPRKData).toBe("");
   });
 });

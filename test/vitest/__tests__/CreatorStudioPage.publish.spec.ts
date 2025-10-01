@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, shallowMount } from '@vue/test-utils';
-import { computed, defineComponent, ref } from 'vue';
+import { computed, defineComponent, reactive, ref } from 'vue';
+import { bytesToHex } from '@noble/hashes/utils';
+import { getPublicKey } from '@noble/secp256k1';
 
 import CreatorStudioPage from '../../../src/pages/CreatorStudioPage.vue';
 
@@ -16,6 +18,35 @@ const notifyErrorMock = vi.fn();
 const notifyWarningMock = vi.fn();
 
 const copyMock = vi.fn();
+
+const creatorStudioStubs = {
+  'q-page': { template: '<div><slot /></div>' },
+  'q-avatar': { template: '<div><slot /></div>' },
+  'q-icon': { template: '<div><slot /></div>' },
+  'q-chip': { template: '<div><slot /></div>' },
+  'q-btn': { template: '<button><slot /></button>' },
+  'q-toggle': { template: '<input />' },
+  'q-input': { template: '<input />' },
+  'q-card': { template: '<div><slot /></div>' },
+  'q-tabs': { template: '<div><slot /></div>' },
+  'q-tab': { template: '<div><slot /></div>' },
+  'q-tab-panels': { template: '<div><slot /></div>' },
+  'q-tab-panel': { template: '<div><slot /></div>' },
+  'q-dialog': { template: '<div><slot /></div>' },
+  'q-banner': { template: '<div><slot /></div>' },
+  'q-separator': { template: '<hr />' },
+  'q-form': { template: '<form><slot /></form>' },
+  'q-space': { template: '<span />' },
+  'q-spinner': { template: '<div />' },
+  'q-item': { template: '<div><slot /></div>' },
+  'q-item-section': { template: '<div><slot /></div>' },
+  'q-item-label': { template: '<div><slot /></div>' },
+  'q-tooltip': { template: '<div><slot /></div>' },
+  'q-btn-toggle': { template: '<div><slot /></div>' },
+  'q-expansion-item': { template: '<div><slot /></div>' },
+  TierComposer: { template: '<div />' },
+  NutzapExplorerPanel: { template: '<div />' },
+};
 
 function createEventBus<T>() {
   const listeners = new Set<(event: T) => void>();
@@ -64,6 +95,10 @@ type SharedMocks = {
   clientRequestOnceMock: ReturnType<typeof vi.fn>;
   relayClientInstance: any;
   signerRef: ReturnType<typeof ref<any>>;
+  p2pkStoreMock: any;
+  walletStoreMock: {
+    setActiveP2pk: ReturnType<typeof vi.fn>;
+  };
 };
 
 let shared: SharedMocks | null = null;
@@ -85,6 +120,18 @@ function ensureShared(): SharedMocks {
       subscribe: vi.fn(() => 'mock-sub'),
       unsubscribe: vi.fn(),
       onStatusChange: vi.fn(() => () => {}),
+    };
+
+    const p2pkStoreMock = reactive({
+      firstKey: null as any,
+      p2pkKeys: [] as any[],
+      isValidPubkey: vi.fn(() => true),
+      haveThisKey: vi.fn(() => false),
+      getPrivateKeyForP2PKEncodedToken: vi.fn(() => ''),
+    });
+
+    const walletStoreMock = {
+      setActiveP2pk: vi.fn(),
     };
 
     shared = {
@@ -117,6 +164,8 @@ function ensureShared(): SharedMocks {
       clientRequestOnceMock,
       relayClientInstance,
       signerRef: ref({}),
+      p2pkStoreMock,
+      walletStoreMock,
     };
   }
 
@@ -131,7 +180,50 @@ vi.mock('vue-router', async () => {
       resolve: routerResolveMock,
       push: routerPushMock,
     }),
+    useRoute: () => ({
+      query: { npub: VALID_HEX },
+      params: {},
+      name: undefined,
+      fullPath: '',
+      path: '',
+      matched: [],
+      meta: {},
+    }),
   };
+});
+
+it('syncs wallet pointer with composer selection', async () => {
+  const state = ensureShared();
+  const priv = '1'.repeat(64);
+  const pub = bytesToHex(getPublicKey(priv, true));
+  state.signerRef.value = null;
+  state.p2pkStoreMock.p2pkKeys = [
+    { publicKey: pub, privateKey: priv, used: false, usedCount: 0 },
+  ];
+  state.p2pkStoreMock.firstKey = state.p2pkStoreMock.p2pkKeys[0];
+
+  const TestHarness = defineComponent({
+    name: 'CreatorStudioPageWalletHarness',
+    setup(props, ctx) {
+      const component = CreatorStudioPage as any;
+      return component.setup ? component.setup(props, ctx) : {};
+    },
+    template: '<div />',
+  });
+
+  shallowMount(TestHarness as any, {
+    global: {
+      stubs: creatorStudioStubs,
+    },
+  });
+
+  await flushPromises();
+
+  expect(
+    state.walletStoreMock.setActiveP2pk.mock.calls.some(
+      ([calledPub, calledPriv]) => calledPub === pub && calledPriv === priv,
+    ),
+  ).toBe(true);
 });
 
 vi.mock('@vueuse/core', () => ({
@@ -143,7 +235,21 @@ vi.mock('pinia', async () => {
   const actual = await vi.importActual<any>('pinia');
   return {
     ...actual,
-    storeToRefs: (store: any) => store,
+    storeToRefs: (store: any) => {
+      const refs: Record<string, { value: any }> = {};
+      Object.keys(store).forEach(key => {
+        refs[key] = {
+          get value() {
+            return store[key];
+          },
+          set value(v) {
+            store[key] = v;
+          },
+          __v_isRef: true,
+        };
+      });
+      return refs;
+    },
   };
 });
 
@@ -221,10 +327,11 @@ vi.mock('src/nutzap/useNutzapSignerWorkspace', () => ({
 }));
 
 vi.mock('src/stores/p2pk', () => ({
-  useP2PKStore: () => ({
-    firstKey: ref(null),
-    p2pkKeys: ref([]),
-  }),
+  useP2PKStore: () => ensureShared().p2pkStoreMock,
+}));
+
+vi.mock('src/stores/wallet', () => ({
+  useWalletStore: () => ensureShared().walletStoreMock,
 }));
 
 vi.mock('src/stores/mints', () => ({
@@ -232,6 +339,10 @@ vi.mock('src/stores/mints', () => ({
     activeMintUrl: ref(''),
     mints: ref([]),
   }),
+}));
+
+vi.mock('src/stores/creatorHub', () => ({
+  maybeRepublishNutzapProfile: vi.fn(async () => {}),
 }));
 
 vi.mock('src/nutzap/ndkInstance', () => ({
@@ -263,6 +374,7 @@ beforeEach(() => {
 describe('CreatorStudioPage publishAll fallback', () => {
   it('falls back to HTTP when relay publisher rejects', async () => {
     const state = ensureShared();
+    state.signerRef.value = null;
 
     const tierEvent = {
       id: 'tier-event',
@@ -323,28 +435,11 @@ describe('CreatorStudioPage publishAll fallback', () => {
 
     const wrapper = shallowMount(TestHarness as any, {
       global: {
-        stubs: {
-          'q-page': { template: '<div><slot /></div>' },
-          'q-avatar': { template: '<div><slot /></div>' },
-          'q-icon': { template: '<div><slot /></div>' },
-          'q-chip': { template: '<div><slot /></div>' },
-          'q-btn': { template: '<button><slot /></button>' },
-          'q-toggle': { template: '<input />' },
-          'q-input': { template: '<input />' },
-          'q-card': { template: '<div><slot /></div>' },
-          'q-tabs': { template: '<div><slot /></div>' },
-          'q-tab': { template: '<div><slot /></div>' },
-          'q-tab-panels': { template: '<div><slot /></div>' },
-          'q-tab-panel': { template: '<div><slot /></div>' },
-          'q-dialog': { template: '<div><slot /></div>' },
-          'q-banner': { template: '<div><slot /></div>' },
-          'q-btn-toggle': { template: '<div><slot /></div>' },
-          'q-expansion-item': { template: '<div><slot /></div>' },
-          TierComposer: { template: '<div />' },
-          NutzapExplorerPanel: { template: '<div />' },
-        },
+        stubs: creatorStudioStubs,
       },
     });
+
+    state.signerRef.value = {};
 
     (wrapper.vm as any).authorInput = VALID_HEX;
     (wrapper.vm as any).displayName = 'Creator';
