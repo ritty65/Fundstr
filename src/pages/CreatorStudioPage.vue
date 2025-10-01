@@ -535,6 +535,7 @@ import { useNutzapRelayTelemetry } from 'src/nutzap/useNutzapRelayTelemetry';
 import { useNutzapSignerWorkspace } from 'src/nutzap/useNutzapSignerWorkspace';
 import { useP2PKStore } from 'src/stores/p2pk';
 import { useMintsStore } from 'src/stores/mints';
+import { maybeRepublishNutzapProfile } from 'src/stores/creatorHub';
 
 type TierKind = 30019 | 30000;
 
@@ -902,6 +903,24 @@ function persistComposerKeyToStore(pubHex: string, privHex: string) {
     },
     ...existingKeys,
   ];
+
+  if (!signer.value) {
+    notifyWarning(
+      'Stored new P2PK key. Connect your Nostr signer and publish to update your Nutzap profile.',
+    );
+    return;
+  }
+
+  void maybeRepublishNutzapProfile()
+    .then(() => {
+      notifySuccess('Republished Nutzap profile with the active P2PK key.');
+    })
+    .catch(err => {
+      console.error('Auto republish failed after storing composer key', err);
+      notifyWarning(
+        'Stored new P2PK key, but auto republish failed. Use the publish workflow to push updates.',
+      );
+    });
 }
 
 function ensureComposerKeyPersisted(pubHex: string, privHex: string) {
