@@ -79,6 +79,17 @@ const routes = [
     ],
   },
   {
+    path: "/creator-studio",
+    component: () => import("layouts/FullscreenLayout.vue"),
+    children: [
+      {
+        path: "",
+        name: "CreatorStudio",
+        component: () => import("src/pages/CreatorStudioPage.vue"),
+      },
+    ],
+  },
+  {
     path: "/buckets",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
