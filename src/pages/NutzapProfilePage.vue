@@ -545,6 +545,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useEventBus } from '@vueuse/core';
+import { storeToRefs } from 'pinia';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
 import ConnectionPanel from './nutzap-profile/ConnectionPanel.vue';
@@ -577,6 +578,7 @@ import { fundstrRelayClient, RelayPublishError } from 'src/nutzap/relayClient';
 import { sanitizeRelayUrls } from 'src/utils/relay';
 import { useNutzapRelayTelemetry } from 'src/nutzap/useNutzapRelayTelemetry';
 import { useNutzapSignerWorkspace } from 'src/nutzap/useNutzapSignerWorkspace';
+import { useP2PKStore } from 'src/stores/p2pk';
 
 type TierKind = 30019 | 30000;
 
@@ -594,6 +596,9 @@ const loading = ref(false);
 const publishingAll = ref(false);
 const lastPublishInfo = ref('');
 const hasAutoLoaded = ref(false);
+
+const p2pkStore = useP2PKStore();
+const { firstKey, p2pkKeys } = storeToRefs(p2pkStore);
 
 const router = useRouter();
 const { copy } = useClipboard();
@@ -832,6 +837,60 @@ function setDerivedP2pk(pubHex: string) {
   p2pkPub.value = normalized;
 }
 
+function persistComposerKeyToStore(pubHex: string, privHex: string) {
+  const normalizedPub = pubHex.trim();
+  const normalizedPriv = privHex.trim();
+  if (!normalizedPub || !normalizedPriv) {
+    return;
+  }
+
+  const normalizedPubLower = normalizedPub.toLowerCase();
+  const normalizedPrivLower = normalizedPriv.toLowerCase();
+  const entries = Array.isArray(p2pkKeys.value) ? p2pkKeys.value : [];
+  const alreadyTracked = entries.some(entry => {
+    return (
+      entry.publicKey.toLowerCase() === normalizedPubLower ||
+      entry.privateKey.toLowerCase() === normalizedPrivLower
+    );
+  });
+
+  if (alreadyTracked) {
+    return;
+  }
+
+  const existingKeys = Array.isArray(p2pkStore.p2pkKeys) ? p2pkStore.p2pkKeys : [];
+  p2pkStore.p2pkKeys = [
+    {
+      publicKey: normalizedPub,
+      privateKey: normalizedPriv,
+      used: false,
+      usedCount: 0,
+    },
+    ...existingKeys,
+  ];
+}
+
+function maybeSeedComposerKeysFromStore() {
+  const key = firstKey.value;
+  if (!key) {
+    return;
+  }
+
+  const needsPriv = !p2pkPriv.value.trim();
+  const needsPub = !p2pkPub.value.trim();
+
+  if (!needsPriv && !needsPub) {
+    return;
+  }
+
+  if (needsPriv && key.privateKey) {
+    p2pkPriv.value = key.privateKey.trim();
+  }
+  if (needsPub && key.publicKey) {
+    setDerivedP2pk(key.publicKey);
+  }
+}
+
 function deriveP2pkPublicKey() {
   const trimmed = p2pkPriv.value.trim();
   if (!trimmed) {
@@ -863,6 +922,7 @@ function generateP2pkKeypair() {
   const pubHex = bytesToHex(pubBytes);
   p2pkPriv.value = privHex;
   setDerivedP2pk(pubHex);
+  persistComposerKeyToStore(pubHex, privHex);
   notifySuccess('Generated new P2PK keypair.');
 }
 
@@ -897,6 +957,18 @@ watch(
   },
   { immediate: true }
 );
+
+watch(
+  [firstKey, p2pkKeys],
+  () => {
+    maybeSeedComposerKeysFromStore();
+  },
+  { immediate: true }
+);
+
+onMounted(() => {
+  maybeSeedComposerKeysFromStore();
+});
 
 const {
   pubkey,
