@@ -503,7 +503,7 @@ import { useEventBus, useLocalStorage } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import TierComposer from './nutzap-profile/TierComposer.vue';
 import NutzapExplorerPanel from 'src/nutzap/onepage/NutzapExplorerPanel.vue';
@@ -536,6 +536,7 @@ import { useNutzapSignerWorkspace } from 'src/nutzap/useNutzapSignerWorkspace';
 import { useP2PKStore } from 'src/stores/p2pk';
 import { useMintsStore } from 'src/stores/mints';
 import { maybeRepublishNutzapProfile } from 'src/stores/creatorHub';
+import { useNostrStore } from 'src/stores/nostr';
 
 type TierKind = 30019 | 30000;
 
@@ -626,6 +627,9 @@ watch(
 const mintsStore = useMintsStore();
 const { activeMintUrl: storeActiveMintUrl, mints: storedMints } = storeToRefs(mintsStore);
 
+const nostrStore = useNostrStore();
+const { npub: storeNpub } = storeToRefs(nostrStore);
+
 watch(mintsText, value => {
   cachedMintsText.value = value;
 });
@@ -666,6 +670,7 @@ watch([storeActiveMintUrl, storedMints], () => {
   seedMintsFromStoreIfEmpty();
 }, { immediate: true, deep: true });
 
+const route = useRoute();
 const router = useRouter();
 const { copy } = useClipboard();
 
@@ -1143,6 +1148,29 @@ const {
   },
 });
 
+const routeAuthorQuery = computed(() => {
+  const queryValue = route.query?.npub;
+  return typeof queryValue === 'string' ? queryValue.trim() : '';
+});
+
+const storeAuthorNpub = computed(() => {
+  const value = storeNpub.value;
+  return typeof value === 'string' ? value.trim() : '';
+});
+
+const signerPubkeyTrimmed = computed(() => {
+  const value = pubkey.value;
+  return typeof value === 'string' ? value.trim() : '';
+});
+
+const hasAuthorIdentity = computed(
+  () =>
+    !!authorInput.value.trim() ||
+    !!routeAuthorQuery.value ||
+    !!storeAuthorNpub.value ||
+    !!signerPubkeyTrimmed.value,
+);
+
 function shortenKey(value: string) {
   const trimmed = value.trim();
   if (trimmed.length <= 16) {
@@ -1318,7 +1346,7 @@ const publishBlockers = computed<string[]>(() => {
     blockers.push('Connect a signer');
   }
 
-  if (!authorInput.value.trim()) {
+  if (!hasAuthorIdentity.value) {
     blockers.push('Provide a creator author (npub or hex)');
   }
 
@@ -2243,10 +2271,18 @@ onMounted(() => {
   if (!relaysText.value) {
     relaysText.value = FUNDSTR_WS_URL;
   }
-  if (pubkey.value && !authorInput.value) {
-    const normalized = pubkey.value.toLowerCase();
-    const encoded = safeEncodeNpub(normalized);
-    authorInput.value = encoded || normalized;
+  if (!authorInput.value.trim()) {
+    if (routeAuthorQuery.value) {
+      authorInput.value = routeAuthorQuery.value;
+    } else if (storeAuthorNpub.value) {
+      authorInput.value = storeAuthorNpub.value;
+    } else {
+      const normalizedSigner = typeof pubkey.value === 'string' ? pubkey.value.trim().toLowerCase() : '';
+      if (normalizedSigner) {
+        const encoded = safeEncodeNpub(normalizedSigner);
+        authorInput.value = encoded || normalizedSigner;
+      }
+    }
   }
   if (authorInput.value && !hasAutoLoaded.value) {
     hasAutoLoaded.value = true;
