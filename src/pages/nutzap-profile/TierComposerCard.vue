@@ -2,9 +2,9 @@
   <section class="section-card tier-composer-card">
     <div class="section-header section-header--with-status">
       <div class="section-header-primary">
-        <div class="section-title text-subtitle1 text-weight-medium text-1">Compose tiers</div>
+        <div class="section-title text-subtitle1 text-weight-medium text-1">Tiers &amp; benefits</div>
         <div class="section-subtitle text-body2 text-2">
-          Draft pricing, benefits, and cadence before publishing downstream.
+          Outline pricing, cadence, and supporter perks. We'll flag anything that still needs attention.
         </div>
       </div>
       <q-chip
@@ -14,10 +14,13 @@
         :text-color="tiersReady ? 'white' : 'black'"
         class="status-chip"
       >
-        {{ tiersReady ? 'Valid' : 'Needs review' }}
+        {{ tiersReady ? 'Validated' : 'Incomplete' }}
       </q-chip>
     </div>
     <div class="section-body column q-gutter-md">
+      <div v-if="!tiersReady" class="tier-composer-hint text-caption text-2">
+        Add at least one tier with a title, price, and frequency to unlock publishing.
+      </div>
       <TierComposer
         :tiers="tiers"
         :frequency-options="frequencyOptions"
@@ -67,5 +70,11 @@ const { tiers, frequencyOptions, showErrors, tiersReady } = toRefs(props);
   flex: 1;
   display: flex;
   flex-direction: column;
+}
+
+.tier-composer-hint {
+  padding: 12px 16px;
+  border: 1px dashed var(--surface-contrast-border);
+  border-radius: 12px;
 }
 </style>
