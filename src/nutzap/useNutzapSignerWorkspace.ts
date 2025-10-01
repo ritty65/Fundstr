@@ -77,8 +77,11 @@ export function useNutzapSignerWorkspace(
     [pubkey, storeNpub],
     ([newPubkey, storeNpubValue]) => {
       const normalizedPubkey = typeof newPubkey === 'string' ? newPubkey.trim().toLowerCase() : '';
-      const encodedNpub = normalizedPubkey ? storeNpubValue || safeEncodeNpub(normalizedPubkey) : '';
-      const displayValue = encodedNpub || normalizedPubkey;
+      const normalizedStoreNpub = typeof storeNpubValue === 'string' ? storeNpubValue.trim() : '';
+      const encodedNpub = normalizedPubkey
+        ? normalizedStoreNpub || safeEncodeNpub(normalizedPubkey)
+        : '';
+      const displayValue = normalizedPubkey ? encodedNpub || normalizedPubkey : normalizedStoreNpub;
 
       if (normalizedPubkey) {
         keyPublicHex.value = normalizedPubkey;
@@ -89,19 +92,35 @@ export function useNutzapSignerWorkspace(
         lastSyncedAuthorHex.value = normalizedPubkey;
         lastSyncedAuthorDisplay.value = displayValue;
         options.onSignerActivated?.();
-      } else {
+        return;
+      }
+
+      if (normalizedStoreNpub) {
+        if (!authorInput.value || authorInput.value === lastSyncedAuthorDisplay.value) {
+          authorInput.value = normalizedStoreNpub;
+        }
+        if (!keyNpub.value || keyNpub.value === lastSyncedAuthorDisplay.value) {
+          keyNpub.value = normalizedStoreNpub;
+        }
         if (keyPublicHex.value === lastSyncedAuthorHex.value) {
           keyPublicHex.value = '';
         }
-        if (keyNpub.value === lastSyncedAuthorDisplay.value) {
-          keyNpub.value = '';
-        }
-        if (authorInput.value === lastSyncedAuthorDisplay.value) {
-          authorInput.value = '';
-        }
         lastSyncedAuthorHex.value = '';
-        lastSyncedAuthorDisplay.value = '';
+        lastSyncedAuthorDisplay.value = normalizedStoreNpub;
+        return;
       }
+
+      if (keyPublicHex.value === lastSyncedAuthorHex.value) {
+        keyPublicHex.value = '';
+      }
+      if (keyNpub.value === lastSyncedAuthorDisplay.value) {
+        keyNpub.value = '';
+      }
+      if (authorInput.value === lastSyncedAuthorDisplay.value) {
+        authorInput.value = '';
+      }
+      lastSyncedAuthorHex.value = '';
+      lastSyncedAuthorDisplay.value = '';
     },
     { immediate: true }
   );
