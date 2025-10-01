@@ -233,9 +233,51 @@
             </div>
 
             <div class="studio-card__section">
-              <div class="text-subtitle2 text-1">Cashu P2PK (optional encryption)</div>
+              <div class="text-subtitle2 text-1">Cashu P2PK (required for publishing)</div>
+              <div class="text-caption text-2 q-mt-xs">
+                Publish your Cashu pointer so supporters can route zaps directly to you.
+              </div>
               <div class="row q-col-gutter-md q-mt-sm">
                 <div class="col-12 col-md-6">
+                  <q-select
+                    v-model="selectedP2pkPub"
+                    :options="p2pkSelectOptions"
+                    label="Saved P2PK keys"
+                    dense
+                    filled
+                    emit-value
+                    map-options
+                    clearable
+                    :disable="!p2pkSelectOptions.length"
+                    :hint="
+                      p2pkSelectOptions.length
+                        ? 'Choose the key you already use for zaps.'
+                        : 'Add a key to get started.'
+                    "
+                    @update:model-value="handleP2pkSelection"
+                    placeholder="Select a saved key"
+                  />
+                </div>
+                <div class="col-12 col-md-6 row items-center q-gutter-sm">
+                  <q-btn
+                    v-if="!addingNewP2pkKey"
+                    outline
+                    color="primary"
+                    icon="add"
+                    label="Add new key"
+                    @click="startAddingNewP2pkKey"
+                  />
+                  <q-btn
+                    v-else
+                    outline
+                    color="primary"
+                    icon="undo"
+                    label="Use saved key"
+                    :disable="!p2pkSelectOptions.length"
+                    @click="cancelAddingNewP2pkKey"
+                  />
+                </div>
+                <div class="col-12 col-md-6" v-if="addingNewP2pkKey">
                   <q-input
                     v-model="p2pkPriv.value"
                     label="P2PK private key (hex)"
@@ -247,12 +289,20 @@
                     error-message="64 hex characters"
                   />
                 </div>
-                <div class="col-12 col-md-6 row items-center q-gutter-sm">
+                <div class="col-12 col-md-6 row items-center q-gutter-sm" v-if="addingNewP2pkKey">
                   <q-btn outline color="primary" label="Derive public" @click="deriveP2pkPublicKey" />
                   <q-btn color="primary" label="Generate" @click="generateP2pkKeypair" />
                 </div>
                 <div class="col-12">
-                  <q-input v-model="p2pkPub.value" label="Derived P2PK public" dense filled readonly />
+                  <q-input
+                    v-model="p2pkPub.value"
+                    label="Publishing P2PK public"
+                    dense
+                    filled
+                    readonly
+                    :error="!!p2pkPubError"
+                    :error-message="p2pkPubError"
+                  />
                 </div>
               </div>
             </div>
@@ -503,6 +553,11 @@ const pictureUrl = ref('');
 const p2pkPub = ref('');
 const p2pkPriv = ref('');
 const p2pkDerivedPub = ref('');
+const selectedP2pkPub = ref('');
+const p2pkPubError = ref('');
+const addingNewP2pkKey = ref(false);
+const hasManuallyToggledP2pk = ref(false);
+let previousSelectedP2pkPub = '';
 const cachedMintsText = useLocalStorage<string>('nutzap.profile.mintsDraft', '');
 const mintsText = ref(cachedMintsText.value || '');
 const relaysText = ref(FUNDSTR_WS_URL);
@@ -547,6 +602,34 @@ function getRelayClientIfReady(): FundstrRelayClient | null {
 
 const p2pkStore = useP2PKStore();
 const { firstKey, p2pkKeys } = storeToRefs(p2pkStore);
+
+const p2pkSelectOptions = computed(() => {
+  const entries = Array.isArray(p2pkKeys.value) ? p2pkKeys.value : [];
+  return entries.map(entry => {
+    const trimmed = entry && typeof entry.publicKey === 'string' ? entry.publicKey.trim() : '';
+    const label =
+      trimmed.length <= 16 ? trimmed : `${trimmed.slice(0, 8)}…${trimmed.slice(-4)}`;
+    return {
+      label,
+      value: trimmed,
+    };
+  });
+});
+
+watch(
+  () => (Array.isArray(p2pkKeys.value) ? p2pkKeys.value.length : 0),
+  length => {
+    if (length === 0) {
+      addingNewP2pkKey.value = true;
+      return;
+    }
+
+    if (!hasManuallyToggledP2pk.value) {
+      addingNewP2pkKey.value = false;
+    }
+  },
+  { immediate: true }
+);
 
 const mintsStore = useMintsStore();
 const { activeMintUrl: storeActiveMintUrl, mints: storedMints } = storeToRefs(mintsStore);
@@ -885,9 +968,102 @@ function persistComposerKeyToStore(pubHex: string, privHex: string) {
   ];
 }
 
+function ensureComposerKeyPersisted(pubHex: string, privHex: string) {
+  if (!pubHex.trim() || !privHex.trim()) {
+    return;
+  }
+
+  persistComposerKeyToStore(pubHex, privHex);
+}
+
+function applyValidatedP2pk(pubHex: string, privHex = '', persist = false): boolean {
+  const trimmedPub = pubHex.trim();
+  if (!trimmedPub) {
+    p2pkPubError.value = '';
+    setDerivedP2pk('');
+    return false;
+  }
+
+  if (!p2pkStore.isValidPubkey(trimmedPub)) {
+    p2pkPubError.value = 'Enter a valid Cashu P2PK public key.';
+    setDerivedP2pk(trimmedPub);
+    return false;
+  }
+
+  p2pkPubError.value = '';
+  setDerivedP2pk(trimmedPub);
+
+  const normalizedPriv = privHex.trim();
+  if (persist && normalizedPriv) {
+    ensureComposerKeyPersisted(trimmedPub, normalizedPriv);
+  }
+
+  return true;
+}
+
+function handleP2pkSelection(value: string | null) {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  selectedP2pkPub.value = trimmed;
+
+  if (!trimmed) {
+    p2pkPriv.value = '';
+    p2pkPubError.value = '';
+    previousSelectedP2pkPub = '';
+    setDerivedP2pk('');
+    return;
+  }
+
+  const entries = Array.isArray(p2pkKeys.value) ? p2pkKeys.value : [];
+  const match = entries.find(entry =>
+    entry && typeof entry.publicKey === 'string'
+      ? entry.publicKey.trim().toLowerCase() === trimmed.toLowerCase()
+      : false
+  );
+
+  if (match) {
+    const priv = match.privateKey ? match.privateKey.trim().toLowerCase() : '';
+    p2pkPriv.value = priv;
+    if (applyValidatedP2pk(match.publicKey, priv, true)) {
+      addingNewP2pkKey.value = false;
+      hasManuallyToggledP2pk.value = false;
+      previousSelectedP2pkPub = '';
+    }
+    return;
+  }
+
+  p2pkPriv.value = '';
+  applyValidatedP2pk(trimmed);
+}
+
+function startAddingNewP2pkKey() {
+  hasManuallyToggledP2pk.value = true;
+  previousSelectedP2pkPub = selectedP2pkPub.value;
+  addingNewP2pkKey.value = true;
+  selectedP2pkPub.value = '';
+  p2pkPriv.value = '';
+  p2pkPubError.value = '';
+  setDerivedP2pk('');
+}
+
+function cancelAddingNewP2pkKey() {
+  hasManuallyToggledP2pk.value = false;
+  addingNewP2pkKey.value = false;
+  const restore = previousSelectedP2pkPub.trim();
+  previousSelectedP2pkPub = '';
+  if (restore) {
+    handleP2pkSelection(restore);
+  } else {
+    maybeSeedComposerKeysFromStore();
+  }
+}
+
 function maybeSeedComposerKeysFromStore() {
   const key = firstKey.value;
   if (!key) {
+    return;
+  }
+
+  if (addingNewP2pkKey.value) {
     return;
   }
 
@@ -899,10 +1075,10 @@ function maybeSeedComposerKeysFromStore() {
   }
 
   if (needsPriv && key.privateKey) {
-    p2pkPriv.value = key.privateKey.trim();
+    p2pkPriv.value = key.privateKey.trim().toLowerCase();
   }
   if (needsPub && key.publicKey) {
-    setDerivedP2pk(key.publicKey);
+    handleP2pkSelection(key.publicKey);
   }
 }
 
@@ -921,9 +1097,15 @@ function deriveP2pkPublicKey() {
     const privBytes = hexToBytes(trimmed);
     const pubBytes = getSecpPublicKey(privBytes, true);
     const pubHex = bytesToHex(pubBytes);
-    p2pkPriv.value = trimmed.toLowerCase();
-    setDerivedP2pk(pubHex);
-    notifySuccess('Derived P2PK public key.');
+    const normalizedPriv = trimmed.toLowerCase();
+    p2pkPriv.value = normalizedPriv;
+    if (applyValidatedP2pk(pubHex, normalizedPriv, true)) {
+      selectedP2pkPub.value = pubHex;
+      addingNewP2pkKey.value = false;
+      hasManuallyToggledP2pk.value = false;
+      previousSelectedP2pkPub = '';
+      notifySuccess('Derived P2PK public key.');
+    }
   } catch (err) {
     console.error('[nutzap] failed to derive P2PK public key', err);
     notifyError('Unable to derive P2PK public key.');
@@ -935,10 +1117,16 @@ function generateP2pkKeypair() {
   const pubBytes = getSecpPublicKey(privBytes, true);
   const privHex = bytesToHex(privBytes);
   const pubHex = bytesToHex(pubBytes);
-  p2pkPriv.value = privHex;
-  setDerivedP2pk(pubHex);
-  persistComposerKeyToStore(pubHex, privHex);
-  notifySuccess('Generated new P2PK keypair.');
+  const normalizedPriv = privHex.toLowerCase();
+  const normalizedPub = pubHex.toLowerCase();
+  p2pkPriv.value = normalizedPriv;
+  if (applyValidatedP2pk(normalizedPub, normalizedPriv, true)) {
+    selectedP2pkPub.value = normalizedPub;
+    addingNewP2pkKey.value = false;
+    hasManuallyToggledP2pk.value = false;
+    previousSelectedP2pkPub = '';
+    notifySuccess('Generated new P2PK keypair.');
+  }
 }
 
 function buildTiersJsonPayload(entries: Tier[]) {
@@ -1040,7 +1228,9 @@ const identityBasicsComplete = computed(
 
 const optionalMetadataComplete = computed(() => mintList.value.length > 0);
 
-const advancedEncryptionComplete = computed(() => p2pkPub.value.trim().length > 0);
+const advancedEncryptionComplete = computed(
+  () => p2pkPub.value.trim().length > 0 && !p2pkPubError.value
+);
 
 const relayList = computed(() => {
   const entries = relaysText.value
@@ -1185,6 +1375,10 @@ const publishBlockers = computed<string[]>(() => {
 
   if (!p2pkPub.value.trim()) {
     blockers.push('Add a P2PK key');
+  }
+
+  if (p2pkPubError.value) {
+    blockers.push('Resolve P2PK key error');
   }
 
   if (mintList.value.length === 0) {
@@ -1450,6 +1644,9 @@ function applyProfileEvent(latest: any | null) {
     p2pkPub.value = '';
     p2pkPriv.value = '';
     p2pkDerivedPub.value = '';
+    selectedP2pkPub.value = '';
+    p2pkPubError.value = '';
+    previousSelectedP2pkPub = '';
     mintsText.value = '';
     relaysText.value = FUNDSTR_WS_URL;
     seedMintsFromStoreIfEmpty();
@@ -1465,7 +1662,22 @@ function applyProfileEvent(latest: any | null) {
   try {
     const parsed = latest.content ? JSON.parse(latest.content) : {};
     if (typeof parsed.p2pk === 'string') {
-      setDerivedP2pk(parsed.p2pk);
+      const candidate = parsed.p2pk.trim();
+      const entries = Array.isArray(p2pkKeys.value) ? p2pkKeys.value : [];
+      const match = entries.find(entry =>
+        entry && typeof entry.publicKey === 'string'
+          ? entry.publicKey.trim().toLowerCase() === candidate.toLowerCase()
+          : false
+      );
+      if (match) {
+        handleP2pkSelection(match.publicKey);
+      } else {
+        selectedP2pkPub.value = '';
+        p2pkPriv.value = '';
+        applyValidatedP2pk(candidate);
+      }
+    } else {
+      handleP2pkSelection(null);
     }
     if (Array.isArray(parsed.mints)) {
       mintsText.value = parsed.mints.join('\n');
@@ -1530,7 +1742,9 @@ function applyProfileEvent(latest: any | null) {
   if (!p2pkPub.value) {
     const pkTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'pubkey' && t[1]);
     if (pkTag) {
-      p2pkPub.value = pkTag[1];
+      selectedP2pkPub.value = '';
+      p2pkPriv.value = '';
+      applyValidatedP2pk(pkTag[1]);
     }
   }
 
@@ -1882,6 +2096,10 @@ async function publishAll() {
 
   if (!p2pkPub.value.trim()) {
     notifyError('P2PK public key is required.');
+    return;
+  }
+  if (p2pkPubError.value) {
+    notifyError('Resolve the P2PK key error before publishing.');
     return;
   }
   if (mintList.value.length === 0) {
