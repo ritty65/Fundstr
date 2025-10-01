@@ -569,6 +569,7 @@ import { sanitizeRelayUrls } from 'src/utils/relay';
 import { useNutzapRelayTelemetry } from 'src/nutzap/useNutzapRelayTelemetry';
 import { useNutzapSignerWorkspace } from 'src/nutzap/useNutzapSignerWorkspace';
 import { useP2PKStore } from 'src/stores/p2pk';
+import { useWalletStore } from 'src/stores/wallet';
 import { useMintsStore } from 'src/stores/mints';
 import { maybeRepublishNutzapProfile } from 'src/stores/creatorHub';
 import { useNostrStore } from 'src/stores/nostr';
@@ -629,6 +630,7 @@ function getRelayClientIfReady(): FundstrRelayClient | null {
 }
 
 const p2pkStore = useP2PKStore();
+const walletStore = useWalletStore();
 const { firstKey, p2pkKeys } = storeToRefs(p2pkStore);
 
 const p2pkSelectOptions = computed(() => {
@@ -930,6 +932,7 @@ function persistComposerKeyToStore(pubHex: string, privHex: string) {
   });
 
   if (alreadyTracked) {
+    walletStore.setActiveP2pk(normalizedPub, normalizedPriv);
     return;
   }
 
@@ -943,6 +946,8 @@ function persistComposerKeyToStore(pubHex: string, privHex: string) {
     },
     ...existingKeys,
   ];
+
+  walletStore.setActiveP2pk(normalizedPub, normalizedPriv);
 
   if (!signer.value) {
     notifyWarning(
@@ -989,6 +994,7 @@ function applyValidatedP2pk(pubHex: string, privHex = '', persist = false): bool
   setDerivedP2pk(trimmedPub);
 
   const normalizedPriv = privHex.trim();
+  walletStore.setActiveP2pk(trimmedPub, normalizedPriv);
   if (persist && normalizedPriv) {
     ensureComposerKeyPersisted(trimmedPub, normalizedPriv);
   }
@@ -1152,6 +1158,23 @@ watch(
   p2pkPub,
   value => {
     p2pkDerivedPub.value = value.trim();
+  },
+  { immediate: true }
+);
+
+watch(
+  [p2pkPub, p2pkPriv],
+  ([pub, priv]) => {
+    const trimmedPub = typeof pub === 'string' ? pub.trim() : '';
+    const trimmedPriv = typeof priv === 'string' ? priv.trim() : '';
+    if (!trimmedPub) {
+      walletStore.setActiveP2pk('', '');
+      return;
+    }
+    if (!p2pkStore.isValidPubkey(trimmedPub)) {
+      return;
+    }
+    walletStore.setActiveP2pk(trimmedPub, trimmedPriv);
   },
   { immediate: true }
 );

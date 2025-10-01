@@ -2,6 +2,7 @@ export const LOCAL_STORAGE_KEYS = {
   CASHU_P2PKKEYS: "cashu.P2PKKeys",
   CASHU_ACTIVEMINTURL: "cashu.activeMintUrl",
   CASHU_ACTIVEUNIT: "cashu.activeUnit",
+  CASHU_ACTIVE_P2PK: "cashu.activeP2pk",
   CASHU_BUCKETRULES: "cashu.bucketRules",
   CASHU_BUCKETS: "cashu.buckets",
   CASHU_DEXIE_MIGRATED: "cashu.dexie.migrated",
