@@ -318,16 +318,35 @@
             <div class="text-body2 text-2">
               Ready when signer, mints, P2PK, and tiers are configured. Relay diagnostics appear if publish fails.
             </div>
-            <div class="row q-gutter-sm wrap">
-              <q-btn
-                color="primary"
-                unelevated
-                :disable="publishDisabled"
-                :loading="publishingAll"
-                label="Publish profile &amp; tiers"
-                icon="send"
-                @click="publishAll"
-              />
+            <div class="row q-gutter-sm wrap items-start">
+              <div class="column items-start q-gutter-xs">
+                <q-btn
+                  class="publish-button"
+                  color="primary"
+                  unelevated
+                  :disable="publishDisabled"
+                  :loading="publishingAll"
+                  label="Publish profile &amp; tiers"
+                  icon="send"
+                  @click="publishAll"
+                >
+                  <q-tooltip v-if="publishBlockers.length" class="bg-surface-2 text-1">
+                    <div class="text-caption text-weight-medium q-mb-xs">Complete before publishing:</div>
+                    <ul class="publish-blockers__tooltip-list">
+                      <li v-for="blocker in publishBlockers" :key="blocker">{{ blocker }}</li>
+                    </ul>
+                  </q-tooltip>
+                </q-btn>
+                <div v-if="publishBlockers.length" class="publish-blockers text-caption text-2">
+                  <q-icon name="info" size="16px" class="q-mr-xs" />
+                  <div>
+                    <span class="text-weight-medium">Complete before publishing:</span>
+                    <ul class="publish-blockers__list">
+                      <li v-for="blocker in publishBlockers" :key="blocker">{{ blocker }}</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
               <q-btn flat color="primary" label="Copy public link" :disable="!publicProfileUrl" @click="publicProfileUrl && copy(publicProfileUrl)" />
               <q-btn flat color="primary" label="Open data explorer" @click="requestExplorerOpen('banner')" />
             </div>
@@ -1148,16 +1167,46 @@ function safeEncodeNpub(pubHex: string) {
   }
 }
 
+const publishBlockers = computed<string[]>(() => {
+  if (publishingAll.value) {
+    return [];
+  }
+
+  const blockers: string[] = [];
+
+  if (!signer.value) {
+    blockers.push('Connect a signer');
+  }
+
+  if (!authorInput.value.trim()) {
+    blockers.push('Provide a creator author (npub or hex)');
+  }
+
+  if (!p2pkPub.value.trim()) {
+    blockers.push('Add a P2PK key');
+  }
+
+  if (mintList.value.length === 0) {
+    blockers.push('Configure at least one trusted mint');
+  }
+
+  if (tiers.value.length === 0) {
+    blockers.push('Create at least one tier');
+  }
+
+  if (tiersHaveErrors.value) {
+    blockers.push('Resolve tier validation issues');
+  }
+
+  if (relayNeedsAttention.value) {
+    blockers.push('Restore relay connection health');
+  }
+
+  return blockers;
+});
+
 const publishDisabled = computed(
-  () =>
-    publishingAll.value ||
-    !authorInput.value.trim() ||
-    !p2pkPub.value.trim() ||
-    mintList.value.length === 0 ||
-    tiers.value.length === 0 ||
-    tiersHaveErrors.value ||
-    !signer.value ||
-    relayNeedsAttention.value
+  () => publishingAll.value || publishBlockers.value.length > 0
 );
 
 const tierFrequencyOptions = computed(() =>
@@ -2312,6 +2361,33 @@ onBeforeUnmount(() => {
 
 .studio-banner__title {
   font-weight: 600;
+}
+
+.publish-button.q-btn--disabled {
+  opacity: 1;
+  background: var(--accent-500);
+  color: white;
+}
+
+.publish-button.q-btn--disabled .q-icon,
+.publish-button.q-btn--disabled .q-btn__content {
+  color: inherit;
+}
+
+.publish-blockers {
+  display: flex;
+  gap: 8px;
+  max-width: 320px;
+}
+
+.publish-blockers__list,
+.publish-blockers__tooltip-list {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.publish-blockers__tooltip-list {
+  margin: 0;
 }
 
 .studio-explorer {
