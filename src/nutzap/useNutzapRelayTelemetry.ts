@@ -1,4 +1,5 @@
 import { computed, ref, watch, type Ref } from 'vue';
+import { sanitizeRelayUrls } from 'src/utils/relay';
 import { FUNDSTR_WS_URL } from './relayEndpoints';
 import {
   useRelayConnection,
@@ -30,10 +31,27 @@ export function useNutzapRelayTelemetry(options: UseNutzapRelayTelemetryOptions 
   } = useRelayConnection();
 
   const relayUrlInput = ref(relayConnectionUrl.value);
-  const relayUrlInputValid = computed(() => relayUrlInput.value.trim().length > 0);
+  const relayUrlInputFeedback = ref<{ state: 'warning' | 'error' | null; message: string }>({
+    state: null,
+    message: '',
+  });
+  const relayUrlInputState = computed(() => relayUrlInputFeedback.value.state);
+  const relayUrlInputMessage = computed(() => relayUrlInputFeedback.value.message);
+  const relayUrlInputValid = computed(() => {
+    const trimmed = relayUrlInput.value.trim();
+    const candidate = trimmed || FUNDSTR_WS_URL;
+    const sanitized = sanitizeRelayUrls([candidate], 1)[0];
+    return !!sanitized && sanitized.startsWith('wss://');
+  });
 
   watch(relayConnectionUrl, value => {
     relayUrlInput.value = value;
+  });
+
+  watch(relayUrlInput, value => {
+    if (value !== relayConnectionUrl.value && relayUrlInputFeedback.value.state) {
+      relayUrlInputFeedback.value = { state: null, message: '' };
+    }
   });
 
   const relayStatusLabel = computed(() => describeStatus(relayConnectionStatus));
@@ -123,8 +141,34 @@ export function useNutzapRelayTelemetry(options: UseNutzapRelayTelemetryOptions 
 
   function applyRelayUrlInput() {
     const trimmed = relayUrlInput.value.trim();
-    relayConnectionUrl.value = trimmed || FUNDSTR_WS_URL;
-    relayUrlInput.value = relayConnectionUrl.value;
+    const candidate = trimmed || FUNDSTR_WS_URL;
+    const sanitized = sanitizeRelayUrls([candidate], 1)[0];
+    if (!sanitized || !sanitized.startsWith('wss://')) {
+      relayConnectionUrl.value = FUNDSTR_WS_URL;
+      relayUrlInput.value = FUNDSTR_WS_URL;
+      relayUrlInputFeedback.value = {
+        state: 'error',
+        message: `Invalid relay URL. Falling back to ${FUNDSTR_WS_URL}.`,
+      };
+      return;
+    }
+
+    relayConnectionUrl.value = sanitized;
+    relayUrlInput.value = sanitized;
+
+    if (!trimmed) {
+      relayUrlInputFeedback.value = {
+        state: 'warning',
+        message: `Relay URL reset to default ${FUNDSTR_WS_URL}.`,
+      };
+    } else if (sanitized !== trimmed) {
+      relayUrlInputFeedback.value = {
+        state: 'warning',
+        message: `Relay URL adjusted to ${sanitized}.`,
+      };
+    } else {
+      relayUrlInputFeedback.value = { state: null, message: '' };
+    }
   }
 
   return {
@@ -141,6 +185,8 @@ export function useNutzapRelayTelemetry(options: UseNutzapRelayTelemetryOptions 
     relayIsConnected,
     relayUrlInput,
     relayUrlInputValid,
+    relayUrlInputState,
+    relayUrlInputMessage,
     relayStatusLabel,
     relayStatusColor,
     relayStatusDotClass,

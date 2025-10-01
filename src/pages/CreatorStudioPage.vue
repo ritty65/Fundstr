@@ -45,8 +45,14 @@
               label="Relay URL (WS)"
               dense
               filled
-              :error="!relayUrlInputValid.value"
-              error-message="Enter a valid wss:// relay"
+              :hint="relayUrlInputState.value === 'warning' ? relayUrlInputMessage.value : ''"
+              :hide-hint="relayUrlInputState.value !== 'warning'"
+              :error="relayUrlInputState.value === 'error' || !relayUrlInputValid.value"
+              :error-message="
+                relayUrlInputState.value === 'error'
+                  ? relayUrlInputMessage.value
+                  : 'Enter a valid wss:// relay'
+              "
             />
             <div class="row items-center justify-between wrap q-gutter-sm">
               <q-toggle v-model="relayAutoReconnect.value" label="Auto reconnect" />
@@ -731,6 +737,8 @@ const {
   relayIsConnected,
   relayUrlInput,
   relayUrlInputValid,
+  relayUrlInputState,
+  relayUrlInputMessage,
   relayStatusLabel,
   relayStatusColor,
   relayStatusDotClass,

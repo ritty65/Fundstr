@@ -44,6 +44,8 @@ type SharedMocks = {
   relayNeedsAttention: ReturnType<typeof ref<boolean>>;
   relayUrlInput: ReturnType<typeof ref<string>>;
   relayUrlInputValid: ReturnType<typeof ref<boolean>>;
+  relayUrlInputState: ReturnType<typeof ref<'warning' | 'error' | null>>;
+  relayUrlInputMessage: ReturnType<typeof ref<string>>;
   relayStatusLabel: ReturnType<typeof ref<string>>;
   relayStatusColor: ReturnType<typeof ref<string>>;
   relayStatusDotClass: ReturnType<typeof ref<string>>;
@@ -95,6 +97,8 @@ function ensureShared(): SharedMocks {
       relayNeedsAttention,
       relayUrlInput: ref('wss://relay.fundstr.me'),
       relayUrlInputValid: ref(true),
+      relayUrlInputState: ref(null),
+      relayUrlInputMessage: ref(''),
       relayStatusLabel: ref('Connected'),
       relayStatusColor: ref('positive'),
       relayStatusDotClass: ref('status-dot--positive'),
@@ -179,6 +183,8 @@ vi.mock('src/nutzap/useNutzapRelayTelemetry', () => ({
       relayIsConnected: state.relayIsConnected,
       relayUrlInput: state.relayUrlInput,
       relayUrlInputValid: state.relayUrlInputValid,
+      relayUrlInputState: state.relayUrlInputState,
+      relayUrlInputMessage: state.relayUrlInputMessage,
       relayStatusLabel: state.relayStatusLabel,
       relayStatusColor: state.relayStatusColor,
       relayStatusDotClass: state.relayStatusDotClass,
