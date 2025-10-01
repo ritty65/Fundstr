@@ -307,24 +307,15 @@
               </div>
             </div>
 
-            <q-expansion-item class="studio-advanced" v-model="advancedKeyManagementOpen.value" dense-toggle>
-              <template #header>
-                <div class="row items-center justify-between full-width">
-                  <div class="text-body2 text-1 text-weight-medium">Advanced signer keys</div>
-                  <q-chip dense color="primary" text-color="white" v-if="keyPublicHex.value">{{ keyPublicHex.value.slice(0, 16) }}…</q-chip>
-                </div>
-              </template>
-              <div class="column q-gutter-md q-mt-sm">
-                <q-input v-model="keyImportValue.value" label="Import nsec or hex" dense filled />
-                <div class="row q-gutter-sm">
-                  <q-btn outline color="primary" label="Import" @click="importSecretKey" />
-                  <q-btn color="primary" label="Generate new" @click="generateNewSecret" />
-                </div>
-                <q-input v-model="keySecretHex.value" label="Secret (hex)" dense filled readonly />
-                <q-input v-model="keyNsec.value" label="Secret (nsec)" dense filled readonly />
-                <q-input v-model="keyNpub.value" label="Public (npub)" dense filled readonly />
-              </div>
-            </q-expansion-item>
+            <div class="studio-advanced-link" v-if="!usingStoreIdentity.value">
+              <q-btn
+                outline
+                color="primary"
+                icon="vpn_key"
+                label="Manage Nostr signer"
+                :to="{ name: 'NutzapProfile' }"
+              />
+            </div>
           </div>
         </q-card>
 
@@ -519,7 +510,7 @@ import NutzapExplorerPanel from 'src/nutzap/onepage/NutzapExplorerPanel.vue';
 import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
 import type { Tier } from 'src/nutzap/types';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
-import { generateSecretKey, getPublicKey as getNostrPublicKey, nip19 } from 'nostr-tools';
+import { nip19 } from 'nostr-tools';
 import { useClipboard } from 'src/composables/useClipboard';
 import { buildProfileUrl } from 'src/utils/profileUrl';
 import {
@@ -874,61 +865,6 @@ function handleRelayDisconnect() {
   disconnectRelay();
 }
 
-function applySecretBytes(sk: Uint8Array) {
-  const secretHex = bytesToHex(sk);
-  const publicHex = getNostrPublicKey(sk);
-  keySecretHex.value = secretHex;
-  keyPublicHex.value = publicHex;
-  keyNpub.value = nip19.npubEncode(publicHex);
-  keyNsec.value = nip19.nsecEncode(sk);
-  keyImportValue.value = '';
-  const encodedNpub = keyNpub.value || safeEncodeNpub(publicHex);
-  authorInput.value = encodedNpub || publicHex;
-}
-
-function generateNewSecret() {
-  if (!advancedKeyManagementOpen.value) {
-    return;
-  }
-  const secret = generateSecretKey();
-  applySecretBytes(secret);
-  notifySuccess('Generated new secret key.');
-}
-
-function importSecretKey() {
-  if (!advancedKeyManagementOpen.value) {
-    return;
-  }
-  const trimmed = keyImportValue.value.trim();
-  if (!trimmed) {
-    notifyWarning('Enter a private key to import.');
-    return;
-  }
-
-  try {
-    if (/^nsec/i.test(trimmed)) {
-      const decoded = nip19.decode(trimmed);
-      if (decoded.type !== 'nsec' || !decoded.data) {
-        throw new Error('Invalid nsec key.');
-      }
-      const data = decoded.data instanceof Uint8Array ? decoded.data : hexToBytes(String(decoded.data));
-      applySecretBytes(data);
-      notifySuccess('Secret key imported.');
-      return;
-    }
-
-    if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
-      applySecretBytes(hexToBytes(trimmed));
-      notifySuccess('Secret key imported.');
-      return;
-    }
-
-    throw new Error('Enter a valid nsec or 64-character hex secret key.');
-  } catch (err) {
-    notifyError(err instanceof Error ? err.message : 'Unable to import key.');
-  }
-}
-
 function setDerivedP2pk(pubHex: string) {
   const normalized = pubHex.trim().toLowerCase();
   p2pkDerivedPub.value = normalized;
@@ -1176,12 +1112,6 @@ onMounted(() => {
 const {
   pubkey,
   signer,
-  keySecretHex,
-  keyNsec,
-  keyPublicHex,
-  keyNpub,
-  keyImportValue,
-  advancedKeyManagementOpen,
   usingStoreIdentity,
   connectedIdentitySummary,
   ensureSharedSignerInitialized,
@@ -2653,9 +2583,8 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 6px rgba(252, 165, 165, 0.15);
 }
 
-.studio-advanced {
-  border-radius: 12px;
-  border: 1px solid var(--surface-contrast-border);
-  padding: 12px;
+.studio-advanced-link {
+  display: flex;
+  justify-content: flex-end;
 }
 </style>
