@@ -54,6 +54,25 @@
             :disable="!relaySupported"
             @update:model-value="value => emit('update:autoReconnect', value)"
           />
+          <div
+            v-if="latestAlertLabel"
+            class="connection-inline-hint row items-center"
+            :class="relayNeedsAttention ? 'connection-inline-hint--attention' : 'connection-inline-hint--warning'"
+          >
+            <q-icon
+              name="warning_amber"
+              size="16px"
+              :color="relayNeedsAttention ? 'negative' : 'warning'"
+              class="q-mr-xs"
+            />
+            <span class="connection-inline-hint__message">
+              {{
+                relayNeedsAttention
+                  ? `${latestAlertLabel} — verify your workspace key or try HTTP fallback.`
+                  : latestAlertLabel
+              }}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -119,6 +138,8 @@ type Props = {
   statusColor: string;
   statusDotClass: string;
   latestActivity: RelayActivityEntry | null;
+  latestAlertLabel: string;
+  relayNeedsAttention: boolean;
   activityTimeline: RelayActivityEntry[];
   relayUrl: string;
   relayUrlValid: boolean;
@@ -134,6 +155,8 @@ const props = defineProps({
   statusColor: { type: String, required: true },
   statusDotClass: { type: String, required: true },
   latestActivity: { type: Object as PropType<RelayActivityEntry | null>, default: null },
+  latestAlertLabel: { type: String, default: '' },
+  relayNeedsAttention: { type: Boolean, default: false },
   activityTimeline: { type: Array as PropType<RelayActivityEntry[]>, default: () => [] },
   relayUrl: { type: String, required: true },
   relayUrlValid: { type: Boolean, required: true },
@@ -160,6 +183,8 @@ const {
   statusColor,
   statusDotClass,
   latestActivity,
+  latestAlertLabel,
+  relayNeedsAttention,
   activityTimeline,
   relayUrl,
   relayUrlValid,
@@ -197,6 +222,28 @@ const {
   border-radius: 9999px;
   background: var(--surface-contrast-border);
   transition: background-color 150ms ease;
+}
+
+.connection-inline-hint {
+  font-size: 12px;
+  line-height: 1.4;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--accent-200) 40%, transparent);
+}
+
+.connection-inline-hint--warning {
+  color: var(--text-2);
+}
+
+.connection-inline-hint--attention {
+  color: var(--q-negative);
+  background: color-mix(in srgb, var(--q-negative) 18%, transparent);
+}
+
+.connection-inline-hint__message {
+  white-space: normal;
 }
 
 .status-dot--positive {

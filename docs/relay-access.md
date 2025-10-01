@@ -77,3 +77,15 @@ self-declared relays are queried before falling back to the public pool.
 `NetworkOnly` strategy. Together with the explicit `no-store` fetch options this
 guarantees that relay responses are never cached inside the service worker,
 which is required to always observe the most recent replaceable events.
+
+## QA checklist
+
+- Establish a successful websocket session and confirm the connection chip in
+  the Nutzap profile screen flips to **Connected** while a success entry lands in
+  the activity log.
+- Trigger repeated connection failures (e.g. point the workspace to an
+  unreachable relay) and confirm the inline warning beside the Connect button
+  summarizes the latest error and escalates to a “needs attention” state with
+  guidance to verify the workspace key or fall back to HTTP.
+- While “needs attention” is active, ensure publish controls are disabled and
+  the diagnostics banner nudges the operator to resolve the relay transport.
