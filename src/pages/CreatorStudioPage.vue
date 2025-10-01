@@ -92,14 +92,36 @@
               <div class="text-subtitle1 text-weight-medium text-1">Workspace snapshot</div>
               <div class="text-caption text-2">Share your supporter-facing link and review metadata.</div>
             </div>
-            <q-btn
-              flat
-              dense
-              icon="content_copy"
-              label="Copy link"
-              :disable="!publicProfileUrl"
-              @click="publicProfileUrl && copy(publicProfileUrl)"
-            />
+            <div class="studio-card__header-actions row items-center q-gutter-sm">
+              <q-btn
+                outline
+                color="primary"
+                dense
+                icon="send"
+                label="Publish profile"
+                :disable="publishDisabled"
+                :loading="publishingAll"
+                @click="publishAll"
+              >
+                <q-tooltip
+                  v-if="publishDisabled && publishBlockers.length"
+                  class="bg-surface-2 text-1"
+                >
+                  <div class="text-caption text-weight-medium q-mb-xs">Complete before publishing:</div>
+                  <ul class="publish-blockers__tooltip-list">
+                    <li v-for="blocker in publishBlockers" :key="blocker">{{ blocker }}</li>
+                  </ul>
+                </q-tooltip>
+              </q-btn>
+              <q-btn
+                flat
+                dense
+                icon="content_copy"
+                label="Copy link"
+                :disable="!publicProfileUrl"
+                @click="publicProfileUrl && copy(publicProfileUrl)"
+              />
+            </div>
           </div>
           <div class="studio-card__body column q-gutter-lg">
             <q-input v-model="authorInput.value" label="Creator author (npub or hex)" dense filled />
@@ -107,6 +129,19 @@
               <div class="snapshot-label text-caption text-uppercase text-2">Public profile link</div>
               <div class="snapshot-value">{{ publicProfileUrl || 'Author not ready' }}</div>
               <div v-if="lastPublishInfo" class="snapshot-meta text-caption text-2">{{ lastPublishInfo }}</div>
+            </div>
+            <div class="snapshot-readiness chip-row">
+              <q-chip
+                v-for="chip in readinessChips"
+                :key="chip.key"
+                dense
+                size="sm"
+                outline
+                :class="['studio-readiness', `is-${chip.state}`]"
+                :icon="chip.icon"
+              >
+                {{ chip.label }}
+              </q-chip>
             </div>
             <div class="row q-col-gutter-md">
               <div class="col-12 col-md-6">
@@ -2476,6 +2511,11 @@ onBeforeUnmount(() => {
 .snapshot-chips {
   display: grid;
   gap: 16px;
+}
+
+.snapshot-readiness {
+  border-top: 1px solid var(--surface-contrast-border);
+  padding-top: 12px;
 }
 
 .chip-row {
