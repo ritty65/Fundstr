@@ -19,6 +19,7 @@ export function useNutzapRelayTelemetry(options: UseNutzapRelayTelemetryOptions 
     status: relayConnectionStatus,
     autoReconnect: relayAutoReconnect,
     activityLog: relayActivity,
+    reconnectAttempts: relayReconnectAttempts,
     connect: connectRelay,
     disconnect: disconnectRelay,
     publishEvent: publishEventToRelay,
@@ -41,6 +42,34 @@ export function useNutzapRelayTelemetry(options: UseNutzapRelayTelemetryOptions 
   const latestRelayActivity = computed(() => {
     const entries = relayActivity.value;
     return entries.length ? entries[entries.length - 1] : null;
+  });
+
+  const latestRelayAlert = computed(() => {
+    const entries = relayActivity.value;
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const entry = entries[i];
+      if (entry.level === 'error' || entry.level === 'warning') {
+        return entry;
+      }
+    }
+    return null;
+  });
+
+  const latestRelayAlertLabel = computed(() => {
+    const entry = latestRelayAlert.value;
+    if (!entry) {
+      return '';
+    }
+    if (entry.context && entry.context !== entry.message) {
+      return `${entry.message} — ${entry.context}`;
+    }
+    return entry.message;
+  });
+
+  const relayNeedsAttention = computed(() => {
+    const status = relayConnectionStatus.value;
+    const attempts = relayReconnectAttempts.value;
+    return status !== 'connected' && attempts >= 3;
   });
 
   const relayActivityTimeline = computed(() => relayActivity.value.slice().reverse());
@@ -114,6 +143,9 @@ export function useNutzapRelayTelemetry(options: UseNutzapRelayTelemetryOptions 
     relayStatusColor,
     relayStatusDotClass,
     latestRelayActivity,
+    latestRelayAlert,
+    latestRelayAlertLabel,
+    relayNeedsAttention,
     relayActivityTimeline,
     formatActivityTime,
     activityLevelColor,

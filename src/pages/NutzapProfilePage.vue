@@ -46,6 +46,8 @@
               :status-color="relayStatusColor"
               :status-dot-class="relayStatusDotClass"
               :latest-activity="latestRelayActivity"
+              :latest-alert-label="latestRelayAlertLabel"
+              :relay-needs-attention="relayNeedsAttention"
               :activity-timeline="relayActivityTimeline"
               :relay-url="relayUrlInput"
               :relay-url-valid="relayUrlInputValid"
@@ -312,7 +314,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useEventBus, useLocalStorage } from '@vueuse/core';
@@ -567,6 +569,20 @@ watch(diagnosticsAttention, value => {
   }
 });
 
+let relayNeedsAttentionRef: Ref<boolean> | null = null;
+
+const relayTelemetry = useNutzapRelayTelemetry({
+  onRelayAlert: entry => {
+    const baseDetail = entry.context ? `${entry.message} — ${entry.context}` : entry.message;
+    const needsAttention = relayNeedsAttentionRef?.value === true;
+    const detail = needsAttention
+      ? `${baseDetail} Verify the workspace key or try the HTTP fallback.`
+      : baseDetail;
+    const level: 'error' | 'warning' = needsAttention || entry.level === 'warning' ? 'warning' : 'error';
+    flagDiagnosticsAttention('relay', detail, level);
+  },
+});
+
 const {
   relayConnectionUrl,
   relayConnectionStatus,
@@ -584,16 +600,24 @@ const {
   relayStatusColor,
   relayStatusDotClass,
   latestRelayActivity,
+  latestRelayAlertLabel,
+  relayNeedsAttention,
   relayActivityTimeline,
   formatActivityTime,
   activityLevelColor,
   applyRelayUrlInput,
-} = useNutzapRelayTelemetry({
-  onRelayAlert: entry => {
-    const detail = entry.context ? `${entry.message} — ${entry.context}` : entry.message;
-    flagDiagnosticsAttention('relay', detail);
-  },
-});
+} = relayTelemetry;
+
+relayNeedsAttentionRef = relayNeedsAttention;
+
+watch(
+  () => relayNeedsAttention.value,
+  needsAttention => {
+    if (!needsAttention && diagnosticsAttention.value?.source === 'relay') {
+      dismissDiagnosticsAttention();
+    }
+  }
+);
 
 function handleRelayConnect() {
   applyRelayUrlInput();
@@ -966,7 +990,8 @@ const publishDisabled = computed(
     mintList.value.length === 0 ||
     tiers.value.length === 0 ||
     tiersHaveErrors.value ||
-    !signer.value
+    !signer.value ||
+    relayNeedsAttention.value
 );
 
 const tierFrequencyOptions = computed(() =>
@@ -1633,7 +1658,17 @@ onMounted(() => {
     void loadAll();
   }
   if (relaySupported) {
-    connectRelay();
+    void ensureRelayClientInitialized()
+      .then(() => {
+        connectRelay();
+      })
+      .catch(err => {
+        console.warn('[nutzap] skipped auto-connect due to relay init failure', err);
+        if (!relayNeedsAttention.value) {
+          const detail = 'Relay client failed to initialize. Verify the workspace key or try the HTTP fallback.';
+          flagDiagnosticsAttention('relay', detail, 'warning');
+        }
+      });
   }
   ensureRelayStatusListenerOnce();
 });

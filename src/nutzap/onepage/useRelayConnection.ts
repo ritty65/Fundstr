@@ -483,6 +483,7 @@ const handleOpen = () => {
     status: readonly(status) as Readonly<Ref<RelayConnectionStatus>>,
     autoReconnect,
     activityLog: readonly(activityLog) as Readonly<Ref<RelayActivityEntry[]>>,
+    reconnectAttempts: readonly(reconnectAttempts) as Readonly<Ref<number>>,
     connect,
     disconnect,
     publishEvent,
