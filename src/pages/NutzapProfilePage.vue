@@ -3,108 +3,45 @@
     <div class="nutzap-profile-container">
       <q-card class="profile-card bg-surface-2 shadow-4 full-width">
         <div class="profile-card-header">
-          <div class="profile-hero">
-            <div class="profile-hero__intro">
-              <div class="profile-hero__eyebrow text-caption text-2">Creator Nutzap workspace</div>
-              <h1 class="profile-hero__title text-h5 text-weight-bold text-1">Connect → configure → publish</h1>
-              <p class="profile-hero__description text-body1 text-2">
-                Move through the checklist to link your signer, configure payout details, and publish tiers without guesswork.
-              </p>
-              <div class="profile-hero__status text-caption">
-                <span class="status-dot" :class="relayStatusDotClass" aria-hidden="true"></span>
-                <span class="text-weight-medium text-1">{{ relayStatusLabel }}</span>
-                <span class="text-2">· Isolated relay: relay.fundstr.me (WS → HTTP fallback)</span>
-              </div>
+          <div class="status-banner text-1">
+            <div class="status-summary">
+              <span class="status-dot" :class="relayStatusDotClass" aria-hidden="true"></span>
+              <span class="status-label text-caption text-weight-medium">{{ relayStatusLabel }}</span>
             </div>
-            <div class="profile-hero__actions">
-              <q-btn
-                class="profile-primary-cta"
-                color="primary"
-                unelevated
-                :loading="primaryCtaLoading"
-                :disable="primaryCtaDisabled"
-                :label="primaryCtaLabel"
-                @click="handlePrimaryCta"
-              />
-              <div class="profile-hero__next-step text-caption">
-                <template v-if="nextBlockingTask">
-                  <span class="text-2">Next step:</span>
-                  <span class="text-weight-medium text-1">{{ nextBlockingTask.label }}</span>
-                </template>
-                <template v-else>
-                  <span class="text-positive text-weight-medium">All systems ready — publish when you're set.</span>
-                </template>
-              </div>
-              <q-btn
-                outline
-                dense
-                icon="travel_explore"
-                class="profile-hero__explorer"
-                label="Open data explorer"
-                @click="requestExplorerOpen('toolbar')"
-              />
+            <div class="status-meta text-body2 text-2">
+              Isolated relay: relay.fundstr.me (WS → HTTP fallback)
             </div>
           </div>
-          <div class="readiness-checklist" role="status" aria-live="polite">
-            <div class="readiness-header">
-              <div class="readiness-title text-subtitle2 text-weight-medium text-1">Workspace readiness</div>
-              <div class="readiness-subtitle text-body2 text-2">Track blockers across connect, configure, and publish.</div>
-            </div>
-            <div class="readiness-body column q-gutter-lg">
-              <div v-for="(section, index) in readinessSections" :key="section.key" class="readiness-section">
-                <div class="readiness-section__header">
-                  <div class="readiness-section__index text-caption text-weight-medium">{{ index + 1 }}</div>
-                  <div>
-                    <div class="readiness-section__title text-body1 text-weight-medium text-1">{{ section.title }}</div>
-                    <div class="readiness-section__summary text-caption text-2">{{ section.summary }}</div>
-                  </div>
-                </div>
-                <q-list padding class="readiness-section__list">
-                  <q-item
-                    v-for="task in section.tasks"
-                    :key="task.key"
-                    dense
-                    class="readiness-task"
-                    :class="`is-${task.state}`"
-                  >
-                    <q-item-section avatar>
-                      <q-icon
-                        :name="task.icon"
-                        :color="task.state === 'ready' ? 'positive' : task.state === 'blocked' ? 'warning' : 'grey-6'"
-                      />
-                    </q-item-section>
-                    <q-item-section>
-                      <q-item-label class="text-body2 text-1">{{ task.label }}</q-item-label>
-                      <q-item-label v-if="task.detail" class="text-caption text-2">{{ task.detail }}</q-item-label>
-                    </q-item-section>
-                    <q-item-section v-if="task.state === 'blocked'" side>
-                      <q-btn
-                        flat
-                        size="sm"
-                        color="primary"
-                        :label="task.actionLabel"
-                        @click="handleReadinessTaskClick(section.key, task.key)"
-                      />
-                    </q-item-section>
-                  </q-item>
-                </q-list>
-              </div>
+          <div class="profile-readiness" role="status" aria-live="polite">
+            <div class="profile-readiness-title text-caption text-2">Workspace readiness</div>
+            <div class="profile-readiness-chips">
+              <q-chip
+                v-for="chip in readinessChips"
+                :key="chip.key"
+                dense
+                size="sm"
+                :icon="chip.icon"
+                :class="['profile-readiness-chip', `is-${chip.state}`]"
+              >
+                {{ chip.label }}
+              </q-chip>
             </div>
           </div>
         </div>
         <div class="profile-card-body">
+          <div class="profile-content-toolbar">
+            <q-btn
+              outline
+              dense
+              icon="travel_explore"
+              class="data-explorer-trigger"
+              label="Open data explorer"
+              @click="requestExplorerOpen('toolbar')"
+            />
+          </div>
           <div class="profile-main-grid">
-            <section ref="connectStageRef" class="profile-stage">
-              <header class="profile-stage__header">
-                <div class="profile-stage__eyebrow text-caption text-2">Step 1</div>
-                <div class="profile-stage__title text-subtitle1 text-weight-medium text-1">Connect</div>
-                <div class="profile-stage__summary text-body2 text-2">
-                  Link your signer and stabilize the Fundstr relay before configuring payouts.
-                </div>
-              </header>
-              <div class="profile-stage__content column q-gutter-lg">
-                <ConnectionPanel
-                  class="profile-grid-item profile-grid-item--connection"
+            <ConnectionPanel
+              class="profile-grid-item profile-grid-item--connection"
               :status-label="relayStatusLabel"
               :status-color="relayStatusColor"
               :status-dot-class="relayStatusDotClass"
@@ -126,76 +63,12 @@
               @clear-activity="clearRelayActivity"
             />
 
-            <section ref="configureStageRef" class="profile-stage">
-              <header class="profile-stage__header">
-                <div class="profile-stage__eyebrow text-caption text-2">Step 2</div>
-                <div class="profile-stage__title text-subtitle1 text-weight-medium text-1">Configure</div>
-                <div class="profile-stage__summary text-body2 text-2">
-                  Capture trusted payout details and craft the supporter experience before publishing.
+            <section class="section-card share-summary-card profile-grid-item profile-grid-item--share">
+              <div class="section-header">
+                <div class="section-title text-subtitle1 text-weight-medium text-1">Share &amp; snapshot</div>
+                <div class="section-subtitle text-body2 text-2">
+                  Copy your supporter-facing link and confirm key profile details.
                 </div>
-              </header>
-              <div class="profile-stage__content column q-gutter-lg">
-                <AuthorMetadataPanel
-                  class="profile-grid-item profile-grid-item--author"
-                  :display-name="displayName"
-                  :picture-url="pictureUrl"
-                  :mints-text="mintsText"
-                  :relays-text="relaysText"
-                  :p2pk-priv="p2pkPriv"
-                  :p2pk-pub="p2pkPub"
-                  :p2pk-derived-pub="p2pkDerivedPub"
-                  :key-secret-hex="keySecretHex"
-                  :key-nsec="keyNsec"
-                  :key-public-hex="keyPublicHex"
-                  :key-npub="keyNpub"
-                  :key-import-value="keyImportValue"
-                  :using-store-identity="usingStoreIdentity"
-                  :connected-identity-summary="connectedIdentitySummary"
-                  :identity-basics-complete="identityBasicsComplete"
-                  :optional-metadata-complete="optionalMetadataComplete"
-                  :advanced-encryption-complete="advancedEncryptionComplete"
-                  :advanced-key-management-open="advancedKeyManagementOpen"
-                  @update:display-name="value => (displayName.value = value)"
-                  @update:picture-url="value => (pictureUrl.value = value)"
-                  @update:mints-text="value => (mintsText.value = value)"
-                  @update:relays-text="value => (relaysText.value = value)"
-                  @update:p2pk-priv="value => (p2pkPriv.value = value)"
-                  @update:p2pk-pub="value => (p2pkPub.value = value)"
-                  @update:key-import-value="value => (keyImportValue.value = value)"
-                  @update:advanced-key-management-open="value => (advancedKeyManagementOpen.value = value)"
-                  @request-derive-p2pk="deriveP2pkPublicKey"
-                  @request-generate-p2pk="generateP2pkKeypair"
-                  @request-generate-secret="generateNewSecret"
-                  @request-import-secret="importSecretKey"
-                />
-
-                <TierComposerCard
-                  class="profile-grid-item profile-grid-item--tiers"
-                  :tiers="tiers"
-                  :frequency-options="tierFrequencyOptions"
-                  :show-errors="showTierValidation"
-                  :tiers-ready="tiersReady"
-                  @update:tiers="value => (tiers.value = value)"
-                  @validation-changed="handleTierValidation"
-                />
-              </div>
-            </section>
-
-            <section ref="publishStageRef" class="profile-stage">
-              <header class="profile-stage__header">
-                <div class="profile-stage__eyebrow text-caption text-2">Step 3</div>
-                <div class="profile-stage__title text-subtitle1 text-weight-medium text-1">Publish</div>
-                <div class="profile-stage__summary text-body2 text-2">
-                  Review the public snapshot and push your tiers live when everything looks right.
-                </div>
-              </header>
-              <div class="profile-stage__content column q-gutter-lg">
-                <section class="section-card share-summary-card profile-grid-item profile-grid-item--share">
-                  <div class="section-header">
-                    <div class="section-title text-subtitle1 text-weight-medium text-1">Share &amp; snapshot</div>
-                    <div class="section-subtitle text-body2 text-2">
-                      Copy your supporter-facing link and confirm key profile details.
-                    </div>
               </div>
               <div class="section-body column q-gutter-lg">
                 <div class="share-link-block" data-testid="profile-share-block">
@@ -332,41 +205,83 @@
               </div>
             </section>
 
-                <section class="section-card tier-kind-card profile-grid-item profile-grid-item--tier-kind">
-                  <div class="section-header">
-                    <div class="section-title text-subtitle1 text-weight-medium text-1">Tier strategy</div>
-                    <div class="section-subtitle text-body2 text-2">
-                      Publishing as {{ tierKindLabel }} — parameterized replaceable ["d", "tiers"].
-                    </div>
-                  </div>
-                  <div class="section-body column q-gutter-md">
-                    <div class="row items-center justify-between wrap q-gutter-sm">
-                      <div class="text-subtitle2 text-1">Tier kind</div>
-                      <q-btn-toggle
-                        v-model="tierKind"
-                        :options="tierKindOptions"
-                        dense
-                        toggle-color="primary"
-                        unelevated
-                      />
-                    </div>
-                  </div>
-                </section>
+            <AuthorMetadataPanel
+              class="profile-grid-item profile-grid-item--author"
+              :display-name="displayName"
+              :picture-url="pictureUrl"
+              :mints-text="mintsText"
+              :relays-text="relaysText"
+              :p2pk-priv="p2pkPriv"
+              :p2pk-pub="p2pkPub"
+              :p2pk-derived-pub="p2pkDerivedPub"
+              :key-secret-hex="keySecretHex"
+              :key-nsec="keyNsec"
+              :key-public-hex="keyPublicHex"
+              :key-npub="keyNpub"
+              :key-import-value="keyImportValue"
+              :using-store-identity="usingStoreIdentity"
+              :connected-identity-summary="connectedIdentitySummary"
+              :identity-basics-complete="identityBasicsComplete"
+              :optional-metadata-complete="optionalMetadataComplete"
+              :advanced-encryption-complete="advancedEncryptionComplete"
+              :advanced-key-management-open="advancedKeyManagementOpen"
+              @update:display-name="value => (displayName.value = value)"
+              @update:picture-url="value => (pictureUrl.value = value)"
+              @update:mints-text="value => (mintsText.value = value)"
+              @update:relays-text="value => (relaysText.value = value)"
+              @update:p2pk-priv="value => (p2pkPriv.value = value)"
+              @update:p2pk-pub="value => (p2pkPub.value = value)"
+              @update:key-import-value="value => (keyImportValue.value = value)"
+              @update:advanced-key-management-open="value => (advancedKeyManagementOpen.value = value)"
+              @request-derive-p2pk="deriveP2pkPublicKey"
+              @request-generate-p2pk="generateP2pkKeypair"
+              @request-generate-secret="generateNewSecret"
+              @request-import-secret="importSecretKey"
+            />
 
-                <ReviewPublishCard
-                  class="profile-grid-item profile-grid-item--publish"
-                  v-model:open="reviewPublishSectionOpen"
-                  :tiers-ready="tiersReady"
-                  :tiers-json-preview="tiersJsonPreview"
-                  :publish-disabled="publishDisabled"
-                  :publishing="publishingAll"
-                  :public-profile-url="publicProfileUrl"
-                  :last-publish-info="lastPublishInfo"
-                  @publish="publishAll"
-                  @copy-link="copy(publicProfileUrl)"
-                />
+            <section class="section-card tier-kind-card profile-grid-item profile-grid-item--tier-kind">
+              <div class="section-header">
+                <div class="section-title text-subtitle1 text-weight-medium text-1">Tier strategy</div>
+                <div class="section-subtitle text-body2 text-2">
+                  Publishing as {{ tierKindLabel }} — parameterized replaceable ["d", "tiers"].
+                </div>
+              </div>
+              <div class="section-body column q-gutter-md">
+                <div class="row items-center justify-between wrap q-gutter-sm">
+                  <div class="text-subtitle2 text-1">Tier kind</div>
+                  <q-btn-toggle
+                    v-model="tierKind"
+                    :options="tierKindOptions"
+                    dense
+                    toggle-color="primary"
+                    unelevated
+                  />
+                </div>
               </div>
             </section>
+
+            <TierComposerCard
+              class="profile-grid-item profile-grid-item--tiers"
+              :tiers="tiers"
+              :frequency-options="tierFrequencyOptions"
+              :show-errors="showTierValidation"
+              :tiers-ready="tiersReady"
+              @update:tiers="value => (tiers.value = value)"
+              @validation-changed="handleTierValidation"
+            />
+
+            <ReviewPublishCard
+              class="profile-grid-item profile-grid-item--publish"
+              v-model:open="reviewPublishSectionOpen"
+              :tiers-ready="tiersReady"
+              :tiers-json-preview="tiersJsonPreview"
+              :publish-disabled="publishDisabled"
+              :publishing="publishingAll"
+              :public-profile-url="publicProfileUrl"
+              :last-publish-info="lastPublishInfo"
+              @publish="publishAll"
+              @copy-link="copy(publicProfileUrl)"
+            />
           </div>
         </div>
       </q-card>
@@ -399,7 +314,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useEventBus, useLocalStorage } from '@vueuse/core';
@@ -568,28 +483,16 @@ const publicProfileUrl = computed(() => {
 });
 
 const reviewPublishSectionOpen = ref(false);
-const connectStageRef = ref<HTMLElement | null>(null);
-const configureStageRef = ref<HTMLElement | null>(null);
-const publishStageRef = ref<HTMLElement | null>(null);
 
-type ReadinessTaskState = 'ready' | 'blocked' | 'info';
-type ReadinessSectionKey = 'connect' | 'configure' | 'publish';
+type ReadinessChipState = 'ready' | 'todo' | 'optional';
+type ReadinessChipKey = 'authorKey' | 'identity' | 'mint' | 'p2pk' | 'tiers';
 
-type ReadinessTask = {
-  key: string;
+type ReadinessChip = {
+  key: ReadinessChipKey;
   label: string;
-  detail?: string;
-  state: ReadinessTaskState;
+  state: ReadinessChipState;
   icon: string;
-  actionLabel: string;
-  blocker: boolean;
-};
-
-type ReadinessSection = {
-  key: ReadinessSectionKey;
-  title: string;
-  summary: string;
-  tasks: ReadinessTask[];
+  required: boolean;
 };
 
 type DiagnosticsAttention = {
@@ -975,10 +878,6 @@ const optionalMetadataComplete = computed(() => mintList.value.length > 0);
 
 const advancedEncryptionComplete = computed(() => p2pkPub.value.trim().length > 0);
 
-const signerReady = computed(() => Boolean(signer.value));
-
-const relayHealthy = computed(() => relayIsConnected.value && !relayNeedsAttention.value);
-
 const relayList = computed(() => {
   const entries = relaysText.value
     .split('\n')
@@ -1107,211 +1006,75 @@ const tierFrequencyOptions = computed(() =>
   }))
 );
 
-const readinessSections = computed<ReadinessSection[]>(() => {
-  const connectTasks: ReadinessTask[] = [
-    {
-      key: 'signer',
-      label: signerReady.value ? 'Signer linked' : 'Link your signer',
-      detail: signerReady.value
-        ? connectedIdentitySummary.value || 'Fundstr signer connected.'
-        : 'Connect a signer to fetch profile data and publish updates.',
-      state: signerReady.value ? 'ready' : 'blocked',
-      icon: signerReady.value ? 'task_alt' : 'vpn_key_off',
-      actionLabel: signerReady.value ? 'Review signer' : 'Link signer',
-      blocker: true,
-    },
-    {
-      key: 'relay',
-      label: relayHealthy.value ? 'Relay responding' : relayStatusLabel.value,
-      detail: relayHealthy.value
-        ? latestRelayActivity.value?.message
-          ? `Latest: ${latestRelayActivity.value.message}`
-          : 'Fundstr relay is ready.'
-        : relayNeedsAttention.value
-          ? 'Verify the workspace key or try the HTTP fallback.'
-          : 'Initialize the workspace relay before publishing.',
-      state: relayHealthy.value ? 'ready' : 'blocked',
-      icon: relayHealthy.value ? 'wifi' : 'wifi_off',
-      actionLabel: relayHealthy.value ? 'Review relay' : 'Reconnect',
-      blocker: true,
-    },
-  ];
+const authorKeyReady = computed(() => authorInput.value.trim().length > 0);
 
-  const configureTasks: ReadinessTask[] = [
+const readinessChips = computed<ReadinessChip[]>(() => {
+  const entries = [
     {
-      key: 'mint',
-      label: optionalMetadataComplete.value ? 'Trusted mints added' : 'Add at least one trusted mint',
-      detail: optionalMetadataComplete.value
-        ? `${mintList.value.length} trusted mint${mintList.value.length === 1 ? '' : 's'} configured.`
-        : 'Trusted mints are required so supporters know where to zap.',
-      state: optionalMetadataComplete.value ? 'ready' : 'blocked',
-      icon: optionalMetadataComplete.value ? 'payments' : 'add_card',
-      actionLabel: optionalMetadataComplete.value ? 'Review mints' : 'Add mint',
-      blocker: true,
-    },
-    {
-      key: 'p2pk',
-      label: advancedEncryptionComplete.value ? 'P2PK pointer ready' : 'Add a P2PK pointer',
-      detail: advancedEncryptionComplete.value
-        ? 'Encrypted payouts can be decrypted by your signer.'
-        : 'A P2PK pointer is required so supporters can deliver Nutzaps.',
-      state: advancedEncryptionComplete.value ? 'ready' : 'blocked',
-      icon: advancedEncryptionComplete.value ? 'key' : 'key_off',
-      actionLabel: advancedEncryptionComplete.value ? 'Review pointer' : 'Add pointer',
-      blocker: true,
-    },
-    {
-      key: 'tiers',
-      label: tiersReady.value ? 'Tiers validated' : 'Draft at least one tier',
-      detail: tiersReady.value
-        ? `${tiers.value.length} tier${tiers.value.length === 1 ? '' : 's'} ready to publish.`
-        : 'Each published profile needs at least one valid tier.',
-      state: tiersReady.value ? 'ready' : 'blocked',
-      icon: tiersReady.value ? 'playlist_add_check' : 'playlist_add',
-      actionLabel: tiersReady.value ? 'Review tiers' : 'Add tier',
-      blocker: true,
+      key: 'authorKey',
+      ready: authorKeyReady.value,
+      required: true,
+      readyLabel: 'Signer ready',
+      actionLabel: 'Link signer',
+      readyIcon: 'task_alt',
+      actionIcon: 'vpn_key_off',
     },
     {
       key: 'identity',
-      label: identityBasicsComplete.value
-        ? 'Identity details added'
-        : 'Optional: personalize with a display name or avatar',
-      detail: identityBasicsComplete.value
-        ? 'Supporters will see your display name and picture.'
-        : 'Skip for now or personalize your profile later.',
-      state: identityBasicsComplete.value ? 'ready' : 'info',
-      icon: identityBasicsComplete.value ? 'badge' : 'tips_and_updates',
-      actionLabel: identityBasicsComplete.value ? 'Edit identity' : 'Add identity',
-      blocker: false,
+      ready: identityBasicsComplete.value,
+      required: false,
+      readyLabel: 'Identity noted',
+      actionLabel: 'Identity optional',
+      readyIcon: 'badge',
+      actionIcon: 'tips_and_updates',
     },
-  ];
+    {
+      key: 'mint',
+      ready: optionalMetadataComplete.value,
+      required: true,
+      readyLabel: 'Mint configured',
+      actionLabel: 'Add mint',
+      readyIcon: 'payments',
+      actionIcon: 'add_card',
+    },
+    {
+      key: 'p2pk',
+      ready: advancedEncryptionComplete.value,
+      required: true,
+      readyLabel: 'P2PK ready',
+      actionLabel: 'Add P2PK pointer',
+      readyIcon: 'key',
+      actionIcon: 'key_off',
+    },
+    {
+      key: 'tiers',
+      ready: tiersReady.value,
+      required: true,
+      readyLabel: 'Tiers validated',
+      actionLabel: 'Review tiers',
+      readyIcon: 'task_alt',
+      actionIcon: 'playlist_add',
+    },
+  ] as const;
 
-  const publishReady = !publishDisabled.value;
-  const publishTasks: ReadinessTask[] = [
-    {
-      key: 'review',
-      label: publishReady ? 'Ready to publish' : 'Complete checklist before publishing',
-      detail: publishReady
-        ? lastPublishInfo.value || 'Review JSON preview before sending to the relay.'
-        : 'Resolve outstanding blockers to enable publishing.',
-      state: publishReady ? 'ready' : 'blocked',
-      icon: publishReady ? 'rocket_launch' : 'hourglass_bottom',
-      actionLabel: publishReady ? 'Open review' : 'See blockers',
-      blocker: !publishReady,
-    },
-    {
-      key: 'share',
-      label: publicProfileUrl.value ? 'Shareable link available' : 'Link appears after first publish',
-      detail: publicProfileUrl.value
-        ? publicProfileUrl.value
-        : 'Publish once to generate your public link.',
-      state: publicProfileUrl.value ? 'info' : 'info',
-      icon: publicProfileUrl.value ? 'link' : 'visibility_off',
-      actionLabel: publicProfileUrl.value ? 'Copy link' : 'Learn more',
-      blocker: false,
-    },
-  ];
-
-  return [
-    {
-      key: 'connect',
-      title: 'Connect',
-      summary: 'Link your signer and confirm the relay is responding.',
-      tasks: connectTasks,
-    },
-    {
-      key: 'configure',
-      title: 'Configure',
-      summary: 'Set up trusted payout details and supporter tiers.',
-      tasks: configureTasks,
-    },
-    {
-      key: 'publish',
-      title: 'Publish',
-      summary: 'Review the output and share your profile with supporters.',
-      tasks: publishTasks,
-    },
-  ];
+  return entries.map(entry =>
+    entry.ready
+      ? {
+          key: entry.key,
+          label: entry.readyLabel,
+          state: 'ready' as ReadinessChipState,
+          icon: entry.readyIcon,
+          required: entry.required,
+        }
+      : {
+          key: entry.key,
+          label: entry.actionLabel,
+          state: entry.required ? ('todo' as ReadinessChipState) : ('optional' as ReadinessChipState),
+          icon: entry.actionIcon,
+          required: entry.required,
+        }
+  );
 });
-
-type BlockingTask = {
-  sectionKey: ReadinessSectionKey;
-  key: string;
-  label: string;
-  actionLabel: string;
-};
-
-const nextBlockingTask = computed<BlockingTask | null>(() => {
-  for (const section of readinessSections.value) {
-    for (const task of section.tasks) {
-      if (task.blocker && task.state !== 'ready') {
-        return {
-          sectionKey: section.key,
-          key: task.key,
-          label: task.label,
-          actionLabel: task.actionLabel,
-        };
-      }
-    }
-  }
-  return null;
-});
-
-const primaryCtaLabel = computed(() => {
-  if (!publishDisabled.value) {
-    return 'Publish to Fundstr relay';
-  }
-  return nextBlockingTask.value?.actionLabel || 'Review checklist';
-});
-
-const primaryCtaLoading = computed(() => publishingAll.value);
-
-const primaryCtaDisabled = computed(() => publishingAll.value);
-
-function scrollToStage(section: ReadinessSectionKey) {
-  const target =
-    section === 'connect'
-      ? connectStageRef.value
-      : section === 'configure'
-        ? configureStageRef.value
-        : publishStageRef.value;
-  if (target) {
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-}
-
-function handleReadinessTaskClick(sectionKey: ReadinessSectionKey, taskKey: string) {
-  scrollToStage(sectionKey);
-
-  if (sectionKey === 'connect') {
-    if (taskKey === 'signer') {
-      ensureSharedSignerInitialized();
-    } else if (taskKey === 'relay') {
-      handleRelayConnect();
-    }
-  } else if (sectionKey === 'configure') {
-    if (taskKey === 'tiers') {
-      showTierValidation.value = true;
-    }
-  } else if (sectionKey === 'publish') {
-    reviewPublishSectionOpen.value = true;
-  }
-}
-
-function handlePrimaryCta() {
-  if (!publishDisabled.value) {
-    reviewPublishSectionOpen.value = true;
-    void nextTick(() => scrollToStage('publish'));
-    return;
-  }
-
-  if (nextBlockingTask.value) {
-    handleReadinessTaskClick(nextBlockingTask.value.sectionKey, nextBlockingTask.value.key);
-    return;
-  }
-
-  scrollToStage('publish');
-}
 
 const tiersJsonPreview = computed(() => JSON.stringify(buildTiersJsonPayload(tiers.value), null, 2));
 
@@ -1946,38 +1709,23 @@ onBeforeUnmount(() => {
 .profile-card-header {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
 }
 
-.profile-hero {
+.status-banner {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 20px 24px;
+  gap: 6px;
+  padding: 16px 18px;
   border: 1px solid var(--surface-contrast-border);
   border-radius: 16px;
   background: color-mix(in srgb, var(--surface-2) 94%, transparent);
 }
 
-.profile-hero__intro {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 620px;
-}
-
-.profile-hero__eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-2);
-}
-
-.profile-hero__status {
+.status-summary {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.85rem;
-  color: var(--text-2);
 }
 
 .status-dot {
@@ -2004,141 +1752,89 @@ onBeforeUnmount(() => {
   background: var(--surface-contrast-border);
 }
 
-.profile-hero__actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 12px;
+.status-label {
+  text-transform: capitalize;
 }
 
-.profile-primary-cta {
-  min-width: 220px;
-}
-
-.profile-hero__next-step {
+.status-meta {
+  font-size: 13px;
+  line-height: 1.4;
   color: var(--text-2);
 }
 
-.profile-hero__explorer {
-  align-self: flex-start;
-}
-
-.readiness-checklist {
+.profile-readiness {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 20px 24px;
+  gap: 8px;
+  padding: 16px 18px;
   border: 1px solid var(--surface-contrast-border);
   border-radius: 16px;
-  background: color-mix(in srgb, var(--surface-2) 94%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
 }
 
-.readiness-header {
+.profile-readiness-title {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+}
+
+.profile-readiness-chips {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.profile-readiness-chip {
+  --q-chip-padding: 2px 10px;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  background-color: var(--chip-bg);
+  color: var(--chip-text);
+  border: 1px solid var(--surface-contrast-border);
+  font-weight: 600;
   gap: 4px;
 }
 
-.readiness-title {
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.profile-readiness-chip :deep(.q-chip__icon) {
+  font-size: 16px;
 }
 
-.readiness-body {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+.profile-readiness-chip.is-ready {
+  background-color: var(--accent-500);
+  color: var(--text-inverse);
+  border-color: var(--accent-500);
 }
 
-.readiness-section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.profile-readiness-chip.is-todo {
+  background-color: color-mix(in srgb, var(--accent-200) 35%, transparent);
+  color: var(--accent-600);
+  border-color: color-mix(in srgb, var(--accent-200) 55%, transparent);
 }
 
-.readiness-section__header {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.readiness-section__index {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.profile-readiness-chip.is-optional {
+  background-color: color-mix(in srgb, var(--surface-2) 85%, transparent);
   color: var(--text-2);
-}
-
-.readiness-section__list {
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--surface-1) 98%, transparent);
-}
-
-.readiness-task {
-  border-bottom: 1px solid color-mix(in srgb, var(--surface-contrast-border) 55%, transparent);
-}
-
-.readiness-task:last-child {
-  border-bottom: none;
-}
-
-.readiness-task.is-ready {
-  background: color-mix(in srgb, var(--surface-2) 90%, transparent);
-}
-
-.readiness-task.is-blocked {
-  background: color-mix(in srgb, var(--accent-200) 20%, transparent);
-}
-
-.readiness-task.is-info {
-  background: transparent;
+  border-color: var(--surface-contrast-border);
 }
 
 .profile-card-body {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 24px;
+}
+
+.profile-content-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.data-explorer-trigger {
+  align-self: flex-end;
 }
 
 .profile-main-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-}
-
-.profile-stage {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.profile-stage__header {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--surface-contrast-border);
-}
-
-.profile-stage__eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-2);
-}
-
-.profile-stage__summary {
-  color: var(--text-2);
-  line-height: 1.5;
-}
-
-.profile-stage__content {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 24px;
 }
 
@@ -2344,58 +2040,90 @@ onBeforeUnmount(() => {
   padding: 0 20px 20px;
 }
 
+@media (min-width: 600px) {
+  .profile-readiness {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
 @media (min-width: 768px) {
   .profile-card-header {
     flex-direction: row;
     align-items: stretch;
-    gap: 24px;
   }
 
-  .profile-hero {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: flex-start;
+  .status-banner,
+  .profile-readiness {
     flex: 1 1 0%;
   }
 
-  .profile-hero__actions {
-    align-items: flex-end;
-    text-align: right;
+  .profile-main-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
-  .profile-hero__explorer {
-    align-self: flex-end;
+  .profile-grid-item--connection {
+    grid-column: span 6;
   }
 
-  .readiness-checklist {
-    flex-direction: row;
-    align-items: flex-start;
-    gap: 24px;
-    flex: 1 1 0%;
+  .profile-grid-item--share {
+    grid-column: span 6;
   }
 
-  .readiness-body {
-    flex: 1 1 0%;
+  .profile-grid-item--author {
+    grid-column: span 6;
   }
 
-  .readiness-section__list {
-    background: color-mix(in srgb, var(--surface-1) 96%, transparent);
+  .profile-grid-item--tier-kind {
+    grid-column: span 6;
+  }
+
+  .profile-grid-item--tiers {
+    grid-column: span 6;
+  }
+
+  .profile-grid-item--publish {
+    grid-column: span 6;
   }
 
   .share-summary-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
   }
 }
 
 @media (min-width: 1200px) {
   .profile-main-grid {
-    gap: 40px;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
   }
 
-  .profile-stage__content {
-    gap: 32px;
+  .profile-grid-item--connection {
+    grid-column: span 5;
+  }
+
+  .profile-grid-item--share {
+    grid-column: span 7;
+  }
+
+  .profile-grid-item--author {
+    grid-column: span 6;
+  }
+
+  .profile-grid-item--tier-kind {
+    grid-column: span 6;
+  }
+
+  .profile-grid-item--tiers {
+    grid-column: span 7;
+  }
+
+  .profile-grid-item--publish {
+    grid-column: span 5;
+  }
+
+  .profile-readiness {
+    align-items: flex-start;
   }
 }
 </style>

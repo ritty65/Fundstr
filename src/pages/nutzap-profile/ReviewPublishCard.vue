@@ -38,14 +38,9 @@
           readonly
           spellcheck="false"
         />
-        <div v-if="tiersReady" class="review-ready-hint text-body2 text-2">
-          Final check: confirm the payload below, then publish to the Fundstr relay.
-        </div>
         <div class="row justify-end q-gutter-sm">
           <q-btn
             color="primary"
-            unelevated
-            class="primary-publish-btn"
             label="Publish profile &amp; tiers"
             :disable="publishDisabled"
             :loading="publishing"
@@ -161,17 +156,6 @@ const tiersReady = computed(() => props.tiersReady);
 
 .share-inline {
   width: 100%;
-}
-
-.primary-publish-btn {
-  min-width: 220px;
-}
-
-.review-ready-hint {
-  padding: 12px 16px;
-  border-radius: 12px;
-  border: 1px solid var(--surface-contrast-border);
-  background: color-mix(in srgb, var(--surface-2) 94%, transparent);
 }
 
 .review-expansion.is-disabled {

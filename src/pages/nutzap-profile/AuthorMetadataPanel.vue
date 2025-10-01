@@ -1,75 +1,159 @@
 <template>
   <section class="section-card author-profile-card">
     <div class="section-header">
-      <div class="section-title text-subtitle1 text-weight-medium text-1">Payout &amp; identity</div>
+      <div class="section-title text-subtitle1 text-weight-medium text-1">Author metadata</div>
       <div class="section-subtitle text-body2 text-2">
-        Capture the payout details supporters rely on before publishing.
+        Compose profile details that will be published alongside your tiers.
       </div>
     </div>
-    <div class="section-body column q-gutter-lg">
-      <div class="author-guide" :class="`author-guide--${guideState}`">
-        <q-icon :name="guideIcon" size="24px" />
-        <div class="author-guide__copy">
-          <div class="author-guide__label text-caption text-2">{{ guideLabel }}</div>
-          <div class="author-guide__message text-body2 text-1">{{ guideMessage }}</div>
-        </div>
-      </div>
-
-      <div class="author-required column q-gutter-sm">
-        <div class="author-required__heading text-body1 text-weight-medium text-1">Trusted mints</div>
-        <q-input
-          :model-value="mintsText"
-          type="textarea"
-          label="Trusted mints (one per line)"
+    <div class="section-body">
+      <div class="nested-sections">
+        <q-expansion-item
+          v-model="identityOpen"
+          switch-toggle-side
           dense
-          filled
-          autogrow
-          @update:model-value="value => emit('update:mintsText', value)"
-        />
-        <div class="text-caption text-2">Add at least one mint so backers know where to deliver Nutzaps.</div>
-      </div>
-
-      <div class="author-required column q-gutter-sm">
-        <div class="author-required__heading text-body1 text-weight-medium text-1">P2PK pointer</div>
-        <q-input
-          :model-value="p2pkPub"
-          label="P2PK public key (hex)"
-          dense
-          filled
-          @update:model-value="value => emit('update:p2pkPub', value)"
-        />
-        <div class="text-caption text-2">
-          This pointer is published with your tiers so supporters can send encrypted payouts.
-        </div>
-        <q-expansion-item v-model="pointerToolsOpen" dense switch-toggle-side class="nested-section nested-section--inline">
+          expand-separator
+          class="nested-section"
+        >
           <template #header>
             <div class="nested-header">
-              <div class="nested-title text-body2 text-weight-medium text-1">Need to derive or generate a pointer?</div>
+              <div class="nested-header__titles">
+                <div class="nested-title text-body1 text-weight-medium text-1">Identity basics</div>
+                <div class="nested-subtitle text-caption">
+                  Provide a display name and avatar for your payment profile (kind 10019).
+                  These are optional but help supporters recognize you.
+                </div>
+              </div>
+              <q-chip
+                dense
+                size="sm"
+                :color="identityBasicsComplete ? 'positive' : 'grey-6'"
+                :text-color="identityBasicsComplete ? 'white' : 'black'"
+                class="status-chip"
+              >
+                {{ identityBasicsComplete ? 'Added' : 'Optional' }}
+              </q-chip>
             </div>
           </template>
-          <div class="nested-section-body column q-gutter-sm">
+          <div class="nested-section-body column q-gutter-md">
+            <q-input
+              :model-value="displayName"
+              label="Display Name"
+              dense
+              filled
+              @update:model-value="value => emit('update:displayName', value)"
+            />
+            <q-input
+              :model-value="pictureUrl"
+              label="Picture URL"
+              dense
+              filled
+              @update:model-value="value => emit('update:pictureUrl', value)"
+            />
+            <div class="text-caption text-2">
+              Display name and picture are nice-to-have details, but leaving them blank won’t block publishing.
+            </div>
+          </div>
+        </q-expansion-item>
+
+        <q-expansion-item
+          v-model="metadataOpen"
+          switch-toggle-side
+          dense
+          expand-separator
+          class="nested-section"
+        >
+          <template #header>
+            <div class="nested-header">
+              <div class="nested-header__titles">
+                <div class="nested-title text-body1 text-weight-medium text-1">Optional relay &amp; mint metadata</div>
+                <div class="nested-subtitle text-caption">
+                  List trusted mints (required for publishing) and add optional relay hints.
+                </div>
+              </div>
+              <q-chip
+                dense
+                size="sm"
+                :color="optionalMetadataComplete ? 'positive' : 'warning'"
+                :text-color="optionalMetadataComplete ? 'white' : 'black'"
+                class="status-chip"
+              >
+                {{ optionalMetadataComplete ? 'Ready' : 'Required' }}
+              </q-chip>
+            </div>
+          </template>
+          <div class="nested-section-body column q-gutter-md">
+            <q-input
+              :model-value="mintsText"
+              type="textarea"
+              label="Trusted Mints (one per line)"
+              dense
+              filled
+              autogrow
+              @update:model-value="value => emit('update:mintsText', value)"
+            />
+            <q-input
+              :model-value="relaysText"
+              type="textarea"
+              label="Relay Hints (optional, one per line)"
+              dense
+              filled
+              autogrow
+              @update:model-value="value => emit('update:relaysText', value)"
+            />
+          </div>
+        </q-expansion-item>
+
+        <q-expansion-item
+          v-model="encryptionOpen"
+          switch-toggle-side
+          dense
+          expand-separator
+          class="nested-section"
+        >
+          <template #header>
+            <div class="nested-header">
+              <div class="nested-header__titles">
+                <div class="nested-title text-body1 text-weight-medium text-1">Advanced encryption</div>
+                <div class="nested-subtitle text-caption">
+                  Generate or derive the P2PK pointer required for Nutzap payments.
+                </div>
+              </div>
+              <q-chip
+                dense
+                size="sm"
+                :color="advancedEncryptionComplete ? 'positive' : 'warning'"
+                :text-color="advancedEncryptionComplete ? 'white' : 'black'"
+                class="status-chip"
+              >
+                {{ advancedEncryptionComplete ? 'Ready' : 'Required' }}
+              </q-chip>
+            </div>
+          </template>
+          <div class="nested-section-body column q-gutter-md">
             <q-input
               :model-value="p2pkPriv"
-              label="P2PK private key (hex)"
+              label="P2PK Private Key (hex)"
               dense
               filled
               autocomplete="off"
               @update:model-value="value => emit('update:p2pkPriv', value)"
             />
-            <div class="row q-gutter-sm wrap">
-              <q-btn color="primary" label="Derive public key" @click="emit('request-derive-p2pk')" />
-              <q-btn color="primary" outline label="Generate keypair" @click="emit('request-generate-p2pk')" />
-              <q-btn
-                v-if="!usingStoreIdentity"
-                color="primary"
-                outline
-                label="Manage dedicated key"
-                @click="emit('update:advancedKeyManagementOpen', true)"
-              />
+            <div class="row q-gutter-sm">
+              <q-btn color="primary" label="Derive Public Key" @click="emit('request-derive-p2pk')" />
+              <q-btn color="primary" outline label="Generate Keypair" @click="emit('request-generate-p2pk')" />
             </div>
             <q-input
+              :model-value="p2pkPub"
+              label="P2PK Public Key"
+              dense
+              filled
+              @update:model-value="value => emit('update:p2pkPub', value)"
+            />
+            <q-input
               :model-value="p2pkDerivedPub"
-              label="Derived P2PK public key"
+              label="Derived P2PK Public Key"
+              type="textarea"
               dense
               filled
               readonly
@@ -78,72 +162,39 @@
           </div>
         </q-expansion-item>
       </div>
-
-      <q-expansion-item v-model="identityOpen" dense switch-toggle-side class="nested-section">
-        <template #header>
-          <div class="nested-header">
-            <div class="nested-title text-body2 text-weight-medium text-1">Profile identity (optional)</div>
-            <div class="nested-subtitle text-caption text-2">
-              Add a display name or avatar so supporters recognize you.
-            </div>
-          </div>
-        </template>
-        <div class="nested-section-body column q-gutter-md">
-          <q-input
-            :model-value="displayName"
-            label="Display name"
-            dense
-            filled
-            @update:model-value="value => emit('update:displayName', value)"
-          />
-          <q-input
-            :model-value="pictureUrl"
-            label="Picture URL"
-            dense
-            filled
-            @update:model-value="value => emit('update:pictureUrl', value)"
-          />
-        </div>
-      </q-expansion-item>
-
-      <q-expansion-item v-model="relayHintsOpen" dense switch-toggle-side class="nested-section">
-        <template #header>
-          <div class="nested-header">
-            <div class="nested-title text-body2 text-weight-medium text-1">Relay hints (optional)</div>
-            <div class="nested-subtitle text-caption text-2">
-              Suggest additional relays your supporters can query.
-            </div>
-          </div>
-        </template>
-        <div class="nested-section-body column q-gutter-md">
-          <q-input
-            :model-value="relaysText"
-            type="textarea"
-            label="Relay hints (one per line)"
-            dense
-            filled
-            autogrow
-            @update:model-value="value => emit('update:relaysText', value)"
-          />
-        </div>
-      </q-expansion-item>
     </div>
 
     <div class="section-footer q-mt-lg">
-      <div class="column q-gutter-xs">
+      <div class="column q-gutter-sm">
         <div class="text-body1 text-1">
           <template v-if="usingStoreIdentity">
-            Connected as <span class="text-weight-medium">{{ connectedIdentitySummary || 'Fundstr identity' }}</span>
+            Connected as
+            <span class="text-weight-medium">{{ connectedIdentitySummary || 'Fundstr identity' }}</span>
           </template>
           <template v-else>Using a dedicated Nutzap key</template>
         </div>
         <div v-if="usingStoreIdentity" class="text-body2 text-2">
-          Your Fundstr signer is ready to publish Nutzap events. Switch to a dedicated key when you need a separate
-          persona or want to keep secrets outside the global store.
+          Your Fundstr signer is ready to publish Nutzap events. Stick with this shared identity unless you need a
+          separate persona or want to keep a secret key off the global store.
+        </div>
+        <div v-if="usingStoreIdentity" class="text-body2 text-2">
+          Choose a dedicated key when delegating publishing, testing against staging relays, or isolating collectibles
+          under a different author.
         </div>
         <div v-else class="text-body2 text-2">
-          This workspace is scoped to a standalone key, keeping Nutzap activity independent from your Fundstr profile.
+          This workspace is scoped to a standalone key, so Nutzap activity stays independent from your Fundstr profile.
         </div>
+      </div>
+      <div v-if="!usingStoreIdentity" class="row items-center q-gutter-sm q-mt-sm">
+        <q-btn
+          color="primary"
+          outline
+          label="Manage dedicated key"
+          @click="emit('update:advancedKeyManagementOpen', true)"
+        />
+      </div>
+      <div v-else class="text-caption text-2 q-mt-sm">
+        Dedicated key tools become available when no Fundstr signer is connected.
       </div>
     </div>
 
@@ -257,9 +308,9 @@ const emit = defineEmits<{
   (e: 'request-import-secret'): void;
 }>();
 
-const identityOpen = ref(false);
-const pointerToolsOpen = ref(false);
-const relayHintsOpen = ref(false);
+const identityOpen = ref(true);
+const metadataOpen = ref(true);
+const encryptionOpen = ref(false);
 
 watch(
   () => props.identityBasicsComplete,
@@ -272,10 +323,13 @@ watch(
 );
 
 watch(
-  () => props.relaysText,
+  () => props.optionalMetadataComplete,
   value => {
-    if (value.trim().length > 0) {
-      relayHintsOpen.value = true;
+    if (value) {
+      metadataOpen.value = true;
+    }
+    if (value && !props.advancedEncryptionComplete) {
+      encryptionOpen.value = true;
     }
   },
   { immediate: true }
@@ -284,7 +338,9 @@ watch(
 watch(
   () => props.advancedEncryptionComplete,
   value => {
-    pointerToolsOpen.value = !value;
+    if (value) {
+      encryptionOpen.value = true;
+    }
   },
   { immediate: true }
 );
@@ -308,38 +364,9 @@ const keyPublicHex = computed(() => props.keyPublicHex);
 const keyNpub = computed(() => props.keyNpub);
 const usingStoreIdentity = computed(() => props.usingStoreIdentity);
 const connectedIdentitySummary = computed(() => props.connectedIdentitySummary);
-
-const guide = computed(() => {
-  if (!props.optionalMetadataComplete) {
-    return {
-      state: 'warning',
-      icon: 'add_card',
-      label: 'Next required step',
-      message: 'Add at least one trusted mint to publish your tiers.',
-    } as const;
-  }
-
-  if (!props.advancedEncryptionComplete) {
-    return {
-      state: 'warning',
-      icon: 'key',
-      label: 'Next required step',
-      message: 'Generate or paste a P2PK pointer so Nutzaps route to you.',
-    } as const;
-  }
-
-  return {
-    state: 'ready',
-    icon: 'task_alt',
-    label: 'Metadata ready',
-    message: 'All required payout details are in place.',
-  } as const;
-});
-
-const guideState = computed(() => guide.value.state);
-const guideIcon = computed(() => guide.value.icon);
-const guideLabel = computed(() => guide.value.label);
-const guideMessage = computed(() => guide.value.message);
+const identityBasicsComplete = computed(() => props.identityBasicsComplete);
+const optionalMetadataComplete = computed(() => props.optionalMetadataComplete);
+const advancedEncryptionComplete = computed(() => props.advancedEncryptionComplete);
 </script>
 
 <style scoped>
@@ -348,58 +375,6 @@ const guideMessage = computed(() => guide.value.message);
   flex-direction: column;
   gap: 16px;
   height: 100%;
-}
-
-.author-guide {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 16px;
-  border-radius: 12px;
-  border: 1px solid var(--surface-contrast-border);
-}
-
-.author-guide--warning {
-  background: color-mix(in srgb, var(--accent-200) 20%, transparent);
-}
-
-.author-guide--ready {
-  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
-}
-
-.author-guide__label {
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.author-required {
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 12px;
-  padding: 16px;
-  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
-}
-
-.author-required__heading {
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.nested-section {
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.nested-section--inline {
-  margin-top: 8px;
-}
-
-.nested-section :deep(.q-expansion-item__container) {
-  background: transparent;
-}
-
-.nested-section :deep(.q-expansion-item__content) {
-  padding: 0 16px 16px;
 }
 
 .section-footer {
