@@ -90,6 +90,15 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
+      <q-item v-if="!isGuest" clickable @click="gotoCreatorStudio">
+        <q-item-section avatar>
+          <q-icon name="dashboard_customize" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>Creator Studio</q-item-label>
+          <q-item-label caption>Manage Nutzap profile &amp; tiers</q-item-label>
+        </q-item-section>
+      </q-item>
       <q-item v-if="!isGuest" clickable @click="gotoMyProfile">
         <q-item-section avatar>
           <q-icon name="person" />
@@ -226,6 +235,7 @@ const gotoWallet = () => goto("/wallet");
 const gotoSettings = () => goto("/settings");
 const gotoFindCreators = () => goto("/find-creators");
 const gotoCreatorHub = () => goto("/creator-hub");
+const gotoCreatorStudio = () => goto("/creator-studio");
 const gotoMyProfile = () => goto("/my-profile");
 const gotoBuckets = () => goto("/buckets");
 const gotoSubscriptions = () => goto("/subscriptions");
