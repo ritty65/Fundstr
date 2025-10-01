@@ -544,7 +544,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
-import { useEventBus } from '@vueuse/core';
+import { useEventBus, useLocalStorage } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
@@ -579,6 +579,7 @@ import { sanitizeRelayUrls } from 'src/utils/relay';
 import { useNutzapRelayTelemetry } from 'src/nutzap/useNutzapRelayTelemetry';
 import { useNutzapSignerWorkspace } from 'src/nutzap/useNutzapSignerWorkspace';
 import { useP2PKStore } from 'src/stores/p2pk';
+import { useMintsStore } from 'src/stores/mints';
 
 type TierKind = 30019 | 30000;
 
@@ -588,7 +589,8 @@ const pictureUrl = ref('');
 const p2pkPub = ref('');
 const p2pkPriv = ref('');
 const p2pkDerivedPub = ref('');
-const mintsText = ref('');
+const cachedMintsText = useLocalStorage<string>('nutzap.profile.mintsDraft', '');
+const mintsText = ref(cachedMintsText.value || '');
 const relaysText = ref(FUNDSTR_WS_URL);
 const tiers = ref<Tier[]>([]);
 const tierKind = ref<TierKind>(30019);
@@ -599,6 +601,49 @@ const hasAutoLoaded = ref(false);
 
 const p2pkStore = useP2PKStore();
 const { firstKey, p2pkKeys } = storeToRefs(p2pkStore);
+
+const mintsStore = useMintsStore();
+const { activeMintUrl: storeActiveMintUrl, mints: storedMints } = storeToRefs(mintsStore);
+
+watch(mintsText, value => {
+  cachedMintsText.value = value;
+});
+
+const storeMintUrls = computed(() => {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+
+  const activeUrl = typeof storeActiveMintUrl.value === 'string' ? storeActiveMintUrl.value.trim() : '';
+  if (activeUrl && !seen.has(activeUrl)) {
+    seen.add(activeUrl);
+    urls.push(activeUrl);
+  }
+
+  const mintEntries = Array.isArray(storedMints.value) ? storedMints.value : [];
+  for (const entry of mintEntries) {
+    const candidate = entry && typeof entry.url === 'string' ? entry.url.trim() : '';
+    if (candidate && !seen.has(candidate)) {
+      seen.add(candidate);
+      urls.push(candidate);
+    }
+  }
+
+  return urls;
+});
+
+function seedMintsFromStoreIfEmpty() {
+  if (mintsText.value.trim()) {
+    return;
+  }
+
+  if (storeMintUrls.value.length > 0) {
+    mintsText.value = storeMintUrls.value.join('\n');
+  }
+}
+
+watch([storeActiveMintUrl, storedMints], () => {
+  seedMintsFromStoreIfEmpty();
+}, { immediate: true, deep: true });
 
 const router = useRouter();
 const { copy } = useClipboard();
@@ -1007,12 +1052,18 @@ let hasRelayConnected = false;
 let reloadAfterReconnect = false;
 let activeAuthorHex: string | null = null;
 
-const mintList = computed(() =>
-  mintsText.value
+const mintList = computed(() => {
+  const composerEntries = mintsText.value
     .split('\n')
     .map(s => s.trim())
-    .filter(Boolean)
-);
+    .filter(Boolean);
+
+  if (composerEntries.length > 0) {
+    return composerEntries;
+  }
+
+  return storeMintUrls.value;
+});
 
 const identityBasicsComplete = computed(
   () => displayName.value.trim().length > 0 || pictureUrl.value.trim().length > 0
@@ -1353,6 +1404,7 @@ function applyProfileEvent(latest: any | null) {
     p2pkDerivedPub.value = '';
     mintsText.value = '';
     relaysText.value = FUNDSTR_WS_URL;
+    seedMintsFromStoreIfEmpty();
     return;
   }
 
@@ -1431,6 +1483,8 @@ function applyProfileEvent(latest: any | null) {
       p2pkPub.value = pkTag[1];
     }
   }
+
+  seedMintsFromStoreIfEmpty();
 }
 
 async function loadTiers(authorHex: string) {
