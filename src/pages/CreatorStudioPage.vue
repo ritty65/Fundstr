@@ -799,7 +799,8 @@ function applySecretBytes(sk: Uint8Array) {
   keyNpub.value = nip19.npubEncode(publicHex);
   keyNsec.value = nip19.nsecEncode(sk);
   keyImportValue.value = '';
-  authorInput.value = publicHex;
+  const encodedNpub = keyNpub.value || safeEncodeNpub(publicHex);
+  authorInput.value = encodedNpub || publicHex;
 }
 
 function generateNewSecret() {
@@ -1456,7 +1457,9 @@ function applyProfileEvent(latest: any | null) {
   }
 
   if (typeof latest.pubkey === 'string' && latest.pubkey) {
-    authorInput.value = latest.pubkey.toLowerCase();
+    const normalized = latest.pubkey.toLowerCase();
+    const encoded = safeEncodeNpub(normalized);
+    authorInput.value = encoded || normalized;
   }
 
   try {
@@ -1976,8 +1979,18 @@ async function publishAll() {
     const profileResult = profileOutcome.result;
     const signerPubkey = profileResult.event?.pubkey || tierResult.event?.pubkey;
     const reloadKey = typeof signerPubkey === 'string' && signerPubkey ? signerPubkey : authorHex;
-    if (signerPubkey && signerPubkey !== authorInput.value) {
-      authorInput.value = signerPubkey;
+    if (typeof signerPubkey === 'string' && signerPubkey) {
+      const normalizedSigner = signerPubkey.toLowerCase();
+      const encodedSigner = safeEncodeNpub(normalizedSigner);
+      let currentHex = '';
+      try {
+        currentHex = normalizeAuthor(authorInput.value);
+      } catch {
+        currentHex = '';
+      }
+      if (currentHex !== normalizedSigner || (encodedSigner && authorInput.value !== encodedSigner)) {
+        authorInput.value = encodedSigner || normalizedSigner;
+      }
     }
 
     const profileEventId = profileResult.ack?.id ?? profileResult.event?.id;
@@ -2064,7 +2077,9 @@ onMounted(() => {
     relaysText.value = FUNDSTR_WS_URL;
   }
   if (pubkey.value && !authorInput.value) {
-    authorInput.value = pubkey.value;
+    const normalized = pubkey.value.toLowerCase();
+    const encoded = safeEncodeNpub(normalized);
+    authorInput.value = encoded || normalized;
   }
   if (authorInput.value && !hasAutoLoaded.value) {
     hasAutoLoaded.value = true;

@@ -39,7 +39,8 @@ export function useNutzapSignerWorkspace(
     return shortenKey(activePub);
   });
 
-  const lastSyncedPubkey = ref('');
+  const lastSyncedAuthorHex = ref('');
+  const lastSyncedAuthorDisplay = ref('');
   let ensureSharedSignerPromise: Promise<void> | null = null;
 
   async function ensureSharedSignerInitialized() {
@@ -80,24 +81,29 @@ export function useNutzapSignerWorkspace(
     ([newPubkey, storeNpubValue]) => {
       const normalizedPubkey = typeof newPubkey === 'string' ? newPubkey.trim().toLowerCase() : '';
       const encodedNpub = normalizedPubkey ? storeNpubValue || safeEncodeNpub(normalizedPubkey) : '';
+      const displayValue = encodedNpub || normalizedPubkey;
 
       if (normalizedPubkey) {
         keyPublicHex.value = normalizedPubkey;
         keyNpub.value = encodedNpub;
-        if (!authorInput.value || authorInput.value === lastSyncedPubkey.value) {
-          authorInput.value = normalizedPubkey;
+        if (!authorInput.value || authorInput.value === lastSyncedAuthorDisplay.value) {
+          authorInput.value = displayValue;
         }
-        lastSyncedPubkey.value = normalizedPubkey;
+        lastSyncedAuthorHex.value = normalizedPubkey;
+        lastSyncedAuthorDisplay.value = displayValue;
         options.onSignerActivated?.();
       } else {
-        if (keyPublicHex.value === lastSyncedPubkey.value) {
+        if (keyPublicHex.value === lastSyncedAuthorHex.value) {
           keyPublicHex.value = '';
+        }
+        if (keyNpub.value === lastSyncedAuthorDisplay.value) {
           keyNpub.value = '';
         }
-        if (authorInput.value === lastSyncedPubkey.value) {
+        if (authorInput.value === lastSyncedAuthorDisplay.value) {
           authorInput.value = '';
         }
-        lastSyncedPubkey.value = '';
+        lastSyncedAuthorHex.value = '';
+        lastSyncedAuthorDisplay.value = '';
       }
     },
     { immediate: true }
