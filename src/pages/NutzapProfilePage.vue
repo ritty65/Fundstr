@@ -842,6 +842,14 @@ const {
   },
 });
 
+watch(
+  usingStoreIdentity,
+  value => {
+    advancedKeyManagementOpen.value = !value;
+  },
+  { immediate: true }
+);
+
 function shortenKey(value: string) {
   const trimmed = value.trim();
   if (trimmed.length <= 16) {

@@ -67,10 +67,7 @@ export function useNutzapSignerWorkspace(
     usingStoreIdentity,
     value => {
       if (value) {
-        advancedKeyManagementOpen.value = false;
         void ensureSharedSignerInitialized();
-      } else {
-        advancedKeyManagementOpen.value = true;
       }
     },
     { immediate: true }

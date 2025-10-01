@@ -356,6 +356,11 @@
               </q-item-label>
             </q-item-section>
           </q-item>
+          <q-item class="q-px-md q-pt-md">
+            <q-item-section>
+              <AdvancedSignerKeyManager />
+            </q-item-section>
+          </q-item>
         </div>
       </q-list>
     </div>
@@ -1766,6 +1771,7 @@ import { defineComponent, watch } from "vue";
 import { useClipboard } from "src/composables/useClipboard";
 import P2PKDialog from "./P2PKDialog.vue";
 import NWCDialog from "./NWCDialog.vue";
+import AdvancedSignerKeyManager from "./AdvancedSignerKeyManager.vue";
 
 import { getShortUrl } from "src/js/wallet-helpers";
 import { mapActions, mapState, mapWritableState } from "pinia";
@@ -1794,6 +1800,7 @@ export default defineComponent({
   components: {
     P2PKDialog,
     NWCDialog,
+    AdvancedSignerKeyManager,
   },
   mixins: [windowMixin],
   setup() {
