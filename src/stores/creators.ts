@@ -12,7 +12,15 @@ import { nip19 } from "nostr-tools";
 import { Event as NostrEvent } from "nostr-tools";
 import { notifyWarning } from "src/js/notify";
 import type { Tier } from "./types";
-import { queryNutzapTiers, toHex, type NostrEvent as RelayEvent } from "@/nostr/relayClient";
+import {
+  queryNostr,
+  queryNutzapTiers,
+  normalizeEvents,
+  pickLatestReplaceable,
+  toHex,
+  type Filter,
+  type NostrEvent as RelayEvent,
+} from "@/nostr/relayClient";
 import { fallbackDiscoverRelays } from "@/nostr/discovery";
 import { parseTierDefinitionEvent } from "src/nostr/tiers";
 import { FUNDSTR_REQ_URL, WS_FIRST_TIMEOUT_MS } from "@/nutzap/relayEndpoints";
@@ -41,6 +49,86 @@ export interface CreatorProfile {
 }
 
 const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
+
+export interface FundstrProfileBundle {
+  profile: Record<string, any> | null;
+  profileEvent: RelayEvent | null;
+  followers: number;
+  following: number;
+}
+
+export async function fetchFundstrProfileBundle(
+  pubkeyInput: string,
+): Promise<FundstrProfileBundle> {
+  const pubkey = toHex(pubkeyInput);
+  const filters: Filter[] = [
+    { kinds: [0, 10019], authors: [pubkey] },
+    { kinds: [3], authors: [pubkey] },
+    { kinds: [3], "#p": [pubkey] },
+  ];
+
+  let events: RelayEvent[] = [];
+  try {
+    events = await queryNostr(filters, {
+      preferFundstr: true,
+      allowFanoutFallback: false,
+      wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
+    });
+  } catch (error) {
+    console.error("fetchFundstrProfileBundle Fundstr query failed", error);
+    throw error instanceof Error ? error : new Error(String(error));
+  }
+
+  const normalized = normalizeEvents(events);
+
+  const preferredProfile =
+    pickLatestReplaceable(normalized, { kind: 10019, pubkey }) ??
+    pickLatestReplaceable(normalized, { kind: 0, pubkey });
+
+  let profile: Record<string, any> | null = null;
+  if (preferredProfile?.content) {
+    try {
+      const parsed = JSON.parse(preferredProfile.content);
+      if (parsed && typeof parsed === "object") {
+        profile = { ...(parsed as Record<string, any>) };
+      }
+    } catch (err) {
+      console.warn("Failed to parse profile content", err);
+    }
+  }
+
+  const followingEvent = pickLatestReplaceable(normalized, { kind: 3, pubkey });
+  let following = 0;
+  if (followingEvent) {
+    const followingSet = new Set<string>();
+    for (const tag of followingEvent.tags ?? []) {
+      if (tag[0] === "p" && typeof tag[1] === "string") {
+        followingSet.add(tag[1].toLowerCase());
+      }
+    }
+    following = followingSet.size;
+  }
+
+  const followerSet = new Set<string>();
+  for (const ev of normalized) {
+    if (ev.kind !== 3 || ev.pubkey === pubkey) continue;
+    for (const tag of ev.tags ?? []) {
+      if (tag[0] === "p" && typeof tag[1] === "string") {
+        if (tag[1].toLowerCase() === pubkey) {
+          followerSet.add(ev.pubkey.toLowerCase());
+          break;
+        }
+      }
+    }
+  }
+
+  return {
+    profile,
+    profileEvent: preferredProfile ?? null,
+    followers: followerSet.size,
+    following,
+  };
+}
 
 export interface CreatorWarmCache {
   profileLoaded?: boolean;
