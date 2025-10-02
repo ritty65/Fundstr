@@ -493,6 +493,25 @@
                 <q-btn flat dense color="primary" label="Dismiss" @click="dismissDiagnosticsAttention" />
               </div>
             </q-banner>
+            <div v-if="relayTimelinePreview.length" class="studio-timeline">
+              <div class="studio-timeline__header text-caption text-2">Recent relay activity</div>
+              <ul class="studio-timeline__list">
+                <li
+                  v-for="entry in relayTimelinePreview"
+                  :key="entry.id"
+                  class="studio-timeline__item"
+                  :class="`is-${entry.level}`"
+                >
+                  <div class="studio-timeline__message text-body2 text-1">{{ entry.message }}</div>
+                  <div class="studio-timeline__meta text-caption text-2">
+                    {{ formatActivityTime(entry.timestamp) }} · {{ entry.level }}
+                  </div>
+                  <div v-if="entry.context" class="studio-timeline__context text-caption text-2">
+                    {{ entry.context }}
+                  </div>
+                </li>
+              </ul>
+            </div>
           </div>
         </q-card>
       </div>
@@ -1004,6 +1023,7 @@ const activeRelayActivityTimeLabel = computed(() => {
   return formatActivityTime(timestamp);
 });
 const activeRelayAlertLabel = computed(() => latestRelayAlertLabel.value);
+const relayTimelinePreview = computed(() => relayActivityTimeline.value.slice(0, 4));
 
 relayNeedsAttentionRef = relayNeedsAttention;
 
@@ -2616,6 +2636,21 @@ async function publishAll() {
       `Nutzap profile published (profile ${profileAckLabel}, tiers ${tierAckLabel}).`
     );
 
+    const tierFallbackUsed =
+      tierOutcome.usedFallback || tierResult.ack?.via === 'http' || tierResult.via === 'http';
+    const profileFallbackUsed =
+      profileOutcome.usedFallback || profileResult.ack?.via === 'http' || profileResult.via === 'http';
+    const tierIdLabel = tierEventId ?? 'unknown';
+    const profileIdLabel = profileEventId ?? 'unknown';
+    const successContext = `HTTP fallback used — profile: ${
+      profileFallbackUsed ? 'yes' : 'no'
+    }, tiers: ${tierFallbackUsed ? 'yes' : 'no'}`;
+    logRelayActivity(
+      'success',
+      `Publish succeeded (profile ${profileIdLabel}, tiers ${tierIdLabel})`,
+      successContext,
+    );
+
     if (fallbackNotices.length) {
       const detail = fallbackNotices.join(' ');
       logRelayActivity('warning', 'Publish used HTTP fallback', detail);
@@ -2993,6 +3028,58 @@ onBeforeUnmount(() => {
 
 .studio-banner__title {
   font-weight: 600;
+}
+
+.studio-timeline {
+  border-top: 1px solid var(--surface-contrast-border);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.studio-timeline__header {
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.studio-timeline__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.studio-timeline__item {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
+}
+
+.studio-timeline__item.is-success {
+  border-color: rgba(33, 186, 69, 0.35);
+}
+
+.studio-timeline__item.is-warning {
+  border-color: rgba(250, 204, 21, 0.35);
+}
+
+.studio-timeline__item.is-error {
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.studio-timeline__message {
+  font-weight: 500;
+}
+
+.studio-timeline__meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.studio-timeline__context {
+  margin-top: 4px;
 }
 
 .publish-button.q-btn--disabled {

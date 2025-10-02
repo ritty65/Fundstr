@@ -25,6 +25,11 @@ vi.mock("vue-i18n", () => ({
   useI18n: () => ({
     t: (key: string) => key,
   }),
+  createI18n: () => ({
+    global: {
+      t: (key: string) => key,
+    },
+  }),
 }));
 
 type StatusHandler = (status: "connected" | "connecting" | "reconnecting" | "disconnected" | "idle") => void;
@@ -34,6 +39,7 @@ type SharedState = {
   relayStatusRef: Ref<"connected" | "connecting" | "reconnecting" | "disconnected" | "idle">;
   relayAutoReconnectRef: Ref<boolean>;
   relayActivityRef: Ref<any[]>;
+  relayReconnectAttemptsRef: Ref<number>;
   relayIsConnectedRef: Ref<boolean>;
   publishEventToRelayMock: ReturnType<typeof vi.fn>;
   connectRelayMock: ReturnType<typeof vi.fn>;
@@ -81,6 +87,7 @@ function ensureShared(): SharedState {
       relayStatusRef: ref("connected"),
       relayAutoReconnectRef: ref(false),
       relayActivityRef: ref([]),
+      relayReconnectAttemptsRef: ref(0),
       relayIsConnectedRef: ref(false),
       publishEventToRelayMock: vi.fn(),
       connectRelayMock: vi.fn(),
@@ -162,6 +169,7 @@ vi.mock("../../../src/nutzap/onepage/useRelayConnection", () => ({
     status: ensureShared().relayStatusRef,
     autoReconnect: ensureShared().relayAutoReconnectRef,
     activityLog: ensureShared().relayActivityRef,
+    reconnectAttempts: ensureShared().relayReconnectAttemptsRef,
     connect: ensureShared().connectRelayMock,
     disconnect: ensureShared().disconnectRelayMock,
     publishEvent: ensureShared().publishEventToRelayMock,
@@ -201,6 +209,7 @@ vi.mock("../../../src/pages/nutzap-profile/nostrHelpers", () => ({
   HTTP_FALLBACK_TIMEOUT_MS: 8000,
   publishTiers: (...args: any[]) => ensureShared().publishTiersToRelayMock(...args),
   publishNostrEvent: (...args: any[]) => ensureShared().publishNostrEventMock(...args),
+  ensureFundstrRelayClient: async () => ensureShared().relayClientMock,
 }));
 
 vi.mock("src/nutzap/profileShared", () => ({
@@ -295,6 +304,7 @@ async function mountPage() {
             '<span v-if="!$slots.default && label">{{ label }}</span>' +
             '</button>',
         },
+        RelayExplorer: { template: '<div />' },
         transition: false,
         teleport: false,
       },

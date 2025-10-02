@@ -403,6 +403,103 @@ beforeEach(() => {
 });
 
 describe('CreatorStudioPage publishAll fallback', () => {
+  it('logs relay telemetry after successful publish', async () => {
+    const state = ensureShared();
+    state.signerRef.value = {};
+
+    const tierEvent = {
+      id: 'tier-event-id',
+      pubkey: 'tier-pub',
+      created_at: Date.now(),
+      kind: 30019,
+      tags: [],
+      content: '{}',
+      sig: 'tier-sig',
+    };
+    const profileEvent = {
+      id: 'profile-event-id',
+      pubkey: 'profile-pub',
+      created_at: Date.now(),
+      kind: 10019,
+      tags: [],
+      content: '{}',
+      sig: 'profile-sig',
+    };
+
+    state.publishEventToRelayMock.mockImplementation(async event => ({
+      id: event.id,
+      accepted: true,
+      via: 'websocket' as const,
+      message: event.kind === 10019 ? 'profile-ok' : 'tiers-ok',
+    }));
+
+    state.publishTiersToRelayMock.mockImplementation(async (_tiers, _kind, options) => {
+      const ack = options?.send ? await options.send(tierEvent) : {
+        id: tierEvent.id,
+        accepted: true,
+        via: 'http' as const,
+        message: 'tiers-ok',
+      };
+      return { ack, event: tierEvent };
+    });
+
+    state.publishNostrEventMock.mockImplementation(async (_template, options) => {
+      const ack = options?.send ? await options.send(profileEvent) : {
+        id: profileEvent.id,
+        accepted: true,
+        via: 'http' as const,
+        message: 'profile-ok',
+      };
+      return { ack, event: profileEvent };
+    });
+
+    const TestHarness = defineComponent({
+      name: 'CreatorStudioPageSuccessHarness',
+      setup(props, ctx) {
+        const component = CreatorStudioPage as any;
+        return component.setup ? component.setup(props, ctx) : {};
+      },
+      template: '<div />',
+    });
+
+    const wrapper = shallowMount(TestHarness as any, {
+      global: {
+        stubs: creatorStudioStubs,
+      },
+    });
+
+    const vmAny = wrapper.vm as any;
+    vmAny.authorInput = VALID_HEX;
+    vmAny.displayName = 'Creator';
+    vmAny.p2pkPub = 'f'.repeat(64);
+    vmAny.mintsText = 'https://mint.example';
+    vmAny.tiers = [
+      { id: 'tier-1', title: 'Tier 1', price: 1000, frequency: 'monthly', description: '' },
+    ];
+
+    await wrapper.vm.$nextTick();
+
+    const publishAll =
+      vmAny.publishAll ??
+      vmAny.$?.setupState?.publishAll ??
+      vmAny.$?.ctx?.publishAll ??
+      vmAny.$?.exposed?.publishAll;
+    expect(typeof publishAll).toBe('function');
+    await publishAll.call(wrapper.vm);
+    await flushPromises();
+
+    const successCall = state.logRelayActivityMock.mock.calls.find(
+      ([level]) => level === 'success',
+    );
+    expect(successCall).toBeTruthy();
+    expect(successCall?.[1]).toContain('profile profile-event-id');
+    expect(successCall?.[1]).toContain('tiers tier-event-id');
+    expect(successCall?.[2]).toContain('profile: no');
+    expect(successCall?.[2]).toContain('tiers: no');
+    expect(notifySuccessMock).toHaveBeenCalledTimes(1);
+    expect(notifyErrorMock).not.toHaveBeenCalled();
+  });
+
   it('falls back to HTTP when relay publisher rejects', async () => {
     const state = ensureShared();
     state.signerRef.value = null;
