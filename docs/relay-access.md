@@ -15,10 +15,12 @@ Publishes must send a fully signed NIP-01 event to /event; the client validates 
 3. If the socket cannot be opened or returns no events, the client
    automatically performs the same query over HTTP:
    `https://relay.fundstr.me/req?filters=…`.
-4. When Fundstr returns no data the client fans out across a vetted pool of
-   public relays (`relay.primal.net`, `relay.fundstr.me`, `nos.lol`,
-   `relay.damus.io`). This pool is also used when discovery explicitly prefers
-   public relays.
+4. When Fundstr returns no data the client **can** fan out across a vetted pool
+   of public relays (`relay.primal.net`, `relay.fundstr.me`, `nos.lol`,
+   `relay.damus.io`). This behaviour is opt-in via
+   `allowFanoutFallback`—Fundstr-first flows (including Creator Studio load /
+   refresh) stay pinned to the first-party relay unless callers explicitly pass
+   that flag.
 
 All fetches, including the service-worker passthrough, use
 `cache: 'no-store'` together with `cache-control: no-cache` headers so the
@@ -58,8 +60,11 @@ The relay layer implements deduplication and NIP-01 replaceable semantics:
 
 Helpers are exposed for consumers that want the latest Nutzap profile and tier
 definitions: `queryNutzapProfile` (kind `10019`) and `queryNutzapTiers` (kind
-`30019` with `d:"tiers"`). Both helpers accept npub/hex input and will retry
-against relay hints (NIP-65 or `relay` tags) when Fundstr returns no data.
+`30019` with `d:"tiers"`). Both helpers accept npub/hex input and take an
+optional `{ fanout, allowFanoutFallback }` bag. Creator Studio calls them with
+the default Fundstr-only behaviour, while discovery-driven flows (Find
+Creators, creator store refresh) opt in to fan-out by passing relay hints and
+`allowFanoutFallback: true`.
 
 ## Discovery fallbacks
 
