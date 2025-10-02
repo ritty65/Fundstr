@@ -4,7 +4,11 @@ import NDK, { NDKSigner } from "@nostr-dev-kit/ndk";
 import { useNostrStore } from "stores/nostr";
 import { NDKEvent, type NDKFilter } from "@nostr-dev-kit/ndk";
 import { useSettingsStore } from "src/stores/settings";
-import { DEFAULT_RELAYS, FREE_RELAYS } from "src/config/relays";
+import {
+  DEFAULT_RELAYS,
+  FREE_RELAYS,
+  FUNDSTR_PRIMARY_RELAY,
+} from "src/config/relays";
 import { filterHealthyRelays } from "src/utils/relayHealth";
 import { RelayWatchdog } from "src/js/nostr-runtime";
 import {
@@ -40,7 +44,22 @@ export class NdkBootError extends Error {
 
 // Default relay URLs are configured in src/config/relays.ts
 
+function envFundstrOnlyRelaysEnabled(): boolean {
+  const value = (import.meta as any)?.env?.VITE_FUNDSTR_ONLY_RELAYS;
+  return value === "true" || value === true;
+}
+
+function isFundstrOnlyRelayModeActive(settings = useSettingsStore()): boolean {
+  if (settings?.relayBootstrapMode === "fundstr-only") {
+    return true;
+  }
+  return envFundstrOnlyRelaysEnabled();
+}
+
 export function mergeDefaultRelays(ndk: NDK) {
+  if (isFundstrOnlyRelayModeActive()) {
+    return;
+  }
   for (const url of DEFAULT_RELAYS) {
     if (!ndk.pool.relays.has(url)) {
       ndk.addExplicitRelay(url);
@@ -98,6 +117,9 @@ async function ensureFreeRelayFallback(
   ndk: NDK,
   context: FreeRelayFallbackContext,
 ): Promise<boolean> {
+  if (isFundstrOnlyRelayModeActive()) {
+    return false;
+  }
   if (countConnectedRelays(ndk) > 0) {
     resetFreeRelayFallbackState(ndk);
     return false;
@@ -141,7 +163,10 @@ function startRelayWatchdog(ndk: NDK) {
   } else {
     relayWatchdog = new RelayWatchdog(ndk);
   }
-  relayWatchdog.start(2, FREE_RELAYS);
+  const fundstrOnly = isFundstrOnlyRelayModeActive();
+  const fallbackTargets = fundstrOnly ? [FUNDSTR_PRIMARY_RELAY] : FREE_RELAYS;
+  const minConnected = fundstrOnly ? 1 : 2;
+  relayWatchdog.start(minConnected, fallbackTargets);
 }
 
 export async function safeConnect(
@@ -179,31 +204,39 @@ async function createReadOnlyNdk(): Promise<NDK> {
     ? settings.defaultNostrRelays
     : [];
   const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
-  const healthyPromise = filterHealthyRelays(relays).catch(() => []);
-  const ndk = new NDK({ explicitRelayUrls: relays });
+  const fundstrOnly = isFundstrOnlyRelayModeActive(settings);
+  const bootstrapRelays = fundstrOnly
+    ? [FUNDSTR_PRIMARY_RELAY]
+    : relays;
+  const healthyPromise = fundstrOnly
+    ? Promise.resolve<string[]>([])
+    : filterHealthyRelays(relays).catch(() => []);
+  const ndk = new NDK({ explicitRelayUrls: bootstrapRelays });
   attachRelayErrorHandlers(ndk);
   mergeDefaultRelays(ndk);
   mustConnectRequiredRelays(ndk);
   await safeConnect(ndk);
-  healthyPromise.then(async (healthy) => {
-    const healthySet = new Set(healthy);
-    let changed = false;
-    for (const [url, relay] of ndk.pool.relays.entries()) {
-      if (!healthySet.has(url) && !relay.connected) {
-        ndk.pool.relays.delete(url);
-        changed = true;
+  if (!fundstrOnly) {
+    healthyPromise.then(async (healthy) => {
+      const healthySet = new Set(healthy);
+      let changed = false;
+      for (const [url, relay] of ndk.pool.relays.entries()) {
+        if (!healthySet.has(url) && !relay.connected) {
+          ndk.pool.relays.delete(url);
+          changed = true;
+        }
       }
-    }
-    for (const url of healthy) {
-      if (!ndk.pool.relays.has(url)) {
-        ndk.addExplicitRelay(url);
-        changed = true;
+      for (const url of healthy) {
+        if (!ndk.pool.relays.has(url)) {
+          ndk.addExplicitRelay(url);
+          changed = true;
+        }
       }
-    }
-    if (changed) {
-      await safeConnect(ndk);
-    }
-  });
+      if (changed) {
+        await safeConnect(ndk);
+      }
+    });
+  }
   await new Promise((r) => setTimeout(r, 3000));
   await ensureFreeRelayFallback(ndk, "bootstrap");
   startRelayWatchdog(ndk);
@@ -215,32 +248,40 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
   const relays = settings.defaultNostrRelays.length
     ? settings.defaultNostrRelays
     : DEFAULT_RELAYS;
-  const healthyPromise = filterHealthyRelays(relays).catch(() => []);
-  const ndk = new NDK({ explicitRelayUrls: relays });
+  const fundstrOnly = isFundstrOnlyRelayModeActive(settings);
+  const bootstrapRelays = fundstrOnly
+    ? [FUNDSTR_PRIMARY_RELAY]
+    : relays;
+  const healthyPromise = fundstrOnly
+    ? Promise.resolve<string[]>([])
+    : filterHealthyRelays(relays).catch(() => []);
+  const ndk = new NDK({ explicitRelayUrls: bootstrapRelays });
   attachRelayErrorHandlers(ndk);
   mergeDefaultRelays(ndk);
   mustConnectRequiredRelays(ndk);
   ndk.signer = signer;
   await safeConnect(ndk);
-  healthyPromise.then(async (healthy) => {
-    const healthySet = new Set(healthy);
-    let changed = false;
-    for (const [url, relay] of ndk.pool.relays.entries()) {
-      if (!healthySet.has(url) && !relay.connected) {
-        ndk.pool.relays.delete(url);
-        changed = true;
+  if (!fundstrOnly) {
+    healthyPromise.then(async (healthy) => {
+      const healthySet = new Set(healthy);
+      let changed = false;
+      for (const [url, relay] of ndk.pool.relays.entries()) {
+        if (!healthySet.has(url) && !relay.connected) {
+          ndk.pool.relays.delete(url);
+          changed = true;
+        }
       }
-    }
-    for (const url of healthy) {
-      if (!ndk.pool.relays.has(url)) {
-        ndk.addExplicitRelay(url);
-        changed = true;
+      for (const url of healthy) {
+        if (!ndk.pool.relays.has(url)) {
+          ndk.addExplicitRelay(url);
+          changed = true;
+        }
       }
-    }
-    if (changed) {
-      await safeConnect(ndk);
-    }
-  });
+      if (changed) {
+        await safeConnect(ndk);
+      }
+    });
+  }
   await new Promise((r) => setTimeout(r, 3000));
   await ensureFreeRelayFallback(ndk, "bootstrap");
   startRelayWatchdog(ndk);
@@ -265,30 +306,38 @@ export async function createNdk(): Promise<NDK> {
     ? settings.defaultNostrRelays
     : [];
   const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
-  const healthyPromise = filterHealthyRelays(relays).catch(() => []);
-  const ndk = new NDK({ signer: signer as any, explicitRelayUrls: relays });
+  const fundstrOnly = isFundstrOnlyRelayModeActive(settings);
+  const bootstrapRelays = fundstrOnly
+    ? [FUNDSTR_PRIMARY_RELAY]
+    : relays;
+  const healthyPromise = fundstrOnly
+    ? Promise.resolve<string[]>([])
+    : filterHealthyRelays(relays).catch(() => []);
+  const ndk = new NDK({ signer: signer as any, explicitRelayUrls: bootstrapRelays });
   attachRelayErrorHandlers(ndk);
   mergeDefaultRelays(ndk);
   await safeConnect(ndk);
-  healthyPromise.then(async (healthy) => {
-    const healthySet = new Set(healthy);
-    let changed = false;
-    for (const [url, relay] of ndk.pool.relays.entries()) {
-      if (!healthySet.has(url) && !relay.connected) {
-        ndk.pool.relays.delete(url);
-        changed = true;
+  if (!fundstrOnly) {
+    healthyPromise.then(async (healthy) => {
+      const healthySet = new Set(healthy);
+      let changed = false;
+      for (const [url, relay] of ndk.pool.relays.entries()) {
+        if (!healthySet.has(url) && !relay.connected) {
+          ndk.pool.relays.delete(url);
+          changed = true;
+        }
       }
-    }
-    for (const url of healthy) {
-      if (!ndk.pool.relays.has(url)) {
-        ndk.addExplicitRelay(url);
-        changed = true;
+      for (const url of healthy) {
+        if (!ndk.pool.relays.has(url)) {
+          ndk.addExplicitRelay(url);
+          changed = true;
+        }
       }
-    }
-    if (changed) {
-      await safeConnect(ndk);
-    }
-  });
+      if (changed) {
+        await safeConnect(ndk);
+      }
+    });
+  }
   await new Promise((r) => setTimeout(r, 3000));
   await ensureFreeRelayFallback(ndk, "bootstrap");
   startRelayWatchdog(ndk);
@@ -306,6 +355,33 @@ export async function rebuildNdk(
   if (signer) ndk.signer = signer;
   await safeConnect(ndk);
   return ndk;
+}
+
+export async function syncNdkRelaysWithMode(ndk?: NDK) {
+  const instance = ndk ?? ndkInstance ?? (await getNdk().catch(() => undefined));
+  if (!instance) return;
+  const fundstrOnly = isFundstrOnlyRelayModeActive();
+  const pool = instance.pool;
+  if (fundstrOnly) {
+    for (const [url, relay] of pool.relays.entries()) {
+      if (url !== FUNDSTR_PRIMARY_RELAY) {
+        try {
+          relay.disconnect?.();
+        } catch (err) {
+          console.debug("[NDK] failed to disconnect relay", url, err);
+        }
+        pool.relays.delete(url);
+      }
+    }
+    if (!pool.relays.has(FUNDSTR_PRIMARY_RELAY)) {
+      instance.addExplicitRelay(FUNDSTR_PRIMARY_RELAY);
+    }
+  } else {
+    mergeDefaultRelays(instance);
+  }
+  resetFreeRelayFallbackState(instance);
+  await safeConnect(instance);
+  startRelayWatchdog(instance);
 }
 
 export async function getNdk(): Promise<NDK> {

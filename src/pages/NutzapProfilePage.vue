@@ -856,6 +856,7 @@ const {
       void loadAll();
     }
   },
+  fundstrOnlySigner: true,
 });
 
 watch(

@@ -1,8 +1,10 @@
-import { computed, ref, watch, type Ref } from 'vue';
+import { computed, onScopeDispose, ref, watch, type Ref } from 'vue';
 import { nip19 } from 'nostr-tools';
 import { useActiveNutzapSigner } from './signer';
 import { getNutzapNdk } from './ndkInstance';
 import { useNostrStore } from 'src/stores/nostr';
+import { useSettingsStore } from 'src/stores/settings';
+import { syncNdkRelaysWithMode } from 'src/boot/ndk';
 
 type UseNutzapSignerWorkspaceOptions = {
   onSignerActivated?: () => void;
@@ -15,6 +17,27 @@ export function useNutzapSignerWorkspace(
 ) {
   const { pubkey, signer } = useActiveNutzapSigner();
   const nostrStore = useNostrStore();
+  const settings = useSettingsStore();
+
+  type RelayMode = 'default' | 'fundstr-only';
+  let restoreMode: RelayMode | null = null;
+
+  if (options.fundstrOnlySigner) {
+    restoreMode = (settings.relayBootstrapMode as RelayMode) ?? 'default';
+    if (settings.relayBootstrapMode !== 'fundstr-only') {
+      settings.enableFundstrOnlyRelays();
+    }
+    void syncNdkRelaysWithMode().catch(err => {
+      console.error('[nutzap] failed to sync Fundstr-only relay mode', err);
+    });
+    onScopeDispose(() => {
+      const nextMode = restoreMode ?? 'default';
+      settings.setRelayBootstrapMode(nextMode);
+      void syncNdkRelaysWithMode().catch(err => {
+        console.error('[nutzap] failed to restore relay mode', err);
+      });
+    });
+  }
 
   const keySecretHex = ref('');
   const keyNsec = ref('');
