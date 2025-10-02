@@ -1051,7 +1051,25 @@ async function handleVerifyP2pkPointer() {
       timestamp: result.timestamp,
       mint: result.mintUrl,
     });
-    notifySuccess('Pointer verified with active mint.', result.mintUrl);
+    let addedMintUrl: string | null = null;
+    const normalizedMintCandidate = normalizeMintUrl(result.mintUrl);
+    if (normalizedMintCandidate && isValidHttpUrl(normalizedMintCandidate)) {
+      ensureComposerMintsSeeded();
+      const existingEntries = composerMints.value;
+      const normalizedExisting = existingEntries
+        .map(entry => normalizeMintUrl(entry))
+        .filter((entry): entry is string => Boolean(entry));
+      if (!normalizedExisting.includes(normalizedMintCandidate)) {
+        composerMints.value = [...existingEntries, normalizedMintCandidate];
+        addedMintUrl = normalizedMintCandidate;
+      }
+    }
+
+    if (addedMintUrl) {
+      notifySuccess(`Pointer verified. Added ${addedMintUrl} to trusted mints.`);
+    } else {
+      notifySuccess(`Pointer verified with active mint: ${result.mintUrl}`);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     p2pkPubError.value = message;
