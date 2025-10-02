@@ -3,6 +3,8 @@ import { useLocalStorage } from "@vueuse/core";
 import { DEFAULT_RELAYS } from "src/config/relays";
 import { sanitizeRelayUrls } from "src/utils/relay";
 
+type RelayBootstrapMode = "default" | "fundstr-only";
+
 const RELAY_DENYLIST = new Set(
   ["relay.nostr.bg", "nostr.zebedee.cloud", "relay.plebstr.com"].map((host) =>
     host.toLowerCase(),
@@ -129,6 +131,18 @@ export const useSettingsStore = defineStore("settings", {
         "cashu.settings.tiersIndexerUrl",
         "https://api.nostr.band/v0/profile?pubkey={pubkey}",
       ),
+      relayBootstrapMode: "default" as RelayBootstrapMode,
     };
+  },
+  actions: {
+    setRelayBootstrapMode(mode: RelayBootstrapMode) {
+      this.relayBootstrapMode = mode;
+    },
+    enableFundstrOnlyRelays() {
+      this.setRelayBootstrapMode("fundstr-only");
+    },
+    disableFundstrOnlyRelays() {
+      this.setRelayBootstrapMode("default");
+    },
   },
 });
