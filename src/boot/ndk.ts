@@ -153,6 +153,42 @@ async function ensureFreeRelayFallback(
   return true;
 }
 
+function scheduleBootstrapFallback(ndk: NDK) {
+  const context: FreeRelayFallbackContext = "bootstrap";
+  const runFallback = () => {
+    ensureFreeRelayFallback(ndk, context).catch((err) => {
+      console.debug("[NDK] bootstrap fallback failed", err);
+    });
+  };
+
+  if (countConnectedRelays(ndk) > 0) {
+    void Promise.resolve().then(runFallback);
+    return;
+  }
+
+  let resolved = false;
+  const timeout = setTimeout(() => {
+    if (resolved) return;
+    resolved = true;
+    cleanup();
+    runFallback();
+  }, 3000);
+
+  const onConnect = () => {
+    if (resolved) return;
+    resolved = true;
+    cleanup();
+    runFallback();
+  };
+
+  const cleanup = () => {
+    clearTimeout(timeout);
+    (ndk.pool as any).off?.("relay:connect", onConnect);
+  };
+
+  ndk.pool.on("relay:connect", onConnect);
+}
+
 let ndkInstance: NDK | undefined;
 let ndkPromise: Promise<NDK> | undefined;
 let relayWatchdog: RelayWatchdog | undefined;
@@ -237,8 +273,7 @@ async function createReadOnlyNdk(): Promise<NDK> {
       }
     });
   }
-  await new Promise((r) => setTimeout(r, 3000));
-  await ensureFreeRelayFallback(ndk, "bootstrap");
+  scheduleBootstrapFallback(ndk);
   startRelayWatchdog(ndk);
   return ndk;
 }
