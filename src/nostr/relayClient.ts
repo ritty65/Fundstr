@@ -272,8 +272,21 @@ async function wsQuery(
   });
 }
 
+function buildReqUrl(httpBase: string): string {
+  const trimmed = (httpBase || "").trim();
+  const normalized = trimmed.replace(/\/+$/, "");
+  if (!normalized) {
+    return "/req";
+  }
+  if (normalized.toLowerCase().endsWith("/req")) {
+    return normalized;
+  }
+  return `${normalized}/req`;
+}
+
 async function httpReq(httpBase: string, filters: Filter[]): Promise<NostrEvent[]> {
-  const url = `${httpBase}/req?filters=${encodeURIComponent(JSON.stringify(filters))}`;
+  const reqUrl = buildReqUrl(httpBase);
+  const url = `${reqUrl}?filters=${encodeURIComponent(JSON.stringify(filters))}`;
   const res = await fetch(url, {
     method: "GET",
     headers: {
