@@ -793,6 +793,8 @@ export class FundstrRelayClient {
     let response: Response | undefined;
     let bodyText = '';
 
+    this.pushLog('info', 'HTTP fallback request', { url: requestUrl });
+
     try {
       response = await fetch(requestUrl, {
         method: 'GET',
@@ -807,9 +809,14 @@ export class FundstrRelayClient {
     } catch (err) {
       dispose();
       if (this.isAbortError(err)) {
-        throw new Error(`HTTP fallback timed out after ${timeoutMs}ms`);
+        throw new Error(
+          `HTTP fallback timed out after ${timeoutMs}ms (url: ${requestUrl})`
+        );
       }
-      throw err instanceof Error ? err : new Error(String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`${message} (url: ${requestUrl})`, {
+        cause: err instanceof Error ? err : undefined,
+      });
     }
 
     dispose();
@@ -827,7 +834,7 @@ export class FundstrRelayClient {
     if (!response.ok) {
       const snippet = normalizeSnippet(bodyText) || '[empty response body]';
       throw new Error(
-        `HTTP query failed with status ${response.status}: ${snippet}`
+        `HTTP query failed with status ${response.status}: ${snippet} (url: ${requestUrl})`
       );
     }
 
@@ -855,7 +862,7 @@ export class FundstrRelayClient {
     } catch (err) {
       const snippet = normalizeSnippet(bodyText) || '[empty response body]';
       throw new Error(
-        `HTTP ${response.status} returned invalid JSON: ${snippet}`,
+        `HTTP ${response.status} returned invalid JSON: ${snippet} (url: ${requestUrl})`,
         { cause: err }
       );
     }

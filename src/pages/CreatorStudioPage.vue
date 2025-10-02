@@ -901,6 +901,22 @@ function flagDiagnosticsAttention(
   };
 }
 
+function maybeFlagHttpFallbackTimeout(error: unknown) {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : '';
+  if (!message) {
+    return;
+  }
+  if (message.toLowerCase().includes('http fallback timed out')) {
+    const detail = `${message}. Confirm ${FUNDSTR_REQ_URL} is reachable or adjust VITE_NUTZAP_PRIMARY_RELAY_HTTP.`;
+    flagDiagnosticsAttention('relay', detail, 'warning');
+  }
+}
+
 watch(diagnosticsAttention, value => {
   if (value) {
     helpBannerDismissed.value = false;
@@ -2016,6 +2032,7 @@ async function loadTiers(authorHex: string) {
     applyTiersEvent(latest);
   } catch (err) {
     console.error('[nutzap] failed to load tiers', err);
+    maybeFlagHttpFallbackTimeout(err);
     const message = err instanceof Error ? err.message : String(err);
     notifyError(message);
     throw err instanceof Error ? err : new Error(message);
@@ -2041,6 +2058,7 @@ async function loadProfile(authorHex: string) {
     applyProfileEvent(latest);
   } catch (err) {
     console.error('[nutzap] failed to load profile', err);
+    maybeFlagHttpFallbackTimeout(err);
     const message = err instanceof Error ? err.message : String(err);
     notifyError(message);
     throw err instanceof Error ? err : new Error(message);

@@ -6,7 +6,44 @@ import {
 } from './relayConfig';
 
 const DEFAULT_WS_TIMEOUT_MS = 3000;
-const DEFAULT_HTTP_TIMEOUT_MS = 5000;
+const DEFAULT_HTTP_TIMEOUT_MS = 8000;
+
+function sanitizeHttpBase(raw: string): string {
+  const trimmed = stripTrailingSlashes(raw || '');
+  if (!trimmed) {
+    return '';
+  }
+
+  let normalized = trimmed;
+  const strippedSegments: string[] = [];
+
+  while (true) {
+    const lower = normalized.toLowerCase();
+    if (lower.endsWith('/req')) {
+      strippedSegments.push('/req');
+      normalized = stripTrailingSlashes(normalized.slice(0, -4));
+      continue;
+    }
+    if (lower.endsWith('/event')) {
+      strippedSegments.push('/event');
+      normalized = stripTrailingSlashes(normalized.slice(0, -6));
+      continue;
+    }
+    break;
+  }
+
+  if (strippedSegments.length > 0) {
+    const uniqueSegments = Array.from(new Set(strippedSegments));
+    const plural = uniqueSegments.length > 1 ? 'segments' : 'segment';
+    console.warn(
+      `[Nutzap] NUTZAP_RELAY_HTTP should not include ${uniqueSegments.join(
+        ' or '
+      )}. Stripping ${plural} to avoid duplicate paths.`
+    );
+  }
+
+  return normalized;
+}
 
 function stripTrailingSlashes(input: string): string {
   return input.replace(/\/+$/, '');
@@ -32,7 +69,7 @@ function toPositiveNumber(value: unknown, fallback: number): number {
   return fallback;
 }
 
-const FUNDSTR_HTTP_BASE = stripTrailingSlashes(NUTZAP_RELAY_HTTP);
+const FUNDSTR_HTTP_BASE = sanitizeHttpBase(NUTZAP_RELAY_HTTP);
 
 export const FUNDSTR_WS_URL = NUTZAP_RELAY_WSS;
 export const FUNDSTR_REQ_URL = joinRelayPath(FUNDSTR_HTTP_BASE, 'req');
