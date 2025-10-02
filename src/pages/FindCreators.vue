@@ -171,6 +171,7 @@ import { queryNutzapProfile, toHex } from "@/nostr/relayClient";
 import type { NostrEvent } from "@/nostr/relayClient";
 import { fallbackDiscoverRelays } from "@/nostr/discovery";
 import { NutzapProfileSchema } from "@/nostr/nutzapProfile";
+import { FUNDSTR_REQ_URL, WS_FIRST_TIMEOUT_MS } from "@/nutzap/relayEndpoints";
 
 const props = defineProps<{ npubOrHex?: string }>();
 
@@ -198,6 +199,7 @@ const route = useRoute();
 const { t } = useI18n();
 const $q = useQuasar();
 const tiers = computed(() => creators.tiersMap[dialogPubkey.value] || []);
+const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
 let usedFundstrOnly = false;
 const tierFetchError = computed(() => creators.tierFetchError);
 const showSubscribeDialog = ref(false);
@@ -325,7 +327,11 @@ async function fetchProfileWithFallback(
   const fundstrOnly = opts.fundstrOnly === true;
   let event: NostrEvent | null = null;
   try {
-    event = await queryNutzapProfile(hex);
+    event = await queryNutzapProfile(hex, {
+      httpBase: FUNDSTR_REQ_URL,
+      allowFanoutFallback: false,
+      wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
+    });
   } catch (e) {
     console.error("Failed to query Nutzap profile", e);
   }
@@ -336,8 +342,10 @@ async function fetchProfileWithFallback(
       for (const url of discovered) relayHints.add(url);
       if (relayHints.size) {
         event = await queryNutzapProfile(hex, {
+          httpBase: FUNDSTR_REQ_URL,
           fanout: Array.from(relayHints),
           allowFanoutFallback: true,
+          wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
         });
       }
     } catch (e) {

@@ -14,6 +14,7 @@ import type { Tier } from "./types";
 import { queryNutzapTiers, toHex, type NostrEvent as RelayEvent } from "@/nostr/relayClient";
 import { fallbackDiscoverRelays } from "@/nostr/discovery";
 import { parseTierDefinitionEvent } from "src/nostr/tiers";
+import { FUNDSTR_REQ_URL, WS_FIRST_TIMEOUT_MS } from "@/nutzap/relayEndpoints";
 
 export const FEATURED_CREATORS = [
   "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
@@ -35,6 +36,8 @@ export interface CreatorProfile {
   following: number;
   joined: number | null;
 }
+
+const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
 
 export const useCreatorsStore = defineStore("creators", {
   state: () => ({
@@ -197,12 +200,15 @@ export const useCreatorsStore = defineStore("creators", {
           .filter((url) => !!url),
       );
       const fundstrOnly = opts.fundstrOnly === true;
-
       let event: RelayEvent | null = null;
       let lastError: unknown = null;
 
       try {
-        event = await queryNutzapTiers(hex);
+        event = await queryNutzapTiers(hex, {
+          httpBase: FUNDSTR_REQ_URL,
+          allowFanoutFallback: false,
+          wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
+        });
       } catch (e) {
         lastError = e;
         console.error("fetchTierDefinitions Fundstr query failed", e);
@@ -211,8 +217,10 @@ export const useCreatorsStore = defineStore("creators", {
       if (!event && relayHints.size) {
         try {
           event = await queryNutzapTiers(hex, {
+            httpBase: FUNDSTR_REQ_URL,
             fanout: Array.from(relayHints),
             allowFanoutFallback: !fundstrOnly,
+            wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
           });
         } catch (e) {
           lastError = e;
@@ -226,8 +234,10 @@ export const useCreatorsStore = defineStore("creators", {
           for (const url of discovered) relayHints.add(url);
           if (relayHints.size) {
             event = await queryNutzapTiers(hex, {
+              httpBase: FUNDSTR_REQ_URL,
               fanout: Array.from(relayHints),
               allowFanoutFallback: true,
+              wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
             });
           }
         } catch (e) {
