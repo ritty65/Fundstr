@@ -74,14 +74,16 @@
                 />
               </div>
             </div>
-            <div class="studio-activity" v-if="latestRelayActivity.value">
+            <div class="studio-activity" v-if="activeRelayActivity">
               <div class="text-caption text-2">Last activity</div>
-              <div class="text-body2 text-1">{{ latestRelayActivity.value.message }}</div>
-              <div class="text-caption text-2">{{ formatActivityTime(latestRelayActivity.value.time) }}</div>
+              <div class="text-body2 text-1">{{ activeRelayActivity?.message }}</div>
+              <div class="text-caption text-2">
+                {{ activeRelayActivity && formatActivityTime(activeRelayActivity.time) }}
+              </div>
             </div>
-            <div class="studio-alert" v-if="latestRelayAlertLabel.value">
+            <div class="studio-alert" v-if="activeRelayAlertLabel">
               <q-icon name="warning" size="16px" />
-              <span>{{ latestRelayAlertLabel.value }}</span>
+              <span>{{ activeRelayAlertLabel }}</span>
             </div>
           </div>
         </q-card>
@@ -381,10 +383,10 @@
               <div class="studio-signer-hint__content">
                 <span>{{ signerStatusMessage }}</span>
                 <span
-                  v-if="usingStoreIdentity.value && connectedIdentitySummary.value"
+                  v-if="usingStoreIdentity.value && activeIdentitySummary"
                   class="studio-signer-hint__summary text-caption text-2"
                 >
-                  Connected as {{ connectedIdentitySummary.value }}
+                  Connected as {{ activeIdentitySummary }}
                 </span>
               </div>
               <template v-if="!usingStoreIdentity.value" #action>
@@ -472,9 +474,9 @@
               <q-btn flat color="primary" label="Copy public link" :disable="!publicProfileUrl" @click="publicProfileUrl && copy(publicProfileUrl)" />
               <q-btn flat color="primary" label="Open data explorer" @click="requestExplorerOpen('banner')" />
             </div>
-            <q-banner v-if="diagnosticsAttention.value" class="studio-banner" :class="`is-${diagnosticsAttention.value.level}`">
-              <div class="studio-banner__title">{{ diagnosticsAttention.value.title }}</div>
-              <div class="studio-banner__detail">{{ diagnosticsAttention.value.detail }}</div>
+            <q-banner v-if="activeDiagnostics" class="studio-banner" :class="`is-${activeDiagnostics?.level}`">
+              <div class="studio-banner__title">{{ activeDiagnostics?.title }}</div>
+              <div class="studio-banner__detail">{{ activeDiagnostics?.detail }}</div>
               <div class="row q-gutter-sm q-mt-sm">
                 <q-btn flat dense color="primary" label="Inspect" @click="handleDiagnosticsAlertCta" />
                 <q-btn flat dense color="primary" label="Dismiss" @click="dismissDiagnosticsAttention" />
@@ -857,6 +859,7 @@ function requestExplorerOpen(source: ExplorerOpenSource) {
 }
 
 const diagnosticsAttention = ref<DiagnosticsAttention | null>(null);
+const activeDiagnostics = computed(() => diagnosticsAttention.value);
 let diagnosticsAttentionSequence = 0;
 const helpBannerDismissed = ref(false);
 const showContextHelpBanner = computed(
@@ -945,6 +948,9 @@ const {
   applyRelayUrlInput,
   logRelayActivity,
 } = relayTelemetry;
+
+const activeRelayActivity = computed(() => latestRelayActivity.value);
+const activeRelayAlertLabel = computed(() => latestRelayAlertLabel.value);
 
 relayNeedsAttentionRef = relayNeedsAttention;
 
@@ -1293,6 +1299,8 @@ const {
     }
   },
 });
+
+const activeIdentitySummary = computed(() => connectedIdentitySummary.value);
 
 const signerStatusMessage = computed(() => {
   if (usingStoreIdentity.value) {
