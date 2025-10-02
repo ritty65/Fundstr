@@ -650,6 +650,7 @@ import {
   publishNostrEvent,
   ensureFundstrRelayClient,
 } from './nutzap-profile/nostrHelpers';
+import type { NostrFilter } from './nutzap-profile/nostrHelpers';
 import {
   normalizeAuthor,
   pickLatestReplaceable,
@@ -672,6 +673,9 @@ import { useP2pkDiagnostics } from 'src/composables/useP2pkDiagnostics';
 type TierKind = 30019 | 30000;
 
 const P2PK_VERIFICATION_STALE_MS = 1000 * 60 * 60 * 24 * 7;
+const CREATOR_STUDIO_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
+const HTTP_DEFAULT_ACCEPT =
+  'application/nostr+json, application/json;q=0.9, */*;q=0.1';
 
 const authorInput = ref('');
 const displayName = ref('');
@@ -993,6 +997,200 @@ function maybeFlagHttpFallbackTimeout(error: unknown) {
   if (message.toLowerCase().includes('http fallback timed out')) {
     const detail = `${message}. Confirm ${FUNDSTR_REQ_URL} is reachable or adjust VITE_NUTZAP_PRIMARY_RELAY_HTTP.`;
     flagDiagnosticsAttention('relay', detail, 'warning');
+  }
+}
+
+type QuerySource = 'ws' | 'http';
+
+type SettledQueryResult =
+  | { source: QuerySource; status: 'fulfilled'; events: any[] }
+  | { source: QuerySource; status: 'rejected'; error: unknown };
+
+function buildHttpRequestUrl(base: string, filters: NostrFilter[]): string {
+  const serialized = JSON.stringify(filters);
+  try {
+    const url = new URL(base);
+    url.searchParams.set('filters', serialized);
+    return url.toString();
+  } catch {
+    const separator = base.includes('?') ? '&' : '?';
+    return `${base}${separator}filters=${encodeURIComponent(serialized)}`;
+  }
+}
+
+function isAbortError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') {
+    return false;
+  }
+  return (err as { name?: unknown }).name === 'AbortError';
+}
+
+function createHttpFallbackRequest(filters: NostrFilter[]) {
+  const requestUrl = buildHttpRequestUrl(FUNDSTR_REQ_URL, filters);
+  const controller =
+    typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  if (controller && HTTP_FALLBACK_TIMEOUT_MS > 0) {
+    timer = setTimeout(() => {
+      controller.abort();
+    }, HTTP_FALLBACK_TIMEOUT_MS);
+  }
+
+  const promise: Promise<any[]> = (async () => {
+    let response: Response | null = null;
+    let bodyText = '';
+    try {
+      response = await fetch(requestUrl, {
+        method: 'GET',
+        headers: { Accept: HTTP_DEFAULT_ACCEPT },
+        cache: 'no-store',
+        signal: controller?.signal ?? undefined,
+      });
+      bodyText = await response.text();
+    } catch (err) {
+      if (isAbortError(err)) {
+        throw new Error(
+          `HTTP fallback timed out after ${HTTP_FALLBACK_TIMEOUT_MS}ms (url: ${requestUrl})`
+        );
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`${message} (url: ${requestUrl})`, {
+        cause: err instanceof Error ? err : undefined,
+      });
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+    }
+
+    if (!response) {
+      return [];
+    }
+
+    const normalizeSnippet = (input: string) =>
+      input
+        .replace(/\s+/gu, ' ')
+        .trim()
+        .slice(0, 200);
+
+    if (!response.ok) {
+      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
+      throw new Error(
+        `HTTP query failed with status ${response.status}: ${snippet} (url: ${requestUrl})`
+      );
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    const normalizedType = contentType.toLowerCase();
+    const isJson =
+      normalizedType.includes('application/json') ||
+      normalizedType.includes('application/nostr+json');
+
+    if (!isJson) {
+      return [];
+    }
+
+    if (!bodyText) {
+      return [];
+    }
+
+    let data: unknown = null;
+    try {
+      data = JSON.parse(bodyText);
+    } catch (err) {
+      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
+      throw new Error(
+        `HTTP ${response.status} returned invalid JSON: ${snippet} (url: ${requestUrl})`,
+        { cause: err instanceof Error ? err : undefined }
+      );
+    }
+
+    if (Array.isArray(data)) {
+      return data;
+    }
+    if (data && Array.isArray((data as { events?: any[] }).events)) {
+      return (data as { events: any[] }).events;
+    }
+    return [];
+  })();
+
+  const cancel = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    if (controller && !controller.signal.aborted) {
+      controller.abort();
+    }
+  };
+
+  return { promise, cancel };
+}
+
+function settleQueryPromise(
+  source: QuerySource,
+  promise: Promise<any[]>
+): Promise<SettledQueryResult> {
+  return promise
+    .then(events => ({ source, status: 'fulfilled', events }) as const)
+    .catch(error => ({ source, status: 'rejected', error }) as const);
+}
+
+async function requestCreatorStudioEvents(filters: NostrFilter[]): Promise<any[]> {
+  const relaySocket = await getRelayClient();
+  const httpHandle = createHttpFallbackRequest(filters);
+  const wsSettled = settleQueryPromise(
+    'ws',
+    relaySocket.requestOnce(filters, {
+      timeoutMs: CREATOR_STUDIO_WS_TIMEOUT_MS,
+    })
+  );
+  const httpSettled = settleQueryPromise('http', httpHandle.promise);
+
+  try {
+    const first = await Promise.race([wsSettled, httpSettled]);
+
+    if (first.source === 'http' && first.status === 'rejected') {
+      maybeFlagHttpFallbackTimeout(first.error);
+    }
+
+    if (first.status === 'fulfilled' && first.events.length > 0) {
+      if (first.source === 'ws') {
+        httpHandle.cancel();
+      }
+      return first.events;
+    }
+
+    const second =
+      first.source === 'ws' ? await httpSettled : await wsSettled;
+
+    if (second.source === 'http' && second.status === 'rejected') {
+      maybeFlagHttpFallbackTimeout(second.error);
+    }
+
+    if (first.status === 'fulfilled') {
+      if (second.status === 'fulfilled' && second.events.length > 0) {
+        if (second.source === 'http') {
+          httpHandle.cancel();
+        }
+        return second.events;
+      }
+      return first.events;
+    }
+
+    if (second.status === 'fulfilled') {
+      if (second.source === 'http') {
+        httpHandle.cancel();
+      }
+      return second.events;
+    }
+
+    const error = (second.error ?? first.error) as unknown;
+    throw error instanceof Error ? error : new Error(String(error));
+  } finally {
+    httpHandle.cancel();
   }
 }
 
@@ -2233,24 +2431,14 @@ function applyProfileEvent(latest: any | null) {
 async function loadTiers(authorHex: string) {
   try {
     const normalized = authorHex.toLowerCase();
-    const relaySocket = await getRelayClient();
-    const events = await relaySocket.requestOnce(
-      [
-        {
-          kinds: [30019, 30000],
-          authors: [normalized],
-          '#d': ['tiers'],
-          limit: 2,
-        },
-      ],
+    const events = await requestCreatorStudioEvents([
       {
-        timeoutMs: WS_FIRST_TIMEOUT_MS,
-        httpFallback: {
-          url: FUNDSTR_REQ_URL,
-          timeoutMs: HTTP_FALLBACK_TIMEOUT_MS,
-        },
-      }
-    );
+        kinds: [30019, 30000],
+        authors: [normalized],
+        '#d': ['tiers'],
+        limit: 2,
+      },
+    ]);
 
     const latest = pickLatestParamReplaceable(events);
     applyTiersEvent(latest);
@@ -2266,17 +2454,9 @@ async function loadTiers(authorHex: string) {
 async function loadProfile(authorHex: string) {
   try {
     const normalized = authorHex.toLowerCase();
-    const relaySocket = await getRelayClient();
-    const events = await relaySocket.requestOnce(
-      [{ kinds: [10019], authors: [normalized], limit: 1 }],
-      {
-        timeoutMs: WS_FIRST_TIMEOUT_MS,
-        httpFallback: {
-          url: FUNDSTR_REQ_URL,
-          timeoutMs: HTTP_FALLBACK_TIMEOUT_MS,
-        },
-      }
-    );
+    const events = await requestCreatorStudioEvents([
+      { kinds: [10019], authors: [normalized], limit: 1 },
+    ]);
 
     const latest = pickLatestReplaceable(events);
     applyProfileEvent(latest);
