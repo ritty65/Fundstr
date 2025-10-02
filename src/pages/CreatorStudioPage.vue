@@ -41,35 +41,35 @@
           </div>
           <div class="studio-card__body column q-gutter-md">
             <q-input
-              v-model="relayUrlInput.value"
+              v-model="relayUrlInput"
               label="Relay URL (WS)"
               dense
               filled
-              :hint="relayUrlInputState.value === 'warning' ? relayUrlInputMessage.value : ''"
-              :hide-hint="relayUrlInputState.value !== 'warning'"
-              :error="relayUrlInputState.value === 'error' || !relayUrlInputValid.value"
+              :hint="relayUrlInputState === 'warning' ? relayUrlInputMessage : ''"
+              :hide-hint="relayUrlInputState !== 'warning'"
+              :error="relayUrlInputState === 'error' || !relayUrlInputValid"
               :error-message="
-                relayUrlInputState.value === 'error'
-                  ? relayUrlInputMessage.value
+                relayUrlInputState === 'error'
+                  ? relayUrlInputMessage
                   : 'Enter a valid wss:// relay'
               "
             />
             <div class="row items-center justify-between wrap q-gutter-sm">
-              <q-toggle v-model="relayAutoReconnect.value" label="Auto reconnect" />
+              <q-toggle v-model="relayAutoReconnect" label="Auto reconnect" />
               <div class="row q-gutter-sm">
                 <q-btn
                   outline
                   color="negative"
                   label="Disconnect"
                   icon="link_off"
-                  :disable="!relayIsConnected.value"
+                  :disable="!relayIsConnected"
                   @click="handleRelayDisconnect"
                 />
                 <q-btn
                   color="primary"
                   label="Connect"
                   icon="bolt"
-                  :loading="relayConnectionStatus.value === 'connecting'"
+                  :loading="relayConnectionStatus === 'connecting'"
                   @click="handleRelayConnect"
                 />
               </div>
@@ -126,7 +126,7 @@
             </div>
           </div>
           <div class="studio-card__body column q-gutter-lg">
-            <q-input v-model="authorInput.value" label="Creator author (npub or hex)" dense filled />
+            <q-input v-model="authorInput" label="Creator author (npub or hex)" dense filled />
             <div class="snapshot-block">
               <div class="snapshot-label text-caption text-uppercase text-2">Public profile link</div>
               <div class="snapshot-value">{{ publicProfileUrl || 'Author not ready' }}</div>
@@ -198,15 +198,15 @@
           <div class="studio-card__body column q-gutter-lg">
             <div class="row q-col-gutter-md">
               <div class="col-12 col-md-6">
-                <q-input v-model="displayName.value" label="Display name" dense filled />
+                <q-input v-model="displayName" label="Display name" dense filled />
               </div>
               <div class="col-12 col-md-6">
                 <q-input
-                  v-model="pictureUrl.value"
+                  v-model="pictureUrl"
                   label="Picture URL"
                   dense
                   filled
-                  :error="!!pictureUrl.value && !isValidHttpUrl(pictureUrl.value)"
+                  :error="!!pictureUrl && !isValidHttpUrl(pictureUrl)"
                   error-message="Use http(s) URLs"
                 />
               </div>
@@ -316,13 +316,13 @@
                 </div>
                 <div class="col-12 col-md-6" v-if="addingNewP2pkKey">
                   <q-input
-                    v-model="p2pkPriv.value"
+                    v-model="p2pkPriv"
                     label="P2PK private key (hex)"
                     dense
                     filled
                     type="password"
                     autocomplete="off"
-                    :error="!!p2pkPriv.value && !/^[0-9a-fA-F]{64}$/.test(p2pkPriv.value)"
+                    :error="!!p2pkPriv && !/^[0-9a-fA-F]{64}$/.test(p2pkPriv)"
                     error-message="64 hex characters"
                   />
                 </div>
@@ -334,7 +334,7 @@
                   <div class="row q-col-gutter-sm items-start">
                     <div class="col">
                       <q-input
-                        v-model="p2pkPub.value"
+                        v-model="p2pkPub"
                         label="Publishing P2PK public"
                         dense
                         filled
@@ -383,13 +383,13 @@
               <div class="studio-signer-hint__content">
                 <span>{{ signerStatusMessage }}</span>
                 <span
-                  v-if="usingStoreIdentity.value && activeIdentitySummary"
+                  v-if="usingStoreIdentity && activeIdentitySummary"
                   class="studio-signer-hint__summary text-caption text-2"
                 >
                   Connected as {{ activeIdentitySummary }}
                 </span>
               </div>
-              <template v-if="!usingStoreIdentity.value" #action>
+              <template v-if="!usingStoreIdentity" #action>
                 <q-btn
                   flat
                   dense
@@ -412,7 +412,7 @@
           <div class="studio-card__body column q-gutter-lg">
             <div class="row items-center justify-between wrap q-gutter-sm">
               <q-btn-toggle
-                v-model="tierKind.value"
+                v-model="tierKind"
                 dense
                 toggle-color="primary"
                 :options="tierKindOptions"
@@ -516,12 +516,12 @@
                 <div class="preview-card__header">
                   <div class="preview-avatar">
                     <q-avatar size="56px" color="accent" text-color="white">
-                      {{ displayName.value ? displayName.value.charAt(0) : 'N' }}
+                      {{ displayName ? displayName.charAt(0) : 'N' }}
                     </q-avatar>
                   </div>
                   <div>
-                    <div class="text-body1 text-weight-medium text-1">{{ displayName.value || 'Creator name' }}</div>
-                    <div class="text-caption text-2">{{ authorInput.value || 'npub…' }}</div>
+                    <div class="text-body1 text-weight-medium text-1">{{ displayName || 'Creator name' }}</div>
+                    <div class="text-caption text-2">{{ authorInput || 'npub…' }}</div>
                   </div>
                 </div>
                 <div class="preview-card__chips">
