@@ -304,7 +304,10 @@ function parseNutzapProfileEvent(event: NostrEvent | null): NutzapProfileDetails
   };
 }
 
-async function fetchProfileWithFallback(pubkeyInput: string) {
+async function fetchProfileWithFallback(
+  pubkeyInput: string,
+  opts: { fundstrOnly?: boolean } = {},
+) {
   let hex: string;
   try {
     hex = toHex(pubkeyInput);
@@ -319,6 +322,7 @@ async function fetchProfileWithFallback(pubkeyInput: string) {
   }
 
   const relayHints = new Set<string>();
+  const fundstrOnly = opts.fundstrOnly === true;
   let event: NostrEvent | null = null;
   try {
     event = await queryNutzapProfile(hex);
@@ -326,7 +330,7 @@ async function fetchProfileWithFallback(pubkeyInput: string) {
     console.error("Failed to query Nutzap profile", e);
   }
 
-  if (!event) {
+  if (!event && !fundstrOnly) {
     try {
       const discovered = await fallbackDiscoverRelays(hex);
       for (const url of discovered) relayHints.add(url);
@@ -364,12 +368,12 @@ async function fetchProfileWithFallback(pubkeyInput: string) {
 
 async function viewCreatorProfile(
   pubkeyInput: string,
-  opts: { openDialog?: boolean } = {},
+  opts: { openDialog?: boolean; fundstrOnly?: boolean } = {},
 ) {
   const trimmed = typeof pubkeyInput === "string" ? pubkeyInput.trim() : "";
   if (!trimmed) return;
 
-  const { openDialog = true } = opts;
+  const { openDialog = true, fundstrOnly = true } = opts;
   nutzapProfile.value = null;
   lastRelayHints.value = [];
   selectedTier.value = null;
@@ -382,7 +386,7 @@ async function viewCreatorProfile(
 
   let profileResult: Awaited<ReturnType<typeof fetchProfileWithFallback>>;
   try {
-    profileResult = await fetchProfileWithFallback(trimmed);
+    profileResult = await fetchProfileWithFallback(trimmed, { fundstrOnly });
   } catch (e) {
     console.error("Failed to fetch creator profile", e);
     loadingProfile.value = false;
@@ -416,6 +420,7 @@ async function viewCreatorProfile(
   try {
     await creators.fetchTierDefinitions(pubkeyHex, {
       relayHints: lastRelayHints.value,
+      fundstrOnly,
     });
   } catch (e) {
     console.error("Failed to fetch tier definitions", e);
@@ -503,6 +508,7 @@ function retryFetchTiers() {
   }, 5000);
   creators.fetchTierDefinitions(dialogPubkey.value, {
     relayHints: lastRelayHints.value,
+    fundstrOnly: true,
   });
 }
 

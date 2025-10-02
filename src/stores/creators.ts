@@ -163,7 +163,7 @@ export const useCreatorsStore = defineStore("creators", {
 
     async fetchTierDefinitions(
       creatorNpub: string,
-      opts: { relayHints?: string[] } = {},
+      opts: { relayHints?: string[]; fundstrOnly?: boolean } = {},
     ) {
       this.tierFetchError = false;
 
@@ -196,6 +196,7 @@ export const useCreatorsStore = defineStore("creators", {
           .map((url) => url.trim())
           .filter((url) => !!url),
       );
+      const fundstrOnly = opts.fundstrOnly === true;
 
       let event: RelayEvent | null = null;
       let lastError: unknown = null;
@@ -211,7 +212,7 @@ export const useCreatorsStore = defineStore("creators", {
         try {
           event = await queryNutzapTiers(hex, {
             fanout: Array.from(relayHints),
-            allowFanoutFallback: true,
+            allowFanoutFallback: !fundstrOnly,
           });
         } catch (e) {
           lastError = e;
@@ -219,7 +220,7 @@ export const useCreatorsStore = defineStore("creators", {
         }
       }
 
-      if (!event) {
+      if (!event && !fundstrOnly) {
         try {
           const discovered = await fallbackDiscoverRelays(hex);
           for (const url of discovered) relayHints.add(url);

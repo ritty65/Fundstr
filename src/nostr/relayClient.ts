@@ -488,11 +488,14 @@ export async function queryNutzapProfile(
   const filters: Filter[] = [
     { kinds: [10019], authors: [pubkey], limit: 1 },
   ];
-  const events = await queryNostr(filters, {
+  const queryOptions: QueryOptions = {
     preferFundstr: true,
     fanout: opts.fanout,
-    allowFanoutFallback: opts.allowFanoutFallback ?? false,
-  });
+  };
+  if (opts.allowFanoutFallback) {
+    queryOptions.allowFanoutFallback = true;
+  }
+  const events = await queryNostr(filters, queryOptions);
   return pickLatestReplaceable(events, { kind: 10019, pubkey });
 }
 
@@ -509,11 +512,14 @@ export async function queryNutzapTiers(
       limit: 2,
     },
   ];
-  const events = await queryNostr(filters, {
+  const queryOptions: QueryOptions = {
     preferFundstr: true,
     fanout: opts.fanout,
-    allowFanoutFallback: opts.allowFanoutFallback ?? false,
-  });
+  };
+  if (opts.allowFanoutFallback) {
+    queryOptions.allowFanoutFallback = true;
+  }
+  const events = await queryNostr(filters, queryOptions);
   return pickLatestAddrReplaceable(events, {
     kind: [30019, 30000],
     pubkey,
