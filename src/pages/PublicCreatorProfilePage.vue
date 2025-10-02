@@ -136,16 +136,9 @@
 </template>
 
 <script lang="ts">
-import {
-  defineComponent,
-  ref,
-  onMounted,
-  onBeforeUnmount,
-  computed,
-  watch,
-} from "vue";
+import { defineComponent, ref, onMounted, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useCreatorsStore } from "stores/creators";
+import { useCreatorsStore, fetchFundstrProfileBundle } from "stores/creators";
 import { useNostrStore } from "stores/nostr";
 import { buildProfileUrl } from "src/utils/profileUrl";
 import { deriveCreatorKeys } from "src/utils/nostrKeys";
@@ -253,33 +246,28 @@ export default defineComponent({
         return;
       }
 
-      const profilePromise = nostr
-        .getProfile(creatorHex)
-        .then((p) => {
-          if (!p) return;
-          if (p.picture && !isTrustedUrl(p.picture)) {
-            delete (p as any).picture;
+      const profilePromise = fetchFundstrProfileBundle(creatorHex)
+        .then((bundle) => {
+          if (!bundle) return;
+          const { profile: profileData, followers: followersCount, following: followingCount } =
+            bundle;
+          if (profileData) {
+            const nextProfile = { ...profileData };
+            if (nextProfile.picture && !isTrustedUrl(nextProfile.picture)) {
+              delete nextProfile.picture;
+            }
+            profile.value = nextProfile;
           }
-          profile.value = { ...p };
+          if (typeof followersCount === "number") {
+            followers.value = followersCount;
+          }
+          if (typeof followingCount === "number") {
+            following.value = followingCount;
+          }
         })
         .catch(() => {});
 
-      const followersPromise = nostr
-        .fetchFollowerCount(creatorHex)
-        .then((count) => {
-          followers.value = count;
-        })
-        .catch(() => {});
-
-      const followingPromise = nostr
-        .fetchFollowingCount(creatorHex)
-        .then((count) => {
-          following.value = count;
-        })
-        .catch(() => {});
-
-      await Promise.all([profilePromise, followersPromise, followingPromise]);
-      await tierPromise;
+      await Promise.all([profilePromise, tierPromise]);
     };
     // initialization handled in onMounted
 
@@ -307,15 +295,7 @@ export default defineComponent({
       router.push({ path: '/welcome', query: { redirect: route.fullPath } })
     }
 
-    let usedFundstrOnly = false;
-
     onMounted(async () => {
-      try {
-        await nostr.initNdkReadOnly({ fundstrOnly: true })
-        usedFundstrOnly = true
-      } catch (e) {
-        // ignore
-      }
       await loadProfile()
 
       if (!creatorHex) return
@@ -337,15 +317,6 @@ export default defineComponent({
         const stop = watch(tiers, () => {
           if (tryOpen()) stop()
         })
-      }
-    })
-
-    onBeforeUnmount(() => {
-      if (usedFundstrOnly) {
-        usedFundstrOnly = false
-        void nostr
-          .initNdkReadOnly({ fundstrOnly: false })
-          .catch(() => {})
       }
     })
 

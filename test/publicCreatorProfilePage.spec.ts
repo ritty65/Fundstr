@@ -46,6 +46,7 @@ vi.mock("src/composables/useClipboard", () => ({
 
 let creatorsStore: any;
 let fetchTierDefinitions: ReturnType<typeof vi.fn>;
+let fetchFundstrProfileBundleMock: ReturnType<typeof vi.fn>;
 const priceStore = reactive({ bitcoinPrice: 0 });
 const uiStore = { formatCurrency: vi.fn(() => "$0.00") };
 const welcomeStore = reactive({ welcomeCompleted: true });
@@ -59,6 +60,7 @@ const nostrStore = {
 
 vi.mock("stores/creators", () => ({
   useCreatorsStore: () => creatorsStore,
+  fetchFundstrProfileBundle: (...args: any[]) => fetchFundstrProfileBundleMock(...args),
 }));
 vi.mock("stores/price", () => ({
   usePriceStore: () => priceStore,
@@ -146,6 +148,12 @@ describe("PublicCreatorProfilePage", () => {
         },
       ];
     });
+    fetchFundstrProfileBundleMock = vi.fn().mockResolvedValue({
+      profile: { display_name: "Creator" },
+      profileEvent: null,
+      followers: 5,
+      following: 3,
+    });
     creatorsStore = reactive({
       tiersMap: reactive({}),
       tierFetchError: false,
@@ -201,6 +209,7 @@ describe("PublicCreatorProfilePage", () => {
 
     expect(fetchTierDefinitions).toHaveBeenCalled();
     expect(fetchTierDefinitions.mock.calls[0][0]).toBe(sampleHex);
+    expect(fetchTierDefinitions.mock.calls[0][1]).toEqual({ fundstrOnly: true });
     expect(wrapper.vm.selectedTier?.id).toBe("tier-1");
     expect(wrapper.vm.showSubscribeDialog).toBe(true);
     expect(router.currentRoute.value.query.tierId).toBeUndefined();
@@ -220,7 +229,7 @@ describe("PublicCreatorProfilePage", () => {
     const wrapper = mountPage(router);
     await flushPromises();
 
-    expect(fetchTierDefinitions).toHaveBeenCalledWith(sampleHex);
+    expect(fetchTierDefinitions).toHaveBeenCalledWith(sampleHex, { fundstrOnly: true });
     expect(wrapper.vm.creatorHex).toBe(sampleHex);
     expect(wrapper.vm.creatorNpub).toBe(nip19.npubEncode(sampleHex));
   });
