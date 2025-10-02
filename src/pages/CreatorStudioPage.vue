@@ -1336,6 +1336,7 @@ const {
       void loadAll();
     }
   },
+  fundstrOnlySigner: true,
 });
 
 const activeIdentitySummary = computed(() => connectedIdentitySummary.value);

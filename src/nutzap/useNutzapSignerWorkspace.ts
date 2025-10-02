@@ -6,6 +6,7 @@ import { useNostrStore } from 'src/stores/nostr';
 
 type UseNutzapSignerWorkspaceOptions = {
   onSignerActivated?: () => void;
+  fundstrOnlySigner?: boolean;
 };
 
 export function useNutzapSignerWorkspace(
@@ -50,7 +51,9 @@ export function useNutzapSignerWorkspace(
 
     ensureSharedSignerPromise = (async () => {
       try {
-        await nostrStore.initSignerIfNotSet();
+        await nostrStore.initSignerIfNotSet({
+          skipRelayConnect: options.fundstrOnlySigner ?? false,
+        });
       } catch (err) {
         console.error('[nutzap] failed to initialize shared signer', err);
       } finally {

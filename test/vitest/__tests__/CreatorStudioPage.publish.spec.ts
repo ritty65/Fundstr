@@ -102,6 +102,7 @@ type SharedMocks = {
 };
 
 let shared: SharedMocks | null = null;
+let lastSignerWorkspaceOptions: any = null;
 
 function ensureShared(): SharedMocks {
   if (!shared) {
@@ -233,14 +234,21 @@ it('renders without throwing when relay activity entry is missing', () => {
   const previous = state.latestRelayActivity.value;
   state.latestRelayActivity.value = null;
 
+  let wrapper: ReturnType<typeof shallowMount> | null = null;
   expect(() => {
-    const wrapper = shallowMount(CreatorStudioPage, {
+    wrapper = shallowMount(CreatorStudioPage, {
       global: {
         stubs: creatorStudioStubs,
       },
     });
-    wrapper.unmount();
   }).not.toThrow();
+
+  expect(lastSignerWorkspaceOptions).toEqual({
+    fundstrOnlySigner: true,
+    onSignerActivated: expect.any(Function),
+  });
+
+  wrapper?.unmount();
 
   state.latestRelayActivity.value = previous;
 });
@@ -329,7 +337,8 @@ vi.mock('src/nutzap/useNutzapRelayTelemetry', () => ({
 }));
 
 vi.mock('src/nutzap/useNutzapSignerWorkspace', () => ({
-  useNutzapSignerWorkspace: () => {
+  useNutzapSignerWorkspace: (_authorInput: any, options?: any) => {
+    lastSignerWorkspaceOptions = options;
     const state = ensureShared();
     return {
       pubkey: ref(''),
@@ -384,6 +393,7 @@ vi.mock('../../../src/pages/nutzap-profile/nostrHelpers', async () => {
 
 beforeEach(() => {
   shared = null;
+  lastSignerWorkspaceOptions = null;
   routerResolveMock.mockClear();
   routerPushMock.mockClear();
   notifySuccessMock.mockReset();
