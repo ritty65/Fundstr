@@ -7,6 +7,20 @@ import { useSettingsStore } from "src/stores/settings";
 import { DEFAULT_RELAYS, FREE_RELAYS } from "src/config/relays";
 import { filterHealthyRelays } from "src/utils/relayHealth";
 import { RelayWatchdog } from "src/js/nostr-runtime";
+import {
+  getFreeRelayFallbackStatus,
+  hasFallbackAttempt,
+  isFallbackUnreachable,
+  markFallbackUnreachable,
+  onFreeRelayFallbackStatusChange,
+  recordFallbackAttempt,
+  resetFallbackState as resetFreeRelayFallbackState,
+  type FreeRelayFallbackContext,
+  type FreeRelayFallbackStatus,
+} from "src/nostr/freeRelayFallback";
+
+export { getFreeRelayFallbackStatus, onFreeRelayFallbackStatusChange };
+export type { FreeRelayFallbackStatus };
 import { mustConnectRequiredRelays } from "../nostr/relays";
 
 export type NdkBootErrorReason =
@@ -56,6 +70,9 @@ function attachRelayErrorHandlers(ndk: NDK) {
     disconnectCounts.set(relay.url, (disconnectCounts.get(relay.url) ?? 0) + 1);
     scheduleDisconnectLog();
   });
+  ndk.pool.on("relay:connect", () => {
+    resetFreeRelayFallbackState(ndk);
+  });
   ndk.pool.on("notice", (relay: any, notice: string) => {
     console.debug(`[NDK] notice from ${relay.url}: ${notice}`);
   });
@@ -65,6 +82,53 @@ function attachRelayErrorHandlers(ndk: NDK) {
   (ndk.pool as any).on?.("relay:heartbeat", (relay: any) => {
     console.debug(`[NDK] heartbeat recovered on ${relay.url}`);
   });
+}
+
+function countConnectedRelays(ndk: NDK) {
+  let connected = 0;
+  for (const relay of ndk.pool.relays.values()) {
+    if ((relay as any)?.connected) {
+      connected += 1;
+    }
+  }
+  return connected;
+}
+
+async function ensureFreeRelayFallback(
+  ndk: NDK,
+  context: FreeRelayFallbackContext,
+): Promise<boolean> {
+  if (countConnectedRelays(ndk) > 0) {
+    resetFreeRelayFallbackState(ndk);
+    return false;
+  }
+
+  if (isFallbackUnreachable(ndk)) {
+    return false;
+  }
+
+  if (hasFallbackAttempt(ndk)) {
+    markFallbackUnreachable(ndk, context);
+    return false;
+  }
+
+  recordFallbackAttempt(ndk);
+
+  for (const url of FREE_RELAYS) {
+    if (!ndk.pool.relays.has(url)) {
+      ndk.addExplicitRelay(url);
+    }
+  }
+
+  const error = await safeConnect(ndk);
+
+  if (countConnectedRelays(ndk) === 0) {
+    markFallbackUnreachable(ndk, context, error ?? undefined);
+  } else {
+    resetFreeRelayFallbackState(ndk);
+  }
+
+  return true;
 }
 
 let ndkInstance: NDK | undefined;
@@ -141,14 +205,7 @@ async function createReadOnlyNdk(): Promise<NDK> {
     }
   });
   await new Promise((r) => setTimeout(r, 3000));
-  if (![...ndk.pool.relays.values()].some((r: any) => r.connected)) {
-    for (const url of FREE_RELAYS) {
-      if (!ndk.pool.relays.has(url)) {
-        ndk.addExplicitRelay(url);
-      }
-    }
-    await safeConnect(ndk);
-  }
+  await ensureFreeRelayFallback(ndk, "bootstrap");
   startRelayWatchdog(ndk);
   return ndk;
 }
@@ -159,11 +216,11 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
     ? settings.defaultNostrRelays
     : DEFAULT_RELAYS;
   const healthyPromise = filterHealthyRelays(relays).catch(() => []);
-    const ndk = new NDK({ explicitRelayUrls: relays });
-    attachRelayErrorHandlers(ndk);
-    mergeDefaultRelays(ndk);
-    mustConnectRequiredRelays(ndk);
-    ndk.signer = signer;
+  const ndk = new NDK({ explicitRelayUrls: relays });
+  attachRelayErrorHandlers(ndk);
+  mergeDefaultRelays(ndk);
+  mustConnectRequiredRelays(ndk);
+  ndk.signer = signer;
   await safeConnect(ndk);
   healthyPromise.then(async (healthy) => {
     const healthySet = new Set(healthy);
@@ -185,14 +242,7 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
     }
   });
   await new Promise((r) => setTimeout(r, 3000));
-  if (![...ndk.pool.relays.values()].some((r: any) => r.connected)) {
-    for (const url of FREE_RELAYS) {
-      if (!ndk.pool.relays.has(url)) {
-        ndk.addExplicitRelay(url);
-      }
-    }
-    await safeConnect(ndk);
-  }
+  await ensureFreeRelayFallback(ndk, "bootstrap");
   startRelayWatchdog(ndk);
   return ndk;
 }
@@ -240,14 +290,7 @@ export async function createNdk(): Promise<NDK> {
     }
   });
   await new Promise((r) => setTimeout(r, 3000));
-  if (![...ndk.pool.relays.values()].some((r: any) => r.connected)) {
-    for (const url of FREE_RELAYS) {
-  if (!ndk.pool.relays.has(url)) {
-        ndk.addExplicitRelay(url);
-      }
-    }
-    await safeConnect(ndk);
-  }
+  await ensureFreeRelayFallback(ndk, "bootstrap");
   startRelayWatchdog(ndk);
   return ndk;
 }
@@ -312,3 +355,8 @@ export default boot(async ({ app }) => {
   app.provide("$ndkPromise", ndkPromise);
   ndkPromise.catch((e) => useBootErrorStore().set(e as NdkBootError));
 });
+
+export const __testing = {
+  ensureFreeRelayFallback,
+  countConnectedRelays,
+};
