@@ -198,7 +198,7 @@ vi.mock("../../../src/pages/nutzap-profile/nostrHelpers", () => ({
   FUNDSTR_WS_URL: "wss://relay.fundstr.me",
   FUNDSTR_REQ_URL: "https://relay.fundstr.me/req",
   WS_FIRST_TIMEOUT_MS: 5000,
-  HTTP_FALLBACK_TIMEOUT_MS: 5000,
+  HTTP_FALLBACK_TIMEOUT_MS: 8000,
   publishTiers: (...args: any[]) => ensureShared().publishTiersToRelayMock(...args),
   publishNostrEvent: (...args: any[]) => ensureShared().publishNostrEventMock(...args),
 }));
