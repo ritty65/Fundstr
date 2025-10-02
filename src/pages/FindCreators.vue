@@ -170,8 +170,12 @@ import { nip19 } from "nostr-tools";
 import { queryNutzapProfile, toHex } from "@/nostr/relayClient";
 import type { NostrEvent } from "@/nostr/relayClient";
 import { fallbackDiscoverRelays } from "@/nostr/discovery";
-import { NutzapProfileSchema } from "@/nostr/nutzapProfile";
 import { FUNDSTR_REQ_URL, WS_FIRST_TIMEOUT_MS } from "@/nutzap/relayEndpoints";
+import {
+  parseNutzapProfileEvent,
+  type NutzapProfileDetails,
+} from "@/nutzap/profileCache";
+import type { PrefillCreatorCacheEntry } from "stores/creators";
 
 const props = defineProps<{ npubOrHex?: string }>();
 
@@ -204,10 +208,26 @@ let usedFundstrOnly = false;
 const tierFetchError = computed(() => creators.tierFetchError);
 const showSubscribeDialog = ref(false);
 const selectedTier = ref<any>(null);
-const nutzapProfile = ref<any | null>(null);
+const nutzapProfile = ref<NutzapProfileDetails | null>(null);
 const loadingProfile = ref(false);
 const lastRelayHints = ref<string[]>([]);
 let tierTimeout: ReturnType<typeof setTimeout> | null = null;
+
+const prefillEntries = computed(() => creators.prefillCacheEntries);
+let lastPrefillSignature = "";
+
+function sendPrefillCache(entries?: PrefillCreatorCacheEntry[]) {
+  if (!iframeEl.value || !iframeLoaded.value) return;
+  const payload = entries ?? prefillEntries.value;
+  if (!payload.length) return;
+  const serialized = JSON.stringify(payload);
+  if (serialized === lastPrefillSignature) return;
+  lastPrefillSignature = serialized;
+  iframeEl.value.contentWindow?.postMessage(
+    { type: "prefillCache", creators: payload },
+    "*",
+  );
+}
 
 // Deep-link: show tiers dialog immediately (spinner until data resolves)
 watch(
@@ -221,6 +241,20 @@ watch(
   { immediate: true },
 );
 
+watch(
+  prefillEntries,
+  (entries) => {
+    if (!entries.length) {
+      lastPrefillSignature = "";
+      return;
+    }
+    if (iframeLoaded.value) {
+      sendPrefillCache(entries);
+    }
+  },
+  { deep: true },
+);
+
 function sendTheme() {
   iframeEl.value?.contentWindow?.postMessage(
     { type: "set-theme", dark: $q.dark.isActive },
@@ -231,6 +265,7 @@ function sendTheme() {
 function onIframeLoad() {
   iframeLoaded.value = true;
   sendTheme();
+  sendPrefillCache();
 }
 
 watch(
@@ -242,68 +277,6 @@ watch(
 
 function getPrice(t: any): number {
   return t.price_sats ?? t.price ?? 0;
-}
-
-type NutzapProfileDetails = {
-  p2pkPubkey: string;
-  trustedMints: string[];
-  relays: string[];
-};
-
-function parseNutzapProfileEvent(event: NostrEvent | null): NutzapProfileDetails | null {
-  if (!event) return null;
-  const relays = new Set<string>();
-  const mints: string[] = [];
-  let p2pk = "";
-
-  if (event.content) {
-    try {
-      const parsedJson = JSON.parse(event.content);
-      const safe = NutzapProfileSchema.safeParse(parsedJson);
-      if (safe.success) {
-        const data = safe.data;
-        p2pk = typeof data.p2pk === "string" ? data.p2pk : p2pk;
-        if (Array.isArray(data.mints)) {
-          for (const mint of data.mints) {
-            if (typeof mint === "string" && mint) mints.push(mint);
-          }
-        }
-        if (Array.isArray(data.relays)) {
-          for (const relay of data.relays) {
-            if (typeof relay === "string" && relay) relays.add(relay);
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("[nutzap] failed to parse profile JSON", e);
-    }
-  }
-
-  const tags = Array.isArray(event.tags) ? event.tags : [];
-  for (const tag of tags) {
-    if (tag[0] === "mint" && typeof tag[1] === "string" && tag[1]) {
-      mints.push(tag[1]);
-    }
-    if (tag[0] === "relay" && typeof tag[1] === "string" && tag[1]) {
-      relays.add(tag[1]);
-    }
-    if (!p2pk && tag[0] === "pubkey" && typeof tag[1] === "string" && tag[1]) {
-      p2pk = tag[1];
-    }
-  }
-
-  const uniqueMints = Array.from(new Set(mints.filter((m) => !!m)));
-  const uniqueRelays = Array.from(relays);
-
-  if (!p2pk && uniqueMints.length === 0 && uniqueRelays.length === 0) {
-    return null;
-  }
-
-  return {
-    p2pkPubkey: p2pk,
-    trustedMints: uniqueMints,
-    relays: uniqueRelays,
-  };
 }
 
 async function fetchProfileWithFallback(
@@ -382,57 +355,93 @@ async function viewCreatorProfile(
   if (!trimmed) return;
 
   const { openDialog = true, fundstrOnly = true } = opts;
-  nutzapProfile.value = null;
-  lastRelayHints.value = [];
-  selectedTier.value = null;
-  loadingProfile.value = true;
-  loadingTiers.value = true;
-  if (tierTimeout) clearTimeout(tierTimeout);
-  tierTimeout = setTimeout(() => {
-    loadingTiers.value = false;
-  }, 5000);
-
-  let profileResult: Awaited<ReturnType<typeof fetchProfileWithFallback>>;
+  let pubkeyHex: string;
   try {
-    profileResult = await fetchProfileWithFallback(trimmed, { fundstrOnly });
+    pubkeyHex = toHex(trimmed);
   } catch (e) {
-    console.error("Failed to fetch creator profile", e);
+    console.error("Invalid creator pubkey", e);
     loadingProfile.value = false;
-    if (tierTimeout) {
-      clearTimeout(tierTimeout);
-      tierTimeout = null;
-    }
-    loadingTiers.value = false;
-    return;
-  }
-
-  const { pubkeyHex, details, relayHints } = profileResult;
-  if (!pubkeyHex) {
-    loadingProfile.value = false;
-    if (tierTimeout) {
-      clearTimeout(tierTimeout);
-      tierTimeout = null;
-    }
     loadingTiers.value = false;
     return;
   }
 
   dialogPubkey.value = pubkeyHex;
   selectedPubkey.value = pubkeyHex;
-  lastRelayHints.value = relayHints;
-  if (details) {
-    nutzapProfile.value = details;
+  selectedTier.value = null;
+
+  const cache = await creators.ensureCreatorCacheFromDexie(pubkeyHex);
+  const cachedProfile = cache?.profileDetails ?? null;
+  const cachedProfileLoaded = cache?.profileLoaded === true;
+  const cachedTiersLoaded = cache?.tiersLoaded === true;
+
+  if (cachedProfileLoaded) {
+    nutzapProfile.value = cachedProfile;
+    lastRelayHints.value = cachedProfile?.relays
+      ? [...cachedProfile.relays]
+      : [];
+  } else {
+    nutzapProfile.value = null;
+    lastRelayHints.value = [];
   }
+
+  loadingProfile.value = !cachedProfileLoaded;
+  const needsTierFetch = !cachedTiersLoaded;
+  loadingTiers.value = needsTierFetch;
+
+  if (tierTimeout) {
+    clearTimeout(tierTimeout);
+    tierTimeout = null;
+  }
+  if (needsTierFetch) {
+    tierTimeout = setTimeout(() => {
+      loadingTiers.value = false;
+    }, 5000);
+  }
+
+  let profileResult: Awaited<ReturnType<typeof fetchProfileWithFallback>> | null =
+    null;
+  if (!cachedProfileLoaded) {
+    try {
+      profileResult = await fetchProfileWithFallback(trimmed, { fundstrOnly });
+    } catch (e) {
+      console.error("Failed to fetch creator profile", e);
+    }
+
+    if (profileResult && profileResult.pubkeyHex) {
+      dialogPubkey.value = profileResult.pubkeyHex;
+      selectedPubkey.value = profileResult.pubkeyHex;
+      nutzapProfile.value = profileResult.details ?? null;
+      lastRelayHints.value = profileResult.relayHints;
+      creators
+        .saveProfileCache(
+          profileResult.pubkeyHex,
+          profileResult.event,
+          profileResult.details,
+        )
+        .catch((err) =>
+          console.error("Failed to cache Nutzap profile", err),
+        );
+    }
+  }
+
   loadingProfile.value = false;
 
-  try {
-    await creators.fetchTierDefinitions(pubkeyHex, {
-      relayHints: lastRelayHints.value,
-      fundstrOnly,
-    });
-  } catch (e) {
-    console.error("Failed to fetch tier definitions", e);
-  } finally {
+  if (needsTierFetch) {
+    try {
+      await creators.fetchTierDefinitions(pubkeyHex, {
+        relayHints: lastRelayHints.value,
+        fundstrOnly,
+      });
+    } catch (e) {
+      console.error("Failed to fetch tier definitions", e);
+    } finally {
+      if (tierTimeout) {
+        clearTimeout(tierTimeout);
+        tierTimeout = null;
+      }
+      loadingTiers.value = false;
+    }
+  } else {
     if (tierTimeout) {
       clearTimeout(tierTimeout);
       tierTimeout = null;

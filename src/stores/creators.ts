@@ -1,4 +1,5 @@
 import { defineStore } from "pinia";
+import { ref } from "vue";
 import { db } from "./dexie";
 import {
   useNostrStore,
@@ -15,6 +16,8 @@ import { queryNutzapTiers, toHex, type NostrEvent as RelayEvent } from "@/nostr/
 import { fallbackDiscoverRelays } from "@/nostr/discovery";
 import { parseTierDefinitionEvent } from "src/nostr/tiers";
 import { FUNDSTR_REQ_URL, WS_FIRST_TIMEOUT_MS } from "@/nutzap/relayEndpoints";
+import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
+import type { NutzapProfileDetails } from "@/nutzap/profileCache";
 
 export const FEATURED_CREATORS = [
   "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
@@ -39,17 +42,291 @@ export interface CreatorProfile {
 
 const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
 
+export interface CreatorWarmCache {
+  profileLoaded?: boolean;
+  profileDetails?: NutzapProfileDetails | null;
+  profileEvent?: RelayEvent | null;
+  profileEventId?: string | null;
+  profileUpdatedAt?: number | null;
+  tiersLoaded?: boolean;
+  tiers?: Tier[] | null;
+  tierEvent?: RelayEvent | null;
+  tierEventId?: string | null;
+  tierUpdatedAt?: number | null;
+}
+
+export interface PrefillCreatorCacheEntry {
+  pubkey: string;
+  profileEvent?: RelayEvent | null;
+  tierEvent?: RelayEvent | null;
+  profileDetails?: NutzapProfileDetails | null;
+  tiers?: Tier[] | null;
+}
+
+function cloneRelayEvent(event: RelayEvent | null): RelayEvent | null {
+  if (!event) return null;
+  try {
+    return JSON.parse(JSON.stringify(event)) as RelayEvent;
+  } catch (e) {
+    console.warn("Failed to clone relay event", e);
+    return event;
+  }
+}
+
+function cloneProfileDetails(
+  details: NutzapProfileDetails | null | undefined,
+): NutzapProfileDetails | null {
+  if (!details) return null;
+  return {
+    p2pkPubkey: details.p2pkPubkey,
+    trustedMints: Array.from(details.trustedMints ?? []),
+    relays: Array.from(details.relays ?? []),
+    tierAddr: details.tierAddr,
+  };
+}
+
+function normalizeTier(tier: Tier): Tier {
+  return {
+    ...tier,
+    price_sats: tier.price_sats ?? (tier as any).price ?? 0,
+    ...(tier.perks && !tier.benefits ? { benefits: [tier.perks] } : {}),
+    media: tier.media ? [...tier.media] : [],
+  };
+}
+
 export const useCreatorsStore = defineStore("creators", {
-  state: () => ({
-    searchResults: [] as CreatorProfile[],
-    searching: false,
-    error: "",
-    tiersMap: {} as Record<string, Tier[]>,
-    tierFetchError: false,
-    currentUserNpub: "",
-    currentUserPrivkey: "",
-  }),
+  state: () => {
+    const favorites =
+      typeof window !== "undefined" && typeof localStorage !== "undefined"
+        ? safeUseLocalStorage<string[]>("findCreators.favorites.v1", [])
+        : ref<string[]>([]);
+    return {
+      searchResults: [] as CreatorProfile[],
+      searching: false,
+      error: "",
+      tiersMap: {} as Record<string, Tier[]>,
+      tierFetchError: false,
+      currentUserNpub: "",
+      currentUserPrivkey: "",
+      favorites,
+      warmCache: {} as Record<string, CreatorWarmCache>,
+    };
+  },
+  getters: {
+    favoriteHexPubkeys(): string[] {
+      const raw = Array.isArray(this.favorites?.value)
+        ? this.favorites.value
+        : [];
+      const seen = new Set<string>();
+      for (const entry of raw) {
+        if (typeof entry !== "string") continue;
+        const trimmed = entry.trim();
+        if (!trimmed) continue;
+        if (trimmed.length === 64 && /^[0-9a-fA-F]{64}$/.test(trimmed)) {
+          seen.add(trimmed.toLowerCase());
+          continue;
+        }
+        if (trimmed.startsWith("npub")) {
+          try {
+            seen.add(toHex(trimmed));
+          } catch (e) {
+            console.warn("Invalid favorite pubkey", e);
+          }
+        }
+      }
+      return Array.from(seen);
+    },
+    getCreatorCache(state) {
+      return (hex: string) => state.warmCache[hex];
+    },
+    prefillCacheEntries(): PrefillCreatorCacheEntry[] {
+      const results: PrefillCreatorCacheEntry[] = [];
+      for (const [pubkey, data] of Object.entries(this.warmCache)) {
+        if (!data) continue;
+        const hasProfile =
+          data.profileLoaded &&
+          (data.profileEvent !== undefined || data.profileDetails !== undefined);
+        const hasTiers =
+          data.tiersLoaded &&
+          (data.tierEvent !== undefined || Array.isArray(data.tiers));
+        if (!hasProfile && !hasTiers) continue;
+        results.push({
+          pubkey,
+          profileEvent: cloneRelayEvent(data.profileEvent ?? null),
+          tierEvent: cloneRelayEvent(data.tierEvent ?? null),
+          profileDetails: cloneProfileDetails(data.profileDetails),
+          tiers: Array.isArray(data.tiers)
+            ? data.tiers.map((tier) => ({
+                ...tier,
+                benefits: tier.benefits ? [...tier.benefits] : undefined,
+                media: tier.media
+                  ? tier.media.map((media) => ({ ...media }))
+                  : undefined,
+              }))
+            : data.tiers ?? null,
+        });
+      }
+      return results;
+    },
+  },
   actions: {
+    getFavoriteHexes(): string[] {
+      return this.favoriteHexPubkeys;
+    },
+
+    hasProfileCache(pubkeyHex: string): boolean {
+      return this.warmCache[pubkeyHex]?.profileLoaded === true;
+    },
+
+    hasTierCache(pubkeyHex: string): boolean {
+      return this.warmCache[pubkeyHex]?.tiersLoaded === true;
+    },
+
+    updateProfileCacheState(
+      pubkeyHex: string,
+      details: NutzapProfileDetails | null,
+      event: RelayEvent | null,
+      meta: { eventId?: string | null; updatedAt?: number | null } = {},
+    ) {
+      const entry: CreatorWarmCache = {
+        ...(this.warmCache[pubkeyHex] ?? {}),
+      };
+      entry.profileLoaded = true;
+      entry.profileDetails = cloneProfileDetails(details);
+      entry.profileEvent = event ? cloneRelayEvent(event) : null;
+      entry.profileEventId = meta.eventId ?? event?.id ?? null;
+      entry.profileUpdatedAt = meta.updatedAt ?? event?.created_at ?? null;
+      this.warmCache[pubkeyHex] = entry;
+    },
+
+    updateTierCacheState(
+      pubkeyHex: string,
+      tiers: Tier[] | null,
+      event: RelayEvent | null,
+      meta: { eventId?: string | null; updatedAt?: number | null } = {},
+    ) {
+      const entry: CreatorWarmCache = {
+        ...(this.warmCache[pubkeyHex] ?? {}),
+      };
+      const normalized = Array.isArray(tiers)
+        ? tiers.map((tier) => normalizeTier(tier))
+        : [];
+      entry.tiersLoaded = true;
+      entry.tiers = Array.isArray(tiers) ? normalized : [];
+      entry.tierEvent = event ? cloneRelayEvent(event) : null;
+      entry.tierEventId = meta.eventId ?? event?.id ?? null;
+      entry.tierUpdatedAt = meta.updatedAt ?? event?.created_at ?? null;
+      this.warmCache[pubkeyHex] = entry;
+      this.tiersMap[pubkeyHex] = normalized;
+      this.tierFetchError = false;
+    },
+
+    async saveProfileCache(
+      pubkeyHex: string,
+      event: RelayEvent | null,
+      details: NutzapProfileDetails | null,
+      meta: { updatedAt?: number | null } = {},
+    ) {
+      const updatedAt =
+        meta.updatedAt ??
+        event?.created_at ??
+        (details || event ? Math.floor(Date.now() / 1000) : null);
+      this.updateProfileCacheState(pubkeyHex, details, event, {
+        eventId: event?.id ?? null,
+        updatedAt,
+      });
+      try {
+        await db.nutzapProfiles.put({
+          pubkey: pubkeyHex,
+          profile: cloneProfileDetails(details),
+          eventId: event?.id ?? null,
+          updatedAt: updatedAt ?? undefined,
+          rawEventJson: event ? JSON.stringify(event) : undefined,
+        });
+      } catch (e) {
+        console.error("Failed to persist Nutzap profile cache", e);
+      }
+    },
+
+    async saveTierCache(
+      pubkeyHex: string,
+      tiers: Tier[] | null,
+      event: RelayEvent | null,
+      meta: { updatedAt?: number | null } = {},
+    ) {
+      const normalized = Array.isArray(tiers)
+        ? tiers.map((tier) => normalizeTier(tier))
+        : [];
+      const updatedAt =
+        meta.updatedAt ?? event?.created_at ?? (event ? event.created_at : null);
+      this.updateTierCacheState(pubkeyHex, Array.isArray(tiers) ? normalized : [], event, {
+        eventId: event?.id ?? null,
+        updatedAt,
+      });
+      try {
+        if (event) {
+          await db.creatorsTierDefinitions.put({
+            creatorNpub: pubkeyHex,
+            tiers: normalized as any,
+            eventId: event.id,
+            updatedAt: event.created_at,
+            rawEventJson: JSON.stringify(event),
+          });
+        } else {
+          await db.creatorsTierDefinitions.delete(pubkeyHex);
+        }
+      } catch (e) {
+        console.error("Failed to persist tier cache", e);
+      }
+    },
+
+    async loadCreatorCacheFromDexie(pubkeyHex: string) {
+      const [profileRow, tierRow] = await Promise.all([
+        db.nutzapProfiles.get(pubkeyHex),
+        db.creatorsTierDefinitions.get(pubkeyHex),
+      ]);
+      if (profileRow) {
+        let event: RelayEvent | null = null;
+        if (profileRow.rawEventJson) {
+          try {
+            event = JSON.parse(profileRow.rawEventJson) as RelayEvent;
+          } catch (e) {
+            console.error("Failed to parse cached profile event", e);
+          }
+        }
+        this.updateProfileCacheState(pubkeyHex, profileRow.profile ?? null, event, {
+          eventId: profileRow.eventId ?? null,
+          updatedAt: profileRow.updatedAt ?? null,
+        });
+      }
+      if (tierRow) {
+        let event: RelayEvent | null = null;
+        if (tierRow.rawEventJson) {
+          try {
+            event = JSON.parse(tierRow.rawEventJson) as RelayEvent;
+          } catch (e) {
+            console.error("Failed to parse cached tier event", e);
+          }
+        }
+        const normalized = (tierRow.tiers ?? []).map((tier: any) =>
+          normalizeTier(tier),
+        );
+        this.updateTierCacheState(pubkeyHex, normalized, event, {
+          eventId: tierRow.eventId,
+          updatedAt: tierRow.updatedAt,
+        });
+      }
+      return this.warmCache[pubkeyHex];
+    },
+
+    async ensureCreatorCacheFromDexie(pubkeyHex: string) {
+      const entry = this.warmCache[pubkeyHex];
+      if (entry?.profileLoaded && entry?.tiersLoaded) {
+        return entry;
+      }
+      return this.loadCreatorCacheFromDexie(pubkeyHex);
+    },
+
     async searchCreators(query: string) {
       const nostrStore = useNostrStore();
       this.searchResults = [];
@@ -180,19 +457,7 @@ export const useCreatorsStore = defineStore("creators", {
         return;
       }
 
-      const cached = await db.creatorsTierDefinitions.get(hex);
-      if (cached) {
-        const rawEvent = cached.rawEventJson
-          ? JSON.parse(cached.rawEventJson)
-          : undefined;
-        this.tiersMap[hex] = cached.tiers.map((t: any) => ({
-          ...t,
-          price_sats: t.price_sats ?? t.price ?? 0,
-          ...(t.perks && !t.benefits ? { benefits: [t.perks] } : {}),
-          media: t.media ? [...t.media] : [],
-        }));
-        void rawEvent;
-      }
+      await this.ensureCreatorCacheFromDexie(hex);
 
       const relayHints = new Set(
         (opts.relayHints ?? [])
@@ -252,18 +517,16 @@ export const useCreatorsStore = defineStore("creators", {
           notifyWarning("Unable to retrieve subscription tiers");
         } else {
           this.tierFetchError = false;
-          this.tiersMap[hex] = [];
-          await db.creatorsTierDefinitions.delete(hex);
+          await this.saveTierCache(hex, [], null);
         }
         return;
       }
 
       let tiersArray: Tier[] = [];
       try {
-        tiersArray = parseTierDefinitionEvent(event).map((tier) => ({
-          ...tier,
-          price_sats: tier.price_sats ?? (tier as any).price ?? 0,
-        }));
+        tiersArray = parseTierDefinitionEvent(event).map((tier) =>
+          normalizeTier(tier as Tier),
+        );
       } catch (e) {
         console.error("Failed to parse tier event", e);
         this.tierFetchError = true;
@@ -271,14 +534,7 @@ export const useCreatorsStore = defineStore("creators", {
         return;
       }
 
-      this.tiersMap[hex] = tiersArray;
-      await db.creatorsTierDefinitions.put({
-        creatorNpub: hex,
-        tiers: tiersArray as any,
-        eventId: event.id,
-        updatedAt: event.created_at,
-        rawEventJson: JSON.stringify(event),
-      });
+      await this.saveTierCache(hex, tiersArray, event);
       this.tierFetchError = false;
     },
 
@@ -299,16 +555,16 @@ export const useCreatorsStore = defineStore("creators", {
       event.id = getEventHash(event as any);
       event.sig = await signEvent(event as any, this.currentUserPrivkey);
       await publishEvent(event as any);
-
-      await db.creatorsTierDefinitions.put({
-        creatorNpub,
-        tiers: tiersArray,
-        eventId: event.id!,
-        updatedAt: created_at,
-        rawEventJson: JSON.stringify(event),
-      });
-
-      this.tiersMap[creatorNpub] = tiersArray;
+      const relayEvent: RelayEvent = {
+        id: event.id!,
+        pubkey: creatorNpub,
+        created_at,
+        kind: 30019,
+        tags: [["d", "tiers"]],
+        content,
+        sig: event.sig!,
+      };
+      await this.saveTierCache(creatorNpub, tiersArray, relayEvent);
     },
   },
 });
