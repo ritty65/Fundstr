@@ -168,6 +168,7 @@
           type="textarea"
           autogrow
           label="Relay list"
+          :placeholder="DEFAULT_RELAYS.join('\n')"
           hint="Comma or newline separated"
         />
         <q-banner class="bg-surface-2 text-2">
@@ -186,7 +187,7 @@ import type { Event as NostrEvent, Filter as NostrFilter } from 'nostr-tools';
 import { multiRelaySearch, mergeRelayHints } from './multiRelaySearch';
 import { sanitizeRelayUrls } from 'src/utils/relay';
 
-const DEFAULT_RELAYS = ['wss://relay.fundstr.me', 'wss://relay.damus.io'];
+const DEFAULT_RELAYS = ['wss://relay.fundstr.me'];
 
 const props = defineProps<{
   modelValue: string;
