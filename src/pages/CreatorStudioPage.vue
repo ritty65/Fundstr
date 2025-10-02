@@ -425,7 +425,7 @@
               :tiers="tiers"
               :frequency-options="tierFrequencyOptions"
               :show-errors="showTierValidation"
-              @update:tiers="value => (tiers.value = Array.isArray(value) ? value : [])"
+              @update:tiers="handleTiersUpdate"
               @validation-changed="handleTierValidation"
             />
           </div>
@@ -644,6 +644,9 @@ const cachedMintsText = useLocalStorage<string>('nutzap.profile.mintsDraft', '')
 const mintsText = ref(cachedMintsText.value || '');
 const relaysText = ref(FUNDSTR_WS_URL);
 const tiers = ref<Tier[]>([]);
+const handleTiersUpdate = (value: Tier[] | unknown) => {
+  tiers.value = Array.isArray(value) ? value : [];
+};
 const tierKind = ref<TierKind>(30019);
 const loading = ref(false);
 const publishingAll = ref(false);
