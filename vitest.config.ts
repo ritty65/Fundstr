@@ -28,6 +28,7 @@ export default defineConfig({
       "test/creatorSubscribers-page.spec.ts",
       "test/vitest/__tests__/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}",
       "test/*.spec.ts",
+      "test/**/*.spec.ts",
     ],
   },
   resolve: {

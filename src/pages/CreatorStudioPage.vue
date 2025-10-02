@@ -591,6 +591,21 @@
     </q-dialog>
   </q-page>
 </template>
+<script lang="ts">
+export function normalizeMintUrl(value: string | null | undefined) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  const lowered = value.trim().toLowerCase();
+  if (!lowered) {
+    return '';
+  }
+
+  return lowered.replace(/\/+$/u, '');
+}
+</script>
+
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref } from 'vue';
 import { useEventBus, useLocalStorage, useNow } from '@vueuse/core';
@@ -1448,12 +1463,13 @@ const p2pkVerificationNeedsRefresh = computed(() => {
   const nowMs = now.value.getTime();
   const age = nowMs - record.timestamp;
   const isStaleByAge = age > P2PK_VERIFICATION_STALE_MS;
-  const recordMint = record.mint?.trim().toLowerCase();
-  const activeMint = activeMintUrlTrimmed.value.toLowerCase();
+  const recordMint = normalizeMintUrl(record.mint);
+  const activeMint = normalizeMintUrl(activeMintUrlTrimmed.value);
   const mintMatchesActive = recordMint ? recordMint === activeMint : true;
-  const mintMatchesList = recordMint
-    ? mintList.value.some(mint => mint.toLowerCase() === recordMint)
-    : true;
+  const normalizedMintList = mintList.value
+    .map(mint => normalizeMintUrl(mint))
+    .filter((mint): mint is string => Boolean(mint));
+  const mintMatchesList = recordMint ? normalizedMintList.includes(recordMint) : true;
   const mintMismatch = recordMint ? !(mintMatchesActive || mintMatchesList) : false;
   return isStaleByAge || mintMismatch;
 });
