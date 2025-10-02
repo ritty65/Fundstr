@@ -1287,6 +1287,10 @@ export enum SignerType {
   SEED = "SEED",
 }
 
+type InitSignerBehaviorOptions = {
+  skipRelayConnect?: boolean;
+};
+
 export const useNostrStore = defineStore("nostr", {
   state: () => {
     const lastNip04EventTimestamp = useLocalStorage<number>(
@@ -1635,7 +1639,7 @@ export const useNostrStore = defineStore("nostr", {
         }
       }
     },
-    initSignerIfNotSet: async function () {
+    initSignerIfNotSet: async function (options: InitSignerBehaviorOptions = {}) {
       await this.loadKeysFromStorage();
       if (this.signerType === SignerType.NIP07) {
         const available = await this.checkNip07Signer();
@@ -1651,17 +1655,19 @@ export const useNostrStore = defineStore("nostr", {
         this.initialized = false; // force re-initialisation
       }
       if (!this.initialized) {
-        await this.initSigner();
-        await this.ensureNdkConnected();
+        await this.initSigner(options);
+        if (!options.skipRelayConnect) {
+          await this.ensureNdkConnected();
+        }
       }
     },
-    initSigner: async function () {
+    initSigner: async function (options: InitSignerBehaviorOptions = {}) {
       if (this.signerType === SignerType.NIP07) {
-        await this.initNip07Signer();
+        await this.initNip07Signer(options);
       } else if (this.signerType === SignerType.PRIVATEKEY) {
-        await this.initPrivateKeySigner();
+        await this.initPrivateKeySigner(undefined, options);
       } else {
-        await this.initWalletSeedPrivateKeySigner();
+        await this.initWalletSeedPrivateKeySigner(options);
       }
       this.initialized = true;
     },
@@ -1675,10 +1681,15 @@ export const useNostrStore = defineStore("nostr", {
         getSharedSecret: typeof ext?.getSharedSecret === "function",
       };
     },
-    setSigner: async function (signer: NDKSigner) {
+    setSigner: async function (
+      signer: NDKSigner,
+      options: InitSignerBehaviorOptions = {},
+    ) {
       this.signer = signer;
       this.probeSignerCaps();
-      await this.connect();
+      if (!options.skipRelayConnect) {
+        await this.connect();
+      }
     },
     signDummyEvent: async function (): Promise<NDKEvent> {
       const ndkEvent = new NDKEvent();
@@ -1836,7 +1847,7 @@ export const useNostrStore = defineStore("nostr", {
       }
       return this.nip07SignerAvailable;
     },
-    initNip07Signer: async function () {
+    initNip07Signer: async function (options: InitSignerBehaviorOptions = {}) {
       const available = await this.checkNip07Signer();
       if (!available) {
         if (!this.nip07Warned) {
@@ -1856,7 +1867,7 @@ export const useNostrStore = defineStore("nostr", {
         if (user?.npub) {
           this.signerType = SignerType.NIP07;
           this.setPubkey(user.pubkey);
-          await this.setSigner(signer);
+          await this.setSigner(signer, options);
 
           let urls: string[] | null = null;
           if (this.cachedNip07Relays) {
@@ -1913,7 +1924,10 @@ export const useNostrStore = defineStore("nostr", {
       this.nip46Token = "";
       await this.initWalletSeedPrivateKeySigner();
     },
-    initPrivateKeySigner: async function (nsec?: string) {
+    initPrivateKeySigner: async function (
+      nsec?: string,
+      options: InitSignerBehaviorOptions = {},
+    ) {
       let privateKeyBytes: Uint8Array;
       if (!nsec && !this.privateKeySignerPrivateKey.length) {
         nsec = (await prompt("Enter your nsec")) as string;
@@ -1933,7 +1947,7 @@ export const useNostrStore = defineStore("nostr", {
       this.privateKeySignerPrivateKey = privateKeyHex;
       this.signerType = SignerType.PRIVATEKEY;
       this.setPubkey(getPublicKey(privateKeyBytes));
-      await this.setSigner(signer);
+      await this.setSigner(signer, options);
     },
     async updateIdentity(nsec: string, relays?: string[]) {
       if (relays) this.relays = relays as any;
@@ -1957,12 +1971,14 @@ export const useNostrStore = defineStore("nostr", {
       this.seedSignerPublicKey = walletPublicKeyHex;
       this.seedSigner = new NDKPrivateKeySigner(this.seedSignerPrivateKey);
     },
-    initWalletSeedPrivateKeySigner: async function () {
+    initWalletSeedPrivateKeySigner: async function (
+      options: InitSignerBehaviorOptions = {},
+    ) {
       await this.walletSeedGenerateKeyPair();
       const signer = new NDKPrivateKeySigner(this.seedSignerPrivateKey);
       this.signerType = SignerType.SEED;
       this.setPubkey(this.seedSignerPublicKey);
-      await this.setSigner(signer);
+      await this.setSigner(signer, options);
     },
     fetchEventsFromUser: async function () {
       const filter: NDKFilter = { kinds: [1], authors: [this.pubkey] };
