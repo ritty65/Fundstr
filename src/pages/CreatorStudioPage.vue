@@ -1655,10 +1655,6 @@ const publishBlockers = computed<string[]>(() => {
     blockers.push('Resolve P2PK key error');
   }
 
-  if (p2pkPointerReady.value && p2pkVerificationNeedsRefresh.value) {
-    blockers.push(p2pkVerificationRecord.value ? 'Re-verify Cashu pointer' : 'Verify Cashu pointer');
-  }
-
   if (mintList.value.length === 0) {
     blockers.push('Configure at least one trusted mint');
   }
@@ -1687,6 +1683,14 @@ const publishWarnings = computed<string[]>(() => {
 
   if (relayNeedsAttention.value) {
     warnings.push('Restore relay connection health');
+  }
+
+  if (p2pkPointerReady.value && p2pkVerificationNeedsRefresh.value) {
+    warnings.push(
+      p2pkVerificationRecord.value
+        ? 'Refresh Cashu pointer verification to keep it trusted'
+        : 'Verify your Cashu pointer with an active mint',
+    );
   }
 
   return warnings;
@@ -1782,10 +1786,16 @@ const readinessChips = computed<ReadinessChip[]>(() => {
       key: 'p2pk',
       ready: advancedEncryptionComplete.value,
       required: true,
-      readyLabel: 'P2PK ready',
+      readyLabel: p2pkVerificationNeedsRefresh.value
+        ? 'Refresh P2PK verification'
+        : 'P2PK ready',
       actionLabel: 'Add P2PK pointer',
-      readyIcon: 'key',
+      readyIcon: p2pkVerificationNeedsRefresh.value ? 'warning' : 'key',
       actionIcon: 'key_off',
+      readyTooltip: p2pkVerificationNeedsRefresh.value
+        ? 'Pointer verified previously but needs a fresh check with your active mint.'
+        : 'Pointer verification is up to date.',
+      readyState: p2pkVerificationNeedsRefresh.value ? ('warning' as ReadinessChipState) : undefined,
     },
     {
       key: 'tiers',
