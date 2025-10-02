@@ -239,18 +239,41 @@ export default defineComponent({
     });
 
     const loadProfile = async () => {
-      await fetchTiers()
-      if (!creatorHex) return
-      const p = await nostr.getProfile(creatorHex)
-      if (p) {
-        if (p.picture && !isTrustedUrl(p.picture)) {
-          delete (p as any).picture
-        }
-        profile.value = { ...p }
+      const tierPromise = fetchTiers();
+
+      if (!creatorHex) {
+        await tierPromise;
+        return;
       }
-      followers.value = await nostr.fetchFollowerCount(creatorHex)
-      following.value = await nostr.fetchFollowingCount(creatorHex)
-    }
+
+      const profilePromise = nostr
+        .getProfile(creatorHex)
+        .then((p) => {
+          if (!p) return;
+          if (p.picture && !isTrustedUrl(p.picture)) {
+            delete (p as any).picture;
+          }
+          profile.value = { ...p };
+        })
+        .catch(() => {});
+
+      const followersPromise = nostr
+        .fetchFollowerCount(creatorHex)
+        .then((count) => {
+          followers.value = count;
+        })
+        .catch(() => {});
+
+      const followingPromise = nostr
+        .fetchFollowingCount(creatorHex)
+        .then((count) => {
+          following.value = count;
+        })
+        .catch(() => {});
+
+      await Promise.all([profilePromise, followersPromise, followingPromise]);
+      await tierPromise;
+    };
     // initialization handled in onMounted
 
     const retryFetchTiers = () => {
