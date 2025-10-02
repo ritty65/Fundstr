@@ -6,6 +6,13 @@ import {
   type NDKFilter,
 } from "@nostr-dev-kit/ndk";
 import { useNdk } from "src/composables/useNdk";
+import {
+  hasFallbackAttempt,
+  isFallbackUnreachable,
+  markFallbackUnreachable,
+  recordFallbackAttempt,
+  resetFallbackState as resetFreeRelayFallbackState,
+} from "src/nostr/freeRelayFallback";
 
 export class RelayWatchdog {
   private ndk: NDK;
@@ -55,13 +62,54 @@ export class RelayWatchdog {
         const connected = [...pool.relays.values()].filter(
           (r: any) => r.connected,
         ).length;
-        if (connected >= this.minConnected) return;
-        for (const url of this.fallbackRelays) {
-          if (!pool.relays.has(url)) {
-            this.ndk.addExplicitRelay(url);
-          }
+
+        if (connected >= this.minConnected) {
+          resetFreeRelayFallbackState(this.ndk);
+          return;
         }
-        await this.ndk.connect();
+
+        if (connected === 0) {
+          if (!hasFallbackAttempt(this.ndk)) {
+            recordFallbackAttempt(this.ndk);
+            for (const url of this.fallbackRelays) {
+              if (!pool.relays.has(url)) {
+                this.ndk.addExplicitRelay(url);
+              }
+            }
+            let connectError: Error | undefined;
+            try {
+              await this.ndk.connect();
+            } catch (err: any) {
+              connectError =
+                err instanceof Error ? err : new Error(String(err ?? "connect"));
+            }
+            const afterConnected = [...pool.relays.values()].some(
+              (r: any) => r.connected,
+            );
+            if (afterConnected) {
+              resetFreeRelayFallbackState(this.ndk);
+            } else {
+              markFallbackUnreachable(this.ndk, "watchdog", connectError);
+            }
+          } else {
+            if (!isFallbackUnreachable(this.ndk)) {
+              markFallbackUnreachable(this.ndk, "watchdog");
+            }
+            try {
+              await this.ndk.connect();
+            } catch (err) {
+              console.debug("[RelayWatchdog] connect retry failed", err);
+            }
+          }
+          return;
+        }
+
+        resetFreeRelayFallbackState(this.ndk);
+        try {
+          await this.ndk.connect();
+        } catch (err) {
+          console.debug("[RelayWatchdog] connect retry failed", err);
+        }
       } catch (e) {
         console.error("[RelayWatchdog]", e);
       }
