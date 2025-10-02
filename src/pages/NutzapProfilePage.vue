@@ -201,6 +201,29 @@
                       @click="requestExplorerOpen('banner')"
                     />
                   </div>
+                  <div v-if="relayTimelinePreview.length" class="context-help-timeline">
+                    <div class="context-help-timeline__header text-caption text-2">
+                      Recent relay activity
+                    </div>
+                    <ul class="context-help-timeline__list">
+                      <li
+                        v-for="entry in relayTimelinePreview"
+                        :key="entry.id"
+                        class="context-help-timeline__item"
+                        :class="`is-${entry.level}`"
+                      >
+                        <div class="context-help-timeline__message text-body2 text-1">
+                          {{ entry.message }}
+                        </div>
+                        <div class="context-help-timeline__meta text-caption text-2">
+                          {{ formatActivityTime(entry.timestamp) }} · {{ entry.level }}
+                        </div>
+                        <div v-if="entry.context" class="context-help-timeline__context text-caption text-2">
+                          {{ entry.context }}
+                        </div>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
               </div>
             </section>
@@ -622,9 +645,12 @@ const {
   formatActivityTime,
   activityLevelColor,
   applyRelayUrlInput,
+  logRelayActivity,
 } = relayTelemetry;
 
 relayNeedsAttentionRef = relayNeedsAttention;
+
+const relayTimelinePreview = computed(() => relayActivityTimeline.value.slice(0, 4));
 
 watch(
   () => relayNeedsAttention.value,
@@ -1625,6 +1651,19 @@ async function publishAll() {
       `Nutzap profile published (profile ${profileAckLabel}, tiers ${tierAckLabel}).`
     );
 
+    const tierFallbackUsed = tierResult.ack?.via === 'http' || tierResult.via === 'http';
+    const profileFallbackUsed = profileResult.ack?.via === 'http' || profileResult.via === 'http';
+    const tierIdLabel = tierEventId ?? 'unknown';
+    const profileIdLabel = profileEventId ?? 'unknown';
+    const successContext = `HTTP fallback used — profile: ${
+      profileFallbackUsed ? 'yes' : 'no'
+    }, tiers: ${tierFallbackUsed ? 'yes' : 'no'}`;
+    logRelayActivity(
+      'success',
+      `Publish succeeded (profile ${profileIdLabel}, tiers ${tierIdLabel})`,
+      successContext,
+    );
+
     await Promise.all([loadTiers(reloadKey), loadProfile(reloadKey)]);
     await refreshSubscriptions(true);
   } catch (err) {
@@ -1998,6 +2037,57 @@ onBeforeUnmount(() => {
 
 .context-help-alert-detail {
   line-height: 1.4;
+}
+
+.context-help-timeline {
+  border-top: 1px solid var(--surface-contrast-border);
+  padding-top: 12px;
+}
+
+.context-help-timeline__header {
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.context-help-timeline__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.context-help-timeline__item {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
+}
+
+.context-help-timeline__item.is-success {
+  border-color: rgba(33, 186, 69, 0.35);
+}
+
+.context-help-timeline__item.is-warning {
+  border-color: rgba(250, 204, 21, 0.35);
+}
+
+.context-help-timeline__item.is-error {
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.context-help-timeline__message {
+  font-weight: 500;
+}
+
+.context-help-timeline__meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.context-help-timeline__context {
+  margin-top: 4px;
 }
 
 .section-card {
