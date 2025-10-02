@@ -219,7 +219,7 @@ export default defineComponent({
       }
       refreshingTiers.value = true;
       try {
-        await creators.fetchTierDefinitions(creatorHex);
+        await creators.fetchTierDefinitions(creatorHex, { fundstrOnly: true });
       } finally {
         refreshingTiers.value = false;
         if (!hasInitialTierData.value) {

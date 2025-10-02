@@ -867,6 +867,7 @@ export async function anyRelayReachable(relays: string[]): Promise<boolean> {
  */
 export async function fetchNutzapProfile(
   npubOrHex: string,
+  opts: { fundstrOnly?: boolean } = {},
 ): Promise<NutzapProfile | null> {
   let hex: string;
   try {
@@ -874,6 +875,8 @@ export async function fetchNutzapProfile(
   } catch (e) {
     throw new Error("Invalid npub");
   }
+
+  const fundstrOnly = opts.fundstrOnly === true;
 
   if (nutzapProfileCache.has(hex)) {
     return nutzapProfileCache.get(hex) || null;
@@ -887,7 +890,7 @@ export async function fetchNutzapProfile(
     lastError = e;
   }
 
-  if (!event) {
+  if (!event && !fundstrOnly) {
     try {
       const discovered = await fallbackDiscoverRelays(hex);
       if (discovered.length) {
