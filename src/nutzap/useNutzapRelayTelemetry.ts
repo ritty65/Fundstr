@@ -119,11 +119,22 @@ export function useNutzapRelayTelemetry(options: UseNutzapRelayTelemetryOptions 
     { deep: true }
   );
 
-  function formatActivityTime(timestamp: number) {
-    if (!activityTimeFormatter) {
-      return new Date(timestamp).toISOString();
+  function formatActivityTime(timestamp?: number | null) {
+    if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) {
+      return 'Unknown time';
     }
-    return activityTimeFormatter.format(new Date(timestamp));
+    const date = new Date(timestamp);
+    if (!Number.isFinite(date.getTime())) {
+      return 'Unknown time';
+    }
+    if (!activityTimeFormatter) {
+      return date.toISOString();
+    }
+    try {
+      return activityTimeFormatter.format(date);
+    } catch {
+      return date.toISOString();
+    }
   }
 
   function activityLevelColor(level: RelayActivityLevel) {

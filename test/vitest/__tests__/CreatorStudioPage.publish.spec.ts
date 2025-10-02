@@ -149,7 +149,7 @@ function ensureShared(): SharedMocks {
       relayStatusLabel: ref('Connected'),
       relayStatusColor: ref('positive'),
       relayStatusDotClass: ref('status-dot--positive'),
-      latestRelayActivity: ref({ message: '', time: Date.now() }),
+      latestRelayActivity: ref({ message: '', timestamp: Date.now() }),
       latestRelayAlertLabel: ref(''),
       relayActivityTimeline: ref([]),
       publishEventToRelayMock,
@@ -226,9 +226,27 @@ it('syncs wallet pointer with composer selection', async () => {
   ).toBe(true);
 });
 
+it('renders without throwing when relay activity entry is missing', () => {
+  const state = ensureShared();
+  const previous = state.latestRelayActivity.value;
+  state.latestRelayActivity.value = null;
+
+  expect(() => {
+    const wrapper = shallowMount(CreatorStudioPage, {
+      global: {
+        stubs: creatorStudioStubs,
+      },
+    });
+    wrapper.unmount();
+  }).not.toThrow();
+
+  state.latestRelayActivity.value = previous;
+});
+
 vi.mock('@vueuse/core', () => ({
   useEventBus: <T>() => createEventBus<T>(),
   useLocalStorage: <T>(_key: string, initial: T) => ref(initial),
+  useNow: () => ref(new Date()),
 }));
 
 vi.mock('pinia', async () => {
@@ -299,7 +317,8 @@ vi.mock('src/nutzap/useNutzapRelayTelemetry', () => ({
       latestRelayAlertLabel: state.latestRelayAlertLabel,
       relayNeedsAttention: state.relayNeedsAttention,
       relayActivityTimeline: state.relayActivityTimeline,
-      formatActivityTime: (timestamp: number) => String(timestamp),
+      formatActivityTime: (timestamp?: number) =>
+        typeof timestamp === 'number' ? String(timestamp) : 'Unknown time',
       activityLevelColor: () => 'primary',
       applyRelayUrlInput: vi.fn(),
       logRelayActivity: state.logRelayActivityMock,

@@ -93,4 +93,11 @@ describe('useNutzapRelayTelemetry', () => {
     expect(telemetry.relayUrlInputState.value).toBe('error');
     expect(telemetry.relayUrlInputMessage.value).toContain(FUNDSTR_WS_URL);
   });
+
+  it('returns a fallback label when formatting invalid timestamps', () => {
+    const telemetry = useNutzapRelayTelemetry();
+
+    expect(telemetry.formatActivityTime(undefined as unknown as number)).toBe('Unknown time');
+    expect(telemetry.formatActivityTime(NaN)).toBe('Unknown time');
+  });
 });
