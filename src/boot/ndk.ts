@@ -289,7 +289,9 @@ async function createReadOnlyNdk(opts: CreateReadOnlyOptions = {}): Promise<NDK>
       }
     });
   }
-  scheduleBootstrapFallback(ndk);
+  if (!fundstrOnly) {
+    scheduleBootstrapFallback(ndk);
+  }
   startRelayWatchdog(ndk);
   return ndk;
 }
@@ -333,8 +335,10 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
       }
     });
   }
-  await new Promise((r) => setTimeout(r, 3000));
-  await ensureFreeRelayFallback(ndk, "bootstrap");
+  if (!fundstrOnly) {
+    await new Promise((r) => setTimeout(r, 3000));
+    await ensureFreeRelayFallback(ndk, "bootstrap");
+  }
   startRelayWatchdog(ndk);
   return ndk;
 }
@@ -440,7 +444,15 @@ export async function syncNdkRelaysWithMode(ndk?: NDK) {
 export async function getNdk(): Promise<NDK> {
   if (ndkInstance) return ndkInstance;
   if (!ndkPromise) {
-    ndkPromise = createNdk().then((ndk) => {
+    const settings = useSettingsStore();
+    const shouldBootstrapFundstrOnly =
+      fundstrOnlyRuntimeOverride ||
+      settings?.relayBootstrapMode === "fundstr-only" ||
+      envFundstrOnlyRelaysEnabled();
+    const options: CreateReadOnlyOptions = shouldBootstrapFundstrOnly
+      ? { fundstrOnly: true }
+      : {};
+    ndkPromise = createNdk(options).then((ndk) => {
       ndkInstance = ndk;
       return ndk;
     });
