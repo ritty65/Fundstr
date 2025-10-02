@@ -77,8 +77,8 @@
             <div class="studio-activity" v-if="activeRelayActivity">
               <div class="text-caption text-2">Last activity</div>
               <div class="text-body2 text-1">{{ activeRelayActivity?.message }}</div>
-              <div class="text-caption text-2">
-                {{ activeRelayActivity && formatActivityTime(activeRelayActivity.time) }}
+              <div class="text-caption text-2" v-if="activeRelayActivityTimeLabel">
+                {{ activeRelayActivityTimeLabel }}
               </div>
             </div>
             <div class="studio-alert" v-if="activeRelayAlertLabel">
@@ -969,6 +969,13 @@ const {
 } = relayTelemetry;
 
 const activeRelayActivity = computed(() => latestRelayActivity.value);
+const activeRelayActivityTimeLabel = computed(() => {
+  const timestamp = activeRelayActivity.value?.timestamp;
+  if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) {
+    return '';
+  }
+  return formatActivityTime(timestamp);
+});
 const activeRelayAlertLabel = computed(() => latestRelayAlertLabel.value);
 
 relayNeedsAttentionRef = relayNeedsAttention;
