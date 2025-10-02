@@ -211,6 +211,7 @@ export const useCreatorsStore = defineStore("creators", {
         try {
           event = await queryNutzapTiers(hex, {
             fanout: Array.from(relayHints),
+            allowFanoutFallback: true,
           });
         } catch (e) {
           lastError = e;
@@ -225,6 +226,7 @@ export const useCreatorsStore = defineStore("creators", {
           if (relayHints.size) {
             event = await queryNutzapTiers(hex, {
               fanout: Array.from(relayHints),
+              allowFanoutFallback: true,
             });
           }
         } catch (e) {

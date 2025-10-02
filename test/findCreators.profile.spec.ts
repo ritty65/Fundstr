@@ -207,6 +207,7 @@ describe("FindCreators component behaviour", () => {
     expect(queryNutzapProfile).toHaveBeenNthCalledWith(1, "hex123");
     expect(queryNutzapProfile).toHaveBeenNthCalledWith(2, "hex123", {
       fanout: ["wss://fallback-relay"],
+      allowFanoutFallback: true,
     });
 
     expect(fetchTierDefinitions).toHaveBeenCalledWith("hex123", {

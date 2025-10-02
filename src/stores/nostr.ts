@@ -891,7 +891,10 @@ export async function fetchNutzapProfile(
     try {
       const discovered = await fallbackDiscoverRelays(hex);
       if (discovered.length) {
-        event = await queryNutzapProfile(hex, { fanout: discovered });
+        event = await queryNutzapProfile(hex, {
+          fanout: discovered,
+          allowFanoutFallback: true,
+        });
       }
     } catch (e) {
       lastError = e;

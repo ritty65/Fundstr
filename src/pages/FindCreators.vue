@@ -332,6 +332,7 @@ async function fetchProfileWithFallback(pubkeyInput: string) {
       if (relayHints.size) {
         event = await queryNutzapProfile(hex, {
           fanout: Array.from(relayHints),
+          allowFanoutFallback: true,
         });
       }
     } catch (e) {

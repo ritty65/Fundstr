@@ -18,10 +18,16 @@ export type QueryOptions = {
   fanout?: string[];
   wsTimeoutMs?: number;
   httpBase?: string;
+  /**
+   * When `preferFundstr` is true, opt into querying the fan-out pool when
+   * Fundstr returns no data or errors. Defaults to `false` so Nutzap flows stay
+   * pinned to the first-party relay unless explicitly requested.
+   */
+  allowFanoutFallback?: boolean;
 };
 
 type RequiredQueryOptions = Required<
-  Pick<QueryOptions, "wsTimeoutMs" | "httpBase"> & {
+  Pick<QueryOptions, "wsTimeoutMs" | "httpBase" | "allowFanoutFallback"> & {
     fanout: string[];
     preferFundstr: boolean;
   }
@@ -376,20 +382,22 @@ export async function queryNostr(
     fanout: uniqueUrls(opts.fanout ?? []),
     wsTimeoutMs: opts.wsTimeoutMs ?? 1500, // 1.5s Fundstr-first deadline
     httpBase: opts.httpBase ?? FUNDSTR.http,
+    allowFanoutFallback: opts.allowFanoutFallback ?? false,
   };
 
   const collected: NostrEvent[] = [];
 
   if (options.preferFundstr) {
+    let fundstrEvents: NostrEvent[] = [];
     try {
-      const fundstrEvents = await tryWsFirstThenHttp(
+      fundstrEvents = await tryWsFirstThenHttp(
         normalizedFilters,
         FUNDSTR.ws,
         options.httpBase,
         options.wsTimeoutMs,
       );
       collected.push(...fundstrEvents);
-      if (!fundstrEvents.length) {
+      if (!fundstrEvents.length && options.allowFanoutFallback) {
         const more = await queryWsPool(
           [...options.fanout, ...PUBLIC_POOL],
           normalizedFilters,
@@ -398,6 +406,9 @@ export async function queryNostr(
         collected.push(...more);
       }
     } catch (e) {
+      if (!options.allowFanoutFallback) {
+        throw e instanceof Error ? e : new Error(String(e));
+      }
       const more = await queryWsPool(
         [...options.fanout, ...PUBLIC_POOL],
         normalizedFilters,
@@ -464,9 +475,14 @@ export async function publishNostr(
   return json;
 }
 
+type NutzapQueryOptions = {
+  fanout?: string[];
+  allowFanoutFallback?: boolean;
+};
+
 export async function queryNutzapProfile(
   pubkeyInput: string,
-  opts: { fanout?: string[] } = {},
+  opts: NutzapQueryOptions = {},
 ): Promise<NostrEvent | null> {
   const pubkey = toHex(pubkeyInput);
   const filters: Filter[] = [
@@ -475,13 +491,14 @@ export async function queryNutzapProfile(
   const events = await queryNostr(filters, {
     preferFundstr: true,
     fanout: opts.fanout,
+    allowFanoutFallback: opts.allowFanoutFallback ?? false,
   });
   return pickLatestReplaceable(events, { kind: 10019, pubkey });
 }
 
 export async function queryNutzapTiers(
   pubkeyInput: string,
-  opts: { fanout?: string[] } = {},
+  opts: NutzapQueryOptions = {},
 ): Promise<NostrEvent | null> {
   const pubkey = toHex(pubkeyInput);
   const filters: Filter[] = [
@@ -495,6 +512,7 @@ export async function queryNutzapTiers(
   const events = await queryNostr(filters, {
     preferFundstr: true,
     fanout: opts.fanout,
+    allowFanoutFallback: opts.allowFanoutFallback ?? false,
   });
   return pickLatestAddrReplaceable(events, {
     kind: [30019, 30000],
