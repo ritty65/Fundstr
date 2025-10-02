@@ -76,7 +76,7 @@ function normalizeRelayUrl(url?: string): string {
   return (url ?? '').replace(/\s+/g, '').replace(/\/+$/, '').toLowerCase();
 }
 
-const MAX_LOG_ENTRIES = 200;
+export const FUNDSTR_RELAY_LOG_LIMIT = 200;
 const MAX_RECONNECT_DELAY_MS = 30000;
 const INITIAL_RECONNECT_DELAY_MS = 500;
 const DEFAULT_HTTP_ACCEPT =
@@ -338,8 +338,8 @@ export class FundstrRelayClient {
     const feed = ref(this.logRef.value.slice());
     const stop = this.onLog(entry => {
       feed.value = [...feed.value, entry];
-      if (feed.value.length > MAX_LOG_ENTRIES) {
-        feed.value = feed.value.slice(-MAX_LOG_ENTRIES);
+      if (feed.value.length > FUNDSTR_RELAY_LOG_LIMIT) {
+        feed.value = feed.value.slice(-FUNDSTR_RELAY_LOG_LIMIT);
       }
     });
 
@@ -1170,7 +1170,7 @@ export class FundstrRelayClient {
       ...(details === undefined ? {} : { details }),
     };
     const next = [...this.logRef.value, entry];
-    this.logRef.value = next.slice(-MAX_LOG_ENTRIES);
+    this.logRef.value = next.slice(-FUNDSTR_RELAY_LOG_LIMIT);
     for (const listener of this.logListeners) {
       try {
         listener(entry);
@@ -1191,12 +1191,78 @@ export class FundstrRelayClient {
   }
 }
 
-export const fundstrRelayClient = new FundstrRelayClient(NUTZAP_RELAY_WSS);
+const DEFAULT_RELAY_URL = NUTZAP_RELAY_WSS;
+const DEFAULT_RELAY_KEY = normalizeRelayUrl(DEFAULT_RELAY_URL) || '__fundstr-default-relay__';
+
+const relayClientCache = new Map<string, FundstrRelayClient>();
+
+const statusBridge = ref<FundstrRelayStatus>('connecting');
+const logBridge = ref<FundstrRelayLogEntry[]>([]);
+
+let stopStatusBridge: (() => void) | null = null;
+let stopLogBridge: (() => void) | null = null;
+
+function attachActiveClient(client: FundstrRelayClient) {
+  if (stopStatusBridge) {
+    stopStatusBridge();
+    stopStatusBridge = null;
+  }
+  if (stopLogBridge) {
+    stopLogBridge();
+    stopLogBridge = null;
+  }
+
+  const entries: FundstrRelayLogEntry[] = [];
+  logBridge.value = [];
+
+  stopStatusBridge = client.onStatusChange(status => {
+    statusBridge.value = status;
+  });
+
+  stopLogBridge = client.onLog(entry => {
+    entries.push(entry);
+    if (entries.length > FUNDSTR_RELAY_LOG_LIMIT) {
+      entries.splice(0, entries.length - FUNDSTR_RELAY_LOG_LIMIT);
+    }
+    logBridge.value = entries.slice();
+  });
+}
+
+function resolveRelayConfig(relayUrl?: string): { key: string; url: string } {
+  const candidate = typeof relayUrl === 'string' && relayUrl.trim() ? relayUrl : DEFAULT_RELAY_URL;
+  const normalized = normalizeRelayUrl(candidate);
+  const key = normalized || DEFAULT_RELAY_KEY;
+  return { key, url: candidate };
+}
+
+function getOrCreateClient(key: string, url: string): FundstrRelayClient {
+  let client = relayClientCache.get(key);
+  if (!client) {
+    client = new FundstrRelayClient(url);
+    relayClientCache.set(key, client);
+  }
+  return client;
+}
+
+const initialRelayClient = getOrCreateClient(DEFAULT_RELAY_KEY, DEFAULT_RELAY_URL);
+attachActiveClient(initialRelayClient);
+
+export let fundstrRelayClient = initialRelayClient;
+
+export function setFundstrRelayUrl(relayUrl?: string): FundstrRelayClient {
+  const { key, url } = resolveRelayConfig(relayUrl);
+  const nextClient = getOrCreateClient(key, url);
+  if (fundstrRelayClient !== nextClient) {
+    fundstrRelayClient = nextClient;
+    attachActiveClient(nextClient);
+  }
+  return fundstrRelayClient;
+}
 
 export function useFundstrRelayStatus(): Readonly<Ref<FundstrRelayStatus>> {
-  return fundstrRelayClient.useStatus();
+  return readonly(statusBridge);
 }
 
 export function useFundstrRelayLogFeed(): Readonly<Ref<FundstrRelayLogEntry[]>> {
-  return fundstrRelayClient.useLogFeed();
+  return readonly(logBridge);
 }

@@ -706,29 +706,59 @@ const lastExportTiers = ref('');
 
 const relayClientRef = shallowRef<FundstrRelayClient | null>(null);
 let relayClientPromise: Promise<FundstrRelayClient> | null = null;
+let relayClientInitSequence = 0;
+let activeRelayUrl = FUNDSTR_WS_URL;
+let resolvedRelayUrl: string | null = null;
 
-function setResolvedRelayClient(client: FundstrRelayClient): FundstrRelayClient {
-  relayClientRef.value = client;
+function setResolvedRelayClient(
+  client: FundstrRelayClient,
+  sequence: number,
+  url: string
+): FundstrRelayClient {
+  if (sequence === relayClientInitSequence) {
+    relayClientRef.value = client;
+    resolvedRelayUrl = url;
+  }
   return client;
 }
 
-function ensureRelayClientInitialized(): Promise<FundstrRelayClient> {
-  if (!relayClientPromise) {
-    relayClientPromise = ensureFundstrRelayClient().then(setResolvedRelayClient);
+function ensureRelayClientInitialized(targetUrl = activeRelayUrl): Promise<FundstrRelayClient> {
+  const sanitized = typeof targetUrl === 'string' && targetUrl.trim() ? targetUrl : FUNDSTR_WS_URL;
+
+  if (relayClientRef.value && resolvedRelayUrl === sanitized) {
+    activeRelayUrl = sanitized;
+    return Promise.resolve(relayClientRef.value);
   }
-  return relayClientPromise;
+
+  if (relayClientPromise && sanitized === activeRelayUrl) {
+    return relayClientPromise;
+  }
+
+  activeRelayUrl = sanitized;
+  const sequence = ++relayClientInitSequence;
+  const promise = ensureFundstrRelayClient(sanitized)
+    .then(client => setResolvedRelayClient(client, sequence, sanitized))
+    .catch(err => {
+      if (relayClientPromise === promise) {
+        relayClientPromise = null;
+      }
+      throw err;
+    });
+  relayClientPromise = promise;
+  return promise;
 }
 
 async function getRelayClient(): Promise<FundstrRelayClient> {
-  const existing = relayClientRef.value;
-  if (existing) {
-    return existing;
+  if (relayClientRef.value && resolvedRelayUrl === activeRelayUrl) {
+    return relayClientRef.value;
   }
-  return await ensureRelayClientInitialized();
+  return await ensureRelayClientInitialized(activeRelayUrl);
 }
 
 function getRelayClientIfReady(): FundstrRelayClient | null {
-  return relayClientRef.value;
+  return relayClientRef.value && resolvedRelayUrl === activeRelayUrl
+    ? relayClientRef.value
+    : null;
 }
 
 const p2pkStore = useP2PKStore();
@@ -1014,6 +1044,8 @@ const {
   logRelayActivity,
 } = relayTelemetry;
 
+activeRelayUrl = relayConnectionUrl.value || FUNDSTR_WS_URL;
+
 const activeRelayActivity = computed(() => latestRelayActivity.value);
 const activeRelayActivityTimeLabel = computed(() => {
   const timestamp = activeRelayActivity.value?.timestamp;
@@ -1033,6 +1065,54 @@ watch(
     if (!needsAttention && diagnosticsAttention.value?.source === 'relay') {
       dismissDiagnosticsAttention();
     }
+  }
+);
+
+watch(
+  relayConnectionUrl,
+  nextUrl => {
+    const sanitized = typeof nextUrl === 'string' && nextUrl.trim() ? nextUrl : FUNDSTR_WS_URL;
+
+    if (resolvedRelayUrl === sanitized && relayClientRef.value) {
+      activeRelayUrl = sanitized;
+      return;
+    }
+
+    if (relayClientRef.value && resolvedRelayUrl) {
+      cleanupSubscriptions();
+    }
+
+    if (stopRelayStatusListener) {
+      stopRelayStatusListener();
+      stopRelayStatusListener = null;
+    }
+
+    hasRelayConnected = false;
+    reloadAfterReconnect = false;
+    relayClientRef.value = null;
+    resolvedRelayUrl = null;
+    relayClientPromise = null;
+    activeRelayUrl = sanitized;
+
+    const sequence = ++relayReconfigureSequence;
+
+    ensureRelayClientInitialized(sanitized)
+      .then(async client => {
+        if (sequence !== relayReconfigureSequence) {
+          return;
+        }
+        attachRelayStatusListener(client);
+        if (activeAuthorHex) {
+          try {
+            await setupSubscriptions(activeAuthorHex);
+          } catch (err) {
+            console.warn('[nutzap] failed to refresh subscriptions after relay change', err);
+          }
+        }
+      })
+      .catch(err => {
+        console.warn('[nutzap] failed to reinitialize relay client', err);
+      });
   }
 );
 
@@ -1443,6 +1523,7 @@ let stopRelayStatusListener: (() => void) | null = null;
 let hasRelayConnected = false;
 let reloadAfterReconnect = false;
 let activeAuthorHex: string | null = null;
+let relayReconfigureSequence = 0;
 
 const mintList = computed(() => {
   const composerEntries = mintsText.value
@@ -2260,7 +2341,8 @@ function ensureRelayStatusListenerOnce() {
     return;
   }
 
-  void ensureRelayClientInitialized()
+  const targetUrl = relayConnectionUrl.value || FUNDSTR_WS_URL;
+  void ensureRelayClientInitialized(targetUrl)
     .then(client => {
       attachRelayStatusListener(client);
     })
@@ -2519,13 +2601,16 @@ async function publishAll() {
       try {
         const result = await publishTiersToRelay(tiers.value, tierKind.value, {
           send: publishEventToRelay,
+          relayUrl: relayConnectionUrl.value || FUNDSTR_WS_URL,
         });
         return { result, usedFallback: false as const };
       } catch (err) {
         if (!shouldUseHttpFallback(err)) {
           throw err;
         }
-        const fallbackResult = await publishTiersToRelay(tiers.value, tierKind.value);
+        const fallbackResult = await publishTiersToRelay(tiers.value, tierKind.value, {
+          relayUrl: relayConnectionUrl.value || FUNDSTR_WS_URL,
+        });
         const reason = describeFallbackReason(err);
         fallbackNotices.push(
           `Tiers publish used HTTP fallback${reason ? ` — ${reason}` : ''}.`
@@ -2578,13 +2663,18 @@ async function publishAll() {
 
     const profileOutcome = await (async () => {
       try {
-        const result = await publishNostrEvent(profileTemplate, { send: publishEventToRelay });
+        const result = await publishNostrEvent(profileTemplate, {
+          send: publishEventToRelay,
+          relayUrl: relayConnectionUrl.value || FUNDSTR_WS_URL,
+        });
         return { result, usedFallback: false as const };
       } catch (err) {
         if (!shouldUseHttpFallback(err)) {
           throw err;
         }
-        const fallbackClient = await ensureRelayClientInitialized();
+        const fallbackClient = await ensureRelayClientInitialized(
+          relayConnectionUrl.value || FUNDSTR_WS_URL
+        );
         const fallbackResult = await fallbackClient.publish(profileTemplate);
         const reason = describeFallbackReason(err);
         fallbackNotices.push(
@@ -2727,7 +2817,8 @@ onMounted(() => {
     void loadAll();
   }
   if (relaySupported) {
-    void ensureRelayClientInitialized()
+    const initialRelayUrl = relayConnectionUrl.value || FUNDSTR_WS_URL;
+    void ensureRelayClientInitialized(initialRelayUrl)
       .then(() => {
         connectRelay();
       })

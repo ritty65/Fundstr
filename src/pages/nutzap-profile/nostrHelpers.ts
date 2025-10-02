@@ -37,18 +37,24 @@ export type NostrEvent = {
 
 export type PublishNostrEventOptions = {
   send?: (event: NostrEvent) => Promise<FundstrRelayPublishAck>;
+  relayUrl?: string;
 };
 
-let fundstrRelayClientPromise: Promise<FundstrRelayClient> | null = null;
+let relayClientModulePromise: Promise<typeof import('src/nutzap/relayClient')> | null = null;
 
-export async function ensureFundstrRelayClient(): Promise<FundstrRelayClient> {
-  if (!fundstrRelayClientPromise) {
-    fundstrRelayClientPromise = import('src/nutzap/relayClient').then(
-      module => module.fundstrRelayClient
-    );
+async function loadRelayClientModule() {
+  if (!relayClientModulePromise) {
+    relayClientModulePromise = import('src/nutzap/relayClient');
   }
+  return relayClientModulePromise;
+}
 
-  return fundstrRelayClientPromise;
+export async function ensureFundstrRelayClient(
+  relayUrl?: string
+): Promise<FundstrRelayClient> {
+  const module = await loadRelayClientModule();
+  const sanitized = typeof relayUrl === 'string' && relayUrl.trim() ? relayUrl : FUNDSTR_WS_URL;
+  return module.setFundstrRelayUrl(sanitized);
 }
 
 export type NostrFilter = {
@@ -130,7 +136,7 @@ export async function publishNostrEvent(
   options?: PublishNostrEventOptions
 ): Promise<FundstrRelayPublishResult> {
   if (!options?.send) {
-    const client = await ensureFundstrRelayClient();
+    const client = await ensureFundstrRelayClient(options?.relayUrl);
     return client.publish(template);
   }
 
