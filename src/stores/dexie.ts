@@ -8,6 +8,7 @@ import { useProofsStore } from "./proofs";
 import { notifyError, notifySuccess } from "../js/notify";
 import type { NostrEvent } from "@nostr-dev-kit/ndk";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
+import type { NutzapProfileDetails } from "@/nutzap/profileCache";
 
 export interface CachedProfileDexie {
   pubkey: string;
@@ -22,6 +23,15 @@ export interface CreatorTierDefinition {
   tiers: Tier[];
   eventId: string;
   updatedAt: number;
+  /** Raw Nostr event JSON string */
+  rawEventJson?: string;
+}
+
+export interface NutzapProfileCacheEntry {
+  pubkey: string;
+  profile: NutzapProfileDetails | null;
+  eventId?: string | null;
+  updatedAt?: number | null;
   /** Raw Nostr event JSON string */
   rawEventJson?: string;
 }
@@ -115,6 +125,7 @@ export class CashuDexie extends Dexie {
   proofs!: Table<WalletProof>;
   profiles!: Table<CachedProfileDexie>;
   creatorsTierDefinitions!: Table<CreatorTierDefinition, string>;
+  nutzapProfiles!: Table<NutzapProfileCacheEntry, string>;
   subscriptions!: Table<Subscription, string>;
   lockedTokens!: Table<LockedToken, string>;
   subscriberViews!: Table<SubscriberView, string>;
@@ -588,6 +599,20 @@ export class CashuDexie extends Dexie {
         "&id, tokenString, owner, tierId, intervalKey, unlockTs, status, subscriptionEventId, subscriptionId, monthIndex, totalPeriods, autoRedeem, frequency, intervalDays",
       subscriberViews: "&name",
       subscriberViewPrefs: "&id",
+    });
+
+    this.version(24).stores({
+      proofs:
+        "secret, id, C, amount, reserved, quote, bucketId, label, description",
+      profiles: "pubkey",
+      creatorsTierDefinitions: "&creatorNpub, eventId, updatedAt",
+      subscriptions:
+        "&id, creatorNpub, tierId, status, createdAt, updatedAt, frequency, intervalDays",
+      lockedTokens:
+        "&id, tokenString, owner, tierId, intervalKey, unlockTs, status, subscriptionEventId, subscriptionId, monthIndex, totalPeriods, autoRedeem, frequency, intervalDays",
+      subscriberViews: "&name",
+      subscriberViewPrefs: "&id",
+      nutzapProfiles: "&pubkey, updatedAt, eventId",
     });
   }
 }
