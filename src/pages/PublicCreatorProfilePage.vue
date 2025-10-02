@@ -136,7 +136,14 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, computed, watch } from "vue";
+import {
+  defineComponent,
+  ref,
+  onMounted,
+  onBeforeUnmount,
+  computed,
+  watch,
+} from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useCreatorsStore } from "stores/creators";
 import { useNostrStore } from "stores/nostr";
@@ -300,9 +307,12 @@ export default defineComponent({
       router.push({ path: '/welcome', query: { redirect: route.fullPath } })
     }
 
+    let usedFundstrOnly = false;
+
     onMounted(async () => {
       try {
-        await nostr.initNdkReadOnly()
+        await nostr.initNdkReadOnly({ fundstrOnly: true })
+        usedFundstrOnly = true
       } catch (e) {
         // ignore
       }
@@ -327,6 +337,15 @@ export default defineComponent({
         const stop = watch(tiers, () => {
           if (tryOpen()) stop()
         })
+      }
+    })
+
+    onBeforeUnmount(() => {
+      if (usedFundstrOnly) {
+        usedFundstrOnly = false
+        void nostr
+          .initNdkReadOnly({ fundstrOnly: false })
+          .catch(() => {})
       }
     })
 

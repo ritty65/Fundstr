@@ -198,6 +198,7 @@ const route = useRoute();
 const { t } = useI18n();
 const $q = useQuasar();
 const tiers = computed(() => creators.tiersMap[dialogPubkey.value] || []);
+let usedFundstrOnly = false;
 const tierFetchError = computed(() => creators.tierFetchError);
 const showSubscribeDialog = ref(false);
 const selectedTier = ref<any>(null);
@@ -546,13 +547,18 @@ function handleDonate({
 onMounted(async () => {
   window.addEventListener("message", onMessage);
   iframeEl.value?.addEventListener("load", onIframeLoad);
+  const npub = route.query.npub;
   try {
-    await nostr.initNdkReadOnly();
+    if (typeof npub === "string" && npub) {
+      await nostr.initNdkReadOnly({ fundstrOnly: true });
+      usedFundstrOnly = true;
+    } else {
+      await nostr.initNdkReadOnly();
+    }
   } catch (e: any) {
     notifyWarning("Failed to connect to Nostr relays", e?.message);
   }
 
-  const npub = route.query.npub;
   if (typeof npub === "string" && npub) {
     try {
       nip19.decode(npub);
@@ -584,6 +590,12 @@ onBeforeUnmount(() => {
   if (tierTimeout) clearTimeout(tierTimeout);
   nutzapProfile.value = null;
   loadingProfile.value = false;
+  if (usedFundstrOnly) {
+    usedFundstrOnly = false;
+    void nostr
+      .initNdkReadOnly({ fundstrOnly: false })
+      .catch(() => {});
+  }
 });
 </script>
 

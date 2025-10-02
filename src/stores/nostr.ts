@@ -1349,6 +1349,7 @@ export const useNostrStore = defineStore("nostr", {
       reconnectFailures: 0,
       failedRelays: [] as string[],
       connectedRelays: new Set<string>(),
+      readOnlyMode: "default" as "default" | "fundstr-only",
       cachedNip07Relays: null as string[] | null,
       pendingGetRelays: null as Promise<Record<string, any> | null> | null,
       lastNip04EventTimestamp,
@@ -1469,14 +1470,33 @@ export const useNostrStore = defineStore("nostr", {
       );
       this.secureStorageLoaded = true;
     },
-    initNdkReadOnly: async function () {
+    initNdkReadOnly: async function (
+      opts: { fundstrOnly?: boolean } = {},
+    ) {
       await this.loadKeysFromStorage();
-      const ndk = await useNdk({ requireSigner: false });
-      if (this.connected) return;
+      const requestedMode =
+        opts.fundstrOnly === true
+          ? "fundstr-only"
+          : opts.fundstrOnly === false
+            ? "default"
+            : undefined;
+      const desiredMode = requestedMode ?? this.readOnlyMode ?? "default";
+      const modeChanged = this.readOnlyMode !== desiredMode;
+      const ndk = await useNdk({
+        requireSigner: false,
+        fundstrOnly: opts.fundstrOnly,
+      });
+      if (modeChanged) {
+        this.connected = false;
+        this.connectedRelays.clear();
+      } else if (this.connected) {
+        return;
+      }
       try {
         await ndk.connect();
         this.lastError = null;
         this.connectionFailed = false;
+        this.readOnlyMode = desiredMode;
         ndk.pool.on("relay:connect", (r: any) => {
           this.connectedRelays.add(r.url);
           this.connected = this.connectedRelays.size > 0;

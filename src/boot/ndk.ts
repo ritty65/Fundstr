@@ -49,7 +49,16 @@ function envFundstrOnlyRelaysEnabled(): boolean {
   return value === "true" || value === true;
 }
 
+let fundstrOnlyRuntimeOverride = false;
+
+export function setFundstrOnlyRuntimeOverride(enabled: boolean) {
+  fundstrOnlyRuntimeOverride = enabled;
+}
+
 function isFundstrOnlyRelayModeActive(settings = useSettingsStore()): boolean {
+  if (fundstrOnlyRuntimeOverride) {
+    return true;
+  }
   if (settings?.relayBootstrapMode === "fundstr-only") {
     return true;
   }
@@ -231,7 +240,11 @@ export async function safeConnect(
   return lastError;
 }
 
-async function createReadOnlyNdk(): Promise<NDK> {
+export type CreateReadOnlyOptions = {
+  fundstrOnly?: boolean;
+};
+
+async function createReadOnlyNdk(opts: CreateReadOnlyOptions = {}): Promise<NDK> {
   const settings = useSettingsStore();
   if (!Array.isArray(settings.defaultNostrRelays)) {
     settings.defaultNostrRelays = DEFAULT_RELAYS;
@@ -240,7 +253,8 @@ async function createReadOnlyNdk(): Promise<NDK> {
     ? settings.defaultNostrRelays
     : [];
   const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
-  const fundstrOnly = isFundstrOnlyRelayModeActive(settings);
+  const fundstrOnly =
+    opts.fundstrOnly ?? isFundstrOnlyRelayModeActive(settings);
   const bootstrapRelays = fundstrOnly
     ? [FUNDSTR_PRIMARY_RELAY]
     : relays;
@@ -249,7 +263,9 @@ async function createReadOnlyNdk(): Promise<NDK> {
     : filterHealthyRelays(relays).catch(() => []);
   const ndk = new NDK({ explicitRelayUrls: bootstrapRelays });
   attachRelayErrorHandlers(ndk);
-  mergeDefaultRelays(ndk);
+  if (!opts.fundstrOnly) {
+    mergeDefaultRelays(ndk);
+  }
   mustConnectRequiredRelays(ndk);
   await safeConnect(ndk);
   if (!fundstrOnly) {
@@ -323,14 +339,16 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
   return ndk;
 }
 
-export async function createNdk(): Promise<NDK> {
+export async function createNdk(
+  options: CreateReadOnlyOptions = {},
+): Promise<NDK> {
   const nostrStore = useNostrStore();
   await nostrStore.initSignerIfNotSet();
   const signer = nostrStore.signer;
 
-  if (!signer) {
+  if (!signer || options.fundstrOnly) {
     console.info("Creating read-only NDK (no signer)");
-    return createReadOnlyNdk();
+    return createReadOnlyNdk(options);
   }
 
   const settings = useSettingsStore();
