@@ -355,6 +355,11 @@
       const pool = new SimplePool({ eoseSubTimeout: 8000 });
       let currentSearchAbortController = null;
       let lastSearchQuery = "";
+      let currentSearchProfiles = new Map();
+      let hasInitialRender = false;
+      let viewProfileNotified = false;
+
+      const EMPTY_RESULT_CODE = "EMPTY_RESULT";
 
       let relayFailureCount = 0;
       async function refreshRelays() {
@@ -444,6 +449,103 @@
         return promise;
       }
 
+      function initializeSearchState() {
+        currentSearchProfiles = new Map();
+        hasInitialRender = false;
+        viewProfileNotified = false;
+        resultsListElement.textContent = "";
+        statusMessageElement.textContent = "";
+        statusMessageElement.classList.add("hidden");
+        retryButtonElement.classList.add("hidden");
+      }
+
+      function mergeProfilesIntoCurrent(profiles) {
+        let changed = false;
+        profiles.forEach((profile) => {
+          if (!profile || !profile.pubkey) return;
+          const existing = currentSearchProfiles.get(profile.pubkey);
+          const existingCreatedAt = existing?.event?.created_at ?? 0;
+          const nextCreatedAt = profile?.event?.created_at ?? 0;
+          if (!existing || nextCreatedAt >= existingCreatedAt) {
+            currentSearchProfiles.set(profile.pubkey, profile);
+            changed = true;
+          }
+        });
+        return changed;
+      }
+
+      function applyProfiles(profiles, { notifyView = false, targetPubkey } = {}) {
+        if (!Array.isArray(profiles) || profiles.length === 0) return;
+        const updated = mergeProfilesIntoCurrent(profiles);
+        if (!updated && hasInitialRender) return;
+
+        const orderedProfiles = Array.from(currentSearchProfiles.values());
+        renderProfiles(orderedProfiles, resultsListElement, false);
+
+        if (!hasInitialRender) {
+          hasInitialRender = true;
+          updateStatus("", true);
+          loaderElement.style.display = "none";
+          if (notifyView && targetPubkey && !viewProfileNotified) {
+            window.parent.postMessage(
+              { type: "viewProfile", pubkey: targetPubkey },
+              "*",
+            );
+            viewProfileNotified = true;
+          }
+        } else if (notifyView && targetPubkey && !viewProfileNotified) {
+          window.parent.postMessage(
+            { type: "viewProfile", pubkey: targetPubkey },
+            "*",
+          );
+          viewProfileNotified = true;
+        }
+      }
+
+      function observeProfilesPromise(
+        promise,
+        signal,
+        { notifyView = false, targetPubkey, sourceLabel } = {},
+      ) {
+        promise
+          .then((profiles) => {
+            if (signal.aborted) return;
+            const normalized = Array.isArray(profiles) ? profiles : [];
+            if (normalized.length > 0) {
+              applyProfiles(normalized, { notifyView, targetPubkey });
+            }
+          })
+          .catch((error) => {
+            if (error.name === "AbortError") return;
+            if (sourceLabel) {
+              console.error(`${sourceLabel} profile fetch failed:`, error);
+            } else {
+              console.error("Profile fetch failed:", error);
+            }
+          });
+        return promise;
+      }
+
+      function firstNonEmptyPromise(promise, signal, label) {
+        return promise.then((profiles) => {
+          if (signal.aborted)
+            throw new DOMException("Aborted", "AbortError");
+          const normalized = Array.isArray(profiles) ? profiles : [];
+          if (normalized.length > 0) {
+            return { profiles: normalized, label };
+          }
+          const error = new Error(`${label}-empty`);
+          error.code = EMPTY_RESULT_CODE;
+          throw error;
+        });
+      }
+
+      function updateStatusIfPending(message) {
+        if (!hasInitialRender) {
+          updateStatus(message);
+        }
+      }
+
       async function handleSearch(query) {
         const cleanQuery = query.trim();
         lastSearchQuery = cleanQuery;
@@ -454,9 +556,7 @@
         currentSearchAbortController = new AbortController();
         const { signal } = currentSearchAbortController;
 
-        resultsListElement.textContent = "";
-        statusMessageElement.classList.add("hidden");
-        retryButtonElement.classList.add("hidden");
+        initializeSearchState();
         loaderElement.style.display = "block";
 
         if (!cleanQuery) {
@@ -490,18 +590,40 @@
 
           updateStatus(`Searching relays for "${cleanQuery}"...`);
           const filter = { kinds: [0], search: cleanQuery, limit: 25 };
-          const profiles = await fetchProfilesFromRelays(
-            RELAYS,
-            filter,
+          const fundstrPromise = observeProfilesPromise(
+            fetchProfilesFromFundstr(filter, signal),
             signal,
+            { sourceLabel: "Fundstr relay" },
           );
-          if (signal.aborted) return;
+          const pooledPromise = observeProfilesPromise(
+            fetchProfilesFromRelays(RELAYS, filter, signal),
+            signal,
+            { sourceLabel: "Relay pool" },
+          );
 
-          if (profiles.length > 0) {
-            renderProfiles(profiles, resultsListElement, false);
-            updateStatus("", true);
-          } else {
-            updateStatus("No profiles found matching your search.");
+          try {
+            await Promise.any([
+              firstNonEmptyPromise(fundstrPromise, signal, "fundstr"),
+              firstNonEmptyPromise(pooledPromise, signal, "relay-pool"),
+            ]);
+          } catch (error) {
+            if (signal.aborted) return;
+            if (error.name === "AggregateError") {
+              const aggregateErrors = Array.isArray(error.errors)
+                ? error.errors
+                : [];
+              const nonEmptyErrors = aggregateErrors.filter(
+                (err) => err && err.code !== EMPTY_RESULT_CODE,
+              );
+              if (nonEmptyErrors.length > 0) {
+                throw nonEmptyErrors[0];
+              }
+              if (!hasInitialRender) {
+                updateStatus(`No profiles found matching your search.`);
+              }
+            } else {
+              throw error;
+            }
           }
         } catch (error) {
           if (error.name !== "AbortError") {
@@ -515,99 +637,144 @@
             updateStatus(msg, false, true);
           }
         } finally {
-          if (!signal.aborted) {
+          if (!signal.aborted && !hasInitialRender) {
             loaderElement.style.display = "none";
           }
         }
       }
 
       async function findProfileByPubkey(pubkey, signal) {
-        // Tier 1: Search known relays
+        initializeSearchState();
+        loaderElement.style.display = "block";
+
+        const filter = { kinds: [0], authors: [pubkey] };
+        const watchOptions = { notifyView: true, targetPubkey: pubkey };
+
         updateStatus("Searching known relays for profile...");
-        let profiles = await fetchProfilesFromRelays(
-          RELAYS,
-          { kinds: [0], authors: [pubkey] },
+
+        const fundstrPromise = observeProfilesPromise(
+          fetchProfilesFromFundstr(filter, signal),
           signal,
+          { ...watchOptions, sourceLabel: "Fundstr relay" },
         );
-        if (signal.aborted) return;
-        if (profiles.length > 0) {
-          renderProfiles(profiles, resultsListElement, false);
-          updateStatus("", true);
-          window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
-          return;
-        }
+        const knownRelayPromise = observeProfilesPromise(
+          fetchProfilesFromRelays(RELAYS, filter, signal),
+          signal,
+          { ...watchOptions, sourceLabel: "Known relays" },
+        );
 
-        // Tier 2: Discover user's personal relays (kind: 10002) from known relays
-        updateStatus("Profile not found. Discovering user's relays...");
-        const userRelays = await findUserRelayList(pubkey, signal);
-        if (signal.aborted) return;
-        if (userRelays.length > 0) {
-          updateStatus(
-            `Searching ${userRelays.length} newly discovered relays...`,
-          );
-          profiles = await fetchProfilesFromRelays(
-            userRelays,
-            { kinds: [0], authors: [pubkey] },
-            signal,
-          );
-          if (signal.aborted) return;
-          if (profiles.length > 0) {
-            renderProfiles(profiles, resultsListElement, false);
-            updateStatus("", true);
-            window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
-            return;
+        try {
+          try {
+            await Promise.any([
+              firstNonEmptyPromise(fundstrPromise, signal, "fundstr"),
+              firstNonEmptyPromise(
+                knownRelayPromise,
+                signal,
+                "known-relays",
+              ),
+            ]);
+          } catch (error) {
+            if (signal.aborted) return;
+            if (error.name === "AggregateError") {
+              const aggregateErrors = Array.isArray(error.errors)
+                ? error.errors
+                : [];
+              const nonEmptyErrors = aggregateErrors.filter(
+                (err) => err && err.code !== EMPTY_RESULT_CODE,
+              );
+              if (nonEmptyErrors.length > 0) {
+                throw nonEmptyErrors[0];
+              }
+            } else {
+              throw error;
+            }
           }
-        }
 
-        // Tier 3: Use nostr.band indexer to find where user is active
-        updateStatus(
-          "Still not found. Consulting nostr.band indexer for relay locations...",
-        );
-        const indexedRelays = await fetchRelayListFromIndexer(pubkey, signal);
-        if (signal.aborted) return;
-        if (indexedRelays.length > 0) {
-          updateStatus(
-            `Found ${indexedRelays.length} potential relays from indexer. Searching...`,
-          );
-          profiles = await fetchProfilesFromRelays(
-            indexedRelays,
-            { kinds: [0], authors: [pubkey] },
-            signal,
-          );
           if (signal.aborted) return;
-          if (profiles.length > 0) {
-            renderProfiles(profiles, resultsListElement, false);
-            updateStatus("", true);
-            window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
-            return;
+
+          updateStatusIfPending("Profile not found. Discovering user's relays...");
+          const userRelays = await findUserRelayList(pubkey, signal);
+          if (signal.aborted) return;
+
+          if (userRelays.length > 0) {
+            updateStatusIfPending(
+              `Searching ${userRelays.length} newly discovered relays...`,
+            );
+            const userRelayPromise = observeProfilesPromise(
+              fetchProfilesFromRelays(userRelays, filter, signal),
+              signal,
+              { ...watchOptions, sourceLabel: "Discovered relays" },
+            );
+            await userRelayPromise;
+            if (signal.aborted) return;
           }
-        }
 
-        // Tier 4: Fallback to nostr.band indexer for the profile content
-        updateStatus("Still not found. Checking nostr.band directly...");
-        let profile = await fetchProfileFromIndexer(pubkey, signal);
-        if (signal.aborted) return;
-        if (profile) {
-          renderProfiles([profile], resultsListElement, false);
-          updateStatus("", true);
-          window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
-          return;
-        }
-
-        // Tier 5: The ultimate fallback, query the Primal.net API
-        updateStatus(
-          "Last attempt: Consulting Primal, the most powerful indexer...",
-        );
-        profile = await fetchProfileFromPrimal(pubkey, signal);
-        if (signal.aborted) return;
-        if (profile) {
-          renderProfiles([profile], resultsListElement, false);
-          updateStatus("", true);
-          window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
-        } else {
-          updateStatus(
-            "Profile could not be found after exhaustive search on known relays, discovered relays, and multiple public indexers.",
+          updateStatusIfPending(
+            "Still not found. Consulting nostr.band indexer for relay locations...",
           );
+          const indexedRelays = await fetchRelayListFromIndexer(pubkey, signal);
+          if (signal.aborted) return;
+
+          if (indexedRelays.length > 0) {
+            updateStatusIfPending(
+              `Found ${indexedRelays.length} potential relays from indexer. Searching...`,
+            );
+            const indexedRelayPromise = observeProfilesPromise(
+              fetchProfilesFromRelays(indexedRelays, filter, signal),
+              signal,
+              { ...watchOptions, sourceLabel: "Indexed relays" },
+            );
+            await indexedRelayPromise;
+            if (signal.aborted) return;
+          }
+
+          updateStatusIfPending("Still not found. Checking nostr.band directly...");
+          const indexerProfilePromise = fetchProfileFromIndexer(pubkey, signal);
+          observeProfilesPromise(
+            indexerProfilePromise.then((profile) => (profile ? [profile] : [])),
+            signal,
+            { ...watchOptions, sourceLabel: "nostr.band profile" },
+          );
+          const indexerProfile = await indexerProfilePromise;
+          if (signal.aborted) return;
+
+          if (!indexerProfile) {
+            updateStatusIfPending(
+              "Last attempt: Consulting Primal, the most powerful indexer...",
+            );
+            const primalProfilePromise = fetchProfileFromPrimal(pubkey, signal);
+            observeProfilesPromise(
+              primalProfilePromise.then((profile) =>
+                profile ? [profile] : [],
+              ),
+              signal,
+              { ...watchOptions, sourceLabel: "Primal profile" },
+            );
+            const primalProfile = await primalProfilePromise;
+            if (signal.aborted) return;
+
+            if (!primalProfile && !hasInitialRender) {
+              updateStatus(
+                "Profile could not be found after exhaustive search on known relays, discovered relays, and multiple public indexers.",
+              );
+            }
+          }
+        } catch (error) {
+          if (error.name === "AbortError") return;
+          console.error("Search failed:", error);
+          if (!hasInitialRender) {
+            const msg =
+              error.message && error.message.includes("Failed to fetch")
+                ? "Network error: could not reach relays."
+                : error.name === "AbortError"
+                ? "Search timed out."
+                : `Search failed: ${error.message}`;
+            updateStatus(msg, false, true);
+          }
+        } finally {
+          if (!signal.aborted && !hasInitialRender) {
+            loaderElement.style.display = "none";
+          }
         }
       }
 
@@ -705,8 +872,21 @@
         return [];
       }
 
-      async function fetchProfilesFromRelays(relays, filter, signal) {
-        const events = await fetchEventsFromRelays(relays, filter, signal);
+      async function fetchProfilesFromRelays(
+        relays,
+        filter,
+        signal,
+        options = {},
+      ) {
+        const timeoutMs = options?.timeout;
+        const retries = options?.retries ?? 1;
+        const events = await fetchEventsFromRelays(
+          relays,
+          filter,
+          signal,
+          timeoutMs,
+          retries,
+        );
         const profileMap = new Map();
         events.forEach((event) => {
           if (event.kind === 0) {
@@ -738,6 +918,13 @@
           }
         });
         return Array.from(profileMap.values());
+      }
+
+      function fetchProfilesFromFundstr(filter, signal) {
+        return fetchProfilesFromRelays([FUNDSTR_RELAY], filter, signal, {
+          timeout: 1200,
+          retries: 0,
+        });
       }
 
       async function fetchEventsFromRelays(
