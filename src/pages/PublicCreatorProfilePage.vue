@@ -36,78 +36,101 @@
     </div>
 
     <div>
-      <div class="text-h6 q-mb-sm">
-        {{ $t("CreatorHub.profile.tiers") }}
+      <div class="row items-center q-mb-sm">
+        <div class="text-h6 q-mr-sm">
+          {{ $t("CreatorHub.profile.tiers") }}
+        </div>
+        <q-spinner-dots
+          v-if="refreshingTiers && !loadingTiers"
+          size="sm"
+          class="text-2"
+        />
       </div>
       <div v-if="loadingTiers" class="row justify-center q-pa-md">
         <q-spinner-hourglass />
       </div>
-      <q-banner v-else-if="decodeError" class="q-mb-md bg-surface-2">
-        {{ decodeError }}
-      </q-banner>
-      <q-banner v-else-if="tierFetchError" class="q-mb-md bg-surface-2">
-        Failed to load tiers – check relay connectivity
-        <template #action>
-          <q-btn flat color="primary" @click="retryFetchTiers">Retry</q-btn>
-        </template>
-      </q-banner>
-      <div v-else-if="!tiers.length" class="text-body1 q-mb-md">
-        Creator has no subscription tiers
-      </div>
-      <div v-else>
-        <q-expansion-item
-          v-for="t in tiers"
-          :key="t.id"
-          class="q-mb-md tier-item bg-surface-2"
-          expand-separator
-        >
-          <template #header>
-            <div class="row items-center justify-between full-width">
-              <div class="text-subtitle1">{{ t.name }}</div>
-              <div class="text-subtitle2">
-                {{ getPrice(t) }} sats/month
-                <span v-if="priceStore.bitcoinPrice">
-                  ({{ formatFiat(getPrice(t)) }})
-                </span>
-              </div>
-            </div>
-          </template>
-          <div class="q-px-md q-pb-md">
-            <div class="text-body1 q-mb-sm">{{ t.description }}</div>
-            <div v-if="t.media && t.media.length">
-              <MediaPreview
-                v-for="(m, idx) in t.media"
-                :key="idx"
-                :url="m.url"
-                class="q-mt-sm"
-              />
-            </div>
-            <ul class="q-pl-md q-mb-none">
-              <li v-for="benefit in t.benefits" :key="benefit">
-                {{ benefit }}
-              </li>
-            </ul>
-            <div class="q-mt-md text-right subscribe-container">
-              <q-btn
-                label="Subscribe"
-                class="subscribe-btn"
-                :disable="isGuest"
-                @click="openSubscribe(t)"
-              >
-                <q-tooltip v-if="isGuest">Finish setup to subscribe</q-tooltip>
-              </q-btn>
-            </div>
-            <PaywalledContent
-              v-if="creatorHex"
-              :creator-npub="creatorHex"
-              :tier-id="t.id"
-              class="q-mt-md"
-            >
-              <div>Protected content visible to subscribers.</div>
-            </PaywalledContent>
+      <template v-else>
+        <q-banner v-if="decodeError" class="q-mb-md bg-surface-2">
+          {{ decodeError }}
+        </q-banner>
+        <template v-else>
+          <q-banner
+            v-if="tierFetchError && !tiers.length"
+            class="q-mb-md bg-surface-2"
+          >
+            Failed to load tiers – check relay connectivity
+            <template #action>
+              <q-btn flat color="primary" @click="retryFetchTiers">Retry</q-btn>
+            </template>
+          </q-banner>
+          <div v-else-if="!tiers.length" class="text-body1 q-mb-md">
+            Creator has no subscription tiers
           </div>
-        </q-expansion-item>
-      </div>
+          <div v-else>
+            <q-expansion-item
+              v-for="t in tiers"
+              :key="t.id"
+              class="q-mb-md tier-item bg-surface-2"
+              expand-separator
+            >
+              <template #header>
+                <div class="row items-center justify-between full-width">
+                  <div class="text-subtitle1">{{ t.name }}</div>
+                  <div class="text-subtitle2">
+                    {{ getPrice(t) }} sats/month
+                    <span v-if="priceStore.bitcoinPrice">
+                      ({{ formatFiat(getPrice(t)) }})
+                    </span>
+                  </div>
+                </div>
+              </template>
+              <div class="q-px-md q-pb-md">
+                <div class="text-body1 q-mb-sm">{{ t.description }}</div>
+                <div v-if="t.media && t.media.length">
+                  <MediaPreview
+                    v-for="(m, idx) in t.media"
+                    :key="idx"
+                    :url="m.url"
+                    class="q-mt-sm"
+                  />
+                </div>
+                <ul class="q-pl-md q-mb-none">
+                  <li v-for="benefit in t.benefits" :key="benefit">
+                    {{ benefit }}
+                  </li>
+                </ul>
+                <div class="q-mt-md text-right subscribe-container">
+                  <q-btn
+                    label="Subscribe"
+                    class="subscribe-btn"
+                    :disable="isGuest"
+                    @click="openSubscribe(t)"
+                  >
+                    <q-tooltip v-if="isGuest">Finish setup to subscribe</q-tooltip>
+                  </q-btn>
+                </div>
+                <PaywalledContent
+                  v-if="creatorHex"
+                  :creator-npub="creatorHex"
+                  :tier-id="t.id"
+                  class="q-mt-md"
+                >
+                  <div>Protected content visible to subscribers.</div>
+                </PaywalledContent>
+              </div>
+            </q-expansion-item>
+          </div>
+          <q-banner
+            v-if="tierFetchError && tiers.length"
+            class="q-mt-md bg-surface-2"
+          >
+            Failed to refresh tiers – check relay connectivity
+            <template #action>
+              <q-btn flat color="primary" @click="retryFetchTiers">Retry</q-btn>
+            </template>
+          </q-banner>
+        </template>
+      </template>
     </div>
   </div>
 </template>
@@ -160,8 +183,12 @@ export default defineComponent({
     const { copy } = useClipboard();
     const bitcoinPrice = computed(() => priceStore.bitcoinPrice);
     const profile = ref<any>({});
-    const tiers = computed(() =>
-      creatorHex ? creators.tiersMap[creatorHex] || [] : [],
+    const creatorTierList = computed(() =>
+      creatorHex ? creators.tiersMap[creatorHex] : undefined,
+    );
+    const tiers = computed(() => creatorTierList.value ?? []);
+    const hasInitialTierData = computed(
+      () => creatorTierList.value !== undefined,
     );
     const showSubscribeDialog = ref(false);
     const showSetupDialog = ref(false);
@@ -171,18 +198,45 @@ export default defineComponent({
     const followers = ref<number | null>(null);
     const following = ref<number | null>(null);
     const loadingTiers = ref(true);
+    const refreshingTiers = ref(false);
     const tierFetchError = computed(() => creators.tierFetchError);
     const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 
     const fetchTiers = async () => {
-      loadingTiers.value = true;
+      if (!creatorHex) {
+        loadingTiers.value = false;
+        return;
+      }
+      if (!hasInitialTierData.value) {
+        loadingTiers.value = true;
+      }
+      refreshingTiers.value = true;
       try {
-        if (!creatorHex) return;
         await creators.fetchTierDefinitions(creatorHex);
       } finally {
-        loadingTiers.value = false;
+        refreshingTiers.value = false;
+        if (!hasInitialTierData.value) {
+          loadingTiers.value = false;
+        }
       }
     };
+
+    watch(
+      hasInitialTierData,
+      (hasData) => {
+        if (hasData) {
+          loadingTiers.value = false;
+        }
+      },
+      { immediate: true },
+    );
+
+    watch(tierFetchError, (errored) => {
+      if (errored) {
+        loadingTiers.value = false;
+        refreshingTiers.value = false;
+      }
+    });
 
     const loadProfile = async () => {
       await fetchTiers()
@@ -299,6 +353,7 @@ export default defineComponent({
       followers,
       following,
       loadingTiers,
+      refreshingTiers,
       tierFetchError,
       bitcoinPrice,
       priceStore,
