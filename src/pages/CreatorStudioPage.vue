@@ -425,7 +425,7 @@
               :tiers="tiers"
               :frequency-options="tierFrequencyOptions"
               :show-errors="showTierValidation"
-              @update:tiers="value => (tiers.value = value)"
+              @update:tiers="value => (tiers.value = Array.isArray(value) ? value : [])"
               @validation-changed="handleTierValidation"
             />
           </div>
@@ -525,9 +525,9 @@
                   </div>
                 </div>
                 <div class="preview-card__chips">
-                  <q-chip dense outline>mints: {{ mintList.length }}</q-chip>
-                  <q-chip dense outline>relays: {{ relayList.length }}</q-chip>
-                  <q-chip dense outline>tiers: {{ tiers.value.length }}</q-chip>
+                  <q-chip dense outline>mints: {{ Array.isArray(mintList) ? mintList.length : 0 }}</q-chip>
+                  <q-chip dense outline>relays: {{ Array.isArray(relayList) ? relayList.length : 0 }}</q-chip>
+                  <q-chip dense outline>tiers: {{ Array.isArray(tiers) ? tiers.length : 0 }}</q-chip>
                 </div>
               </div>
               <q-banner class="preview-banner" dense>
