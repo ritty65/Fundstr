@@ -128,6 +128,8 @@ function ensureShared(): SharedMocks {
       isValidPubkey: vi.fn(() => true),
       haveThisKey: vi.fn(() => false),
       getPrivateKeyForP2PKEncodedToken: vi.fn(() => ''),
+      getVerificationRecord: vi.fn(() => null),
+      recordVerification: vi.fn(),
     });
 
     const walletStoreMock = {
@@ -491,6 +493,117 @@ describe('CreatorStudioPage publishAll fallback', () => {
     );
     expect((wrapper.vm as any).lastPublishInfo).toContain('via HTTP fallback');
     expect((wrapper.vm as any).diagnosticsAttention.detail).toContain('HTTP fallback');
+    expect(notifySuccessMock).toHaveBeenCalledTimes(1);
+    expect(notifyErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('allows publishing with relay warning by relying on HTTP fallback', async () => {
+    const state = ensureShared();
+    state.relayNeedsAttention.value = true;
+    state.signerRef.value = null;
+
+    const tierEvent = {
+      id: 'tier-event',
+      pubkey: 'tier-pub',
+      created_at: Date.now(),
+      kind: 30019,
+      tags: [],
+      content: '{}',
+      sig: 'tier-sig',
+    };
+    const profileEvent = {
+      id: 'profile-event',
+      pubkey: 'profile-pub',
+      created_at: Date.now(),
+      kind: 10019,
+      tags: [],
+      content: '{}',
+      sig: 'profile-sig',
+    };
+
+    state.publishEventToRelayMock.mockRejectedValue(new Error('Relay socket unavailable'));
+
+    state.publishTiersToRelayMock.mockImplementation(async (_tiers, _kind, options) => {
+      if (options?.send) {
+        const ack = await options.send(tierEvent);
+        return { ack, event: tierEvent };
+      }
+      return {
+        ack: { id: 'tier-http', accepted: true, via: 'http' as const, message: 'accepted' },
+        event: tierEvent,
+      };
+    });
+
+    state.publishNostrEventMock.mockImplementation(async (_template, options) => {
+      if (options?.send) {
+        const ack = await options.send(profileEvent);
+        return { ack, event: profileEvent };
+      }
+      return {
+        ack: { id: 'profile-http', accepted: true, via: 'http' as const, message: 'accepted' },
+        event: profileEvent,
+      };
+    });
+
+    state.clientPublishMock.mockResolvedValue({
+      ack: { id: 'profile-http', accepted: true, via: 'http' as const, message: 'accepted' },
+      event: profileEvent,
+    });
+
+    state.p2pkStoreMock.getVerificationRecord.mockReturnValue({
+      timestamp: Date.now(),
+      mint: 'https://mint.example',
+    });
+
+    const TestHarness = defineComponent({
+      name: 'CreatorStudioPageRelayWarningHarness',
+      setup(props, ctx) {
+        const component = CreatorStudioPage as any;
+        return component.setup ? component.setup(props, ctx) : {};
+      },
+      template: '<div />',
+    });
+
+    const wrapper = shallowMount(TestHarness as any, {
+      global: {
+        stubs: creatorStudioStubs,
+      },
+    });
+
+    state.signerRef.value = {};
+
+    const vmAny = wrapper.vm as any;
+    vmAny.authorInput = VALID_HEX;
+    vmAny.displayName = 'Creator';
+    vmAny.p2pkPub = 'f'.repeat(64);
+    vmAny.mintsText = 'https://mint.example';
+    vmAny.tiers = [
+      { id: 'tier-1', title: 'Tier 1', price: 1000, frequency: 'monthly', description: '' },
+    ];
+
+    await wrapper.vm.$nextTick();
+
+    expect(vmAny.publishDisabled).toBe(false);
+    expect(vmAny.publishWarnings).toEqual(['Restore relay connection health']);
+    expect(vmAny.publishGuidanceHeading).toBe('Review before publishing');
+
+    const publishAll =
+      vmAny.publishAll ??
+      vmAny.$?.setupState?.publishAll ??
+      vmAny.$?.ctx?.publishAll ??
+      vmAny.$?.exposed?.publishAll;
+    expect(typeof publishAll).toBe('function');
+    await publishAll.call(wrapper.vm);
+    await flushPromises();
+
+    expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(2);
+    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(2);
+    expect(state.clientPublishMock).toHaveBeenCalledTimes(1);
+    expect(state.logRelayActivityMock).toHaveBeenCalledWith(
+      'warning',
+      'Publish used HTTP fallback',
+      expect.stringContaining('HTTP fallback'),
+    );
     expect(notifySuccessMock).toHaveBeenCalledTimes(1);
     expect(notifyErrorMock).not.toHaveBeenCalled();
   });

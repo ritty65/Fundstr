@@ -25,6 +25,7 @@
           :icon="chip.icon"
         >
           {{ chip.label }}
+          <q-tooltip v-if="chip.tooltip" class="bg-surface-2 text-1">{{ chip.tooltip }}</q-tooltip>
         </q-chip>
       </div>
     </div>
@@ -105,13 +106,15 @@
                 :loading="publishingAll"
                 @click="publishAll"
               >
-                <q-tooltip
-                  v-if="publishDisabled && publishBlockers.length"
-                  class="bg-surface-2 text-1"
-                >
-                  <div class="text-caption text-weight-medium q-mb-xs">Complete before publishing:</div>
+                <q-tooltip v-if="publishHasGuidance" class="bg-surface-2 text-1">
+                  <div
+                    v-if="publishGuidanceHeading"
+                    class="text-caption text-weight-medium q-mb-xs"
+                  >
+                    {{ publishGuidanceHeading }}:
+                  </div>
                   <ul class="publish-blockers__tooltip-list">
-                    <li v-for="blocker in publishBlockers" :key="blocker">{{ blocker }}</li>
+                    <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
                   </ul>
                 </q-tooltip>
               </q-btn>
@@ -143,6 +146,7 @@
                 :icon="chip.icon"
               >
                 {{ chip.label }}
+                <q-tooltip v-if="chip.tooltip" class="bg-surface-2 text-1">{{ chip.tooltip }}</q-tooltip>
               </q-chip>
             </div>
             <div class="row q-col-gutter-md">
@@ -454,19 +458,26 @@
                   icon="send"
                   @click="publishAll"
                 >
-                  <q-tooltip v-if="publishBlockers.length" class="bg-surface-2 text-1">
-                    <div class="text-caption text-weight-medium q-mb-xs">Complete before publishing:</div>
+                  <q-tooltip v-if="publishHasGuidance" class="bg-surface-2 text-1">
+                    <div
+                      v-if="publishGuidanceHeading"
+                      class="text-caption text-weight-medium q-mb-xs"
+                    >
+                      {{ publishGuidanceHeading }}:
+                    </div>
                     <ul class="publish-blockers__tooltip-list">
-                      <li v-for="blocker in publishBlockers" :key="blocker">{{ blocker }}</li>
+                      <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
                     </ul>
                   </q-tooltip>
                 </q-btn>
-                <div v-if="publishBlockers.length" class="publish-blockers text-caption text-2">
+                <div v-if="publishHasGuidance" class="publish-blockers text-caption text-2">
                   <q-icon name="info" size="16px" class="q-mr-xs" />
                   <div>
-                    <span class="text-weight-medium">Complete before publishing:</span>
+                    <span class="text-weight-medium" v-if="publishGuidanceHeading">
+                      {{ publishGuidanceHeading }}:
+                    </span>
                     <ul class="publish-blockers__list">
-                      <li v-for="blocker in publishBlockers" :key="blocker">{{ blocker }}</li>
+                      <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
                     </ul>
                   </div>
                 </div>
@@ -818,8 +829,8 @@ const publicProfileUrl = computed(() => {
 
 const reviewPublishSectionOpen = ref(false);
 
-type ReadinessChipState = 'ready' | 'todo' | 'optional';
-type ReadinessChipKey = 'authorKey' | 'identity' | 'mint' | 'p2pk' | 'tiers';
+type ReadinessChipState = 'ready' | 'todo' | 'optional' | 'warning';
+type ReadinessChipKey = 'relay' | 'authorKey' | 'identity' | 'mint' | 'p2pk' | 'tiers';
 
 type ReadinessChip = {
   key: ReadinessChipKey;
@@ -827,6 +838,7 @@ type ReadinessChip = {
   state: ReadinessChipState;
   icon: string;
   required: boolean;
+  tooltip?: string;
 };
 
 type DiagnosticsAttention = {
@@ -1658,16 +1670,43 @@ const publishBlockers = computed<string[]>(() => {
     blockers.push('Resolve tier validation issues');
   }
 
-  if (relayNeedsAttention.value) {
-    blockers.push('Restore relay connection health');
-  }
-
   return blockers;
 });
 
 const publishDisabled = computed(
   () => publishingAll.value || publishBlockers.value.length > 0
 );
+
+const publishWarnings = computed<string[]>(() => {
+  if (publishingAll.value) {
+    return [];
+  }
+
+  const warnings: string[] = [];
+
+  if (relayNeedsAttention.value) {
+    warnings.push('Restore relay connection health');
+  }
+
+  return warnings;
+});
+
+const publishGuidanceHeading = computed(() => {
+  if (publishBlockers.value.length > 0) {
+    return 'Complete before publishing';
+  }
+  if (publishWarnings.value.length > 0) {
+    return 'Review before publishing';
+  }
+  return '';
+});
+
+const publishGuidanceItems = computed(() => [
+  ...publishBlockers.value,
+  ...publishWarnings.value,
+]);
+
+const publishHasGuidance = computed(() => publishGuidanceItems.value.length > 0);
 
 const tierFrequencyOptions = computed(() =>
   tierFrequencies.map(value => ({
@@ -1683,8 +1722,34 @@ const tierFrequencyOptions = computed(() =>
 
 const authorKeyReady = computed(() => authorInput.value.trim().length > 0);
 
+type ReadinessEntry = {
+  key: ReadinessChipKey;
+  ready: boolean;
+  required: boolean;
+  readyLabel: string;
+  actionLabel: string;
+  readyIcon: string;
+  actionIcon: string;
+  readyTooltip?: string;
+  actionTooltip?: string;
+  readyState?: ReadinessChipState;
+  actionState?: Exclude<ReadinessChipState, 'ready'>;
+};
+
 const readinessChips = computed<ReadinessChip[]>(() => {
-  const entries = [
+  const entries: ReadinessEntry[] = [
+    {
+      key: 'relay',
+      ready: !relayNeedsAttention.value,
+      required: true,
+      readyLabel: 'Relay healthy',
+      actionLabel: 'Relay degraded',
+      readyIcon: 'podcasts',
+      actionIcon: 'report_problem',
+      readyTooltip: 'Realtime relay connection is healthy.',
+      actionTooltip: 'Realtime relay degraded. Publishing will rely on HTTP fallback until it recovers.',
+      actionState: 'warning',
+    },
     {
       key: 'authorKey',
       ready: authorKeyReady.value,
@@ -1730,23 +1795,26 @@ const readinessChips = computed<ReadinessChip[]>(() => {
       readyIcon: 'task_alt',
       actionIcon: 'playlist_add',
     },
-  ] as const;
+  ];
 
   return entries.map(entry =>
     entry.ready
       ? {
           key: entry.key,
           label: entry.readyLabel,
-          state: 'ready' as ReadinessChipState,
+          state: entry.readyState ?? ('ready' as ReadinessChipState),
           icon: entry.readyIcon,
           required: entry.required,
+          tooltip: entry.readyTooltip,
         }
       : {
           key: entry.key,
           label: entry.actionLabel,
-          state: entry.required ? ('todo' as ReadinessChipState) : ('optional' as ReadinessChipState),
+          state:
+            entry.actionState ?? (entry.required ? ('todo' as ReadinessChipState) : ('optional' as ReadinessChipState)),
           icon: entry.actionIcon,
           required: entry.required,
+          tooltip: entry.actionTooltip,
         }
   );
 });
@@ -2674,6 +2742,12 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--accent-200) 35%, transparent);
   color: var(--accent-600);
   border-color: color-mix(in srgb, var(--accent-200) 55%, transparent);
+}
+
+.studio-readiness.is-warning {
+  background: color-mix(in srgb, #f59e0b 25%, transparent);
+  color: #b45309;
+  border-color: color-mix(in srgb, #f59e0b 45%, transparent);
 }
 
 .studio-readiness.is-optional {
