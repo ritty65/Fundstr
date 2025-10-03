@@ -45,7 +45,7 @@ import { filterHealthyRelays } from "src/utils/relayHealth";
 import { DEFAULT_RELAYS, FREE_RELAYS, VETTED_OPEN_WRITE_RELAYS } from "src/config/relays";
 import { publishToRelaysWithAcks, selectPublishRelays, PublishReport, RelayResult } from "src/nostr/publish";
 import { sanitizeRelayUrls } from "src/utils/relay";
-import { getNdk } from "src/boot/ndk";
+import { getNdk, isFundstrShareRouteActive } from "src/boot/ndk";
 import { getTrustedTime } from "src/utils/time";
 import {
   notifyApiError,
@@ -1492,11 +1492,13 @@ export const useNostrStore = defineStore("nostr", {
           : opts.fundstrOnly === false
             ? "default"
             : undefined;
-      const desiredMode = requestedMode ?? this.readOnlyMode ?? "default";
+      const shareRouteActive = isFundstrShareRouteActive();
+      const desiredModeBase = requestedMode ?? this.readOnlyMode ?? "default";
+      const desiredMode = shareRouteActive ? "fundstr-only" : desiredModeBase;
       const modeChanged = this.readOnlyMode !== desiredMode;
       const ndk = await useNdk({
         requireSigner: false,
-        fundstrOnly: opts.fundstrOnly,
+        fundstrOnly: shareRouteActive ? true : opts.fundstrOnly,
       });
       if (modeChanged) {
         this.connected = false;

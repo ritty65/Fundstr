@@ -50,12 +50,24 @@ function envFundstrOnlyRelaysEnabled(): boolean {
 }
 
 let fundstrOnlyRuntimeOverride = false;
+let fundstrOnlyRouteOverride = false;
 
 export function setFundstrOnlyRuntimeOverride(enabled: boolean) {
   fundstrOnlyRuntimeOverride = enabled;
 }
 
+export function setFundstrOnlyRouteOverride(enabled: boolean) {
+  fundstrOnlyRouteOverride = enabled;
+}
+
+export function isFundstrShareRouteActive(): boolean {
+  return fundstrOnlyRouteOverride;
+}
+
 function isFundstrOnlyRelayModeActive(settings = useSettingsStore()): boolean {
+  if (fundstrOnlyRouteOverride) {
+    return true;
+  }
   if (fundstrOnlyRuntimeOverride) {
     return true;
   }
@@ -350,6 +362,10 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
 export async function createNdk(
   options: CreateReadOnlyOptions = {},
 ): Promise<NDK> {
+  if (isFundstrShareRouteActive()) {
+    console.info("Creating read-only NDK for share route");
+    return createReadOnlyNdk({ fundstrOnly: true });
+  }
   const nostrStore = useNostrStore();
   await nostrStore.initSignerIfNotSet();
   const signer = nostrStore.signer;
@@ -449,7 +465,9 @@ export async function getNdk(): Promise<NDK> {
   if (ndkInstance) return ndkInstance;
   if (!ndkPromise) {
     const settings = useSettingsStore();
+    const shareRouteActive = isFundstrShareRouteActive();
     const shouldBootstrapFundstrOnly =
+      shareRouteActive ||
       fundstrOnlyRuntimeOverride ||
       settings?.relayBootstrapMode === "fundstr-only" ||
       envFundstrOnlyRelaysEnabled();

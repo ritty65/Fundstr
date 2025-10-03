@@ -6,6 +6,7 @@ import {
   type CreateReadOnlyOptions,
   setFundstrOnlyRuntimeOverride,
   rebuildNdk as bootRebuildNdk,
+  isFundstrShareRouteActive,
 } from "boot/ndk";
 import { useNostrStore } from "stores/nostr";
 
@@ -34,6 +35,8 @@ export async function useNdk(
   let targetMode: "default" | "fundstr-only";
   if (requestedMode) {
     targetMode = requestedMode;
+  } else if (isFundstrShareRouteActive()) {
+    targetMode = "fundstr-only";
   } else if (cached) {
     targetMode = cachedMode;
   } else {
