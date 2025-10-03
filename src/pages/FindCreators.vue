@@ -89,6 +89,11 @@
                   </p>
                 </div>
               </div>
+              <NutzapExplainer
+                class="tier-dialog__explainer"
+                :is-guest="isGuest"
+                @start-onboarding="goToWelcome"
+              />
               <div class="tier-list">
                 <div
                   v-if="loadingTiers"
@@ -203,15 +208,60 @@
                 </div>
                 <div v-if="nutzapProfile" class="info-panel__body">
                   <div v-if="nutzapProfile.p2pkPubkey" class="info-subsection">
-                    <div class="info-subsection__label text-2">P2PK public key</div>
+                    <div class="info-subsection__label text-2">
+                      <span>{{ $t('CreatorHub.profile.p2pkLabel') }}</span>
+                      <q-btn
+                        flat
+                        dense
+                        round
+                        size="sm"
+                        class="info-subsection__info-btn"
+                        icon="info"
+                        :aria-label="$t('FindCreators.explainers.tooltips.p2pk')"
+                      >
+                        <q-tooltip anchor="top middle" self="bottom middle">
+                          {{ $t('FindCreators.explainers.tooltips.p2pk') }}
+                        </q-tooltip>
+                      </q-btn>
+                    </div>
                     <code class="info-subsection__value">{{ nutzapProfile.p2pkPubkey }}</code>
                   </div>
                   <div class="info-subsection">
-                    <div class="info-subsection__label text-2">Trusted mints</div>
+                    <div class="info-subsection__label text-2">
+                      <span>{{ $t('CreatorHub.profile.trustedMintsLabel') }}</span>
+                      <q-btn
+                        flat
+                        dense
+                        round
+                        size="sm"
+                        class="info-subsection__info-btn"
+                        icon="info"
+                        :aria-label="$t('FindCreators.explainers.tooltips.trustedMints')"
+                      >
+                        <q-tooltip anchor="top middle" self="bottom middle">
+                          {{ $t('FindCreators.explainers.tooltips.trustedMints') }}
+                        </q-tooltip>
+                      </q-btn>
+                    </div>
                     <MintSafetyList :mints="nutzapProfile.trustedMints" />
                   </div>
                   <div class="info-subsection">
-                    <div class="info-subsection__label text-2">Relays</div>
+                    <div class="info-subsection__label text-2">
+                      <span>{{ $t('CreatorHub.profile.relaysLabel') }}</span>
+                      <q-btn
+                        flat
+                        dense
+                        round
+                        size="sm"
+                        class="info-subsection__info-btn"
+                        icon="info"
+                        :aria-label="$t('FindCreators.explainers.tooltips.relays')"
+                      >
+                        <q-tooltip anchor="top middle" self="bottom middle">
+                          {{ $t('FindCreators.explainers.tooltips.relays') }}
+                        </q-tooltip>
+                      </q-btn>
+                    </div>
                     <RelayBadgeList :relays="nutzapProfile.relays" />
                   </div>
                 </div>
@@ -252,8 +302,11 @@ import MediaPreview from "components/MediaPreview.vue";
 import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 import MintSafetyList from "components/MintSafetyList.vue";
 import RelayBadgeList from "components/RelayBadgeList.vue";
+import NutzapExplainer from "components/NutzapExplainer.vue";
 
-defineOptions({ components: { MediaPreview, MintSafetyList, RelayBadgeList } });
+defineOptions({
+  components: { MediaPreview, MintSafetyList, RelayBadgeList, NutzapExplainer },
+});
 import { useSendTokensStore } from "stores/sendTokensStore";
 import { useDonationPresetsStore } from "stores/donationPresets";
 import { useCreatorsStore } from "stores/creators";
@@ -269,6 +322,7 @@ import {
   QBanner,
   QSeparator,
   QPage,
+  QTooltip,
   useQuasar,
 } from "quasar";
 import { nip19 } from "nostr-tools";
@@ -283,6 +337,7 @@ import {
 import type { PrefillCreatorCacheEntry } from "stores/creators";
 import { usePriceStore } from "stores/price";
 import { useUiStore } from "stores/ui";
+import { useWelcomeStore } from "stores/welcome";
 import {
   daysToFrequency,
   type SubscriptionFrequency,
@@ -315,6 +370,7 @@ const route = useRoute();
 const $q = useQuasar();
 const priceStore = usePriceStore();
 const uiStore = useUiStore();
+const welcomeStore = useWelcomeStore();
 const tiers = computed(() => creators.tiersMap[dialogPubkey.value] || []);
 const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
 let usedFundstrOnly = false;
@@ -324,6 +380,7 @@ const selectedTier = ref<any>(null);
 const nutzapProfile = ref<NutzapProfileDetails | null>(null);
 const loadingProfile = ref(false);
 const lastRelayHints = ref<string[]>([]);
+const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 let tierTimeout: ReturnType<typeof setTimeout> | null = null;
 type HeroMetadata = {
   displayName?: string;
@@ -429,6 +486,10 @@ function extractHeroMetadata(source: any): HeroMetadata {
 
   return metadata;
 }
+
+const goToWelcome = () => {
+  void router.push({ path: "/welcome", query: { first: "1" } });
+};
 
 function updateHeroMetadata(source: any, options: { preserveExisting?: boolean } = {}) {
   const { preserveExisting = false } = options;
@@ -1059,6 +1120,10 @@ onBeforeUnmount(() => {
   margin: 0.35rem 0 0;
 }
 
+.tier-dialog__explainer {
+  margin-bottom: 1.5rem;
+}
+
 .tier-list__state {
   display: flex;
   flex-direction: column;
@@ -1230,6 +1295,28 @@ onBeforeUnmount(() => {
   font-size: 0.85rem;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.info-subsection__info-btn {
+  color: var(--text-2);
+  min-width: 0;
+  padding: 0;
+}
+
+.info-subsection__info-btn :deep(.q-btn__content) {
+  padding: 0;
+}
+
+.info-subsection__info-btn :deep(.q-icon) {
+  font-size: 1rem;
+}
+
+.info-subsection__info-btn:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: 2px;
 }
 
 .info-subsection__value {

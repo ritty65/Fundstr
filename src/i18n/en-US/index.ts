@@ -1311,6 +1311,40 @@ export const messages = {
       invalid_creator_pubkey: "Invalid creator pubkey",
       subscription_failed: "Subscription failed",
     },
+    explainers: {
+      heading: "How Nutzap subscriptions work",
+      intro:
+        "Here's how Nutzap keeps your support flowing with ecash you control.",
+      ctaLabel: "@:CreatorHub.profile.finishSetup",
+      ctaAria: "Finish onboarding to subscribe",
+      ctaHint:
+        "Complete onboarding to connect your wallet, choose mints, and start supporting creators.",
+      steps: {
+        subscriptions: {
+          title: "Subscriptions you control",
+          body:
+            "Choose a tier and Nutzap signs zap payments from your wallet on the cadence you set—funds only move with your approval.",
+        },
+        trustedMints: {
+          title: "Trusted mints",
+          body:
+            "You fund your wallet from mints you trust. Only those mints can issue the ecash your subscriptions will spend.",
+        },
+        relays: {
+          title: "Relay delivery",
+          body:
+            "Relays carry the signed invoices and receipts between you and the creator while keeping your keys private.",
+        },
+      },
+      tooltips: {
+        p2pk:
+          "Creators publish a P2PK key so you can send ecash to them directly from your wallet.",
+        trustedMints:
+          "These are the mints the creator trusts. Connect with at least one compatible mint before subscribing.",
+        relays:
+          "Relays deliver the zap instructions and acknowledgements that power each subscription payment.",
+      },
+    },
   },
   ChooseExistingTokenDialog: {
     title: "Choose token",
