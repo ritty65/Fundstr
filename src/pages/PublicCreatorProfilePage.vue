@@ -1,38 +1,25 @@
 <template>
-  <div class="profile-page bg-surface-1 text-1">
-    <div class="profile-page__inner q-pa-md">
-      <div class="profile-page__back q-mb-md">
-        <q-btn flat color="primary" to="/find-creators">{{
-          $t("CreatorHub.profile.back")
-        }}</q-btn>
-      </div>
-
-      <q-banner v-if="isGuest" class="profile-page__banner bg-surface-2 text-2" icon="info">
-        {{ $t("CreatorHub.profile.guestCta") }}
-        <template #action>
-          <q-btn flat color="primary" :label="$t('CreatorHub.profile.finishSetup')" @click="gotoWelcome" />
-        </template>
-      </q-banner>
-
-      <q-banner v-if="decodeError" class="profile-page__banner bg-negative text-white">
+  <div class="public-profile bg-surface-1 text-1">
+    <div class="public-profile__inner q-pa-md">
+      <q-banner v-if="decodeError" class="public-profile__banner bg-negative text-white">
         {{ decodeError }}
       </q-banner>
 
-      <section class="profile-hero" :class="{ 'profile-hero--with-banner': heroBannerUrl }">
+      <section class="public-profile__hero" :class="{ 'public-profile__hero--with-banner': heroBannerUrl }">
         <div
           v-if="heroBannerUrl"
-          class="profile-hero__banner"
+          class="public-profile__hero-banner"
           :style="heroBannerStyle"
           role="presentation"
         />
-        <div class="profile-hero__content bg-surface-2">
-          <div class="profile-hero__avatar" aria-hidden="true">
+        <div class="public-profile__hero-content bg-surface-2">
+          <div class="public-profile__avatar" aria-hidden="true">
             <img v-if="profileAvatar" :src="profileAvatar" :alt="profileDisplayName" />
-            <div v-else class="profile-hero__avatar-placeholder">{{ profileInitials }}</div>
+            <div v-else class="public-profile__avatar-placeholder">{{ profileInitials }}</div>
           </div>
-          <div class="profile-hero__details">
-            <div class="profile-hero__heading">
-              <h1 class="profile-hero__name text-h4">{{ profileDisplayName }}</h1>
+          <div class="public-profile__details">
+            <div class="public-profile__heading">
+              <h1 class="public-profile__name text-h4">{{ profileDisplayName }}</h1>
               <q-btn
                 flat
                 round
@@ -42,8 +29,8 @@
                 @click="copy(profileUrl)"
               />
             </div>
-            <p v-if="profileHandle" class="profile-hero__handle text-2">@{{ profileHandle }}</p>
-            <div v-if="hasFollowerStats" class="profile-hero__stats text-2">
+            <p v-if="profileHandle" class="public-profile__handle text-2">@{{ profileHandle }}</p>
+            <div v-if="hasFollowerStats" class="public-profile__stats text-2">
               <span v-if="followers !== null">
                 {{ $t('CreatorHub.profile.followers', { count: followers }) }}
               </span>
@@ -51,7 +38,7 @@
                 {{ $t('CreatorHub.profile.following', { count: following }) }}
               </span>
             </div>
-            <div v-if="metadataChips.length" class="profile-hero__chips" role="list">
+            <div v-if="metadataChips.length" class="public-profile__chips" role="list">
               <q-chip
                 v-for="chip in metadataChips"
                 :key="chip.id"
@@ -71,44 +58,39 @@
         </div>
       </section>
 
-      <main class="profile-layout">
-        <section class="profile-section">
-          <header class="profile-section__header">
-            <h2 class="profile-section__title text-h5">
+      <main class="public-profile__content">
+        <section class="public-profile__section">
+          <header class="public-profile__section-header">
+            <h2 class="public-profile__section-title text-h5">
               {{ $t('CreatorHub.profile.sections.about') }}
             </h2>
           </header>
-          <div class="profile-section__body">
-            <p v-if="profile.about" class="profile-section__text text-body1">{{ profile.about }}</p>
-            <p v-else class="profile-section__text text-2">
+          <div class="public-profile__section-body">
+            <p v-if="profile.about" class="public-profile__section-text text-body1">{{ profile.about }}</p>
+            <p v-else class="public-profile__section-text text-2">
               {{ $t('CreatorHub.profile.noAbout') }}
             </p>
           </div>
         </section>
 
-        <section class="profile-section" aria-live="polite">
-          <header class="profile-section__header profile-section__header--with-spinner">
-            <h2 class="profile-section__title text-h5">
+        <section class="public-profile__section" aria-live="polite">
+          <header class="public-profile__section-header public-profile__section-header--with-spinner">
+            <h2 class="public-profile__section-title text-h5">
               {{ $t('CreatorHub.profile.sections.tiers') }}
             </h2>
             <q-spinner-dots
               v-if="refreshingTiers && !loadingTiers"
               size="sm"
-              class="profile-section__spinner text-2"
+              class="public-profile__spinner text-2"
             />
           </header>
-          <div v-if="loadingTiers" class="profile-section__state">
+          <div v-if="loadingTiers" class="public-profile__state">
             <q-spinner-hourglass />
           </div>
           <template v-else>
-            <NutzapExplainer
-              class="profile-tier-explainer"
-              :is-guest="isGuest"
-              @start-onboarding="gotoWelcome"
-            />
             <q-banner
               v-if="tierFetchError && !tiers.length"
-              class="profile-page__banner bg-surface-2"
+              class="public-profile__banner bg-surface-2"
             >
               {{ $t('CreatorHub.profile.tierLoadError') }}
               <template #action>
@@ -119,18 +101,13 @@
                   aria-hidden="true"
                   @click="retryFetchTiers"
                 >{{ retryLabel }}</button>
-                <q-btn
-                  flat
-                  color="primary"
-                  :label="retryLabel"
-                  @click="retryFetchTiers"
-                />
+                <q-btn flat color="primary" :label="retryLabel" @click="retryFetchTiers" />
               </template>
             </q-banner>
-            <div v-else-if="!tiers.length" class="profile-section__state text-2">
+            <div v-else-if="!tiers.length" class="public-profile__state text-2">
               {{ $t('CreatorHub.profile.noTiers') }}
             </div>
-            <div v-else class="profile-tier-list">
+            <div v-else class="public-profile__tier-list">
               <TierSummaryCard
                 v-for="t in tiers"
                 :key="t.id"
@@ -148,20 +125,11 @@
                 <template #footer-note>
                   {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
                 </template>
-                <template v-if="creatorHex" #default>
-                  <PaywalledContent
-                    :creator-npub="creatorHex"
-                    :tier-id="t.id"
-                    class="profile-tier__paywalled"
-                  >
-                    <div>{{ $t('CreatorHub.profile.paywalledPreview') }}</div>
-                  </PaywalledContent>
-                </template>
               </TierSummaryCard>
             </div>
             <q-banner
               v-if="tierFetchError && tiers.length"
-              class="profile-page__banner bg-surface-2"
+              class="public-profile__banner bg-surface-2"
             >
               {{ $t('CreatorHub.profile.tierRefreshError') }}
               <template #action>
@@ -181,120 +149,6 @@
               </template>
             </q-banner>
           </template>
-        </section>
-
-        <section class="profile-section profile-section--infrastructure">
-          <header class="profile-section__header">
-            <h2 class="profile-section__title text-h5">
-              {{ $t('CreatorHub.profile.sections.infrastructure') }}
-            </h2>
-          </header>
-          <div class="profile-section__body profile-infrastructure">
-            <article class="profile-card">
-              <h3 class="profile-card__title text-subtitle1">
-                {{ $t('CreatorHub.profile.infrastructureDetails') }}
-              </h3>
-              <div v-if="profile.p2pkPubkey" class="profile-card__row">
-                <div class="profile-card__label text-2">
-                  <span>{{ $t('CreatorHub.profile.p2pkLabel') }}</span>
-                  <q-btn
-                    flat
-                    dense
-                    round
-                    size="sm"
-                    class="profile-card__info-btn"
-                    icon="info"
-                    :aria-label="$t('FindCreators.explainers.tooltips.p2pk')"
-                  >
-                    <q-tooltip anchor="top middle" self="bottom middle">
-                      {{ $t('FindCreators.explainers.tooltips.p2pk') }}
-                    </q-tooltip>
-                  </q-btn>
-                </div>
-                <code class="profile-card__value">{{ profile.p2pkPubkey }}</code>
-              </div>
-              <div class="profile-card__row">
-                <div class="profile-card__label text-2">
-                  <span>{{ $t('CreatorHub.profile.trustedMintsLabel') }}</span>
-                  <q-btn
-                    flat
-                    dense
-                    round
-                    size="sm"
-                    class="profile-card__info-btn"
-                    icon="info"
-                    :aria-label="$t('FindCreators.explainers.tooltips.trustedMints')"
-                  >
-                    <q-tooltip anchor="top middle" self="bottom middle">
-                      {{ $t('FindCreators.explainers.tooltips.trustedMints') }}
-                    </q-tooltip>
-                  </q-btn>
-                </div>
-                <MintSafetyList :mints="trustedMints" />
-              </div>
-              <div class="profile-card__row">
-                <div class="profile-card__label text-2">
-                  <span>{{ $t('CreatorHub.profile.relaysLabel') }}</span>
-                  <q-btn
-                    flat
-                    dense
-                    round
-                    size="sm"
-                    class="profile-card__info-btn"
-                    icon="info"
-                    :aria-label="$t('FindCreators.explainers.tooltips.relays')"
-                  >
-                    <q-tooltip anchor="top middle" self="bottom middle">
-                      {{ $t('FindCreators.explainers.tooltips.relays') }}
-                    </q-tooltip>
-                  </q-btn>
-                </div>
-                <RelayBadgeList :relays="relayList" />
-              </div>
-            </article>
-            <article class="profile-card profile-card--copy">
-              <h3 class="profile-card__title text-subtitle1">
-                {{ $t('CreatorHub.profile.howNutzapWorks.title') }}
-              </h3>
-              <p class="profile-card__text text-2">
-                {{ $t('CreatorHub.profile.howNutzapWorks.intro') }}
-              </p>
-              <ul class="profile-card__list">
-                <li
-                  v-for="(item, index) in howNutzapWorksList"
-                  :key="index"
-                  class="profile-card__list-item text-2"
-                >
-                  {{ item }}
-                </li>
-              </ul>
-            </article>
-          </div>
-        </section>
-
-        <section class="profile-section">
-          <header class="profile-section__header">
-            <h2 class="profile-section__title text-h5">
-              {{ $t('CreatorHub.profile.sections.faq') }}
-            </h2>
-          </header>
-          <div class="profile-section__body">
-            <div v-if="faqEntries.length" class="profile-faq">
-              <details
-                v-for="(faq, index) in faqEntries"
-                :key="faq.question + index"
-                class="profile-faq__item"
-              >
-                <summary class="profile-faq__question text-subtitle2">
-                  {{ faq.question }}
-                </summary>
-                <p class="profile-faq__answer text-body2">{{ faq.answer }}</p>
-              </details>
-            </div>
-            <p v-else class="profile-section__text text-2">
-              {{ $t('CreatorHub.profile.noFaq') }}
-            </p>
-          </div>
         </section>
       </main>
 
@@ -327,10 +181,6 @@ import SubscribeDialog from "components/SubscribeDialog.vue";
 import SubscriptionReceipt from "components/SubscriptionReceipt.vue";
 import SetupRequiredDialog from "components/SetupRequiredDialog.vue";
 import { useI18n } from "vue-i18n";
-import PaywalledContent from "components/PaywalledContent.vue";
-import MintSafetyList from "components/MintSafetyList.vue";
-import RelayBadgeList from "components/RelayBadgeList.vue";
-import NutzapExplainer from "components/NutzapExplainer.vue";
 import TierSummaryCard from "components/TierSummaryCard.vue";
 import { isTrustedUrl } from "src/utils/sanitize-url";
 import { useClipboard } from "src/composables/useClipboard";
@@ -343,12 +193,8 @@ import {
 export default defineComponent({
   name: "PublicCreatorProfilePage",
   components: {
-    PaywalledContent,
     SubscriptionReceipt,
     SetupRequiredDialog,
-    MintSafetyList,
-    RelayBadgeList,
-    NutzapExplainer,
     TierSummaryCard,
   },
   setup() {
@@ -374,7 +220,6 @@ export default defineComponent({
     const welcomeStore = useWelcomeStore();
     const { t } = useI18n();
     const { copy } = useClipboard();
-    const bitcoinPrice = computed(() => priceStore.bitcoinPrice);
     const profile = ref<any>({});
     const creatorTierList = computed(() =>
       creatorHex ? creators.tiersMap[creatorHex] : undefined,
@@ -487,10 +332,6 @@ export default defineComponent({
       showSubscribeDialog.value = true;
     };
 
-    const gotoWelcome = () => {
-      router.push({ path: "/welcome", query: { redirect: route.fullPath } });
-    };
-
     onMounted(async () => {
       await loadProfile();
 
@@ -515,15 +356,6 @@ export default defineComponent({
         });
       }
     });
-
-    const formatTs = (ts: number) => {
-      const d = new Date(ts * 1000);
-      return `${d.getFullYear()}-${("0" + (d.getMonth() + 1)).slice(-2)}-${(
-        "0" + d.getDate()
-      ).slice(-2)} ${("0" + d.getHours()).slice(-2)}:${(
-        "0" + d.getMinutes()
-      ).slice(-2)}`;
-    };
 
     const confirmSubscribe = ({
       bucketId,
@@ -681,57 +513,6 @@ export default defineComponent({
       return chips;
     });
 
-    const trustedMints = computed(() => {
-      const mints = profile.value.trustedMints;
-      if (Array.isArray(mints)) {
-        return mints;
-      }
-      return [];
-    });
-
-    const relayList = computed(() => {
-      const relays = profile.value.relays;
-      if (Array.isArray(relays)) {
-        return relays;
-      }
-      if (relays && typeof relays === "object") {
-        return Object.keys(relays);
-      }
-      return [];
-    });
-
-    const howNutzapWorksList = computed(() => {
-      const items = t("CreatorHub.profile.howNutzapWorks.points", {
-        returnObjects: true,
-      }) as unknown;
-      if (Array.isArray(items)) {
-        return items as string[];
-      }
-      return typeof items === "string" ? [items] : [];
-    });
-
-    const faqEntries = computed(() => {
-      const raw = profile.value.faq;
-      if (!raw) return [] as Array<{ question: string; answer: string }>;
-      if (Array.isArray(raw)) {
-        return raw
-          .map((entry: any) => ({
-            question: entry?.question || entry?.q || "",
-            answer: entry?.answer || entry?.a || "",
-          }))
-          .filter((entry) => entry.question && entry.answer);
-      }
-      if (typeof raw === "object") {
-        return Object.entries(raw)
-          .map(([question, answer]) => ({
-            question,
-            answer: typeof answer === "string" ? answer : "",
-          }))
-          .filter((entry) => entry.question && entry.answer);
-      }
-      return [];
-    });
-
     const translationWithFallback = (key: string, fallback: string) => {
       const translated = t(key);
       return translated === key ? fallback : translated;
@@ -763,14 +544,8 @@ export default defineComponent({
       loadingTiers,
       refreshingTiers,
       tierFetchError,
-      bitcoinPrice,
-      priceStore,
       metadataChips,
       hasFollowerStats,
-      trustedMints,
-      relayList,
-      howNutzapWorksList,
-      faqEntries,
       retryLabel,
       // no markdown rendering needed
       formatFiat,
@@ -782,33 +557,36 @@ export default defineComponent({
       copy,
       profileUrl,
       isGuest,
-      gotoWelcome,
     };
   },
 });
 </script>
 
 <style scoped>
-.profile-page {
+.public-profile {
   min-height: 100%;
 }
 
-.profile-page__inner {
+.public-profile__inner {
   max-width: 1100px;
   margin: 0 auto;
 }
 
-.profile-page__banner {
+.public-profile__banner {
   margin-bottom: 1.5rem;
   border-radius: 1rem;
 }
 
-.profile-hero {
+.public-profile__hero {
   position: relative;
   margin-bottom: 2.5rem;
 }
 
-.profile-hero__banner {
+.public-profile__hero--with-banner .public-profile__hero-content {
+  backdrop-filter: blur(8px);
+}
+
+.public-profile__hero-banner {
   position: absolute;
   inset: 0;
   background-size: cover;
@@ -818,7 +596,7 @@ export default defineComponent({
   filter: saturate(0.9);
 }
 
-.profile-hero__content {
+.public-profile__hero-content {
   position: relative;
   display: flex;
   align-items: center;
@@ -829,7 +607,7 @@ export default defineComponent({
   overflow: hidden;
 }
 
-.profile-hero__avatar {
+.public-profile__avatar {
   flex-shrink: 0;
   width: 120px;
   height: 120px;
@@ -844,87 +622,106 @@ export default defineComponent({
   font-weight: 600;
 }
 
-.profile-hero__avatar img {
+.public-profile__avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.profile-hero__details {
+.public-profile__avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  color: var(--accent-600);
+  font-size: 2.5rem;
+  font-weight: 600;
+}
+
+.public-profile__details {
   flex: 1;
   min-width: 0;
 }
 
-.profile-hero__heading {
+.public-profile__heading {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
 }
 
-.profile-hero__name {
+.public-profile__name {
   margin: 0;
   font-weight: 600;
 }
 
-.profile-hero__handle {
+.public-profile__handle {
   margin: 0.25rem 0 0;
 }
 
-.profile-hero__stats {
+.public-profile__stats {
   margin-top: 0.5rem;
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
 }
 
-.profile-hero__chips {
+.public-profile__chips {
   margin-top: 0.75rem;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-.profile-layout {
+.public-profile__content {
   display: flex;
   flex-direction: column;
   gap: 2.5rem;
 }
 
-.profile-section__header {
+.public-profile__section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.public-profile__section-header {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 1rem;
 }
 
-.profile-section__header--with-spinner {
+.public-profile__section-header--with-spinner {
   justify-content: space-between;
 }
 
-.profile-section__spinner {
+.public-profile__spinner {
   margin-left: auto;
 }
 
-.profile-section__title {
+.public-profile__section-title {
   margin: 0;
 }
 
-.profile-section__body {
+.public-profile__section-body {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
 
-.profile-section__text {
+.public-profile__section-text {
   margin: 0;
 }
 
-.profile-section__state {
+.public-profile__state {
   padding: 2rem 0;
   display: flex;
   justify-content: center;
   align-items: center;
+  text-align: center;
 }
 
 .profile-retry-hidden {
@@ -939,147 +736,21 @@ export default defineComponent({
   overflow: hidden;
 }
 
-.profile-tier-list {
+.public-profile__tier-list {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
 
-.profile-tier-explainer {
-  margin-bottom: 1.5rem;
-}
-
-.profile-tier__paywalled {
-  margin-top: 0.5rem;
-  padding: 0.75rem;
-  border-radius: 0.75rem;
-  background: rgba(0, 0, 0, 0.04);
-}
-
-.profile-section--infrastructure .profile-section__body {
-  gap: 1.5rem;
-}
-
-.profile-infrastructure {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 1.5rem;
-}
-
-.profile-card {
-  background: var(--surface-2);
-  border-radius: 1rem;
-  padding: 1.5rem;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.profile-card__title {
-  margin: 0;
-  font-weight: 600;
-}
-
-.profile-card__row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.profile-card__label {
-  text-transform: uppercase;
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.profile-card__info-btn {
-  color: var(--text-2);
-  min-width: 0;
-  padding: 0;
-}
-
-.profile-card__info-btn :deep(.q-btn__content) {
-  padding: 0;
-}
-
-.profile-card__info-btn :deep(.q-icon) {
-  font-size: 1rem;
-}
-
-.profile-card__info-btn:focus-visible {
-  outline: 2px solid var(--accent-500);
-  outline-offset: 2px;
-}
-
-.profile-card__value {
-  word-break: break-word;
-}
-
-.profile-card__text {
-  margin: 0;
-}
-
-.profile-card__list {
-  margin: 0;
-  padding-left: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.profile-card__list-item {
-  position: relative;
-}
-
-.profile-faq {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.profile-faq__item {
-  border-radius: 0.75rem;
-  background: var(--surface-2);
-  padding: 0.75rem 1rem;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
-}
-
-.profile-faq__question {
-  cursor: pointer;
-  margin: 0;
-  font-weight: 600;
-}
-
-.profile-faq__answer {
-  margin: 0.75rem 0 0;
-}
-
-@media (max-width: 767px) {
-  .profile-hero__content {
+@media (max-width: 600px) {
+  .public-profile__hero-content {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  .profile-hero__avatar {
-    width: 100px;
-    height: 100px;
-  }
-
-  .profile-tier__header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .profile-tier__cta {
-    align-items: flex-start;
-  }
-
-  .profile-tier__subscribe {
-    width: 100%;
+  .public-profile__avatar {
+    width: 96px;
+    height: 96px;
   }
 }
 </style>
