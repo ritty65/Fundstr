@@ -672,6 +672,7 @@ type TierKind = 30019 | 30000;
 
 const P2PK_VERIFICATION_STALE_MS = 1000 * 60 * 60 * 24 * 7;
 const CREATOR_STUDIO_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
+const CREATOR_STUDIO_HTTP_TIMEOUT_MS = Math.min(HTTP_FALLBACK_TIMEOUT_MS, 1200);
 const HTTP_DEFAULT_ACCEPT =
   'application/nostr+json, application/json;q=0.9, */*;q=0.1';
 
@@ -1007,6 +1008,11 @@ type SettledQueryResult =
   | { source: QuerySource; status: 'fulfilled'; events: any[] }
   | { source: QuerySource; status: 'rejected'; error: unknown };
 
+type CreatorStudioEventsResult = {
+  events: any[];
+  background: Promise<SettledQueryResult | null>;
+};
+
 function buildHttpRequestUrl(base: string, filters: NostrFilter[]): string {
   const serialized = JSON.stringify(filters);
   try {
@@ -1026,16 +1032,19 @@ function isAbortError(err: unknown): boolean {
   return (err as { name?: unknown }).name === 'AbortError';
 }
 
-function createHttpFallbackRequest(filters: NostrFilter[]) {
+function createHttpFallbackRequest(
+  filters: NostrFilter[],
+  timeoutMs = HTTP_FALLBACK_TIMEOUT_MS
+) {
   const requestUrl = buildHttpRequestUrl(CREATOR_STUDIO_RELAY_HTTP_URL, filters);
   const controller =
     typeof AbortController !== 'undefined' ? new AbortController() : null;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  if (controller && HTTP_FALLBACK_TIMEOUT_MS > 0) {
+  if (controller && timeoutMs > 0) {
     timer = setTimeout(() => {
       controller.abort();
-    }, HTTP_FALLBACK_TIMEOUT_MS);
+    }, timeoutMs);
   }
 
   const promise: Promise<any[]> = (async () => {
@@ -1052,7 +1061,7 @@ function createHttpFallbackRequest(filters: NostrFilter[]) {
     } catch (err) {
       if (isAbortError(err)) {
         throw new Error(
-          `HTTP fallback timed out after ${HTTP_FALLBACK_TIMEOUT_MS}ms (url: ${requestUrl})`
+          `HTTP fallback timed out after ${timeoutMs}ms (url: ${requestUrl})`
         );
       }
       const message = err instanceof Error ? err.message : String(err);
@@ -1139,9 +1148,17 @@ function settleQueryPromise(
     .catch(error => ({ source, status: 'rejected', error }) as const);
 }
 
-async function requestCreatorStudioEvents(filters: NostrFilter[]): Promise<any[]> {
+function trackHttpDiagnostics(result: SettledQueryResult) {
+  if (result.source === 'http' && result.status === 'rejected') {
+    maybeFlagHttpFallbackTimeout(result.error);
+  }
+}
+
+async function requestCreatorStudioEvents(
+  filters: NostrFilter[]
+): Promise<CreatorStudioEventsResult> {
   const relaySocket = await getRelayClient();
-  const httpHandle = createHttpFallbackRequest(filters);
+  const httpHandle = createHttpFallbackRequest(filters, CREATOR_STUDIO_HTTP_TIMEOUT_MS);
   const wsSettled = settleQueryPromise(
     'ws',
     relaySocket.requestOnce(filters, {
@@ -1149,49 +1166,44 @@ async function requestCreatorStudioEvents(filters: NostrFilter[]): Promise<any[]
     })
   );
   const httpSettled = settleQueryPromise('http', httpHandle.promise);
+  let handedOffCancellation = false;
 
   try {
     const first = await Promise.race([wsSettled, httpSettled]);
-
-    if (first.source === 'http' && first.status === 'rejected') {
-      maybeFlagHttpFallbackTimeout(first.error);
-    }
-
-    if (first.status === 'fulfilled' && first.events.length > 0) {
-      if (first.source === 'ws') {
-        httpHandle.cancel();
-      }
-      return first.events;
-    }
-
-    const second =
-      first.source === 'ws' ? await httpSettled : await wsSettled;
-
-    if (second.source === 'http' && second.status === 'rejected') {
-      maybeFlagHttpFallbackTimeout(second.error);
-    }
+    trackHttpDiagnostics(first);
 
     if (first.status === 'fulfilled') {
-      if (second.status === 'fulfilled' && second.events.length > 0) {
-        if (second.source === 'http') {
+      const otherPromise = first.source === 'ws' ? httpSettled : wsSettled;
+      handedOffCancellation = true;
+      const background = otherPromise
+        .then(result => {
+          trackHttpDiagnostics(result);
+          return result;
+        })
+        .finally(() => {
           httpHandle.cancel();
-        }
-        return second.events;
-      }
-      return first.events;
+        });
+
+      return { events: first.events, background };
     }
 
+    const second = await (first.source === 'ws' ? httpSettled : wsSettled);
+    trackHttpDiagnostics(second);
+
     if (second.status === 'fulfilled') {
-      if (second.source === 'http') {
-        httpHandle.cancel();
-      }
-      return second.events;
+      httpHandle.cancel();
+      return {
+        events: second.events,
+        background: Promise.resolve<SettledQueryResult | null>(null),
+      };
     }
 
     const error = (second.error ?? first.error) as unknown;
     throw error instanceof Error ? error : new Error(String(error));
   } finally {
-    httpHandle.cancel();
+    if (!handedOffCancellation) {
+      httpHandle.cancel();
+    }
   }
 }
 
@@ -2432,7 +2444,7 @@ function applyProfileEvent(latest: any | null) {
 async function loadTiers(authorHex: string) {
   try {
     const normalized = authorHex.toLowerCase();
-    const events = await requestCreatorStudioEvents([
+    const { events, background } = await requestCreatorStudioEvents([
       {
         kinds: [30019, 30000],
         authors: [normalized],
@@ -2443,6 +2455,25 @@ async function loadTiers(authorHex: string) {
 
     const latest = pickLatestParamReplaceable(events);
     applyTiersEvent(latest);
+
+    void background.then(result => {
+      if (!result) {
+        return;
+      }
+      if (result.status === 'fulfilled') {
+        if (!result.events.length) {
+          return;
+        }
+        const newest = pickLatestParamReplaceable(result.events);
+        applyTiersEvent(newest);
+        return;
+      }
+
+      console.warn(
+        `[nutzap] background tiers ${result.source} request failed`,
+        result.error
+      );
+    });
   } catch (err) {
     console.error('[nutzap] failed to load tiers', err);
     maybeFlagHttpFallbackTimeout(err);
@@ -2455,12 +2486,31 @@ async function loadTiers(authorHex: string) {
 async function loadProfile(authorHex: string) {
   try {
     const normalized = authorHex.toLowerCase();
-    const events = await requestCreatorStudioEvents([
+    const { events, background } = await requestCreatorStudioEvents([
       { kinds: [10019], authors: [normalized], limit: 1 },
     ]);
 
     const latest = pickLatestReplaceable(events);
     applyProfileEvent(latest);
+
+    void background.then(result => {
+      if (!result) {
+        return;
+      }
+      if (result.status === 'fulfilled') {
+        if (!result.events.length) {
+          return;
+        }
+        const newest = pickLatestReplaceable(result.events);
+        applyProfileEvent(newest);
+        return;
+      }
+
+      console.warn(
+        `[nutzap] background profile ${result.source} request failed`,
+        result.error
+      );
+    });
   } catch (err) {
     console.error('[nutzap] failed to load profile', err);
     maybeFlagHttpFallbackTimeout(err);
