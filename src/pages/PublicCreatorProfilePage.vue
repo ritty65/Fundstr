@@ -31,6 +31,93 @@
         <section class="public-profile__section">
           <header class="public-profile__section-header">
             <h2 class="public-profile__section-title text-h5">
+              {{ $t('CreatorHub.profile.sections.infrastructure') }}
+            </h2>
+            <q-spinner-hourglass
+              v-if="loadingProfile"
+              size="18px"
+              class="public-profile__spinner"
+            />
+          </header>
+          <div v-if="nutzapProfile" class="public-profile__infrastructure">
+            <div v-if="nutzapProfile.p2pkPubkey" class="public-profile__subsection">
+              <div class="public-profile__subsection-label text-2">
+                <span>{{ $t('CreatorHub.profile.p2pkLabel') }}</span>
+                <q-btn
+                  flat
+                  dense
+                  round
+                  size="sm"
+                  class="public-profile__info-btn"
+                  icon="info"
+                  :aria-label="$t('FindCreators.explainers.tooltips.p2pk')"
+                >
+                  <q-tooltip anchor="top middle" self="bottom middle">
+                    {{ $t('FindCreators.explainers.tooltips.p2pk') }}
+                  </q-tooltip>
+                </q-btn>
+              </div>
+              <code class="public-profile__subsection-value">
+                {{ nutzapProfile.p2pkPubkey }}
+              </code>
+            </div>
+            <div class="public-profile__subsection">
+              <div class="public-profile__subsection-label text-2">
+                <span>{{ $t('CreatorHub.profile.trustedMintsLabel') }}</span>
+                <q-btn
+                  flat
+                  dense
+                  round
+                  size="sm"
+                  class="public-profile__info-btn"
+                  icon="info"
+                  :aria-label="$t('FindCreators.explainers.tooltips.trustedMints')"
+                >
+                  <q-tooltip anchor="top middle" self="bottom middle">
+                    {{ $t('FindCreators.explainers.tooltips.trustedMints') }}
+                  </q-tooltip>
+                </q-btn>
+              </div>
+              <MintSafetyList :mints="nutzapProfile.trustedMints" />
+            </div>
+            <div class="public-profile__subsection">
+              <div class="public-profile__subsection-label text-2">
+                <span>{{ $t('CreatorHub.profile.relaysLabel') }}</span>
+                <q-btn
+                  flat
+                  dense
+                  round
+                  size="sm"
+                  class="public-profile__info-btn"
+                  icon="info"
+                  :aria-label="$t('FindCreators.explainers.tooltips.relays')"
+                >
+                  <q-tooltip anchor="top middle" self="bottom middle">
+                    {{ $t('FindCreators.explainers.tooltips.relays') }}
+                  </q-tooltip>
+                </q-btn>
+              </div>
+              <RelayBadgeList :relays="nutzapProfile.relays" />
+            </div>
+            <div v-if="nutzapProfile.tierAddr" class="public-profile__subsection">
+              <div class="public-profile__subsection-label text-2">
+                <span>Tier address</span>
+              </div>
+              <code class="public-profile__subsection-value">
+                {{ nutzapProfile.tierAddr }}
+              </code>
+            </div>
+          </div>
+          <div v-else-if="loadingProfile" class="public-profile__state text-2">
+            Loading infrastructure…
+          </div>
+          <div v-else class="public-profile__state text-2">
+            Creator hasn't published infrastructure details yet.
+          </div>
+        </section>
+        <section class="public-profile__section">
+          <header class="public-profile__section-header">
+            <h2 class="public-profile__section-title text-h5">
               {{ $t('CreatorHub.profile.sections.tiers') }}
             </h2>
           </header>
@@ -79,7 +166,11 @@
 <script lang="ts">
 import { defineComponent, ref, onMounted, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useCreatorsStore, fetchFundstrProfileBundle } from "stores/creators";
+import {
+  useCreatorsStore,
+  fetchFundstrProfileBundle,
+  fetchPublicNutzapProfile,
+} from "stores/creators";
 import { useNostrStore } from "stores/nostr";
 import { buildProfileUrl } from "src/utils/profileUrl";
 import { deriveCreatorKeys } from "src/utils/nostrKeys";
@@ -88,6 +179,8 @@ import { usePriceStore } from "stores/price";
 import { useUiStore } from "stores/ui";
 import SubscribeDialog from "components/SubscribeDialog.vue";
 import TierSummaryCard from "components/TierSummaryCard.vue";
+import MintSafetyList from "components/MintSafetyList.vue";
+import RelayBadgeList from "components/RelayBadgeList.vue";
 import { isTrustedUrl } from "src/utils/sanitize-url";
 import { useClipboard } from "src/composables/useClipboard";
 import { useWelcomeStore } from "stores/welcome";
@@ -95,11 +188,14 @@ import {
   daysToFrequency,
   type SubscriptionFrequency,
 } from "src/constants/subscriptionFrequency";
+import type { NutzapProfileDetails } from "@/nutzap/profileCache";
 
 export default defineComponent({
   name: "PublicCreatorProfilePage",
   components: {
     TierSummaryCard,
+    MintSafetyList,
+    RelayBadgeList,
   },
   setup() {
     const route = useRoute();
@@ -124,6 +220,8 @@ export default defineComponent({
     const welcomeStore = useWelcomeStore();
     const { copy } = useClipboard();
     const profile = ref<any>({});
+    const nutzapProfile = ref<NutzapProfileDetails | null>(null);
+    const loadingProfile = ref(false);
     const creatorTierList = computed(() =>
       creatorHex ? creators.tiersMap[creatorHex] : undefined,
     );
@@ -168,10 +266,14 @@ export default defineComponent({
       const tierPromise = fetchTiers();
 
       if (!creatorHex) {
+        nutzapProfile.value = null;
+        loadingProfile.value = false;
         await tierPromise;
         return;
       }
 
+      loadingProfile.value = true;
+      nutzapProfile.value = null;
       const profilePromise = fetchFundstrProfileBundle(creatorHex)
         .then((bundle) => {
           if (!bundle) return;
@@ -186,7 +288,19 @@ export default defineComponent({
         })
         .catch(() => {});
 
-      await Promise.all([profilePromise, tierPromise]);
+      const nutzapPromise = fetchPublicNutzapProfile(creatorHex)
+        .then((result) => {
+          nutzapProfile.value = result?.details ?? null;
+        })
+        .catch((error) => {
+          console.error("Failed to load Nutzap profile", error);
+          nutzapProfile.value = null;
+        })
+        .finally(() => {
+          loadingProfile.value = false;
+        });
+
+      await Promise.all([profilePromise, tierPromise, nutzapPromise]);
     };
     // initialization handled in onMounted
 
@@ -312,6 +426,7 @@ export default defineComponent({
       creatorHex,
       decodeError,
       profile,
+      nutzapProfile,
       profileDisplayName,
       profileHandle,
       profileAvatar,
@@ -322,6 +437,7 @@ export default defineComponent({
       selectedTier,
       loadingTiers,
       tierFetchError,
+      loadingProfile,
       formatFiat,
       getPrice,
       frequencyLabel,
@@ -462,6 +578,43 @@ export default defineComponent({
   text-align: center;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.public-profile__spinner {
+  margin-left: 0.5rem;
+}
+
+.public-profile__infrastructure {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.public-profile__subsection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.public-profile__subsection-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.public-profile__info-btn {
+  color: var(--text-2);
+}
+
+.public-profile__subsection-value {
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--surface-contrast-border);
+  word-break: break-all;
+  font-family: "JetBrains Mono", "Fira Mono", "Menlo", monospace;
+  font-size: 0.9rem;
 }
 
 .public-profile__tier-list {

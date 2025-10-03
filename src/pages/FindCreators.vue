@@ -281,7 +281,7 @@ defineOptions({
 });
 import { useSendTokensStore } from "stores/sendTokensStore";
 import { useDonationPresetsStore } from "stores/donationPresets";
-import { useCreatorsStore } from "stores/creators";
+import { useCreatorsStore, fetchPublicNutzapProfile } from "stores/creators";
 import { useNostrStore } from "stores/nostr";
 import { notifyWarning } from "src/js/notify";
 import { useRouter, useRoute } from "vue-router";
@@ -298,14 +298,8 @@ import {
   useQuasar,
 } from "quasar";
 import { nip19 } from "nostr-tools";
-import { queryNutzapProfile, toHex } from "@/nostr/relayClient";
-import type { NostrEvent } from "@/nostr/relayClient";
-import { fallbackDiscoverRelays } from "@/nostr/discovery";
-import { FUNDSTR_REQ_URL, WS_FIRST_TIMEOUT_MS } from "@/nutzap/relayEndpoints";
-import {
-  parseNutzapProfileEvent,
-  type NutzapProfileDetails,
-} from "@/nutzap/profileCache";
+import { toHex } from "@/nostr/relayClient";
+import { type NutzapProfileDetails } from "@/nutzap/profileCache";
 import type { PrefillCreatorCacheEntry } from "stores/creators";
 import { usePriceStore } from "stores/price";
 import { useUiStore } from "stores/ui";
@@ -346,7 +340,6 @@ const priceStore = usePriceStore();
 const uiStore = useUiStore();
 const welcomeStore = useWelcomeStore();
 const tiers = computed(() => creators.tiersMap[dialogPubkey.value] || []);
-const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
 let usedFundstrOnly = false;
 const tierFetchError = computed(() => creators.tierFetchError);
 const showSubscribeDialog = ref(false);
@@ -603,74 +596,6 @@ function getPrice(t: any): number {
   return t.price_sats ?? t.price ?? 0;
 }
 
-async function fetchProfileWithFallback(
-  pubkeyInput: string,
-  opts: { fundstrOnly?: boolean } = {},
-) {
-  let hex: string;
-  try {
-    hex = toHex(pubkeyInput);
-  } catch (err) {
-    console.error("Invalid pubkey for profile fetch", err);
-    return {
-      event: null,
-      details: null,
-      relayHints: [],
-      pubkeyHex: "",
-    };
-  }
-
-  const relayHints = new Set<string>();
-  const fundstrOnly = opts.fundstrOnly === true;
-  let event: NostrEvent | null = null;
-  try {
-    event = await queryNutzapProfile(hex, {
-      httpBase: FUNDSTR_REQ_URL,
-      allowFanoutFallback: false,
-      wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
-    });
-  } catch (e) {
-    console.error("Failed to query Nutzap profile", e);
-  }
-
-  if (!event && !fundstrOnly) {
-    try {
-      const discovered = await fallbackDiscoverRelays(hex);
-      for (const url of discovered) relayHints.add(url);
-      if (relayHints.size) {
-        event = await queryNutzapProfile(hex, {
-          httpBase: FUNDSTR_REQ_URL,
-          fanout: Array.from(relayHints),
-          allowFanoutFallback: true,
-          wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
-        });
-      }
-    } catch (e) {
-      console.error("NIP-65 discovery failed", e);
-    }
-  }
-
-  if (event) {
-    for (const tag of event.tags || []) {
-      if (tag[0] === "relay" && typeof tag[1] === "string" && tag[1]) {
-        relayHints.add(tag[1]);
-      }
-    }
-  }
-
-  const details = parseNutzapProfileEvent(event);
-  if (details) {
-    for (const relay of details.relays) relayHints.add(relay);
-  }
-
-  return {
-    event,
-    details,
-    relayHints: Array.from(relayHints),
-    pubkeyHex: hex,
-  };
-}
-
 async function viewCreatorProfile(
   pubkeyInput: string,
   opts: { openDialog?: boolean; fundstrOnly?: boolean } = {},
@@ -724,11 +649,11 @@ async function viewCreatorProfile(
     }, 5000);
   }
 
-  let profileResult: Awaited<ReturnType<typeof fetchProfileWithFallback>> | null =
+  let profileResult: Awaited<ReturnType<typeof fetchPublicNutzapProfile>> | null =
     null;
   if (!cachedProfileLoaded) {
     try {
-      profileResult = await fetchProfileWithFallback(trimmed, { fundstrOnly });
+      profileResult = await fetchPublicNutzapProfile(trimmed, { fundstrOnly });
     } catch (e) {
       console.error("Failed to fetch creator profile", e);
     }
