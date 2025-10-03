@@ -642,6 +642,8 @@ import { nip19 } from 'nostr-tools';
 import { useClipboard } from 'src/composables/useClipboard';
 import { buildProfileUrl } from 'src/utils/profileUrl';
 import {
+  FUNDSTR_WS_URL,
+  FUNDSTR_REQ_URL,
   WS_FIRST_TIMEOUT_MS,
   HTTP_FALLBACK_TIMEOUT_MS,
   publishTiers as publishTiersToRelay,
@@ -676,9 +678,6 @@ const CREATOR_STUDIO_HTTP_TIMEOUT_MS = Math.min(HTTP_FALLBACK_TIMEOUT_MS, 1200);
 const HTTP_DEFAULT_ACCEPT =
   'application/nostr+json, application/json;q=0.9, */*;q=0.1';
 
-const CREATOR_STUDIO_RELAY_WS_URL = 'wss://relay.fundstr.me';
-const CREATOR_STUDIO_RELAY_HTTP_URL = 'https://relay.fundstr.me/req';
-
 const authorInput = ref('');
 const displayName = ref('');
 const pictureUrl = ref('');
@@ -693,7 +692,7 @@ const verifyingP2pkPointer = ref(false);
 let previousSelectedP2pkPub = '';
 const cachedMintsText = useLocalStorage<string>('nutzap.profile.mintsDraft', '');
 const mintsText = ref(cachedMintsText.value || '');
-const relaysText = ref(CREATOR_STUDIO_RELAY_WS_URL);
+const relaysText = ref(FUNDSTR_WS_URL);
 const tiers = ref<Tier[]>([]);
 const handleTiersUpdate = (value: Tier[] | unknown) => {
   tiers.value = Array.isArray(value) ? value : [];
@@ -713,7 +712,7 @@ const lastExportTiers = ref('');
 const relayClientRef = shallowRef<FundstrRelayClient | null>(null);
 let relayClientPromise: Promise<FundstrRelayClient> | null = null;
 let relayClientInitSequence = 0;
-let activeRelayUrl = CREATOR_STUDIO_RELAY_WS_URL;
+let activeRelayUrl = FUNDSTR_WS_URL;
 let resolvedRelayUrl: string | null = null;
 
 function setResolvedRelayClient(
@@ -729,7 +728,7 @@ function setResolvedRelayClient(
 }
 
 function ensureRelayClientInitialized(targetUrl = activeRelayUrl): Promise<FundstrRelayClient> {
-  const sanitized = typeof targetUrl === 'string' && targetUrl.trim() ? targetUrl : CREATOR_STUDIO_RELAY_WS_URL;
+  const sanitized = typeof targetUrl === 'string' && targetUrl.trim() ? targetUrl : FUNDSTR_WS_URL;
 
   if (relayClientRef.value && resolvedRelayUrl === sanitized) {
     activeRelayUrl = sanitized;
@@ -997,7 +996,7 @@ function maybeFlagHttpFallbackTimeout(error: unknown) {
     return;
   }
   if (message.toLowerCase().includes('http fallback timed out')) {
-    const detail = `${message}. Confirm ${CREATOR_STUDIO_RELAY_HTTP_URL} is reachable or adjust VITE_NUTZAP_PRIMARY_RELAY_HTTP.`;
+    const detail = `${message}. Confirm ${FUNDSTR_REQ_URL} is reachable or adjust VITE_NUTZAP_PRIMARY_RELAY_HTTP.`;
     flagDiagnosticsAttention('relay', detail, 'warning');
   }
 }
@@ -1036,7 +1035,7 @@ function createHttpFallbackRequest(
   filters: NostrFilter[],
   timeoutMs = HTTP_FALLBACK_TIMEOUT_MS
 ) {
-  const requestUrl = buildHttpRequestUrl(CREATOR_STUDIO_RELAY_HTTP_URL, filters);
+  const requestUrl = buildHttpRequestUrl(FUNDSTR_REQ_URL, filters);
   const controller =
     typeof AbortController !== 'undefined' ? new AbortController() : null;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1255,7 +1254,7 @@ const {
   logRelayActivity,
 } = relayTelemetry;
 
-activeRelayUrl = relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL;
+activeRelayUrl = relayConnectionUrl.value || FUNDSTR_WS_URL;
 
 const activeRelayActivity = computed(() => latestRelayActivity.value);
 const activeRelayActivityTimeLabel = computed(() => {
@@ -1282,7 +1281,7 @@ watch(
 watch(
   relayConnectionUrl,
   nextUrl => {
-    const sanitized = typeof nextUrl === 'string' && nextUrl.trim() ? nextUrl : CREATOR_STUDIO_RELAY_WS_URL;
+    const sanitized = typeof nextUrl === 'string' && nextUrl.trim() ? nextUrl : FUNDSTR_WS_URL;
 
     if (resolvedRelayUrl === sanitized && relayClientRef.value) {
       activeRelayUrl = sanitized;
@@ -1858,7 +1857,7 @@ const relayList = computed(() => {
     .map(s => s.trim())
     .filter(Boolean);
   const set = new Set(entries);
-  set.add(CREATOR_STUDIO_RELAY_WS_URL);
+  set.add(FUNDSTR_WS_URL);
   return Array.from(set);
 });
 
@@ -2320,8 +2319,8 @@ function buildRelayList(rawRelays: string[]) {
   for (const relay of sanitizedEntries) {
     sanitizedSet.add(relay);
   }
-  if (!sanitizedSet.has(CREATOR_STUDIO_RELAY_WS_URL)) {
-    sanitizedSet.add(CREATOR_STUDIO_RELAY_WS_URL);
+  if (!sanitizedSet.has(FUNDSTR_WS_URL)) {
+    sanitizedSet.add(FUNDSTR_WS_URL);
   }
 
   return { sanitized: Array.from(sanitizedSet), dropped: droppedEntries };
@@ -2338,7 +2337,7 @@ function applyProfileEvent(latest: any | null) {
     p2pkPubError.value = '';
     previousSelectedP2pkPub = '';
     mintsText.value = '';
-    relaysText.value = CREATOR_STUDIO_RELAY_WS_URL;
+    relaysText.value = FUNDSTR_WS_URL;
     seedMintsFromStoreIfEmpty();
     return;
   }
@@ -2387,7 +2386,7 @@ function applyProfileEvent(latest: any | null) {
       }
       relaysText.value = sanitized.join('\n');
     } else {
-      relaysText.value = CREATOR_STUDIO_RELAY_WS_URL;
+      relaysText.value = FUNDSTR_WS_URL;
     }
     if (typeof parsed.tierAddr === 'string') {
       const [kindPart, , dPart] = parsed.tierAddr.split(':');
@@ -2414,7 +2413,7 @@ function applyProfileEvent(latest: any | null) {
     mintsText.value = mintTags.map((t: any) => t[1]).join('\n');
   }
   const relayTags = tags.filter((t: any) => Array.isArray(t) && t[0] === 'relay' && t[1]);
-  if ((!relaysText.value || relaysText.value === CREATOR_STUDIO_RELAY_WS_URL) && relayTags.length) {
+  if ((!relaysText.value || relaysText.value === FUNDSTR_WS_URL) && relayTags.length) {
     const rawRelays = relayTags
       .map((t: any) => (typeof t[1] === 'string' ? t[1].trim() : ''))
       .filter(Boolean);
@@ -2572,7 +2571,7 @@ function ensureRelayStatusListenerOnce() {
     return;
   }
 
-  const targetUrl = relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL;
+  const targetUrl = relayConnectionUrl.value || FUNDSTR_WS_URL;
   void ensureRelayClientInitialized(targetUrl)
     .then(client => {
       attachRelayStatusListener(client);
@@ -2832,7 +2831,7 @@ async function publishAll() {
       try {
         const result = await publishTiersToRelay(tiers.value, tierKind.value, {
           send: publishEventToRelay,
-          relayUrl: relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL,
+          relayUrl: relayConnectionUrl.value || FUNDSTR_WS_URL,
         });
         return { result, usedFallback: false as const };
       } catch (err) {
@@ -2840,7 +2839,7 @@ async function publishAll() {
           throw err;
         }
         const fallbackResult = await publishTiersToRelay(tiers.value, tierKind.value, {
-          relayUrl: relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL,
+          relayUrl: relayConnectionUrl.value || FUNDSTR_WS_URL,
         });
         const reason = describeFallbackReason(err);
         fallbackNotices.push(
@@ -2896,7 +2895,7 @@ async function publishAll() {
       try {
         const result = await publishNostrEvent(profileTemplate, {
           send: publishEventToRelay,
-          relayUrl: relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL,
+          relayUrl: relayConnectionUrl.value || FUNDSTR_WS_URL,
         });
         return { result, usedFallback: false as const };
       } catch (err) {
@@ -2904,7 +2903,7 @@ async function publishAll() {
           throw err;
         }
         const fallbackClient = await ensureRelayClientInitialized(
-          relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL
+          relayConnectionUrl.value || FUNDSTR_WS_URL
         );
         const fallbackResult = await fallbackClient.publish(profileTemplate);
         const reason = describeFallbackReason(err);
@@ -3028,7 +3027,7 @@ watch(
 onMounted(() => {
   void ensureSharedSignerInitialized();
   if (!relaysText.value) {
-    relaysText.value = CREATOR_STUDIO_RELAY_WS_URL;
+    relaysText.value = FUNDSTR_WS_URL;
   }
   if (!authorInput.value.trim()) {
     if (routeAuthorQuery.value) {
@@ -3048,7 +3047,7 @@ onMounted(() => {
     void loadAll();
   }
   if (relaySupported) {
-    const initialRelayUrl = relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL;
+    const initialRelayUrl = relayConnectionUrl.value || FUNDSTR_WS_URL;
     void ensureRelayClientInitialized(initialRelayUrl)
       .then(() => {
         connectRelay();
