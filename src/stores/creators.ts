@@ -14,7 +14,6 @@ import { notifyWarning } from "src/js/notify";
 import type { Tier } from "./types";
 import {
   queryNostr,
-  queryNutzapProfile,
   queryNutzapTiers,
   normalizeEvents,
   pickLatestReplaceable,
@@ -26,10 +25,7 @@ import { fallbackDiscoverRelays } from "@/nostr/discovery";
 import { parseTierDefinitionEvent } from "src/nostr/tiers";
 import { FUNDSTR_REQ_URL, WS_FIRST_TIMEOUT_MS } from "@/nutzap/relayEndpoints";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
-import {
-  parseNutzapProfileEvent,
-  type NutzapProfileDetails,
-} from "@/nutzap/profileCache";
+import type { NutzapProfileDetails } from "@/nutzap/profileCache";
 
 export const FEATURED_CREATORS = [
   "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
@@ -131,82 +127,6 @@ export async function fetchFundstrProfileBundle(
     profileEvent: preferredProfile ?? null,
     followers: followerSet.size,
     following,
-  };
-}
-
-export interface PublicNutzapProfileResult {
-  event: RelayEvent | null;
-  details: NutzapProfileDetails | null;
-  relayHints: string[];
-  pubkeyHex: string;
-}
-
-export async function fetchPublicNutzapProfile(
-  pubkeyInput: string,
-  opts: { fundstrOnly?: boolean } = {},
-): Promise<PublicNutzapProfileResult> {
-  let hex: string;
-  try {
-    hex = toHex(pubkeyInput);
-  } catch (err) {
-    console.error("Invalid pubkey for profile fetch", err);
-    return {
-      event: null,
-      details: null,
-      relayHints: [],
-      pubkeyHex: "",
-    };
-  }
-
-  const relayHints = new Set<string>();
-  const { fundstrOnly = true } = opts;
-  let event: RelayEvent | null = null;
-
-  try {
-    event = await queryNutzapProfile(hex, {
-      httpBase: FUNDSTR_REQ_URL,
-      allowFanoutFallback: false,
-      wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
-    });
-  } catch (error) {
-    console.error("Failed to query Nutzap profile", error);
-  }
-
-  if (!event && !fundstrOnly) {
-    try {
-      const discovered = await fallbackDiscoverRelays(hex);
-      for (const url of discovered) relayHints.add(url);
-      if (relayHints.size) {
-        event = await queryNutzapProfile(hex, {
-          httpBase: FUNDSTR_REQ_URL,
-          fanout: Array.from(relayHints),
-          allowFanoutFallback: true,
-          wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
-        });
-      }
-    } catch (error) {
-      console.error("NIP-65 discovery failed", error);
-    }
-  }
-
-  if (event) {
-    for (const tag of event.tags || []) {
-      if (tag[0] === "relay" && typeof tag[1] === "string" && tag[1]) {
-        relayHints.add(tag[1]);
-      }
-    }
-  }
-
-  const details = parseNutzapProfileEvent(event);
-  if (details) {
-    for (const relay of details.relays) relayHints.add(relay);
-  }
-
-  return {
-    event,
-    details,
-    relayHints: Array.from(relayHints),
-    pubkeyHex: hex,
   };
 }
 
