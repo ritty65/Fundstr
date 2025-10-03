@@ -29,7 +29,15 @@
           class="row items-center justify-between q-mt-md q-mb-md"
         >
           <div class="text-subtitle1">Chats</div>
-          <q-btn flat dense round icon="add" @click="openNewChatDialog" />
+          <q-btn
+            flat
+            dense
+            round
+            icon="add"
+            :disable="nostrUiDisabled"
+            :loading="nostrLoading"
+            @click="openNewChatDialog"
+          />
         </div>
         <q-input
           v-show="!messenger.drawerMini"
@@ -39,27 +47,67 @@
           v-model="conversationSearch"
           placeholder="Search"
           class="q-mb-md"
+          :disable="nostrUiDisabled"
         >
           <template #prepend>
             <q-icon name="search" />
           </template>
         </q-input>
         <q-scroll-area class="col" style="min-height: 0; min-width: 0">
-          <Suspense>
-            <template #default>
-              <ConversationList
-                :mini="messenger.drawerMini"
-                :selected-pubkey="messenger.currentConversation"
-                :search="conversationSearch"
-                @select="selectConversation"
+          <template v-if="nostrReady">
+            <Suspense>
+              <template #default>
+                <ConversationList
+                  :mini="messenger.drawerMini"
+                  :selected-pubkey="messenger.currentConversation"
+                  :search="conversationSearch"
+                  @select="selectConversation"
+                />
+              </template>
+              <template #fallback>
+                <q-skeleton height="100px" square />
+              </template>
+            </Suspense>
+          </template>
+          <div v-else class="column q-gutter-sm q-pa-sm items-stretch">
+            <div
+              v-if="nostrInitError"
+              class="column items-center q-gutter-xs q-pa-sm text-center"
+            >
+              <span class="text-negative text-caption">
+                Unable to connect to Nostr right now. Messaging features are temporarily
+                unavailable.
+              </span>
+              <q-btn
+                flat
+                dense
+                no-caps
+                color="primary"
+                icon="refresh"
+                label="Retry"
+                :disable="nostrLoading"
+                :loading="nostrLoading"
+                @click="retryNostrInit"
               />
+            </div>
+            <div
+              v-else-if="nostrLoading"
+              class="column items-center justify-center q-gutter-sm q-pa-md text-2"
+            >
+              <q-spinner color="accent-500" size="28px" />
+              <span>Connecting to relays…</span>
+            </div>
+            <template v-else>
+              <q-skeleton v-for="n in 4" :key="n" height="52px" square />
             </template>
-            <template #fallback>
-              <q-skeleton height="100px" square />
-            </template>
-          </Suspense>
+          </div>
         </q-scroll-area>
-        <UserInfo v-show="!messenger.drawerMini" />
+        <UserInfo v-if="!messenger.drawerMini && nostrReady" />
+        <q-skeleton
+          v-else-if="!messenger.drawerMini && nostrLoading"
+          height="96px"
+          square
+        />
       </div>
       <!-- Desktop resizer handle (hidden on <md and when mini) -->
       <div
@@ -84,7 +132,7 @@
 </template>
 
 <script>import windowMixin from 'src/mixins/windowMixin'
-import { defineComponent, ref, computed, watch } from "vue";
+import { defineComponent, ref, computed, watch, nextTick } from "vue";
 
 import { useRouter, useRoute } from "vue-router";
 import { useQuasar, LocalStorage } from "quasar";
@@ -117,6 +165,8 @@ export default defineComponent({
     const newChatDialogRef = ref(null);
     const $q = useQuasar();
     const ui = useUiStore();
+    const nostr = useNostrStore();
+    const nutzapStore = useNutzapStore();
 
     const navStyleVars = computed(() => ({
       "--nav-drawer-width": `${NAV_DRAWER_WIDTH}px`,
@@ -203,6 +253,105 @@ export default defineComponent({
       router.currentRoute.value.path.startsWith("/nostr-messenger"),
     );
 
+    const nostrInitTriggered = ref(false);
+    const nostrInitPending = ref(false);
+    const nostrInitError = ref(null);
+    let nostrInitPromise = null;
+    let pubkeyWatchStop = null;
+    const lastNutzapPubkey = ref(null);
+
+    const startNutzapListener = () => {
+      const pubkey = nostr.pubkey;
+      if (!pubkey) {
+        if (pubkeyWatchStop) return;
+        pubkeyWatchStop = watch(
+          () => nostr.pubkey,
+          (nextPk) => {
+            if (nextPk) {
+              pubkeyWatchStop?.();
+              pubkeyWatchStop = null;
+              startNutzapListener();
+            }
+          },
+        );
+        return;
+      }
+      if (lastNutzapPubkey.value === pubkey) return;
+      nutzapStore.initListener(pubkey);
+      lastNutzapPubkey.value = pubkey;
+    };
+
+    const ensureNostrInit = () => {
+      if (nostr.initialized) {
+        startNutzapListener();
+        return Promise.resolve();
+      }
+      if (nostrInitPromise) return nostrInitPromise;
+      nostrInitTriggered.value = true;
+      nostrInitPending.value = true;
+      nostrInitError.value = null;
+      nostrInitPromise = nostr
+        .initSignerIfNotSet()
+        .then(() => {
+          startNutzapListener();
+        })
+        .catch((err) => {
+          console.warn("Failed to initialise Nostr signer", err);
+          nostrInitError.value = err instanceof Error ? err : new Error(String(err));
+        })
+        .finally(() => {
+          nostrInitPending.value = false;
+          nostrInitPromise = null;
+        });
+      return nostrInitPromise;
+    };
+
+    const scheduleNostrInit = () => {
+      if (process.env.SERVER) return;
+      if (typeof window !== "undefined") {
+        const idle = window.requestIdleCallback ?? ((cb) => window.setTimeout(cb, 0));
+        idle(() => {
+          void ensureNostrInit();
+        });
+      } else {
+        nextTick(() => {
+          void ensureNostrInit();
+        });
+      }
+    };
+
+    if (!process.env.SERVER) {
+      watch(
+        isMessengerRoute,
+        (needsInit) => {
+          if (needsInit) {
+            scheduleNostrInit();
+          }
+        },
+        { immediate: true },
+      );
+
+      watch(
+        () => nostr.pubkey,
+        (pk) => {
+          if (pk && nostr.initialized) {
+            startNutzapListener();
+          }
+        },
+      );
+    }
+
+    const nostrLoading = computed(
+      () => nostrInitPending.value || (nostrInitTriggered.value && !nostr.initialized),
+    );
+    const nostrReady = computed(() => nostr.initialized && !nostrInitError.value);
+    const nostrUiDisabled = computed(() => !nostrReady.value || nostrLoading.value);
+
+    const retryNostrInit = () => {
+      nostrInitError.value = null;
+      void ensureNostrInit();
+    };
+
     return {
       messenger,
       conversationSearch,
@@ -215,13 +364,12 @@ export default defineComponent({
       onResizeStart,
       navStyleVars,
       route,
+      nostrLoading,
+      nostrReady,
+      nostrInitError,
+      nostrUiDisabled,
+      retryNostrInit,
     };
-  },
-  async mounted() {
-    const nostr = useNostrStore();
-    await nostr.initSignerIfNotSet();
-    const myHex = nostr.pubkey;
-    useNutzapStore().initListener(myHex);
   },
 });
 </script>
