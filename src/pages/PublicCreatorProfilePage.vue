@@ -338,11 +338,13 @@ export default defineComponent({
 <style scoped>
 .public-profile {
   min-height: 100%;
+  width: 100%;
 }
 
 .public-profile__inner {
-  max-width: 1100px;
+  max-width: 960px;
   margin: 0 auto;
+  width: 100%;
 }
 
 .public-profile__banner {
@@ -354,9 +356,17 @@ export default defineComponent({
   display: flex;
   gap: 1.5rem;
   align-items: center;
-  padding: 1.75rem;
+  padding: 2rem;
   border-radius: 1.5rem;
   margin-bottom: 2.5rem;
+  border: 1px solid var(--surface-contrast-border);
+  box-shadow: 0 22px 45px rgba(15, 23, 42, 0.28);
+  background: linear-gradient(
+    135deg,
+    rgba(57, 97, 252, 0.15),
+    rgba(81, 183, 250, 0.05)
+  );
+  backdrop-filter: blur(12px);
 }
 
 .public-profile__avatar {
@@ -420,13 +430,18 @@ export default defineComponent({
 .public-profile__content {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 2.5rem;
 }
 
 .public-profile__section {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  padding: 2rem;
+  border-radius: 1.5rem;
+  border: 1px solid var(--surface-contrast-border);
+  background: var(--surface-2);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.22);
 }
 
 .public-profile__section-header {
@@ -445,6 +460,8 @@ export default defineComponent({
   justify-content: center;
   align-items: center;
   text-align: center;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .public-profile__tier-list {
@@ -457,11 +474,16 @@ export default defineComponent({
   .public-profile__header {
     flex-direction: column;
     align-items: flex-start;
+    padding: 1.5rem;
   }
 
   .public-profile__avatar {
     width: 96px;
     height: 96px;
+  }
+
+  .public-profile__section {
+    padding: 1.5rem;
   }
 }
 </style>

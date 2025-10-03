@@ -2,7 +2,7 @@
 
 This page publishes a creator's Nutzap payment profile (kind **10019**) and the
 companion tier catalog (kinds **30019** canonical, **30000** legacy fallback)
-to the Fundstr relay at `relay.primal.net`. The helper module
+to the Fundstr relay at `relay.fundstr.me`. The helper module
 `src/pages/nutzap-profile/nostrHelpers.ts` centralises relay endpoints, signing,
 and read/write helpers so the page can provide production-grade UX around the
 Nostr primitives.
@@ -14,7 +14,7 @@ Nostr primitives.
 * **Tags**
   * Required: `['t','nutzap-profile']`, `['client','fundstr']`
   * For each mint: `['mint','<https-url>','sat']`
-  * Optional but encouraged: relay hints `['relay','wss://relay.primal.net']`,
+  * Optional but encouraged: relay hints `['relay','wss://relay.fundstr.me']`,
     canonical link to the tier PRE `['a','<kind>:<pubkey>:tiers']`,
     `['name','…']`, `['picture','…']`
 * **Content** — JSON string:
@@ -24,7 +24,7 @@ Nostr primitives.
     "v": 1,
     "p2pk": "<hex Cashu P2PK>",
     "mints": ["https://mint.example", "https://mint2.example"],
-    "relays": ["wss://relay.primal.net", "wss://another.example"],
+    "relays": ["wss://relay.fundstr.me", "wss://another.example"],
     "tierAddr": "30019:<author_hex>:tiers"
   }
   ```
@@ -68,13 +68,13 @@ to legacy mode.
      `['EOSE', <subId>]` or a **3 second** timeout elapses (see
      `WS_FIRST_TIMEOUT_MS`).
    * When no events arrive (or the request times out), fall back to
-     `GET https://relay.primal.net/req?filters=<urlencoded JSON>` with the
+     `GET https://relay.fundstr.me/req?filters=<urlencoded JSON>` with the
      `HTTP_FALLBACK_TIMEOUT_MS` deadline and return the JSON body
      (`{ ok: true, events:[…] }`).
 2. **Writes** call `publishNostrEvent(template)`.
    * Sign the template either via `window.nostr.signEvent` or the NDK signer.
    * Validate the signed event with `isNostrEvent` before sending.
-   * POST the event to `https://relay.primal.net/event` and only treat the
+   * POST the event to `https://relay.fundstr.me/event` and only treat the
      publish as successful when the relay acknowledges with `{"ok":true,
      "accepted":true, ...}`.
 
@@ -87,11 +87,11 @@ Replace `$AUTH` with the 64-char lowercase pubkey that signed the events.
 
 ```bash
 # Latest Nutzap profile (kind 10019)
-curl -sS --get 'https://relay.primal.net/req' \
+curl -sS --get 'https://relay.fundstr.me/req' \
   --data-urlencode 'filters=[{"kinds":[10019],"authors":["'$AUTH'"],"limit":1}]' | jq .
 
 # Latest Nutzap tiers (canonical 30019)
-curl -sS --get 'https://relay.primal.net/req' \
+curl -sS --get 'https://relay.fundstr.me/req' \
   --data-urlencode 'filters=[{"kinds":[30019],"authors":["'$AUTH'"],"#d":["tiers"],"limit":1}]' | jq .
 ```
 

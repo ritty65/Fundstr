@@ -1,6 +1,6 @@
 export const REQUIRED_DM_RELAYS = [
   'wss://relay.damus.io',
-  'wss://relay.primal.net',
+  'wss://relay.fundstr.me',
 ] as const;
 
 export const DM_BLOCKLIST = new Set<string>([

@@ -24,7 +24,7 @@ const routes = [
   },
   {
     path: "/creator/:npubOrHex",
-    component: () => import("layouts/FullscreenLayout.vue"),
+    component: () => import("layouts/PublicProfileLayout.vue"),
     children: [
       {
         path: "",
