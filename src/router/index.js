@@ -20,7 +20,10 @@ import { useNostrStore } from "src/stores/nostr";
  */
 
 export default route(async function (/* { store, ssrContext } */) {
-  await useNostrStore().loadKeysFromStorage();
+  const nostrStore = useNostrStore();
+  void nostrStore
+    .loadKeysFromStorage()
+    .catch((err) => console.warn("Failed to warm Nostr keys", err));
   const createHistory = process.env.SERVER
     ? createMemoryHistory
     : process.env.VUE_ROUTER_MODE === "history"
