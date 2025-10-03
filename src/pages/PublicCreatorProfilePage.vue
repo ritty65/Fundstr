@@ -5,150 +5,64 @@
         {{ decodeError }}
       </q-banner>
 
-      <section class="public-profile__hero" :class="{ 'public-profile__hero--with-banner': heroBannerUrl }">
-        <div
-          v-if="heroBannerUrl"
-          class="public-profile__hero-banner"
-          :style="heroBannerStyle"
-          role="presentation"
-        />
-        <div class="public-profile__hero-content bg-surface-2">
-          <div class="public-profile__avatar" aria-hidden="true">
-            <img v-if="profileAvatar" :src="profileAvatar" :alt="profileDisplayName" />
-            <div v-else class="public-profile__avatar-placeholder">{{ profileInitials }}</div>
+      <section class="public-profile__header bg-surface-2">
+        <div class="public-profile__avatar" aria-hidden="true">
+          <img v-if="profileAvatar" :src="profileAvatar" :alt="profileDisplayName" />
+          <div v-else class="public-profile__avatar-placeholder">{{ profileInitials }}</div>
+        </div>
+        <div class="public-profile__info">
+          <div class="public-profile__heading">
+            <h1 class="public-profile__name text-h4">{{ profileDisplayName }}</h1>
+            <q-btn
+              flat
+              round
+              dense
+              icon="content_copy"
+              :aria-label="$t('CreatorHub.profile.copyProfileLink')"
+              @click="copy(profileUrl)"
+            />
           </div>
-          <div class="public-profile__details">
-            <div class="public-profile__heading">
-              <h1 class="public-profile__name text-h4">{{ profileDisplayName }}</h1>
-              <q-btn
-                flat
-                round
-                dense
-                icon="content_copy"
-                :aria-label="$t('CreatorHub.profile.copyProfileLink')"
-                @click="copy(profileUrl)"
-              />
-            </div>
-            <p v-if="profileHandle" class="public-profile__handle text-2">@{{ profileHandle }}</p>
-            <div v-if="hasFollowerStats" class="public-profile__stats text-2">
-              <span v-if="followers !== null">
-                {{ $t('CreatorHub.profile.followers', { count: followers }) }}
-              </span>
-              <span v-if="following !== null">
-                {{ $t('CreatorHub.profile.following', { count: following }) }}
-              </span>
-            </div>
-            <div v-if="metadataChips.length" class="public-profile__chips" role="list">
-              <q-chip
-                v-for="chip in metadataChips"
-                :key="chip.id"
-                dense
-                outline
-                :icon="chip.icon"
-                :label="chip.label"
-                :tag="chip.href ? 'a' : 'div'"
-                :href="chip.href"
-                :target="chip.href ? '_blank' : undefined"
-                :rel="chip.href ? 'noopener noreferrer' : undefined"
-                :clickable="!!chip.href"
-                role="listitem"
-              />
-            </div>
-          </div>
+          <p v-if="profileHandle" class="public-profile__handle text-2">@{{ profileHandle }}</p>
+          <p v-if="profileBio" class="public-profile__bio text-body2">{{ profileBio }}</p>
         </div>
       </section>
 
-      <main class="public-profile__content">
+      <main class="public-profile__content" aria-live="polite">
         <section class="public-profile__section">
           <header class="public-profile__section-header">
             <h2 class="public-profile__section-title text-h5">
-              {{ $t('CreatorHub.profile.sections.about') }}
-            </h2>
-          </header>
-          <div class="public-profile__section-body">
-            <p v-if="profile.about" class="public-profile__section-text text-body1">{{ profile.about }}</p>
-            <p v-else class="public-profile__section-text text-2">
-              {{ $t('CreatorHub.profile.noAbout') }}
-            </p>
-          </div>
-        </section>
-
-        <section class="public-profile__section" aria-live="polite">
-          <header class="public-profile__section-header public-profile__section-header--with-spinner">
-            <h2 class="public-profile__section-title text-h5">
               {{ $t('CreatorHub.profile.sections.tiers') }}
             </h2>
-            <q-spinner-dots
-              v-if="refreshingTiers && !loadingTiers"
-              size="sm"
-              class="public-profile__spinner text-2"
-            />
           </header>
           <div v-if="loadingTiers" class="public-profile__state">
             <q-spinner-hourglass />
           </div>
-          <template v-else>
-            <q-banner
-              v-if="tierFetchError && !tiers.length"
-              class="public-profile__banner bg-surface-2"
+          <div v-else-if="tierFetchError && !tiers.length" class="public-profile__state text-2">
+            {{ $t('CreatorHub.profile.tierLoadError') }}
+          </div>
+          <div v-else-if="!tiers.length" class="public-profile__state text-2">
+            {{ $t('CreatorHub.profile.noTiers') }}
+          </div>
+          <div v-else class="public-profile__tier-list">
+            <TierSummaryCard
+              v-for="t in tiers"
+              :key="t.id"
+              :tier="t"
+              :price-sats="getPrice(t)"
+              :price-fiat="formatFiat(getPrice(t))"
+              :frequency-label="frequencyLabel(t)"
+              :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
+              :subscribe-disabled="isGuest"
+              @subscribe="openSubscribe"
             >
-              {{ $t('CreatorHub.profile.tierLoadError') }}
-              <template #action>
-                <button
-                  type="button"
-                  class="profile-retry-hidden"
-                  tabindex="-1"
-                  aria-hidden="true"
-                  @click="retryFetchTiers"
-                >{{ retryLabel }}</button>
-                <q-btn flat color="primary" :label="retryLabel" @click="retryFetchTiers" />
+              <template v-if="isGuest" #subscribe-tooltip>
+                <q-tooltip>{{ $t('CreatorHub.profile.guestTooltip') }}</q-tooltip>
               </template>
-            </q-banner>
-            <div v-else-if="!tiers.length" class="public-profile__state text-2">
-              {{ $t('CreatorHub.profile.noTiers') }}
-            </div>
-            <div v-else class="public-profile__tier-list">
-              <TierSummaryCard
-                v-for="t in tiers"
-                :key="t.id"
-                :tier="t"
-                :price-sats="getPrice(t)"
-                :price-fiat="formatFiat(getPrice(t))"
-                :frequency-label="frequencyLabel(t)"
-                :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
-                :subscribe-disabled="isGuest"
-                @subscribe="openSubscribe"
-              >
-                <template v-if="isGuest" #subscribe-tooltip>
-                  <q-tooltip>{{ $t('CreatorHub.profile.guestTooltip') }}</q-tooltip>
-                </template>
-                <template #footer-note>
-                  {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
-                </template>
-              </TierSummaryCard>
-            </div>
-            <q-banner
-              v-if="tierFetchError && tiers.length"
-              class="public-profile__banner bg-surface-2"
-            >
-              {{ $t('CreatorHub.profile.tierRefreshError') }}
-              <template #action>
-                <button
-                  type="button"
-                  class="profile-retry-hidden"
-                  tabindex="-1"
-                  aria-hidden="true"
-                  @click="retryFetchTiers"
-                >{{ retryLabel }}</button>
-                <q-btn
-                  flat
-                  color="primary"
-                  :label="retryLabel"
-                  @click="retryFetchTiers"
-                />
+              <template #footer-note>
+                {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
               </template>
-            </q-banner>
-          </template>
+            </TierSummaryCard>
+          </div>
         </section>
       </main>
 
@@ -157,11 +71,6 @@
         :tier="selectedTier"
         :creator-pubkey="creatorHex || ''"
         @confirm="confirmSubscribe"
-      />
-      <SetupRequiredDialog v-model="showSetupDialog" :tier-id="selectedTier?.id" />
-      <SubscriptionReceipt
-        v-model="showReceiptDialog"
-        :receipts="receiptList"
       />
     </div>
   </div>
@@ -178,9 +87,6 @@ import { deriveCreatorKeys } from "src/utils/nostrKeys";
 import { usePriceStore } from "stores/price";
 import { useUiStore } from "stores/ui";
 import SubscribeDialog from "components/SubscribeDialog.vue";
-import SubscriptionReceipt from "components/SubscriptionReceipt.vue";
-import SetupRequiredDialog from "components/SetupRequiredDialog.vue";
-import { useI18n } from "vue-i18n";
 import TierSummaryCard from "components/TierSummaryCard.vue";
 import { isTrustedUrl } from "src/utils/sanitize-url";
 import { useClipboard } from "src/composables/useClipboard";
@@ -193,8 +99,6 @@ import {
 export default defineComponent({
   name: "PublicCreatorProfilePage",
   components: {
-    SubscriptionReceipt,
-    SetupRequiredDialog,
     TierSummaryCard,
   },
   setup() {
@@ -218,7 +122,6 @@ export default defineComponent({
     const priceStore = usePriceStore();
     const uiStore = useUiStore();
     const welcomeStore = useWelcomeStore();
-    const { t } = useI18n();
     const { copy } = useClipboard();
     const profile = ref<any>({});
     const creatorTierList = computed(() =>
@@ -229,14 +132,8 @@ export default defineComponent({
       () => creatorTierList.value !== undefined,
     );
     const showSubscribeDialog = ref(false);
-    const showSetupDialog = ref(false);
-    const showReceiptDialog = ref(false);
-    const receiptList = ref<any[]>([]);
     const selectedTier = ref<any>(null);
-    const followers = ref<number | null>(null);
-    const following = ref<number | null>(null);
     const loadingTiers = ref(true);
-    const refreshingTiers = ref(false);
     const tierFetchError = computed(() => creators.tierFetchError);
     const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 
@@ -248,11 +145,9 @@ export default defineComponent({
       if (!hasInitialTierData.value) {
         loadingTiers.value = true;
       }
-      refreshingTiers.value = true;
       try {
         await creators.fetchTierDefinitions(creatorHex, { fundstrOnly: true });
       } finally {
-        refreshingTiers.value = false;
         if (!hasInitialTierData.value) {
           loadingTiers.value = false;
         }
@@ -269,13 +164,6 @@ export default defineComponent({
       { immediate: true },
     );
 
-    watch(tierFetchError, (errored) => {
-      if (errored) {
-        loadingTiers.value = false;
-        refreshingTiers.value = false;
-      }
-    });
-
     const loadProfile = async () => {
       const tierPromise = fetchTiers();
 
@@ -287,23 +175,13 @@ export default defineComponent({
       const profilePromise = fetchFundstrProfileBundle(creatorHex)
         .then((bundle) => {
           if (!bundle) return;
-          const { profile: profileData, followers: followersCount, following: followingCount } =
-            bundle;
+          const { profile: profileData } = bundle;
           if (profileData) {
             const nextProfile = { ...profileData };
             if (nextProfile.picture && !isTrustedUrl(nextProfile.picture)) {
               delete nextProfile.picture;
             }
-            if (nextProfile.banner && !isTrustedUrl(nextProfile.banner)) {
-              delete nextProfile.banner;
-            }
             profile.value = nextProfile;
-          }
-          if (typeof followersCount === "number") {
-            followers.value = followersCount;
-          }
-          if (typeof followingCount === "number") {
-            following.value = followingCount;
           }
         })
         .catch(() => {});
@@ -312,23 +190,11 @@ export default defineComponent({
     };
     // initialization handled in onMounted
 
-    const retryFetchTiers = () => {
-      void fetchTiers();
-    };
-
     const openSubscribe = (tier: any) => {
-      if (!creatorHex) {
+      if (!creatorHex || isGuest.value || !nostr.hasIdentity) {
         return;
       }
       selectedTier.value = tier;
-      if (isGuest.value || !welcomeStore.welcomeCompleted) {
-        showSetupDialog.value = true;
-        return;
-      }
-      if (!nostr.hasIdentity) {
-        showSetupDialog.value = true;
-        return;
-      }
       showSubscribeDialog.value = true;
     };
 
@@ -426,101 +292,20 @@ export default defineComponent({
 
     const profileAvatar = computed(() => profile.value.picture || "");
 
-    const heroBannerUrl = computed(() => {
-      const banner = profile.value.banner || profile.value.cover || profile.value.header;
-      if (banner && isTrustedUrl(banner)) {
-        return banner;
-      }
-      return "";
-    });
-
-    const heroBannerStyle = computed(() =>
-      heroBannerUrl.value
-        ? {
-            backgroundImage: `url('${heroBannerUrl.value}')`,
-          }
-        : {},
-    );
-
     const profileInitials = computed(() => {
       const text = profileDisplayName.value || creatorNpub;
       return text ? text.trim().charAt(0).toUpperCase() : "";
     });
 
-    const hasFollowerStats = computed(
-      () => followers.value !== null || following.value !== null,
-    );
-
-    const normalizeUrl = (value?: string | null) => {
-      if (!value || typeof value !== "string") return null;
-      const trimmed = value.trim();
-      if (!trimmed) return null;
-      const withProtocol = /^(https?:)?\/\//i.test(trimmed)
-        ? trimmed
-        : `https://${trimmed}`;
-      try {
-        const url = new URL(withProtocol);
-        if (!isTrustedUrl(url.toString())) {
-          return null;
-        }
-        return url.toString();
-      } catch (err) {
-        return null;
+    const profileBio = computed(() => {
+      if (typeof profile.value.about === "string" && profile.value.about.trim()) {
+        return profile.value.about.trim();
       }
-    };
-
-    const sanitizedWebsite = computed(() => normalizeUrl(profile.value.website));
-
-    const nip05Chip = computed(() => {
-      const nip05 = profile.value.nip05;
-      if (!nip05 || typeof nip05 !== "string") return null;
-      const [, domain] = nip05.split("@");
-      const link = domain ? normalizeUrl(domain) : null;
-      return {
-        id: "nip05",
-        icon: "verified_user",
-        label: nip05,
-        href: link ?? undefined,
-      };
+      if (typeof profile.value.bio === "string" && profile.value.bio.trim()) {
+        return profile.value.bio.trim();
+      }
+      return "";
     });
-
-    const lightningAddress = computed(() =>
-      profile.value.lud16 || profile.value.lud06 || profile.value.lightning_address,
-    );
-
-    const metadataChips = computed(() => {
-      const chips: Array<{ id: string; icon: string; label: string; href?: string }> = [];
-      const nip = nip05Chip.value;
-      if (nip) {
-        chips.push(nip);
-      }
-      if (sanitizedWebsite.value) {
-        chips.push({
-          id: "website",
-          icon: "language",
-          label: new URL(sanitizedWebsite.value).hostname,
-          href: sanitizedWebsite.value,
-        });
-      }
-      if (lightningAddress.value) {
-        chips.push({
-          id: "lightning",
-          icon: "bolt",
-          label: lightningAddress.value,
-          href: `lightning:${lightningAddress.value}`,
-        });
-      }
-      return chips;
-    });
-
-    const translationWithFallback = (key: string, fallback: string) => {
-      const translated = t(key);
-      return translated === key ? fallback : translated;
-    };
-
-    const retryLabel = computed(() =>
-      translationWithFallback("CreatorHub.profile.retry", "Retry"),
-    );
 
     return {
       creatorNpub,
@@ -531,29 +316,17 @@ export default defineComponent({
       profileHandle,
       profileAvatar,
       profileInitials,
-      heroBannerUrl,
-      heroBannerStyle,
+      profileBio,
       tiers,
       showSubscribeDialog,
-      showSetupDialog,
-      showReceiptDialog,
-      receiptList,
       selectedTier,
-      followers,
-      following,
       loadingTiers,
-      refreshingTiers,
       tierFetchError,
-      metadataChips,
-      hasFollowerStats,
-      retryLabel,
-      // no markdown rendering needed
       formatFiat,
       getPrice,
       frequencyLabel,
       openSubscribe,
       confirmSubscribe,
-      retryFetchTiers,
       copy,
       profileUrl,
       isGuest,
@@ -577,47 +350,26 @@ export default defineComponent({
   border-radius: 1rem;
 }
 
-.public-profile__hero {
-  position: relative;
-  margin-bottom: 2.5rem;
-}
-
-.public-profile__hero--with-banner .public-profile__hero-content {
-  backdrop-filter: blur(8px);
-}
-
-.public-profile__hero-banner {
-  position: absolute;
-  inset: 0;
-  background-size: cover;
-  background-position: center;
-  border-radius: 1.5rem;
-  opacity: 0.4;
-  filter: saturate(0.9);
-}
-
-.public-profile__hero-content {
-  position: relative;
+.public-profile__header {
   display: flex;
-  align-items: center;
   gap: 1.5rem;
+  align-items: center;
   padding: 1.75rem;
   border-radius: 1.5rem;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+  margin-bottom: 2.5rem;
 }
 
 .public-profile__avatar {
   flex-shrink: 0;
-  width: 120px;
-  height: 120px;
+  width: 112px;
+  height: 112px;
   border-radius: 50%;
   overflow: hidden;
-  border: 3px solid var(--surface-1);
   background: var(--surface-1);
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 3px solid var(--surface-1);
   font-size: 3rem;
   font-weight: 600;
 }
@@ -640,7 +392,7 @@ export default defineComponent({
   font-weight: 600;
 }
 
-.public-profile__details {
+.public-profile__info {
   flex: 1;
   min-width: 0;
 }
@@ -661,58 +413,29 @@ export default defineComponent({
   margin: 0.25rem 0 0;
 }
 
-.public-profile__stats {
-  margin-top: 0.5rem;
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.public-profile__chips {
-  margin-top: 0.75rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+.public-profile__bio {
+  margin: 0.75rem 0 0;
 }
 
 .public-profile__content {
   display: flex;
   flex-direction: column;
-  gap: 2.5rem;
+  gap: 2rem;
 }
 
 .public-profile__section {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.5rem;
 }
 
 .public-profile__section-header {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.public-profile__section-header--with-spinner {
   justify-content: space-between;
 }
 
-.public-profile__spinner {
-  margin-left: auto;
-}
-
 .public-profile__section-title {
-  margin: 0;
-}
-
-.public-profile__section-body {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.public-profile__section-text {
   margin: 0;
 }
 
@@ -724,18 +447,6 @@ export default defineComponent({
   text-align: center;
 }
 
-.profile-retry-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  border: 0;
-  clip: rect(0, 0, 0, 0);
-  clip-path: inset(50%);
-  overflow: hidden;
-}
-
 .public-profile__tier-list {
   display: flex;
   flex-direction: column;
@@ -743,7 +454,7 @@ export default defineComponent({
 }
 
 @media (max-width: 600px) {
-  .public-profile__hero-content {
+  .public-profile__header {
     flex-direction: column;
     align-items: flex-start;
   }
