@@ -1,23 +1,13 @@
-const FUNDSTR_RELAY = "wss://relay.primal.net";
-const BASE_FREE_RELAYS = [
-  "wss://relay.damus.io",
-  "wss://relay.snort.social",
-  "wss://relayable.org",
-];
+import {
+  ensurePrimary,
+  getBaseFreeRelays,
+  getPrimaryRelay,
+} from "./relayConfig.js";
 
-function ensureFundstr(relays) {
-  const seen = new Set();
-  const ordered = [];
-  for (const url of [FUNDSTR_RELAY, ...relays]) {
-    if (url && !seen.has(url)) {
-      ordered.push(url);
-      seen.add(url);
-    }
-  }
-  return ordered;
-}
+const FUNDSTR_RELAY = getPrimaryRelay();
+const BASE_FREE_RELAYS = getBaseFreeRelays();
 
-const FREE_RELAYS = ensureFundstr(BASE_FREE_RELAYS);
+const FREE_RELAYS = ensurePrimary(BASE_FREE_RELAYS);
 
 // keep track of relays that have already produced a constructor error so we only
 // emit a single console message per relay. This keeps startup logs readable when
@@ -150,14 +140,14 @@ export async function filterHealthyRelays(relays) {
     const batchHealthy = results.filter((u) => !!u);
     healthy.push(...batchHealthy);
   }
-  const healthyWithFundstr = ensureFundstr(healthy);
+  const healthyWithFundstr = ensurePrimary(healthy);
 
   if (healthy.length === 0) {
     if (!allFailedWarned) {
       console.warn("No reachable relays; falling back to FREE_RELAYS");
       allFailedWarned = true;
     }
-    const fallback = ensureFundstr(FREE_RELAYS);
+    const fallback = ensurePrimary(FREE_RELAYS);
     filterCache.set(key, { ts: now, res: fallback });
     return fallback;
   }
@@ -165,7 +155,7 @@ export async function filterHealthyRelays(relays) {
   const res =
     healthy.length >= 2 || healthy.includes(FUNDSTR_RELAY)
       ? healthyWithFundstr
-      : ensureFundstr(FREE_RELAYS);
+      : ensurePrimary(FREE_RELAYS);
   filterCache.set(key, { ts: now, res });
   return res;
 }

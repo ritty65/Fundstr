@@ -8,6 +8,12 @@
     <link rel="stylesheet" href="find-creators.css" />
     <!-- nostr-tools CDN -->
     <script src="https://unpkg.com/nostr-tools@1.17.0/lib/nostr.bundle.js"></script>
+    <script type="application/json" id="fundstr-relay-config">
+      {
+        "primary": "wss://relay.fundstr.me",
+        "paid": ["wss://relay.primal.net"]
+      }
+    </script>
     <style>
       body {
         font-family: "Inter", sans-serif;
@@ -322,18 +328,25 @@
     </div>
 
     <script type="module" defer>
+      import {
+        describeRelay,
+        formatRelayList,
+        getDefaultRelayList,
+        getRelayConfig,
+      } from "./relayConfig.js";
       import { filterHealthyRelays, pingRelay } from "./relayHealth.js";
-      const FUNDSTR_RELAY = "wss://relay.primal.net";
-      const DEFAULT_RELAYS = [
-        FUNDSTR_RELAY,
-        "wss://relay.damus.io",
-        "wss://relay.snort.social",
-        "wss://nos.lol",
-        "wss://relay.nostr.band",
-      ];
+
+      const relayConfig = getRelayConfig();
+      const FUNDSTR_RELAY = relayConfig.primary;
+      const curatedBackups = relayConfig.backups;
+      const paidBackups = relayConfig.paid;
+      const DEFAULT_RELAYS = getDefaultRelayList();
+      const primaryRelayHost = describeRelay(FUNDSTR_RELAY);
+      const primaryRelayLabel = `${primaryRelayHost} relay`;
       const statusMessageElement = document.getElementById("statusMessage");
       const relayWarningElement = document.getElementById("relayWarning");
       const retryButtonElement = document.getElementById("retryButton");
+      const relayListElement = document.getElementById("relayList");
       // --- Nostr Tools ---
       if (!window.NostrTools) {
         statusMessageElement.textContent =
@@ -349,7 +362,32 @@
       );
 
       let RELAYS = [...DEFAULT_RELAYS];
-      document.getElementById("relayList").textContent = RELAYS.join(", ");
+
+      const paidBackupHosts = paidBackups.filter(
+        (url) => !curatedBackups.includes(url),
+      );
+
+      function renderRelayList(relays) {
+        const [primary, ...activeBackups] = relays;
+        const parts = [`Primary: ${describeRelay(primary)}`];
+        if (activeBackups.length) {
+          parts.push(`Active backups: ${formatRelayList(activeBackups)}`);
+        } else if (curatedBackups.length) {
+          parts.push(
+            `Backups on deck: ${formatRelayList(curatedBackups)}`,
+          );
+        } else {
+          parts.push("Backups: none configured");
+        }
+        if (paidBackupHosts.length) {
+          parts.push(
+            `Opt-in paid backups: ${formatRelayList(paidBackupHosts)}`,
+          );
+        }
+        relayListElement.textContent = parts.join(" • ");
+      }
+
+      renderRelayList(RELAYS);
 
       const pool = new SimplePool({ eoseSubTimeout: 8000 });
       let currentSearchAbortController = null;
@@ -371,14 +409,24 @@
           ];
           RELAYS = prioritized;
           relayFailureCount = 0;
-          document.getElementById("relayList").textContent = RELAYS.join(", ");
+          renderRelayList(RELAYS);
           statusMessageElement.classList.add("hidden");
           if (fundstrReachable) {
             relayWarningElement.classList.add("hidden");
             relayWarningElement.textContent = "";
           } else {
+            const activeBackups = RELAYS.slice(1);
+            const fallbackList = activeBackups.length
+              ? formatRelayList(activeBackups)
+              : curatedBackups.length
+              ? formatRelayList(curatedBackups)
+              : paidBackupHosts.length
+              ? `opt-in paid relays (${formatRelayList(paidBackupHosts)})`
+              : "no backups available";
             relayWarningElement.textContent =
-              "Fundstr relay is temporarily unreachable. We'll keep retrying while temporarily using backups.";
+              fallbackList === "no backups available"
+                ? `${primaryRelayLabel} is temporarily unreachable and no backups are configured yet.`
+                : `${primaryRelayLabel} is temporarily unreachable. We'll keep retrying while using ${fallbackList}.`;
             relayWarningElement.classList.remove("hidden");
           }
         } catch {
@@ -386,10 +434,14 @@
           if (relayFailureCount >= 3) {
             console.error(
               "[find-creators] no reachable relays:",
-              DEFAULT_RELAYS.join(", "),
+              formatRelayList(DEFAULT_RELAYS),
             );
-            statusMessageElement.textContent =
-              "Network error: could not reach relays.";
+            const curatedBackupList = curatedBackups.length
+              ? formatRelayList(curatedBackups)
+              : null;
+            statusMessageElement.textContent = curatedBackupList
+              ? `Network error: could not reach ${primaryRelayLabel} or curated backups (${curatedBackupList}).`
+              : `Network error: could not reach ${primaryRelayLabel} and no curated backups are configured.`;
             statusMessageElement.classList.remove("hidden");
             relayWarningElement.classList.add("hidden");
             relayWarningElement.textContent = "";
@@ -592,7 +644,7 @@
           const fundstrPromise = observeProfilesPromise(
             fetchProfilesFromFundstr(filter, signal),
             signal,
-            { sourceLabel: "Fundstr relay" },
+            { sourceLabel: primaryRelayLabel },
           );
           const pooledPromise = observeProfilesPromise(
             fetchProfilesFromRelays(RELAYS, filter, signal),
@@ -654,7 +706,7 @@
         const fundstrPromise = observeProfilesPromise(
           fetchProfilesFromFundstr(filter, signal),
           signal,
-          { ...watchOptions, sourceLabel: "Fundstr relay" },
+          { ...watchOptions, sourceLabel: primaryRelayLabel },
         );
         const knownRelayPromise = observeProfilesPromise(
           fetchProfilesFromRelays(RELAYS, filter, signal),
