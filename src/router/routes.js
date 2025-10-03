@@ -37,6 +37,7 @@ const routes = [
         name: "PublicCreatorProfile",
         component: () => import("src/pages/PublicCreatorProfilePage.vue"),
         props: true,
+        meta: { nutzapShare: true },
       },
     ],
   },

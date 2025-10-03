@@ -1769,9 +1769,11 @@ export const messages = {
       guestTooltip: "Finish setup to subscribe",
       paywalledPreview: "Protected content visible to subscribers.",
       infrastructureDetails: "Creator infrastructure",
+      tierAddressLabel: "Tier address",
       p2pkLabel: "P2PK public key",
       trustedMintsLabel: "Trusted mints",
       relaysLabel: "Relays",
+      noFundstrData: "We couldn't load this creator's Fundstr data yet.",
       howNutzapWorks: {
         title: "How Nutzap works",
         intro:
