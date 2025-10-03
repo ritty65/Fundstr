@@ -11,6 +11,7 @@ const __dirname = path.dirname(__filename)
 export default configure(() => ({
   // 1. 'node-globals' boot file is removed. This is correct.
   boot: [
+    'fundstr-share-route',
     'welcomeGate',
     'cashu',
     'i18n',
