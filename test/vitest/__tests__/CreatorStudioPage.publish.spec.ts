@@ -138,14 +138,14 @@ function ensureShared(): SharedMocks {
     };
 
     shared = {
-      relayConnectionUrl: ref('wss://relay.primal.net'),
+      relayConnectionUrl: ref('wss://relay.fundstr.me'),
       relayConnectionStatus,
       relayAutoReconnect: ref(false),
       relayActivity: ref([]),
       relayReconnectAttempts: ref(0),
       relayIsConnected: ref(true),
       relayNeedsAttention,
-      relayUrlInput: ref('wss://relay.primal.net'),
+      relayUrlInput: ref('wss://relay.fundstr.me'),
       relayUrlInputValid: ref(true),
       relayUrlInputState: ref(null),
       relayUrlInputMessage: ref(''),
@@ -590,7 +590,9 @@ describe('CreatorStudioPage publishAll fallback', () => {
     await flushPromises();
 
     expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(2);
-    expect(state.publishTiersToRelayMock.mock.calls[1][2]).toBeUndefined();
+    expect(state.publishTiersToRelayMock.mock.calls[1][2]).toEqual({
+      relayUrl: 'wss://relay.fundstr.me',
+    });
     expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(2);
     expect(state.clientPublishMock).toHaveBeenCalledTimes(1);
     expect(state.logRelayActivityMock).toHaveBeenCalledWith(
