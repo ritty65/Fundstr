@@ -7,12 +7,24 @@
 
       <section class="public-profile__header bg-surface-2">
         <div class="public-profile__avatar" aria-hidden="true">
-          <img v-if="profileAvatar" :src="profileAvatar" :alt="profileDisplayName" />
+          <q-skeleton
+            v-if="profileLoading && !profileAvatar"
+            type="circle"
+            class="public-profile__avatar-skeleton"
+          />
+          <img v-else-if="profileAvatar" :src="profileAvatar" :alt="profileDisplayName" />
           <div v-else class="public-profile__avatar-placeholder">{{ profileInitials }}</div>
         </div>
         <div class="public-profile__info">
           <div class="public-profile__heading">
-            <h1 class="public-profile__name text-h4">{{ profileDisplayName }}</h1>
+            <div class="public-profile__name-wrapper">
+              <q-skeleton
+                v-if="profileLoading && !profileDisplayName"
+                type="text"
+                class="public-profile__skeleton-line public-profile__skeleton-name"
+              />
+              <h1 v-else class="public-profile__name text-h4">{{ profileDisplayName }}</h1>
+            </div>
             <q-btn
               flat
               round
@@ -24,20 +36,111 @@
           </div>
           <p v-if="profileHandle" class="public-profile__handle text-2">@{{ profileHandle }}</p>
           <p v-if="profileBio" class="public-profile__bio text-body2">{{ profileBio }}</p>
+          <q-skeleton
+            v-else-if="profileLoading"
+            type="text"
+            class="public-profile__skeleton-line"
+          />
         </div>
       </section>
 
       <main class="public-profile__content" aria-live="polite">
+        <q-banner
+          v-if="shouldShowRetry"
+          class="public-profile__banner public-profile__banner--inline bg-warning text-dark"
+        >
+          {{ profileError || tiersError || $t('CreatorHub.profile.noFundstrData') }}
+          <template #action>
+            <q-btn flat dense color="primary" :label="$t('CreatorHub.profile.retry')" @click="refreshProfile" />
+          </template>
+        </q-banner>
+
+        <section class="public-profile__section">
+          <header class="public-profile__section-header">
+            <h2 class="public-profile__section-title text-h5">
+              {{ $t('CreatorHub.profile.infrastructureDetails') }}
+            </h2>
+          </header>
+          <div class="public-profile__grid">
+            <div class="public-profile__info-item">
+              <span class="public-profile__label text-2">
+                {{ $t('CreatorHub.profile.tierAddressLabel') }}
+              </span>
+              <div class="public-profile__value">
+                <q-skeleton
+                  v-if="profileLoading && !tierAddress"
+                  type="text"
+                  class="public-profile__skeleton-line"
+                />
+                <template v-else>
+                  <span v-if="tierAddress" class="public-profile__mono">{{ tierAddress }}</span>
+                  <span v-else class="text-2">—</span>
+                </template>
+              </div>
+            </div>
+            <div class="public-profile__info-item">
+              <span class="public-profile__label text-2">
+                {{ $t('CreatorHub.profile.p2pkLabel') }}
+              </span>
+              <div class="public-profile__value">
+                <q-skeleton
+                  v-if="profileLoading && !p2pkPubkey"
+                  type="text"
+                  class="public-profile__skeleton-line"
+                />
+                <template v-else>
+                  <span v-if="p2pkPubkey" class="public-profile__mono">{{ p2pkPubkey }}</span>
+                  <span v-else class="text-2">—</span>
+                </template>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="public-profile__section">
+          <header class="public-profile__section-header">
+            <h2 class="public-profile__section-title text-h6">
+              {{ $t('CreatorHub.profile.trustedMintsLabel') }}
+            </h2>
+          </header>
+          <div v-if="profileLoading && !trustedMints.length" class="public-profile__state public-profile__state--list">
+            <q-skeleton v-for="n in 2" :key="n" type="text" class="public-profile__skeleton-line" />
+          </div>
+          <ul v-else-if="trustedMints.length" class="public-profile__list">
+            <li v-for="mint in trustedMints" :key="mint" class="public-profile__list-item">
+              {{ mint }}
+            </li>
+          </ul>
+          <div v-else class="public-profile__state text-2">—</div>
+        </section>
+
+        <section class="public-profile__section">
+          <header class="public-profile__section-header">
+            <h2 class="public-profile__section-title text-h6">
+              {{ $t('CreatorHub.profile.relaysLabel') }}
+            </h2>
+          </header>
+          <div v-if="profileLoading && !relays.length" class="public-profile__state public-profile__state--list">
+            <q-skeleton v-for="n in 2" :key="n" type="text" class="public-profile__skeleton-line" />
+          </div>
+          <ul v-else-if="relays.length" class="public-profile__list">
+            <li v-for="relay in relays" :key="relay" class="public-profile__list-item">
+              {{ relay }}
+            </li>
+          </ul>
+          <div v-else class="public-profile__state text-2">—</div>
+        </section>
+
         <section class="public-profile__section">
           <header class="public-profile__section-header">
             <h2 class="public-profile__section-title text-h5">
               {{ $t('CreatorHub.profile.sections.tiers') }}
             </h2>
           </header>
-          <div v-if="loadingTiers" class="public-profile__state">
-            <q-spinner-hourglass />
+          <div v-if="tiersLoading" class="public-profile__state">
+            <q-skeleton v-for="n in 2" :key="`tier-${n}`" type="rect" class="public-profile__tier-skeleton" />
           </div>
-          <div v-else-if="tierFetchError && !tiers.length" class="public-profile__state text-2">
+          <div v-else-if="tiersError && !tiers.length" class="public-profile__state text-2">
             {{ $t('CreatorHub.profile.tierLoadError') }}
           </div>
           <div v-else-if="!tiers.length" class="public-profile__state text-2">
@@ -77,20 +180,19 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, computed, watch } from "vue";
+import { defineComponent, ref, computed, onMounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useCreatorsStore, fetchFundstrProfileBundle } from "stores/creators";
-import { useNostrStore } from "stores/nostr";
-import { buildProfileUrl } from "src/utils/profileUrl";
-import { deriveCreatorKeys } from "src/utils/nostrKeys";
-
-import { usePriceStore } from "stores/price";
-import { useUiStore } from "stores/ui";
 import SubscribeDialog from "components/SubscribeDialog.vue";
 import TierSummaryCard from "components/TierSummaryCard.vue";
-import { isTrustedUrl } from "src/utils/sanitize-url";
 import { useClipboard } from "src/composables/useClipboard";
 import { useWelcomeStore } from "stores/welcome";
+import { usePriceStore } from "stores/price";
+import { useUiStore } from "stores/ui";
+import { useNostrStore } from "stores/nostr";
+import { usePublicCreatorProfile } from "src/composables/usePublicCreatorProfile";
+import { buildProfileUrl } from "src/utils/profileUrl";
+import { deriveCreatorKeys } from "src/utils/nostrKeys";
+import { isTrustedUrl } from "src/utils/sanitize-url";
 import {
   daysToFrequency,
   type SubscriptionFrequency,
@@ -104,135 +206,135 @@ export default defineComponent({
   setup() {
     const route = useRoute();
     const router = useRouter();
-    const creatorParam =
-      (route.params.npubOrHex ?? route.params.npub) as string | undefined;
-    const decodeError = ref<string | null>(null);
-    let creatorNpub = creatorParam ?? "";
-    let creatorHex: string | null = null;
-    try {
-      const keys = deriveCreatorKeys(creatorParam);
-      creatorNpub = keys.npub;
-      creatorHex = keys.hex;
-    } catch (err) {
-      decodeError.value =
-        "We couldn't load this creator profile. Double-check the link and try again.";
-    }
-    const creators = useCreatorsStore();
-    const nostr = useNostrStore();
+    const welcomeStore = useWelcomeStore();
     const priceStore = usePriceStore();
     const uiStore = useUiStore();
-    const welcomeStore = useWelcomeStore();
+    const nostr = useNostrStore();
     const { copy } = useClipboard();
-    const profile = ref<any>({});
-    const creatorTierList = computed(() =>
-      creatorHex ? creators.tiersMap[creatorHex] : undefined,
-    );
-    const tiers = computed(() => creatorTierList.value ?? []);
-    const hasInitialTierData = computed(
-      () => creatorTierList.value !== undefined,
-    );
-    const showSubscribeDialog = ref(false);
-    const selectedTier = ref<any>(null);
-    const loadingTiers = ref(true);
-    const tierFetchError = computed(() => creators.tierFetchError);
-    const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 
-    const fetchTiers = async () => {
-      if (!creatorHex) {
-        loadingTiers.value = false;
+    const decodeError = ref<string | null>(null);
+    const creatorNpub = ref("");
+    const creatorHexRef = ref<string | null>(null);
+
+    function resolveCreator(param?: string) {
+      decodeError.value = null;
+      if (!param) {
+        creatorNpub.value = "";
+        creatorHexRef.value = null;
         return;
-      }
-      if (!hasInitialTierData.value) {
-        loadingTiers.value = true;
       }
       try {
-        await creators.fetchTierDefinitions(creatorHex, { fundstrOnly: true });
-      } finally {
-        if (!hasInitialTierData.value) {
-          loadingTiers.value = false;
-        }
+        const keys = deriveCreatorKeys(param);
+        creatorNpub.value = keys.npub;
+        creatorHexRef.value = keys.hex;
+      } catch (err) {
+        creatorNpub.value = param;
+        creatorHexRef.value = null;
+        decodeError.value =
+          "We couldn't load this creator profile. Double-check the link and try again.";
       }
-    };
+    }
+
+    resolveCreator((route.params.npubOrHex ?? route.params.npub) as string | undefined);
 
     watch(
-      hasInitialTierData,
-      (hasData) => {
-        if (hasData) {
-          loadingTiers.value = false;
-        }
+      () => [route.params.npubOrHex, route.params.npub],
+      ([next, fallback]) => {
+        resolveCreator((next ?? fallback) as string | undefined);
       },
-      { immediate: true },
     );
 
-    const loadProfile = async () => {
-      const tierPromise = fetchTiers();
+    const {
+      profileEvent,
+      profileDetails,
+      profileLoading,
+      profileError,
+      tierEvent,
+      tiers,
+      tiersLoading,
+      tiersError,
+      refresh,
+    } = usePublicCreatorProfile(creatorHexRef);
 
-      if (!creatorHex) {
-        await tierPromise;
-        return;
-      }
+    const showSubscribeDialog = ref(false);
+    const selectedTier = ref<any>(null);
 
-      const profilePromise = fetchFundstrProfileBundle(creatorHex)
-        .then((bundle) => {
-          if (!bundle) return;
-          const { profile: profileData } = bundle;
-          if (profileData) {
-            const nextProfile = { ...profileData };
-            if (nextProfile.picture && !isTrustedUrl(nextProfile.picture)) {
-              delete nextProfile.picture;
-            }
-            profile.value = nextProfile;
-          }
-        })
-        .catch(() => {});
+    const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 
-      await Promise.all([profilePromise, tierPromise]);
-    };
-    // initialization handled in onMounted
-
-    const openSubscribe = (tier: any) => {
-      if (!creatorHex || isGuest.value || !nostr.hasIdentity) {
-        return;
-      }
-      selectedTier.value = tier;
-      showSubscribeDialog.value = true;
-    };
-
-    onMounted(async () => {
-      await loadProfile();
-
-      if (!creatorHex) return;
-      const tierId = route.query.tierId as string | undefined;
-      if (!nostr.hasIdentity || !tierId) return;
-      const tryOpen = () => {
-        const t = tiers.value.find((ti: any) => ti.id === tierId);
-        if (t) {
-          openSubscribe(t);
-          router.replace({
-            name: "PublicCreatorProfile",
-            params: { npubOrHex: creatorNpub },
-          });
-          return true;
+    const profileData = computed<Record<string, any>>(() => {
+      const event = profileEvent.value;
+      if (!event?.content) return {};
+      try {
+        const parsed = JSON.parse(event.content);
+        if (parsed && typeof parsed === "object") {
+          return parsed as Record<string, any>;
         }
-        return false;
-      };
-      if (!tryOpen()) {
-        const stop = watch(tiers, () => {
-          if (tryOpen()) stop();
-        });
+      } catch (err) {
+        console.warn("Failed to parse profile content", err);
       }
+      return {};
     });
 
-    const confirmSubscribe = ({
-      bucketId,
-      periods,
-      amount,
-      startDate,
-      total,
-    }: any) => {
-      // Transaction already processed in SubscribeDialog.
-      showSubscribeDialog.value = false;
-    };
+    const profileDisplayName = computed(
+      () =>
+        profileData.value.display_name ||
+        profileData.value.name ||
+        profileData.value.nip05 ||
+        creatorNpub.value,
+    );
+
+    const profileHandle = computed(() => {
+      if (profileData.value.name) return profileData.value.name;
+      if (profileData.value.nip05 && typeof profileData.value.nip05 === "string") {
+        return profileData.value.nip05.split("@")[0] || "";
+      }
+      return "";
+    });
+
+    const profileAvatar = computed(() => {
+      const picture = profileData.value.picture;
+      if (typeof picture === "string" && picture && isTrustedUrl(picture)) {
+        return picture;
+      }
+      return "";
+    });
+
+    const profileInitials = computed(() => {
+      const text = profileDisplayName.value || creatorNpub.value;
+      return text ? text.trim().charAt(0).toUpperCase() : "";
+    });
+
+    const profileBio = computed(() => {
+      if (typeof profileData.value.about === "string" && profileData.value.about.trim()) {
+        return profileData.value.about.trim();
+      }
+      if (typeof profileData.value.bio === "string" && profileData.value.bio.trim()) {
+        return profileData.value.bio.trim();
+      }
+      return "";
+    });
+
+    const tierAddress = computed(() => profileDetails.value?.tierAddr ?? "");
+    const p2pkPubkey = computed(() => profileDetails.value?.p2pkPubkey ?? "");
+    const trustedMints = computed(() => profileDetails.value?.trustedMints ?? []);
+    const relays = computed(() => profileDetails.value?.relays ?? []);
+
+    const hasFundstrData = computed(
+      () =>
+        !!creatorHexRef.value &&
+        (!!profileEvent.value || !!tierEvent.value || !!trustedMints.value.length || !!relays.value.length),
+    );
+
+    const shouldShowRetry = computed(
+      () =>
+        !!creatorHexRef.value &&
+        !profileLoading.value &&
+        !tiersLoading.value &&
+        !hasFundstrData.value &&
+        (!!profileError.value || !!tiersError.value || !profileEvent.value || !tierEvent.value),
+    );
+
+    const profileUrl = computed(() => buildProfileUrl(creatorNpub.value, router));
 
     function formatFiat(sats: number): string {
       if (!priceStore.bitcoinPrice) return "";
@@ -272,64 +374,94 @@ export default defineComponent({
       }
     }
 
-    const profileUrl = computed(() => buildProfileUrl(creatorNpub, router));
+    const creatorHex = computed(() => creatorHexRef.value);
 
-    const profileDisplayName = computed(
-      () =>
-        profile.value.display_name ||
-        profile.value.name ||
-        profile.value.nip05 ||
-        creatorNpub,
-    );
+    const refreshProfile = async () => {
+      if (!creatorHexRef.value) return;
+      await refresh();
+    };
 
-    const profileHandle = computed(() => {
-      if (profile.value.name) return profile.value.name;
-      if (profile.value.nip05 && typeof profile.value.nip05 === "string") {
-        return profile.value.nip05.split("@")[0] || "";
+    const openSubscribe = (tier: any) => {
+      if (!creatorHexRef.value || isGuest.value || !nostr.hasIdentity) {
+        return;
       }
-      return "";
+      selectedTier.value = tier;
+      showSubscribeDialog.value = true;
+    };
+
+    const confirmSubscribe = () => {
+      showSubscribeDialog.value = false;
+    };
+
+    onMounted(async () => {
+      if (creatorHexRef.value) {
+        await refresh();
+      }
+
+      if (!creatorHexRef.value) return;
+      const tierId = route.query.tierId as string | undefined;
+      if (!nostr.hasIdentity || !tierId) return;
+
+      const tryOpen = () => {
+        const match = tiers.value.find((ti: any) => ti.id === tierId);
+        if (match) {
+          openSubscribe(match);
+          router.replace({
+            name: "PublicCreatorProfile",
+            params: { npubOrHex: creatorNpub.value },
+          });
+          return true;
+        }
+        return false;
+      };
+
+      if (!tryOpen()) {
+        const stop = watch(
+          tiers,
+          () => {
+            if (tryOpen()) stop();
+          },
+          { immediate: false },
+        );
+      }
     });
 
-    const profileAvatar = computed(() => profile.value.picture || "");
-
-    const profileInitials = computed(() => {
-      const text = profileDisplayName.value || creatorNpub;
-      return text ? text.trim().charAt(0).toUpperCase() : "";
-    });
-
-    const profileBio = computed(() => {
-      if (typeof profile.value.about === "string" && profile.value.about.trim()) {
-        return profile.value.about.trim();
+    watch(creatorHexRef, async (value, oldValue) => {
+      if (value && value !== oldValue) {
+        await refresh();
       }
-      if (typeof profile.value.bio === "string" && profile.value.bio.trim()) {
-        return profile.value.bio.trim();
-      }
-      return "";
     });
 
     return {
-      creatorNpub,
       creatorHex,
+      creatorNpub,
       decodeError,
-      profile,
+      profileLoading,
+      profileError,
+      tiersLoading,
+      tiersError,
       profileDisplayName,
       profileHandle,
       profileAvatar,
       profileInitials,
       profileBio,
+      tierAddress,
+      p2pkPubkey,
+      trustedMints,
+      relays,
       tiers,
+      isGuest,
+      profileUrl,
       showSubscribeDialog,
       selectedTier,
-      loadingTiers,
-      tierFetchError,
+      openSubscribe,
+      confirmSubscribe,
       formatFiat,
       getPrice,
       frequencyLabel,
-      openSubscribe,
-      confirmSubscribe,
       copy,
-      profileUrl,
-      isGuest,
+      shouldShowRetry,
+      refreshProfile,
     };
   },
 });
@@ -350,6 +482,10 @@ export default defineComponent({
 .public-profile__banner {
   margin-bottom: 1.5rem;
   border-radius: 1rem;
+}
+
+.public-profile__banner--inline {
+  margin-bottom: 0;
 }
 
 .public-profile__header {
@@ -402,6 +538,11 @@ export default defineComponent({
   font-weight: 600;
 }
 
+.public-profile__avatar-skeleton {
+  width: 100%;
+  height: 100%;
+}
+
 .public-profile__info {
   flex: 1;
   min-width: 0;
@@ -410,8 +551,14 @@ export default defineComponent({
 .public-profile__heading {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+.public-profile__name-wrapper {
+  display: flex;
+  align-items: center;
+  min-height: 2.5rem;
 }
 
 .public-profile__name {
@@ -430,7 +577,7 @@ export default defineComponent({
 .public-profile__content {
   display: flex;
   flex-direction: column;
-  gap: 2.5rem;
+  gap: 2rem;
 }
 
 .public-profile__section {
@@ -454,8 +601,36 @@ export default defineComponent({
   margin: 0;
 }
 
+.public-profile__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+}
+
+.public-profile__info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.public-profile__label {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+}
+
+.public-profile__value {
+  font-size: 0.95rem;
+  word-break: break-word;
+}
+
+.public-profile__mono {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 0.9rem;
+}
+
 .public-profile__state {
-  padding: 2rem 0;
+  padding: 1.5rem 0;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -464,10 +639,48 @@ export default defineComponent({
   gap: 0.75rem;
 }
 
+.public-profile__state--list {
+  align-items: flex-start;
+}
+
 .public-profile__tier-list {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.public-profile__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.public-profile__list-item {
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid var(--surface-contrast-border);
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 0.9rem;
+  word-break: break-word;
+}
+
+.public-profile__skeleton-line {
+  width: 180px;
+  max-width: 100%;
+}
+
+.public-profile__skeleton-name {
+  height: 1.75rem;
+}
+
+.public-profile__tier-skeleton {
+  width: 100%;
+  height: 160px;
+  border-radius: 1rem;
 }
 
 @media (max-width: 600px) {
