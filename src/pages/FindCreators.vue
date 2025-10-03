@@ -1,12 +1,29 @@
 <template>
   <QPage class="find-creators-wrapper">
     <NostrRelayErrorBanner />
-    <iframe
-      ref="iframeEl"
-      src="/find-creators.html"
-      class="find-creators-frame"
-      title="Find Creators"
-    />
+    <div class="find-creators-frame-container">
+      <iframe
+        ref="iframeEl"
+        src="/find-creators.html"
+        class="find-creators-frame"
+        title="Find Creators"
+      />
+      <div
+        v-if="prefillLoading"
+        class="find-creators-frame__overlay"
+        role="status"
+        aria-live="polite"
+      >
+        <q-spinner-hourglass
+          color="primary"
+          size="32px"
+          class="find-creators-frame__spinner"
+        />
+        <span class="find-creators-frame__message">
+          Loading creator recommendations…
+        </span>
+      </div>
+    </div>
     <DonateDialog v-model="showDonateDialog" @confirm="handleDonate" />
     <SubscribeDialog
       v-model="showSubscribeDialog"
@@ -303,6 +320,8 @@ const props = defineProps<{ npubOrHex?: string }>();
 
 const iframeEl = ref<HTMLIFrameElement | null>(null);
 const iframeLoaded = ref(false);
+const prefillReady = ref(false);
+const prefillLoading = computed(() => !prefillReady.value);
 const showDonateDialog = ref(false);
 const selectedPubkey = ref("");
 const showTierDialog = ref(false);
@@ -517,6 +536,7 @@ function startChatWithCreator() {
 }
 
 const prefillEntries = computed(() => creators.prefillCacheEntries);
+prefillReady.value = prefillEntries.value.length > 0;
 let lastPrefillSignature = "";
 
 function sendPrefillCache(entries?: PrefillCreatorCacheEntry[]) {
@@ -547,6 +567,7 @@ watch(
 watch(
   prefillEntries,
   (entries) => {
+    prefillReady.value = entries.length > 0;
     if (!entries.length) {
       lastPrefillSignature = "";
       return;
@@ -939,11 +960,40 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
+.find-creators-frame-container {
+  position: relative;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
 .find-creators-frame {
   border: none;
   width: 100%;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.find-creators-frame__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  text-align: center;
+  background: rgba(15, 23, 42, 0.55);
+  color: var(--text-inverse);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.find-creators-frame__message {
+  font-size: 0.95rem;
+  color: var(--text-inverse);
 }
 
 .tier-dialog {
