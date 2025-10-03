@@ -14,6 +14,11 @@
         "paid": ["wss://relay.primal.net"]
       }
     </script>
+    <script type="application/json" id="fundstr-primal-config">
+      {
+        "profileProxy": "https://proxy.fundstr.me/primal"
+      }
+    </script>
     <style>
       body {
         font-family: "Inter", sans-serif;
@@ -358,6 +363,7 @@
         pingRelay,
       } from "./relayHealth.js";
       import { createExponentialBackoffScheduler } from "./retryScheduler.js";
+      import { getPrimalProxyConfig } from "./primalConfig.js";
 
       const relayConfig = getRelayConfig();
       const FUNDSTR_RELAY = relayConfig.primary;
@@ -380,6 +386,20 @@
         statusMessageElement.classList.remove("hidden");
       }
       const { SimplePool, nip19, utils } = window.NostrTools;
+
+      const primalProxyConfig = getPrimalProxyConfig();
+      const PRIMAL_PROFILE_PROXY_ENDPOINT =
+        primalProxyConfig.profileProxy || "";
+      const PRIMAL_MAX_5XX_ERRORS =
+        primalProxyConfig.max5xxBeforeBackoff || 0;
+      const PRIMAL_ERROR_BACKOFF_MS = primalProxyConfig.backoffMs || 0;
+      const PRIMAL_ERROR_RESET_MS = primalProxyConfig.resetMs || 0;
+
+      const primalIndexerHealth = {
+        consecutive5xx: 0,
+        last5xxAt: 0,
+        disabledUntil: 0,
+      };
 
       document.body.classList.toggle(
         "dark",
@@ -637,6 +657,42 @@
         });
         promise.finally(() => clearTimeout(id));
         return promise;
+      }
+
+      function registerPrimal5xx() {
+        const now = Date.now();
+        if (
+          PRIMAL_ERROR_RESET_MS > 0 &&
+          now - primalIndexerHealth.last5xxAt > PRIMAL_ERROR_RESET_MS
+        ) {
+          primalIndexerHealth.consecutive5xx = 0;
+        }
+        primalIndexerHealth.last5xxAt = now;
+        primalIndexerHealth.consecutive5xx += 1;
+        if (
+          PRIMAL_MAX_5XX_ERRORS > 0 &&
+          primalIndexerHealth.consecutive5xx >= PRIMAL_MAX_5XX_ERRORS
+        ) {
+          const disabledUntil = now + PRIMAL_ERROR_BACKOFF_MS;
+          if (disabledUntil > primalIndexerHealth.disabledUntil) {
+            primalIndexerHealth.disabledUntil = disabledUntil;
+            const seconds = Math.ceil(PRIMAL_ERROR_BACKOFF_MS / 1000);
+            console.warn(
+              `Primal indexer disabled for ${seconds}s after repeated 5xx responses.`,
+            );
+          }
+        }
+      }
+
+      function resetPrimalHealth() {
+        primalIndexerHealth.consecutive5xx = 0;
+        primalIndexerHealth.last5xxAt = 0;
+        primalIndexerHealth.disabledUntil = 0;
+      }
+
+      function getPrimalBackoffRemainingMs() {
+        const remaining = primalIndexerHealth.disabledUntil - Date.now();
+        return remaining > 0 ? remaining : 0;
       }
 
       function initializeSearchState() {
@@ -1375,13 +1431,61 @@
         }
       }
 
-      async function fetchProfileFromPrimal(pubkey, signal) {
+      let primalProxyBaseUrl = null;
+      let loggedMissingPrimalProxy = false;
+      if (PRIMAL_PROFILE_PROXY_ENDPOINT) {
         try {
-          const primalUrl = `https://primal-cache.snort.social/api/v1/eose/user/profile/${pubkey}`;
-          const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(
-            primalUrl,
-          )}`;
-          const response = await fetchWithTimeout(proxyUrl, { signal });
+          primalProxyBaseUrl = new URL(PRIMAL_PROFILE_PROXY_ENDPOINT);
+        } catch (error) {
+          console.error("Invalid Primal proxy endpoint configured:", error);
+          primalProxyBaseUrl = null;
+        }
+      }
+
+      async function fetchProfileFromPrimal(pubkey, signal) {
+        if (!PRIMAL_PROFILE_PROXY_ENDPOINT) {
+          if (!loggedMissingPrimalProxy) {
+            console.warn(
+              "Primal proxy endpoint not configured; skipping Primal profile lookup.",
+            );
+            loggedMissingPrimalProxy = true;
+          }
+          return null;
+        }
+
+        if (!primalProxyBaseUrl) {
+          return null;
+        }
+
+        const backoffRemaining = getPrimalBackoffRemainingMs();
+        if (backoffRemaining > 0) {
+          const seconds = Math.ceil(backoffRemaining / 1000);
+          const error = new Error(
+            `Primal indexer temporarily unavailable (${seconds}s backoff)`,
+          );
+          error.code = "PRIMAL_BACKOFF_ACTIVE";
+          throw error;
+        }
+
+        try {
+          const proxyUrl = new URL(primalProxyBaseUrl.toString());
+          proxyUrl.searchParams.set(
+            "path",
+            `/api/v1/eose/user/profile/${encodeURIComponent(pubkey)}`,
+          );
+          const response = await fetchWithTimeout(proxyUrl.toString(), { signal });
+          if (response.status >= 500 && response.status < 600) {
+            registerPrimal5xx();
+            const serverError = new Error(
+              `Primal indexer error (HTTP ${response.status})`,
+            );
+            serverError.status = response.status;
+            serverError.code = "PRIMAL_HTTP_5XX";
+            throw serverError;
+          }
+
+          resetPrimalHealth();
+
           if (!response.ok) return null;
           const data = await response.json();
           if (data && data[0] && data[0].content) {
@@ -1400,6 +1504,12 @@
           return null;
         } catch (error) {
           if (error.name === "AbortError") throw error;
+          if (
+            error?.code === "PRIMAL_BACKOFF_ACTIVE" ||
+            (typeof error?.status === "number" && error.status >= 500)
+          ) {
+            throw error;
+          }
           console.error("Primal API error:", error);
           return null;
         }
