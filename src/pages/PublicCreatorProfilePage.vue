@@ -101,6 +101,11 @@
             <q-spinner-hourglass />
           </div>
           <template v-else>
+            <NutzapExplainer
+              class="profile-tier-explainer"
+              :is-guest="isGuest"
+              @start-onboarding="gotoWelcome"
+            />
             <q-banner
               v-if="tierFetchError && !tiers.length"
               class="profile-page__banner bg-surface-2"
@@ -226,21 +231,60 @@
                 {{ $t('CreatorHub.profile.infrastructureDetails') }}
               </h3>
               <div v-if="profile.p2pkPubkey" class="profile-card__row">
-                <span class="profile-card__label text-2">{{
-                  $t('CreatorHub.profile.p2pkLabel')
-                }}</span>
+                <div class="profile-card__label text-2">
+                  <span>{{ $t('CreatorHub.profile.p2pkLabel') }}</span>
+                  <q-btn
+                    flat
+                    dense
+                    round
+                    size="sm"
+                    class="profile-card__info-btn"
+                    icon="info"
+                    :aria-label="$t('FindCreators.explainers.tooltips.p2pk')"
+                  >
+                    <q-tooltip anchor="top middle" self="bottom middle">
+                      {{ $t('FindCreators.explainers.tooltips.p2pk') }}
+                    </q-tooltip>
+                  </q-btn>
+                </div>
                 <code class="profile-card__value">{{ profile.p2pkPubkey }}</code>
               </div>
               <div class="profile-card__row">
-                <span class="profile-card__label text-2">{{
-                  $t('CreatorHub.profile.trustedMintsLabel')
-                }}</span>
+                <div class="profile-card__label text-2">
+                  <span>{{ $t('CreatorHub.profile.trustedMintsLabel') }}</span>
+                  <q-btn
+                    flat
+                    dense
+                    round
+                    size="sm"
+                    class="profile-card__info-btn"
+                    icon="info"
+                    :aria-label="$t('FindCreators.explainers.tooltips.trustedMints')"
+                  >
+                    <q-tooltip anchor="top middle" self="bottom middle">
+                      {{ $t('FindCreators.explainers.tooltips.trustedMints') }}
+                    </q-tooltip>
+                  </q-btn>
+                </div>
                 <MintSafetyList :mints="trustedMints" />
               </div>
               <div class="profile-card__row">
-                <span class="profile-card__label text-2">{{
-                  $t('CreatorHub.profile.relaysLabel')
-                }}</span>
+                <div class="profile-card__label text-2">
+                  <span>{{ $t('CreatorHub.profile.relaysLabel') }}</span>
+                  <q-btn
+                    flat
+                    dense
+                    round
+                    size="sm"
+                    class="profile-card__info-btn"
+                    icon="info"
+                    :aria-label="$t('FindCreators.explainers.tooltips.relays')"
+                  >
+                    <q-tooltip anchor="top middle" self="bottom middle">
+                      {{ $t('FindCreators.explainers.tooltips.relays') }}
+                    </q-tooltip>
+                  </q-btn>
+                </div>
                 <RelayBadgeList :relays="relayList" />
               </div>
             </article>
@@ -323,6 +367,7 @@ import PaywalledContent from "components/PaywalledContent.vue";
 import MediaPreview from "components/MediaPreview.vue";
 import MintSafetyList from "components/MintSafetyList.vue";
 import RelayBadgeList from "components/RelayBadgeList.vue";
+import NutzapExplainer from "components/NutzapExplainer.vue";
 import { isTrustedUrl } from "src/utils/sanitize-url";
 import { useClipboard } from "src/composables/useClipboard";
 import { useWelcomeStore } from "stores/welcome";
@@ -336,6 +381,7 @@ export default defineComponent({
     SetupRequiredDialog,
     MintSafetyList,
     RelayBadgeList,
+    NutzapExplainer,
   },
   setup() {
     const route = useRoute();
@@ -961,6 +1007,10 @@ export default defineComponent({
   gap: 1rem;
 }
 
+.profile-tier-explainer {
+  margin-bottom: 1.5rem;
+}
+
 .profile-tier__description {
   margin: 0;
 }
@@ -1032,6 +1082,28 @@ export default defineComponent({
   text-transform: uppercase;
   font-size: 0.75rem;
   letter-spacing: 0.08em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.profile-card__info-btn {
+  color: var(--text-2);
+  min-width: 0;
+  padding: 0;
+}
+
+.profile-card__info-btn :deep(.q-btn__content) {
+  padding: 0;
+}
+
+.profile-card__info-btn :deep(.q-icon) {
+  font-size: 1rem;
+}
+
+.profile-card__info-btn:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: 2px;
 }
 
 .profile-card__value {
