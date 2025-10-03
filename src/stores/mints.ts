@@ -36,6 +36,8 @@ export type Mint = {
   nickname?: string;
   info?: GetInfoResponse;
   errored?: boolean;
+  verifying?: boolean;
+  verificationError?: string | null;
   motd_viewed?: boolean;
   // initialize api: new CashuMint(url) on activation
 };
@@ -281,6 +283,32 @@ export const useMintsStore = defineStore("mints", {
       const index = this.mints.findIndex((m) => m.url === oldMint.url);
       this.mints[index] = newMint;
     },
+    markMintVerifying(url: string) {
+      const mint = this.mints.find((m) => m.url === url);
+      if (!mint) {
+        return;
+      }
+      mint.verifying = true;
+      mint.verificationError = null;
+    },
+    markMintVerificationSuccess(url: string) {
+      const mint = this.mints.find((m) => m.url === url);
+      if (!mint) {
+        return;
+      }
+      mint.verifying = false;
+      mint.errored = false;
+      mint.verificationError = null;
+    },
+    markMintVerificationFailed(url: string, message: string) {
+      const mint = this.mints.find((m) => m.url === url);
+      if (!mint) {
+        return;
+      }
+      mint.verifying = false;
+      mint.errored = true;
+      mint.verificationError = message;
+    },
     getKeysForKeyset: async function (keyset_id: string): Promise<MintKeys> {
       const mint = this.mints.find((m) => m.url === this.activeMintUrl);
       if (mint) {
@@ -445,7 +473,7 @@ export const useMintsStore = defineStore("mints", {
         if (verbose) {
           await notifySuccess(this.t("wallet.mint.notifications.activated"));
         }
-        this.mints.filter((m) => m.url === mint.url)[0].errored = false;
+        this.markMintVerificationSuccess(mint.url);
         debug("### activateMint: Mint activated: ", this.activeMintUrl);
       } catch (error: any) {
         // restore previous values because the activation errored
@@ -458,7 +486,7 @@ export const useMintsStore = defineStore("mints", {
           err_msg,
           this.t("wallet.mint.notifications.activation_failed"),
         );
-        this.mints.filter((m) => m.url === mint.url)[0].errored = true;
+        this.markMintVerificationFailed(mint.url, err_msg);
         throw error;
       } finally {
         await uIStore.unlockMutex();
