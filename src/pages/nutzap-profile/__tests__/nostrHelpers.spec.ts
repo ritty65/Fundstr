@@ -8,8 +8,8 @@ import {
 
 vi.hoisted(() => {
   vi.stubEnv('VITE_NUTZAP_ALLOW_WSS_WRITES', 'true');
-  vi.stubEnv('VITE_NUTZAP_PRIMARY_RELAY_WSS', 'wss://relay.fundstr.me');
-  vi.stubEnv('VITE_NUTZAP_PRIMARY_RELAY_HTTP', 'https://relay.fundstr.me');
+  vi.stubEnv('VITE_NUTZAP_PRIMARY_RELAY_WSS', 'wss://relay.primal.net');
+  vi.stubEnv('VITE_NUTZAP_PRIMARY_RELAY_HTTP', 'https://relay.primal.net');
   vi.stubEnv('VITE_NUTZAP_WS_TIMEOUT_MS', '500');
   vi.stubEnv('VITE_NUTZAP_HTTP_TIMEOUT_MS', '75');
   return undefined;
@@ -21,7 +21,7 @@ afterAll(() => {
 
 const ndkMock = vi.hoisted(() => {
   const listeners = new Map<string, Set<(relay: any) => void>>();
-  const relay = { url: 'wss://relay.fundstr.me', connected: false };
+  const relay = { url: 'wss://relay.primal.net', connected: false };
   const pool = {
     relays: new Map([[relay.url, relay]]),
     on(event: string, cb: (relay: any) => void) {
@@ -463,8 +463,8 @@ describe('relay endpoint defaults', () => {
     vi.stubEnv('VITE_NUTZAP_PRIMARY_RELAY_WSS', '\n');
 
     const { FUNDSTR_REQ_URL, FUNDSTR_WS_URL } = await import('../nostrHelpers');
-    expect(FUNDSTR_WS_URL).toBe('wss://relay.fundstr.me');
-    expect(FUNDSTR_REQ_URL).toBe('https://relay.fundstr.me/req');
+    expect(FUNDSTR_WS_URL).toBe('wss://relay.primal.net');
+    expect(FUNDSTR_REQ_URL).toBe('https://relay.primal.net/req');
   });
 });
 

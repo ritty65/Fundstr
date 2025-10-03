@@ -36,7 +36,7 @@
           <div class="studio-card__header">
             <div>
               <div class="text-subtitle1 text-weight-medium text-1">Relay connection</div>
-              <div class="text-caption text-2">Connect to relay.fundstr.me with automatic fallback.</div>
+              <div class="text-caption text-2">Connect to relay.primal.net with automatic fallback.</div>
             </div>
             <q-btn flat dense icon="science" label="Data explorer" @click="requestExplorerOpen('toolbar')" />
           </div>
@@ -268,7 +268,7 @@
                       @blur="commitRelay"
                     />
                   </div>
-                  <div class="text-caption text-2">Automatically ensures relay.fundstr.me is included.</div>
+                  <div class="text-caption text-2">Automatically ensures relay.primal.net is included.</div>
                 </div>
               </div>
             </div>
@@ -439,7 +439,7 @@
           <div class="studio-card__header">
             <div>
               <div class="text-subtitle1 text-weight-medium text-1">Publish workflow</div>
-              <div class="text-caption text-2">Push profile and tiers to relay.fundstr.me.</div>
+              <div class="text-caption text-2">Push profile and tiers to relay.primal.net.</div>
             </div>
           </div>
           <div class="studio-card__body column q-gutter-md">
@@ -561,7 +561,7 @@
                 </div>
               </div>
               <q-banner class="preview-banner" dense>
-                Publish pushes both events to relay.fundstr.me. Copy JSON if your publisher requires manual input.
+                Publish pushes both events to relay.primal.net. Copy JSON if your publisher requires manual input.
               </q-banner>
             </q-tab-panel>
             <q-tab-panel name="profile">
@@ -2890,7 +2890,7 @@ async function publishAll() {
       profileOutcome.usedFallback || profileResult.ack?.via === 'http' ? ' via HTTP fallback' : '';
     const profileSummary = profileEventId
       ? `Profile published${profileFallbackNote} — id ${profileEventId}${profileRelayMessage}`
-      : `Profile published${profileFallbackNote} to relay.fundstr.me.${profileRelayMessage}`;
+      : `Profile published${profileFallbackNote} to relay.primal.net.${profileRelayMessage}`;
 
     lastPublishInfo.value = `${tierSummary} ${profileSummary}`.trim();
 

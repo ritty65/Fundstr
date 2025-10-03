@@ -70,7 +70,7 @@ export function useRelayConnection() {
 
     if (mode === 'production') {
       logInfo(logMessage);
-      const expectedHost = 'relay.fundstr.me';
+      const expectedHost = 'relay.primal.net';
       if (wsUrl !== '(empty)' && !wsUrl.includes(expectedHost)) {
         console.warn(
           `[Nutzap] Unexpected production relay WebSocket URL: ${wsUrl}`,
