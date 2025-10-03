@@ -9,15 +9,15 @@ Publishes must send a fully signed NIP-01 event to /event; the client validates 
 ## Transport flow
 
 1. The client always **prefers the isolated Fundstr relay**
-   (`wss://relay.fundstr.me`).
+   (`wss://relay.primal.net`).
 2. Every query begins with a WebSocket REQ/EOSE round-trip. Connections are
    bounded by a ~1.5&nbsp;s timeout to keep the UI responsive.
 3. If the socket cannot be opened or returns no events, the client
    automatically performs the same query over HTTP:
-   `https://relay.fundstr.me/req?filters=…`.
+   `https://relay.primal.net/req?filters=…`.
 4. When Fundstr returns no data the client **can** fan out across a vetted pool
-   of public relays (`relay.primal.net`, `relay.fundstr.me`, `nos.lol`,
-   `relay.damus.io`). This behaviour is opt-in via
+  of public relays (`relay.primal.net`, `relay.snort.social`, `nos.lol`,
+  `relay.damus.io`). This behaviour is opt-in via
    `allowFanoutFallback`—Fundstr-first flows (including Creator Studio load /
    refresh) stay pinned to the first-party relay unless callers explicitly pass
    that flag.
@@ -27,7 +27,7 @@ All fetches, including the service-worker passthrough, use
 responses are never cached.
 
 Publishing Nutzap events uses a direct HTTP POST to
-`https://relay.fundstr.me/event`. The relay responds with a JSON payload shaped
+`https://relay.primal.net/event`. The relay responds with a JSON payload shaped
 like `{ ok, id, accepted, message }`. Callers must treat a publish as successful
 **only** when `accepted === true`. When `accepted` is false the provided relay
 `message` should be surfaced to the user verbatim.

@@ -1,5 +1,9 @@
 import { nip19 } from "nostr-tools";
 import { bytesToHex } from "@noble/hashes/utils";
+import {
+  FUNDSTR_PRIMARY_RELAY,
+  FUNDSTR_PRIMARY_RELAY_HTTP,
+} from "src/config/relays";
 import type { NostrEvent } from "./eventUtils";
 export type { NostrEvent } from "./eventUtils";
 
@@ -34,13 +38,13 @@ type RequiredQueryOptions = Required<
 >;
 
 const FUNDSTR = {
-  ws: "wss://relay.fundstr.me",
-  http: "https://relay.fundstr.me",
+  ws: FUNDSTR_PRIMARY_RELAY,
+  http: FUNDSTR_PRIMARY_RELAY_HTTP,
 };
 
 const PUBLIC_POOL = [
-  "wss://relay.primal.net",
-  "wss://relay.fundstr.me",
+  FUNDSTR_PRIMARY_RELAY,
+  "wss://relay.snort.social",
   "wss://nos.lol",
   "wss://relay.damus.io",
 ];

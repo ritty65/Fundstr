@@ -287,8 +287,8 @@ isolated relay flow:
 1. **Build & Typecheck** – `pnpm install` then `pnpm build` (or the equivalent npm commands).
 2. **Relay Smoke Tests** – ensure the dedicated relay is reachable:
    ```bash
-   curl -sH 'Accept: application/nostr+json' https://relay.fundstr.me/ | jq .
-   curl -s 'https://relay.fundstr.me/req?filters=%5B%5D'
+   curl -sH 'Accept: application/nostr+json' https://relay.primal.net/ | jq .
+   curl -s 'https://relay.primal.net/req?filters=%5B%5D'
    ```
 3. **Page Behaviour** – load `/nutzap-profile`, publish tiers and profile, and verify the
    publish acknowledgements (`via=ws` or `via=http`). Block WebSockets to confirm the HTTP

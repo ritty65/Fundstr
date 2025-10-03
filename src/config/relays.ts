@@ -1,5 +1,6 @@
-export const FUNDSTR_PRIMARY_RELAY = 'wss://relay.fundstr.me';
-export const PRIMARY_RELAY = 'wss://relay.fundstr.me';
+export const FUNDSTR_PRIMARY_RELAY = 'wss://relay.primal.net';
+export const FUNDSTR_PRIMARY_RELAY_HTTP = 'https://relay.primal.net';
+export const PRIMARY_RELAY = FUNDSTR_PRIMARY_RELAY;
 
 export const FALLBACK_RELAYS: string[] = [
   'wss://relay.damus.io',
@@ -9,10 +10,9 @@ export const FALLBACK_RELAYS: string[] = [
 
 // Curated default read relays – these are added at boot for read operations only.
 export const DEFAULT_RELAYS = [
-  "wss://relay.fundstr.me",
+  FUNDSTR_PRIMARY_RELAY,
   "wss://relay.damus.io",
   "wss://relay.snort.social",
-  "wss://relay.primal.net",
   "wss://nos.lol",
 ];
 

@@ -83,7 +83,7 @@ var shared: SharedState | null = null;
 function ensureShared(): SharedState {
   if (!shared) {
     shared = {
-      relayUrlRef: ref("wss://relay.fundstr.me"),
+      relayUrlRef: ref("wss://relay.primal.net"),
       relayStatusRef: ref("connected"),
       relayAutoReconnectRef: ref(false),
       relayActivityRef: ref([]),
@@ -203,8 +203,8 @@ const pickLatestReplaceableMock = vi.fn(() => null);
 const pickLatestParamReplaceableMock = vi.fn(() => null);
 
 vi.mock("../../../src/pages/nutzap-profile/nostrHelpers", () => ({
-  FUNDSTR_WS_URL: "wss://relay.fundstr.me",
-  FUNDSTR_REQ_URL: "https://relay.fundstr.me/req",
+  FUNDSTR_WS_URL: "wss://relay.primal.net",
+  FUNDSTR_REQ_URL: "https://relay.primal.net/req",
   WS_FIRST_TIMEOUT_MS: 5000,
   HTTP_FALLBACK_TIMEOUT_MS: 8000,
   publishTiers: (...args: any[]) => ensureShared().publishTiersToRelayMock(...args),
@@ -336,7 +336,7 @@ beforeEach(() => {
   state.disconnectRelayMock.mockReset();
   state.clearRelayActivityMock.mockReset();
   state.logActivityMock.mockReset();
-  state.relayUrlRef.value = "wss://relay.fundstr.me";
+  state.relayUrlRef.value = "wss://relay.primal.net";
   state.relayStatusRef.value = "connected";
   state.relayAutoReconnectRef.value = false;
   state.relayActivityRef.value = [];
@@ -401,7 +401,7 @@ describe("NutzapProfilePage explore summary", () => {
     const relayChips = summaryCard.findAll('[data-testid="explore-relay-chip"]');
     expect(relayChips.length).toBeGreaterThanOrEqual(2);
     expect(relayChips.map(node => node.text())).toEqual(
-      expect.arrayContaining(["wss://relay.alt", "wss://relay.fundstr.me"])
+      expect.arrayContaining(["wss://relay.alt", "wss://relay.primal.net"])
     );
 
     const tierItems = summaryCard.findAll('[data-testid="explore-tier-item"]');

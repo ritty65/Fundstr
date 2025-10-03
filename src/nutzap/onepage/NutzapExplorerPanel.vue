@@ -187,7 +187,7 @@ import type { Event as NostrEvent, Filter as NostrFilter } from 'nostr-tools';
 import { multiRelaySearch, mergeRelayHints } from './multiRelaySearch';
 import { sanitizeRelayUrls } from 'src/utils/relay';
 
-const DEFAULT_RELAYS = ['wss://relay.fundstr.me'];
+const DEFAULT_RELAYS = ['wss://relay.primal.net'];
 
 const props = defineProps<{
   modelValue: string;
