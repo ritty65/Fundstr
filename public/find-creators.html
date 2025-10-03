@@ -649,6 +649,115 @@
         retryButtonElement.classList.add("hidden");
       }
 
+      function getUnreachableRelaySet() {
+        const diagnostics = getMonitoredDiagnostics();
+        const unreachable = new Set();
+        diagnostics.forEach((entry) => {
+          if (entry.status === "error") {
+            unreachable.add(entry.url);
+          }
+        });
+        return unreachable;
+      }
+
+      function partitionReachableRelays(relays) {
+        const unreachable = getUnreachableRelaySet();
+        const uniqueRelays = Array.from(
+          new Set((Array.isArray(relays) ? relays : []).filter(Boolean)),
+        );
+        const reachable = [];
+        const skipped = [];
+        uniqueRelays.forEach((relay) => {
+          if (unreachable.has(relay)) {
+            skipped.push(relay);
+          } else {
+            reachable.push(relay);
+          }
+        });
+        return { reachable, skipped };
+      }
+
+      function reportSearchStageDuration(stage, durationMs, metadata = {}) {
+        const payload = {
+          stage,
+          durationMs: Math.round(durationMs),
+          timestamp: Date.now(),
+          ...metadata,
+        };
+
+        try {
+          if (
+            typeof window !== "undefined" &&
+            typeof window.dispatchEvent === "function" &&
+            typeof CustomEvent === "function"
+          ) {
+            window.dispatchEvent(
+              new CustomEvent("fundstr:find-creators:stage-timing", {
+                detail: payload,
+              }),
+            );
+          }
+        } catch (_error) {
+          /* no-op */
+        }
+
+        try {
+          const telemetry =
+            window.__FUNDSTR_SEARCH_TELEMETRY__ ||
+            window.__FUNDSTR_TELEMETRY__;
+          if (telemetry) {
+            if (typeof telemetry.report === "function") {
+              telemetry.report(payload);
+              return;
+            }
+            if (typeof telemetry.emit === "function") {
+              telemetry.emit("find-creators-stage", payload);
+              return;
+            }
+            if (typeof telemetry.push === "function") {
+              telemetry.push(payload);
+              return;
+            }
+          }
+        } catch (error) {
+          console.debug(
+            "Search stage telemetry dispatch failed",
+            error,
+            payload,
+          );
+          return;
+        }
+
+        if (typeof console !== "undefined" && typeof console.debug === "function") {
+          console.debug("Search stage telemetry", payload);
+        }
+      }
+
+      function createStageTimer() {
+        const starts = new Map();
+        const now = () =>
+          typeof performance !== "undefined" && performance?.now
+            ? performance.now()
+            : Date.now();
+        return {
+          start(stage) {
+            if (!stage) return;
+            starts.set(stage, now());
+          },
+          end(stage, metadata = {}) {
+            if (!stage) return;
+            const start = starts.get(stage);
+            if (typeof start !== "number") return;
+            starts.delete(stage);
+            reportSearchStageDuration(stage, now() - start, metadata);
+          },
+          cancel(stage) {
+            if (!stage) return;
+            starts.delete(stage);
+          },
+        };
+      }
+
       function mergeProfilesIntoCurrent(profiles) {
         let changed = false;
         profiles.forEach((profile) => {
@@ -839,30 +948,361 @@
 
         const filter = { kinds: [0], authors: [pubkey] };
         const watchOptions = { notifyView: true, targetPubkey: pubkey };
+        const stageTimers = createStageTimer();
 
         updateStatus("Searching known relays for profile...");
 
-        const fundstrPromise = observeProfilesPromise(
-          fetchProfilesFromFundstr(filter, signal),
-          signal,
-          { ...watchOptions, sourceLabel: primaryRelayLabel },
-        );
-        const knownRelayPromise = observeProfilesPromise(
-          fetchProfilesFromRelays(RELAYS, filter, signal),
-          signal,
-          { ...watchOptions, sourceLabel: "Known relays" },
-        );
-
         try {
-          try {
-            await Promise.any([
+          const primaryPartition = partitionReachableRelays(RELAYS);
+          const reachableRelays = primaryPartition.reachable;
+          const skippedKnownRelays = primaryPartition.skipped;
+          const fundstrReachable = reachableRelays.includes(FUNDSTR_RELAY);
+
+          const primaryPromises = [];
+          if (fundstrReachable) {
+            const fundstrPromise = observeProfilesPromise(
+              fetchProfilesFromFundstr(filter, signal),
+              signal,
+              { ...watchOptions, sourceLabel: primaryRelayLabel },
+            );
+            primaryPromises.push(
               firstNonEmptyPromise(fundstrPromise, signal, "fundstr"),
+            );
+          }
+
+          if (reachableRelays.length > 0) {
+            const knownRelayPromise = observeProfilesPromise(
+              fetchProfilesFromRelays(reachableRelays, filter, signal),
+              signal,
+              { ...watchOptions, sourceLabel: "Known relays" },
+            );
+            primaryPromises.push(
               firstNonEmptyPromise(
                 knownRelayPromise,
                 signal,
                 "known-relays",
               ),
-            ]);
+            );
+          }
+
+          stageTimers.start("primary-search");
+          let primaryStageMetadata = {
+            result: primaryPromises.length ? "pending" : "skipped",
+            attempts: primaryPromises.length,
+            reachableRelays: reachableRelays.length,
+            skippedRelays: skippedKnownRelays.length,
+            fundstrAttempted: fundstrReachable,
+          };
+
+          try {
+            if (primaryPromises.length > 0) {
+              await Promise.any(primaryPromises);
+              primaryStageMetadata.result = hasInitialRender
+                ? "success"
+                : "empty";
+            } else if (signal.aborted) {
+              primaryStageMetadata.result = "aborted";
+            }
+          } catch (error) {
+            if (error.name === "AggregateError") {
+              const aggregateErrors = Array.isArray(error.errors)
+                ? error.errors
+                : [];
+              const nonEmptyErrors = aggregateErrors.filter(
+                (err) => err && err.code !== EMPTY_RESULT_CODE,
+              );
+              if (nonEmptyErrors.length > 0) {
+                primaryStageMetadata.result = "error";
+                throw nonEmptyErrors[0];
+              }
+              primaryStageMetadata.result = "empty";
+            } else {
+              primaryStageMetadata.result =
+                error.name === "AbortError" ? "aborted" : "error";
+              throw error;
+            }
+          } finally {
+            stageTimers.end("primary-search", primaryStageMetadata);
+          }
+
+          if (signal.aborted || hasInitialRender) return;
+
+          updateStatusIfPending(
+            "Profile not found. Discovering user's relays...",
+          );
+
+          stageTimers.start("user-relay-discovery");
+          let userRelays = [];
+          let reachableUserRelays = [];
+          let skippedUserRelays = [];
+          let userDiscoveryMetadata = {
+            result: "empty",
+            discovered: 0,
+            reachable: 0,
+            skipped: 0,
+          };
+
+          try {
+            userRelays = await findUserRelayList(pubkey, signal);
+            const partitioned = partitionReachableRelays(userRelays);
+            reachableUserRelays = partitioned.reachable;
+            skippedUserRelays = partitioned.skipped;
+            const discoveredCount = userRelays.length;
+            const reachableCount = reachableUserRelays.length;
+            userDiscoveryMetadata = {
+              result:
+                reachableCount > 0
+                  ? "success"
+                  : discoveredCount > 0
+                  ? "skipped"
+                  : "empty",
+              discovered: discoveredCount,
+              reachable: reachableCount,
+              skipped: skippedUserRelays.length,
+            };
+          } catch (error) {
+            userDiscoveryMetadata = {
+              result: error.name === "AbortError" ? "aborted" : "error",
+              discovered: userRelays.length,
+              reachable: reachableUserRelays.length,
+              skipped: skippedUserRelays.length,
+              errorMessage: error.message,
+            };
+            throw error;
+          } finally {
+            stageTimers.end("user-relay-discovery", userDiscoveryMetadata);
+          }
+
+          if (signal.aborted || hasInitialRender) return;
+
+          if (reachableUserRelays.length > 0) {
+            updateStatusIfPending(
+              `Searching ${reachableUserRelays.length} newly discovered relays...`,
+            );
+
+            stageTimers.start("user-relay-search");
+            let userRelaySearchMetadata = {
+              result: "empty",
+              relayCount: reachableUserRelays.length,
+            };
+
+            try {
+              const userRelayPromise = observeProfilesPromise(
+                fetchProfilesFromRelays(reachableUserRelays, filter, signal),
+                signal,
+                { ...watchOptions, sourceLabel: "Discovered relays" },
+              );
+              const userProfiles = await userRelayPromise;
+              userRelaySearchMetadata = {
+                result:
+                  Array.isArray(userProfiles) && userProfiles.length > 0
+                    ? "success"
+                    : "empty",
+                relayCount: reachableUserRelays.length,
+                profileCount: Array.isArray(userProfiles)
+                  ? userProfiles.length
+                  : 0,
+              };
+            } catch (error) {
+              userRelaySearchMetadata = {
+                result: error.name === "AbortError" ? "aborted" : "error",
+                relayCount: reachableUserRelays.length,
+                errorMessage: error.message,
+              };
+              throw error;
+            } finally {
+              stageTimers.end("user-relay-search", userRelaySearchMetadata);
+            }
+          }
+
+          if (signal.aborted || hasInitialRender) return;
+
+          updateStatusIfPending(
+            "Checking nostr.band and Primal in parallel...",
+          );
+
+          const parallelTasks = [];
+          const racePromises = [];
+
+          const nostrBandRelayTask = (async () => {
+            stageTimers.start("nostrband-relay-discovery");
+            let discoveryMetadata = {
+              result: "empty",
+              discovered: 0,
+              reachable: 0,
+              skipped: 0,
+            };
+            let reachableIndexedRelays = [];
+            try {
+              const indexedRelays = await fetchRelayListFromIndexer(
+                pubkey,
+                signal,
+              );
+              const partitioned = partitionReachableRelays(indexedRelays);
+              reachableIndexedRelays = partitioned.reachable;
+              const discoveredCount = Array.isArray(indexedRelays)
+                ? indexedRelays.length
+                : 0;
+              const reachableCount = reachableIndexedRelays.length;
+              const skippedCount = partitioned.skipped.length;
+              discoveryMetadata = {
+                result:
+                  reachableCount > 0
+                    ? "success"
+                    : discoveredCount > 0
+                    ? "skipped"
+                    : "empty",
+                discovered: discoveredCount,
+                reachable: reachableCount,
+                skipped: skippedCount,
+              };
+            } catch (error) {
+              discoveryMetadata = {
+                result: error.name === "AbortError" ? "aborted" : "error",
+                discovered: 0,
+                reachable: 0,
+                skipped: 0,
+                errorMessage: error.message,
+              };
+              throw error;
+            } finally {
+              stageTimers.end(
+                "nostrband-relay-discovery",
+                discoveryMetadata,
+              );
+            }
+
+            if (signal.aborted || reachableIndexedRelays.length === 0) {
+              return [];
+            }
+
+            stageTimers.start("nostrband-relay-search");
+            let relaySearchMetadata = {
+              result: "empty",
+              relayCount: reachableIndexedRelays.length,
+            };
+            try {
+              const indexedRelayPromise = observeProfilesPromise(
+                fetchProfilesFromRelays(
+                  reachableIndexedRelays,
+                  filter,
+                  signal,
+                ),
+                signal,
+                { ...watchOptions, sourceLabel: "Indexed relays" },
+              );
+              const profiles = await indexedRelayPromise;
+              relaySearchMetadata = {
+                result:
+                  Array.isArray(profiles) && profiles.length > 0
+                    ? "success"
+                    : "empty",
+                relayCount: reachableIndexedRelays.length,
+                profileCount: Array.isArray(profiles) ? profiles.length : 0,
+              };
+              return Array.isArray(profiles) ? profiles : [];
+            } catch (error) {
+              relaySearchMetadata = {
+                result: error.name === "AbortError" ? "aborted" : "error",
+                relayCount: reachableIndexedRelays.length,
+                errorMessage: error.message,
+              };
+              throw error;
+            } finally {
+              stageTimers.end("nostrband-relay-search", relaySearchMetadata);
+            }
+          })();
+          parallelTasks.push(nostrBandRelayTask);
+          racePromises.push(
+            firstNonEmptyPromise(
+              nostrBandRelayTask,
+              signal,
+              "nostr-band-relays",
+            ),
+          );
+
+          const nostrBandProfileTask = (async () => {
+            stageTimers.start("nostrband-profile");
+            let profileMetadata = { result: "empty" };
+            try {
+              const indexerProfilePromise = fetchProfileFromIndexer(
+                pubkey,
+                signal,
+              );
+              observeProfilesPromise(
+                indexerProfilePromise.then((profile) =>
+                  profile ? [profile] : [],
+                ),
+                signal,
+                { ...watchOptions, sourceLabel: "nostr.band profile" },
+              );
+              const profile = await indexerProfilePromise;
+              profileMetadata = {
+                result: profile ? "success" : "empty",
+              };
+              return profile ? [profile] : [];
+            } catch (error) {
+              profileMetadata = {
+                result: error.name === "AbortError" ? "aborted" : "error",
+                errorMessage: error.message,
+              };
+              throw error;
+            } finally {
+              stageTimers.end("nostrband-profile", profileMetadata);
+            }
+          })();
+          parallelTasks.push(nostrBandProfileTask);
+          racePromises.push(
+            firstNonEmptyPromise(
+              nostrBandProfileTask,
+              signal,
+              "nostr-band-profile",
+            ),
+          );
+
+          const primalProfileTask = (async () => {
+            stageTimers.start("primal-profile");
+            let primalMetadata = { result: "empty" };
+            try {
+              const primalProfilePromise = fetchProfileFromPrimal(
+                pubkey,
+                signal,
+              );
+              observeProfilesPromise(
+                primalProfilePromise.then((profile) =>
+                  profile ? [profile] : [],
+                ),
+                signal,
+                { ...watchOptions, sourceLabel: "Primal profile" },
+              );
+              const profile = await primalProfilePromise;
+              primalMetadata = {
+                result: profile ? "success" : "empty",
+              };
+              return profile ? [profile] : [];
+            } catch (error) {
+              primalMetadata = {
+                result: error.name === "AbortError" ? "aborted" : "error",
+                errorMessage: error.message,
+              };
+              throw error;
+            } finally {
+              stageTimers.end("primal-profile", primalMetadata);
+            }
+          })();
+          parallelTasks.push(primalProfileTask);
+          racePromises.push(
+            firstNonEmptyPromise(
+              primalProfileTask,
+              signal,
+              "primal-profile",
+            ),
+          );
+
+          try {
+            if (racePromises.length > 0) {
+              await Promise.any(racePromises);
+            }
           } catch (error) {
             if (signal.aborted) return;
             if (error.name === "AggregateError") {
@@ -878,76 +1318,14 @@
             } else {
               throw error;
             }
+          } finally {
+            await Promise.allSettled(parallelTasks);
           }
 
-          if (signal.aborted) return;
-
-          updateStatusIfPending("Profile not found. Discovering user's relays...");
-          const userRelays = await findUserRelayList(pubkey, signal);
-          if (signal.aborted) return;
-
-          if (userRelays.length > 0) {
-            updateStatusIfPending(
-              `Searching ${userRelays.length} newly discovered relays...`,
+          if (!hasInitialRender && !signal.aborted) {
+            updateStatus(
+              "Profile could not be found after exhaustive search on known relays, discovered relays, and multiple public indexers.",
             );
-            const userRelayPromise = observeProfilesPromise(
-              fetchProfilesFromRelays(userRelays, filter, signal),
-              signal,
-              { ...watchOptions, sourceLabel: "Discovered relays" },
-            );
-            await userRelayPromise;
-            if (signal.aborted) return;
-          }
-
-          updateStatusIfPending(
-            "Still not found. Consulting nostr.band indexer for relay locations...",
-          );
-          const indexedRelays = await fetchRelayListFromIndexer(pubkey, signal);
-          if (signal.aborted) return;
-
-          if (indexedRelays.length > 0) {
-            updateStatusIfPending(
-              `Found ${indexedRelays.length} potential relays from indexer. Searching...`,
-            );
-            const indexedRelayPromise = observeProfilesPromise(
-              fetchProfilesFromRelays(indexedRelays, filter, signal),
-              signal,
-              { ...watchOptions, sourceLabel: "Indexed relays" },
-            );
-            await indexedRelayPromise;
-            if (signal.aborted) return;
-          }
-
-          updateStatusIfPending("Still not found. Checking nostr.band directly...");
-          const indexerProfilePromise = fetchProfileFromIndexer(pubkey, signal);
-          observeProfilesPromise(
-            indexerProfilePromise.then((profile) => (profile ? [profile] : [])),
-            signal,
-            { ...watchOptions, sourceLabel: "nostr.band profile" },
-          );
-          const indexerProfile = await indexerProfilePromise;
-          if (signal.aborted) return;
-
-          if (!indexerProfile) {
-            updateStatusIfPending(
-              "Last attempt: Consulting Primal, the most powerful indexer...",
-            );
-            const primalProfilePromise = fetchProfileFromPrimal(pubkey, signal);
-            observeProfilesPromise(
-              primalProfilePromise.then((profile) =>
-                profile ? [profile] : [],
-              ),
-              signal,
-              { ...watchOptions, sourceLabel: "Primal profile" },
-            );
-            const primalProfile = await primalProfilePromise;
-            if (signal.aborted) return;
-
-            if (!primalProfile && !hasInitialRender) {
-              updateStatus(
-                "Profile could not be found after exhaustive search on known relays, discovered relays, and multiple public indexers.",
-              );
-            }
           }
         } catch (error) {
           if (error.name === "AbortError") return;
@@ -1048,8 +1426,12 @@
 
       async function findUserRelayList(pubkey, signal) {
         const filter = { kinds: [10002], authors: [pubkey], limit: 1 };
+        const { reachable: reachableRelays } = partitionReachableRelays(RELAYS);
+        if (reachableRelays.length === 0) {
+          return [];
+        }
         const events = await fetchEventsFromRelays(
-          RELAYS,
+          reachableRelays,
           filter,
           signal,
           4000,
