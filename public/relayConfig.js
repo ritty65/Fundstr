@@ -1,5 +1,5 @@
 const DEFAULT_PRIMARY_RELAY = "wss://relay.fundstr.me";
-const DEFAULT_PAID_RELAYS = ["wss://relay.primal.net"];
+const DEFAULT_PAID_RELAYS = ["wss://relay.fundstr.me"];
 
 // Criteria for curated open relays:
 // 1. Operators publish an explicit allowlist or policy permitting third-party web clients.

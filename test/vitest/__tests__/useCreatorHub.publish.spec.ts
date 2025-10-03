@@ -266,13 +266,13 @@ describe("publishProfileBundle", () => {
     profileStoreMock.pubkey = "creator-pub";
     profileStoreMock.relays = [
       "wss://relay.other",
-      "wss://relay.primal.net",
+      "wss://relay.fundstr.me",
     ];
     filterHealthyRelaysMock.mockImplementation(async (relays: string[]) =>
-      relays.filter((url) => url === "wss://relay.primal.net"),
+      relays.filter((url) => url === "wss://relay.fundstr.me"),
     );
     selectPublishRelaysMock.mockReturnValueOnce({
-      targets: ["wss://relay.other", "wss://relay.primal.net"],
+      targets: ["wss://relay.other", "wss://relay.fundstr.me"],
       usedFallback: [],
     });
 
@@ -291,7 +291,7 @@ describe("publishProfileBundle", () => {
 
     expect(buildKind10019NutzapProfileMock).toHaveBeenCalled();
     const [, payload] = buildKind10019NutzapProfileMock.mock.calls.at(-1)!;
-    expect(payload.relays).toEqual(["wss://relay.primal.net"]);
+    expect(payload.relays).toEqual(["wss://relay.fundstr.me"]);
     expect(publishToRelaysWithAcksMock).toHaveBeenCalled();
     expect(vm.publishReport.anySuccess).toBe(true);
 
@@ -301,11 +301,11 @@ describe("publishProfileBundle", () => {
   it("counts Fundstr HTTP fallback ack as success when websocket publish fails", async () => {
     profileStoreMock.pubkey = "creator-pub";
     profileStoreMock.relays = [
-      "wss://relay.primal.net",
+      "wss://relay.fundstr.me",
       "wss://relay.other",
     ];
     selectPublishRelaysMock.mockReturnValueOnce({
-      targets: ["wss://relay.primal.net", "wss://relay.other"],
+      targets: ["wss://relay.fundstr.me", "wss://relay.other"],
       usedFallback: [],
     });
     fundstrRelayClientMock.publish.mockResolvedValueOnce({
@@ -322,7 +322,7 @@ describe("publishProfileBundle", () => {
     });
     publishToRelaysWithAcksMock.mockImplementation(async (_ndk: any, _event: any, relays: string[]) => ({
       perRelay: relays.map((url) =>
-        url === "wss://relay.primal.net"
+        url === "wss://relay.fundstr.me"
           ? { relay: url, status: "timeout" }
           : { relay: url, status: "ok" },
       ),
@@ -343,7 +343,7 @@ describe("publishProfileBundle", () => {
 
     expect(fundstrRelayClientMock.publish).toHaveBeenCalled();
     const fundstrResult = vm.publishReport.byRelay.find(
-      (r: any) => r.url === "wss://relay.primal.net",
+      (r: any) => r.url === "wss://relay.fundstr.me",
     );
     expect(fundstrResult?.ack).toBe(true);
     expect(fundstrResult?.ok).toBe(true);

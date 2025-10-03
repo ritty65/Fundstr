@@ -266,7 +266,9 @@ async function createReadOnlyNdk(opts: CreateReadOnlyOptions = {}): Promise<NDK>
   if (!opts.fundstrOnly) {
     mergeDefaultRelays(ndk);
   }
-  mustConnectRequiredRelays(ndk);
+  if (!fundstrOnly) {
+    mustConnectRequiredRelays(ndk);
+  }
   await safeConnect(ndk);
   if (!fundstrOnly) {
     healthyPromise.then(async (healthy) => {
@@ -311,7 +313,9 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
   const ndk = new NDK({ explicitRelayUrls: bootstrapRelays });
   attachRelayErrorHandlers(ndk);
   mergeDefaultRelays(ndk);
-  mustConnectRequiredRelays(ndk);
+  if (!fundstrOnly) {
+    mustConnectRequiredRelays(ndk);
+  }
   ndk.signer = signer;
   await safeConnect(ndk);
   if (!fundstrOnly) {

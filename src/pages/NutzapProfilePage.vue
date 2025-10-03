@@ -9,7 +9,7 @@
               <span class="status-label text-caption text-weight-medium">{{ relayStatusLabel }}</span>
             </div>
             <div class="status-meta text-body2 text-2">
-              Isolated relay: relay.primal.net (WS → HTTP fallback)
+              Isolated relay: relay.fundstr.me (WS → HTTP fallback)
             </div>
           </div>
           <div class="profile-readiness" role="status" aria-live="polite">
@@ -1635,7 +1635,7 @@ async function publishAll() {
         : '';
     const profileSummary = profileEventId
       ? `Profile published — id ${profileEventId}${profileRelayMessage}`
-      : `Profile published to relay.primal.net.${profileRelayMessage}`;
+      : `Profile published to relay.fundstr.me.${profileRelayMessage}`;
 
     lastPublishInfo.value = `${tierSummary} ${profileSummary}`.trim();
 
