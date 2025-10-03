@@ -131,69 +131,33 @@
               {{ $t('CreatorHub.profile.noTiers') }}
             </div>
             <div v-else class="profile-tier-list">
-              <q-expansion-item
+              <TierSummaryCard
                 v-for="t in tiers"
                 :key="t.id"
-                class="profile-tier"
-                expand-separator
+                :tier="t"
+                :price-sats="getPrice(t)"
+                :price-fiat="formatFiat(getPrice(t))"
+                :frequency-label="frequencyLabel(t)"
+                :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
+                :subscribe-disabled="isGuest"
+                @subscribe="openSubscribe"
               >
-                <template #header>
-                  <div class="profile-tier__header">
-                    <div class="profile-tier__title-group">
-                      <h3 class="profile-tier__name">{{ t.name }}</h3>
-                      <div class="profile-tier__price text-2">
-                        <span class="profile-tier__sats">{{ getPrice(t) }} sats</span>
-                        <span v-if="priceStore.bitcoinPrice" class="profile-tier__fiat">
-                          {{ formatFiat(getPrice(t)) }}
-                        </span>
-                      </div>
-                    </div>
-                    <div class="profile-tier__cta">
-                      <q-btn
-                        color="primary"
-                        class="profile-tier__subscribe"
-                        :label="$t('CreatorHub.profile.subscribeCta')"
-                        :disable="isGuest"
-                        @click.stop="openSubscribe(t)"
-                      >
-                        <q-tooltip v-if="isGuest">{{
-                          $t('CreatorHub.profile.guestTooltip')
-                        }}</q-tooltip>
-                      </q-btn>
-                      <p class="profile-tier__microcopy text-2">
-                        {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
-                      </p>
-                    </div>
-                  </div>
+                <template v-if="isGuest" #subscribe-tooltip>
+                  <q-tooltip>{{ $t('CreatorHub.profile.guestTooltip') }}</q-tooltip>
                 </template>
-                <div class="profile-tier__body">
-                  <p v-if="t.description" class="profile-tier__description text-body1">
-                    {{ t.description }}
-                  </p>
-                  <ul v-if="t.benefits && t.benefits.length" class="profile-tier__benefits" role="list">
-                    <li v-for="benefit in t.benefits" :key="benefit" class="profile-tier__benefit" role="listitem">
-                      <q-badge color="accent" text-color="white" class="profile-tier__benefit-badge">
-                        {{ benefit }}
-                      </q-badge>
-                    </li>
-                  </ul>
-                  <div v-if="t.media && t.media.length" class="profile-tier__media-grid">
-                    <MediaPreview
-                      v-for="(m, idx) in t.media"
-                      :key="idx"
-                      :url="m.url"
-                    />
-                  </div>
+                <template #footer-note>
+                  {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
+                </template>
+                <template v-if="creatorHex" #default>
                   <PaywalledContent
-                    v-if="creatorHex"
                     :creator-npub="creatorHex"
                     :tier-id="t.id"
                     class="profile-tier__paywalled"
                   >
                     <div>{{ $t('CreatorHub.profile.paywalledPreview') }}</div>
                   </PaywalledContent>
-                </div>
-              </q-expansion-item>
+                </template>
+              </TierSummaryCard>
             </div>
             <q-banner
               v-if="tierFetchError && tiers.length"
@@ -364,24 +328,28 @@ import SubscriptionReceipt from "components/SubscriptionReceipt.vue";
 import SetupRequiredDialog from "components/SetupRequiredDialog.vue";
 import { useI18n } from "vue-i18n";
 import PaywalledContent from "components/PaywalledContent.vue";
-import MediaPreview from "components/MediaPreview.vue";
 import MintSafetyList from "components/MintSafetyList.vue";
 import RelayBadgeList from "components/RelayBadgeList.vue";
 import NutzapExplainer from "components/NutzapExplainer.vue";
+import TierSummaryCard from "components/TierSummaryCard.vue";
 import { isTrustedUrl } from "src/utils/sanitize-url";
 import { useClipboard } from "src/composables/useClipboard";
 import { useWelcomeStore } from "stores/welcome";
+import {
+  daysToFrequency,
+  type SubscriptionFrequency,
+} from "src/constants/subscriptionFrequency";
 
 export default defineComponent({
   name: "PublicCreatorProfilePage",
   components: {
     PaywalledContent,
     SubscriptionReceipt,
-    MediaPreview,
     SetupRequiredDialog,
     MintSafetyList,
     RelayBadgeList,
     NutzapExplainer,
+    TierSummaryCard,
   },
   setup() {
     const route = useRoute();
@@ -576,6 +544,34 @@ export default defineComponent({
 
     function getPrice(t: any): number {
       return t.price_sats ?? t.price ?? 0;
+    }
+
+    function resolveFrequency(tier: any): SubscriptionFrequency {
+      if (typeof tier?.frequency === "string") {
+        return tier.frequency as SubscriptionFrequency;
+      }
+      if (typeof tier?.intervalDays === "number") {
+        return daysToFrequency(tier.intervalDays);
+      }
+      if (typeof tier?.intervalDays === "string") {
+        const parsed = parseInt(tier.intervalDays, 10);
+        if (!Number.isNaN(parsed)) {
+          return daysToFrequency(parsed);
+        }
+      }
+      return "monthly";
+    }
+
+    function frequencyLabel(tier: any): string {
+      const frequency = resolveFrequency(tier);
+      switch (frequency) {
+        case "weekly":
+          return "Every week";
+        case "biweekly":
+          return "Twice a month";
+        default:
+          return "Every month";
+      }
     }
 
     const profileUrl = computed(() => buildProfileUrl(creatorNpub, router));
@@ -779,6 +775,7 @@ export default defineComponent({
       // no markdown rendering needed
       formatFiat,
       getPrice,
+      frequencyLabel,
       openSubscribe,
       confirmSubscribe,
       retryFetchTiers,
@@ -948,96 +945,8 @@ export default defineComponent({
   gap: 1rem;
 }
 
-.profile-tier >>> .q-expansion-item__container {
-  border-radius: 1rem;
-  background: var(--surface-2);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
-}
-
-.profile-tier__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
-  width: 100%;
-}
-
-.profile-tier__title-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.profile-tier__name {
-  margin: 0;
-  font-size: 1.15rem;
-  font-weight: 600;
-}
-
-.profile-tier__price {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  font-weight: 500;
-}
-
-.profile-tier__sats {
-  color: var(--accent-600);
-}
-
-.profile-tier__cta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.25rem;
-}
-
-.profile-tier__subscribe {
-  min-width: 150px;
-}
-
-.profile-tier__microcopy {
-  margin: 0;
-}
-
-.profile-tier__body {
-  padding: 1rem 1.25rem 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
 .profile-tier-explainer {
   margin-bottom: 1.5rem;
-}
-
-.profile-tier__description {
-  margin: 0;
-}
-
-.profile-tier__benefits {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.profile-tier__benefit {
-  margin: 0;
-}
-
-.profile-tier__benefit-badge {
-  border-radius: 999px;
-  padding: 0.35rem 0.75rem;
-  font-weight: 500;
-}
-
-.profile-tier__media-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 0.75rem;
 }
 
 .profile-tier__paywalled {

@@ -125,63 +125,18 @@
                   <div class="text-1">Creator has no subscription tiers yet.</div>
                   <QBtn flat color="primary" label="Retry" @click="retryFetchTiers" />
                 </div>
-                <div v-else class="tier-card-grid">
-                  <article
-                    v-for="t in tiers"
-                    :key="t.id"
-                    class="tier-card"
-                  >
-                    <header class="tier-card__header">
-                      <div>
-                        <h4 class="tier-card__title">{{ t.name }}</h4>
-                        <p v-if="t.description" class="tier-card__description text-2">
-                          {{ t.description }}
-                        </p>
-                      </div>
-                      <div class="tier-card__pricing">
-                        <div class="tier-card__sats">
-                          {{ formatSats(getPrice(t)) }} sats
-                        </div>
-                        <div v-if="formatFiat(getPrice(t))" class="tier-card__fiat text-2">
-                          ≈ {{ formatFiat(getPrice(t)) }}
-                        </div>
-                        <div class="tier-card__frequency text-2">
-                          {{ frequencyLabel(t) }}
-                        </div>
-                      </div>
-                    </header>
-                    <div
-                      v-if="Array.isArray(t.benefits) && t.benefits.length"
-                      class="tier-card__benefits"
-                    >
-                      <h5 class="tier-card__section-title text-2">Benefits</h5>
-                      <ul class="tier-card__benefit-list">
-                        <li
-                          v-for="benefit in t.benefits"
-                          :key="benefit"
-                          class="tier-card__benefit"
-                        >
-                          {{ benefit }}
-                        </li>
-                      </ul>
-                    </div>
-                    <div v-if="t.media && t.media.length" class="tier-card__media">
-                      <MediaPreview
-                        v-for="(m, idx) in t.media"
-                        :key="idx"
-                        :url="m.url"
-                      />
-                    </div>
-                    <footer class="tier-card__footer">
-                      <QBtn
-                        color="primary"
-                        class="tier-card__subscribe"
-                        label="Subscribe"
-                        @click="openSubscribe(t)"
-                      />
-                    </footer>
-                  </article>
-                </div>
+              <div v-else class="tier-card-grid">
+                <TierSummaryCard
+                  v-for="t in tiers"
+                  :key="t.id"
+                  :tier="t"
+                  :price-sats="getPrice(t)"
+                  :price-fiat="formatFiat(getPrice(t))"
+                  :frequency-label="frequencyLabel(t)"
+                  subscribe-label="Subscribe"
+                  @subscribe="openSubscribe"
+                />
+              </div>
               </div>
             </section>
             <aside class="tier-dialog__column tier-dialog__column--secondary">
@@ -298,14 +253,14 @@ import {
 import DonateDialog from "components/DonateDialog.vue";
 import SubscribeDialog from "components/SubscribeDialog.vue";
 import SendTokenDialog from "components/SendTokenDialog.vue";
-import MediaPreview from "components/MediaPreview.vue";
 import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 import MintSafetyList from "components/MintSafetyList.vue";
 import RelayBadgeList from "components/RelayBadgeList.vue";
 import NutzapExplainer from "components/NutzapExplainer.vue";
+import TierSummaryCard from "components/TierSummaryCard.vue";
 
 defineOptions({
-  components: { MediaPreview, MintSafetyList, RelayBadgeList, NutzapExplainer },
+  components: { TierSummaryCard, MintSafetyList, RelayBadgeList, NutzapExplainer },
 });
 import { useSendTokensStore } from "stores/sendTokensStore";
 import { useDonationPresetsStore } from "stores/donationPresets";
@@ -498,10 +453,6 @@ function updateHeroMetadata(source: any, options: { preserveExisting?: boolean }
     return;
   }
   heroMetadata.value = next;
-}
-
-function formatSats(value: number): string {
-  return new Intl.NumberFormat(navigator.language).format(value);
 }
 
 function formatFiat(sats: number): string {
@@ -1141,113 +1092,6 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 1.25rem;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-}
-
-.tier-card {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  background: var(--surface-1);
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 1.25rem;
-  padding: 1.25rem 1.5rem;
-  box-shadow: 0 16px 28px rgba(18, 18, 23, 0.08);
-}
-
-.tier-card__header {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: flex-start;
-}
-
-.tier-card__title {
-  font-size: 1.15rem;
-  font-weight: 600;
-  margin: 0;
-}
-
-.tier-card__description {
-  margin: 0.5rem 0 0;
-  line-height: 1.4;
-}
-
-.tier-card__pricing {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.25rem;
-  white-space: nowrap;
-}
-
-.tier-card__sats {
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--accent-500);
-}
-
-.tier-card__fiat {
-  font-size: 0.85rem;
-}
-
-.tier-card__frequency {
-  font-size: 0.85rem;
-}
-
-.tier-card__benefits {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.tier-card__section-title {
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  margin: 0;
-}
-
-.tier-card__benefit-list {
-  display: grid;
-  gap: 0.5rem;
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.tier-card__benefit {
-  position: relative;
-  padding-left: 1.25rem;
-  font-size: 0.95rem;
-  line-height: 1.4;
-}
-
-.tier-card__benefit::before {
-  content: "";
-  position: absolute;
-  top: 0.55rem;
-  left: 0.35rem;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent-500);
-}
-
-.tier-card__media {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 0.75rem;
-}
-
-.tier-card__footer {
-  margin-top: auto;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.tier-card__subscribe {
-  min-width: 140px;
 }
 
 .info-panel {
