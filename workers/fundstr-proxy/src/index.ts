@@ -7,6 +7,8 @@ type Env = {
   PROXY_BASE_HTTP?: string;
   PROXY_BASE_WSS?: string;
   RELAY_REQ_TIMEOUT_MS?: string;
+  PRIMAL_API_BASE?: string;
+  PRIMAL_CACHE_TTL_SECONDS?: string;
 };
 
 const FALLBACK_ALLOW_HEADERS = 'content-type,accept,cache-control';
@@ -91,6 +93,13 @@ async function handle(req: Request, env: Env, _ctx: unknown): Promise<Response> 
         'Content-Type': resp.headers.get('Content-Type') ?? 'application/json',
       },
     });
+  }
+
+  if (url.pathname === '/primal') {
+    if (req.method !== 'GET') {
+      return new Response('method not allowed', { status: 405, headers: DEFAULT_CORS_HEADERS });
+    }
+    return handlePrimalProxy(url, env);
   }
 
   if (url.pathname === '/req' && req.method === 'GET') {
@@ -413,6 +422,13 @@ function parseTimeout(raw: string | undefined): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.floor(parsed);
+}
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -497,4 +513,88 @@ function deriveProxyBaseWss(env: Env, requestUrl: URL): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+async function handlePrimalProxy(url: URL, env: Env): Promise<Response> {
+  const path = url.searchParams.get('path');
+  if (!path || !path.trim()) {
+    return new Response('missing path', { status: 400, headers: DEFAULT_CORS_HEADERS });
+  }
+
+  const base = env.PRIMAL_API_BASE?.trim() || 'https://primal-cache.snort.social/';
+  let upstreamBase: URL;
+  try {
+    upstreamBase = new URL(base);
+  } catch {
+    return new Response('invalid upstream base', { status: 500, headers: DEFAULT_CORS_HEADERS });
+  }
+
+  let upstreamUrl: URL;
+  try {
+    upstreamUrl = new URL(path, upstreamBase);
+  } catch {
+    return new Response('bad path', { status: 400, headers: DEFAULT_CORS_HEADERS });
+  }
+
+  if (upstreamUrl.origin !== upstreamBase.origin) {
+    return new Response('forbidden', { status: 403, headers: DEFAULT_CORS_HEADERS });
+  }
+
+  const cache = caches.default;
+  const cacheKeyUrl = new URL(url.toString());
+  cacheKeyUrl.search = `path=${encodeURIComponent(path)}`;
+  const cacheKey = new Request(cacheKeyUrl.toString(), { method: 'GET' });
+  const cached = await cache.match(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  let upstreamResp: Response;
+  try {
+    upstreamResp = await fetch(upstreamUrl.toString(), {
+      headers: {
+        Accept: 'application/json, application/nostr+json',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'upstream fetch failed';
+    return new Response(message, { status: 502, headers: DEFAULT_CORS_HEADERS });
+  }
+
+  const body = await upstreamResp.arrayBuffer();
+  const headers = new Headers(DEFAULT_CORS_HEADERS);
+  const contentType = upstreamResp.headers.get('Content-Type');
+  if (contentType) {
+    headers.set('Content-Type', contentType);
+  }
+
+  const ttlSeconds = parsePositiveInt(env.PRIMAL_CACHE_TTL_SECONDS, 60);
+  const cacheable = ttlSeconds > 0 && upstreamResp.ok && upstreamResp.status < 500;
+  if (cacheable) {
+    headers.set('Cache-Control', `public, max-age=${ttlSeconds}`);
+  } else {
+    headers.set('Cache-Control', 'no-store');
+  }
+
+  const response = new Response(body, {
+    status: upstreamResp.status,
+    headers,
+  });
+
+  if (cacheable) {
+    const cacheHeaders = new Headers(headers);
+    const cachedResponse = new Response(body.slice(0), {
+      status: upstreamResp.status,
+      headers: cacheHeaders,
+    });
+    try {
+      await cache.put(cacheKey, cachedResponse);
+    } catch {
+      // ignore cache failures
+    }
+  }
+
+  return response;
 }
