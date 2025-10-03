@@ -187,6 +187,23 @@
         color: #b7791f;
         font-weight: 600;
       }
+      .relay-log {
+        margin: 0.75rem auto 0;
+        padding: 0.75rem 1rem;
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.5rem;
+        color: #4a5568;
+        font-size: 0.875rem;
+        list-style: none;
+        width: min(100%, clamp(320px, 85vw, 1100px));
+      }
+      .relay-log.hidden {
+        display: none;
+      }
+      .relay-log li + li {
+        margin-top: 0.5rem;
+      }
       .retry-button {
         margin: 0 auto;
         margin-top: -1rem;
@@ -324,6 +341,7 @@
       </div>
 
       <p id="relayWarning" class="relay-warning hidden"></p>
+      <ul id="relayDiagnostics" class="relay-log hidden"></ul>
       <div class="relay-info">Connecting to: <span id="relayList"></span></div>
     </div>
 
@@ -334,7 +352,12 @@
         getDefaultRelayList,
         getRelayConfig,
       } from "./relayConfig.js";
-      import { filterHealthyRelays, pingRelay } from "./relayHealth.js";
+      import {
+        filterHealthyRelays,
+        getRelayDiagnosticsSnapshot,
+        pingRelay,
+      } from "./relayHealth.js";
+      import { createExponentialBackoffScheduler } from "./retryScheduler.js";
 
       const relayConfig = getRelayConfig();
       const FUNDSTR_RELAY = relayConfig.primary;
@@ -345,6 +368,9 @@
       const primaryRelayLabel = `${primaryRelayHost} relay`;
       const statusMessageElement = document.getElementById("statusMessage");
       const relayWarningElement = document.getElementById("relayWarning");
+      const relayDiagnosticsElement = document.getElementById(
+        "relayDiagnostics",
+      );
       const retryButtonElement = document.getElementById("retryButton");
       const relayListElement = document.getElementById("relayList");
       // --- Nostr Tools ---
@@ -398,59 +424,172 @@
 
       const EMPTY_RESULT_CODE = "EMPTY_RESULT";
 
-      let relayFailureCount = 0;
-      async function refreshRelays() {
-        try {
-          const healthy = await filterHealthyRelays(DEFAULT_RELAYS);
-          const fundstrReachable = await pingRelay(FUNDSTR_RELAY);
-          const prioritized = [
-            FUNDSTR_RELAY,
-            ...healthy.filter((relay) => relay !== FUNDSTR_RELAY),
-          ];
-          RELAYS = prioritized;
-          relayFailureCount = 0;
-          renderRelayList(RELAYS);
-          statusMessageElement.classList.add("hidden");
-          if (fundstrReachable) {
-            relayWarningElement.classList.add("hidden");
-            relayWarningElement.textContent = "";
-          } else {
-            const activeBackups = RELAYS.slice(1);
-            const fallbackList = activeBackups.length
-              ? formatRelayList(activeBackups)
-              : curatedBackups.length
-              ? formatRelayList(curatedBackups)
-              : paidBackupHosts.length
-              ? `opt-in paid relays (${formatRelayList(paidBackupHosts)})`
-              : "no backups available";
-            relayWarningElement.textContent =
-              fallbackList === "no backups available"
-                ? `${primaryRelayLabel} is temporarily unreachable and no backups are configured yet.`
-                : `${primaryRelayLabel} is temporarily unreachable. We'll keep retrying while using ${fallbackList}.`;
-            relayWarningElement.classList.remove("hidden");
-          }
-        } catch {
-          relayFailureCount++;
-          if (relayFailureCount >= 3) {
-            console.error(
-              "[find-creators] no reachable relays:",
-              formatRelayList(DEFAULT_RELAYS),
-            );
-            const curatedBackupList = curatedBackups.length
-              ? formatRelayList(curatedBackups)
-              : null;
-            statusMessageElement.textContent = curatedBackupList
-              ? `Network error: could not reach ${primaryRelayLabel} or curated backups (${curatedBackupList}).`
-              : `Network error: could not reach ${primaryRelayLabel} and no curated backups are configured.`;
-            statusMessageElement.classList.remove("hidden");
-            relayWarningElement.classList.add("hidden");
-            relayWarningElement.textContent = "";
-            clearInterval(relayInterval);
-          }
-        }
+      const monitoredRelaySet = new Set([
+        ...DEFAULT_RELAYS,
+        ...curatedBackups,
+        ...paidBackups,
+        FUNDSTR_RELAY,
+      ]);
+
+      function getMonitoredDiagnostics() {
+        const snapshot = getRelayDiagnosticsSnapshot();
+        return snapshot
+          .filter((entry) => monitoredRelaySet.has(entry.url))
+          .sort((a, b) => {
+            if (a.url === b.url) return 0;
+            if (a.url === FUNDSTR_RELAY) return -1;
+            if (b.url === FUNDSTR_RELAY) return 1;
+            return a.url.localeCompare(b.url);
+          });
       }
-      const relayInterval = setInterval(refreshRelays, 30000);
-      refreshRelays();
+
+      function describeDiagnostic(entry) {
+        const host = describeRelay(entry.url);
+        if (entry.status === "ok") {
+          return `${host}: reachable`;
+        }
+        const typeLabel = (entry.type || entry.status || "error").replace(
+          /-/g,
+          " ",
+        );
+        const codeLabel = entry.code ? ` (code: ${entry.code})` : "";
+        const messageText = entry.message
+          ? ` — ${entry.message}`
+          : entry.softFailure
+          ? " — relay restricted this origin"
+          : "";
+        return `${host}: ${typeLabel}${codeLabel}${messageText}`;
+      }
+
+      function renderRelayDiagnostics(diagnostics) {
+        if (!relayDiagnosticsElement) return;
+        relayDiagnosticsElement.innerHTML = "";
+        if (!diagnostics.length) {
+          relayDiagnosticsElement.classList.add("hidden");
+          return;
+        }
+        diagnostics.forEach((entry) => {
+          const li = document.createElement("li");
+          li.textContent = describeDiagnostic(entry);
+          relayDiagnosticsElement.appendChild(li);
+        });
+        relayDiagnosticsElement.classList.remove("hidden");
+      }
+
+      function summarizeProbe(result) {
+        if (!result || result.ok) {
+          return "reachable";
+        }
+        if (result.error?.type === "restricted-origin" || result.softFailure) {
+          return "origin restricted";
+        }
+        const typeLabel = (result.error?.type || "error").replace(/-/g, " ");
+        const codeLabel = result.error?.code ? ` (code: ${result.error.code})` : "";
+        return `${typeLabel}${codeLabel}`;
+      }
+
+      function computeFallbackDescriptor(activeBackups) {
+        if (activeBackups.length) return formatRelayList(activeBackups);
+        if (curatedBackups.length) return formatRelayList(curatedBackups);
+        if (paidBackupHosts.length)
+          return `opt-in paid relays (${formatRelayList(paidBackupHosts)})`;
+        return "no backups available";
+      }
+
+      function describeLastError(diagnostics) {
+        if (!diagnostics.length) return "unknown error";
+        const [first] = diagnostics;
+        const host = describeRelay(first.url);
+        const typeLabel = (first.type || first.status || "error").replace(
+          /-/g,
+          " ",
+        );
+        const codeLabel = first.code ? ` (code: ${first.code})` : "";
+        return `${host} → ${typeLabel}${codeLabel}`;
+      }
+
+      async function refreshRelays() {
+        const healthy = await filterHealthyRelays(DEFAULT_RELAYS);
+        const fundstrProbe = await pingRelay(FUNDSTR_RELAY);
+        const prioritized = [
+          FUNDSTR_RELAY,
+          ...healthy.filter((relay) => relay !== FUNDSTR_RELAY),
+        ];
+        RELAYS = Array.from(new Set(prioritized));
+        renderRelayList(RELAYS);
+
+        const diagnostics = getMonitoredDiagnostics();
+        const failingDiagnostics = diagnostics.filter(
+          (entry) => entry.status === "error",
+        );
+
+        if (fundstrProbe.ok) {
+          relayWarningElement.classList.add("hidden");
+          relayWarningElement.textContent = "";
+          renderRelayDiagnostics([]);
+        } else {
+          const activeBackups = RELAYS.slice(1);
+          const fallbackDescriptor = computeFallbackDescriptor(activeBackups);
+          const probeSummary = summarizeProbe(fundstrProbe);
+          relayWarningElement.textContent =
+            fallbackDescriptor === "no backups available"
+              ? `${primaryRelayLabel} is temporarily unreachable (${probeSummary}) and no backups are configured yet.`
+              : `${primaryRelayLabel} is temporarily unreachable (${probeSummary}). We'll keep retrying while using ${fallbackDescriptor}.`;
+          relayWarningElement.classList.remove("hidden");
+          renderRelayDiagnostics(failingDiagnostics);
+        }
+
+        const hasReachable = diagnostics.some((entry) => entry.status === "ok");
+        if (!hasReachable && diagnostics.length) {
+          const error = new Error("No reachable relays detected");
+          error.diagnostics = diagnostics;
+          throw error;
+        }
+
+        statusMessageElement.classList.add("hidden");
+        return { healthy, fundstrProbe };
+      }
+
+      const relayRefreshScheduler = createExponentialBackoffScheduler(
+        () => refreshRelays(),
+        {
+          initialRetryDelayMs: 5000,
+          maxRetryDelayMs: 180000,
+          successDelayMs: 30000,
+          onFailure: (_error, { nextDelay }) => {
+            const diagnostics = getMonitoredDiagnostics();
+            const failingDiagnostics = diagnostics.filter(
+              (entry) => entry.status === "error",
+            );
+            renderRelayDiagnostics(failingDiagnostics);
+
+            const fallbackDescriptor = computeFallbackDescriptor(RELAYS.slice(1));
+            const nextRetrySeconds = Math.max(1, Math.round(nextDelay / 1000));
+            const lastErrorSummary = describeLastError(failingDiagnostics);
+
+            relayWarningElement.textContent =
+              fallbackDescriptor === "no backups available"
+                ? `${primaryRelayLabel} remains unreachable (${lastErrorSummary}). Retrying in ${nextRetrySeconds}s with no backups available.`
+                : `${primaryRelayLabel} remains unreachable (${lastErrorSummary}). Retrying in ${nextRetrySeconds}s while monitoring ${fallbackDescriptor}.`;
+            relayWarningElement.classList.remove("hidden");
+
+            statusMessageElement.textContent =
+              fallbackDescriptor === "no backups available"
+                ? `Network error: could not reach ${primaryRelayLabel} and no curated backups are configured.`
+                : `Network error: could not reach ${primaryRelayLabel} or backups (${fallbackDescriptor}).`;
+            statusMessageElement.classList.remove("hidden");
+          },
+          onSuccess: () => {
+            statusMessageElement.classList.add("hidden");
+          },
+        },
+      );
+
+      relayRefreshScheduler.start();
+
+      window.addEventListener("beforeunload", () => {
+        relayRefreshScheduler.stop();
+      });
 
       const FEATURED_NPUBS = [
         "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
