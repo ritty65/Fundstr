@@ -75,6 +75,7 @@ vi.mock("src/js/notify", () => ({
 }));
 vi.mock("vue-i18n", () => ({
   useI18n: () => ({ t: (k: string) => k }),
+  createI18n: vi.fn(() => ({} as any)),
 }));
 
 vi.mock("quasar", () => {
@@ -107,6 +108,18 @@ vi.mock("quasar", () => {
     }),
     QBanner: createStub("QBanner"),
     QSpinnerHourglass: createStub("QSpinnerHourglass"),
+    QPage: createStub("QPage"),
+    QInput: defineComponent({
+      name: "QInput",
+      props: { modelValue: { type: String, default: "" } },
+      emits: ["update:modelValue", "clear"],
+      template:
+        '<div class="q-input"><input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" /><button class="q-input__clear" @click="$emit(\'clear\')"></button><slot /><slot name="append" /><slot name="after" /></div>',
+    }),
+    QTooltip: createStub("QTooltip"),
+    QTimeline: createStub("QTimeline"),
+    QTimelineEntry: createStub("QTimelineEntry"),
+    QIcon: createStub("QIcon"),
   };
 });
 
@@ -138,6 +151,18 @@ const QCardActionsStub = SimpleStub("QCardActions");
 const QSeparatorStub = SimpleStub("QSeparator");
 const QBannerStub = SimpleStub("QBanner");
 const QSpinnerStub = SimpleStub("QSpinnerHourglass");
+const QPageStub = SimpleStub("QPage");
+const QInputStub = defineComponent({
+  name: "QInput",
+  props: { modelValue: { type: String, default: "" } },
+  emits: ["update:modelValue", "clear"],
+  template:
+    '<div class="q-input"><input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" /><button class="q-input__clear" @click="$emit(\'clear\')"></button><slot /><slot name="append" /><slot name="after" /></div>',
+});
+const QTooltipStub = SimpleStub("QTooltip");
+const QTimelineStub = SimpleStub("QTimeline");
+const QTimelineEntryStub = SimpleStub("QTimelineEntry");
+const QIconStub = SimpleStub("QIcon");
 
 describe("FindCreators component behaviour", () => {
   beforeEach(() => {
@@ -147,6 +172,13 @@ describe("FindCreators component behaviour", () => {
       tiersMap: reactive({}),
       tierFetchError: false,
       fetchTierDefinitions,
+      ensureCreatorCacheFromDexie: vi.fn().mockResolvedValue({}),
+      saveProfileCache: vi.fn().mockResolvedValue(undefined),
+      searchResults: reactive([]),
+      searching: false,
+      error: "",
+      searchCreators: vi.fn().mockResolvedValue(undefined),
+      loadFeaturedCreators: vi.fn().mockResolvedValue(undefined),
     });
     toHex.mockImplementation((val: string) => val);
     fallbackDiscoverRelays.mockResolvedValue([]);
@@ -167,6 +199,11 @@ describe("FindCreators component behaviour", () => {
       props,
       global: {
         plugins: [router, pinia],
+        config: {
+          globalProperties: {
+            $t: (key: string) => key,
+          },
+        },
         stubs: {
           QDialog: QDialogStub,
           QCard: QCardStub,
@@ -176,6 +213,12 @@ describe("FindCreators component behaviour", () => {
           QBtn: QBtnStub,
           QBanner: QBannerStub,
           QSpinnerHourglass: QSpinnerStub,
+          QPage: QPageStub,
+          QInput: QInputStub,
+          QTooltip: QTooltipStub,
+          QTimeline: QTimelineStub,
+          QTimelineEntry: QTimelineEntryStub,
+          QIcon: QIconStub,
         },
       },
     });
@@ -186,41 +229,58 @@ describe("FindCreators component behaviour", () => {
       if (val === "npub123") return "hex123";
       throw new Error("bad");
     });
-    queryNutzapProfile
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        tags: [
-          ["relay", "wss://tag-relay"],
-          ["relay", "wss://tag-relay"],
-        ],
-        content: JSON.stringify({
-          p2pk: "p2pk",
-          mints: ["mint1"],
-          relays: ["wss://content-relay"],
-        }),
-      });
-    fallbackDiscoverRelays.mockResolvedValue(["wss://fallback-relay"]);
+    queryNutzapProfile.mockResolvedValue({
+      tags: [
+        ["relay", "wss://tag-relay"],
+        ["relay", "wss://tag-relay"],
+      ],
+      content: JSON.stringify({
+        p2pk: "p2pk",
+        mints: ["mint1"],
+        relays: ["wss://content-relay"],
+      }),
+    });
+    fallbackDiscoverRelays.mockResolvedValue([]);
 
-    const wrapper = mountComponent({ npubOrHex: "npub123" });
+    creatorsStore.searchResults.push({
+      pubkey: "npub123",
+      profile: {},
+      followers: 0,
+      following: 0,
+      joined: null,
+    });
+
+    const wrapper = mountComponent();
     await flushPromises();
 
-    expect(queryNutzapProfile).toHaveBeenNthCalledWith(1, "hex123");
-    expect(queryNutzapProfile).toHaveBeenNthCalledWith(2, "hex123", {
-      fanout: ["wss://fallback-relay"],
-      allowFanoutFallback: true,
-    });
+    expect(wrapper.findAll(".creator-card").length).toBeGreaterThan(0);
 
-    expect(fetchTierDefinitions).toHaveBeenCalledWith("hex123", {
-      relayHints: expect.arrayContaining([
-        "wss://fallback-relay",
-        "wss://tag-relay",
-        "wss://content-relay",
-      ]),
-    });
+    await wrapper
+      .findAll("button")
+      .find((btn) => btn.text() === "CreatorHub.profile.subscribeCta")
+      ?.trigger("click");
+    await flushPromises();
+    await flushPromises();
+
+    expect(queryNutzapProfile).toHaveBeenCalledWith(
+      "hex123",
+      expect.objectContaining({ allowFanoutFallback: false }),
+    );
+
+    expect(fetchTierDefinitions).toHaveBeenCalledWith(
+      "hex123",
+      expect.objectContaining({
+        relayHints: expect.arrayContaining([
+          "wss://tag-relay",
+          "wss://content-relay",
+        ]),
+        fundstrOnly: true,
+      }),
+    );
 
     const hintsArg = fetchTierDefinitions.mock.calls[0][1].relayHints;
     expect(new Set(hintsArg)).toEqual(
-      new Set(["wss://fallback-relay", "wss://tag-relay", "wss://content-relay"]),
+      new Set(["wss://tag-relay", "wss://content-relay"]),
     );
     expect(wrapper.vm.loadingProfile).toBe(false);
   });
@@ -230,7 +290,24 @@ describe("FindCreators component behaviour", () => {
       throw new Error("invalid npub");
     });
 
-    const wrapper = mountComponent({ npubOrHex: "badnpub" });
+    creatorsStore.searchResults.push({
+      pubkey: "badnpub",
+      profile: {},
+      followers: 0,
+      following: 0,
+      joined: null,
+    });
+
+    const wrapper = mountComponent();
+    await flushPromises();
+
+    expect(wrapper.findAll(".creator-card").length).toBeGreaterThan(0);
+
+    await wrapper
+      .findAll("button")
+      .find((btn) => btn.text() === "CreatorHub.profile.subscribeCta")
+      ?.trigger("click");
+    await flushPromises();
     await flushPromises();
 
     expect(queryNutzapProfile).not.toHaveBeenCalled();
@@ -248,7 +325,24 @@ describe("FindCreators component behaviour", () => {
     });
     fallbackDiscoverRelays.mockResolvedValue([]);
 
-    const wrapper = mountComponent({ npubOrHex: "npub456" });
+    creatorsStore.searchResults.push({
+      pubkey: "npub456",
+      profile: {},
+      followers: 0,
+      following: 0,
+      joined: null,
+    });
+
+    const wrapper = mountComponent();
+    await flushPromises();
+
+    expect(wrapper.findAll(".creator-card").length).toBeGreaterThan(0);
+
+    await wrapper
+      .findAll("button")
+      .find((btn) => btn.text() === "CreatorHub.profile.subscribeCta")
+      ?.trigger("click");
+    await flushPromises();
     await flushPromises();
 
     creatorsStore.tierFetchError = true;
@@ -260,9 +354,14 @@ describe("FindCreators component behaviour", () => {
       .findAll("button")
       .find((btn) => btn.text() === "Retry")
       ?.trigger("click");
-    expect(fetchTierDefinitions).toHaveBeenLastCalledWith("hex456", {
-      relayHints: expect.any(Array),
-    });
+    await flushPromises();
+    expect(fetchTierDefinitions).toHaveBeenLastCalledWith(
+      "hex456",
+      expect.objectContaining({
+        relayHints: expect.any(Array),
+        fundstrOnly: true,
+      }),
+    );
 
     expect(wrapper.vm.loadingTiers).toBe(true);
     vi.advanceTimersByTime(5000);
