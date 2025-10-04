@@ -304,4 +304,77 @@ describe("PublicCreatorProfilePage", () => {
     expect(banners.some((b) => b.text().includes("We couldn't load this creator profile"))).toBe(true);
     expect(fetchTierDefinitions).not.toHaveBeenCalled();
   });
+
+  it("hides guest onboarding prompts by default for guest visitors", async () => {
+    welcomeStore.welcomeCompleted = false;
+    const sampleHex = "e".repeat(64);
+    const sampleNpub = nip19.npubEncode(sampleHex);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+      ],
+    });
+    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub } });
+    await router.isReady();
+
+    const wrapper = mountPage(router);
+    await flushPromises();
+
+    expect(wrapper.findAll(".q-banner").length).toBe(0);
+  });
+
+  it("shows guest onboarding banner when explicitly requested", async () => {
+    welcomeStore.welcomeCompleted = false;
+    const sampleHex = "f".repeat(64);
+    const sampleNpub = nip19.npubEncode(sampleHex);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+      ],
+    });
+    router.push({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+      query: { showGuestCta: "1" },
+    });
+    await router.isReady();
+
+    const wrapper = mountPage(router);
+    await flushPromises();
+
+    const banners = wrapper.findAll(".q-banner");
+    expect(banners.some((b) => b.text().includes("CreatorHub.profile.guestCta"))).toBe(true);
+  });
+
+  it("hides paywalled previews for guests unless preview is requested", async () => {
+    welcomeStore.welcomeCompleted = false;
+    const sampleHex = "1".repeat(64);
+    const sampleNpub = nip19.npubEncode(sampleHex);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+      ],
+    });
+    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub } });
+    await router.isReady();
+
+    const wrapper = mountPage(router);
+    await flushPromises();
+    await nextTick();
+
+    expect(wrapper.find(".paywalled").exists()).toBe(false);
+
+    await router.replace({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+      query: { preview: "1" },
+    });
+    await flushPromises();
+    await nextTick();
+
+    expect(wrapper.find(".paywalled").exists()).toBe(true);
+  });
 });

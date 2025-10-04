@@ -7,7 +7,11 @@
         }}</q-btn>
       </div>
 
-      <q-banner v-if="isGuest" class="profile-page__banner bg-surface-2 text-2" icon="info">
+      <q-banner
+        v-if="showGuestBanner"
+        class="profile-page__banner bg-surface-2 text-2"
+        icon="info"
+      >
         {{ $t("CreatorHub.profile.guestCta") }}
         <template #action>
           <q-btn flat color="primary" :label="$t('CreatorHub.profile.finishSetup')" @click="gotoWelcome" />
@@ -18,21 +22,20 @@
         {{ decodeError }}
       </q-banner>
 
-      <section class="profile-hero" :class="{ 'profile-hero--with-banner': heroBannerUrl }">
-        <div
-          v-if="heroBannerUrl"
-          class="profile-hero__banner"
-          :style="heroBannerStyle"
-          role="presentation"
-        />
-        <div class="profile-hero__content bg-surface-2">
-          <div class="profile-hero__avatar" aria-hidden="true">
+      <section class="profile-summary bg-surface-2">
+        <header class="profile-summary__header">
+          <h2 class="profile-summary__title text-subtitle1">
+            {{ $t('CreatorHub.profile.summary.title') }}
+          </h2>
+        </header>
+        <div class="profile-summary__primary">
+          <div class="profile-summary__avatar" aria-hidden="true">
             <img v-if="profileAvatar" :src="profileAvatar" :alt="profileDisplayName" />
-            <div v-else class="profile-hero__avatar-placeholder">{{ profileInitials }}</div>
+            <div v-else class="profile-summary__avatar-placeholder">{{ profileInitials }}</div>
           </div>
-          <div class="profile-hero__details">
-            <div class="profile-hero__heading">
-              <h1 class="profile-hero__name text-h4">{{ profileDisplayName }}</h1>
+          <div class="profile-summary__details">
+            <div class="profile-summary__heading">
+              <h1 class="profile-summary__name text-h5">{{ profileDisplayName }}</h1>
               <q-btn
                 flat
                 round
@@ -42,8 +45,8 @@
                 @click="copy(profileUrl)"
               />
             </div>
-            <p v-if="profileHandle" class="profile-hero__handle text-2">@{{ profileHandle }}</p>
-            <div v-if="hasFollowerStats" class="profile-hero__stats text-2">
+            <p v-if="profileHandle" class="profile-summary__handle text-2">@{{ profileHandle }}</p>
+            <div v-if="hasFollowerStats" class="profile-summary__stats text-2">
               <span v-if="followers !== null">
                 {{ $t('CreatorHub.profile.followers', { count: followers }) }}
               </span>
@@ -51,7 +54,7 @@
                 {{ $t('CreatorHub.profile.following', { count: following }) }}
               </span>
             </div>
-            <div v-if="metadataChips.length" class="profile-hero__chips" role="list">
+            <div v-if="metadataChips.length" class="profile-summary__chips" role="list">
               <q-chip
                 v-for="chip in metadataChips"
                 :key="chip.id"
@@ -69,24 +72,43 @@
             </div>
           </div>
         </div>
+        <div class="profile-summary__meta">
+          <div v-if="profile.p2pkPubkey" class="profile-summary__item">
+            <div class="profile-summary__label text-2">
+              <span>{{ $t('CreatorHub.profile.p2pkLabel') }}</span>
+              <q-btn
+                flat
+                dense
+                round
+                size="sm"
+                class="profile-summary__info-btn"
+                icon="info"
+                :aria-label="$t('FindCreators.explainers.tooltips.p2pk')"
+              >
+                <q-tooltip anchor="top middle" self="bottom middle">
+                  {{ $t('FindCreators.explainers.tooltips.p2pk') }}
+                </q-tooltip>
+              </q-btn>
+            </div>
+            <code class="profile-summary__value">{{ profile.p2pkPubkey }}</code>
+          </div>
+          <div v-if="trustedMints.length" class="profile-summary__item">
+            <div class="profile-summary__label text-2">
+              <span>{{ $t('CreatorHub.profile.trustedMintsLabel') }}</span>
+            </div>
+            <MintSafetyList :mints="trustedMints" />
+          </div>
+          <div v-if="relayList.length" class="profile-summary__item">
+            <div class="profile-summary__label text-2">
+              <span>{{ $t('CreatorHub.profile.relaysLabel') }}</span>
+            </div>
+            <RelayBadgeList :relays="relayList" />
+          </div>
+        </div>
       </section>
 
       <main class="profile-layout">
-        <section class="profile-section">
-          <header class="profile-section__header">
-            <h2 class="profile-section__title text-h5">
-              {{ $t('CreatorHub.profile.sections.about') }}
-            </h2>
-          </header>
-          <div class="profile-section__body">
-            <p v-if="profile.about" class="profile-section__text text-body1">{{ profile.about }}</p>
-            <p v-else class="profile-section__text text-2">
-              {{ $t('CreatorHub.profile.noAbout') }}
-            </p>
-          </div>
-        </section>
-
-        <section class="profile-section" aria-live="polite">
+        <section class="profile-section profile-section--tiers" aria-live="polite">
           <header class="profile-section__header profile-section__header--with-spinner">
             <h2 class="profile-section__title text-h5">
               {{ $t('CreatorHub.profile.sections.tiers') }}
@@ -101,11 +123,6 @@
             <q-spinner-hourglass />
           </div>
           <template v-else>
-            <NutzapExplainer
-              class="profile-tier-explainer"
-              :is-guest="isGuest"
-              @start-onboarding="gotoWelcome"
-            />
             <q-banner
               v-if="tierFetchError && !tiers.length"
               class="profile-page__banner bg-surface-2"
@@ -148,7 +165,7 @@
                 <template #footer-note>
                   {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
                 </template>
-                <template v-if="creatorHex" #default>
+                <template v-if="creatorHex && shouldShowPaywallPreview" #default>
                   <PaywalledContent
                     :creator-npub="creatorHex"
                     :tier-id="t.id"
@@ -183,118 +200,149 @@
           </template>
         </section>
 
-        <section class="profile-section profile-section--infrastructure">
-          <header class="profile-section__header">
-            <h2 class="profile-section__title text-h5">
-              {{ $t('CreatorHub.profile.sections.infrastructure') }}
-            </h2>
-          </header>
-          <div class="profile-section__body profile-infrastructure">
-            <article class="profile-card">
-              <h3 class="profile-card__title text-subtitle1">
-                {{ $t('CreatorHub.profile.infrastructureDetails') }}
-              </h3>
-              <div v-if="profile.p2pkPubkey" class="profile-card__row">
-                <div class="profile-card__label text-2">
-                  <span>{{ $t('CreatorHub.profile.p2pkLabel') }}</span>
-                  <q-btn
-                    flat
-                    dense
-                    round
-                    size="sm"
-                    class="profile-card__info-btn"
-                    icon="info"
-                    :aria-label="$t('FindCreators.explainers.tooltips.p2pk')"
-                  >
-                    <q-tooltip anchor="top middle" self="bottom middle">
-                      {{ $t('FindCreators.explainers.tooltips.p2pk') }}
-                    </q-tooltip>
-                  </q-btn>
-                </div>
-                <code class="profile-card__value">{{ profile.p2pkPubkey }}</code>
+        <section class="profile-expansions">
+          <q-expansion-item class="profile-expansion" dense expand-separator>
+            <template #header>
+              <div class="profile-expansion__header">
+                <span class="profile-expansion__title text-subtitle1">
+                  {{ $t('CreatorHub.profile.sections.about') }}
+                </span>
               </div>
-              <div class="profile-card__row">
-                <div class="profile-card__label text-2">
-                  <span>{{ $t('CreatorHub.profile.trustedMintsLabel') }}</span>
-                  <q-btn
-                    flat
-                    dense
-                    round
-                    size="sm"
-                    class="profile-card__info-btn"
-                    icon="info"
-                    :aria-label="$t('FindCreators.explainers.tooltips.trustedMints')"
-                  >
-                    <q-tooltip anchor="top middle" self="bottom middle">
-                      {{ $t('FindCreators.explainers.tooltips.trustedMints') }}
-                    </q-tooltip>
-                  </q-btn>
-                </div>
-                <MintSafetyList :mints="trustedMints" />
+            </template>
+            <div class="profile-expansion__body">
+              <p v-if="profile.about" class="profile-expansion__text text-body1">{{ profile.about }}</p>
+              <p v-else class="profile-expansion__text text-2">
+                {{ $t('CreatorHub.profile.noAbout') }}
+              </p>
+            </div>
+          </q-expansion-item>
+
+          <q-expansion-item
+            v-if="hasInfrastructureDetails"
+            class="profile-expansion"
+            dense
+            expand-separator
+          >
+            <template #header>
+              <div class="profile-expansion__header">
+                <span class="profile-expansion__title text-subtitle1">
+                  {{ $t('CreatorHub.profile.sections.infrastructure') }}
+                </span>
               </div>
-              <div class="profile-card__row">
-                <div class="profile-card__label text-2">
-                  <span>{{ $t('CreatorHub.profile.relaysLabel') }}</span>
-                  <q-btn
-                    flat
-                    dense
-                    round
-                    size="sm"
-                    class="profile-card__info-btn"
-                    icon="info"
-                    :aria-label="$t('FindCreators.explainers.tooltips.relays')"
-                  >
-                    <q-tooltip anchor="top middle" self="bottom middle">
-                      {{ $t('FindCreators.explainers.tooltips.relays') }}
-                    </q-tooltip>
-                  </q-btn>
+            </template>
+            <div class="profile-expansion__body">
+              <div class="profile-expansion__grid">
+                <div v-if="profile.p2pkPubkey" class="profile-expansion__item">
+                  <div class="profile-expansion__label text-2">
+                    <span>{{ $t('CreatorHub.profile.p2pkLabel') }}</span>
+                    <q-btn
+                      flat
+                      dense
+                      round
+                      size="sm"
+                      class="profile-summary__info-btn"
+                      icon="info"
+                      :aria-label="$t('FindCreators.explainers.tooltips.p2pk')"
+                    >
+                      <q-tooltip anchor="top middle" self="bottom middle">
+                        {{ $t('FindCreators.explainers.tooltips.p2pk') }}
+                      </q-tooltip>
+                    </q-btn>
+                  </div>
+                  <code class="profile-expansion__value">{{ profile.p2pkPubkey }}</code>
                 </div>
-                <RelayBadgeList :relays="relayList" />
+                <div v-if="trustedMints.length" class="profile-expansion__item">
+                  <div class="profile-expansion__label text-2">
+                    <span>{{ $t('CreatorHub.profile.trustedMintsLabel') }}</span>
+                    <q-btn
+                      flat
+                      dense
+                      round
+                      size="sm"
+                      class="profile-summary__info-btn"
+                      icon="info"
+                      :aria-label="$t('FindCreators.explainers.tooltips.trustedMints')"
+                    >
+                      <q-tooltip anchor="top middle" self="bottom middle">
+                        {{ $t('FindCreators.explainers.tooltips.trustedMints') }}
+                      </q-tooltip>
+                    </q-btn>
+                  </div>
+                  <MintSafetyList :mints="trustedMints" />
+                </div>
+                <div v-if="relayList.length" class="profile-expansion__item">
+                  <div class="profile-expansion__label text-2">
+                    <span>{{ $t('CreatorHub.profile.relaysLabel') }}</span>
+                    <q-btn
+                      flat
+                      dense
+                      round
+                      size="sm"
+                      class="profile-summary__info-btn"
+                      icon="info"
+                      :aria-label="$t('FindCreators.explainers.tooltips.relays')"
+                    >
+                      <q-tooltip anchor="top middle" self="bottom middle">
+                        {{ $t('FindCreators.explainers.tooltips.relays') }}
+                      </q-tooltip>
+                    </q-btn>
+                  </div>
+                  <RelayBadgeList :relays="relayList" />
+                </div>
               </div>
-            </article>
-            <article class="profile-card profile-card--copy">
-              <h3 class="profile-card__title text-subtitle1">
-                {{ $t('CreatorHub.profile.howNutzapWorks.title') }}
-              </h3>
-              <p class="profile-card__text text-2">
+            </div>
+          </q-expansion-item>
+
+          <q-expansion-item class="profile-expansion" dense expand-separator>
+            <template #header>
+              <div class="profile-expansion__header">
+                <span class="profile-expansion__title text-subtitle1">
+                  {{ $t('CreatorHub.profile.howNutzapWorks.title') }}
+                </span>
+              </div>
+            </template>
+            <div class="profile-expansion__body">
+              <p class="profile-expansion__text text-2">
                 {{ $t('CreatorHub.profile.howNutzapWorks.intro') }}
               </p>
-              <ul class="profile-card__list">
+              <ul class="profile-expansion__list">
                 <li
                   v-for="(item, index) in howNutzapWorksList"
                   :key="index"
-                  class="profile-card__list-item text-2"
+                  class="profile-expansion__list-item text-2"
                 >
                   {{ item }}
                 </li>
               </ul>
-            </article>
-          </div>
-        </section>
-
-        <section class="profile-section">
-          <header class="profile-section__header">
-            <h2 class="profile-section__title text-h5">
-              {{ $t('CreatorHub.profile.sections.faq') }}
-            </h2>
-          </header>
-          <div class="profile-section__body">
-            <div v-if="faqEntries.length" class="profile-faq">
-              <details
-                v-for="(faq, index) in faqEntries"
-                :key="faq.question + index"
-                class="profile-faq__item"
-              >
-                <summary class="profile-faq__question text-subtitle2">
-                  {{ faq.question }}
-                </summary>
-                <p class="profile-faq__answer text-body2">{{ faq.answer }}</p>
-              </details>
             </div>
-            <p v-else class="profile-section__text text-2">
-              {{ $t('CreatorHub.profile.noFaq') }}
-            </p>
-          </div>
+          </q-expansion-item>
+
+          <q-expansion-item class="profile-expansion" dense expand-separator>
+            <template #header>
+              <div class="profile-expansion__header">
+                <span class="profile-expansion__title text-subtitle1">
+                  {{ $t('CreatorHub.profile.sections.faq') }}
+                </span>
+              </div>
+            </template>
+            <div class="profile-expansion__body">
+              <div v-if="faqEntries.length" class="profile-faq">
+                <details
+                  v-for="(faq, index) in faqEntries"
+                  :key="faq.question + index"
+                  class="profile-faq__item"
+                >
+                  <summary class="profile-faq__question text-subtitle2">
+                    {{ faq.question }}
+                  </summary>
+                  <p class="profile-faq__answer text-body2">{{ faq.answer }}</p>
+                </details>
+              </div>
+              <p v-else class="profile-expansion__text text-2">
+                {{ $t('CreatorHub.profile.noFaq') }}
+              </p>
+            </div>
+          </q-expansion-item>
         </section>
       </main>
 
@@ -330,7 +378,6 @@ import { useI18n } from "vue-i18n";
 import PaywalledContent from "components/PaywalledContent.vue";
 import MintSafetyList from "components/MintSafetyList.vue";
 import RelayBadgeList from "components/RelayBadgeList.vue";
-import NutzapExplainer from "components/NutzapExplainer.vue";
 import TierSummaryCard from "components/TierSummaryCard.vue";
 import { isTrustedUrl } from "src/utils/sanitize-url";
 import { useClipboard } from "src/composables/useClipboard";
@@ -348,7 +395,6 @@ export default defineComponent({
     SetupRequiredDialog,
     MintSafetyList,
     RelayBadgeList,
-    NutzapExplainer,
     TierSummaryCard,
   },
   setup() {
@@ -409,6 +455,38 @@ export default defineComponent({
     const refreshingTiers = ref(false);
     const tierFetchError = computed(() => creators.tierFetchError);
     const isGuest = computed(() => !welcomeStore.welcomeCompleted);
+
+    const parseBooleanQuery = (value: unknown): boolean | null => {
+      if (typeof value === "boolean") return value;
+      if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        if (["1", "true", "yes", "on"].includes(normalized)) return true;
+        if (["0", "false", "no", "off"].includes(normalized)) return false;
+      }
+      return null;
+    };
+
+    const showGuestBanner = computed(() => {
+      if (!isGuest.value) return false;
+      const explicit =
+        parseBooleanQuery(route.query.showGuestCta) ??
+        parseBooleanQuery(route.query.showGuestBanner);
+      if (explicit !== null) return explicit;
+      const explicitHide = parseBooleanQuery(route.query.hideGuestCta);
+      if (explicitHide !== null) return !explicitHide;
+      return false;
+    });
+
+    const shouldShowPaywallPreview = computed(() => {
+      const explicit =
+        parseBooleanQuery(route.query.showPaywallPreview) ??
+        parseBooleanQuery(route.query.showPreviews) ??
+        parseBooleanQuery(route.query.showPreview) ??
+        parseBooleanQuery(route.query.preview);
+      if (explicit !== null) return explicit;
+      if (!isGuest.value) return true;
+      return false;
+    });
 
     const fetchTiers = async () => {
       const hex = creatorHex.value;
@@ -635,22 +713,6 @@ export default defineComponent({
 
     const profileAvatar = computed(() => profile.value.picture || "");
 
-    const heroBannerUrl = computed(() => {
-      const banner = profile.value.banner || profile.value.cover || profile.value.header;
-      if (banner && isTrustedUrl(banner)) {
-        return banner;
-      }
-      return "";
-    });
-
-    const heroBannerStyle = computed(() =>
-      heroBannerUrl.value
-        ? {
-            backgroundImage: `url('${heroBannerUrl.value}')`,
-          }
-        : {},
-    );
-
     const profileInitials = computed(() => {
       const text = profileDisplayName.value || creatorNpub.value;
       return text ? text.trim().charAt(0).toUpperCase() : "";
@@ -741,6 +803,13 @@ export default defineComponent({
       return [];
     });
 
+    const hasInfrastructureDetails = computed(
+      () =>
+        Boolean(profile.value.p2pkPubkey) ||
+        trustedMints.value.length > 0 ||
+        relayList.value.length > 0,
+    );
+
     const howNutzapWorksList = computed(() => {
       const items = t("CreatorHub.profile.howNutzapWorks.points", {
         returnObjects: true,
@@ -791,8 +860,6 @@ export default defineComponent({
       profileHandle,
       profileAvatar,
       profileInitials,
-      heroBannerUrl,
-      heroBannerStyle,
       tiers,
       showSubscribeDialog,
       showSetupDialog,
@@ -810,6 +877,7 @@ export default defineComponent({
       hasFollowerStats,
       trustedMints,
       relayList,
+      hasInfrastructureDetails,
       howNutzapWorksList,
       faqEntries,
       retryLabel,
@@ -823,6 +891,8 @@ export default defineComponent({
       copy,
       profileUrl,
       isGuest,
+      showGuestBanner,
+      shouldShowPaywallPreview,
       gotoWelcome,
     };
   },
@@ -844,36 +914,40 @@ export default defineComponent({
   border-radius: 1rem;
 }
 
-.profile-hero {
-  position: relative;
-  margin-bottom: 2.5rem;
-}
-
-.profile-hero__banner {
-  position: absolute;
-  inset: 0;
-  background-size: cover;
-  background-position: center;
+.profile-summary {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
   border-radius: 1.5rem;
-  opacity: 0.4;
-  filter: saturate(0.9);
+  background: var(--surface-2);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
-.profile-hero__content {
-  position: relative;
+.profile-summary__header {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  padding: 1.75rem;
-  border-radius: 1.5rem;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+  justify-content: space-between;
 }
 
-.profile-hero__avatar {
+.profile-summary__title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.profile-summary__primary {
+  display: flex;
+  gap: 1.25rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.profile-summary__avatar {
   flex-shrink: 0;
-  width: 120px;
-  height: 120px;
+  width: 104px;
+  height: 104px;
   border-radius: 50%;
   overflow: hidden;
   border: 3px solid var(--surface-1);
@@ -881,55 +955,120 @@ export default defineComponent({
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 3rem;
+  font-size: 2.5rem;
   font-weight: 600;
 }
 
-.profile-hero__avatar img {
+.profile-summary__avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.profile-hero__details {
-  flex: 1;
-  min-width: 0;
+.profile-summary__avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  color: var(--text-2);
 }
 
-.profile-hero__heading {
+.profile-summary__details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.profile-summary__heading {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
 }
 
-.profile-hero__name {
+.profile-summary__name {
   margin: 0;
   font-weight: 600;
 }
 
-.profile-hero__handle {
-  margin: 0.25rem 0 0;
+.profile-summary__handle {
+  margin: 0;
 }
 
-.profile-hero__stats {
-  margin-top: 0.5rem;
+.profile-summary__stats {
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
 }
 
-.profile-hero__chips {
-  margin-top: 0.75rem;
+.profile-summary__chips {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
 
+.profile-summary__meta {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.profile-summary__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.profile-summary__label {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-2);
+}
+
+.profile-summary__info-btn {
+  color: var(--text-2);
+  min-width: 0;
+  padding: 0;
+}
+
+.profile-summary__info-btn :deep(.q-btn__content) {
+  padding: 0;
+}
+
+.profile-summary__info-btn :deep(.q-icon) {
+  font-size: 1rem;
+}
+
+.profile-summary__info-btn:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: 2px;
+}
+
+.profile-summary__value {
+  word-break: break-word;
+  font-family: 'Roboto Mono', 'Courier New', monospace;
+  font-size: 0.85rem;
+}
+
 .profile-layout {
   display: flex;
   flex-direction: column;
-  gap: 2.5rem;
+  gap: 1.5rem;
+}
+
+.profile-section {
+  background: var(--surface-2);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
 }
 
 .profile-section__header {
@@ -948,16 +1087,6 @@ export default defineComponent({
 }
 
 .profile-section__title {
-  margin: 0;
-}
-
-.profile-section__body {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.profile-section__text {
   margin: 0;
 }
 
@@ -986,10 +1115,6 @@ export default defineComponent({
   gap: 1rem;
 }
 
-.profile-tier-explainer {
-  margin-bottom: 1.5rem;
-}
-
 .profile-tier__paywalled {
   margin-top: 0.5rem;
   padding: 0.75rem;
@@ -997,74 +1122,67 @@ export default defineComponent({
   background: rgba(0, 0, 0, 0.04);
 }
 
-.profile-section--infrastructure .profile-section__body {
-  gap: 1.5rem;
+.profile-expansions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
-.profile-infrastructure {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 1.5rem;
-}
-
-.profile-card {
-  background: var(--surface-2);
+.profile-expansion {
   border-radius: 1rem;
-  padding: 1.5rem;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+  background: var(--surface-2);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.profile-expansion__header {
+  padding: 1rem 1.25rem;
+}
+
+.profile-expansion__title {
+  font-weight: 600;
+}
+
+.profile-expansion__body {
+  padding: 0 1.25rem 1.25rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
 
-.profile-card__title {
+.profile-expansion__text {
   margin: 0;
-  font-weight: 600;
 }
 
-.profile-card__row {
+.profile-expansion__grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.profile-expansion__item {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.5rem;
 }
 
-.profile-card__label {
+.profile-expansion__label {
   text-transform: uppercase;
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-}
-
-.profile-card__info-btn {
   color: var(--text-2);
-  min-width: 0;
-  padding: 0;
 }
 
-.profile-card__info-btn :deep(.q-btn__content) {
-  padding: 0;
-}
-
-.profile-card__info-btn :deep(.q-icon) {
-  font-size: 1rem;
-}
-
-.profile-card__info-btn:focus-visible {
-  outline: 2px solid var(--accent-500);
-  outline-offset: 2px;
-}
-
-.profile-card__value {
+.profile-expansion__value {
   word-break: break-word;
+  font-family: 'Roboto Mono', 'Courier New', monospace;
+  font-size: 0.85rem;
 }
 
-.profile-card__text {
-  margin: 0;
-}
-
-.profile-card__list {
+.profile-expansion__list {
   margin: 0;
   padding-left: 1.25rem;
   display: flex;
@@ -1072,7 +1190,7 @@ export default defineComponent({
   gap: 0.5rem;
 }
 
-.profile-card__list-item {
+.profile-expansion__list-item {
   position: relative;
 }
 
@@ -1100,27 +1218,25 @@ export default defineComponent({
 }
 
 @media (max-width: 767px) {
-  .profile-hero__content {
-    flex-direction: column;
+  .profile-summary__primary {
     align-items: flex-start;
   }
 
-  .profile-hero__avatar {
-    width: 100px;
-    height: 100px;
+  .profile-summary__avatar {
+    width: 88px;
+    height: 88px;
   }
 
-  .profile-tier__header {
-    flex-direction: column;
-    align-items: flex-start;
+  .profile-section {
+    padding: 1.25rem;
   }
 
-  .profile-tier__cta {
-    align-items: flex-start;
+  .profile-expansion__header {
+    padding: 0.75rem 1rem;
   }
 
-  .profile-tier__subscribe {
-    width: 100%;
+  .profile-expansion__body {
+    padding: 0 1rem 1rem;
   }
 }
 </style>
