@@ -198,6 +198,10 @@ export const useCreatorsStore = defineStore("creators", {
       currentUserPrivkey: "",
       favorites,
       warmCache: {} as Record<string, CreatorWarmCache>,
+      warmupQueued: false,
+      warmupReady: false,
+      warmupCompleted: false,
+      warmupTask: null as Promise<void> | null,
     };
   },
   getters: {
@@ -260,6 +264,152 @@ export const useCreatorsStore = defineStore("creators", {
   actions: {
     getFavoriteHexes(): string[] {
       return this.favoriteHexPubkeys;
+    },
+
+    queueWarmupFetch() {
+      if (this.warmupCompleted) {
+        return Promise.resolve();
+      }
+
+      this.warmupQueued = true;
+      return this.startWarmupTaskIfNeeded();
+    },
+
+    markWarmupReady() {
+      if (this.warmupCompleted) {
+        return Promise.resolve();
+      }
+
+      if (this.warmupReady) {
+        return this.warmupTask ?? Promise.resolve();
+      }
+      this.warmupReady = true;
+      return this.startWarmupTaskIfNeeded();
+    },
+
+    startWarmupTaskIfNeeded() {
+      if (this.warmupCompleted) {
+        return Promise.resolve();
+      }
+
+      if (!this.warmupQueued || !this.warmupReady) {
+        return this.warmupTask ?? Promise.resolve();
+      }
+
+      if (this.warmupTask) {
+        return this.warmupTask;
+      }
+
+      const run = async () => {
+        const nostr = useNostrStore();
+        try {
+          await nostr.initNdkReadOnly({ fundstrOnly: true });
+        } catch (e) {
+          console.warn("[creators] initNdkReadOnly failed", e);
+        }
+
+        const targets = new Set<string>();
+
+        for (const entry of FEATURED_CREATORS) {
+          try {
+            targets.add(toHex(entry));
+          } catch (e) {
+            console.warn(`[creators] invalid featured pubkey: ${entry}`, e);
+          }
+        }
+
+        for (const favorite of this.favoriteHexPubkeys) {
+          if (typeof favorite === "string" && favorite.length === 64) {
+            targets.add(favorite.toLowerCase());
+          }
+        }
+
+        const tasks = Array.from(targets).map(async (hex) => {
+          if (!hex || hex.length !== 64) {
+            return;
+          }
+
+          await this.ensureCreatorCacheFromDexie(hex).catch((err) => {
+            console.warn(`[creators] failed to hydrate cache for ${hex}`, err);
+          });
+
+          let profileEvent: RelayEvent | null = null;
+          let profileFetched = false;
+          try {
+            profileEvent = await queryNutzapProfile(hex, {
+              allowFanoutFallback: false,
+            });
+            profileFetched = true;
+          } catch (e) {
+            console.warn(`[creators] profile fetch failed for ${hex}`, e);
+          }
+
+          if (profileFetched) {
+            const details = parseNutzapProfileEvent(profileEvent);
+            await this.saveProfileCache(hex, profileEvent, details).catch(
+              (err) => {
+                console.error(
+                  `[creators] failed to cache profile ${hex}`,
+                  err,
+                );
+              },
+            );
+          }
+
+          let tierEvent: RelayEvent | null = null;
+          let tiersFetched = false;
+          try {
+            tierEvent = await queryNutzapTiers(hex, {
+              allowFanoutFallback: false,
+            });
+            tiersFetched = true;
+          } catch (e) {
+            console.warn(`[creators] tier fetch failed for ${hex}`, e);
+          }
+
+          if (tiersFetched) {
+            if (tierEvent) {
+              let tiers: Tier[] = [];
+              try {
+                tiers = parseTierDefinitionEvent(tierEvent).map((tier) =>
+                  normalizeTier(tier as Tier),
+                );
+              } catch (e) {
+                console.error(
+                  `[creators] failed to parse tiers for ${hex}`,
+                  e,
+                );
+                tiers = [];
+              }
+              await this.saveTierCache(hex, tiers, tierEvent).catch((err) => {
+                console.error(`[creators] failed to cache tiers ${hex}`, err);
+              });
+            } else {
+              await this.saveTierCache(hex, [], null).catch((err) => {
+                console.error(
+                  `[creators] failed to clear tier cache for ${hex}`,
+                  err,
+                );
+              });
+            }
+          }
+        });
+
+        await Promise.allSettled(tasks);
+      };
+
+      const task = run()
+        .catch((err) => {
+          console.warn("[creators] warmup task failed", err);
+        })
+        .finally(() => {
+          this.warmupTask = null;
+          this.warmupCompleted = true;
+          this.warmupQueued = false;
+        });
+
+      this.warmupTask = task;
+      return task;
     },
 
     hasProfileCache(pubkeyHex: string): boolean {
