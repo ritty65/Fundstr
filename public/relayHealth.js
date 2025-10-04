@@ -1,4 +1,4 @@
-const FUNDSTR_RELAY = "wss://relay.primal.net";
+const FUNDSTR_RELAY = "wss://relay.fundstr.me";
 const BASE_FREE_RELAYS = [
   "wss://relay.damus.io",
   "wss://relay.snort.social",
