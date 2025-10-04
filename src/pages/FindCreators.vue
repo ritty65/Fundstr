@@ -1098,11 +1098,12 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  background: var(--surface-1);
+  background: var(--surface-2);
   border: 1px solid var(--surface-contrast-border);
   border-left: 4px solid var(--accent-500);
   border-radius: 1rem;
   padding: 1.25rem 1.5rem;
+  box-shadow: 0 20px 50px color-mix(in srgb, var(--surface-1) 22%, transparent);
 }
 
 .info-panel__header {
@@ -1169,7 +1170,7 @@ onBeforeUnmount(() => {
   word-break: break-all;
   padding: 0.5rem 0.75rem;
   border-radius: 0.75rem;
-  background: rgba(0, 0, 0, 0.05);
+  background: color-mix(in srgb, var(--surface-2) 90%, transparent);
   color: var(--text-1);
 }
 
@@ -1186,7 +1187,7 @@ onBeforeUnmount(() => {
   padding: 0.5rem 0.75rem;
   border-radius: 0.75rem;
   border: 1px solid var(--surface-contrast-border);
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
   font-size: 0.95rem;
   line-height: 1.4;
 }
