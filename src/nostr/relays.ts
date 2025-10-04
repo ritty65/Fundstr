@@ -25,7 +25,17 @@ export function buildDmPublishSet(allRelays: string[]): string[] {
   return Array.from(base);
 }
 
-export function mustConnectRequiredRelays(ndkOrPool: any) {
+export type MustConnectRequiredRelaysOptions = {
+  fundstrOnly?: boolean;
+};
+
+export function mustConnectRequiredRelays(
+  ndkOrPool: any,
+  options: MustConnectRequiredRelaysOptions = {},
+) {
+  if (options.fundstrOnly) {
+    return;
+  }
   for (const r of REQUIRED_DM_RELAYS) {
     ndkOrPool.addOrConnect?.(r);
     ndkOrPool.addExplicitRelay?.(r);
