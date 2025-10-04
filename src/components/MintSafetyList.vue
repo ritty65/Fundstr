@@ -51,10 +51,10 @@ const normalizedMints = computed(() =>
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--surface-contrast-border);
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.02);
-  color: var(--text-1);
+  background: var(--chip-bg);
+  color: var(--chip-text);
 }
 
 .mint-safety-list__icon {
