@@ -565,7 +565,7 @@ interface NutzapProfile {
 
 const nutzapProfileCache = new Map<string, NutzapProfile | null>();
 
-const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
+const CUSTOM_LINK_WS_TIMEOUT_MS = WS_FIRST_TIMEOUT_MS;
 
 export class RelayConnectionError extends Error {
   constructor(message?: string) {

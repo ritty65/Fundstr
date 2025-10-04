@@ -48,7 +48,25 @@ export interface CreatorProfile {
   joined: number | null;
 }
 
-const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
+const CUSTOM_LINK_WS_TIMEOUT_MS = WS_FIRST_TIMEOUT_MS;
+const SLOW_FUNDSTR_WARNING_THRESHOLD_MS = WS_FIRST_TIMEOUT_MS;
+
+function nowMs(): number {
+  if (typeof performance !== "undefined" && typeof performance.now === "function") {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+function warnSlowFundstr(context: string, durationMs: number): void {
+  if (durationMs <= SLOW_FUNDSTR_WARNING_THRESHOLD_MS) {
+    return;
+  }
+  const rounded = Math.round(durationMs);
+  console.warn(
+    `[CreatorsStore] Slow Fundstr response (${context}) — ${rounded}ms (threshold ${SLOW_FUNDSTR_WARNING_THRESHOLD_MS}ms)`,
+  );
+}
 
 export interface FundstrProfileBundle {
   profile: Record<string, any> | null;
@@ -68,7 +86,10 @@ export async function fetchFundstrProfileBundle(
   ];
 
   let events: RelayEvent[] = [];
+  const startedAt = nowMs();
+  let attemptedFundstr = false;
   try {
+    attemptedFundstr = true;
     events = await queryNostr(filters, {
       preferFundstr: true,
       allowFanoutFallback: false,
@@ -77,6 +98,10 @@ export async function fetchFundstrProfileBundle(
   } catch (error) {
     console.error("fetchFundstrProfileBundle Fundstr query failed", error);
     throw error instanceof Error ? error : new Error(String(error));
+  } finally {
+    if (attemptedFundstr) {
+      warnSlowFundstr("profile bundle", nowMs() - startedAt);
+    }
   }
 
   const normalized = normalizeEvents(events);
@@ -533,8 +558,6 @@ export const useCreatorsStore = defineStore("creators", {
       creatorNpub: string,
       opts: { relayHints?: string[]; fundstrOnly?: boolean } = {},
     ) {
-      this.tierFetchError = false;
-
       let hex: string;
       try {
         hex = toHex(creatorNpub);
@@ -555,8 +578,11 @@ export const useCreatorsStore = defineStore("creators", {
       const fundstrOnly = opts.fundstrOnly === true;
       let event: RelayEvent | null = null;
       let lastError: unknown = null;
+      const startedAt = nowMs();
+      let attemptedFundstr = false;
 
       try {
+        attemptedFundstr = true;
         event = await queryNutzapTiers(hex, {
           allowFanoutFallback: false,
           wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
@@ -596,31 +622,37 @@ export const useCreatorsStore = defineStore("creators", {
         }
       }
 
-      if (!event) {
-        if (lastError) {
+      try {
+        if (!event) {
+          if (lastError) {
+            this.tierFetchError = true;
+            notifyWarning("Unable to retrieve subscription tiers");
+          } else {
+            this.tierFetchError = false;
+            await this.saveTierCache(hex, [], null);
+          }
+          return;
+        }
+
+        let tiersArray: Tier[] = [];
+        try {
+          tiersArray = parseTierDefinitionEvent(event).map((tier) =>
+            normalizeTier(tier as Tier),
+          );
+        } catch (e) {
+          console.error("Failed to parse tier event", e);
           this.tierFetchError = true;
           notifyWarning("Unable to retrieve subscription tiers");
-        } else {
-          this.tierFetchError = false;
-          await this.saveTierCache(hex, [], null);
+          return;
         }
-        return;
-      }
 
-      let tiersArray: Tier[] = [];
-      try {
-        tiersArray = parseTierDefinitionEvent(event).map((tier) =>
-          normalizeTier(tier as Tier),
-        );
-      } catch (e) {
-        console.error("Failed to parse tier event", e);
-        this.tierFetchError = true;
-        notifyWarning("Unable to retrieve subscription tiers");
-        return;
+        await this.saveTierCache(hex, tiersArray, event);
+        this.tierFetchError = false;
+      } finally {
+        if (attemptedFundstr) {
+          warnSlowFundstr("tiers", nowMs() - startedAt);
+        }
       }
-
-      await this.saveTierCache(hex, tiersArray, event);
-      this.tierFetchError = false;
     },
 
     async publishTierDefinitions(tiersArray: Tier[]) {
