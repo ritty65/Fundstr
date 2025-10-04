@@ -79,7 +79,7 @@ import {
 import { mapInternalTierToWire } from "src/nostr/tiers";
 import { buildKind10019NutzapProfile } from "src/nostr/builders";
 import { NutzapProfileSchema, type NutzapProfilePayload } from "src/nostr/nutzapProfile";
-import { FUNDSTR_REQ_URL, WS_FIRST_TIMEOUT_MS } from "@/nutzap/relayEndpoints";
+import { WS_FIRST_TIMEOUT_MS } from "@/nutzap/relayEndpoints";
 
 // --- Relay connectivity helpers ---
 export type WriteConnectivity = {
@@ -889,7 +889,6 @@ export async function fetchNutzapProfile(
 
   try {
     event = await queryNutzapProfile(hex, {
-      httpBase: FUNDSTR_REQ_URL,
       allowFanoutFallback: false,
       wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
     });
@@ -902,7 +901,6 @@ export async function fetchNutzapProfile(
       const discovered = await fallbackDiscoverRelays(hex);
       if (discovered.length) {
         event = await queryNutzapProfile(hex, {
-          httpBase: FUNDSTR_REQ_URL,
           fanout: discovered,
           allowFanoutFallback: true,
           wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
