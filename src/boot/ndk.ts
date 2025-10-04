@@ -491,7 +491,7 @@ export async function ndkSend(
 
 export default boot(async ({ app }) => {
   const nostrStore = useNostrStore();
-  await nostrStore.ensureKeysHydrated();
+  await nostrStore.loadKeysFromStorage();
   ndkPromise = getNdk();
   app.provide("$ndkPromise", ndkPromise);
   ndkPromise.catch((e) => useBootErrorStore().set(e as NdkBootError));
