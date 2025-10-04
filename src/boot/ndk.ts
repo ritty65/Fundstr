@@ -202,13 +202,17 @@ let ndkInstance: NDK | undefined;
 let ndkPromise: Promise<NDK> | undefined;
 let relayWatchdog: RelayWatchdog | undefined;
 
-function startRelayWatchdog(ndk: NDK) {
+type RelayWatchdogOptions = {
+  fundstrOnly?: boolean;
+};
+
+function startRelayWatchdog(ndk: NDK, options: RelayWatchdogOptions = {}) {
   if (relayWatchdog) {
     relayWatchdog.updateNdk(ndk);
   } else {
     relayWatchdog = new RelayWatchdog(ndk);
   }
-  const fundstrOnly = isFundstrOnlyRelayModeActive();
+  const fundstrOnly = options.fundstrOnly ?? isFundstrOnlyRelayModeActive();
   const fallbackTargets = fundstrOnly ? [FUNDSTR_PRIMARY_RELAY] : FREE_RELAYS;
   const minConnected = fundstrOnly ? 1 : 2;
   relayWatchdog.start(minConnected, fallbackTargets);
@@ -263,10 +267,10 @@ async function createReadOnlyNdk(opts: CreateReadOnlyOptions = {}): Promise<NDK>
     : filterHealthyRelays(relays).catch(() => []);
   const ndk = new NDK({ explicitRelayUrls: bootstrapRelays });
   attachRelayErrorHandlers(ndk);
-  if (!opts.fundstrOnly) {
+  if (!fundstrOnly) {
     mergeDefaultRelays(ndk);
   }
-  mustConnectRequiredRelays(ndk);
+  mustConnectRequiredRelays(ndk, { fundstrOnly });
   await safeConnect(ndk);
   if (!fundstrOnly) {
     healthyPromise.then(async (healthy) => {
@@ -292,7 +296,7 @@ async function createReadOnlyNdk(opts: CreateReadOnlyOptions = {}): Promise<NDK>
   if (!fundstrOnly) {
     scheduleBootstrapFallback(ndk);
   }
-  startRelayWatchdog(ndk);
+  startRelayWatchdog(ndk, { fundstrOnly });
   return ndk;
 }
 
@@ -310,8 +314,10 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
     : filterHealthyRelays(relays).catch(() => []);
   const ndk = new NDK({ explicitRelayUrls: bootstrapRelays });
   attachRelayErrorHandlers(ndk);
-  mergeDefaultRelays(ndk);
-  mustConnectRequiredRelays(ndk);
+  if (!fundstrOnly) {
+    mergeDefaultRelays(ndk);
+  }
+  mustConnectRequiredRelays(ndk, { fundstrOnly });
   ndk.signer = signer;
   await safeConnect(ndk);
   if (!fundstrOnly) {
@@ -339,7 +345,7 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
     await new Promise((r) => setTimeout(r, 3000));
     await ensureFreeRelayFallback(ndk, "bootstrap");
   }
-  startRelayWatchdog(ndk);
+  startRelayWatchdog(ndk, { fundstrOnly });
   return ndk;
 }
 
@@ -372,7 +378,9 @@ export async function createNdk(
     : filterHealthyRelays(relays).catch(() => []);
   const ndk = new NDK({ signer: signer as any, explicitRelayUrls: bootstrapRelays });
   attachRelayErrorHandlers(ndk);
-  mergeDefaultRelays(ndk);
+  if (!fundstrOnly) {
+    mergeDefaultRelays(ndk);
+  }
   await safeConnect(ndk);
   if (!fundstrOnly) {
     healthyPromise.then(async (healthy) => {
@@ -397,7 +405,7 @@ export async function createNdk(
   }
   await new Promise((r) => setTimeout(r, 3000));
   await ensureFreeRelayFallback(ndk, "bootstrap");
-  startRelayWatchdog(ndk);
+  startRelayWatchdog(ndk, { fundstrOnly });
   return ndk;
 }
 
@@ -500,4 +508,5 @@ export default boot(async ({ app }) => {
 export const __testing = {
   ensureFreeRelayFallback,
   countConnectedRelays,
+  createReadOnlyNdk,
 };
