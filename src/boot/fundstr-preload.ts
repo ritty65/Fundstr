@@ -20,7 +20,7 @@ function normalizeTier(tier: Tier): Tier {
   };
 }
 
-export default boot(async () => {
+async function preloadCreators() {
   const nostr = useNostrStore();
   const creators = useCreatorsStore();
 
@@ -46,69 +46,103 @@ export default boot(async () => {
     }
   }
 
-  for (const hex of targets) {
-    if (!hex || hex.length !== 64) continue;
-    await creators.ensureCreatorCacheFromDexie(hex).catch((err) => {
-      console.warn(`[fundstr-preload] failed to hydrate cache for ${hex}`, err);
+  const hydrateTasks = Array.from(targets)
+    .filter((hex): hex is string => typeof hex === "string" && hex.length === 64)
+    .map(async (hex) => {
+      await creators.ensureCreatorCacheFromDexie(hex).catch((err) => {
+        console.warn(`[fundstr-preload] failed to hydrate cache for ${hex}`, err);
+      });
+
+      const profileTask = (async () => {
+        let profileEvent: RelayEvent | null = null;
+        try {
+          profileEvent = await queryNutzapProfile(hex, {
+            allowFanoutFallback: false,
+          });
+        } catch (e) {
+          console.warn(`[fundstr-preload] profile fetch failed for ${hex}`, e);
+          return;
+        }
+
+        if (!profileEvent) {
+          return;
+        }
+
+        let details = null;
+        try {
+          details = parseNutzapProfileEvent(profileEvent);
+        } catch (e) {
+          console.error(
+            `[fundstr-preload] failed to parse profile details for ${hex}`,
+            e,
+          );
+        }
+
+        await creators
+          .saveProfileCache(hex, profileEvent, details)
+          .catch((err) =>
+            console.error(`[fundstr-preload] failed to cache profile ${hex}`, err),
+          );
+      })();
+
+      const tierTask = (async () => {
+        let tierEvent: RelayEvent | null = null;
+        try {
+          tierEvent = await queryNutzapTiers(hex, {
+            allowFanoutFallback: false,
+          });
+        } catch (e) {
+          console.warn(`[fundstr-preload] tier fetch failed for ${hex}`, e);
+          return;
+        }
+
+        if (tierEvent) {
+          let tiers: Tier[] = [];
+          try {
+            tiers = parseTierDefinitionEvent(tierEvent).map((tier) =>
+              normalizeTier(tier as Tier),
+            );
+          } catch (e) {
+            console.error(`[fundstr-preload] failed to parse tiers for ${hex}`, e);
+            tiers = [];
+          }
+
+          await creators
+            .saveTierCache(hex, tiers, tierEvent)
+            .catch((err) =>
+              console.error(`[fundstr-preload] failed to cache tiers ${hex}`, err),
+            );
+        } else {
+          await creators
+            .saveTierCache(hex, [], null)
+            .catch((err) =>
+              console.error(
+                `[fundstr-preload] failed to clear tier cache for ${hex}`,
+                err,
+              ),
+            );
+        }
+      })();
+
+      await Promise.allSettled([profileTask, tierTask]);
     });
 
-    let profileEvent: RelayEvent | null = null;
-    let profileFetched = false;
-    try {
-      profileEvent = await queryNutzapProfile(hex, {
-        allowFanoutFallback: false,
+  await Promise.allSettled(hydrateTasks);
+}
+
+export default boot(() => {
+  if (typeof window !== "undefined") {
+    const idle = (window as typeof window & {
+      requestIdleCallback?: (callback: IdleRequestCallback) => number;
+    }).requestIdleCallback;
+
+    if (typeof idle === "function") {
+      idle(() => {
+        void preloadCreators();
       });
-      profileFetched = true;
-    } catch (e) {
-      console.warn(`[fundstr-preload] profile fetch failed for ${hex}`, e);
-    }
-
-    if (profileFetched) {
-      const details = parseNutzapProfileEvent(profileEvent);
-      await creators
-        .saveProfileCache(hex, profileEvent, details)
-        .catch((err) =>
-          console.error(`[fundstr-preload] failed to cache profile ${hex}`, err),
-        );
-    }
-
-    let tierEvent: RelayEvent | null = null;
-    let tiersFetched = false;
-    try {
-      tierEvent = await queryNutzapTiers(hex, {
-        allowFanoutFallback: false,
-      });
-      tiersFetched = true;
-    } catch (e) {
-      console.warn(`[fundstr-preload] tier fetch failed for ${hex}`, e);
-    }
-
-    if (tiersFetched) {
-      if (tierEvent) {
-        let tiers: Tier[] = [];
-        try {
-          tiers = parseTierDefinitionEvent(tierEvent).map((tier) =>
-            normalizeTier(tier as Tier),
-          );
-        } catch (e) {
-          console.error(`[fundstr-preload] failed to parse tiers for ${hex}`, e);
-          tiers = [];
-        }
-        await creators
-          .saveTierCache(hex, tiers, tierEvent)
-          .catch((err) =>
-            console.error(`[fundstr-preload] failed to cache tiers ${hex}`, err),
-          );
-      } else {
-        await creators
-          .saveTierCache(hex, [], null)
-          .catch((err) =>
-            console.error(
-              `[fundstr-preload] failed to clear tier cache for ${hex}`,
-              err,
-            ),
-          );
-      }
+      return;
     }
   }
+
+  void preloadCreators();
 });

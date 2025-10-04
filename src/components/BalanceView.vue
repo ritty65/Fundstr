@@ -88,15 +88,21 @@
         </q-carousel-slide>
       </q-carousel>
     </transition>
-    <div
-      v-if="activeMint().mint.errored"
-      class="row q-mt-md q-mb-none text-secondary"
-    >
+    <div v-if="activeMintErrorMessage" class="row q-mt-md q-mb-none">
       <div class="col-12">
-        <q-badge outline color="red" class="q-mr-xs q-mt-sm text-weight-bold">
-          {{ $t("BalanceView.mintError.label") }}
-          <q-icon name="error" class="q-ml-xs" />
-        </q-badge>
+        <q-banner class="bg-negative text-white q-pa-sm rounded-borders" dense>
+          <div class="row no-wrap items-start q-gutter-sm">
+            <q-icon name="error" class="q-mt-xs" size="20px" />
+            <div class="column q-gutter-xs">
+              <span class="text-weight-medium">
+                {{ $t("BalanceView.mintError.label") }}
+              </span>
+              <span class="text-body2">
+                {{ activeMintErrorMessage }}
+              </span>
+            </div>
+          </div>
+        </q-banner>
       </div>
     </div>
     <!-- mint url -->
@@ -235,6 +241,22 @@ export default defineComponent({
     },
     getActiveBalance: function () {
       return this.activeBalance;
+    },
+    activeMintErrorMessage() {
+      try {
+        const mintClass = this.activeMint();
+        const mint = mintClass?.mint;
+        if (!mint) {
+          return "";
+        }
+        if (mint.verificationError) {
+          return mint.verificationError;
+        }
+        return mint.errored ? this.$t("BalanceView.mintError.label") : "";
+      } catch (error) {
+        console.error("Unable to resolve active mint error state", error);
+        return "";
+      }
     },
     activeMintLabel: function () {
       const mintClass = this.activeMint();
