@@ -4,10 +4,7 @@ import { defineStore } from "pinia";
 import NDK, {
   NDKEvent,
   NDKSigner,
-  NDKNip07Signer,
-  NDKNip46Signer,
   NDKFilter,
-  NDKPrivateKeySigner,
   NDKKind,
   NDKRelaySet,
   NDKRelay,
@@ -16,6 +13,11 @@ import NDK, {
   ProfilePointer,
   NDKSubscription,
   NDKPublishError,
+} from "@nostr-dev-kit/ndk";
+import type {
+  NDKNip07Signer,
+  NDKNip46Signer,
+  NDKPrivateKeySigner,
 } from "@nostr-dev-kit/ndk";
 import {
   nip19,
@@ -31,7 +33,7 @@ import { sha256 } from "@noble/hashes/sha256";
 import { decodeBase64, encodeBase64 } from "src/utils/base64";
 import { ensureCompressed } from "src/utils/ecash";
 import { useWalletStore } from "./wallet";
-import { generateSecretKey, getPublicKey } from "nostr-tools";
+import { getPublicKey } from "nostr-tools";
 import { useLocalStorage } from "@vueuse/core";
 import { useSettingsStore } from "./settings";
 import { useReceiveTokensStore } from "./receiveTokensStore";
@@ -80,6 +82,11 @@ import { mapInternalTierToWire } from "src/nostr/tiers";
 import { buildKind10019NutzapProfile } from "src/nostr/builders";
 import { NutzapProfileSchema, type NutzapProfilePayload } from "src/nostr/nutzapProfile";
 import { FUNDSTR_REQ_URL, WS_FIRST_TIMEOUT_MS } from "@/nutzap/relayEndpoints";
+import type { InitSignerBehaviorOptions } from "./nostr/types";
+import { SignerType } from "./nostr/types";
+
+let loadKeysPromise: Promise<void> | null = null;
+let signerInitPromise: Promise<void> | null = null;
 
 // --- Relay connectivity helpers ---
 export type WriteConnectivity = {
@@ -1295,17 +1302,6 @@ interface SignerCaps {
   getSharedSecret: boolean;
 }
 
-export enum SignerType {
-  NIP07 = "NIP07",
-  NIP46 = "NIP46",
-  PRIVATEKEY = "PRIVATEKEY",
-  SEED = "SEED",
-}
-
-type InitSignerBehaviorOptions = {
-  skipRelayConnect?: boolean;
-};
-
 export const useNostrStore = defineStore("nostr", {
   state: () => {
     const lastNip04EventTimestamp = useLocalStorage<number>(
@@ -1354,6 +1350,8 @@ export const useNostrStore = defineStore("nostr", {
         [],
       ),
       initialized: false,
+      signerInitializing: false,
+      keysHydrating: false,
       secureStorageLoaded: false,
       lastError: "" as string | null,
       connectionFailed: false,
@@ -1425,6 +1423,9 @@ export const useNostrStore = defineStore("nostr", {
     },
     hasIdentity: (state) => Boolean(state.pubkey && state.signerType),
     numConnectedRelays: (state) => state.connectedRelays.size,
+    signerReady: (state) => state.initialized && Boolean(state.signer),
+    keysHydrationPending: (state) =>
+      state.keysHydrating || !state.secureStorageLoaded,
   },
   actions: {
     getConnectedRelayUrls() {
@@ -1432,60 +1433,78 @@ export const useNostrStore = defineStore("nostr", {
     },
     loadKeysFromStorage: async function () {
       if (this.secureStorageLoaded) return;
-      const pk = await secureGetItem("cashu.ndk.pubkey");
-      if (pk) this.pubkey = pk;
-      const st = await secureGetItem("cashu.ndk.signerType");
-      if (st) this.signerType = st as SignerType;
-      const nip46 = await secureGetItem("cashu.ndk.nip46Token");
-      if (nip46) this.nip46Token = nip46;
-      const pks = await secureGetItem("cashu.ndk.privateKeySignerPrivateKey");
-      if (pks) this.privateKeySignerPrivateKey = pks;
-      const seedSk = await secureGetItem("cashu.ndk.seedSignerPrivateKey");
-      if (seedSk) this.seedSignerPrivateKey = seedSk;
-      const seedPk = await secureGetItem("cashu.ndk.seedSignerPublicKey");
-      if (seedPk) this.seedSignerPublicKey = seedPk;
-      watch(
-        () => this.pubkey,
-        (v) => {
-          secureSetItem("cashu.ndk.pubkey", v);
-        },
-      );
-      watch(
-        () => this.signerType,
-        (v) => {
-          secureSetItem("cashu.ndk.signerType", v.toString());
-        },
-      );
-      watch(
-        () => this.nip46Token,
-        (v) => {
-          secureSetItem("cashu.ndk.nip46Token", v);
-        },
-      );
-      watch(
-        () => this.privateKeySignerPrivateKey,
-        (v) => {
-          secureSetItem("cashu.ndk.privateKeySignerPrivateKey", v);
-        },
-      );
-      watch(
-        () => this.seedSignerPrivateKey,
-        (v) => {
-          secureSetItem("cashu.ndk.seedSignerPrivateKey", v);
-        },
-      );
-      watch(
-        () => this.seedSignerPublicKey,
-        (v) => {
-          secureSetItem("cashu.ndk.seedSignerPublicKey", v);
-        },
-      );
-      this.secureStorageLoaded = true;
+      if (!loadKeysPromise) {
+        this.keysHydrating = true;
+        loadKeysPromise = (async () => {
+          const pk = await secureGetItem("cashu.ndk.pubkey");
+          if (pk) this.pubkey = pk;
+          const st = await secureGetItem("cashu.ndk.signerType");
+          if (st) this.signerType = st as SignerType;
+          const nip46 = await secureGetItem("cashu.ndk.nip46Token");
+          if (nip46) this.nip46Token = nip46;
+          const pks = await secureGetItem("cashu.ndk.privateKeySignerPrivateKey");
+          if (pks) this.privateKeySignerPrivateKey = pks;
+          const seedSk = await secureGetItem("cashu.ndk.seedSignerPrivateKey");
+          if (seedSk) this.seedSignerPrivateKey = seedSk;
+          const seedPk = await secureGetItem("cashu.ndk.seedSignerPublicKey");
+          if (seedPk) this.seedSignerPublicKey = seedPk;
+          watch(
+            () => this.pubkey,
+            (v) => {
+              secureSetItem("cashu.ndk.pubkey", v);
+            },
+          );
+          watch(
+            () => this.signerType,
+            (v) => {
+              secureSetItem("cashu.ndk.signerType", v.toString());
+            },
+          );
+          watch(
+            () => this.nip46Token,
+            (v) => {
+              secureSetItem("cashu.ndk.nip46Token", v);
+            },
+          );
+          watch(
+            () => this.privateKeySignerPrivateKey,
+            (v) => {
+              secureSetItem("cashu.ndk.privateKeySignerPrivateKey", v);
+            },
+          );
+          watch(
+            () => this.seedSignerPrivateKey,
+            (v) => {
+              secureSetItem("cashu.ndk.seedSignerPrivateKey", v);
+            },
+          );
+          watch(
+            () => this.seedSignerPublicKey,
+            (v) => {
+              secureSetItem("cashu.ndk.seedSignerPublicKey", v);
+            },
+          );
+          this.secureStorageLoaded = true;
+        })().finally(() => {
+          this.keysHydrating = false;
+        });
+      }
+      try {
+        await loadKeysPromise;
+      } finally {
+        if (this.secureStorageLoaded) {
+          loadKeysPromise = null;
+        }
+      }
+    },
+    ensureKeysHydrated: function () {
+      if (this.secureStorageLoaded) return Promise.resolve();
+      return this.loadKeysFromStorage();
     },
     initNdkReadOnly: async function (
       opts: { fundstrOnly?: boolean } = {},
     ) {
-      await this.loadKeysFromStorage();
+      await this.ensureKeysHydrated();
       const requestedMode =
         opts.fundstrOnly === true
           ? "fundstr-only"
@@ -1545,6 +1564,7 @@ export const useNostrStore = defineStore("nostr", {
       this.connectedRelays.clear();
     },
     async connectBrowserSigner() {
+      const { NDKNip07Signer } = await import("@nostr-dev-kit/ndk");
       const nip07 = new NDKNip07Signer();
       try {
         await (window as any).nostr?.enable?.();
@@ -1675,36 +1695,30 @@ export const useNostrStore = defineStore("nostr", {
       }
     },
     initSignerIfNotSet: async function (options: InitSignerBehaviorOptions = {}) {
-      await this.loadKeysFromStorage();
-      if (this.signerType === SignerType.NIP07) {
-        const available = await this.checkNip07Signer();
-        if (!available && !this.signer) {
-          if (!this.initialized) {
-            await this.initNdkReadOnly();
-            this.initialized = true;
-          }
-          return;
-        }
+      await this.ensureKeysHydrated();
+      if (this.signer && this.initialized) {
+        return;
       }
-      if (!this.signer) {
-        this.initialized = false; // force re-initialisation
+      if (!signerInitPromise) {
+        this.signerInitializing = true;
+        signerInitPromise = (async () => {
+          const { initSignerIfNotSetInternal } = await import("./nostr/signerInit");
+          await initSignerIfNotSetInternal(this as any, options);
+        })()
+          .catch((err) => {
+            this.lastError = err?.message ?? String(err);
+            throw err;
+          })
+          .finally(() => {
+            this.signerInitializing = false;
+            signerInitPromise = null;
+          });
       }
-      if (!this.initialized) {
-        await this.initSigner(options);
-        if (!options.skipRelayConnect) {
-          await this.ensureNdkConnected();
-        }
-      }
+      await signerInitPromise;
     },
     initSigner: async function (options: InitSignerBehaviorOptions = {}) {
-      if (this.signerType === SignerType.NIP07) {
-        await this.initNip07Signer(options);
-      } else if (this.signerType === SignerType.PRIVATEKEY) {
-        await this.initPrivateKeySigner(undefined, options);
-      } else {
-        await this.initWalletSeedPrivateKeySigner(options);
-      }
-      this.initialized = true;
+      const { initSignerInternal } = await import("./nostr/signerInit");
+      await initSignerInternal(this as any, options);
     },
     probeSignerCaps: function () {
       const ext: any = (window as any)?.nostr;
@@ -1883,77 +1897,12 @@ export const useNostrStore = defineStore("nostr", {
       return this.nip07SignerAvailable;
     },
     initNip07Signer: async function (options: InitSignerBehaviorOptions = {}) {
-      const available = await this.checkNip07Signer();
-      if (!available) {
-        if (!this.nip07Warned) {
-          notifyWarning(
-            "Nostr extension locked or unavailable",
-            "Unlock your NIP-07 extension to enable signing",
-          );
-          this.nip07Warned = true;
-        }
-        this.initialized = true;
-        return;
-      }
-      try {
-        const signer = new NDKNip07Signer();
-        await signer.blockUntilReady();
-        const user = await signer.user();
-        if (user?.npub) {
-          this.signerType = SignerType.NIP07;
-          this.setPubkey(user.pubkey);
-          await this.setSigner(signer, options);
-
-          let urls: string[] | null = null;
-          if (this.cachedNip07Relays) {
-            urls = this.cachedNip07Relays;
-          } else {
-            if (!this.pendingGetRelays) {
-              this.pendingGetRelays = signer.getRelays?.() || Promise.resolve(null);
-            }
-            const relays = await this.pendingGetRelays;
-            this.pendingGetRelays = null;
-            if (relays) {
-              urls = sanitizeRelayUrls(Object.keys(relays));
-              if (urls.length) this.cachedNip07Relays = urls;
-            }
-          }
-          if (urls && urls.length) {
-            this.relays = urls;
-            const settings = useSettingsStore();
-            settings.defaultNostrRelays = urls;
-          }
-        }
-      } catch (e) {
-        console.error("Failed to init NIP07 signer:", e);
-      }
+      const { initNip07SignerInternal } = await import("./nostr/signerInit");
+      await initNip07SignerInternal(this as any, options);
     },
     initNip46Signer: async function (nip46Token?: string) {
-      const ndk = await useNdk();
-      if (!nip46Token && !this.nip46Token.length) {
-        nip46Token = (await prompt(
-          "Enter your NIP-46 connection string",
-        )) as string;
-        if (!nip46Token) {
-          return;
-        }
-        this.nip46Token = nip46Token;
-      } else {
-        if (nip46Token) {
-          this.nip46Token = nip46Token;
-        }
-      }
-      const signer = new NDKNip46Signer(ndk, this.nip46Token);
-      this.signerType = SignerType.NIP46;
-      await this.setSigner(signer);
-      // If the backend sends an auth_url event, open that URL as a popup so the user can authorize the app
-      signer.on("authUrl", (url) => {
-        window.open(url, "auth", "width=600,height=600");
-      });
-      // wait until the signer is ready
-      const loggedinUser = await signer.blockUntilReady();
-      alert("You are now logged in as " + loggedinUser.npub);
-      this.setPubkey(loggedinUser.pubkey);
+      const { initNip46SignerInternal } = await import("./nostr/signerInit");
+      await initNip46SignerInternal(this as any, nip46Token);
     },
     resetNip46Signer: async function () {
       this.nip46Token = "";
@@ -1963,26 +1912,8 @@ export const useNostrStore = defineStore("nostr", {
       nsec?: string,
       options: InitSignerBehaviorOptions = {},
     ) {
-      let privateKeyBytes: Uint8Array;
-      if (!nsec && !this.privateKeySignerPrivateKey.length) {
-        nsec = (await prompt("Enter your nsec")) as string;
-        if (!nsec) {
-          return;
-        }
-        privateKeyBytes = nip19.decode(nsec).data as Uint8Array;
-      } else {
-        if (nsec) {
-          privateKeyBytes = nip19.decode(nsec).data as Uint8Array;
-        } else {
-          privateKeyBytes = hexToBytes(this.privateKeySignerPrivateKey);
-        }
-      }
-      const privateKeyHex = bytesToHex(privateKeyBytes);
-      const signer = new NDKPrivateKeySigner(privateKeyHex);
-      this.privateKeySignerPrivateKey = privateKeyHex;
-      this.signerType = SignerType.PRIVATEKEY;
-      this.setPubkey(getPublicKey(privateKeyBytes));
-      await this.setSigner(signer, options);
+      const { initPrivateKeySignerInternal } = await import("./nostr/signerInit");
+      await initPrivateKeySignerInternal(this as any, nsec, options);
     },
     async updateIdentity(nsec: string, relays?: string[]) {
       if (relays) this.relays = relays as any;
@@ -1998,22 +1929,18 @@ export const useNostrStore = defineStore("nostr", {
       await this.initWalletSeedPrivateKeySigner();
     },
     walletSeedGenerateKeyPair: async function () {
-      const walletStore = useWalletStore();
-      const sk = walletStore.seed.slice(0, 32);
-      const walletPublicKeyHex = getPublicKey(sk); // `pk` is a hex string
-      const walletPrivateKeyHex = bytesToHex(sk);
-      this.seedSignerPrivateKey = walletPrivateKeyHex;
-      this.seedSignerPublicKey = walletPublicKeyHex;
-      this.seedSigner = new NDKPrivateKeySigner(this.seedSignerPrivateKey);
+      const { walletSeedGenerateKeyPairInternal } = await import(
+        "./nostr/signerInit"
+      );
+      await walletSeedGenerateKeyPairInternal(this as any);
     },
     initWalletSeedPrivateKeySigner: async function (
       options: InitSignerBehaviorOptions = {},
     ) {
-      await this.walletSeedGenerateKeyPair();
-      const signer = new NDKPrivateKeySigner(this.seedSignerPrivateKey);
-      this.signerType = SignerType.SEED;
-      this.setPubkey(this.seedSignerPublicKey);
-      await this.setSigner(signer, options);
+      const { initWalletSeedPrivateKeySignerInternal } = await import(
+        "./nostr/signerInit"
+      );
+      await initWalletSeedPrivateKeySignerInternal(this as any, options);
     },
     fetchEventsFromUser: async function () {
       const filter: NDKFilter = { kinds: [1], authors: [this.pubkey] };
@@ -2744,6 +2671,21 @@ export const useNostrStore = defineStore("nostr", {
     },
   },
 });
+
+export type NostrStore = ReturnType<typeof useNostrStore>;
+
+export function useNostrReadOnlyStore(
+  opts: { fundstrOnly?: boolean; hydrateKeys?: boolean } = {},
+) {
+  const store = useNostrStore();
+  if (opts.hydrateKeys !== false && !store.secureStorageLoaded) {
+    void store.ensureKeysHydrated?.();
+  }
+  if (!store.connected && !store.connectionFailed) {
+    void store.initNdkReadOnly({ fundstrOnly: opts.fundstrOnly });
+  }
+  return store;
+}
 
 export function getEventHash(event: NostrEvent): string {
   try {
