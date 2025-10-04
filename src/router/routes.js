@@ -28,15 +28,13 @@ const routes = [
     children: [
       {
         path: "",
-        name: "creator-deeplink",
-        component: () => import("src/pages/FindCreators.vue"),
+        name: "PublicCreatorProfile",
+        component: () => import("src/pages/PublicCreatorProfilePage.vue"),
         props: true,
       },
       {
         path: "profile",
-        name: "PublicCreatorProfile",
-        component: () => import("src/pages/PublicCreatorProfilePage.vue"),
-        props: true,
+        redirect: { name: "PublicCreatorProfile" },
       },
     ],
   },

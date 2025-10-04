@@ -1272,12 +1272,22 @@ export const messages = {
     },
   },
   FindCreators: {
+    headings: {
+      search: "Discover creators",
+      featured: "Featured creators",
+      results: "Search results",
+    },
     inputs: {
       search: {
         label: "Search creators",
         placeholder: "npub or hex public key",
         tooltip: "Search for creators by public key",
       },
+    },
+    states: {
+      loadingFeatured: "Loading featured creators…",
+      loadingResults: "Searching creators…",
+      noResults: "No creators to show yet. Try a different npub or browse featured profiles.",
     },
     labels: {
       followers: "Followers",
@@ -1297,6 +1307,9 @@ export const messages = {
       },
       back_to_search: {
         label: "Back to search",
+      },
+      load_featured: {
+        label: "Browse featured creators",
       },
     },
     choose_action: {

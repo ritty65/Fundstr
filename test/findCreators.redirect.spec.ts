@@ -10,7 +10,22 @@ vi.mock("components/SendTokenDialog.vue", () => ({ default: { name: "SendTokenDi
 vi.mock("components/MediaPreview.vue", () => ({ default: { name: "MediaPreview", template: "<div></div>" } }));
 vi.mock("stores/sendTokensStore", () => ({ useSendTokensStore: () => ({ clearSendData: vi.fn(), sendData: {}, showSendTokens: false }) }));
 vi.mock("stores/donationPresets", () => ({ useDonationPresetsStore: () => ({ createDonationPreset: vi.fn() }) }));
-vi.mock("stores/creators", () => ({ useCreatorsStore: () => ({ tiersMap: {}, tierFetchError: false, fetchTierDefinitions: vi.fn() }) }));
+const searchCreators = vi.fn().mockResolvedValue(undefined);
+const loadFeaturedCreators = vi.fn().mockResolvedValue(undefined);
+vi.mock("stores/creators", () => ({
+  useCreatorsStore: () => ({
+    tiersMap: {},
+    tierFetchError: false,
+    fetchTierDefinitions: vi.fn(),
+    ensureCreatorCacheFromDexie: vi.fn().mockResolvedValue({}),
+    saveProfileCache: vi.fn(),
+    searchResults: [],
+    searching: false,
+    error: "",
+    searchCreators,
+    loadFeaturedCreators,
+  }),
+}));
 vi.mock("stores/nostr", () => ({
   useNostrStore: () => ({ pubkey: "", initNdkReadOnly: vi.fn().mockResolvedValue(undefined), resolvePubkey: (k: string) => k }),
   fetchNutzapProfile: vi.fn(),
@@ -18,10 +33,13 @@ vi.mock("stores/nostr", () => ({
 }));
 vi.mock("stores/messenger", () => ({ useMessengerStore: () => ({ started: false, startChat: vi.fn(), ensureChatSubscription: vi.fn() }) }));
 vi.mock("src/js/notify", () => ({ notifyWarning: vi.fn() }));
-vi.mock("vue-i18n", () => ({ useI18n: () => ({ t: (k: string) => k }) }));
+vi.mock("vue-i18n", () => ({
+  useI18n: () => ({ t: (k: string) => k }),
+  createI18n: vi.fn(() => ({} as any)),
+}));
 
-describe("FindCreators redirection", () => {
-  it("redirects to creator route when npub query is present", async () => {
+describe("FindCreators search behaviour", () => {
+  it("triggers a creator search when npub query is present", async () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
@@ -43,11 +61,17 @@ describe("FindCreators redirection", () => {
           "QCardActions",
           "QBtn",
           "QSeparator",
+          "QPage",
+          "QInput",
+          "QBanner",
+          "QTooltip",
+          "QSpinnerHourglass",
         ],
       },
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(router.currentRoute.value.path).toBe("/creator/testnpub");
+    expect(searchCreators).toHaveBeenCalledWith("testnpub");
+    expect(router.currentRoute.value.fullPath).toBe("/find-creators?npub=testnpub");
   });
 });
 
