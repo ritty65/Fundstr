@@ -446,7 +446,7 @@ import {
 import { queryNutzapProfile, toHex } from '@/nostr/relayClient';
 import type { NostrEvent } from '@/nostr/relayClient';
 import { fallbackDiscoverRelays } from '@/nostr/discovery';
-import { WS_FIRST_TIMEOUT_MS } from '@/nutzap/relayEndpoints';
+import { HTTP_FALLBACK_TIMEOUT_MS, WS_FIRST_TIMEOUT_MS } from '@/nutzap/relayEndpoints';
 import {
   parseNutzapProfileEvent,
   type NutzapProfileDetails,
@@ -499,7 +499,25 @@ const tierFetchError = computed(() => creators.tierFetchError);
 const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 let tierTimeout: ReturnType<typeof setTimeout> | null = null;
 
-const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
+const CUSTOM_LINK_WS_TIMEOUT_MS = WS_FIRST_TIMEOUT_MS;
+const SLOW_FUNDSTR_WARNING_THRESHOLD_MS = WS_FIRST_TIMEOUT_MS;
+
+function nowMs(): number {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+function warnSlowFundstr(context: string, durationMs: number): void {
+  if (durationMs <= SLOW_FUNDSTR_WARNING_THRESHOLD_MS) {
+    return;
+  }
+  const rounded = Math.round(durationMs);
+  console.warn(
+    `[FindCreators] Slow Fundstr response (${context}) — ${rounded}ms (threshold ${SLOW_FUNDSTR_WARNING_THRESHOLD_MS}ms)`,
+  );
+}
 
 const heroMetadata = ref<HeroMetadata>({});
 type HeroMetadata = {
@@ -743,17 +761,27 @@ function openSubscribe(tier: any) {
   showSubscribeDialog.value = true;
 }
 
-function retryFetchTiers() {
+async function retryFetchTiers() {
   if (!dialogPubkey.value) return;
   loadingTiers.value = true;
   if (tierTimeout) clearTimeout(tierTimeout);
   tierTimeout = setTimeout(() => {
+    console.warn(
+      `[FindCreators] Tier fetch still pending after ${HTTP_FALLBACK_TIMEOUT_MS}ms (retry)`,
+    );
+  }, HTTP_FALLBACK_TIMEOUT_MS);
+  try {
+    await creators.fetchTierDefinitions(dialogPubkey.value, {
+      relayHints: lastRelayHints.value,
+      fundstrOnly: true,
+    });
+  } finally {
+    if (tierTimeout) {
+      clearTimeout(tierTimeout);
+      tierTimeout = null;
+    }
     loadingTiers.value = false;
-  }, 5000);
-  creators.fetchTierDefinitions(dialogPubkey.value, {
-    relayHints: lastRelayHints.value,
-    fundstrOnly: true,
-  });
+  }
 }
 
 function confirmSubscribe({ bucketId, periods, amount, startDate, total }: any) {
@@ -899,7 +927,10 @@ async function fetchProfileWithFallback(
   const relayHints = new Set<string>();
   const fundstrOnly = opts.fundstrOnly === true;
   let event: NostrEvent | null = null;
+  const startedAt = nowMs();
+  let attemptedFundstr = false;
   try {
+    attemptedFundstr = true;
     event = await queryNutzapProfile(hex, {
       allowFanoutFallback: false,
       wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
@@ -937,12 +968,16 @@ async function fetchProfileWithFallback(
     for (const relay of details.relays) relayHints.add(relay);
   }
 
-  return {
+  const result = {
     event,
     details,
     relayHints: Array.from(relayHints),
     pubkeyHex: hex,
   };
+  if (attemptedFundstr) {
+    warnSlowFundstr('profile (lookup)', nowMs() - startedAt);
+  }
+  return result;
 }
 
 async function viewCreatorProfile(
@@ -994,8 +1029,10 @@ async function viewCreatorProfile(
   }
   if (needsTierFetch) {
     tierTimeout = setTimeout(() => {
-      loadingTiers.value = false;
-    }, 5000);
+      console.warn(
+        `[FindCreators] Tier fetch still pending after ${HTTP_FALLBACK_TIMEOUT_MS}ms`,
+      );
+    }, HTTP_FALLBACK_TIMEOUT_MS);
   }
 
   let profileResult: Awaited<ReturnType<typeof fetchProfileWithFallback>> | null =

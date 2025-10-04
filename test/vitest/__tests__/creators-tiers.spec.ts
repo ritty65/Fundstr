@@ -25,10 +25,16 @@ vi.mock("../../../src/stores/dexie", () => {
     put: vi.fn().mockResolvedValue(undefined),
     delete: vi.fn().mockResolvedValue(undefined),
   };
+  const profileCollection = {
+    get: vi.fn().mockResolvedValue(null),
+    put: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue(undefined),
+  };
   const cashuDb = {
     open: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
     creatorsTierDefinitions: tierCollection,
+    nutzapProfiles: profileCollection,
   };
   return {
     cashuDb,
@@ -77,6 +83,7 @@ vi.mock("../../../src/js/notify", () => ({
 }));
 
 import { useCreatorsStore } from "../../../src/stores/creators";
+import { WS_FIRST_TIMEOUT_MS } from "../../../src/nutzap/relayEndpoints";
 import { cashuDb as db } from "../../../src/stores/dexie";
 
 const CREATOR_HEX = "a".repeat(64);
@@ -176,5 +183,40 @@ describe("fetchTierDefinitions", () => {
     expect(store.tierFetchError).toBe(false);
     expect(consoleSpy).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
+  });
+
+  it("logs slow Fundstr responses while keeping tierFetchError true until success", async () => {
+    vi.useFakeTimers();
+    const slowEvent = { ...modernEvent, id: "slow" };
+    queryNutzapTiersMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve(slowEvent), WS_FIRST_TIMEOUT_MS + 100);
+        }),
+    );
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const store = useCreatorsStore();
+    store.tierFetchError = true;
+
+    try {
+      const promise = store.fetchTierDefinitions(CREATOR_HEX);
+      expect(store.tierFetchError).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(WS_FIRST_TIMEOUT_MS + 100);
+      await promise;
+
+      expect(store.tierFetchError).toBe(false);
+      const warningCall = consoleWarn.mock.calls.find((call) =>
+        call.some(
+          (arg) =>
+            typeof arg === "string" && arg.includes("Slow Fundstr response (tiers)") &&
+            arg.includes(`${WS_FIRST_TIMEOUT_MS}`),
+        ),
+      );
+      expect(warningCall).toBeTruthy();
+    } finally {
+      consoleWarn.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });
