@@ -4,6 +4,7 @@ import {
   FUNDSTR_PRIMARY_RELAY,
   FUNDSTR_PRIMARY_RELAY_HTTP,
 } from "src/config/relays";
+import { FUNDSTR_REQ_URL, WS_FIRST_TIMEOUT_MS } from "../nutzap/relayEndpoints";
 import type { NostrEvent } from "./eventUtils";
 export type { NostrEvent } from "./eventUtils";
 
@@ -445,6 +446,16 @@ export async function queryNostr(
   return normalizeEvents(collected);
 }
 
+let nutzapQueryExecutor: typeof queryNostr = queryNostr;
+
+export function setNutzapQueryExecutor(executor: typeof queryNostr): void {
+  nutzapQueryExecutor = executor;
+}
+
+export function resetNutzapQueryExecutor(): void {
+  nutzapQueryExecutor = queryNostr;
+}
+
 export async function publishNostr(
   evt: NostrEvent,
 ): Promise<{
@@ -495,6 +506,8 @@ export async function publishNostr(
 type NutzapQueryOptions = {
   fanout?: string[];
   allowFanoutFallback?: boolean;
+  httpBase?: string;
+  wsTimeoutMs?: number;
 };
 
 export async function queryNutzapProfile(
@@ -508,11 +521,13 @@ export async function queryNutzapProfile(
   const queryOptions: QueryOptions = {
     preferFundstr: true,
     fanout: opts.fanout,
+    httpBase: opts.httpBase ?? FUNDSTR_REQ_URL,
+    wsTimeoutMs: opts.wsTimeoutMs ?? WS_FIRST_TIMEOUT_MS,
   };
   if (opts.allowFanoutFallback) {
     queryOptions.allowFanoutFallback = true;
   }
-  const events = await queryNostr(filters, queryOptions);
+  const events = await nutzapQueryExecutor(filters, queryOptions);
   return pickLatestReplaceable(events, { kind: 10019, pubkey });
 }
 
@@ -532,11 +547,13 @@ export async function queryNutzapTiers(
   const queryOptions: QueryOptions = {
     preferFundstr: true,
     fanout: opts.fanout,
+    httpBase: opts.httpBase ?? FUNDSTR_REQ_URL,
+    wsTimeoutMs: opts.wsTimeoutMs ?? WS_FIRST_TIMEOUT_MS,
   };
   if (opts.allowFanoutFallback) {
     queryOptions.allowFanoutFallback = true;
   }
-  const events = await queryNostr(filters, queryOptions);
+  const events = await nutzapQueryExecutor(filters, queryOptions);
   return pickLatestAddrReplaceable(events, {
     kind: [30019, 30000],
     pubkey,

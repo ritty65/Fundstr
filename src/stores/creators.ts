@@ -23,7 +23,7 @@ import {
 } from "@/nostr/relayClient";
 import { fallbackDiscoverRelays } from "@/nostr/discovery";
 import { parseTierDefinitionEvent } from "src/nostr/tiers";
-import { FUNDSTR_REQ_URL, WS_FIRST_TIMEOUT_MS } from "@/nutzap/relayEndpoints";
+import { WS_FIRST_TIMEOUT_MS } from "@/nutzap/relayEndpoints";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import type { NutzapProfileDetails } from "@/nutzap/profileCache";
 
@@ -558,7 +558,6 @@ export const useCreatorsStore = defineStore("creators", {
 
       try {
         event = await queryNutzapTiers(hex, {
-          httpBase: FUNDSTR_REQ_URL,
           allowFanoutFallback: false,
           wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
         });
@@ -570,7 +569,6 @@ export const useCreatorsStore = defineStore("creators", {
       if (!event && relayHints.size) {
         try {
           event = await queryNutzapTiers(hex, {
-            httpBase: FUNDSTR_REQ_URL,
             fanout: Array.from(relayHints),
             allowFanoutFallback: !fundstrOnly,
             wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
@@ -587,7 +585,6 @@ export const useCreatorsStore = defineStore("creators", {
           for (const url of discovered) relayHints.add(url);
           if (relayHints.size) {
             event = await queryNutzapTiers(hex, {
-              httpBase: FUNDSTR_REQ_URL,
               fanout: Array.from(relayHints),
               allowFanoutFallback: true,
               wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,

@@ -7,8 +7,12 @@ import {
   pickLatestReplaceable,
   queryNostr,
   queryNutzapProfile,
+  queryNutzapTiers,
+  resetNutzapQueryExecutor,
+  setNutzapQueryExecutor,
   type NostrEvent,
 } from "@/nostr/relayClient";
+import { FUNDSTR_REQ_URL, WS_FIRST_TIMEOUT_MS } from "@/nutzap/relayEndpoints";
 
 function makeEvent(partial: Partial<NostrEvent>): NostrEvent {
   return {
@@ -119,6 +123,7 @@ describe("relayClient transport", () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
+    resetNutzapQueryExecutor();
   });
 
   afterEach(() => {
@@ -154,6 +159,44 @@ describe("relayClient transport", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(events).toHaveLength(1);
     expect(events[0].id).toBe("http-event");
+  });
+
+  it("defaults Nutzap queries to Fundstr endpoints", async () => {
+    const spy = vi.fn<Parameters<typeof queryNostr>, Promise<NostrEvent[]>>(
+      async () => [],
+    );
+    setNutzapQueryExecutor(spy);
+
+    const pubkeyHex = "a".repeat(64);
+
+    await queryNutzapProfile(pubkeyHex);
+    expect(spy).toHaveBeenCalledWith(
+      [{ kinds: [10019], authors: [pubkeyHex], limit: 1 }],
+      expect.objectContaining({
+        httpBase: FUNDSTR_REQ_URL,
+        wsTimeoutMs: WS_FIRST_TIMEOUT_MS,
+        preferFundstr: true,
+      }),
+    );
+
+    spy.mockClear();
+
+    await queryNutzapTiers(pubkeyHex);
+    expect(spy).toHaveBeenCalledWith(
+      [
+        {
+          kinds: [30019, 30000],
+          authors: [pubkeyHex],
+          ["#d"]: ["tiers"],
+          limit: 2,
+        },
+      ],
+      expect.objectContaining({
+        httpBase: FUNDSTR_REQ_URL,
+        wsTimeoutMs: WS_FIRST_TIMEOUT_MS,
+        preferFundstr: true,
+      }),
+    );
   });
 
   it("normalises npub authors to hex when querying profiles", async () => {

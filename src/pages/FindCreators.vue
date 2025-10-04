@@ -301,7 +301,7 @@ import { nip19 } from "nostr-tools";
 import { queryNutzapProfile, toHex } from "@/nostr/relayClient";
 import type { NostrEvent } from "@/nostr/relayClient";
 import { fallbackDiscoverRelays } from "@/nostr/discovery";
-import { FUNDSTR_REQ_URL, WS_FIRST_TIMEOUT_MS } from "@/nutzap/relayEndpoints";
+import { WS_FIRST_TIMEOUT_MS } from "@/nutzap/relayEndpoints";
 import {
   parseNutzapProfileEvent,
   type NutzapProfileDetails,
@@ -625,7 +625,6 @@ async function fetchProfileWithFallback(
   let event: NostrEvent | null = null;
   try {
     event = await queryNutzapProfile(hex, {
-      httpBase: FUNDSTR_REQ_URL,
       allowFanoutFallback: false,
       wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
     });
@@ -639,7 +638,6 @@ async function fetchProfileWithFallback(
       for (const url of discovered) relayHints.add(url);
       if (relayHints.size) {
         event = await queryNutzapProfile(hex, {
-          httpBase: FUNDSTR_REQ_URL,
           fanout: Array.from(relayHints),
           allowFanoutFallback: true,
           wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
