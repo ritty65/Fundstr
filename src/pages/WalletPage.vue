@@ -272,8 +272,7 @@ import { useCameraStore } from "src/stores/camera";
 import { useP2PKStore } from "src/stores/p2pk";
 import { useNWCStore } from "src/stores/nwc";
 import { useNPCStore } from "src/stores/npubcash";
-import { useNostrStore } from "src/stores/nostr";
-import { SignerType } from "src/stores/nostr/types";
+import { useNostrStore, SignerType } from "src/stores/nostr";
 import { usePRStore } from "src/stores/payment-request";
 import { useDexieStore } from "src/stores/dexie";
 
