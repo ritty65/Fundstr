@@ -1,5 +1,25 @@
-export const FUNDSTR_PRIMARY_RELAY = 'wss://relay.primal.net';
-export const FUNDSTR_PRIMARY_RELAY_HTTP = 'https://relay.primal.net';
+const DEFAULT_PRIMARY_RELAY = 'wss://relay.fundstr.me';
+const DEFAULT_PRIMARY_RELAY_HTTP = 'https://relay.fundstr.me';
+
+function envString(key: string, fallback: string): string {
+  const raw = (import.meta as any).env?.[key];
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return fallback;
+}
+
+export const FUNDSTR_PRIMARY_RELAY = envString(
+  'VITE_NUTZAP_PRIMARY_RELAY_WSS',
+  DEFAULT_PRIMARY_RELAY,
+);
+export const FUNDSTR_PRIMARY_RELAY_HTTP = envString(
+  'VITE_NUTZAP_PRIMARY_RELAY_HTTP',
+  DEFAULT_PRIMARY_RELAY_HTTP,
+);
 export const PRIMARY_RELAY = FUNDSTR_PRIMARY_RELAY;
 
 export const FALLBACK_RELAYS: string[] = [
