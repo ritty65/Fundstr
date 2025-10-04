@@ -1772,6 +1772,9 @@ export const messages = {
         infrastructure: "Infrastructure trust",
         faq: "FAQ",
       },
+      summary: {
+        title: "Creator overview",
+      },
       noAbout: "This creator hasn't shared an about section yet.",
       noTiers: "Creator has not published any subscription tiers yet.",
       noFaq: "No FAQs published yet.",
