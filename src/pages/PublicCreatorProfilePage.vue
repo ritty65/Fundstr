@@ -357,16 +357,31 @@ export default defineComponent({
     const creatorParam =
       (route.params.npubOrHex ?? route.params.npub) as string | undefined;
     const decodeError = ref<string | null>(null);
-    let creatorNpub = creatorParam ?? "";
-    let creatorHex: string | null = null;
-    try {
-      const keys = deriveCreatorKeys(creatorParam);
-      creatorNpub = keys.npub;
-      creatorHex = keys.hex;
-    } catch (err) {
-      decodeError.value =
-        "We couldn't load this creator profile. Double-check the link and try again.";
-    }
+    const creatorNpub = ref<string>(creatorParam ?? "");
+    const creatorHex = ref<string | null>(null);
+    const decodeFailureMessage =
+      "We couldn't load this creator profile. Double-check the link and try again.";
+
+    const setCreatorFromParam = (param: string | undefined) => {
+      decodeError.value = null;
+      creatorNpub.value = param ?? "";
+      creatorHex.value = null;
+
+      if (!param) {
+        decodeError.value = decodeFailureMessage;
+        return;
+      }
+
+      try {
+        const keys = deriveCreatorKeys(param);
+        creatorNpub.value = keys.npub;
+        creatorHex.value = keys.hex;
+      } catch (err) {
+        decodeError.value = decodeFailureMessage;
+      }
+    };
+
+    setCreatorFromParam(creatorParam);
     const creators = useCreatorsStore();
     const nostr = useNostrStore();
     const priceStore = usePriceStore();
@@ -377,7 +392,7 @@ export default defineComponent({
     const bitcoinPrice = computed(() => priceStore.bitcoinPrice);
     const profile = ref<any>({});
     const creatorTierList = computed(() =>
-      creatorHex ? creators.tiersMap[creatorHex] : undefined,
+      creatorHex.value ? creators.tiersMap[creatorHex.value] : undefined,
     );
     const tiers = computed(() => creatorTierList.value ?? []);
     const hasInitialTierData = computed(
@@ -396,7 +411,8 @@ export default defineComponent({
     const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 
     const fetchTiers = async () => {
-      if (!creatorHex) {
+      const hex = creatorHex.value;
+      if (!hex) {
         loadingTiers.value = false;
         return;
       }
@@ -405,8 +421,11 @@ export default defineComponent({
       }
       refreshingTiers.value = true;
       try {
-        await creators.fetchTierDefinitions(creatorHex, { fundstrOnly: true });
+        await creators.fetchTierDefinitions(hex, { fundstrOnly: true });
       } finally {
+        if (creatorHex.value !== hex) {
+          return;
+        }
         refreshingTiers.value = false;
         if (!hasInitialTierData.value) {
           loadingTiers.value = false;
@@ -431,17 +450,39 @@ export default defineComponent({
       }
     });
 
+    const resetProfileState = () => {
+      profile.value = {};
+      followers.value = null;
+      following.value = null;
+      selectedTier.value = null;
+      loadingTiers.value = true;
+      refreshingTiers.value = false;
+    };
+
+    watch(
+      () => (route.params.npubOrHex ?? route.params.npub) as string | undefined,
+      async (next, prev) => {
+        if (next === prev) {
+          return;
+        }
+        setCreatorFromParam(next);
+        resetProfileState();
+        await loadProfile();
+      },
+    );
+
     const loadProfile = async () => {
+      const targetHex = creatorHex.value;
       const tierPromise = fetchTiers();
 
-      if (!creatorHex) {
+      if (!targetHex) {
         await tierPromise;
         return;
       }
 
-      const profilePromise = fetchFundstrProfileBundle(creatorHex)
+      const profilePromise = fetchFundstrProfileBundle(targetHex)
         .then((bundle) => {
-          if (!bundle) return;
+          if (!bundle || creatorHex.value !== targetHex) return;
           const { profile: profileData, followers: followersCount, following: followingCount } =
             bundle;
           if (profileData) {
@@ -472,7 +513,7 @@ export default defineComponent({
     };
 
     const openSubscribe = (tier: any) => {
-      if (!creatorHex) {
+      if (!creatorHex.value) {
         return;
       }
       selectedTier.value = tier;
@@ -494,7 +535,7 @@ export default defineComponent({
     onMounted(async () => {
       await loadProfile();
 
-      if (!creatorHex) return;
+      if (!creatorHex.value) return;
       const tierId = route.query.tierId as string | undefined;
       if (!nostr.hasIdentity || !tierId) return;
       const tryOpen = () => {
@@ -503,7 +544,7 @@ export default defineComponent({
           openSubscribe(t);
           router.replace({
             name: "PublicCreatorProfile",
-            params: { npubOrHex: creatorNpub },
+            params: { npubOrHex: creatorNpub.value },
           });
           return true;
         }
@@ -574,14 +615,14 @@ export default defineComponent({
       }
     }
 
-    const profileUrl = computed(() => buildProfileUrl(creatorNpub, router));
+    const profileUrl = computed(() => buildProfileUrl(creatorNpub.value, router));
 
     const profileDisplayName = computed(
       () =>
         profile.value.display_name ||
         profile.value.name ||
         profile.value.nip05 ||
-        creatorNpub,
+        creatorNpub.value,
     );
 
     const profileHandle = computed(() => {
@@ -611,7 +652,7 @@ export default defineComponent({
     );
 
     const profileInitials = computed(() => {
-      const text = profileDisplayName.value || creatorNpub;
+      const text = profileDisplayName.value || creatorNpub.value;
       return text ? text.trim().charAt(0).toUpperCase() : "";
     });
 
