@@ -19,8 +19,8 @@ import { useNostrStore } from "src/stores/nostr";
  * with the Router instance.
  */
 
-export default route(async function (/* { store, ssrContext } */) {
-  await useNostrStore().loadKeysFromStorage();
+export default route(function (/* { store, ssrContext } */) {
+  const nostrStore = useNostrStore();
   const createHistory = process.env.SERVER
     ? createMemoryHistory
     : process.env.VUE_ROUTER_MODE === "history"
@@ -36,6 +36,8 @@ export default route(async function (/* { store, ssrContext } */) {
     // quasar.conf.js -> build -> publicPath
     history: createHistory(process.env.VUE_ROUTER_BASE),
   });
+
+  void nostrStore.ensureKeysHydrated?.();
 
   Router.beforeEach((to, _from, next) => {
     const seen = hasSeenWelcome();

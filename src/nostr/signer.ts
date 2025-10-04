@@ -1,5 +1,6 @@
 import type { NDKSigner } from "@nostr-dev-kit/ndk";
-import { useNostrStore, SignerType } from "src/stores/nostr";
+import { useNostrStore } from "src/stores/nostr";
+import { SignerType } from "src/stores/nostr/types";
 
 export type NormalizedSigner = {
   kind: "nip07" | "nip46" | "local";

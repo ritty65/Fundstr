@@ -84,7 +84,7 @@
 </template>
 
 <script>import windowMixin from 'src/mixins/windowMixin'
-import { defineComponent, ref, computed, watch } from "vue";
+import { defineComponent, ref, computed, watch, onMounted } from "vue";
 
 import { useRouter, useRoute } from "vue-router";
 import { useQuasar, LocalStorage } from "quasar";
@@ -117,6 +117,8 @@ export default defineComponent({
     const newChatDialogRef = ref(null);
     const $q = useQuasar();
     const ui = useUiStore();
+    const nostr = useNostrStore();
+    const nutzap = useNutzapStore();
 
     const navStyleVars = computed(() => ({
       "--nav-drawer-width": `${NAV_DRAWER_WIDTH}px`,
@@ -203,6 +205,36 @@ export default defineComponent({
       router.currentRoute.value.path.startsWith("/nostr-messenger"),
     );
 
+    const ensureSignerReady = () => {
+      if (!nostr.signerReady && !nostr.signerInitializing) {
+        void nostr.initSignerIfNotSet();
+      }
+    };
+
+    watch(
+      () => nostr.pubkey,
+      (pubkey) => {
+        if (pubkey) {
+          nutzap.initListener(pubkey);
+        }
+      },
+      { immediate: true },
+    );
+
+    watch(
+      isMessengerRoute,
+      (needsSigner) => {
+        if (needsSigner) {
+          ensureSignerReady();
+        }
+      },
+      { immediate: true },
+    );
+
+    onMounted(() => {
+      ensureSignerReady();
+    });
+
     return {
       messenger,
       conversationSearch,
@@ -216,12 +248,6 @@ export default defineComponent({
       navStyleVars,
       route,
     };
-  },
-  async mounted() {
-    const nostr = useNostrStore();
-    await nostr.initSignerIfNotSet();
-    const myHex = nostr.pubkey;
-    useNutzapStore().initListener(myHex);
   },
 });
 </script>
