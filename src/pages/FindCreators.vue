@@ -779,28 +779,12 @@ async function viewCreatorProfile(
 
   if (needsTierFetch) {
     try {
-      let tierFundstrOnly = fundstrOnly;
-      while (true) {
-        let tierError: unknown = null;
-        try {
-          await creators.fetchTierDefinitions(pubkeyHex, {
-            relayHints: lastRelayHints.value,
-            fundstrOnly: tierFundstrOnly,
-          });
-        } catch (e) {
-          tierError = e;
-          console.error("Failed to fetch tier definitions", e);
-        }
-
-        const shouldRetry =
-          tierFundstrOnly && (tierError || creators.tierFetchError);
-        if (shouldRetry) {
+      await creators.fetchTierDefinitions(pubkeyHex, {
+        relayHints: lastRelayHints.value,
+        onFallback: () => {
           tierRelayScanEscalated.value = true;
-          tierFundstrOnly = false;
-          continue;
-        }
-        break;
-      }
+        },
+      });
     } finally {
       if (tierTimeout) {
         clearTimeout(tierTimeout);
@@ -896,7 +880,9 @@ function retryFetchTiers() {
   }, 5000);
   void creators.fetchTierDefinitions(dialogPubkey.value, {
     relayHints: lastRelayHints.value,
-    fundstrOnly: false,
+    onFallback: () => {
+      tierRelayScanEscalated.value = true;
+    },
   });
 }
 
