@@ -458,6 +458,30 @@
         retryButtonElement.classList.add("hidden");
       }
 
+      function isHex64(value) {
+        return typeof value === "string" && /^[0-9a-fA-F]{64}$/.test(value);
+      }
+
+      function cloneEvent(event) {
+        if (!event || typeof event !== "object") return null;
+        try {
+          return JSON.parse(JSON.stringify(event));
+        } catch (e) {
+          console.warn("Failed to clone relay event", e);
+          return null;
+        }
+      }
+
+      function safeParseProfileContent(content) {
+        if (typeof content !== "string" || !content) return null;
+        try {
+          return JSON.parse(content);
+        } catch (e) {
+          console.warn("Failed to parse prefill profile JSON", e);
+          return null;
+        }
+      }
+
       function mergeProfilesIntoCurrent(profiles) {
         let changed = false;
         profiles.forEach((profile) => {
@@ -471,6 +495,120 @@
           }
         });
         return changed;
+      }
+
+      function normalizePrefillCacheEntries(entries) {
+        if (!Array.isArray(entries) || entries.length === 0) return [];
+
+        const latestByPubkey = new Map();
+
+        entries.forEach((entry) => {
+          if (!entry || typeof entry !== "object") return;
+          const rawPubkey = typeof entry.pubkey === "string" ? entry.pubkey.trim() : "";
+          const pubkey = isHex64(rawPubkey) ? rawPubkey.toLowerCase() : "";
+          if (!pubkey) return;
+
+          if (
+            entry.tierEvent != null &&
+            typeof entry.tierEvent !== "object"
+          ) {
+            return;
+          }
+          if (
+            entry.tiers != null &&
+            !Array.isArray(entry.tiers)
+          ) {
+            return;
+          }
+
+          const clonedEvent = cloneEvent(entry.profileEvent);
+          const eventKind = Number(clonedEvent?.kind);
+          if (!clonedEvent || Number.isNaN(eventKind) || eventKind !== 0) return;
+          clonedEvent.kind = 0;
+          if (clonedEvent.pubkey && clonedEvent.pubkey.toLowerCase() !== pubkey) return;
+
+          const createdAt = Number(clonedEvent.created_at ?? 0);
+          if (!Number.isFinite(createdAt) || createdAt <= 0) return;
+
+          const eventIdRaw =
+            typeof clonedEvent.id === "string" ? clonedEvent.id.trim() : "";
+          const eventId = eventIdRaw ? eventIdRaw.toLowerCase() : "";
+          if (eventId && !isHex64(eventId)) return;
+
+          clonedEvent.pubkey = pubkey;
+          clonedEvent.created_at = createdAt;
+          if (eventId) clonedEvent.id = eventId;
+          if (typeof clonedEvent.content !== "string") {
+            clonedEvent.content = "";
+          }
+
+          const profileData = safeParseProfileContent(clonedEvent.content) || {};
+          const normalizedProfile = {
+            pubkey,
+            name:
+              typeof profileData.name === "string" && profileData.name
+                ? profileData.name
+                : typeof profileData.display_name === "string" && profileData.display_name
+                ? profileData.display_name
+                : typeof profileData.username === "string" && profileData.username
+                ? profileData.username
+                : "",
+            nip05:
+              typeof profileData.nip05 === "string" && profileData.nip05
+                ? profileData.nip05
+                : "",
+            picture:
+              typeof profileData.picture === "string" && profileData.picture
+                ? profileData.picture
+                : "",
+            about:
+              typeof profileData.about === "string" && profileData.about
+                ? profileData.about
+                : "",
+            lud16:
+              typeof profileData.lud16 === "string" && profileData.lud16
+                ? profileData.lud16
+                : "",
+            event: clonedEvent,
+          };
+
+          const existing = latestByPubkey.get(pubkey);
+          const existingCreatedAt = existing?.event?.created_at ?? 0;
+          const existingId = existing?.event?.id ?? "";
+
+          if (existing) {
+            if (createdAt < existingCreatedAt) return;
+            if (createdAt === existingCreatedAt && existingId && eventId) {
+              if (existingId === eventId) return;
+              // For identical timestamps but different IDs, prefer to keep the
+              // lexicographically greater ID to provide deterministic ordering.
+              if (existingId > eventId) return;
+            }
+          }
+
+          latestByPubkey.set(pubkey, normalizedProfile);
+        });
+
+        const normalizedProfiles = [];
+        latestByPubkey.forEach((profile) => {
+          const existing = currentSearchProfiles.get(profile.pubkey);
+          if (existing?.event) {
+            const nextCreatedAt = profile.event?.created_at ?? 0;
+            const existingCreatedAt = existing.event.created_at ?? 0;
+            if (nextCreatedAt < existingCreatedAt) return;
+            if (
+              nextCreatedAt === existingCreatedAt &&
+              existing.event.id &&
+              profile.event?.id &&
+              existing.event.id === profile.event.id
+            ) {
+              return;
+            }
+          }
+          normalizedProfiles.push(profile);
+        });
+
+        return normalizedProfiles;
       }
 
       function applyProfiles(profiles, { notifyView = false, targetPubkey } = {}) {
@@ -1351,6 +1489,11 @@
           if (ev.data?.type === "prefillSearch" && ev.data.npub) {
             searchInputElement.value = ev.data.npub;
             handleSearch(ev.data.npub);
+          } else if (ev.data?.type === "prefillCache") {
+            const normalized = normalizePrefillCacheEntries(ev.data.creators);
+            if (normalized.length > 0) {
+              applyProfiles(normalized);
+            }
           } else if (ev.data?.type === "set-theme") {
             document.body.classList.toggle("dark", !!ev.data.dark);
           }
