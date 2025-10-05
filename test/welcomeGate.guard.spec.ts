@@ -21,6 +21,7 @@ async function setup({
     { path: '/about', component: {} },
     { path: '/welcome', component: {} },
     { path: '/restore', component: {} },
+    { path: '/creator-studio', component: {} },
   ]
 
   vi.doMock('src/router/routes', () => ({ default: routes }))
@@ -28,7 +29,7 @@ async function setup({
   const oldServer = process.env.SERVER
   process.env.SERVER = '1'
   const createAppRouter = (await import('src/router/index.js')).default
-  const router = createAppRouter()
+  const router = await createAppRouter()
   process.env.SERVER = oldServer
 
   // start router at root
@@ -69,6 +70,18 @@ describe('welcome gate router guard', () => {
     const router = await setup({ seen: true, env: 'development' })
     await router.push('/welcome?allow=1')
     expect(router.currentRoute.value.fullPath).toBe('/welcome?allow=1')
+  })
+
+  it('allows access to /creator-studio before onboarding completion', async () => {
+    const router = await setup({ seen: false })
+    await router.push('/creator-studio')
+    expect(router.currentRoute.value.fullPath).toBe('/creator-studio')
+  })
+
+  it('allows access to /creator-studio after onboarding completion', async () => {
+    const router = await setup({ seen: true })
+    await router.push('/creator-studio')
+    expect(router.currentRoute.value.fullPath).toBe('/creator-studio')
   })
 })
 

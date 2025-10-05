@@ -87,11 +87,17 @@ const showSeedDialog = ref(false)
 const showChecklist = ref(false)
 const { deferredPrompt } = usePwaInstall()
 
+function completeWelcome() {
+  welcome.closeWelcome()
+  markWelcomeSeen()
+}
+
 onMounted(() => {
   const env = import.meta.env.VITE_APP_ENV
   const allow =
     route.query.allow === '1' && (env === 'development' || env === 'staging')
   if (route.path.startsWith('/welcome') && hasSeenWelcome() && !allow) {
+    completeWelcome()
     router.replace('/about')
   }
 })
@@ -106,9 +112,7 @@ function downloadBackup() {
 
 async function finishOnboarding() {
   showChecklist.value = false
-  welcome.closeWelcome()
-  // remember that the welcome flow has been completed on this device
-  markWelcomeSeen()
+  completeWelcome()
   await nextTick()
   router.replace('/about')
 }
