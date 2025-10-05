@@ -33,6 +33,15 @@ vi.mock("components/MediaPreview.vue", () => ({
 vi.mock("components/NostrRelayErrorBanner.vue", () => ({
   default: { name: "NostrRelayErrorBanner", template: "<div />" },
 }));
+vi.mock("components/NutzapExplainer.vue", () => ({
+  default: { name: "NutzapExplainer", template: "<div />" },
+}));
+vi.mock("components/MintSafetyList.vue", () => ({
+  default: { name: "MintSafetyList", template: "<div />" },
+}));
+vi.mock("components/RelayBadgeList.vue", () => ({
+  default: { name: "RelayBadgeList", template: "<div />" },
+}));
 
 const sendTokensStore = { clearSendData: vi.fn(), sendData: {}, showSendTokens: false };
 vi.mock("stores/sendTokensStore", () => ({
@@ -75,6 +84,7 @@ vi.mock("src/js/notify", () => ({
 }));
 vi.mock("vue-i18n", () => ({
   useI18n: () => ({ t: (k: string) => k }),
+  createI18n: () => ({ global: { t: (key: string) => key } }),
 }));
 
 vi.mock("quasar", () => {
@@ -89,6 +99,7 @@ vi.mock("quasar", () => {
         isActive: false,
       },
     }),
+    QPage: createStub("QPage"),
     QDialog: defineComponent({
       name: "QDialog",
       props: { modelValue: { type: Boolean, default: false } },
@@ -107,6 +118,7 @@ vi.mock("quasar", () => {
     }),
     QBanner: createStub("QBanner"),
     QSpinnerHourglass: createStub("QSpinnerHourglass"),
+    QTooltip: createStub("QTooltip"),
   };
 });
 
@@ -147,6 +159,12 @@ describe("FindCreators component behaviour", () => {
       tiersMap: reactive({}),
       tierFetchError: false,
       fetchTierDefinitions,
+      ensureCreatorCacheFromDexie: vi.fn().mockResolvedValue({
+        profileLoaded: false,
+        tiersLoaded: false,
+      }),
+      saveProfileCache: vi.fn().mockResolvedValue(undefined),
+      saveTierCache: vi.fn().mockResolvedValue(undefined),
     });
     toHex.mockImplementation((val: string) => val);
     fallbackDiscoverRelays.mockResolvedValue([]);
@@ -177,6 +195,11 @@ describe("FindCreators component behaviour", () => {
           QBanner: QBannerStub,
           QSpinnerHourglass: QSpinnerStub,
         },
+        config: {
+          globalProperties: {
+            $t: (key: string) => key,
+          },
+        },
       },
     });
   }
@@ -187,6 +210,7 @@ describe("FindCreators component behaviour", () => {
       throw new Error("bad");
     });
     queryNutzapProfile
+      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({
         tags: [
@@ -204,11 +228,24 @@ describe("FindCreators component behaviour", () => {
     const wrapper = mountComponent({ npubOrHex: "npub123" });
     await flushPromises();
 
-    expect(queryNutzapProfile).toHaveBeenNthCalledWith(1, "hex123");
-    expect(queryNutzapProfile).toHaveBeenNthCalledWith(2, "hex123", {
-      fanout: ["wss://fallback-relay"],
-      allowFanoutFallback: true,
-    });
+    expect(queryNutzapProfile).toHaveBeenNthCalledWith(
+      1,
+      "hex123",
+      expect.objectContaining({ allowFanoutFallback: false }),
+    );
+    expect(queryNutzapProfile).toHaveBeenNthCalledWith(
+      2,
+      "hex123",
+      expect.objectContaining({ allowFanoutFallback: false }),
+    );
+    expect(queryNutzapProfile).toHaveBeenNthCalledWith(
+      3,
+      "hex123",
+      expect.objectContaining({
+        fanout: ["wss://fallback-relay"],
+        allowFanoutFallback: true,
+      }),
+    );
 
     expect(fetchTierDefinitions).toHaveBeenCalledWith("hex123", {
       relayHints: expect.arrayContaining([
@@ -216,6 +253,7 @@ describe("FindCreators component behaviour", () => {
         "wss://tag-relay",
         "wss://content-relay",
       ]),
+      fundstrOnly: true,
     });
 
     const hintsArg = fetchTierDefinitions.mock.calls[0][1].relayHints;
@@ -262,6 +300,7 @@ describe("FindCreators component behaviour", () => {
       ?.trigger("click");
     expect(fetchTierDefinitions).toHaveBeenLastCalledWith("hex456", {
       relayHints: expect.any(Array),
+      fundstrOnly: false,
     });
 
     expect(wrapper.vm.loadingTiers).toBe(true);

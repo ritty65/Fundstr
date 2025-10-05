@@ -100,7 +100,7 @@
                   class="tier-list__state tier-list__state--loading"
                 >
                   <q-spinner-hourglass size="24px" />
-                  <div class="text-caption text-2">Loading tiers…</div>
+                  <div class="text-caption text-2">{{ tierLoadingMessage }}</div>
                 </div>
                 <div
                   v-else-if="tierFetchError"
@@ -160,6 +160,12 @@
                     size="18px"
                     class="info-panel__spinner"
                   />
+                </div>
+                <div
+                  v-if="loadingProfile && profileRelayScanEscalated"
+                  class="info-panel__hint text-caption text-2"
+                >
+                  Scanning additional relays for creator details…
                 </div>
                 <div v-if="nutzapProfile" class="info-panel__body">
                   <div v-if="nutzapProfile.p2pkPubkey" class="info-subsection">
@@ -335,6 +341,8 @@ const selectedTier = ref<any>(null);
 const nutzapProfile = ref<NutzapProfileDetails | null>(null);
 const loadingProfile = ref(false);
 const lastRelayHints = ref<string[]>([]);
+const profileRelayScanEscalated = ref(false);
+const tierRelayScanEscalated = ref(false);
 const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 let tierTimeout: ReturnType<typeof setTimeout> | null = null;
 type HeroMetadata = {
@@ -387,6 +395,12 @@ const highlightBenefits = computed(() => {
   }
   return benefits;
 });
+
+const tierLoadingMessage = computed(() =>
+  tierRelayScanEscalated.value
+    ? "Scanning additional relays for tiers…"
+    : "Loading tiers…",
+);
 
 function hasHeroMetadata(meta: HeroMetadata): boolean {
   return [meta.displayName, meta.name, meta.about, meta.picture].some(
@@ -671,6 +685,8 @@ async function viewCreatorProfile(
   dialogPubkey.value = pubkeyHex;
   selectedPubkey.value = pubkeyHex;
   selectedTier.value = null;
+  profileRelayScanEscalated.value = false;
+  tierRelayScanEscalated.value = false;
 
   const cache = await creators.ensureCreatorCacheFromDexie(pubkeyHex);
   const cachedProfile = cache?.profileDetails ?? null;
@@ -706,10 +722,39 @@ async function viewCreatorProfile(
   let profileResult: Awaited<ReturnType<typeof fetchProfileWithFallback>> | null =
     null;
   if (!cachedProfileLoaded) {
+    let attemptedProfileFallback = false;
     try {
       profileResult = await fetchProfileWithFallback(trimmed, { fundstrOnly });
     } catch (e) {
       console.error("Failed to fetch creator profile", e);
+      if (fundstrOnly) {
+        profileRelayScanEscalated.value = true;
+        try {
+          profileResult = await fetchProfileWithFallback(trimmed, {
+            fundstrOnly: false,
+          });
+          attemptedProfileFallback = true;
+        } catch (fallbackError) {
+          console.error("Fallback profile fetch failed", fallbackError);
+          attemptedProfileFallback = true;
+        }
+      }
+    }
+    if (
+      fundstrOnly &&
+      !attemptedProfileFallback &&
+      (!profileResult || (!profileResult.event && !profileResult.details))
+    ) {
+      profileRelayScanEscalated.value = true;
+      try {
+        profileResult = await fetchProfileWithFallback(trimmed, {
+          fundstrOnly: false,
+        });
+        attemptedProfileFallback = true;
+      } catch (fallbackError) {
+        console.error("Fallback profile fetch failed", fallbackError);
+        attemptedProfileFallback = true;
+      }
     }
 
     if (profileResult && profileResult.pubkeyHex) {
@@ -734,12 +779,28 @@ async function viewCreatorProfile(
 
   if (needsTierFetch) {
     try {
-      await creators.fetchTierDefinitions(pubkeyHex, {
-        relayHints: lastRelayHints.value,
-        fundstrOnly,
-      });
-    } catch (e) {
-      console.error("Failed to fetch tier definitions", e);
+      let tierFundstrOnly = fundstrOnly;
+      while (true) {
+        let tierError: unknown = null;
+        try {
+          await creators.fetchTierDefinitions(pubkeyHex, {
+            relayHints: lastRelayHints.value,
+            fundstrOnly: tierFundstrOnly,
+          });
+        } catch (e) {
+          tierError = e;
+          console.error("Failed to fetch tier definitions", e);
+        }
+
+        const shouldRetry =
+          tierFundstrOnly && (tierError || creators.tierFetchError);
+        if (shouldRetry) {
+          tierRelayScanEscalated.value = true;
+          tierFundstrOnly = false;
+          continue;
+        }
+        break;
+      }
     } finally {
       if (tierTimeout) {
         clearTimeout(tierTimeout);
@@ -815,6 +876,8 @@ watch(showTierDialog, (val) => {
     loadingProfile.value = false;
     lastRelayHints.value = [];
     heroMetadata.value = {};
+    profileRelayScanEscalated.value = false;
+    tierRelayScanEscalated.value = false;
   }
 });
 
@@ -826,13 +889,14 @@ function openSubscribe(tier: any) {
 function retryFetchTiers() {
   if (!dialogPubkey.value) return;
   loadingTiers.value = true;
+  tierRelayScanEscalated.value = true;
   if (tierTimeout) clearTimeout(tierTimeout);
   tierTimeout = setTimeout(() => {
     loadingTiers.value = false;
   }, 5000);
-  creators.fetchTierDefinitions(dialogPubkey.value, {
+  void creators.fetchTierDefinitions(dialogPubkey.value, {
     relayHints: lastRelayHints.value,
-    fundstrOnly: true,
+    fundstrOnly: false,
   });
 }
 
@@ -920,6 +984,8 @@ onBeforeUnmount(() => {
   if (tierTimeout) clearTimeout(tierTimeout);
   nutzapProfile.value = null;
   loadingProfile.value = false;
+  profileRelayScanEscalated.value = false;
+  tierRelayScanEscalated.value = false;
   if (usedFundstrOnly) {
     usedFundstrOnly = false;
     void nostr
@@ -1110,6 +1176,10 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+}
+
+.info-panel__hint {
+  margin-top: -0.25rem;
 }
 
 .info-panel__spinner {

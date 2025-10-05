@@ -395,7 +395,7 @@ export default defineComponent({
     const tierFetchError = computed(() => creators.tierFetchError);
     const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 
-    const fetchTiers = async () => {
+    const fetchTiers = async ({ fundstrOnly = true } = {}) => {
       if (!creatorHex) {
         loadingTiers.value = false;
         return;
@@ -405,7 +405,26 @@ export default defineComponent({
       }
       refreshingTiers.value = true;
       try {
-        await creators.fetchTierDefinitions(creatorHex, { fundstrOnly: true });
+        let tierFundstrOnly = fundstrOnly;
+        while (true) {
+          let tierError: unknown = null;
+          try {
+            await creators.fetchTierDefinitions(creatorHex, {
+              fundstrOnly: tierFundstrOnly,
+            });
+          } catch (e) {
+            tierError = e;
+            console.error("Failed to fetch tier definitions", e);
+          }
+
+          const shouldRetry =
+            tierFundstrOnly && (tierError || creators.tierFetchError);
+          if (shouldRetry) {
+            tierFundstrOnly = false;
+            continue;
+          }
+          break;
+        }
       } finally {
         refreshingTiers.value = false;
         if (!hasInitialTierData.value) {
@@ -468,7 +487,7 @@ export default defineComponent({
     // initialization handled in onMounted
 
     const retryFetchTiers = () => {
-      void fetchTiers();
+      void fetchTiers({ fundstrOnly: false });
     };
 
     const openSubscribe = (tier: any) => {
