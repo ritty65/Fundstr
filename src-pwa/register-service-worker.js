@@ -12,7 +12,7 @@ if (import.meta.env.PROD) {
     cached() { console.log("[PWA] cached"); },
     updatefound() { console.log("[PWA] update found"); },
     updated(reg) {
-      console.log("[PWA] updated, forcing activation");
+      console.log("[PWA] updated");
       if (reg && reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
       window.location.reload();
     },

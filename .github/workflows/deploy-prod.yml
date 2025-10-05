@@ -40,8 +40,8 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile=false
 
-      - name: Build (Quasar PWA)
-        run: pnpm quasar build -m pwa
+      - name: Build (SPA)
+        run: pnpm run build
 
       - name: Enforce .htaccess with cache headers (in built bundle)
         run: |
