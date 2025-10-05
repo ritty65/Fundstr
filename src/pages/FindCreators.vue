@@ -863,13 +863,6 @@ watch(tierFetchError, (val) => {
   }
 });
 
-watch(
-  () => $q.dark.isActive,
-  () => {
-    sendTheme();
-  },
-);
-
 watch(showTierDialog, (val) => {
   if (!val) {
     nutzapProfile.value = null;
