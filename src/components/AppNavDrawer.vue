@@ -77,7 +77,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item v-if="!isGuest" clickable @click="gotoCreatorHub">
+      <q-item clickable @click="gotoCreatorHub">
         <q-item-section avatar>
           <CreatorHubIcon class="themed-icon q-icon" />
         </q-item-section>
