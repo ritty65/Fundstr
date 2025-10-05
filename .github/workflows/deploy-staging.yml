@@ -1,21 +1,18 @@
 name: Deploy staging (Develop2 → Hostinger)
-
 on:
   push:
-    branches: [Develop2]
+    branches: [Develop2, Develop3]
   workflow_dispatch:
     inputs:
       ref:
         description: 'Branch to deploy (must be Develop2)'
         required: true
         default: 'Develop2'
-
 jobs:
   deploy:
     # Guard: only allow Develop2 (push or manual)
     if: >
-      (github.event_name == 'push' && github.ref == 'refs/heads/Develop2') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.ref == 'Develop2')
+      (github.event_name == 'push' && github.ref == 'refs/heads/Develop2') || (github.event_name == 'workflow_dispatch' && github.event.inputs.ref == 'Develop2')
 
     runs-on: ubuntu-latest
     steps:
@@ -23,29 +20,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
       - name: Enable pnpm via Corepack
         run: |
           corepack enable
           corepack prepare pnpm@10.16.1 --activate
-
       - name: Install rsync + ssh-client
         run: |
           sudo apt-get update
           sudo apt-get install -y rsync openssh-client
-
-      - name: Set build id  # used by register-service-worker.js to version sw.js
+      - name: Set build id # used by register-service-worker.js to version sw.js
         run: echo "VITE_BUILD_ID=${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
-
       - name: Use staging env (optional)
         run: cp .env.staging .env || true
-
       - name: Install deps
         run: pnpm install --frozen-lockfile=false
-
       - name: Build (Quasar PWA)
         run: pnpm quasar build -m pwa
-
       - name: Enforce .htaccess with cache headers (in built bundle)
         run: |
           cat > dist/pwa/.htaccess <<'EOF'
@@ -96,23 +86,19 @@ jobs:
             AddType application/wasm .wasm
           </IfModule>
           EOF
-
       - uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
       - name: Trust remote host
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
-
       - name: Deploy (rsync to subdomain docroot)
         run: |
           rsync -avz --delete \
             -e "ssh -p ${{ secrets.SSH_PORT }}" \
             dist/pwa/ \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
-
       - name: Smoke test staging (edge-resilient)
         env:
           BASE_URL: https://staging.fundstr.me
