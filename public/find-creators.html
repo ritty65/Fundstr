@@ -703,21 +703,251 @@
 
         try {
           let pubkeyToFind = null;
-          if (cleanQuery.startsWith("npub1")) {
+          let decoded = null;
+          const bech32Candidate =
+            /^n[0-9a-z]+1[02-9ac-hj-np-z]+$/i.test(cleanQuery) &&
+            !cleanQuery.includes(" ");
+
+          if (bech32Candidate) {
             try {
-              pubkeyToFind = nip19.decode(cleanQuery).data;
+              decoded = nip19.decode(cleanQuery);
+            } catch (e) {
+              decoded = null;
+            }
+          }
+
+          if (decoded) {
+            const { type, data } = decoded;
+            switch (type) {
+              case "npub": {
+                if (typeof data === "string" && isHex64(data)) {
+                  pubkeyToFind = data.toLowerCase();
+                }
+                break;
+              }
+              case "nprofile": {
+                const profilePubkey =
+                  typeof data?.pubkey === "string" && isHex64(data.pubkey)
+                    ? data.pubkey
+                    : null;
+                if (profilePubkey) {
+                  pubkeyToFind = profilePubkey.toLowerCase();
+                }
+                break;
+              }
+              case "note":
+              case "nevent": {
+                const rawEventId =
+                  typeof data === "string"
+                    ? data
+                    : typeof data?.id === "string"
+                    ? data.id
+                    : "";
+                const eventId =
+                  typeof rawEventId === "string"
+                    ? rawEventId.toLowerCase()
+                    : "";
+                const authorHintRaw =
+                  typeof data?.author === "string" && isHex64(data.author)
+                    ? data.author
+                    : "";
+                const authorHint = authorHintRaw
+                  ? authorHintRaw.toLowerCase()
+                  : "";
+                const relayHints = Array.isArray(data?.relays)
+                  ? data.relays.filter((relay) => typeof relay === "string" && relay)
+                  : [];
+
+                if (eventId) {
+                  const eventFilter = { ids: [eventId], limit: 1 };
+                  const initialRelays = relayHints.length > 0 ? relayHints : RELAYS;
+                  updateStatus(
+                    `Detected ${type}. Fetching event from ${initialRelays.length} relay${
+                      initialRelays.length === 1 ? "" : "s"
+                    }...`,
+                  );
+
+                  let events = [];
+                  try {
+                    events = await fetchEventsFromRelays(
+                      initialRelays,
+                      eventFilter,
+                      signal,
+                    );
+                  } catch (eventError) {
+                    if (eventError.name === "AbortError") return;
+                    throw eventError;
+                  }
+                  if (signal.aborted) return;
+
+                  if (events.length === 0 && relayHints.length > 0) {
+                    const fallbackRelays = RELAYS.filter(
+                      (relay) => !relayHints.includes(relay),
+                    );
+                    if (fallbackRelays.length > 0) {
+                      updateStatus(
+                        `No event found on hinted relays. Querying ${
+                          fallbackRelays.length
+                        } default relay${
+                          fallbackRelays.length === 1 ? "" : "s"
+                        }...`,
+                      );
+                      try {
+                        events = await fetchEventsFromRelays(
+                          fallbackRelays,
+                          eventFilter,
+                          signal,
+                        );
+                      } catch (fallbackError) {
+                        if (fallbackError.name === "AbortError") return;
+                        throw fallbackError;
+                      }
+                      if (signal.aborted) return;
+                    }
+                  }
+
+                  const event = events[0];
+                  if (event) {
+                    updateStatus("Event found. Loading author profile...");
+                    await findProfileByPubkey(event.pubkey, signal);
+                    return;
+                  }
+
+                  if (authorHint) {
+                    updateStatus(
+                      "Event not found. Loading author profile from identifier...",
+                    );
+                    await findProfileByPubkey(authorHint, signal);
+                    return;
+                  }
+
+                  updateStatus(
+                    "Event not located on available relays. Falling back to text search...",
+                  );
+                } else if (authorHint) {
+                  updateStatus(
+                    "Detected encoded event author. Loading profile...",
+                  );
+                  await findProfileByPubkey(authorHint, signal);
+                  return;
+                }
+                break;
+              }
+              case "naddr": {
+                const identifier =
+                  typeof data?.identifier === "string" ? data.identifier : "";
+                const pubkey =
+                  typeof data?.pubkey === "string" && isHex64(data.pubkey)
+                    ? data.pubkey.toLowerCase()
+                    : "";
+                const kindValue =
+                  typeof data?.kind === "number"
+                    ? data.kind
+                    : Number.parseInt(data?.kind, 10);
+                const relayHints = Array.isArray(data?.relays)
+                  ? data.relays.filter((relay) => typeof relay === "string" && relay)
+                  : [];
+
+                if (identifier && pubkey && Number.isInteger(kindValue)) {
+                  const naddrFilter = {
+                    kinds: [kindValue],
+                    authors: [pubkey],
+                    "#d": [identifier],
+                    limit: 1,
+                  };
+                  const initialRelays = relayHints.length > 0 ? relayHints : RELAYS;
+                  updateStatus(
+                    `Detected naddr. Fetching parameterized event from ${
+                      initialRelays.length
+                    } relay${initialRelays.length === 1 ? "" : "s"}...`,
+                  );
+
+                  let events = [];
+                  try {
+                    events = await fetchEventsFromRelays(
+                      initialRelays,
+                      naddrFilter,
+                      signal,
+                    );
+                  } catch (naddrError) {
+                    if (naddrError.name === "AbortError") return;
+                    throw naddrError;
+                  }
+                  if (signal.aborted) return;
+
+                  if (events.length === 0 && relayHints.length > 0) {
+                    const fallbackRelays = RELAYS.filter(
+                      (relay) => !relayHints.includes(relay),
+                    );
+                    if (fallbackRelays.length > 0) {
+                      updateStatus(
+                        `No event found on hinted relays. Querying ${
+                          fallbackRelays.length
+                        } default relay${
+                          fallbackRelays.length === 1 ? "" : "s"
+                        }...`,
+                      );
+                      try {
+                        events = await fetchEventsFromRelays(
+                          fallbackRelays,
+                          naddrFilter,
+                          signal,
+                        );
+                      } catch (naddrFallbackError) {
+                        if (naddrFallbackError.name === "AbortError") return;
+                        throw naddrFallbackError;
+                      }
+                      if (signal.aborted) return;
+                    }
+                  }
+
+                  const event = events[0];
+                  if (event) {
+                    updateStatus(
+                      "Parameterized event found. Loading author profile...",
+                    );
+                    await findProfileByPubkey(event.pubkey, signal);
+                    return;
+                  }
+
+                  updateStatus(
+                    "Parameterized event not found. Loading author profile directly...",
+                  );
+                  await findProfileByPubkey(pubkey, signal);
+                  return;
+                }
+                break;
+              }
+              default:
+                break;
+            }
+          }
+
+          if (!pubkeyToFind && cleanQuery.startsWith("npub1")) {
+            try {
+              const npubDecoded = nip19.decode(cleanQuery).data;
+              if (typeof npubDecoded === "string") {
+                pubkeyToFind = npubDecoded.toLowerCase();
+              }
             } catch (e) {
               /* ignore invalid npub */
             }
-          } else if (
+          }
+
+          if (
+            !pubkeyToFind &&
             cleanQuery.length === 64 &&
             /^[0-9a-fA-F]+$/.test(cleanQuery)
           ) {
             pubkeyToFind = cleanQuery.toLowerCase();
-          } else if (nip05Regex.test(cleanQuery)) {
+          }
+
+          if (!pubkeyToFind && nip05Regex.test(cleanQuery)) {
             updateStatus("Resolving NIP-05 identifier...");
             const profile = await resolveNip05(cleanQuery, signal);
-            if (profile) pubkeyToFind = profile.pubkey;
+            if (profile?.pubkey) {
+              pubkeyToFind = profile.pubkey.toLowerCase();
+            }
           }
 
           if (pubkeyToFind) {
