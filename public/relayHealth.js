@@ -1,4 +1,6 @@
-const FUNDSTR_RELAY = "wss://relay.primal.net";
+import { NUTZAP_RELAY_WSS } from "./relayConfig.js";
+
+const FUNDSTR_RELAY = NUTZAP_RELAY_WSS;
 const BASE_FREE_RELAYS = [
   "wss://relay.damus.io",
   "wss://relay.snort.social",
