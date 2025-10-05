@@ -2,7 +2,7 @@ name: Deploy staging (Develop2 → Hostinger)
 
 on:
   push:
-    branches: [Develop2]
+    branches: [Develop2, Develop3]
   workflow_dispatch:
     inputs:
       ref:
@@ -14,8 +14,8 @@ jobs:
   deploy:
     # Guard: only allow Develop2 (push or manual)
     if: >
-      (github.event_name == 'push' && github.ref == 'refs/heads/Develop2') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.ref == 'Develop2')
+      (github.event_name == 'push' && github.ref == 'refs/heads/Develop2' || github.ref == 'refs/heads/Develop3') ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.ref == 'Develop2' || github.event.inputs.ref == 'Develop3'))
 
     runs-on: ubuntu-latest
     steps:
