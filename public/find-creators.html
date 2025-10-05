@@ -1077,7 +1077,7 @@
           }
 
           updateStatusIfPending(
-            "Still not found. Consulting nostr.band indexer for relay locations...",
+            "Still not found. Consulting public indexers for more relays...",
           );
           const indexedRelays = await fetchRelayListFromIndexer(pubkey, signal);
           if (signal.aborted) return;
@@ -1107,7 +1107,7 @@
 
           if (!indexerProfile) {
             updateStatusIfPending(
-              "Last attempt: Consulting Primal, the most powerful indexer...",
+              "Last attempt: Consulting Primal cache...",
             );
             const primalProfilePromise = fetchProfileFromPrimal(pubkey, signal);
             observeProfilesPromise(
