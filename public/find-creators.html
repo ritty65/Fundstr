@@ -1059,14 +1059,18 @@
 
           if (signal.aborted) return;
 
-          updateStatusIfPending("Profile not found. Discovering user's relays...");
+          if (!signal.aborted) {
+            updateStatusIfPending("Profile not found. Discovering user's relays...");
+          }
           const userRelays = await findUserRelayList(pubkey, signal);
           if (signal.aborted) return;
 
           if (userRelays.length > 0) {
-            updateStatusIfPending(
-              `Searching ${userRelays.length} newly discovered relays...`,
-            );
+            if (!signal.aborted) {
+              updateStatusIfPending(
+                `Searching ${userRelays.length} newly discovered relays...`,
+              );
+            }
             const userRelayPromise = observeProfilesPromise(
               fetchProfilesFromRelays(userRelays, filter, signal),
               signal,
@@ -1076,9 +1080,11 @@
             if (signal.aborted) return;
           }
 
-          updateStatusIfPending(
-            "Still not found. Consulting public indexers for more relays...",
-          );
+          if (!signal.aborted) {
+            updateStatusIfPending(
+              "Still not found. Consulting public indexers for more relays...",
+            );
+          }
           const indexedRelays = await fetchRelayListFromIndexer(pubkey, signal);
           if (signal.aborted) return;
 
@@ -1095,7 +1101,11 @@
             if (signal.aborted) return;
           }
 
-          updateStatusIfPending("Still not found. Checking nostr.band directly...");
+          if (!signal.aborted) {
+            updateStatusIfPending(
+              "Still not found. Checking nostr.band directly...",
+            );
+          }
           const indexerProfilePromise = fetchProfileFromIndexer(pubkey, signal);
           observeProfilesPromise(
             indexerProfilePromise.then((profile) => (profile ? [profile] : [])),
@@ -1106,9 +1116,11 @@
           if (signal.aborted) return;
 
           if (!indexerProfile) {
-            updateStatusIfPending(
-              "Last attempt: Consulting Primal cache...",
-            );
+            if (!signal.aborted) {
+              updateStatusIfPending(
+                "Last attempt: Consulting Primal cache...",
+              );
+            }
             const primalProfilePromise = fetchProfileFromPrimal(pubkey, signal);
             observeProfilesPromise(
               primalProfilePromise.then((profile) =>
