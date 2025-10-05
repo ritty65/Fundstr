@@ -323,7 +323,8 @@
 
     <script type="module" defer>
       import { filterHealthyRelays, pingRelay } from "./relayHealth.js";
-      const FUNDSTR_RELAY = "wss://relay.primal.net";
+      import { NUTZAP_RELAY_WSS } from "./relayConfig.js";
+      const FUNDSTR_RELAY = NUTZAP_RELAY_WSS;
       const DEFAULT_RELAYS = [
         FUNDSTR_RELAY,
         "wss://relay.damus.io",
