@@ -44,6 +44,7 @@ export default route(async function (/* { store, ssrContext } */) {
       to.matched.some((r) => r.name === "PublicCreatorProfile") ||
       to.path.startsWith("/creator/");
     const isPublicDiscover = to.path === "/find-creators";
+    const isCreatorStudio = to.path.startsWith("/creator-studio");
     const restore = useRestoreStore();
 
     const env = import.meta.env.VITE_APP_ENV;
@@ -56,7 +57,8 @@ export default route(async function (/* { store, ssrContext } */) {
       !restore.restoringState &&
       to.path !== "/restore" &&
       !isPublicProfile &&
-      !isPublicDiscover
+      !isPublicDiscover &&
+      !isCreatorStudio
     ) {
       next({ path: "/welcome", query: { first: "1" } });
       return;
