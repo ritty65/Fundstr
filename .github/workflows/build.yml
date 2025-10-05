@@ -14,6 +14,8 @@ jobs:
           corepack enable
           corepack prepare pnpm@10.16.1 --activate
           pnpm --version
+      - name: Set build id for cache busting
+        run: echo "VITE_BUILD_ID=${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build
