@@ -101,11 +101,6 @@
             <q-spinner-hourglass />
           </div>
           <template v-else>
-            <NutzapExplainer
-              class="profile-tier-explainer"
-              :is-guest="isGuest"
-              @start-onboarding="gotoWelcome"
-            />
             <q-banner
               v-if="tierFetchError && !tiers.length"
               class="profile-page__banner bg-surface-2"
@@ -330,7 +325,6 @@ import { useI18n } from "vue-i18n";
 import PaywalledContent from "components/PaywalledContent.vue";
 import MintSafetyList from "components/MintSafetyList.vue";
 import RelayBadgeList from "components/RelayBadgeList.vue";
-import NutzapExplainer from "components/NutzapExplainer.vue";
 import TierSummaryCard from "components/TierSummaryCard.vue";
 import { isTrustedUrl } from "src/utils/sanitize-url";
 import { useClipboard } from "src/composables/useClipboard";
@@ -348,7 +342,6 @@ export default defineComponent({
     SetupRequiredDialog,
     MintSafetyList,
     RelayBadgeList,
-    NutzapExplainer,
     TierSummaryCard,
   },
   setup() {
@@ -943,10 +936,6 @@ export default defineComponent({
   display: flex;
   flex-direction: column;
   gap: 1rem;
-}
-
-.profile-tier-explainer {
-  margin-bottom: 1.5rem;
 }
 
 .profile-tier__paywalled {
