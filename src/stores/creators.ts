@@ -531,7 +531,7 @@ export const useCreatorsStore = defineStore("creators", {
 
     async fetchTierDefinitions(
       creatorNpub: string,
-      opts: { relayHints?: string[]; fundstrOnly?: boolean } = {},
+      opts: { relayHints?: string[]; onFallback?: () => void } = {},
     ) {
       this.tierFetchError = false;
 
@@ -552,27 +552,57 @@ export const useCreatorsStore = defineStore("creators", {
           .map((url) => url.trim())
           .filter((url) => !!url),
       );
-      const fundstrOnly = opts.fundstrOnly === true;
       let event: RelayEvent | null = null;
       let lastError: unknown = null;
+
+      const persistTierEvent = async (tierEvent: RelayEvent) => {
+        let tiersArray: Tier[] = [];
+        try {
+          tiersArray = parseTierDefinitionEvent(tierEvent).map((tier) =>
+            normalizeTier(tier as Tier),
+          );
+        } catch (e) {
+          console.error("Failed to parse tier event", e);
+          this.tierFetchError = true;
+          notifyWarning("Unable to retrieve subscription tiers");
+          return;
+        }
+
+        await this.saveTierCache(hex, tiersArray, tierEvent);
+        this.tierFetchError = false;
+      };
 
       try {
         event = await queryNutzapTiers(hex, {
           httpBase: FUNDSTR_REQ_URL,
           allowFanoutFallback: false,
-          wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
+          wsTimeoutMs: 1500,
         });
       } catch (e) {
         lastError = e;
         console.error("fetchTierDefinitions Fundstr query failed", e);
       }
 
+      if (event) {
+        await persistTierEvent(event);
+        return;
+      }
+
+      const fallbackError =
+        lastError ?? new Error("Primary relay query returned no event");
+      console.warn(
+        "Primary relay query failed, proceeding to fallbacks...",
+        fallbackError,
+      );
+      lastError = fallbackError;
+      opts.onFallback?.();
+
       if (!event && relayHints.size) {
         try {
           event = await queryNutzapTiers(hex, {
             httpBase: FUNDSTR_REQ_URL,
             fanout: Array.from(relayHints),
-            allowFanoutFallback: !fundstrOnly,
+            allowFanoutFallback: true,
             wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
           });
         } catch (e) {
@@ -581,7 +611,7 @@ export const useCreatorsStore = defineStore("creators", {
         }
       }
 
-      if (!event && !fundstrOnly) {
+      if (!event) {
         try {
           const discovered = await fallbackDiscoverRelays(hex);
           for (const url of discovered) relayHints.add(url);
@@ -610,20 +640,7 @@ export const useCreatorsStore = defineStore("creators", {
         return;
       }
 
-      let tiersArray: Tier[] = [];
-      try {
-        tiersArray = parseTierDefinitionEvent(event).map((tier) =>
-          normalizeTier(tier as Tier),
-        );
-      } catch (e) {
-        console.error("Failed to parse tier event", e);
-        this.tierFetchError = true;
-        notifyWarning("Unable to retrieve subscription tiers");
-        return;
-      }
-
-      await this.saveTierCache(hex, tiersArray, event);
-      this.tierFetchError = false;
+      await persistTierEvent(event);
     },
 
     async publishTierDefinitions(tiersArray: Tier[]) {

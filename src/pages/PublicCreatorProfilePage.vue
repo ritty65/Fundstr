@@ -395,7 +395,7 @@ export default defineComponent({
     const tierFetchError = computed(() => creators.tierFetchError);
     const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 
-    const fetchTiers = async ({ fundstrOnly = true } = {}) => {
+    const fetchTiers = async () => {
       if (!creatorHex) {
         loadingTiers.value = false;
         return;
@@ -405,26 +405,13 @@ export default defineComponent({
       }
       refreshingTiers.value = true;
       try {
-        let tierFundstrOnly = fundstrOnly;
-        while (true) {
-          let tierError: unknown = null;
-          try {
-            await creators.fetchTierDefinitions(creatorHex, {
-              fundstrOnly: tierFundstrOnly,
-            });
-          } catch (e) {
-            tierError = e;
-            console.error("Failed to fetch tier definitions", e);
-          }
-
-          const shouldRetry =
-            tierFundstrOnly && (tierError || creators.tierFetchError);
-          if (shouldRetry) {
-            tierFundstrOnly = false;
-            continue;
-          }
-          break;
-        }
+        await creators.fetchTierDefinitions(creatorHex, {
+          onFallback: () => {
+            /* no-op fallback hook for public profile */
+          },
+        });
+      } catch (e) {
+        console.error("Failed to fetch tier definitions", e);
       } finally {
         refreshingTiers.value = false;
         if (!hasInitialTierData.value) {
@@ -487,7 +474,7 @@ export default defineComponent({
     // initialization handled in onMounted
 
     const retryFetchTiers = () => {
-      void fetchTiers({ fundstrOnly: false });
+      void fetchTiers();
     };
 
     const openSubscribe = (tier: any) => {
