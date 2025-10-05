@@ -89,11 +89,6 @@
                   </p>
                 </div>
               </div>
-              <NutzapExplainer
-                class="tier-dialog__explainer"
-                :is-guest="isGuest"
-                @start-onboarding="goToWelcome"
-              />
               <div class="tier-list">
                 <div
                   v-if="loadingTiers"
@@ -256,11 +251,10 @@ import SendTokenDialog from "components/SendTokenDialog.vue";
 import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 import MintSafetyList from "components/MintSafetyList.vue";
 import RelayBadgeList from "components/RelayBadgeList.vue";
-import NutzapExplainer from "components/NutzapExplainer.vue";
 import TierSummaryCard from "components/TierSummaryCard.vue";
 
 defineOptions({
-  components: { TierSummaryCard, MintSafetyList, RelayBadgeList, NutzapExplainer },
+  components: { TierSummaryCard, MintSafetyList, RelayBadgeList },
 });
 import { useSendTokensStore } from "stores/sendTokensStore";
 import { useDonationPresetsStore } from "stores/donationPresets";
@@ -1069,10 +1063,6 @@ onBeforeUnmount(() => {
 .section-caption {
   font-size: 0.9rem;
   margin: 0.35rem 0 0;
-}
-
-.tier-dialog__explainer {
-  margin-bottom: 1.5rem;
 }
 
 .tier-list__state {
