@@ -90,14 +90,29 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item v-if="!isGuest" clickable @click="gotoCreatorStudio">
+      <q-item
+        data-test="creator-studio-item"
+        clickable
+        @click="handleCreatorStudioClick"
+      >
         <q-item-section avatar>
           <q-icon name="dashboard_customize" />
         </q-item-section>
         <q-item-section>
           <q-item-label>Creator Studio</q-item-label>
-          <q-item-label caption>Manage Nutzap profile &amp; tiers</q-item-label>
+          <q-item-label caption>{{ creatorStudioCaption }}</q-item-label>
         </q-item-section>
+        <q-item-section side v-if="isGuest">
+          <q-btn
+            color="primary"
+            flat
+            dense
+            label="Finish setup"
+            data-test="creator-studio-cta"
+            @click.stop="gotoWelcome"
+          />
+        </q-item-section>
+        <q-tooltip v-if="isGuest">{{ creatorStudioTooltip }}</q-tooltip>
       </q-item>
       <q-item v-if="!isGuest" clickable @click="gotoMyProfile">
         <q-item-section avatar>
@@ -248,6 +263,23 @@ const gotoWelcome = () => goto("/welcome");
 
 const needsNostrLogin = computed(() => !nostrStore.hasIdentity);
 const isGuest = computed(() => !welcomeStore.welcomeCompleted);
+
+const creatorStudioCaption = computed(() =>
+  isGuest.value
+    ? "Finish setup to unlock Creator Studio"
+    : "Manage Nutzap profile & tiers",
+);
+const creatorStudioTooltip = computed(
+  () => "Complete onboarding to access Creator Studio",
+);
+
+function handleCreatorStudioClick() {
+  if (isGuest.value) {
+    gotoWelcome();
+    return;
+  }
+  gotoCreatorStudio();
+}
 
 const drawerContentClass = computed(() =>
   $q.screen.lt.md ? "main-nav-safe" : "q-pt-sm"
