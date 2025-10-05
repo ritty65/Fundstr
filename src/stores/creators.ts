@@ -49,6 +49,7 @@ export interface CreatorProfile {
 }
 
 const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
+const PRIMARY_RELAY_TIER_TIMEOUT_MS = 1500;
 
 export interface FundstrProfileBundle {
   profile: Record<string, any> | null;
@@ -555,6 +556,22 @@ export const useCreatorsStore = defineStore("creators", {
       let event: RelayEvent | null = null;
       let lastError: unknown = null;
 
+      const beginFallback = (reason?: unknown) => {
+        const fallbackError =
+          reason instanceof Error
+            ? reason
+            : reason
+              ? new Error(String(reason))
+              : new Error("Primary relay query returned no event");
+        console.warn(
+          `Primary relay query failed for ${hex}, proceeding to fallbacks...`,
+          fallbackError,
+        );
+        lastError = fallbackError;
+        opts.onFallback?.();
+        return fallbackError;
+      };
+
       const persistTierEvent = async (tierEvent: RelayEvent) => {
         let tiersArray: Tier[] = [];
         try {
@@ -576,7 +593,7 @@ export const useCreatorsStore = defineStore("creators", {
         event = await queryNutzapTiers(hex, {
           httpBase: FUNDSTR_REQ_URL,
           allowFanoutFallback: false,
-          wsTimeoutMs: 1500,
+          wsTimeoutMs: PRIMARY_RELAY_TIER_TIMEOUT_MS,
         });
       } catch (e) {
         lastError = e;
@@ -588,14 +605,7 @@ export const useCreatorsStore = defineStore("creators", {
         return;
       }
 
-      const fallbackError =
-        lastError ?? new Error("Primary relay query returned no event");
-      console.warn(
-        "Primary relay query failed, proceeding to fallbacks...",
-        fallbackError,
-      );
-      lastError = fallbackError;
-      opts.onFallback?.();
+      beginFallback(lastError);
 
       if (!event && relayHints.size) {
         try {

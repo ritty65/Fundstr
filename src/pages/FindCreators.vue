@@ -615,6 +615,21 @@ async function fetchProfileWithFallback(
   const relayHints = new Set<string>();
   let event: NostrEvent | null = null;
   let primaryError: unknown = null;
+
+  const beginFallback = (reason?: unknown) => {
+    const fallbackError =
+      reason instanceof Error
+        ? reason
+        : reason
+          ? new Error(String(reason))
+          : new Error("Primary relay query returned no event");
+    console.warn(
+      `Primary relay query for ${hex} failed, proceeding to fallbacks...`,
+      fallbackError,
+    );
+    opts.onFallback?.();
+    return fallbackError;
+  };
   try {
     event = await queryNutzapProfile(hex, {
       httpBase: FUNDSTR_REQ_URL,
@@ -627,13 +642,7 @@ async function fetchProfileWithFallback(
   }
 
   if (!event) {
-    const fallbackError =
-      primaryError ?? new Error("Primary relay query returned no event");
-    console.warn(
-      "Primary relay query failed, proceeding to fallbacks...",
-      fallbackError,
-    );
-    opts.onFallback?.();
+    beginFallback(primaryError);
     try {
       const discovered = await fallbackDiscoverRelays(hex);
       for (const url of discovered) relayHints.add(url);
