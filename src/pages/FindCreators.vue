@@ -334,7 +334,6 @@ const uiStore = useUiStore();
 const welcomeStore = useWelcomeStore();
 const tiers = computed(() => creators.tiersMap[dialogPubkey.value] || []);
 const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
-let usedFundstrOnly = false;
 const tierFetchError = computed(() => creators.tierFetchError);
 const showSubscribeDialog = ref(false);
 const selectedTier = ref<any>(null);
@@ -398,7 +397,7 @@ const highlightBenefits = computed(() => {
 
 const tierLoadingMessage = computed(() =>
   tierRelayScanEscalated.value
-    ? "Scanning additional relays for tiers…"
+    ? "Primary relay timed out. Scanning additional relays for tiers…"
     : "Loading tiers…",
 );
 
@@ -598,7 +597,7 @@ function getPrice(t: any): number {
 
 async function fetchProfileWithFallback(
   pubkeyInput: string,
-  opts: { fundstrOnly?: boolean } = {},
+  opts: { onFallback?: () => void } = {},
 ) {
   let hex: string;
   try {
@@ -614,8 +613,8 @@ async function fetchProfileWithFallback(
   }
 
   const relayHints = new Set<string>();
-  const fundstrOnly = opts.fundstrOnly === true;
   let event: NostrEvent | null = null;
+  let primaryError: unknown = null;
   try {
     event = await queryNutzapProfile(hex, {
       httpBase: FUNDSTR_REQ_URL,
@@ -623,10 +622,18 @@ async function fetchProfileWithFallback(
       wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
     });
   } catch (e) {
+    primaryError = e;
     console.error("Failed to query Nutzap profile", e);
   }
 
-  if (!event && !fundstrOnly) {
+  if (!event) {
+    const fallbackError =
+      primaryError ?? new Error("Primary relay query returned no event");
+    console.warn(
+      "Primary relay query failed, proceeding to fallbacks...",
+      fallbackError,
+    );
+    opts.onFallback?.();
     try {
       const discovered = await fallbackDiscoverRelays(hex);
       for (const url of discovered) relayHints.add(url);
@@ -666,12 +673,12 @@ async function fetchProfileWithFallback(
 
 async function viewCreatorProfile(
   pubkeyInput: string,
-  opts: { openDialog?: boolean; fundstrOnly?: boolean } = {},
+  opts: { openDialog?: boolean } = {},
 ) {
   const trimmed = typeof pubkeyInput === "string" ? pubkeyInput.trim() : "";
   if (!trimmed) return;
 
-  const { openDialog = true, fundstrOnly = true } = opts;
+  const { openDialog = true } = opts;
   let pubkeyHex: string;
   try {
     pubkeyHex = toHex(trimmed);
@@ -722,39 +729,14 @@ async function viewCreatorProfile(
   let profileResult: Awaited<ReturnType<typeof fetchProfileWithFallback>> | null =
     null;
   if (!cachedProfileLoaded) {
-    let attemptedProfileFallback = false;
     try {
-      profileResult = await fetchProfileWithFallback(trimmed, { fundstrOnly });
+      profileResult = await fetchProfileWithFallback(trimmed, {
+        onFallback: () => {
+          profileRelayScanEscalated.value = true;
+        },
+      });
     } catch (e) {
       console.error("Failed to fetch creator profile", e);
-      if (fundstrOnly) {
-        profileRelayScanEscalated.value = true;
-        try {
-          profileResult = await fetchProfileWithFallback(trimmed, {
-            fundstrOnly: false,
-          });
-          attemptedProfileFallback = true;
-        } catch (fallbackError) {
-          console.error("Fallback profile fetch failed", fallbackError);
-          attemptedProfileFallback = true;
-        }
-      }
-    }
-    if (
-      fundstrOnly &&
-      !attemptedProfileFallback &&
-      (!profileResult || (!profileResult.event && !profileResult.details))
-    ) {
-      profileRelayScanEscalated.value = true;
-      try {
-        profileResult = await fetchProfileWithFallback(trimmed, {
-          fundstrOnly: false,
-        });
-        attemptedProfileFallback = true;
-      } catch (fallbackError) {
-        console.error("Fallback profile fetch failed", fallbackError);
-        attemptedProfileFallback = true;
-      }
     }
 
     if (profileResult && profileResult.pubkeyHex) {
@@ -929,12 +911,7 @@ onMounted(async () => {
   iframeEl.value?.addEventListener("load", onIframeLoad);
   const npub = route.query.npub;
   try {
-    if (typeof npub === "string" && npub) {
-      await nostr.initNdkReadOnly({ fundstrOnly: true });
-      usedFundstrOnly = true;
-    } else {
-      await nostr.initNdkReadOnly();
-    }
+    await nostr.initNdkReadOnly();
   } catch (e: any) {
     notifyWarning("Failed to connect to Nostr relays", e?.message);
   }
@@ -972,12 +949,6 @@ onBeforeUnmount(() => {
   loadingProfile.value = false;
   profileRelayScanEscalated.value = false;
   tierRelayScanEscalated.value = false;
-  if (usedFundstrOnly) {
-    usedFundstrOnly = false;
-    void nostr
-      .initNdkReadOnly({ fundstrOnly: false })
-      .catch(() => {});
-  }
 });
 </script>
 
