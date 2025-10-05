@@ -90,7 +90,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item v-if="!isGuest" clickable @click="gotoCreatorStudio">
+      <q-item clickable @click="gotoCreatorStudio">
         <q-item-section avatar>
           <q-icon name="dashboard_customize" />
         </q-item-section>
