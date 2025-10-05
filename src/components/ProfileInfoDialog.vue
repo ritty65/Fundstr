@@ -79,7 +79,23 @@ async function load() {
   following.value = await nostr.fetchFollowingCount(props.pubkey);
   joined.value = await nostr.fetchJoinDate(props.pubkey);
   recentPost.value = await nostr.fetchMostRecentPost(props.pubkey);
-  await creators.fetchTierDefinitions(props.pubkey);
+  let tierFundstrOnly = true;
+  while (true) {
+    let tierError: unknown = null;
+    try {
+      await creators.fetchTierDefinitions(props.pubkey, {
+        fundstrOnly: tierFundstrOnly,
+      });
+    } catch (e) {
+      tierError = e;
+      console.error("Failed to fetch tier definitions", e);
+    }
+    if (tierFundstrOnly && (tierError || creators.tierFetchError)) {
+      tierFundstrOnly = false;
+      continue;
+    }
+    break;
+  }
   tiers.value = creators.tiersMap[props.pubkey] || [];
 }
 

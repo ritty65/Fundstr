@@ -33,6 +33,12 @@ vi.mock("components/PaywalledContent.vue", () => ({
 vi.mock("components/MediaPreview.vue", () => ({
   default: defineComponent({ name: "MediaPreview", template: `<div class="media" />` }),
 }));
+vi.mock("components/NutzapExplainer.vue", () => ({
+  default: defineComponent({
+    name: "NutzapExplainer",
+    template: `<div class="nutzap-explainer" />`,
+  }),
+}));
 
 vi.mock("src/utils/profileUrl", () => ({
   buildProfileUrl: (...args: any[]) => buildProfileUrl(...args),
@@ -76,6 +82,7 @@ vi.mock("stores/nostr", () => ({
 }));
 vi.mock("vue-i18n", () => ({
   useI18n: () => ({ t: (key: string) => key }),
+  createI18n: () => ({ global: { t: (key: string) => key } }),
 }));
 
 import PublicCreatorProfilePage from "src/pages/PublicCreatorProfilePage.vue";
@@ -285,6 +292,9 @@ describe("PublicCreatorProfilePage", () => {
       ?.trigger("click");
 
     expect(fetchTierDefinitions).toHaveBeenCalledTimes(2);
+    expect(fetchTierDefinitions).toHaveBeenNthCalledWith(2, sampleHex, {
+      fundstrOnly: false,
+    });
   });
 
   it("shows a friendly error when the pubkey cannot be decoded", async () => {
