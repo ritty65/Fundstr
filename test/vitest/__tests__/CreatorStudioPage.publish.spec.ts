@@ -459,13 +459,41 @@ describe('CreatorStudioPage publishAll fallback', () => {
       content: '{}',
       sig: 'profile-sig',
     };
+    const metadataEvent = {
+      id: 'metadata-event-id',
+      pubkey: 'profile-pub',
+      created_at: Date.now(),
+      kind: 0,
+      tags: [],
+      content: '{}',
+      sig: 'metadata-sig',
+    };
+    const relayListEvent = {
+      id: 'relay-list-event-id',
+      pubkey: 'profile-pub',
+      created_at: Date.now(),
+      kind: 10002,
+      tags: [],
+      content: '',
+      sig: 'relay-list-sig',
+    };
 
-    state.publishEventToRelayMock.mockImplementation(async event => ({
-      id: event.id,
-      accepted: true,
-      via: 'websocket' as const,
-      message: event.kind === 10019 ? 'profile-ok' : 'tiers-ok',
-    }));
+    state.publishEventToRelayMock.mockImplementation(async event => {
+      const message =
+        event.kind === 10019
+          ? 'profile-ok'
+          : event.kind === 0
+            ? 'metadata-ok'
+            : event.kind === 10002
+              ? 'relays-ok'
+              : 'tiers-ok';
+      return {
+        id: event.id,
+        accepted: true,
+        via: 'websocket' as const,
+        message,
+      };
+    });
 
     state.publishTiersToRelayMock.mockImplementation(async (_tiers, _kind, options) => {
       const ack = options?.send ? await options.send(tierEvent) : {
@@ -477,14 +505,27 @@ describe('CreatorStudioPage publishAll fallback', () => {
       return { ack, event: tierEvent };
     });
 
-    state.publishNostrEventMock.mockImplementation(async (_template, options) => {
-      const ack = options?.send ? await options.send(profileEvent) : {
-        id: profileEvent.id,
-        accepted: true,
-        via: 'http' as const,
-        message: 'profile-ok',
-      };
-      return { ack, event: profileEvent };
+    state.publishNostrEventMock.mockImplementation(async (template, options) => {
+      const event =
+        template.kind === 0
+          ? metadataEvent
+          : template.kind === 10002
+            ? relayListEvent
+            : profileEvent;
+      const ack = options?.send
+        ? await options.send(event)
+        : {
+            id: event.id,
+            accepted: true,
+            via: 'http' as const,
+            message:
+              template.kind === 0
+                ? 'metadata-ok'
+                : template.kind === 10002
+                  ? 'relays-ok'
+                  : 'profile-ok',
+          };
+      return { ack, event };
     });
 
     const TestHarness = defineComponent({
@@ -505,6 +546,7 @@ describe('CreatorStudioPage publishAll fallback', () => {
     const vmAny = wrapper.vm as any;
     vmAny.authorInput = VALID_HEX;
     vmAny.displayName = 'Creator';
+    vmAny.pictureUrl = 'https://example.com/avatar.png';
     vmAny.p2pkPub = 'f'.repeat(64);
     vmAny.mintsText = 'https://mint.example';
     vmAny.tiers = [
@@ -523,9 +565,26 @@ describe('CreatorStudioPage publishAll fallback', () => {
     await flushPromises();
 
     expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(2);
-    expect(state.publishNostrEventMock).toHaveBeenCalledTimes(2);
-    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(4);
+    expect(state.publishNostrEventMock).toHaveBeenCalledTimes(6);
+    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(8);
     expect(state.clientPublishMock).not.toHaveBeenCalled();
+
+    const metadataCalls = state.publishNostrEventMock.mock.calls.filter(
+      ([template]) => template?.kind === 0,
+    );
+    expect(metadataCalls).toHaveLength(2);
+    const firstMetadataTemplate = metadataCalls[0]?.[0];
+    expect(firstMetadataTemplate?.content).toContain('Creator');
+    expect(firstMetadataTemplate?.content).toContain('https://example.com/avatar.png');
+
+    const relayListCalls = state.publishNostrEventMock.mock.calls.filter(
+      ([template]) => template?.kind === 10002,
+    );
+    expect(relayListCalls).toHaveLength(2);
+    const firstRelayListTemplate = relayListCalls[0]?.[0];
+    expect(firstRelayListTemplate?.tags).toEqual(
+      expect.arrayContaining([['r', 'wss://relay.fundstr.me']]),
+    );
 
     const successCall = state.logRelayActivityMock.mock.calls.find(
       ([level]) => level === 'success',
@@ -534,6 +593,8 @@ describe('CreatorStudioPage publishAll fallback', () => {
     expect(successCall?.[1]).toBe('Publish succeeded to 2/2 relays');
     expect(successCall?.[2]).toContain('wss://relay.fundstr.me');
     expect(successCall?.[2]).toContain('wss://relay.primal.net');
+    expect(successCall?.[2]).toContain('metadata metadata-event-id');
+    expect(successCall?.[2]).toContain('relay list relay-list-event-id');
     expect(successCall?.[2]).toContain('profile profile-event-id');
     expect(successCall?.[2]).toContain('tiers tier-event-id');
     expect(successCall?.[2]).toContain('fallback no');
@@ -544,6 +605,8 @@ describe('CreatorStudioPage publishAll fallback', () => {
     expect(successMessage).toContain('relay.fundstr.me');
     expect(successMessage).toContain('relay.primal.net');
     expect(successMessage).toContain('profile profile-ok');
+    expect(successMessage).toContain('metadata metadata-ok');
+    expect(successMessage).toContain('relays relays-ok');
     expect(successMessage).toContain('tiers tiers-ok');
     expect(notifyErrorMock).not.toHaveBeenCalled();
   });
@@ -570,7 +633,24 @@ describe('CreatorStudioPage publishAll fallback', () => {
       content: '{}',
       sig: 'profile-sig',
     };
-
+    const metadataEvent = {
+      id: 'metadata-event',
+      pubkey: 'profile-pub',
+      created_at: Date.now(),
+      kind: 0,
+      tags: [],
+      content: '{}',
+      sig: 'metadata-sig',
+    };
+    const relayListEvent = {
+      id: 'relay-list-event',
+      pubkey: 'profile-pub',
+      created_at: Date.now(),
+      kind: 10002,
+      tags: [],
+      content: '',
+      sig: 'relay-list-sig',
+    };
     state.publishEventToRelayMock.mockRejectedValue(new Error('Relay socket unavailable'));
 
     state.publishTiersToRelayMock.mockImplementation(async (_tiers, _kind, options) => {
@@ -584,20 +664,34 @@ describe('CreatorStudioPage publishAll fallback', () => {
       };
     });
 
-    state.publishNostrEventMock.mockImplementation(async (_template, options) => {
+    state.publishNostrEventMock.mockImplementation(async (template, options) => {
+      const event =
+        template.kind === 0
+          ? metadataEvent
+          : template.kind === 10002
+            ? relayListEvent
+            : profileEvent;
       if (options?.send) {
-        const ack = await options.send(profileEvent);
-        return { ack, event: profileEvent };
+        const ack = await options.send(event);
+        return { ack, event };
       }
       return {
-        ack: { id: 'profile-http', accepted: true, via: 'http' as const, message: 'accepted' },
-        event: profileEvent,
+        ack: { id: `${event.id}-http`, accepted: true, via: 'http' as const, message: 'accepted' },
+        event,
       };
     });
 
-    state.clientPublishMock.mockResolvedValue({
-      ack: { id: 'profile-http', accepted: true, via: 'http' as const, message: 'accepted' },
-      event: profileEvent,
+    state.clientPublishMock.mockImplementation(async template => {
+      const event =
+        template.kind === 0
+          ? metadataEvent
+          : template.kind === 10002
+            ? relayListEvent
+            : profileEvent;
+      return {
+        ack: { id: `${event.id}-http`, accepted: true, via: 'http' as const, message: 'accepted' },
+        event,
+      };
     });
 
     const TestHarness = defineComponent({
@@ -638,9 +732,9 @@ describe('CreatorStudioPage publishAll fallback', () => {
     await flushPromises();
 
     expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(4);
-    expect(state.publishNostrEventMock).toHaveBeenCalledTimes(2);
-    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(4);
-    expect(state.clientPublishMock).toHaveBeenCalledTimes(2);
+    expect(state.publishNostrEventMock).toHaveBeenCalledTimes(6);
+    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(8);
+    expect(state.clientPublishMock).toHaveBeenCalledTimes(6);
 
     const tierFallbackCalls = state.publishTiersToRelayMock.mock.calls.filter(
       ([, , options]) => !options?.send,
@@ -664,6 +758,8 @@ describe('CreatorStudioPage publishAll fallback', () => {
     expect(notifySuccessMock).toHaveBeenCalledTimes(1);
     const successMessage = notifySuccessMock.mock.calls[0]?.[0];
     expect(successMessage).toContain('2/2 relays');
+    expect(successMessage).toContain('metadata accepted');
+    expect(successMessage).toContain('relays accepted');
     expect(notifyErrorMock).not.toHaveBeenCalled();
   });
 
@@ -690,6 +786,24 @@ describe('CreatorStudioPage publishAll fallback', () => {
       content: '{}',
       sig: 'profile-sig',
     };
+    const metadataEvent = {
+      id: 'metadata-event',
+      pubkey: 'profile-pub',
+      created_at: Date.now(),
+      kind: 0,
+      tags: [],
+      content: '{}',
+      sig: 'metadata-sig',
+    };
+    const relayListEvent = {
+      id: 'relay-list-event',
+      pubkey: 'profile-pub',
+      created_at: Date.now(),
+      kind: 10002,
+      tags: [],
+      content: '',
+      sig: 'relay-list-sig',
+    };
 
     state.publishEventToRelayMock.mockRejectedValue(new Error('Relay socket unavailable'));
 
@@ -704,20 +818,34 @@ describe('CreatorStudioPage publishAll fallback', () => {
       };
     });
 
-    state.publishNostrEventMock.mockImplementation(async (_template, options) => {
+    state.publishNostrEventMock.mockImplementation(async (template, options) => {
+      const event =
+        template.kind === 0
+          ? metadataEvent
+          : template.kind === 10002
+            ? relayListEvent
+            : profileEvent;
       if (options?.send) {
-        const ack = await options.send(profileEvent);
-        return { ack, event: profileEvent };
+        const ack = await options.send(event);
+        return { ack, event };
       }
       return {
-        ack: { id: 'profile-http', accepted: true, via: 'http' as const, message: 'accepted' },
-        event: profileEvent,
+        ack: { id: `${event.id}-http`, accepted: true, via: 'http' as const, message: 'accepted' },
+        event,
       };
     });
 
-    state.clientPublishMock.mockResolvedValue({
-      ack: { id: 'profile-http', accepted: true, via: 'http' as const, message: 'accepted' },
-      event: profileEvent,
+    state.clientPublishMock.mockImplementation(async template => {
+      const event =
+        template.kind === 0
+          ? metadataEvent
+          : template.kind === 10002
+            ? relayListEvent
+            : profileEvent;
+      return {
+        ack: { id: `${event.id}-http`, accepted: true, via: 'http' as const, message: 'accepted' },
+        event,
+      };
     });
 
     state.p2pkStoreMock.getVerificationRecord.mockReturnValue({
@@ -767,9 +895,9 @@ describe('CreatorStudioPage publishAll fallback', () => {
     await flushPromises();
 
     expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(4);
-    expect(state.publishNostrEventMock).toHaveBeenCalledTimes(2);
-    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(4);
-    expect(state.clientPublishMock).toHaveBeenCalledTimes(2);
+    expect(state.publishNostrEventMock).toHaveBeenCalledTimes(6);
+    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(8);
+    expect(state.clientPublishMock).toHaveBeenCalledTimes(6);
 
     const fallbackWarning = state.logRelayActivityMock.mock.calls.find(
       ([level, message]) => level === 'warning' && message === 'Publish used HTTP fallback',
@@ -781,6 +909,8 @@ describe('CreatorStudioPage publishAll fallback', () => {
     expect(notifySuccessMock).toHaveBeenCalledTimes(1);
     const successMessage = notifySuccessMock.mock.calls[0]?.[0];
     expect(successMessage).toContain('2/2 relays');
+    expect(successMessage).toContain('metadata accepted');
+    expect(successMessage).toContain('relays accepted');
     expect(notifyErrorMock).not.toHaveBeenCalled();
   });
 
@@ -806,13 +936,41 @@ describe('CreatorStudioPage publishAll fallback', () => {
       content: '{}',
       sig: 'profile-sig',
     };
+    const metadataEvent = {
+      id: 'metadata-event-id',
+      pubkey: 'profile-pub',
+      created_at: Date.now(),
+      kind: 0,
+      tags: [],
+      content: '{}',
+      sig: 'metadata-sig',
+    };
+    const relayListEvent = {
+      id: 'relay-list-event-id',
+      pubkey: 'profile-pub',
+      created_at: Date.now(),
+      kind: 10002,
+      tags: [],
+      content: '',
+      sig: 'relay-list-sig',
+    };
 
-    state.publishEventToRelayMock.mockImplementation(async event => ({
-      id: event.id,
-      accepted: true,
-      via: 'websocket' as const,
-      message: event.kind === 10019 ? 'profile-ok' : 'tiers-ok',
-    }));
+    state.publishEventToRelayMock.mockImplementation(async event => {
+      const message =
+        event.kind === 10019
+          ? 'profile-ok'
+          : event.kind === 0
+            ? 'metadata-ok'
+            : event.kind === 10002
+              ? 'relays-ok'
+              : 'tiers-ok';
+      return {
+        id: event.id,
+        accepted: true,
+        via: 'websocket' as const,
+        message,
+      };
+    });
 
     state.publishTiersToRelayMock
       .mockImplementationOnce(async (_tiers, _kind, options) => {
@@ -823,9 +981,15 @@ describe('CreatorStudioPage publishAll fallback', () => {
         throw new Error('secondary relay down');
       });
 
-    state.publishNostrEventMock.mockImplementationOnce(async (_template, options) => {
-      const ack = options?.send ? await options.send(profileEvent) : { id: profileEvent.id };
-      return { ack, event: profileEvent };
+    state.publishNostrEventMock.mockImplementation(async (template, options) => {
+      const event =
+        template.kind === 0
+          ? metadataEvent
+          : template.kind === 10002
+            ? relayListEvent
+            : profileEvent;
+      const ack = options?.send ? await options.send(event) : { id: event.id };
+      return { ack, event };
     });
 
     const TestHarness = defineComponent({
@@ -864,8 +1028,8 @@ describe('CreatorStudioPage publishAll fallback', () => {
     await flushPromises();
 
     expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(2);
-    expect(state.publishNostrEventMock).toHaveBeenCalledTimes(1);
-    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(2);
+    expect(state.publishNostrEventMock).toHaveBeenCalledTimes(3);
+    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(4);
     expect(state.clientPublishMock).not.toHaveBeenCalled();
 
     expect(notifySuccessMock).toHaveBeenCalledTimes(1);

@@ -2789,6 +2789,8 @@ async function publishAll() {
     const relays = relayList.value;
     const p2pkHex = p2pkPub.value.trim();
     const tagPubkey = (p2pkDerivedPub.value || p2pkHex).trim();
+    const trimmedDisplayName = displayName.value.trim();
+    const trimmedPictureUrl = pictureUrl.value.trim();
     const content = JSON.stringify({
       v: 1,
       p2pk: p2pkHex,
@@ -2807,14 +2809,31 @@ async function publishAll() {
       tags.push(['pubkey', tagPubkey]);
     }
     tags.push(['a', `${tierKind.value}:${authorHex}:tiers`]);
-    if (displayName.value.trim()) {
-      tags.push(['name', displayName.value.trim()]);
+    if (trimmedDisplayName) {
+      tags.push(['name', trimmedDisplayName]);
     }
-    if (pictureUrl.value.trim()) {
-      tags.push(['picture', pictureUrl.value.trim()]);
+    if (trimmedPictureUrl) {
+      tags.push(['picture', trimmedPictureUrl]);
     }
 
     const profileTemplate = { kind: 10019, tags, content };
+    const metadataContent: Record<string, string> = {};
+    if (trimmedDisplayName) {
+      metadataContent.display_name = trimmedDisplayName;
+      metadataContent.name = trimmedDisplayName;
+    }
+    if (trimmedPictureUrl) {
+      metadataContent.picture = trimmedPictureUrl;
+    }
+    const metadataTemplate = {
+      kind: 0,
+      content: JSON.stringify(metadataContent),
+    };
+    const relayListTemplate = {
+      kind: 10002,
+      tags: relays.map(relay => ['r', relay]),
+      content: '',
+    };
 
     const relayTargets = Array.from(
       new Set(
@@ -2829,6 +2848,8 @@ async function publishAll() {
     const relaySuccesses: {
       relay: string;
       tierOutcome: { result: any; usedFallback: boolean };
+      metadataOutcome: { result: any; usedFallback: boolean };
+      relayListOutcome: { result: any; usedFallback: boolean };
       profileOutcome: { result: any; usedFallback: boolean };
       fallbackNotices: string[];
     }[] = [];
@@ -2836,7 +2857,32 @@ async function publishAll() {
 
     for (const relayTarget of relayTargets) {
       const perRelayFallbackNotices: string[] = [];
-      let failureStage: 'tiers' | 'profile' | null = 'tiers';
+      let failureStage: 'tiers' | 'metadata' | 'relay-list' | 'profile' | null = 'tiers';
+      const publishTemplateWithFallback = async (
+        template: { kind: number; tags?: string[][]; content: string },
+        label: string,
+      ) => {
+        try {
+          const result = await publishNostrEvent(template, {
+            send: publishEventToRelay,
+            relayUrl: relayTarget,
+          });
+          return { result, usedFallback: false as const };
+        } catch (err) {
+          if (!shouldUseHttpFallback(err)) {
+            throw err;
+          }
+          const fallbackClient = await ensureFundstrRelayClient(relayTarget);
+          const fallbackResult = await fallbackClient.publish(template);
+          const reason = describeFallbackReason(err);
+          perRelayFallbackNotices.push(
+            `${label} publish to ${relayTarget} used HTTP fallback${
+              reason ? ` — ${reason}` : ''
+            }.`,
+          );
+          return { result: fallbackResult, usedFallback: true as const };
+        }
+      };
       try {
         const tierOutcome = await (async () => {
           try {
@@ -2862,36 +2908,31 @@ async function publishAll() {
           }
         })();
 
-        failureStage = 'profile';
+        failureStage = 'metadata';
+        const metadataOutcome = await publishTemplateWithFallback(
+          metadataTemplate,
+          'Metadata',
+        );
 
-        const profileOutcome = await (async () => {
-          try {
-            const result = await publishNostrEvent(profileTemplate, {
-              send: publishEventToRelay,
-              relayUrl: relayTarget,
-            });
-            return { result, usedFallback: false as const };
-          } catch (err) {
-            if (!shouldUseHttpFallback(err)) {
-              throw err;
-            }
-            const fallbackClient = await ensureFundstrRelayClient(relayTarget);
-            const fallbackResult = await fallbackClient.publish(profileTemplate);
-            const reason = describeFallbackReason(err);
-            perRelayFallbackNotices.push(
-              `Profile publish to ${relayTarget} used HTTP fallback${
-                reason ? ` — ${reason}` : ''
-              }.`,
-            );
-            return { result: fallbackResult, usedFallback: true as const };
-          }
-        })();
+        failureStage = 'relay-list';
+        const relayListOutcome = await publishTemplateWithFallback(
+          relayListTemplate,
+          'Relay list',
+        );
+
+        failureStage = 'profile';
+        const profileOutcome = await publishTemplateWithFallback(
+          profileTemplate,
+          'Profile',
+        );
 
         failureStage = null;
 
         relaySuccesses.push({
           relay: relayTarget,
           tierOutcome,
+          metadataOutcome,
+          relayListOutcome,
           profileOutcome,
           fallbackNotices: perRelayFallbackNotices,
         });
@@ -2899,7 +2940,14 @@ async function publishAll() {
       } catch (err) {
         fatalError = fatalError ?? err;
         const reason = describeFallbackReason(err);
-        const stageLabel = failureStage === 'profile' ? 'profile' : 'tiers';
+        const stageLabel =
+          failureStage === 'profile'
+            ? 'profile'
+            : failureStage === 'metadata'
+              ? 'metadata'
+              : failureStage === 'relay-list'
+                ? 'relay list'
+                : 'tiers';
         failureNotices.push(
           `Publish to ${relayTarget} (${stageLabel}) failed${
             reason ? ` — ${reason}` : ''
@@ -2917,7 +2965,13 @@ async function publishAll() {
     const ackSummaryParts: string[] = [];
     const successContextParts: string[] = [];
 
-    for (const { relay, tierOutcome, profileOutcome } of relaySuccesses) {
+    for (const {
+      relay,
+      tierOutcome,
+      metadataOutcome,
+      relayListOutcome,
+      profileOutcome,
+    } of relaySuccesses) {
       const tierResult = tierOutcome.result;
       const tierEventId = tierResult.ack?.id ?? tierResult.event?.id;
       const tierRelayMessage =
@@ -2930,6 +2984,36 @@ async function publishAll() {
       const tierSummary = tierEventId
         ? `Tiers published${tierFallbackNote} (kind ${tierKind.value}) — id ${tierEventId}${tierRelayMessage}`
         : `Tiers published${tierFallbackNote} (kind ${tierKind.value})${tierRelayMessage}`;
+
+      const metadataResult = metadataOutcome.result;
+      const metadataEventId = metadataResult.ack?.id ?? metadataResult.event?.id;
+      const metadataRelayMessage =
+        typeof metadataResult.ack?.message === 'string' && metadataResult.ack.message
+          ? ` — ${metadataResult.ack.message}`
+          : '';
+      const metadataFallbackUsed =
+        metadataOutcome.usedFallback ||
+        metadataResult.ack?.via === 'http' ||
+        metadataResult.via === 'http';
+      const metadataFallbackNote = metadataFallbackUsed ? ' via HTTP fallback' : '';
+      const metadataSummary = metadataEventId
+        ? `Metadata published${metadataFallbackNote} (kind 0) — id ${metadataEventId}${metadataRelayMessage}`
+        : `Metadata published${metadataFallbackNote}${metadataRelayMessage}`;
+
+      const relayListResult = relayListOutcome.result;
+      const relayListEventId = relayListResult.ack?.id ?? relayListResult.event?.id;
+      const relayListRelayMessage =
+        typeof relayListResult.ack?.message === 'string' && relayListResult.ack.message
+          ? ` — ${relayListResult.ack.message}`
+          : '';
+      const relayListFallbackUsed =
+        relayListOutcome.usedFallback ||
+        relayListResult.ack?.via === 'http' ||
+        relayListResult.via === 'http';
+      const relayListFallbackNote = relayListFallbackUsed ? ' via HTTP fallback' : '';
+      const relayListSummary = relayListEventId
+        ? `Relay list published${relayListFallbackNote} (kind 10002) — id ${relayListEventId}${relayListRelayMessage}`
+        : `Relay list published${relayListFallbackNote}${relayListRelayMessage}`;
 
       const profileResult = profileOutcome.result;
       const profileEventId = profileResult.ack?.id ?? profileResult.event?.id;
@@ -2946,24 +3030,37 @@ async function publishAll() {
         ? `Profile published${profileFallbackNote} — id ${profileEventId}${profileRelayMessage}`
         : `Profile published${profileFallbackNote} to ${relay}.${profileRelayMessage}`;
 
-      publishSummaryParts.push(`[${relay}] ${tierSummary} ${profileSummary}`.trim());
+      publishSummaryParts.push(
+        `[${relay}] ${tierSummary} ${metadataSummary} ${relayListSummary} ${profileSummary}`.trim(),
+      );
 
       const tierAckLabel =
         typeof tierResult.ack?.message === 'string' && tierResult.ack.message
           ? tierResult.ack.message
+          : 'accepted';
+      const metadataAckLabel =
+        typeof metadataResult.ack?.message === 'string' && metadataResult.ack.message
+          ? metadataResult.ack.message
+          : 'accepted';
+      const relayListAckLabel =
+        typeof relayListResult.ack?.message === 'string' && relayListResult.ack.message
+          ? relayListResult.ack.message
           : 'accepted';
       const profileAckLabel =
         typeof profileResult.ack?.message === 'string' && profileResult.ack.message
           ? profileResult.ack.message
           : 'accepted';
 
-      ackSummaryParts.push(`${relay} (profile ${profileAckLabel}, tiers ${tierAckLabel})`);
+      ackSummaryParts.push(
+        `${relay} (profile ${profileAckLabel}, metadata ${metadataAckLabel}, relays ${relayListAckLabel}, tiers ${tierAckLabel})`);
 
       const tierIdLabel = tierEventId ?? 'unknown';
+      const metadataIdLabel = metadataEventId ?? 'unknown';
+      const relayListIdLabel = relayListEventId ?? 'unknown';
       const profileIdLabel = profileEventId ?? 'unknown';
 
       successContextParts.push(
-        `${relay}: profile ${profileIdLabel} (fallback ${profileFallbackUsed ? 'yes' : 'no'}), tiers ${tierIdLabel} (fallback ${tierFallbackUsed ? 'yes' : 'no'})`,
+        `${relay}: metadata ${metadataIdLabel} (fallback ${metadataFallbackUsed ? 'yes' : 'no'}), relay list ${relayListIdLabel} (fallback ${relayListFallbackUsed ? 'yes' : 'no'}), profile ${profileIdLabel} (fallback ${profileFallbackUsed ? 'yes' : 'no'}), tiers ${tierIdLabel} (fallback ${tierFallbackUsed ? 'yes' : 'no'})`,
       );
     }
 
