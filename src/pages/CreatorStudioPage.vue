@@ -1243,7 +1243,16 @@ const {
   logRelayActivity,
 } = relayTelemetry;
 
-activeRelayUrl = relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL;
+const initialRelayConnectionUrl =
+  typeof relayConnectionUrl.value === 'string' && relayConnectionUrl.value.trim()
+    ? relayConnectionUrl.value.trim()
+    : CREATOR_STUDIO_RELAY_WS_URL;
+
+if (relayConnectionUrl.value !== initialRelayConnectionUrl) {
+  relayConnectionUrl.value = initialRelayConnectionUrl;
+}
+
+activeRelayUrl = initialRelayConnectionUrl;
 
 const activeRelayActivity = computed(() => latestRelayActivity.value);
 const activeRelayActivityTimeLabel = computed(() => {
@@ -2998,6 +3007,7 @@ onMounted(() => {
     void loadAll();
   }
   if (relaySupported) {
+    applyRelayUrlInput(CREATOR_STUDIO_RELAY_WS_URL);
     const initialRelayUrl = relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL;
     void ensureRelayClientInitialized(initialRelayUrl)
       .then(() => {

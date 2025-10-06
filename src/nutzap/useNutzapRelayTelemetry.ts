@@ -30,7 +30,12 @@ export function useNutzapRelayTelemetry(options: UseNutzapRelayTelemetryOptions 
     isConnected: relayIsConnected,
   } = useRelayConnection();
 
-  const relayUrlInput = ref(relayConnectionUrl.value);
+  const initialRelayUrl =
+    typeof relayConnectionUrl.value === 'string' && relayConnectionUrl.value.trim()
+      ? relayConnectionUrl.value.trim()
+      : FUNDSTR_WS_URL;
+
+  const relayUrlInput = ref(initialRelayUrl);
   const relayUrlInputFeedback = ref<{ state: 'warning' | 'error' | null; message: string }>({
     state: null,
     message: '',
@@ -45,7 +50,8 @@ export function useNutzapRelayTelemetry(options: UseNutzapRelayTelemetryOptions 
   });
 
   watch(relayConnectionUrl, value => {
-    relayUrlInput.value = value;
+    const trimmed = typeof value === 'string' ? value.trim() : '';
+    relayUrlInput.value = trimmed || FUNDSTR_WS_URL;
   });
 
   watch(relayUrlInput, value => {
@@ -150,7 +156,11 @@ export function useNutzapRelayTelemetry(options: UseNutzapRelayTelemetryOptions 
     }
   }
 
-  function applyRelayUrlInput() {
+  function applyRelayUrlInput(nextUrl?: string) {
+    if (typeof nextUrl === 'string') {
+      relayUrlInput.value = nextUrl;
+    }
+
     const trimmed = relayUrlInput.value.trim();
     const candidate = trimmed || FUNDSTR_WS_URL;
     const sanitized = sanitizeRelayUrls([candidate], 1)[0];
