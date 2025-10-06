@@ -339,18 +339,61 @@
         return trimmed;
       };
 
+      const relayCapabilities = new Map();
+
+      const setRelayCapability = (relay, capability, value) => {
+        if (!relay) return;
+        const existing = relayCapabilities.get(relay) ?? {};
+        existing[capability] = value;
+        relayCapabilities.set(relay, existing);
+      };
+
+      const relayHasCapability = (relay, capability) => {
+        const entry = relayCapabilities.get(relay);
+        if (!entry) return false;
+        return Boolean(entry[capability]);
+      };
+
       const sanitizeRelayArray = (relays) => {
         if (!Array.isArray(relays)) return [];
         const seen = new Set();
         const sanitized = [];
         for (const relay of relays) {
-          const normalized = normalizeRelayUrl(relay);
+          let normalized = null;
+          let searchCapable = undefined;
+
+          if (typeof relay === "string") {
+            normalized = normalizeRelayUrl(relay);
+          } else if (relay && typeof relay === "object") {
+            normalized =
+              normalizeRelayUrl(relay.url ?? relay.address ?? relay.relay) ??
+              null;
+            if (typeof relay.search === "boolean") {
+              searchCapable = relay.search;
+            } else if (typeof relay.supportsSearch === "boolean") {
+              searchCapable = relay.supportsSearch;
+            } else if (typeof relay.nip50 === "boolean") {
+              searchCapable = relay.nip50;
+            } else if (
+              relay.capabilities &&
+              typeof relay.capabilities.search === "boolean"
+            ) {
+              searchCapable = relay.capabilities.search;
+            }
+          }
+
           if (!normalized || seen.has(normalized)) continue;
           seen.add(normalized);
           sanitized.push(normalized);
+          if (searchCapable !== undefined) {
+            setRelayCapability(normalized, "search", searchCapable);
+          }
         }
         return sanitized;
       };
+
+      const getSearchCapableRelays = (relays) =>
+        relays.filter((relay) => relayHasCapability(relay, "search"));
 
       const withPrimaryRelay = (primary, relays = []) => {
         const seen = new Set();
@@ -376,6 +419,8 @@
       const { fundstrRelay: initialFundstr } = getRelayDefaults();
       let FUNDSTR_RELAY =
         normalizeRelayUrl(initialFundstr) ?? "wss://relay.fundstr.me";
+      setRelayCapability(FUNDSTR_RELAY, "search", true);
+      setRelayCapability("wss://relay.nostr.band", "search", true);
       let configuredBackupRelays = sanitizeRelayArray(BASE_BACKUP_RELAYS);
       configuredBackupRelays = configuredBackupRelays.filter(
         (relay) => relay !== FUNDSTR_RELAY,
@@ -482,6 +527,39 @@
 
       const nip05Regex = /^([a-zA-Z0-9_.-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})$/;
 
+      const SEARCH_CACHE_TTL = 5 * 60 * 1000;
+      const searchCache = new Map();
+
+      const cloneProfileForCache = (profile) => {
+        if (!profile || typeof profile !== "object") return null;
+        const cloned = { ...profile };
+        if (profile.event && typeof profile.event === "object") {
+          cloned.event = { ...profile.event };
+        }
+        return cloned;
+      };
+
+      const getCachedProfilesForQuery = (query) => {
+        if (!query) return [];
+        const cached = searchCache.get(query);
+        if (!cached) return [];
+        if (Date.now() - cached.timestamp > SEARCH_CACHE_TTL) {
+          searchCache.delete(query);
+          return [];
+        }
+        return cached.profiles
+          .map(cloneProfileForCache)
+          .filter((profile) => profile !== null);
+      };
+
+      const setCachedProfilesForQuery = (query, profiles) => {
+        if (!query || !Array.isArray(profiles)) return;
+        const cloned = profiles
+          .map(cloneProfileForCache)
+          .filter((profile) => profile !== null);
+        searchCache.set(query, { timestamp: Date.now(), profiles: cloned });
+      };
+
       function debounce(func, delay) {
         let timeoutId;
         return function (...args) {
@@ -535,6 +613,10 @@
         const orderedProfiles = Array.from(currentSearchProfiles.values());
         renderProfiles(orderedProfiles, resultsListElement, false);
 
+        if (lastSearchQuery) {
+          setCachedProfilesForQuery(lastSearchQuery, orderedProfiles);
+        }
+
         if (!hasInitialRender) {
           hasInitialRender = true;
           updateStatus("", true);
@@ -558,25 +640,97 @@
       function observeProfilesPromise(
         promise,
         signal,
-        { notifyView = false, targetPubkey, sourceLabel } = {},
+        {
+          notifyView = false,
+          targetPubkey,
+          sourceLabel,
+          revalidateWithFundstr = false,
+        } = {},
       ) {
-        promise
-          .then((profiles) => {
-            if (signal.aborted) return;
+        const handled = promise
+          .then(async (profiles) => {
+            if (signal.aborted) return [];
             const normalized = Array.isArray(profiles) ? profiles : [];
-            if (normalized.length > 0) {
-              applyProfiles(normalized, { notifyView, targetPubkey });
+            if (normalized.length === 0) return normalized;
+
+            let finalProfiles = normalized;
+            if (revalidateWithFundstr) {
+              try {
+                const hydrated = await rehydrateProfilesWithFundstr(
+                  normalized,
+                  signal,
+                );
+                if (
+                  !signal.aborted &&
+                  Array.isArray(hydrated) &&
+                  hydrated.length > 0
+                ) {
+                  finalProfiles = hydrated;
+                }
+              } catch (error) {
+                if (error.name === "AbortError") throw error;
+                console.error("Fundstr revalidation failed:", error);
+              }
             }
+
+            if (signal.aborted) return [];
+            if (finalProfiles.length > 0) {
+              applyProfiles(finalProfiles, { notifyView, targetPubkey });
+            }
+            return finalProfiles;
           })
           .catch((error) => {
-            if (error.name === "AbortError") return;
+            if (error.name === "AbortError") {
+              throw error;
+            }
             if (sourceLabel) {
               console.error(`${sourceLabel} profile fetch failed:`, error);
             } else {
               console.error("Profile fetch failed:", error);
             }
+            return [];
           });
-        return promise;
+        return handled;
+      }
+
+      async function rehydrateProfilesWithFundstr(profiles, signal) {
+        const pubkeys = Array.from(
+          new Set(
+            profiles
+              .map((profile) => profile?.pubkey)
+              .filter((pubkey) => typeof pubkey === "string" && pubkey.length > 0),
+          ),
+        );
+        if (pubkeys.length === 0) return profiles;
+
+        try {
+          const authoritative = await fetchProfilesFromFundstr(
+            { kinds: [0], authors: pubkeys },
+            signal,
+          );
+          if (signal.aborted) return [];
+
+          if (!Array.isArray(authoritative) || authoritative.length === 0) {
+            return profiles;
+          }
+
+          const authoritativeMap = new Map(
+            authoritative
+              .filter((profile) => profile && profile.pubkey)
+              .map((profile) => [profile.pubkey, profile]),
+          );
+
+          return pubkeys
+            .map((pubkey) => {
+              if (authoritativeMap.has(pubkey)) return authoritativeMap.get(pubkey);
+              return profiles.find((profile) => profile?.pubkey === pubkey) ?? null;
+            })
+            .filter((profile) => profile !== null);
+        } catch (error) {
+          if (error.name === "AbortError") throw error;
+          console.error("Fundstr revalidation error:", error);
+          return profiles;
+        }
       }
 
       function firstNonEmptyPromise(promise, signal, label) {
@@ -596,6 +750,182 @@
       function updateStatusIfPending(message) {
         if (!hasInitialRender) {
           updateStatus(message);
+        }
+      }
+
+      async function runFundstrPhase(query, signal, cachedProfiles = []) {
+        if (signal.aborted) return;
+
+        const tasks = [];
+        const cachedPubkeys = Array.isArray(cachedProfiles)
+          ? Array.from(
+              new Set(
+                cachedProfiles
+                  .map((profile) => profile?.pubkey)
+                  .filter(
+                    (pubkey) => typeof pubkey === "string" && pubkey.length > 0,
+                  ),
+              ),
+            )
+          : [];
+
+        if (cachedPubkeys.length > 0) {
+          tasks.push(
+            observeProfilesPromise(
+              fetchProfilesFromFundstr(
+                { kinds: [0], authors: cachedPubkeys },
+                signal,
+              ),
+              signal,
+              { sourceLabel: "Fundstr author refresh" },
+            ),
+          );
+        }
+
+        updateStatusIfPending(`Searching Fundstr relay for "${query}"...`);
+
+        tasks.push(
+          observeProfilesPromise(
+            fetchProfilesFromFundstr(
+              { kinds: [0], search: query, limit: 25 },
+              signal,
+            ),
+            signal,
+            { sourceLabel: "Fundstr relay" },
+          ),
+        );
+
+        await Promise.allSettled(tasks);
+      }
+
+      async function runVettedSearchRelaysPhase(query, signal) {
+        if (signal.aborted) return;
+        const vettedRelays = getSearchCapableRelays(RELAYS).filter(
+          (relay) => relay !== FUNDSTR_RELAY,
+        );
+        if (vettedRelays.length === 0) return;
+
+        updateStatusIfPending(
+          `Searching ${vettedRelays.length} vetted relays...`,
+        );
+
+        const filter = { kinds: [0], search: query, limit: 25 };
+
+        await Promise.allSettled([
+          observeProfilesPromise(
+            fetchProfilesFromRelays(
+              vettedRelays,
+              filter,
+              signal,
+              {
+                timeout: 3500,
+                retries: 0,
+              },
+            ),
+            signal,
+            {
+              sourceLabel: "Search relay pool",
+              revalidateWithFundstr: true,
+            },
+          ),
+        ]);
+      }
+
+      async function runIndexerFallbackPhase(query, signal) {
+        if (signal.aborted || hasInitialRender) return;
+        updateStatusIfPending(
+          "Still no matches. Consulting public indexers for profiles...",
+        );
+
+        await observeProfilesPromise(
+          searchProfilesViaIndexer(query, signal),
+          signal,
+          {
+            sourceLabel: "Indexer search",
+            revalidateWithFundstr: true,
+          },
+        );
+      }
+
+      async function searchProfilesViaIndexer(query, signal) {
+        if (!query) return [];
+        try {
+          const params = new URLSearchParams({
+            kind: "0",
+            limit: "25",
+            offset: "0",
+            query,
+          });
+          const response = await fetchWithTimeout(
+            `https://api.nostr.band/v0/search?${params.toString()}`,
+            {
+              signal,
+              headers: { Accept: "application/json" },
+            },
+          );
+          if (!response.ok) return [];
+          const data = await response.json();
+          const candidates = [];
+          if (Array.isArray(data.events)) {
+            candidates.push(...data.events);
+          }
+          if (Array.isArray(data.profiles)) {
+            data.profiles.forEach((entry) => {
+              if (entry && entry.profile) {
+                candidates.push(entry.profile);
+              }
+            });
+          }
+
+          const profileMap = new Map();
+
+          const pushFromEvent = (event) => {
+            if (!event || event.kind !== 0 || !event.pubkey || !event.content)
+              return;
+            try {
+              const parsed =
+                typeof event.content === "string"
+                  ? JSON.parse(event.content)
+                  : event.content;
+              const existing = profileMap.get(event.pubkey);
+              const createdAt = event.created_at ?? 0;
+              if (!existing || createdAt > existing.eventCreatedAt) {
+                profileMap.set(event.pubkey, {
+                  pubkey: event.pubkey,
+                  name:
+                    parsed.name ||
+                    parsed.display_name ||
+                    parsed.username ||
+                    "",
+                  nip05: parsed.nip05 || "",
+                  picture: parsed.picture || "",
+                  about: parsed.about || "",
+                  lud16: parsed.lud16 || "",
+                  event,
+                  eventCreatedAt: createdAt,
+                });
+              }
+            } catch (error) {
+              console.error("Indexer profile parse failed:", error);
+            }
+          };
+
+          candidates.forEach((candidate) => {
+            if (candidate && candidate.profile) {
+              pushFromEvent(candidate.profile);
+            } else {
+              pushFromEvent(candidate);
+            }
+          });
+
+          return Array.from(profileMap.values()).map((profile) => {
+            const { eventCreatedAt, ...rest } = profile;
+            return rest;
+          });
+        } catch (error) {
+          if (error.name === "AbortError") throw error;
+          console.error("Indexer search error:", error);
+          return [];
         }
       }
 
@@ -641,41 +971,36 @@
             return;
           }
 
-          updateStatus(`Searching relays for "${cleanQuery}"...`);
-          const filter = { kinds: [0], search: cleanQuery, limit: 25 };
-          const fundstrPromise = observeProfilesPromise(
-            fetchProfilesFromFundstr(filter, signal),
-            signal,
-            { sourceLabel: "Fundstr relay" },
-          );
-          const pooledPromise = observeProfilesPromise(
-            fetchProfilesFromRelays(RELAYS, filter, signal),
-            signal,
-            { sourceLabel: "Relay pool" },
-          );
+          updateStatus(`Searching for "${cleanQuery}"...`);
+          const cachedProfiles = getCachedProfilesForQuery(cleanQuery);
+          let showingCachedResults = false;
 
-          try {
-            await Promise.any([
-              firstNonEmptyPromise(fundstrPromise, signal, "fundstr"),
-              firstNonEmptyPromise(pooledPromise, signal, "relay-pool"),
-            ]);
-          } catch (error) {
-            if (signal.aborted) return;
-            if (error.name === "AggregateError") {
-              const aggregateErrors = Array.isArray(error.errors)
-                ? error.errors
-                : [];
-              const nonEmptyErrors = aggregateErrors.filter(
-                (err) => err && err.code !== EMPTY_RESULT_CODE,
-              );
-              if (nonEmptyErrors.length > 0) {
-                throw nonEmptyErrors[0];
-              }
-              if (!hasInitialRender) {
-                updateStatus(`No profiles found matching your search.`);
-              }
-            } else {
-              throw error;
+          if (cachedProfiles.length > 0) {
+            updateStatus(
+              `Showing cached results for "${cleanQuery}" while refreshing...`,
+            );
+            applyProfiles(cachedProfiles, { notifyView: false });
+            showingCachedResults = true;
+            if (!signal.aborted) {
+              loaderElement.style.display = "block";
+            }
+          }
+
+          await runFundstrPhase(cleanQuery, signal, cachedProfiles);
+
+          if (signal.aborted) return;
+
+          await runVettedSearchRelaysPhase(cleanQuery, signal);
+
+          if (signal.aborted) return;
+
+          await runIndexerFallbackPhase(cleanQuery, signal);
+
+          if (!signal.aborted) {
+            if (!hasInitialRender) {
+              updateStatus(`No profiles found matching your search.`);
+            } else if (showingCachedResults) {
+              updateStatus("", true);
             }
           }
         } catch (error) {
@@ -690,7 +1015,7 @@
             updateStatus(msg, false, true);
           }
         } finally {
-          if (!signal.aborted && !hasInitialRender) {
+          if (!signal.aborted) {
             loaderElement.style.display = "none";
           }
         }
@@ -710,11 +1035,21 @@
           signal,
           { ...watchOptions, sourceLabel: "Fundstr relay" },
         );
-        const knownRelayPromise = observeProfilesPromise(
-          fetchProfilesFromRelays(RELAYS, filter, signal),
-          signal,
-          { ...watchOptions, sourceLabel: "Known relays" },
+        const knownRelaySources = RELAYS.filter(
+          (relay) => relay !== FUNDSTR_RELAY,
         );
+        const knownRelayPromise =
+          knownRelaySources.length > 0
+            ? observeProfilesPromise(
+                fetchProfilesFromRelays(knownRelaySources, filter, signal),
+                signal,
+                {
+                  ...watchOptions,
+                  sourceLabel: "Known relays",
+                  revalidateWithFundstr: true,
+                },
+              )
+            : Promise.resolve([]);
 
         try {
           try {
@@ -756,7 +1091,11 @@
             const userRelayPromise = observeProfilesPromise(
               fetchProfilesFromRelays(userRelays, filter, signal),
               signal,
-              { ...watchOptions, sourceLabel: "Discovered relays" },
+              {
+                ...watchOptions,
+                sourceLabel: "Discovered relays",
+                revalidateWithFundstr: true,
+              },
             );
             await userRelayPromise;
             if (signal.aborted) return;
@@ -775,7 +1114,11 @@
             const indexedRelayPromise = observeProfilesPromise(
               fetchProfilesFromRelays(indexedRelays, filter, signal),
               signal,
-              { ...watchOptions, sourceLabel: "Indexed relays" },
+              {
+                ...watchOptions,
+                sourceLabel: "Indexed relays",
+                revalidateWithFundstr: true,
+              },
             );
             await indexedRelayPromise;
             if (signal.aborted) return;
@@ -786,7 +1129,11 @@
           observeProfilesPromise(
             indexerProfilePromise.then((profile) => (profile ? [profile] : [])),
             signal,
-            { ...watchOptions, sourceLabel: "nostr.band profile" },
+            {
+              ...watchOptions,
+              sourceLabel: "nostr.band profile",
+              revalidateWithFundstr: true,
+            },
           );
           const indexerProfile = await indexerProfilePromise;
           if (signal.aborted) return;
@@ -801,7 +1148,11 @@
                 profile ? [profile] : [],
               ),
               signal,
-              { ...watchOptions, sourceLabel: "Primal profile" },
+              {
+                ...watchOptions,
+                sourceLabel: "Primal profile",
+                revalidateWithFundstr: true,
+              },
             );
             const primalProfile = await primalProfilePromise;
             if (signal.aborted) return;
@@ -987,7 +1338,7 @@
         relays,
         filter,
         signal,
-        timeout = 7000,
+        timeout = 5500,
         retries = 1,
         retryDelay = 1000,
       ) {
@@ -1436,10 +1787,17 @@
                 : { fundstrRelay: providedPrimary ?? FUNDSTR_RELAY },
             );
             FUNDSTR_RELAY = normalizeRelayUrl(applied.fundstrRelay) ?? FUNDSTR_RELAY;
+            setRelayCapability(FUNDSTR_RELAY, "search", true);
             if (relaysFieldProvided) {
               configuredBackupRelays = providedRelays.filter(
                 (relay) => relay !== FUNDSTR_RELAY,
               );
+            }
+            if (Array.isArray(ev.data.searchCapableRelays)) {
+              ev.data.searchCapableRelays
+                .map((relay) => normalizeRelayUrl(relay))
+                .filter(Boolean)
+                .forEach((relay) => setRelayCapability(relay, "search", true));
             }
             const nextDefaults = withPrimaryRelay(
               FUNDSTR_RELAY,
