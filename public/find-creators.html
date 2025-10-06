@@ -1405,6 +1405,17 @@
           if (ev.data?.type === "prefillSearch" && ev.data.npub) {
             searchInputElement.value = ev.data.npub;
             handleSearch(ev.data.npub);
+          } else if (ev.data?.type === "prefillCache") {
+            const creators = Array.isArray(ev.data.creators)
+              ? ev.data.creators.filter(Boolean)
+              : [];
+            if (creators.length > 0) {
+              mergeProfilesIntoCurrent(creators);
+              const orderedProfiles = Array.from(
+                currentSearchProfiles.values(),
+              );
+              renderProfiles(orderedProfiles, resultsListElement, false);
+            }
           } else if (ev.data?.type === "set-theme") {
             document.body.classList.toggle("dark", !!ev.data.dark);
           } else if (ev.data?.type === "relay-config") {
