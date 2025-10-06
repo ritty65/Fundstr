@@ -522,15 +522,29 @@ describe('CreatorStudioPage publishAll fallback', () => {
     await publishAll.call(wrapper.vm);
     await flushPromises();
 
+    expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(2);
+    expect(state.publishNostrEventMock).toHaveBeenCalledTimes(2);
+    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(4);
+    expect(state.clientPublishMock).not.toHaveBeenCalled();
+
     const successCall = state.logRelayActivityMock.mock.calls.find(
       ([level]) => level === 'success',
     );
     expect(successCall).toBeTruthy();
-    expect(successCall?.[1]).toContain('profile profile-event-id');
-    expect(successCall?.[1]).toContain('tiers tier-event-id');
-    expect(successCall?.[2]).toContain('profile: no');
-    expect(successCall?.[2]).toContain('tiers: no');
+    expect(successCall?.[1]).toBe('Publish succeeded to 2/2 relays');
+    expect(successCall?.[2]).toContain('wss://relay.fundstr.me');
+    expect(successCall?.[2]).toContain('wss://relay.primal.net');
+    expect(successCall?.[2]).toContain('profile profile-event-id');
+    expect(successCall?.[2]).toContain('tiers tier-event-id');
+    expect(successCall?.[2]).toContain('fallback no');
+
     expect(notifySuccessMock).toHaveBeenCalledTimes(1);
+    const successMessage = notifySuccessMock.mock.calls[0]?.[0];
+    expect(successMessage).toContain('2/2 relays');
+    expect(successMessage).toContain('relay.fundstr.me');
+    expect(successMessage).toContain('relay.primal.net');
+    expect(successMessage).toContain('profile profile-ok');
+    expect(successMessage).toContain('tiers tiers-ok');
     expect(notifyErrorMock).not.toHaveBeenCalled();
   });
 
@@ -623,20 +637,33 @@ describe('CreatorStudioPage publishAll fallback', () => {
     await publishAll.call(wrapper.vm);
     await flushPromises();
 
-    expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(2);
-    expect(state.publishTiersToRelayMock.mock.calls[1][2]).toEqual({
-      relayUrl: 'wss://relay.fundstr.me',
-    });
-    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(2);
-    expect(state.clientPublishMock).toHaveBeenCalledTimes(1);
-    expect(state.logRelayActivityMock).toHaveBeenCalledWith(
-      'warning',
-      'Publish used HTTP fallback',
-      expect.stringContaining('HTTP fallback'),
+    expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(4);
+    expect(state.publishNostrEventMock).toHaveBeenCalledTimes(2);
+    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(4);
+    expect(state.clientPublishMock).toHaveBeenCalledTimes(2);
+
+    const tierFallbackCalls = state.publishTiersToRelayMock.mock.calls.filter(
+      ([, , options]) => !options?.send,
     );
+    expect(tierFallbackCalls).toHaveLength(2);
+    const tierFallbackRelays = tierFallbackCalls.map(([, , options]) => options?.relayUrl);
+    expect(tierFallbackRelays).toEqual(
+      expect.arrayContaining(['wss://relay.fundstr.me', 'wss://relay.primal.net']),
+    );
+
+    const fallbackWarning = state.logRelayActivityMock.mock.calls.find(
+      ([level, message]) => level === 'warning' && message === 'Publish used HTTP fallback',
+    );
+    expect(fallbackWarning).toBeTruthy();
+    expect(fallbackWarning?.[2]).toContain('relay.fundstr.me');
+    expect(fallbackWarning?.[2]).toContain('relay.primal.net');
+
     expect((wrapper.vm as any).lastPublishInfo).toContain('via HTTP fallback');
-    expect((wrapper.vm as any).diagnosticsAttention.detail).toContain('HTTP fallback');
+    expect((wrapper.vm as any).diagnosticsAttention.detail).toContain('relay.primal.net');
+
     expect(notifySuccessMock).toHaveBeenCalledTimes(1);
+    const successMessage = notifySuccessMock.mock.calls[0]?.[0];
+    expect(successMessage).toContain('2/2 relays');
     expect(notifyErrorMock).not.toHaveBeenCalled();
   });
 
@@ -739,15 +766,119 @@ describe('CreatorStudioPage publishAll fallback', () => {
     await publishAll.call(wrapper.vm);
     await flushPromises();
 
-    expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(2);
-    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(2);
-    expect(state.clientPublishMock).toHaveBeenCalledTimes(1);
-    expect(state.logRelayActivityMock).toHaveBeenCalledWith(
-      'warning',
-      'Publish used HTTP fallback',
-      expect.stringContaining('HTTP fallback'),
+    expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(4);
+    expect(state.publishNostrEventMock).toHaveBeenCalledTimes(2);
+    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(4);
+    expect(state.clientPublishMock).toHaveBeenCalledTimes(2);
+
+    const fallbackWarning = state.logRelayActivityMock.mock.calls.find(
+      ([level, message]) => level === 'warning' && message === 'Publish used HTTP fallback',
     );
+    expect(fallbackWarning).toBeTruthy();
+    expect(fallbackWarning?.[2]).toContain('relay.fundstr.me');
+    expect(fallbackWarning?.[2]).toContain('relay.primal.net');
+
     expect(notifySuccessMock).toHaveBeenCalledTimes(1);
+    const successMessage = notifySuccessMock.mock.calls[0]?.[0];
+    expect(successMessage).toContain('2/2 relays');
     expect(notifyErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('summarizes partial relay failures while still reporting success', async () => {
+    const state = ensureShared();
+    state.signerRef.value = {};
+
+    const tierEvent = {
+      id: 'tier-event-id',
+      pubkey: 'tier-pub',
+      created_at: Date.now(),
+      kind: 30019,
+      tags: [],
+      content: '{}',
+      sig: 'tier-sig',
+    };
+    const profileEvent = {
+      id: 'profile-event-id',
+      pubkey: 'profile-pub',
+      created_at: Date.now(),
+      kind: 10019,
+      tags: [],
+      content: '{}',
+      sig: 'profile-sig',
+    };
+
+    state.publishEventToRelayMock.mockImplementation(async event => ({
+      id: event.id,
+      accepted: true,
+      via: 'websocket' as const,
+      message: event.kind === 10019 ? 'profile-ok' : 'tiers-ok',
+    }));
+
+    state.publishTiersToRelayMock
+      .mockImplementationOnce(async (_tiers, _kind, options) => {
+        const ack = options?.send ? await options.send(tierEvent) : { id: tierEvent.id };
+        return { ack, event: tierEvent };
+      })
+      .mockImplementationOnce(async () => {
+        throw new Error('secondary relay down');
+      });
+
+    state.publishNostrEventMock.mockImplementationOnce(async (_template, options) => {
+      const ack = options?.send ? await options.send(profileEvent) : { id: profileEvent.id };
+      return { ack, event: profileEvent };
+    });
+
+    const TestHarness = defineComponent({
+      name: 'CreatorStudioPagePartialFailureHarness',
+      setup(props, ctx) {
+        const component = CreatorStudioPage as any;
+        return component.setup ? component.setup(props, ctx) : {};
+      },
+      template: '<div />',
+    });
+
+    const wrapper = shallowMount(TestHarness as any, {
+      global: {
+        stubs: creatorStudioStubs,
+      },
+    });
+
+    const vmAny = wrapper.vm as any;
+    vmAny.authorInput = VALID_HEX;
+    vmAny.displayName = 'Creator';
+    vmAny.p2pkPub = 'f'.repeat(64);
+    vmAny.mintsText = 'https://mint.example';
+    vmAny.tiers = [
+      { id: 'tier-1', title: 'Tier 1', price: 1000, frequency: 'monthly', description: '' },
+    ];
+
+    await wrapper.vm.$nextTick();
+
+    const publishAll =
+      vmAny.publishAll ??
+      vmAny.$?.setupState?.publishAll ??
+      vmAny.$?.ctx?.publishAll ??
+      vmAny.$?.exposed?.publishAll;
+    expect(typeof publishAll).toBe('function');
+    await publishAll.call(wrapper.vm);
+    await flushPromises();
+
+    expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(2);
+    expect(state.publishNostrEventMock).toHaveBeenCalledTimes(1);
+    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(2);
+    expect(state.clientPublishMock).not.toHaveBeenCalled();
+
+    expect(notifySuccessMock).toHaveBeenCalledTimes(1);
+    const successMessage = notifySuccessMock.mock.calls[0]?.[0];
+    expect(successMessage).toContain('1/2 relays');
+
+    const warningCall = state.logRelayActivityMock.mock.calls.find(
+      ([level, message]) => level === 'warning' && message === 'Publish skipped relays',
+    );
+    expect(warningCall).toBeTruthy();
+    expect(warningCall?.[2]).toContain('secondary relay down');
+
+    expect((wrapper.vm as any).lastPublishInfo).toContain('secondary relay down');
+    expect((wrapper.vm as any).diagnosticsAttention.detail).toContain('secondary relay down');
   });
 });
