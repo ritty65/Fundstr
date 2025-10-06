@@ -322,18 +322,72 @@
     </div>
 
     <script type="module" defer>
-      import { filterHealthyRelays, pingRelay } from "./relayHealth.js";
-      const FUNDSTR_RELAY = "wss://relay.primal.net";
-      const DEFAULT_RELAYS = [
-        FUNDSTR_RELAY,
+      import {
+        filterHealthyRelays,
+        pingRelay,
+        configureRelayDefaults,
+        getRelayDefaults,
+      } from "./relayHealth.js";
+
+      const normalizeRelayUrl = (value) => {
+        if (typeof value !== "string") return null;
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        if (!trimmed.startsWith("ws://") && !trimmed.startsWith("wss://")) {
+          return null;
+        }
+        return trimmed;
+      };
+
+      const sanitizeRelayArray = (relays) => {
+        if (!Array.isArray(relays)) return [];
+        const seen = new Set();
+        const sanitized = [];
+        for (const relay of relays) {
+          const normalized = normalizeRelayUrl(relay);
+          if (!normalized || seen.has(normalized)) continue;
+          seen.add(normalized);
+          sanitized.push(normalized);
+        }
+        return sanitized;
+      };
+
+      const withPrimaryRelay = (primary, relays = []) => {
+        const seen = new Set();
+        const ordered = [];
+        const add = (relay) => {
+          const normalized = normalizeRelayUrl(relay);
+          if (!normalized || seen.has(normalized)) return;
+          seen.add(normalized);
+          ordered.push(normalized);
+        };
+        add(primary);
+        for (const relay of relays) add(relay);
+        return ordered;
+      };
+
+      const BASE_BACKUP_RELAYS = [
         "wss://relay.damus.io",
         "wss://relay.snort.social",
         "wss://nos.lol",
         "wss://relay.nostr.band",
       ];
+
+      const { fundstrRelay: initialFundstr } = getRelayDefaults();
+      let FUNDSTR_RELAY =
+        normalizeRelayUrl(initialFundstr) ?? "wss://relay.fundstr.me";
+      let configuredBackupRelays = sanitizeRelayArray(BASE_BACKUP_RELAYS);
+      configuredBackupRelays = configuredBackupRelays.filter(
+        (relay) => relay !== FUNDSTR_RELAY,
+      );
+      let DEFAULT_RELAYS = withPrimaryRelay(
+        FUNDSTR_RELAY,
+        configuredBackupRelays,
+      );
       const statusMessageElement = document.getElementById("statusMessage");
       const relayWarningElement = document.getElementById("relayWarning");
       const retryButtonElement = document.getElementById("retryButton");
+      const relayListElement = document.getElementById("relayList");
       // --- Nostr Tools ---
       if (!window.NostrTools) {
         statusMessageElement.textContent =
@@ -349,7 +403,7 @@
       );
 
       let RELAYS = [...DEFAULT_RELAYS];
-      document.getElementById("relayList").textContent = RELAYS.join(", ");
+      relayListElement.textContent = RELAYS.join(", ");
 
       const pool = new SimplePool({ eoseSubTimeout: 8000 });
       let currentSearchAbortController = null;
@@ -371,7 +425,7 @@
           ];
           RELAYS = prioritized;
           relayFailureCount = 0;
-          document.getElementById("relayList").textContent = RELAYS.join(", ");
+          relayListElement.textContent = RELAYS.join(", ");
           statusMessageElement.classList.add("hidden");
           if (fundstrReachable) {
             relayWarningElement.classList.add("hidden");
@@ -1353,6 +1407,40 @@
             handleSearch(ev.data.npub);
           } else if (ev.data?.type === "set-theme") {
             document.body.classList.toggle("dark", !!ev.data.dark);
+          } else if (ev.data?.type === "relay-config") {
+            const relaysFieldProvided = Array.isArray(ev.data.relays);
+            const providedRelays = relaysFieldProvided
+              ? sanitizeRelayArray(ev.data.relays)
+              : [];
+            const providedPrimary =
+              normalizeRelayUrl(ev.data.primary) ??
+              normalizeRelayUrl(ev.data.fundstrRelay) ??
+              (providedRelays.length > 0 ? providedRelays[0] : null);
+            const applied = configureRelayDefaults(
+              relaysFieldProvided
+                ? {
+                    fundstrRelay: providedPrimary ?? FUNDSTR_RELAY,
+                    relays: providedRelays,
+                  }
+                : { fundstrRelay: providedPrimary ?? FUNDSTR_RELAY },
+            );
+            FUNDSTR_RELAY = normalizeRelayUrl(applied.fundstrRelay) ?? FUNDSTR_RELAY;
+            if (relaysFieldProvided) {
+              configuredBackupRelays = providedRelays.filter(
+                (relay) => relay !== FUNDSTR_RELAY,
+              );
+            }
+            const nextDefaults = withPrimaryRelay(
+              FUNDSTR_RELAY,
+              relaysFieldProvided ? providedRelays : configuredBackupRelays,
+            );
+            DEFAULT_RELAYS = nextDefaults;
+            RELAYS = [...DEFAULT_RELAYS];
+            relayListElement.textContent = RELAYS.join(", ");
+            relayWarningElement.classList.add("hidden");
+            relayWarningElement.textContent = "";
+            relayFailureCount = 0;
+            refreshRelays();
           }
         });
 
