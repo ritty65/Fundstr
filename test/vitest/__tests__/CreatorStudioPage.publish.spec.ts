@@ -478,6 +478,24 @@ describe('CreatorStudioPage publishAll fallback', () => {
       sig: 'relay-list-sig',
     };
 
+    state.clientRequestOnceMock.mockImplementation(async filters => {
+      const first = Array.isArray(filters) ? filters[0] : null;
+      const ids = Array.isArray(first?.ids) ? first?.ids : [];
+      const matches: any[] = [];
+      ids.forEach(id => {
+        if (id === tierEvent.id) {
+          matches.push(tierEvent);
+        } else if (id === metadataEvent.id) {
+          matches.push(metadataEvent);
+        } else if (id === relayListEvent.id) {
+          matches.push(relayListEvent);
+        } else if (id === profileEvent.id) {
+          matches.push(profileEvent);
+        }
+      });
+      return matches;
+    });
+
     state.publishEventToRelayMock.mockImplementation(async event => {
       const message =
         event.kind === 10019
@@ -653,6 +671,24 @@ describe('CreatorStudioPage publishAll fallback', () => {
     };
     state.publishEventToRelayMock.mockRejectedValue(new Error('Relay socket unavailable'));
 
+    state.clientRequestOnceMock.mockImplementation(async filters => {
+      const first = Array.isArray(filters) ? filters[0] : null;
+      const ids = Array.isArray(first?.ids) ? first?.ids : [];
+      const matches: any[] = [];
+      ids.forEach(id => {
+        if (id === tierEvent.id) {
+          matches.push(tierEvent);
+        } else if (id === metadataEvent.id) {
+          matches.push(metadataEvent);
+        } else if (id === relayListEvent.id) {
+          matches.push(relayListEvent);
+        } else if (id === profileEvent.id) {
+          matches.push(profileEvent);
+        }
+      });
+      return matches;
+    });
+
     state.publishTiersToRelayMock.mockImplementation(async (_tiers, _kind, options) => {
       if (options?.send) {
         const ack = await options.send(tierEvent);
@@ -807,6 +843,24 @@ describe('CreatorStudioPage publishAll fallback', () => {
 
     state.publishEventToRelayMock.mockRejectedValue(new Error('Relay socket unavailable'));
 
+    state.clientRequestOnceMock.mockImplementation(async filters => {
+      const first = Array.isArray(filters) ? filters[0] : null;
+      const ids = Array.isArray(first?.ids) ? first?.ids : [];
+      const matches: any[] = [];
+      ids.forEach(id => {
+        if (id === tierEvent.id) {
+          matches.push(tierEvent);
+        } else if (id === metadataEvent.id) {
+          matches.push(metadataEvent);
+        } else if (id === relayListEvent.id) {
+          matches.push(relayListEvent);
+        } else if (id === profileEvent.id) {
+          matches.push(profileEvent);
+        }
+      });
+      return matches;
+    });
+
     state.publishTiersToRelayMock.mockImplementation(async (_tiers, _kind, options) => {
       if (options?.send) {
         const ack = await options.send(tierEvent);
@@ -914,6 +968,125 @@ describe('CreatorStudioPage publishAll fallback', () => {
     expect(notifyErrorMock).not.toHaveBeenCalled();
   });
 
+  it('prompts retry when Fundstr relay omits freshly published events', async () => {
+    const state = ensureShared();
+    state.signerRef.value = {};
+
+    const tierEvent = {
+      id: 'tier-event-id',
+      pubkey: 'tier-pub',
+      created_at: Date.now(),
+      kind: 30019,
+      tags: [],
+      content: '{}',
+      sig: 'tier-sig',
+    };
+    const profileEvent = {
+      id: 'profile-event-id',
+      pubkey: 'profile-pub',
+      created_at: Date.now(),
+      kind: 10019,
+      tags: [],
+      content: '{}',
+      sig: 'profile-sig',
+    };
+    const metadataEvent = {
+      id: 'metadata-event-id',
+      pubkey: 'profile-pub',
+      created_at: Date.now(),
+      kind: 0,
+      tags: [],
+      content: '{}',
+      sig: 'metadata-sig',
+    };
+    const relayListEvent = {
+      id: 'relay-list-event-id',
+      pubkey: 'profile-pub',
+      created_at: Date.now(),
+      kind: 10002,
+      tags: [],
+      content: '',
+      sig: 'relay-list-sig',
+    };
+
+    state.clientRequestOnceMock.mockImplementation(async () => []);
+
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async () =>
+      new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    globalThis.fetch = fetchMock as any;
+
+    state.publishEventToRelayMock.mockImplementation(async event => ({
+      id: event.id,
+      accepted: true,
+      via: 'websocket' as const,
+      message: 'ok',
+    }));
+
+    state.publishTiersToRelayMock.mockImplementation(async (_tiers, _kind, options) => {
+      const ack = options?.send ? await options.send(tierEvent) : { id: tierEvent.id };
+      return { ack, event: tierEvent };
+    });
+
+    state.publishNostrEventMock.mockImplementation(async (template, options) => {
+      const event =
+        template.kind === 0
+          ? metadataEvent
+          : template.kind === 10002
+            ? relayListEvent
+            : profileEvent;
+      const ack = options?.send ? await options.send(event) : { id: event.id };
+      return { ack, event };
+    });
+
+    const TestHarness = defineComponent({
+      name: 'CreatorStudioPageFundstrRetryHarness',
+      setup(props, ctx) {
+        const component = CreatorStudioPage as any;
+        return component.setup ? component.setup(props, ctx) : {};
+      },
+      template: '<div />',
+    });
+
+    let wrapper: ReturnType<typeof shallowMount> | null = null;
+    try {
+      wrapper = shallowMount(TestHarness as any, {
+        global: {
+          stubs: creatorStudioStubs,
+        },
+      });
+
+      const vmAny = wrapper.vm as any;
+      vmAny.authorInput = VALID_HEX;
+      vmAny.displayName = 'Creator';
+      vmAny.p2pkPub = 'f'.repeat(64);
+      vmAny.mintsText = 'https://mint.example';
+      vmAny.tiers = [
+        { id: 'tier-1', title: 'Tier 1', price: 1000, frequency: 'monthly', description: '' },
+      ];
+
+      await wrapper.vm.$nextTick();
+
+      const publishAll =
+        vmAny.publishAll ?? vmAny.$?.setupState?.publishAll ?? vmAny.$?.ctx?.publishAll ?? vmAny.$?.exposed?.publishAll;
+      expect(typeof publishAll).toBe('function');
+      await publishAll.call(wrapper.vm);
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalled();
+      expect(notifyWarningMock).toHaveBeenCalled();
+      const [warningTitle, warningDetail] = notifyWarningMock.mock.calls[0];
+      expect(warningTitle).toContain('Fundstr relay');
+      expect(String(warningDetail)).toContain('profile event');
+      expect(String(warningDetail)).toContain('tiers event');
+      expect((wrapper.vm as any).diagnosticsAttention?.detail).toContain('Fundstr relay');
+    } finally {
+      wrapper?.unmount();
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('summarizes partial relay failures while still reporting success', async () => {
     const state = ensureShared();
     state.signerRef.value = {};
@@ -954,6 +1127,24 @@ describe('CreatorStudioPage publishAll fallback', () => {
       content: '',
       sig: 'relay-list-sig',
     };
+
+    state.clientRequestOnceMock.mockImplementation(async filters => {
+      const first = Array.isArray(filters) ? filters[0] : null;
+      const ids = Array.isArray(first?.ids) ? first?.ids : [];
+      const matches: any[] = [];
+      ids.forEach(id => {
+        if (id === tierEvent.id) {
+          matches.push(tierEvent);
+        } else if (id === metadataEvent.id) {
+          matches.push(metadataEvent);
+        } else if (id === relayListEvent.id) {
+          matches.push(relayListEvent);
+        } else if (id === profileEvent.id) {
+          matches.push(profileEvent);
+        }
+      });
+      return matches;
+    });
 
     state.publishEventToRelayMock.mockImplementation(async event => {
       const message =

@@ -1196,6 +1196,53 @@ async function requestCreatorStudioEvents(filters: NostrFilter[]): Promise<any[]
   }
 }
 
+type FundstrEventExpectation = {
+  id: string;
+  label: string;
+};
+
+async function confirmFundstrEventPresence(
+  expectations: FundstrEventExpectation[],
+): Promise<string[]> {
+  if (!expectations.length) {
+    return [];
+  }
+
+  const ids = expectations.map(entry => entry.id);
+
+  try {
+    const events = await requestCreatorStudioEvents([
+      {
+        ids,
+        limit: ids.length,
+      },
+    ]);
+    const availableIds = new Set(
+      events
+        .map(event => (event && typeof event.id === 'string' ? event.id : ''))
+        .filter(Boolean),
+    );
+    return expectations
+      .filter(entry => !availableIds.has(entry.id))
+      .map(entry => entry.label);
+  } catch (err) {
+    console.warn('[nutzap] failed to confirm Fundstr events', err);
+    return expectations.map(entry => entry.label);
+  }
+}
+
+function extractPublishEventId(result: any): string | null {
+  if (!result) {
+    return null;
+  }
+  const eventId = typeof result.event?.id === 'string' ? result.event.id.trim() : '';
+  if (eventId) {
+    return eventId;
+  }
+  const ackId = typeof result.ack?.id === 'string' ? result.ack.id.trim() : '';
+  return ackId || null;
+}
+
 watch(diagnosticsAttention, value => {
   if (value) {
     helpBannerDismissed.value = false;
@@ -3076,6 +3123,8 @@ async function publishAll() {
 
     const primarySuccess = relaySuccesses[0];
     const tierResult = primarySuccess.tierOutcome.result;
+    const metadataResult = primarySuccess.metadataOutcome.result;
+    const relayListResult = primarySuccess.relayListOutcome.result;
     const profileResult = primarySuccess.profileOutcome.result;
 
     const signerPubkey = profileResult.event?.pubkey || tierResult.event?.pubkey;
@@ -3123,6 +3172,27 @@ async function publishAll() {
 
     await Promise.all([loadTiers(reloadKey), loadProfile(reloadKey)]);
     await refreshSubscriptions(true);
+
+    const tierEventId = extractPublishEventId(tierResult);
+    const metadataEventId = extractPublishEventId(metadataResult);
+    const relayListEventId = extractPublishEventId(relayListResult);
+    const profileEventId = extractPublishEventId(profileResult);
+    const fundstrExpectations = [
+      tierEventId ? { id: tierEventId, label: 'tiers event' } : null,
+      metadataEventId ? { id: metadataEventId, label: 'metadata event' } : null,
+      relayListEventId ? { id: relayListEventId, label: 'relay list event' } : null,
+      profileEventId ? { id: profileEventId, label: 'profile event' } : null,
+    ].filter((entry): entry is FundstrEventExpectation => entry !== null);
+
+    if (fundstrExpectations.length) {
+      const missingFundstrEvents = await confirmFundstrEventPresence(fundstrExpectations);
+      if (missingFundstrEvents.length) {
+        const missingSummary = missingFundstrEvents.join(', ');
+        const detail = `Fundstr relay (${CREATOR_STUDIO_RELAY_HTTP_URL}) has not confirmed the latest publish (${missingSummary}). Retry after a moment.`;
+        notifyWarning('Fundstr relay is still syncing your publish.', detail);
+        flagDiagnosticsAttention('publish', detail, 'warning');
+      }
+    }
   } catch (err) {
     console.error('[nutzap] publish profile workflow failed', err);
     const ack = (err as any)?.ack as { id?: string; message?: string } | undefined;
