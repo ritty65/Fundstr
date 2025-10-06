@@ -211,6 +211,15 @@ export async function pingRelay(url) {
   return false;
 }
 
+if (typeof window !== "undefined") {
+  window.FundstrRelayHealth = {
+    configureRelayDefaults,
+    getRelayDefaults,
+    filterHealthyRelays,
+    pingRelay,
+  };
+}
+
 export async function filterHealthyRelays(relays) {
   const key = relays.slice().sort().join("|");
   const cached = filterCache.get(key);

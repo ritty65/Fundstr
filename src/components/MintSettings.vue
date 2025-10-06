@@ -627,6 +627,9 @@ export default defineComponent({
         this.addingMint = false;
       }
     },
+    formatCurrency(amount, unit) {
+      return useUiStore().formatCurrency(amount, unit);
+    },
     mintClass(mint) {
       return new MintClass(mint);
     },

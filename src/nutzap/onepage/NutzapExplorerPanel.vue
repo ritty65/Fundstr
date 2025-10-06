@@ -187,14 +187,22 @@ import type { Event as NostrEvent, Filter as NostrFilter } from 'nostr-tools';
 import { multiRelaySearch, mergeRelayHints } from './multiRelaySearch';
 import { sanitizeRelayUrls } from 'src/utils/relay';
 
-const DEFAULT_RELAYS = ['wss://relay.primal.net'];
+const DEFAULT_RELAYS = ['wss://relay.fundstr.me'];
 
-const props = defineProps<{
-  modelValue: string;
-  loadingAuthor: boolean;
-  tierAddressPreview: string;
-  condensed?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    modelValue?: string;
+    loadingAuthor?: boolean;
+    tierAddressPreview?: string;
+    condensed?: boolean;
+  }>(),
+  {
+    modelValue: "",
+    loadingAuthor: false,
+    tierAddressPreview: "",
+    condensed: false,
+  },
+);
 
 const emit = defineEmits<{
   (event: 'update:modelValue', value: string): void;
@@ -204,8 +212,9 @@ const emit = defineEmits<{
 const condensed = computed(() => Boolean(props.condensed));
 
 const authorModel = computed({
-  get: () => props.modelValue,
-  set: value => emit('update:modelValue', value),
+  get: () => (typeof props.modelValue === "string" ? props.modelValue : ""),
+  set: (value: string | null | undefined) =>
+    emit("update:modelValue", typeof value === "string" ? value : ""),
 });
 
 const query = ref('');
