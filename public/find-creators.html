@@ -529,6 +529,8 @@
 
       const SEARCH_CACHE_TTL = 5 * 60 * 1000;
       const searchCache = new Map();
+      const hydrationRequestedPubkeys = new Set();
+      const hydrationCompletedPubkeys = new Set();
 
       const cloneProfileForCache = (profile) => {
         if (!profile || typeof profile !== "object") return null;
@@ -595,14 +597,141 @@
         profiles.forEach((profile) => {
           if (!profile || !profile.pubkey) return;
           const existing = currentSearchProfiles.get(profile.pubkey);
-          const existingCreatedAt = existing?.event?.created_at ?? 0;
-          const nextCreatedAt = profile?.event?.created_at ?? 0;
-          if (!existing || nextCreatedAt >= existingCreatedAt) {
-            currentSearchProfiles.set(profile.pubkey, profile);
+          const incomingEvent = profile.event ?? profile.profileEvent ?? null;
+          const existingEvent = existing?.event ?? existing?.profileEvent ?? null;
+          const incomingCreatedAt = incomingEvent?.created_at ?? 0;
+          const existingCreatedAt = existingEvent?.created_at ?? 0;
+
+          if (!existing || incomingCreatedAt >= existingCreatedAt) {
+            const merged = { ...(existing ?? {}), ...profile };
+            if (incomingEvent) {
+              merged.event = incomingEvent;
+              merged.profileEvent = incomingEvent;
+            }
+            if (
+              Array.isArray(profile.tiers) ||
+              Object.prototype.hasOwnProperty.call(profile, "tiers")
+            ) {
+              merged.tiers = Array.isArray(profile.tiers)
+                ? profile.tiers.map((tier) => ({ ...tier }))
+                : profile.tiers ?? null;
+            }
+            if (profile.tierEvent) {
+              merged.tierEvent = { ...profile.tierEvent };
+            }
+            if (
+              profile.profileDetails ||
+              Object.prototype.hasOwnProperty.call(profile, "profileDetails")
+            ) {
+              if (profile.profileDetails) {
+                merged.profileDetails = {
+                  ...profile.profileDetails,
+                  trustedMints: Array.isArray(profile.profileDetails.trustedMints)
+                    ? [...profile.profileDetails.trustedMints]
+                    : profile.profileDetails.trustedMints ?? [],
+                  relays: Array.isArray(profile.profileDetails.relays)
+                    ? [...profile.profileDetails.relays]
+                    : profile.profileDetails.relays ?? [],
+                };
+              } else {
+                merged.profileDetails = profile.profileDetails ?? null;
+              }
+            }
+            if (Object.prototype.hasOwnProperty.call(profile, "verified")) {
+              merged.verified = profile.verified;
+            }
+            currentSearchProfiles.set(profile.pubkey, merged);
+            changed = true;
+            return;
+          }
+
+          const merged = { ...existing };
+          let mutated = false;
+
+          if (incomingEvent && !existingEvent) {
+            merged.event = incomingEvent;
+            merged.profileEvent = incomingEvent;
+            mutated = true;
+          }
+
+          if (profile.profileDetails) {
+            merged.profileDetails = {
+              ...profile.profileDetails,
+              trustedMints: Array.isArray(profile.profileDetails.trustedMints)
+                ? [...profile.profileDetails.trustedMints]
+                : profile.profileDetails.trustedMints ?? [],
+              relays: Array.isArray(profile.profileDetails.relays)
+                ? [...profile.profileDetails.relays]
+                : profile.profileDetails.relays ?? [],
+            };
+            mutated = true;
+          } else if (
+            Object.prototype.hasOwnProperty.call(profile, "profileDetails") &&
+            !profile.profileDetails &&
+            merged.profileDetails
+          ) {
+            merged.profileDetails = null;
+            mutated = true;
+          }
+
+          if (profile.tierEvent) {
+            const existingTierCreatedAt = merged.tierEvent?.created_at ?? 0;
+            if ((profile.tierEvent.created_at ?? 0) >= existingTierCreatedAt) {
+              merged.tierEvent = { ...profile.tierEvent };
+              mutated = true;
+            }
+          }
+
+          if (Array.isArray(profile.tiers)) {
+            merged.tiers = profile.tiers.map((tier) => ({ ...tier }));
+            mutated = true;
+          } else if (
+            Object.prototype.hasOwnProperty.call(profile, "tiers") &&
+            !profile.tiers &&
+            merged.tiers
+          ) {
+            merged.tiers = null;
+            mutated = true;
+          }
+
+          if (Object.prototype.hasOwnProperty.call(profile, "verified")) {
+            merged.verified = profile.verified;
+            mutated = true;
+          }
+
+          if (mutated) {
+            currentSearchProfiles.set(profile.pubkey, merged);
             changed = true;
           }
         });
         return changed;
+      }
+
+      function requestHydrationForProfiles(profiles) {
+        if (!Array.isArray(profiles) || profiles.length === 0) return;
+        const requested = [];
+        profiles.forEach((profile) => {
+          const pubkey = profile?.pubkey;
+          if (!pubkey) return;
+          if (hydrationCompletedPubkeys.has(pubkey)) return;
+          if (hydrationRequestedPubkeys.has(pubkey)) return;
+          hydrationRequestedPubkeys.add(pubkey);
+          requested.push(pubkey);
+        });
+        if (requested.length === 0) return;
+        window.parent.postMessage(
+          { type: "hydrateCreators", pubkeys: requested },
+          "*",
+        );
+      }
+
+      function markHydrationComplete(profiles) {
+        if (!Array.isArray(profiles) || profiles.length === 0) return;
+        profiles.forEach((profile) => {
+          const pubkey = profile?.pubkey;
+          if (!pubkey) return;
+          hydrationCompletedPubkeys.add(pubkey);
+        });
       }
 
       function applyProfiles(profiles, { notifyView = false, targetPubkey } = {}) {
@@ -612,6 +741,7 @@
 
         const orderedProfiles = Array.from(currentSearchProfiles.values());
         renderProfiles(orderedProfiles, resultsListElement, false);
+        requestHydrationForProfiles(orderedProfiles);
 
         if (lastSearchQuery) {
           setCachedProfilesForQuery(lastSearchQuery, orderedProfiles);
@@ -1724,6 +1854,7 @@
 
         if (profiles && profiles.length > 0) {
           renderProfiles(profiles, featuredCreatorsGridElement, true);
+          requestHydrationForProfiles(profiles);
           featuredStatusMessageElement.classList.add("hidden");
         } else {
           featuredStatusMessageElement.textContent =
@@ -1762,6 +1893,7 @@
               : [];
             if (creators.length > 0) {
               mergeProfilesIntoCurrent(creators);
+              markHydrationComplete(creators);
               const orderedProfiles = Array.from(
                 currentSearchProfiles.values(),
               );

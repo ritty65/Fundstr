@@ -382,6 +382,8 @@ const highlightBenefits = computed(() => {
   return benefits;
 });
 
+const hydrationTasks = new Map<string, Promise<void>>();
+
 function hasHeroMetadata(meta: HeroMetadata): boolean {
   return [meta.displayName, meta.name, meta.about, meta.picture].some(
     (value) => typeof value === "string" && value.trim().length > 0,
@@ -524,6 +526,122 @@ function sendPrefillCache(entries?: PrefillCreatorCacheEntry[]) {
     { type: "prefillCache", creators: payload },
     "*",
   );
+}
+
+async function hydrateSingleCreator(
+  pubkeyHex: string,
+  fundstrOnly: boolean,
+) {
+  const cache = await creators
+    .ensureCreatorCacheFromDexie(pubkeyHex)
+    .catch((err) => {
+      console.error(`Failed to load creator cache for ${pubkeyHex}`, err);
+      return undefined;
+    });
+
+  const profileLoaded = cache?.profileLoaded === true;
+  const tiersLoaded = cache?.tiersLoaded === true;
+
+  const initialRelays = cache?.profileDetails?.relays;
+  let relayHints: string[] = Array.isArray(initialRelays)
+    ? [...initialRelays]
+    : [];
+
+  let profileResult:
+    | Awaited<ReturnType<typeof fetchProfileWithFallback>>
+    | null = null;
+
+  if (!profileLoaded) {
+    try {
+      profileResult = await fetchProfileWithFallback(pubkeyHex, {
+        fundstrOnly,
+      });
+      if (profileResult?.pubkeyHex) {
+        if (profileResult.relayHints.length) {
+          relayHints = [...profileResult.relayHints];
+        }
+        try {
+          await creators.saveProfileCache(
+            profileResult.pubkeyHex,
+            profileResult.event,
+            profileResult.details,
+          );
+        } catch (err) {
+          console.error(`Failed to cache profile for ${pubkeyHex}`, err);
+        }
+      }
+    } catch (err) {
+      console.error(`Failed to hydrate profile for ${pubkeyHex}`, err);
+    }
+  }
+
+  if (!tiersLoaded) {
+    const tierHints = profileResult?.relayHints?.length
+      ? profileResult.relayHints
+      : relayHints;
+    try {
+      await creators.fetchTierDefinitions(pubkeyHex, {
+        relayHints: tierHints,
+        fundstrOnly,
+      });
+    } catch (err) {
+      console.error(
+        `Failed to hydrate tier definitions for ${pubkeyHex}`,
+        err,
+      );
+    }
+  }
+}
+
+async function hydrateCreators(
+  pubkeys: unknown[],
+  opts: { fundstrOnly?: boolean } = {},
+) {
+  if (!Array.isArray(pubkeys) || pubkeys.length === 0) return;
+
+  const normalized = Array.from(
+    new Set(
+      pubkeys
+        .map((candidate) => {
+          if (typeof candidate === "string") return candidate.trim();
+          if (
+            candidate &&
+            typeof candidate === "object" &&
+            typeof (candidate as any).pubkey === "string"
+          ) {
+            return ((candidate as any).pubkey as string).trim();
+          }
+          return "";
+        })
+        .map((value) => {
+          if (!value) return "";
+          try {
+            return toHex(value);
+          } catch (err) {
+            console.warn("Invalid pubkey in hydration request", err);
+            return "";
+          }
+        })
+        .filter((value): value is string => value.length === 64),
+    ),
+  );
+
+  if (!normalized.length) return;
+
+  const fundstrOnly = opts.fundstrOnly !== false;
+
+  const tasks = normalized.map((hex) => {
+    const existing = hydrationTasks.get(hex);
+    if (existing) return existing;
+    const tracked = hydrateSingleCreator(hex, fundstrOnly).finally(() => {
+      hydrationTasks.delete(hex);
+    });
+    hydrationTasks.set(hex, tracked);
+    return tracked;
+  });
+
+  await Promise.allSettled(tasks);
+  sendPrefillCache();
 }
 
 // Deep-link: show tiers dialog immediately (spinner until data resolves)
@@ -767,6 +885,16 @@ function onMessage(ev: MessageEvent) {
     // Creator iframe deep link: open dialog first, populate once data loads
     showTierDialog.value = true;
     void viewCreatorProfile(ev.data.pubkey, { openDialog: false });
+  } else if (ev.data && ev.data.type === "hydrateCreators") {
+    const input = Array.isArray(ev.data.pubkeys)
+      ? ev.data.pubkeys
+      : ev.data.pubkeys
+        ? [ev.data.pubkeys]
+        : [];
+    if (input.length > 0) {
+      const fundstrOnly = ev.data.fundstrOnly !== false;
+      void hydrateCreators(input, { fundstrOnly });
+    }
   } else if (ev.data && ev.data.type === "startChat" && ev.data.pubkey) {
     const pubkey = nostr.resolvePubkey(ev.data.pubkey);
     router.push({ path: "/nostr-messenger", query: { pubkey } });
