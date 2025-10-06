@@ -1,9 +1,11 @@
-const FUNDSTR_RELAY = "wss://relay.primal.net";
+export let FUNDSTR_RELAY = "wss://relay.fundstr.me";
 const BASE_FREE_RELAYS = [
   "wss://relay.damus.io",
   "wss://relay.snort.social",
   "wss://relayable.org",
 ];
+
+let configuredFreeRelays = [...BASE_FREE_RELAYS];
 
 function ensureFundstr(relays) {
   const seen = new Set();
@@ -17,7 +19,71 @@ function ensureFundstr(relays) {
   return ordered;
 }
 
-const FREE_RELAYS = ensureFundstr(BASE_FREE_RELAYS);
+function getFreeRelays() {
+  return ensureFundstr(configuredFreeRelays);
+}
+
+function sanitizeRelayList(relays) {
+  const seen = new Set();
+  const sanitized = [];
+  for (const entry of relays) {
+    if (typeof entry !== "string") continue;
+    const trimmed = entry.trim();
+    if (!trimmed) continue;
+    if (!trimmed.startsWith("ws://") && !trimmed.startsWith("wss://")) continue;
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    sanitized.push(trimmed);
+  }
+  return sanitized;
+}
+
+export function configureRelayDefaults(config = {}) {
+  let updated = false;
+  const maybePrimary =
+    typeof config.fundstrRelay === "string"
+      ? config.fundstrRelay.trim()
+      : "";
+  if (maybePrimary && maybePrimary !== FUNDSTR_RELAY) {
+    FUNDSTR_RELAY = maybePrimary;
+    updated = true;
+  }
+
+  const providedRelays = Array.isArray(config.relays)
+    ? config.relays
+    : Array.isArray(config.freeRelays)
+      ? config.freeRelays
+      : null;
+  if (providedRelays) {
+    const sanitized = sanitizeRelayList(providedRelays);
+    const withoutPrimary = sanitized.filter((url) => url !== FUNDSTR_RELAY);
+    const changed =
+      withoutPrimary.length !== configuredFreeRelays.length ||
+      withoutPrimary.some((url, idx) => configuredFreeRelays[idx] !== url);
+    if (changed) {
+      configuredFreeRelays = withoutPrimary.length
+        ? withoutPrimary
+        : [...BASE_FREE_RELAYS];
+      updated = true;
+    }
+  }
+
+  if (updated) {
+    resetCaches();
+  }
+
+  return {
+    fundstrRelay: FUNDSTR_RELAY,
+    relays: getFreeRelays(),
+  };
+}
+
+export function getRelayDefaults() {
+  return {
+    fundstrRelay: FUNDSTR_RELAY,
+    relays: getFreeRelays(),
+  };
+}
 
 // keep track of relays that have already produced a constructor error so we only
 // emit a single console message per relay. This keeps startup logs readable when
@@ -30,6 +96,18 @@ let allFailedWarned = false;
 const CACHE_TTL_MS = 60_000;
 const pingCache = new Map();
 const filterCache = new Map();
+
+function resetCaches() {
+  pingCache.clear();
+  filterCache.clear();
+  reportedFailures.clear();
+  alreadyReported.clear();
+  if (aggregateTimer) {
+    clearTimeout(aggregateTimer);
+    aggregateTimer = null;
+  }
+  allFailedWarned = false;
+}
 
 function scheduleFailureLog() {
   if (aggregateTimer) return;
@@ -154,10 +232,12 @@ export async function filterHealthyRelays(relays) {
 
   if (healthy.length === 0) {
     if (!allFailedWarned) {
-      console.warn("No reachable relays; falling back to FREE_RELAYS");
+      console.warn(
+        "No reachable relays; falling back to configured backup relays",
+      );
       allFailedWarned = true;
     }
-    const fallback = ensureFundstr(FREE_RELAYS);
+    const fallback = getFreeRelays();
     filterCache.set(key, { ts: now, res: fallback });
     return fallback;
   }
@@ -165,7 +245,7 @@ export async function filterHealthyRelays(relays) {
   const res =
     healthy.length >= 2 || healthy.includes(FUNDSTR_RELAY)
       ? healthyWithFundstr
-      : ensureFundstr(FREE_RELAYS);
+      : getFreeRelays();
   filterCache.set(key, { ts: now, res });
   return res;
 }
