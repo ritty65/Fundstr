@@ -83,6 +83,7 @@ type SharedMocks = {
   latestRelayActivity: ReturnType<typeof ref<any>>;
   latestRelayAlertLabel: ReturnType<typeof ref<string>>;
   relayActivityTimeline: ReturnType<typeof ref<any[]>>;
+  applyRelayUrlInputMock: ReturnType<typeof vi.fn>;
   publishEventToRelayMock: ReturnType<typeof vi.fn>;
   connectRelayMock: ReturnType<typeof vi.fn>;
   disconnectRelayMock: ReturnType<typeof vi.fn>;
@@ -113,6 +114,7 @@ function ensureShared(): SharedMocks {
     const publishNostrEventMock = vi.fn();
     const clientPublishMock = vi.fn();
     const clientRequestOnceMock = vi.fn(async () => [] as any[]);
+    const applyRelayUrlInputMock = vi.fn();
 
     const relayClientInstance = {
       isSupported: true,
@@ -155,6 +157,7 @@ function ensureShared(): SharedMocks {
       latestRelayActivity: ref({ message: '', timestamp: Date.now() }),
       latestRelayAlertLabel: ref(''),
       relayActivityTimeline: ref([]),
+      applyRelayUrlInputMock,
       publishEventToRelayMock,
       connectRelayMock: vi.fn(),
       disconnectRelayMock: vi.fn(),
@@ -330,7 +333,7 @@ vi.mock('src/nutzap/useNutzapRelayTelemetry', () => ({
       formatActivityTime: (timestamp?: number) =>
         typeof timestamp === 'number' ? String(timestamp) : 'Unknown time',
       activityLevelColor: () => 'primary',
-      applyRelayUrlInput: vi.fn(),
+      applyRelayUrlInput: state.applyRelayUrlInputMock,
       logRelayActivity: state.logRelayActivityMock,
     };
   },
@@ -403,6 +406,37 @@ beforeEach(() => {
 });
 
 describe('CreatorStudioPage publishAll fallback', () => {
+  it('defaults the relay connection to the Fundstr endpoint', async () => {
+    const state = ensureShared();
+    state.relayConnectionUrl.value = '';
+    state.relayUrlInput.value = '';
+
+    const TestHarness = defineComponent({
+      name: 'CreatorStudioPageRelayHarness',
+      setup(props, ctx) {
+        const component = CreatorStudioPage as any;
+        return component.setup ? component.setup(props, ctx) : {};
+      },
+      template: '<div />',
+    });
+
+    const wrapper = shallowMount(TestHarness as any, {
+      global: {
+        stubs: creatorStudioStubs,
+      },
+    });
+
+    await flushPromises();
+
+    expect(state.applyRelayUrlInputMock).toHaveBeenCalledWith('wss://relay.fundstr.me');
+    expect(state.ensureRelayClientMock).toHaveBeenCalled();
+    expect(state.ensureRelayClientMock.mock.calls[0]?.[0]).toBe('wss://relay.fundstr.me');
+    expect(state.relayConnectionUrl.value).toBe('wss://relay.fundstr.me');
+    expect(state.connectRelayMock).toHaveBeenCalled();
+
+    wrapper.unmount();
+  });
+
   it('logs relay telemetry after successful publish', async () => {
     const state = ensureShared();
     state.signerRef.value = {};
