@@ -71,6 +71,28 @@
       />
     </q-drawer>
     <q-page-container class="text-body1">
+      <transition name="fade">
+        <q-banner
+          v-if="showRelayBanner"
+          dense
+          class="q-mx-auto q-mt-md q-mb-md relay-banner"
+          :class="relayBannerClass"
+        >
+          <div class="row items-center no-wrap full-width">
+            <span>{{ relayBannerMessage }}</span>
+            <q-space />
+            <q-btn
+              v-if="isRelayDisconnected"
+              outline
+              dense
+              round
+              color="white"
+              label="Reconnect"
+              @click="reconnectFundstrRelay"
+            />
+          </div>
+        </q-banner>
+      </transition>
       <div :class="isMessengerRoute ? 'w-full' : 'max-w-7xl mx-auto'">
         <router-view />
       </div>
@@ -84,7 +106,7 @@
 </template>
 
 <script>import windowMixin from 'src/mixins/windowMixin'
-import { defineComponent, ref, computed, watch } from "vue";
+import { defineComponent, ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 
 import { useRouter, useRoute } from "vue-router";
 import { useQuasar, LocalStorage } from "quasar";
@@ -93,11 +115,12 @@ import AppNavDrawer from "components/AppNavDrawer.vue";
 import ConversationList from "components/ConversationList.vue";
 import UserInfo from "components/UserInfo.vue";
 import NewChatDialog from "components/NewChatDialog.vue";
-import { useNostrStore } from "src/stores/nostr";
+import { useNostrStore, refreshCachedNutzapProfiles } from "src/stores/nostr";
 import { useNutzapStore } from "src/stores/nutzap";
 import { useMessengerStore } from "src/stores/messenger";
 import { useUiStore } from "src/stores/ui";
 import { NAV_DRAWER_WIDTH, NAV_DRAWER_GUTTER } from "src/constants/layout";
+import { fundstrRelayClient, useFundstrRelayStatus } from "src/nutzap/relayClient";
 
 export default defineComponent({
   name: "MainLayout",
@@ -160,6 +183,100 @@ export default defineComponent({
       },
     );
 
+    const relayStatus = useFundstrRelayStatus();
+    const showRelayBanner = computed(() => relayStatus.value !== "connected");
+    const isRelayDisconnected = computed(() => relayStatus.value === "disconnected");
+    const relayBannerClass = computed(() =>
+      relayStatus.value === "disconnected" ? "bg-negative text-inverse" : "bg-warning text-1",
+    );
+    const relayBannerMessage = computed(() => {
+      switch (relayStatus.value) {
+        case "disconnected":
+          return "Disconnected from Nutzap relay. We'll keep trying to reconnect.";
+        case "reconnecting":
+          return "Reconnecting to Nutzap relay…";
+        default:
+          return "Connecting to Nutzap relay…";
+      }
+    });
+
+    const HEARTBEAT_AUTHOR = "0".repeat(64);
+    const heartbeatFilters = [{ kinds: [0], authors: [HEARTBEAT_AUTHOR], limit: 1 }];
+    const HEARTBEAT_INTERVAL_MS = 60000;
+    let heartbeatTimer = null;
+    let heartbeatInFlight = false;
+
+    const sendHeartbeat = async () => {
+      if (heartbeatInFlight || relayStatus.value !== "connected") {
+        return;
+      }
+      const client = fundstrRelayClient;
+      if (!client?.requestOnce) {
+        return;
+      }
+      heartbeatInFlight = true;
+      try {
+        await client.requestOnce(heartbeatFilters, { timeoutMs: 2000 });
+      } catch (err) {
+        if (import.meta?.env?.DEV) {
+          console.debug("[fundstr-relay] heartbeat failed", err);
+        }
+      } finally {
+        heartbeatInFlight = false;
+      }
+    };
+
+    const startHeartbeat = () => {
+      if (heartbeatTimer) return;
+      void sendHeartbeat();
+      heartbeatTimer = window.setInterval(() => {
+        void sendHeartbeat();
+      }, HEARTBEAT_INTERVAL_MS);
+    };
+
+    const stopHeartbeat = () => {
+      if (!heartbeatTimer) return;
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    };
+
+    const reconnectFundstrRelay = () => {
+      if (fundstrRelayClient?.connect) {
+        fundstrRelayClient.connect();
+      }
+    };
+
+    const onWindowFocus = () => {
+      if (relayStatus.value !== "connected") {
+        reconnectFundstrRelay();
+      }
+      void sendHeartbeat();
+    };
+
+    onMounted(() => {
+      window.addEventListener("focus", onWindowFocus);
+    });
+
+    onBeforeUnmount(() => {
+      window.removeEventListener("focus", onWindowFocus);
+      stopHeartbeat();
+    });
+
+    watch(
+      relayStatus,
+      (status, previous) => {
+        if (status === "connected") {
+          startHeartbeat();
+          if (previous && previous !== "connected") {
+            refreshCachedNutzapProfiles();
+          }
+        } else {
+          stopHeartbeat();
+        }
+      },
+      { immediate: true },
+    );
+
     // Drag-to-resize
     let startX = 0;
     let startW = 0;
@@ -214,6 +331,11 @@ export default defineComponent({
       computedDrawerWidth,
       onResizeStart,
       navStyleVars,
+      showRelayBanner,
+      relayBannerClass,
+      relayBannerMessage,
+      isRelayDisconnected,
+      reconnectFundstrRelay,
       route,
     };
   },
@@ -274,5 +396,10 @@ export default defineComponent({
   .drawer-resizer {
     display: none;
   }
+}
+
+.relay-banner {
+  max-width: 960px;
+  border-radius: 12px;
 }
 </style>

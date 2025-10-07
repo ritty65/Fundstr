@@ -1168,6 +1168,14 @@ export async function fetchNutzapProfile(
   return profile;
 }
 
+export function refreshCachedNutzapProfiles(): void {
+  ensureNutzapProfileCacheHydrated();
+  pruneExpiredNutzapProfiles();
+  for (const hex of nutzapProfileCache.keys()) {
+    scheduleNutzapProfileRefresh(hex);
+  }
+}
+
 /** Publishes a ‘kind:10019’ Nutzap profile event. */
 export async function publishNutzapProfile(opts: {
   p2pkPub: string;

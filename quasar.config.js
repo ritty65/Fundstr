@@ -16,6 +16,7 @@ export default configure(() => ({
     'i18n',
     'notify',
     'nostr-provider',
+    'fundstrRelay',
     'fundstr-preload',
   ],
 
