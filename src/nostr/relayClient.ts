@@ -22,6 +22,7 @@ export type QueryOptions = {
   fanout?: string[];
   wsTimeoutMs?: number;
   httpBase?: string;
+  fundstrWsUrl?: string;
   /**
    * When `preferFundstr` is true, opt into querying the fan-out pool when
    * Fundstr returns no data or errors. Defaults to `false` so Nutzap flows stay
@@ -31,7 +32,10 @@ export type QueryOptions = {
 };
 
 type RequiredQueryOptions = Required<
-  Pick<QueryOptions, "wsTimeoutMs" | "httpBase" | "allowFanoutFallback"> & {
+  Pick<
+    QueryOptions,
+    "wsTimeoutMs" | "httpBase" | "allowFanoutFallback" | "fundstrWsUrl"
+  > & {
     fanout: string[];
     preferFundstr: boolean;
   }
@@ -288,6 +292,18 @@ function buildReqUrl(httpBase: string): string {
   return `${normalized}/req`;
 }
 
+function buildEventUrl(httpBase: string): string {
+  const trimmed = (httpBase || "").trim();
+  const normalized = trimmed.replace(/\/+$/, "");
+  if (!normalized) {
+    return "/event";
+  }
+  if (normalized.toLowerCase().endsWith("/event")) {
+    return normalized;
+  }
+  return `${normalized}/event`;
+}
+
 async function httpReq(httpBase: string, filters: Filter[]): Promise<NostrEvent[]> {
   const reqUrl = buildReqUrl(httpBase);
   const url = `${reqUrl}?filters=${encodeURIComponent(JSON.stringify(filters))}`;
@@ -331,13 +347,18 @@ async function tryWsFirstThenHttp(
   }
 }
 
+type WsPoolOptions = {
+  concurrency?: number;
+  excludeUrl?: string;
+};
+
 async function queryWsPool(
   urls: string[],
   filters: Filter[],
   timeoutMs: number,
-  concurrency = 2,
+  { concurrency = 2, excludeUrl = FUNDSTR.ws }: WsPoolOptions = {},
 ): Promise<NostrEvent[]> {
-  const unique = uniqueUrls(urls).filter((url) => !!url && url !== FUNDSTR.ws);
+  const unique = uniqueUrls(urls).filter((url) => !!url && url !== excludeUrl);
   if (!unique.length) return [];
 
   const results: NostrEvent[] = [];
@@ -399,6 +420,7 @@ export async function queryNostr(
     fanout: uniqueUrls(opts.fanout ?? []),
     wsTimeoutMs: opts.wsTimeoutMs ?? 1500, // 1.5s Fundstr-first deadline
     httpBase: opts.httpBase ?? FUNDSTR.http,
+    fundstrWsUrl: opts.fundstrWsUrl ?? FUNDSTR.ws,
     allowFanoutFallback: opts.allowFanoutFallback ?? false,
   };
 
@@ -409,7 +431,7 @@ export async function queryNostr(
     try {
       fundstrEvents = await tryWsFirstThenHttp(
         normalizedFilters,
-        FUNDSTR.ws,
+        options.fundstrWsUrl,
         options.httpBase,
         options.wsTimeoutMs,
       );
@@ -419,6 +441,7 @@ export async function queryNostr(
           [...options.fanout, ...PUBLIC_POOL],
           normalizedFilters,
           options.wsTimeoutMs,
+          { excludeUrl: options.fundstrWsUrl },
         );
         collected.push(...more);
       }
@@ -430,6 +453,7 @@ export async function queryNostr(
         [...options.fanout, ...PUBLIC_POOL],
         normalizedFilters,
         options.wsTimeoutMs,
+        { excludeUrl: options.fundstrWsUrl },
       );
       collected.push(...more);
     }
@@ -438,6 +462,7 @@ export async function queryNostr(
       [...options.fanout, ...PUBLIC_POOL],
       normalizedFilters,
       options.wsTimeoutMs,
+      { excludeUrl: options.fundstrWsUrl },
     );
     collected.push(...pool);
   }
@@ -445,8 +470,14 @@ export async function queryNostr(
   return normalizeEvents(collected);
 }
 
+type PublishOptions = {
+  httpBase?: string;
+  fundstrWsUrl?: string;
+};
+
 export async function publishNostr(
   evt: NostrEvent,
+  opts: PublishOptions = {},
 ): Promise<{
   ok: boolean;
   id?: string;
@@ -465,7 +496,8 @@ export async function publishNostr(
   if (!valid) {
     return { ok: true, accepted: false, message: "client: bad event (missing fields)" };
   }
-  const res = await fetch(`${FUNDSTR.http}/event`, {
+  const eventUrl = buildEventUrl(opts.httpBase ?? FUNDSTR.http);
+  const res = await fetch(eventUrl, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -495,6 +527,9 @@ export async function publishNostr(
 type NutzapQueryOptions = {
   fanout?: string[];
   allowFanoutFallback?: boolean;
+  httpBase?: string;
+  fundstrWsUrl?: string;
+  wsTimeoutMs?: number;
 };
 
 export async function queryNutzapProfile(
@@ -509,6 +544,15 @@ export async function queryNutzapProfile(
     preferFundstr: true,
     fanout: opts.fanout,
   };
+  if (opts.httpBase) {
+    queryOptions.httpBase = opts.httpBase;
+  }
+  if (opts.fundstrWsUrl) {
+    queryOptions.fundstrWsUrl = opts.fundstrWsUrl;
+  }
+  if (typeof opts.wsTimeoutMs === "number") {
+    queryOptions.wsTimeoutMs = opts.wsTimeoutMs;
+  }
   if (opts.allowFanoutFallback) {
     queryOptions.allowFanoutFallback = true;
   }
@@ -533,6 +577,15 @@ export async function queryNutzapTiers(
     preferFundstr: true,
     fanout: opts.fanout,
   };
+  if (opts.httpBase) {
+    queryOptions.httpBase = opts.httpBase;
+  }
+  if (opts.fundstrWsUrl) {
+    queryOptions.fundstrWsUrl = opts.fundstrWsUrl;
+  }
+  if (typeof opts.wsTimeoutMs === "number") {
+    queryOptions.wsTimeoutMs = opts.wsTimeoutMs;
+  }
   if (opts.allowFanoutFallback) {
     queryOptions.allowFanoutFallback = true;
   }
