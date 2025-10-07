@@ -186,8 +186,9 @@ import { nip19 } from 'nostr-tools';
 import type { Event as NostrEvent, Filter as NostrFilter } from 'nostr-tools';
 import { multiRelaySearch, mergeRelayHints } from './multiRelaySearch';
 import { sanitizeRelayUrls } from 'src/utils/relay';
+import { FUNDSTR_WS_URL } from '../relayEndpoints';
 
-const DEFAULT_RELAYS = ['wss://relay.primal.net'];
+const DEFAULT_RELAYS = [FUNDSTR_WS_URL];
 
 const props = withDefaults(
   defineProps<{

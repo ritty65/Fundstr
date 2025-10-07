@@ -44,6 +44,17 @@ const ACK_TIMEOUT_MS = Math.max(WS_FIRST_TIMEOUT_MS || 0, ACK_TIMEOUT_FALLBACK_M
 const wsImpl: typeof WebSocket | undefined =
   typeof WebSocket !== 'undefined' ? WebSocket : (globalThis as any)?.WebSocket;
 
+function extractHostname(url: string | null | undefined): string | null {
+  if (!url) {
+    return null;
+  }
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
+
 let hasLoggedRelayEndpoints = false;
 
 export function useRelayConnection() {
@@ -70,16 +81,20 @@ export function useRelayConnection() {
 
     if (mode === 'production') {
       logInfo(logMessage);
-      const expectedHost = 'relay.primal.net';
-      if (wsUrl !== '(empty)' && !wsUrl.includes(expectedHost)) {
-        console.warn(
-          `[Nutzap] Unexpected production relay WebSocket URL: ${wsUrl}`,
-        );
-      }
-      if (httpUrl !== '(empty)' && !httpUrl.includes(expectedHost)) {
-        console.warn(
-          `[Nutzap] Unexpected production relay HTTP URL: ${httpUrl}`,
-        );
+      const expectedHost = extractHostname(FUNDSTR_WS_URL);
+      const wsHost = wsUrl === '(empty)' ? null : extractHostname(wsUrl);
+      const httpHost = httpUrl === '(empty)' ? null : extractHostname(httpUrl);
+      if (expectedHost) {
+        if (wsHost && wsHost !== expectedHost) {
+          console.warn(
+            `[Nutzap] Unexpected production relay WebSocket URL: ${wsUrl}`,
+          );
+        }
+        if (httpHost && httpHost !== expectedHost) {
+          console.warn(
+            `[Nutzap] Unexpected production relay HTTP URL: ${httpUrl}`,
+          );
+        }
       }
     } else {
       logDebug(logMessage);
