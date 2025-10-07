@@ -120,7 +120,9 @@ export async function ensureWriteConnectivity(
     const t = setTimeout(resolve, timeoutMs);
 
     function onConnect(relay: any) {
-      if (!connected.includes(relay.url)) connected.push(relay.url);
+      const normalized = normalizeWsUrls([relay.url])[0];
+      if (!normalized) return;
+      if (!connected.includes(normalized)) connected.push(normalized);
       if (connected.length >= Math.min(minConnected, candidates.length)) {
         pool.off("relay:connect", onConnect);
         clearTimeout(t);
@@ -130,8 +132,9 @@ export async function ensureWriteConnectivity(
     pool.on("relay:connect", onConnect);
 
     for (const r of pool.relays.values()) {
-      if (r.status === 1 /* OPEN */ && !connected.includes(r.url)) {
-        connected.push(r.url);
+      const normalized = normalizeWsUrls([r.url])[0];
+      if (r.status === 1 /* OPEN */ && normalized && !connected.includes(normalized)) {
+        connected.push(normalized);
       }
     }
     if (connected.length >= Math.min(minConnected, candidates.length)) {
@@ -143,7 +146,7 @@ export async function ensureWriteConnectivity(
 
   return {
     urlsTried: tried,
-    urlsConnected: connected,
+    urlsConnected: normalizeWsUrls(connected),
     elapsedMs: Date.now() - started,
   };
 }
@@ -744,16 +747,19 @@ export async function urlsToRelaySet(
 ): Promise<NDKRelaySet | undefined> {
   if (!urls?.length) return undefined;
 
+  const normalizedUrls = normalizeWsUrls(urls);
+  if (!normalizedUrls.length) return undefined;
+
   const ndk = await useNdk({ requireSigner: false });
   // Ensure selected relays exist in the pool
-  for (const u of urls) {
+  for (const u of normalizedUrls) {
     if (!ndk.pool.relays.has(u)) {
       ndk.addExplicitRelay(u);
     }
   }
 
   const set = new NDKRelaySet(new Set(), ndk);
-  for (const u of urls) {
+  for (const u of normalizedUrls) {
     const r = ndk.pool.getRelay(u);
     if (r) set.addRelay(r);
   }
