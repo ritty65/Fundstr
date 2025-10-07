@@ -189,12 +189,19 @@ import { sanitizeRelayUrls } from 'src/utils/relay';
 
 const DEFAULT_RELAYS = ['wss://relay.primal.net'];
 
-const props = defineProps<{
-  modelValue: string;
-  loadingAuthor: boolean;
-  tierAddressPreview: string;
-  condensed?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    modelValue?: string;
+    loadingAuthor?: boolean;
+    tierAddressPreview?: string;
+    condensed?: boolean;
+  }>(),
+  {
+    modelValue: '',
+    loadingAuthor: false,
+    tierAddressPreview: '',
+  },
+);
 
 const emit = defineEmits<{
   (event: 'update:modelValue', value: string): void;
@@ -204,7 +211,7 @@ const emit = defineEmits<{
 const condensed = computed(() => Boolean(props.condensed));
 
 const authorModel = computed({
-  get: () => props.modelValue,
+  get: () => props.modelValue ?? '',
   set: value => emit('update:modelValue', value),
 });
 
