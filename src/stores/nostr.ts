@@ -65,7 +65,7 @@ import { cashuDb, type LockedToken } from "./dexie";
 import { v4 as uuidv4 } from "uuid";
 import { useRouter } from "vue-router";
 import { useP2PKStore } from "./p2pk";
-import { watch } from "vue";
+import { watch, type Ref } from "vue";
 import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useMessengerStore } from "./messenger";
@@ -84,6 +84,7 @@ import {
   FUNDSTR_WS_URL,
   WS_FIRST_TIMEOUT_MS,
 } from "@/nutzap/relayEndpoints";
+import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 
 // --- Relay connectivity helpers ---
 export type WriteConnectivity = {
@@ -567,7 +568,166 @@ interface NutzapProfile {
   tierAddr?: string;
 }
 
-const nutzapProfileCache = new Map<string, NutzapProfile | null>();
+interface NutzapProfileCacheRecord {
+  profile: NutzapProfile | null;
+  fetchedAt: number;
+}
+
+interface PersistedNutzapProfileCache {
+  version: number;
+  entries: Record<string, NutzapProfileCacheRecord>;
+}
+
+const NUTZAP_PROFILE_CACHE_VERSION = 1;
+const NUTZAP_PROFILE_CACHE_STORAGE_KEY = "cashu.ndk.nutzapProfileCache";
+const NUTZAP_PROFILE_CACHE_STALE_AFTER_MS = 6 * 60 * 60 * 1000; // 6 hours
+const NUTZAP_PROFILE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+const nutzapProfileCache = new Map<string, NutzapProfileCacheRecord>();
+const nutzapProfileFetches = new Map<string, Promise<NutzapProfile | null>>();
+
+let nutzapProfileCacheStorage: Ref<PersistedNutzapProfileCache> | null = null;
+let nutzapProfileCacheHydrated = false;
+
+function getNutzapProfileCacheStorage(): Ref<PersistedNutzapProfileCache> {
+  if (!nutzapProfileCacheStorage) {
+    nutzapProfileCacheStorage = safeUseLocalStorage<PersistedNutzapProfileCache>(
+      NUTZAP_PROFILE_CACHE_STORAGE_KEY,
+      {
+        version: NUTZAP_PROFILE_CACHE_VERSION,
+        entries: {},
+      },
+    );
+  }
+  return nutzapProfileCacheStorage;
+}
+
+function pruneExpiredNutzapProfiles(now = Date.now()) {
+  if (!nutzapProfileCacheHydrated) return;
+  const storage = getNutzapProfileCacheStorage();
+  const entries = { ...storage.value.entries };
+  let mutated = false;
+  for (const [hex, entry] of Object.entries(entries)) {
+    if (now - entry.fetchedAt >= NUTZAP_PROFILE_CACHE_MAX_AGE_MS) {
+      delete entries[hex];
+      nutzapProfileCache.delete(hex);
+      mutated = true;
+    }
+  }
+  if (mutated) {
+    storage.value = {
+      version: NUTZAP_PROFILE_CACHE_VERSION,
+      entries,
+    };
+  }
+}
+
+function ensureNutzapProfileCacheHydrated() {
+  if (nutzapProfileCacheHydrated) return;
+  const storage = getNutzapProfileCacheStorage();
+  if (storage.value.version !== NUTZAP_PROFILE_CACHE_VERSION) {
+    storage.value = {
+      version: NUTZAP_PROFILE_CACHE_VERSION,
+      entries: {},
+    };
+    nutzapProfileCacheHydrated = true;
+    return;
+  }
+
+  const now = Date.now();
+  const retainedEntries: Record<string, NutzapProfileCacheRecord> = {};
+  for (const [hex, entry] of Object.entries(storage.value.entries ?? {})) {
+    if (!entry) continue;
+    if (now - entry.fetchedAt >= NUTZAP_PROFILE_CACHE_MAX_AGE_MS) {
+      continue;
+    }
+    nutzapProfileCache.set(hex, entry);
+    retainedEntries[hex] = entry;
+  }
+
+  if (Object.keys(retainedEntries).length !== Object.keys(storage.value.entries ?? {}).length) {
+    storage.value = {
+      version: NUTZAP_PROFILE_CACHE_VERSION,
+      entries: retainedEntries,
+    };
+  }
+
+  nutzapProfileCacheHydrated = true;
+}
+
+function persistNutzapProfileCacheEntry(hex: string, profile: NutzapProfile | null) {
+  ensureNutzapProfileCacheHydrated();
+  const now = Date.now();
+  const storage = getNutzapProfileCacheStorage();
+  const entries = { ...storage.value.entries };
+  const record: NutzapProfileCacheRecord = { profile, fetchedAt: now };
+  entries[hex] = record;
+  nutzapProfileCache.set(hex, record);
+
+  for (const [key, entry] of Object.entries(entries)) {
+    if (now - entry.fetchedAt >= NUTZAP_PROFILE_CACHE_MAX_AGE_MS) {
+      delete entries[key];
+      if (key !== hex) nutzapProfileCache.delete(key);
+    }
+  }
+
+  storage.value = {
+    version: NUTZAP_PROFILE_CACHE_VERSION,
+    entries,
+  };
+}
+
+function removeNutzapProfileCacheEntry(hex: string) {
+  if (!nutzapProfileCacheHydrated) return;
+  const storage = getNutzapProfileCacheStorage();
+  if (!storage.value.entries?.[hex]) return;
+  const entries = { ...storage.value.entries };
+  delete entries[hex];
+  nutzapProfileCache.delete(hex);
+  storage.value = {
+    version: NUTZAP_PROFILE_CACHE_VERSION,
+    entries,
+  };
+}
+
+function getNutzapProfileCacheStatus(hex: string) {
+  const entry = nutzapProfileCache.get(hex);
+  if (!entry) return null;
+  const age = Date.now() - entry.fetchedAt;
+  return {
+    entry,
+    isStale: age >= NUTZAP_PROFILE_CACHE_STALE_AFTER_MS,
+    isExpired: age >= NUTZAP_PROFILE_CACHE_MAX_AGE_MS,
+  };
+}
+
+function scheduleNutzapProfileRefresh(
+  hex: string,
+  opts: { fundstrOnly?: boolean } = {},
+  awaitResult = false,
+): Promise<NutzapProfile | null> {
+  let promise = nutzapProfileFetches.get(hex);
+  if (!promise) {
+    promise = fetchNutzapProfileFromNetwork(hex, opts)
+      .then((profile) => {
+        persistNutzapProfileCacheEntry(hex, profile);
+        return profile;
+      })
+      .finally(() => {
+        nutzapProfileFetches.delete(hex);
+      });
+    nutzapProfileFetches.set(hex, promise);
+  }
+
+  if (!awaitResult) {
+    promise.catch((err) => {
+      console.warn(`[nostr] Failed to refresh Nutzap profile for ${hex}`, err);
+    });
+    return promise;
+  }
+  return promise;
+}
+
 
 const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
 
@@ -872,22 +1032,11 @@ export async function anyRelayReachable(relays: string[]): Promise<boolean> {
 /**
  * Fetches the receiver’s ‘kind:10019’ Nutzap profile.
  */
-export async function fetchNutzapProfile(
-  npubOrHex: string,
+async function fetchNutzapProfileFromNetwork(
+  hex: string,
   opts: { fundstrOnly?: boolean } = {},
 ): Promise<NutzapProfile | null> {
-  let hex: string;
-  try {
-    hex = toHex(npubOrHex);
-  } catch (e) {
-    throw new Error("Invalid npub");
-  }
-
   const fundstrOnly = opts.fundstrOnly === true;
-
-  if (nutzapProfileCache.has(hex)) {
-    return nutzapProfileCache.get(hex) || null;
-  }
   let event: RelayEvent | null = null;
   let lastError: unknown = null;
 
@@ -923,7 +1072,6 @@ export async function fetchNutzapProfile(
     if (lastError instanceof Error) {
       throw new RelayConnectionError(lastError.message);
     }
-    nutzapProfileCache.set(hex, null);
     return null;
   }
 
@@ -966,7 +1114,6 @@ export async function fetchNutzapProfile(
   }
 
   if (!p2pkValue && !mintSet.size && !relaySet.size) {
-    nutzapProfileCache.set(hex, null);
     return null;
   }
 
@@ -982,14 +1129,42 @@ export async function fetchNutzapProfile(
     p2pkPubkey = "";
   }
 
-  const profile: NutzapProfile = {
+  return {
     hexPub: hex,
     p2pkPubkey,
     trustedMints: Array.from(mintSet),
     relays: relaySet.size ? Array.from(relaySet) : undefined,
     tierAddr,
   };
-  nutzapProfileCache.set(hex, profile);
+}
+
+export async function fetchNutzapProfile(
+  npubOrHex: string,
+  opts: { fundstrOnly?: boolean } = {},
+): Promise<NutzapProfile | null> {
+  let hex: string;
+  try {
+    hex = toHex(npubOrHex);
+  } catch (e) {
+    throw new Error("Invalid npub");
+  }
+
+  ensureNutzapProfileCacheHydrated();
+  pruneExpiredNutzapProfiles();
+
+  const status = getNutzapProfileCacheStatus(hex);
+  if (status) {
+    if (status.isExpired) {
+      removeNutzapProfileCacheEntry(hex);
+    } else {
+      if (status.isStale) {
+        scheduleNutzapProfileRefresh(hex, opts);
+      }
+      return status.entry.profile;
+    }
+  }
+
+  const profile = await scheduleNutzapProfileRefresh(hex, opts, true);
   return profile;
 }
 
@@ -1314,6 +1489,8 @@ type InitSignerBehaviorOptions = {
 
 export const useNostrStore = defineStore("nostr", {
   state: () => {
+    ensureNutzapProfileCacheHydrated();
+    pruneExpiredNutzapProfiles();
     const lastNip04EventTimestamp = useLocalStorage<number>(
       "cashu.ndk.nip04.lastEventTimestamp",
       0,
