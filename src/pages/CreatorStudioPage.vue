@@ -161,7 +161,7 @@
                 <div class="snapshot-block">
                   <div class="snapshot-label text-caption text-uppercase text-2">Tier address</div>
                   <div class="snapshot-value">{{ tierAddressPreview }}</div>
-                  <div class="snapshot-meta text-caption text-2">Publishing as {{ tierKindLabel }}</div>
+                  <div class="snapshot-meta text-caption text-2">Publishing as {{ tierPublishSummaryLabel }}</div>
                 </div>
               </div>
             </div>
@@ -410,16 +410,16 @@
           <div class="studio-card__header">
             <div>
               <div class="text-subtitle1 text-weight-medium text-1">Tiers &amp; strategy</div>
-              <div class="text-caption text-2">Compose your supporter offerings and publishing kind.</div>
+              <div class="text-caption text-2">Compose your supporter offerings and preview tier formats.</div>
             </div>
           </div>
           <div class="studio-card__body column q-gutter-lg">
             <div class="row items-center justify-between wrap q-gutter-sm">
               <q-btn-toggle
-                v-model="tierKind"
+                v-model="tierPreviewKind"
                 dense
                 toggle-color="primary"
-                :options="tierKindOptions"
+                :options="tierPreviewOptions"
               />
               <q-chip dense :color="tiersReady ? 'positive' : 'warning'" text-color="white">
                 {{ tiersReady ? 'Tiers valid' : 'Needs review' }}
@@ -535,7 +535,7 @@
             </q-tab>
             <q-tab name="tiers">
               <template #default>
-                <span>{{ tierKindLabel }} JSON</span>
+                <span>{{ tierPreviewLabel }} JSON</span>
                 <span v-if="tiersModified" class="modified-dot" aria-hidden="true"></span>
               </template>
             </q-tab>
@@ -581,7 +581,7 @@
                 class="q-mt-sm"
                 outline
                 color="primary"
-                :label="`Copy ${tierKindLabel} JSON`"
+                :label="`Copy ${tierPreviewLabel} JSON`"
                 icon="content_copy"
                 @click="copy(tiersJsonPreview)"
               />
@@ -647,6 +647,10 @@ import {
   publishTiers as publishTiersToRelay,
   publishNostrEvent,
   ensureFundstrRelayClient,
+  CANONICAL_TIER_KIND,
+  LEGACY_TIER_KIND,
+  buildTierPayloadForKind,
+  type TierKind,
 } from './nutzap-profile/nostrHelpers';
 import type { NostrFilter } from './nutzap-profile/nostrHelpers';
 import {
@@ -667,8 +671,6 @@ import { maybeRepublishNutzapProfile } from 'src/stores/creatorHub';
 import { useNostrStore } from 'src/stores/nostr';
 import { useUiStore } from 'src/stores/ui';
 import { useP2pkDiagnostics } from 'src/composables/useP2pkDiagnostics';
-
-type TierKind = 30019 | 30000;
 
 const P2PK_VERIFICATION_STALE_MS = 1000 * 60 * 60 * 24 * 7;
 const CREATOR_STUDIO_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
@@ -697,7 +699,7 @@ const tiers = ref<Tier[]>([]);
 const handleTiersUpdate = (value: Tier[] | unknown) => {
   tiers.value = Array.isArray(value) ? value : [];
 };
-const tierKind = ref<TierKind>(30019);
+const tierPreviewKind = ref<TierKind>(CANONICAL_TIER_KIND);
 const loading = ref(false);
 const publishingAll = ref(false);
 const lastPublishInfo = ref('');
@@ -707,7 +709,7 @@ const mintDraft = ref('');
 const relayDraft = ref('');
 const now = useNow({ interval: 60_000 });
 const lastExportProfile = ref('');
-const lastExportTiers = ref('');
+const lastExportTiers = ref({ canonical: '', legacy: '' });
 
 const relayClientRef = shallowRef<FundstrRelayClient | null>(null);
 let relayClientPromise: Promise<FundstrRelayClient> | null = null;
@@ -1594,30 +1596,6 @@ function generateP2pkKeypair() {
   }
 }
 
-function buildTiersJsonPayload(entries: Tier[]) {
-  return {
-    v: 1,
-    tiers: entries.map(tier => {
-      const media = Array.isArray(tier.media)
-        ? tier.media
-            .map(entry => (typeof entry?.url === 'string' ? entry.url : ''))
-            .filter(url => !!url)
-        : undefined;
-      const priceNumber = Number(tier.price);
-      const price = Number.isFinite(priceNumber) ? Math.round(priceNumber) : 0;
-
-      return {
-        id: tier.id,
-        title: tier.title,
-        price,
-        frequency: tier.frequency,
-        ...(tier.description ? { description: tier.description } : {}),
-        ...(media && media.length ? { media } : {}),
-      };
-    }),
-  };
-}
-
 watch(
   p2pkPub,
   value => {
@@ -1922,14 +1900,16 @@ const tierSummaryList = computed(() =>
   })
 );
 
-const tierKindOptions = [
-  { label: 'Canonical (30019)', value: 30019 },
-  { label: 'Legacy (30000)', value: 30000 },
+const tierPreviewOptions = [
+  { label: 'Preview 30019 JSON', value: CANONICAL_TIER_KIND },
+  { label: 'Preview 30000 JSON', value: LEGACY_TIER_KIND },
 ] as const;
 
-const tierKindLabel = computed(() =>
-  tierKind.value === 30019 ? 'Canonical (30019)' : 'Legacy (30000)'
+const tierPreviewLabel = computed(() =>
+  tierPreviewKind.value === CANONICAL_TIER_KIND ? 'Canonical (30019)' : 'Legacy (30000)'
 );
+
+const tierPublishSummaryLabel = computed(() => 'Canonical (30019) + Legacy (30000)');
 
 const tierValidationResults = ref<TierFieldErrors[]>([]);
 const showTierValidation = ref(false);
@@ -1952,9 +1932,9 @@ watch(
 const tierAddressPreview = computed(() => {
   try {
     const authorHex = normalizeAuthor(authorInput.value);
-    return `${tierKind.value}:${authorHex}:tiers`;
+    return `${CANONICAL_TIER_KIND}:${authorHex}:tiers`;
   } catch {
-    return `${tierKind.value}:<author>:tiers`;
+    return `${CANONICAL_TIER_KIND}:<author>:tiers`;
   }
 });
 
@@ -2176,7 +2156,8 @@ const profileJsonPreview = computed(() => {
     v: 1,
     mints: mintList.value,
     relays: relayList.value,
-    tierAddr: `${tierKind.value}:${author}:tiers`,
+    tierAddr: `${CANONICAL_TIER_KIND}:${author}:tiers`,
+    legacyTierAddr: `${LEGACY_TIER_KIND}:${author}:tiers`,
   };
 
   const trimmed = p2pkPub.value.trim();
@@ -2187,9 +2168,23 @@ const profileJsonPreview = computed(() => {
   return JSON.stringify(payload, null, 2);
 });
 
-const tiersJsonPreview = computed(() => JSON.stringify(buildTiersJsonPayload(tiers.value), null, 2));
+const canonicalTiersJsonPreview = computed(() =>
+  JSON.stringify(buildTierPayloadForKind(tiers.value, CANONICAL_TIER_KIND), null, 2)
+);
+const legacyTiersJsonPreview = computed(() =>
+  JSON.stringify(buildTierPayloadForKind(tiers.value, LEGACY_TIER_KIND), null, 2)
+);
+const tiersJsonPreview = computed(() =>
+  tierPreviewKind.value === CANONICAL_TIER_KIND
+    ? canonicalTiersJsonPreview.value
+    : legacyTiersJsonPreview.value
+);
 const profileModified = computed(() => profileJsonPreview.value !== lastExportProfile.value);
-const tiersModified = computed(() => tiersJsonPreview.value !== lastExportTiers.value);
+const tiersModified = computed(
+  () =>
+    canonicalTiersJsonPreview.value !== lastExportTiers.value.canonical ||
+    legacyTiersJsonPreview.value !== lastExportTiers.value.legacy
+);
 
 function ensureComposerMintsSeeded() {
   if (!mintsText.value.trim() && mintList.value.length) {
@@ -2254,8 +2249,11 @@ function removeRelay(index: number) {
 
 function downloadBundle() {
   lastExportProfile.value = profileJsonPreview.value;
-  lastExportTiers.value = tiersJsonPreview.value;
-  const bundle = `// profile-10019.json\n${profileJsonPreview.value}\n\n// tiers-${tierKind.value}.json\n${tiersJsonPreview.value}\n`;
+  lastExportTiers.value = {
+    canonical: canonicalTiersJsonPreview.value,
+    legacy: legacyTiersJsonPreview.value,
+  };
+  const bundle = `// profile-10019.json\n${profileJsonPreview.value}\n\n// tiers-${CANONICAL_TIER_KIND}.json\n${canonicalTiersJsonPreview.value}\n\n// tiers-${LEGACY_TIER_KIND}.json\n${legacyTiersJsonPreview.value}\n`;
   const blob = new Blob([bundle], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -2277,14 +2275,15 @@ function applyTiersEvent(event: any | null, overrideKind?: TierKind | null) {
   }
 
   const eventKind =
-    overrideKind && (overrideKind === 30019 || overrideKind === 30000)
+    overrideKind && (overrideKind === CANONICAL_TIER_KIND || overrideKind === LEGACY_TIER_KIND)
       ? overrideKind
-      : typeof event?.kind === 'number' && (event.kind === 30019 || event.kind === 30000)
+      : typeof event?.kind === 'number' &&
+          (event.kind === CANONICAL_TIER_KIND || event.kind === LEGACY_TIER_KIND)
         ? (event.kind as TierKind)
         : null;
 
   if (eventKind) {
-    tierKind.value = eventKind;
+    tierPreviewKind.value = eventKind;
   }
 
   const content = typeof event?.content === 'string' ? event.content : undefined;
@@ -2380,8 +2379,11 @@ function applyProfileEvent(latest: any | null) {
     if (typeof parsed.tierAddr === 'string') {
       const [kindPart, , dPart] = parsed.tierAddr.split(':');
       const maybeKind = Number(kindPart);
-      if ((maybeKind === 30019 || maybeKind === 30000) && dPart === 'tiers') {
-        tierKind.value = maybeKind as TierKind;
+      if (
+        (maybeKind === CANONICAL_TIER_KIND || maybeKind === LEGACY_TIER_KIND) &&
+        dPart === 'tiers'
+      ) {
+        tierPreviewKind.value = maybeKind as TierKind;
       }
     }
   } catch (err) {
@@ -2777,50 +2779,74 @@ async function publishAll() {
 
   try {
     const fallbackNotices: string[] = [];
+    const relayUrl = relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL;
 
-    const tierOutcome = await (async () => {
+    const publishTierWithFallback = async (kind: TierKind) => {
       try {
-        const result = await publishTiersToRelay(tiers.value, tierKind.value, {
+        const result = await publishTiersToRelay(tiers.value, kind, {
           send: publishEventToRelay,
-          relayUrl: relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL,
+          relayUrl,
         });
         return { result, usedFallback: false as const };
       } catch (err) {
         if (!shouldUseHttpFallback(err)) {
           throw err;
         }
-        const fallbackResult = await publishTiersToRelay(tiers.value, tierKind.value, {
-          relayUrl: relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL,
+        const fallbackResult = await publishTiersToRelay(tiers.value, kind, {
+          relayUrl,
         });
         const reason = describeFallbackReason(err);
         fallbackNotices.push(
-          `Tiers publish used HTTP fallback${reason ? ` — ${reason}` : ''}.`
+          `Tiers (kind ${kind}) publish used HTTP fallback${reason ? ` — ${reason}` : ''}.`
         );
         return { result: fallbackResult, usedFallback: true as const };
       }
-    })();
+    };
 
-    const tierResult = tierOutcome.result;
-    const tierEventId = tierResult.ack?.id ?? tierResult.event?.id;
-    const tierRelayMessage =
-      typeof tierResult.ack?.message === 'string' && tierResult.ack.message
-        ? ` — ${tierResult.ack.message}`
+    const legacyOutcome = await publishTierWithFallback(LEGACY_TIER_KIND);
+    const canonicalOutcome = await publishTierWithFallback(CANONICAL_TIER_KIND);
+
+    const canonicalResult = canonicalOutcome.result;
+    const legacyResult = legacyOutcome.result;
+
+    const canonicalEventId = canonicalResult.ack?.id ?? canonicalResult.event?.id;
+    const legacyEventId = legacyResult.ack?.id ?? legacyResult.event?.id;
+
+    const canonicalRelayMessage =
+      typeof canonicalResult.ack?.message === 'string' && canonicalResult.ack.message
+        ? ` — ${canonicalResult.ack.message}`
         : '';
-    const tierFallbackNote =
-      tierOutcome.usedFallback || tierResult.ack?.via === 'http' ? ' via HTTP fallback' : '';
-    tierSummary = tierEventId
-      ? `Tiers published${tierFallbackNote} (kind ${tierKind.value}) — id ${tierEventId}${tierRelayMessage}`
-      : `Tiers published${tierFallbackNote} (kind ${tierKind.value})${tierRelayMessage}`;
+    const legacyRelayMessage =
+      typeof legacyResult.ack?.message === 'string' && legacyResult.ack.message
+        ? ` — ${legacyResult.ack.message}`
+        : '';
+
+    const canonicalFallbackNote =
+      canonicalOutcome.usedFallback || canonicalResult.ack?.via === 'http' ? ' via HTTP fallback' : '';
+    const legacyFallbackNote =
+      legacyOutcome.usedFallback || legacyResult.ack?.via === 'http' ? ' via HTTP fallback' : '';
+
+    const canonicalSummary = canonicalEventId
+      ? `Canonical tiers published${canonicalFallbackNote} (kind ${CANONICAL_TIER_KIND}) — id ${canonicalEventId}${canonicalRelayMessage}`
+      : `Canonical tiers published${canonicalFallbackNote} (kind ${CANONICAL_TIER_KIND})${canonicalRelayMessage}`;
+    const legacySummary = legacyEventId
+      ? `Legacy tiers published${legacyFallbackNote} (kind ${LEGACY_TIER_KIND}) — id ${legacyEventId}${legacyRelayMessage}`
+      : `Legacy tiers published${legacyFallbackNote} (kind ${LEGACY_TIER_KIND})${legacyRelayMessage}`;
+
+    tierSummary = `${canonicalSummary} ${legacySummary}`.trim();
 
     const relays = relayList.value;
     const p2pkHex = p2pkPub.value.trim();
     const tagPubkey = (p2pkDerivedPub.value || p2pkHex).trim();
+    const canonicalTierPointer = `${CANONICAL_TIER_KIND}:${authorHex}:tiers`;
+    const legacyTierPointer = `${LEGACY_TIER_KIND}:${authorHex}:tiers`;
     const content = JSON.stringify({
       v: 1,
       p2pk: p2pkHex,
       mints: mintList.value,
       relays,
-      tierAddr: `${tierKind.value}:${authorHex}:tiers`,
+      tierAddr: canonicalTierPointer,
+      legacyTierAddr: legacyTierPointer,
     });
 
     const tags: string[][] = [
@@ -2832,7 +2858,12 @@ async function publishAll() {
     if (tagPubkey) {
       tags.push(['pubkey', tagPubkey]);
     }
-    tags.push(['a', `${tierKind.value}:${authorHex}:tiers`]);
+    if (!tags.some(tag => tag[0] === 'a' && tag[1] === canonicalTierPointer)) {
+      tags.push(['a', canonicalTierPointer]);
+    }
+    if (!tags.some(tag => tag[0] === 'a' && tag[1] === legacyTierPointer)) {
+      tags.push(['a', legacyTierPointer]);
+    }
     if (displayName.value.trim()) {
       tags.push(['name', displayName.value.trim()]);
     }
@@ -2866,7 +2897,10 @@ async function publishAll() {
     })();
 
     const profileResult = profileOutcome.result;
-    const signerPubkey = profileResult.event?.pubkey || tierResult.event?.pubkey;
+    const signerPubkey =
+      profileResult.event?.pubkey ||
+      canonicalResult.event?.pubkey ||
+      legacyResult.event?.pubkey;
     const reloadKey = typeof signerPubkey === 'string' && signerPubkey ? signerPubkey : authorHex;
     if (typeof signerPubkey === 'string' && signerPubkey) {
       const normalizedSigner = signerPubkey.toLowerCase();
@@ -2895,30 +2929,39 @@ async function publishAll() {
 
     lastPublishInfo.value = `${tierSummary} ${profileSummary}`.trim();
 
-    const tierAckLabel =
-      typeof tierResult.ack?.message === 'string' && tierResult.ack.message
-        ? tierResult.ack.message
+    const canonicalAckLabel =
+      typeof canonicalResult.ack?.message === 'string' && canonicalResult.ack.message
+        ? canonicalResult.ack.message
+        : 'accepted';
+    const legacyAckLabel =
+      typeof legacyResult.ack?.message === 'string' && legacyResult.ack.message
+        ? legacyResult.ack.message
         : 'accepted';
     const profileAckLabel =
       typeof profileResult.ack?.message === 'string' && profileResult.ack.message
         ? profileResult.ack.message
         : 'accepted';
     notifySuccess(
-      `Nutzap profile published (profile ${profileAckLabel}, tiers ${tierAckLabel}).`
+      `Nutzap profile published (profile ${profileAckLabel}, canonical tiers ${canonicalAckLabel}, legacy tiers ${legacyAckLabel}).`
     );
 
-    const tierFallbackUsed =
-      tierOutcome.usedFallback || tierResult.ack?.via === 'http' || tierResult.via === 'http';
+    const canonicalFallbackUsed =
+      canonicalOutcome.usedFallback || canonicalResult.ack?.via === 'http' || (canonicalResult as any)?.via === 'http';
+    const legacyFallbackUsed =
+      legacyOutcome.usedFallback || legacyResult.ack?.via === 'http' || (legacyResult as any)?.via === 'http';
     const profileFallbackUsed =
       profileOutcome.usedFallback || profileResult.ack?.via === 'http' || profileResult.via === 'http';
-    const tierIdLabel = tierEventId ?? 'unknown';
+    const canonicalIdLabel = canonicalEventId ?? 'unknown';
+    const legacyIdLabel = legacyEventId ?? 'unknown';
     const profileIdLabel = profileEventId ?? 'unknown';
     const successContext = `HTTP fallback used — profile: ${
       profileFallbackUsed ? 'yes' : 'no'
-    }, tiers: ${tierFallbackUsed ? 'yes' : 'no'}`;
+    }, canonical tiers: ${canonicalFallbackUsed ? 'yes' : 'no'}, legacy tiers: ${
+      legacyFallbackUsed ? 'yes' : 'no'
+    }`;
     logRelayActivity(
       'success',
-      `Publish succeeded (profile ${profileIdLabel}, tiers ${tierIdLabel})`,
+      `Publish succeeded (profile ${profileIdLabel}, canonical ${canonicalIdLabel}, legacy ${legacyIdLabel})`,
       successContext,
     );
 

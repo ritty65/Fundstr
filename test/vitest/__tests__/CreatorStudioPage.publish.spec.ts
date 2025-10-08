@@ -493,9 +493,11 @@ describe('CreatorStudioPage publishAll fallback', () => {
     );
     expect(successCall).toBeTruthy();
     expect(successCall?.[1]).toContain('profile profile-event-id');
-    expect(successCall?.[1]).toContain('tiers tier-event-id');
+    expect(successCall?.[1]).toContain('canonical tier-event-id');
+    expect(successCall?.[1]).toContain('legacy tier-event-id');
     expect(successCall?.[2]).toContain('profile: no');
-    expect(successCall?.[2]).toContain('tiers: no');
+    expect(successCall?.[2]).toContain('canonical tiers: no');
+    expect(successCall?.[2]).toContain('legacy tiers: no');
     expect(notifySuccessMock).toHaveBeenCalledTimes(1);
     expect(notifyErrorMock).not.toHaveBeenCalled();
   });
@@ -589,11 +591,24 @@ describe('CreatorStudioPage publishAll fallback', () => {
     await publishAll.call(wrapper.vm);
     await flushPromises();
 
-    expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(2);
+    expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(4);
+    const tierCallKinds = state.publishTiersToRelayMock.mock.calls.map(call => call[1]);
+    expect(tierCallKinds).toEqual([30000, 30000, 30019, 30019]);
+    expect(state.publishTiersToRelayMock.mock.calls[0][2]).toMatchObject({
+      relayUrl: 'wss://relay.fundstr.me',
+    });
+    expect(typeof state.publishTiersToRelayMock.mock.calls[0][2]?.send).toBe('function');
     expect(state.publishTiersToRelayMock.mock.calls[1][2]).toEqual({
       relayUrl: 'wss://relay.fundstr.me',
     });
-    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(2);
+    expect(state.publishTiersToRelayMock.mock.calls[2][2]).toMatchObject({
+      relayUrl: 'wss://relay.fundstr.me',
+    });
+    expect(typeof state.publishTiersToRelayMock.mock.calls[2][2]?.send).toBe('function');
+    expect(state.publishTiersToRelayMock.mock.calls[3][2]).toEqual({
+      relayUrl: 'wss://relay.fundstr.me',
+    });
+    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(3);
     expect(state.clientPublishMock).toHaveBeenCalledTimes(1);
     expect(state.logRelayActivityMock).toHaveBeenCalledWith(
       'warning',
@@ -705,8 +720,10 @@ describe('CreatorStudioPage publishAll fallback', () => {
     await publishAll.call(wrapper.vm);
     await flushPromises();
 
-    expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(2);
-    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(2);
+    expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(4);
+    const tierKinds = state.publishTiersToRelayMock.mock.calls.map(call => call[1]);
+    expect(tierKinds).toEqual([30000, 30000, 30019, 30019]);
+    expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(3);
     expect(state.clientPublishMock).toHaveBeenCalledTimes(1);
     expect(state.logRelayActivityMock).toHaveBeenCalledWith(
       'warning',
