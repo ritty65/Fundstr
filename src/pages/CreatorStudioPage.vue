@@ -1363,6 +1363,25 @@ async function handleVerifyP2pkPointer() {
       if (!normalizedExisting.includes(normalizedMintCandidate)) {
         composerMints.value = [...existingEntries, normalizedMintCandidate];
         addedMintUrl = normalizedMintCandidate;
+
+        const storedMintEntries = Array.isArray(storedMints.value) ? storedMints.value : [];
+        const normalizedStored = storedMintEntries
+          .map(entry => (entry && typeof entry.url === 'string' ? normalizeMintUrl(entry.url) : ''))
+          .filter((entry): entry is string => Boolean(entry));
+        const mintExistsInStore = normalizedStored.includes(normalizedMintCandidate);
+
+        if (mintExistsInStore && typeof mintsStore.activateMintUrl === 'function') {
+          try {
+            await mintsStore.activateMintUrl(normalizedMintCandidate, false, true);
+          } catch (err) {
+            console.warn('[nutzap] failed to activate composer mint via store action', err);
+            mintsStore.activeMintUrl = normalizedMintCandidate;
+            storeActiveMintUrl.value = normalizedMintCandidate;
+          }
+        } else {
+          mintsStore.activeMintUrl = normalizedMintCandidate;
+          storeActiveMintUrl.value = normalizedMintCandidate;
+        }
       }
     }
 
