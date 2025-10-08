@@ -1246,6 +1246,21 @@ export async function publishNutzapProfile(opts: {
       content: JSON.stringify({ v: 1, ...body }),
       created_at: createdAt,
     });
+    if (relays.length) {
+      try {
+        const relaySet = await urlsToRelaySet(relays);
+        if (relaySet) {
+          const ndkEvent = new NDKEvent(ndk, result.event as any);
+          await waitForRelaySetConnectivity(relaySet);
+          await publishWithTimeout(ndkEvent, relaySet);
+        }
+      } catch (relayErr) {
+        console.warn(
+          "[nostr] Failed to publish Nutzap profile to selected relays",
+          relayErr,
+        );
+      }
+    }
     return result.event.id;
   } catch (e: any) {
     notifyError(e?.message ?? String(e));
