@@ -34,6 +34,7 @@ import {
   type NutzapProfileDetails,
 } from "@/nutzap/profileCache";
 import { FALLBACK_RELAYS } from "@/config/relays";
+import { simpleRelayQuery, SimpleRelayError } from "@/nutzap/simpleRelay";
 
 export const FEATURED_CREATORS = [
   "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
@@ -139,6 +140,26 @@ export async function fetchFundstrProfileBundle(
   }
 
   let fallbackAttempted = false;
+
+  if (!events.length) {
+    try {
+      const direct = await simpleRelayQuery(filters, {
+        timeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
+      });
+      if (direct.length) {
+        events = direct;
+        console.info("[creators] direct Fundstr relay query succeeded", {
+          pubkey,
+          filters,
+        });
+      }
+    } catch (directError) {
+      lastError = directError;
+      const label =
+        directError instanceof SimpleRelayError ? directError.message : String(directError);
+      console.warn("fetchFundstrProfileBundle direct relay query failed", label);
+    }
+  }
 
   if (!events.length) {
     fallbackAttempted = true;
@@ -721,6 +742,38 @@ export const useCreatorsStore = defineStore("creators", {
           return null;
         }
       };
+
+      if (!event) {
+        try {
+          const direct = await simpleRelayQuery(
+            [
+              {
+                kinds: [30019, 30000],
+                authors: [hex],
+                ["#d"]: ["tiers"],
+                limit: 2,
+              },
+            ],
+            { timeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS },
+          );
+          if (direct.length) {
+            const preferred = pickTierDefinitionEvent(
+              direct as unknown as NostrEvent[],
+            );
+            if (preferred) {
+              event = preferred;
+              console.info("[creators] direct Fundstr relay tiers fetch succeeded", {
+                pubkey: hex,
+              });
+            }
+          }
+        } catch (directError) {
+          lastError = directError;
+          const label =
+            directError instanceof SimpleRelayError ? directError.message : String(directError);
+          console.warn("fetchTierDefinitions direct relay query failed", label);
+        }
+      }
 
       if (!event && relayHints.size) {
         const hinted = await tryFallback(relayHints);
