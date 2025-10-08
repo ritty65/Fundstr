@@ -9,6 +9,7 @@ import {
   FREE_RELAYS,
   FUNDSTR_PRIMARY_RELAY,
 } from "src/config/relays";
+import { clearRelayFailureCache } from "src/nostr/relayClient";
 import { filterHealthyRelays } from "src/utils/relayHealth";
 import { RelayWatchdog } from "src/js/nostr-runtime";
 import {
@@ -98,8 +99,11 @@ function attachRelayErrorHandlers(ndk: NDK) {
     disconnectCounts.set(relay.url, (disconnectCounts.get(relay.url) ?? 0) + 1);
     scheduleDisconnectLog();
   });
-  ndk.pool.on("relay:connect", () => {
+  ndk.pool.on("relay:connect", (relay: any) => {
     resetFreeRelayFallbackState(ndk);
+    if (relay?.url) {
+      clearRelayFailureCache(relay.url);
+    }
   });
   ndk.pool.on("notice", (relay: any, notice: string) => {
     console.debug(`[NDK] notice from ${relay.url}: ${notice}`);
