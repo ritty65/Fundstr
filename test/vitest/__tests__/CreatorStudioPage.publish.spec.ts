@@ -20,6 +20,8 @@ const notifyWarningMock = vi.fn();
 
 const copyMock = vi.fn();
 
+const maybeRepublishNutzapProfileMock = vi.fn(async () => {});
+
 const creatorStudioStubs = {
   'q-page': { template: '<div><slot /></div>' },
   'q-avatar': { template: '<div><slot /></div>' },
@@ -373,7 +375,7 @@ vi.mock('src/stores/mints', () => ({
 }));
 
 vi.mock('src/stores/creatorHub', () => ({
-  maybeRepublishNutzapProfile: vi.fn(async () => {}),
+  maybeRepublishNutzapProfile: (...args: any[]) => maybeRepublishNutzapProfileMock(...args),
 }));
 
 vi.mock('src/nutzap/ndkInstance', () => ({
@@ -401,6 +403,8 @@ beforeEach(() => {
   notifyErrorMock.mockReset();
   notifyWarningMock.mockReset();
   copyMock.mockReset();
+  maybeRepublishNutzapProfileMock.mockReset();
+  maybeRepublishNutzapProfileMock.mockImplementation(async () => {});
 });
 
 describe('CreatorStudioPage publishAll fallback', () => {
@@ -733,6 +737,98 @@ describe('CreatorStudioPage publishAll fallback', () => {
     );
     expect(notifySuccessMock).toHaveBeenCalledTimes(1);
     expect(notifyErrorMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('CreatorStudioPage auto republish fallback', () => {
+  it('auto republish succeeds via HTTP when the websocket publish times out', async () => {
+    const state = ensureShared();
+    state.signerRef.value = {};
+    state.p2pkStoreMock.p2pkKeys = [];
+    state.p2pkStoreMock.firstKey = null;
+
+    const newP2pk = 'f'.repeat(64);
+    const newPriv = 'e'.repeat(64);
+    let fallbackResult: any = null;
+
+    state.clientPublishMock.mockImplementation(async template => {
+      const createdAt = template?.created_at ?? Math.floor(Date.now() / 1000);
+      const event = {
+        id: 'evt-http-fallback',
+        pubkey: newP2pk,
+        created_at: createdAt,
+        kind: template?.kind ?? 10019,
+        tags: Array.isArray(template?.tags) ? template.tags : [],
+        content: typeof template?.content === 'string' ? template.content : '',
+        sig: 's'.repeat(128),
+      };
+      const ack = {
+        id: event.id,
+        accepted: true,
+        message: 'Timed out waiting for relay OK; HTTP fallback used',
+        via: 'http' as const,
+      };
+      fallbackResult = { ack, event };
+      return fallbackResult;
+    });
+
+    maybeRepublishNutzapProfileMock.mockImplementation(async () => {
+      const template = {
+        kind: 10019,
+        tags: [
+          ['t', 'nutzap-profile'],
+          ['client', 'fundstr'],
+          ['pubkey', newP2pk],
+        ],
+        content: JSON.stringify({ v: 1, p2pk: newP2pk, mints: [], relays: [] }),
+        created_at: Math.floor(Date.now() / 1000),
+      };
+      const result = await state.clientPublishMock(template);
+      if (!result?.ack?.accepted) {
+        throw new Error(result?.ack?.message || 'Publish failed');
+      }
+      return result;
+    });
+
+    const TestHarness = defineComponent({
+      name: 'CreatorStudioAutoRepublishHarness',
+      setup(props, ctx) {
+        const component = CreatorStudioPage as any;
+        return component.setup ? component.setup(props, ctx) : {};
+      },
+      template: '<div />',
+    });
+
+    const wrapper = shallowMount(TestHarness as any, {
+      global: {
+        stubs: creatorStudioStubs,
+      },
+    });
+
+    const vmAny = wrapper.vm as any;
+    const persistComposerKey =
+      vmAny.persistComposerKeyToStore ??
+      vmAny.$?.setupState?.persistComposerKeyToStore ??
+      vmAny.$?.ctx?.persistComposerKeyToStore ??
+      vmAny.$?.exposed?.persistComposerKeyToStore;
+    expect(typeof persistComposerKey).toBe('function');
+
+    await persistComposerKey.call(wrapper.vm, newP2pk, newPriv);
+    await flushPromises();
+    await flushPromises();
+
+    expect(maybeRepublishNutzapProfileMock).toHaveBeenCalledTimes(1);
+    expect(state.clientPublishMock).toHaveBeenCalledTimes(1);
+    expect(fallbackResult?.ack?.via).toBe('http');
+    expect(fallbackResult?.ack?.message).toContain('Timed out waiting for relay OK');
+    expect(notifySuccessMock).toHaveBeenCalledWith(
+      'Republished Nutzap profile with the active P2PK key.',
+    );
+    expect(notifyWarningMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('auto republish failed'),
+    );
+
+    wrapper.unmount();
   });
 });
 
