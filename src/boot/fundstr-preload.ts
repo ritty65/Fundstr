@@ -5,6 +5,8 @@ import { queryNutzapProfile, queryNutzapTiers, toHex } from "@/nostr/relayClient
 import { parseTierDefinitionEvent } from "src/nostr/tiers";
 import { parseNutzapProfileEvent } from "@/nutzap/profileCache";
 import type { Tier } from "stores/types";
+import { FALLBACK_RELAYS } from "@/config/relays";
+import { fallbackDiscoverRelays } from "@/nostr/discovery";
 
 const CONCURRENCY_LIMIT = 3;
 const REQUEST_TIMEOUT_MS = 4000;
@@ -75,6 +77,16 @@ async function hydrateCreator(
   let timedOut = false;
   const writes: Promise<unknown>[] = [];
 
+  const relayHints = new Set<string>();
+  const appendHints = (values: Iterable<string>) => {
+    for (const value of values) {
+      if (typeof value !== "string") continue;
+      const trimmed = value.trim();
+      if (!trimmed) continue;
+      relayHints.add(trimmed);
+    }
+  };
+
   const profileResult = await withTimeout(
     () =>
       queryNutzapProfile(hex, {
@@ -83,6 +95,7 @@ async function hydrateCreator(
     REQUEST_TIMEOUT_MS,
   );
 
+  let profileEvent = null;
   if (profileResult.status === "timeout") {
     timedOut = true;
   } else if (profileResult.status === "error") {
@@ -90,11 +103,58 @@ async function hydrateCreator(
       `[fundstr-preload] profile fetch failed for ${hex}`,
       profileResult.error,
     );
-  } else if (profileResult.value) {
-    const details = parseNutzapProfileEvent(profileResult.value);
+  } else {
+    profileEvent = profileResult.value;
+  }
+
+  if (!profileEvent) {
+    const fallbackRelays = new Set<string>(FALLBACK_RELAYS);
+    try {
+      const discovered = await fallbackDiscoverRelays(hex);
+      appendHints(discovered);
+      for (const url of discovered) {
+        fallbackRelays.add(url);
+      }
+    } catch (err) {
+      console.warn(`[fundstr-preload] relay discovery failed for ${hex}`, err);
+    }
+    const fanout = Array.from(fallbackRelays);
+    if (fanout.length) {
+      const fallbackProfile = await withTimeout(
+        () =>
+          queryNutzapProfile(hex, {
+            allowFanoutFallback: true,
+            fanout,
+          }),
+        REQUEST_TIMEOUT_MS,
+      );
+      if (fallbackProfile.status === "timeout") {
+        timedOut = true;
+      } else if (fallbackProfile.status === "error") {
+        console.warn(
+          `[fundstr-preload] profile fallback failed for ${hex}`,
+          fallbackProfile.error,
+        );
+      } else {
+        profileEvent = fallbackProfile.value;
+        if (profileEvent) {
+          console.warn(
+            `[fundstr-preload] profile fallback succeeded for ${hex}`,
+            fanout,
+          );
+        }
+      }
+    }
+  }
+
+  if (profileEvent) {
+    const details = parseNutzapProfileEvent(profileEvent);
+    if (details?.relays?.length) {
+      appendHints(details.relays);
+    }
     writes.push(
       creators
-        .saveProfileCache(hex, profileResult.value, details)
+        .saveProfileCache(hex, profileEvent, details)
         .catch((err) =>
           console.error(`[fundstr-preload] failed to cache profile ${hex}`, err),
         ),
@@ -109,41 +169,98 @@ async function hydrateCreator(
     REQUEST_TIMEOUT_MS,
   );
 
+  let tierEvent = null;
   if (tierResult.status === "timeout") {
     timedOut = true;
   } else if (tierResult.status === "error") {
     console.warn(`[fundstr-preload] tier fetch failed for ${hex}`, tierResult.error);
   } else {
-    const tierEvent = tierResult.value;
-    if (tierEvent) {
-      let tiers: Tier[] = [];
-      try {
-        tiers = parseTierDefinitionEvent(tierEvent).map((tier) =>
-          normalizeTier(tier as Tier),
-        );
-      } catch (e) {
-        console.error(`[fundstr-preload] failed to parse tiers for ${hex}`, e);
-        tiers = [];
-      }
-      writes.push(
-        creators
-          .saveTierCache(hex, tiers, tierEvent)
-          .catch((err) =>
-            console.error(`[fundstr-preload] failed to cache tiers ${hex}`, err),
-          ),
+    tierEvent = tierResult.value;
+  }
+
+  const fallbackTierRelays = new Set<string>(relayHints);
+
+  if (!tierEvent && fallbackTierRelays.size) {
+    const hintedTierResult = await withTimeout(
+      () =>
+        queryNutzapTiers(hex, {
+          allowFanoutFallback: true,
+          fanout: Array.from(fallbackTierRelays),
+        }),
+      REQUEST_TIMEOUT_MS,
+    );
+    if (hintedTierResult.status === "timeout") {
+      timedOut = true;
+    } else if (hintedTierResult.status === "error") {
+      console.warn(
+        `[fundstr-preload] tier fallback (hints) failed for ${hex}`,
+        hintedTierResult.error,
       );
     } else {
-      writes.push(
-        creators
-          .saveTierCache(hex, [], null)
-          .catch((err) =>
-            console.error(
-              `[fundstr-preload] failed to clear tier cache for ${hex}`,
-              err,
-            ),
-          ),
-      );
+      tierEvent = hintedTierResult.value;
     }
+  }
+
+  if (!tierEvent) {
+    const defaults = Array.from(new Set<string>([...fallbackTierRelays, ...FALLBACK_RELAYS]));
+    if (defaults.length) {
+      const fallbackTierResult = await withTimeout(
+        () =>
+          queryNutzapTiers(hex, {
+            allowFanoutFallback: true,
+            fanout: defaults,
+          }),
+        REQUEST_TIMEOUT_MS,
+      );
+      if (fallbackTierResult.status === "timeout") {
+        timedOut = true;
+      } else if (fallbackTierResult.status === "error") {
+        console.warn(
+          `[fundstr-preload] tier fallback failed for ${hex}`,
+          fallbackTierResult.error,
+        );
+      } else {
+        tierEvent = fallbackTierResult.value;
+        if (tierEvent) {
+          console.warn(`[fundstr-preload] tier fallback succeeded for ${hex}`, defaults);
+        }
+      }
+    }
+  }
+
+  if (tierEvent) {
+    for (const tag of tierEvent.tags ?? []) {
+      if (tag[0] === "relay" || tag[0] === "r") {
+        appendHints([tag[1] as string]);
+      }
+    }
+    let tiers: Tier[] = [];
+    try {
+      tiers = parseTierDefinitionEvent(tierEvent).map((tier) =>
+        normalizeTier(tier as Tier),
+      );
+    } catch (e) {
+      console.error(`[fundstr-preload] failed to parse tiers for ${hex}`, e);
+      tiers = [];
+    }
+    writes.push(
+      creators
+        .saveTierCache(hex, tiers, tierEvent)
+        .catch((err) =>
+          console.error(`[fundstr-preload] failed to cache tiers ${hex}`, err),
+        ),
+    );
+  } else {
+    writes.push(
+      creators
+        .saveTierCache(hex, [], null)
+        .catch((err) =>
+          console.error(
+            `[fundstr-preload] failed to clear tier cache for ${hex}`,
+            err,
+          ),
+        ),
+    );
   }
 
   if (writes.length > 0) {

@@ -153,6 +153,9 @@ describe("PublicCreatorProfilePage", () => {
       profileEvent: null,
       followers: 5,
       following: 3,
+      profileDetails: null,
+      relayHints: [],
+      fetchedFromFallback: false,
     });
     creatorsStore = reactive({
       tiersMap: reactive({}),
@@ -209,7 +212,10 @@ describe("PublicCreatorProfilePage", () => {
 
     expect(fetchTierDefinitions).toHaveBeenCalled();
     expect(fetchTierDefinitions.mock.calls[0][0]).toBe(sampleHex);
-    expect(fetchTierDefinitions.mock.calls[0][1]).toEqual({ fundstrOnly: true });
+    expect(fetchTierDefinitions.mock.calls[0][1]).toEqual({
+      fundstrOnly: true,
+      relayHints: [],
+    });
     expect(wrapper.vm.selectedTier?.id).toBe("tier-1");
     expect(wrapper.vm.showSubscribeDialog).toBe(true);
     expect(router.currentRoute.value.query.tierId).toBeUndefined();
@@ -229,7 +235,10 @@ describe("PublicCreatorProfilePage", () => {
     const wrapper = mountPage(router);
     await flushPromises();
 
-    expect(fetchTierDefinitions).toHaveBeenCalledWith(sampleHex, { fundstrOnly: true });
+    expect(fetchTierDefinitions).toHaveBeenCalledWith(sampleHex, {
+      fundstrOnly: true,
+      relayHints: [],
+    });
     expect(wrapper.vm.creatorHex).toBe(sampleHex);
     expect(wrapper.vm.creatorNpub).toBe(nip19.npubEncode(sampleHex));
   });

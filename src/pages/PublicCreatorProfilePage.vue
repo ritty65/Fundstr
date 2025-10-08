@@ -18,6 +18,18 @@
         {{ decodeError }}
       </q-banner>
 
+      <q-banner
+        v-if="fallbackActive && fallbackBannerText"
+        class="profile-page__banner bg-warning text-1"
+        icon="cloud_off"
+        aria-live="polite"
+      >
+        <div>{{ fallbackBannerText }}</div>
+        <div v-if="fallbackRelaysLabel" class="text-caption q-mt-xs text-2">
+          {{ fallbackRelaysLabel }}
+        </div>
+      </q-banner>
+
       <section class="profile-hero" :class="{ 'profile-hero--with-banner': heroBannerUrl }">
         <div
           v-if="heroBannerUrl"
@@ -311,7 +323,11 @@
 <script lang="ts">
 import { defineComponent, ref, onMounted, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useCreatorsStore, fetchFundstrProfileBundle } from "stores/creators";
+import {
+  useCreatorsStore,
+  fetchFundstrProfileBundle,
+  FundstrProfileFetchError,
+} from "stores/creators";
 import { useNostrStore } from "stores/nostr";
 import { buildProfileUrl } from "src/utils/profileUrl";
 import { deriveCreatorKeys } from "src/utils/nostrKeys";
@@ -369,6 +385,11 @@ export default defineComponent({
     const { copy } = useClipboard();
     const bitcoinPrice = computed(() => priceStore.bitcoinPrice);
     const profile = ref<any>({});
+    const profileRelayHints = ref<string[]>([]);
+    const fallbackActive = ref(false);
+    const fallbackFailed = ref(false);
+    const fallbackRelays = ref<string[]>([]);
+    const profileLoadError = ref<Error | null>(null);
     const creatorTierList = computed(() =>
       creatorHex ? creators.tiersMap[creatorHex] : undefined,
     );
@@ -388,6 +409,20 @@ export default defineComponent({
     const tierFetchError = computed(() => creators.tierFetchError);
     const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 
+    const mergeUniqueUrls = (...lists: Array<string[] | undefined>) => {
+      const urls = new Set<string>();
+      for (const list of lists) {
+        if (!Array.isArray(list)) continue;
+        for (const url of list) {
+          if (typeof url !== "string") continue;
+          const trimmed = url.trim();
+          if (!trimmed) continue;
+          urls.add(trimmed);
+        }
+      }
+      return Array.from(urls);
+    };
+
     const fetchTiers = async () => {
       if (!creatorHex) {
         loadingTiers.value = false;
@@ -398,7 +433,25 @@ export default defineComponent({
       }
       refreshingTiers.value = true;
       try {
-        await creators.fetchTierDefinitions(creatorHex, { fundstrOnly: true });
+        const result = await creators.fetchTierDefinitions(creatorHex, {
+          fundstrOnly: true,
+          relayHints: profileRelayHints.value,
+        });
+        if (result?.relayHints?.length) {
+          profileRelayHints.value = mergeUniqueUrls(
+            profileRelayHints.value,
+            result.relayHints,
+          );
+        }
+        if (result?.attemptedRelays?.length || result?.usedFallback) {
+          fallbackActive.value = true;
+          fallbackFailed.value = creators.tierFetchError;
+          fallbackRelays.value = mergeUniqueUrls(
+            fallbackRelays.value,
+            result?.attemptedRelays,
+            result?.relayHints,
+          );
+        }
       } finally {
         refreshingTiers.value = false;
         if (!hasInitialTierData.value) {
@@ -421,6 +474,8 @@ export default defineComponent({
       if (errored) {
         loadingTiers.value = false;
         refreshingTiers.value = false;
+        fallbackActive.value = true;
+        fallbackFailed.value = true;
       }
     });
 
@@ -447,14 +502,50 @@ export default defineComponent({
             }
             profile.value = nextProfile;
           }
+          if (bundle.profileDetails) {
+            const { trustedMints, relays, tierAddr } = bundle.profileDetails;
+            profile.value = {
+              ...profile.value,
+              ...(Array.isArray(trustedMints)
+                ? { trustedMints }
+                : {}),
+              ...(Array.isArray(relays) || relays?.length
+                ? { relays }
+                : {}),
+              ...(tierAddr ? { tierAddr } : {}),
+            };
+          }
           if (typeof followersCount === "number") {
             followers.value = followersCount;
           }
           if (typeof followingCount === "number") {
             following.value = followingCount;
           }
+          if (bundle.relayHints?.length) {
+            profileRelayHints.value = mergeUniqueUrls(
+              profileRelayHints.value,
+              bundle.relayHints,
+            );
+          }
+          if (bundle.fetchedFromFallback) {
+            fallbackActive.value = true;
+            fallbackRelays.value = mergeUniqueUrls(
+              fallbackRelays.value,
+              bundle.relayHints,
+            );
+          }
+          profileLoadError.value = null;
         })
-        .catch(() => {});
+        .catch((err) => {
+          const error = err instanceof Error ? err : new Error(String(err));
+          profileLoadError.value = error;
+          fallbackActive.value = true;
+          if (err instanceof FundstrProfileFetchError) {
+            fallbackFailed.value = true;
+          } else {
+            fallbackFailed.value = true;
+          }
+        });
 
       await Promise.all([profilePromise, tierPromise]);
     };
@@ -734,11 +825,36 @@ export default defineComponent({
       translationWithFallback("CreatorHub.profile.retry", "Retry"),
     );
 
+    const fallbackBannerText = computed(() => {
+      if (!fallbackActive.value) {
+        return "";
+      }
+      if (fallbackFailed.value) {
+        return translationWithFallback(
+          "CreatorHub.profile.fallbackFailed",
+          "Fundstr relay is unreachable right now. We couldn't load fresh data from public relays.",
+        );
+      }
+      return translationWithFallback(
+        "CreatorHub.profile.fallbackActive",
+        "Fundstr relay is slow, loading data from public relays…",
+      );
+    });
+
+    const fallbackRelaysLabel = computed(() => {
+      if (!fallbackRelays.value.length) return "";
+      return `${translationWithFallback(
+        "CreatorHub.profile.fallbackRelaysLabel",
+        "Attempting relays:",
+      )} ${fallbackRelays.value.join(", ")}`;
+    });
+
     return {
       creatorNpub,
       creatorHex,
       decodeError,
       profile,
+      profileLoadError,
       profileDisplayName,
       profileHandle,
       profileAvatar,
@@ -765,6 +881,10 @@ export default defineComponent({
       howNutzapWorksList,
       faqEntries,
       retryLabel,
+      fallbackActive,
+      fallbackBannerText,
+      fallbackRelaysLabel,
+      fallbackFailed,
       // no markdown rendering needed
       formatFiat,
       getPrice,

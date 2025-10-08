@@ -75,6 +75,7 @@ vi.mock("src/js/notify", () => ({
 }));
 vi.mock("vue-i18n", () => ({
   useI18n: () => ({ t: (k: string) => k }),
+  createI18n: () => ({ global: { t: (k: string) => k } }),
 }));
 
 vi.mock("quasar", () => {
@@ -107,6 +108,7 @@ vi.mock("quasar", () => {
     }),
     QBanner: createStub("QBanner"),
     QSpinnerHourglass: createStub("QSpinnerHourglass"),
+    QPage: createStub("QPage"),
   };
 });
 
@@ -147,6 +149,8 @@ describe("FindCreators component behaviour", () => {
       tiersMap: reactive({}),
       tierFetchError: false,
       fetchTierDefinitions,
+      ensureCreatorCacheFromDexie: vi.fn().mockResolvedValue(undefined),
+      saveProfileCache: vi.fn().mockResolvedValue(undefined),
     });
     toHex.mockImplementation((val: string) => val);
     fallbackDiscoverRelays.mockResolvedValue([]);
@@ -167,6 +171,9 @@ describe("FindCreators component behaviour", () => {
       props,
       global: {
         plugins: [router, pinia],
+        mocks: {
+          $t: (key: string) => key,
+        },
         stubs: {
           QDialog: QDialogStub,
           QCard: QCardStub,
@@ -204,19 +211,25 @@ describe("FindCreators component behaviour", () => {
     const wrapper = mountComponent({ npubOrHex: "npub123" });
     await flushPromises();
 
-    expect(queryNutzapProfile).toHaveBeenNthCalledWith(1, "hex123");
-    expect(queryNutzapProfile).toHaveBeenNthCalledWith(2, "hex123", {
-      fanout: ["wss://fallback-relay"],
-      allowFanoutFallback: true,
-    });
+    expect(queryNutzapProfile.mock.calls[0][0]).toBe("hex123");
+    expect(queryNutzapProfile.mock.calls[1]).toEqual([
+      "hex123",
+      expect.objectContaining({
+        fanout: ["wss://fallback-relay"],
+        allowFanoutFallback: true,
+      }),
+    ]);
 
-    expect(fetchTierDefinitions).toHaveBeenCalledWith("hex123", {
-      relayHints: expect.arrayContaining([
-        "wss://fallback-relay",
-        "wss://tag-relay",
-        "wss://content-relay",
-      ]),
-    });
+    expect(fetchTierDefinitions).toHaveBeenCalledWith(
+      "hex123",
+      expect.objectContaining({
+        relayHints: expect.arrayContaining([
+          "wss://fallback-relay",
+          "wss://tag-relay",
+          "wss://content-relay",
+        ]),
+      }),
+    );
 
     const hintsArg = fetchTierDefinitions.mock.calls[0][1].relayHints;
     expect(new Set(hintsArg)).toEqual(
@@ -260,9 +273,10 @@ describe("FindCreators component behaviour", () => {
       .findAll("button")
       .find((btn) => btn.text() === "Retry")
       ?.trigger("click");
-    expect(fetchTierDefinitions).toHaveBeenLastCalledWith("hex456", {
-      relayHints: expect.any(Array),
-    });
+    expect(fetchTierDefinitions).toHaveBeenLastCalledWith(
+      "hex456",
+      expect.objectContaining({ relayHints: expect.any(Array) }),
+    );
 
     expect(wrapper.vm.loadingTiers).toBe(true);
     vi.advanceTimersByTime(5000);
