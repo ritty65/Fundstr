@@ -55,6 +55,47 @@ const PUBLIC_POOL = [
 
 const HEX_REGEX = /^[0-9a-fA-F]{64}$/;
 
+const WS_FAILURE_TTL_MS = 60_000;
+const wsFailureCache = new Map<string, number>();
+
+function normalizeRelayUrl(url: string): string {
+  return url.replace(/\s+/g, "").replace(/\/+$/, "");
+}
+
+function cacheKey(url: string | undefined | null): string | null {
+  if (!url) return null;
+  const normalized = normalizeRelayUrl(url);
+  return normalized ? normalized : null;
+}
+
+function markWsFailure(url: string) {
+  const key = cacheKey(url);
+  if (!key) return;
+  wsFailureCache.set(key, Date.now());
+}
+
+function isWsFailureHot(url: string): boolean {
+  const key = cacheKey(url);
+  if (!key) return false;
+  const ts = wsFailureCache.get(key);
+  if (!ts) return false;
+  if (Date.now() - ts < WS_FAILURE_TTL_MS) {
+    return true;
+  }
+  wsFailureCache.delete(key);
+  return false;
+}
+
+export function clearRelayFailureCache(url?: string) {
+  if (typeof url !== "string") {
+    wsFailureCache.clear();
+    return;
+  }
+  const key = cacheKey(url);
+  if (!key) return;
+  wsFailureCache.delete(key);
+}
+
 export function toHex(pubOrNpub: string): string {
   const trimmed = pubOrNpub.trim();
   if (!trimmed) {
@@ -333,12 +374,16 @@ async function tryWsFirstThenHttp(
   httpBase: string,
   timeoutMs: number,
 ): Promise<NostrEvent[]> {
-  try {
-    const wsEvents = await wsQuery(wsUrl, filters, timeoutMs);
-    if (wsEvents.length) return wsEvents;
-  } catch (e) {
-    // swallow and try HTTP
-    void e;
+  const skipWs = wsUrl === FUNDSTR_PRIMARY_RELAY && isWsFailureHot(wsUrl);
+  if (!skipWs) {
+    try {
+      const wsEvents = await wsQuery(wsUrl, filters, timeoutMs);
+      if (wsEvents.length) return wsEvents;
+    } catch (e) {
+      markWsFailure(wsUrl);
+      // swallow and try HTTP
+      void e;
+    }
   }
   try {
     return await httpReq(httpBase, filters);
