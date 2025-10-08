@@ -7,6 +7,10 @@
 
 Those symptoms line up with the way Fundstr’s Nostr layer is wired: the SPA assumes the first-party relay is reachable and will short-circuit if that host is down or blocks cross-origin requests.
 
+## Relay debug logging
+- Relay diagnostics for disconnects and heartbeat stalls are gated by the `cashu.settings.relayDebugLogsEnabled` flag in the settings store.【F:src/stores/settings.ts†L5-L74】【F:src/boot/ndk.ts†L83-L129】
+- Development and test builds keep the toggle enabled by default. To force-enable the logs in other environments, set `VITE_RELAY_DEBUG_LOGS=true` before building or flip the flag at runtime via the Pinia settings store (e.g. `useSettingsStore().relayDebugLogsEnabled.value = true`).【F:src/stores/settings.ts†L5-L74】【F:src/boot/ndk.ts†L83-L129】
+
 ## How the client is configured
 - The primary relay endpoints are hard-coded to `wss://relay.fundstr.me` / `https://relay.fundstr.me` and copied into every default relay list (`DEFAULT_RELAYS`, `FALLBACK_RELAYS`, `FREE_RELAYS`).【F:src/config/relays.ts†L1-L33】
 - The Nutzap stack reads the Vite env overrides but still defaults to that Fundstr relay and derives the HTTP `/req` and `/event` endpoints from it.【F:src/nutzap/relayConfig.ts†L1-L36】【F:src/nutzap/relayEndpoints.ts†L1-L86】

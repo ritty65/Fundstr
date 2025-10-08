@@ -3,7 +3,10 @@ import { useBootErrorStore } from "stores/bootError";
 import NDK, { NDKSigner } from "@nostr-dev-kit/ndk";
 import { useNostrStore } from "stores/nostr";
 import { NDKEvent, type NDKFilter } from "@nostr-dev-kit/ndk";
-import { useSettingsStore } from "src/stores/settings";
+import {
+  useSettingsStore,
+  DEFAULT_RELAY_DEBUG_LOGS_ENABLED,
+} from "src/stores/settings";
 import {
   DEFAULT_RELAYS,
   FREE_RELAYS,
@@ -80,6 +83,21 @@ export function mergeDefaultRelays(ndk: NDK) {
 const disconnectCounts = new Map<string, number>();
 let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
+function isRelayDebugLoggingEnabled(settings = useSettingsStore()): boolean {
+  const preference = settings?.relayDebugLogsEnabled as
+    | boolean
+    | { value?: boolean }
+    | undefined;
+  if (typeof preference === "boolean") {
+    return preference;
+  }
+  const refValue = (preference as { value?: boolean } | undefined)?.value;
+  if (typeof refValue === "boolean") {
+    return refValue;
+  }
+  return DEFAULT_RELAY_DEBUG_LOGS_ENABLED;
+}
+
 function scheduleDisconnectLog() {
   if (disconnectTimer) return;
   disconnectTimer = setTimeout(() => {
@@ -87,6 +105,9 @@ function scheduleDisconnectLog() {
     disconnectCounts.clear();
     disconnectTimer = null;
     if (!entries.length) return;
+    if (!isRelayDebugLoggingEnabled()) {
+      return;
+    }
     const summary = entries
       .map(([u, c]) => (c > 1 ? `${u} (x${c})` : u))
       .join(", ");
@@ -96,6 +117,10 @@ function scheduleDisconnectLog() {
 
 function attachRelayErrorHandlers(ndk: NDK) {
   ndk.pool.on("relay:disconnect", (relay: any) => {
+    if (!isRelayDebugLoggingEnabled()) {
+      disconnectCounts.clear();
+      return;
+    }
     disconnectCounts.set(relay.url, (disconnectCounts.get(relay.url) ?? 0) + 1);
     scheduleDisconnectLog();
   });
@@ -109,9 +134,15 @@ function attachRelayErrorHandlers(ndk: NDK) {
     console.debug(`[NDK] notice from ${relay.url}: ${notice}`);
   });
   (ndk.pool as any).on?.("relay:stalled", (relay: any) => {
+    if (!isRelayDebugLoggingEnabled()) {
+      return;
+    }
     console.warn(`[NDK] heartbeat stalled on ${relay.url}`);
   });
   (ndk.pool as any).on?.("relay:heartbeat", (relay: any) => {
+    if (!isRelayDebugLoggingEnabled()) {
+      return;
+    }
     console.debug(`[NDK] heartbeat recovered on ${relay.url}`);
   });
 }

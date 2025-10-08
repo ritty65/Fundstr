@@ -5,6 +5,19 @@ import { sanitizeRelayUrls } from "src/utils/relay";
 
 type RelayBootstrapMode = "default" | "fundstr-only";
 
+const envRelayDebugPreference = (import.meta as any)?.env?.VITE_RELAY_DEBUG_LOGS;
+const envRelayDebugValue =
+  envRelayDebugPreference === "true" || envRelayDebugPreference === true
+    ? true
+    : envRelayDebugPreference === "false" || envRelayDebugPreference === false
+      ? false
+      : undefined;
+
+export const DEFAULT_RELAY_DEBUG_LOGS_ENABLED =
+  envRelayDebugValue ??
+  (Boolean((import.meta as any)?.env?.DEV) ||
+    (import.meta as any)?.env?.MODE === "test");
+
 const RELAY_DENYLIST = new Set(
   ["relay.nostr.bg", "nostr.zebedee.cloud", "relay.plebstr.com"].map((host) =>
     host.toLowerCase(),
@@ -130,6 +143,10 @@ export const useSettingsStore = defineStore("settings", {
       tiersIndexerUrl: useLocalStorage<string>(
         "cashu.settings.tiersIndexerUrl",
         "https://api.nostr.band/v0/profile?pubkey={pubkey}",
+      ),
+      relayDebugLogsEnabled: useLocalStorage<boolean>(
+        "cashu.settings.relayDebugLogsEnabled",
+        DEFAULT_RELAY_DEBUG_LOGS_ENABLED,
       ),
       relayBootstrapMode: "default" as RelayBootstrapMode,
     };
