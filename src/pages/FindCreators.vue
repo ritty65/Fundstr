@@ -943,9 +943,8 @@ onBeforeUnmount(() => {
 .tier-dialog {
   width: 100%;
   max-width: 960px;
-  background: color-mix(in srgb, var(--surface-2) 94%, transparent);
+  background: var(--surface-2);
   color: var(--text-1);
-  box-shadow: 0 22px 44px rgba(15, 23, 42, 0.18);
 }
 
 .tier-dialog__top {
@@ -1089,12 +1088,11 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  background: color-mix(in srgb, var(--surface-2) 94%, transparent);
+  background: var(--surface-1);
   border: 1px solid var(--surface-contrast-border);
   border-left: 4px solid var(--accent-500);
   border-radius: 1rem;
   padding: 1.25rem 1.5rem;
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.12);
 }
 
 .info-panel__header {
@@ -1161,7 +1159,7 @@ onBeforeUnmount(() => {
   word-break: break-all;
   padding: 0.5rem 0.75rem;
   border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
+  background: rgba(0, 0, 0, 0.05);
   color: var(--text-1);
 }
 
@@ -1178,7 +1176,7 @@ onBeforeUnmount(() => {
   padding: 0.5rem 0.75rem;
   border-radius: 0.75rem;
   border: 1px solid var(--surface-contrast-border);
-  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
+  background: rgba(255, 255, 255, 0.04);
   font-size: 0.95rem;
   line-height: 1.4;
 }

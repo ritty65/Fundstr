@@ -178,7 +178,7 @@ const emitSubscribe = () => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  background: color-mix(in srgb, var(--surface-2) 94%, transparent);
+  background: var(--surface-1);
   border: 1px solid var(--surface-contrast-border);
   border-radius: 1.25rem;
   padding: 1.25rem 1.5rem;
