@@ -5,6 +5,7 @@ import { bytesToHex } from '@noble/hashes/utils';
 import { getPublicKey } from '@noble/secp256k1';
 
 import CreatorStudioPage from '../../../src/pages/CreatorStudioPage.vue';
+import { FundstrRelayClient, RelayPublishError } from '../../../src/nutzap/relayClient';
 
 const VALID_HEX = 'a'.repeat(64);
 
@@ -732,5 +733,74 @@ describe('CreatorStudioPage publishAll fallback', () => {
     );
     expect(notifySuccessMock).toHaveBeenCalledTimes(1);
     expect(notifyErrorMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('FundstrRelayClient publish fallback', () => {
+  it('uses HTTP fallback when relay publish times out', async () => {
+    const client = new FundstrRelayClient('wss://relay.example');
+
+    (client as any).allowWsWrites = true;
+    (client as any).WSImpl = class FakeWebSocket {} as any;
+
+    const event = {
+      id: '1'.repeat(64),
+      pubkey: '2'.repeat(64),
+      created_at: Math.floor(Date.now() / 1000),
+      kind: 30019,
+      tags: [],
+      content: '{}',
+      sig: '3'.repeat(128),
+    };
+
+    vi.spyOn(client as any, 'signEvent').mockResolvedValue(event);
+
+    const timeoutAck = {
+      id: event.id,
+      accepted: false,
+      message: 'Timed out waiting for relay OK',
+      via: 'websocket' as const,
+    };
+
+    const relayError = new RelayPublishError(timeoutAck.message!, {
+      ack: timeoutAck,
+      event,
+    });
+
+    const publishViaWebSocketSpy = vi
+      .spyOn(client as any, 'publishViaWebSocket')
+      .mockRejectedValue(relayError);
+
+    const publishViaHttpSpy = vi
+      .spyOn(client as any, 'publishViaHttp')
+      .mockResolvedValue({
+        id: event.id,
+        accepted: true,
+        message: 'accepted',
+        via: 'http' as const,
+      });
+
+    const logSpy = vi.spyOn(client as any, 'pushLog');
+
+    const result = await client.publish({
+      kind: event.kind,
+      tags: event.tags,
+      content: event.content,
+      created_at: event.created_at,
+    });
+
+    expect(publishViaWebSocketSpy).toHaveBeenCalledTimes(1);
+    expect(publishViaHttpSpy).toHaveBeenCalledTimes(1);
+    expect(result.ack.via).toBe('http');
+    expect(result.ack.accepted).toBe(true);
+    expect(logSpy).toHaveBeenCalledWith(
+      'warn',
+      'Relay publish timed out, using HTTP fallback',
+      timeoutAck,
+    );
+
+    publishViaWebSocketSpy.mockRestore();
+    publishViaHttpSpy.mockRestore();
+    logSpy.mockRestore();
   });
 });

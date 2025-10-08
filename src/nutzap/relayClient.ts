@@ -271,6 +271,16 @@ export class FundstrRelayClient {
       return { ack, event };
     } catch (err) {
       if (err instanceof RelayPublishError) {
+        if (this.shouldFallbackAfterRelayError(err)) {
+          this.pushLog('warn', 'Relay publish timed out, using HTTP fallback', err.ack);
+          try {
+            const ack = await this.publishViaHttp(event);
+            return { ack, event };
+          } catch (httpErr) {
+            this.pushLog('error', 'HTTP fallback failed after relay timeout', httpErr);
+            throw err;
+          }
+        }
         throw err;
       }
       this.pushLog('warn', 'WebSocket publish failed, using HTTP fallback', err);
@@ -578,6 +588,29 @@ export class FundstrRelayClient {
 
     this.pushLog('info', `HTTP publish accepted for event ${ack.id}`);
     return ack;
+  }
+
+  private shouldFallbackAfterRelayError(error: RelayPublishError): boolean {
+    const { ack } = error;
+    if (!ack || ack.via !== 'websocket') {
+      return false;
+    }
+    const message = ack.message?.toLowerCase() ?? '';
+    if (!message) {
+      return false;
+    }
+    if (message.includes('timed out waiting for relay')) {
+      return true;
+    }
+    if (message.includes('timed out') || message.includes('timeout')) {
+      return true;
+    }
+    if (message.includes('notice')) {
+      if (message.includes('queued') || message.includes('pending') || message.includes('retry')) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private handlePublishOk(eventId: unknown, okValue: unknown, message: unknown) {
