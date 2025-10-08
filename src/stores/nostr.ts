@@ -84,6 +84,8 @@ import {
   FUNDSTR_WS_URL,
   WS_FIRST_TIMEOUT_MS,
 } from "@/nutzap/relayEndpoints";
+import { getNutzapNdk } from "src/nutzap/ndkInstance";
+import { publishNostrEvent } from "src/pages/nutzap-profile/nostrHelpers";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 
 // --- Relay connectivity helpers ---
@@ -1195,16 +1197,31 @@ export async function publishNutzapProfile(opts: {
   }
   await nostr.connect(opts.relays ?? nostr.relays);
 
-  const tags: NDKTag[] = [
+  const compressedP2pk = ensureCompressed(opts.p2pkPub);
+  const relays = (opts.relays ?? []).filter((url) => typeof url === "string" && url.length);
+
+  const tags: string[][] = [
     ["t", "nutzap-profile"],
     ["client", "fundstr"],
+    ["pubkey", compressedP2pk],
   ];
+  relays.forEach((relay) => {
+    tags.push(["relay", relay]);
+  });
+  opts.mints.forEach((mint) => {
+    if (mint) {
+      tags.push(["mint", mint, "sat"]);
+    }
+  });
+  if (opts.tierAddr) {
+    tags.push(["a", opts.tierAddr]);
+  }
 
   const body: NutzapProfilePayload = {
-    p2pk: ensureCompressed(opts.p2pkPub),
+    p2pk: compressedP2pk,
     mints: opts.mints,
   };
-  if (opts.relays?.length) body.relays = opts.relays;
+  if (relays.length) body.relays = relays;
   if (opts.tierAddr) body.tierAddr = opts.tierAddr;
 
   const ndk = await useNdk();
@@ -1213,25 +1230,27 @@ export async function publishNutzapProfile(opts: {
       "NDK not initialised \u2013 call initSignerIfNotSet() first",
     );
   }
-  const ev = new NDKEvent(ndk);
-  ev.kind = 10019;
-  ev.content = JSON.stringify({ v: 1, ...body });
-  ev.tags = tags;
-  ev.created_at = Math.floor(Date.now() / 1000);
-  await ev.sign();
-  const relaySet = await urlsToRelaySet(opts.relays);
+  const nutzapNdk = getNutzapNdk();
+  nutzapNdk.signer = (nostr.signer as any) ?? undefined;
+
   try {
     await ensureRelayConnectivity(ndk);
   } catch (e: any) {
     notifyWarning("Relay connection failed", e?.message ?? String(e));
   }
   try {
-    await publishWithTimeout(ev, relaySet);
+    const createdAt = Math.floor(Date.now() / 1000);
+    const result = await publishNostrEvent({
+      kind: 10019,
+      tags,
+      content: JSON.stringify({ v: 1, ...body }),
+      created_at: createdAt,
+    });
+    return result.event.id;
   } catch (e: any) {
     notifyError(e?.message ?? String(e));
     throw e;
   }
-  return ev.id!;
 }
 
 /**
