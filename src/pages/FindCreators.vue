@@ -945,8 +945,6 @@ onBeforeUnmount(() => {
   max-width: 960px;
   background: var(--surface-2);
   color: var(--text-1);
-  border: 1px solid var(--surface-contrast-border);
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.32);
 }
 
 .tier-dialog__top {
@@ -1086,16 +1084,11 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
-:deep(.tier-card) {
-  background: var(--surface-2);
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.24);
-}
-
 .info-panel {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  background: var(--surface-2);
+  background: var(--surface-1);
   border: 1px solid var(--surface-contrast-border);
   border-left: 4px solid var(--accent-500);
   border-radius: 1rem;
@@ -1219,7 +1212,7 @@ onBeforeUnmount(() => {
     min-width: 0;
   }
 
-  :deep(.tier-card) {
+  .tier-card {
     padding: 1.1rem 1.25rem;
   }
 }
