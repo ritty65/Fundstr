@@ -149,7 +149,7 @@
                 :subscribe-disabled="isGuest"
                 @subscribe="openSubscribe"
               >
-                <template v-if="isGuest" #subscribe-tooltip>
+                <template v-if="needsSignerSetupTooltip" #subscribe-tooltip>
                   <q-tooltip>{{ $t('CreatorHub.profile.guestTooltip') }}</q-tooltip>
                 </template>
                 <template #footer-note>
@@ -408,6 +408,9 @@ export default defineComponent({
     const refreshingTiers = ref(false);
     const tierFetchError = computed(() => creators.tierFetchError);
     const isGuest = computed(() => !welcomeStore.welcomeCompleted);
+    const needsSignerSetupTooltip = computed(
+      () => isGuest.value || !nostr.hasIdentity,
+    );
 
     const mergeUniqueUrls = (...lists: Array<string[] | undefined>) => {
       const urls = new Set<string>();
@@ -895,6 +898,7 @@ export default defineComponent({
       copy,
       profileUrl,
       isGuest,
+      needsSignerSetupTooltip,
       gotoWelcome,
     };
   },
