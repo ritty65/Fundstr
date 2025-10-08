@@ -102,6 +102,8 @@ type SharedMocks = {
   verificationRecordRef: ReturnType<typeof ref<any>>;
   activeMintUrlRef: ReturnType<typeof ref<string>>;
   storedMintsRef: ReturnType<typeof ref<any[]>>;
+  activateMintUrlMock: ReturnType<typeof vi.fn>;
+  verifyPointerMock: ReturnType<typeof vi.fn>;
 };
 
 let shared: SharedMocks | null = null;
@@ -126,6 +128,12 @@ function ensureShared(): SharedMocks {
     };
 
     const verificationRecordRef = ref<any>(null);
+    const activateMintUrlMock = vi.fn(async () => {});
+    const verifyPointerMock = vi.fn(async () => ({
+      normalizedPubkey: VALID_HEX,
+      timestamp: Date.now(),
+      mintUrl: 'https://mint.example',
+    }));
 
     const p2pkStoreMock = reactive({
       firstKey: null as any,
@@ -182,6 +190,8 @@ function ensureShared(): SharedMocks {
       verificationRecordRef,
       activeMintUrlRef,
       storedMintsRef,
+      activateMintUrlMock,
+      verifyPointerMock,
     };
   }
 
@@ -325,8 +335,19 @@ vi.mock('src/stores/mints', () => ({
   useMintsStore: () => {
     const state = ensureShared();
     return {
-      activeMintUrl: state.activeMintUrlRef,
-      mints: state.storedMintsRef,
+      get activeMintUrl() {
+        return state.activeMintUrlRef.value;
+      },
+      set activeMintUrl(value: string) {
+        state.activeMintUrlRef.value = value;
+      },
+      get mints() {
+        return state.storedMintsRef.value;
+      },
+      set mints(value: any[]) {
+        state.storedMintsRef.value = value;
+      },
+      activateMintUrl: state.activateMintUrlMock,
     };
   },
 }));
@@ -357,7 +378,7 @@ vi.mock('src/utils/profileUrl', () => ({
 
 vi.mock('src/composables/useP2pkDiagnostics', () => ({
   useP2pkDiagnostics: () => ({
-    verifyPointer: vi.fn(async () => ({ ok: true })),
+    verifyPointer: (...args: any[]) => ensureShared().verifyPointerMock(...args),
   }),
 }));
 
@@ -456,6 +477,53 @@ describe('CreatorStudioPage publish blockers vs warnings', () => {
     expect(readBlockers()).not.toContain('Add a P2PK key');
     expect(readWarnings()).toContain(
       'Refresh Cashu pointer verification to keep it trusted',
+    );
+  });
+
+  it('activates wallet mint when pointer verification adds a new mint', async () => {
+    const state = ensureShared();
+    const newMintUrl = 'https://mint.new.example/cashu/';
+    const normalizedMintUrl = 'https://mint.new.example/cashu';
+
+    state.verifyPointerMock.mockResolvedValue({
+      normalizedPubkey: VALID_HEX,
+      timestamp: Date.now(),
+      mintUrl: newMintUrl,
+    });
+
+    const TestHarness = defineComponent({
+      name: 'CreatorStudioPageHarness',
+      setup(props, ctx) {
+        const component = CreatorStudioPage as any;
+        return component.setup ? component.setup(props, ctx) : {};
+      },
+      template: '<div />',
+    });
+
+    const wrapper = shallowMount(TestHarness as any, {
+      global: { stubs: creatorStudioStubs },
+    });
+
+    setSetupValue(wrapper, 'p2pkPub', VALID_HEX);
+    await wrapper.vm.$nextTick();
+
+    const verifyHandler = getSetupValue(wrapper, 'handleVerifyP2pkPointer');
+    expect(typeof verifyHandler).toBe('function');
+
+    await verifyHandler();
+    await wrapper.vm.$nextTick();
+
+    expect(state.verifyPointerMock).toHaveBeenCalledWith(VALID_HEX);
+
+    const composerMintsValue = getSetupValue(wrapper, 'composerMints');
+    const composerMintsList = Array.isArray(composerMintsValue)
+      ? composerMintsValue
+      : composerMintsValue?.value ?? [];
+    expect(composerMintsList).toContain(normalizedMintUrl);
+
+    expect(state.activeMintUrlRef.value).toBe(normalizedMintUrl);
+    expect(notifySuccessMock).toHaveBeenCalledWith(
+      `Pointer verified. Added ${normalizedMintUrl} to trusted mints.`,
     );
   });
 });
