@@ -29,7 +29,11 @@ import {
   WS_FIRST_TIMEOUT_MS,
 } from "@/nutzap/relayEndpoints";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
-import type { NutzapProfileDetails } from "@/nutzap/profileCache";
+import {
+  parseNutzapProfileEvent,
+  type NutzapProfileDetails,
+} from "@/nutzap/profileCache";
+import { FALLBACK_RELAYS } from "@/config/relays";
 
 export const FEATURED_CREATORS = [
   "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
@@ -54,11 +58,61 @@ export interface CreatorProfile {
 
 const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
 
+export class FundstrProfileFetchError extends Error {
+  fallbackAttempted: boolean;
+
+  constructor(
+    message: string,
+    {
+      fallbackAttempted = false,
+      cause,
+    }: { fallbackAttempted?: boolean; cause?: unknown } = {},
+  ) {
+    super(message);
+    this.name = "FundstrProfileFetchError";
+    this.fallbackAttempted = fallbackAttempted;
+    if (cause !== undefined) {
+      (this as any).cause = cause;
+    }
+  }
+}
+
+function collectRelayHintsFromProfile(
+  profile: Record<string, any> | null,
+  profileEvent: RelayEvent | null,
+  profileDetails: NutzapProfileDetails | null,
+): string[] {
+  const hints = new Set<string>();
+  const append = (value?: unknown) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    hints.add(trimmed);
+  };
+  if (Array.isArray(profile?.relays)) {
+    for (const relay of profile.relays) append(relay);
+  } else if (profile?.relays && typeof profile.relays === "object") {
+    for (const relay of Object.keys(profile.relays)) append(relay);
+  }
+  if (profileDetails?.relays) {
+    for (const relay of profileDetails.relays) append(relay);
+  }
+  for (const tag of profileEvent?.tags ?? []) {
+    if (tag[0] === "relay" || tag[0] === "r") {
+      append(tag[1]);
+    }
+  }
+  return Array.from(hints);
+}
+
 export interface FundstrProfileBundle {
   profile: Record<string, any> | null;
   profileEvent: RelayEvent | null;
   followers: number;
   following: number;
+  profileDetails: NutzapProfileDetails | null;
+  relayHints: string[];
+  fetchedFromFallback: boolean;
 }
 
 export async function fetchFundstrProfileBundle(
@@ -72,6 +126,7 @@ export async function fetchFundstrProfileBundle(
   ];
 
   let events: RelayEvent[] = [];
+  let lastError: unknown = null;
   try {
     events = await queryNostr(filters, {
       preferFundstr: true,
@@ -79,8 +134,54 @@ export async function fetchFundstrProfileBundle(
       wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
     });
   } catch (error) {
+    lastError = error;
     console.error("fetchFundstrProfileBundle Fundstr query failed", error);
-    throw error instanceof Error ? error : new Error(String(error));
+  }
+
+  let fallbackAttempted = false;
+
+  if (!events.length) {
+    fallbackAttempted = true;
+    const fallbackRelays = new Set<string>(FALLBACK_RELAYS);
+    try {
+      const discovered = await fallbackDiscoverRelays(pubkey);
+      for (const url of discovered) {
+        const trimmed = url.trim();
+        if (trimmed) {
+          fallbackRelays.add(trimmed);
+        }
+      }
+    } catch (discoveryError) {
+      console.warn(
+        "fetchFundstrProfileBundle fallback relay discovery failed",
+        discoveryError,
+      );
+    }
+
+    const fanout = Array.from(fallbackRelays);
+
+    if (fanout.length) {
+      try {
+        events = await queryNostr(filters, {
+          preferFundstr: true,
+          allowFanoutFallback: true,
+          fanout,
+          wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
+        });
+        if (events.length) {
+          console.warn("[creators] Fundstr profile fallback succeeded", {
+            pubkey,
+            relays: fanout,
+          });
+        }
+      } catch (fallbackError) {
+        lastError = fallbackError;
+        console.error(
+          "fetchFundstrProfileBundle fallback query failed",
+          fallbackError,
+        );
+      }
+    }
   }
 
   const normalized = normalizeEvents(events);
@@ -126,11 +227,31 @@ export async function fetchFundstrProfileBundle(
     }
   }
 
+  if (!preferredProfile && !profile && !normalized.length) {
+    throw new FundstrProfileFetchError(
+      "No profile events returned from Fundstr or fallback relays",
+      {
+        fallbackAttempted,
+        cause: lastError ?? undefined,
+      },
+    );
+  }
+
+  const profileDetails = parseNutzapProfileEvent(preferredProfile ?? null);
+  const relayHints = collectRelayHintsFromProfile(
+    profile,
+    preferredProfile ?? null,
+    profileDetails,
+  );
+
   return {
     profile,
     profileEvent: preferredProfile ?? null,
     followers: followerSet.size,
     following,
+    profileDetails,
+    relayHints,
+    fetchedFromFallback: fallbackAttempted && events.length > 0,
   };
 }
 
@@ -556,9 +677,10 @@ export const useCreatorsStore = defineStore("creators", {
           .map((url) => url.trim())
           .filter((url) => !!url),
       );
-      const fundstrOnly = opts.fundstrOnly === true;
       let event: RelayEvent | null = null;
       let lastError: unknown = null;
+      let fallbackAttempted = false;
+      const attemptedFallbackRelays = new Set<string>();
 
       try {
         event = await queryNutzapTiers(hex, {
@@ -572,33 +694,70 @@ export const useCreatorsStore = defineStore("creators", {
         console.error("fetchTierDefinitions Fundstr query failed", e);
       }
 
-      if (!event && relayHints.size) {
+      const tryFallback = async (extraRelays: Iterable<string>) => {
+        const relays = Array.from(
+          new Set<string>([...relayHints, ...extraRelays].map((url) => url.trim()).filter(Boolean)),
+        );
+        if (!relays.length) {
+          return null;
+        }
+        relays.forEach((url) => attemptedFallbackRelays.add(url));
+        fallbackAttempted = true;
         try {
-          event = await queryNutzapTiers(hex, {
+          const result = await queryNutzapTiers(hex, {
             httpBase: FUNDSTR_REQ_URL,
             fundstrWsUrl: FUNDSTR_WS_URL,
-            fanout: Array.from(relayHints),
-            allowFanoutFallback: !fundstrOnly,
+            fanout: relays,
+            allowFanoutFallback: true,
             wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
           });
-        } catch (e) {
-          lastError = e;
-          console.error("fetchTierDefinitions hinted query failed", e);
+          if (result) {
+            relays.forEach((url) => relayHints.add(url));
+          }
+          return result;
+        } catch (err) {
+          lastError = err;
+          console.error("fetchTierDefinitions fallback query failed", err);
+          return null;
+        }
+      };
+
+      if (!event && relayHints.size) {
+        const hinted = await tryFallback(relayHints);
+        if (hinted) {
+          event = hinted;
         }
       }
 
-      if (!event && !fundstrOnly) {
+      if (!event) {
+        const defaults = new Set(FALLBACK_RELAYS);
+        if (defaults.size) {
+          const fallbackEvent = await tryFallback(defaults);
+          if (fallbackEvent) {
+            event = fallbackEvent;
+            console.warn("[creators] tier fallback using default relays", {
+              pubkey: hex,
+              relays: Array.from(defaults),
+            });
+          }
+        }
+      }
+
+      if (!event) {
         try {
           const discovered = await fallbackDiscoverRelays(hex);
-          for (const url of discovered) relayHints.add(url);
-          if (relayHints.size) {
-            event = await queryNutzapTiers(hex, {
-              httpBase: FUNDSTR_REQ_URL,
-              fundstrWsUrl: FUNDSTR_WS_URL,
-              fanout: Array.from(relayHints),
-              allowFanoutFallback: true,
-              wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
-            });
+          if (discovered.length) {
+            const discoveryEvent = await tryFallback(discovered);
+            if (discoveryEvent) {
+              event = discoveryEvent;
+              console.warn(
+                "[creators] tier fallback succeeded with discovered relays",
+                {
+                  pubkey: hex,
+                  relays: discovered,
+                },
+              );
+            }
           }
         } catch (e) {
           lastError = e;
@@ -631,6 +790,25 @@ export const useCreatorsStore = defineStore("creators", {
 
       await this.saveTierCache(hex, tiersArray, event);
       this.tierFetchError = false;
+
+      const eventRelayHints = new Set<string>();
+      for (const tag of event.tags ?? []) {
+        if (tag[0] === "relay" || tag[0] === "r") {
+          const relay = typeof tag[1] === "string" ? tag[1].trim() : "";
+          if (relay) {
+            eventRelayHints.add(relay);
+          }
+        }
+      }
+
+      return {
+        usedFallback: fallbackAttempted && !!event,
+        relayHints: Array.from(new Set<string>([
+          ...relayHints,
+          ...eventRelayHints,
+        ])),
+        attemptedRelays: Array.from(attemptedFallbackRelays),
+      };
     },
 
     async publishTierDefinitions(tiersArray: Tier[]) {

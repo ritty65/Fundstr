@@ -25,10 +25,16 @@ vi.mock("../../../src/stores/dexie", () => {
     put: vi.fn().mockResolvedValue(undefined),
     delete: vi.fn().mockResolvedValue(undefined),
   };
+  const profileCollection = {
+    get: vi.fn().mockResolvedValue(null),
+    put: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue(undefined),
+  };
   const cashuDb = {
     open: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
     creatorsTierDefinitions: tierCollection,
+    nutzapProfiles: profileCollection,
   };
   return {
     cashuDb,
