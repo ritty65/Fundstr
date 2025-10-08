@@ -77,26 +77,84 @@ export function isNostrEvent(e: any): e is NostrEvent {
   return true;
 }
 
-function serializeMinimal(tiers: Tier[]) {
-  return tiers.map(tier => {
-    const media = Array.isArray(tier.media)
-      ? tier.media
-          .map(entry => (typeof entry?.url === 'string' ? entry.url : ''))
-          .filter(url => !!url)
-      : undefined;
+export const CANONICAL_TIER_KIND = 30019;
+export const LEGACY_TIER_KIND = 30000;
+export type TierKind = typeof CANONICAL_TIER_KIND | typeof LEGACY_TIER_KIND;
 
-    const numericPrice = Number(tier.price);
-    const price = Number.isFinite(numericPrice) ? Math.round(numericPrice) : 0;
+type NormalizedTierPayload = {
+  canonical: {
+    id: string;
+    title: string;
+    price: number;
+    frequency: Tier['frequency'];
+    description?: string;
+    media?: string[];
+  };
+  legacy: {
+    id: string;
+    title: string;
+    price: number;
+    frequency: Tier['frequency'];
+    description?: string;
+    media?: string[];
+    name: string;
+    price_sats: number;
+  };
+};
 
-    return {
-      id: tier.id,
-      title: tier.title,
-      price,
-      frequency: tier.frequency,
-      ...(tier.description ? { description: tier.description } : {}),
-      ...(media && media.length ? { media } : {}),
-    };
-  });
+function normalizeTierForPayload(tier: Tier): NormalizedTierPayload {
+  const media = Array.isArray(tier.media)
+    ? tier.media
+        .map(entry => (typeof entry?.url === 'string' ? entry.url.trim() : ''))
+        .filter(url => !!url)
+    : [];
+
+  const numericPrice = Number(tier.price);
+  const price = Number.isFinite(numericPrice) ? Math.max(0, Math.round(numericPrice)) : 0;
+  const title = typeof tier.title === 'string' ? tier.title.trim() : '';
+  const description = typeof tier.description === 'string' ? tier.description.trim() : '';
+  const frequency: Tier['frequency'] = tier.frequency ?? 'monthly';
+
+  const canonical = {
+    id: tier.id,
+    title,
+    price,
+    frequency,
+    ...(description ? { description } : {}),
+    ...(media.length ? { media } : {}),
+  };
+
+  const legacy = {
+    ...canonical,
+    name: title,
+    price_sats: price,
+  };
+
+  return { canonical, legacy };
+}
+
+export function buildTierPayloads(tiers: Tier[]): {
+  canonical: NormalizedTierPayload['canonical'][];
+  legacy: NormalizedTierPayload['legacy'][];
+} {
+  const canonical: NormalizedTierPayload['canonical'][] = [];
+  const legacy: NormalizedTierPayload['legacy'][] = [];
+
+  for (const tier of tiers) {
+    const normalized = normalizeTierForPayload(tier);
+    canonical.push(normalized.canonical);
+    legacy.push(normalized.legacy);
+  }
+
+  return { canonical, legacy };
+}
+
+export function buildTierPayloadForKind(tiers: Tier[], kind: TierKind) {
+  const { canonical, legacy } = buildTierPayloads(tiers);
+  return {
+    v: 1,
+    tiers: kind === CANONICAL_TIER_KIND ? canonical : legacy,
+  };
 }
 
 async function signPublishTemplate(template: {
@@ -147,7 +205,7 @@ export async function publishNostrEvent(
 
 export async function publishTiers(
   tiers: Tier[],
-  kind: 30019 | 30000,
+  kind: TierKind,
   options?: PublishNostrEventOptions
 ) {
   const tags = [
@@ -155,6 +213,7 @@ export async function publishTiers(
     ['t', 'nutzap-tiers'],
     ['client', 'fundstr'],
   ];
-  const content = JSON.stringify({ v: 1, tiers: serializeMinimal(tiers) });
+  const payload = buildTierPayloadForKind(tiers, kind);
+  const content = JSON.stringify(payload);
   return publishNostrEvent({ kind, tags, content }, options);
 }
