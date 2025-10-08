@@ -1766,7 +1766,13 @@ export const messages = {
       retry: "Retry",
       subscribeCta: "Subscribe",
       subscribeMicrocopy: "Cancel anytime from your subscriptions dashboard.",
-      guestTooltip: "Finish setup to subscribe",
+      guestTooltip:
+        "Connect and unlock your Nostr signer, then finish setup to subscribe.",
+      signerAlert: {
+        message:
+          "You need a connected, unlocked Nostr signer before subscribing. Finish onboarding to connect your wallet and signer.",
+        cta: "Open setup",
+      },
       paywalledPreview: "Protected content visible to subscribers.",
       infrastructureDetails: "Creator infrastructure",
       p2pkLabel: "P2PK public key",

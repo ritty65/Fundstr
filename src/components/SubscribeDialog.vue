@@ -5,6 +5,25 @@
         Subscribe to {{ tier?.name }}
       </q-card-section>
       <q-card-section>
+        <q-banner
+          v-if="!hasSigner"
+          class="bg-warning text-1 q-mb-md"
+          dense
+          rounded
+          icon="warning"
+        >
+          <div>{{ $t("CreatorHub.profile.signerAlert.message") }}</div>
+          <template #action>
+            <q-btn
+              flat
+              color="primary"
+              size="sm"
+              @click="startOnboarding"
+            >
+              {{ $t("CreatorHub.profile.signerAlert.cta") }}
+            </q-btn>
+          </template>
+        </q-banner>
         <q-select
           v-if="showBucketSelect"
           v-model="bucketId"
@@ -77,6 +96,7 @@ import {
   frequencyToDays,
   type SubscriptionFrequency,
 } from "src/constants/subscriptionFrequency";
+import { useRoute, useRouter } from "vue-router";
 
 export default defineComponent({
   name: "SubscribeDialog",
@@ -94,6 +114,9 @@ export default defineComponent({
     const uiStore = useUiStore();
     const nutzap = useNutzapStore();
     const nostr = useNostrStore();
+    const bootErrorStore = useBootErrorStore();
+    const router = useRouter();
+    const route = useRoute();
     const { t } = useI18n();
     const { bucketList, bucketBalances } = storeToRefs(bucketsStore);
     const { activeUnit } = storeToRefs(mintsStore);
@@ -177,9 +200,6 @@ export default defineComponent({
       async (val) => {
         if (val) {
           await nostr.initSignerIfNotSet();
-          if (!nostr.signer) {
-            useBootErrorStore().set(new NdkBootError("no-signer"));
-          }
           selectCreatorBucket();
         }
       },
@@ -202,7 +222,7 @@ export default defineComponent({
       }
       await nostr.initSignerIfNotSet();
       if (!nostr.signer) {
-        useBootErrorStore().set(new NdkBootError("no-signer"));
+        startOnboarding();
         return;
       }
       try {
@@ -265,13 +285,27 @@ export default defineComponent({
       } catch (e: any) {
         console.error("Subscription failed", e);
         if (e instanceof NdkBootError && e.reason === "no-signer") {
-          useBootErrorStore().set(e);
+          startOnboarding();
+        } else if (e instanceof NdkBootError) {
+          bootErrorStore.set(e);
         } else {
           notifyError(
             e.message || t("FindCreators.notifications.subscription_failed"),
           );
         }
       }
+    };
+
+    const startOnboarding = () => {
+      const query: Record<string, string> = { redirect: route.fullPath };
+      const tierId =
+        (props.tier?.id as string | undefined) ||
+        (props.tier?.name as string | undefined);
+      if (tierId) {
+        query.tierId = tierId;
+      }
+      emit("update:modelValue", false);
+      router.push({ path: "/welcome", query });
     };
 
     return {
@@ -291,6 +325,7 @@ export default defineComponent({
       hasSigner,
       cancel,
       confirm,
+      startOnboarding,
     };
   },
 });
