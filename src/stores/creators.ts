@@ -58,6 +58,9 @@ export interface CreatorProfile {
 }
 
 const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
+const TIER_RELAY_FAILURE_TTL_MS = 5 * 60 * 1000;
+const TIER_FETCH_TIMEOUT_MS = 1200;
+const FUNDSTR_FAILURE_NOTIFY_TTL_MS = 5 * 60 * 1000;
 
 export class FundstrProfileFetchError extends Error {
   fallbackAttempted: boolean;
@@ -287,6 +290,9 @@ export interface CreatorWarmCache {
   tierEvent?: RelayEvent | null;
   tierEventId?: string | null;
   tierUpdatedAt?: number | null;
+  tierRelayFailures?: Record<string, number>;
+  lastFundstrRelayFailureAt?: number | null;
+  lastFundstrRelayFailureNotifiedAt?: number | null;
 }
 
 export interface PrefillCreatorCacheEntry {
@@ -766,175 +772,294 @@ export const useCreatorsStore = defineStore("creators", {
 
       await this.ensureCreatorCacheFromDexie(hex);
 
-      const relayHints = new Set(
-        (opts.relayHints ?? [])
-          .map((url) => url.trim())
-          .filter((url) => !!url),
-      );
-      let event: RelayEvent | null = null;
-      let lastError: unknown = null;
-      let fallbackAttempted = false;
-      const attemptedFallbackRelays = new Set<string>();
-
-      try {
-        event = await queryNutzapTiers(hex, {
-          httpBase: FUNDSTR_REQ_URL,
-          fundstrWsUrl: FUNDSTR_WS_URL,
-          allowFanoutFallback: false,
-          wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
-        });
-      } catch (e) {
-        lastError = e;
-        console.error("fetchTierDefinitions Fundstr query failed", e);
-      }
-
-      const tryFallback = async (extraRelays: Iterable<string>) => {
-        const relays = Array.from(
-          new Set<string>([...relayHints, ...extraRelays].map((url) => url.trim()).filter(Boolean)),
-        );
-        if (!relays.length) {
-          return null;
+      const ensureWarmEntry = () => {
+        if (!this.warmCache[hex]) {
+          this.warmCache[hex] = {} as CreatorWarmCache;
         }
-        relays.forEach((url) => attemptedFallbackRelays.add(url));
-        fallbackAttempted = true;
-        try {
-          const result = await queryNutzapTiers(hex, {
-            httpBase: FUNDSTR_REQ_URL,
-            fundstrWsUrl: FUNDSTR_WS_URL,
-            fanout: relays,
-            allowFanoutFallback: true,
-            wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
-          });
-          if (result) {
-            relays.forEach((url) => relayHints.add(url));
-          }
-          return result;
-        } catch (err) {
-          lastError = err;
-          console.error("fetchTierDefinitions fallback query failed", err);
-          return null;
-        }
+        return this.warmCache[hex]!;
       };
 
-      if (!event) {
+      let guardTimer: ReturnType<typeof setTimeout> | null = null;
+      const guardPromise = new Promise<null>((resolve) => {
+        guardTimer = setTimeout(() => {
+          const cache = this.warmCache[hex];
+          if (cache?.tiersLoaded || (Array.isArray(cache?.tiers) && cache.tiers.length > 0)) {
+            this.tierFetchError = false;
+          } else {
+            this.tierFetchError = true;
+          }
+          resolve(null);
+        }, TIER_FETCH_TIMEOUT_MS);
+      });
+
+      const fetchPromise = (async () => {
+        const relayHints = new Set(
+          (opts.relayHints ?? [])
+            .map((url) => url.trim())
+            .filter((url) => !!url),
+        );
+        let event: RelayEvent | null = null;
+        let lastError: unknown = null;
+        let fallbackAttempted = false;
+        const attemptedFallbackRelays = new Set<string>();
+
+        const takeRelayFailures = (now: number) => {
+          const entry = ensureWarmEntry();
+          const failures = { ...(entry.tierRelayFailures ?? {}) };
+          let mutated = false;
+          for (const [relay, ts] of Object.entries(failures)) {
+            if (typeof ts !== "number" || now - ts > TIER_RELAY_FAILURE_TTL_MS) {
+              delete failures[relay];
+              mutated = true;
+            }
+          }
+          if (mutated || entry.tierRelayFailures === undefined) {
+            entry.tierRelayFailures = { ...failures };
+          }
+          return { entry, failures };
+        };
+
+        const markRelayFailure = (relays: string[]) => {
+          if (!relays.length) return;
+          const failureAt = Date.now();
+          const { entry, failures } = takeRelayFailures(failureAt);
+          for (const relay of relays) {
+            failures[relay] = failureAt;
+          }
+          entry.tierRelayFailures = { ...failures };
+        };
+
+        const clearRelayFailures = (relays: string[]) => {
+          if (!relays.length) return;
+          const { entry, failures } = takeRelayFailures(Date.now());
+          let changed = false;
+          for (const relay of relays) {
+            if (relay in failures) {
+              delete failures[relay];
+              changed = true;
+            }
+          }
+          if (changed) {
+            entry.tierRelayFailures = { ...failures };
+          }
+        };
+
         try {
-          const direct = await simpleRelayQuery(
-            [
-              {
-                kinds: [30019, 30000],
-                authors: [hex],
-                ["#d"]: ["tiers"],
-                limit: 2,
-              },
-            ],
-            { timeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS },
-          );
-          if (direct.length) {
-            const preferred = pickTierDefinitionEvent(
-              direct as unknown as NostrEvent[],
+          event = await queryNutzapTiers(hex, {
+            httpBase: FUNDSTR_REQ_URL,
+            fundstrWsUrl: FUNDSTR_WS_URL,
+            allowFanoutFallback: false,
+            wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
+          });
+          const entry = ensureWarmEntry();
+          entry.lastFundstrRelayFailureAt = null;
+          entry.lastFundstrRelayFailureNotifiedAt = null;
+        } catch (e) {
+          lastError = e;
+          const entry = ensureWarmEntry();
+          const now = Date.now();
+          entry.lastFundstrRelayFailureAt = now;
+          const shouldNotify =
+            !entry.lastFundstrRelayFailureNotifiedAt ||
+            now - entry.lastFundstrRelayFailureNotifiedAt > FUNDSTR_FAILURE_NOTIFY_TTL_MS;
+          if (shouldNotify) {
+            notifyWarning(
+              "We're having trouble reaching Fundstr relays. We'll keep trying in the background.",
             );
-            if (preferred) {
-              event = preferred;
-              console.info("[creators] direct Fundstr relay tiers fetch succeeded", {
+            entry.lastFundstrRelayFailureNotifiedAt = now;
+          }
+          console.error("fetchTierDefinitions Fundstr query failed", e);
+        }
+
+        const tryFallback = async (extraRelays: Iterable<string>) => {
+          const now = Date.now();
+          const baseRelays = Array.from(
+            new Set<string>(
+              [...relayHints, ...extraRelays].map((url) => url.trim()).filter(Boolean),
+            ),
+          );
+          if (!baseRelays.length) {
+            return null;
+          }
+          fallbackAttempted = true;
+          const { failures } = takeRelayFailures(now);
+          const eligible = baseRelays.filter((relay) => {
+            const failureAt = failures[relay];
+            return !(typeof failureAt === "number" && now - failureAt < TIER_RELAY_FAILURE_TTL_MS);
+          });
+          if (!eligible.length) {
+            return null;
+          }
+          eligible.forEach((url) => attemptedFallbackRelays.add(url));
+          try {
+            const result = await queryNutzapTiers(hex, {
+              httpBase: FUNDSTR_REQ_URL,
+              fundstrWsUrl: FUNDSTR_WS_URL,
+              fanout: eligible,
+              allowFanoutFallback: true,
+              wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
+            });
+            if (result) {
+              eligible.forEach((url) => relayHints.add(url));
+              clearRelayFailures(eligible);
+            }
+            return result;
+          } catch (err) {
+            lastError = err;
+            markRelayFailure(eligible);
+            console.error("fetchTierDefinitions fallback query failed", err);
+            return null;
+          }
+        };
+
+        if (!event) {
+          try {
+            const direct = await simpleRelayQuery(
+              [
+                {
+                  kinds: [30019, 30000],
+                  authors: [hex],
+                  ["#d"]: ["tiers"],
+                  limit: 2,
+                },
+              ],
+              { timeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS },
+            );
+            if (direct.length) {
+              const preferred = pickTierDefinitionEvent(
+                direct as unknown as NostrEvent[],
+              );
+              if (preferred) {
+                event = preferred;
+                const entry = ensureWarmEntry();
+                entry.lastFundstrRelayFailureAt = null;
+                entry.lastFundstrRelayFailureNotifiedAt = null;
+                console.info("[creators] direct Fundstr relay tiers fetch succeeded", {
+                  pubkey: hex,
+                });
+              }
+            }
+          } catch (directError) {
+            lastError = directError;
+            const entry = ensureWarmEntry();
+            const now = Date.now();
+            entry.lastFundstrRelayFailureAt = now;
+            const shouldNotify =
+              !entry.lastFundstrRelayFailureNotifiedAt ||
+              now - entry.lastFundstrRelayFailureNotifiedAt > FUNDSTR_FAILURE_NOTIFY_TTL_MS;
+            if (shouldNotify) {
+              notifyWarning(
+                "We're having trouble reaching Fundstr relays. We'll keep trying in the background.",
+              );
+              entry.lastFundstrRelayFailureNotifiedAt = now;
+            }
+            const label =
+              directError instanceof SimpleRelayError ? directError.message : String(directError);
+            console.warn("fetchTierDefinitions direct relay query failed", label);
+          }
+        }
+
+        if (!event && relayHints.size) {
+          const hinted = await tryFallback(relayHints);
+          if (hinted) {
+            event = hinted;
+          }
+        }
+
+        if (!event) {
+          const defaults = new Set(FALLBACK_RELAYS);
+          if (defaults.size) {
+            const fallbackEvent = await tryFallback(defaults);
+            if (fallbackEvent) {
+              event = fallbackEvent;
+              console.warn("[creators] tier fallback using default relays", {
                 pubkey: hex,
+                relays: Array.from(defaults),
               });
             }
           }
-        } catch (directError) {
-          lastError = directError;
-          const label =
-            directError instanceof SimpleRelayError ? directError.message : String(directError);
-          console.warn("fetchTierDefinitions direct relay query failed", label);
         }
-      }
 
-      if (!event && relayHints.size) {
-        const hinted = await tryFallback(relayHints);
-        if (hinted) {
-          event = hinted;
-        }
-      }
-
-      if (!event) {
-        const defaults = new Set(FALLBACK_RELAYS);
-        if (defaults.size) {
-          const fallbackEvent = await tryFallback(defaults);
-          if (fallbackEvent) {
-            event = fallbackEvent;
-            console.warn("[creators] tier fallback using default relays", {
-              pubkey: hex,
-              relays: Array.from(defaults),
-            });
-          }
-        }
-      }
-
-      if (!event) {
-        try {
-          const discovered = await fallbackDiscoverRelays(hex);
-          if (discovered.length) {
-            const discoveryEvent = await tryFallback(discovered);
-            if (discoveryEvent) {
-              event = discoveryEvent;
-              console.warn(
-                "[creators] tier fallback succeeded with discovered relays",
-                {
-                  pubkey: hex,
-                  relays: discovered,
-                },
-              );
+        if (!event) {
+          try {
+            const discovered = await fallbackDiscoverRelays(hex);
+            if (discovered.length) {
+              const discoveryEvent = await tryFallback(discovered);
+              if (discoveryEvent) {
+                event = discoveryEvent;
+                console.warn(
+                  "[creators] tier fallback succeeded with discovered relays",
+                  {
+                    pubkey: hex,
+                    relays: discovered,
+                  },
+                );
+              }
             }
+          } catch (e) {
+            lastError = e;
+            console.error("NIP-65 discovery failed", e);
           }
-        } catch (e) {
-          lastError = e;
-          console.error("NIP-65 discovery failed", e);
         }
-      }
 
-      if (!event) {
-        if (lastError) {
+        if (!event) {
+          if (lastError) {
+            this.tierFetchError = true;
+            notifyWarning("Unable to retrieve subscription tiers");
+          } else {
+            this.tierFetchError = false;
+            await this.saveTierCache(hex, [], null);
+          }
+          return;
+        }
+
+        let tiersArray: Tier[] = [];
+        try {
+          tiersArray = parseTierDefinitionEvent(event).map((tier) =>
+            normalizeTier(tier as Tier),
+          );
+        } catch (e) {
+          console.error("Failed to parse tier event", e);
           this.tierFetchError = true;
           notifyWarning("Unable to retrieve subscription tiers");
-        } else {
-          this.tierFetchError = false;
-          await this.saveTierCache(hex, [], null);
+          return;
         }
-        return;
-      }
 
-      let tiersArray: Tier[] = [];
-      try {
-        tiersArray = parseTierDefinitionEvent(event).map((tier) =>
-          normalizeTier(tier as Tier),
-        );
-      } catch (e) {
-        console.error("Failed to parse tier event", e);
-        this.tierFetchError = true;
-        notifyWarning("Unable to retrieve subscription tiers");
-        return;
-      }
+        await this.saveTierCache(hex, tiersArray, event);
+        this.tierFetchError = false;
 
-      await this.saveTierCache(hex, tiersArray, event);
-      this.tierFetchError = false;
-
-      const eventRelayHints = new Set<string>();
-      for (const tag of event.tags ?? []) {
-        if (tag[0] === "relay" || tag[0] === "r") {
-          const relay = typeof tag[1] === "string" ? tag[1].trim() : "";
-          if (relay) {
-            eventRelayHints.add(relay);
+        const eventRelayHints = new Set<string>();
+        for (const tag of event.tags ?? []) {
+          if (tag[0] === "relay" || tag[0] === "r") {
+            const relay = typeof tag[1] === "string" ? tag[1].trim() : "";
+            if (relay) {
+              eventRelayHints.add(relay);
+            }
           }
         }
-      }
 
-      return {
-        usedFallback: fallbackAttempted && !!event,
-        relayHints: Array.from(new Set<string>([
-          ...relayHints,
-          ...eventRelayHints,
-        ])),
-        attemptedRelays: Array.from(attemptedFallbackRelays),
-      };
+        return {
+          usedFallback: fallbackAttempted && !!event,
+          relayHints: Array.from(new Set<string>([
+            ...relayHints,
+            ...eventRelayHints,
+          ])),
+          attemptedRelays: Array.from(attemptedFallbackRelays),
+        };
+      })()
+        .finally(() => {
+          if (guardTimer) {
+            clearTimeout(guardTimer);
+            guardTimer = null;
+          }
+        });
+
+      fetchPromise.catch(() => {});
+      const result = await Promise.race([fetchPromise, guardPromise]);
+      if (result !== null) {
+        return result;
+      }
+      return;
     },
 
     async publishTierDefinitions(tiersArray: Tier[]) {
