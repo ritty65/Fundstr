@@ -51,9 +51,9 @@ export const FEATURED_CREATORS = [
 
 export interface CreatorProfile {
   pubkey: string;
-  profile: any;
-  followers: number;
-  following: number;
+  profile: Record<string, any> | null;
+  followers: number | null;
+  following: number | null;
   joined: number | null;
 }
 
@@ -346,6 +346,7 @@ export const useCreatorsStore = defineStore("creators", {
       currentUserPrivkey: "",
       favorites,
       warmCache: {} as Record<string, CreatorWarmCache>,
+      inFlightCreatorRequests: {} as Record<string, Promise<CreatorProfile | null>>,
     };
   },
   getters: {
@@ -564,16 +565,12 @@ export const useCreatorsStore = defineStore("creators", {
     },
 
     async searchCreators(query: string, forceRefresh = false) {
-      const nostrStore = useNostrStore();
       this.searchResults = [];
       this.error = "";
       if (!query) {
         return;
       }
       this.searching = true;
-
-      const now = Date.now();
-      const cacheExpiry = 3 * 60 * 60 * 1000; // 3 hours
 
       let pubkey = query.trim();
       try {
@@ -611,37 +608,13 @@ export const useCreatorsStore = defineStore("creators", {
         return;
       }
 
-      if (!forceRefresh) {
-        const cached = await db.profiles.get(pubkey);
-        if (cached && (now - cached.fetchedAt < cacheExpiry)) {
-          this.searchResults = [cached.profile];
-          this.searching = false;
-          return;
-        }
-      }
-
-      await nostrStore.initNdkReadOnly();
-      const ndk = await useNdk({ requireSigner: false });
-
       try {
-        const user = ndk.getUser({ pubkey });
-        await user.fetchProfile();
-        const followers = await nostrStore.fetchFollowerCount(pubkey);
-        const following = await nostrStore.fetchFollowingCount(pubkey);
-        const joined = await nostrStore.fetchJoinDate(pubkey);
-        const creatorProfile = {
-          pubkey,
-          profile: user.profile,
-          followers,
-          following,
-          joined,
-        };
-        this.searchResults.push(creatorProfile);
-        await db.profiles.put({
-          pubkey,
-          profile: creatorProfile,
-          fetchedAt: Date.now(),
-        });
+        const creatorProfile = await this.fetchCreator(pubkey, forceRefresh);
+        if (creatorProfile) {
+          this.searchResults.push(creatorProfile);
+        } else {
+          this.error = "Failed to fetch profile.";
+        }
       } catch (e) {
         console.error(e);
         this.error = "Failed to fetch profile.";
@@ -659,34 +632,90 @@ export const useCreatorsStore = defineStore("creators", {
         if (cached && (now - cached.fetchedAt < cacheExpiry)) {
           return cached.profile;
         }
+
+        const inflight = this.inFlightCreatorRequests[pubkey];
+        if (inflight) {
+          return inflight;
+        }
       }
 
       const nostrStore = useNostrStore();
-      await nostrStore.initNdkReadOnly();
-      const ndk = await useNdk({ requireSigner: false });
+
+      const fetchPromise = (async (): Promise<CreatorProfile | null> => {
+        try {
+          await nostrStore.initNdkReadOnly();
+          const ndk = await useNdk({ requireSigner: false });
+          const user = ndk.getUser({ pubkey });
+
+          const profilePromise = user
+            .fetchProfile()
+            .then(() => (user.profile as Record<string, any> | null) ?? null)
+            .catch((error) => {
+              console.warn(`Failed to fetch profile metadata for ${pubkey}`, error);
+              return null;
+            });
+
+          const followersPromise = nostrStore
+            .fetchFollowerCount(pubkey)
+            .catch((error) => {
+              console.warn(`Failed to fetch follower count for ${pubkey}`, error);
+              return null;
+            });
+
+          const followingPromise = nostrStore
+            .fetchFollowingCount(pubkey)
+            .catch((error) => {
+              console.warn(`Failed to fetch following count for ${pubkey}`, error);
+              return null;
+            });
+
+          const joinedPromise = nostrStore
+            .fetchJoinDate(pubkey)
+            .catch((error) => {
+              console.warn(`Failed to fetch join date for ${pubkey}`, error);
+              return null;
+            });
+
+          const [profile, followers, following, joined] = await Promise.all([
+            profilePromise,
+            followersPromise,
+            followingPromise,
+            joinedPromise,
+          ]);
+
+          const creatorProfile: CreatorProfile = {
+            pubkey,
+            profile,
+            followers,
+            following,
+            joined,
+          };
+
+          try {
+            await db.profiles.put({
+              pubkey,
+              profile: creatorProfile,
+              fetchedAt: Date.now(),
+            });
+          } catch (persistError) {
+            console.error(`Failed to cache profile for ${pubkey}`, persistError);
+          }
+
+          return creatorProfile;
+        } catch (error) {
+          console.error(`Failed to fetch profile for ${pubkey}:`, error);
+          return null;
+        }
+      })();
+
+      this.inFlightCreatorRequests[pubkey] = fetchPromise;
 
       try {
-        const user = ndk.getUser({ pubkey });
-        await user.fetchProfile();
-        const followers = await nostrStore.fetchFollowerCount(pubkey);
-        const following = await nostrStore.fetchFollowingCount(pubkey);
-        const joined = await nostrStore.fetchJoinDate(pubkey);
-        const creatorProfile: CreatorProfile = {
-          pubkey,
-          profile: user.profile,
-          followers,
-          following,
-          joined,
-        };
-        await db.profiles.put({
-          pubkey,
-          profile: creatorProfile,
-          fetchedAt: Date.now(),
-        });
-        return creatorProfile;
-      } catch (e) {
-        console.error(`Failed to fetch profile for ${pubkey}:`, e);
-        return null;
+        return await fetchPromise;
+      } finally {
+        if (this.inFlightCreatorRequests[pubkey] === fetchPromise) {
+          delete this.inFlightCreatorRequests[pubkey];
+        }
       }
     },
 
