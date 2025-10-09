@@ -14,15 +14,18 @@
 
     <div class="find-creators-content">
       <section class="page-hero stack-12">
-        <h1 class="text-h4 text-bold">Discover Creators on Nostr</h1>
-        <p class="text-body1 text-2 q-mb-none">
-          Search the Nostr network, explore featured voices, and support the builders shaping the ecosystem.
-        </p>
+        <div class="hero-copy">
+          <h1 class="hero-title">Discover Creators on Nostr</h1>
+          <p class="hero-subtitle text-2 q-mb-none">
+            Search the Nostr network, explore featured voices, and support the builders shaping the ecosystem.
+          </p>
+        </div>
       </section>
 
-      <div class="section-stack">
-        <q-card class="find-creators-panel bg-surface-2 text-1" flat bordered>
-          <q-card-section class="panel-section q-px-xl q-py-lg">
+      <div class="section-stack panels-grid">
+        <div class="panels-grid__main">
+          <q-card class="find-creators-panel bg-surface-2 text-1" flat bordered>
+            <q-card-section class="panel-section q-px-xl q-py-lg">
             <header class="stack-12">
               <div class="text-h5">Nostr User Search</div>
               <p class="text-body2 text-2 q-mb-none">
@@ -71,13 +74,14 @@
             </q-form>
 
             <section class="column q-gutter-lg" role="region" aria-live="polite">
-              <div v-if="searching && !refreshingCache" class="column q-gutter-sm" aria-label="Searching creators">
-                <q-skeleton
+              <div v-if="searching && !refreshingCache" class="row q-col-gutter-lg" aria-label="Searching creators">
+                <div
                   v-for="placeholder in searchSkeletonPlaceholders"
                   :key="placeholder"
-                  type="rect"
-                  class="result-skeleton bg-surface-1"
-                />
+                  class="col-12 col-md-6"
+                >
+                  <q-skeleton type="rect" class="result-skeleton bg-surface-1" />
+                </div>
               </div>
 
               <div v-else-if="searchResults.length" class="column q-gutter-lg">
@@ -92,23 +96,25 @@
                     <span>{{ searchResultStatus.label }}</span>
                   </q-chip>
                 </div>
-                <q-card
-                  v-for="profile in searchResults"
-                  :key="profile.pubkey"
-                  flat
-                  bordered
-                  class="search-result-card bg-surface-2"
-                >
-                  <q-card-section class="q-pa-none">
-                    <CreatorCard
-                      :profile="profile"
-                      :cache-hit="profile.cacheHit === true"
-                      @view-tiers="viewProfile"
-                      @message="startChat"
-                      @donate="donate"
-                    />
-                  </q-card-section>
-                </q-card>
+                <div class="row q-col-gutter-xl results-grid">
+                  <div
+                    v-for="profile in searchResults"
+                    :key="profile.pubkey"
+                    class="col-12 col-md-6"
+                  >
+                    <q-card flat bordered class="search-result-card bg-surface-2">
+                      <q-card-section class="q-pa-none">
+                        <CreatorCard
+                          :profile="profile"
+                          :cache-hit="profile.cacheHit === true"
+                          @view-tiers="viewProfile"
+                          @message="startChat"
+                          @donate="donate"
+                        />
+                      </q-card-section>
+                    </q-card>
+                  </div>
+                </div>
               </div>
 
               <q-banner
@@ -152,11 +158,14 @@
                 />
               </div>
             </section>
+            </section>
           </q-card-section>
         </q-card>
+        </div>
 
-        <q-card class="find-creators-panel bg-surface-2 text-1" flat bordered>
-          <q-card-section class="panel-section q-px-xl q-py-lg">
+        <div class="panels-grid__featured">
+          <q-card class="find-creators-panel bg-surface-2 text-1" flat bordered>
+            <q-card-section class="panel-section q-px-xl q-py-lg">
             <div class="row items-start justify-between q-col-gutter-md">
               <div class="col">
                 <div class="text-h5">Featured Creators</div>
@@ -179,7 +188,7 @@
             </div>
 
             <div class="q-mt-md" role="region" aria-live="polite">
-              <div v-if="loadingFeatured && !featuredCreators.length" class="row q-col-gutter-md">
+              <div v-if="loadingFeatured && !featuredCreators.length" class="row q-col-gutter-lg">
                 <div
                   v-for="placeholder in featuredSkeletonPlaceholders"
                   :key="placeholder"
@@ -189,7 +198,7 @@
                 </div>
               </div>
 
-              <div v-else-if="featuredCreators.length" class="row q-col-gutter-lg">
+              <div v-else-if="featuredCreators.length" class="row q-col-gutter-xl featured-grid">
                 <div
                   v-for="profile in featuredCreators"
                   :key="profile.pubkey"
@@ -234,8 +243,9 @@
                 </p>
               </div>
             </div>
-          </q-card-section>
-        </q-card>
+            </q-card-section>
+          </q-card>
+        </div>
       </div>
     </div>
   </q-page>
@@ -583,6 +593,9 @@ function retrySearch() {
 
 async function loadFeatured() {
   await creatorsStore.loadFeaturedCreators();
+  if (!creatorsStore.featuredCreators.length) {
+    await creatorsStore.loadFeaturedCreators(true);
+  }
 }
 
 async function refreshFeatured() {
@@ -670,18 +683,43 @@ onMounted(() => {
 
 .find-creators-content {
   width: 100%;
-  max-width: 1040px;
+  max-width: 1240px;
   margin: 0 auto;
-  padding: 0 1rem 2.5rem;
+  padding: 0 1rem 3rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2.5rem;
+  gap: 3rem;
 }
 
 .page-hero {
+  position: relative;
   width: 100%;
   text-align: center;
+  border-radius: 24px;
+  padding: 3rem clamp(1.5rem, 4vw, 4rem);
+  background: radial-gradient(circle at top right, color-mix(in srgb, var(--accent-500) 18%, transparent) 0%, transparent 60%),
+    linear-gradient(145deg, color-mix(in srgb, var(--surface-2) 88%, transparent) 0%, color-mix(in srgb, var(--surface-2) 70%, rgba(15, 23, 42, 0.35)) 100%);
+  box-shadow: 0 24px 64px -32px rgba(15, 23, 42, 0.6);
+}
+
+.hero-copy {
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.hero-title {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.hero-subtitle {
+  font-size: clamp(1.05rem, 2vw, 1.25rem);
+  line-height: 1.6;
 }
 
 .section-stack {
@@ -691,15 +729,28 @@ onMounted(() => {
   width: 100%;
 }
 
+.panels-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+
+.panels-grid__main,
+.panels-grid__featured {
+  width: 100%;
+}
+
 .stack-12 {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
+
 .search-result-card {
   border-radius: 16px;
   border: 1px solid var(--surface-contrast-border);
+  height: 100%;
 }
 
 .find-creators-panel {
@@ -790,11 +841,26 @@ onMounted(() => {
 }
 
 .result-skeleton {
-  height: 140px;
+  height: 200px;
 }
 
 .featured-skeleton {
-  height: 220px;
+  height: 260px;
+}
+
+.results-grid,
+.featured-grid {
+  width: 100%;
+}
+
+.featured-grid > div,
+.results-grid > div {
+  display: flex;
+}
+
+.results-grid .search-result-card,
+.featured-grid .creator-card {
+  width: 100%;
 }
 
 @media (min-width: 768px) {
@@ -804,14 +870,22 @@ onMounted(() => {
   }
 
   .find-creators-content {
-    padding: 0 1.5rem 3rem;
-    gap: 3rem;
+    padding: 0 1.5rem 3.5rem;
+  }
+
+  .panels-grid {
+    gap: 28px;
   }
 }
 
 @media (min-width: 1200px) {
   .find-creators-content {
     padding: 0 2rem 3.5rem;
+  }
+
+  .panels-grid {
+    grid-template-columns: minmax(0, 1.8fr) minmax(0, 1.2fr);
+    align-items: start;
   }
 }
 </style>
