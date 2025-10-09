@@ -1,5 +1,10 @@
 <template>
   <div class="container">
+    <CreatorProfileModal
+      :show="showProfileModal"
+      :pubkey="selectedProfilePubkey"
+      @close="showProfileModal = false"
+    />
     <DonateDialog v-model="showDonateDialog" @confirm="handleDonate" />
     <SendTokenDialog />
     <div class="search-container">
@@ -7,35 +12,28 @@
       <p class="text-sm text-center text-gray-600 mb-6">
         Search by name, npub, or NIP-05 identifier (e.g., user@domain.com).
       </p>
-      <input
-        type="text"
-        id="searchInput"
-        class="search-input"
-        placeholder="Search Nostr profiles..."
-        v-model="searchQuery"
-        @input="debouncedSearch"
-      />
+      <div class="search-input-wrapper">
+        <input
+          type="text"
+          id="searchInput"
+          class="search-input"
+          placeholder="Search Nostr profiles..."
+          v-model="searchQuery"
+          @input="debouncedSearch"
+        />
+        <button @click="handleSearch(true)" class="action-button refresh-button" :disabled="searching">
+          Refresh
+        </button>
+      </div>
       <div id="loader" class="loader" v-if="searching"></div>
       <ul id="resultsList" class="results-list">
-        <li v-for="profile in searchResults" :key="profile.pubkey" class="result-item group">
-          <div class="profile-header">
-            <img class="avatar" :src="profile.picture || `https://placehold.co/50x50/A0AEC0/FFFFFF?text=${(profile.name || 'N')[0]?.toUpperCase()}`" :alt="profile.name || 'Nostr User'">
-            <div class="info">
-              <h3>{{ profile.name || (profile.nip05 ? profile.nip05.split('@')[0] : 'Unnamed User') }}</h3>
-              <p>
-                <strong>Npub:</strong> {{ profile.npubShort }}
-                <button class="copy-button" @click.stop="copyToClipboard(profile.npub, $event.target)">Copy</button>
-              </p>
-              <p v-if="profile.nip05"><strong>NIP-05:</strong> <span class="nip05">{{ profile.nip05 }}</span></p>
-              <p v-if="profile.about"><em>{{ profile.about.substring(0, 150) }}{{ profile.about.length > 150 ? '...' : '' }}</em></p>
-              <p v-if="profile.lud16"><strong>LN:</strong> {{ profile.lud16 }}</p>
-            </div>
-          </div>
-          <div class="creator-actions">
-            <button class="action-button view-button" @click.stop="viewProfile(profile.pubkey)">View Subscription Tiers</button>
-            <button class="action-button message-button" @click.stop="startChat(profile.pubkey)">Message</button>
-            <button class="action-button donate-button" @click.stop="donate(profile.pubkey)">Donate</button>
-          </div>
+        <li v-for="profile in searchResults" :key="profile.pubkey" class="result-item">
+          <CreatorCard
+            :profile="profile"
+            @view-tiers="viewProfile"
+            @message="startChat"
+            @donate="donate"
+          />
         </li>
       </ul>
       <p id="statusMessage" class="status-message" v-if="statusMessage">{{ statusMessage }}</p>
@@ -51,25 +49,14 @@
       </div>
       <div id="featuredCreatorsLoader" class="loader" v-if="loadingFeatured && !featuredCreators.length"></div>
       <div id="featuredCreatorsGrid" class="featured-creators-grid">
-        <div v-for="profile in featuredCreators" :key="profile.pubkey" class="creator-card group">
-          <div class="profile-header">
-            <img class="avatar" :src="profile.profile?.picture || `https://placehold.co/50x50/A0AEC0/FFFFFF?text=${(profile.profile?.name || 'N')[0]?.toUpperCase()}`" :alt="profile.profile?.name || 'Nostr User'">
-            <div class="info">
-              <h3>{{ profile.profile?.name || (profile.profile?.nip05 ? profile.profile?.nip05.split('@')[0] : 'Unnamed User') }}</h3>
-              <p>
-                <strong>Npub:</strong> {{ profile.npubShort }}
-                <button class="copy-button" @click.stop="copyToClipboard(profile.npub, $event.target)">Copy</button>
-              </p>
-              <p v-if="profile.profile?.nip05"><strong>NIP-05:</strong> <span class="nip05">{{ profile.profile.nip05 }}</span></p>
-              <p v-if="profile.profile?.about"><em>{{ profile.profile.about.substring(0, 80) }}{{ profile.profile.about.length > 80 ? '...' : '' }}</em></p>
-            </div>
-          </div>
-          <div class="creator-actions">
-            <button class="action-button view-button" @click.stop="viewProfile(profile.pubkey)">View Subscription Tiers</button>
-            <button class="action-button message-button" @click.stop="startChat(profile.pubkey)">Message</button>
-            <button class="action-button donate-button" @click.stop="donate(profile.pubkey)">Donate</button>
-          </div>
-        </div>
+        <CreatorCard
+          v-for="profile in creatorsStore.featuredCreators"
+          :key="profile.pubkey"
+          :profile="profile"
+          @view-tiers="viewProfile"
+          @message="startChat"
+          @donate="donate"
+        />
       </div>
       <p id="featuredStatusMessage" class="status-message" v-if="featuredStatusMessage">{{ featuredStatusMessage }}</p>
     </div>
@@ -87,6 +74,8 @@ import { useNostrStore } from 'stores/nostr';
 import DonateDialog from "components/DonateDialog.vue";
 import SendTokenDialog from "components/SendTokenDialog.vue";
 import { useDonationPresetsStore } from "stores/donationPresets";
+import CreatorProfileModal from 'components/CreatorProfileModal.vue';
+import CreatorCard from 'components/CreatorCard.vue';
 
 const creatorsStore = useCreatorsStore();
 const searchQuery = ref('');
@@ -95,20 +84,15 @@ const statusMessage = ref('');
 const showRetry = ref(false);
 
 const searching = computed(() => creatorsStore.searching);
-const featuredCreators = computed(() => creatorsStore.featuredCreators.map(profile => ({
-  ...profile,
-  npub: nip19.npubEncode(profile.pubkey),
-  npubShort: `${nip19.npubEncode(profile.pubkey).substring(0, 10)}...${nip19.npubEncode(profile.pubkey).substring(nip19.npubEncode(profile.pubkey).length - 5)}`
-})));
 const loadingFeatured = computed(() => creatorsStore.loadingFeatured);
 const featuredStatusMessage = computed(() => {
   if (creatorsStore.error) return creatorsStore.error;
-  if (loadingFeatured.value && !featuredCreators.value.length) return 'Loading creators...';
-  if (!loadingFeatured.value && !featuredCreators.value.length && !creatorsStore.error) return 'Could not load creators. Please try again.';
+  if (loadingFeatured.value && !creatorsStore.featuredCreators.length) return 'Loading creators...';
+  if (!loadingFeatured.value && !creatorsStore.featuredCreators.length && !creatorsStore.error) return 'Could not load creators. Please try again.';
   return '';
 });
 
-const debouncedSearch = debounce(handleSearch, 300);
+const debouncedSearch = debounce((...args) => handleSearch(false, ...args), 300);
 
 function debounce(func, delay) {
   let timeoutId;
@@ -118,7 +102,7 @@ function debounce(func, delay) {
   };
 }
 
-async function handleSearch() {
+async function handleSearch(forceRefresh = false) {
   const query = searchQuery.value.trim();
   if (!query) {
     searchResults.value = [];
@@ -129,7 +113,7 @@ async function handleSearch() {
   showRetry.value = false;
 
   try {
-    await creatorsStore.searchCreators(query);
+    await creatorsStore.searchCreators(query, forceRefresh);
     searchResults.value = creatorsStore.searchResults.map(profile => ({
       ...profile,
       npub: nip19.npubEncode(profile.pubkey),
@@ -145,7 +129,7 @@ async function handleSearch() {
 }
 
 function retrySearch() {
-  handleSearch();
+  handleSearch(true);
 }
 
 async function loadFeatured() {
@@ -153,7 +137,7 @@ async function loadFeatured() {
 }
 
 async function refreshFeatured() {
-  await creatorsStore.loadFeaturedCreators();
+  await creatorsStore.loadFeaturedCreators(true);
 }
 
 const router = useRouter();
@@ -163,28 +147,23 @@ const nostr = useNostrStore();
 const showDonateDialog = ref(false);
 const selectedPubkey = ref("");
 const donationStore = useDonationPresetsStore();
+const showProfileModal = ref(false);
+const selectedProfilePubkey = ref('');
 
 function viewProfile(pubkey: string) {
-  router.push({ name: 'PublicCreatorProfile', params: { npubOrHex: pubkey } });
+  selectedProfilePubkey.value = pubkey;
+  showProfileModal.value = true;
 }
 
 function startChat(pubkey: string) {
   const resolvedPubkey = nostr.resolvePubkey(pubkey);
-  router.push({ path: "/nostr-messenger", query: { pubkey: resolvedPubkey } });
-  const stop = watch(
-    () => messenger.started,
-    (started) => {
-      if (started) {
-        messenger.startChat(resolvedPubkey);
-        stop();
-      }
-    },
-  );
+  const url = router.resolve({ path: "/nostr-messenger", query: { pubkey: resolvedPubkey } }).href;
+  window.open(url, '_blank');
 }
 
 function donate(pubkey: string) {
-  selectedPubkey.value = pubkey;
-  showDonateDialog.value = true;
+  const url = router.resolve({ name: 'PublicCreatorProfile', params: { npubOrHex: pubkey } }).href;
+  window.open(url, '_blank');
 }
 
 function handleDonate({
@@ -218,17 +197,6 @@ function handleDonate({
   }
 }
 
-function copyToClipboard(text: string, buttonElement: HTMLElement) {
-  navigator.clipboard.writeText(text).then(() => {
-    const originalText = buttonElement.textContent;
-    buttonElement.textContent = 'Copied!';
-    setTimeout(() => {
-      buttonElement.textContent = originalText;
-    }, 2000);
-  }).catch(err => {
-    console.error('Failed to copy text: ', err);
-  });
-}
 
 onMounted(() => {
   loadFeatured();
@@ -258,12 +226,17 @@ body {
   margin: 0 auto;
   padding: clamp(1.5rem, 4vw, 2.5rem);
   background-color: white;
-  border-radius: 0.75rem; /* Tailwind rounded-xl */
+  border-radius: 1rem; /* Tailwind rounded-2xl */
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
     0 4px 6px -2px rgba(0, 0, 0, 0.05); /* Tailwind shadow-lg */
+  transition: background-color 0.3s ease;
+}
+.search-input-wrapper {
+  display: flex;
+  gap: 0.5rem;
 }
 .search-input {
-  width: 100%;
+  flex-grow: 1;
   padding: 0.875rem 1.25rem; /* Increased padding */
   border: 1px solid #e2e8f0; /* Tailwind gray-300 */
   border-radius: 0.5rem; /* Tailwind rounded-lg */
@@ -275,6 +248,12 @@ body {
   outline: none;
   border-color: #4299e1; /* Tailwind blue-500 */
   box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.5); /* Tailwind ring-blue-500 ring-opacity-50 */
+}
+.refresh-button {
+  background-color: #667eea;
+}
+.refresh-button:hover {
+  background-color: #5a67d8;
 }
 .results-list,
 .featured-creators-grid {
@@ -290,83 +269,11 @@ body {
   ); /* Responsive grid */
   gap: 1.5rem;
 }
-.result-item,
-.creator-card {
-  padding: 1.25rem;
-  border: 1px solid #e2e8f0; /* Tailwind gray-300 */
-  border-radius: 0.75rem; /* Tailwind rounded-xl */
-  margin-bottom: 1rem;
-  background-color: #fdfdff; /* Slightly off-white */
-  transition: all 0.2s ease-in-out;
-  display: flex;
-  flex-direction: column; /* Ensure actions container is below info */
-  gap: 0.5rem; /* Reduced gap for tighter layout within card */
-}
-.creator-card {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.07),
-    0 2px 4px -1px rgba(0, 0, 0, 0.04);
-  position: relative;
-}
 .result-item {
-  position: relative;
+  list-style: none;
+  margin-bottom: 1rem;
 }
-.result-item:hover,
-.creator-card:hover {
-  background-color: #f0f5ff; /* Lighter blue hover */
-  border-color: #bee3f8; /* Tailwind blue-200 */
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.1),
-    0 10px 10px -5px rgba(0, 0, 0, 0.04);
-}
-.profile-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
-  width: 100%;
-}
-.profile-header img.avatar {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid #e2e8f0; /* Tailwind gray-300 */
-  flex-shrink: 0;
-}
-.profile-header .info {
-  flex-grow: 1;
-  min-width: 0;
-}
-.profile-header .info h3 {
-  font-size: 1.125rem; /* Tailwind text-lg */
-  font-weight: 600; /* Tailwind font-semibold */
-  color: #2d3748; /* Tailwind gray-800 */
-  word-break: break-word;
-  margin-bottom: 0.25rem;
-}
-.profile-header .info p {
-  font-size: 0.875rem; /* Tailwind text-sm */
-  color: #4a5568; /* Tailwind gray-700 */
-  margin-top: 0.1rem;
-  word-break: break-word;
-  line-height: 1.4;
-}
-.profile-header .info .nip05 {
-  font-weight: 500;
-  color: #3182ce; /* Tailwind blue-600 */
-}
-.creator-actions {
-  opacity: 0;
-  transition: opacity 0.3s ease-in-out;
-  padding-top: 0.5rem;
-  display: flex;
-  gap: 0.5rem;
-  width: 100%;
-  justify-content: flex-start;
-}
-.creator-card:hover .creator-actions,
-.result-item:hover .creator-actions {
-  opacity: 1;
-}
+
 .action-button {
   padding: 0.375rem 0.75rem;
   font-size: 0.75rem;
@@ -381,18 +288,6 @@ body {
 }
 .view-button:hover {
   background-color: #718096;
-}
-.message-button {
-  background-color: #4299e1;
-}
-.message-button:hover {
-  background-color: #3182ce;
-}
-.donate-button {
-  background-color: #48bb78;
-}
-.donate-button:hover {
-  background-color: #38a169;
 }
 .status-message {
   text-align: center;
@@ -452,31 +347,17 @@ body.dark {
 }
 body.dark .search-container,
 body.dark .featured-creators-container {
-  background-color: #2d3748;
-  color: #e2e8f0;
+  background-color: #1a202c; /* Tailwind gray-900 */
+  border: 1px solid #4a5568; /* Tailwind gray-700 */
 }
 body.dark .search-input {
-  background-color: #2d3748;
+  background-color: #2d3748; /* Tailwind gray-800 */
   border-color: #4a5568;
   color: #e2e8f0;
 }
-body.dark .result-item,
-body.dark .creator-card {
-  background-color: #2d3748;
-  border-color: #4a5568;
-}
-body.dark .result-item:hover,
-body.dark .creator-card:hover {
-  background-color: #4a5568;
-  border-color: #718096;
-}
-body.dark .profile-header .info h3 {
-  color: #e2e8f0;
-}
-body.dark .profile-header .info p {
-  color: #a0aec0;
-}
-body.dark .profile-header .info .nip05 {
-  color: #63b3ed;
+body.dark .result-item {
+  /* The creator card now handles its own background color */
+  background-color: transparent;
+  border-color: transparent;
 }
 </style>

@@ -336,7 +336,9 @@ export const useCreatorsStore = defineStore("creators", {
         : ref<string[]>([]);
     return {
       searchResults: [] as CreatorProfile[],
+      featuredCreators: [] as CreatorProfile[],
       searching: false,
+      loadingFeatured: false,
       error: "",
       tiersMap: {} as Record<string, Tier[]>,
       tierFetchError: false,
@@ -561,7 +563,7 @@ export const useCreatorsStore = defineStore("creators", {
       return this.loadCreatorCacheFromDexie(pubkeyHex);
     },
 
-    async searchCreators(query: string) {
+    async searchCreators(query: string, forceRefresh = false) {
       const nostrStore = useNostrStore();
       this.searchResults = [];
       this.error = "";
@@ -569,109 +571,151 @@ export const useCreatorsStore = defineStore("creators", {
         return;
       }
       this.searching = true;
-      await nostrStore.initNdkReadOnly();
-      const ndk = await useNdk({ requireSigner: false });
+
+      const now = Date.now();
+      const cacheExpiry = 3 * 60 * 60 * 1000; // 3 hours
+
       let pubkey = query.trim();
-      if (pubkey.startsWith("npub")) {
-        try {
+      try {
+        if (pubkey.startsWith("npub")) {
           const decoded = nip19.decode(pubkey);
-          pubkey =
-            typeof decoded.data === "string" ? (decoded.data as string) : "";
-        } catch (e) {
-          console.error(e);
-          this.error = "Invalid npub";
-          this.searching = false;
-          return;
+          pubkey = typeof decoded.data === "string" ? (decoded.data as string) : "";
+        } else if (pubkey.startsWith("nprofile")) {
+          const decoded = nip19.decode(pubkey);
+          if (typeof decoded.data === 'object' && (decoded.data as any).pubkey) {
+            pubkey = (decoded.data as any).pubkey;
+          }
+        } else if (pubkey.includes('@')) {
+          // NIP-05
+          const ndk = await useNdk({ requireSigner: false });
+          const user = await ndk.getUserFromNip05(pubkey);
+          if (user) {
+            pubkey = user.pubkey;
+          } else {
+            this.error = "NIP-05 not found";
+            this.searching = false;
+            return;
+          }
         }
-      } else if (!/^[0-9a-fA-F]{64}$/.test(pubkey)) {
+      } catch(e) {
+        console.error(e);
+        this.error = "Invalid identifier";
+        this.searching = false;
+        return;
+      }
+
+
+      if (!/^[0-9a-fA-F]{64}$/.test(pubkey)) {
         this.error = "Invalid pubkey";
         this.searching = false;
         return;
       }
+
+      if (!forceRefresh) {
+        const cached = await db.profiles.get(pubkey);
+        if (cached && (now - cached.fetchedAt < cacheExpiry)) {
+          this.searchResults = [cached.profile];
+          this.searching = false;
+          return;
+        }
+      }
+
+      await nostrStore.initNdkReadOnly();
+      const ndk = await useNdk({ requireSigner: false });
+
       try {
         const user = ndk.getUser({ pubkey });
         await user.fetchProfile();
         const followers = await nostrStore.fetchFollowerCount(pubkey);
         const following = await nostrStore.fetchFollowingCount(pubkey);
         const joined = await nostrStore.fetchJoinDate(pubkey);
-        this.searchResults.push({
+        const creatorProfile = {
           pubkey,
           profile: user.profile,
           followers,
           following,
           joined,
+        };
+        this.searchResults.push(creatorProfile);
+        await db.profiles.put({
+          pubkey,
+          profile: creatorProfile,
+          fetchedAt: Date.now(),
         });
       } catch (e) {
         console.error(e);
+        this.error = "Failed to fetch profile.";
       } finally {
         this.searching = false;
       }
     },
 
-    async loadFeaturedCreators() {
+    async fetchCreator(pubkey: string, forceRefresh = false) {
+      const now = Date.now();
+      const cacheExpiry = 3 * 60 * 60 * 1000; // 3 hours
+
+      if (!forceRefresh) {
+        const cached = await db.profiles.get(pubkey);
+        if (cached && (now - cached.fetchedAt < cacheExpiry)) {
+          return cached.profile;
+        }
+      }
+
       const nostrStore = useNostrStore();
-      this.searchResults = [];
-      this.error = "";
-      this.searching = true;
       await nostrStore.initNdkReadOnly();
       const ndk = await useNdk({ requireSigner: false });
 
-      const pubkeys: string[] = [];
-      for (const entry of FEATURED_CREATORS) {
-        let pubkey = entry;
-        if (entry.startsWith("npub") || entry.startsWith("nprofile")) {
-          try {
-            const decoded = nip19.decode(entry);
-            if (typeof decoded.data === "string") {
-              pubkey = decoded.data as string;
-            } else if (
-              typeof decoded.data === "object" &&
-              (decoded.data as any).pubkey
-            ) {
-              pubkey = (decoded.data as any).pubkey as string;
-            }
-          } catch (e) {
-            console.error("Failed to decode", entry, e);
-            continue;
-          }
-        }
-        pubkeys.push(pubkey);
+      try {
+        const user = ndk.getUser({ pubkey });
+        await user.fetchProfile();
+        const followers = await nostrStore.fetchFollowerCount(pubkey);
+        const following = await nostrStore.fetchFollowingCount(pubkey);
+        const joined = await nostrStore.fetchJoinDate(pubkey);
+        const creatorProfile: CreatorProfile = {
+          pubkey,
+          profile: user.profile,
+          followers,
+          following,
+          joined,
+        };
+        await db.profiles.put({
+          pubkey,
+          profile: creatorProfile,
+          fetchedAt: Date.now(),
+        });
+        return creatorProfile;
+      } catch (e) {
+        console.error(`Failed to fetch profile for ${pubkey}:`, e);
+        return null;
+      }
+    },
+
+    async loadFeaturedCreators(forceRefresh = false) {
+      this.error = "";
+      this.loadingFeatured = true;
+      if (forceRefresh) {
+        this.featuredCreators = [];
       }
 
-      try {
-        const results = await Promise.all(
-          pubkeys.map(async (pubkey) => {
-            try {
-              const user = ndk.getUser({ pubkey });
-              const [_, followers, following, joined] = await Promise.all([
-                user.fetchProfile(),
-                nostrStore.fetchFollowerCount(pubkey),
-                nostrStore.fetchFollowingCount(pubkey),
-                nostrStore.fetchJoinDate(pubkey),
-              ]);
-              return {
-                pubkey,
-                profile: user.profile,
-                followers,
-                following,
-                joined,
-              } as CreatorProfile;
-            } catch (e) {
-              console.error(e);
-              return null;
-            }
-          }),
-        );
+      const pubkeys: string[] = FEATURED_CREATORS.map(npub => {
+        try {
+          return nip19.decode(npub).data as string;
+        } catch (e) {
+          console.error(`Failed to decode npub: ${npub}`, e);
+          return null;
+        }
+      }).filter((pubkey): pubkey is string => pubkey !== null);
 
-        results.forEach((res) => {
-          if (res) {
-            this.searchResults.push(res);
-          }
-        });
+      try {
+        const profiles = await Promise.all(
+          pubkeys.map(pubkey => this.fetchCreator(pubkey, forceRefresh))
+        );
+        this.featuredCreators = profiles.filter((p): p is CreatorProfile => p !== null);
       } catch (e) {
-        console.error(e);
+        console.error("Failed to load featured creators:", e);
+        this.error = "Failed to load featured creators.";
       } finally {
-        this.searching = false;
+        this.loadingFeatured = false;
       }
     },
 
