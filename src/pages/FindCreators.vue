@@ -13,17 +13,17 @@
     <SendTokenDialog />
 
     <div class="find-creators-content">
-      <section class="page-hero column q-gutter-xs">
+      <section class="page-hero stack-12">
         <h1 class="text-h4 text-bold">Discover Creators on Nostr</h1>
         <p class="text-body1 text-2 q-mb-none">
           Search the Nostr network, explore featured voices, and support the builders shaping the ecosystem.
         </p>
       </section>
 
-      <div class="column q-gutter-xl">
+      <div class="section-stack">
         <q-card class="find-creators-panel bg-surface-2 text-1" flat bordered>
-          <q-card-section class="q-gutter-md">
-            <header class="column q-gutter-xs">
+          <q-card-section class="panel-section q-px-xl q-py-lg">
+            <header class="stack-12">
               <div class="text-h5">Nostr User Search</div>
               <p class="text-body2 text-2 q-mb-none">
                 Search by name, npub, or NIP-05 identifier (e.g., user@domain.com).
@@ -55,20 +55,18 @@
                   />
                 </template>
               </q-input>
-              <div class="row items-center justify-between q-col-gutter-sm">
-                <div class="col-auto">
-                  <q-btn
-                    outline
-                    no-caps
-                    color="accent"
-                    icon="refresh"
-                    label="Refresh data"
-                    class="refresh-button"
-                    :disable="searching || refreshingCache"
-                    :loading="refreshingCache"
-                    @click="refreshCurrentCreator"
-                  />
-                </div>
+              <div class="refresh-actions">
+                <q-btn
+                  outline
+                  no-caps
+                  color="accent"
+                  icon="refresh"
+                  label="Refresh data"
+                  class="refresh-button"
+                  :disable="searching || refreshingCache"
+                  :loading="refreshingCache"
+                  @click="refreshCurrentCreator"
+                />
               </div>
             </q-form>
 
@@ -136,7 +134,7 @@
         </q-card>
 
         <q-card class="find-creators-panel bg-surface-2 text-1" flat bordered>
-          <q-card-section class="q-gutter-md">
+          <q-card-section class="panel-section q-px-xl q-py-lg">
             <div class="row items-start justify-between q-col-gutter-md">
               <div class="col">
                 <div class="text-h5">Featured Creators</div>
@@ -591,7 +589,13 @@ onMounted(() => {
 
 <style scoped>
 .find-creators-page {
-  min-height: 100%;
+  min-height: 100vh;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-1) 96%, transparent) 0%,
+    color-mix(in srgb, var(--surface-1) 88%, rgba(15, 23, 42, 0.05)) 55%,
+    color-mix(in srgb, var(--surface-1) 82%, rgba(15, 23, 42, 0.12)) 100%
+  );
 }
 
 .find-creators-content {
@@ -610,6 +614,19 @@ onMounted(() => {
   text-align: center;
 }
 
+.section-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+}
+
+.stack-12 {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .search-result-card {
   border-radius: 16px;
   border: 1px solid var(--surface-contrast-border);
@@ -619,9 +636,24 @@ onMounted(() => {
   width: 100%;
   border-radius: 16px;
   border: 1px solid var(--surface-contrast-border);
+  box-shadow:
+    0 12px 24px rgba(15, 23, 42, 0.04),
+    0 24px 48px rgba(15, 23, 42, 0.08);
+}
+
+.panel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 .refresh-button {
+  width: 100%;
+}
+
+.refresh-actions {
+  display: flex;
+  justify-content: flex-end;
   width: 100%;
 }
 
