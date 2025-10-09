@@ -17,6 +17,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "jsdom",
+    threads: false,
+    minThreads: 1,
+    maxThreads: 1,
     setupFiles: ["./test/vitest/setup-file.js"],
     exclude: [
       "src/lib/cashu-ts/test/**/*.ts",

@@ -4,13 +4,30 @@ import { createRouter, createMemoryHistory } from "vue-router";
 import { createPinia, setActivePinia } from "pinia";
 import FindCreators from "src/pages/FindCreators.vue";
 
+vi.mock('quasar', () => ({
+  Notify: {
+    create: vi.fn(),
+  },
+  useQuasar: () => ({
+    notify: vi.fn(),
+  }),
+}));
 vi.mock("components/DonateDialog.vue", () => ({ default: { name: "DonateDialog", template: "<div></div>" } }));
 vi.mock("components/SubscribeDialog.vue", () => ({ default: { name: "SubscribeDialog", template: "<div></div>" } }));
 vi.mock("components/SendTokenDialog.vue", () => ({ default: { name: "SendTokenDialog", template: "<div></div>" } }));
 vi.mock("components/MediaPreview.vue", () => ({ default: { name: "MediaPreview", template: "<div></div>" } }));
 vi.mock("stores/sendTokensStore", () => ({ useSendTokensStore: () => ({ clearSendData: vi.fn(), sendData: {}, showSendTokens: false }) }));
 vi.mock("stores/donationPresets", () => ({ useDonationPresetsStore: () => ({ createDonationPreset: vi.fn() }) }));
-vi.mock("stores/creators", () => ({ useCreatorsStore: () => ({ tiersMap: {}, tierFetchError: false, fetchTierDefinitions: vi.fn() }) }));
+vi.mock("stores/creators", () => ({
+  useCreatorsStore: () => ({
+    tiersMap: {},
+    tierFetchError: false,
+    fetchTierDefinitions: vi.fn(),
+    featuredCreators: [],
+    fetchFeaturedCreators: vi.fn(),
+  }),
+  FEATURED_CREATORS: [],
+}));
 vi.mock("stores/nostr", () => ({
   useNostrStore: () => ({ pubkey: "", initNdkReadOnly: vi.fn().mockResolvedValue(undefined), resolvePubkey: (k: string) => k }),
   fetchNutzapProfile: vi.fn(),
@@ -26,7 +43,7 @@ describe("FindCreators redirection", () => {
       history: createMemoryHistory(),
       routes: [
         { path: "/find-creators", component: FindCreators },
-        { path: "/creator/:npub", component: { template: "<div />" } },
+        { path: "/creator/:npub", name: 'creator-profile', component: { template: "<div />" } },
       ],
     });
     const pinia = createPinia();

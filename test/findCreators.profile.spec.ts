@@ -109,6 +109,8 @@ vi.mock("quasar", () => {
     QBanner: createStub("QBanner"),
     QSpinnerHourglass: createStub("QSpinnerHourglass"),
     QPage: createStub("QPage"),
+    QTooltip: createStub("QTooltip"),
+    QIcon: createStub("QIcon"),
   };
 });
 
