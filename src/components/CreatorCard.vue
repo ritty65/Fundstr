@@ -4,13 +4,13 @@
       <div class="avatar-wrapper">
         <img
           class="avatar"
-          :src="profile.profile?.picture || `https://placehold.co/80x80/A0AEC0/FFFFFF?text=${placeholderInitial}`"
+          :src="profile.profile?.picture || `https://placehold.co/64x64/A0AEC0/FFFFFF?text=${placeholderInitial}`"
           :alt="displayName"
         />
       </div>
       <div class="info">
         <div class="name-row">
-          <h3 class="name text-weight-bold q-mb-none">{{ displayName }}</h3>
+          <h3 class="text-subtitle1 text-weight-medium q-mb-xs">{{ displayName }}</h3>
           <div v-if="isFeatured || isCached" class="badge-row">
             <q-badge v-if="isFeatured" color="accent" class="badge badge-featured">Featured</q-badge>
             <q-badge v-if="isCached" color="accent" outline class="badge badge-cache">Cached</q-badge>
@@ -175,17 +175,15 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-
 .creator-card {
-  padding: 1.75rem;
+  padding: 1.5rem;
   border: 1px solid var(--surface-contrast-border);
-  border-radius: 1rem;
+  border-radius: 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  height: 100%;
+  gap: 1.25rem;
   transition: box-shadow 0.25s ease, transform 0.25s ease;
-  box-shadow: 0 16px 36px -18px rgba(15, 23, 42, 0.45);
+  box-shadow: 0 12px 30px -18px rgba(15, 23, 42, 0.45);
 }
 
 .creator-card:hover {
@@ -195,20 +193,20 @@ onBeforeUnmount(() => {
 
 .profile-header {
   display: flex;
-  gap: 1.25rem;
+  gap: 1rem;
   width: 100%;
 }
 
 .avatar-wrapper {
-  width: 80px;
-  height: 80px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   padding: 4px;
-  background: color-mix(in srgb, var(--accent-200) 75%, transparent);
+  background: var(--accent-200);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.22);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
   flex-shrink: 0;
 }
 
@@ -228,13 +226,9 @@ onBeforeUnmount(() => {
 .name-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-.name {
-  font-size: 1.25rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
 .badge-row {
@@ -255,13 +249,13 @@ onBeforeUnmount(() => {
 
 .meta {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.35rem;
 }
 
 .meta-line {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.35rem;
   align-items: center;
   word-break: break-word;
 }
@@ -282,7 +276,6 @@ onBeforeUnmount(() => {
 
 .about {
   font-style: italic;
-  color: var(--text-1);
 }
 
 .copy-button {
@@ -293,7 +286,6 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   gap: 0.75rem;
-  margin-top: auto;
 }
 
 .action-btn {
