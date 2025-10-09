@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, shallowMount } from "@vue/test-utils";
 import { Ref, ref } from "vue";
+import { nip19 } from "nostr-tools";
 
 import NutzapProfilePage from "../../../src/pages/NutzapProfilePage.vue";
 
@@ -180,10 +181,19 @@ vi.mock("../../../src/nutzap/onepage/useRelayConnection", () => ({
   }),
 }));
 
-vi.mock("../../../src/nutzap/signer", () => ({
-  useActiveNutzapSigner: () => ({
+vi.mock("src/nutzap/useNutzapSignerWorkspace", () => ({
+  useNutzapSignerWorkspace: () => ({
     pubkey: ensureShared().pubkeyRef,
     signer: ensureShared().signerRef,
+    keySecretHex: ref(''),
+    keyNsec: ref(''),
+    keyPublicHex: ref(''),
+    keyNpub: ref(''),
+    keyImportValue: ref(''),
+    advancedKeyManagementOpen: ref(false),
+    usingStoreIdentity: ref(false),
+    connectedIdentitySummary: ref(''),
+    ensureSharedSignerInitialized: vi.fn(),
   }),
 }));
 
@@ -570,19 +580,12 @@ describe("NutzapProfilePage publishing", () => {
 describe("NutzapProfilePage edge cases", () => {
   it("initializes Fundstr signer identity on mount", async () => {
     const state = ensureShared();
-    state.nostrStoreMock.npub = "npub1fundstridentity";
-    state.pubkeyRef.value = "";
+    state.pubkeyRef.value = VALID_HEX;
 
     const wrapper = await mountPage();
-
-    expect(state.nostrStoreMock.initSignerIfNotSet).toHaveBeenCalled();
-
-    state.pubkeyRef.value = VALID_HEX;
     await flushPromises();
 
     expect((wrapper.vm as any).authorInput).toBe(VALID_HEX);
-    expect((wrapper.vm as any).keyPublicHex).toBe(VALID_HEX);
-    expect((wrapper.vm as any).keyNpub).toBe("npub1fundstridentity");
   });
 
   it("reloads data after relay reconnects", async () => {

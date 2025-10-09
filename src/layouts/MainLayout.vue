@@ -121,6 +121,7 @@ import { useMessengerStore } from "src/stores/messenger";
 import { useUiStore } from "src/stores/ui";
 import { NAV_DRAWER_WIDTH, NAV_DRAWER_GUTTER } from "src/constants/layout";
 import { fundstrRelayClient, useFundstrRelayStatus } from "src/nutzap/relayClient";
+import { creatorCacheService } from "src/nutzap/creatorCache";
 
 export default defineComponent({
   name: "MainLayout",
@@ -344,6 +345,7 @@ export default defineComponent({
     await nostr.initSignerIfNotSet();
     const myHex = nostr.pubkey;
     useNutzapStore().initListener(myHex);
+    creatorCacheService.start();
   },
 });
 </script>
