@@ -50,7 +50,7 @@
       <div id="featuredCreatorsLoader" class="loader" v-if="loadingFeatured && !featuredCreators.length"></div>
       <div id="featuredCreatorsGrid" class="featured-creators-grid">
         <CreatorCard
-          v-for="profile in creatorsStore.featuredCreators"
+          v-for="profile in featuredCreators"
           :key="profile.pubkey"
           :profile="profile"
           @view-tiers="viewProfile"
@@ -85,10 +85,11 @@ const showRetry = ref(false);
 
 const searching = computed(() => creatorsStore.searching);
 const loadingFeatured = computed(() => creatorsStore.loadingFeatured);
+const featuredCreators = computed(() => creatorsStore.featuredCreators);
 const featuredStatusMessage = computed(() => {
   if (creatorsStore.error) return creatorsStore.error;
-  if (loadingFeatured.value && !creatorsStore.featuredCreators.length) return 'Loading creators...';
-  if (!loadingFeatured.value && !creatorsStore.featuredCreators.length && !creatorsStore.error) return 'Could not load creators. Please try again.';
+  if (loadingFeatured.value && !featuredCreators.value.length) return 'Loading creators...';
+  if (!loadingFeatured.value && !featuredCreators.value.length && !creatorsStore.error) return 'Could not load creators. Please try again.';
   return '';
 });
 
