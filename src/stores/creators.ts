@@ -336,7 +336,9 @@ export const useCreatorsStore = defineStore("creators", {
         : ref<string[]>([]);
     return {
       searchResults: [] as CreatorProfile[],
+      featuredCreators: [] as CreatorProfile[],
       searching: false,
+      loadingFeatured: false,
       error: "",
       tiersMap: {} as Record<string, Tier[]>,
       tierFetchError: false,
@@ -610,35 +612,35 @@ export const useCreatorsStore = defineStore("creators", {
 
     async loadFeaturedCreators() {
       const nostrStore = useNostrStore();
-      this.searchResults = [];
+      this.featuredCreators = [];
       this.error = "";
-      this.searching = true;
-      await nostrStore.initNdkReadOnly();
-      const ndk = await useNdk({ requireSigner: false });
-
-      const pubkeys: string[] = [];
-      for (const entry of FEATURED_CREATORS) {
-        let pubkey = entry;
-        if (entry.startsWith("npub") || entry.startsWith("nprofile")) {
-          try {
-            const decoded = nip19.decode(entry);
-            if (typeof decoded.data === "string") {
-              pubkey = decoded.data as string;
-            } else if (
-              typeof decoded.data === "object" &&
-              (decoded.data as any).pubkey
-            ) {
-              pubkey = (decoded.data as any).pubkey as string;
-            }
-          } catch (e) {
-            console.error("Failed to decode", entry, e);
-            continue;
-          }
-        }
-        pubkeys.push(pubkey);
-      }
-
+      this.loadingFeatured = true;
       try {
+        await nostrStore.initNdkReadOnly();
+        const ndk = await useNdk({ requireSigner: false });
+
+        const pubkeys: string[] = [];
+        for (const entry of FEATURED_CREATORS) {
+          let pubkey = entry;
+          if (entry.startsWith("npub") || entry.startsWith("nprofile")) {
+            try {
+              const decoded = nip19.decode(entry);
+              if (typeof decoded.data === "string") {
+                pubkey = decoded.data as string;
+              } else if (
+                typeof decoded.data === "object" &&
+                (decoded.data as any).pubkey
+              ) {
+                pubkey = (decoded.data as any).pubkey as string;
+              }
+            } catch (e) {
+              console.error("Failed to decode", entry, e);
+              continue;
+            }
+          }
+          pubkeys.push(pubkey);
+        }
+
         const results = await Promise.all(
           pubkeys.map(async (pubkey) => {
             try {
@@ -662,16 +664,12 @@ export const useCreatorsStore = defineStore("creators", {
             }
           }),
         );
-
-        results.forEach((res) => {
-          if (res) {
-            this.searchResults.push(res);
-          }
-        });
+        this.featuredCreators = results.filter((res) => res) as CreatorProfile[];
       } catch (e) {
         console.error(e);
+        this.error = "Error fetching featured creators";
       } finally {
-        this.searching = false;
+        this.loadingFeatured = false;
       }
     },
 

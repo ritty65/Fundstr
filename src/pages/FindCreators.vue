@@ -43,20 +43,25 @@
     </div>
 
     <div class="featured-creators-container">
-      <h2 class="section-title">Featured Creators</h2>
-      <div id="featuredCreatorsLoader" class="loader" v-if="loadingFeatured"></div>
+      <div class="flex justify-between items-center">
+        <h2 class="section-title">Featured Creators</h2>
+        <button @click="refreshFeatured" class="action-button view-button" :disabled="loadingFeatured">
+          Refresh
+        </button>
+      </div>
+      <div id="featuredCreatorsLoader" class="loader" v-if="loadingFeatured && !featuredCreators.length"></div>
       <div id="featuredCreatorsGrid" class="featured-creators-grid">
         <div v-for="profile in featuredCreators" :key="profile.pubkey" class="creator-card group">
           <div class="profile-header">
-            <img class="avatar" :src="profile.picture || `https://placehold.co/50x50/A0AEC0/FFFFFF?text=${(profile.name || 'N')[0]?.toUpperCase()}`" :alt="profile.name || 'Nostr User'">
+            <img class="avatar" :src="profile.profile?.picture || `https://placehold.co/50x50/A0AEC0/FFFFFF?text=${(profile.profile?.name || 'N')[0]?.toUpperCase()}`" :alt="profile.profile?.name || 'Nostr User'">
             <div class="info">
-              <h3>{{ profile.name || (profile.nip05 ? profile.nip05.split('@')[0] : 'Unnamed User') }}</h3>
+              <h3>{{ profile.profile?.name || (profile.profile?.nip05 ? profile.profile?.nip05.split('@')[0] : 'Unnamed User') }}</h3>
               <p>
                 <strong>Npub:</strong> {{ profile.npubShort }}
                 <button class="copy-button" @click.stop="copyToClipboard(profile.npub, $event.target)">Copy</button>
               </p>
-              <p v-if="profile.nip05"><strong>NIP-05:</strong> <span class="nip05">{{ profile.nip05 }}</span></p>
-              <p v-if="profile.about"><em>{{ profile.about.substring(0, 80) }}{{ profile.about.length > 80 ? '...' : '' }}</em></p>
+              <p v-if="profile.profile?.nip05"><strong>NIP-05:</strong> <span class="nip05">{{ profile.profile.nip05 }}</span></p>
+              <p v-if="profile.profile?.about"><em>{{ profile.profile.about.substring(0, 80) }}{{ profile.profile.about.length > 80 ? '...' : '' }}</em></p>
             </div>
           </div>
           <div class="creator-actions">
@@ -73,8 +78,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue';
-import { useCreatorsStore, FEATURED_CREATORS } from 'stores/creators';
-import { creatorCacheService } from 'src/nutzap/creatorCache';
+import { useCreatorsStore } from 'stores/creators';
 import { nip19 } from 'nostr-tools';
 import { useRouter } from 'vue-router';
 import { useMessengerStore } from 'stores/messenger';
@@ -86,13 +90,23 @@ import { useDonationPresetsStore } from "stores/donationPresets";
 
 const creatorsStore = useCreatorsStore();
 const searchQuery = ref('');
-const searching = ref(false);
 const searchResults = ref([]);
 const statusMessage = ref('');
 const showRetry = ref(false);
-const loadingFeatured = ref(false);
-const featuredCreators = ref([]);
-const featuredStatusMessage = ref('');
+
+const searching = computed(() => creatorsStore.searching);
+const featuredCreators = computed(() => creatorsStore.featuredCreators.map(profile => ({
+  ...profile,
+  npub: nip19.npubEncode(profile.pubkey),
+  npubShort: `${nip19.npubEncode(profile.pubkey).substring(0, 10)}...${nip19.npubEncode(profile.pubkey).substring(nip19.npubEncode(profile.pubkey).length - 5)}`
+})));
+const loadingFeatured = computed(() => creatorsStore.loadingFeatured);
+const featuredStatusMessage = computed(() => {
+  if (creatorsStore.error) return creatorsStore.error;
+  if (loadingFeatured.value && !featuredCreators.value.length) return 'Loading creators...';
+  if (!loadingFeatured.value && !featuredCreators.value.length && !creatorsStore.error) return 'Could not load creators. Please try again.';
+  return '';
+});
 
 const debouncedSearch = debounce(handleSearch, 300);
 
@@ -110,14 +124,13 @@ async function handleSearch() {
     searchResults.value = [];
     return;
   }
-
-  searching.value = true;
+  creatorsStore.searching = true;
   statusMessage.value = '';
   showRetry.value = false;
 
   try {
-    const profiles = await creatorsStore.searchCreators(query);
-    searchResults.value = profiles.map(profile => ({
+    await creatorsStore.searchCreators(query);
+    searchResults.value = creatorsStore.searchResults.map(profile => ({
       ...profile,
       npub: nip19.npubEncode(profile.pubkey),
       npubShort: `${nip19.npubEncode(profile.pubkey).substring(0, 10)}...${nip19.npubEncode(profile.pubkey).substring(nip19.npubEncode(profile.pubkey).length - 5)}`
@@ -127,7 +140,7 @@ async function handleSearch() {
     statusMessage.value = 'Search failed. Please try again.';
     showRetry.value = true;
   } finally {
-    searching.value = false;
+    creatorsStore.searching = false;
   }
 }
 
@@ -136,22 +149,11 @@ function retrySearch() {
 }
 
 async function loadFeatured() {
-  loadingFeatured.value = true;
-  featuredStatusMessage.value = '';
-  try {
-    await creatorCacheService.start();
-    const profiles = await creatorsStore.loadFeaturedCreators();
-    featuredCreators.value = profiles.map(profile => ({
-      ...profile,
-      npub: nip19.npubEncode(profile.pubkey),
-      npubShort: `${nip19.npubEncode(profile.pubkey).substring(0, 10)}...${nip19.npubEncode(profile.pubkey).substring(nip19.npubEncode(profile.pubkey).length - 5)}`
-    }));
-  } catch (error) {
-    console.error('Failed to load featured creators:', error);
-    featuredStatusMessage.value = 'Could not load featured creators.';
-  } finally {
-    loadingFeatured.value = false;
-  }
+  await creatorsStore.loadFeaturedCreators();
+}
+
+async function refreshFeatured() {
+  await creatorsStore.loadFeaturedCreators();
 }
 
 const router = useRouter();
