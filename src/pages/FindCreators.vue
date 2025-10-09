@@ -25,11 +25,15 @@
           v-model="searchQuery"
           @input="debouncedSearch"
         />
-        <button @click="handleSearch(true)" class="action-button refresh-button" :disabled="searching">
+        <button
+          @click="refreshCurrentCreator"
+          class="action-button refresh-button"
+          :disabled="searching || refreshingCache"
+        >
           Refresh
         </button>
       </div>
-      <div id="loader" class="loader" v-if="searching"></div>
+      <div id="loader" class="loader" v-if="searching && !refreshingCache"></div>
       <ul id="resultsList" class="results-list">
         <li v-for="profile in searchResults" :key="profile.pubkey" class="result-item">
           <CreatorCard
@@ -70,22 +74,33 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue';
 import { useCreatorsStore } from 'stores/creators';
+import type { CreatorProfile, CreatorWarmCache } from 'stores/creators';
 import { nip19 } from 'nostr-tools';
 import { useRouter } from 'vue-router';
 import { useMessengerStore } from 'stores/messenger';
 import { useSendTokensStore } from 'stores/sendTokensStore';
 import { useNostrStore } from 'stores/nostr';
+import { useNdk } from 'src/composables/useNdk';
+import { creatorCacheService } from 'src/nutzap/creatorCache';
 import DonateDialog from "components/DonateDialog.vue";
 import SendTokenDialog from "components/SendTokenDialog.vue";
 import { useDonationPresetsStore } from "stores/donationPresets";
 import CreatorProfileModal from 'components/CreatorProfileModal.vue';
 import CreatorCard from 'components/CreatorCard.vue';
 
+type DecoratedCreatorProfile = CreatorProfile & {
+  npub: string;
+  npubShort: string;
+  cacheHit?: boolean;
+};
+
 const creatorsStore = useCreatorsStore();
 const searchQuery = ref('');
-const searchResults = ref([]);
+const searchResults = ref<DecoratedCreatorProfile[]>([]);
 const statusMessage = ref('');
 const showRetry = ref(false);
+const lastResolvedPubkeyHex = ref<string | null>(null);
+const refreshingCache = ref(false);
 
 const searching = computed(() => creatorsStore.searching);
 const loadingFeatured = computed(() => creatorsStore.loadingFeatured);
@@ -93,48 +108,250 @@ const featuredCreators = computed(() => creatorsStore.featuredCreators);
 const featuredStatusMessage = computed(() => {
   if (creatorsStore.error) return creatorsStore.error;
   if (loadingFeatured.value && !featuredCreators.value.length) return 'Loading creators...';
-  if (!loadingFeatured.value && !featuredCreators.value.length && !creatorsStore.error) return 'Could not load creators. Please try again.';
+  if (!loadingFeatured.value && !featuredCreators.value.length && !creatorsStore.error)
+    return 'Could not load creators. Please try again.';
   return '';
 });
 
-const debouncedSearch = debounce((...args) => handleSearch(false, ...args), 300);
+const debouncedSearch = debounce(() => {
+  void handleSearch(false);
+}, 300);
 
-function debounce(func, delay) {
-  let timeoutId;
-  return function (...args) {
-    clearTimeout(timeoutId);
+function debounce(func: (...args: any[]) => void, delay: number) {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  return function (...args: any[]) {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
     timeoutId = setTimeout(() => func.apply(this, args), delay);
   };
+}
+
+function decorateProfile(profile: CreatorProfile, cacheHit = false): DecoratedCreatorProfile {
+  const npub = nip19.npubEncode(profile.pubkey);
+  return {
+    ...profile,
+    npub,
+    npubShort: `${npub.substring(0, 10)}...${npub.substring(npub.length - 5)}`,
+    cacheHit,
+  };
+}
+
+function parseCachedProfile(entry: CreatorWarmCache | undefined): Record<string, any> | null {
+  if (!entry?.profileEvent?.content) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(entry.profileEvent.content);
+    if (parsed && typeof parsed === 'object') {
+      return { ...(parsed as Record<string, any>) };
+    }
+  } catch (error) {
+    console.warn('Failed to parse cached profile content', error);
+  }
+  return null;
+}
+
+async function hydrateCachedCreator(pubkeyHex: string): Promise<CreatorProfile | null> {
+  try {
+    await creatorsStore.ensureCreatorCacheFromDexie(pubkeyHex);
+  } catch (error) {
+    console.warn('Failed to hydrate creator cache from Dexie', error);
+  }
+
+  const entry = creatorsStore.getCreatorCache(pubkeyHex);
+  if (!entry) {
+    return null;
+  }
+
+  const hasProfile = entry.profileLoaded === true || entry.profileEvent !== undefined;
+  const hasTiers =
+    entry.tiersLoaded === true ||
+    (Array.isArray(entry.tiers) && entry.tiers.length > 0) ||
+    entry.tierEvent !== undefined;
+
+  if (!hasProfile && !hasTiers) {
+    return null;
+  }
+
+  return {
+    pubkey: pubkeyHex,
+    profile: parseCachedProfile(entry),
+    followers: null,
+    following: null,
+    joined: entry.profileUpdatedAt ?? null,
+  };
+}
+
+async function resolveSearchQuery(query: string): Promise<string> {
+  let candidate = query.trim();
+  if (!candidate) {
+    throw new Error('Invalid identifier');
+  }
+
+  try {
+    if (candidate.startsWith('npub')) {
+      const decoded = nip19.decode(candidate);
+      candidate = typeof decoded.data === 'string' ? (decoded.data as string) : '';
+    } else if (candidate.startsWith('nprofile')) {
+      const decoded = nip19.decode(candidate);
+      if (typeof decoded.data === 'object' && (decoded.data as any).pubkey) {
+        candidate = (decoded.data as any).pubkey;
+      } else {
+        throw new Error('Invalid identifier');
+      }
+    } else if (candidate.includes('@')) {
+      const ndk = await useNdk({ requireSigner: false });
+      const user = await ndk.getUserFromNip05(candidate);
+      if (user) {
+        candidate = user.pubkey;
+      } else {
+        throw new Error('NIP-05 not found');
+      }
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message === 'NIP-05 not found') {
+      throw error;
+    }
+    throw new Error('Invalid identifier');
+  }
+
+  if (!/^[0-9a-fA-F]{64}$/.test(candidate)) {
+    throw new Error('Invalid pubkey');
+  }
+
+  return candidate.toLowerCase();
 }
 
 async function handleSearch(forceRefresh = false) {
   const query = searchQuery.value.trim();
   if (!query) {
     searchResults.value = [];
+    statusMessage.value = '';
+    showRetry.value = false;
+    lastResolvedPubkeyHex.value = null;
     return;
   }
-  creatorsStore.searching = true;
+
   statusMessage.value = '';
   showRetry.value = false;
 
+  let resolvedHex: string;
   try {
-    await creatorsStore.searchCreators(query, forceRefresh);
-    searchResults.value = creatorsStore.searchResults.map(profile => ({
-      ...profile,
-      npub: nip19.npubEncode(profile.pubkey),
-      npubShort: `${nip19.npubEncode(profile.pubkey).substring(0, 10)}...${nip19.npubEncode(profile.pubkey).substring(nip19.npubEncode(profile.pubkey).length - 5)}`
-    }));
+    resolvedHex = await resolveSearchQuery(query);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Invalid identifier';
+    statusMessage.value = message;
+    lastResolvedPubkeyHex.value = null;
+    searchResults.value = [];
+    return;
+  }
+
+  lastResolvedPubkeyHex.value = resolvedHex;
+
+  const cachedProfile = await hydrateCachedCreator(resolvedHex);
+  const hasCachedResult = Boolean(cachedProfile);
+  if (cachedProfile) {
+    searchResults.value = [decorateProfile(cachedProfile, true)];
+    statusMessage.value = 'Loaded cached data. Fetching live updates…';
+  } else {
+    searchResults.value = [];
+  }
+
+  try {
+    await creatorsStore.searchCreators(resolvedHex, forceRefresh);
+    const decorated = creatorsStore.searchResults.map((profile) =>
+      decorateProfile(profile),
+    );
+    if (decorated.length) {
+      searchResults.value = decorated;
+      statusMessage.value = '';
+      showRetry.value = false;
+    } else if (!hasCachedResult) {
+      statusMessage.value = 'Failed to fetch profile.';
+      showRetry.value = true;
+    }
   } catch (error) {
     console.error('Search failed:', error);
-    statusMessage.value = 'Search failed. Please try again.';
+    if (hasCachedResult) {
+      statusMessage.value = 'Showing cached data. Live search failed.';
+    } else {
+      statusMessage.value = 'Search failed. Please try again.';
+    }
+    showRetry.value = true;
+  }
+}
+
+async function refreshCurrentCreator() {
+  if (refreshingCache.value) {
+    return;
+  }
+
+  let targetHex = lastResolvedPubkeyHex.value;
+
+  if (!targetHex) {
+    const query = searchQuery.value.trim();
+    if (!query) {
+      return;
+    }
+    try {
+      targetHex = await resolveSearchQuery(query);
+      lastResolvedPubkeyHex.value = targetHex;
+    } catch (error) {
+      statusMessage.value =
+        error instanceof Error ? error.message : 'Invalid identifier';
+      showRetry.value = false;
+      return;
+    }
+  }
+
+  if (!targetHex) {
+    return;
+  }
+
+  refreshingCache.value = true;
+  statusMessage.value = 'Refreshing creator cache...';
+  showRetry.value = false;
+
+  try {
+    await creatorCacheService.updateCreator(targetHex);
+    await creatorsStore.ensureCreatorCacheFromDexie(targetHex);
+    const cachedProfile = await hydrateCachedCreator(targetHex);
+    const hasCachedResult = Boolean(cachedProfile);
+
+    if (cachedProfile) {
+      searchResults.value = [decorateProfile(cachedProfile, true)];
+      statusMessage.value = 'Cache refreshed. Fetching live data…';
+    }
+
+    await creatorsStore.searchCreators(targetHex, true);
+    const decorated = creatorsStore.searchResults.map((profile) =>
+      decorateProfile(profile),
+    );
+
+    if (decorated.length) {
+      searchResults.value = decorated;
+      statusMessage.value = '';
+      showRetry.value = false;
+    } else if (hasCachedResult) {
+      statusMessage.value = 'Cache refreshed. No live updates available.';
+      showRetry.value = true;
+    } else {
+      statusMessage.value = 'Could not load creators. Please try again.';
+      showRetry.value = true;
+    }
+  } catch (error) {
+    console.error('Manual creator refresh failed:', error);
+    statusMessage.value = 'Refresh failed. Please try again.';
     showRetry.value = true;
   } finally {
-    creatorsStore.searching = false;
+    refreshingCache.value = false;
   }
 }
 
 function retrySearch() {
-  handleSearch(true);
+  void handleSearch(true);
 }
 
 async function loadFeatured() {
@@ -208,10 +425,10 @@ watch(showDonateDialog, (isOpen) => {
   }
 });
 onMounted(() => {
-  loadFeatured();
+  void loadFeatured();
 });
-
 </script>
+
 
 <style scoped>
 body {

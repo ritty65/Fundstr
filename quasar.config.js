@@ -11,13 +11,13 @@ const __dirname = path.dirname(__filename)
 export default configure(() => ({
   // 1. 'node-globals' boot file is removed. This is correct.
   boot: [
+    'fundstr-preload',
     'welcomeGate',
     'cashu',
     'i18n',
     'notify',
     'nostr-provider',
     'fundstrRelay',
-    'fundstr-preload',
   ],
 
   css: ['app.scss', 'base.scss', 'buckets.scss'],
