@@ -98,17 +98,20 @@
                     <video
                       v-else-if="mediaItem.type === 'video'"
                       controls
+                      playsinline
+                      preload="metadata"
                       class="tier-media__video"
                     >
-                      <source :src="mediaItem.url" />
+                      <source :src="mediaItem.url" :type="mediaItem.mimeType || 'video/mp4'" />
                       Your browser does not support video playback.
                     </video>
                     <audio
                       v-else-if="mediaItem.type === 'audio'"
                       controls
+                      preload="metadata"
                       class="tier-media__audio"
                     >
-                      <source :src="mediaItem.url" />
+                      <source :src="mediaItem.url" :type="mediaItem.mimeType || 'audio/mpeg'" />
                       Your browser does not support audio playback.
                     </audio>
                   </div>
@@ -466,15 +469,15 @@ function handleSubscribe(tierId?: string) {
 }
 
 .tier-media {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .tier-media__item {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .tier-media__image,
@@ -492,6 +495,12 @@ function handleSubscribe(tierId?: string) {
 
 .tier-media__video {
   background: black;
+  min-height: 180px;
+}
+
+.tier-media__audio {
+  padding: 0.75rem;
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
 }
 
 .tier-benefits {
