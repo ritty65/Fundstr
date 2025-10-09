@@ -1,5 +1,5 @@
 <template>
-  <div class="container">
+  <q-page class="find-creators-page bg-surface-1 text-1 q-px-md q-pt-xl q-pb-xl">
     <CreatorProfileModal
       :show="showProfileModal"
       :pubkey="selectedProfilePubkey"
@@ -11,64 +11,191 @@
       @confirm="handleDonate"
     />
     <SendTokenDialog />
-    <div class="search-container">
-      <h1 class="section-title">Nostr User Search</h1>
-      <p class="text-sm text-center text-gray-600 mb-6">
-        Search by name, npub, or NIP-05 identifier (e.g., user@domain.com).
-      </p>
-      <div class="search-input-wrapper">
-        <input
-          type="text"
-          id="searchInput"
-          class="search-input"
-          placeholder="Search Nostr profiles..."
-          v-model="searchQuery"
-          @input="debouncedSearch"
-        />
-        <button
-          @click="refreshCurrentCreator"
-          class="action-button refresh-button"
-          :disabled="searching || refreshingCache"
-        >
-          Refresh
-        </button>
-      </div>
-      <div id="loader" class="loader" v-if="searching && !refreshingCache"></div>
-      <ul id="resultsList" class="results-list">
-        <li v-for="profile in searchResults" :key="profile.pubkey" class="result-item">
-          <CreatorCard
-            :profile="profile"
-            @view-tiers="viewProfile"
-            @message="startChat"
-            @donate="donate"
-          />
-        </li>
-      </ul>
-      <p id="statusMessage" class="status-message" v-if="statusMessage">{{ statusMessage }}</p>
-      <button id="retryButton" class="retry-button" v-if="showRetry" @click="retrySearch">Retry</button>
-    </div>
 
-    <div class="featured-creators-container">
-      <div class="flex justify-between items-center">
-        <h2 class="section-title">Featured Creators</h2>
-        <button @click="refreshFeatured" class="action-button view-button" :disabled="loadingFeatured">
-          Refresh
-        </button>
+    <div class="find-creators-content">
+      <div class="row q-col-gutter-xl items-start">
+        <section class="col-12 col-md-5">
+          <q-card class="find-creators-panel bg-surface-2 text-1" flat bordered>
+            <q-card-section class="q-gutter-md">
+              <header class="column q-gutter-xs">
+                <div class="text-h5">Nostr User Search</div>
+                <p class="text-body2 text-2 q-mb-none">
+                  Search by name, npub, or NIP-05 identifier (e.g., user@domain.com).
+                </p>
+              </header>
+
+              <q-form class="column q-gutter-sm" @submit.prevent="triggerImmediateSearch">
+                <q-input
+                  v-model="searchQuery"
+                  outlined
+                  dense
+                  clearable
+                  autocomplete="off"
+                  label="Search Nostr profiles"
+                  placeholder="Name, npub, or NIP-05"
+                  :loading="searching && !refreshingCache"
+                  input-class="text-1"
+                  @update:model-value="debouncedSearch"
+                  @keyup.enter="triggerImmediateSearch"
+                >
+                  <template #append>
+                    <q-btn
+                      flat
+                      round
+                      dense
+                      icon="search"
+                      :aria-label="$q.lang.label.search"
+                      @click="triggerImmediateSearch"
+                    />
+                  </template>
+                </q-input>
+                <div class="row items-center justify-between q-col-gutter-sm">
+                  <div class="col-auto">
+                    <q-btn
+                      outline
+                      no-caps
+                      color="accent"
+                      icon="refresh"
+                      label="Refresh data"
+                      class="refresh-button"
+                      :disable="searching || refreshingCache"
+                      :loading="refreshingCache"
+                      @click="refreshCurrentCreator"
+                    />
+                  </div>
+                </div>
+              </q-form>
+
+              <section class="column q-gutter-md" role="region" aria-live="polite">
+                <div v-if="searching && !refreshingCache" class="column q-gutter-sm" aria-label="Searching creators">
+                  <q-skeleton
+                    v-for="placeholder in searchSkeletonPlaceholders"
+                    :key="placeholder"
+                    type="rect"
+                    class="rounded-borders bg-surface-1"
+                    height="116px"
+                  />
+                </div>
+
+                <div v-else-if="searchResults.length" class="column q-gutter-md">
+                  <CreatorCard
+                    v-for="profile in searchResults"
+                    :key="profile.pubkey"
+                    :profile="profile"
+                    @view-tiers="viewProfile"
+                    @message="startChat"
+                    @donate="donate"
+                  />
+                </div>
+
+                <q-banner
+                  v-else-if="statusMessage"
+                  rounded
+                  dense
+                  class="bg-surface-2 text-2"
+                  aria-live="polite"
+                >
+                  {{ statusMessage }}
+                </q-banner>
+
+                <div v-else-if="showSearchEmptyState" class="empty-state column items-center text-center q-pt-lg q-pb-md text-2">
+                  <q-icon name="person_search" size="2.5rem" class="q-mb-sm text-2" aria-hidden="true" />
+                  <div class="text-subtitle2 text-1">No profiles yet</div>
+                  <p class="text-body2 q-mt-xs q-mb-none">
+                    Try a different name or paste an npub to explore more creators.
+                  </p>
+                </div>
+
+                <div v-if="showRetry" class="retry-wrapper">
+                  <q-btn
+                    outline
+                    no-caps
+                    color="accent"
+                    label="Retry search"
+                    class="retry-button"
+                    :disable="searching"
+                    @click="retrySearch"
+                  />
+                </div>
+              </section>
+            </q-card-section>
+          </q-card>
+        </section>
+
+        <section class="col-12 col-md-7">
+          <q-card class="find-creators-panel bg-surface-2 text-1" flat bordered>
+            <q-card-section class="q-gutter-md">
+              <div class="row items-start justify-between q-col-gutter-md">
+                <div class="col">
+                  <div class="text-h5">Featured Creators</div>
+                  <p class="text-body2 text-2 q-mt-xs q-mb-none">
+                    Discover highlighted profiles curated by the Fundstr team.
+                  </p>
+                </div>
+                <div class="col-auto">
+                  <q-btn
+                    outline
+                    no-caps
+                    color="accent"
+                    icon="refresh"
+                    label="Refresh"
+                    :loading="loadingFeatured"
+                    :disable="loadingFeatured"
+                    @click="refreshFeatured"
+                  />
+                </div>
+              </div>
+
+              <div class="q-mt-md" role="region" aria-live="polite">
+                <div v-if="loadingFeatured && !featuredCreators.length" class="row q-col-gutter-md">
+                  <div
+                    v-for="placeholder in featuredSkeletonPlaceholders"
+                    :key="placeholder"
+                    class="col-12 col-sm-6"
+                  >
+                    <q-skeleton type="rect" class="rounded-borders bg-surface-1" height="180px" />
+                  </div>
+                </div>
+
+                <div v-else-if="featuredCreators.length" class="row q-col-gutter-lg">
+                  <div
+                    v-for="profile in featuredCreators"
+                    :key="profile.pubkey"
+                    class="col-12 col-sm-6"
+                  >
+                    <CreatorCard
+                      :profile="profile"
+                      @view-tiers="viewProfile"
+                      @message="startChat"
+                      @donate="donate"
+                    />
+                  </div>
+                </div>
+
+                <q-banner
+                  v-else-if="featuredStatusMessage"
+                  rounded
+                  dense
+                  class="bg-surface-2 text-2"
+                  aria-live="polite"
+                >
+                  {{ featuredStatusMessage }}
+                </q-banner>
+
+                <div v-else-if="showFeaturedEmptyState" class="empty-state column items-center text-center q-pt-lg q-pb-md text-2">
+                  <q-icon name="diversity_2" size="2.5rem" class="q-mb-sm text-2" aria-hidden="true" />
+                  <div class="text-subtitle2 text-1">No featured creators yet</div>
+                  <p class="text-body2 q-mt-xs q-mb-none">
+                    Check back soon as we highlight more voices from the Nostr community.
+                  </p>
+                </div>
+              </div>
+            </q-card-section>
+          </q-card>
+        </section>
       </div>
-      <div id="featuredCreatorsLoader" class="loader" v-if="loadingFeatured && !featuredCreators.length"></div>
-      <div id="featuredCreatorsGrid" class="featured-creators-grid">
-        <CreatorCard
-          v-for="profile in featuredCreators"
-          :key="profile.pubkey"
-          :profile="profile"
-          @view-tiers="viewProfile"
-          @message="startChat"
-          @donate="donate"
-        />
-      </div>
-      <p id="featuredStatusMessage" class="status-message" v-if="featuredStatusMessage">{{ featuredStatusMessage }}</p>
     </div>
-  </div>
+  </q-page>
 </template>
 
 <script setup lang="ts">
@@ -105,6 +232,10 @@ const refreshingCache = ref(false);
 const searching = computed(() => creatorsStore.searching);
 const loadingFeatured = computed(() => creatorsStore.loadingFeatured);
 const featuredCreators = computed(() => creatorsStore.featuredCreators);
+const searchSkeletonPlaceholders = computed(() =>
+  refreshingCache.value ? [0] : [0, 1, 2],
+);
+const featuredSkeletonPlaceholders = computed(() => [0, 1, 2, 3]);
 const featuredStatusMessage = computed(() => {
   if (creatorsStore.error) return creatorsStore.error;
   if (loadingFeatured.value && !featuredCreators.value.length) return 'Loading creators...';
@@ -112,6 +243,23 @@ const featuredStatusMessage = computed(() => {
     return 'Could not load creators. Please try again.';
   return '';
 });
+const showSearchEmptyState = computed(() => {
+  const query = searchQuery.value.trim();
+  return (
+    !searching.value &&
+    !refreshingCache.value &&
+    query.length > 0 &&
+    !searchResults.value.length &&
+    !statusMessage.value
+  );
+});
+const showFeaturedEmptyState = computed(
+  () => !loadingFeatured.value && !featuredCreators.value.length && !featuredStatusMessage.value,
+);
+
+const triggerImmediateSearch = () => {
+  void handleSearch(false);
+};
 
 const debouncedSearch = debounce(() => {
   void handleSearch(false);
@@ -431,159 +579,42 @@ onMounted(() => {
 
 
 <style scoped>
-body {
-  font-family: "Inter", sans-serif;
-  background-color: #f7fafc; /* Tailwind gray-100 */
-  color: #2d3748; /* Tailwind gray-800 */
-}
-.container {
-  width: 100%;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: clamp(2rem, 4vw, 3rem);
-  padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 4vw, 2.5rem);
-  box-sizing: border-box;
-}
-.search-container,
-.featured-creators-container {
-  width: min(100%, clamp(320px, 85vw, 1100px));
-  margin: 0 auto;
-  padding: clamp(1.5rem, 4vw, 2.5rem);
-  background-color: white;
-  border-radius: 1rem; /* Tailwind rounded-2xl */
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
-    0 4px 6px -2px rgba(0, 0, 0, 0.05); /* Tailwind shadow-lg */
-  transition: background-color 0.3s ease;
-}
-.search-input-wrapper {
-  display: flex;
-  gap: 0.5rem;
-}
-.search-input {
-  flex-grow: 1;
-  padding: 0.875rem 1.25rem; /* Increased padding */
-  border: 1px solid #e2e8f0; /* Tailwind gray-300 */
-  border-radius: 0.5rem; /* Tailwind rounded-lg */
-  font-size: 1rem;
-  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-  color: #2d3748; /* Tailwind gray-800 */
-}
-.search-input:focus {
-  outline: none;
-  border-color: #4299e1; /* Tailwind blue-500 */
-  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.5); /* Tailwind ring-blue-500 ring-opacity-50 */
-}
-.refresh-button {
-  background-color: #667eea;
-}
-.refresh-button:hover {
-  background-color: #5a67d8;
-}
-.results-list,
-.featured-creators-grid {
-  margin-top: 1.5rem;
-  list-style: none;
-  padding: 0;
-}
-.featured-creators-grid {
-  display: grid;
-  grid-template-columns: repeat(
-    auto-fill,
-    minmax(280px, 1fr)
-  ); /* Responsive grid */
-  gap: 1.5rem;
-}
-.result-item {
-  list-style: none;
-  margin-bottom: 1rem;
+.find-creators-page {
+  min-height: 100%;
 }
 
-.action-button {
-  padding: 0.375rem 0.75rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  border-radius: 0.375rem;
-  color: white;
-  transition: background-color 0.2s;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-}
-.view-button {
-  background-color: #a0aec0;
-}
-.view-button:hover {
-  background-color: #718096;
-}
-.status-message {
-  text-align: center;
-  color: #718096;
-  padding: 1.5rem;
-  font-style: italic;
-}
-.retry-button {
+.find-creators-content {
+  width: 100%;
+  max-width: 1200px;
   margin: 0 auto;
-  margin-top: -1rem;
-  padding: 0.5rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: white;
-  background-color: #4299e1;
-  border-radius: 0.375rem;
-  transition: background-color 0.2s;
-  display: block;
 }
-.retry-button:hover {
-  background-color: #3182ce;
+
+.find-creators-panel {
+  border-radius: 16px;
+  border: 1px solid var(--surface-contrast-border);
 }
-.loader {
-  display: block;
-  margin: 1.5rem auto;
-  border: 4px solid #e2e8f0;
-  border-top: 4px solid #4299e1;
-  border-radius: 50%;
-  width: 36px;
-  height: 36px;
-  animation: spin 1s linear infinite;
+
+.refresh-button {
+  width: 100%;
 }
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
+
+.retry-wrapper {
+  display: flex;
+  justify-content: center;
+}
+
+.retry-button {
+  width: 100%;
+}
+
+.empty-state p {
+  max-width: 320px;
+}
+
+@media (min-width: 768px) {
+  .refresh-button,
+  .retry-button {
+    width: auto;
   }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-.section-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #2d3748;
-  margin-bottom: 1.5rem;
-  text-align: center;
-  padding-bottom: 0.5rem;
-  border-bottom: 2px solid #e2e8f0;
-}
-body.dark .section-title {
-  color: #e2e8f0;
-  border-bottom-color: #4a5568;
-}
-body.dark {
-  background-color: #1a202c;
-  color: #e2e8f0;
-}
-body.dark .search-container,
-body.dark .featured-creators-container {
-  background-color: #1a202c; /* Tailwind gray-900 */
-  border: 1px solid #4a5568; /* Tailwind gray-700 */
-}
-body.dark .search-input {
-  background-color: #2d3748; /* Tailwind gray-800 */
-  border-color: #4a5568;
-  color: #e2e8f0;
-}
-body.dark .result-item {
-  /* The creator card now handles its own background color */
-  background-color: transparent;
-  border-color: transparent;
 }
 </style>
