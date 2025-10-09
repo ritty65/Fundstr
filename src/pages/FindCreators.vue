@@ -5,7 +5,11 @@
       :pubkey="selectedProfilePubkey"
       @close="showProfileModal = false"
     />
-    <DonateDialog v-model="showDonateDialog" @confirm="handleDonate" />
+    <DonateDialog
+      v-model="showDonateDialog"
+      :creator-pubkey="selectedPubkey"
+      @confirm="handleDonate"
+    />
     <SendTokenDialog />
     <div class="search-container">
       <h1 class="section-title">Nostr User Search</h1>
@@ -163,8 +167,8 @@ function startChat(pubkey: string) {
 }
 
 function donate(pubkey: string) {
-  const url = router.resolve({ name: 'PublicCreatorProfile', params: { npubOrHex: pubkey } }).href;
-  window.open(url, '_blank');
+  selectedPubkey.value = pubkey;
+  showDonateDialog.value = true;
 }
 
 function handleDonate({
@@ -185,7 +189,6 @@ function handleDonate({
     sendTokensStore.sendData.memo = message;
     sendTokensStore.sendData.p2pkPubkey = locked ? selectedPubkey.value : "";
     sendTokensStore.showLockInput = locked;
-    showDonateDialog.value = false;
     sendTokensStore.showSendTokens = true;
   } else {
     donationStore.createDonationPreset(
@@ -194,11 +197,16 @@ function handleDonate({
       selectedPubkey.value,
       bucketId,
     );
-    showDonateDialog.value = false;
   }
+
+  showDonateDialog.value = false;
 }
 
-
+watch(showDonateDialog, (isOpen) => {
+  if (!isOpen) {
+    selectedPubkey.value = "";
+  }
+});
 onMounted(() => {
   loadFeatured();
 });
