@@ -76,12 +76,22 @@
                   v-for="placeholder in searchSkeletonPlaceholders"
                   :key="placeholder"
                   type="rect"
-                  class="rounded-borders bg-surface-1"
-                  height="116px"
+                  class="result-skeleton bg-surface-1"
                 />
               </div>
 
               <div v-else-if="searchResults.length" class="column q-gutter-lg">
+                <div v-if="searchResultStatus" class="result-status row no-wrap">
+                  <q-chip
+                    dense
+                    :ripple="false"
+                    class="result-status-chip"
+                    :class="searchResultStatus.className"
+                  >
+                    <q-icon :name="searchResultStatus.icon" size="18px" />
+                    <span>{{ searchResultStatus.label }}</span>
+                  </q-chip>
+                </div>
                 <q-card
                   v-for="profile in searchResults"
                   :key="profile.pubkey"
@@ -105,16 +115,27 @@
                 v-else-if="statusMessage"
                 rounded
                 dense
-                class="bg-surface-2 text-2"
+                class="status-banner text-1"
                 aria-live="polite"
               >
-                {{ statusMessage }}
+                <template #avatar>
+                  <q-icon :name="resolveBannerIcon(statusMessage)" size="20px" />
+                </template>
+                <span class="status-banner__text">{{ statusMessage }}</span>
               </q-banner>
 
-              <div v-else-if="showSearchEmptyState" class="empty-state column items-center text-center q-pt-lg q-pb-md text-2">
-                <q-icon name="person_search" size="2.5rem" class="q-mb-sm text-2" aria-hidden="true" />
-                <div class="text-subtitle2 text-1">No profiles yet</div>
-                <p class="text-body2 q-mt-xs q-mb-none">
+              <div
+                v-else-if="showSearchEmptyState"
+                class="empty-state column items-center text-center q-pt-xl q-pb-xl q-px-md text-2"
+              >
+                <q-icon
+                  name="travel_explore"
+                  size="4rem"
+                  class="q-mb-md text-accent-500"
+                  aria-hidden="true"
+                />
+                <div class="text-h6 text-1">No profiles yet</div>
+                <p class="text-body1 q-mt-sm q-mb-none">
                   Try a different name or paste an npub to explore more creators.
                 </p>
               </div>
@@ -164,7 +185,7 @@
                   :key="placeholder"
                   class="col-12 col-sm-6"
                 >
-                  <q-skeleton type="rect" class="rounded-borders bg-surface-1" height="180px" />
+                  <q-skeleton type="rect" class="featured-skeleton bg-surface-1" />
                 </div>
               </div>
 
@@ -188,16 +209,27 @@
                 v-else-if="featuredStatusMessage"
                 rounded
                 dense
-                class="bg-surface-2 text-2"
+                class="status-banner text-1"
                 aria-live="polite"
               >
-                {{ featuredStatusMessage }}
+                <template #avatar>
+                  <q-icon :name="resolveBannerIcon(featuredStatusMessage)" size="20px" />
+                </template>
+                <span class="status-banner__text">{{ featuredStatusMessage }}</span>
               </q-banner>
 
-              <div v-else-if="showFeaturedEmptyState" class="empty-state column items-center text-center q-pt-lg q-pb-md text-2">
-                <q-icon name="diversity_2" size="2.5rem" class="q-mb-sm text-2" aria-hidden="true" />
-                <div class="text-subtitle2 text-1">No featured creators yet</div>
-                <p class="text-body2 q-mt-xs q-mb-none">
+              <div
+                v-else-if="showFeaturedEmptyState"
+                class="empty-state column items-center text-center q-pt-xl q-pb-xl q-px-md text-2"
+              >
+                <q-icon
+                  name="auto_awesome"
+                  size="4rem"
+                  class="q-mb-md text-accent-500"
+                  aria-hidden="true"
+                />
+                <div class="text-h6 text-1">No featured creators yet</div>
+                <p class="text-body1 q-mt-sm q-mb-none">
                   Check back soon as we highlight more voices from the Nostr community.
                 </p>
               </div>
@@ -267,6 +299,42 @@ const showSearchEmptyState = computed(() => {
 const showFeaturedEmptyState = computed(
   () => !loadingFeatured.value && !featuredCreators.value.length && !featuredStatusMessage.value,
 );
+
+const searchResultStatus = computed<
+  { label: string; icon: string; className: string } | null
+>(() => {
+  if (!searchResults.value.length) {
+    return null;
+  }
+
+  const hasCacheHit = searchResults.value.some((profile) => profile.cacheHit);
+
+  return hasCacheHit
+    ? { label: 'Cached result', icon: 'history', className: 'is-cached' }
+    : { label: 'Live data', icon: 'bolt', className: 'is-live' };
+});
+
+const resolveBannerIcon = (message: string | null | undefined) => {
+  if (!message) {
+    return 'info';
+  }
+
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('fail') || normalized.includes('error')) {
+    return 'warning';
+  }
+
+  if (normalized.includes('refresh') || normalized.includes('loading')) {
+    return 'autorenew';
+  }
+
+  if (normalized.includes('cache')) {
+    return 'history';
+  }
+
+  return 'info';
+};
 
 const triggerImmediateSearch = () => {
   void handleSearch(false);
@@ -670,6 +738,63 @@ onMounted(() => {
 
 .empty-state p {
   max-width: 320px;
+}
+
+.status-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-200) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-200) 40%, transparent);
+}
+
+.status-banner :deep(.q-banner__avatar) {
+  margin-right: 4px;
+  color: var(--accent-600);
+}
+
+.status-banner__text {
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.result-status {
+  justify-content: flex-start;
+}
+
+.result-status-chip {
+  gap: 6px;
+  border-radius: 999px;
+  padding: 4px 12px;
+  border-width: 1px;
+  border-style: solid;
+  background: color-mix(in srgb, var(--chip-bg) 70%, transparent);
+  border-color: color-mix(in srgb, var(--accent-200) 35%, transparent);
+}
+
+.result-status-chip.is-cached {
+  border-color: color-mix(in srgb, var(--accent-500) 40%, transparent);
+  color: var(--accent-600);
+}
+
+.result-status-chip.is-live {
+  border-color: color-mix(in srgb, var(--accent-200) 55%, transparent);
+  color: var(--text-1);
+}
+
+.result-skeleton,
+.featured-skeleton {
+  border-radius: 16px;
+}
+
+.result-skeleton {
+  height: 140px;
+}
+
+.featured-skeleton {
+  height: 220px;
 }
 
 @media (min-width: 768px) {
