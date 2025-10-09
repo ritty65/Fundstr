@@ -1,196 +1,300 @@
 <template>
-  <div class="creator-card group">
+  <div class="creator-card bg-surface-2 text-1">
     <div class="profile-header">
-      <img
-        class="avatar"
-        :src="profile.profile?.picture || `https://placehold.co/50x50/A0AEC0/FFFFFF?text=${(profile.profile?.name || 'N')[0]?.toUpperCase()}`"
-        :alt="profile.profile?.name || 'Nostr User'"
-      />
+      <div class="avatar-wrapper">
+        <img
+          class="avatar"
+          :src="profile.profile?.picture || `https://placehold.co/64x64/A0AEC0/FFFFFF?text=${placeholderInitial}`"
+          :alt="displayName"
+        />
+      </div>
       <div class="info">
-        <h3>{{ profile.profile?.name || (profile.profile?.nip05 ? profile.profile.nip05.split('@')[0] : 'Unnamed User') }}</h3>
-        <p>
-          <strong>Npub:</strong> {{ npubShort }}
-          <button class="copy-button" @click.stop="copyToClipboard(npub, $event.target)">Copy</button>
-        </p>
-        <p v-if="profile.profile?.nip05"><strong>NIP-05:</strong> <span class="nip05">{{ profile.profile.nip05 }}</span></p>
-        <p v-if="profile.profile?.about"><em>{{ profile.profile.about.substring(0, 80) }}{{ profile.profile.about.length > 80 ? '...' : '' }}</em></p>
-        <p v-if="profile.followers"><strong>Followers:</strong> {{ profile.followers }}</p>
+        <div class="name-row">
+          <h3 class="text-subtitle1 text-weight-medium q-mb-xs">{{ displayName }}</h3>
+          <div v-if="isFeatured || isCached" class="badge-row">
+            <q-badge v-if="isFeatured" color="accent" class="badge badge-featured">Featured</q-badge>
+            <q-badge v-if="isCached" color="accent" outline class="badge badge-cache">Cached</q-badge>
+          </div>
+        </div>
+        <div class="meta text-body2">
+          <div class="meta-line text-2">
+            <span class="meta-label">Npub:</span>
+            <span class="meta-value">{{ npubShort }}</span>
+            <q-btn
+              dense
+              flat
+              color="accent"
+              no-caps
+              size="sm"
+              class="copy-button"
+              :label="copyLabel"
+              @click.stop="copyToClipboard(npub)"
+            />
+          </div>
+          <div v-if="nip05" class="meta-line text-2">
+            <span class="meta-label">NIP-05:</span>
+            <span class="nip05">{{ nip05 }}</span>
+          </div>
+          <div v-if="aboutSnippet" class="meta-line text-2 about">
+            {{ aboutSnippet }}
+          </div>
+          <div v-if="followers !== null" class="meta-line text-2">
+            <span class="meta-label">Followers:</span>
+            <span>{{ followers }}</span>
+          </div>
+        </div>
       </div>
     </div>
+
     <div class="creator-actions">
-      <button class="action-button view-button" @click.stop="$emit('view-tiers', profile.pubkey)">View Subscription Tiers</button>
-      <button class="action-button message-button" @click.stop="$emit('message', profile.pubkey)">Message</button>
-      <button class="action-button donate-button" @click.stop="$emit('donate', profile.pubkey)">Donate</button>
+      <q-btn
+        color="accent"
+        class="action-btn"
+        label="View subscription tiers"
+        no-caps
+        @click.stop="$emit('view-tiers', profile.pubkey)"
+      />
+      <q-btn
+        flat
+        color="accent"
+        class="action-btn"
+        label="Message"
+        no-caps
+        @click.stop="$emit('message', profile.pubkey)"
+      />
+      <q-btn
+        outline
+        color="accent"
+        class="action-btn"
+        label="Donate"
+        no-caps
+        @click.stop="$emit('donate', profile.pubkey)"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import { nip19 } from 'nostr-tools';
 import type { CreatorProfile } from 'stores/creators';
 
-const props = defineProps<{
-  profile: CreatorProfile;
-}>();
+type ExtendedCreatorProfile = CreatorProfile & {
+  cacheHit?: boolean;
+  featured?: boolean;
+};
+
+const props = withDefaults(
+  defineProps<{
+    profile: ExtendedCreatorProfile;
+    cacheHit?: boolean;
+    featured?: boolean;
+  }>(),
+  {
+    cacheHit: undefined,
+    featured: undefined,
+  },
+);
 
 defineEmits(['view-tiers', 'message', 'donate']);
 
 const npub = computed(() => nip19.npubEncode(props.profile.pubkey));
 const npubShort = computed(() => `${npub.value.substring(0, 10)}...${npub.value.substring(npub.value.length - 5)}`);
 
-function copyToClipboard(text: string, buttonElement: HTMLElement) {
-  navigator.clipboard.writeText(text).then(() => {
-    const originalText = buttonElement.textContent;
-    buttonElement.textContent = 'Copied!';
-    setTimeout(() => {
-      buttonElement.textContent = originalText;
-    }, 2000);
-  }).catch(err => {
-    console.error('Failed to copy text: ', err);
-  });
+const displayName = computed(() => {
+  const profileName = props.profile.profile?.name as string | undefined;
+  if (profileName && profileName.trim().length > 0) {
+    return profileName;
+  }
+  const nip05 = props.profile.profile?.nip05 as string | undefined;
+  if (nip05 && nip05.includes('@')) {
+    return nip05.split('@')[0] || 'Unnamed User';
+  }
+  return 'Unnamed User';
+});
+
+const placeholderInitial = computed(() => displayName.value.charAt(0).toUpperCase() || 'N');
+
+const nip05 = computed(() => props.profile.profile?.nip05 ?? '');
+
+const aboutSnippet = computed(() => {
+  const about = props.profile.profile?.about as string | undefined;
+  if (!about) {
+    return '';
+  }
+  return about.length > 120 ? `${about.substring(0, 120)}…` : about;
+});
+
+const followers = computed(() => props.profile.followers ?? null);
+
+const isCached = computed(() => {
+  if (typeof props.cacheHit === 'boolean') {
+    return props.cacheHit;
+  }
+  return Boolean(props.profile.cacheHit);
+});
+
+const isFeatured = computed(() => {
+  if (typeof props.featured === 'boolean') {
+    return props.featured;
+  }
+  return Boolean(props.profile.featured);
+});
+
+const copyLabel = ref('Copy');
+let copyLabelTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function resetCopyLabel() {
+  if (copyLabelTimeout) {
+    clearTimeout(copyLabelTimeout);
+    copyLabelTimeout = null;
+  }
+  copyLabel.value = 'Copy';
 }
+
+function copyToClipboard(text: string) {
+  navigator.clipboard
+    .writeText(text)
+    .then(() => {
+      if (copyLabelTimeout) {
+        clearTimeout(copyLabelTimeout);
+      }
+      copyLabel.value = 'Copied!';
+      copyLabelTimeout = setTimeout(() => {
+        resetCopyLabel();
+      }, 2000);
+    })
+    .catch((err) => {
+      console.error('Failed to copy text: ', err);
+    });
+}
+
+onBeforeUnmount(() => {
+  resetCopyLabel();
+});
 </script>
 
 <style scoped>
 .creator-card {
   padding: 1.5rem;
-  border: 1px solid #e2e8f0; /* Tailwind gray-300 */
-  border-radius: 0.75rem; /* Tailwind rounded-xl */
-  background-color: #ffffff;
-  transition: all 0.3s ease-in-out;
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05),
-    0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  gap: 1.25rem;
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+  box-shadow: 0 12px 30px -18px rgba(15, 23, 42, 0.45);
 }
 
 .creator-card:hover {
-  border-color: #a0aec0; /* Tailwind gray-400 */
-  transform: translateY(-3px);
-  box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1),
-    0 8px 8px -5px rgba(0, 0, 0, 0.04);
+  transform: translateY(-2px);
+  box-shadow: 0 18px 36px -18px rgba(15, 23, 42, 0.55);
 }
 
 .profile-header {
   display: flex;
-  align-items: flex-start;
   gap: 1rem;
   width: 100%;
 }
 
-.profile-header img.avatar {
-  width: 50px;
-  height: 50px;
+.avatar-wrapper {
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid #e2e8f0; /* Tailwind gray-300 */
+  padding: 4px;
+  background: var(--accent-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
   flex-shrink: 0;
 }
 
-.profile-header .info {
-  flex-grow: 1;
+.avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--surface-2);
+}
+
+.info {
+  flex: 1;
   min-width: 0;
 }
 
-.profile-header .info h3 {
-  font-size: 1.125rem; /* Tailwind text-lg */
-  font-weight: 600; /* Tailwind font-semibold */
-  color: #2d3748; /* Tailwind gray-800 */
-  word-break: break-word;
+.name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
   margin-bottom: 0.25rem;
 }
 
-.profile-header .info p {
-  font-size: 0.875rem; /* Tailwind text-sm */
-  color: #4a5568; /* Tailwind gray-700 */
-  margin-top: 0.1rem;
-  word-break: break-word;
-  line-height: 1.4;
-}
-
-.profile-header .info .nip05 {
-  font-weight: 500;
-  color: #3182ce; /* Tailwind blue-600 */
-}
-
-.creator-actions {
-  opacity: 0;
-  transition: opacity 0.3s ease-in-out;
-  padding-top: 0.5rem;
+.badge-row {
   display: flex;
-  gap: 0.5rem;
-  width: 100%;
-  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 0.375rem;
 }
 
-.creator-card:hover .creator-actions {
-  opacity: 1;
-}
-
-.action-button {
-  padding: 0.375rem 0.75rem;
-  font-size: 0.75rem;
+.badge {
   font-weight: 600;
-  border-radius: 0.375rem;
-  color: white;
-  transition: background-color 0.2s;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  letter-spacing: 0.01em;
 }
 
-.view-button {
-  background-color: #a0aec0;
+.badge-featured {
+  background: var(--accent-200);
+  color: var(--text-1);
 }
 
-.view-button:hover {
-  background-color: #718096;
+.meta {
+  display: grid;
+  gap: 0.35rem;
 }
 
-.message-button {
-  background-color: #4299e1;
+.meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  word-break: break-word;
 }
 
-.message-button:hover {
-  background-color: #3182ce;
+.meta-label {
+  font-weight: 600;
+  color: var(--text-1);
 }
 
-.donate-button {
-  background-color: #48bb78;
+.meta-value {
+  font-family: var(--font-mono, 'Fira Code', monospace);
 }
 
-.donate-button:hover {
-  background-color: #38a169;
+.nip05 {
+  color: var(--accent-500);
+  font-weight: 500;
+}
+
+.about {
+  font-style: italic;
 }
 
 .copy-button {
-  background: none;
-  border: none;
-  color: #4299e1;
-  cursor: pointer;
-  font-size: 0.75rem;
-  margin-left: 0.5rem;
+  padding: 0 0.5rem;
 }
 
-body.dark .creator-card {
-  background-color: #2d3748; /* Tailwind gray-800 */
-  border-color: #4a5568; /* Tailwind gray-700 */
+.creator-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 0.75rem;
 }
 
-body.dark .creator-card:hover {
-  background-color: #4a5568; /* Tailwind gray-700 */
-  border-color: #a0aec0; /* Tailwind gray-500 */
+.action-btn {
+  width: 100%;
 }
 
-body.dark .profile-header .info h3 {
-  color: #e2e8f0;
-}
-
-body.dark .profile-header .info p {
-  color: #a0aec0;
-}
-
-body.dark .profile-header .info .nip05 {
-  color: #63b3ed;
+@media (max-width: 599px) {
+  .creator-actions {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

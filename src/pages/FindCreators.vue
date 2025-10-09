@@ -92,6 +92,7 @@
                   <q-card-section class="q-pa-none">
                     <CreatorCard
                       :profile="profile"
+                      :cache-hit="profile.cacheHit === true"
                       @view-tiers="viewProfile"
                       @message="startChat"
                       @donate="donate"
@@ -175,6 +176,7 @@
                 >
                   <CreatorCard
                     :profile="profile"
+                    featured
                     @view-tiers="viewProfile"
                     @message="startChat"
                     @donate="donate"
