@@ -76,74 +76,89 @@
                   {{ tierFrequencyLabel(tier) }}
                 </div>
               </q-card-section>
-              <q-separator class="tier-separator" />
-              <q-card-section class="tier-body">
-                <div v-if="tier.description" class="tier-description">
-                  {{ tier.description }}
+              <q-slide-transition>
+                <div v-show="isTierExpanded(tier.id)">
+                  <q-separator class="tier-separator" />
+                  <q-card-section class="tier-body">
+                    <div v-if="tier.description" class="tier-description">
+                      {{ tier.description }}
+                    </div>
+                    <div v-if="tier.media?.length" class="tier-media">
+                      <div
+                        v-for="(mediaItem, mediaIndex) in tier.media"
+                        :key="`${tier.id}-media-${mediaIndex}`"
+                        class="tier-media__item"
+                      >
+                        <q-img
+                          v-if="tierMediaType(mediaItem) === 'image'"
+                          :src="mediaItem.url"
+                          :ratio="16 / 9"
+                          class="tier-media__image"
+                          loading="lazy"
+                          :alt="mediaItem.title || `${tier.name} media`"
+                        />
+                        <video
+                          v-else-if="tierMediaType(mediaItem) === 'video'"
+                          controls
+                          preload="metadata"
+                          playsinline
+                          class="tier-media__video"
+                        >
+                          <source :src="mediaItem.url" :type="tierMediaSourceType(mediaItem)" />
+                          Your browser does not support video playback.
+                        </video>
+                        <audio
+                          v-else-if="tierMediaType(mediaItem) === 'audio'"
+                          controls
+                          preload="metadata"
+                          class="tier-media__audio"
+                        >
+                          <source :src="mediaItem.url" :type="tierMediaSourceType(mediaItem)" />
+                          Your browser does not support audio playback.
+                        </audio>
+                        <a
+                          v-else
+                          :href="mediaItem.url"
+                          class="tier-media__link"
+                          target="_blank"
+                          rel="noopener"
+                          :title="mediaItem.title || mediaItem.url"
+                        >
+                          <q-icon name="open_in_new" size="18px" aria-hidden="true" />
+                          <span class="tier-media__link-text">
+                            {{ mediaItem.title || mediaItem.url }}
+                          </span>
+                        </a>
+                      </div>
+                    </div>
+                    <div v-if="tier.benefits?.length" class="tier-benefits">
+                      <div class="benefits-heading">Benefits</div>
+                      <ul>
+                        <li v-for="(benefit, index) in tier.benefits" :key="`${tier.id}-benefit-${index}`">
+                          {{ benefit }}
+                        </li>
+                      </ul>
+                    </div>
+                    <div v-if="tier.welcomeMessage" class="tier-welcome">
+                      <div class="welcome-heading">Welcome message</div>
+                      <div class="welcome-copy">{{ tier.welcomeMessage }}</div>
+                    </div>
+                  </q-card-section>
                 </div>
-                <div v-if="tier.media?.length" class="tier-media">
-                  <div
-                    v-for="(mediaItem, mediaIndex) in tier.media"
-                    :key="`${tier.id}-media-${mediaIndex}`"
-                    class="tier-media__item"
-                  >
-                    <q-img
-                      v-if="tierMediaType(mediaItem) === 'image'"
-                      :src="mediaItem.url"
-                      :ratio="16 / 9"
-                      class="tier-media__image"
-                      loading="lazy"
-                      :alt="mediaItem.title || `${tier.name} media`"
-                    />
-                    <video
-                      v-else-if="tierMediaType(mediaItem) === 'video'"
-                      controls
-                      preload="metadata"
-                      playsinline
-                      class="tier-media__video"
-                    >
-                      <source :src="mediaItem.url" :type="tierMediaSourceType(mediaItem)" />
-                      Your browser does not support video playback.
-                    </video>
-                    <audio
-                      v-else-if="tierMediaType(mediaItem) === 'audio'"
-                      controls
-                      preload="metadata"
-                      class="tier-media__audio"
-                    >
-                      <source :src="mediaItem.url" :type="tierMediaSourceType(mediaItem)" />
-                      Your browser does not support audio playback.
-                    </audio>
-                    <a
-                      v-else
-                      :href="mediaItem.url"
-                      class="tier-media__link"
-                      target="_blank"
-                      rel="noopener"
-                      :title="mediaItem.title || mediaItem.url"
-                    >
-                      <q-icon name="open_in_new" size="18px" aria-hidden="true" />
-                      <span class="tier-media__link-text">
-                        {{ mediaItem.title || mediaItem.url }}
-                      </span>
-                    </a>
-                  </div>
-                </div>
-                <div v-if="tier.benefits?.length" class="tier-benefits">
-                  <div class="benefits-heading">Benefits</div>
-                  <ul>
-                    <li v-for="(benefit, index) in tier.benefits" :key="`${tier.id}-benefit-${index}`">
-                      {{ benefit }}
-                    </li>
-                  </ul>
-                </div>
-                <div v-if="tier.welcomeMessage" class="tier-welcome">
-                  <div class="welcome-heading">Welcome message</div>
-                  <div class="welcome-copy">{{ tier.welcomeMessage }}</div>
-                </div>
-              </q-card-section>
+              </q-slide-transition>
               <q-separator class="tier-separator" />
               <q-card-actions class="tier-actions">
+                <q-btn
+                  flat
+                  no-caps
+                  class="expand-btn"
+                  color="accent"
+                  :icon-right="isTierExpanded(tier.id) ? 'expand_less' : 'expand_more'"
+                  @click="toggleTierExpansion(tier.id)"
+                >
+                  Details
+                </q-btn>
+                <q-space />
                 <q-btn
                   color="accent"
                   class="tier-subscribe"
@@ -190,6 +205,7 @@ const loading = ref(false);
 const creator = ref<CreatorProfile | null>(null);
 const tiers = ref<Tier[]>([]);
 const showLocal = ref(false);
+const expandedTiers = ref(new Set<string>());
 
 let requestToken = 0;
 
@@ -337,6 +353,7 @@ watch(
       requestToken += 1;
       creator.value = null;
       tiers.value = [];
+      expandedTiers.value.clear();
     }
   },
   { immediate: true },
@@ -360,6 +377,19 @@ watch(
   },
 );
 
+function toggleTierExpansion(tierId: string) {
+  const newSet = new Set(expandedTiers.value);
+  if (newSet.has(tierId)) {
+    newSet.delete(tierId);
+  } else {
+    newSet.add(tierId);
+  }
+  expandedTiers.value = newSet;
+}
+
+const isTierExpanded = (tierId: string) => {
+  return expandedTiers.value.has(tierId);
+};
 function tierFrequencyLabel(tier: Tier): string | null {
   const frequency = resolveFrequency(tier);
   if (!frequency) return null;
@@ -405,6 +435,9 @@ async function fetchCreatorData(pubkey: string) {
 
     if (!creatorsStore.tierFetchError) {
       tiers.value = creatorsStore.tiersMap[pubkey] || [];
+      if (tiers.value.length > 0) {
+        expandedTiers.value.add(tiers.value[0].id);
+      }
     } else {
       tiers.value = [];
     }
@@ -684,12 +717,16 @@ function handleSubscribe(tierId?: string) {
 }
 
 .tier-actions {
-  padding: 12px 16px 16px;
+  padding: 8px;
+  align-items: center;
 }
 
 .tier-subscribe {
-  width: 100%;
   font-weight: 600;
+}
+
+.expand-btn {
+  font-weight: 500;
 }
 
 .empty-state {

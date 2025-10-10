@@ -73,17 +73,18 @@
             </q-form>
 
             <section class="column q-gutter-lg" role="region" aria-live="polite">
-              <div v-if="searching && !refreshingCache" class="column q-gutter-sm" aria-label="Searching creators">
-                <q-skeleton
+              <div v-if="searching && !refreshingCache" class="row q-col-gutter-lg" aria-label="Searching creators">
+                <div
                   v-for="placeholder in searchSkeletonPlaceholders"
                   :key="placeholder"
-                  type="rect"
-                  class="result-skeleton bg-surface-1"
-                />
+                  class="col-12 col-sm-6 col-md-4"
+                >
+                  <q-skeleton type="rect" class="result-skeleton bg-surface-1" />
+                </div>
               </div>
 
-              <div v-else-if="searchResults.length" class="column q-gutter-lg">
-                <div v-if="searchResultStatus" class="result-status row no-wrap">
+              <div v-else-if="searchResults.length">
+                <div v-if="searchResultStatus" class="result-status row no-wrap q-mb-md">
                   <q-chip
                     dense
                     :ripple="false"
@@ -94,23 +95,17 @@
                     <span>{{ searchResultStatus.label }}</span>
                   </q-chip>
                 </div>
-                <q-card
-                  v-for="profile in searchResults"
-                  :key="profile.pubkey"
-                  flat
-                  bordered
-                  class="search-result-card bg-surface-2"
-                >
-                  <q-card-section class="q-pa-none">
-                    <CreatorCard
-                      :profile="profile"
-                      :cache-hit="profile.cacheHit === true"
-                      @view-tiers="viewProfile"
-                      @message="startChat"
-                      @donate="donate"
-                    />
-                  </q-card-section>
-                </q-card>
+                <div class="fixed-grid">
+                  <CreatorCard
+                    v-for="profile in searchResults"
+                    :key="profile.pubkey"
+                    :profile="profile"
+                    :cache-hit="profile.cacheHit === true"
+                    @view-tiers="viewProfile"
+                    @message="startChat"
+                    @donate="donate"
+                  />
+                </div>
               </div>
 
               <q-banner
@@ -183,34 +178,27 @@
             <div class="q-mt-md" role="region" aria-live="polite">
               <div
                 v-if="loadingFeatured && !featuredCreators.length"
-                class="row q-col-gutter-md q-row-gutter-md"
+                class="row q-col-gutter-lg"
               >
                 <div
                   v-for="placeholder in featuredSkeletonPlaceholders"
                   :key="placeholder"
-                  class="col-12 col-sm-6 col-md-6 col-lg-4"
+                  class="col-12 col-sm-6 col-md-4"
                 >
                   <q-skeleton type="rect" class="featured-skeleton bg-surface-1" />
                 </div>
               </div>
 
-              <div
-                v-else-if="featuredCreators.length"
-                class="row q-col-gutter-md q-row-gutter-lg"
-              >
-                <div
+              <div v-else-if="featuredCreators.length" class="fixed-grid">
+                <CreatorCard
                   v-for="profile in featuredCreators"
                   :key="profile.pubkey"
-                  class="col-12 col-sm-6 col-md-6 col-lg-4"
-                >
-                  <CreatorCard
-                    :profile="profile"
-                    featured
-                    @view-tiers="viewProfile"
-                    @message="startChat"
-                    @donate="donate"
-                  />
-                </div>
+                  :profile="profile"
+                  featured
+                  @view-tiers="viewProfile"
+                  @message="startChat"
+                  @donate="donate"
+                />
               </div>
 
               <q-banner
@@ -666,6 +654,17 @@ onMounted(() => {
 
 
 <style scoped>
+.fixed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+h1 {
+  font-size: 2.5rem;
+  margin: 0;
+}
+
 .find-creators-page {
   min-height: 100vh;
   background: linear-gradient(
@@ -692,6 +691,11 @@ onMounted(() => {
   text-align: center;
 }
 
+.page-hero h1 {
+  margin: 0;
+  font-size: 2.5rem;
+}
+
 .section-stack {
   display: flex;
   flex-direction: column;
@@ -703,11 +707,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.search-result-card {
-  border-radius: 16px;
-  border: 1px solid var(--surface-contrast-border);
 }
 
 .find-creators-panel {
@@ -795,14 +794,7 @@ onMounted(() => {
 .result-skeleton,
 .featured-skeleton {
   border-radius: 16px;
-}
-
-.result-skeleton {
-  height: 140px;
-}
-
-.featured-skeleton {
-  height: 220px;
+  height: 240px;
 }
 
 @media (min-width: 768px) {

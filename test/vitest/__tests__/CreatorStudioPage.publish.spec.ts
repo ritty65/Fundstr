@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { setActivePinia, createPinia } from 'pinia';
 import { flushPromises, shallowMount } from '@vue/test-utils';
 import { computed, defineComponent, reactive, ref } from 'vue';
 import { bytesToHex } from '@noble/hashes/utils';
@@ -395,6 +396,7 @@ vi.mock('../../../src/pages/nutzap-profile/nostrHelpers', async () => {
 });
 
 beforeEach(() => {
+  setActivePinia(createPinia());
   shared = null;
   lastSignerWorkspaceOptions = null;
   routerResolveMock.mockClear();

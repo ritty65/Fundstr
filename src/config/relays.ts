@@ -3,27 +3,27 @@ export const FUNDSTR_PRIMARY_RELAY_HTTP = 'https://relay.fundstr.me';
 export const PRIMARY_RELAY = FUNDSTR_PRIMARY_RELAY;
 
 export const FALLBACK_RELAYS: string[] = [
-  'wss://relay.damus.io',
-  'wss://nos.lol',
-  'wss://relay.snort.social',
+  'wss://relay.nostr.band',
+  'wss://purplepag.es',
+  'wss://nostr.wine',
 ]; // keep small and easy to rotate
 
 // Curated default read relays – these are added at boot for read operations only.
 export const DEFAULT_RELAYS = [
   FUNDSTR_PRIMARY_RELAY,
+  "wss://relay.nostr.band",
+  "wss://purplepag.es",
   "wss://relay.damus.io",
-  "wss://relay.snort.social",
-  "wss://nos.lol",
 ];
 
 // Small set of known-open relays used as fallback for write operations.
 export const FREE_RELAYS = [
-  "wss://offchain.pub",
-  "wss://no.str.cr",
-  "wss://nostr.mom",
+  "wss://nostr.wine",
+  "wss://purplepag.es",
+  "wss://relay.nostr.band",
   // Last resort large pools
   "wss://relay.damus.io",
-  "wss://relay.snort.social",
+  "wss://nostr.mom",
 ];
 
 export const VETTED_OPEN_WRITE_RELAYS: string[] = [
