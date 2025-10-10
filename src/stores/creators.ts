@@ -742,13 +742,48 @@ export const useCreatorsStore = defineStore("creators", {
       }).filter((pubkey): pubkey is string => pubkey !== null);
 
       try {
-        const profiles = await Promise.all(
+        const results = await Promise.allSettled(
           pubkeys.map(pubkey => this.fetchCreator(pubkey, forceRefresh))
         );
-        this.featuredCreators = profiles.filter((p): p is CreatorProfile => p !== null);
-      } catch (e) {
-        console.error("Failed to load featured creators:", e);
-        this.error = "Failed to load featured creators.";
+
+        const fulfilled: CreatorProfile[] = [];
+        const failedPubkeys: string[] = [];
+
+        results.forEach((result, index) => {
+          const pubkey = pubkeys[index];
+          if (result.status === "fulfilled") {
+            if (result.value) {
+              fulfilled.push(result.value);
+            } else {
+              failedPubkeys.push(pubkey);
+              console.warn("[creators] Featured creator returned null", { pubkey });
+            }
+          } else {
+            failedPubkeys.push(pubkey);
+            console.error("[creators] Failed to load featured creator", {
+              pubkey,
+              error: result.reason,
+            });
+          }
+        });
+
+        this.featuredCreators = fulfilled;
+
+        if (fulfilled.length) {
+          this.error = "";
+          if (failedPubkeys.length) {
+            console.warn("[creators] Some featured creators failed to load", {
+              pubkeys: failedPubkeys,
+            });
+          }
+        } else {
+          this.error = "Failed to load featured creators.";
+          if (failedPubkeys.length) {
+            console.error("[creators] All featured creators failed to load", {
+              pubkeys: failedPubkeys,
+            });
+          }
+        }
       } finally {
         this.loadingFeatured = false;
       }
