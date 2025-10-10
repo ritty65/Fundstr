@@ -14,7 +14,7 @@
 
     <div class="find-creators-content">
       <section class="page-hero stack-12">
-        <h1 class="text-h4 text-bold">Discover Creators on Nostr</h1>
+        <h1 class="text-h3 text-bold">Discover Creators on Nostr</h1>
         <p class="text-body1 text-2 q-mb-none">
           Search the Nostr network, explore featured voices, and support the builders shaping the ecosystem.
         </p>
@@ -179,21 +179,27 @@
             </div>
 
             <div class="q-mt-md" role="region" aria-live="polite">
-              <div v-if="loadingFeatured && !featuredCreators.length" class="row q-col-gutter-md">
+              <div
+                v-if="loadingFeatured && !featuredCreators.length"
+                class="row q-col-gutter-md q-row-gutter-md"
+              >
                 <div
                   v-for="placeholder in featuredSkeletonPlaceholders"
                   :key="placeholder"
-                  class="col-12 col-sm-6"
+                  class="col-12 col-sm-6 col-md-6 col-lg-4"
                 >
                   <q-skeleton type="rect" class="featured-skeleton bg-surface-1" />
                 </div>
               </div>
 
-              <div v-else-if="featuredCreators.length" class="row q-col-gutter-lg">
+              <div
+                v-else-if="featuredCreators.length"
+                class="row q-col-gutter-md q-row-gutter-lg"
+              >
                 <div
                   v-for="profile in featuredCreators"
                   :key="profile.pubkey"
-                  class="col-12 col-sm-6"
+                  class="col-12 col-sm-6 col-md-6 col-lg-4"
                 >
                   <CreatorCard
                     :profile="profile"
@@ -670,13 +676,13 @@ onMounted(() => {
 
 .find-creators-content {
   width: 100%;
-  max-width: 1040px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 0 1rem 2.5rem;
+  padding: 0 1.25rem 3rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2.5rem;
+  gap: 2.75rem;
 }
 
 .page-hero {
@@ -687,7 +693,7 @@ onMounted(() => {
 .section-stack {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
   width: 100%;
 }
 
@@ -804,14 +810,14 @@ onMounted(() => {
   }
 
   .find-creators-content {
-    padding: 0 1.5rem 3rem;
-    gap: 3rem;
+    padding: 0 2rem 3.5rem;
+    gap: 3.25rem;
   }
 }
 
 @media (min-width: 1200px) {
   .find-creators-content {
-    padding: 0 2rem 3.5rem;
+    padding: 0 2.75rem 4rem;
   }
 }
 </style>
