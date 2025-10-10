@@ -63,6 +63,30 @@ const TIER_RELAY_FAILURE_TTL_MS = 5 * 60 * 1000;
 const TIER_FETCH_TIMEOUT_MS = 1200;
 const FUNDSTR_FAILURE_NOTIFY_TTL_MS = 5 * 60 * 1000;
 
+let sharedReadOnlyConnectPromise: Promise<void> | null = null;
+
+async function ensureReadOnlyNdkConnection(
+  nostrStore: ReturnType<typeof useNostrStore>,
+) {
+  if (nostrStore.connected) {
+    return;
+  }
+  if (sharedReadOnlyConnectPromise) {
+    return sharedReadOnlyConnectPromise;
+  }
+  const connectPromise = nostrStore.initNdkReadOnly();
+  sharedReadOnlyConnectPromise = connectPromise
+    .catch((error) => {
+      sharedReadOnlyConnectPromise = null;
+      throw error;
+    })
+    .then((value) => {
+      sharedReadOnlyConnectPromise = null;
+      return value;
+    });
+  return sharedReadOnlyConnectPromise;
+}
+
 export class FundstrProfileFetchError extends Error {
   fallbackAttempted: boolean;
 
@@ -679,8 +703,22 @@ export const useCreatorsStore = defineStore("creators", {
       const cacheExpiry = 3 * 60 * 60 * 1000; // 3 hours
 
       if (!forceRefresh) {
+        try {
+          await this.ensureCreatorCacheFromDexie(pubkey);
+        } catch (error) {
+          console.warn("[creators] Failed to hydrate warm cache before fetch", {
+            pubkey,
+            error,
+          });
+        }
+
+        const warmCached = this.buildCreatorProfileFromCache(pubkey);
+        if (warmCached) {
+          return { ...warmCached, cacheHit: true };
+        }
+
         const cached = await db.profiles.get(pubkey);
-        if (cached && (now - cached.fetchedAt < cacheExpiry)) {
+        if (cached && now - cached.fetchedAt < cacheExpiry) {
           return { ...cached.profile, cacheHit: true } as CreatorProfile;
         }
 
@@ -693,8 +731,65 @@ export const useCreatorsStore = defineStore("creators", {
       const nostrStore = useNostrStore();
 
       const fetchPromise = (async (): Promise<CreatorProfile | null> => {
+        let fundstrError: unknown = null;
+
         try {
-          await nostrStore.initNdkReadOnly();
+          const bundle = await fetchFundstrProfileBundle(pubkey);
+
+          try {
+            await this.saveProfileCache(pubkey, bundle.profileEvent, bundle.profileDetails, {
+              updatedAt: bundle.profileEvent?.created_at ?? null,
+            });
+          } catch (cacheError) {
+            console.error("[creators] Failed to persist Fundstr profile cache", {
+              pubkey,
+              error: cacheError,
+            });
+          }
+
+          const creatorProfile: CreatorProfile = {
+            pubkey,
+            profile: bundle.profile,
+            followers: typeof bundle.followers === "number" ? bundle.followers : null,
+            following: typeof bundle.following === "number" ? bundle.following : null,
+            joined: bundle.profileEvent?.created_at ?? null,
+            cacheHit: false,
+          };
+
+          try {
+            await db.profiles.put({
+              pubkey,
+              profile: creatorProfile,
+              fetchedAt: Date.now(),
+            });
+          } catch (persistError) {
+            console.error(`Failed to cache profile for ${pubkey}`, persistError);
+          }
+
+          return creatorProfile;
+        } catch (error) {
+          fundstrError = error;
+        }
+
+        const fallbackContext: Record<string, unknown> = { pubkey };
+        if (fundstrError instanceof FundstrProfileFetchError) {
+          fallbackContext.fallbackAttempted = fundstrError.fallbackAttempted;
+          fallbackContext.error = (fundstrError as any).cause ?? fundstrError;
+        } else if (fundstrError) {
+          fallbackContext.error = fundstrError;
+        }
+        console.info("[creators] Falling back to global relay profile fetch", fallbackContext);
+
+        try {
+          await ensureReadOnlyNdkConnection(nostrStore);
+        } catch (connectError) {
+          console.warn("[creators] Read-only NDK connection failed before fallback fetch", {
+            pubkey,
+            error: connectError,
+          });
+        }
+
+        try {
           const ndk = await useNdk({ requireSigner: false });
           const user = ndk.getUser({ pubkey });
 
