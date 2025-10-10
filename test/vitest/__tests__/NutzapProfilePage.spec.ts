@@ -207,6 +207,16 @@ vi.mock("../../../src/stores/nostr", () => ({
   useNostrStore: () => ensureShared().nostrStoreMock,
 }));
 
+const creatorsStoreMock = {
+  getCreatorCache: vi.fn(),
+  fetchTierDefinitions: vi.fn(),
+  prefillCacheEntries: [],
+};
+
+vi.mock("src/stores/creators", () => ({
+  useCreatorsStore: () => creatorsStoreMock,
+}));
+
 vi.mock("../../../src/utils/relay", () => ({
   sanitizeRelayUrls: (urls: string[]) => urls.map(url => (url.startsWith("ws") ? url : "")),
 }));
@@ -353,25 +363,48 @@ beforeEach(() => {
   state.relayStatusHandler = null;
   state.lastRelayClientInstance = undefined;
   localStorage.clear();
+
+  creatorsStoreMock.getCreatorCache.mockReset();
+  creatorsStoreMock.fetchTierDefinitions.mockReset();
+  creatorsStoreMock.prefillCacheEntries = [];
+  pickLatestReplaceableMock.mockReset();
+  pickLatestParamReplaceableMock.mockReset();
 });
 
 describe("NutzapProfilePage explore summary", () => {
   it("renders profile, mint, relay, and tier summaries", async () => {
+    const state = ensureShared();
+    const profileEvent = {
+      kind: 0,
+      pubkey: VALID_HEX,
+      content: JSON.stringify({
+        name: "Fundstr Hero",
+        p2pk_pubkey: "ff".repeat(32),
+        mints: ["https://mint.one", "https://mint.two"],
+        relays: ["wss://relay.alt"],
+      }),
+      id: 'profile-event', created_at: 1, sig: 'sig', tags: []
+    };
+    const tiersEvent = {
+      kind: 30019,
+      pubkey: VALID_HEX,
+      content: JSON.stringify([
+        { id: "tier-1", title: "Tier One", price: 100, frequency: "monthly", description: "Monthly support", media: [] },
+        { id: "tier-2", title: "Tier Two", price: 500, frequency: "yearly", description: "", media: [] },
+      ]),
+      id: 'tiers-event', created_at: 2, sig: 'sig', tags: [['d', 'tiers']]
+    };
+    state.relayClientMock.requestOnce.mockResolvedValue([profileEvent, tiersEvent]);
+    pickLatestReplaceableMock.mockReturnValue(profileEvent);
+    pickLatestParamReplaceableMock.mockReturnValue(tiersEvent);
+
     const wrapper = await mountPage();
+    (wrapper.vm as any).authorInput = VALID_HEX;
+    await (wrapper.vm as any).refreshSubscriptions(true);
+    await flushPromises();
 
     (wrapper.vm as any).activeProfileStep = "explore";
-    (wrapper.vm as any).displayName = "Fundstr Hero";
-    (wrapper.vm as any).authorInput = VALID_HEX;
-    (wrapper.vm as any).p2pkPub = "ff".repeat(32);
-    (wrapper.vm as any).mintsText = "https://mint.one\nhttps://mint.two";
-    (wrapper.vm as any).relaysText = "wss://relay.alt";
-    (wrapper.vm as any).tiers = [
-      { id: "tier-1", title: "Tier One", price: 100, frequency: "monthly", description: "Monthly support", media: [] },
-      { id: "tier-2", title: "Tier Two", price: 500, frequency: "yearly", description: "", media: [] },
-    ];
-
     await wrapper.vm.$nextTick();
-    await flushPromises();
 
     const summaryCard = wrapper.find('[data-testid="explore-summary"]');
     expect(summaryCard.exists()).toBe(true);
@@ -401,13 +434,24 @@ describe("NutzapProfilePage explore summary", () => {
 
 describe("NutzapProfilePage share link", () => {
   it("renders a shareable profile URL and copies it to the clipboard", async () => {
+    const state = ensureShared();
+    const profileEvent = {
+      kind: 0,
+      pubkey: VALID_HEX,
+      content: JSON.stringify({ name: "Test User" }),
+      id: 'profile-event', created_at: 1, sig: 'sig', tags: []
+    };
+    state.relayClientMock.requestOnce.mockResolvedValue([profileEvent]);
+    pickLatestReplaceableMock.mockReturnValue(profileEvent);
+    pickLatestParamReplaceableMock.mockReturnValue(null);
+
     const wrapper = await mountPage();
+    (wrapper.vm as any).authorInput = VALID_HEX;
+    await (wrapper.vm as any).refreshSubscriptions(true);
+    await flushPromises();
 
     (wrapper.vm as any).activeProfileStep = "explore";
-    (wrapper.vm as any).authorInput = VALID_HEX;
-
     await wrapper.vm.$nextTick();
-    await flushPromises();
 
     const expectedNpub = (wrapper.vm as any).authorNpubForShare;
     expect(expectedNpub).toBeTruthy();

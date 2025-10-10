@@ -89,46 +89,7 @@
                         :key="`${tier.id}-media-${mediaIndex}`"
                         class="tier-media__item"
                       >
-                        <q-img
-                          v-if="tierMediaType(mediaItem) === 'image'"
-                          :src="mediaItem.url"
-                          :ratio="16 / 9"
-                          class="tier-media__image"
-                          loading="lazy"
-                          :alt="mediaItem.title || `${tier.name} media`"
-                        />
-                        <video
-                          v-else-if="tierMediaType(mediaItem) === 'video'"
-                          controls
-                          preload="metadata"
-                          playsinline
-                          class="tier-media__video"
-                        >
-                          <source :src="mediaItem.url" :type="tierMediaSourceType(mediaItem)" />
-                          Your browser does not support video playback.
-                        </video>
-                        <audio
-                          v-else-if="tierMediaType(mediaItem) === 'audio'"
-                          controls
-                          preload="metadata"
-                          class="tier-media__audio"
-                        >
-                          <source :src="mediaItem.url" :type="tierMediaSourceType(mediaItem)" />
-                          Your browser does not support audio playback.
-                        </audio>
-                        <a
-                          v-else
-                          :href="mediaItem.url"
-                          class="tier-media__link"
-                          target="_blank"
-                          rel="noopener"
-                          :title="mediaItem.title || mediaItem.url"
-                        >
-                          <q-icon name="open_in_new" size="18px" aria-hidden="true" />
-                          <span class="tier-media__link-text">
-                            {{ mediaItem.title || mediaItem.url }}
-                          </span>
-                        </a>
+                        <MediaPreview :url="mediaItem.url" />
                       </div>
                     </div>
                     <div v-if="tier.benefits?.length" class="tier-benefits">
@@ -186,6 +147,7 @@ import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useCreatorsStore } from 'stores/creators';
 import type { CreatorProfile, Tier, TierMedia } from 'stores/types';
+import MediaPreview from 'components/MediaPreview.vue';
 import {
   daysToFrequency,
   type SubscriptionFrequency,
@@ -232,115 +194,6 @@ const creatorAvatar = computed(() => {
 const hasTiers = computed(() => tiers.value.length > 0);
 
 const primaryTierId = computed(() => tiers.value[0]?.id ?? '');
-
-type SupportedTierMediaType = Exclude<TierMedia['type'], undefined>;
-type PrimaryMediaType = Extract<SupportedTierMediaType, 'image' | 'video' | 'audio'>;
-
-const MEDIA_EXTENSION_TYPE_MAP: Record<string, PrimaryMediaType> = {
-  jpg: 'image',
-  jpeg: 'image',
-  png: 'image',
-  gif: 'image',
-  webp: 'image',
-  svg: 'image',
-  bmp: 'image',
-  avif: 'image',
-  heic: 'image',
-  heif: 'image',
-  mp4: 'video',
-  m4v: 'video',
-  mov: 'video',
-  webm: 'video',
-  mkv: 'video',
-  avi: 'video',
-  ogv: 'video',
-  m3u8: 'video',
-  mp3: 'audio',
-  wav: 'audio',
-  ogg: 'audio',
-  oga: 'audio',
-  opus: 'audio',
-  m4a: 'audio',
-  flac: 'audio',
-  aac: 'audio',
-  weba: 'audio',
-};
-
-const MIME_PREFIX_TYPE_MAP: Array<{ prefix: string; type: PrimaryMediaType }> = [
-  { prefix: 'image/', type: 'image' },
-  { prefix: 'video/', type: 'video' },
-  { prefix: 'audio/', type: 'audio' },
-];
-
-const VIDEO_MIME_BY_EXTENSION: Record<string, string> = {
-  mp4: 'video/mp4',
-  m4v: 'video/mp4',
-  mov: 'video/quicktime',
-  webm: 'video/webm',
-  mkv: 'video/x-matroska',
-  avi: 'video/x-msvideo',
-  ogv: 'video/ogg',
-  m3u8: 'application/x-mpegURL',
-};
-
-const AUDIO_MIME_BY_EXTENSION: Record<string, string> = {
-  mp3: 'audio/mpeg',
-  wav: 'audio/wav',
-  ogg: 'audio/ogg',
-  oga: 'audio/ogg',
-  opus: 'audio/ogg',
-  m4a: 'audio/mp4',
-  flac: 'audio/flac',
-  aac: 'audio/aac',
-  weba: 'audio/webm',
-};
-
-function mediaFileExtension(url: string): string | null {
-  const sanitized = url.split(/[?#]/)[0]?.trim();
-  if (!sanitized) return null;
-  const match = sanitized.match(/\.([0-9a-z]+)$/i);
-  return match ? match[1].toLowerCase() : null;
-}
-
-function tierMediaType(mediaItem: TierMedia): SupportedTierMediaType {
-  const explicit = mediaItem?.type?.toLowerCase().trim();
-  if (explicit === 'image' || explicit === 'video' || explicit === 'audio' || explicit === 'link') {
-    return explicit;
-  }
-
-  if (explicit) {
-    const mimeMatch = MIME_PREFIX_TYPE_MAP.find(({ prefix }) => explicit.startsWith(prefix));
-    if (mimeMatch) {
-      return mimeMatch.type;
-    }
-  }
-
-  const extension = mediaFileExtension(mediaItem.url);
-  if (extension && MEDIA_EXTENSION_TYPE_MAP[extension]) {
-    return MEDIA_EXTENSION_TYPE_MAP[extension];
-  }
-
-  return 'link';
-}
-
-function tierMediaSourceType(mediaItem: TierMedia): string | undefined {
-  const explicit = mediaItem.type?.toLowerCase().trim();
-  if (explicit && explicit.includes('/')) {
-    return explicit;
-  }
-
-  const type = tierMediaType(mediaItem);
-  const extension = mediaFileExtension(mediaItem.url);
-  if (!extension) return undefined;
-
-  if (type === 'video') {
-    return VIDEO_MIME_BY_EXTENSION[extension];
-  }
-  if (type === 'audio') {
-    return AUDIO_MIME_BY_EXTENSION[extension];
-  }
-  return undefined;
-}
 
 watch(
   () => props.show,

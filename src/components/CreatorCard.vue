@@ -10,13 +10,13 @@
       </div>
       <div class="info">
         <div class="name-row">
-          <h3 class="text-subtitle1 text-weight-medium q-mb-xs">{{ displayName }}</h3>
+          <h3 class="text-h6 text-weight-medium q-mb-xs">{{ displayName }}</h3>
           <div v-if="isFeatured || isCached" class="badge-row">
             <q-badge v-if="isFeatured" color="accent" class="badge badge-featured">Featured</q-badge>
             <q-badge v-if="isCached" color="accent" outline class="badge badge-cache">Cached</q-badge>
           </div>
         </div>
-        <div class="meta text-body2">
+        <div class="meta text-body1">
           <div class="meta-line text-2">
             <span class="meta-label">Npub:</span>
             <span class="meta-value">{{ npubShort }}</span>
@@ -176,12 +176,12 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .creator-card {
-  padding: 1.5rem;
+  padding: 2rem;
   border: 1px solid var(--surface-contrast-border);
   border-radius: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 2rem;
   transition: box-shadow 0.25s ease, transform 0.25s ease;
   box-shadow: 0 12px 30px -18px rgba(15, 23, 42, 0.45);
   height: 100%;
@@ -195,15 +195,15 @@ onBeforeUnmount(() => {
 .profile-header {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.25rem;
   width: 100%;
 }
 
 .avatar-wrapper {
-  width: 72px;
-  height: 72px;
+  width: 96px;
+  height: 96px;
   border-radius: 50%;
-  padding: 4px;
+  padding: 6px;
   background: var(--accent-200);
   display: flex;
   align-items: center;
@@ -296,8 +296,8 @@ onBeforeUnmount(() => {
 
 .action-btn {
   width: 100%;
-  font-size: 0.95rem;
-  padding: 0.75rem 0;
+  font-size: 1rem;
+  padding: 0.875rem 0;
 }
 
 @media (min-width: 600px) {

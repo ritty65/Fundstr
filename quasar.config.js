@@ -17,6 +17,7 @@ export default configure(() => ({
     'i18n',
     'notify',
     'nostr-provider',
+    'prefetch-featured-creators',
     'fundstrRelay',
   ],
 
