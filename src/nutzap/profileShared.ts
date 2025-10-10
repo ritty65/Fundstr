@@ -1,5 +1,5 @@
 import { nip19 } from 'nostr-tools';
-import type { Tier } from './types';
+import type { Tier, TierMedia } from './types';
 
 const HEX_64_REGEX = /^[0-9a-f]{64}$/i;
 
@@ -10,8 +10,71 @@ type RawTier = {
   price_sats?: number | string;
   frequency?: Tier['frequency'];
   description?: string;
-  media?: Array<string | { type?: string; url?: string }>;
+  media?: Array<string | { type?: string; url?: string; title?: string }>;
 };
+
+const MEDIA_EXTENSION_TYPE_MAP: Record<string, Exclude<TierMedia['type'], undefined>> = {
+  jpg: 'image',
+  jpeg: 'image',
+  png: 'image',
+  gif: 'image',
+  webp: 'image',
+  svg: 'image',
+  bmp: 'image',
+  avif: 'image',
+  heic: 'image',
+  heif: 'image',
+  mp4: 'video',
+  m4v: 'video',
+  mov: 'video',
+  webm: 'video',
+  mkv: 'video',
+  avi: 'video',
+  ogv: 'video',
+  m3u8: 'video',
+  mp3: 'audio',
+  wav: 'audio',
+  ogg: 'audio',
+  oga: 'audio',
+  opus: 'audio',
+  m4a: 'audio',
+  flac: 'audio',
+  aac: 'audio',
+  weba: 'audio',
+};
+
+const MIME_PREFIX_TYPE_MAP: Array<{ prefix: string; type: Exclude<TierMedia['type'], undefined> }> = [
+  { prefix: 'image/', type: 'image' },
+  { prefix: 'video/', type: 'video' },
+  { prefix: 'audio/', type: 'audio' },
+];
+
+function extractExtension(url: string): string | null {
+  const sanitized = url.split(/[?#]/)[0]?.trim();
+  if (!sanitized) return null;
+  const match = sanitized.match(/\.([0-9a-z]+)$/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
+function inferTierMediaType(url: string, providedType?: string): TierMedia['type'] {
+  const normalizedProvided = providedType?.toLowerCase().trim();
+  if (normalizedProvided) {
+    if (normalizedProvided === 'image' || normalizedProvided === 'video' || normalizedProvided === 'audio') {
+      return normalizedProvided;
+    }
+    const mimeMatch = MIME_PREFIX_TYPE_MAP.find(({ prefix }) => normalizedProvided.startsWith(prefix));
+    if (mimeMatch) {
+      return mimeMatch.type;
+    }
+  }
+
+  const extension = extractExtension(url);
+  if (extension && MEDIA_EXTENSION_TYPE_MAP[extension]) {
+    return MEDIA_EXTENSION_TYPE_MAP[extension];
+  }
+
+  return 'link';
+}
 
 type ReplaceableLike = {
   kind?: number;
@@ -120,14 +183,25 @@ function normalizeRawTier(raw: RawTier): Tier | null {
       .map(entry => {
         if (!entry) return null;
         if (typeof entry === 'string') {
-          return { type: 'link', url: entry };
+          const url = entry.trim();
+          if (!url) return null;
+          const type = inferTierMediaType(url);
+          return {
+            url,
+            ...(type ? { type } : {}),
+          } satisfies TierMedia;
         }
-        const url = typeof entry.url === 'string' ? entry.url : '';
+        const url = typeof entry.url === 'string' ? entry.url.trim() : '';
         if (!url) return null;
-        const type = typeof entry.type === 'string' ? entry.type : 'link';
-        return { type, url };
+        const title = typeof entry.title === 'string' ? entry.title : undefined;
+        const type = inferTierMediaType(url, entry.type);
+        return {
+          url,
+          ...(title ? { title } : {}),
+          ...(type ? { type } : {}),
+        } satisfies TierMedia;
       })
-      .filter((item): item is { type: string; url: string } => !!item && !!item.url);
+      .filter((item): item is TierMedia => !!item && !!item.url);
     media = normalized.length ? normalized : undefined;
   }
 
