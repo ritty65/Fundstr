@@ -238,7 +238,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useCreatorsStore } from 'stores/creators';
 import type { CreatorProfile, CreatorWarmCache } from 'stores/creators';
 import { nip19 } from 'nostr-tools';
@@ -647,17 +647,14 @@ watch(showDonateDialog, (isOpen) => {
     selectedPubkey.value = "";
   }
 });
-onMounted(() => {
-  void loadFeatured();
-});
 </script>
 
 
 <style scoped>
 .fixed-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 24px;
 }
 
 h1 {
