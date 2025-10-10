@@ -55,6 +55,7 @@ export interface CreatorProfile {
   followers: number | null;
   following: number | null;
   joined: number | null;
+  cacheHit?: boolean;
 }
 
 const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
@@ -295,6 +296,23 @@ export interface CreatorWarmCache {
   lastFundstrRelayFailureNotifiedAt?: number | null;
 }
 
+function parseCachedProfileContent(
+  entry: CreatorWarmCache | undefined,
+): Record<string, any> | null {
+  if (!entry?.profileEvent?.content) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(entry.profileEvent.content);
+    if (parsed && typeof parsed === "object") {
+      return { ...(parsed as Record<string, any>) };
+    }
+  } catch (error) {
+    console.warn("Failed to parse cached profile content", error);
+  }
+  return null;
+}
+
 export interface PrefillCreatorCacheEntry {
   pubkey: string;
   profileEvent?: RelayEvent | null;
@@ -423,6 +441,33 @@ export const useCreatorsStore = defineStore("creators", {
 
     hasTierCache(pubkeyHex: string): boolean {
       return this.warmCache[pubkeyHex]?.tiersLoaded === true;
+    },
+
+    buildCreatorProfileFromCache(pubkeyHex: string): CreatorProfile | null {
+      const entry = this.getCreatorCache(pubkeyHex);
+      if (!entry) {
+        return null;
+      }
+
+      const hasProfile =
+        entry.profileLoaded === true || entry.profileEvent !== undefined;
+      const hasTiers =
+        entry.tiersLoaded === true ||
+        (Array.isArray(entry.tiers) && entry.tiers.length > 0) ||
+        entry.tierEvent !== undefined;
+
+      if (!hasProfile && !hasTiers) {
+        return null;
+      }
+
+      return {
+        pubkey: pubkeyHex,
+        profile: parseCachedProfileContent(entry),
+        followers: null,
+        following: null,
+        joined: entry.profileUpdatedAt ?? null,
+        cacheHit: true,
+      };
     },
 
     updateProfileCacheState(
@@ -636,7 +681,7 @@ export const useCreatorsStore = defineStore("creators", {
       if (!forceRefresh) {
         const cached = await db.profiles.get(pubkey);
         if (cached && (now - cached.fetchedAt < cacheExpiry)) {
-          return cached.profile;
+          return { ...cached.profile, cacheHit: true } as CreatorProfile;
         }
 
         const inflight = this.inFlightCreatorRequests[pubkey];
@@ -695,6 +740,7 @@ export const useCreatorsStore = defineStore("creators", {
             followers,
             following,
             joined,
+            cacheHit: false,
           };
 
           try {
@@ -741,19 +787,47 @@ export const useCreatorsStore = defineStore("creators", {
         }
       }).filter((pubkey): pubkey is string => pubkey !== null);
 
+      const cachedEntries = new Map<string, CreatorProfile>();
+
+      await Promise.all(
+        pubkeys.map(async (pubkey) => {
+          try {
+            await this.ensureCreatorCacheFromDexie(pubkey);
+          } catch (error) {
+            console.warn("[creators] Failed to hydrate featured creator cache", {
+              pubkey,
+              error,
+            });
+          }
+          const cached = this.buildCreatorProfileFromCache(pubkey);
+          if (cached) {
+            cachedEntries.set(pubkey, { ...cached, cacheHit: true });
+          }
+        }),
+      );
+
+      if (cachedEntries.size) {
+        const orderedCached = pubkeys
+          .map((pubkey) => cachedEntries.get(pubkey))
+          .filter((profile): profile is CreatorProfile => Boolean(profile));
+        if (orderedCached.length) {
+          this.featuredCreators = orderedCached;
+        }
+      }
+
       try {
         const results = await Promise.allSettled(
-          pubkeys.map(pubkey => this.fetchCreator(pubkey, forceRefresh))
+          pubkeys.map((pubkey) => this.fetchCreator(pubkey, forceRefresh)),
         );
 
-        const fulfilled: CreatorProfile[] = [];
+        const fulfilledMap = new Map<string, CreatorProfile>(cachedEntries);
         const failedPubkeys: string[] = [];
 
         results.forEach((result, index) => {
           const pubkey = pubkeys[index];
           if (result.status === "fulfilled") {
             if (result.value) {
-              fulfilled.push(result.value);
+              fulfilledMap.set(pubkey, { ...result.value, cacheHit: false });
             } else {
               failedPubkeys.push(pubkey);
               console.warn("[creators] Featured creator returned null", { pubkey });
@@ -766,6 +840,10 @@ export const useCreatorsStore = defineStore("creators", {
             });
           }
         });
+
+        const fulfilled = pubkeys
+          .map((pubkey) => fulfilledMap.get(pubkey))
+          .filter((profile): profile is CreatorProfile => Boolean(profile));
 
         this.featuredCreators = fulfilled;
 
