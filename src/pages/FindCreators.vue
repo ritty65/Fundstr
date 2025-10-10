@@ -4,6 +4,8 @@
       :show="showProfileModal"
       :pubkey="selectedProfilePubkey"
       @close="showProfileModal = false"
+      @message="startChat"
+      @donate="donate"
     />
     <DonateDialog
       v-model="showDonateDialog"
