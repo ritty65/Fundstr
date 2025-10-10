@@ -178,12 +178,13 @@ onBeforeUnmount(() => {
 .creator-card {
   padding: 1.5rem;
   border: 1px solid var(--surface-contrast-border);
-  border-radius: 0.75rem;
+  border-radius: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.5rem;
   transition: box-shadow 0.25s ease, transform 0.25s ease;
   box-shadow: 0 12px 30px -18px rgba(15, 23, 42, 0.45);
+  height: 100%;
 }
 
 .creator-card:hover {
@@ -193,13 +194,14 @@ onBeforeUnmount(() => {
 
 .profile-header {
   display: flex;
+  flex-direction: column;
   gap: 1rem;
   width: 100%;
 }
 
 .avatar-wrapper {
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   padding: 4px;
   background: var(--accent-200);
@@ -221,6 +223,8 @@ onBeforeUnmount(() => {
 .info {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .name-row {
@@ -250,6 +254,7 @@ onBeforeUnmount(() => {
 .meta {
   display: grid;
   gap: 0.35rem;
+  flex-grow: 1;
 }
 
 .meta-line {
@@ -283,18 +288,21 @@ onBeforeUnmount(() => {
 }
 
 .creator-actions {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 0.75rem;
+  margin-top: auto;
 }
 
 .action-btn {
   width: 100%;
+  font-size: 0.95rem;
+  padding: 0.75rem 0;
 }
 
-@media (max-width: 599px) {
-  .creator-actions {
-    grid-template-columns: 1fr;
+@media (min-width: 600px) {
+  .profile-header {
+    flex-direction: row;
   }
 }
 </style>

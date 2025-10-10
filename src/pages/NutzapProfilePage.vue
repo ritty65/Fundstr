@@ -63,7 +63,7 @@
               @clear-activity="clearRelayActivity"
             />
 
-            <section class="section-card share-summary-card profile-grid-item profile-grid-item--share">
+            <section class="section-card share-summary-card profile-grid-item profile-grid-item--share" data-testid="explore-summary">
               <div class="section-header">
                 <div class="section-title text-subtitle1 text-weight-medium text-1">Share &amp; snapshot</div>
                 <div class="section-subtitle text-body2 text-2">

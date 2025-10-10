@@ -58,7 +58,6 @@ export interface CreatorProfile {
   cacheHit?: boolean;
 }
 
-const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
 const TIER_RELAY_FAILURE_TTL_MS = 5 * 60 * 1000;
 const TIER_FETCH_TIMEOUT_MS = 1200;
 const FUNDSTR_FAILURE_NOTIFY_TTL_MS = 5 * 60 * 1000;
@@ -160,7 +159,6 @@ export async function fetchFundstrProfileBundle(
     events = await queryNostr(filters, {
       preferFundstr: true,
       allowFanoutFallback: false,
-      wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
     });
   } catch (error) {
     lastError = error;
@@ -171,9 +169,7 @@ export async function fetchFundstrProfileBundle(
 
   if (!events.length) {
     try {
-      const direct = await simpleRelayQuery(filters, {
-        timeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
-      });
+      const direct = await simpleRelayQuery(filters);
       if (direct.length) {
         events = direct;
         console.info("[creators] direct Fundstr relay query succeeded", {
@@ -215,7 +211,6 @@ export async function fetchFundstrProfileBundle(
           preferFundstr: true,
           allowFanoutFallback: true,
           fanout,
-          wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
         });
         if (events.length) {
           console.warn("[creators] Fundstr profile fallback succeeded", {
@@ -1057,7 +1052,6 @@ export const useCreatorsStore = defineStore("creators", {
             httpBase: FUNDSTR_REQ_URL,
             fundstrWsUrl: FUNDSTR_WS_URL,
             allowFanoutFallback: false,
-            wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
           });
           const entry = ensureWarmEntry();
           entry.lastFundstrRelayFailureAt = null;
@@ -1105,7 +1099,6 @@ export const useCreatorsStore = defineStore("creators", {
               fundstrWsUrl: FUNDSTR_WS_URL,
               fanout: eligible,
               allowFanoutFallback: true,
-              wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
             });
             if (result) {
               eligible.forEach((url) => relayHints.add(url));
@@ -1130,8 +1123,7 @@ export const useCreatorsStore = defineStore("creators", {
                   ["#d"]: ["tiers"],
                   limit: 2,
                 },
-              ],
-              { timeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS },
+              ]
             );
             if (direct.length) {
               const preferred = pickTierDefinitionEvent(

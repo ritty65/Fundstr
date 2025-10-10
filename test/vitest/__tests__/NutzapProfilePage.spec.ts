@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setActivePinia, createPinia } from 'pinia';
 import { flushPromises, shallowMount } from "@vue/test-utils";
 import { Ref, ref } from "vue";
+import { Quasar } from "quasar";
 import { nip19 } from "nostr-tools";
 
 import NutzapProfilePage from "../../../src/pages/NutzapProfilePage.vue";
@@ -279,44 +281,18 @@ const OTHER_HEX = "b".repeat(64);
 async function mountPage() {
   const wrapper = shallowMount(NutzapProfilePage, {
     global: {
+      plugins: [Quasar],
       stubs: {
         RelayStatusIndicator: true,
         NutzapExplorerSearch: true,
         NutzapLegacyExplorer: true,
         NutzapSelfTests: true,
         'router-link': true,
-        'q-page': { template: '<div class="q-page"><slot /></div>' },
-        'q-chip': { template: '<span class="q-chip"><slot /></span>' },
-        'q-tab-panels': { template: '<div class="q-tab-panels"><slot /></div>' },
-        'q-tab-panel': { template: '<div class="q-tab-panel"><slot /></div>' },
-        'q-input': {
-          inheritAttrs: false,
-          props: {
-            modelValue: { type: [String, Number, Boolean, Object], default: '' },
-          },
-          emits: ['update:modelValue'],
-          template:
-            '<div class="q-input" v-bind="$attrs">' +
-            '<span class="q-input__value">{{ modelValue }}</span>' +
-            '<slot />' +
-            '<slot name="append" />' +
-            '</div>',
-        },
-        'q-btn': {
-          inheritAttrs: false,
-          props: {
-            label: { type: String, default: '' },
-          },
-          emits: ['click'],
-          template:
-            '<button class="q-btn" v-bind="$attrs" @click="$emit(\'click\')">' +
-            '<slot />' +
-            '<span v-if="!$slots.default && label">{{ label }}</span>' +
-            '</button>',
-        },
-        RelayExplorer: { template: '<div />' },
-        transition: false,
-        teleport: false,
+        ConnectionPanel: true,
+        AuthorMetadataPanel: true,
+        TierComposerCard: true,
+        ReviewPublishCard: true,
+        RelayExplorer: true,
       },
     },
   });
@@ -325,6 +301,7 @@ async function mountPage() {
 }
 
 beforeEach(() => {
+  setActivePinia(createPinia());
   routerResolveMock.mockClear();
   routerPushMock.mockClear();
   notifyCreateMock.mockReset();

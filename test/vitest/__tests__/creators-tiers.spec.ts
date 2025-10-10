@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setActivePinia, createPinia } from 'pinia';
 
 let filterMock = vi.fn();
 let fetchEventsMock = vi.fn();
@@ -88,6 +89,7 @@ import { cashuDb as db } from "../../../src/stores/dexie";
 const CREATOR_HEX = "a".repeat(64);
 
 beforeEach(async () => {
+  setActivePinia(createPinia());
   vi.clearAllMocks();
   localStorage.clear();
   filterMock = vi.fn();

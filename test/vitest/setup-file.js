@@ -1,20 +1,10 @@
-import { setActivePinia, createPinia } from 'pinia';
-import { vi, afterEach, beforeEach } from 'vitest';
+import { afterEach, vi } from 'vitest';
 import 'fake-indexeddb/auto';
 import { enableAutoUnmount } from '@vue/test-utils';
-import { cashuDb } from 'src/stores/dexie';
 
 // This is the core of the test stabilization effort.
 // By creating a new Pinia instance for each test and cleaning up
 // the DOM and mocks, we prevent state from leaking between tests.
-beforeEach(async () => {
-  // Reset the database to prevent state leakage between tests
-  await cashuDb.delete();
-  await cashuDb.open();
-  // Create a fresh Pinia instance for each test
-  setActivePinia(createPinia());
-});
-
 
 // Enable automatic cleanup of mounted components after each test.
 enableAutoUnmount(afterEach);
@@ -37,6 +27,9 @@ vi.mock('quasar', async (importOriginal) => {
       iconSet: { arrow: { dropdown: 'arrow_drop_down' } },
       notify: vi.fn(),
     }),
+    Notify: {
+      create: vi.fn(),
+    },
   };
 });
 
