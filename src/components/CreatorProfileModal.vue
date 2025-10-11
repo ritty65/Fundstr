@@ -184,19 +184,21 @@ let currentRequestId = 0;
 let activeController: AbortController | null = null;
 
 const displayName = computed(() => {
-  const profile = creator.value?.profile ?? {};
+  const c = creator.value;
   return (
-    profile.display_name ||
-    profile.name ||
-    profile.nip05 ||
+    (c?.displayName && c.displayName.trim()) ||
+    (c?.name && c.name.trim()) ||
+    (c?.nip05 && c.nip05.split('@')[0]) ||
     'Unnamed User'
   );
 });
 
 const creatorAvatar = computed(() => {
-  const profile = creator.value?.profile ?? {};
-  if (profile.picture) return profile.picture as string;
-  const source = profile.name || profile.display_name || profile.nip05 || props.pubkey;
+  const c = creator.value;
+  if (c?.picture && typeof c.picture === 'string' && c.picture.trim()) {
+    return c.picture as string;
+  }
+  const source = c?.displayName || c?.name || c?.nip05 || props.pubkey;
   const initial = (typeof source === 'string' && source.trim()[0]) || 'U';
   return `https://placehold.co/200x200/1f2937/ffffff?text=${encodeURIComponent(
     initial.toUpperCase(),
@@ -348,55 +350,52 @@ function resetState() {
 }
 
 function normalizeTierDetails(rawTier: unknown): TierDetails | null {
-  if (!rawTier || typeof rawTier !== 'object') {
-    return null;
-  }
+  if (!rawTier || typeof rawTier !== 'object') return null;
+  const t = rawTier as Record<string, unknown>;
 
-  const tier = rawTier as Record<string, unknown>;
-  const id = typeof tier.id === 'string' ? tier.id.trim() : '';
-  if (!id) {
-    return null;
-  }
+  const id =
+    (typeof t.id === 'string' && t.id.trim()) ||
+    (typeof t.tier_id === 'string' && t.tier_id.trim()) ||
+    (typeof t.d === 'string' && t.d.trim()) || '';
+  if (!id) return null;
 
-  const name = typeof tier.name === 'string' && tier.name.trim() ? tier.name.trim() : 'Subscription tier';
-  const description = typeof tier.description === 'string' ? tier.description : null;
-  const priceMsat = extractNumericValue(
-    tier.price_msat ?? tier.priceMsat ?? tier.amount_msat ?? tier.amountMsat ?? null,
-  );
-  const periodLabel = typeof tier.period === 'string'
-    ? tier.period
-    : typeof tier.cadence === 'string'
-      ? tier.cadence
-      : typeof tier.interval === 'string'
-        ? tier.interval
-        : null;
+  const name =
+    (typeof t.name === 'string' && t.name.trim()) ||
+    (typeof t.title === 'string' && t.title.trim()) ||
+    'Subscription tier';
 
-  const benefits = Array.isArray(tier.benefits)
-    ? (tier.benefits as unknown[]).filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+  const description = typeof t.description === 'string' ? t.description : null;
+  const priceMsat = extractNumericValue(t.price_msat ?? t.priceMsat ?? t.amount_msat ?? t.amountMsat ?? null);
+  const periodLabel =
+    (typeof t.period === 'string' && t.period) ||
+    (typeof t.cadence === 'string' && t.cadence) ||
+    (typeof t.interval === 'string' && t.interval) || null;
+
+  const benefits =
+    Array.isArray(t.benefits)
+      ? (t.benefits as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+      : parsePerks(t.perks);
+
+  const media = Array.isArray(t.media)
+    ? (t.media as unknown[]).map(normalizeMediaItem).filter((m): m is TierMediaItem => m !== null)
     : [];
 
-  const welcomeMessage = typeof tier.welcome_message === 'string'
-    ? tier.welcome_message
-    : typeof tier.welcomeMessage === 'string'
-      ? tier.welcomeMessage
-      : null;
+  const welcomeMessage =
+    (typeof t.welcome_message === 'string' && t.welcome_message) ||
+    (typeof t.welcomeMessage === 'string' && t.welcomeMessage) || null;
 
-  const media = Array.isArray(tier.media)
-    ? (tier.media as unknown[])
-        .map((item) => normalizeMediaItem(item))
-        .filter((item): item is TierMediaItem => item !== null)
-    : [];
+  return { id, name, description, priceMsat, benefits, media, welcomeMessage, periodLabel };
+}
 
-  return {
-    id,
-    name,
-    description,
-    priceMsat,
-    benefits,
-    media,
-    welcomeMessage,
-    periodLabel,
-  };
+function parsePerks(value: unknown): string[] {
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
+    }
+  } catch {}
+  return value.split(/\r?\n|,|;/).map(s => s.trim()).filter(Boolean);
 }
 
 function extractNumericValue(value: unknown): number | null {
