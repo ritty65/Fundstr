@@ -30,12 +30,24 @@ export interface CreatorTier {
   description: string | null;
 }
 
+export interface CreatorTierSummary {
+  count: number;
+  cheapestPriceMsat: number | null;
+}
+
 export interface Creator {
   pubkey: string;
   profile: Record<string, unknown> | null;
   followers: number | null;
   following: number | null;
   joined: number | null;
+  displayName?: string | null;
+  name?: string | null;
+  about?: string | null;
+  nip05?: string | null;
+  picture?: string | null;
+  banner?: string | null;
+  tierSummary?: CreatorTierSummary | null;
   metrics?: CreatorMetrics;
   tiers?: CreatorTier[];
   cacheHit?: boolean;
@@ -176,6 +188,24 @@ function normalizeCreator(entry: unknown): Creator {
   const followers = toNullableNumber(entry.followers);
   const following = toNullableNumber(entry.following);
   const joined = toNullableNumber(entry.joined);
+  const displayName =
+    toNullableString(entry.display_name ?? entry.displayName) ??
+    toNullableString(profile?.["display_name"]) ??
+    toNullableString(profile?.["displayName"]);
+  const name =
+    toNullableString(entry.name) ??
+    toNullableString(profile?.["name"]) ??
+    toNullableString(profile?.["username"]);
+  const about = toNullableString(entry.about) ?? toNullableString(profile?.["about"]);
+  const nip05 =
+    toNullableString(entry.nip05 ?? entry.nip_05) ??
+    toNullableString(profile?.["nip05"]);
+  const picture =
+    toNullableString(entry.picture ?? entry.image) ??
+    toNullableString(profile?.["picture"]);
+  const banner =
+    toNullableString(entry.banner ?? entry.cover) ??
+    toNullableString(profile?.["banner"] ?? profile?.["cover"]);
 
   const creator: Creator = {
     pubkey,
@@ -183,6 +213,13 @@ function normalizeCreator(entry: unknown): Creator {
     followers,
     following,
     joined,
+    displayName,
+    name,
+    about,
+    nip05,
+    picture,
+    banner,
+    tierSummary: normalizeTierSummary(entry.tier_summary ?? entry.tierSummary),
   };
 
   if ("metrics" in entry && isRecord(entry.metrics)) {
@@ -229,6 +266,26 @@ function normalizeTier(entry: unknown): CreatorTier | null {
     amountMsat: toNullableNumber(entry.amount_msat ?? entry.amountMsat),
     cadence: toNullableString(entry.cadence ?? entry.interval ?? entry.frequency) ?? null,
     description: toNullableString(entry.description ?? entry.details) ?? null,
+  };
+}
+
+function normalizeTierSummary(input: unknown): CreatorTierSummary | null {
+  if (!isRecord(input)) {
+    return null;
+  }
+
+  const count = toNullableNumber(input.count);
+  const cheapestPriceMsat = toNullableNumber(
+    input.cheapest_price_msat ?? input.cheapestPriceMsat ?? input.cheapest_price,
+  );
+
+  if (count === null && cheapestPriceMsat === null) {
+    return null;
+  }
+
+  return {
+    count: count ?? 0,
+    cheapestPriceMsat,
   };
 }
 
