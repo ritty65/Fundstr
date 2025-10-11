@@ -72,10 +72,7 @@ import { formatMsatToSats } from 'src/lib/fundstrApi';
 
 const props = withDefaults(
   defineProps<{
-    profile: Creator & {
-      cacheHit?: boolean;
-      featured?: boolean;
-    };
+    profile: Creator;
     cacheHit?: boolean;
     featured?: boolean;
   }>(),
@@ -91,55 +88,38 @@ const npub = computed(() => nip19.npubEncode(props.profile.pubkey));
 const npubShort = computed(() => `${npub.value.substring(0, 10)}...${npub.value.substring(npub.value.length - 5)}`);
 
 const displayName = computed(() => {
-  const nameCandidates = [props.profile.displayName, props.profile.name];
-  for (const candidate of nameCandidates) {
-    if (typeof candidate === 'string' && candidate.trim().length > 0) {
-      return candidate.trim();
-    }
-  }
-  const nip05 = props.profile.nip05;
-  if (typeof nip05 === 'string' && nip05.includes('@')) {
-    return nip05.split('@')[0] || 'Unnamed User';
-  }
-  return 'Unnamed User';
+  const p = props.profile;
+  return (
+    (p.displayName && p.displayName.trim()) ||
+    (p.name && p.name.trim()) ||
+    (p.nip05 && p.nip05.split('@')[0]) ||
+    'Unnamed User'
+  );
 });
 
-const placeholderInitial = computed(() => displayName.value.charAt(0).toUpperCase() || 'N');
+const placeholderInitial = computed(() => (displayName.value.trim()[0] || 'U').toUpperCase());
 
 const avatarUrl = computed(() => {
-  const candidates = [
-    props.profile.picture,
-    props.profile.profile?.['picture'] as string | undefined,
-  ];
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim().length > 0) {
-      return candidate;
-    }
+  if (props.profile.picture && props.profile.picture.trim()) {
+    return props.profile.picture;
   }
-  return `https://placehold.co/64x64/A0AEC0/FFFFFF?text=${placeholderInitial.value}`;
+  return `https://placehold.co/64x64/A0AEC0/FFFFFF?text=${encodeURIComponent(placeholderInitial.value)}`;
 });
 
 const nip05 = computed(() => props.profile.nip05 ?? '');
 
 const aboutSnippet = computed(() => {
-  const about =
-    props.profile.about ?? (props.profile.profile?.['about'] as string | undefined);
-  if (!about) {
-    return '';
-  }
+  const about = props.profile.about;
+  if (!about) return '';
   return about.length > 120 ? `${about.substring(0, 120)}…` : about;
 });
 
 const tierSummaryText = computed(() => {
-  const summary = props.profile.tierSummary;
-  if (!summary || summary.count === undefined) {
-    return '';
-  }
-  const count = summary.count;
-  const parts = [`${count} ${count === 1 ? 'tier' : 'tiers'}`];
-  if (summary.cheapestPriceMsat !== null && summary.cheapestPriceMsat !== undefined) {
-    const price = formatMsatToSats(summary.cheapestPriceMsat);
-    parts.push(`from ${price} sats`);
+  const s = props.profile.tierSummary;
+  if (!s || typeof s.count !== 'number') return '';
+  const parts = [`${s.count} ${s.count === 1 ? 'tier' : 'tiers'}`];
+  if (s.cheapestPriceMsat != null) {
+    parts.push(`from ${formatMsatToSats(s.cheapestPriceMsat)} sats`);
   }
   return parts.join(' · ');
 });

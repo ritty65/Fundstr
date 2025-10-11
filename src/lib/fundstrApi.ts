@@ -1,17 +1,15 @@
 import { nip19 } from "nostr-tools";
 
-const DEFAULT_API_BASE = "https://api.fundstr.me";
+const DEFAULT_API_BASE = "/api/v1";
+const DEFAULT_LIMIT = 24;
 
 const metaEnv = (typeof import.meta !== "undefined" && (import.meta as any)?.env) || {};
 const processEnv = (typeof process !== "undefined" && (process as any)?.env) || {};
 const rawApiBase =
-  typeof metaEnv.VITE_FUNDSTR_API_BASE === "string" && metaEnv.VITE_FUNDSTR_API_BASE.trim().length > 0
-    ? metaEnv.VITE_FUNDSTR_API_BASE
-    : typeof processEnv.VITE_FUNDSTR_API_BASE === "string" && processEnv.VITE_FUNDSTR_API_BASE.trim().length > 0
-      ? processEnv.VITE_FUNDSTR_API_BASE
-      : typeof processEnv.FUNDSTR_API_BASE === "string" && processEnv.FUNDSTR_API_BASE.trim().length > 0
-        ? processEnv.FUNDSTR_API_BASE
-        : DEFAULT_API_BASE;
+  (typeof metaEnv.VITE_FUNDSTR_API_BASE === "string" && metaEnv.VITE_FUNDSTR_API_BASE.trim()) ||
+  (typeof processEnv.VITE_FUNDSTR_API_BASE === "string" && processEnv.VITE_FUNDSTR_API_BASE.trim()) ||
+  (typeof processEnv.FUNDSTR_API_BASE === "string" && processEnv.FUNDSTR_API_BASE.trim()) ||
+  DEFAULT_API_BASE;
 
 const API_BASE = rawApiBase.replace(/\/+$/, "");
 
@@ -62,20 +60,28 @@ export function withPrefix(path = ""): string {
   return trimmedPath ? `${API_BASE}/${trimmedPath}` : API_BASE;
 }
 
+function withPrefixWildcard(q: string): string {
+  const t = q.trim();
+  if (t.length >= 3 && !t.endsWith("*") && !/["~*]/.test(t)) {
+    return t + "*";
+  }
+  return t;
+}
+
 export async function fetchCreators(
   q: string,
   limit: number,
   offset: number,
   signal?: AbortSignal,
 ): Promise<Creator[]> {
-  const url = new URL(withPrefix("creators"));
-  const query = q.trim();
-  if (query.length > 0) {
+  const url = new URL(withPrefix("creators"), window.location.origin);
+  const query = withPrefixWildcard(q);
+  if (query) {
     url.searchParams.set("q", query);
   }
-  if (Number.isFinite(limit) && limit > 0) {
-    url.searchParams.set("limit", String(Math.floor(limit)));
-  }
+  const effectiveLimit = Number.isFinite(limit) && limit > 0 ? limit : DEFAULT_LIMIT;
+  url.searchParams.set("limit", String(Math.floor(effectiveLimit)));
+
   if (Number.isFinite(offset) && offset > 0) {
     url.searchParams.set("offset", String(Math.floor(offset)));
   }
@@ -98,11 +104,11 @@ export async function fetchCreators(
 }
 
 export async function fetchCreator(identifier: string, signal?: AbortSignal): Promise<Creator> {
-  const trimmed = identifier.trim();
-  if (!trimmed) {
-    throw new Error("Missing creator identifier");
+  const hexPubkey = toHexPubkeyForPath(identifier);
+  if (!hexPubkey) {
+    throw new Error("Missing or invalid creator identifier");
   }
-  const encodedId = encodeURIComponent(trimmed);
+  const encodedId = encodeURIComponent(hexPubkey);
   const url = withPrefix(`creators/${encodedId}`);
   const response = await fetch(url, {
     method: "GET",
@@ -164,18 +170,19 @@ async function parseJson(response: Response): Promise<unknown> {
 }
 
 function extractCreatorsArray(payload: unknown): unknown[] {
+  if (isRecord(payload) && Array.isArray(payload.items)) {
+    return payload.items;
+  }
+  if (isRecord(payload) && Array.isArray(payload.creators)) {
+    return payload.creators;
+  }
+  if (isRecord(payload) && Array.isArray(payload.data)) {
+    return payload.data;
+  }
   if (Array.isArray(payload)) {
     return payload;
   }
-  if (isRecord(payload)) {
-    if (Array.isArray(payload.creators)) {
-      return payload.creators as unknown[];
-    }
-    if (Array.isArray(payload.data)) {
-      return payload.data as unknown[];
-    }
-  }
-  throw new Error("Unexpected response payload");
+  throw new Error("Unexpected response payload: expected items array");
 }
 
 function normalizeCreator(entry: unknown): Creator {
@@ -273,20 +280,36 @@ function normalizeTierSummary(input: unknown): CreatorTierSummary | null {
   if (!isRecord(input)) {
     return null;
   }
-
-  const count = toNullableNumber(input.count);
-  const cheapestPriceMsat = toNullableNumber(
-    input.cheapest_price_msat ?? input.cheapestPriceMsat ?? input.cheapest_price,
-  );
-
-  if (count === null && cheapestPriceMsat === null) {
+  let cheapest: number | null = null;
+  if (isRecord((input as any).cheapest)) {
+    cheapest = toNullableNumber((input as any).cheapest!.price_msat);
+  } else {
+    cheapest = toNullableNumber((input as any).cheapest_price_msat ?? (input as any).cheapestPriceMsat);
+  }
+  const count = toNullableNumber((input as any).count);
+  if (count === null && cheapest === null) {
     return null;
   }
+  return { count: count ?? 0, cheapestPriceMsat: cheapest };
+}
 
-  return {
-    count: count ?? 0,
-    cheapestPriceMsat,
-  };
+function toHexPubkeyForPath(identifier: string): string | null {
+  const id = identifier.trim().toLowerCase();
+  if (/^[0-9a-f]{64}$/.test(id)) {
+    return id;
+  }
+  if (id.startsWith("npub1") || id.startsWith("nprofile1")) {
+    try {
+      const decoded = nip19.decode(id);
+      const pubkey = decoded.type === "npub" ? decoded.data : (decoded.data as any).pubkey;
+      if (typeof pubkey === "string" && /^[0-9a-f]{64}$/.test(pubkey)) {
+        return pubkey;
+      }
+    } catch (e) {
+      // Ignore errors, return original identifier below
+    }
+  }
+  return identifier; // Fallback for other identifiers
 }
 
 function normalizePubkey(value: unknown): string {
