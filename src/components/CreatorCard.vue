@@ -2,11 +2,7 @@
   <div class="creator-card bg-surface-2 text-1">
     <div class="profile-header">
       <div class="avatar-wrapper">
-        <img
-          class="avatar"
-          :src="profile.profile?.picture || `https://placehold.co/64x64/A0AEC0/FFFFFF?text=${placeholderInitial}`"
-          :alt="displayName"
-        />
+        <img class="avatar" :src="avatarUrl" :alt="displayName" />
       </div>
       <div class="info">
         <div class="name-row">
@@ -20,16 +16,6 @@
           <div class="meta-line text-2">
             <span class="meta-label">Npub:</span>
             <span class="meta-value">{{ npubShort }}</span>
-            <q-btn
-              dense
-              flat
-              color="accent"
-              no-caps
-              size="sm"
-              class="copy-button"
-              :label="copyLabel"
-              @click.stop="copyToClipboard(npub)"
-            />
           </div>
           <div v-if="nip05" class="meta-line text-2">
             <span class="meta-label">NIP-05:</span>
@@ -37,6 +23,10 @@
           </div>
           <div v-if="aboutSnippet" class="meta-line text-2 about">
             {{ aboutSnippet }}
+          </div>
+          <div v-if="tierSummaryText" class="meta-line text-2">
+            <span class="meta-label">Tiers:</span>
+            <span>{{ tierSummaryText }}</span>
           </div>
           <div v-if="followers !== null" class="meta-line text-2">
             <span class="meta-label">Followers:</span>
@@ -75,18 +65,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed } from 'vue';
 import { nip19 } from 'nostr-tools';
-import type { CreatorProfile } from 'stores/creators';
-
-type ExtendedCreatorProfile = CreatorProfile & {
-  cacheHit?: boolean;
-  featured?: boolean;
-};
+import type { Creator } from 'src/lib/fundstrApi';
+import { formatMsatToSats } from 'src/lib/fundstrApi';
 
 const props = withDefaults(
   defineProps<{
-    profile: ExtendedCreatorProfile;
+    profile: Creator & {
+      cacheHit?: boolean;
+      featured?: boolean;
+    };
     cacheHit?: boolean;
     featured?: boolean;
   }>(),
@@ -102,12 +91,14 @@ const npub = computed(() => nip19.npubEncode(props.profile.pubkey));
 const npubShort = computed(() => `${npub.value.substring(0, 10)}...${npub.value.substring(npub.value.length - 5)}`);
 
 const displayName = computed(() => {
-  const profileName = props.profile.profile?.name as string | undefined;
-  if (profileName && profileName.trim().length > 0) {
-    return profileName;
+  const nameCandidates = [props.profile.displayName, props.profile.name];
+  for (const candidate of nameCandidates) {
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
   }
-  const nip05 = props.profile.profile?.nip05 as string | undefined;
-  if (nip05 && nip05.includes('@')) {
+  const nip05 = props.profile.nip05;
+  if (typeof nip05 === 'string' && nip05.includes('@')) {
     return nip05.split('@')[0] || 'Unnamed User';
   }
   return 'Unnamed User';
@@ -115,14 +106,42 @@ const displayName = computed(() => {
 
 const placeholderInitial = computed(() => displayName.value.charAt(0).toUpperCase() || 'N');
 
-const nip05 = computed(() => props.profile.profile?.nip05 ?? '');
+const avatarUrl = computed(() => {
+  const candidates = [
+    props.profile.picture,
+    props.profile.profile?.['picture'] as string | undefined,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate;
+    }
+  }
+  return `https://placehold.co/64x64/A0AEC0/FFFFFF?text=${placeholderInitial.value}`;
+});
+
+const nip05 = computed(() => props.profile.nip05 ?? '');
 
 const aboutSnippet = computed(() => {
-  const about = props.profile.profile?.about as string | undefined;
+  const about =
+    props.profile.about ?? (props.profile.profile?.['about'] as string | undefined);
   if (!about) {
     return '';
   }
   return about.length > 120 ? `${about.substring(0, 120)}…` : about;
+});
+
+const tierSummaryText = computed(() => {
+  const summary = props.profile.tierSummary;
+  if (!summary || summary.count === undefined) {
+    return '';
+  }
+  const count = summary.count;
+  const parts = [`${count} ${count === 1 ? 'tier' : 'tiers'}`];
+  if (summary.cheapestPriceMsat !== null && summary.cheapestPriceMsat !== undefined) {
+    const price = formatMsatToSats(summary.cheapestPriceMsat);
+    parts.push(`from ${price} sats`);
+  }
+  return parts.join(' · ');
 });
 
 const followers = computed(() => props.profile.followers ?? null);
@@ -139,38 +158,6 @@ const isFeatured = computed(() => {
     return props.featured;
   }
   return Boolean(props.profile.featured);
-});
-
-const copyLabel = ref('Copy');
-let copyLabelTimeout: ReturnType<typeof setTimeout> | null = null;
-
-function resetCopyLabel() {
-  if (copyLabelTimeout) {
-    clearTimeout(copyLabelTimeout);
-    copyLabelTimeout = null;
-  }
-  copyLabel.value = 'Copy';
-}
-
-function copyToClipboard(text: string) {
-  navigator.clipboard
-    .writeText(text)
-    .then(() => {
-      if (copyLabelTimeout) {
-        clearTimeout(copyLabelTimeout);
-      }
-      copyLabel.value = 'Copied!';
-      copyLabelTimeout = setTimeout(() => {
-        resetCopyLabel();
-      }, 2000);
-    })
-    .catch((err) => {
-      console.error('Failed to copy text: ', err);
-    });
-}
-
-onBeforeUnmount(() => {
-  resetCopyLabel();
 });
 </script>
 
@@ -281,10 +268,6 @@ onBeforeUnmount(() => {
 
 .about {
   font-style: italic;
-}
-
-.copy-button {
-  padding: 0 0.5rem;
 }
 
 .creator-actions {
