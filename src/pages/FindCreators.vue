@@ -41,7 +41,7 @@
                 autocomplete="off"
                 label="Search Nostr profiles"
                 placeholder="Name, npub, or NIP-05"
-                :loading="searching && !refreshingCache"
+                :loading="searchLoading && !loadingMore"
                 input-class="text-1"
                 @update:model-value="debouncedSearch"
                 @keyup.enter="triggerImmediateSearch"
@@ -57,23 +57,10 @@
                   />
                 </template>
               </q-input>
-              <div class="refresh-actions">
-                <q-btn
-                  outline
-                  no-caps
-                  color="accent"
-                  icon="refresh"
-                  label="Refresh data"
-                  class="refresh-button"
-                  :disable="searching || refreshingCache"
-                  :loading="refreshingCache"
-                  @click="refreshCurrentCreator"
-                />
-              </div>
             </q-form>
 
             <section class="column q-gutter-lg" role="region" aria-live="polite">
-              <div v-if="searching && !refreshingCache" class="row q-col-gutter-lg" aria-label="Searching creators">
+              <div v-if="searchLoading && !searchResults.length" class="row q-col-gutter-lg" aria-label="Searching creators">
                 <div
                   v-for="placeholder in searchSkeletonPlaceholders"
                   :key="placeholder"
@@ -83,71 +70,63 @@
                 </div>
               </div>
 
-              <div v-else-if="searchResults.length">
-                <div v-if="searchResultStatus" class="result-status row no-wrap q-mb-md">
-                  <q-chip
-                    dense
-                    :ripple="false"
-                    class="result-status-chip"
-                    :class="searchResultStatus.className"
-                  >
-                    <q-icon :name="searchResultStatus.icon" size="18px" />
-                    <span>{{ searchResultStatus.label }}</span>
-                  </q-chip>
+              <template v-else>
+                <q-banner
+                  v-if="searchError"
+                  rounded
+                  dense
+                  class="status-banner text-1"
+                  aria-live="polite"
+                >
+                  <template #avatar>
+                    <q-icon :name="resolveBannerIcon(searchError)" size="20px" />
+                  </template>
+                  <span class="status-banner__text">{{ searchError }}</span>
+                </q-banner>
+
+                <div v-if="searchResults.length" class="column q-gutter-md">
+                  <div class="fixed-grid">
+                    <CreatorCard
+                      v-for="profile in searchResults"
+                      :key="profile.pubkey"
+                      :profile="profile"
+                      :cache-hit="profile.cacheHit === true"
+                      @view-tiers="viewProfile"
+                      @message="startChat"
+                      @donate="donate"
+                    />
+                  </div>
+
+                  <div v-if="hasMoreResults" class="load-more-wrapper">
+                    <q-btn
+                      outline
+                      no-caps
+                      color="accent"
+                      class="load-more-button"
+                      label="Load more"
+                      :loading="loadingMore"
+                      :disable="loadingMore"
+                      @click="loadMore"
+                    />
+                  </div>
                 </div>
-                <div class="fixed-grid">
-                  <CreatorCard
-                    v-for="profile in searchResults"
-                    :key="profile.pubkey"
-                    :profile="profile"
-                    :cache-hit="profile.cacheHit === true"
-                    @view-tiers="viewProfile"
-                    @message="startChat"
-                    @donate="donate"
+
+                <div
+                  v-else-if="showSearchEmptyState || showInitialEmptyState"
+                  class="empty-state column items-center text-center q-pt-xl q-pb-xl q-px-md text-2"
+                >
+                  <q-icon
+                    name="travel_explore"
+                    size="4rem"
+                    class="q-mb-md text-accent-500"
+                    aria-hidden="true"
                   />
+                  <div class="text-h6 text-1">No profiles yet</div>
+                  <p class="text-body1 q-mt-sm q-mb-none">
+                    Try a different name or paste an npub to explore more creators.
+                  </p>
                 </div>
-              </div>
-
-              <q-banner
-                v-else-if="statusMessage"
-                rounded
-                dense
-                class="status-banner text-1"
-                aria-live="polite"
-              >
-                <template #avatar>
-                  <q-icon :name="resolveBannerIcon(statusMessage)" size="20px" />
-                </template>
-                <span class="status-banner__text">{{ statusMessage }}</span>
-              </q-banner>
-
-              <div
-                v-else-if="showSearchEmptyState"
-                class="empty-state column items-center text-center q-pt-xl q-pb-xl q-px-md text-2"
-              >
-                <q-icon
-                  name="travel_explore"
-                  size="4rem"
-                  class="q-mb-md text-accent-500"
-                  aria-hidden="true"
-                />
-                <div class="text-h6 text-1">No profiles yet</div>
-                <p class="text-body1 q-mt-sm q-mb-none">
-                  Try a different name or paste an npub to explore more creators.
-                </p>
-              </div>
-
-              <div v-if="showRetry" class="retry-wrapper">
-                <q-btn
-                  outline
-                  no-caps
-                  color="accent"
-                  label="Retry search"
-                  class="retry-button"
-                  :disable="searching"
-                  @click="retrySearch"
-                />
-              </div>
+              </template>
             </section>
           </q-card-section>
         </q-card>
@@ -238,111 +217,59 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { useCreatorsStore } from 'stores/creators';
-import type { CreatorProfile, CreatorWarmCache } from 'stores/creators';
-import { nip19 } from 'nostr-tools';
-import { useRouter } from 'vue-router';
-import { useMessengerStore } from 'stores/messenger';
-import { useSendTokensStore } from 'stores/sendTokensStore';
-import { useNostrStore } from 'stores/nostr';
-import { useNdk } from 'src/composables/useNdk';
-import { creatorCacheService } from 'src/nutzap/creatorCache';
-import DonateDialog from "components/DonateDialog.vue";
-import SendTokenDialog from "components/SendTokenDialog.vue";
-import { useDonationPresetsStore } from "stores/donationPresets";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import CreatorProfileModal from 'components/CreatorProfileModal.vue';
 import CreatorCard from 'components/CreatorCard.vue';
+import DonateDialog from 'components/DonateDialog.vue';
+import SendTokenDialog from 'components/SendTokenDialog.vue';
+import { useSendTokensStore } from 'stores/sendTokensStore';
+import { useDonationPresetsStore } from 'stores/donationPresets';
+import { useNostrStore } from 'stores/nostr';
+import { fetchCreators, fetchCreator, type Creator } from 'src/lib/fundstrApi';
+import { FEATURED_CREATORS } from 'stores/creators';
 
-type DecoratedCreatorProfile = CreatorProfile & {
-  npub: string;
-  npubShort: string;
-  cacheHit?: boolean;
-};
+const DEFAULT_LIMIT = 9;
 
-const creatorsStore = useCreatorsStore();
 const searchQuery = ref('');
-const searchResults = ref<DecoratedCreatorProfile[]>([]);
-const statusMessage = ref('');
-const showRetry = ref(false);
-const lastResolvedPubkeyHex = ref<string | null>(null);
-const refreshingCache = ref(false);
+const searchResults = ref<Creator[]>([]);
+const searchLoading = ref(false);
+const loadingMore = ref(false);
+const searchError = ref('');
+const hasMoreResults = ref(true);
+const initialLoadComplete = ref(false);
 
-const searching = computed(() => creatorsStore.searching);
-const loadingFeatured = computed(() => creatorsStore.loadingFeatured);
-const featuredCreators = computed(() => creatorsStore.featuredCreators);
-const searchSkeletonPlaceholders = computed(() =>
-  refreshingCache.value ? [0] : [0, 1, 2],
-);
-const featuredSkeletonPlaceholders = computed(() => [0, 1, 2, 3]);
-const featuredStatusMessage = computed(() => {
-  if (creatorsStore.error) return creatorsStore.error;
-  if (loadingFeatured.value && !featuredCreators.value.length) return 'Loading creators...';
-  if (!loadingFeatured.value && !featuredCreators.value.length && !creatorsStore.error)
-    return 'Could not load creators. Please try again.';
-  return '';
-});
-const showSearchEmptyState = computed(() => {
-  const query = searchQuery.value.trim();
-  return (
-    !searching.value &&
-    !refreshingCache.value &&
-    query.length > 0 &&
+const searchSkeletonPlaceholders = [0, 1, 2];
+const featuredSkeletonPlaceholders = [0, 1, 2, 3];
+
+const requestCache = new Map<string, Promise<Creator[]>>();
+const responseCache = new Map<string, Creator[]>();
+let activeRequest: { key: string; controller: AbortController } | null = null;
+
+const trimmedQuery = computed(() => searchQuery.value.trim());
+const hasQuery = computed(() => trimmedQuery.value.length > 0);
+const showSearchEmptyState = computed(
+  () =>
+    initialLoadComplete.value &&
+    !searchLoading.value &&
+    !loadingMore.value &&
+    !searchError.value &&
     !searchResults.value.length &&
-    !statusMessage.value
-  );
-});
-const showFeaturedEmptyState = computed(
-  () => !loadingFeatured.value && !featuredCreators.value.length && !featuredStatusMessage.value,
+    hasQuery.value,
 );
-
-const searchResultStatus = computed<
-  { label: string; icon: string; className: string } | null
->(() => {
-  if (!searchResults.value.length) {
-    return null;
-  }
-
-  const hasCacheHit = searchResults.value.some((profile) => profile.cacheHit);
-
-  return hasCacheHit
-    ? { label: 'Cached result', icon: 'history', className: 'is-cached' }
-    : { label: 'Live data', icon: 'bolt', className: 'is-live' };
-});
-
-const resolveBannerIcon = (message: string | null | undefined) => {
-  if (!message) {
-    return 'info';
-  }
-
-  const normalized = message.toLowerCase();
-
-  if (normalized.includes('fail') || normalized.includes('error')) {
-    return 'warning';
-  }
-
-  if (normalized.includes('refresh') || normalized.includes('loading')) {
-    return 'autorenew';
-  }
-
-  if (normalized.includes('cache')) {
-    return 'history';
-  }
-
-  return 'info';
-};
-
-const triggerImmediateSearch = () => {
-  void handleSearch(false);
-};
-
-const debouncedSearch = debounce(() => {
-  void handleSearch(false);
-}, 300);
+const showInitialEmptyState = computed(
+  () =>
+    initialLoadComplete.value &&
+    !searchLoading.value &&
+    !loadingMore.value &&
+    !searchError.value &&
+    !searchResults.value.length &&
+    !hasQuery.value,
+);
 
 function debounce(func: (...args: any[]) => void, delay: number) {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  return function (...args: any[]) {
+  return function (this: unknown, ...args: any[]) {
     if (timeoutId) {
       clearTimeout(timeoutId);
     }
@@ -350,248 +277,211 @@ function debounce(func: (...args: any[]) => void, delay: number) {
   };
 }
 
-function decorateProfile(profile: CreatorProfile, cacheHit = false): DecoratedCreatorProfile {
-  const npub = nip19.npubEncode(profile.pubkey);
-  return {
-    ...profile,
-    npub,
-    npubShort: `${npub.substring(0, 10)}...${npub.substring(npub.length - 5)}`,
-    cacheHit,
-  };
-}
+const triggerImmediateSearch = () => {
+  void runSearch();
+};
 
-function parseCachedProfile(entry: CreatorWarmCache | undefined): Record<string, any> | null {
-  if (!entry?.profileEvent?.content) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(entry.profileEvent.content);
-    if (parsed && typeof parsed === 'object') {
-      return { ...(parsed as Record<string, any>) };
-    }
-  } catch (error) {
-    console.warn('Failed to parse cached profile content', error);
-  }
-  return null;
-}
+const debouncedSearch = debounce(() => {
+  void runSearch();
+}, 300);
 
-async function hydrateCachedCreator(pubkeyHex: string): Promise<CreatorProfile | null> {
-  try {
-    await creatorsStore.ensureCreatorCacheFromDexie(pubkeyHex);
-  } catch (error) {
-    console.warn('Failed to hydrate creator cache from Dexie', error);
-  }
+const loadMore = () => {
+  void runSearch({ append: true });
+};
 
-  const entry = creatorsStore.getCreatorCache(pubkeyHex);
-  if (!entry) {
-    return null;
-  }
-
-  const hasProfile = entry.profileLoaded === true || entry.profileEvent !== undefined;
-  const hasTiers =
-    entry.tiersLoaded === true ||
-    (Array.isArray(entry.tiers) && entry.tiers.length > 0) ||
-    entry.tierEvent !== undefined;
-
-  if (!hasProfile && !hasTiers) {
-    return null;
-  }
-
-  return {
-    pubkey: pubkeyHex,
-    profile: parseCachedProfile(entry),
-    followers: null,
-    following: null,
-    joined: entry.profileUpdatedAt ?? null,
-  };
-}
-
-async function resolveSearchQuery(query: string): Promise<string> {
-  let candidate = query.trim();
-  if (!candidate) {
-    throw new Error('Invalid identifier');
-  }
-
-  try {
-    if (candidate.startsWith('npub')) {
-      const decoded = nip19.decode(candidate);
-      candidate = typeof decoded.data === 'string' ? (decoded.data as string) : '';
-    } else if (candidate.startsWith('nprofile')) {
-      const decoded = nip19.decode(candidate);
-      if (typeof decoded.data === 'object' && (decoded.data as any).pubkey) {
-        candidate = (decoded.data as any).pubkey;
-      } else {
-        throw new Error('Invalid identifier');
-      }
-    } else if (candidate.includes('@')) {
-      const ndk = await useNdk({ requireSigner: false });
-      const user = await ndk.getUserFromNip05(candidate);
-      if (user) {
-        candidate = user.pubkey;
-      } else {
-        throw new Error('NIP-05 not found');
-      }
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message === 'NIP-05 not found') {
-      throw error;
-    }
-    throw new Error('Invalid identifier');
-  }
-
-  if (!/^[0-9a-fA-F]{64}$/.test(candidate)) {
-    throw new Error('Invalid pubkey');
-  }
-
-  return candidate.toLowerCase();
-}
-
-async function handleSearch(forceRefresh = false) {
-  const query = searchQuery.value.trim();
-  if (!query) {
-    searchResults.value = [];
-    statusMessage.value = '';
-    showRetry.value = false;
-    lastResolvedPubkeyHex.value = null;
-    return;
-  }
-
-  statusMessage.value = '';
-  showRetry.value = false;
-
-  let resolvedHex: string;
-  try {
-    resolvedHex = await resolveSearchQuery(query);
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Invalid identifier';
-    statusMessage.value = message;
-    lastResolvedPubkeyHex.value = null;
-    searchResults.value = [];
-    return;
-  }
-
-  lastResolvedPubkeyHex.value = resolvedHex;
-
-  const cachedProfile = await hydrateCachedCreator(resolvedHex);
-  const hasCachedResult = Boolean(cachedProfile);
-  if (cachedProfile) {
-    searchResults.value = [decorateProfile(cachedProfile, true)];
-    statusMessage.value = 'Loaded cached data. Fetching live updates…';
+function applySearchResults(creators: Creator[], append: boolean) {
+  if (append) {
+    searchResults.value = [...searchResults.value, ...creators];
   } else {
-    searchResults.value = [];
+    searchResults.value = [...creators];
   }
-
-  try {
-    await creatorsStore.searchCreators(resolvedHex, forceRefresh);
-    const decorated = creatorsStore.searchResults.map((profile) =>
-      decorateProfile(profile),
-    );
-    if (decorated.length) {
-      searchResults.value = decorated;
-      statusMessage.value = '';
-      showRetry.value = false;
-    } else if (!hasCachedResult) {
-      statusMessage.value = 'Failed to fetch profile.';
-      showRetry.value = true;
-    }
-  } catch (error) {
-    console.error('Search failed:', error);
-    if (hasCachedResult) {
-      statusMessage.value = 'Showing cached data. Live search failed.';
-    } else {
-      statusMessage.value = 'Search failed. Please try again.';
-    }
-    showRetry.value = true;
+  hasMoreResults.value = creators.length === DEFAULT_LIMIT;
+  searchError.value = '';
+  if (!append) {
+    initialLoadComplete.value = true;
   }
 }
 
-async function refreshCurrentCreator() {
-  if (refreshingCache.value) {
+function finalizeSearch(append: boolean, aborted: boolean) {
+  if (append) {
+    loadingMore.value = false;
+  } else {
+    searchLoading.value = false;
+    if (!aborted) {
+      initialLoadComplete.value = true;
+    }
+  }
+}
+
+async function runSearch({ append = false }: { append?: boolean } = {}) {
+  const query = trimmedQuery.value;
+  const offset = append ? searchResults.value.length : 0;
+  const cacheKey = JSON.stringify({ q: query, limit: DEFAULT_LIMIT, offset });
+
+  if (append) {
+    if (loadingMore.value || !hasMoreResults.value) {
+      return;
+    }
+  } else {
+    hasMoreResults.value = true;
+  }
+
+  if (activeRequest && activeRequest.key !== cacheKey) {
+    activeRequest.controller.abort();
+    activeRequest = null;
+  }
+
+  if (append) {
+    loadingMore.value = true;
+  } else {
+    searchLoading.value = true;
+  }
+  searchError.value = '';
+
+  const cachedResponse = responseCache.get(cacheKey);
+  if (cachedResponse) {
+    applySearchResults(cachedResponse, append);
+    finalizeSearch(append, false);
     return;
   }
 
-  let targetHex = lastResolvedPubkeyHex.value;
-
-  if (!targetHex) {
-    const query = searchQuery.value.trim();
-    if (!query) {
-      return;
-    }
-    try {
-      targetHex = await resolveSearchQuery(query);
-      lastResolvedPubkeyHex.value = targetHex;
-    } catch (error) {
-      statusMessage.value =
-        error instanceof Error ? error.message : 'Invalid identifier';
-      showRetry.value = false;
-      return;
-    }
+  let promise = requestCache.get(cacheKey);
+  if (!promise) {
+    const controller = new AbortController();
+    activeRequest = { key: cacheKey, controller };
+    promise = fetchCreators(query, DEFAULT_LIMIT, offset, controller.signal);
+    requestCache.set(cacheKey, promise);
   }
 
-  if (!targetHex) {
-    return;
-  }
-
-  refreshingCache.value = true;
-  statusMessage.value = 'Refreshing creator cache...';
-  showRetry.value = false;
-
+  let aborted = false;
   try {
-    await creatorCacheService.updateCreator(targetHex);
-    await creatorsStore.ensureCreatorCacheFromDexie(targetHex);
-    const cachedProfile = await hydrateCachedCreator(targetHex);
-    const hasCachedResult = Boolean(cachedProfile);
-
-    if (cachedProfile) {
-      searchResults.value = [decorateProfile(cachedProfile, true)];
-      statusMessage.value = 'Cache refreshed. Fetching live data…';
-    }
-
-    await creatorsStore.searchCreators(targetHex, true);
-    const decorated = creatorsStore.searchResults.map((profile) =>
-      decorateProfile(profile),
-    );
-
-    if (decorated.length) {
-      searchResults.value = decorated;
-      statusMessage.value = '';
-      showRetry.value = false;
-    } else if (hasCachedResult) {
-      statusMessage.value = 'Cache refreshed. No live updates available.';
-      showRetry.value = true;
-    } else {
-      statusMessage.value = 'Could not load creators. Please try again.';
-      showRetry.value = true;
-    }
+    const creators = await promise!;
+    responseCache.set(cacheKey, creators);
+    applySearchResults(creators, append);
   } catch (error) {
-    console.error('Manual creator refresh failed:', error);
-    statusMessage.value = 'Refresh failed. Please try again.';
-    showRetry.value = true;
+    if ((error as any)?.name === 'AbortError') {
+      aborted = true;
+    } else {
+      if (!append) {
+        searchResults.value = [];
+      }
+      hasMoreResults.value = false;
+      searchError.value =
+        error instanceof Error ? error.message : 'Unable to load creators. Please try again.';
+    }
   } finally {
-    refreshingCache.value = false;
+    if (requestCache.get(cacheKey) === promise) {
+      requestCache.delete(cacheKey);
+    }
+    if (activeRequest && activeRequest.key === cacheKey) {
+      activeRequest = null;
+    }
+    finalizeSearch(append, aborted);
   }
 }
 
-function retrySearch() {
-  void handleSearch(true);
+const featuredCreators = ref<Creator[]>([]);
+const featuredError = ref('');
+const loadingFeatured = ref(false);
+const featuredCache = new Map<string, Creator>();
+const featuredControllers = new Set<AbortController>();
+
+function registerFeaturedController(controller: AbortController) {
+  featuredControllers.add(controller);
+  controller.signal.addEventListener(
+    'abort',
+    () => {
+      featuredControllers.delete(controller);
+    },
+    { once: true },
+  );
 }
 
-async function loadFeatured() {
-  await creatorsStore.loadFeaturedCreators();
+async function loadFeatured(force = false) {
+  if (loadingFeatured.value) {
+    return;
+  }
+  loadingFeatured.value = true;
+  featuredError.value = '';
+
+  const settled = await Promise.allSettled(
+    FEATURED_CREATORS.map(async (npub) => {
+      if (!force && featuredCache.has(npub)) {
+        return featuredCache.get(npub)!;
+      }
+      const controller = new AbortController();
+      registerFeaturedController(controller);
+      try {
+        const creator = await fetchCreator(npub, controller.signal);
+        const decorated: Creator = { ...creator, featured: true };
+        featuredCache.set(npub, decorated);
+        return decorated;
+      } finally {
+        featuredControllers.delete(controller);
+      }
+    }),
+  );
+
+  const nextCreators: Creator[] = [];
+  let failures = 0;
+
+  settled.forEach((result, index) => {
+    const npub = FEATURED_CREATORS[index];
+    if (result.status === 'fulfilled') {
+      const creator = { ...result.value, featured: true };
+      featuredCache.set(npub, creator);
+      nextCreators.push(creator);
+    } else if (featuredCache.has(npub)) {
+      nextCreators.push(featuredCache.get(npub)!);
+      failures += 1;
+    } else {
+      failures += 1;
+    }
+  });
+
+  if (nextCreators.length) {
+    featuredCreators.value = nextCreators;
+    if (failures === settled.length) {
+      featuredError.value = 'Could not load featured creators. Please try again later.';
+    } else if (failures > 0) {
+      featuredError.value = 'Some featured creators could not be loaded.';
+    }
+  } else {
+    featuredCreators.value = [];
+    featuredError.value = 'Could not load featured creators. Please try again later.';
+  }
+
+  loadingFeatured.value = false;
 }
 
-async function refreshFeatured() {
-  await creatorsStore.loadFeaturedCreators(true);
-}
+const featuredStatusMessage = computed(() => {
+  if (featuredError.value) {
+    return featuredError.value;
+  }
+  if (loadingFeatured.value && !featuredCreators.value.length) {
+    return 'Loading creators...';
+  }
+  if (!loadingFeatured.value && !featuredCreators.value.length) {
+    return 'No featured creators available right now.';
+  }
+  return '';
+});
+
+const showFeaturedEmptyState = computed(
+  () => !loadingFeatured.value && !featuredCreators.value.length && !featuredError.value,
+);
+
+const refreshFeatured = () => {
+  void loadFeatured(true);
+};
 
 const router = useRouter();
-const messenger = useMessengerStore();
+const route = useRoute();
 const sendTokensStore = useSendTokensStore();
 const nostr = useNostrStore();
-const showDonateDialog = ref(false);
-const selectedPubkey = ref("");
 const donationStore = useDonationPresetsStore();
+const showDonateDialog = ref(false);
+const selectedPubkey = ref('');
 const showProfileModal = ref(false);
 const selectedProfilePubkey = ref('');
 
@@ -602,7 +492,7 @@ function viewProfile(pubkey: string) {
 
 function startChat(pubkey: string) {
   const resolvedPubkey = nostr.resolvePubkey(pubkey);
-  const url = router.resolve({ path: "/nostr-messenger", query: { pubkey: resolvedPubkey } }).href;
+  const url = router.resolve({ path: '/nostr-messenger', query: { pubkey: resolvedPubkey } }).href;
   window.open(url, '_blank');
 }
 
@@ -620,23 +510,18 @@ function handleDonate({
   message,
 }: any) {
   if (!selectedPubkey.value) return;
-  if (type === "one-time") {
+  if (type === 'one-time') {
     sendTokensStore.clearSendData();
     sendTokensStore.recipientPubkey = selectedPubkey.value;
     sendTokensStore.sendViaNostr = true;
     sendTokensStore.sendData.bucketId = bucketId;
     sendTokensStore.sendData.amount = amount;
     sendTokensStore.sendData.memo = message;
-    sendTokensStore.sendData.p2pkPubkey = locked ? selectedPubkey.value : "";
+    sendTokensStore.sendData.p2pkPubkey = locked ? selectedPubkey.value : '';
     sendTokensStore.showLockInput = locked;
     sendTokensStore.showSendTokens = true;
   } else {
-    donationStore.createDonationPreset(
-      periods,
-      amount,
-      selectedPubkey.value,
-      bucketId,
-    );
+    donationStore.createDonationPreset(periods, amount, selectedPubkey.value, bucketId);
   }
 
   showDonateDialog.value = false;
@@ -644,8 +529,48 @@ function handleDonate({
 
 watch(showDonateDialog, (isOpen) => {
   if (!isOpen) {
-    selectedPubkey.value = "";
+    selectedPubkey.value = '';
   }
+});
+
+const resolveBannerIcon = (message: string | null | undefined) => {
+  if (!message) {
+    return 'info';
+  }
+
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('fail') || normalized.includes('error')) {
+    return 'warning';
+  }
+
+  if (normalized.includes('refresh') || normalized.includes('loading')) {
+    return 'autorenew';
+  }
+
+  return 'info';
+};
+
+function redirectToCreatorIfPresent() {
+  const npub = route.query.npub;
+  if (typeof npub === 'string' && npub.trim()) {
+    void router.replace({ name: 'creator-profile', params: { npub: npub.trim() } });
+  }
+}
+
+onMounted(() => {
+  redirectToCreatorIfPresent();
+  void runSearch();
+  void loadFeatured();
+});
+
+onBeforeUnmount(() => {
+  if (activeRequest) {
+    activeRequest.controller.abort();
+    activeRequest = null;
+  }
+  featuredControllers.forEach((controller) => controller.abort());
+  featuredControllers.clear();
 });
 </script>
 
@@ -721,23 +646,14 @@ h1 {
   gap: 24px;
 }
 
-.refresh-button {
-  width: 100%;
-}
 
-.refresh-actions {
-  display: flex;
-  justify-content: flex-end;
-  width: 100%;
-}
-
-.retry-wrapper {
+.load-more-wrapper {
   display: flex;
   justify-content: center;
 }
 
-.retry-button {
-  width: 100%;
+.load-more-button {
+  min-width: 180px;
 }
 
 .empty-state p {
@@ -764,29 +680,6 @@ h1 {
   line-height: 1.4;
 }
 
-.result-status {
-  justify-content: flex-start;
-}
-
-.result-status-chip {
-  gap: 6px;
-  border-radius: 999px;
-  padding: 4px 12px;
-  border-width: 1px;
-  border-style: solid;
-  background: color-mix(in srgb, var(--chip-bg) 70%, transparent);
-  border-color: color-mix(in srgb, var(--accent-200) 35%, transparent);
-}
-
-.result-status-chip.is-cached {
-  border-color: color-mix(in srgb, var(--accent-500) 40%, transparent);
-  color: var(--accent-600);
-}
-
-.result-status-chip.is-live {
-  border-color: color-mix(in srgb, var(--accent-200) 55%, transparent);
-  color: var(--text-1);
-}
 
 .result-skeleton,
 .featured-skeleton {
@@ -795,11 +688,6 @@ h1 {
 }
 
 @media (min-width: 768px) {
-  .refresh-button,
-  .retry-button {
-    width: auto;
-  }
-
   .find-creators-content {
     padding: 0 2rem 3.5rem;
     gap: 3.25rem;
