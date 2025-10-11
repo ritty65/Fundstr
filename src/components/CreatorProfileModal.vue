@@ -71,7 +71,7 @@
             <q-card v-for="tier in tiers" :key="tier.id" flat bordered class="tier-card">
               <q-card-section class="tier-card__header">
                 <div class="tier-name">{{ tier.name }}</div>
-                <div class="tier-price">{{ formatSats(tier.price_sats) }} sats</div>
+                <div class="tier-price">{{ formatTierPrice(tier) }} sats</div>
                 <div v-if="tierFrequencyLabel(tier)" class="tier-frequency">
                   {{ tierFrequencyLabel(tier) }}
                 </div>
@@ -143,15 +143,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { useCreatorsStore } from 'stores/creators';
-import type { CreatorProfile, Tier, TierMedia } from 'stores/types';
 import MediaPreview from 'components/MediaPreview.vue';
-import {
-  daysToFrequency,
-  type SubscriptionFrequency,
-} from 'src/constants/subscriptionFrequency';
+import { fetchCreator, formatMsatToSats, type Creator } from 'src/lib/fundstrApi';
 
 const props = defineProps<{
   show: boolean;
@@ -160,16 +155,33 @@ const props = defineProps<{
 
 const emit = defineEmits(['close', 'message', 'donate']);
 
+interface TierMediaItem {
+  url: string;
+  title?: string;
+  type?: "image" | "video" | "audio" | "link";
+}
+
+interface TierDetails {
+  id: string;
+  name: string;
+  description: string | null;
+  priceMsat: number | null;
+  benefits: string[];
+  media: TierMediaItem[];
+  welcomeMessage: string | null;
+  periodLabel: string | null;
+}
+
 const router = useRouter();
-const creatorsStore = useCreatorsStore();
 
 const loading = ref(false);
-const creator = ref<CreatorProfile | null>(null);
-const tiers = ref<Tier[]>([]);
+const creator = ref<Creator | null>(null);
+const tiers = ref<TierDetails[]>([]);
 const showLocal = ref(false);
 const expandedTiers = ref(new Set<string>());
 
-let requestToken = 0;
+let currentRequestId = 0;
+let activeController: AbortController | null = null;
 
 const displayName = computed(() => {
   const profile = creator.value?.profile ?? {};
@@ -203,10 +215,8 @@ watch(
       void fetchCreatorData(props.pubkey);
     }
     if (!visible) {
-      requestToken += 1;
-      creator.value = null;
-      tiers.value = [];
-      expandedTiers.value.clear();
+      cancelActiveRequest();
+      resetState();
     }
   },
   { immediate: true },
@@ -243,77 +253,65 @@ function toggleTierExpansion(tierId: string) {
 const isTierExpanded = (tierId: string) => {
   return expandedTiers.value.has(tierId);
 };
-function tierFrequencyLabel(tier: Tier): string | null {
-  const frequency = resolveFrequency(tier);
-  if (!frequency) return null;
-  switch (frequency) {
-    case 'weekly':
-      return 'Billed every week';
-    case 'biweekly':
-      return 'Billed twice a month';
-    case 'monthly':
-      return 'Billed every month';
-    default:
-      return null;
-  }
-}
-
-function resolveFrequency(tier: Tier): SubscriptionFrequency | null {
-  if (typeof tier.frequency === 'string') {
-    return tier.frequency as SubscriptionFrequency;
-  }
-  if (typeof tier.intervalDays === 'number') {
-    return daysToFrequency(tier.intervalDays);
-  }
-  if (typeof tier.intervalDays === 'string') {
-    const parsed = parseInt(tier.intervalDays, 10);
-    if (!Number.isNaN(parsed)) {
-      return daysToFrequency(parsed);
-    }
-  }
-  return null;
-}
 
 async function fetchCreatorData(pubkey: string) {
-  const currentToken = ++requestToken;
+  if (!pubkey) {
+    return;
+  }
+
+  cancelActiveRequest();
+
+  const requestId = ++currentRequestId;
+  const controller = new AbortController();
+  activeController = controller;
   loading.value = true;
 
   try {
-    const fetchedCreator = await creatorsStore.fetchCreator(pubkey);
-    if (currentToken !== requestToken) return;
+    const fetchedCreator = await fetchCreator(pubkey, controller.signal);
+    if (requestId !== currentRequestId) {
+      return;
+    }
+
     creator.value = fetchedCreator ?? null;
 
-    await creatorsStore.fetchTierDefinitions(pubkey);
-    if (currentToken !== requestToken) return;
+    const fetchedTiers = Array.isArray(fetchedCreator?.tiers)
+      ? fetchedCreator.tiers
+      : [];
 
-    if (!creatorsStore.tierFetchError) {
-      tiers.value = creatorsStore.tiersMap[pubkey] || [];
-      if (tiers.value.length > 0) {
-        expandedTiers.value.add(tiers.value[0].id);
-      }
+    const mappedTiers = fetchedTiers
+      .map((tier) => normalizeTierDetails(tier))
+      .filter((tier): tier is TierDetails => tier !== null);
+
+    tiers.value = mappedTiers;
+
+    if (mappedTiers.length > 0) {
+      expandedTiers.value = new Set([mappedTiers[0].id]);
     } else {
-      tiers.value = [];
+      expandedTiers.value.clear();
     }
   } catch (error) {
+    if ((error as any)?.name === 'AbortError') {
+      return;
+    }
     console.error('Failed to load creator profile', error);
-    if (currentToken === requestToken) {
+    if (requestId === currentRequestId) {
       creator.value = null;
       tiers.value = [];
+      expandedTiers.value.clear();
     }
   } finally {
-    if (currentToken === requestToken) {
+    if (requestId === currentRequestId) {
       loading.value = false;
+    }
+    if (activeController === controller) {
+      activeController = null;
     }
   }
 }
 
 function close() {
-  requestToken += 1;
+  cancelActiveRequest();
   showLocal.value = false;
-}
-
-function formatSats(value: number): string {
-  return new Intl.NumberFormat().format(value);
 }
 
 function handleSubscribe(tierId?: string) {
@@ -325,6 +323,110 @@ function handleSubscribe(tierId?: string) {
   void router.push({ path: '/subscriptions', query });
   close();
 }
+
+function tierFrequencyLabel(tier: TierDetails): string | null {
+  return tier.periodLabel;
+}
+
+function formatTierPrice(tier: TierDetails): string {
+  return formatMsatToSats(tier.priceMsat);
+}
+
+function cancelActiveRequest() {
+  if (activeController) {
+    activeController.abort();
+    activeController = null;
+  }
+  currentRequestId += 1;
+  loading.value = false;
+}
+
+function resetState() {
+  creator.value = null;
+  tiers.value = [];
+  expandedTiers.value.clear();
+}
+
+function normalizeTierDetails(rawTier: unknown): TierDetails | null {
+  if (!rawTier || typeof rawTier !== 'object') {
+    return null;
+  }
+
+  const tier = rawTier as Record<string, unknown>;
+  const id = typeof tier.id === 'string' ? tier.id.trim() : '';
+  if (!id) {
+    return null;
+  }
+
+  const name = typeof tier.name === 'string' && tier.name.trim() ? tier.name.trim() : 'Subscription tier';
+  const description = typeof tier.description === 'string' ? tier.description : null;
+  const priceMsat = extractNumericValue(
+    tier.price_msat ?? tier.priceMsat ?? tier.amount_msat ?? tier.amountMsat ?? null,
+  );
+  const periodLabel = typeof tier.period === 'string'
+    ? tier.period
+    : typeof tier.cadence === 'string'
+      ? tier.cadence
+      : typeof tier.interval === 'string'
+        ? tier.interval
+        : null;
+
+  const benefits = Array.isArray(tier.benefits)
+    ? (tier.benefits as unknown[]).filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+
+  const welcomeMessage = typeof tier.welcome_message === 'string'
+    ? tier.welcome_message
+    : typeof tier.welcomeMessage === 'string'
+      ? tier.welcomeMessage
+      : null;
+
+  const media = Array.isArray(tier.media)
+    ? (tier.media as unknown[])
+        .map((item) => normalizeMediaItem(item))
+        .filter((item): item is TierMediaItem => item !== null)
+    : [];
+
+  return {
+    id,
+    name,
+    description,
+    priceMsat,
+    benefits,
+    media,
+    welcomeMessage,
+    periodLabel,
+  };
+}
+
+function extractNumericValue(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizeMediaItem(entry: unknown): TierMediaItem | null {
+  if (!entry || typeof entry !== 'object') {
+    return null;
+  }
+  const media = entry as Record<string, unknown>;
+  const url = typeof media.url === 'string' ? media.url.trim() : '';
+  if (!url) {
+    return null;
+  }
+  const title = typeof media.title === 'string' ? media.title : undefined;
+  const type = typeof media.type === 'string' ? media.type : undefined;
+  return { url, title, type };
+}
+
+onBeforeUnmount(() => {
+  cancelActiveRequest();
+});
 </script>
 
 <style scoped>
