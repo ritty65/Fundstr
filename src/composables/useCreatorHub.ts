@@ -24,6 +24,7 @@ import {
   buildKind0Profile,
   buildKind10002RelayList,
   buildKind10019NutzapProfile,
+  buildKind30019Tiers,
   buildKind30000Tiers,
 } from "src/nostr/builders";
 import { useNdkBootStore } from "stores/ndkBoot";
@@ -31,11 +32,44 @@ import { debug } from "src/js/logger";
 import { sanitizeRelayUrls } from "src/utils/relay";
 import { filterHealthyRelays } from "src/utils/relayHealth";
 import { VETTED_OPEN_WRITE_RELAYS } from "src/config/relays";
-import { publishToRelaysWithAcks, selectPublishRelays, PublishReport, RelayResult } from "src/nostr/publish";
+import {
+  publishToRelaysWithAcks,
+  selectPublishRelays,
+  PublishReport,
+  RelayResult,
+} from "src/nostr/publish";
 import { getTrustedTime } from "src/utils/time";
+import {
+  NUTZAP_TIERS_KIND,
+  LEGACY_NUTZAP_TIERS_KIND,
+  NUTZAP_RELAY_WSS,
+} from "src/nutzap/relayConfig";
+import {
+  mapInternalTierToLegacy,
+  mapInternalTierToWire,
+} from "src/nostr/tiers";
+import {
+  fundstrRelayClient,
+  useFundstrRelayStatus,
+} from "src/nutzap/relayClient";
 
 export const scanningMints = ref(false);
 const MAX_RELAYS = 8;
+const REQUIRED_FUNDSTR_RELAY =
+  sanitizeRelayUrls([NUTZAP_RELAY_WSS])[0] ?? NUTZAP_RELAY_WSS;
+
+function arraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((val, idx) => val === b[idx]);
+}
+
+function normalizeRelaysWithFundstr(relays: string[]): string[] {
+  const sanitized = sanitizeRelayUrls(relays, MAX_RELAYS * 2);
+  const withoutRequired = sanitized.filter((url) => url !== REQUIRED_FUNDSTR_RELAY);
+  const capacity = Math.max(MAX_RELAYS - 1, 0);
+  const trimmed = capacity > 0 ? withoutRequired.slice(0, capacity) : [];
+  return [...trimmed, REQUIRED_FUNDSTR_RELAY];
+}
 
 export async function scanForMints() {
   const nostr = useNostrStore();
@@ -114,6 +148,15 @@ export function useCreatorHub() {
     isDirty: profileDirty,
   } = storeToRefs(profileStore);
 
+  const fundstrRelayStatus = useFundstrRelayStatus();
+
+  function setProfileRelays(relays: string[]) {
+    const normalized = normalizeRelaysWithFundstr(relays);
+    if (!arraysEqual(profileRelays.value, normalized)) {
+      profileRelays.value = normalized;
+    }
+  }
+
   const profile = computed(() => ({
     display_name: display_name.value,
     picture: picture.value,
@@ -131,9 +174,18 @@ export function useCreatorHub() {
   const relayAttemptTimestamps = new Map<string, number>();
   const RELAY_RETRY_COOLDOWN_MS = 30_000;
 
-  async function connectCreatorRelays(relays: string[]) {
-    let unique = sanitizeRelayUrls(relays).slice(0, MAX_RELAYS);
+  async function connectCreatorRelays(
+    relays: string[],
+  ): Promise<{ ndk: NDK | null; relays: string[] } | null> {
+    let unique = sanitizeRelayUrls(relays, MAX_RELAYS * 2);
     if (!unique.length) return null;
+    if (!unique.includes(REQUIRED_FUNDSTR_RELAY)) {
+      const capacity = Math.max(MAX_RELAYS - 1, 0);
+      unique = capacity > 0 ? unique.slice(0, capacity) : [];
+      unique.push(REQUIRED_FUNDSTR_RELAY);
+    }
+    unique = unique.slice(0, MAX_RELAYS);
+    const withRequired = unique.slice();
     const nowTs = Date.now();
     // skip relays we recently tried or that failed
     unique = unique.filter((url) => {
@@ -142,18 +194,41 @@ export function useCreatorHub() {
       return !nostr.failedRelays.includes(url);
     });
     if (!unique.length) return null;
-    if (connecting.value) return ndkRef.value;
-    unique = (await filterHealthyRelays(unique)).slice(0, MAX_RELAYS);
+    const ensureRequired = (urls: string[]) => {
+      const cleaned = sanitizeRelayUrls(urls, MAX_RELAYS * 2);
+      if (!cleaned.length) return cleaned;
+      if (cleaned.includes(REQUIRED_FUNDSTR_RELAY)) {
+        return cleaned.slice(0, MAX_RELAYS);
+      }
+      if (!withRequired.includes(REQUIRED_FUNDSTR_RELAY)) {
+        return cleaned.slice(0, MAX_RELAYS);
+      }
+      const capacity = Math.max(MAX_RELAYS - 1, 0);
+      const trimmed = capacity > 0 ? cleaned.slice(0, capacity) : [];
+      trimmed.push(REQUIRED_FUNDSTR_RELAY);
+      return trimmed.slice(0, MAX_RELAYS);
+    };
+
+    if (connecting.value) {
+      const existingNdk = ndkRef.value ?? (await useNdk());
+      const activeRelays = ensureRequired(
+        nostr.relays.length ? nostr.relays : unique,
+      );
+      return { ndk: existingNdk, relays: activeRelays };
+    }
+
+    unique = ensureRequired(await filterHealthyRelays(unique));
     if (!unique.length) return null;
     if (unique.join() === nostr.relays.join() && nostr.connected) {
-      ndkRef.value = await useNdk();
-      return ndkRef.value;
+      const ndk = await useNdk();
+      ndkRef.value = ndk;
+      return { ndk, relays: unique };
     }
     connecting.value = true;
     try {
       unique.forEach((url) => relayAttemptTimestamps.set(url, nowTs));
       ndkRef.value = await nostr.connect(unique);
-      return ndkRef.value;
+      return { ndk: ndkRef.value, relays: unique };
     } finally {
       connecting.value = false;
     }
@@ -230,7 +305,7 @@ export function useCreatorHub() {
       profileMints.value = [...profileStore.mints];
     }
     if (profileStore.relays.length) {
-      profileRelays.value = sanitizeRelayUrls(profileStore.relays).slice(0, MAX_RELAYS);
+      setProfileRelays(profileStore.relays);
     }
     let existing = null;
     try {
@@ -247,12 +322,14 @@ export function useCreatorHub() {
       profileMints.value = existing.trustedMints
         ? [...existing.trustedMints]
         : [];
-      profileRelays.value = existing.relays
-        ? sanitizeRelayUrls(existing.relays).slice(0, MAX_RELAYS)
-        : sanitizeRelayUrls(nostr.relays).slice(0, MAX_RELAYS);
+      setProfileRelays(
+        existing.relays && existing.relays.length
+          ? existing.relays
+          : nostr.relays,
+      );
     } else {
       if (!profileStore.relays.length) {
-        profileRelays.value = sanitizeRelayUrls(nostr.relays).slice(0, MAX_RELAYS);
+        setProfileRelays(nostr.relays);
       }
       if (p2pkStore.firstKey) profilePub.value = p2pkStore.firstKey.publicKey;
       if (!profileStore.mints.length && mintsStore.mints.length > 0)
@@ -263,10 +340,7 @@ export function useCreatorHub() {
       try {
         const signerRelays = await (nostr.signer as any)?.getRelays?.();
         if (signerRelays) {
-          profileRelays.value = sanitizeRelayUrls(Object.keys(signerRelays)).slice(
-            0,
-            MAX_RELAYS,
-          );
+          setProfileRelays(Object.keys(signerRelays));
         }
       } catch (e) {
         console.error(e);
@@ -274,7 +348,7 @@ export function useCreatorHub() {
     }
 
     if (!profileRelays.value.length) {
-      profileRelays.value = VETTED_OPEN_WRITE_RELAYS.slice(0, MAX_RELAYS);
+      setProfileRelays(VETTED_OPEN_WRITE_RELAYS);
       notifyWarning(
         "No relays supplied by signer; using default vetted relays.",
       );
@@ -287,7 +361,7 @@ export function useCreatorHub() {
     if (!nostr.hasIdentity) return;
     await initPage();
     if (!profileRelays.value.length && nostr.relays.length) {
-      profileRelays.value = sanitizeRelayUrls(nostr.relays).slice(0, MAX_RELAYS);
+      setProfileRelays(nostr.relays);
     }
     if (!profileRelays.value.length) return;
     await connectCreatorRelays(profileRelays.value);
@@ -320,12 +394,12 @@ export function useCreatorHub() {
       notifyError("Please connect a Nostr signer (NIP-07 or nsec)");
       return;
     }
-    const relays = sanitizeRelayUrls(profileRelays.value).slice(0, MAX_RELAYS);
+    const relays = normalizeRelaysWithFundstr(profileRelays.value);
     if (!relays.length) {
       notifyError("Please configure at least one Nostr relay");
       return;
     }
-    profileRelays.value = relays;
+    setProfileRelays(relays);
     if (!(await ensureRelaysConnected())) {
       notifyError("Unable to connect to Nostr relays");
       return;
@@ -354,7 +428,7 @@ export function useCreatorHub() {
         notifySuccess("Profile and tiers updated");
       }
       profileStore.markClean();
-      profileRelays.value = relays;
+      setProfileRelays(relays);
     } catch (e: any) {
       if (e instanceof PublishTimeoutError) {
         notifyError("Publishing timed out");
@@ -371,8 +445,8 @@ export function useCreatorHub() {
 
   function retryWithoutFailedRelays() {
     if (!publishFailures.value.length) return;
-    profileRelays.value = profileRelays.value.filter(
-      (r) => !publishFailures.value.includes(r),
+    setProfileRelays(
+      profileRelays.value.filter((r) => !publishFailures.value.includes(r)),
     );
     publishFullProfile();
   }
@@ -394,13 +468,13 @@ export function useCreatorHub() {
       return false;
     }
 
-    const relays = sanitizeRelayUrls(profileRelays.value).slice(0, MAX_RELAYS);
+    const relays = normalizeRelaysWithFundstr(profileRelays.value);
     if (!relays.length) {
       notifyError("Please configure at least one Nostr relay");
       publishing.value = false;
       return false;
     }
-    profileRelays.value = relays;
+    setProfileRelays(relays);
     if (!(await ensureRelaysConnected())) {
       notifyError("Unable to connect to Nostr relays");
       publishing.value = false;
@@ -416,7 +490,7 @@ export function useCreatorHub() {
       ]);
       profileStore.markClean();
       notifySuccess("Profile and tiers published!");
-      profileRelays.value = relays;
+      setProfileRelays(relays);
       return true;
     } catch (e: any) {
       if (e instanceof PublishTimeoutError) {
@@ -479,6 +553,7 @@ export function useCreatorHub() {
 
   onMounted(async () => {
     timer = setInterval(() => (now.value = Date.now()), 1000);
+    fundstrRelayClient.connect();
     if (nostr.hasIdentity) {
       await checkAndInit();
     }
@@ -503,8 +578,15 @@ export function useCreatorHub() {
 
   watch(
     profileRelays,
-    (newRelays) => debouncedConnectRelays(newRelays),
-    { deep: true },
+    (newRelays) => {
+      const normalized = normalizeRelaysWithFundstr(newRelays);
+      if (!arraysEqual(newRelays, normalized)) {
+        setProfileRelays(normalized);
+        return;
+      }
+      debouncedConnectRelays(normalized);
+    },
+    { deep: true, immediate: true },
   );
 
   watch(
@@ -515,12 +597,19 @@ export function useCreatorHub() {
   );
 
   function buildProfilePayload() {
-    const tierAddr = store.getTierArray().length
-      ? `30000:${nostr.pubkey}:tiers`
+    const tiers = store.getTierArray();
+    const hasTiers = tiers.length > 0;
+    const preferredKind =
+      store.tierDefinitionKind && store.tierDefinitionKind === LEGACY_NUTZAP_TIERS_KIND
+        ? LEGACY_NUTZAP_TIERS_KIND
+        : NUTZAP_TIERS_KIND;
+    const tierAddr = hasTiers
+      ? `${preferredKind}:${nostr.pubkey}:tiers`
       : undefined;
+    const p2pkPub = profilePub.value || p2pkStore.firstKey?.publicKey || "";
     return {
       profile: profile.value,
-      p2pkPub: p2pkStore.firstKey?.publicKey || "",
+      p2pkPub,
       mints: profileMints.value,
       tierAddr,
     };
@@ -543,7 +632,8 @@ export function useCreatorHub() {
     try {
       await nostr.initSignerIfNotSet();
       const ndk = await useNdk();
-      const userRelays = sanitizeRelayUrls(profileStore.relays).slice(0, MAX_RELAYS);
+      const userRelays = normalizeRelaysWithFundstr(profileStore.relays);
+      setProfileRelays(userRelays);
       const { targets, usedFallback } = selectPublishRelays(
         userRelays,
         VETTED_OPEN_WRITE_RELAYS,
@@ -552,9 +642,9 @@ export function useCreatorHub() {
       fallbackUsed.value = usedFallback;
       debug("creatorHub:publishing:relays", { targets: targets.length, fallback: usedFallback.length });
 
-      const ndkConn = await connectCreatorRelays(targets);
-      if (!ndkConn) throw new Error("Unable to connect to Nostr relays");
-      const relays = targets;
+      const connection = await connectCreatorRelays(targets);
+      if (!connection?.ndk) throw new Error("Unable to connect to Nostr relays");
+      const { ndk: ndkConn, relays } = connection;
 
       let createdAt = Math.floor(Date.now() / 1000);
       const trustedMs = await getTrustedTime(ndkConn, relays);
@@ -604,24 +694,38 @@ export function useCreatorHub() {
       kind10002.created_at = createdAt;
       const kind10019 = new NDKEvent(
         ndkConn,
-        buildKind10019NutzapProfile(nostr.pubkey, {
-          p2pk: payload.p2pkPub,
-          mints: payload.mints,
-          relays,
-          tierAddr: payload.tierAddr,
-        }),
+        buildKind10019NutzapProfile(
+          nostr.pubkey,
+          {
+            p2pk: payload.p2pkPub,
+            mints: payload.mints,
+            relays,
+            tierAddr: payload.tierAddr,
+          },
+          payload.profile,
+        ),
       );
       kind10019.created_at = createdAt;
 
       const events: any[] = [kind0, kind10002, kind10019];
       if (tiers.length) {
-        const pureTiers = tiers.map((t) => {
-          const { publishStatus, ...pureTier } = t as any;
-          return pureTier;
-        });
+        const canonicalTiers = tiers.map((tier) =>
+          mapInternalTierToWire(tier),
+        );
+        const legacyTiers = tiers.map((tier) =>
+          mapInternalTierToLegacy(tier),
+        );
+
+        const kind30019 = new NDKEvent(
+          ndkConn,
+          buildKind30019Tiers(nostr.pubkey, canonicalTiers, "tiers"),
+        );
+        kind30019.created_at = createdAt;
+        events.push(kind30019);
+
         const kind30000 = new NDKEvent(
           ndkConn,
-          buildKind30000Tiers(nostr.pubkey, pureTiers, "tiers"),
+          buildKind30000Tiers(nostr.pubkey, legacyTiers, "tiers"),
         );
         kind30000.created_at = createdAt;
         events.push(kind30000);
@@ -630,22 +734,77 @@ export function useCreatorHub() {
       await Promise.all(events.map((e) => e.sign()));
 
       const aggregate = new Map<string, RelayResult>();
+      const ensureRelayEntry = (url: string): RelayResult => {
+        const existing = aggregate.get(url);
+        if (existing) return existing;
+        const created: RelayResult = { url, ok: false };
+        aggregate.set(url, created);
+        return created;
+      };
+      const recordAck = (url: string) => {
+        const entry = ensureRelayEntry(url);
+        entry.ok = true;
+        entry.ack = true;
+        if (entry.err) delete entry.err;
+        aggregate.set(url, entry);
+      };
+      const recordFailure = (url: string, reason: string) => {
+        const entry = ensureRelayEntry(url);
+        if (!entry.ack) {
+          entry.ok = false;
+        }
+        entry.err = reason;
+        aggregate.set(url, entry);
+      };
+
       const fromFallback = new Set(usedFallback);
+      const includesFundstr = relays.includes(REQUIRED_FUNDSTR_RELAY);
+
       for (const ev of events) {
+        if (includesFundstr) {
+          try {
+            const nostrEvent =
+              typeof (ev as any).toNostrEvent === "function"
+                ? await (ev as any).toNostrEvent()
+                : {
+                    kind: (ev as any).kind,
+                    tags: (ev as any).tags ?? [],
+                    content: (ev as any).content ?? "",
+                    created_at: (ev as any).created_at,
+                  };
+            const { ack } = await fundstrRelayClient.publish({
+              kind: nostrEvent.kind,
+              tags: Array.isArray(nostrEvent.tags) ? nostrEvent.tags : [],
+              content: nostrEvent.content ?? "",
+              created_at: nostrEvent.created_at,
+            });
+            if (ack.accepted) {
+              recordAck(REQUIRED_FUNDSTR_RELAY);
+            } else {
+              recordFailure(
+                REQUIRED_FUNDSTR_RELAY,
+                ack.message || "rejected",
+              );
+            }
+          } catch (err: any) {
+            recordFailure(
+              REQUIRED_FUNDSTR_RELAY,
+              err?.message || String(err),
+            );
+          }
+        }
+
         const r = await publishToRelaysWithAcks(ndkConn, ev, relays, {
           timeoutMs: 4000,
           minAcks: 1,
           fromFallback,
         });
         r.perRelay.forEach((pr) => {
-          const existing = aggregate.get(pr.relay) || { url: pr.relay, ok: true };
-          if (pr.status !== "ok") {
-            existing.ok = false;
-            existing.err = pr.status;
+          if (pr.status === "ok") {
+            recordAck(pr.relay);
           } else {
-            existing.ack = true;
+            recordFailure(pr.relay, pr.status);
           }
-          aggregate.set(pr.relay, existing);
         });
       }
       publishReport.value = {
@@ -656,6 +815,7 @@ export function useCreatorHub() {
       };
 
       if (publishReport.value.anySuccess) {
+        store.tierDefinitionKind = NUTZAP_TIERS_KIND;
         profileStore.markClean();
         notifySuccess("Profile and tiers updated");
       } else {
@@ -689,7 +849,7 @@ export function useCreatorHub() {
         .onDismiss(() => resolve(false));
     });
     if (proceed) {
-      profileRelays.value = VETTED_OPEN_WRITE_RELAYS.slice(0, MAX_RELAYS);
+      setProfileRelays(VETTED_OPEN_WRITE_RELAYS);
     }
   }
 
@@ -737,5 +897,6 @@ export function useCreatorHub() {
     profileRelays,
     replaceWithVettedRelays,
     nostr,
+    fundstrRelayStatus,
   };
 }

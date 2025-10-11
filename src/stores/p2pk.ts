@@ -36,6 +36,22 @@ type P2PKKey = {
   usedCount: number;
 };
 
+export type P2pkVerificationRecord = {
+  timestamp: number;
+  mint: string;
+};
+
+function normalizeVerificationKey(pubkey: string): string | null {
+  if (typeof pubkey !== "string" || !pubkey.trim()) {
+    return null;
+  }
+  try {
+    return ensureCompressed(pubkey).toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 //--------------------------------------------------------------------------
 // NEW  helper: buildTimedOutputs()
 //--------------------------------------------------------------------------
@@ -85,6 +101,10 @@ export const useP2PKStore = defineStore("p2pk", {
     ),
     showP2PKDialog: false,
     showP2PKData: {} as P2PKKey,
+    verificationRecords: useLocalStorage<Record<string, P2pkVerificationRecord>>(
+      LOCAL_STORAGE_KEYS.CASHU_P2PK_VERIFICATIONS,
+      {},
+    ),
   }),
   getters: {
     firstKey: (state) => state.p2pkKeys[0] || null,
@@ -92,6 +112,39 @@ export const useP2PKStore = defineStore("p2pk", {
   actions: {
     haveThisKey: function (key: string) {
       return this.p2pkKeys.filter((m) => m.publicKey == key).length > 0;
+    },
+    getVerificationRecord: function (pubkey: string): P2pkVerificationRecord | null {
+      const normalized = normalizeVerificationKey(pubkey);
+      if (!normalized) {
+        return null;
+      }
+      const map = this.verificationRecords || {};
+      return map[normalized] || null;
+    },
+    recordVerification: function (pubkey: string, record: P2pkVerificationRecord) {
+      const normalized = normalizeVerificationKey(pubkey);
+      if (!normalized) {
+        return;
+      }
+      const mint = typeof record.mint === "string" ? record.mint.trim() : "";
+      const payload: P2pkVerificationRecord = {
+        timestamp: record.timestamp,
+        mint,
+      };
+      const next = {
+        ...(this.verificationRecords || {}),
+        [normalized]: payload,
+      } as Record<string, P2pkVerificationRecord>;
+      this.verificationRecords = next;
+    },
+    clearVerification: function (pubkey: string) {
+      const normalized = normalizeVerificationKey(pubkey);
+      if (!normalized || !this.verificationRecords?.[normalized]) {
+        return;
+      }
+      const next = { ...(this.verificationRecords as Record<string, P2pkVerificationRecord>) };
+      delete next[normalized];
+      this.verificationRecords = next;
     },
     isValidPubkey: function (key: string) {
       if (!key) return false;

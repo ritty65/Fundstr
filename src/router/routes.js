@@ -23,6 +23,24 @@ const routes = [
     ],
   },
   {
+    path: "/creator/:npubOrHex",
+    component: () => import("layouts/FullscreenLayout.vue"),
+    children: [
+      {
+        path: "",
+        name: "creator-deeplink",
+        component: () => import("src/pages/FindCreators.vue"),
+        props: true,
+      },
+      {
+        path: "profile",
+        name: "PublicCreatorProfile",
+        component: () => import("src/pages/PublicCreatorProfilePage.vue"),
+        props: true,
+      },
+    ],
+  },
+  {
     path: "/creator-hub",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
@@ -61,13 +79,13 @@ const routes = [
     ],
   },
   {
-    path: "/creator/:npub",
+    path: "/creator-studio",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
       {
         path: "",
-        name: "PublicCreatorProfile",
-        component: () => import("src/pages/PublicCreatorProfilePage.vue"),
+        name: "CreatorStudio",
+        component: () => import("src/pages/CreatorStudioPage.vue"),
       },
     ],
   },

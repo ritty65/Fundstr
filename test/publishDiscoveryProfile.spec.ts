@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { setActivePinia, createPinia } from 'pinia';
 vi.mock('@noble/ciphers/aes.js', () => ({}), { virtual: true });
 
 let createdEvents: any[] = [];
@@ -24,17 +25,12 @@ vi.mock('../src/nostr/publish', async (importOriginal) => {
 
 vi.mock('../src/config/relays', () => ({
   VETTED_OPEN_WRITE_RELAYS: ['wss://good'],
+  DEFAULT_RELAYS: ['wss://good'],
+  FREE_RELAYS: [],
 }));
 
 const connectMock = vi.fn();
-
-vi.mock('../src/stores/nostr', async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    useNostrStore: () => ({ signer: {}, connect: connectMock }),
-  };
-});
+const SAMPLE_PUBKEY = '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798';
 
 vi.mock('@nostr-dev-kit/ndk', () => {
   class MockNDKEvent {
@@ -52,15 +48,25 @@ vi.mock('@nostr-dev-kit/ndk', () => {
   return { NDKEvent: MockNDKEvent };
 });
 
-import { publishDiscoveryProfile } from '../src/stores/nostr';
+import * as nostrModule from '../src/stores/nostr';
+
+const { publishDiscoveryProfile } = nostrModule;
+
+beforeEach(() => {
+  connectMock.mockReset();
+  setActivePinia(createPinia());
+  const store = nostrModule.useNostrStore();
+  store.signer = {} as any;
+  store.connect = connectMock as any;
+});
 
 describe('publishDiscoveryProfile', () => {
   it('pushes tier address tag', async () => {
     createdEvents = [];
     await publishDiscoveryProfile({
-      profile: {},
-      p2pkPub: 'pub',
-      mints: [],
+      profile: { display_name: 'Alice', picture: 'https://img' },
+      p2pkPub: SAMPLE_PUBKEY,
+      mints: ['https://mint'],
       relays: ['wss://relay'],
       tierAddr: '30000:pub:tiers'
     });
@@ -68,13 +74,15 @@ describe('publishDiscoveryProfile', () => {
     const body = JSON.parse(ev.content);
     expect(body.tierAddr).toBe('30000:pub:tiers');
     expect(ev.tags).toContainEqual(['t','nutzap-profile']);
+    expect(ev.tags).toContainEqual(['mint','https://mint','sat']);
+    expect(ev.tags).toContainEqual(['relay','wss://relay']);
   });
 
   it('uses fallback relays when user relays fail', async () => {
     createdEvents = [];
     const report = await publishDiscoveryProfile({
       profile: {},
-      p2pkPub: 'pub',
+      p2pkPub: SAMPLE_PUBKEY,
       mints: [],
       relays: ['wss://bad'],
     });

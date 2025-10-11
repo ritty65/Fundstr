@@ -74,11 +74,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, defineAsyncComponent, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { copyToClipboard } from 'quasar'
 import { LOCAL_STORAGE_KEYS } from '@/constants/localStorageKeys'
 
-const VueQrcode = defineAsyncComponent(() => import('@chenfengyuan/vue-qrcode'))
+import VueQrcode from '@chenfengyuan/vue-qrcode'
 
 const visible = ref(false)
 const tab = ref('lightning')

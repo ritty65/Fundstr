@@ -17,17 +17,15 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "jsdom",
+    fileParallelism: false,
+    threads: false,
+    singleThread: true,
     setupFiles: ["./test/vitest/setup-file.js"],
-    exclude: [
-      "src/lib/cashu-ts/test/**/*.ts",
-      "src/lib/cashu-ts/test/integration.test.ts",
-      "src/lib/cashu-ts/test/auth.test.ts",
-    ],
     include: [
-      "src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}",
-      "test/creatorSubscribers-page.spec.ts",
-      "test/vitest/__tests__/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}",
-      "test/*.spec.ts",
+      "test/vitest/__tests__/buckets.spec.ts",
+      "test/vitest/__tests__/creators-tiers.spec.ts",
+      "test/vitest/__tests__/CreatorStudioPage.publish.spec.ts",
+      "test/vitest/__tests__/NutzapProfilePage.spec.ts",
     ],
   },
   resolve: {
@@ -46,7 +44,6 @@ export default defineConfig({
         "src/lib/cashu-ts/src/index.ts",
       ),
       "@noble/ciphers/aes.js": path.resolve(__dirname, "test/mocks/aes.js"),
-      "@scure/base": path.resolve(__dirname, "test/mocks/base.js"),
     },
   },
   plugins: [

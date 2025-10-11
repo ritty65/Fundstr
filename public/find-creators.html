@@ -15,14 +15,20 @@
         color: #2d3748; /* Tailwind gray-800 */
       }
       .container {
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 1rem;
+        width: 100%;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: clamp(2rem, 4vw, 3rem);
+        padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 4vw, 2.5rem);
+        box-sizing: border-box;
       }
       .search-container,
       .featured-creators-container {
-        margin: 2rem auto;
-        padding: 2rem;
+        width: min(100%, clamp(320px, 85vw, 1100px));
+        margin: 0 auto;
+        padding: clamp(1.5rem, 4vw, 2.5rem);
         background-color: white;
         border-radius: 0.75rem; /* Tailwind rounded-xl */
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
@@ -166,6 +172,15 @@
         padding: 1.5rem;
         font-style: italic;
       }
+      .relay-warning {
+        margin-top: 1rem;
+        padding: 0.75rem 1rem;
+        background-color: #fef3c7;
+        border: 1px solid #f6ad55;
+        border-radius: 0.5rem;
+        color: #b7791f;
+        font-weight: 600;
+      }
       .retry-button {
         margin: 0 auto;
         margin-top: -1rem;
@@ -302,19 +317,22 @@
         <p id="featuredStatusMessage" class="status-message hidden"></p>
       </div>
 
+      <p id="relayWarning" class="relay-warning hidden"></p>
       <div class="relay-info">Connecting to: <span id="relayList"></span></div>
     </div>
 
     <script type="module" defer>
-      import { filterHealthyRelays } from "./relayHealth.js";
+      import { filterHealthyRelays, pingRelay } from "./relayHealth.js";
+      const FUNDSTR_RELAY = "wss://relay.primal.net";
       const DEFAULT_RELAYS = [
+        FUNDSTR_RELAY,
         "wss://relay.damus.io",
-        "wss://relay.primal.net",
         "wss://relay.snort.social",
         "wss://nos.lol",
         "wss://relay.nostr.band",
       ];
       const statusMessageElement = document.getElementById("statusMessage");
+      const relayWarningElement = document.getElementById("relayWarning");
       const retryButtonElement = document.getElementById("retryButton");
       // --- Nostr Tools ---
       if (!window.NostrTools) {
@@ -336,15 +354,33 @@
       const pool = new SimplePool({ eoseSubTimeout: 8000 });
       let currentSearchAbortController = null;
       let lastSearchQuery = "";
+      let currentSearchProfiles = new Map();
+      let hasInitialRender = false;
+      let viewProfileNotified = false;
+
+      const EMPTY_RESULT_CODE = "EMPTY_RESULT";
 
       let relayFailureCount = 0;
       async function refreshRelays() {
         try {
           const healthy = await filterHealthyRelays(DEFAULT_RELAYS);
-          RELAYS = healthy;
+          const fundstrReachable = await pingRelay(FUNDSTR_RELAY);
+          const prioritized = [
+            FUNDSTR_RELAY,
+            ...healthy.filter((relay) => relay !== FUNDSTR_RELAY),
+          ];
+          RELAYS = prioritized;
           relayFailureCount = 0;
           document.getElementById("relayList").textContent = RELAYS.join(", ");
           statusMessageElement.classList.add("hidden");
+          if (fundstrReachable) {
+            relayWarningElement.classList.add("hidden");
+            relayWarningElement.textContent = "";
+          } else {
+            relayWarningElement.textContent =
+              "Fundstr relay is temporarily unreachable. We'll keep retrying while temporarily using backups.";
+            relayWarningElement.classList.remove("hidden");
+          }
         } catch {
           relayFailureCount++;
           if (relayFailureCount >= 3) {
@@ -355,6 +391,8 @@
             statusMessageElement.textContent =
               "Network error: could not reach relays.";
             statusMessageElement.classList.remove("hidden");
+            relayWarningElement.classList.add("hidden");
+            relayWarningElement.textContent = "";
             clearInterval(relayInterval);
           }
         }
@@ -410,6 +448,103 @@
         return promise;
       }
 
+      function initializeSearchState() {
+        currentSearchProfiles = new Map();
+        hasInitialRender = false;
+        viewProfileNotified = false;
+        resultsListElement.textContent = "";
+        statusMessageElement.textContent = "";
+        statusMessageElement.classList.add("hidden");
+        retryButtonElement.classList.add("hidden");
+      }
+
+      function mergeProfilesIntoCurrent(profiles) {
+        let changed = false;
+        profiles.forEach((profile) => {
+          if (!profile || !profile.pubkey) return;
+          const existing = currentSearchProfiles.get(profile.pubkey);
+          const existingCreatedAt = existing?.event?.created_at ?? 0;
+          const nextCreatedAt = profile?.event?.created_at ?? 0;
+          if (!existing || nextCreatedAt >= existingCreatedAt) {
+            currentSearchProfiles.set(profile.pubkey, profile);
+            changed = true;
+          }
+        });
+        return changed;
+      }
+
+      function applyProfiles(profiles, { notifyView = false, targetPubkey } = {}) {
+        if (!Array.isArray(profiles) || profiles.length === 0) return;
+        const updated = mergeProfilesIntoCurrent(profiles);
+        if (!updated && hasInitialRender) return;
+
+        const orderedProfiles = Array.from(currentSearchProfiles.values());
+        renderProfiles(orderedProfiles, resultsListElement, false);
+
+        if (!hasInitialRender) {
+          hasInitialRender = true;
+          updateStatus("", true);
+          loaderElement.style.display = "none";
+          if (notifyView && targetPubkey && !viewProfileNotified) {
+            window.parent.postMessage(
+              { type: "viewProfile", pubkey: targetPubkey },
+              "*",
+            );
+            viewProfileNotified = true;
+          }
+        } else if (notifyView && targetPubkey && !viewProfileNotified) {
+          window.parent.postMessage(
+            { type: "viewProfile", pubkey: targetPubkey },
+            "*",
+          );
+          viewProfileNotified = true;
+        }
+      }
+
+      function observeProfilesPromise(
+        promise,
+        signal,
+        { notifyView = false, targetPubkey, sourceLabel } = {},
+      ) {
+        promise
+          .then((profiles) => {
+            if (signal.aborted) return;
+            const normalized = Array.isArray(profiles) ? profiles : [];
+            if (normalized.length > 0) {
+              applyProfiles(normalized, { notifyView, targetPubkey });
+            }
+          })
+          .catch((error) => {
+            if (error.name === "AbortError") return;
+            if (sourceLabel) {
+              console.error(`${sourceLabel} profile fetch failed:`, error);
+            } else {
+              console.error("Profile fetch failed:", error);
+            }
+          });
+        return promise;
+      }
+
+      function firstNonEmptyPromise(promise, signal, label) {
+        return promise.then((profiles) => {
+          if (signal.aborted)
+            throw new DOMException("Aborted", "AbortError");
+          const normalized = Array.isArray(profiles) ? profiles : [];
+          if (normalized.length > 0) {
+            return { profiles: normalized, label };
+          }
+          const error = new Error(`${label}-empty`);
+          error.code = EMPTY_RESULT_CODE;
+          throw error;
+        });
+      }
+
+      function updateStatusIfPending(message) {
+        if (!hasInitialRender) {
+          updateStatus(message);
+        }
+      }
+
       async function handleSearch(query) {
         const cleanQuery = query.trim();
         lastSearchQuery = cleanQuery;
@@ -420,9 +555,7 @@
         currentSearchAbortController = new AbortController();
         const { signal } = currentSearchAbortController;
 
-        resultsListElement.textContent = "";
-        statusMessageElement.classList.add("hidden");
-        retryButtonElement.classList.add("hidden");
+        initializeSearchState();
         loaderElement.style.display = "block";
 
         if (!cleanQuery) {
@@ -456,18 +589,40 @@
 
           updateStatus(`Searching relays for "${cleanQuery}"...`);
           const filter = { kinds: [0], search: cleanQuery, limit: 25 };
-          const profiles = await fetchProfilesFromRelays(
-            RELAYS,
-            filter,
+          const fundstrPromise = observeProfilesPromise(
+            fetchProfilesFromFundstr(filter, signal),
             signal,
+            { sourceLabel: "Fundstr relay" },
           );
-          if (signal.aborted) return;
+          const pooledPromise = observeProfilesPromise(
+            fetchProfilesFromRelays(RELAYS, filter, signal),
+            signal,
+            { sourceLabel: "Relay pool" },
+          );
 
-          if (profiles.length > 0) {
-            renderProfiles(profiles, resultsListElement, false);
-            updateStatus("", true);
-          } else {
-            updateStatus("No profiles found matching your search.");
+          try {
+            await Promise.any([
+              firstNonEmptyPromise(fundstrPromise, signal, "fundstr"),
+              firstNonEmptyPromise(pooledPromise, signal, "relay-pool"),
+            ]);
+          } catch (error) {
+            if (signal.aborted) return;
+            if (error.name === "AggregateError") {
+              const aggregateErrors = Array.isArray(error.errors)
+                ? error.errors
+                : [];
+              const nonEmptyErrors = aggregateErrors.filter(
+                (err) => err && err.code !== EMPTY_RESULT_CODE,
+              );
+              if (nonEmptyErrors.length > 0) {
+                throw nonEmptyErrors[0];
+              }
+              if (!hasInitialRender) {
+                updateStatus(`No profiles found matching your search.`);
+              }
+            } else {
+              throw error;
+            }
           }
         } catch (error) {
           if (error.name !== "AbortError") {
@@ -481,99 +636,144 @@
             updateStatus(msg, false, true);
           }
         } finally {
-          if (!signal.aborted) {
+          if (!signal.aborted && !hasInitialRender) {
             loaderElement.style.display = "none";
           }
         }
       }
 
       async function findProfileByPubkey(pubkey, signal) {
-        // Tier 1: Search known relays
+        initializeSearchState();
+        loaderElement.style.display = "block";
+
+        const filter = { kinds: [0], authors: [pubkey] };
+        const watchOptions = { notifyView: true, targetPubkey: pubkey };
+
         updateStatus("Searching known relays for profile...");
-        let profiles = await fetchProfilesFromRelays(
-          RELAYS,
-          { kinds: [0], authors: [pubkey] },
+
+        const fundstrPromise = observeProfilesPromise(
+          fetchProfilesFromFundstr(filter, signal),
           signal,
+          { ...watchOptions, sourceLabel: "Fundstr relay" },
         );
-        if (signal.aborted) return;
-        if (profiles.length > 0) {
-          renderProfiles(profiles, resultsListElement, false);
-          updateStatus("", true);
-          window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
-          return;
-        }
+        const knownRelayPromise = observeProfilesPromise(
+          fetchProfilesFromRelays(RELAYS, filter, signal),
+          signal,
+          { ...watchOptions, sourceLabel: "Known relays" },
+        );
 
-        // Tier 2: Discover user's personal relays (kind: 10002) from known relays
-        updateStatus("Profile not found. Discovering user's relays...");
-        const userRelays = await findUserRelayList(pubkey, signal);
-        if (signal.aborted) return;
-        if (userRelays.length > 0) {
-          updateStatus(
-            `Searching ${userRelays.length} newly discovered relays...`,
-          );
-          profiles = await fetchProfilesFromRelays(
-            userRelays,
-            { kinds: [0], authors: [pubkey] },
-            signal,
-          );
-          if (signal.aborted) return;
-          if (profiles.length > 0) {
-            renderProfiles(profiles, resultsListElement, false);
-            updateStatus("", true);
-            window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
-            return;
+        try {
+          try {
+            await Promise.any([
+              firstNonEmptyPromise(fundstrPromise, signal, "fundstr"),
+              firstNonEmptyPromise(
+                knownRelayPromise,
+                signal,
+                "known-relays",
+              ),
+            ]);
+          } catch (error) {
+            if (signal.aborted) return;
+            if (error.name === "AggregateError") {
+              const aggregateErrors = Array.isArray(error.errors)
+                ? error.errors
+                : [];
+              const nonEmptyErrors = aggregateErrors.filter(
+                (err) => err && err.code !== EMPTY_RESULT_CODE,
+              );
+              if (nonEmptyErrors.length > 0) {
+                throw nonEmptyErrors[0];
+              }
+            } else {
+              throw error;
+            }
           }
-        }
 
-        // Tier 3: Use nostr.band indexer to find where user is active
-        updateStatus(
-          "Still not found. Consulting nostr.band indexer for relay locations...",
-        );
-        const indexedRelays = await fetchRelayListFromIndexer(pubkey, signal);
-        if (signal.aborted) return;
-        if (indexedRelays.length > 0) {
-          updateStatus(
-            `Found ${indexedRelays.length} potential relays from indexer. Searching...`,
-          );
-          profiles = await fetchProfilesFromRelays(
-            indexedRelays,
-            { kinds: [0], authors: [pubkey] },
-            signal,
-          );
           if (signal.aborted) return;
-          if (profiles.length > 0) {
-            renderProfiles(profiles, resultsListElement, false);
-            updateStatus("", true);
-            window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
-            return;
+
+          updateStatusIfPending("Profile not found. Discovering user's relays...");
+          const userRelays = await findUserRelayList(pubkey, signal);
+          if (signal.aborted) return;
+
+          if (userRelays.length > 0) {
+            updateStatusIfPending(
+              `Searching ${userRelays.length} newly discovered relays...`,
+            );
+            const userRelayPromise = observeProfilesPromise(
+              fetchProfilesFromRelays(userRelays, filter, signal),
+              signal,
+              { ...watchOptions, sourceLabel: "Discovered relays" },
+            );
+            await userRelayPromise;
+            if (signal.aborted) return;
           }
-        }
 
-        // Tier 4: Fallback to nostr.band indexer for the profile content
-        updateStatus("Still not found. Checking nostr.band directly...");
-        let profile = await fetchProfileFromIndexer(pubkey, signal);
-        if (signal.aborted) return;
-        if (profile) {
-          renderProfiles([profile], resultsListElement, false);
-          updateStatus("", true);
-          window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
-          return;
-        }
-
-        // Tier 5: The ultimate fallback, query the Primal.net API
-        updateStatus(
-          "Last attempt: Consulting Primal, the most powerful indexer...",
-        );
-        profile = await fetchProfileFromPrimal(pubkey, signal);
-        if (signal.aborted) return;
-        if (profile) {
-          renderProfiles([profile], resultsListElement, false);
-          updateStatus("", true);
-          window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
-        } else {
-          updateStatus(
-            "Profile could not be found after exhaustive search on known relays, discovered relays, and multiple public indexers.",
+          updateStatusIfPending(
+            "Still not found. Consulting nostr.band indexer for relay locations...",
           );
+          const indexedRelays = await fetchRelayListFromIndexer(pubkey, signal);
+          if (signal.aborted) return;
+
+          if (indexedRelays.length > 0) {
+            updateStatusIfPending(
+              `Found ${indexedRelays.length} potential relays from indexer. Searching...`,
+            );
+            const indexedRelayPromise = observeProfilesPromise(
+              fetchProfilesFromRelays(indexedRelays, filter, signal),
+              signal,
+              { ...watchOptions, sourceLabel: "Indexed relays" },
+            );
+            await indexedRelayPromise;
+            if (signal.aborted) return;
+          }
+
+          updateStatusIfPending("Still not found. Checking nostr.band directly...");
+          const indexerProfilePromise = fetchProfileFromIndexer(pubkey, signal);
+          observeProfilesPromise(
+            indexerProfilePromise.then((profile) => (profile ? [profile] : [])),
+            signal,
+            { ...watchOptions, sourceLabel: "nostr.band profile" },
+          );
+          const indexerProfile = await indexerProfilePromise;
+          if (signal.aborted) return;
+
+          if (!indexerProfile) {
+            updateStatusIfPending(
+              "Last attempt: Consulting Primal, the most powerful indexer...",
+            );
+            const primalProfilePromise = fetchProfileFromPrimal(pubkey, signal);
+            observeProfilesPromise(
+              primalProfilePromise.then((profile) =>
+                profile ? [profile] : [],
+              ),
+              signal,
+              { ...watchOptions, sourceLabel: "Primal profile" },
+            );
+            const primalProfile = await primalProfilePromise;
+            if (signal.aborted) return;
+
+            if (!primalProfile && !hasInitialRender) {
+              updateStatus(
+                "Profile could not be found after exhaustive search on known relays, discovered relays, and multiple public indexers.",
+              );
+            }
+          }
+        } catch (error) {
+          if (error.name === "AbortError") return;
+          console.error("Search failed:", error);
+          if (!hasInitialRender) {
+            const msg =
+              error.message && error.message.includes("Failed to fetch")
+                ? "Network error: could not reach relays."
+                : error.name === "AbortError"
+                ? "Search timed out."
+                : `Search failed: ${error.message}`;
+            updateStatus(msg, false, true);
+          }
+        } finally {
+          if (!signal.aborted && !hasInitialRender) {
+            loaderElement.style.display = "none";
+          }
         }
       }
 
@@ -671,8 +871,23 @@
         return [];
       }
 
-      async function fetchProfilesFromRelays(relays, filter, signal) {
-        const events = await fetchEventsFromRelays(relays, filter, signal);
+      async function fetchProfilesFromRelays(
+        relays,
+        filter,
+        signal,
+        options = {},
+      ) {
+        const timeoutMs = options?.timeout;
+        const retries = options?.retries ?? 1;
+        const retryDelay = options?.retryDelay;
+        const events = await fetchEventsFromRelays(
+          relays,
+          filter,
+          signal,
+          timeoutMs,
+          retries,
+          retryDelay,
+        );
         const profileMap = new Map();
         events.forEach((event) => {
           if (event.kind === 0) {
@@ -706,27 +921,64 @@
         return Array.from(profileMap.values());
       }
 
+      function fetchProfilesFromFundstr(filter, signal) {
+        return fetchProfilesFromRelays([FUNDSTR_RELAY], filter, signal, {
+          timeout: 1000,
+          retries: 2,
+          retryDelay: 350,
+        });
+      }
+
       async function fetchEventsFromRelays(
         relays,
         filter,
         signal,
         timeout = 7000,
         retries = 1,
+        retryDelay = 1000,
       ) {
+        const debounceDelay = 180;
+        const uniqueRelays = [...new Set(relays)].filter(Boolean);
+
         async function attempt() {
           return await new Promise((resolve, reject) => {
             if (signal.aborted)
               return reject(new DOMException("Aborted", "AbortError"));
 
             const events = [];
-            const sub = pool.sub([...new Set(relays)], [filter]);
+            const relayStates = new Map(
+              uniqueRelays.map((relay) => [relay, { hasEvent: false, hasEose: false }]),
+            );
+            let resolved = false;
+            let debounceId = null;
+            let cleanupCalled = false;
+
+            const sub = pool.sub(uniqueRelays, [filter]);
+
+            const resolveRelayUrl = (relayRef) => {
+              if (!relayRef) return undefined;
+              if (typeof relayRef === "string") return relayRef;
+              if (typeof relayRef === "object" && typeof relayRef.url === "string")
+                return relayRef.url;
+              return undefined;
+            };
+
+            let timeoutId = null;
 
             const cleanup = () => {
+              if (cleanupCalled) return;
+              cleanupCalled = true;
               try {
                 sub.unsub();
               } catch (e) {}
               signal.removeEventListener("abort", onAbort);
-              clearTimeout(timeoutId);
+              if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+              }
+              if (debounceId) {
+                clearTimeout(debounceId);
+                debounceId = null;
+              }
             };
 
             const onAbort = () => {
@@ -735,18 +987,66 @@
             };
             signal.addEventListener("abort", onAbort);
 
-            const timeoutId = setTimeout(() => {
+            const finish = () => {
+              if (resolved) return;
+              resolved = true;
               cleanup();
               resolve(events);
-            }, timeout);
+            };
 
-            sub.on("event", (event) => {
+            const scheduleResolveIfComplete = () => {
+              if (resolved) return;
+              if (
+                relayStates.size === 0 ||
+                Array.from(relayStates.values()).every(
+                  (state) => state.hasEvent || state.hasEose,
+                )
+              ) {
+                if (debounceId) clearTimeout(debounceId);
+                debounceId = setTimeout(finish, debounceDelay);
+              }
+            };
+
+            const markRelay = (relayRef, field) => {
+              if (relayStates.size === 0) {
+                scheduleResolveIfComplete();
+                return;
+              }
+
+              const relayUrl = resolveRelayUrl(relayRef);
+              if (relayUrl && relayStates.has(relayUrl)) {
+                const state = relayStates.get(relayUrl);
+                if (!state[field]) {
+                  state[field] = true;
+                  scheduleResolveIfComplete();
+                }
+                return;
+              }
+
+              if (!relayUrl && relayStates.size === 1) {
+                const onlyRelay = relayStates.keys().next().value;
+                if (onlyRelay) {
+                  const state = relayStates.get(onlyRelay);
+                  if (!state[field]) {
+                    state[field] = true;
+                    scheduleResolveIfComplete();
+                  }
+                }
+              }
+            };
+
+            timeoutId = setTimeout(finish, timeout);
+
+            sub.on("event", (event, relayRef) => {
               events.push(event);
+              markRelay(relayRef, "hasEvent");
             });
 
-            sub.on("eose", () => {
-              // Don't resolve on EOSE, wait for full timeout to gather from all relays
+            sub.on("eose", (relayRef) => {
+              markRelay(relayRef, "hasEose");
             });
+
+            scheduleResolveIfComplete();
           });
         }
 
@@ -759,7 +1059,10 @@
           } catch (err) {
             if (err.name === "AbortError" || attemptNum === retries) throw err;
           }
-          await new Promise((res) => setTimeout(res, 1000));
+          const effectiveDelay = retryDelay ?? 1000;
+          if (effectiveDelay > 0) {
+            await new Promise((res) => setTimeout(res, effectiveDelay));
+          }
         }
         return [];
       }

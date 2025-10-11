@@ -1,38 +1,18 @@
-#!/usr/bin/env node
-import "fake-indexeddb/auto";
-import { createPinia, setActivePinia } from "pinia";
-import {
-  fetchNutzapProfile,
-  useNostrStore,
-  RelayConnectionError,
-} from "../src/stores/nostr";
-import { useSettingsStore } from "../src/stores/settings";
+#!/usr/bin/env ts-node
+/* eslint-disable no-console */
+import { NUTZAP_RELAY_HTTP } from '../src/nutzap/relayConfig.js';
 
 async function main() {
   const npub = process.argv[2];
   if (!npub) {
-    console.error("Usage: verifyNutzapProfile <npub>");
+    console.error('Usage: verifyNutzapProfile <hex-pubkey>');
     process.exit(1);
   }
-
-  setActivePinia(createPinia());
-  useSettingsStore();
-  const nostr = useNostrStore();
-  await nostr.initNdkReadOnly();
-
-  try {
-    const profile = await fetchNutzapProfile(npub);
-    console.log(JSON.stringify(profile, null, 2));
-  } catch (e: any) {
-    if (e instanceof RelayConnectionError) {
-      console.error("Unable to connect to Nostr relays");
-      return;
-    }
-    throw e;
-  }
+  // Query kind:10019 from our relay only
+  const filters = [{ kinds: [10019], authors: [npub], limit: 1 }];
+  const qs = new URLSearchParams({ filters: JSON.stringify(filters) });
+  const res = await fetch(`${NUTZAP_RELAY_HTTP}/req?${qs.toString()}`);
+  const json = await res.json();
+  console.log(JSON.stringify(json, null, 2));
 }
-
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+void main();

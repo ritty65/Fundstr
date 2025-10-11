@@ -81,6 +81,63 @@ type KeysetCounter = {
   counter: number;
 };
 
+type ActiveP2pk = {
+  publicKey: string;
+  privateKey: string;
+};
+
+function defaultActiveP2pk(): ActiveP2pk {
+  return { publicKey: "", privateKey: "" };
+}
+
+function createDefaultPayInvoiceData(bucketId = DEFAULT_BUCKET_ID) {
+  return {
+    blocking: false,
+    bolt11: "",
+    show: false,
+    bucketId,
+    meltQuote: {
+      payload: {
+        unit: "",
+        request: "",
+      } as MeltQuotePayload,
+      response: {
+        quote: "",
+        amount: 0,
+        fee_reserve: 0,
+      } as MeltQuoteResponse,
+      error: "",
+    },
+    invoice: {
+      sat: 0,
+      memo: "",
+      bolt11: "",
+    } as { sat: number; memo: string; bolt11: string } | null,
+    lnurlpay: {
+      domain: "",
+      callback: "",
+      minSendable: 0,
+      maxSendable: 0,
+      metadata: {},
+      successAction: {},
+      routes: [],
+      tag: "",
+    },
+    lnurlauth: {},
+    input: {
+      request: "",
+      amount: null,
+      comment: "",
+      quote: "",
+    } as {
+      request: string;
+      amount: number | null;
+      comment: string;
+      quote: string;
+    },
+  };
+}
+
 export const useWalletStore = defineStore("wallet", {
   state: () => {
     const t = i18n.global.t;
@@ -93,51 +150,11 @@ export const useWalletStore = defineStore("wallet", {
       ),
       invoiceData: {} as InvoiceHistory,
       activeWebsocketConnections: 0,
-      payInvoiceData: {
-        blocking: false,
-        bolt11: "",
-        show: false,
-        bucketId: DEFAULT_BUCKET_ID,
-        meltQuote: {
-          payload: {
-            unit: "",
-            request: "",
-          } as MeltQuotePayload,
-          response: {
-            quote: "",
-            amount: 0,
-            fee_reserve: 0,
-          } as MeltQuoteResponse,
-          error: "",
-        },
-        invoice: {
-          sat: 0,
-          memo: "",
-          bolt11: "",
-        } as { sat: number; memo: string; bolt11: string } | null,
-        lnurlpay: {
-          domain: "",
-          callback: "",
-          minSendable: 0,
-          maxSendable: 0,
-          metadata: {},
-          successAction: {},
-          routes: [],
-          tag: "",
-        },
-        lnurlauth: {},
-        input: {
-          request: "",
-          amount: null,
-          comment: "",
-          quote: "",
-        } as {
-          request: string;
-          amount: number | null;
-          comment: string;
-          quote: string;
-        },
-      },
+      payInvoiceData: createDefaultPayInvoiceData(),
+      activeP2pk: useLocalStorage<ActiveP2pk>(
+        LOCAL_STORAGE_KEYS.CASHU_ACTIVE_P2PK,
+        defaultActiveP2pk(),
+      ),
     };
   },
   getters: {
@@ -168,6 +185,85 @@ export const useWalletStore = defineStore("wallet", {
     },
   },
   actions: {
+    resetPointerDependentRequests() {
+      const bucketId = this.payInvoiceData?.bucketId ?? DEFAULT_BUCKET_ID;
+      this.payInvoiceData = createDefaultPayInvoiceData(bucketId);
+      const prStore = usePRStore();
+      if (typeof prStore.showPRKData === "string" && prStore.showPRKData) {
+        prStore.showPRKData = "";
+      }
+    },
+    setActiveP2pk(publicKey: string, privateKey = "") {
+      const trimmedPub = typeof publicKey === "string" ? publicKey.trim() : "";
+      const trimmedPriv = typeof privateKey === "string" ? privateKey.trim() : "";
+      const receiveStore = useReceiveTokensStore();
+      const p2pkStore = useP2PKStore();
+
+      if (!trimmedPub) {
+        const hadActive =
+          (this.activeP2pk?.publicKey ?? "") !== "" ||
+          (this.activeP2pk?.privateKey ?? "") !== "";
+        if (hadActive) {
+          this.activeP2pk = defaultActiveP2pk();
+          this.resetPointerDependentRequests();
+        }
+        if (receiveStore.receiveData.p2pkPrivateKey) {
+          receiveStore.receiveData.p2pkPrivateKey = "";
+        }
+        return;
+      }
+
+      if (!p2pkStore.isValidPubkey(trimmedPub)) {
+        return;
+      }
+
+      let compressedPub: string;
+      try {
+        compressedPub = ensureCompressed(trimmedPub);
+      } catch (error) {
+        console.warn("Failed to normalize P2PK pubkey", error);
+        return;
+      }
+
+      let resolvedPriv = trimmedPriv;
+      if (!resolvedPriv) {
+        const rawEntries = (p2pkStore as any).p2pkKeys;
+        const entries = Array.isArray(rawEntries)
+          ? rawEntries
+          : Array.isArray(rawEntries?.value)
+          ? rawEntries.value
+          : [];
+        const match = entries.find((entry: any) =>
+          entry?.publicKey
+            ? entry.publicKey.trim().toLowerCase() === compressedPub.toLowerCase()
+            : false,
+        );
+        if (match?.privateKey) {
+          resolvedPriv = match.privateKey.trim();
+        } else if (
+          this.activeP2pk?.publicKey?.toLowerCase() === compressedPub.toLowerCase() &&
+          this.activeP2pk?.privateKey
+        ) {
+          resolvedPriv = this.activeP2pk.privateKey;
+        }
+      }
+
+      const normalizedPriv = resolvedPriv ? resolvedPriv.trim().toLowerCase() : "";
+      const prevPub = (this.activeP2pk?.publicKey ?? "").toLowerCase();
+      const prevPriv = (this.activeP2pk?.privateKey ?? "").toLowerCase();
+      const changed =
+        prevPub !== compressedPub.toLowerCase() || prevPriv !== normalizedPriv;
+
+      this.activeP2pk = {
+        publicKey: compressedPub,
+        privateKey: normalizedPriv,
+      };
+      receiveStore.receiveData.p2pkPrivateKey = normalizedPriv;
+
+      if (changed) {
+        this.resetPointerDependentRequests();
+      }
+    },
     mintWallet(url: string, unit: string): CashuWallet {
       // short-lived wallet for mint operations
       // note: the unit of the wallet will be activeUnit by default,

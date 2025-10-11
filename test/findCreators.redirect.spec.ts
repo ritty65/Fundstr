@@ -4,19 +4,39 @@ import { createRouter, createMemoryHistory } from "vue-router";
 import { createPinia, setActivePinia } from "pinia";
 import FindCreators from "src/pages/FindCreators.vue";
 
+vi.mock('quasar', () => ({
+  Notify: {
+    create: vi.fn(),
+  },
+  useQuasar: () => ({
+    notify: vi.fn(),
+  }),
+}));
 vi.mock("components/DonateDialog.vue", () => ({ default: { name: "DonateDialog", template: "<div></div>" } }));
 vi.mock("components/SubscribeDialog.vue", () => ({ default: { name: "SubscribeDialog", template: "<div></div>" } }));
 vi.mock("components/SendTokenDialog.vue", () => ({ default: { name: "SendTokenDialog", template: "<div></div>" } }));
 vi.mock("components/MediaPreview.vue", () => ({ default: { name: "MediaPreview", template: "<div></div>" } }));
 vi.mock("stores/sendTokensStore", () => ({ useSendTokensStore: () => ({ clearSendData: vi.fn(), sendData: {}, showSendTokens: false }) }));
 vi.mock("stores/donationPresets", () => ({ useDonationPresetsStore: () => ({ createDonationPreset: vi.fn() }) }));
-vi.mock("stores/creators", () => ({ useCreatorsStore: () => ({ tiersMap: {}, tierFetchError: false, fetchTierDefinitions: vi.fn() }) }));
+vi.mock("stores/creators", () => ({
+  FEATURED_CREATORS: [],
+}));
+vi.mock("src/lib/fundstrApi", () => ({
+  fetchCreators: vi.fn().mockResolvedValue([]),
+  fetchCreator: vi.fn().mockResolvedValue({
+    pubkey: "".padEnd(64, "a"),
+    profile: null,
+    followers: null,
+    following: null,
+    joined: null,
+  }),
+  formatMsatToSats: vi.fn(() => "0"),
+}));
 vi.mock("stores/nostr", () => ({
   useNostrStore: () => ({ pubkey: "", initNdkReadOnly: vi.fn().mockResolvedValue(undefined), resolvePubkey: (k: string) => k }),
   fetchNutzapProfile: vi.fn(),
   RelayConnectionError: class RelayConnectionError extends Error {},
 }));
-vi.mock("stores/messenger", () => ({ useMessengerStore: () => ({ started: false, startChat: vi.fn(), ensureChatSubscription: vi.fn() }) }));
 vi.mock("src/js/notify", () => ({ notifyWarning: vi.fn() }));
 vi.mock("vue-i18n", () => ({ useI18n: () => ({ t: (k: string) => k }) }));
 
@@ -26,7 +46,7 @@ describe("FindCreators redirection", () => {
       history: createMemoryHistory(),
       routes: [
         { path: "/find-creators", component: FindCreators },
-        { path: "/creator/:npub", component: { template: "<div />" } },
+        { path: "/creator/:npub", name: 'creator-profile', component: { template: "<div />" } },
       ],
     });
     const pinia = createPinia();

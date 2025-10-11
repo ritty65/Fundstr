@@ -1,0 +1,717 @@
+<template>
+  <q-dialog
+    v-model="showLocal"
+    persistent
+    backdrop-filter="blur(2px) brightness(65%)"
+  >
+    <q-card class="profile-card">
+      <q-card-section class="profile-header">
+        <div class="header-main">
+          <q-avatar size="104px" class="profile-avatar">
+            <img :src="creatorAvatar" alt="Creator avatar" />
+          </q-avatar>
+          <div class="profile-info">
+            <div class="profile-name">{{ displayName }}</div>
+            <div v-if="creator?.profile?.nip05" class="profile-handle">
+              {{ creator.profile.nip05 }}
+            </div>
+            <div v-if="creator?.profile?.about" class="profile-about">
+              {{ creator.profile.about }}
+            </div>
+          </div>
+        </div>
+        <q-btn
+          flat
+          round
+          dense
+          icon="close"
+          class="close-btn"
+          @click="close"
+          aria-label="Close creator profile"
+        />
+      </q-card-section>
+
+      <q-card-section v-if="loading" class="loading-state">
+        <q-spinner color="accent" size="42px" />
+      </q-card-section>
+
+      <template v-else>
+        <q-separator class="section-divider" />
+        <q-card-section v-if="creator" class="actions-section">
+          <q-btn
+            unelevated
+            class="action-button subscribe"
+            color="accent"
+            :disable="!hasTiers"
+            label="Subscribe"
+            no-caps
+            @click="handleSubscribe(primaryTierId || undefined)"
+          />
+          <q-btn
+            outline
+            class="action-button"
+            color="accent"
+            label="Message"
+            no-caps
+            @click="$emit('message', pubkey)"
+          />
+          <q-btn
+            outline
+            class="action-button"
+            color="accent"
+            label="Donate"
+            no-caps
+            @click="$emit('donate', pubkey)"
+          />
+        </q-card-section>
+
+        <q-card-section v-if="creator" class="tiers-section">
+          <div class="section-heading">Subscription tiers</div>
+          <div v-if="hasTiers" class="tiers-grid">
+            <q-card v-for="tier in tiers" :key="tier.id" flat bordered class="tier-card">
+              <q-card-section class="tier-card__header">
+                <div class="tier-name">{{ tier.name }}</div>
+                <div class="tier-price">{{ formatTierPrice(tier) }} sats</div>
+                <div v-if="tierFrequencyLabel(tier)" class="tier-frequency">
+                  {{ tierFrequencyLabel(tier) }}
+                </div>
+              </q-card-section>
+              <q-slide-transition>
+                <div v-show="isTierExpanded(tier.id)">
+                  <q-separator class="tier-separator" />
+                  <q-card-section class="tier-body">
+                    <div v-if="tier.description" class="tier-description">
+                      {{ tier.description }}
+                    </div>
+                    <div v-if="tier.media?.length" class="tier-media">
+                      <div
+                        v-for="(mediaItem, mediaIndex) in tier.media"
+                        :key="`${tier.id}-media-${mediaIndex}`"
+                        class="tier-media__item"
+                      >
+                        <MediaPreview :url="mediaItem.url" />
+                      </div>
+                    </div>
+                    <div v-if="tier.benefits?.length" class="tier-benefits">
+                      <div class="benefits-heading">Benefits</div>
+                      <ul>
+                        <li v-for="(benefit, index) in tier.benefits" :key="`${tier.id}-benefit-${index}`">
+                          {{ benefit }}
+                        </li>
+                      </ul>
+                    </div>
+                    <div v-if="tier.welcomeMessage" class="tier-welcome">
+                      <div class="welcome-heading">Welcome message</div>
+                      <div class="welcome-copy">{{ tier.welcomeMessage }}</div>
+                    </div>
+                  </q-card-section>
+                </div>
+              </q-slide-transition>
+              <q-separator class="tier-separator" />
+              <q-card-actions class="tier-actions">
+                <q-btn
+                  flat
+                  no-caps
+                  class="expand-btn"
+                  color="accent"
+                  :icon-right="isTierExpanded(tier.id) ? 'expand_less' : 'expand_more'"
+                  @click="toggleTierExpansion(tier.id)"
+                >
+                  Details
+                </q-btn>
+                <q-space />
+                <q-btn
+                  color="accent"
+                  class="tier-subscribe"
+                  unelevated
+                  no-caps
+                  label="Subscribe"
+                  @click="handleSubscribe(tier.id)"
+                />
+              </q-card-actions>
+            </q-card>
+          </div>
+          <div v-else class="empty-state">No subscription tiers found for this creator.</div>
+        </q-card-section>
+
+        <q-card-section v-else class="empty-state">
+          We couldn't load this creator's profile. Please try again later.
+        </q-card-section>
+      </template>
+    </q-card>
+  </q-dialog>
+</template>
+
+<script setup lang="ts">
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import MediaPreview from 'components/MediaPreview.vue';
+import { fetchCreator, formatMsatToSats, type Creator } from 'src/lib/fundstrApi';
+
+const props = defineProps<{
+  show: boolean;
+  pubkey: string;
+}>();
+
+const emit = defineEmits(['close', 'message', 'donate']);
+
+interface TierMediaItem {
+  url: string;
+  title?: string;
+  type?: "image" | "video" | "audio" | "link";
+}
+
+interface TierDetails {
+  id: string;
+  name: string;
+  description: string | null;
+  priceMsat: number | null;
+  benefits: string[];
+  media: TierMediaItem[];
+  welcomeMessage: string | null;
+  periodLabel: string | null;
+}
+
+const router = useRouter();
+
+const loading = ref(false);
+const creator = ref<Creator | null>(null);
+const tiers = ref<TierDetails[]>([]);
+const showLocal = ref(false);
+const expandedTiers = ref(new Set<string>());
+
+let currentRequestId = 0;
+let activeController: AbortController | null = null;
+
+const displayName = computed(() => {
+  const c = creator.value;
+  return (
+    (c?.displayName && c.displayName.trim()) ||
+    (c?.name && c.name.trim()) ||
+    (c?.nip05 && c.nip05.split('@')[0]) ||
+    'Unnamed User'
+  );
+});
+
+const creatorAvatar = computed(() => {
+  const c = creator.value;
+  if (c?.picture && typeof c.picture === 'string' && c.picture.trim()) {
+    return c.picture as string;
+  }
+  const source = c?.displayName || c?.name || c?.nip05 || props.pubkey;
+  const initial = (typeof source === 'string' && source.trim()[0]) || 'U';
+  return `https://placehold.co/200x200/1f2937/ffffff?text=${encodeURIComponent(
+    initial.toUpperCase(),
+  )}`;
+});
+
+const hasTiers = computed(() => tiers.value.length > 0);
+
+const primaryTierId = computed(() => tiers.value[0]?.id ?? '');
+
+watch(
+  () => props.show,
+  (visible) => {
+    showLocal.value = visible;
+    if (visible && props.pubkey) {
+      void fetchCreatorData(props.pubkey);
+    }
+    if (!visible) {
+      cancelActiveRequest();
+      resetState();
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  showLocal,
+  (value) => {
+    if (!value && props.show) {
+      emit('close');
+    }
+  },
+);
+
+watch(
+  () => props.pubkey,
+  (newPubkey, oldPubkey) => {
+    if (props.show && newPubkey && newPubkey !== oldPubkey) {
+      void fetchCreatorData(newPubkey);
+    }
+  },
+);
+
+function toggleTierExpansion(tierId: string) {
+  const newSet = new Set(expandedTiers.value);
+  if (newSet.has(tierId)) {
+    newSet.delete(tierId);
+  } else {
+    newSet.add(tierId);
+  }
+  expandedTiers.value = newSet;
+}
+
+const isTierExpanded = (tierId: string) => {
+  return expandedTiers.value.has(tierId);
+};
+
+async function fetchCreatorData(pubkey: string) {
+  if (!pubkey) {
+    return;
+  }
+
+  cancelActiveRequest();
+
+  const requestId = ++currentRequestId;
+  const controller = new AbortController();
+  activeController = controller;
+  loading.value = true;
+
+  try {
+    const fetchedCreator = await fetchCreator(pubkey, controller.signal);
+    if (requestId !== currentRequestId) {
+      return;
+    }
+
+    creator.value = fetchedCreator ?? null;
+
+    const fetchedTiers = Array.isArray(fetchedCreator?.tiers)
+      ? fetchedCreator.tiers
+      : [];
+
+    const mappedTiers = fetchedTiers
+      .map((tier) => normalizeTierDetails(tier))
+      .filter((tier): tier is TierDetails => tier !== null);
+
+    tiers.value = mappedTiers;
+
+    if (mappedTiers.length > 0) {
+      expandedTiers.value = new Set([mappedTiers[0].id]);
+    } else {
+      expandedTiers.value.clear();
+    }
+  } catch (error) {
+    if ((error as any)?.name === 'AbortError') {
+      return;
+    }
+    console.error('Failed to load creator profile', error);
+    if (requestId === currentRequestId) {
+      creator.value = null;
+      tiers.value = [];
+      expandedTiers.value.clear();
+    }
+  } finally {
+    if (requestId === currentRequestId) {
+      loading.value = false;
+    }
+    if (activeController === controller) {
+      activeController = null;
+    }
+  }
+}
+
+function close() {
+  cancelActiveRequest();
+  showLocal.value = false;
+}
+
+function handleSubscribe(tierId?: string) {
+  if (!props.pubkey) return;
+  const query: Record<string, string> = { pubkey: props.pubkey };
+  if (tierId) {
+    query.tier = tierId;
+  }
+  void router.push({ path: '/subscriptions', query });
+  close();
+}
+
+function tierFrequencyLabel(tier: TierDetails): string | null {
+  return tier.periodLabel;
+}
+
+function formatTierPrice(tier: TierDetails): string {
+  return formatMsatToSats(tier.priceMsat);
+}
+
+function cancelActiveRequest() {
+  if (activeController) {
+    activeController.abort();
+    activeController = null;
+  }
+  currentRequestId += 1;
+  loading.value = false;
+}
+
+function resetState() {
+  creator.value = null;
+  tiers.value = [];
+  expandedTiers.value.clear();
+}
+
+function normalizeTierDetails(rawTier: unknown): TierDetails | null {
+  if (!rawTier || typeof rawTier !== 'object') return null;
+  const t = rawTier as Record<string, unknown>;
+
+  const id =
+    (typeof t.id === 'string' && t.id.trim()) ||
+    (typeof t.tier_id === 'string' && t.tier_id.trim()) ||
+    (typeof t.d === 'string' && t.d.trim()) || '';
+  if (!id) return null;
+
+  const name =
+    (typeof t.name === 'string' && t.name.trim()) ||
+    (typeof t.title === 'string' && t.title.trim()) ||
+    'Subscription tier';
+
+  const description = typeof t.description === 'string' ? t.description : null;
+  const priceMsat = extractNumericValue(t.price_msat ?? t.priceMsat ?? t.amount_msat ?? t.amountMsat ?? null);
+  const periodLabel =
+    (typeof t.period === 'string' && t.period) ||
+    (typeof t.cadence === 'string' && t.cadence) ||
+    (typeof t.interval === 'string' && t.interval) || null;
+
+  const benefits =
+    Array.isArray(t.benefits)
+      ? (t.benefits as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+      : parsePerks(t.perks);
+
+  const media = Array.isArray(t.media)
+    ? (t.media as unknown[]).map(normalizeMediaItem).filter((m): m is TierMediaItem => m !== null)
+    : [];
+
+  const welcomeMessage =
+    (typeof t.welcome_message === 'string' && t.welcome_message) ||
+    (typeof t.welcomeMessage === 'string' && t.welcomeMessage) || null;
+
+  return { id, name, description, priceMsat, benefits, media, welcomeMessage, periodLabel };
+}
+
+function parsePerks(value: unknown): string[] {
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
+    }
+  } catch {}
+  return value.split(/\r?\n|,|;/).map(s => s.trim()).filter(Boolean);
+}
+
+function extractNumericValue(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizeMediaItem(entry: unknown): TierMediaItem | null {
+  if (!entry || typeof entry !== 'object') {
+    return null;
+  }
+  const media = entry as Record<string, unknown>;
+  const url = typeof media.url === 'string' ? media.url.trim() : '';
+  if (!url) {
+    return null;
+  }
+  const title = typeof media.title === 'string' ? media.title : undefined;
+  const type = typeof media.type === 'string' ? media.type : undefined;
+  return { url, title, type };
+}
+
+onBeforeUnmount(() => {
+  cancelActiveRequest();
+});
+</script>
+
+<style scoped>
+.profile-card {
+  width: min(720px, 92vw);
+  background: var(--surface-2);
+  color: var(--text-1);
+  border-radius: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px;
+}
+
+.header-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.profile-avatar :deep(img) {
+  border-radius: 50%;
+  border: 3px solid var(--surface-contrast-border);
+  object-fit: cover;
+  width: 100%;
+  height: 100%;
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 420px;
+}
+
+.profile-name {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.profile-handle {
+  color: var(--accent-500);
+  font-weight: 600;
+}
+
+.profile-about {
+  color: var(--text-2);
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.close-btn {
+  color: var(--text-2);
+}
+
+.loading-state {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 48px 24px;
+}
+
+.section-divider {
+  opacity: 0.5;
+}
+
+.actions-section {
+  display: flex;
+  gap: 12px;
+  padding: 24px;
+  padding-top: 16px;
+}
+
+.action-button {
+  flex: 1;
+  font-weight: 600;
+}
+
+.action-button.subscribe {
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+}
+
+.tiers-section {
+  padding: 16px 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section-heading {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.tiers-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.tier-card {
+  background: var(--surface-1);
+  border-radius: 16px;
+  border: 1px solid var(--surface-contrast-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.tier-card__header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tier-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.tier-price {
+  font-weight: 700;
+  color: var(--accent-500);
+}
+
+.tier-frequency {
+  font-size: 0.9rem;
+  color: var(--text-2);
+}
+
+.tier-separator {
+  opacity: 0.35;
+}
+
+.tier-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--text-2);
+}
+
+.tier-description {
+  white-space: pre-line;
+  color: var(--text-1);
+}
+
+.tier-media {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tier-media__item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tier-media__image,
+.tier-media__video,
+.tier-media__audio,
+.tier-media__link {
+  border-radius: 12px;
+  border: 1px solid var(--surface-contrast-border);
+  overflow: hidden;
+}
+
+.tier-media__video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 360px;
+  background: black;
+}
+
+.tier-media__audio {
+  display: block;
+  width: 100%;
+  background: var(--surface-1);
+}
+
+.tier-media__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--surface-1);
+  color: var(--accent-500);
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.2s ease, background-color 0.2s ease;
+  word-break: break-word;
+  width: 100%;
+}
+
+.tier-media__link:hover,
+.tier-media__link:focus-visible {
+  background: var(--accent-200);
+  color: var(--accent-600);
+}
+
+.tier-media__link-text {
+  overflow-wrap: anywhere;
+}
+
+.tier-benefits {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.benefits-heading,
+.welcome-heading {
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.tier-benefits ul {
+  padding-left: 18px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tier-benefits li {
+  list-style: disc;
+}
+
+.tier-welcome {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.welcome-copy {
+  white-space: pre-line;
+}
+
+.tier-actions {
+  padding: 8px;
+  align-items: center;
+}
+
+.tier-subscribe {
+  font-weight: 600;
+}
+
+.expand-btn {
+  font-weight: 500;
+}
+
+.empty-state {
+  padding: 24px;
+  color: var(--text-2);
+  text-align: center;
+}
+
+@media (max-width: 599px) {
+  .profile-card {
+    width: min(92vw, 100%);
+  }
+
+  .profile-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .close-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+  }
+
+  .header-main {
+    width: 100%;
+  }
+
+  .actions-section {
+    flex-direction: column;
+  }
+}
+</style>

@@ -12,8 +12,6 @@ import {
 import { Clipboard } from "@capacitor/clipboard";
 import { Haptics, ImpactStyle } from "@capacitor/haptics";
 
-import ts from "typescript";
-
 const unitTickerShortMap = {
   sat: "sats",
   usd: "USD",

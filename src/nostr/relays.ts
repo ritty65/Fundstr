@@ -8,8 +8,6 @@ export const DM_BLOCKLIST = new Set<string>([
   'wss://purplepag.es/',
   'wss://relayable.org',
   'wss://relayable.org/',
-  'wss://relay.f7z.io',
-  'wss://relay.f7z.io/',
   'wss://relay.nostr.band',
   'wss://relay.nostr.band/',
 ]);

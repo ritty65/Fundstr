@@ -33,7 +33,7 @@ export async function filterHealthyRelays(relays: string[]): Promise<string[]> {
     }, 1500);
   });
 
-  const res = connected.length >= 2 ? connected : FREE_RELAYS;
+  const res = connected.length > 0 ? connected : FREE_RELAYS;
   cache.set(key, { ts: now, res });
   return res;
 }

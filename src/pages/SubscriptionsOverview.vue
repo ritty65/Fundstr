@@ -270,7 +270,10 @@
                   <q-item
                     clickable
                     v-close-popup
-                    :to="`/creator/${pubkeyNpub(row.creator)}`"
+                    :to="{
+                      name: 'PublicCreatorProfile',
+                      params: { npubOrHex: pubkeyNpub(row.creator) },
+                    }"
                   >
                     <q-item-section>{{
                       $t("FindCreators.actions.view_profile.label")

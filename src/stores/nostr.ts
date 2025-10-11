@@ -28,8 +28,7 @@ import {
 } from "nostr-tools";
 import { bytesToHex, hexToBytes, randomBytes } from "@noble/hashes/utils"; // already an installed dependency
 import { sha256 } from "@noble/hashes/sha256";
-import * as aes from '@noble/ciphers/aes.js';
-import { base64 } from "@scure/base";
+import { decodeBase64, encodeBase64 } from "src/utils/base64";
 import { ensureCompressed } from "src/utils/ecash";
 import { useWalletStore } from "./wallet";
 import { generateSecretKey, getPublicKey } from "nostr-tools";
@@ -66,14 +65,28 @@ import { cashuDb, type LockedToken } from "./dexie";
 import { v4 as uuidv4 } from "uuid";
 import { useRouter } from "vue-router";
 import { useP2PKStore } from "./p2pk";
-import { watch } from "vue";
+import { watch, type Ref } from "vue";
 import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useMessengerStore } from "./messenger";
 import { decryptDM } from "../nostr/crypto";
 import { useCreatorHubStore } from "./creatorHub";
 import { useCreatorProfileStore } from "./creatorProfile";
+import {
+  LEGACY_NUTZAP_TIERS_KIND,
+  NUTZAP_TIERS_KIND,
+} from "src/nutzap/relayConfig";
+import { mapInternalTierToWire } from "src/nostr/tiers";
+import { buildKind10019NutzapProfile } from "src/nostr/builders";
 import { NutzapProfileSchema, type NutzapProfilePayload } from "src/nostr/nutzapProfile";
+import {
+  FUNDSTR_REQ_URL,
+  FUNDSTR_WS_URL,
+  WS_FIRST_TIMEOUT_MS,
+} from "@/nutzap/relayEndpoints";
+import { getNutzapNdk } from "src/nutzap/ndkInstance";
+import { publishNostrEvent } from "src/pages/nutzap-profile/nostrHelpers";
+import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 
 // --- Relay connectivity helpers ---
 export type WriteConnectivity = {
@@ -109,7 +122,9 @@ export async function ensureWriteConnectivity(
     const t = setTimeout(resolve, timeoutMs);
 
     function onConnect(relay: any) {
-      if (!connected.includes(relay.url)) connected.push(relay.url);
+      const normalized = normalizeWsUrls([relay.url])[0];
+      if (!normalized) return;
+      if (!connected.includes(normalized)) connected.push(normalized);
       if (connected.length >= Math.min(minConnected, candidates.length)) {
         pool.off("relay:connect", onConnect);
         clearTimeout(t);
@@ -119,8 +134,9 @@ export async function ensureWriteConnectivity(
     pool.on("relay:connect", onConnect);
 
     for (const r of pool.relays.values()) {
-      if (r.status === 1 /* OPEN */ && !connected.includes(r.url)) {
-        connected.push(r.url);
+      const normalized = normalizeWsUrls([r.url])[0];
+      if (r.status === 1 /* OPEN */ && normalized && !connected.includes(normalized)) {
+        connected.push(normalized);
       }
     }
     if (connected.length >= Math.min(minConnected, candidates.length)) {
@@ -132,7 +148,7 @@ export async function ensureWriteConnectivity(
 
   return {
     urlsTried: tried,
-    urlsConnected: connected,
+    urlsConnected: normalizeWsUrls(connected),
     elapsedMs: Date.now() - started,
   };
 }
@@ -400,37 +416,114 @@ export function npubToHex(s: string): string | null {
   return null;
 }
 
-function encryptWithSharedSecret(
+const AES_BLOCK_SIZE = 16;
+
+function getSubtleCrypto(): SubtleCrypto {
+  const globalCrypto: Crypto | undefined =
+    (globalThis as any)?.crypto ?? (globalThis as any)?.webcrypto;
+  const subtle: SubtleCrypto | undefined =
+    globalCrypto?.subtle ?? (globalCrypto as any)?.webcrypto?.subtle;
+  if (!subtle) {
+    throw new Error("WebCrypto SubtleCrypto API is unavailable");
+  }
+  return subtle;
+}
+
+function pkcs7Pad(data: Uint8Array): Uint8Array {
+  const padLength = AES_BLOCK_SIZE - (data.length % AES_BLOCK_SIZE || AES_BLOCK_SIZE);
+  const padded = new Uint8Array(data.length + padLength);
+  padded.set(data);
+  padded.fill(padLength, data.length);
+  return padded;
+}
+
+function pkcs7Unpad(data: Uint8Array): Uint8Array {
+  if (data.length === 0 || data.length % AES_BLOCK_SIZE !== 0) {
+    throw new Error("Invalid AES-CBC payload");
+  }
+  const padLength = data[data.length - 1];
+  if (padLength === 0 || padLength > AES_BLOCK_SIZE) {
+    throw new Error("Invalid PKCS#7 padding");
+  }
+  const end = data.length - padLength;
+  for (let i = end; i < data.length; i += 1) {
+    if (data[i] !== padLength) {
+      throw new Error("Malformed PKCS#7 padding");
+    }
+  }
+  return data.subarray(0, end);
+}
+
+async function aesCbcEncrypt(
+  key: Uint8Array,
+  iv: Uint8Array,
+  plaintext: Uint8Array,
+): Promise<Uint8Array> {
+  const subtle = getSubtleCrypto();
+  const cryptoKey = await subtle.importKey(
+    "raw",
+    key,
+    { name: "AES-CBC" },
+    false,
+    ["encrypt"],
+  );
+  const padded = pkcs7Pad(plaintext);
+  const ciphertext = await subtle.encrypt({ name: "AES-CBC", iv }, cryptoKey, padded);
+  return new Uint8Array(ciphertext);
+}
+
+async function aesCbcDecrypt(
+  key: Uint8Array,
+  iv: Uint8Array,
+  ciphertext: Uint8Array,
+): Promise<Uint8Array> {
+  const subtle = getSubtleCrypto();
+  const cryptoKey = await subtle.importKey(
+    "raw",
+    key,
+    { name: "AES-CBC" },
+    false,
+    ["decrypt"],
+  );
+  const plaintext = await subtle.decrypt(
+    { name: "AES-CBC", iv },
+    cryptoKey,
+    ciphertext,
+  );
+  return pkcs7Unpad(new Uint8Array(plaintext));
+}
+
+async function encryptWithSharedSecret(
   shared: Uint8Array | string,
   message: string,
-): string {
+): Promise<string> {
   const ss = typeof shared === "string" ? hexToBytes(shared) : shared;
   const key = ss.length === 32 ? ss : ss.slice(1, 33);
-  const iv = randomBytes(16);
+  const iv = randomBytes(AES_BLOCK_SIZE);
   const plaintext = new TextEncoder().encode(message);
-  const ciphertext = aes.cbc(key, iv).encrypt(plaintext);
-  const ctb64 = base64.encode(new Uint8Array(ciphertext));
-  const ivb64 = base64.encode(new Uint8Array(iv.buffer));
+  const ciphertext = await aesCbcEncrypt(key, iv, plaintext);
+  const ctb64 = encodeBase64(ciphertext);
+  const ivb64 = encodeBase64(iv);
   return `${ctb64}?iv=${ivb64}`;
 }
 
-function decryptWithSharedSecret(
+async function decryptWithSharedSecret(
   shared: Uint8Array | string,
   data: string,
-): string {
+): Promise<string> {
   const ss = typeof shared === "string" ? hexToBytes(shared) : shared;
   const key = ss.length === 32 ? ss : ss.slice(1, 33);
   const [ctb64, ivb64] = data.split("?iv=");
-  const iv = base64.decode(ivb64);
-  const ciphertext = base64.decode(ctb64);
-  const plaintext = aes.cbc(key, iv).decrypt(ciphertext);
+  const iv = decodeBase64(ivb64);
+  const ciphertext = decodeBase64(ctb64);
+  const plaintext = await aesCbcDecrypt(key, iv, ciphertext);
   return new TextDecoder().decode(plaintext);
 }
 
-function encryptWithSharedSecretV2(
+async function encryptWithSharedSecretV2(
   shared: Uint8Array | string,
   message: string,
-): string {
+): Promise<string> {
   return encryptWithSharedSecret(shared, message);
 }
 
@@ -468,6 +561,9 @@ async function decryptNip04(
 // --- Nutzap helpers (NIP-61) ----------------------------------------------
 
 import type { NostrEvent } from "@nostr-dev-kit/ndk";
+import { queryNutzapProfile, toHex } from "@/nostr/relayClient";
+import { fallbackDiscoverRelays } from "@/nostr/discovery";
+import type { NostrEvent as RelayEvent } from "@/nostr/relayClient";
 
 interface NutzapProfile {
   hexPub: string;
@@ -477,7 +573,168 @@ interface NutzapProfile {
   tierAddr?: string;
 }
 
-const nutzapProfileCache = new Map<string, NutzapProfile | null>();
+interface NutzapProfileCacheRecord {
+  profile: NutzapProfile | null;
+  fetchedAt: number;
+}
+
+interface PersistedNutzapProfileCache {
+  version: number;
+  entries: Record<string, NutzapProfileCacheRecord>;
+}
+
+const NUTZAP_PROFILE_CACHE_VERSION = 1;
+const NUTZAP_PROFILE_CACHE_STORAGE_KEY = "cashu.ndk.nutzapProfileCache";
+const NUTZAP_PROFILE_CACHE_STALE_AFTER_MS = 6 * 60 * 60 * 1000; // 6 hours
+const NUTZAP_PROFILE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+const nutzapProfileCache = new Map<string, NutzapProfileCacheRecord>();
+const nutzapProfileFetches = new Map<string, Promise<NutzapProfile | null>>();
+
+let nutzapProfileCacheStorage: Ref<PersistedNutzapProfileCache> | null = null;
+let nutzapProfileCacheHydrated = false;
+
+function getNutzapProfileCacheStorage(): Ref<PersistedNutzapProfileCache> {
+  if (!nutzapProfileCacheStorage) {
+    nutzapProfileCacheStorage = safeUseLocalStorage<PersistedNutzapProfileCache>(
+      NUTZAP_PROFILE_CACHE_STORAGE_KEY,
+      {
+        version: NUTZAP_PROFILE_CACHE_VERSION,
+        entries: {},
+      },
+    );
+  }
+  return nutzapProfileCacheStorage;
+}
+
+function pruneExpiredNutzapProfiles(now = Date.now()) {
+  if (!nutzapProfileCacheHydrated) return;
+  const storage = getNutzapProfileCacheStorage();
+  const entries = { ...storage.value.entries };
+  let mutated = false;
+  for (const [hex, entry] of Object.entries(entries)) {
+    if (now - entry.fetchedAt >= NUTZAP_PROFILE_CACHE_MAX_AGE_MS) {
+      delete entries[hex];
+      nutzapProfileCache.delete(hex);
+      mutated = true;
+    }
+  }
+  if (mutated) {
+    storage.value = {
+      version: NUTZAP_PROFILE_CACHE_VERSION,
+      entries,
+    };
+  }
+}
+
+function ensureNutzapProfileCacheHydrated() {
+  if (nutzapProfileCacheHydrated) return;
+  const storage = getNutzapProfileCacheStorage();
+  if (storage.value.version !== NUTZAP_PROFILE_CACHE_VERSION) {
+    storage.value = {
+      version: NUTZAP_PROFILE_CACHE_VERSION,
+      entries: {},
+    };
+    nutzapProfileCacheHydrated = true;
+    return;
+  }
+
+  const now = Date.now();
+  const retainedEntries: Record<string, NutzapProfileCacheRecord> = {};
+  for (const [hex, entry] of Object.entries(storage.value.entries ?? {})) {
+    if (!entry) continue;
+    if (now - entry.fetchedAt >= NUTZAP_PROFILE_CACHE_MAX_AGE_MS) {
+      continue;
+    }
+    nutzapProfileCache.set(hex, entry);
+    retainedEntries[hex] = entry;
+  }
+
+  if (Object.keys(retainedEntries).length !== Object.keys(storage.value.entries ?? {}).length) {
+    storage.value = {
+      version: NUTZAP_PROFILE_CACHE_VERSION,
+      entries: retainedEntries,
+    };
+  }
+
+  nutzapProfileCacheHydrated = true;
+}
+
+function persistNutzapProfileCacheEntry(hex: string, profile: NutzapProfile | null) {
+  ensureNutzapProfileCacheHydrated();
+  const now = Date.now();
+  const storage = getNutzapProfileCacheStorage();
+  const entries = { ...storage.value.entries };
+  const record: NutzapProfileCacheRecord = { profile, fetchedAt: now };
+  entries[hex] = record;
+  nutzapProfileCache.set(hex, record);
+
+  for (const [key, entry] of Object.entries(entries)) {
+    if (now - entry.fetchedAt >= NUTZAP_PROFILE_CACHE_MAX_AGE_MS) {
+      delete entries[key];
+      if (key !== hex) nutzapProfileCache.delete(key);
+    }
+  }
+
+  storage.value = {
+    version: NUTZAP_PROFILE_CACHE_VERSION,
+    entries,
+  };
+}
+
+function removeNutzapProfileCacheEntry(hex: string) {
+  if (!nutzapProfileCacheHydrated) return;
+  const storage = getNutzapProfileCacheStorage();
+  if (!storage.value.entries?.[hex]) return;
+  const entries = { ...storage.value.entries };
+  delete entries[hex];
+  nutzapProfileCache.delete(hex);
+  storage.value = {
+    version: NUTZAP_PROFILE_CACHE_VERSION,
+    entries,
+  };
+}
+
+function getNutzapProfileCacheStatus(hex: string) {
+  const entry = nutzapProfileCache.get(hex);
+  if (!entry) return null;
+  const age = Date.now() - entry.fetchedAt;
+  return {
+    entry,
+    isStale: age >= NUTZAP_PROFILE_CACHE_STALE_AFTER_MS,
+    isExpired: age >= NUTZAP_PROFILE_CACHE_MAX_AGE_MS,
+  };
+}
+
+function scheduleNutzapProfileRefresh(
+  hex: string,
+  opts: { fundstrOnly?: boolean } = {},
+  awaitResult = false,
+): Promise<NutzapProfile | null> {
+  let promise = nutzapProfileFetches.get(hex);
+  if (!promise) {
+    promise = fetchNutzapProfileFromNetwork(hex, opts)
+      .then((profile) => {
+        persistNutzapProfileCacheEntry(hex, profile);
+        return profile;
+      })
+      .finally(() => {
+        nutzapProfileFetches.delete(hex);
+      });
+    nutzapProfileFetches.set(hex, promise);
+  }
+
+  if (!awaitResult) {
+    promise.catch((err) => {
+      console.warn(`[nostr] Failed to refresh Nutzap profile for ${hex}`, err);
+    });
+    return promise;
+  }
+  return promise;
+}
+
+
+const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
 
 export class RelayConnectionError extends Error {
   constructor(message?: string) {
@@ -492,16 +749,19 @@ export async function urlsToRelaySet(
 ): Promise<NDKRelaySet | undefined> {
   if (!urls?.length) return undefined;
 
+  const normalizedUrls = normalizeWsUrls(urls);
+  if (!normalizedUrls.length) return undefined;
+
   const ndk = await useNdk({ requireSigner: false });
   // Ensure selected relays exist in the pool
-  for (const u of urls) {
+  for (const u of normalizedUrls) {
     if (!ndk.pool.relays.has(u)) {
       ndk.addExplicitRelay(u);
     }
   }
 
   const set = new NDKRelaySet(new Set(), ndk);
-  for (const u of urls) {
+  for (const u of normalizedUrls) {
     const r = ndk.pool.getRelay(u);
     if (r) set.addRelay(r);
   }
@@ -780,97 +1040,148 @@ export async function anyRelayReachable(relays: string[]): Promise<boolean> {
 /**
  * Fetches the receiver’s ‘kind:10019’ Nutzap profile.
  */
-export async function fetchNutzapProfile(
-  npubOrHex: string,
+async function fetchNutzapProfileFromNetwork(
+  hex: string,
+  opts: { fundstrOnly?: boolean } = {},
 ): Promise<NutzapProfile | null> {
-  const nostr = useNostrStore();
-  await nostr.initNdkReadOnly();
-  const ndk = await useNdk();
-  if (!ndk) {
-    throw new Error(
-      "NDK not initialised \u2013 call initSignerIfNotSet() first",
-    );
+  const fundstrOnly = opts.fundstrOnly === true;
+  let event: RelayEvent | null = null;
+  let lastError: unknown = null;
+
+  try {
+    event = await queryNutzapProfile(hex, {
+      httpBase: FUNDSTR_REQ_URL,
+      fundstrWsUrl: FUNDSTR_WS_URL,
+      allowFanoutFallback: false,
+      wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
+    });
+  } catch (e) {
+    lastError = e;
+  }
+
+  if (!event && !fundstrOnly) {
+    try {
+      const discovered = await fallbackDiscoverRelays(hex);
+      if (discovered.length) {
+        event = await queryNutzapProfile(hex, {
+          httpBase: FUNDSTR_REQ_URL,
+          fundstrWsUrl: FUNDSTR_WS_URL,
+          fanout: discovered,
+          allowFanoutFallback: true,
+          wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
+        });
+      }
+    } catch (e) {
+      lastError = e;
+    }
+  }
+
+  if (!event) {
+    if (lastError instanceof Error) {
+      throw new RelayConnectionError(lastError.message);
+    }
+    return null;
+  }
+
+  let parsedPayload: NutzapProfilePayload | null = null;
+  if (event.content) {
+    try {
+      const parsed = JSON.parse(event.content);
+      parsedPayload = NutzapProfileSchema.parse(parsed);
+    } catch (e) {
+      console.warn("Invalid Nutzap profile JSON", e);
+    }
+  }
+
+  const relaySet = new Set<string>();
+  const mintSet = new Set<string>();
+  let tierAddr: string | undefined = parsedPayload?.tierAddr;
+  let p2pkValue = parsedPayload?.p2pk ?? "";
+
+  if (Array.isArray(parsedPayload?.relays)) {
+    for (const relay of parsedPayload!.relays) {
+      if (typeof relay === "string" && relay) relaySet.add(relay);
+    }
+  }
+  if (Array.isArray(parsedPayload?.mints)) {
+    for (const mint of parsedPayload!.mints) {
+      if (typeof mint === "string" && mint) mintSet.add(mint);
+    }
+  }
+
+  for (const tag of event.tags || []) {
+    if (tag[0] === "mint" && typeof tag[1] === "string" && tag[1]) {
+      mintSet.add(tag[1]);
+    } else if (tag[0] === "relay" && typeof tag[1] === "string" && tag[1]) {
+      relaySet.add(tag[1]);
+    } else if (tag[0] === "a" && typeof tag[1] === "string" && tag[1]) {
+      if (!tierAddr) tierAddr = tag[1];
+    } else if (tag[0] === "pubkey" && typeof tag[1] === "string" && tag[1]) {
+      if (!p2pkValue) p2pkValue = tag[1];
+    }
+  }
+
+  if (!p2pkValue && !mintSet.size && !relaySet.size) {
+    return null;
+  }
+
+  let p2pkPubkey = p2pkValue;
+  if (p2pkPubkey.startsWith("npub")) {
+    const hx = npubToHex(p2pkPubkey);
+    if (hx) p2pkPubkey = hx;
   }
   try {
-    await ensureRelayConnectivity(ndk);
-  } catch (e: any) {
-    throw new RelayConnectionError(e?.message);
-  }
-  const hex = npubOrHex.startsWith("npub") ? npubToHex(npubOrHex) : npubOrHex;
-  if (!hex) throw new Error("Invalid npub");
-
-  if (nutzapProfileCache.has(hex)) {
-    return nutzapProfileCache.get(hex) || null;
+    p2pkPubkey = ensureCompressed(p2pkPubkey);
+  } catch (e) {
+    console.error("Invalid P2PK pubkey", e);
+    p2pkPubkey = "";
   }
 
-  const sub = ndk.subscribe(
-    {
-      kinds: [10019],
-      authors: [hex],
-      "#t": ["nutzap-profile"],
-      limit: 1,
-    },
-    { closeOnEose: true },
-  );
+  return {
+    hexPub: hex,
+    p2pkPubkey,
+    trustedMints: Array.from(mintSet),
+    relays: relaySet.size ? Array.from(relaySet) : undefined,
+    tierAddr,
+  };
+}
 
-  return new Promise((resolve) => {
-    sub.on("event", (ev: NostrEvent) => {
-      let data: NutzapProfilePayload | null = null;
-      if (ev.content) {
-        try {
-          const parsed = JSON.parse(ev.content);
-          data = NutzapProfileSchema.parse(parsed);
-        } catch (e) {
-          console.warn("Invalid Nutzap profile JSON", e);
-        }
-      }
-      if (!data) {
-        let p2pk = ev.tags.find((t) => t[0] === "pubkey")?.[1];
-        const mints = ev.tags
-          .filter((t) => t[0] === "mint")
-          .map((t) => t[1]);
-        const relays = ev.tags
-          .filter((t) => t[0] === "relay")
-          .map((t) => t[1]);
-        const tierAddr = ev.tags.find((t) => t[0] === "a")?.[1];
-        if (p2pk) data = { p2pk, mints, relays, tierAddr };
-      }
+export async function fetchNutzapProfile(
+  npubOrHex: string,
+  opts: { fundstrOnly?: boolean } = {},
+): Promise<NutzapProfile | null> {
+  let hex: string;
+  try {
+    hex = toHex(npubOrHex);
+  } catch (e) {
+    throw new Error("Invalid npub");
+  }
 
-      if (data) {
-        let p2pkPubkey = data.p2pk;
-        if (p2pkPubkey.startsWith("npub")) {
-          const hx = npubToHex(p2pkPubkey);
-          if (hx) p2pkPubkey = hx;
-        }
-        try {
-          p2pkPubkey = ensureCompressed(p2pkPubkey);
-        } catch (e) {
-          console.error("Invalid P2PK pubkey", e);
-          p2pkPubkey = "";
-        }
-        const profile: NutzapProfile = {
-          hexPub: hex,
-          p2pkPubkey,
-          trustedMints: data.mints || [],
-          relays: data.relays || undefined,
-          tierAddr: data.tierAddr,
-        };
-        nutzapProfileCache.set(hex, profile);
-        resolve(profile);
-      } else {
-        nutzapProfileCache.set(hex, null);
-        resolve(null);
-      }
-      sub.stop();
-    });
+  ensureNutzapProfileCacheHydrated();
+  pruneExpiredNutzapProfiles();
 
-    // timeout after 10 s
-    setTimeout(() => {
-      sub.stop();
-      nutzapProfileCache.set(hex, null);
-      resolve(null);
-    }, 10_000);
-  });
+  const status = getNutzapProfileCacheStatus(hex);
+  if (status) {
+    if (status.isExpired) {
+      removeNutzapProfileCacheEntry(hex);
+    } else {
+      if (status.isStale) {
+        scheduleNutzapProfileRefresh(hex, opts);
+      }
+      return status.entry.profile;
+    }
+  }
+
+  const profile = await scheduleNutzapProfileRefresh(hex, opts, true);
+  return profile;
+}
+
+export function refreshCachedNutzapProfiles(): void {
+  ensureNutzapProfileCacheHydrated();
+  pruneExpiredNutzapProfiles();
+  for (const hex of nutzapProfileCache.keys()) {
+    scheduleNutzapProfileRefresh(hex);
+  }
 }
 
 /** Publishes a ‘kind:10019’ Nutzap profile event. */
@@ -886,16 +1197,31 @@ export async function publishNutzapProfile(opts: {
   }
   await nostr.connect(opts.relays ?? nostr.relays);
 
-  const tags: NDKTag[] = [
+  const compressedP2pk = ensureCompressed(opts.p2pkPub);
+  const relays = (opts.relays ?? []).filter((url) => typeof url === "string" && url.length);
+
+  const tags: string[][] = [
     ["t", "nutzap-profile"],
     ["client", "fundstr"],
+    ["pubkey", compressedP2pk],
   ];
+  relays.forEach((relay) => {
+    tags.push(["relay", relay]);
+  });
+  opts.mints.forEach((mint) => {
+    if (mint) {
+      tags.push(["mint", mint, "sat"]);
+    }
+  });
+  if (opts.tierAddr) {
+    tags.push(["a", opts.tierAddr]);
+  }
 
   const body: NutzapProfilePayload = {
-    p2pk: ensureCompressed(opts.p2pkPub),
+    p2pk: compressedP2pk,
     mints: opts.mints,
   };
-  if (opts.relays?.length) body.relays = opts.relays;
+  if (relays.length) body.relays = relays;
   if (opts.tierAddr) body.tierAddr = opts.tierAddr;
 
   const ndk = await useNdk();
@@ -904,25 +1230,27 @@ export async function publishNutzapProfile(opts: {
       "NDK not initialised \u2013 call initSignerIfNotSet() first",
     );
   }
-  const ev = new NDKEvent(ndk);
-  ev.kind = 10019;
-  ev.content = JSON.stringify({ v: 1, ...body });
-  ev.tags = tags;
-  ev.created_at = Math.floor(Date.now() / 1000);
-  await ev.sign();
-  const relaySet = await urlsToRelaySet(opts.relays);
+  const nutzapNdk = getNutzapNdk();
+  nutzapNdk.signer = (nostr.signer as any) ?? undefined;
+
   try {
     await ensureRelayConnectivity(ndk);
   } catch (e: any) {
     notifyWarning("Relay connection failed", e?.message ?? String(e));
   }
   try {
-    await publishWithTimeout(ev, relaySet);
+    const createdAt = Math.floor(Date.now() / 1000);
+    const result = await publishNostrEvent({
+      kind: 10019,
+      tags,
+      content: JSON.stringify({ v: 1, ...body }),
+      created_at: createdAt,
+    });
+    return result.event.id;
   } catch (e: any) {
     notifyError(e?.message ?? String(e));
     throw e;
   }
-  return ev.id!;
 }
 
 /**
@@ -980,18 +1308,20 @@ export async function publishDiscoveryProfile(opts: {
 
   // --- 3. Prepare Kind 10019 (Nutzap/Payment Profile) ---
   const kind10019Event = new NDKEvent(ndk);
-  kind10019Event.kind = 10019;
-  kind10019Event.tags = [
-    ["t", "nutzap-profile"],
-    ["client", "fundstr"],
-  ];
   const npBody: NutzapProfilePayload = {
     p2pk: ensureCompressed(opts.p2pkPub),
     mints: opts.mints,
     relays: opts.relays,
   };
   if (opts.tierAddr) npBody.tierAddr = opts.tierAddr;
-  kind10019Event.content = JSON.stringify({ v: 1, ...npBody });
+  const kind10019Payload = buildKind10019NutzapProfile(
+    nostr.pubkey,
+    npBody,
+    opts.profile,
+  );
+  kind10019Event.kind = kind10019Payload.kind;
+  kind10019Event.tags = kind10019Payload.tags;
+  kind10019Event.content = kind10019Payload.content;
   kind10019Event.created_at = now;
 
   const eventsToPublish = [kind0Event, kind10002Event, kind10019Event];
@@ -1047,11 +1377,14 @@ export async function publishCreatorBundle(opts: {
   }
 
   const tiersArray = hub.getTierArray();
-  const tiersHash = bytesToHex(
-    sha256(new TextEncoder().encode(JSON.stringify(tiersArray))),
-  );
+  const canonicalTiers = tiersArray.map((tier) => mapInternalTierToWire(tier));
+  const tiersFingerprint = JSON.stringify(canonicalTiers);
+  const preferredKind =
+    hub.tierDefinitionKind && hub.tierDefinitionKind === LEGACY_NUTZAP_TIERS_KIND
+      ? LEGACY_NUTZAP_TIERS_KIND
+      : NUTZAP_TIERS_KIND;
   const tierAddr = tiersArray.length
-    ? `30000:${nostr.pubkey}:tiers`
+    ? `${preferredKind}:${nostr.pubkey}:tiers`
     : undefined;
   const result = await publishDiscoveryProfile({
     profile: profile.profile,
@@ -1066,10 +1399,10 @@ export async function publishCreatorBundle(opts: {
   let tiersPublished = false;
   if (
     mode === "force" ||
-    (mode === "auto" && tiersHash !== hub.lastPublishedTiersHash)
+    (mode === "auto" && tiersFingerprint !== hub.lastPublishedTiersHash)
   ) {
     await hub.publishTierDefinitions();
-    hub.lastPublishedTiersHash = tiersHash;
+    hub.lastPublishedTiersHash = tiersFingerprint;
     tiersPublished = true;
   }
 
@@ -1183,8 +1516,14 @@ export enum SignerType {
   SEED = "SEED",
 }
 
+type InitSignerBehaviorOptions = {
+  skipRelayConnect?: boolean;
+};
+
 export const useNostrStore = defineStore("nostr", {
   state: () => {
+    ensureNutzapProfileCacheHydrated();
+    pruneExpiredNutzapProfiles();
     const lastNip04EventTimestamp = useLocalStorage<number>(
       "cashu.ndk.nip04.lastEventTimestamp",
       0,
@@ -1238,6 +1577,7 @@ export const useNostrStore = defineStore("nostr", {
       reconnectFailures: 0,
       failedRelays: [] as string[],
       connectedRelays: new Set<string>(),
+      readOnlyMode: "default" as "default" | "fundstr-only",
       cachedNip07Relays: null as string[] | null,
       pendingGetRelays: null as Promise<Record<string, any> | null> | null,
       lastNip04EventTimestamp,
@@ -1358,14 +1698,33 @@ export const useNostrStore = defineStore("nostr", {
       );
       this.secureStorageLoaded = true;
     },
-    initNdkReadOnly: async function () {
+    initNdkReadOnly: async function (
+      opts: { fundstrOnly?: boolean } = {},
+    ) {
       await this.loadKeysFromStorage();
-      const ndk = await useNdk({ requireSigner: false });
-      if (this.connected) return;
+      const requestedMode =
+        opts.fundstrOnly === true
+          ? "fundstr-only"
+          : opts.fundstrOnly === false
+            ? "default"
+            : undefined;
+      const desiredMode = requestedMode ?? this.readOnlyMode ?? "default";
+      const modeChanged = this.readOnlyMode !== desiredMode;
+      const ndk = await useNdk({
+        requireSigner: false,
+        fundstrOnly: opts.fundstrOnly,
+      });
+      if (modeChanged) {
+        this.connected = false;
+        this.connectedRelays.clear();
+      } else if (this.connected) {
+        return;
+      }
       try {
         await ndk.connect();
         this.lastError = null;
         this.connectionFailed = false;
+        this.readOnlyMode = desiredMode;
         ndk.pool.on("relay:connect", (r: any) => {
           this.connectedRelays.add(r.url);
           this.connected = this.connectedRelays.size > 0;
@@ -1373,6 +1732,18 @@ export const useNostrStore = defineStore("nostr", {
         ndk.pool.on("relay:disconnect", (r: any) => {
           this.connectedRelays.delete(r.url);
           this.connected = this.connectedRelays.size > 0;
+        });
+        (ndk.pool as any).on?.("relay:stalled", (r: any) => {
+          if (!this.failedRelays.includes(r.url)) {
+            this.failedRelays.push(r.url);
+            notifyWarning(`Relay ${r.url} stalled, reconnecting`);
+          }
+          this.connectedRelays.delete(r.url);
+          this.connected = this.connectedRelays.size > 0;
+        });
+        (ndk.pool as any).on?.("relay:heartbeat", (r: any) => {
+          const idx = this.failedRelays.indexOf(r.url);
+          if (idx !== -1) this.failedRelays.splice(idx, 1);
         });
       } catch (e: any) {
         console.warn("[nostr] read-only connect failed", e);
@@ -1457,6 +1828,19 @@ export const useNostrStore = defineStore("nostr", {
         this.connected = this.connectedRelays.size > 0;
         this.relays = [...this.relays];
       });
+      (ndk.pool as any).on?.("relay:stalled", (r: any) => {
+        if (!this.failedRelays.includes(r.url)) {
+          this.failedRelays.push(r.url);
+          notifyWarning(`Relay ${r.url} stalled, reconnecting`);
+        }
+        this.connectedRelays.delete(r.url);
+        this.connected = this.connectedRelays.size > 0;
+        this.relays = [...this.relays];
+      });
+      (ndk.pool as any).on?.("relay:heartbeat", (r: any) => {
+        const idx = this.failedRelays.indexOf(r.url);
+        if (idx !== -1) this.failedRelays.splice(idx, 1);
+      });
 
       // 5. track relay health – never throw
       Promise.allSettled(connectPromises).then((res) =>
@@ -1506,7 +1890,7 @@ export const useNostrStore = defineStore("nostr", {
         }
       }
     },
-    initSignerIfNotSet: async function () {
+    initSignerIfNotSet: async function (options: InitSignerBehaviorOptions = {}) {
       await this.loadKeysFromStorage();
       if (this.signerType === SignerType.NIP07) {
         const available = await this.checkNip07Signer();
@@ -1522,17 +1906,19 @@ export const useNostrStore = defineStore("nostr", {
         this.initialized = false; // force re-initialisation
       }
       if (!this.initialized) {
-        await this.initSigner();
-        await this.ensureNdkConnected();
+        await this.initSigner(options);
+        if (!options.skipRelayConnect) {
+          await this.ensureNdkConnected();
+        }
       }
     },
-    initSigner: async function () {
+    initSigner: async function (options: InitSignerBehaviorOptions = {}) {
       if (this.signerType === SignerType.NIP07) {
-        await this.initNip07Signer();
+        await this.initNip07Signer(options);
       } else if (this.signerType === SignerType.PRIVATEKEY) {
-        await this.initPrivateKeySigner();
+        await this.initPrivateKeySigner(undefined, options);
       } else {
-        await this.initWalletSeedPrivateKeySigner();
+        await this.initWalletSeedPrivateKeySigner(options);
       }
       this.initialized = true;
     },
@@ -1546,10 +1932,15 @@ export const useNostrStore = defineStore("nostr", {
         getSharedSecret: typeof ext?.getSharedSecret === "function",
       };
     },
-    setSigner: async function (signer: NDKSigner) {
+    setSigner: async function (
+      signer: NDKSigner,
+      options: InitSignerBehaviorOptions = {},
+    ) {
       this.signer = signer;
       this.probeSignerCaps();
-      await this.connect();
+      if (!options.skipRelayConnect) {
+        await this.connect();
+      }
     },
     signDummyEvent: async function (): Promise<NDKEvent> {
       const ndkEvent = new NDKEvent();
@@ -1707,7 +2098,7 @@ export const useNostrStore = defineStore("nostr", {
       }
       return this.nip07SignerAvailable;
     },
-    initNip07Signer: async function () {
+    initNip07Signer: async function (options: InitSignerBehaviorOptions = {}) {
       const available = await this.checkNip07Signer();
       if (!available) {
         if (!this.nip07Warned) {
@@ -1727,7 +2118,7 @@ export const useNostrStore = defineStore("nostr", {
         if (user?.npub) {
           this.signerType = SignerType.NIP07;
           this.setPubkey(user.pubkey);
-          await this.setSigner(signer);
+          await this.setSigner(signer, options);
 
           let urls: string[] | null = null;
           if (this.cachedNip07Relays) {
@@ -1784,7 +2175,10 @@ export const useNostrStore = defineStore("nostr", {
       this.nip46Token = "";
       await this.initWalletSeedPrivateKeySigner();
     },
-    initPrivateKeySigner: async function (nsec?: string) {
+    initPrivateKeySigner: async function (
+      nsec?: string,
+      options: InitSignerBehaviorOptions = {},
+    ) {
       let privateKeyBytes: Uint8Array;
       if (!nsec && !this.privateKeySignerPrivateKey.length) {
         nsec = (await prompt("Enter your nsec")) as string;
@@ -1804,7 +2198,7 @@ export const useNostrStore = defineStore("nostr", {
       this.privateKeySignerPrivateKey = privateKeyHex;
       this.signerType = SignerType.PRIVATEKEY;
       this.setPubkey(getPublicKey(privateKeyBytes));
-      await this.setSigner(signer);
+      await this.setSigner(signer, options);
     },
     async updateIdentity(nsec: string, relays?: string[]) {
       if (relays) this.relays = relays as any;
@@ -1828,12 +2222,14 @@ export const useNostrStore = defineStore("nostr", {
       this.seedSignerPublicKey = walletPublicKeyHex;
       this.seedSigner = new NDKPrivateKeySigner(this.seedSignerPrivateKey);
     },
-    initWalletSeedPrivateKeySigner: async function () {
+    initWalletSeedPrivateKeySigner: async function (
+      options: InitSignerBehaviorOptions = {},
+    ) {
       await this.walletSeedGenerateKeyPair();
       const signer = new NDKPrivateKeySigner(this.seedSignerPrivateKey);
       this.signerType = SignerType.SEED;
       this.setPubkey(this.seedSignerPublicKey);
-      await this.setSigner(signer);
+      await this.setSigner(signer, options);
     },
     fetchEventsFromUser: async function () {
       const filter: NDKFilter = { kinds: [1], authors: [this.pubkey] };

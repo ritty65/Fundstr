@@ -1311,6 +1311,40 @@ export const messages = {
       invalid_creator_pubkey: "Invalid creator pubkey",
       subscription_failed: "Subscription failed",
     },
+    explainers: {
+      heading: "How Nutzap subscriptions work",
+      intro:
+        "Here's how Nutzap keeps your support flowing with ecash you control.",
+      ctaLabel: "@:CreatorHub.profile.finishSetup",
+      ctaAria: "Finish onboarding to subscribe",
+      ctaHint:
+        "Complete onboarding to connect your wallet, choose mints, and start supporting creators.",
+      steps: {
+        subscriptions: {
+          title: "Subscriptions you control",
+          body:
+            "Choose a tier and Nutzap signs zap payments from your wallet on the cadence you set—funds only move with your approval.",
+        },
+        trustedMints: {
+          title: "Trusted mints",
+          body:
+            "You fund your wallet from mints you trust. Only those mints can issue the ecash your subscriptions will spend.",
+        },
+        relays: {
+          title: "Relay delivery",
+          body:
+            "Relays carry the signed invoices and receipts between you and the creator while keeping your keys private.",
+        },
+      },
+      tooltips: {
+        p2pk:
+          "Creators publish a P2PK key so you can send ecash to them directly from your wallet.",
+        trustedMints:
+          "These are the mints the creator trusts. Connect with at least one compatible mint before subscribing.",
+        relays:
+          "Relays deliver the zap instructions and acknowledgements that power each subscription payment.",
+      },
+    },
   },
   ChooseExistingTokenDialog: {
     title: "Choose token",
@@ -1714,6 +1748,47 @@ export const messages = {
       back: "Back",
       tiers: "Subscription Tiers",
       edit: "Edit",
+      guestCta: "You're browsing as a guest. Finish setup to subscribe.",
+      finishSetup: "Finish setup",
+      copyProfileLink: "Copy profile link",
+      followers: "{count} followers",
+      following: "{count} following",
+      sections: {
+        about: "About",
+        tiers: "Tiers",
+        infrastructure: "Infrastructure trust",
+        faq: "FAQ",
+      },
+      noAbout: "This creator hasn't shared an about section yet.",
+      noTiers: "Creator has not published any subscription tiers yet.",
+      noFaq: "No FAQs published yet.",
+      tierLoadError: "Failed to load tiers – check relay connectivity.",
+      tierRefreshError: "Failed to refresh tiers – check relay connectivity.",
+      retry: "Retry",
+      subscribeCta: "Subscribe",
+      subscribeMicrocopy: "Cancel anytime from your subscriptions dashboard.",
+      guestTooltip:
+        "Connect and unlock your Nostr signer, then finish setup to subscribe.",
+      signerAlert: {
+        message:
+          "You need a connected, unlocked Nostr signer before subscribing. Finish onboarding to connect your wallet and signer.",
+        cta: "Open setup",
+      },
+      paywalledPreview: "Protected content visible to subscribers.",
+      infrastructureDetails: "Creator infrastructure",
+      p2pkLabel: "P2PK public key",
+      trustedMintsLabel: "Trusted mints",
+      relaysLabel: "Relays",
+      howNutzapWorks: {
+        title: "How Nutzap works",
+        intro:
+          "Nutzap keeps your support flowing with non-custodial ecash and signed relay instructions.",
+        points: [
+          "You connect to the creator's trusted mints to fund your wallet.",
+          "Subscriptions send pre-signed zap instructions on the schedule you choose.",
+          "Relays deliver the subscription invoices while preserving your privacy.",
+        ],
+      },
     },
   },
 
@@ -1870,6 +1945,9 @@ export const messages = {
   },
   creatorHub: {
     publish: "Publish Profile",
+    publishBar: {
+      unsavedChanges: "Unsaved changes",
+    },
     profileHeader: "Profile details",
     displayName: "Display Name",
     profilePictureUrl: "Profile Picture URL",
