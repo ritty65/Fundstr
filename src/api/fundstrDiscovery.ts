@@ -1,10 +1,11 @@
 import type { App } from 'vue';
 import { inject } from 'vue';
-import type { Creator } from 'src/lib/fundstrApi';
+import type { Creator, Tier } from 'src/lib/fundstrApi';
 
-const DISCOVERY_BASE_URL = 'https://relay.fundstr.me/discover';
+const API_BASE_URL = 'https://relay.fundstr.me';
 const CACHE_TTL_MS = 60_000;
 
+// == Creators (Search) ======================================================
 export interface DiscoveryCreatorsResponse {
   count: number;
   warnings: string[];
@@ -19,20 +20,44 @@ export interface DiscoveryCreatorsRequest {
   signal?: AbortSignal;
 }
 
-interface CacheEntry {
+interface CreatorsCacheEntry {
   ts: number;
   payload: DiscoveryCreatorsResponse;
 }
 
+
+// == Tiers (by Creator ID) ==================================================
+export interface DiscoveryTiersResponse {
+  pubkey: string;
+  tiers: Tier[];
+  cached: boolean;
+  tookMs: number;
+}
+
+export interface DiscoveryTiersRequest {
+  id: string; // pubkey or npub
+  fresh?: boolean;
+  signal?: AbortSignal;
+}
+
+interface TiersCacheEntry {
+  ts: number;
+  payload: DiscoveryTiersResponse;
+}
+
+
+// == Client Definition ======================================================
 export interface FundstrDiscoveryClient {
   getCreators(request?: DiscoveryCreatorsRequest): Promise<DiscoveryCreatorsResponse>;
+  getCreatorTiers(request: DiscoveryTiersRequest): Promise<DiscoveryTiersResponse>;
   clearCache(): void;
 }
 
 const fundstrDiscoveryKey = Symbol('fundstrDiscovery');
 
 export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
-  const cache = new Map<string, CacheEntry>();
+  const creatorsCache = new Map<string, CreatorsCacheEntry>();
+  const tiersCache = new Map<string, TiersCacheEntry>();
 
   async function getCreators({
     q = '*',
@@ -43,13 +68,13 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
     const now = Date.now();
 
     if (!fresh) {
-      const cached = cache.get(query);
+      const cached = creatorsCache.get(query);
       if (cached && now - cached.ts < CACHE_TTL_MS) {
-        return cloneResponse(cached.payload);
+        return cloneCreatorsResponse(cached.payload);
       }
     }
 
-    const endpoint = new URL(`${DISCOVERY_BASE_URL}/creators`);
+    const endpoint = new URL(`${API_BASE_URL}/discover/creators`);
     endpoint.searchParams.set('q', query || '*');
 
     const response = await fetch(endpoint.toString(), {
@@ -68,18 +93,59 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
     }
 
     const data = await parseJson(response);
-    const payload = normalizeResponse(data);
-    cache.set(query, { ts: now, payload });
+    const payload = normalizeCreatorsResponse(data);
+    creatorsCache.set(query, { ts: now, payload });
 
-    return cloneResponse(payload);
+    return cloneCreatorsResponse(payload);
+  }
+
+  async function getCreatorTiers({
+    id,
+    fresh = false,
+    signal,
+  }: DiscoveryTiersRequest): Promise<DiscoveryTiersResponse> {
+    const now = Date.now();
+    const queryId = id.trim();
+
+    if (!fresh) {
+      const cached = tiersCache.get(queryId);
+      if (cached && now - cached.ts < CACHE_TTL_MS) {
+        return cloneTiersResponse(cached.payload);
+      }
+    }
+
+    const endpoint = new URL(`${API_BASE_URL}/creators/${encodeURIComponent(queryId)}/tiers`);
+
+    const response = await fetch(endpoint.toString(), {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+      signal,
+    });
+
+    if (!response.ok) {
+      const body = await safeReadText(response);
+      throw new Error(
+        `Tiers request failed with status ${response.status}: ${body || 'Unknown error'}`,
+      );
+    }
+
+    const data = await parseJson(response);
+    const payload = normalizeTiersResponse(data);
+    tiersCache.set(queryId, { ts: now, payload });
+
+    return cloneTiersResponse(payload);
   }
 
   function clearCache() {
-    cache.clear();
+    creatorsCache.clear();
+    tiersCache.clear();
   }
 
   return {
     getCreators,
+    getCreatorTiers,
     clearCache,
   };
 }
@@ -123,12 +189,24 @@ async function safeReadText(response: Response): Promise<string> {
   }
 }
 
-function normalizeResponse(data: any): DiscoveryCreatorsResponse {
+function normalizeCreatorsResponse(data: any): DiscoveryCreatorsResponse {
   const results = Array.isArray(data?.results) ? data.results : [];
   return {
     count: Number.isFinite(data?.count) ? Number(data.count) : results.length,
     warnings: Array.isArray(data?.warnings) ? data.warnings.map(String) : [],
     results: results.map(normalizeCreator),
+    cached: Boolean(data?.cached),
+    tookMs: Number.isFinite(data?.took_ms) ? Number(data.took_ms) : 0,
+  };
+}
+
+function normalizeTiersResponse(data: any): DiscoveryTiersResponse {
+  if (!data || typeof data.pubkey !== 'string') {
+    throw new Error('Invalid tiers response from discovery service: missing pubkey');
+  }
+  return {
+    pubkey: data.pubkey,
+    tiers: Array.isArray(data.tiers) ? data.tiers : [],
     cached: Boolean(data?.cached),
     tookMs: Number.isFinite(data?.took_ms) ? Number(data.took_ms) : 0,
   };
@@ -174,10 +252,17 @@ function isRecord(value: unknown): value is Record<string, any> {
   return typeof value === 'object' && value !== null;
 }
 
-function cloneResponse(payload: DiscoveryCreatorsResponse): DiscoveryCreatorsResponse {
+function cloneCreatorsResponse(payload: DiscoveryCreatorsResponse): DiscoveryCreatorsResponse {
   return {
     ...payload,
     warnings: [...payload.warnings],
     results: payload.results.map(result => ({ ...result })),
+  };
+}
+
+function cloneTiersResponse(payload: DiscoveryTiersResponse): DiscoveryTiersResponse {
+  return {
+    ...payload,
+    tiers: payload.tiers.map(tier => ({ ...tier })),
   };
 }
