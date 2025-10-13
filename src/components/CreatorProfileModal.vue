@@ -146,7 +146,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import MediaPreview from 'components/MediaPreview.vue';
-import { fetchCreator, formatMsatToSats, type Creator } from 'src/lib/fundstrApi';
+import { formatMsatToSats, type Creator } from 'src/lib/fundstrApi';
+import { useFundstrDiscovery } from 'src/api/fundstrDiscovery';
 
 const props = defineProps<{
   show: boolean;
@@ -179,6 +180,8 @@ const creator = ref<Creator | null>(null);
 const tiers = ref<TierDetails[]>([]);
 const showLocal = ref(false);
 const expandedTiers = ref(new Set<string>());
+
+const discoveryClient = useFundstrDiscovery();
 
 let currentRequestId = 0;
 let activeController: AbortController | null = null;
@@ -269,11 +272,23 @@ async function fetchCreatorData(pubkey: string) {
   loading.value = true;
 
   try {
-    const fetchedCreator = await fetchCreator(pubkey, controller.signal);
+    const response = await discoveryClient.getCreators({
+      q: pubkey,
+      signal: controller.signal,
+      fresh: true,
+    });
     if (requestId !== currentRequestId) {
       return;
     }
 
+    if (response.warnings?.length) {
+      console.warn('Discovery warnings while loading creator', {
+        pubkey,
+        warnings: response.warnings,
+      });
+    }
+
+    const fetchedCreator = response.results?.[0] ?? null;
     creator.value = fetchedCreator ?? null;
 
     const fetchedTiers = Array.isArray(fetchedCreator?.tiers)
