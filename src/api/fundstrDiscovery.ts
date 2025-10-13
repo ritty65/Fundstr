@@ -51,6 +51,9 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
 
     const endpoint = new URL(`${DISCOVERY_BASE_URL}/creators`);
     endpoint.searchParams.set('q', query || '*');
+    if (fresh) {
+      endpoint.searchParams.set('fresh', '1');
+    }
 
     const response = await fetch(endpoint.toString(), {
       method: 'GET',

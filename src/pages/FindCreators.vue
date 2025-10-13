@@ -3,10 +3,60 @@
     <CreatorProfileModal
       :show="showProfileModal"
       :pubkey="selectedProfilePubkey"
-      @close="showProfileModal = false"
+      @close="handleProfileModalClose"
       @message="startChat"
       @donate="donate"
     />
+
+    <transition name="fade">
+      <div
+        v-if="profileModalState.prefetching"
+        class="modal-prefetch-indicator bg-surface-2 text-1"
+        role="status"
+        aria-live="polite"
+      >
+        <q-spinner color="accent" size="24px" />
+        <span class="modal-prefetch-indicator__label">Loading fresh profile…</span>
+      </div>
+    </transition>
+
+    <transition name="fade">
+      <q-banner
+        v-if="showProfileModal && profileModalState.error"
+        rounded
+        dense
+        class="modal-status-banner text-1"
+        aria-live="assertive"
+      >
+        <template #avatar>
+          <q-icon :name="resolveBannerIcon(profileModalState.error)" size="20px" />
+        </template>
+        <span class="modal-status-banner__line">{{ profileModalState.error }}</span>
+      </q-banner>
+    </transition>
+
+    <transition name="fade">
+      <q-banner
+        v-else-if="showProfileModal && profileModalState.warnings.length"
+        rounded
+        dense
+        class="modal-status-banner text-1"
+        aria-live="polite"
+      >
+        <template #avatar>
+          <q-icon name="warning" size="20px" />
+        </template>
+        <div class="column">
+          <span
+            v-for="(warning, index) in profileModalState.warnings"
+            :key="`profile-warning-${index}`"
+            class="modal-status-banner__line"
+          >
+            {{ warning }}
+          </span>
+        </div>
+      </q-banner>
+    </transition>
     <DonateDialog
       v-model="showDonateDialog"
       :creator-pubkey="selectedPubkey"
@@ -225,7 +275,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import CreatorProfileModal from 'components/CreatorProfileModal.vue';
 import CreatorCard from 'components/CreatorCard.vue';
@@ -237,6 +287,8 @@ import { useNostrStore } from 'stores/nostr';
 import { type Creator } from 'src/lib/fundstrApi';
 import { useFundstrDiscovery } from 'src/api/fundstrDiscovery';
 import { FEATURED_CREATORS } from 'src/config/featured-creators';
+import { nip19 } from 'nostr-tools';
+import type { Ref } from 'vue';
 
 const searchQuery = ref('');
 const searchResults = ref<Creator[]>([]);
@@ -425,10 +477,99 @@ const showDonateDialog = ref(false);
 const selectedPubkey = ref('');
 const showProfileModal = ref(false);
 const selectedProfilePubkey = ref('');
+const profileModalState = reactive({
+  prefetching: false,
+  warnings: [] as string[],
+  error: '',
+});
+let profileModalRequestId = 0;
 
-function viewProfile(pubkey: string) {
-  selectedProfilePubkey.value = pubkey;
-  showProfileModal.value = true;
+function resetProfileModalState() {
+  profileModalState.prefetching = false;
+  profileModalState.warnings = [];
+  profileModalState.error = '';
+}
+
+function handleProfileModalClose() {
+  showProfileModal.value = false;
+  selectedProfilePubkey.value = '';
+  resetProfileModalState();
+}
+
+function toNpub(value: string): string {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('npub') || trimmed.startsWith('nprofile')) {
+    return trimmed;
+  }
+  if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+    try {
+      return nip19.npubEncode(trimmed);
+    } catch (error) {
+      console.warn('Failed to encode pubkey to npub for discovery query', error);
+    }
+  }
+  return trimmed;
+}
+
+function updateCreatorCollection(target: Ref<Creator[]>, updated: Creator) {
+  const index = target.value.findIndex(item => item.pubkey === updated.pubkey);
+  if (index === -1) {
+    return;
+  }
+  const next = target.value.slice();
+  next.splice(index, 1, { ...target.value[index], ...updated });
+  target.value = next;
+}
+
+async function viewProfile(pubkey: string) {
+  const requestId = ++profileModalRequestId;
+  resetProfileModalState();
+  profileModalState.prefetching = true;
+
+  const query = toNpub(pubkey);
+
+  try {
+    const response = await discoveryClient.getCreators({ q: query, fresh: true });
+    if (requestId !== profileModalRequestId) {
+      return;
+    }
+
+    profileModalState.warnings = [...response.warnings];
+    if (response.warnings.length > 0) {
+      console.warn('Discovery warnings during modal prefetch:', response.warnings);
+    }
+
+    const matchedCreator = response.results.find(result => result.pubkey === pubkey);
+    const resolvedCreator = matchedCreator ?? response.results[0];
+
+    if (resolvedCreator) {
+      selectedProfilePubkey.value = resolvedCreator.pubkey;
+      updateCreatorCollection(searchResults, resolvedCreator);
+      updateCreatorCollection(featuredCreators, resolvedCreator);
+    } else {
+      profileModalState.error =
+        "We couldn't load a fresh profile from discovery. Displaying cached details.";
+      selectedProfilePubkey.value = pubkey;
+    }
+
+    showProfileModal.value = true;
+  } catch (error) {
+    if (requestId !== profileModalRequestId) {
+      return;
+    }
+    console.error('Failed to fetch fresh discovery profile for modal', error);
+    profileModalState.error =
+      "We couldn't contact the discovery service. Displaying cached details.";
+    selectedProfilePubkey.value = pubkey;
+    showProfileModal.value = true;
+  } finally {
+    if (requestId === profileModalRequestId) {
+      profileModalState.prefetching = false;
+    }
+  }
 }
 
 function startChat(pubkey: string) {
@@ -620,6 +761,49 @@ h1 {
 .status-banner__text {
   font-size: 0.95rem;
   line-height: 1.4;
+}
+
+
+.modal-prefetch-indicator {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
+  box-shadow: 0 18px 36px -18px rgba(15, 23, 42, 0.45);
+}
+
+.modal-prefetch-indicator__label {
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.modal-status-banner {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3995;
+  max-width: calc(100% - 32px);
+  box-shadow: 0 18px 36px -18px rgba(15, 23, 42, 0.45);
+  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
+}
+
+.modal-status-banner :deep(.q-banner__avatar) {
+  margin-right: 6px;
+  color: var(--accent-600);
+}
+
+.modal-status-banner__line {
+  font-size: 0.95rem;
+  line-height: 1.35;
 }
 
 
