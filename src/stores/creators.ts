@@ -1,24 +1,14 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { db } from "./dexie";
-import {
-  useNostrStore,
-  getEventHash,
-  signEvent,
-  publishEvent,
-} from "./nostr";
-import { useNdk } from "src/composables/useNdk";
+import { getEventHash, signEvent, publishEvent } from "./nostr";
 import { nip19 } from "nostr-tools";
 import { Event as NostrEvent } from "nostr-tools";
 import { notifyWarning } from "src/js/notify";
 import type { Tier } from "./types";
 import {
-  queryNostr,
   queryNutzapTiers,
-  normalizeEvents,
-  pickLatestReplaceable,
   toHex,
-  type Filter,
   type NostrEvent as RelayEvent,
 } from "@/nostr/relayClient";
 import { fallbackDiscoverRelays } from "@/nostr/discovery";
@@ -26,15 +16,13 @@ import { parseTierDefinitionEvent } from "src/nostr/tiers";
 import {
   FUNDSTR_REQ_URL,
   FUNDSTR_WS_URL,
-  WS_FIRST_TIMEOUT_MS,
 } from "@/nutzap/relayEndpoints";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
-import {
-  parseNutzapProfileEvent,
-  type NutzapProfileDetails,
-} from "@/nutzap/profileCache";
+import { type NutzapProfileDetails } from "@/nutzap/profileCache";
 import { FALLBACK_RELAYS } from "@/config/relays";
 import { simpleRelayQuery, SimpleRelayError } from "@/nutzap/simpleRelay";
+import { useFundstrDiscovery } from "src/api/fundstrDiscovery";
+import type { Creator as DiscoveryCreator, CreatorTier as DiscoveryCreatorTier } from "src/lib/fundstrApi";
 
 export const FEATURED_CREATORS = [
   "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
@@ -61,30 +49,6 @@ export interface CreatorProfile {
 const TIER_RELAY_FAILURE_TTL_MS = 5 * 60 * 1000;
 const TIER_FETCH_TIMEOUT_MS = 1200;
 const FUNDSTR_FAILURE_NOTIFY_TTL_MS = 5 * 60 * 1000;
-
-let sharedReadOnlyConnectPromise: Promise<void> | null = null;
-
-async function ensureReadOnlyNdkConnection(
-  nostrStore: ReturnType<typeof useNostrStore>,
-) {
-  if (nostrStore.connected) {
-    return;
-  }
-  if (sharedReadOnlyConnectPromise) {
-    return sharedReadOnlyConnectPromise;
-  }
-  const connectPromise = nostrStore.initNdkReadOnly();
-  sharedReadOnlyConnectPromise = connectPromise
-    .catch((error) => {
-      sharedReadOnlyConnectPromise = null;
-      throw error;
-    })
-    .then((value) => {
-      sharedReadOnlyConnectPromise = null;
-      return value;
-    });
-  return sharedReadOnlyConnectPromise;
-}
 
 export class FundstrProfileFetchError extends Error {
   fallbackAttempted: boolean;
@@ -133,169 +97,281 @@ function collectRelayHintsFromProfile(
   return Array.from(hints);
 }
 
+function isRecord(value: unknown): value is Record<string, any> {
+  return typeof value === "object" && value !== null;
+}
+
+function cloneDiscoveryProfile(
+  profile: Record<string, unknown> | null | undefined,
+): Record<string, any> | null {
+  if (!isRecord(profile)) {
+    return null;
+  }
+  try {
+    return JSON.parse(JSON.stringify(profile)) as Record<string, any>;
+  } catch (error) {
+    console.warn("Failed to deep-clone discovery profile payload", error);
+    return { ...(profile as Record<string, any>) };
+  }
+}
+
+function extractProfileDetailsFromDiscovery(
+  profile: Record<string, any> | null,
+): NutzapProfileDetails | null {
+  if (!profile) {
+    return null;
+  }
+
+  const trustedMints = new Set<string>();
+  const relays = new Set<string>();
+  let p2pk = "";
+  let tierAddr: string | undefined;
+
+  const appendMint = (value: unknown) => {
+    if (!Array.isArray(value)) {
+      return;
+    }
+    for (const entry of value) {
+      if (typeof entry === "string") {
+        const trimmed = entry.trim();
+        if (trimmed) {
+          trustedMints.add(trimmed);
+        }
+      }
+    }
+  };
+
+  const appendRelays = (value: unknown) => {
+    if (!value) {
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        if (typeof entry === "string") {
+          const trimmed = entry.trim();
+          if (trimmed) {
+            relays.add(trimmed);
+          }
+        }
+      }
+    } else if (isRecord(value)) {
+      for (const key of Object.keys(value)) {
+        const trimmed = key.trim();
+        if (trimmed) {
+          relays.add(trimmed);
+        }
+      }
+    }
+  };
+
+  const considerRecord = (candidate: unknown) => {
+    if (!isRecord(candidate)) {
+      return;
+    }
+    if (typeof candidate.p2pk === "string" && candidate.p2pk.trim()) {
+      p2pk = candidate.p2pk.trim();
+    }
+    if (typeof candidate.p2pkPubkey === "string" && candidate.p2pkPubkey.trim()) {
+      p2pk = candidate.p2pkPubkey.trim();
+    }
+    if (typeof candidate.p2pk_pubkey === "string" && candidate.p2pk_pubkey.trim()) {
+      p2pk = candidate.p2pk_pubkey.trim();
+    }
+    appendMint(candidate.mints);
+    appendMint(candidate.trustedMints);
+    appendMint(candidate.trusted_mints);
+    appendRelays(candidate.relays);
+    if (typeof candidate.tierAddr === "string" && candidate.tierAddr.trim()) {
+      tierAddr = candidate.tierAddr.trim();
+    }
+    if (typeof candidate.tier_addr === "string" && candidate.tier_addr.trim()) {
+      tierAddr = candidate.tier_addr.trim();
+    }
+  };
+
+  considerRecord(profile);
+  considerRecord(profile.nutzap);
+  considerRecord(profile.nutzapProfile);
+  considerRecord(profile.nutzap_profile);
+
+  const mintList = Array.from(trustedMints);
+  const relayList = Array.from(relays);
+
+  if (!p2pk && mintList.length === 0 && relayList.length === 0 && !tierAddr) {
+    return null;
+  }
+
+  return {
+    p2pkPubkey: p2pk,
+    trustedMints: mintList,
+    relays: relayList,
+    tierAddr,
+  };
+}
+
+function convertDiscoveryTier(tier: DiscoveryCreatorTier): Tier | null {
+  if (!tier || typeof tier.id !== "string") {
+    return null;
+  }
+  const id = tier.id.trim();
+  if (!id) {
+    return null;
+  }
+  const name = typeof tier.name === "string" ? tier.name : "";
+  const amountMsat =
+    typeof tier.amountMsat === "number" && Number.isFinite(tier.amountMsat)
+      ? tier.amountMsat
+      : null;
+  const price_sats = amountMsat !== null ? Math.max(0, Math.round(amountMsat / 1000)) : 0;
+  const description = typeof tier.description === "string" ? tier.description : "";
+
+  return {
+    id,
+    name,
+    price_sats,
+    description,
+    media: [],
+  };
+}
+
 export interface FundstrProfileBundle {
   profile: Record<string, any> | null;
   profileEvent: RelayEvent | null;
-  followers: number;
-  following: number;
+  followers: number | null;
+  following: number | null;
+  joined: number | null;
   profileDetails: NutzapProfileDetails | null;
   relayHints: string[];
   fetchedFromFallback: boolean;
+  tiers: Tier[] | null;
 }
 
 export async function fetchFundstrProfileBundle(
   pubkeyInput: string,
 ): Promise<FundstrProfileBundle> {
+  const discovery = useFundstrDiscovery();
   const pubkey = toHex(pubkeyInput);
-  const filters: Filter[] = [
-    { kinds: [0, 10019], authors: [pubkey] },
-    { kinds: [3], authors: [pubkey] },
-    { kinds: [3], "#p": [pubkey] },
-  ];
-
-  let events: RelayEvent[] = [];
+  const normalizedPubkey = pubkey.toLowerCase();
   let lastError: unknown = null;
-  try {
-    events = await queryNostr(filters, {
-      preferFundstr: true,
-      allowFanoutFallback: false,
-    });
-  } catch (error) {
-    lastError = error;
-    console.error("fetchFundstrProfileBundle Fundstr query failed", error);
-  }
 
-  let fallbackAttempted = false;
-
-  if (!events.length) {
-    try {
-      const direct = await simpleRelayQuery(filters);
-      if (direct.length) {
-        events = direct;
-        console.info("[creators] direct Fundstr relay query succeeded", {
-          pubkey,
-          filters,
-        });
-      }
-    } catch (directError) {
-      lastError = directError;
-      const label =
-        directError instanceof SimpleRelayError ? directError.message : String(directError);
-      console.warn("fetchFundstrProfileBundle direct relay query failed", label);
+  const fetchCreatorByQuery = async (query: string): Promise<DiscoveryCreator | null> => {
+    const trimmed = typeof query === "string" ? query.trim() : "";
+    if (!trimmed) {
+      return null;
     }
-  }
-
-  if (!events.length) {
-    fallbackAttempted = true;
-    const fallbackRelays = new Set<string>(FALLBACK_RELAYS);
     try {
-      const discovered = await fallbackDiscoverRelays(pubkey);
-      for (const url of discovered) {
-        const trimmed = url.trim();
-        if (trimmed) {
-          fallbackRelays.add(trimmed);
+      const response = await discovery.getCreators({ q: trimmed, fresh: true });
+      for (const entry of response.results) {
+        if (typeof entry.pubkey === "string" && entry.pubkey.toLowerCase() === normalizedPubkey) {
+          return entry;
         }
       }
-    } catch (discoveryError) {
-      console.warn(
-        "fetchFundstrProfileBundle fallback relay discovery failed",
-        discoveryError,
-      );
+    } catch (error) {
+      lastError = error;
+      console.error("fetchFundstrProfileBundle discovery query failed", {
+        query: trimmed,
+        error,
+      });
     }
+    return null;
+  };
 
-    const fanout = Array.from(fallbackRelays);
+  let creator: DiscoveryCreator | null = await fetchCreatorByQuery(pubkey);
+  if (!creator) {
+    let npubQuery: string | null = null;
+    try {
+      npubQuery = nip19.npubEncode(pubkey);
+    } catch (error) {
+      console.warn("Failed to encode pubkey to npub for discovery lookup", error);
+    }
+    if (npubQuery) {
+      creator = await fetchCreatorByQuery(npubQuery);
+    }
+  }
 
-    if (fanout.length) {
+  if (!creator) {
+    throw new FundstrProfileFetchError("No profile records returned from discovery", {
+      fallbackAttempted: false,
+      cause: lastError ?? undefined,
+    });
+  }
+
+  const profile = cloneDiscoveryProfile(creator.profile);
+  const profileDetails = extractProfileDetailsFromDiscovery(profile);
+  const relayHints = collectRelayHintsFromProfile(profile, null, profileDetails);
+
+  let followers: number | null = null;
+  if (typeof creator.followers === "number" && Number.isFinite(creator.followers)) {
+    followers = creator.followers;
+  }
+
+  let following: number | null = null;
+  if (typeof creator.following === "number" && Number.isFinite(creator.following)) {
+    following = creator.following;
+  }
+
+  let joined: number | null = null;
+  if (typeof creator.joined === "number" && Number.isFinite(creator.joined)) {
+    joined = creator.joined;
+  }
+
+  const tierCandidates: DiscoveryCreatorTier[] = Array.isArray(creator.tiers)
+    ? (creator.tiers as DiscoveryCreatorTier[])
+    : [];
+
+  const ensureTierCandidates = async () => {
+    if (tierCandidates.length) {
+      return;
+    }
+    try {
+      const tierResponse = await discovery.getCreatorTiers({ id: pubkey, fresh: true });
+      if (Array.isArray(tierResponse.tiers) && tierResponse.tiers.length) {
+        tierCandidates.push(...(tierResponse.tiers as DiscoveryCreatorTier[]));
+      }
+    } catch (error) {
+      console.warn("fetchFundstrProfileBundle discovery tier lookup failed", {
+        pubkey,
+        error,
+      });
+      let npubId: string | null = null;
       try {
-        events = await queryNostr(filters, {
-          preferFundstr: true,
-          allowFanoutFallback: true,
-          fanout,
-        });
-        if (events.length) {
-          console.warn("[creators] Fundstr profile fallback succeeded", {
+        npubId = nip19.npubEncode(pubkey);
+      } catch {
+        npubId = null;
+      }
+      if (npubId) {
+        try {
+          const tierResponse = await discovery.getCreatorTiers({ id: npubId, fresh: true });
+          if (Array.isArray(tierResponse.tiers) && tierResponse.tiers.length) {
+            tierCandidates.push(...(tierResponse.tiers as DiscoveryCreatorTier[]));
+          }
+        } catch (npubError) {
+          console.warn("fetchFundstrProfileBundle discovery tier lookup via npub failed", {
             pubkey,
-            relays: fanout,
+            error: npubError,
           });
         }
-      } catch (fallbackError) {
-        lastError = fallbackError;
-        console.error(
-          "fetchFundstrProfileBundle fallback query failed",
-          fallbackError,
-        );
       }
     }
-  }
+  };
 
-  const normalized = normalizeEvents(events);
+  await ensureTierCandidates();
 
-  const preferredProfile =
-    pickLatestReplaceable(normalized, { kind: 10019, pubkey }) ??
-    pickLatestReplaceable(normalized, { kind: 0, pubkey });
-
-  let profile: Record<string, any> | null = null;
-  if (preferredProfile?.content) {
-    try {
-      const parsed = JSON.parse(preferredProfile.content);
-      if (parsed && typeof parsed === "object") {
-        profile = { ...(parsed as Record<string, any>) };
-      }
-    } catch (err) {
-      console.warn("Failed to parse profile content", err);
-    }
-  }
-
-  const followingEvent = pickLatestReplaceable(normalized, { kind: 3, pubkey });
-  let following = 0;
-  if (followingEvent) {
-    const followingSet = new Set<string>();
-    for (const tag of followingEvent.tags ?? []) {
-      if (tag[0] === "p" && typeof tag[1] === "string") {
-        followingSet.add(tag[1].toLowerCase());
-      }
-    }
-    following = followingSet.size;
-  }
-
-  const followerSet = new Set<string>();
-  for (const ev of normalized) {
-    if (ev.kind !== 3 || ev.pubkey === pubkey) continue;
-    for (const tag of ev.tags ?? []) {
-      if (tag[0] === "p" && typeof tag[1] === "string") {
-        if (tag[1].toLowerCase() === pubkey) {
-          followerSet.add(ev.pubkey.toLowerCase());
-          break;
-        }
-      }
-    }
-  }
-
-  if (!preferredProfile && !profile && !normalized.length) {
-    throw new FundstrProfileFetchError(
-      "No profile events returned from Fundstr or fallback relays",
-      {
-        fallbackAttempted,
-        cause: lastError ?? undefined,
-      },
-    );
-  }
-
-  const profileDetails = parseNutzapProfileEvent(preferredProfile ?? null);
-  const relayHints = collectRelayHintsFromProfile(
-    profile,
-    preferredProfile ?? null,
-    profileDetails,
-  );
+  const tiers = tierCandidates
+    .map((tier) => convertDiscoveryTier(tier))
+    .filter((tier): tier is Tier => tier !== null)
+    .map((tier) => normalizeTier(tier));
 
   return {
     profile,
-    profileEvent: preferredProfile ?? null,
-    followers: followerSet.size,
+    profileEvent: null,
+    followers,
     following,
+    joined,
     profileDetails,
     relayHints,
-    fetchedFromFallback: fallbackAttempted && events.length > 0,
+    fetchedFromFallback: false,
+    tiers: tiers.length ? tiers : null,
   };
 }
 
@@ -723,17 +799,13 @@ export const useCreatorsStore = defineStore("creators", {
         }
       }
 
-      const nostrStore = useNostrStore();
-
       const fetchPromise = (async (): Promise<CreatorProfile | null> => {
-        let fundstrError: unknown = null;
-
         try {
           const bundle = await fetchFundstrProfileBundle(pubkey);
 
           try {
             await this.saveProfileCache(pubkey, bundle.profileEvent, bundle.profileDetails, {
-              updatedAt: bundle.profileEvent?.created_at ?? null,
+              updatedAt: bundle.joined ?? null,
             });
           } catch (cacheError) {
             console.error("[creators] Failed to persist Fundstr profile cache", {
@@ -742,12 +814,25 @@ export const useCreatorsStore = defineStore("creators", {
             });
           }
 
+          if (Array.isArray(bundle.tiers)) {
+            try {
+              this.updateTierCacheState(pubkey, bundle.tiers, null, {
+                updatedAt: bundle.joined ?? null,
+              });
+            } catch (tierCacheError) {
+              console.error("[creators] Failed to update warm tier cache", {
+                pubkey,
+                error: tierCacheError,
+              });
+            }
+          }
+
           const creatorProfile: CreatorProfile = {
             pubkey,
             profile: bundle.profile,
             followers: typeof bundle.followers === "number" ? bundle.followers : null,
             following: typeof bundle.following === "number" ? bundle.following : null,
-            joined: bundle.profileEvent?.created_at ?? null,
+            joined: typeof bundle.joined === "number" ? bundle.joined : null,
             cacheHit: false,
           };
 
@@ -763,90 +848,11 @@ export const useCreatorsStore = defineStore("creators", {
 
           return creatorProfile;
         } catch (error) {
-          fundstrError = error;
-        }
-
-        const fallbackContext: Record<string, unknown> = { pubkey };
-        if (fundstrError instanceof FundstrProfileFetchError) {
-          fallbackContext.fallbackAttempted = fundstrError.fallbackAttempted;
-          fallbackContext.error = (fundstrError as any).cause ?? fundstrError;
-        } else if (fundstrError) {
-          fallbackContext.error = fundstrError;
-        }
-        console.info("[creators] Falling back to global relay profile fetch", fallbackContext);
-
-        try {
-          await ensureReadOnlyNdkConnection(nostrStore);
-        } catch (connectError) {
-          console.warn("[creators] Read-only NDK connection failed before fallback fetch", {
+          console.error("[creators] Discovery profile fetch failed", {
             pubkey,
-            error: connectError,
+            error,
           });
-        }
-
-        try {
-          const ndk = await useNdk({ requireSigner: false });
-          const user = ndk.getUser({ pubkey });
-
-          const profilePromise = user
-            .fetchProfile()
-            .then(() => (user.profile as Record<string, any> | null) ?? null)
-            .catch((error) => {
-              console.warn(`Failed to fetch profile metadata for ${pubkey}`, error);
-              return null;
-            });
-
-          const followersPromise = nostrStore
-            .fetchFollowerCount(pubkey)
-            .catch((error) => {
-              console.warn(`Failed to fetch follower count for ${pubkey}`, error);
-              return null;
-            });
-
-          const followingPromise = nostrStore
-            .fetchFollowingCount(pubkey)
-            .catch((error) => {
-              console.warn(`Failed to fetch following count for ${pubkey}`, error);
-              return null;
-            });
-
-          const joinedPromise = nostrStore
-            .fetchJoinDate(pubkey)
-            .catch((error) => {
-              console.warn(`Failed to fetch join date for ${pubkey}`, error);
-              return null;
-            });
-
-          const [profile, followers, following, joined] = await Promise.all([
-            profilePromise,
-            followersPromise,
-            followingPromise,
-            joinedPromise,
-          ]);
-
-          const creatorProfile: CreatorProfile = {
-            pubkey,
-            profile,
-            followers,
-            following,
-            joined,
-            cacheHit: false,
-          };
-
-          try {
-            await db.profiles.put({
-              pubkey,
-              profile: creatorProfile,
-              fetchedAt: Date.now(),
-            });
-          } catch (persistError) {
-            console.error(`Failed to cache profile for ${pubkey}`, persistError);
-          }
-
-          return creatorProfile;
-        } catch (error) {
-          console.error(`Failed to fetch profile for ${pubkey}:`, error);
-          return null;
+          throw error;
         }
       })();
 
@@ -1005,6 +1011,7 @@ export const useCreatorsStore = defineStore("creators", {
         let lastError: unknown = null;
         let fallbackAttempted = false;
         const attemptedFallbackRelays = new Set<string>();
+        const allowRelayFallback = opts.fundstrOnly !== true;
 
         const takeRelayFailures = (now: number) => {
           const entry = ensureWarmEntry();
@@ -1074,6 +1081,9 @@ export const useCreatorsStore = defineStore("creators", {
         }
 
         const tryFallback = async (extraRelays: Iterable<string>) => {
+          if (!allowRelayFallback) {
+            return null;
+          }
           const now = Date.now();
           const baseRelays = Array.from(
             new Set<string>(
@@ -1159,14 +1169,14 @@ export const useCreatorsStore = defineStore("creators", {
           }
         }
 
-        if (!event && relayHints.size) {
+        if (!event && allowRelayFallback && relayHints.size) {
           const hinted = await tryFallback(relayHints);
           if (hinted) {
             event = hinted;
           }
         }
 
-        if (!event) {
+        if (!event && allowRelayFallback) {
           const defaults = new Set(FALLBACK_RELAYS);
           if (defaults.size) {
             const fallbackEvent = await tryFallback(defaults);
@@ -1180,7 +1190,7 @@ export const useCreatorsStore = defineStore("creators", {
           }
         }
 
-        if (!event) {
+        if (!event && allowRelayFallback) {
           try {
             const discovered = await fallbackDiscoverRelays(hex);
             if (discovered.length) {
