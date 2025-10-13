@@ -236,7 +236,7 @@ import { useDonationPresetsStore } from 'stores/donationPresets';
 import { useNostrStore } from 'stores/nostr';
 import { type Creator } from 'src/lib/fundstrApi';
 import { searchCreators } from 'src/lib/discoveryApi';
-import { FEATURED_CREATORS } from 'stores/creators';
+import { FEATURED_CREATORS } from 'src/config/featured-creators';
 
 const searchQuery = ref('');
 const searchResults = ref<Creator[]>([]);
@@ -293,6 +293,14 @@ const loadMore = () => {
 };
 
 async function runSearch() {
+  if (!hasQuery.value) {
+    searchResults.value = [];
+    searchError.value = '';
+    searchWarnings.value = [];
+    initialLoadComplete.value = true;
+    return;
+  }
+
   if (searchController) {
     searchController.abort();
   }
@@ -302,7 +310,7 @@ async function runSearch() {
   searchLoading.value = true;
   searchError.value = '';
   searchWarnings.value = [];
-  const query = trimmedQuery.value || '*';
+  const query = trimmedQuery.value;
 
   try {
     const response = await searchCreators(query, signal);
@@ -348,40 +356,41 @@ async function loadFeatured(force = false) {
 
   loadingFeatured.value = true;
   featuredError.value = '';
+  const resolvedCreators: Creator[] = [];
 
   try {
-    // We can use the same discovery endpoint to fetch multiple npubs.
-    // The backend is optimized for this.
-    const query = FEATURED_CREATORS.join(',');
-    const response = await searchCreators(query, signal);
+    // Fetch each featured creator individually to ensure we get the correct profile
+    // and handle any partial failures gracefully. The backend caches aggressively,
+    // so this is still very fast.
+    const promises = FEATURED_CREATORS.map(npub =>
+      searchCreators(npub, signal).then(response => {
+        if (response.results.length > 0) {
+          return { ...response.results[0], featured: true };
+        }
+        console.warn(`Could not find a profile for featured creator: ${npub}`);
+        return null;
+      }),
+    );
+
+    const results = await Promise.all(promises);
 
     if (signal.aborted) {
       return;
     }
 
-    // The backend might not return creators in the same order, so we map them.
-    const creatorMap = new Map(response.results.map((c) => [c.pubkey, c]));
-    const resolvedCreators: Creator[] = [];
-    for (const npub of FEATURED_CREATORS) {
-      // This is a bit of a hack until we have a proper way to get the pubkey from an npub
-      // on the client. For now, we find the creator whose profile matches.
-      const found = response.results.find(c => c.pubkey.includes(npub.slice(4, 10)));
-      if (found) {
-        resolvedCreators.push({ ...found, featured: true });
-      }
-    }
+    // Filter out any null results from failed lookups
+    featuredCreators.value = results.filter((c): c is Creator => c !== null);
 
-    featuredCreators.value = response.results.map(c => ({...c, featured: true}));
-
-    if (response.warnings.length > 0) {
+    if (featuredCreators.value.length < FEATURED_CREATORS.length) {
       featuredError.value = 'Some featured creators could not be loaded.';
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      return;
+      return; // Request was intentionally cancelled
     }
     console.error('Failed to load featured creators:', error);
     featuredError.value = 'Could not load featured creators. Please try again later.';
+    featuredCreators.value = []; // Clear any partial results
   } finally {
     if (!signal.aborted) {
       loadingFeatured.value = false;
@@ -496,7 +505,8 @@ function redirectToCreatorIfPresent() {
 
 onMounted(() => {
   redirectToCreatorIfPresent();
-  void runSearch();
+  // We no longer run an initial search. The page will wait for user input.
+  // The search section will show an empty state until a query is entered.
   void loadFeatured();
 });
 
