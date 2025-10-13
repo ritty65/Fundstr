@@ -235,7 +235,7 @@ import { useSendTokensStore } from 'stores/sendTokensStore';
 import { useDonationPresetsStore } from 'stores/donationPresets';
 import { useNostrStore } from 'stores/nostr';
 import { type Creator } from 'src/lib/fundstrApi';
-import { searchCreators } from 'src/lib/discoveryApi';
+import { useFundstrDiscovery } from 'src/api/fundstrDiscovery';
 import { FEATURED_CREATORS } from 'src/config/featured-creators';
 
 const searchQuery = ref('');
@@ -256,6 +256,7 @@ const showSearchEmptyState = computed(
     initialLoadComplete.value &&
     !searchLoading.value &&
     !searchError.value &&
+    searchWarnings.value.length === 0 &&
     !searchResults.value.length &&
     hasQuery.value,
 );
@@ -264,6 +265,7 @@ const showInitialEmptyState = computed(
     initialLoadComplete.value &&
     !searchLoading.value &&
     !searchError.value &&
+    searchWarnings.value.length === 0 &&
     !searchResults.value.length &&
     !hasQuery.value,
 );
@@ -279,7 +281,7 @@ function debounce(func: (...args: any[]) => void, delay: number) {
 }
 
 const triggerImmediateSearch = () => {
-  void runSearch();
+  void runSearch({ fresh: true });
 };
 
 const debouncedSearch = debounce(() => {
@@ -292,15 +294,9 @@ const loadMore = () => {
   // The "Load More" button will be hidden via `hasMoreResults`.
 };
 
-async function runSearch() {
-  if (!hasQuery.value) {
-    searchResults.value = [];
-    searchError.value = '';
-    searchWarnings.value = [];
-    initialLoadComplete.value = true;
-    return;
-  }
+const discoveryClient = useFundstrDiscovery();
 
+async function runSearch({ fresh = false }: { fresh?: boolean } = {}) {
   if (searchController) {
     searchController.abort();
   }
@@ -310,10 +306,10 @@ async function runSearch() {
   searchLoading.value = true;
   searchError.value = '';
   searchWarnings.value = [];
-  const query = trimmedQuery.value;
+  const query = hasQuery.value ? trimmedQuery.value : '*';
 
   try {
-    const response = await searchCreators(query, signal);
+    const response = await discoveryClient.getCreators({ q: query, fresh, signal });
     if (signal.aborted) {
       return;
     }
@@ -363,7 +359,7 @@ async function loadFeatured(force = false) {
     // and handle any partial failures gracefully. The backend caches aggressively,
     // so this is still very fast.
     const promises = FEATURED_CREATORS.map(npub =>
-      searchCreators(npub, signal).then(response => {
+      discoveryClient.getCreators({ q: npub, signal, fresh: force }).then(response => {
         if (response.results.length > 0) {
           return { ...response.results[0], featured: true };
         }
@@ -505,8 +501,8 @@ function redirectToCreatorIfPresent() {
 
 onMounted(() => {
   redirectToCreatorIfPresent();
-  // We no longer run an initial search. The page will wait for user input.
-  // The search section will show an empty state until a query is entered.
+  // Kick off the initial wildcard discovery search so the page has results ready.
+  void runSearch();
   void loadFeatured();
 });
 
