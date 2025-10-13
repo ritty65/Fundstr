@@ -5,6 +5,20 @@ import { createPinia, setActivePinia } from "pinia";
 import { reactive } from "vue";
 import FindCreators from "src/pages/FindCreators.vue";
 
+const getCreatorsMock = vi.fn().mockResolvedValue({
+  count: 0,
+  warnings: [],
+  results: [],
+  cached: false,
+  tookMs: 0,
+});
+vi.mock("src/api/fundstrDiscovery", () => ({
+  useFundstrDiscovery: () => ({
+    getCreators: getCreatorsMock,
+    clearCache: vi.fn(),
+  }),
+}));
+
 vi.mock("components/CreatorProfileModal.vue", () => ({
   default: { name: "CreatorProfileModal", template: "<div />" },
 }));
@@ -51,6 +65,14 @@ vi.mock("stores/messenger", () => ({
 
 describe("FindCreators.vue", () => {
   beforeEach(() => {
+    getCreatorsMock.mockReset();
+    getCreatorsMock.mockResolvedValue({
+      count: 0,
+      warnings: [],
+      results: [],
+      cached: false,
+      tookMs: 0,
+    });
     creatorsStore = reactive({
       searchResults: [],
       featuredCreators: [],
