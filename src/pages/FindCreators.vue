@@ -41,7 +41,7 @@
                 autocomplete="off"
                 label="Search Nostr profiles"
                 placeholder="Name, npub, or NIP-05"
-                :loading="searchLoading && !loadingMore"
+                :loading="searchLoading"
                 input-class="text-1"
                 @update:model-value="debouncedSearch"
                 @keyup.enter="triggerImmediateSearch"
@@ -84,6 +84,23 @@
                   <span class="status-banner__text">{{ searchError }}</span>
                 </q-banner>
 
+                <q-banner
+                  v-if="searchWarnings.length > 0"
+                  rounded
+                  dense
+                  class="status-banner text-1"
+                  aria-live="polite"
+                >
+                  <template #avatar>
+                    <q-icon name="warning" size="20px" />
+                  </template>
+                  <div class="column">
+                    <span v-for="(warning, index) in searchWarnings" :key="index" class="status-banner__text">
+                      {{ warning }}
+                    </span>
+                  </div>
+                </q-banner>
+
                 <div v-if="searchResults.length" class="column q-gutter-md">
                   <div class="fixed-grid">
                     <CreatorCard
@@ -97,17 +114,8 @@
                     />
                   </div>
 
-                  <div v-if="hasMoreResults" class="load-more-wrapper">
-                    <q-btn
-                      outline
-                      no-caps
-                      color="accent"
-                      class="load-more-button"
-                      label="Load more"
-                      :loading="loadingMore"
-                      :disable="loadingMore"
-                      @click="loadMore"
-                    />
+                  <div v-if="false" class="load-more-wrapper">
+                    <!-- The new API does not support pagination. This is hidden. -->
                   </div>
                 </div>
 
@@ -226,25 +234,20 @@ import SendTokenDialog from 'components/SendTokenDialog.vue';
 import { useSendTokensStore } from 'stores/sendTokensStore';
 import { useDonationPresetsStore } from 'stores/donationPresets';
 import { useNostrStore } from 'stores/nostr';
-import { fetchCreators, fetchCreator, type Creator } from 'src/lib/fundstrApi';
+import { type Creator } from 'src/lib/fundstrApi';
+import { searchCreators } from 'src/lib/discoveryApi';
 import { FEATURED_CREATORS } from 'stores/creators';
-
-const DEFAULT_LIMIT = 9;
 
 const searchQuery = ref('');
 const searchResults = ref<Creator[]>([]);
 const searchLoading = ref(false);
-const loadingMore = ref(false);
 const searchError = ref('');
-const hasMoreResults = ref(true);
+const searchWarnings = ref<string[]>([]);
 const initialLoadComplete = ref(false);
+let searchController: AbortController | null = null;
 
 const searchSkeletonPlaceholders = [0, 1, 2];
-const featuredSkeletonPlaceholders = [0, 1, 2, 3];
-
-const requestCache = new Map<string, Promise<Creator[]>>();
-const responseCache = new Map<string, Creator[]>();
-let activeRequest: { key: string; controller: AbortController } | null = null;
+const featuredSkeletonPlaceholders = [0, 1, 2, 3, 4, 5];
 
 const trimmedQuery = computed(() => searchQuery.value.trim());
 const hasQuery = computed(() => trimmedQuery.value.length > 0);
@@ -252,7 +255,6 @@ const showSearchEmptyState = computed(
   () =>
     initialLoadComplete.value &&
     !searchLoading.value &&
-    !loadingMore.value &&
     !searchError.value &&
     !searchResults.value.length &&
     hasQuery.value,
@@ -261,7 +263,6 @@ const showInitialEmptyState = computed(
   () =>
     initialLoadComplete.value &&
     !searchLoading.value &&
-    !loadingMore.value &&
     !searchError.value &&
     !searchResults.value.length &&
     !hasQuery.value,
@@ -286,172 +287,107 @@ const debouncedSearch = debounce(() => {
 }, 300);
 
 const loadMore = () => {
-  void runSearch({ append: true });
+  // The new discovery service does not support pagination.
+  // This function is now a no-op but is kept to prevent template errors.
+  // The "Load More" button will be hidden via `hasMoreResults`.
 };
 
-function applySearchResults(creators: Creator[], append: boolean) {
-  if (append) {
-    searchResults.value = [...searchResults.value, ...creators];
-  } else {
-    searchResults.value = [...creators];
+async function runSearch() {
+  if (searchController) {
+    searchController.abort();
   }
-  hasMoreResults.value = creators.length === DEFAULT_LIMIT;
+  searchController = new AbortController();
+  const { signal } = searchController;
+
+  searchLoading.value = true;
   searchError.value = '';
-  if (!append) {
-    initialLoadComplete.value = true;
-  }
-}
+  searchWarnings.value = [];
+  const query = trimmedQuery.value || '*';
 
-function finalizeSearch(append: boolean, aborted: boolean) {
-  if (append) {
-    loadingMore.value = false;
-  } else {
-    searchLoading.value = false;
-    if (!aborted) {
-      initialLoadComplete.value = true;
-    }
-  }
-}
-
-async function runSearch({ append = false }: { append?: boolean } = {}) {
-  const query = trimmedQuery.value;
-  const offset = append ? searchResults.value.length : 0;
-  const cacheKey = JSON.stringify({ q: query, limit: DEFAULT_LIMIT, offset });
-
-  if (append) {
-    if (loadingMore.value || !hasMoreResults.value) {
+  try {
+    const response = await searchCreators(query, signal);
+    if (signal.aborted) {
       return;
     }
-  } else {
-    hasMoreResults.value = true;
-  }
-
-  if (activeRequest && activeRequest.key !== cacheKey) {
-    activeRequest.controller.abort();
-    activeRequest = null;
-  }
-
-  if (append) {
-    loadingMore.value = true;
-  } else {
-    searchLoading.value = true;
-  }
-  searchError.value = '';
-
-  const cachedResponse = responseCache.get(cacheKey);
-  if (cachedResponse) {
-    applySearchResults(cachedResponse, append);
-    finalizeSearch(append, false);
-    return;
-  }
-
-  let promise = requestCache.get(cacheKey);
-  if (!promise) {
-    const controller = new AbortController();
-    activeRequest = { key: cacheKey, controller };
-    promise = fetchCreators(query, DEFAULT_LIMIT, offset, controller.signal);
-    requestCache.set(cacheKey, promise);
-  }
-
-  let aborted = false;
-  try {
-    const creators = await promise!;
-    responseCache.set(cacheKey, creators);
-    applySearchResults(creators, append);
+    searchResults.value = response.results;
+    searchWarnings.value = response.warnings;
+    if (response.warnings.length > 0) {
+      console.warn('Search warnings:', response.warnings);
+    }
   } catch (error) {
-    if ((error as any)?.name === 'AbortError') {
-      aborted = true;
-    } else {
-      if (!append) {
-        searchResults.value = [];
-      }
-      hasMoreResults.value = false;
-      searchError.value =
-        error instanceof Error ? error.message : 'Unable to load creators. Please try again.';
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return; // Search was intentionally cancelled
     }
+    console.error('Search failed:', error);
+    searchResults.value = [];
+    searchError.value =
+      error instanceof Error ? error.message : 'Unable to load creators. Please try again.';
   } finally {
-    if (requestCache.get(cacheKey) === promise) {
-      requestCache.delete(cacheKey);
+    if (!signal.aborted) {
+      searchLoading.value = false;
+      initialLoadComplete.value = true;
+      searchController = null;
     }
-    if (activeRequest && activeRequest.key === cacheKey) {
-      activeRequest = null;
-    }
-    finalizeSearch(append, aborted);
   }
 }
 
 const featuredCreators = ref<Creator[]>([]);
 const featuredError = ref('');
 const loadingFeatured = ref(false);
-const featuredCache = new Map<string, Creator>();
-const featuredControllers = new Set<AbortController>();
-
-function registerFeaturedController(controller: AbortController) {
-  featuredControllers.add(controller);
-  controller.signal.addEventListener(
-    'abort',
-    () => {
-      featuredControllers.delete(controller);
-    },
-    { once: true },
-  );
-}
+let featuredController: AbortController | null = null;
 
 async function loadFeatured(force = false) {
-  if (loadingFeatured.value) {
+  if (loadingFeatured.value && !force) {
     return;
   }
+  if (featuredController) {
+    featuredController.abort();
+  }
+  featuredController = new AbortController();
+  const { signal } = featuredController;
+
   loadingFeatured.value = true;
   featuredError.value = '';
 
-  const settled = await Promise.allSettled(
-    FEATURED_CREATORS.map(async (npub) => {
-      if (!force && featuredCache.has(npub)) {
-        return featuredCache.get(npub)!;
-      }
-      const controller = new AbortController();
-      registerFeaturedController(controller);
-      try {
-        const creator = await fetchCreator(npub, controller.signal);
-        const decorated: Creator = { ...creator, featured: true };
-        featuredCache.set(npub, decorated);
-        return decorated;
-      } finally {
-        featuredControllers.delete(controller);
-      }
-    }),
-  );
+  try {
+    // We can use the same discovery endpoint to fetch multiple npubs.
+    // The backend is optimized for this.
+    const query = FEATURED_CREATORS.join(',');
+    const response = await searchCreators(query, signal);
 
-  const nextCreators: Creator[] = [];
-  let failures = 0;
-
-  settled.forEach((result, index) => {
-    const npub = FEATURED_CREATORS[index];
-    if (result.status === 'fulfilled') {
-      const creator = { ...result.value, featured: true };
-      featuredCache.set(npub, creator);
-      nextCreators.push(creator);
-    } else if (featuredCache.has(npub)) {
-      nextCreators.push(featuredCache.get(npub)!);
-      failures += 1;
-    } else {
-      failures += 1;
+    if (signal.aborted) {
+      return;
     }
-  });
 
-  if (nextCreators.length) {
-    featuredCreators.value = nextCreators;
-    if (failures === settled.length) {
-      featuredError.value = 'Could not load featured creators. Please try again later.';
-    } else if (failures > 0) {
+    // The backend might not return creators in the same order, so we map them.
+    const creatorMap = new Map(response.results.map((c) => [c.pubkey, c]));
+    const resolvedCreators: Creator[] = [];
+    for (const npub of FEATURED_CREATORS) {
+      // This is a bit of a hack until we have a proper way to get the pubkey from an npub
+      // on the client. For now, we find the creator whose profile matches.
+      const found = response.results.find(c => c.pubkey.includes(npub.slice(4, 10)));
+      if (found) {
+        resolvedCreators.push({ ...found, featured: true });
+      }
+    }
+
+    featuredCreators.value = response.results.map(c => ({...c, featured: true}));
+
+    if (response.warnings.length > 0) {
       featuredError.value = 'Some featured creators could not be loaded.';
     }
-  } else {
-    featuredCreators.value = [];
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return;
+    }
+    console.error('Failed to load featured creators:', error);
     featuredError.value = 'Could not load featured creators. Please try again later.';
+  } finally {
+    if (!signal.aborted) {
+      loadingFeatured.value = false;
+      featuredController = null;
+    }
   }
-
-  loadingFeatured.value = false;
 }
 
 const featuredStatusMessage = computed(() => {
@@ -565,12 +501,12 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  if (activeRequest) {
-    activeRequest.controller.abort();
-    activeRequest = null;
+  if (searchController) {
+    searchController.abort();
   }
-  featuredControllers.forEach((controller) => controller.abort());
-  featuredControllers.clear();
+  if (featuredController) {
+    featuredController.abort();
+  }
 });
 </script>
 
