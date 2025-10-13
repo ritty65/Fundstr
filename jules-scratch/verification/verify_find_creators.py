@@ -1,27 +1,33 @@
-from playwright.sync_api import sync_playwright, Page, expect
+from playwright.sync_api import sync_playwright, expect
 
-def run(playwright):
-    browser = playwright.chromium.launch(headless=True)
-    page = browser.new_page()
+def run_verification():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
 
-    # Listen for console events and print them
-    page.on("console", lambda msg: print(f"CONSOLE: {msg.text()}"))
+        # Navigate to the Find Creators page
+        page.goto("http://localhost:9000/#/find-creators")
 
-    # Navigate to the Find Creators page
-    page.goto("http://localhost:9000/#/find-creators")
+        # Wait for the page to be fully loaded
+        page.wait_for_load_state("networkidle")
 
-    # Wait for the first creator card to be visible
-    try:
-        expect(page.locator('.creator-card').first).to_be_visible(timeout=60000)
-    except Exception as e:
-        print(f"Error waiting for creator card: {e}")
-        page.screenshot(path="jules-scratch/verification/error_screenshot.png")
-        raise
+        # Wait for the initial search to complete, with a longer timeout
+        expect(page.locator('.q-skeleton').first).not_to_be_visible(timeout=30000)
 
-    # Take a screenshot to verify the UI changes
-    page.screenshot(path="jules-scratch/verification/find-creators-page.png")
+        # Take a screenshot of the initial state
+        page.screenshot(path="jules-scratch/verification/01-initial-load.png")
 
-    browser.close()
+        # Enter a search query
+        search_input = page.get_by_label("Search Nostr profiles")
+        search_input.fill("dergigi")
 
-with sync_playwright() as playwright:
-    run(playwright)
+        # Wait for the search results to appear
+        expect(page.locator('text=dergigi')).to_be_visible(timeout=10000)
+
+        # Take a screenshot of the search results
+        page.screenshot(path="jules-scratch/verification/02-search-results.png")
+
+        browser.close()
+
+if __name__ == "__main__":
+    run_verification()
