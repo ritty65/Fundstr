@@ -236,7 +236,6 @@ import { useDonationPresetsStore } from 'stores/donationPresets';
 import { useNostrStore } from 'stores/nostr';
 import { type Creator } from 'src/lib/fundstrApi';
 import { useFundstrDiscovery } from 'src/api/fundstrDiscovery';
-import { FEATURED_CREATORS } from 'src/config/featured-creators';
 
 const searchQuery = ref('');
 const searchResults = ref<Creator[]>([]);
@@ -249,7 +248,7 @@ let searchController: AbortController | null = null;
 const searchSkeletonPlaceholders = [0, 1, 2];
 const featuredSkeletonPlaceholders = [0, 1, 2, 3, 4, 5];
 
-const trimmedQuery = computed(() => searchQuery.value.trim());
+const trimmedQuery = computed(() => (searchQuery.value || '').trim());
 const hasQuery = computed(() => trimmedQuery.value.length > 0);
 const showSearchEmptyState = computed(
   () =>
@@ -352,33 +351,22 @@ async function loadFeatured(force = false) {
 
   loadingFeatured.value = true;
   featuredError.value = '';
-  const resolvedCreators: Creator[] = [];
 
   try {
-    // Fetch each featured creator individually to ensure we get the correct profile
-    // and handle any partial failures gracefully. The backend caches aggressively,
-    // so this is still very fast.
-    const promises = FEATURED_CREATORS.map(npub =>
-      discoveryClient.getCreators({ q: npub, signal, fresh: force }).then(response => {
-        if (response.results.length > 0) {
-          return { ...response.results[0], featured: true };
-        }
-        console.warn(`Could not find a profile for featured creator: ${npub}`);
-        return null;
-      }),
-    );
-
-    const results = await Promise.all(promises);
+    // Use a single wildcard query to fetch all featured creators.
+    const response = await discoveryClient.getCreators({ q: '*', signal, fresh: force });
 
     if (signal.aborted) {
       return;
     }
 
-    // Filter out any null results from failed lookups
-    featuredCreators.value = results.filter((c): c is Creator => c !== null);
+    // Mark them as featured for the UI
+    featuredCreators.value = response.results.map(c => ({ ...c, featured: true }));
 
-    if (featuredCreators.value.length < FEATURED_CREATORS.length) {
-      featuredError.value = 'Some featured creators could not be loaded.';
+    if (response.warnings && response.warnings.length > 0) {
+      // Show warnings to the user if any are returned
+      featuredError.value = response.warnings.join(' ');
+      console.warn('Featured creators warnings:', response.warnings);
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
