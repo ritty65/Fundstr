@@ -1,6 +1,6 @@
 import type { Creator } from './fundstrApi';
 
-const DISCOVERY_API_BASE = 'https://relay.fundstr.me/discover';
+const DISCOVERY_API_BASE = 'https://api.fundstr.me/discover';
 
 export interface DiscoveryResponse {
   count: number;
