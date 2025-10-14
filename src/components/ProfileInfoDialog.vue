@@ -52,6 +52,7 @@
 import { ref, computed, watch } from "vue";
 import { useNostrStore } from "src/stores/nostr";
 import { useCreatorsStore } from "src/stores/creators";
+import { toHex } from "@/nostr/relayClient";
 import { nip19 } from "nostr-tools";
 
 const props = defineProps<{ modelValue: boolean; pubkey: string }>();
@@ -74,13 +75,23 @@ const tiers = ref<any[]>([]);
 
 async function load() {
   if (!props.pubkey) return;
+  let pubkeyHex = props.pubkey;
+  try {
+    pubkeyHex = toHex(props.pubkey);
+  } catch (error) {
+    console.warn("[ProfileInfoDialog] Unable to normalize pubkey", error);
+  }
   profile.value = await nostr.getProfile(props.pubkey);
   followers.value = await nostr.fetchFollowerCount(props.pubkey);
   following.value = await nostr.fetchFollowingCount(props.pubkey);
   joined.value = await nostr.fetchJoinDate(props.pubkey);
   recentPost.value = await nostr.fetchMostRecentPost(props.pubkey);
-  await creators.fetchTierDefinitions(props.pubkey);
-  tiers.value = creators.tiersMap[props.pubkey] || [];
+  try {
+    await creators.fetchCreator(pubkeyHex, true);
+  } catch (error) {
+    console.error("[ProfileInfoDialog] Failed to refresh tier data", error);
+  }
+  tiers.value = creators.tiersMap[pubkeyHex] || [];
 }
 
 watch(

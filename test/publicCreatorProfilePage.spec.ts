@@ -45,7 +45,7 @@ vi.mock("src/composables/useClipboard", () => ({
 }));
 
 let creatorsStore: any;
-let fetchTierDefinitions: ReturnType<typeof vi.fn>;
+let fetchCreatorMock: ReturnType<typeof vi.fn>;
 let fetchFundstrProfileBundleMock: ReturnType<typeof vi.fn>;
 const priceStore = reactive({ bitcoinPrice: 0 });
 const uiStore = { formatCurrency: vi.fn(() => "$0.00") };
@@ -137,7 +137,7 @@ const QSpinnerStub = defineComponent({
 describe("PublicCreatorProfilePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    fetchTierDefinitions = vi.fn().mockImplementation(async (pubkey: string) => {
+    fetchCreatorMock = vi.fn().mockImplementation(async (pubkey: string) => {
       creatorsStore.tiersMap[pubkey] = [
         {
           id: "tier-1",
@@ -160,7 +160,7 @@ describe("PublicCreatorProfilePage", () => {
     creatorsStore = reactive({
       tiersMap: reactive({}),
       tierFetchError: false,
-      fetchTierDefinitions,
+      fetchCreator: fetchCreatorMock,
     });
     priceStore.bitcoinPrice = 0;
     welcomeStore.welcomeCompleted = true;
@@ -210,12 +210,9 @@ describe("PublicCreatorProfilePage", () => {
     await flushPromises();
     await nextTick();
 
-    expect(fetchTierDefinitions).toHaveBeenCalled();
-    expect(fetchTierDefinitions.mock.calls[0][0]).toBe(sampleHex);
-    expect(fetchTierDefinitions.mock.calls[0][1]).toEqual({
-      fundstrOnly: true,
-      relayHints: [],
-    });
+    expect(fetchCreatorMock).toHaveBeenCalled();
+    expect(fetchCreatorMock.mock.calls[0][0]).toBe(sampleHex);
+    expect(fetchCreatorMock.mock.calls[0][1]).toBe(true);
     expect(wrapper.vm.selectedTier?.id).toBe("tier-1");
     expect(wrapper.vm.showSubscribeDialog).toBe(true);
     expect(router.currentRoute.value.query.tierId).toBeUndefined();
@@ -235,10 +232,7 @@ describe("PublicCreatorProfilePage", () => {
     const wrapper = mountPage(router);
     await flushPromises();
 
-    expect(fetchTierDefinitions).toHaveBeenCalledWith(sampleHex, {
-      fundstrOnly: true,
-      relayHints: [],
-    });
+    expect(fetchCreatorMock).toHaveBeenCalledWith(sampleHex, true);
     expect(wrapper.vm.creatorHex).toBe(sampleHex);
     expect(wrapper.vm.creatorNpub).toBe(nip19.npubEncode(sampleHex));
   });
@@ -293,7 +287,7 @@ describe("PublicCreatorProfilePage", () => {
       .find((btn) => btn.text() === "Retry")
       ?.trigger("click");
 
-    expect(fetchTierDefinitions).toHaveBeenCalledTimes(2);
+    expect(fetchCreatorMock).toHaveBeenCalledTimes(2);
   });
 
   it("shows a friendly error when the pubkey cannot be decoded", async () => {
@@ -311,6 +305,6 @@ describe("PublicCreatorProfilePage", () => {
 
     const banners = wrapper.findAll(".q-banner");
     expect(banners.some((b) => b.text().includes("We couldn't load this creator profile"))).toBe(true);
-    expect(fetchTierDefinitions).not.toHaveBeenCalled();
+    expect(fetchCreatorMock).not.toHaveBeenCalled();
   });
 });

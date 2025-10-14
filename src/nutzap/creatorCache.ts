@@ -26,13 +26,9 @@ class CreatorCacheService {
     try {
       const pubkeyHex = toHex(pubkeyInput);
       const bundle = await fetchFundstrProfileBundle(pubkeyHex);
-      await this.creatorsStore.saveProfileCache(
-        pubkeyHex,
-        bundle.profileEvent,
-        bundle.profileDetails
-      );
-      await this.creatorsStore.fetchTierDefinitions(pubkeyHex, {
-        relayHints: bundle.relayHints,
+      await this.creatorsStore.applyBundleToCache(pubkeyHex, bundle, {
+        cacheHit: false,
+        featured: false,
       });
       console.log(`[CreatorCache] Cache updated for ${pubkeyInput}.`);
     } catch (error) {

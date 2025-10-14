@@ -435,26 +435,18 @@ export default defineComponent({
         loadingTiers.value = true;
       }
       refreshingTiers.value = true;
+      creators.tierFetchError = false;
       try {
-        const result = await creators.fetchTierDefinitions(creatorHex, {
-          fundstrOnly: true,
-          relayHints: profileRelayHints.value,
-        });
-        if (result?.relayHints?.length) {
-          profileRelayHints.value = mergeUniqueUrls(
-            profileRelayHints.value,
-            result.relayHints,
-          );
-        }
-        if (result?.attemptedRelays?.length || result?.usedFallback) {
+        await creators.fetchCreator(creatorHex, true);
+        if (creators.tierFetchError) {
           fallbackActive.value = true;
-          fallbackFailed.value = creators.tierFetchError;
-          fallbackRelays.value = mergeUniqueUrls(
-            fallbackRelays.value,
-            result?.attemptedRelays,
-            result?.relayHints,
-          );
+          fallbackFailed.value = true;
         }
+      } catch (error) {
+        console.error("[creator-profile] Failed to refresh tier definitions", error);
+        creators.tierFetchError = true;
+        fallbackActive.value = true;
+        fallbackFailed.value = true;
       } finally {
         refreshingTiers.value = false;
         if (!hasInitialTierData.value) {

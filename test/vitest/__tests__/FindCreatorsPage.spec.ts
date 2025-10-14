@@ -17,6 +17,10 @@ vi.mock("src/api/fundstrDiscovery", () => ({
     getCreators: getCreatorsMock,
     clearCache: vi.fn(),
   }),
+  useDiscovery: () => ({
+    getCreators: getCreatorsMock,
+    clearCache: vi.fn(),
+  }),
 }));
 
 vi.mock("components/CreatorProfileModal.vue", () => ({
@@ -81,7 +85,6 @@ describe("FindCreators.vue", () => {
       error: "",
       tiersMap: reactive({}),
       tierFetchError: false,
-      fetchTierDefinitions: vi.fn().mockResolvedValue(undefined),
       ensureCreatorCacheFromDexie: vi.fn().mockResolvedValue(undefined),
       saveProfileCache: vi.fn().mockResolvedValue(undefined),
       loadFeaturedCreators: vi.fn().mockResolvedValue(undefined),

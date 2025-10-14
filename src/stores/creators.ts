@@ -8,7 +8,7 @@ import type { Tier } from "./types";
 import { toHex, type NostrEvent as RelayEvent } from "@/nostr/relayClient";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import { type NutzapProfileDetails } from "@/nutzap/profileCache";
-import { useFundstrDiscovery } from "src/api/fundstrDiscovery";
+import { useDiscovery } from "src/api/fundstrDiscovery";
 import type {
   Creator as DiscoveryCreator,
   CreatorTier as DiscoveryCreatorTier,
@@ -230,7 +230,7 @@ export interface FundstrProfileBundle {
 export async function fetchFundstrProfileBundle(
   pubkeyInput: string,
 ): Promise<FundstrProfileBundle> {
-  const discovery = useFundstrDiscovery();
+  const discovery = useDiscovery();
   const pubkey = toHex(pubkeyInput);
   const normalizedPubkey = pubkey.toLowerCase();
   let lastError: unknown = null;
@@ -342,6 +342,46 @@ export async function fetchFundstrProfileBundle(
     .map((tier) => convertDiscoveryTier(tier))
     .filter((tier): tier is Tier => tier !== null)
     .map((tier) => normalizeTier(tier));
+
+  return {
+    profile,
+    profileEvent: null,
+    followers,
+    following,
+    joined,
+    profileDetails,
+    relayHints,
+    fetchedFromFallback: false,
+    tiers: tiers.length ? tiers : null,
+  };
+}
+
+function buildBundleFromDiscoveryCreator(
+  creator: DiscoveryCreator,
+): FundstrProfileBundle {
+  const profile = cloneDiscoveryProfile(creator.profile);
+  const profileDetails = extractProfileDetailsFromDiscovery(profile);
+  const relayHints = collectRelayHintsFromProfile(profile, null, profileDetails);
+
+  const followers =
+    typeof creator.followers === "number" && Number.isFinite(creator.followers)
+      ? creator.followers
+      : null;
+  const following =
+    typeof creator.following === "number" && Number.isFinite(creator.following)
+      ? creator.following
+      : null;
+  const joined =
+    typeof creator.joined === "number" && Number.isFinite(creator.joined)
+      ? creator.joined
+      : null;
+
+  const tierCandidates: DiscoveryCreatorTier[] = Array.isArray(creator.tiers)
+    ? (creator.tiers as DiscoveryCreatorTier[])
+    : [];
+  const tiers = tierCandidates
+    .map((tier) => convertDiscoveryTier(tier))
+    .filter((tier): tier is Tier => tier !== null);
 
   return {
     profile,
@@ -925,6 +965,50 @@ export const useCreatorsStore = defineStore("creators", {
       }
     },
 
+    async applyBundleToCache(
+      pubkey: string,
+      bundle: FundstrProfileBundle,
+      overrides: Partial<CreatorProfile> = {},
+    ): Promise<CreatorProfile> {
+      const creatorProfile = createCreatorFromBundle(pubkey, bundle, overrides);
+
+      try {
+        await this.saveProfileCache(pubkey, bundle.profileEvent, bundle.profileDetails, {
+          updatedAt: bundle.joined ?? null,
+        });
+      } catch (cacheError) {
+        console.error("[creators] Failed to persist Fundstr profile cache", {
+          pubkey,
+          error: cacheError,
+        });
+      }
+
+      if (Array.isArray(bundle.tiers)) {
+        try {
+          this.updateTierCacheState(pubkey, bundle.tiers, null, {
+            updatedAt: bundle.joined ?? null,
+          });
+        } catch (tierCacheError) {
+          console.error("[creators] Failed to update warm tier cache", {
+            pubkey,
+            error: tierCacheError,
+          });
+        }
+      }
+
+      try {
+        await db.profiles.put({
+          pubkey,
+          profile: creatorProfile,
+          fetchedAt: Date.now(),
+        });
+      } catch (persistError) {
+        console.error(`Failed to cache profile for ${pubkey}`, persistError);
+      }
+
+      return creatorProfile;
+    },
+
     async fetchCreator(pubkey: string, forceRefresh = false) {
       const now = Date.now();
       const cacheExpiry = 3 * 60 * 60 * 1000; // 3 hours
@@ -958,44 +1042,7 @@ export const useCreatorsStore = defineStore("creators", {
       const fetchPromise = (async (): Promise<CreatorProfile | null> => {
         try {
           const bundle = await fetchFundstrProfileBundle(pubkey);
-
-          try {
-            await this.saveProfileCache(pubkey, bundle.profileEvent, bundle.profileDetails, {
-              updatedAt: bundle.joined ?? null,
-            });
-          } catch (cacheError) {
-            console.error("[creators] Failed to persist Fundstr profile cache", {
-              pubkey,
-              error: cacheError,
-            });
-          }
-
-          if (Array.isArray(bundle.tiers)) {
-            try {
-              this.updateTierCacheState(pubkey, bundle.tiers, null, {
-                updatedAt: bundle.joined ?? null,
-              });
-            } catch (tierCacheError) {
-              console.error("[creators] Failed to update warm tier cache", {
-                pubkey,
-                error: tierCacheError,
-              });
-            }
-          }
-
-          const creatorProfile = createCreatorFromBundle(pubkey, bundle, { cacheHit: false });
-
-          try {
-            await db.profiles.put({
-              pubkey,
-              profile: creatorProfile,
-              fetchedAt: Date.now(),
-            });
-          } catch (persistError) {
-            console.error(`Failed to cache profile for ${pubkey}`, persistError);
-          }
-
-          return creatorProfile;
+          return await this.applyBundleToCache(pubkey, bundle, { cacheHit: false });
         } catch (error) {
           console.error("[creators] Discovery profile fetch failed", {
             pubkey,
@@ -1019,19 +1066,43 @@ export const useCreatorsStore = defineStore("creators", {
     async loadFeaturedCreators(forceRefresh = false) {
       this.featuredError = "";
       this.loadingFeatured = true;
+
+      const discovery = useDiscovery();
+
       if (forceRefresh) {
         this.featuredCreators = [];
       }
 
-      const pubkeys: string[] = FEATURED_CREATORS.map(npub => {
+      const pubkeys: string[] = FEATURED_CREATORS.map((npub) => {
         try {
-          return nip19.decode(npub).data as string;
+          const decoded = nip19.decode(npub).data as string;
+          return typeof decoded === "string" ? decoded.toLowerCase() : "";
         } catch (e) {
           console.error(`Failed to decode npub: ${npub}`, e);
-          return null;
+          return "";
         }
-      }).filter((pubkey): pubkey is string => pubkey !== null);
+      })
+        .map((pubkey) => {
+          const trimmed = typeof pubkey === "string" ? pubkey.trim() : "";
+          if (!trimmed) {
+            return null;
+          }
+          if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+            return trimmed.toLowerCase();
+          }
+          try {
+            return toHex(trimmed).toLowerCase();
+          } catch (error) {
+            console.warn("[creators] Invalid featured creator identifier", {
+              identifier: pubkey,
+              error,
+            });
+            return null;
+          }
+        })
+        .filter((pubkey): pubkey is string => Boolean(pubkey));
 
+      const pubkeySet = new Set(pubkeys);
       const cachedEntries = new Map<string, CreatorProfile>();
 
       await Promise.all(
@@ -1046,7 +1117,7 @@ export const useCreatorsStore = defineStore("creators", {
           }
           const cached = this.buildCreatorProfileFromCache(pubkey);
           if (cached) {
-            cachedEntries.set(pubkey, { ...cached, cacheHit: true });
+            cachedEntries.set(pubkey, { ...cached, cacheHit: true, featured: true });
           }
         }),
       );
@@ -1054,97 +1125,81 @@ export const useCreatorsStore = defineStore("creators", {
       if (cachedEntries.size) {
         const orderedCached = pubkeys
           .map((pubkey) => cachedEntries.get(pubkey))
-          .filter((profile): profile is CreatorProfile => Boolean(profile))
-          .map((profile) => ({ ...profile, featured: true }));
+          .filter((profile): profile is CreatorProfile => Boolean(profile));
         if (orderedCached.length) {
           this.featuredCreators = orderedCached;
         }
       }
 
       try {
-        const results = await Promise.allSettled(
-          pubkeys.map((pubkey) => this.fetchCreator(pubkey, forceRefresh)),
-        );
-
-        const fulfilledMap = new Map<string, CreatorProfile>(cachedEntries);
-        const failedPubkeys: string[] = [];
-
-        results.forEach((result, index) => {
-          const pubkey = pubkeys[index];
-          if (result.status === "fulfilled") {
-            if (result.value) {
-              fulfilledMap.set(pubkey, { ...result.value, cacheHit: false });
-            } else {
-              failedPubkeys.push(pubkey);
-              console.warn("[creators] Featured creator returned null", { pubkey });
-            }
-          } else {
-            failedPubkeys.push(pubkey);
-            console.error("[creators] Failed to load featured creator", {
-              pubkey,
-              error: result.reason,
-            });
-          }
+        const response = await discovery.getCreators({
+          q: pubkeys.join(","),
+          fresh: forceRefresh,
         });
 
-        const fulfilled = pubkeys
-          .map((pubkey) => fulfilledMap.get(pubkey))
-          .filter((profile): profile is CreatorProfile => Boolean(profile))
-          .map((profile) => ({ ...profile, featured: true }));
+        const fetchedMap = new Map<string, CreatorProfile>();
+        const missingPubkeys = new Set(pubkeys);
 
-        this.featuredCreators = fulfilled;
-
-        if (fulfilled.length) {
-          this.featuredError = "";
-          if (failedPubkeys.length) {
-            console.warn("[creators] Some featured creators failed to load", {
-              pubkeys: failedPubkeys,
-            });
+        for (const creator of response.results ?? []) {
+          if (!creator || typeof creator.pubkey !== "string") {
+            continue;
           }
-        } else {
+
+          let resolvedHex: string | null = null;
+          try {
+            resolvedHex = toHex(creator.pubkey).toLowerCase();
+          } catch (error) {
+            if (/^[0-9a-fA-F]{64}$/.test(creator.pubkey)) {
+              resolvedHex = creator.pubkey.toLowerCase();
+            } else {
+              console.warn("[creators] Skipping featured creator with invalid pubkey", {
+                pubkey: creator.pubkey,
+                error,
+              });
+              continue;
+            }
+          }
+
+          if (!resolvedHex || !pubkeySet.has(resolvedHex)) {
+            continue;
+          }
+
+          missingPubkeys.delete(resolvedHex);
+
+          const bundle = buildBundleFromDiscoveryCreator(creator);
+          const profile = await this.applyBundleToCache(resolvedHex, bundle, {
+            cacheHit: Boolean(creator.cacheHit),
+            featured: true,
+          });
+          fetchedMap.set(resolvedHex, profile);
+        }
+
+        const combined = pubkeys
+          .map((pubkey) => fetchedMap.get(pubkey) ?? cachedEntries.get(pubkey))
+          .filter((profile): profile is CreatorProfile => Boolean(profile));
+
+        this.featuredCreators = combined;
+
+        if (!combined.length) {
           this.featuredError = "Failed to load featured creators.";
-          if (failedPubkeys.length) {
-            console.error("[creators] All featured creators failed to load", {
-              pubkeys: failedPubkeys,
+        } else {
+          this.featuredError = "";
+          if (missingPubkeys.size) {
+            console.warn("[creators] Featured creators missing from response", {
+              pubkeys: Array.from(missingPubkeys),
             });
           }
+        }
+      } catch (error) {
+        console.error("[creators] Failed to batch load featured creators", error);
+        if (!this.featuredCreators.length) {
+          this.featuredError = "Failed to load featured creators.";
         }
       } finally {
         this.loadingFeatured = false;
       }
     },
 
-    async fetchTierDefinitions(
-      creatorNpub: string,
-      _opts: { relayHints?: string[]; fundstrOnly?: boolean } = {},
-    ) {
-      this.tierFetchError = false;
-
-      let hex: string;
-      try {
-        hex = toHex(creatorNpub);
-      } catch (error) {
-        console.error("Invalid creator pubkey", error);
-        this.tierFetchError = true;
-        return { relayHints: [] as string[], attemptedRelays: [] as string[], usedFallback: false };
-      }
-
-      try {
-        const creatorProfile = await this.fetchCreator(hex, true);
-        if (creatorProfile?.tiers) {
-          this.tiersMap[hex] = creatorProfile.tiers.map((tier) => normalizeTier(tier as Tier));
-        }
-        this.tierFetchError = false;
-        return { relayHints: [] as string[], attemptedRelays: [] as string[], usedFallback: false };
-      } catch (error) {
-        console.error("[creators] Failed to refresh tier definitions", {
-          pubkey: hex,
-          error,
-        });
-        this.tierFetchError = true;
-        return { relayHints: [] as string[], attemptedRelays: [] as string[], usedFallback: false };
-      }
-    },
     async publishTierDefinitions(tiersArray: Tier[]) {
       const creatorNpub = this.currentUserNpub;
       const created_at = Math.floor(Date.now() / 1000);
