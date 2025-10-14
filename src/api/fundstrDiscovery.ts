@@ -343,8 +343,8 @@ function normalizeCreator(entry: any): Creator {
     tierSummary: null,
     metrics: undefined,
     tiers: Array.isArray(entry.tiers) ? entry.tiers : [],
-    cacheHit: entry.cacheHit,
-    featured: entry.featured,
+    cacheHit: Boolean(entry.cacheHit),
+    featured: Boolean(entry.featured),
   };
 }
 

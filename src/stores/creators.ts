@@ -1073,28 +1073,17 @@ export const useCreatorsStore = defineStore("creators", {
         this.featuredCreators = [];
       }
 
-      const pubkeys: string[] = FEATURED_CREATORS.map((npub) => {
-        try {
-          const decoded = nip19.decode(npub).data as string;
-          return typeof decoded === "string" ? decoded.toLowerCase() : "";
-        } catch (e) {
-          console.error(`Failed to decode npub: ${npub}`, e);
-          return "";
-        }
-      })
-        .map((pubkey) => {
-          const trimmed = typeof pubkey === "string" ? pubkey.trim() : "";
-          if (!trimmed) {
-            return null;
-          }
-          if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
-            return trimmed.toLowerCase();
-          }
+      const npubs = FEATURED_CREATORS.map((npub) =>
+        typeof npub === "string" ? npub.trim() : "",
+      ).filter((npub) => Boolean(npub));
+
+      const pubkeys: string[] = npubs
+        .map((npub) => {
           try {
-            return toHex(trimmed).toLowerCase();
+            return toHex(npub);
           } catch (error) {
-            console.warn("[creators] Invalid featured creator identifier", {
-              identifier: pubkey,
+            console.warn("[creators] Invalid featured creator npub", {
+              npub,
               error,
             });
             return null;
@@ -1132,8 +1121,8 @@ export const useCreatorsStore = defineStore("creators", {
       }
 
       try {
-        const response = await discovery.getCreators({
-          q: pubkeys.join(","),
+        const response = await discovery.getCreatorsByPubkeys({
+          npubs,
           fresh: forceRefresh,
         });
 
@@ -1147,19 +1136,12 @@ export const useCreatorsStore = defineStore("creators", {
               return null;
             }
 
-            let resolvedHex: string | null = null;
-            try {
-              resolvedHex = toHex(creator.pubkey).toLowerCase();
-            } catch (error) {
-              if (/^[0-9a-fA-F]{64}$/.test(creator.pubkey)) {
-                resolvedHex = creator.pubkey.toLowerCase();
-              } else {
-                console.warn("[creators] Skipping featured creator with invalid pubkey", {
-                  pubkey: creator.pubkey,
-                  error,
-                });
-                return null;
-              }
+            const resolvedHex = creator.pubkey.trim().toLowerCase();
+            if (!/^[0-9a-fA-F]{64}$/.test(resolvedHex)) {
+              console.warn("[creators] Skipping featured creator with invalid pubkey", {
+                pubkey: creator.pubkey,
+              });
+              return null;
             }
 
             if (!resolvedHex || !pubkeySet.has(resolvedHex)) {
