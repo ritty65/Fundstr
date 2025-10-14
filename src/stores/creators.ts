@@ -4,25 +4,17 @@ import { db } from "./dexie";
 import { getEventHash, signEvent, publishEvent } from "./nostr";
 import { nip19 } from "nostr-tools";
 import { Event as NostrEvent } from "nostr-tools";
-import { notifyWarning } from "src/js/notify";
 import type { Tier } from "./types";
-import {
-  queryNutzapTiers,
-  toHex,
-  type NostrEvent as RelayEvent,
-} from "@/nostr/relayClient";
-import { fallbackDiscoverRelays } from "@/nostr/discovery";
-import { parseTierDefinitionEvent } from "src/nostr/tiers";
-import {
-  FUNDSTR_REQ_URL,
-  FUNDSTR_WS_URL,
-} from "@/nutzap/relayEndpoints";
+import { toHex, type NostrEvent as RelayEvent } from "@/nostr/relayClient";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import { type NutzapProfileDetails } from "@/nutzap/profileCache";
-import { FALLBACK_RELAYS } from "@/config/relays";
-import { simpleRelayQuery, SimpleRelayError } from "@/nutzap/simpleRelay";
 import { useFundstrDiscovery } from "src/api/fundstrDiscovery";
-import type { Creator as DiscoveryCreator, CreatorTier as DiscoveryCreatorTier } from "src/lib/fundstrApi";
+import type {
+  Creator as DiscoveryCreator,
+  CreatorTier as DiscoveryCreatorTier,
+} from "src/lib/fundstrApi";
+import type { Creator as FundstrCreator } from "src/lib/fundstrApi";
+import { useNdk } from "src/composables/useNdk";
 
 export const FEATURED_CREATORS = [
   "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
@@ -37,18 +29,7 @@ export const FEATURED_CREATORS = [
   "npub1spdnfacgsd7lk0nlqkq443tkq4jx9z6c6ksvaquuewmw7d3qltpslcq6j7",
 ];
 
-export interface CreatorProfile {
-  pubkey: string;
-  profile: Record<string, any> | null;
-  followers: number | null;
-  following: number | null;
-  joined: number | null;
-  cacheHit?: boolean;
-}
-
-const TIER_RELAY_FAILURE_TTL_MS = 5 * 60 * 1000;
-const TIER_FETCH_TIMEOUT_MS = 1200;
-const FUNDSTR_FAILURE_NOTIFY_TTL_MS = 5 * 60 * 1000;
+export type CreatorProfile = FundstrCreator;
 
 export class FundstrProfileFetchError extends Error {
   fallbackAttempted: boolean;
@@ -447,6 +428,113 @@ function normalizeTier(tier: Tier): Tier {
   };
 }
 
+function cloneCreatorProfile(source: FundstrCreator): CreatorProfile {
+  const profile = source.profile
+    ? JSON.parse(JSON.stringify(source.profile))
+    : null;
+  const tierSummary = source.tierSummary
+    ? { ...source.tierSummary }
+    : source.tierSummary ?? null;
+  const metrics = source.metrics ? { ...source.metrics } : source.metrics ?? null;
+  const tiers = Array.isArray(source.tiers)
+    ? source.tiers.map((tier) => ({ ...tier }))
+    : source.tiers === undefined
+      ? undefined
+      : [];
+
+  return {
+    ...source,
+    profile,
+    tierSummary,
+    metrics,
+    tiers,
+  };
+}
+
+function toNullableString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function computeTierSummary(tiers: Tier[] | null | undefined) {
+  if (!Array.isArray(tiers) || tiers.length === 0) {
+    return null;
+  }
+  const cheapest = tiers.reduce<number | null>((acc, tier) => {
+    const price = Number.isFinite(tier.price_sats) ? tier.price_sats : 0;
+    if (acc === null || price < acc) {
+      return price;
+    }
+    return acc;
+  }, null);
+  return {
+    count: tiers.length,
+    cheapestPriceMsat:
+      cheapest !== null && cheapest !== undefined ? Math.max(0, cheapest) * 1000 : null,
+  };
+}
+
+function createCreatorFromBundle(
+  pubkey: string,
+  bundle: FundstrProfileBundle,
+  overrides: Partial<CreatorProfile> = {},
+): CreatorProfile {
+  const profile = bundle.profile ? JSON.parse(JSON.stringify(bundle.profile)) : null;
+  const followers =
+    typeof bundle.followers === "number" && Number.isFinite(bundle.followers)
+      ? bundle.followers
+      : null;
+  const following =
+    typeof bundle.following === "number" && Number.isFinite(bundle.following)
+      ? bundle.following
+      : null;
+  const joined =
+    typeof bundle.joined === "number" && Number.isFinite(bundle.joined)
+      ? bundle.joined
+      : null;
+
+  const tiers = Array.isArray(bundle.tiers)
+    ? bundle.tiers.map((tier) => normalizeTier(tier))
+    : undefined;
+
+  const tierSummary = overrides.tierSummary ?? computeTierSummary(tiers ?? null);
+
+  const metrics = overrides.metrics ?? null;
+
+  const displayName =
+    overrides.displayName ??
+    toNullableString(profile?.display_name ?? profile?.displayName ?? null);
+  const name = overrides.name ?? toNullableString(profile?.name);
+  const about = overrides.about ?? toNullableString(profile?.about);
+  const nip05 = overrides.nip05 ?? toNullableString(profile?.nip05 ?? profile?.nip05_npub);
+  const picture = overrides.picture ?? toNullableString(profile?.picture);
+  const banner = overrides.banner ?? toNullableString(profile?.banner);
+
+  const creator: CreatorProfile = {
+    pubkey,
+    profile,
+    followers,
+    following,
+    joined,
+    displayName,
+    name,
+    about,
+    nip05,
+    picture,
+    banner,
+    tierSummary,
+    metrics,
+    tiers,
+    cacheHit: overrides.cacheHit,
+    featured: overrides.featured,
+  };
+
+  return creator;
+}
+
 export const useCreatorsStore = defineStore("creators", {
   state: () => {
     const favorites =
@@ -459,6 +547,8 @@ export const useCreatorsStore = defineStore("creators", {
       searching: false,
       loadingFeatured: false,
       error: "",
+      searchWarnings: [] as string[],
+      featuredError: "",
       tiersMap: {} as Record<string, Tier[]>,
       tierFetchError: false,
       currentUserNpub: "",
@@ -466,6 +556,7 @@ export const useCreatorsStore = defineStore("creators", {
       favorites,
       warmCache: {} as Record<string, CreatorWarmCache>,
       inFlightCreatorRequests: {} as Record<string, Promise<CreatorProfile | null>>,
+      searchAbortController: null as AbortController | null,
     };
   },
   getters: {
@@ -710,62 +801,127 @@ export const useCreatorsStore = defineStore("creators", {
       return this.loadCreatorCacheFromDexie(pubkeyHex);
     },
 
-    async searchCreators(query: string, forceRefresh = false) {
+    async searchCreators(
+      query: string,
+      { fresh = false }: { fresh?: boolean } = {},
+    ) {
+      const discovery = useFundstrDiscovery();
+      const rawQuery = typeof query === "string" ? query.trim() : "";
+
+      if (this.searchAbortController) {
+        this.searchAbortController.abort();
+        this.searchAbortController = null;
+      }
+
       this.searchResults = [];
       this.error = "";
-      if (!query) {
-        return;
-      }
+      this.searchWarnings = [];
       this.searching = true;
 
-      let pubkey = query.trim();
-      try {
-        if (pubkey.startsWith("npub")) {
-          const decoded = nip19.decode(pubkey);
-          pubkey = typeof decoded.data === "string" ? (decoded.data as string) : "";
-        } else if (pubkey.startsWith("nprofile")) {
-          const decoded = nip19.decode(pubkey);
-          if (typeof decoded.data === 'object' && (decoded.data as any).pubkey) {
-            pubkey = (decoded.data as any).pubkey;
+      const handleFailure = (message: string) => {
+        this.error = message;
+        this.searchResults = [];
+      };
+
+      const resolveNip19 = (value: string): string | null => {
+        try {
+          const decoded = nip19.decode(value);
+          if (typeof decoded.data === "string") {
+            return decoded.data;
           }
-        } else if (pubkey.includes('@')) {
-          // NIP-05
+          if (typeof decoded.data === "object" && decoded.data && (decoded.data as any).pubkey) {
+            return String((decoded.data as any).pubkey);
+          }
+        } catch (error) {
+          console.warn("[creators] Failed to decode NIP-19 identifier", error);
+        }
+        return null;
+      };
+
+      let normalizedQuery = rawQuery;
+      let resolvedHex: string | null = null;
+
+      if (normalizedQuery.startsWith("npub") || normalizedQuery.startsWith("nprofile")) {
+        resolvedHex = resolveNip19(normalizedQuery);
+        if (!resolvedHex) {
+          handleFailure("Invalid identifier");
+          this.searching = false;
+          return;
+        }
+      }
+
+      if (!resolvedHex && normalizedQuery.includes("@")) {
+        try {
           const ndk = await useNdk({ requireSigner: false });
-          const user = await ndk.getUserFromNip05(pubkey);
-          if (user) {
-            pubkey = user.pubkey;
+          const user = await ndk.getUserFromNip05(normalizedQuery);
+          if (user?.pubkey) {
+            resolvedHex = user.pubkey;
           } else {
-            this.error = "NIP-05 not found";
+            handleFailure("NIP-05 not found");
             this.searching = false;
             return;
           }
+        } catch (error) {
+          console.error("[creators] NIP-05 lookup failed", error);
+          handleFailure("Invalid identifier");
+          this.searching = false;
+          return;
         }
-      } catch(e) {
-        console.error(e);
-        this.error = "Invalid identifier";
-        this.searching = false;
+      }
+
+      if (resolvedHex) {
+        if (!/^[0-9a-fA-F]{64}$/.test(resolvedHex)) {
+          handleFailure("Invalid pubkey");
+          this.searching = false;
+          return;
+        }
+        try {
+          const creatorProfile = await this.fetchCreator(resolvedHex, fresh);
+          if (creatorProfile) {
+            this.searchResults = [cloneCreatorProfile(creatorProfile)];
+          } else {
+            handleFailure("Failed to fetch profile.");
+          }
+        } catch (error) {
+          console.error("[creators] Creator lookup failed", error);
+          handleFailure("Failed to fetch profile.");
+        } finally {
+          this.searching = false;
+        }
         return;
       }
 
-
-      if (!/^[0-9a-fA-F]{64}$/.test(pubkey)) {
-        this.error = "Invalid pubkey";
-        this.searching = false;
-        return;
-      }
+      const controller = new AbortController();
+      this.searchAbortController = controller;
 
       try {
-        const creatorProfile = await this.fetchCreator(pubkey, forceRefresh);
-        if (creatorProfile) {
-          this.searchResults.push(creatorProfile);
-        } else {
-          this.error = "Failed to fetch profile.";
+        const response = await discovery.getCreators({
+          q: normalizedQuery || "*",
+          fresh,
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) {
+          return;
         }
-      } catch (e) {
-        console.error(e);
-        this.error = "Failed to fetch profile.";
+        this.searchResults = response.results.map((creator) => cloneCreatorProfile(creator));
+        this.searchWarnings = Array.isArray(response.warnings)
+          ? response.warnings.slice()
+          : [];
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        console.error("[creators] Discovery search failed", error);
+        handleFailure(
+          error instanceof Error
+            ? error.message
+            : "Unable to load creators. Please try again.",
+        );
       } finally {
-        this.searching = false;
+        if (!controller.signal.aborted) {
+          this.searching = false;
+          this.searchAbortController = null;
+        }
       }
     },
 
@@ -827,14 +983,7 @@ export const useCreatorsStore = defineStore("creators", {
             }
           }
 
-          const creatorProfile: CreatorProfile = {
-            pubkey,
-            profile: bundle.profile,
-            followers: typeof bundle.followers === "number" ? bundle.followers : null,
-            following: typeof bundle.following === "number" ? bundle.following : null,
-            joined: typeof bundle.joined === "number" ? bundle.joined : null,
-            cacheHit: false,
-          };
+          const creatorProfile = createCreatorFromBundle(pubkey, bundle, { cacheHit: false });
 
           try {
             await db.profiles.put({
@@ -868,7 +1017,7 @@ export const useCreatorsStore = defineStore("creators", {
     },
 
     async loadFeaturedCreators(forceRefresh = false) {
-      this.error = "";
+      this.featuredError = "";
       this.loadingFeatured = true;
       if (forceRefresh) {
         this.featuredCreators = [];
@@ -905,7 +1054,8 @@ export const useCreatorsStore = defineStore("creators", {
       if (cachedEntries.size) {
         const orderedCached = pubkeys
           .map((pubkey) => cachedEntries.get(pubkey))
-          .filter((profile): profile is CreatorProfile => Boolean(profile));
+          .filter((profile): profile is CreatorProfile => Boolean(profile))
+          .map((profile) => ({ ...profile, featured: true }));
         if (orderedCached.length) {
           this.featuredCreators = orderedCached;
         }
@@ -939,19 +1089,20 @@ export const useCreatorsStore = defineStore("creators", {
 
         const fulfilled = pubkeys
           .map((pubkey) => fulfilledMap.get(pubkey))
-          .filter((profile): profile is CreatorProfile => Boolean(profile));
+          .filter((profile): profile is CreatorProfile => Boolean(profile))
+          .map((profile) => ({ ...profile, featured: true }));
 
         this.featuredCreators = fulfilled;
 
         if (fulfilled.length) {
-          this.error = "";
+          this.featuredError = "";
           if (failedPubkeys.length) {
             console.warn("[creators] Some featured creators failed to load", {
               pubkeys: failedPubkeys,
             });
           }
         } else {
-          this.error = "Failed to load featured creators.";
+          this.featuredError = "Failed to load featured creators.";
           if (failedPubkeys.length) {
             console.error("[creators] All featured creators failed to load", {
               pubkeys: failedPubkeys,
@@ -965,313 +1116,35 @@ export const useCreatorsStore = defineStore("creators", {
 
     async fetchTierDefinitions(
       creatorNpub: string,
-      opts: { relayHints?: string[]; fundstrOnly?: boolean } = {},
+      _opts: { relayHints?: string[]; fundstrOnly?: boolean } = {},
     ) {
       this.tierFetchError = false;
 
       let hex: string;
       try {
         hex = toHex(creatorNpub);
-      } catch (e) {
-        console.error("Invalid creator pubkey", e);
+      } catch (error) {
+        console.error("Invalid creator pubkey", error);
         this.tierFetchError = true;
-        notifyWarning("Unable to retrieve subscription tiers");
-        return;
+        return { relayHints: [] as string[], attemptedRelays: [] as string[], usedFallback: false };
       }
 
-      await this.ensureCreatorCacheFromDexie(hex);
-
-      const ensureWarmEntry = () => {
-        if (!this.warmCache[hex]) {
-          this.warmCache[hex] = {} as CreatorWarmCache;
+      try {
+        const creatorProfile = await this.fetchCreator(hex, true);
+        if (creatorProfile?.tiers) {
+          this.tiersMap[hex] = creatorProfile.tiers.map((tier) => normalizeTier(tier as Tier));
         }
-        return this.warmCache[hex]!;
-      };
-
-      let guardTimer: ReturnType<typeof setTimeout> | null = null;
-      const guardPromise = new Promise<null>((resolve) => {
-        guardTimer = setTimeout(() => {
-          const cache = this.warmCache[hex];
-          if (cache?.tiersLoaded || (Array.isArray(cache?.tiers) && cache.tiers.length > 0)) {
-            this.tierFetchError = false;
-          } else {
-            this.tierFetchError = true;
-          }
-          resolve(null);
-        }, TIER_FETCH_TIMEOUT_MS);
-      });
-
-      const fetchPromise = (async () => {
-        const relayHints = new Set(
-          (opts.relayHints ?? [])
-            .map((url) => url.trim())
-            .filter((url) => !!url),
-        );
-        let event: RelayEvent | null = null;
-        let lastError: unknown = null;
-        let fallbackAttempted = false;
-        const attemptedFallbackRelays = new Set<string>();
-        const allowRelayFallback = opts.fundstrOnly !== true;
-
-        const takeRelayFailures = (now: number) => {
-          const entry = ensureWarmEntry();
-          const failures = { ...(entry.tierRelayFailures ?? {}) };
-          let mutated = false;
-          for (const [relay, ts] of Object.entries(failures)) {
-            if (typeof ts !== "number" || now - ts > TIER_RELAY_FAILURE_TTL_MS) {
-              delete failures[relay];
-              mutated = true;
-            }
-          }
-          if (mutated || entry.tierRelayFailures === undefined) {
-            entry.tierRelayFailures = { ...failures };
-          }
-          return { entry, failures };
-        };
-
-        const markRelayFailure = (relays: string[]) => {
-          if (!relays.length) return;
-          const failureAt = Date.now();
-          const { entry, failures } = takeRelayFailures(failureAt);
-          for (const relay of relays) {
-            failures[relay] = failureAt;
-          }
-          entry.tierRelayFailures = { ...failures };
-        };
-
-        const clearRelayFailures = (relays: string[]) => {
-          if (!relays.length) return;
-          const { entry, failures } = takeRelayFailures(Date.now());
-          let changed = false;
-          for (const relay of relays) {
-            if (relay in failures) {
-              delete failures[relay];
-              changed = true;
-            }
-          }
-          if (changed) {
-            entry.tierRelayFailures = { ...failures };
-          }
-        };
-
-        try {
-          event = await queryNutzapTiers(hex, {
-            httpBase: FUNDSTR_REQ_URL,
-            fundstrWsUrl: FUNDSTR_WS_URL,
-            allowFanoutFallback: false,
-          });
-          const entry = ensureWarmEntry();
-          entry.lastFundstrRelayFailureAt = null;
-          entry.lastFundstrRelayFailureNotifiedAt = null;
-        } catch (e) {
-          lastError = e;
-          const entry = ensureWarmEntry();
-          const now = Date.now();
-          entry.lastFundstrRelayFailureAt = now;
-          const shouldNotify =
-            !entry.lastFundstrRelayFailureNotifiedAt ||
-            now - entry.lastFundstrRelayFailureNotifiedAt > FUNDSTR_FAILURE_NOTIFY_TTL_MS;
-          if (shouldNotify) {
-            notifyWarning(
-              "We're having trouble reaching Fundstr relays. We'll keep trying in the background.",
-            );
-            entry.lastFundstrRelayFailureNotifiedAt = now;
-          }
-          console.error("fetchTierDefinitions Fundstr query failed", e);
-        }
-
-        const tryFallback = async (extraRelays: Iterable<string>) => {
-          if (!allowRelayFallback) {
-            return null;
-          }
-          const now = Date.now();
-          const baseRelays = Array.from(
-            new Set<string>(
-              [...relayHints, ...extraRelays].map((url) => url.trim()).filter(Boolean),
-            ),
-          );
-          if (!baseRelays.length) {
-            return null;
-          }
-          fallbackAttempted = true;
-          const { failures } = takeRelayFailures(now);
-          const eligible = baseRelays.filter((relay) => {
-            const failureAt = failures[relay];
-            return !(typeof failureAt === "number" && now - failureAt < TIER_RELAY_FAILURE_TTL_MS);
-          });
-          if (!eligible.length) {
-            return null;
-          }
-          eligible.forEach((url) => attemptedFallbackRelays.add(url));
-          try {
-            const result = await queryNutzapTiers(hex, {
-              httpBase: FUNDSTR_REQ_URL,
-              fundstrWsUrl: FUNDSTR_WS_URL,
-              fanout: eligible,
-              allowFanoutFallback: true,
-            });
-            if (result) {
-              eligible.forEach((url) => relayHints.add(url));
-              clearRelayFailures(eligible);
-            }
-            return result;
-          } catch (err) {
-            lastError = err;
-            markRelayFailure(eligible);
-            console.error("fetchTierDefinitions fallback query failed", err);
-            return null;
-          }
-        };
-
-        if (!event) {
-          try {
-            const direct = await simpleRelayQuery(
-              [
-                {
-                  kinds: [30019, 30000],
-                  authors: [hex],
-                  ["#d"]: ["tiers"],
-                  limit: 2,
-                },
-              ]
-            );
-            if (direct.length) {
-              const preferred = pickTierDefinitionEvent(
-                direct as unknown as NostrEvent[],
-              );
-              if (preferred) {
-                event = preferred;
-                const entry = ensureWarmEntry();
-                entry.lastFundstrRelayFailureAt = null;
-                entry.lastFundstrRelayFailureNotifiedAt = null;
-                console.info("[creators] direct Fundstr relay tiers fetch succeeded", {
-                  pubkey: hex,
-                });
-              }
-            }
-          } catch (directError) {
-            lastError = directError;
-            const entry = ensureWarmEntry();
-            const now = Date.now();
-            entry.lastFundstrRelayFailureAt = now;
-            const shouldNotify =
-              !entry.lastFundstrRelayFailureNotifiedAt ||
-              now - entry.lastFundstrRelayFailureNotifiedAt > FUNDSTR_FAILURE_NOTIFY_TTL_MS;
-            if (shouldNotify) {
-              notifyWarning(
-                "We're having trouble reaching Fundstr relays. We'll keep trying in the background.",
-              );
-              entry.lastFundstrRelayFailureNotifiedAt = now;
-            }
-            const label =
-              directError instanceof SimpleRelayError ? directError.message : String(directError);
-            console.warn("fetchTierDefinitions direct relay query failed", label);
-          }
-        }
-
-        if (!event && allowRelayFallback && relayHints.size) {
-          const hinted = await tryFallback(relayHints);
-          if (hinted) {
-            event = hinted;
-          }
-        }
-
-        if (!event && allowRelayFallback) {
-          const defaults = new Set(FALLBACK_RELAYS);
-          if (defaults.size) {
-            const fallbackEvent = await tryFallback(defaults);
-            if (fallbackEvent) {
-              event = fallbackEvent;
-              console.warn("[creators] tier fallback using default relays", {
-                pubkey: hex,
-                relays: Array.from(defaults),
-              });
-            }
-          }
-        }
-
-        if (!event && allowRelayFallback) {
-          try {
-            const discovered = await fallbackDiscoverRelays(hex);
-            if (discovered.length) {
-              const discoveryEvent = await tryFallback(discovered);
-              if (discoveryEvent) {
-                event = discoveryEvent;
-                console.warn(
-                  "[creators] tier fallback succeeded with discovered relays",
-                  {
-                    pubkey: hex,
-                    relays: discovered,
-                  },
-                );
-              }
-            }
-          } catch (e) {
-            lastError = e;
-            console.error("NIP-65 discovery failed", e);
-          }
-        }
-
-        if (!event) {
-          if (lastError) {
-            this.tierFetchError = true;
-            notifyWarning("Unable to retrieve subscription tiers");
-          } else {
-            this.tierFetchError = false;
-            await this.saveTierCache(hex, [], null);
-          }
-          return;
-        }
-
-        let tiersArray: Tier[] = [];
-        try {
-          tiersArray = parseTierDefinitionEvent(event).map((tier) =>
-            normalizeTier(tier as Tier),
-          );
-        } catch (e) {
-          console.error("Failed to parse tier event", e);
-          this.tierFetchError = true;
-          notifyWarning("Unable to retrieve subscription tiers");
-          return;
-        }
-
-        await this.saveTierCache(hex, tiersArray, event);
         this.tierFetchError = false;
-
-        const eventRelayHints = new Set<string>();
-        for (const tag of event.tags ?? []) {
-          if (tag[0] === "relay" || tag[0] === "r") {
-            const relay = typeof tag[1] === "string" ? tag[1].trim() : "";
-            if (relay) {
-              eventRelayHints.add(relay);
-            }
-          }
-        }
-
-        return {
-          usedFallback: fallbackAttempted && !!event,
-          relayHints: Array.from(new Set<string>([
-            ...relayHints,
-            ...eventRelayHints,
-          ])),
-          attemptedRelays: Array.from(attemptedFallbackRelays),
-        };
-      })()
-        .finally(() => {
-          if (guardTimer) {
-            clearTimeout(guardTimer);
-            guardTimer = null;
-          }
+        return { relayHints: [] as string[], attemptedRelays: [] as string[], usedFallback: false };
+      } catch (error) {
+        console.error("[creators] Failed to refresh tier definitions", {
+          pubkey: hex,
+          error,
         });
-
-      fetchPromise.catch(() => {});
-      const result = await Promise.race([fetchPromise, guardPromise]);
-      if (result !== null) {
-        return result;
+        this.tierFetchError = true;
+        return { relayHints: [] as string[], attemptedRelays: [] as string[], usedFallback: false };
       }
-      return;
     },
-
     async publishTierDefinitions(tiersArray: Tier[]) {
       const creatorNpub = this.currentUserNpub;
       const created_at = Math.floor(Date.now() / 1000);

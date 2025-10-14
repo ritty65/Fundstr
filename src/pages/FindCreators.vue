@@ -225,7 +225,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { storeToRefs } from 'pinia';
 import { useRoute, useRouter } from 'vue-router';
 import CreatorProfileModal from 'components/CreatorProfileModal.vue';
 import CreatorCard from 'components/CreatorCard.vue';
@@ -234,22 +235,30 @@ import SendTokenDialog from 'components/SendTokenDialog.vue';
 import { useSendTokensStore } from 'stores/sendTokensStore';
 import { useDonationPresetsStore } from 'stores/donationPresets';
 import { useNostrStore } from 'stores/nostr';
-import { type Creator } from 'src/lib/fundstrApi';
-import { useFundstrDiscovery } from 'src/api/fundstrDiscovery';
+import { useCreatorsStore } from 'stores/creators';
+
+const creatorsStore = useCreatorsStore();
+const {
+  searchResults,
+  searching,
+  error: storeError,
+  searchWarnings: storeSearchWarnings,
+  featuredCreators,
+  loadingFeatured,
+  featuredError: storeFeaturedError,
+} = storeToRefs(creatorsStore);
 
 const searchQuery = ref('');
-const searchResults = ref<Creator[]>([]);
-const searchLoading = ref(false);
-const searchError = ref('');
-const searchWarnings = ref<string[]>([]);
 const initialLoadComplete = ref(false);
-let searchController: AbortController | null = null;
 
 const searchSkeletonPlaceholders = [0, 1, 2];
 const featuredSkeletonPlaceholders = [0, 1, 2, 3, 4, 5];
 
 const trimmedQuery = computed(() => (searchQuery.value || '').trim());
 const hasQuery = computed(() => trimmedQuery.value.length > 0);
+const searchLoading = computed(() => searching.value);
+const searchError = computed(() => storeError.value);
+const searchWarnings = computed(() => storeSearchWarnings.value);
 const showSearchEmptyState = computed(
   () =>
     initialLoadComplete.value &&
@@ -293,95 +302,22 @@ const loadMore = () => {
   // The "Load More" button will be hidden via `hasMoreResults`.
 };
 
-const discoveryClient = useFundstrDiscovery();
-
 async function runSearch({ fresh = false }: { fresh?: boolean } = {}) {
-  if (searchController) {
-    searchController.abort();
-  }
-  searchController = new AbortController();
-  const { signal } = searchController;
-
-  searchLoading.value = true;
-  searchError.value = '';
-  searchWarnings.value = [];
-  const query = hasQuery.value ? trimmedQuery.value : '*';
-
   try {
-    const response = await discoveryClient.getCreators({ q: query, fresh, signal });
-    if (signal.aborted) {
-      return;
-    }
-    searchResults.value = response.results;
-    searchWarnings.value = response.warnings;
-    if (response.warnings.length > 0) {
-      console.warn('Search warnings:', response.warnings);
-    }
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      return; // Search was intentionally cancelled
-    }
-    console.error('Search failed:', error);
-    searchResults.value = [];
-    searchError.value =
-      error instanceof Error ? error.message : 'Unable to load creators. Please try again.';
+    await creatorsStore.searchCreators(trimmedQuery.value, { fresh });
   } finally {
-    if (!signal.aborted) {
-      searchLoading.value = false;
-      initialLoadComplete.value = true;
-      searchController = null;
-    }
+    initialLoadComplete.value = true;
   }
 }
-
-const featuredCreators = ref<Creator[]>([]);
-const featuredError = ref('');
-const loadingFeatured = ref(false);
-let featuredController: AbortController | null = null;
 
 async function loadFeatured(force = false) {
   if (loadingFeatured.value && !force) {
     return;
   }
-  if (featuredController) {
-    featuredController.abort();
-  }
-  featuredController = new AbortController();
-  const { signal } = featuredController;
-
-  loadingFeatured.value = true;
-  featuredError.value = '';
-
-  try {
-    // Use a single wildcard query to fetch all featured creators.
-    const response = await discoveryClient.getCreators({ q: '*', signal, fresh: force });
-
-    if (signal.aborted) {
-      return;
-    }
-
-    // Mark them as featured for the UI
-    featuredCreators.value = response.results.map(c => ({ ...c, featured: true }));
-
-    if (response.warnings && response.warnings.length > 0) {
-      // Show warnings to the user if any are returned
-      featuredError.value = response.warnings.join(' ');
-      console.warn('Featured creators warnings:', response.warnings);
-    }
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      return; // Request was intentionally cancelled
-    }
-    console.error('Failed to load featured creators:', error);
-    featuredError.value = 'Could not load featured creators. Please try again later.';
-    featuredCreators.value = []; // Clear any partial results
-  } finally {
-    if (!signal.aborted) {
-      loadingFeatured.value = false;
-      featuredController = null;
-    }
-  }
+  await creatorsStore.loadFeaturedCreators(force);
 }
+
+const featuredError = computed(() => storeFeaturedError.value);
 
 const featuredStatusMessage = computed(() => {
   if (featuredError.value) {
@@ -403,6 +339,12 @@ const showFeaturedEmptyState = computed(
 const refreshFeatured = () => {
   void loadFeatured(true);
 };
+
+watch(searchWarnings, (warnings) => {
+  if (Array.isArray(warnings) && warnings.length > 0) {
+    console.warn('Search warnings:', warnings);
+  }
+});
 
 const router = useRouter();
 const route = useRoute();
@@ -492,15 +434,6 @@ onMounted(() => {
   // Kick off the initial wildcard discovery search so the page has results ready.
   void runSearch();
   void loadFeatured();
-});
-
-onBeforeUnmount(() => {
-  if (searchController) {
-    searchController.abort();
-  }
-  if (featuredController) {
-    featuredController.abort();
-  }
 });
 </script>
 
