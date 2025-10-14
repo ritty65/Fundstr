@@ -845,7 +845,7 @@ export const useCreatorsStore = defineStore("creators", {
       query: string,
       { fresh = false }: { fresh?: boolean } = {},
     ) {
-      const discovery = useFundstrDiscovery();
+      const discovery = useDiscovery();
       const rawQuery = typeof query === "string" ? query.trim() : "";
 
       if (this.searchAbortController) {
