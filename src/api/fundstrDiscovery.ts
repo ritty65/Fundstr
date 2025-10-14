@@ -150,7 +150,15 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
   };
 }
 
-const defaultClient = createFundstrDiscoveryClient();
+// Create a single, shared instance of the client for use outside of components.
+const discoveryClientInstance = createFundstrDiscoveryClient();
+
+// Export the singleton instance for direct import.
+export const useDiscovery = () => {
+  return discoveryClientInstance;
+};
+
+const defaultClient = discoveryClientInstance;
 
 export function provideFundstrDiscovery(app: App, client: FundstrDiscoveryClient = defaultClient) {
   app.provide(fundstrDiscoveryKey, client);

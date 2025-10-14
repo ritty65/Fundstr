@@ -209,7 +209,8 @@ vi.mock("../../../src/stores/nostr", () => ({
 
 const creatorsStoreMock = {
   getCreatorCache: vi.fn(),
-  fetchTierDefinitions: vi.fn(),
+  fetchCreator: vi.fn(),
+  applyBundleToCache: vi.fn(),
   prefillCacheEntries: [],
 };
 
@@ -365,7 +366,8 @@ beforeEach(() => {
   localStorage.clear();
 
   creatorsStoreMock.getCreatorCache.mockReset();
-  creatorsStoreMock.fetchTierDefinitions.mockReset();
+  creatorsStoreMock.fetchCreator.mockReset();
+  creatorsStoreMock.applyBundleToCache.mockReset();
   creatorsStoreMock.prefillCacheEntries = [];
   pickLatestReplaceableMock.mockReset();
   pickLatestParamReplaceableMock.mockReset();
