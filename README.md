@@ -247,7 +247,7 @@ git grep -n ".ndk"
 ### Optional Backend Search Service
 
 You can configure a URL that returns NIP-50 search results for the
-`find-creators.html` page. Set the value in local storage using the key
+`/find-creators` route in the SPA. Set the value in local storage using the key
 `cashu.settings.searchBackendUrl`. When defined, search queries hit this
 backend first and fall back to client-side relay queries if no results are
 returned.

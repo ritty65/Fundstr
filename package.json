@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "dev": "quasar dev",
-    "build": "node scripts/update-featured-creators.js && quasar build -m pwa",
+    "build": "quasar build -m pwa",
     "build:pwa": "quasar build -m pwa",
     "quasar": "quasar",
     "lint": "eslint .",
