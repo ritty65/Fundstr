@@ -69,8 +69,21 @@ function isFundstrOnlyRelayModeActive(settings = useSettingsStore()): boolean {
   return envFundstrOnlyRelaysEnabled();
 }
 
+function shouldAutoConnectRelays(
+  settings = useSettingsStore(),
+  override?: boolean,
+): boolean {
+  if (override === true) {
+    return true;
+  }
+  if (override === false) {
+    return false;
+  }
+  return isFundstrOnlyRelayModeActive(settings);
+}
+
 export function mergeDefaultRelays(ndk: NDK) {
-  if (isFundstrOnlyRelayModeActive()) {
+  if (!shouldAutoConnectRelays()) {
     return;
   }
   for (const url of DEFAULT_RELAYS) {
@@ -198,6 +211,9 @@ async function ensureFreeRelayFallback(
 }
 
 function scheduleBootstrapFallback(ndk: NDK) {
+  if (!shouldAutoConnectRelays()) {
+    return;
+  }
   const context: FreeRelayFallbackContext = "bootstrap";
   const runFallback = () => {
     ensureFreeRelayFallback(ndk, context).catch((err) => {
@@ -238,14 +254,20 @@ let ndkPromise: Promise<NDK> | undefined;
 let relayWatchdog: RelayWatchdog | undefined;
 
 function startRelayWatchdog(ndk: NDK) {
+  if (!shouldAutoConnectRelays()) {
+    if (relayWatchdog) {
+      relayWatchdog.stop();
+      relayWatchdog = undefined;
+    }
+    return;
+  }
   if (relayWatchdog) {
     relayWatchdog.updateNdk(ndk);
   } else {
     relayWatchdog = new RelayWatchdog(ndk);
   }
-  const fundstrOnly = isFundstrOnlyRelayModeActive();
-  const fallbackTargets = fundstrOnly ? [FUNDSTR_PRIMARY_RELAY] : FREE_RELAYS;
-  const minConnected = fundstrOnly ? 1 : 2;
+  const fallbackTargets = [FUNDSTR_PRIMARY_RELAY];
+  const minConnected = 1;
   relayWatchdog.start(minConnected, fallbackTargets);
 }
 
@@ -289,21 +311,26 @@ async function createReadOnlyNdk(opts: CreateReadOnlyOptions = {}): Promise<NDK>
     : [];
   const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
   const fundstrOnly =
-    opts.fundstrOnly ?? isFundstrOnlyRelayModeActive(settings);
+    opts.fundstrOnly === true ||
+    (opts.fundstrOnly !== false && isFundstrOnlyRelayModeActive(settings));
+  const autoBootstrap = shouldAutoConnectRelays(settings, opts.fundstrOnly);
   const bootstrapRelays = fundstrOnly
     ? [FUNDSTR_PRIMARY_RELAY]
     : relays;
-  const healthyPromise = fundstrOnly
-    ? Promise.resolve<string[]>([])
-    : filterHealthyRelays(relays).catch(() => []);
+  const healthyPromise =
+    fundstrOnly || !autoBootstrap
+      ? Promise.resolve<string[]>([])
+      : filterHealthyRelays(relays).catch(() => []);
   const ndk = new NDK({ explicitRelayUrls: bootstrapRelays });
   attachRelayErrorHandlers(ndk);
-  if (!opts.fundstrOnly) {
+  if (!opts.fundstrOnly && autoBootstrap && !fundstrOnly) {
     mergeDefaultRelays(ndk);
   }
   mustConnectRequiredRelays(ndk);
-  await safeConnect(ndk);
-  if (!fundstrOnly) {
+  if (autoBootstrap) {
+    await safeConnect(ndk);
+  }
+  if (!fundstrOnly && autoBootstrap) {
     healthyPromise.then(async (healthy) => {
       const healthySet = new Set(healthy);
       let changed = false;
@@ -324,7 +351,7 @@ async function createReadOnlyNdk(opts: CreateReadOnlyOptions = {}): Promise<NDK>
       }
     });
   }
-  if (!fundstrOnly) {
+  if (!fundstrOnly && autoBootstrap) {
     scheduleBootstrapFallback(ndk);
   }
   startRelayWatchdog(ndk);
@@ -337,19 +364,25 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
     ? settings.defaultNostrRelays
     : DEFAULT_RELAYS;
   const fundstrOnly = isFundstrOnlyRelayModeActive(settings);
+  const autoBootstrap = shouldAutoConnectRelays(settings);
   const bootstrapRelays = fundstrOnly
     ? [FUNDSTR_PRIMARY_RELAY]
     : relays;
-  const healthyPromise = fundstrOnly
-    ? Promise.resolve<string[]>([])
-    : filterHealthyRelays(relays).catch(() => []);
+  const healthyPromise =
+    fundstrOnly || !autoBootstrap
+      ? Promise.resolve<string[]>([])
+      : filterHealthyRelays(relays).catch(() => []);
   const ndk = new NDK({ explicitRelayUrls: bootstrapRelays });
   attachRelayErrorHandlers(ndk);
-  mergeDefaultRelays(ndk);
+  if (autoBootstrap && !fundstrOnly) {
+    mergeDefaultRelays(ndk);
+  }
   mustConnectRequiredRelays(ndk);
   ndk.signer = signer;
-  await safeConnect(ndk);
-  if (!fundstrOnly) {
+  if (autoBootstrap) {
+    await safeConnect(ndk);
+  }
+  if (!fundstrOnly && autoBootstrap) {
     healthyPromise.then(async (healthy) => {
       const healthySet = new Set(healthy);
       let changed = false;
@@ -370,7 +403,7 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
       }
     });
   }
-  if (!fundstrOnly) {
+  if (!fundstrOnly && autoBootstrap) {
     await new Promise((r) => setTimeout(r, 3000));
     await ensureFreeRelayFallback(ndk, "bootstrap");
   }
@@ -399,17 +432,23 @@ export async function createNdk(
     : [];
   const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
   const fundstrOnly = isFundstrOnlyRelayModeActive(settings);
+  const autoBootstrap = shouldAutoConnectRelays(settings);
   const bootstrapRelays = fundstrOnly
     ? [FUNDSTR_PRIMARY_RELAY]
     : relays;
-  const healthyPromise = fundstrOnly
-    ? Promise.resolve<string[]>([])
-    : filterHealthyRelays(relays).catch(() => []);
+  const healthyPromise =
+    fundstrOnly || !autoBootstrap
+      ? Promise.resolve<string[]>([])
+      : filterHealthyRelays(relays).catch(() => []);
   const ndk = new NDK({ signer: signer as any, explicitRelayUrls: bootstrapRelays });
   attachRelayErrorHandlers(ndk);
-  mergeDefaultRelays(ndk);
-  await safeConnect(ndk);
-  if (!fundstrOnly) {
+  if (autoBootstrap && !fundstrOnly) {
+    mergeDefaultRelays(ndk);
+  }
+  if (autoBootstrap) {
+    await safeConnect(ndk);
+  }
+  if (!fundstrOnly && autoBootstrap) {
     healthyPromise.then(async (healthy) => {
       const healthySet = new Set(healthy);
       let changed = false;
@@ -430,8 +469,10 @@ export async function createNdk(
       }
     });
   }
-  await new Promise((r) => setTimeout(r, 3000));
-  await ensureFreeRelayFallback(ndk, "bootstrap");
+  if (autoBootstrap) {
+    await new Promise((r) => setTimeout(r, 3000));
+    await ensureFreeRelayFallback(ndk, "bootstrap");
+  }
   startRelayWatchdog(ndk);
   return ndk;
 }
@@ -445,14 +486,18 @@ export async function rebuildNdk(
   attachRelayErrorHandlers(ndk);
   if (!explicitOnly) mergeDefaultRelays(ndk);
   if (signer) ndk.signer = signer;
-  await safeConnect(ndk);
+  if (explicitOnly || shouldAutoConnectRelays()) {
+    await safeConnect(ndk);
+  }
   return ndk;
 }
 
 export async function syncNdkRelaysWithMode(ndk?: NDK) {
   const instance = ndk ?? ndkInstance ?? (await getNdk().catch(() => undefined));
   if (!instance) return;
+  const settings = useSettingsStore();
   const fundstrOnly = isFundstrOnlyRelayModeActive();
+  const autoBootstrap = shouldAutoConnectRelays(settings);
   const pool = instance.pool;
   if (fundstrOnly) {
     for (const [url, relay] of pool.relays.entries()) {
@@ -469,10 +514,19 @@ export async function syncNdkRelaysWithMode(ndk?: NDK) {
       instance.addExplicitRelay(FUNDSTR_PRIMARY_RELAY);
     }
   } else {
-    mergeDefaultRelays(instance);
+    const userRelays = Array.isArray(settings.defaultNostrRelays)
+      ? settings.defaultNostrRelays
+      : DEFAULT_RELAYS;
+    for (const url of userRelays) {
+      if (!pool.relays.has(url)) {
+        instance.addExplicitRelay(url);
+      }
+    }
   }
   resetFreeRelayFallbackState(instance);
-  await safeConnect(instance);
+  if (autoBootstrap) {
+    await safeConnect(instance);
+  }
   startRelayWatchdog(instance);
 }
 
