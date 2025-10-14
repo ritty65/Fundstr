@@ -1140,38 +1140,48 @@ export const useCreatorsStore = defineStore("creators", {
         const fetchedMap = new Map<string, CreatorProfile>();
         const missingPubkeys = new Set(pubkeys);
 
-        for (const creator of response.results ?? []) {
-          if (!creator || typeof creator.pubkey !== "string") {
-            continue;
-          }
-
-          let resolvedHex: string | null = null;
-          try {
-            resolvedHex = toHex(creator.pubkey).toLowerCase();
-          } catch (error) {
-            if (/^[0-9a-fA-F]{64}$/.test(creator.pubkey)) {
-              resolvedHex = creator.pubkey.toLowerCase();
-            } else {
-              console.warn("[creators] Skipping featured creator with invalid pubkey", {
-                pubkey: creator.pubkey,
-                error,
-              });
-              continue;
+        const results = Array.isArray(response.results) ? response.results : [];
+        const fetchedEntries = await Promise.all(
+          results.map(async (creator) => {
+            if (!creator || typeof creator.pubkey !== "string") {
+              return null;
             }
-          }
 
-          if (!resolvedHex || !pubkeySet.has(resolvedHex)) {
+            let resolvedHex: string | null = null;
+            try {
+              resolvedHex = toHex(creator.pubkey).toLowerCase();
+            } catch (error) {
+              if (/^[0-9a-fA-F]{64}$/.test(creator.pubkey)) {
+                resolvedHex = creator.pubkey.toLowerCase();
+              } else {
+                console.warn("[creators] Skipping featured creator with invalid pubkey", {
+                  pubkey: creator.pubkey,
+                  error,
+                });
+                return null;
+              }
+            }
+
+            if (!resolvedHex || !pubkeySet.has(resolvedHex)) {
+              return null;
+            }
+
+            const bundle = buildBundleFromDiscoveryCreator(creator);
+            const profile = await this.applyBundleToCache(resolvedHex, bundle, {
+              cacheHit: Boolean(creator.cacheHit),
+              featured: true,
+            });
+
+            return { pubkey: resolvedHex, profile };
+          }),
+        );
+
+        for (const entry of fetchedEntries) {
+          if (!entry) {
             continue;
           }
-
-          missingPubkeys.delete(resolvedHex);
-
-          const bundle = buildBundleFromDiscoveryCreator(creator);
-          const profile = await this.applyBundleToCache(resolvedHex, bundle, {
-            cacheHit: Boolean(creator.cacheHit),
-            featured: true,
-          });
-          fetchedMap.set(resolvedHex, profile);
+          missingPubkeys.delete(entry.pubkey);
+          fetchedMap.set(entry.pubkey, entry.profile);
         }
 
         const combined = pubkeys
