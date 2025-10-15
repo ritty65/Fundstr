@@ -1,0 +1,26 @@
+name: Probe SSH host key
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: "SSH host (IP or hostname)"
+        required: true
+      port:
+        description: "SSH port"
+        required: false
+        default: "22"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ssh-keyscan the host
+        run: |
+          set -e
+          HOST="${{ github.event.inputs.host }}"
+          PORT="${{ github.event.inputs.port }}"
+          ed="$(ssh-keyscan -T 30 -H -t ed25519 -p "$PORT" "$HOST" 2>/dev/null || true)"
+          rsa="$(ssh-keyscan -T 30 -H -t rsa -p "$PORT" "$HOST" 2>/dev/null || true)"
+          echo "-----BEGIN HOSTKEY-----"
+          if [ -n "$ed" ]; then echo "$ed"; else echo "$rsa"; fi
+          echo "-----END HOSTKEY-----"
