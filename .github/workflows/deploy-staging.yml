@@ -26,17 +26,16 @@ jobs:
 
     env:
       NODE_VERSION: '20'
-      QUASAR_MODE: 'pwa'   # change if needed (spa, pwa, etc.)
+      QUASAR_MODE: pwa         # change to 'spa' if your build emits dist/spa
       BUILD_SHA: ${{ github.sha }}
 
     steps:
-      - name: Set up job
-        run: echo "Runner: $RUNNER_OS"
-
-      - name: Run actions/checkout@v4
+      - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Run actions/setup-node@v4
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -160,7 +159,7 @@ HTACCESS
 
           OUTDIR="dist/${{ env.QUASAR_MODE }}"
           if [[ ! -d "$OUTDIR" ]]; then
-            echo "::error:: Build output ($OUTDIR) not found."; exit 1
+            echo "::error:: Build output '$OUTDIR' not found"; exit 1
           fi
 
           SSH_OPTS="-p ${PORT:-22} -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
@@ -171,7 +170,7 @@ HTACCESS
             SSH_OPTS="$SSH_OPTS -o StrictHostKeyChecking=yes"
           fi
 
-          # Ensure target directory exists
+          # Ensure remote dir exists
           ssh $SSH_OPTS "${USER}@${HOST}" "mkdir -p '${TARGET}'"
 
           # Deploy the build
