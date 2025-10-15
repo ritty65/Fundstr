@@ -43,7 +43,7 @@
                 placeholder="Name, npub, or NIP-05"
                 :loading="searchLoading"
                 input-class="text-1"
-                @clear="handleClear"
+                @update:model-value="debouncedSearch"
                 @keyup.enter="triggerImmediateSearch"
               >
                 <template #append>
@@ -60,14 +60,10 @@
             </q-form>
 
             <section class="column q-gutter-lg" role="region" aria-live="polite">
-              <div
-                v-if="searchLoading && !searchResults.length"
-                class="row q-col-gutter-lg"
-                aria-label="Searching creators"
-              >
+              <div v-if="searchLoading && !searchResults.length" class="row q-col-gutter-lg" aria-label="Searching creators">
                 <div
                   v-for="placeholder in searchSkeletonPlaceholders"
-                  :key="`search-skeleton-${placeholder}`"
+                  :key="placeholder"
                   class="col-12 col-sm-6 col-md-4"
                 >
                   <q-skeleton type="rect" class="result-skeleton bg-surface-1" />
@@ -76,7 +72,20 @@
 
               <template v-else>
                 <q-banner
-                  v-if="searchErrorMessage"
+                  v-if="searchError"
+                  rounded
+                  dense
+                  class="status-banner text-1"
+                  aria-live="polite"
+                >
+                  <template #avatar>
+                    <q-icon :name="resolveBannerIcon(searchError)" size="20px" />
+                  </template>
+                  <span class="status-banner__text">{{ searchError }}</span>
+                </q-banner>
+
+                <q-banner
+                  v-if="searchWarnings.length > 0"
                   rounded
                   dense
                   class="status-banner text-1"
@@ -85,26 +94,33 @@
                   <template #avatar>
                     <q-icon name="warning" size="20px" />
                   </template>
-                  <div class="row items-center q-gutter-sm">
-                    <span class="status-banner__text">{{ searchErrorMessage }}</span>
-                    <q-btn flat dense color="accent" label="Retry" @click="retrySearch" />
+                  <div class="column">
+                    <span v-for="(warning, index) in searchWarnings" :key="index" class="status-banner__text">
+                      {{ warning }}
+                    </span>
                   </div>
                 </q-banner>
 
-                <div v-if="searchResults.length" class="fixed-grid">
-                  <CreatorCard
-                    v-for="profile in searchResults"
-                    :key="profile.pubkey"
-                    :profile="profile"
-                    :cache-hit="profile.cacheHit === true"
-                    @view-tiers="viewProfile"
-                    @message="startChat"
-                    @donate="donate"
-                  />
+                <div v-if="searchResults.length" class="column q-gutter-md">
+                  <div class="fixed-grid">
+                    <CreatorCard
+                      v-for="profile in searchResults"
+                      :key="profile.pubkey"
+                      :profile="profile"
+                      :cache-hit="profile.cacheHit === true"
+                      @view-tiers="viewProfile"
+                      @message="startChat"
+                      @donate="donate"
+                    />
+                  </div>
+
+                  <div v-if="false" class="load-more-wrapper">
+                    <!-- The new API does not support pagination. This is hidden. -->
+                  </div>
                 </div>
 
                 <div
-                  v-else-if="showSearchEmptyState"
+                  v-else-if="showSearchEmptyState || showInitialEmptyState"
                   class="empty-state column items-center text-center q-pt-xl q-pb-xl q-px-md text-2"
                 >
                   <q-icon
@@ -113,26 +129,8 @@
                     class="q-mb-md text-accent-500"
                     aria-hidden="true"
                   />
-                  <div class="text-h6 text-1">No profiles yet</div>
-                  <p class="text-body1 q-mt-sm q-mb-none">
-                    Try a different name or paste an npub to explore more creators.
-                  </p>
-                </div>
-
-                <div
-                  v-else-if="showInitialEmptyState"
-                  class="empty-state column items-center text-center q-pt-xl q-pb-xl q-px-md text-2"
-                >
-                  <q-icon
-                    name="lightbulb"
-                    size="4rem"
-                    class="q-mb-md text-accent-500"
-                    aria-hidden="true"
-                  />
-                  <div class="text-h6 text-1">Search for creators</div>
-                  <p class="text-body1 q-mt-sm q-mb-none">
-                    Start typing a name, npub, or NIP-05 handle to find creators.
-                  </p>
+                  <div class="text-h6 text-1">{{ emptyStateTitle }}</div>
+                  <p class="text-body1 q-mt-sm q-mb-none">{{ emptyStateMessage }}</p>
                 </div>
               </template>
             </section>
@@ -155,46 +153,30 @@
                   color="accent"
                   icon="refresh"
                   label="Refresh"
-                  :loading="featuredLoading"
-                  :disable="featuredLoading"
+                  :loading="loadingFeatured"
+                  :disable="loadingFeatured"
                   @click="refreshFeatured"
                 />
               </div>
             </div>
 
-            <q-banner
-              v-if="featuredErrorMessage"
-              rounded
-              dense
-              class="status-banner text-1 q-mt-md"
-              aria-live="polite"
-            >
-              <template #avatar>
-                <q-icon name="warning" size="20px" />
-              </template>
-              <div class="row items-center q-gutter-sm">
-                <span class="status-banner__text">{{ featuredErrorMessage }}</span>
-                <q-btn flat dense color="accent" label="Retry" @click="refreshFeatured" />
-              </div>
-            </q-banner>
-
             <div class="q-mt-md" role="region" aria-live="polite">
               <div
-                v-if="featuredLoading && !featuredList.length"
+                v-if="loadingFeatured && !featuredCreators.length"
                 class="row q-col-gutter-lg"
               >
                 <div
                   v-for="placeholder in featuredSkeletonPlaceholders"
-                  :key="`featured-skeleton-${placeholder}`"
+                  :key="placeholder"
                   class="col-12 col-sm-6 col-md-4"
                 >
                   <q-skeleton type="rect" class="featured-skeleton bg-surface-1" />
                 </div>
               </div>
 
-              <div v-else-if="featuredList.length" class="fixed-grid">
+              <div v-else-if="featuredCreators.length" class="fixed-grid">
                 <CreatorCard
-                  v-for="profile in featuredList"
+                  v-for="profile in featuredCreators"
                   :key="profile.pubkey"
                   :profile="profile"
                   featured
@@ -204,8 +186,21 @@
                 />
               </div>
 
+              <q-banner
+                v-else-if="featuredStatusMessage"
+                rounded
+                dense
+                class="status-banner text-1"
+                aria-live="polite"
+              >
+                <template #avatar>
+                  <q-icon :name="resolveBannerIcon(featuredStatusMessage)" size="20px" />
+                </template>
+                <span class="status-banner__text">{{ featuredStatusMessage }}</span>
+              </q-banner>
+
               <div
-                v-else
+                v-else-if="showFeaturedEmptyState"
                 class="empty-state column items-center text-center q-pt-xl q-pb-xl q-px-md text-2"
               >
                 <q-icon
@@ -228,10 +223,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRoute, useRouter } from 'vue-router';
-import { useQuasar } from 'quasar';
 import CreatorProfileModal from 'components/CreatorProfileModal.vue';
 import CreatorCard from 'components/CreatorCard.vue';
 import DonateDialog from 'components/DonateDialog.vue';
@@ -240,139 +234,135 @@ import { useSendTokensStore } from 'stores/sendTokensStore';
 import { useDonationPresetsStore } from 'stores/donationPresets';
 import { useNostrStore } from 'stores/nostr';
 import { useCreatorsStore } from 'stores/creators';
-import { FEATURED_CREATORS } from 'src/config/featured-creators';
-
-const $q = useQuasar();
 
 const creatorsStore = useCreatorsStore();
 const {
   searchResults,
-  loadingSearch,
-  errorSearch,
-  featured,
+  searching,
+  error: storeError,
+  searchWarnings: storeSearchWarnings,
   featuredCreators,
-  loadingFeatured,
-  errorFeatured,
+  loadingFeatured: storeLoadingFeatured,
+  featuredError: storeFeaturedError,
 } = storeToRefs(creatorsStore);
 
-const featuredList = computed(() =>
-  featured.value.length ? featured.value : featuredCreators.value,
-);
-
-const featuredLoading = computed(() => loadingFeatured.value);
-const featuredErrorMessage = computed(
-  () => errorFeatured.value || creatorsStore.featuredError || '',
-);
-
 const searchQuery = ref('');
-const trimmedQuery = computed(() => searchQuery.value.trim());
-const initialSearchPerformed = ref(false);
+const initialLoadComplete = ref(false);
 
 const searchSkeletonPlaceholders = [0, 1, 2];
 const featuredSkeletonPlaceholders = [0, 1, 2, 3, 4, 5];
 
-let searchTimeout: ReturnType<typeof setTimeout> | null = null;
-
-const searchLoading = computed(() => loadingSearch.value || creatorsStore.searching);
-const searchErrorMessage = computed(
-  () => errorSearch.value || creatorsStore.error || '',
-);
-
+const trimmedQuery = computed(() => (searchQuery.value || '').trim());
+const hasQuery = computed(() => trimmedQuery.value.length > 0);
+const searchLoading = computed(() => searching.value);
+const searchError = computed(() => storeError.value);
+const searchWarnings = computed(() => storeSearchWarnings?.value ?? []);
+const loadingFeatured = computed(() => storeLoadingFeatured?.value ?? false);
 const showSearchEmptyState = computed(
   () =>
-    initialSearchPerformed.value &&
+    initialLoadComplete.value &&
     !searchLoading.value &&
-    !searchErrorMessage.value &&
-    searchResults.value.length === 0 &&
-    trimmedQuery.value.length > 0,
+    !searchError.value &&
+    searchWarnings.value.length === 0 &&
+    !searchResults.value.length &&
+    hasQuery.value,
 );
-
 const showInitialEmptyState = computed(
   () =>
-    !initialSearchPerformed.value &&
+    initialLoadComplete.value &&
     !searchLoading.value &&
-    !searchErrorMessage.value &&
-    searchResults.value.length === 0 &&
-    trimmedQuery.value.length === 0,
+    !searchError.value &&
+    searchWarnings.value.length === 0 &&
+    !searchResults.value.length &&
+    !hasQuery.value,
 );
+
+const emptyStateTitle = computed(() =>
+  showInitialEmptyState.value ? 'Search for creators' : 'No profiles yet',
+);
+const emptyStateMessage = computed(() =>
+  showInitialEmptyState.value
+    ? 'Start typing a name, npub, or NIP-05 handle to find creators.'
+    : 'Try a different name or paste an npub to explore more creators.',
+);
+
+function debounce(func: (...args: any[]) => void, delay: number) {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  return function (this: unknown, ...args: any[]) {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => func.apply(this, args), delay);
+  };
+}
+
+const triggerImmediateSearch = () => {
+  void runSearch({ fresh: true });
+};
+
+const debouncedSearch = debounce(() => {
+  void runSearch();
+}, 300);
+
+const loadMore = () => {
+  // The new discovery service does not support pagination.
+  // This function is now a no-op but is kept to prevent template errors.
+  // The "Load More" button will be hidden via `hasMoreResults`.
+};
+
+async function runSearch({ fresh = false }: { fresh?: boolean } = {}) {
+  try {
+    await creatorsStore.searchCreators(trimmedQuery.value, { fresh });
+  } finally {
+    initialLoadComplete.value = true;
+  }
+}
+
+async function loadFeatured(force = false) {
+  if (loadingFeatured.value && !force) {
+    return;
+  }
+  await creatorsStore.loadFeaturedCreators(force);
+}
+
+const featuredError = computed(() => storeFeaturedError.value);
+
+const featuredStatusMessage = computed(() => {
+  if (featuredError.value) {
+    return featuredError.value;
+  }
+  if (loadingFeatured.value && !featuredCreators.value.length) {
+    return 'Loading creators...';
+  }
+  if (!loadingFeatured.value && !featuredCreators.value.length) {
+    return 'No featured creators available right now.';
+  }
+  return '';
+});
+
+const showFeaturedEmptyState = computed(
+  () => !loadingFeatured.value && !featuredCreators.value.length && !featuredError.value,
+);
+
+const refreshFeatured = () => {
+  void loadFeatured(true);
+};
+
+watch(searchWarnings, (warnings) => {
+  if (Array.isArray(warnings) && warnings.length > 0) {
+    console.debug('Search warnings:', warnings);
+  }
+});
 
 const router = useRouter();
 const route = useRoute();
 const sendTokensStore = useSendTokensStore();
-const donationStore = useDonationPresetsStore();
 const nostr = useNostrStore();
-
+const donationStore = useDonationPresetsStore();
 const showDonateDialog = ref(false);
 const selectedPubkey = ref('');
 const showProfileModal = ref(false);
 const selectedProfilePubkey = ref('');
-
-const runSearch = async ({ fresh = false }: { fresh?: boolean } = {}) => {
-  const query = trimmedQuery.value;
-  await creatorsStore.searchCreators(query, { fresh });
-  if (query) {
-    initialSearchPerformed.value = true;
-  }
-};
-
-const triggerImmediateSearch = () => {
-  if (!trimmedQuery.value) {
-    handleClear();
-    return;
-  }
-  if (searchTimeout) {
-    clearTimeout(searchTimeout);
-    searchTimeout = null;
-  }
-  void runSearch({ fresh: true });
-};
-
-const retrySearch = () => {
-  if (!trimmedQuery.value) {
-    return;
-  }
-  void runSearch({ fresh: true });
-};
-
-const handleClear = () => {
-  if (searchTimeout) {
-    clearTimeout(searchTimeout);
-    searchTimeout = null;
-  }
-  searchQuery.value = '';
-  void creatorsStore.searchCreators('');
-  initialSearchPerformed.value = false;
-};
-
-watch(trimmedQuery, (value) => {
-  if (searchTimeout) {
-    clearTimeout(searchTimeout);
-    searchTimeout = null;
-  }
-  if (!value) {
-    void creatorsStore.searchCreators('');
-    initialSearchPerformed.value = false;
-    return;
-  }
-  searchTimeout = setTimeout(() => {
-    void runSearch();
-  }, 350);
-});
-
-onBeforeUnmount(() => {
-  if (searchTimeout) {
-    clearTimeout(searchTimeout);
-    searchTimeout = null;
-  }
-});
-
-const loadFeatured = () => {
-  void creatorsStore.loadFeatured(FEATURED_CREATORS);
-};
-
-const refreshFeatured = () => {
-  void creatorsStore.refreshFeatured(FEATURED_CREATORS);
-};
 
 function viewProfile(pubkey: string) {
   selectedProfilePubkey.value = pubkey;
@@ -422,6 +412,24 @@ watch(showDonateDialog, (isOpen) => {
   }
 });
 
+const resolveBannerIcon = (message: string | null | undefined) => {
+  if (!message) {
+    return 'info';
+  }
+
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('fail') || normalized.includes('error')) {
+    return 'warning';
+  }
+
+  if (normalized.includes('refresh') || normalized.includes('loading')) {
+    return 'autorenew';
+  }
+
+  return 'info';
+};
+
 function redirectToCreatorIfPresent() {
   const npub = route.query.npub;
   if (typeof npub === 'string' && npub.trim()) {
@@ -431,12 +439,15 @@ function redirectToCreatorIfPresent() {
 
 onMounted(() => {
   redirectToCreatorIfPresent();
-  if (trimmedQuery.value) {
+  if (hasQuery.value) {
     void runSearch();
+  } else {
+    initialLoadComplete.value = true;
   }
-  loadFeatured();
+  void loadFeatured();
 });
 </script>
+
 
 <style scoped>
 .fixed-grid {
@@ -509,6 +520,7 @@ h1 {
   gap: 24px;
 }
 
+
 .load-more-wrapper {
   display: flex;
   justify-content: center;
@@ -541,6 +553,7 @@ h1 {
   font-size: 0.95rem;
   line-height: 1.4;
 }
+
 
 .result-skeleton,
 .featured-skeleton {
