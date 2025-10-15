@@ -174,7 +174,7 @@
                 </div>
               </div>
 
-              <div v-else-if="featuredCreators.length" class="fixed-grid">
+              <div v-else-if="featuredCreators.length" class="featured-grid">
                 <CreatorCard
                   v-for="profile in featuredCreators"
                   :key="profile.pubkey"
@@ -459,6 +459,36 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
   gap: 24px;
+}
+
+.featured-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+@media (min-width: 640px) {
+  .featured-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 960px) {
+  .featured-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1200px) {
+  .featured-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1440px) {
+  .featured-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
 }
 
 h1 {
