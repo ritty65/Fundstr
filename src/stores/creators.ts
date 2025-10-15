@@ -848,6 +848,18 @@ export const useCreatorsStore = defineStore("creators", {
       const discovery = useDiscovery();
       const rawQuery = typeof query === "string" ? query.trim() : "";
 
+      if (!rawQuery) {
+        if (this.searchAbortController) {
+          this.searchAbortController.abort();
+          this.searchAbortController = null;
+        }
+        this.searchResults = [];
+        this.error = "";
+        this.searchWarnings = [];
+        this.searching = false;
+        return;
+      }
+
       if (this.searchAbortController) {
         this.searchAbortController.abort();
         this.searchAbortController = null;
@@ -936,7 +948,7 @@ export const useCreatorsStore = defineStore("creators", {
 
       try {
         const response = await discovery.getCreators({
-          q: normalizedQuery || "*",
+          q: normalizedQuery,
           fresh,
           signal: controller.signal,
         });
