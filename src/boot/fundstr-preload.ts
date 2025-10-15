@@ -7,7 +7,7 @@ import {
 } from "stores/creators";
 import { toHex } from "@/nostr/relayClient";
 
-const CONCURRENCY_LIMIT = 3;
+const CONCURRENCY_LIMIT = 2;
 function normalizeHexTarget(entry: string, seen: Set<string>): string | null {
   if (typeof entry !== "string" || !entry.trim()) {
     return null;

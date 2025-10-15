@@ -2,6 +2,7 @@ import type { App } from 'vue';
 import { inject } from 'vue';
 import type { Creator, Tier } from 'src/lib/fundstrApi';
 import { getJson } from 'src/utils/http';
+import type { JsonRequestInit } from 'src/utils/http';
 import { normalizeMeta, type ProfileMeta } from 'src/utils/profile';
 
 const API_BASE_URL = 'https://api.fundstr.me';
@@ -20,6 +21,7 @@ export interface DiscoveryCreatorsRequest {
   q?: string;
   fresh?: boolean;
   signal?: AbortSignal;
+  timeoutMs?: number | null;
 }
 
 interface CreatorsCacheEntry {
@@ -40,6 +42,7 @@ export interface DiscoveryTiersRequest {
   id: string; // pubkey or npub
   fresh?: boolean;
   signal?: AbortSignal;
+  timeoutMs?: number | null;
 }
 
 interface TiersCacheEntry {
@@ -53,6 +56,7 @@ export interface DiscoveryCreatorsByPubkeysRequest {
   npubs: string[];
   fresh?: boolean;
   signal?: AbortSignal;
+  timeoutMs?: number | null;
 }
 
 export interface FundstrDiscoveryClient {
@@ -71,11 +75,8 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
   const tiersCache = new Map<string, TiersCacheEntry>();
   const creatorsByPubkeysCache = new Map<string, CreatorsCacheEntry>();
 
-  async function getCreators({
-    q = '*',
-    fresh = false,
-    signal,
-  }: DiscoveryCreatorsRequest = {}): Promise<DiscoveryCreatorsResponse> {
+  async function getCreators(request: DiscoveryCreatorsRequest = {}): Promise<DiscoveryCreatorsResponse> {
+    const { q = '*', fresh = false, signal, timeoutMs } = request;
     const query = normalizeQuery(q);
     const now = Date.now();
 
@@ -93,7 +94,14 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
     }
 
     try {
-      const data = await getJson<any>(endpoint.toString(), { signal });
+      const requestInit: JsonRequestInit = { signal };
+      if (Object.prototype.hasOwnProperty.call(request, 'timeoutMs')) {
+        requestInit.timeoutMs = timeoutMs ?? undefined;
+      } else if (fresh) {
+        requestInit.timeoutMs = undefined;
+      }
+
+      const data = await getJson<any>(endpoint.toString(), requestInit);
       const payload = normalizeCreatorsResponse(data);
       creatorsCache.set(query, { ts: now, payload });
 
@@ -108,11 +116,8 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
     }
   }
 
-  async function getCreatorTiers({
-    id,
-    fresh = false,
-    signal,
-  }: DiscoveryTiersRequest): Promise<DiscoveryTiersResponse> {
+  async function getCreatorTiers(request: DiscoveryTiersRequest): Promise<DiscoveryTiersResponse> {
+    const { id, fresh = false, signal, timeoutMs } = request;
     const now = Date.now();
     const queryId = id.trim();
 
@@ -130,7 +135,14 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
     }
 
     try {
-      const data = await getJson<any>(endpoint.toString(), { signal });
+      const requestInit: JsonRequestInit = { signal };
+      if (Object.prototype.hasOwnProperty.call(request, 'timeoutMs')) {
+        requestInit.timeoutMs = timeoutMs ?? undefined;
+      } else if (fresh) {
+        requestInit.timeoutMs = undefined;
+      }
+
+      const data = await getJson<any>(endpoint.toString(), requestInit);
       const payload = normalizeTiersResponse(data);
       tiersCache.set(queryId, { ts: now, payload });
 
@@ -145,11 +157,10 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
     }
   }
 
-  async function getCreatorsByPubkeys({
-    npubs,
-    fresh = false,
-    signal,
-  }: DiscoveryCreatorsByPubkeysRequest): Promise<DiscoveryCreatorsResponse> {
+  async function getCreatorsByPubkeys(
+    request: DiscoveryCreatorsByPubkeysRequest,
+  ): Promise<DiscoveryCreatorsResponse> {
+    const { npubs, fresh = false, signal, timeoutMs } = request;
     const normalizedNpubs = Array.isArray(npubs)
       ? Array.from(
           new Set(
@@ -187,7 +198,14 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
     }
 
     try {
-      const data = await getJson<any>(endpoint.toString(), { signal });
+      const requestInit: JsonRequestInit = { signal };
+      if (Object.prototype.hasOwnProperty.call(request, 'timeoutMs')) {
+        requestInit.timeoutMs = timeoutMs ?? undefined;
+      } else if (fresh) {
+        requestInit.timeoutMs = undefined;
+      }
+
+      const data = await getJson<any>(endpoint.toString(), requestInit);
       const payload = normalizeCreatorsResponse(data);
       creatorsByPubkeysCache.set(cacheKey, { ts: now, payload });
 

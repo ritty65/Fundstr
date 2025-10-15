@@ -9,6 +9,7 @@ import { toHex, type NostrEvent as RelayEvent } from "@/nostr/relayClient";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import { type NutzapProfileDetails } from "@/nutzap/profileCache";
 import { useDiscovery } from "src/api/fundstrDiscovery";
+import type { DiscoveryTiersRequest } from "src/api/fundstrDiscovery";
 import type {
   Creator as DiscoveryCreator,
   CreatorTier as DiscoveryCreatorTier,
@@ -240,8 +241,24 @@ export async function fetchFundstrProfileBundle(
     if (!trimmed) {
       return null;
     }
+
     try {
-      const response = await discovery.getCreators({ q: trimmed, fresh: true });
+      const response = await discovery.getCreators({ q: trimmed, fresh: false });
+      for (const entry of response.results) {
+        if (typeof entry.pubkey === "string" && entry.pubkey.toLowerCase() === normalizedPubkey) {
+          return entry;
+        }
+      }
+    } catch (error) {
+      lastError = error;
+    }
+
+    try {
+      const response = await discovery.getCreators({
+        q: trimmed,
+        fresh: true,
+        timeoutMs: undefined,
+      });
       for (const entry of response.results) {
         if (typeof entry.pubkey === "string" && entry.pubkey.toLowerCase() === normalizedPubkey) {
           return entry;
@@ -254,6 +271,7 @@ export async function fetchFundstrProfileBundle(
         error,
       });
     }
+
     return null;
   };
 
@@ -304,16 +322,39 @@ export async function fetchFundstrProfileBundle(
     if (tierCandidates.length) {
       return;
     }
-    try {
-      const tierResponse = await discovery.getCreatorTiers({ id: pubkey, fresh: true });
-      if (Array.isArray(tierResponse.tiers) && tierResponse.tiers.length) {
-        tierCandidates.push(...(tierResponse.tiers as DiscoveryCreatorTier[]));
+    const loadTiers = async (
+      id: string,
+      fresh: boolean,
+      onError: (error: unknown) => void,
+    ) => {
+      try {
+        const tierRequest: DiscoveryTiersRequest = { id, fresh };
+        if (fresh) {
+          tierRequest.timeoutMs = undefined;
+        }
+        const tierResponse = await discovery.getCreatorTiers(tierRequest);
+        if (Array.isArray(tierResponse.tiers) && tierResponse.tiers.length) {
+          tierCandidates.push(...(tierResponse.tiers as DiscoveryCreatorTier[]));
+        }
+      } catch (error) {
+        onError(error);
       }
-    } catch (error) {
-      console.warn("fetchFundstrProfileBundle discovery tier lookup failed", {
-        pubkey,
-        error,
+    };
+
+    await loadTiers(pubkey, false, () => {
+      /* ignore cached lookup errors; retry with fresh */
+    });
+
+    if (!tierCandidates.length) {
+      await loadTiers(pubkey, true, (error) => {
+        console.warn("fetchFundstrProfileBundle discovery tier lookup failed", {
+          pubkey,
+          error,
+        });
       });
+    }
+
+    if (!tierCandidates.length) {
       let npubId: string | null = null;
       try {
         npubId = nip19.npubEncode(pubkey);
@@ -321,15 +362,15 @@ export async function fetchFundstrProfileBundle(
         npubId = null;
       }
       if (npubId) {
-        try {
-          const tierResponse = await discovery.getCreatorTiers({ id: npubId, fresh: true });
-          if (Array.isArray(tierResponse.tiers) && tierResponse.tiers.length) {
-            tierCandidates.push(...(tierResponse.tiers as DiscoveryCreatorTier[]));
-          }
-        } catch (npubError) {
-          console.warn("fetchFundstrProfileBundle discovery tier lookup via npub failed", {
-            pubkey,
-            error: npubError,
+        await loadTiers(npubId, false, () => {
+          /* ignore cached lookup errors; retry with fresh */
+        });
+        if (!tierCandidates.length) {
+          await loadTiers(npubId, true, (npubError) => {
+            console.warn("fetchFundstrProfileBundle discovery tier lookup via npub failed", {
+              pubkey,
+              error: npubError,
+            });
           });
         }
       }
