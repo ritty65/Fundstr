@@ -457,8 +457,20 @@ onMounted(() => {
 <style scoped>
 .fixed-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 24px;
+}
+
+@media (min-width: 1280px) {
+  .fixed-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1440px) {
+  .fixed-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
 }
 
 .featured-grid {
@@ -507,12 +519,11 @@ h1 {
 }
 
 .page-shell {
-  padding-inline: clamp(1rem, 4vw, 5rem);
+  padding-inline: clamp(1rem, 3vw, 4rem);
 }
 
 .find-creators-content {
-  width: 100%;
-  max-width: clamp(70rem, 92vw, 100rem);
+  width: min(100%, 120rem);
   margin: 0 auto;
   padding-block-end: 3rem;
   display: flex;
@@ -610,6 +621,18 @@ h1 {
 @media (min-width: 1200px) {
   .find-creators-content {
     padding-block-end: 4rem;
+  }
+}
+
+@media (min-width: 1440px) {
+  .find-creators-content {
+    width: min(100%, 132rem);
+  }
+}
+
+@media (min-width: 1680px) {
+  .find-creators-content {
+    width: min(100%, 140rem);
   }
 }
 </style>
