@@ -544,14 +544,21 @@ function createCreatorFromBundle(
 
   const metrics = overrides.metrics ?? null;
 
+  const overrideDisplayName = toNullableString(overrides.displayName);
+  const overrideName = toNullableString(overrides.name);
+  const overrideAbout = toNullableString(overrides.about);
+  const overrideNip05 = toNullableString(overrides.nip05);
+  const overridePicture = toNullableString(overrides.picture);
+  const overrideBanner = toNullableString(overrides.banner);
+
   const displayName =
-    overrides.displayName ??
+    overrideDisplayName ??
     toNullableString(profile?.display_name ?? profile?.displayName ?? null);
-  const name = overrides.name ?? toNullableString(profile?.name);
-  const about = overrides.about ?? toNullableString(profile?.about);
-  const nip05 = overrides.nip05 ?? toNullableString(profile?.nip05 ?? profile?.nip05_npub);
-  const picture = overrides.picture ?? toNullableString(profile?.picture);
-  const banner = overrides.banner ?? toNullableString(profile?.banner);
+  const name = overrideName ?? toNullableString(profile?.name);
+  const about = overrideAbout ?? toNullableString(profile?.about);
+  const nip05 = overrideNip05 ?? toNullableString(profile?.nip05 ?? profile?.nip05_npub);
+  const picture = overridePicture ?? toNullableString(profile?.picture);
+  const banner = overrideBanner ?? toNullableString(profile?.banner);
 
   const creator: CreatorProfile = {
     pubkey,
@@ -1164,6 +1171,12 @@ export const useCreatorsStore = defineStore("creators", {
             const profile = await this.applyBundleToCache(resolvedHex, bundle, {
               cacheHit: Boolean(creator.cacheHit),
               featured: true,
+              displayName: creator.displayName ?? null,
+              name: creator.name ?? null,
+              about: creator.about ?? null,
+              picture: creator.picture ?? null,
+              banner: creator.banner ?? null,
+              nip05: creator.nip05 ?? null,
             });
 
             return { pubkey: resolvedHex, profile };
