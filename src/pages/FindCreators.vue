@@ -129,10 +129,8 @@
                     class="q-mb-md text-accent-500"
                     aria-hidden="true"
                   />
-                  <div class="text-h6 text-1">No profiles yet</div>
-                  <p class="text-body1 q-mt-sm q-mb-none">
-                    Try a different name or paste an npub to explore more creators.
-                  </p>
+                  <div class="text-h6 text-1">{{ emptyStateTitle }}</div>
+                  <p class="text-body1 q-mt-sm q-mb-none">{{ emptyStateMessage }}</p>
                 </div>
               </template>
             </section>
@@ -244,7 +242,7 @@ const {
   error: storeError,
   searchWarnings: storeSearchWarnings,
   featuredCreators,
-  loadingFeatured,
+  loadingFeatured: storeLoadingFeatured,
   featuredError: storeFeaturedError,
 } = storeToRefs(creatorsStore);
 
@@ -258,7 +256,8 @@ const trimmedQuery = computed(() => (searchQuery.value || '').trim());
 const hasQuery = computed(() => trimmedQuery.value.length > 0);
 const searchLoading = computed(() => searching.value);
 const searchError = computed(() => storeError.value);
-const searchWarnings = computed(() => storeSearchWarnings.value);
+const searchWarnings = computed(() => storeSearchWarnings?.value ?? []);
+const loadingFeatured = computed(() => storeLoadingFeatured?.value ?? false);
 const showSearchEmptyState = computed(
   () =>
     initialLoadComplete.value &&
@@ -276,6 +275,15 @@ const showInitialEmptyState = computed(
     searchWarnings.value.length === 0 &&
     !searchResults.value.length &&
     !hasQuery.value,
+);
+
+const emptyStateTitle = computed(() =>
+  showInitialEmptyState.value ? 'Search for creators' : 'No profiles yet',
+);
+const emptyStateMessage = computed(() =>
+  showInitialEmptyState.value
+    ? 'Start typing a name, npub, or NIP-05 handle to find creators.'
+    : 'Try a different name or paste an npub to explore more creators.',
 );
 
 function debounce(func: (...args: any[]) => void, delay: number) {
@@ -431,8 +439,11 @@ function redirectToCreatorIfPresent() {
 
 onMounted(() => {
   redirectToCreatorIfPresent();
-  // Kick off the initial wildcard discovery search so the page has results ready.
-  void runSearch();
+  if (hasQuery.value) {
+    void runSearch();
+  } else {
+    initialLoadComplete.value = true;
+  }
   void loadFeatured();
 });
 </script>

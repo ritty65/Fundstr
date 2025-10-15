@@ -83,6 +83,8 @@ describe("FindCreators.vue", () => {
       searching: false,
       loadingFeatured: false,
       error: "",
+      searchWarnings: [],
+      featuredError: "",
       tiersMap: reactive({}),
       tierFetchError: false,
       ensureCreatorCacheFromDexie: vi.fn().mockResolvedValue(undefined),
@@ -110,5 +112,12 @@ describe("FindCreators.vue", () => {
     const wrapper = mountComponent();
     await flushPromises();
     expect(wrapper.exists()).toBe(true);
+  });
+
+  it("does not trigger a search until the user enters a query", async () => {
+    mountComponent();
+    await flushPromises();
+
+    expect(creatorsStore.searchCreators).not.toHaveBeenCalled();
   });
 });
