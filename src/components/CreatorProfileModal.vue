@@ -8,15 +8,15 @@
       <q-card-section class="profile-header">
         <div class="header-main">
           <q-avatar size="104px" class="profile-avatar">
-            <img :src="creatorAvatar" alt="Creator avatar" />
+            <img :src="creatorAvatar" alt="Creator avatar" @error="onAvatarError" />
           </q-avatar>
           <div class="profile-info">
             <div class="profile-name">{{ displayName }}</div>
-            <div v-if="creator?.profile?.nip05" class="profile-handle">
-              {{ creator.profile.nip05 }}
+            <div v-if="nip05" class="profile-handle">
+              {{ nip05 }}
             </div>
-            <div v-if="creator?.profile?.about" class="profile-about">
-              {{ creator.profile.about }}
+            <div v-if="aboutText" class="profile-about">
+              {{ aboutText }}
             </div>
           </div>
         </div>
@@ -145,9 +145,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import { nip19 } from 'nostr-tools';
 import MediaPreview from 'components/MediaPreview.vue';
 import { formatMsatToSats, type Creator } from 'src/lib/fundstrApi';
 import { useFundstrDiscovery } from 'src/api/fundstrDiscovery';
+import {
+  displayNameFromProfile,
+  normalizeMeta,
+  safeImageSrc,
+  type ProfileMeta,
+} from 'src/utils/profile';
 
 const props = defineProps<{
   show: boolean;
@@ -186,27 +193,44 @@ const discoveryClient = useFundstrDiscovery();
 let currentRequestId = 0;
 let activeController: AbortController | null = null;
 
-const displayName = computed(() => {
+const creatorMeta = computed<ProfileMeta>(() => {
   const c = creator.value;
-  return (
-    (c?.displayName && c.displayName.trim()) ||
-    (c?.name && c.name.trim()) ||
-    (c?.nip05 && c.nip05.split('@')[0]) ||
-    'Unnamed User'
-  );
+  const baseMeta = normalizeMeta((c?.profile as any) ?? {});
+  const extraMeta = normalizeMeta((c as any)?.meta ?? {});
+  const directMeta = normalizeMeta({
+    display_name: c?.displayName ?? null,
+    name: c?.name ?? null,
+    about: c?.about ?? null,
+    picture: c?.picture ?? null,
+    nip05: c?.nip05 ?? null,
+  });
+  return { ...baseMeta, ...extraMeta, ...directMeta };
 });
 
-const creatorAvatar = computed(() => {
-  const c = creator.value;
-  if (c?.picture && typeof c.picture === 'string' && c.picture.trim()) {
-    return c.picture as string;
+const creatorNpub = computed(() => {
+  const key = creator.value?.pubkey ?? props.pubkey ?? '';
+  if (!key) return '';
+  try {
+    return nip19.npubEncode(key);
+  } catch {
+    return key;
   }
-  const source = c?.displayName || c?.name || c?.nip05 || props.pubkey;
-  const initial = (typeof source === 'string' && source.trim()[0]) || 'U';
-  return `https://placehold.co/200x200/1f2937/ffffff?text=${encodeURIComponent(
-    initial.toUpperCase(),
-  )}`;
 });
+
+const displayName = computed(() => displayNameFromProfile(creatorMeta.value, creatorNpub.value));
+
+const creatorAvatar = computed(() => safeImageSrc(creatorMeta.value.picture, displayName.value, 200));
+
+const nip05 = computed(() => (typeof creatorMeta.value.nip05 === 'string' ? creatorMeta.value.nip05.trim() : ''));
+
+const aboutText = computed(() => {
+  const about = typeof creatorMeta.value.about === 'string' ? creatorMeta.value.about.trim() : '';
+  return about || '';
+});
+
+function onAvatarError(event: Event) {
+  (event.target as HTMLImageElement).src = safeImageSrc(null, displayName.value, 200);
+}
 
 const hasTiers = computed(() => tiers.value.length > 0);
 

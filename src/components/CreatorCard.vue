@@ -2,7 +2,7 @@
   <div class="creator-card bg-surface-2 text-1">
     <div class="profile-header">
       <div class="avatar-wrapper">
-        <img class="avatar" :src="avatarUrl" :alt="displayName" />
+        <img class="avatar" :src="avatarSrc" :alt="displayName" @error="onAvatarError" />
       </div>
       <div class="info">
         <div class="name-row">
@@ -69,6 +69,13 @@ import { computed } from 'vue';
 import { nip19 } from 'nostr-tools';
 import type { Creator } from 'src/lib/fundstrApi';
 import { formatMsatToSats } from 'src/lib/fundstrApi';
+import {
+  displayNameFromProfile,
+  normalizeMeta,
+  safeImageSrc,
+  shortenNpub,
+  type ProfileMeta,
+} from 'src/utils/profile';
 
 const props = withDefaults(
   defineProps<{
@@ -84,32 +91,43 @@ const props = withDefaults(
 
 defineEmits(['view-tiers', 'message', 'donate']);
 
-const npub = computed(() => nip19.npubEncode(props.profile.pubkey));
-const npubShort = computed(() => `${npub.value.substring(0, 10)}...${npub.value.substring(npub.value.length - 5)}`);
-
-const displayName = computed(() => {
-  const p = props.profile;
-  return (
-    (p.displayName && p.displayName.trim()) ||
-    (p.name && p.name.trim()) ||
-    (p.nip05 && p.nip05.split('@')[0]) ||
-    'Unnamed User'
-  );
+const meta = computed<ProfileMeta>(() => {
+  const profileMeta = normalizeMeta((props.profile?.profile as any) ?? {});
+  const directMeta = normalizeMeta({
+    display_name: props.profile?.displayName ?? null,
+    name: props.profile?.name ?? null,
+    about: props.profile?.about ?? null,
+    picture: props.profile?.picture ?? null,
+    nip05: props.profile?.nip05 ?? null,
+  });
+  const extraMeta = normalizeMeta((props.profile as any)?.meta ?? {});
+  return { ...profileMeta, ...extraMeta, ...directMeta };
 });
 
-const placeholderInitial = computed(() => (displayName.value.trim()[0] || 'U').toUpperCase());
-
-const avatarUrl = computed(() => {
-  if (props.profile.picture && props.profile.picture.trim()) {
-    return props.profile.picture;
+const npub = computed(() => {
+  const pubkey = props.profile?.pubkey ?? '';
+  if (!pubkey) return '';
+  try {
+    return nip19.npubEncode(pubkey);
+  } catch {
+    return pubkey;
   }
-  return `https://placehold.co/64x64/A0AEC0/FFFFFF?text=${encodeURIComponent(placeholderInitial.value)}`;
 });
 
-const nip05 = computed(() => props.profile.nip05 ?? '');
+const npubShort = computed(() => shortenNpub(npub.value || props.profile?.pubkey || ''));
+
+const displayName = computed(() => displayNameFromProfile(meta.value, npub.value));
+
+const avatarSrc = computed(() => safeImageSrc(meta.value?.picture, displayName.value, 96));
+
+function onAvatarError(event: Event) {
+  (event.target as HTMLImageElement).src = safeImageSrc(null, displayName.value, 96);
+}
+
+const nip05 = computed(() => meta.value.nip05 ?? '');
 
 const aboutSnippet = computed(() => {
-  const about = props.profile.about;
+  const about = typeof meta.value.about === 'string' ? meta.value.about.trim() : '';
   if (!about) return '';
   return about.length > 120 ? `${about.substring(0, 120)}…` : about;
 });

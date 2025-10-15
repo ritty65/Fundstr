@@ -39,7 +39,12 @@
         />
         <div class="profile-hero__content bg-surface-2">
           <div class="profile-hero__avatar" aria-hidden="true">
-            <img v-if="profileAvatar" :src="profileAvatar" :alt="profileDisplayName" />
+            <img
+              v-if="profileAvatar"
+              :src="profileAvatar"
+              :alt="profileDisplayName"
+              @error="onHeroAvatarError"
+            />
             <div v-else class="profile-hero__avatar-placeholder">{{ profileInitials }}</div>
           </div>
           <div class="profile-hero__details">
@@ -91,7 +96,7 @@
             </h2>
           </header>
           <div class="profile-section__body">
-            <p v-if="profile.about" class="profile-section__text text-body1">{{ profile.about }}</p>
+            <p v-if="aboutText" class="profile-section__text text-body1">{{ aboutText }}</p>
             <p v-else class="profile-section__text text-2">
               {{ $t('CreatorHub.profile.noAbout') }}
             </p>
@@ -343,6 +348,13 @@ import MintSafetyList from "components/MintSafetyList.vue";
 import RelayBadgeList from "components/RelayBadgeList.vue";
 import TierSummaryCard from "components/TierSummaryCard.vue";
 import { isTrustedUrl } from "src/utils/sanitize-url";
+import {
+  displayNameFromProfile,
+  initialFromName,
+  normalizeMeta,
+  safeImageSrc,
+  type ProfileMeta,
+} from "src/utils/profile";
 import { useClipboard } from "src/composables/useClipboard";
 import { useWelcomeStore } from "stores/welcome";
 import {
@@ -385,6 +397,7 @@ export default defineComponent({
     const { copy } = useClipboard();
     const bitcoinPrice = computed(() => priceStore.bitcoinPrice);
     const profile = ref<any>({});
+    const profileMeta = computed<ProfileMeta>(() => normalizeMeta(profile.value ?? {}));
     const profileRelayHints = ref<string[]>([]);
     const fallbackActive = ref(false);
     const fallbackFailed = ref(false);
@@ -655,23 +668,20 @@ export default defineComponent({
 
     const profileUrl = computed(() => buildProfileUrl(creatorNpub, router));
 
-    const profileDisplayName = computed(
-      () =>
-        profile.value.display_name ||
-        profile.value.name ||
-        profile.value.nip05 ||
-        creatorNpub,
+    const profileDisplayName = computed(() =>
+      displayNameFromProfile(profileMeta.value, creatorNpub),
     );
 
     const profileHandle = computed(() => {
-      if (profile.value.name) return profile.value.name;
-      if (profile.value.nip05 && typeof profile.value.nip05 === "string") {
-        return profile.value.nip05.split("@")[0] || "";
-      }
-      return "";
+      const name = typeof profileMeta.value.name === "string" ? profileMeta.value.name.trim() : "";
+      if (name) return name;
+      const nip05 = typeof profileMeta.value.nip05 === "string" ? profileMeta.value.nip05.trim() : "";
+      return nip05.includes("@") ? nip05.split("@")[0] || "" : nip05;
     });
 
-    const profileAvatar = computed(() => profile.value.picture || "");
+    const profileAvatar = computed(() =>
+      safeImageSrc(profileMeta.value.picture, profileDisplayName.value, 160),
+    );
 
     const heroBannerUrl = computed(() => {
       const banner = profile.value.banner || profile.value.cover || profile.value.header;
@@ -689,9 +699,11 @@ export default defineComponent({
         : {},
     );
 
-    const profileInitials = computed(() => {
-      const text = profileDisplayName.value || creatorNpub;
-      return text ? text.trim().charAt(0).toUpperCase() : "";
+    const profileInitials = computed(() => initialFromName(profileDisplayName.value));
+
+    const aboutText = computed(() => {
+      const about = typeof profileMeta.value.about === "string" ? profileMeta.value.about.trim() : "";
+      return about;
     });
 
     const hasFollowerStats = computed(
@@ -716,10 +728,16 @@ export default defineComponent({
       }
     };
 
-    const sanitizedWebsite = computed(() => normalizeUrl(profile.value.website));
+    const sanitizedWebsite = computed(() =>
+      normalizeUrl(
+        (profileMeta.value.website as string | null | undefined) ??
+          (profile.value?.website as string | null | undefined) ??
+          null,
+      ),
+    );
 
     const nip05Chip = computed(() => {
-      const nip05 = profile.value.nip05;
+      const nip05 = profileMeta.value.nip05;
       if (!nip05 || typeof nip05 !== "string") return null;
       const [, domain] = nip05.split("@");
       const link = domain ? normalizeUrl(domain) : null;
@@ -759,6 +777,14 @@ export default defineComponent({
       }
       return chips;
     });
+
+    function onHeroAvatarError(event: Event) {
+      (event.target as HTMLImageElement).src = safeImageSrc(
+        null,
+        profileDisplayName.value,
+        160,
+      );
+    }
 
     const trustedMints = computed(() => {
       const mints = profile.value.trustedMints;
@@ -854,6 +880,8 @@ export default defineComponent({
       profileHandle,
       profileAvatar,
       profileInitials,
+      aboutText,
+      onHeroAvatarError,
       heroBannerUrl,
       heroBannerStyle,
       tiers,
