@@ -1,5 +1,5 @@
 <template>
-  <q-page class="find-creators-page bg-surface-1 text-1 q-px-md q-pt-xl q-pb-xl">
+  <q-page class="find-creators-page page-shell bg-surface-1 text-1 q-pt-xl q-pb-xl">
     <CreatorProfileModal
       :show="showProfileModal"
       :pubkey="selectedProfilePubkey"
@@ -506,14 +506,18 @@ h1 {
   );
 }
 
+.page-shell {
+  padding-inline: clamp(1rem, 4vw, 5rem);
+}
+
 .find-creators-content {
   width: 100%;
-  max-width: 1280px;
+  max-width: clamp(70rem, 92vw, 100rem);
   margin: 0 auto;
-  padding: 0 1.25rem 3rem;
+  padding-block-end: 3rem;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 2.75rem;
 }
 
@@ -598,14 +602,14 @@ h1 {
 
 @media (min-width: 768px) {
   .find-creators-content {
-    padding: 0 2rem 3.5rem;
+    padding-block-end: 3.5rem;
     gap: 3.25rem;
   }
 }
 
 @media (min-width: 1200px) {
   .find-creators-content {
-    padding: 0 2.75rem 4rem;
+    padding-block-end: 4rem;
   }
 }
 </style>
