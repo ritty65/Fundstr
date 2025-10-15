@@ -1126,7 +1126,7 @@ export const useCreatorsStore = defineStore("creators", {
       }
     },
 
-    async loadFeatured(npubs: string[], opts: { fresh?: boolean } = {}) {
+    async loadFeatured(opts: { fresh?: boolean } = {}) {
       this.featuredError = "";
       this.loadingFeatured = true;
 
@@ -1137,7 +1137,7 @@ export const useCreatorsStore = defineStore("creators", {
         this.featuredCreators = [];
       }
 
-      const normalizedNpubs = (Array.isArray(npubs) ? npubs : [])
+      const normalizedNpubs = (Array.isArray(CONFIG_FEATURED_CREATORS) ? CONFIG_FEATURED_CREATORS : [])
         .map((npub) => (typeof npub === "string" ? npub.trim() : ""))
         .filter((npub) => Boolean(npub));
 
@@ -1270,11 +1270,11 @@ export const useCreatorsStore = defineStore("creators", {
     },
 
     async loadFeaturedCreators(forceRefresh = false) {
-      return this.loadFeatured(CONFIG_FEATURED_CREATORS, { fresh: forceRefresh });
+      return this.loadFeatured({ fresh: forceRefresh });
     },
 
-    async refreshFeatured(npubs: string[]) {
-      return this.loadFeatured(npubs, { fresh: true });
+    async refreshFeatured() {
+      return this.loadFeatured({ fresh: true });
     },
 
     async publishTierDefinitions(tiersArray: Tier[]) {

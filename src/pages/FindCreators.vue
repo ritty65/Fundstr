@@ -233,7 +233,7 @@ import SendTokenDialog from 'components/SendTokenDialog.vue';
 import { useSendTokensStore } from 'stores/sendTokensStore';
 import { useDonationPresetsStore } from 'stores/donationPresets';
 import { useNostrStore } from 'stores/nostr';
-import { useCreatorsStore, FEATURED_CREATORS } from 'stores/creators';
+import { useCreatorsStore } from 'stores/creators';
 
 const creatorsStore = useCreatorsStore();
 const {
@@ -318,16 +318,6 @@ async function runSearch({ fresh = false }: { fresh?: boolean } = {}) {
   }
 }
 
-async function loadFeatured(force = false) {
-  if (loadingFeatured.value && !force) {
-    return;
-  }
-  if (force) {
-    await creatorsStore.refreshFeatured(FEATURED_CREATORS);
-    return;
-  }
-  await creatorsStore.loadFeatured(FEATURED_CREATORS);
-}
 
 const featuredError = computed(() => storeFeaturedError.value);
 
@@ -349,7 +339,7 @@ const showFeaturedEmptyState = computed(
 );
 
 const refreshFeatured = () => {
-  void loadFeatured(true);
+  void creatorsStore.refreshFeatured();
 };
 
 watch(searchWarnings, (warnings) => {
@@ -448,31 +438,14 @@ onMounted(() => {
   } else {
     initialLoadComplete.value = true;
   }
-  void loadFeatured();
+  void creatorsStore.loadFeaturedCreators();
 });
 </script>
 
 
 <style scoped>
 
-.fixed-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: clamp(20px, 2vw, 32px);
-}
-
-@media (min-width: 1100px) {
-  .fixed-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1360px) {
-  .fixed-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-}
-
+.fixed-grid,
 .featured-grid {
   display: grid;
   gap: clamp(20px, 2vw, 32px);
@@ -480,24 +453,28 @@ onMounted(() => {
 }
 
 @media (min-width: 600px) {
+  .fixed-grid,
   .featured-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (min-width: 960px) {
+  .fixed-grid,
   .featured-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (min-width: 1180px) {
+@media (min-width: 1280px) {
+  .fixed-grid,
   .featured-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
-@media (min-width: 1360px) {
+@media (min-width: 1600px) {
+  .fixed-grid,
   .featured-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
@@ -519,11 +496,11 @@ h1 {
 }
 
 .page-shell {
-  padding-inline: clamp(1.25rem, 2.75vw, 4.5rem);
+  padding-inline: clamp(1.25rem, 3.5vw, 6rem);
 }
 
 .find-creators-content {
-  width: min(100%, 132rem);
+  width: min(100%, 148rem);
   margin: 0 auto;
   padding-block-end: 3rem;
   display: flex;
@@ -619,19 +596,19 @@ h1 {
 
 @media (min-width: 1280px) {
   .find-creators-content {
-    width: min(100%, 140rem);
+    width: min(100%, 156rem);
   }
 }
 
 @media (min-width: 1600px) {
   .find-creators-content {
-    width: min(100%, 148rem);
+    width: min(100%, 168rem);
   }
 }
 
 @media (min-width: 1920px) {
   .find-creators-content {
-    width: min(100%, 160rem);
+    width: min(100%, 180rem);
   }
 }
 </style>
