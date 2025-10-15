@@ -58,6 +58,7 @@
         class="action-btn"
         label="Donate"
         no-caps
+        v-if="hasLightning"
         @click.stop="$emit('donate', profile.pubkey)"
       />
     </div>
@@ -143,6 +144,18 @@ const tierSummaryText = computed(() => {
 });
 
 const followers = computed(() => props.profile.followers ?? null);
+
+const hasLightning = computed(() => {
+  const profile = (props.profile?.profile ?? {}) as Record<string, unknown>;
+  const metaRecord = meta.value as Record<string, unknown>;
+  const candidates: Array<unknown> = [
+    metaRecord['lud16'],
+    metaRecord['lud06'],
+    profile['lud16'],
+    profile['lud06'],
+  ];
+  return candidates.some((value) => typeof value === 'string' && value.trim().length > 0);
+});
 
 const isCached = computed(() => {
   if (typeof props.cacheHit === 'boolean') {
