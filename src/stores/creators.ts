@@ -16,9 +16,19 @@ import type {
 } from "src/lib/fundstrApi";
 import type { Creator as FundstrCreator } from "src/lib/fundstrApi";
 import { useNdk } from "src/composables/useNdk";
-import { FEATURED_CREATORS as FEATURED_CREATORS_CONFIG } from "src/config/featured-creators";
 
-export const FEATURED_CREATORS = FEATURED_CREATORS_CONFIG;
+export const FEATURED_CREATORS = [
+  "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
+  "npub1sg6plzptd64u62a878hep2kev88swjh3tw00gjsfl8f237lmu63q0uf63m",
+  "npub1qny3tkh0acurzla8x3zy4nhrjz5zd8l9sy9jys09umwng00manysew95gx",
+  "npub1cj8znuztfqkvq89pl8hceph0svvvqk0qay6nydgk9uyq7fhpfsgsqwrz4u",
+  "npub1a2cww4kn9wqte4ry70vyfwqyqvpswksna27rtxd8vty6c74era8sdcw83a",
+  "npub1s05p3ha7en49dv8429tkk07nnfa9pcwczkf5x5qrdraqshxdje9sq6eyhe",
+  "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6",
+  "npub1dergggklka99wwrs92yz8wdjs952h2ux2ha2ed598ngwu9w7a6fsh9xzpc",
+  "npub1s5yq6wadwrxde4lhfs56gn64hwzuhnfa6r9mj476r5s4hkunzgzqrs6q7z",
+  "npub1spdnfacgsd7lk0nlqkq443tkq4jx9z6c6ksvaquuewmw7d3qltpslcq6j7",
+];
 
 export type CreatorProfile = FundstrCreator;
 
@@ -204,20 +214,6 @@ function convertDiscoveryTier(tier: DiscoveryCreatorTier): Tier | null {
     description,
     media: [],
   };
-}
-
-function shortPubkey(pubkey: string | null | undefined): string {
-  if (typeof pubkey !== "string") {
-    return "";
-  }
-  const trimmed = pubkey.trim();
-  if (!trimmed) {
-    return "";
-  }
-  if (trimmed.length <= 12) {
-    return trimmed;
-  }
-  return `${trimmed.slice(0, 8)}…${trimmed.slice(-4)}`;
 }
 
 export interface FundstrProfileBundle {
@@ -636,15 +632,11 @@ export const useCreatorsStore = defineStore("creators", {
     return {
       searchResults: [] as CreatorProfile[],
       featuredCreators: [] as CreatorProfile[],
-      featured: [] as CreatorProfile[],
       searching: false,
-      loadingSearch: false,
       loadingFeatured: false,
       error: "",
-      errorSearch: "",
       searchWarnings: [] as string[],
       featuredError: "",
-      errorFeatured: "",
       tiersMap: {} as Record<string, Tier[]>,
       tierFetchError: false,
       currentUserNpub: "",
@@ -911,10 +903,8 @@ export const useCreatorsStore = defineStore("creators", {
         }
         this.searchResults = [];
         this.error = "";
-        this.errorSearch = "";
         this.searchWarnings = [];
         this.searching = false;
-        this.loadingSearch = false;
         return;
       }
 
@@ -925,16 +915,12 @@ export const useCreatorsStore = defineStore("creators", {
 
       this.searchResults = [];
       this.error = "";
-      this.errorSearch = "";
       this.searchWarnings = [];
       this.searching = true;
-      this.loadingSearch = true;
 
       const handleFailure = (message: string) => {
         this.error = message;
         this.searchResults = [];
-        this.errorSearch = message;
-        this.loadingSearch = false;
       };
 
       const resolveNip19 = (value: string): string | null => {
@@ -960,7 +946,6 @@ export const useCreatorsStore = defineStore("creators", {
         if (!resolvedHex) {
           handleFailure("Invalid identifier");
           this.searching = false;
-          this.loadingSearch = false;
           return;
         }
       }
@@ -974,14 +959,12 @@ export const useCreatorsStore = defineStore("creators", {
           } else {
             handleFailure("NIP-05 not found");
             this.searching = false;
-            this.loadingSearch = false;
             return;
           }
         } catch (error) {
           console.error("[creators] NIP-05 lookup failed", error);
           handleFailure("Invalid identifier");
           this.searching = false;
-          this.loadingSearch = false;
           return;
         }
       }
@@ -990,7 +973,6 @@ export const useCreatorsStore = defineStore("creators", {
         if (!/^[0-9a-fA-F]{64}$/.test(resolvedHex)) {
           handleFailure("Invalid pubkey");
           this.searching = false;
-          this.loadingSearch = false;
           return;
         }
         try {
@@ -1005,7 +987,6 @@ export const useCreatorsStore = defineStore("creators", {
           handleFailure("Failed to fetch profile.");
         } finally {
           this.searching = false;
-          this.loadingSearch = false;
         }
         return;
       }
@@ -1026,7 +1007,6 @@ export const useCreatorsStore = defineStore("creators", {
         this.searchWarnings = Array.isArray(response.warnings)
           ? response.warnings.slice()
           : [];
-        this.errorSearch = "";
       } catch (error) {
         if (controller.signal.aborted) {
           return;
@@ -1040,7 +1020,6 @@ export const useCreatorsStore = defineStore("creators", {
       } finally {
         if (!controller.signal.aborted) {
           this.searching = false;
-          this.loadingSearch = false;
           this.searchAbortController = null;
         }
       }
@@ -1144,25 +1123,19 @@ export const useCreatorsStore = defineStore("creators", {
       }
     },
 
-    async loadFeaturedCreators(forceRefresh = false, npubsOverride?: string[]) {
+    async loadFeaturedCreators(forceRefresh = false) {
       this.featuredError = "";
-      this.errorFeatured = "";
       this.loadingFeatured = true;
 
       const discovery = useDiscovery();
 
       if (forceRefresh) {
         this.featuredCreators = [];
-        this.featured = [];
       }
 
-      const sourceList = Array.isArray(npubsOverride) && npubsOverride.length
-        ? npubsOverride
-        : FEATURED_CREATORS;
-
-      const npubs = sourceList
-        .map((npub) => (typeof npub === "string" ? npub.trim() : ""))
-        .filter((npub) => Boolean(npub));
+      const npubs = FEATURED_CREATORS.map((npub) =>
+        typeof npub === "string" ? npub.trim() : "",
+      ).filter((npub) => Boolean(npub));
 
       const pubkeys: string[] = npubs
         .map((npub) => {
@@ -1204,7 +1177,6 @@ export const useCreatorsStore = defineStore("creators", {
           .filter((profile): profile is CreatorProfile => Boolean(profile));
         if (orderedCached.length) {
           this.featuredCreators = orderedCached;
-          this.featured = orderedCached;
         }
       }
 
@@ -1212,7 +1184,6 @@ export const useCreatorsStore = defineStore("creators", {
         const response = await discovery.getCreatorsByPubkeys({
           npubs,
           fresh: forceRefresh,
-          swr: true,
         });
 
         const fetchedMap = new Map<string, CreatorProfile>();
@@ -1266,14 +1237,11 @@ export const useCreatorsStore = defineStore("creators", {
           .filter((profile): profile is CreatorProfile => Boolean(profile));
 
         this.featuredCreators = combined;
-        this.featured = combined;
 
         if (!combined.length) {
           this.featuredError = "Failed to load featured creators.";
-          this.errorFeatured = this.featuredError;
         } else {
           this.featuredError = "";
-          this.errorFeatured = "";
           if (missingPubkeys.size) {
             console.warn("[creators] Featured creators missing from response", {
               pubkeys: Array.from(missingPubkeys),
@@ -1284,69 +1252,10 @@ export const useCreatorsStore = defineStore("creators", {
         console.error("[creators] Failed to batch load featured creators", error);
         if (!this.featuredCreators.length) {
           this.featuredError = "Failed to load featured creators.";
-          this.errorFeatured = this.featuredError;
         }
       } finally {
         this.loadingFeatured = false;
       }
-    },
-
-    async loadFeatured(npubs: string[], opts: { fresh?: boolean } = {}) {
-      const list = Array.isArray(npubs) ? npubs.filter((entry) => typeof entry === "string") : [];
-      await this.loadFeaturedCreators(Boolean(opts.fresh), list);
-    },
-
-    async refreshFeatured(npubs: string[]) {
-      await this.loadFeatured(npubs, { fresh: true });
-    },
-
-    fallbackName(row?: Partial<CreatorProfile> | null): string {
-      if (!row) {
-        return "";
-      }
-      const pick = (value: unknown): string => {
-        if (typeof value !== "string") {
-          return "";
-        }
-        const trimmed = value.trim();
-        return trimmed;
-      };
-
-      const profile = (row as CreatorProfile)?.profile ?? null;
-      const displayName =
-        pick(row.displayName) ||
-        (profile && pick((profile as any).display_name)) ||
-        (profile && pick((profile as any).name));
-      if (displayName) {
-        return displayName;
-      }
-      const fallbackName = pick(row.name) || (profile && pick((profile as any).username));
-      if (fallbackName) {
-        return fallbackName;
-      }
-      const pubkey = pick((row as CreatorProfile).pubkey);
-      return pubkey ? shortPubkey(pubkey) : "Unknown";
-    },
-
-    avatar(row?: Partial<CreatorProfile> | null): string {
-      if (!row) {
-        return "";
-      }
-      const pick = (value: unknown): string => {
-        if (typeof value !== "string") {
-          return "";
-        }
-        const trimmed = value.trim();
-        return trimmed;
-      };
-
-      const profile = (row as CreatorProfile)?.profile ?? null;
-      return (
-        pick(row.picture) ||
-        (profile && pick((profile as any).picture)) ||
-        (profile && pick((profile as any).image)) ||
-        ""
-      );
     },
 
     async publishTierDefinitions(tiersArray: Tier[]) {

@@ -53,7 +53,6 @@
         @click.stop="$emit('message', profile.pubkey)"
       />
       <q-btn
-        v-if="canDonate"
         outline
         color="accent"
         class="action-btn"
@@ -71,12 +70,12 @@ import { nip19 } from 'nostr-tools';
 import type { Creator } from 'src/lib/fundstrApi';
 import { formatMsatToSats } from 'src/lib/fundstrApi';
 import {
+  displayNameFromProfile,
   normalizeMeta,
   safeImageSrc,
   shortenNpub,
   type ProfileMeta,
 } from 'src/utils/profile';
-import { useCreatorsStore } from 'stores/creators';
 
 const props = withDefaults(
   defineProps<{
@@ -92,8 +91,6 @@ const props = withDefaults(
 
 defineEmits(['view-tiers', 'message', 'donate']);
 
-const creatorsStore = useCreatorsStore();
-
 const meta = computed<ProfileMeta>(() => {
   const profileMeta = normalizeMeta((props.profile?.profile as any) ?? {});
   const directMeta = normalizeMeta({
@@ -102,7 +99,6 @@ const meta = computed<ProfileMeta>(() => {
     about: props.profile?.about ?? null,
     picture: props.profile?.picture ?? null,
     nip05: props.profile?.nip05 ?? null,
-    lud16: (props.profile as any)?.lud16 ?? null,
   });
   const extraMeta = normalizeMeta((props.profile as any)?.meta ?? {});
   return { ...profileMeta, ...extraMeta, ...directMeta };
@@ -120,11 +116,9 @@ const npub = computed(() => {
 
 const npubShort = computed(() => shortenNpub(npub.value || props.profile?.pubkey || ''));
 
-const displayName = computed(() => creatorsStore.fallbackName(props.profile));
+const displayName = computed(() => displayNameFromProfile(meta.value, npub.value));
 
-const avatarUrl = computed(() => creatorsStore.avatar(props.profile));
-
-const avatarSrc = computed(() => safeImageSrc(avatarUrl.value, displayName.value, 96));
+const avatarSrc = computed(() => safeImageSrc(meta.value?.picture, displayName.value, 96));
 
 function onAvatarError(event: Event) {
   (event.target as HTMLImageElement).src = safeImageSrc(null, displayName.value, 96);
@@ -149,8 +143,6 @@ const tierSummaryText = computed(() => {
 });
 
 const followers = computed(() => props.profile.followers ?? null);
-
-const canDonate = computed(() => Boolean(meta.value.lud16));
 
 const isCached = computed(() => {
   if (typeof props.cacheHit === 'boolean') {
