@@ -26,6 +26,7 @@ export default defineConfig({
       "test/vitest/__tests__/creators-tiers.spec.ts",
       "test/vitest/__tests__/CreatorStudioPage.publish.spec.ts",
       "test/vitest/__tests__/NutzapProfilePage.spec.ts",
+      "test/vitest/__tests__/creatorCard.discovery.spec.ts",
     ],
   },
   resolve: {
