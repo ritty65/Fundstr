@@ -233,8 +233,7 @@ import SendTokenDialog from 'components/SendTokenDialog.vue';
 import { useSendTokensStore } from 'stores/sendTokensStore';
 import { useDonationPresetsStore } from 'stores/donationPresets';
 import { useNostrStore } from 'stores/nostr';
-import { useCreatorsStore } from 'stores/creators';
-import { FEATURED_CREATORS } from 'src/config/featured-creators';
+import { useCreatorsStore, FEATURED_CREATORS } from 'stores/creators';
 
 const creatorsStore = useCreatorsStore();
 const {
@@ -455,19 +454,20 @@ onMounted(() => {
 
 
 <style scoped>
+
 .fixed-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 24px;
+  gap: clamp(20px, 2vw, 32px);
 }
 
-@media (min-width: 1280px) {
+@media (min-width: 1100px) {
   .fixed-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
-@media (min-width: 1440px) {
+@media (min-width: 1360px) {
   .fixed-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
@@ -475,11 +475,11 @@ onMounted(() => {
 
 .featured-grid {
   display: grid;
-  gap: 24px;
+  gap: clamp(20px, 2vw, 32px);
   grid-template-columns: repeat(1, minmax(0, 1fr));
 }
 
-@media (min-width: 640px) {
+@media (min-width: 600px) {
   .featured-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -491,13 +491,13 @@ onMounted(() => {
   }
 }
 
-@media (min-width: 1200px) {
+@media (min-width: 1180px) {
   .featured-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
-@media (min-width: 1440px) {
+@media (min-width: 1360px) {
   .featured-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
@@ -519,17 +519,17 @@ h1 {
 }
 
 .page-shell {
-  padding-inline: clamp(1rem, 3vw, 4rem);
+  padding-inline: clamp(1.25rem, 2.75vw, 4.5rem);
 }
 
 .find-creators-content {
-  width: min(100%, 120rem);
+  width: min(100%, 132rem);
   margin: 0 auto;
   padding-block-end: 3rem;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 2.75rem;
+  gap: clamp(2.5rem, 2.25vw, 3.25rem);
 }
 
 .page-hero {
@@ -614,25 +614,24 @@ h1 {
 @media (min-width: 768px) {
   .find-creators-content {
     padding-block-end: 3.5rem;
-    gap: 3.25rem;
   }
 }
 
-@media (min-width: 1200px) {
-  .find-creators-content {
-    padding-block-end: 4rem;
-  }
-}
-
-@media (min-width: 1440px) {
-  .find-creators-content {
-    width: min(100%, 132rem);
-  }
-}
-
-@media (min-width: 1680px) {
+@media (min-width: 1280px) {
   .find-creators-content {
     width: min(100%, 140rem);
+  }
+}
+
+@media (min-width: 1600px) {
+  .find-creators-content {
+    width: min(100%, 148rem);
+  }
+}
+
+@media (min-width: 1920px) {
+  .find-creators-content {
+    width: min(100%, 160rem);
   }
 }
 </style>
