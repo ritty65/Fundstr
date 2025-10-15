@@ -455,51 +455,38 @@ onMounted(() => {
 
 <style scoped>
 
-.fixed-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: clamp(20px, 2vw, 32px);
-}
-
-@media (min-width: 1100px) {
-  .fixed-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1360px) {
-  .fixed-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-}
-
+.fixed-grid,
 .featured-grid {
   display: grid;
   gap: clamp(20px, 2vw, 32px);
-  grid-template-columns: repeat(1, minmax(0, 1fr));
+  grid-template-columns: repeat(1, 1fr);
 }
 
-@media (min-width: 600px) {
+@media (min-width: 500px) {
+  .fixed-grid,
   .featured-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
-@media (min-width: 960px) {
+@media (min-width: 768px) {
+  .fixed-grid,
   .featured-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
-@media (min-width: 1180px) {
+@media (min-width: 1100px) {
+  .fixed-grid,
   .featured-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 
-@media (min-width: 1360px) {
+@media (min-width: 1400px) {
+  .fixed-grid,
   .featured-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(5, 1fr);
   }
 }
 
@@ -519,11 +506,11 @@ h1 {
 }
 
 .page-shell {
-  padding-inline: clamp(1.25rem, 2.75vw, 4.5rem);
+  padding-inline: clamp(1.25rem, 5vw, 12rem);
 }
 
 .find-creators-content {
-  width: min(100%, 132rem);
+  width: min(100%, 160rem);
   margin: 0 auto;
   padding-block-end: 3rem;
   display: flex;
