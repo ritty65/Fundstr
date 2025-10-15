@@ -342,7 +342,7 @@ const refreshFeatured = () => {
 
 watch(searchWarnings, (warnings) => {
   if (Array.isArray(warnings) && warnings.length > 0) {
-    console.warn('Search warnings:', warnings);
+    console.debug('Search warnings:', warnings);
   }
 });
 

@@ -1,6 +1,8 @@
 import type { App } from 'vue';
 import { inject } from 'vue';
 import type { Creator, Tier } from 'src/lib/fundstrApi';
+import { getJson } from 'src/utils/http';
+import { normalizeMeta, type ProfileMeta } from 'src/utils/profile';
 
 const API_BASE_URL = 'https://api.fundstr.me';
 const CACHE_TTL_MS = 60_000;
@@ -86,27 +88,24 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
 
     const endpoint = new URL(`${API_BASE_URL}/discover/creators`);
     endpoint.searchParams.set('q', query || '*');
-
-    const response = await fetch(endpoint.toString(), {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-      },
-      signal,
-    });
-
-    if (!response.ok) {
-      const body = await safeReadText(response);
-      throw new Error(
-        `Discovery request failed with status ${response.status}: ${body || 'Unknown error'}`,
-      );
+    if (fresh) {
+      endpoint.searchParams.set('fresh', '1');
     }
 
-    const data = await parseJson(response);
-    const payload = normalizeCreatorsResponse(data);
-    creatorsCache.set(query, { ts: now, payload });
+    try {
+      const data = await getJson<any>(endpoint.toString(), { signal });
+      const payload = normalizeCreatorsResponse(data);
+      creatorsCache.set(query, { ts: now, payload });
 
-    return cloneCreatorsResponse(payload);
+      return cloneCreatorsResponse(payload);
+    } catch (error) {
+      if ((error as any)?.name === 'AbortError') {
+        throw error;
+      }
+      throw new Error(
+        `Discovery request failed: ${(error as Error)?.message || 'Unknown error'}`,
+      );
+    }
   }
 
   async function getCreatorTiers({
@@ -130,26 +129,20 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
       endpoint.searchParams.set('fresh', '1');
     }
 
-    const response = await fetch(endpoint.toString(), {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-      },
-      signal,
-    });
+    try {
+      const data = await getJson<any>(endpoint.toString(), { signal });
+      const payload = normalizeTiersResponse(data);
+      tiersCache.set(queryId, { ts: now, payload });
 
-    if (!response.ok) {
-      const body = await safeReadText(response);
+      return cloneTiersResponse(payload);
+    } catch (error) {
+      if ((error as any)?.name === 'AbortError') {
+        throw error;
+      }
       throw new Error(
-        `Tiers request failed with status ${response.status}: ${body || 'Unknown error'}`,
+        `Tiers request failed: ${(error as Error)?.message || 'Unknown error'}`,
       );
     }
-
-    const data = await parseJson(response);
-    const payload = normalizeTiersResponse(data);
-    tiersCache.set(queryId, { ts: now, payload });
-
-    return cloneTiersResponse(payload);
   }
 
   async function getCreatorsByPubkeys({
@@ -193,26 +186,20 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
       endpoint.searchParams.set('fresh', '1');
     }
 
-    const response = await fetch(endpoint.toString(), {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-      },
-      signal,
-    });
+    try {
+      const data = await getJson<any>(endpoint.toString(), { signal });
+      const payload = normalizeCreatorsResponse(data);
+      creatorsByPubkeysCache.set(cacheKey, { ts: now, payload });
 
-    if (!response.ok) {
-      const body = await safeReadText(response);
+      return cloneCreatorsResponse(payload);
+    } catch (error) {
+      if ((error as any)?.name === 'AbortError') {
+        throw error;
+      }
       throw new Error(
-        `Discovery batch request failed with status ${response.status}: ${body || 'Unknown error'}`,
+        `Discovery batch request failed: ${(error as Error)?.message || 'Unknown error'}`,
       );
     }
-
-    const data = await parseJson(response);
-    const payload = normalizeCreatorsResponse(data);
-    creatorsByPubkeysCache.set(cacheKey, { ts: now, payload });
-
-    return cloneCreatorsResponse(payload);
   }
 
   function clearCache() {
@@ -254,26 +241,6 @@ function normalizeQuery(value: string | undefined): string {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : '*';
-}
-
-async function parseJson(response: Response): Promise<any> {
-  const text = await safeReadText(response);
-  if (!text) {
-    return {};
-  }
-  try {
-    return JSON.parse(text);
-  } catch (error) {
-    throw new Error('Invalid JSON response from discovery service');
-  }
-}
-
-async function safeReadText(response: Response): Promise<string> {
-  try {
-    return await response.text();
-  } catch {
-    return '';
-  }
 }
 
 function normalizeCreatorsResponse(data: any): DiscoveryCreatorsResponse {
@@ -320,13 +287,31 @@ function normalizeCreator(entry: any): Creator {
   const profile = isRecord(entry.profile) ? entry.profile : {};
   const meta = isRecord(entry.meta) ? entry.meta : {};
 
-  const displayName =
-    profile.display_name ?? meta.display_name ?? profile.name ?? meta.name ?? null;
-  const name = profile.name ?? meta.name ?? profile.username ?? null;
-  const about = profile.about ?? meta.about ?? null;
-  const picture = profile.picture ?? meta.picture ?? null;
-  const banner = profile.banner ?? meta.banner ?? null;
-  const nip05 = profile.nip05 ?? meta.nip05 ?? null;
+  const mergedMeta: ProfileMeta = {
+    ...normalizeMeta(profile),
+    ...normalizeMeta(meta),
+    ...normalizeMeta({
+      display_name: entry.displayName ?? null,
+      name: entry.name ?? entry.username ?? null,
+      about: entry.about ?? null,
+      picture: entry.picture ?? null,
+      nip05: entry.nip05 ?? null,
+      website: entry.website ?? null,
+    }),
+  };
+
+  const pick = (value: string | null | undefined) => {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed || null;
+  };
+
+  const displayName = pick(mergedMeta.display_name);
+  const name = pick(mergedMeta.name);
+  const about = pick(mergedMeta.about);
+  const picture = pick(mergedMeta.picture);
+  const banner = pick((profile as any)?.banner ?? (meta as any)?.banner ?? null);
+  const nip05 = pick(mergedMeta.nip05);
 
   return {
     pubkey: entry.pubkey,
