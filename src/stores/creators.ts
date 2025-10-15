@@ -9,13 +9,13 @@ import { toHex, type NostrEvent as RelayEvent } from "@/nostr/relayClient";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import { type NutzapProfileDetails } from "@/nutzap/profileCache";
 import { useDiscovery } from "src/api/fundstrDiscovery";
-import type { DiscoveryTiersRequest } from "src/api/fundstrDiscovery";
 import type {
   Creator as DiscoveryCreator,
   CreatorTier as DiscoveryCreatorTier,
 } from "src/lib/fundstrApi";
 import type { Creator as FundstrCreator } from "src/lib/fundstrApi";
 import { useNdk } from "src/composables/useNdk";
+import { shortenNpub } from "src/utils/profile";
 
 export const FEATURED_CREATORS = [
   "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
@@ -31,6 +31,7 @@ export const FEATURED_CREATORS = [
 ];
 
 export type CreatorProfile = FundstrCreator;
+export type CreatorRow = CreatorProfile;
 
 export class FundstrProfileFetchError extends Error {
   fallbackAttempted: boolean;
@@ -328,7 +329,7 @@ export async function fetchFundstrProfileBundle(
       onError: (error: unknown) => void,
     ) => {
       try {
-        const tierRequest: DiscoveryTiersRequest = { id, fresh };
+        const tierRequest = { id, fresh };
         if (fresh) {
           tierRequest.timeoutMs = undefined;
         }
@@ -648,6 +649,18 @@ export const useCreatorsStore = defineStore("creators", {
     };
   },
   getters: {
+    featured(state): CreatorProfile[] {
+      return state.featuredCreators;
+    },
+    loadingSearch(state): boolean {
+      return state.searching;
+    },
+    errorSearch(state): string {
+      return state.error;
+    },
+    errorFeatured(state): string {
+      return state.featuredError;
+    },
     favoriteHexPubkeys(): string[] {
       const raw = Array.isArray(this.favorites?.value)
         ? this.favorites.value
@@ -1123,21 +1136,28 @@ export const useCreatorsStore = defineStore("creators", {
       }
     },
 
-    async loadFeaturedCreators(forceRefresh = false) {
+    async loadFeatured(npubs: string[], opts: { fresh?: boolean } = {}) {
       this.featuredError = "";
       this.loadingFeatured = true;
 
       const discovery = useDiscovery();
+      const fresh = Boolean(opts.fresh);
 
-      if (forceRefresh) {
+      if (fresh) {
         this.featuredCreators = [];
       }
 
-      const npubs = FEATURED_CREATORS.map((npub) =>
-        typeof npub === "string" ? npub.trim() : "",
-      ).filter((npub) => Boolean(npub));
+      const normalizedNpubs = (Array.isArray(npubs) ? npubs : [])
+        .map((npub) => (typeof npub === "string" ? npub.trim() : ""))
+        .filter((npub) => Boolean(npub));
 
-      const pubkeys: string[] = npubs
+      if (!normalizedNpubs.length) {
+        this.featuredCreators = [];
+        this.loadingFeatured = false;
+        return;
+      }
+
+      const pubkeys: string[] = normalizedNpubs
         .map((npub) => {
           try {
             return toHex(npub);
@@ -1182,8 +1202,9 @@ export const useCreatorsStore = defineStore("creators", {
 
       try {
         const response = await discovery.getCreatorsByPubkeys({
-          npubs,
-          fresh: forceRefresh,
+          npubs: normalizedNpubs,
+          fresh,
+          swr: true,
         });
 
         const fetchedMap = new Map<string, CreatorProfile>();
@@ -1258,6 +1279,14 @@ export const useCreatorsStore = defineStore("creators", {
       }
     },
 
+    async loadFeaturedCreators(forceRefresh = false) {
+      return this.loadFeatured(FEATURED_CREATORS, { fresh: forceRefresh });
+    },
+
+    async refreshFeatured(npubs: string[]) {
+      return this.loadFeatured(npubs, { fresh: true });
+    },
+
     async publishTierDefinitions(tiersArray: Tier[]) {
       const creatorNpub = this.currentUserNpub;
       const created_at = Math.floor(Date.now() / 1000);
@@ -1288,3 +1317,61 @@ export const useCreatorsStore = defineStore("creators", {
     },
   },
 });
+
+function shortPubkey(pubkey: string): string {
+  if (!pubkey) {
+    return "";
+  }
+  try {
+    const npub = nip19.npubEncode(pubkey);
+    return shortenNpub(npub);
+  } catch {
+    return shortenNpub(pubkey);
+  }
+}
+
+export function fallbackName(row: CreatorRow | null | undefined): string {
+  if (!row) {
+    return "";
+  }
+
+  const primaryDisplay = toNullableString((row as any).displayName);
+  if (primaryDisplay) {
+    return primaryDisplay;
+  }
+
+  const metaDisplay = toNullableString((row.profile as any)?.display_name);
+  if (metaDisplay) {
+    return metaDisplay;
+  }
+
+  const primaryName = toNullableString((row as any).name);
+  if (primaryName) {
+    return primaryName;
+  }
+
+  const metaName = toNullableString((row.profile as any)?.name);
+  if (metaName) {
+    return metaName;
+  }
+
+  return shortPubkey(typeof row.pubkey === "string" ? row.pubkey : "");
+}
+
+export function avatar(row: CreatorRow | null | undefined): string {
+  if (!row) {
+    return "";
+  }
+
+  const direct = toNullableString((row as any).picture);
+  if (direct) {
+    return direct;
+  }
+
+  const profilePicture = toNullableString((row.profile as any)?.picture);
+  if (profilePicture) {
+    return profilePicture;
+  }
+
+  return "";
+}

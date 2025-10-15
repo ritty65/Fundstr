@@ -234,6 +234,7 @@ import { useSendTokensStore } from 'stores/sendTokensStore';
 import { useDonationPresetsStore } from 'stores/donationPresets';
 import { useNostrStore } from 'stores/nostr';
 import { useCreatorsStore } from 'stores/creators';
+import { FEATURED_CREATORS } from 'src/config/featured-creators';
 
 const creatorsStore = useCreatorsStore();
 const {
@@ -322,7 +323,11 @@ async function loadFeatured(force = false) {
   if (loadingFeatured.value && !force) {
     return;
   }
-  await creatorsStore.loadFeaturedCreators(force);
+  if (force) {
+    await creatorsStore.refreshFeatured(FEATURED_CREATORS);
+    return;
+  }
+  await creatorsStore.loadFeatured(FEATURED_CREATORS);
 }
 
 const featuredError = computed(() => storeFeaturedError.value);
