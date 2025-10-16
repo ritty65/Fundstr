@@ -65,7 +65,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dist
-          path: ${{ env.OUTDIR }}
+          # No path needed, download to current directory
 
       - name: Parse deploy config from secrets
         id: cfg
@@ -79,13 +79,12 @@ jobs:
           echo "target=${{ secrets.SSH_TARGET_STAGING }}" >> $GITHUB_OUTPUT
           echo "port=${{ secrets.SSH_PORT_STAGING }}" >> $GITHUB_OUTPUT
 
-      # === NEW STEP: Automatically get the server's fingerprint ===
       - name: Generate known_hosts
         id: gen_known
         run: |
           set -euo pipefail
           HOST="${{ steps.cfg.outputs.host }}"
-          PORT="${{ steps.cfg.outputs.port:-22 }}"
+          PORT="${{ secrets.SSH_PORT_STAGING:-22 }}"
           echo "Scanning SSH host key for $HOST:$PORT"
           mkdir -p ~/.ssh
           ssh-keyscan -p "$PORT" "$HOST" > host_key
@@ -93,7 +92,6 @@ jobs:
           cat host_key >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # === MODIFIED STEP: Use the generated fingerprint ===
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
         with:
@@ -101,28 +99,34 @@ jobs:
           known_hosts: ${{ steps.gen_known.outputs.known_hosts }}
           if_key_exists: fail
 
+      # === FIX: Correctly find the unpacked directory and use the right rsync syntax ===
       - name: Deploy (rsync)
         env:
           HOST:   ${{ steps.cfg.outputs.host }}
           USER:   ${{ steps.cfg.outputs.user }}
           TARGET: ${{ steps.cfg.outputs.target }}
-          PORT:   ${{ steps.cfg.outputs.port }}
+          PORT:   ${{ secrets.SSH_PORT_STAGING:-22 }}
         run: |
           set -euo pipefail
-          SOURCE_DIR=$(find dist -mindepth 1 -maxdepth 1 -type d | head -n 1)
+          # The build folder (pwa) is now in the root. Find it.
+          SOURCE_DIR=$(find . -mindepth 1 -maxdepth 1 -type d -name "pwa" | head -n 1)
           if [[ ! -d "$SOURCE_DIR" ]]; then
-            echo "::error:: Build output subdirectory not found!"
+            echo "::error:: Build output directory 'pwa' not found in workspace!"
+            ls -R .
             exit 1
           fi
+          echo "Found source directory: $SOURCE_DIR"
+          
+          # Fix: Correct rsync user/host syntax (one @)
           rsync -avz --delete --progress \
-            -e "ssh -o StrictHostKeyChecking=yes -p ${PORT:-22}" \
-            "$SOURCE_DIR/" "$USER@@$HOST:$TARGET/"
+            -e "ssh -o StrictHostKeyChecking=yes -p $PORT" \
+            "$SOURCE_DIR/" "$USER@$HOST:$TARGET/"
 
       - name: Smoke check deployment
         env:
           HOST:   ${{ steps.cfg.outputs.host }}
           USER:   ${{ steps.cfg.outputs.user }}
           TARGET: ${{ steps.cfg.outputs.target }}
-          PORT:   ${{ steps.cfg.outputs.port }}
+          PORT:   ${{ secrets.SSH_PORT_STAGING:-22 }}
         run: |
-          ssh -p "${PORT:-22}" "$USER@$HOST" "set -e; ls -lah '${TARGET}'; test -s '${TARGET}/index.html'"
+          ssh -p "$PORT" "$USER@$HOST" "set -e; ls -lah '${TARGET}'; test -s '${TARGET}/index.html'"
