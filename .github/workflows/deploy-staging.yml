@@ -1,51 +1,35 @@
-# .github/workflows/deploy-staging.yml
-
-name: Deploy staging (Develop2 → Hostinger)
-
-on:
-  push:
-    branches: [Develop2]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-concurrency:
-  group: staging-deploy-${{ github.ref }}
-  cancel-in-progress: false
-
-env:
-  NODE_VERSION: 20
-  PNPM_VERSION: 9
-  OUTDIR: dist
-  HOST: ${{ secrets.STAGING_HOST }}
-  USER: ${{ secrets.STAGING_USER }}
-  TARGET: ${{ secrets.STAGING_TARGET }}
-  SSH_OPTS: "-o StrictHostKeyChecking=no -p ${{ secrets.STAGING_SSH_PORT }}"
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/Develop2' || github.event_name == 'workflow_dispatch'
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ✅ Install pnpm first so setup-node can cache it
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: '**/pnpm-lock.yaml'
+          node-version: 20              # no 'cache: pnpm' here
+
+      - name: Setup pnpm
+        id: pnpm-setup
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Restore pnpm store cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
@@ -58,16 +42,18 @@ jobs:
           set -euo pipefail
           install -m 600 -D /dev/null ~/.ssh/id_ed25519
           echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/id_ed25519
-          ssh-keyscan -p "${{ secrets.STAGING_SSH_PORT }}" "${{ env.HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -p "${{ secrets.STAGING_SSH_PORT }}" "${{ secrets.STAGING_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Deploy via rsync
+        env:
+          HOST:   ${{ secrets.STAGING_HOST }}
+          USER:   ${{ secrets.STAGING_USER }}
+          TARGET: ${{ secrets.STAGING_TARGET }}
+          OUTDIR: dist
+          SSH_OPTS: "-o StrictHostKeyChecking=no -p ${{ secrets.STAGING_SSH_PORT }}"
         run: |
           set -euo pipefail
           rsync -az --delete -e "ssh $SSH_OPTS" "$OUTDIR/" "${USER}@${HOST}:${TARGET}/"
 
-      - name: Smoke test staging (edge-resilient)
-        env:
-          BASE_URL: https://staging.fundstr.me
-        run: |
-          set -euo pipefail
-          curl -I -fsSL "${BASE_URL}/?t=${{ github.run_id }}#${{ github.sha }}" >/dev/null
+      - name: Smoke test staging
+        run: curl -I -fsSL "https://staging.fundstr.me/?t=${{ github.run_id }}#${{ github.sha }}" >/dev/null
