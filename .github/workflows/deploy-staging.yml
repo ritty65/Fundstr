@@ -8,7 +8,6 @@ on:
 permissions:
   contents: read
 
-# prevent overlapping deploys
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name }}
   cancel-in-progress: true
@@ -38,11 +37,6 @@ jobs:
           cache: pnpm
           cache-dependency-path: '**/pnpm-lock.yaml'
 
-      - name: Versions (debug)
-        run: |
-          node -v
-          pnpm -v
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -51,8 +45,6 @@ jobs:
           if [ -f .env.staging ]; then
             echo "Applying .env.staging"
             cp .env.staging .env
-          else
-            echo ".env.staging not found, skipping"
           fi
 
       - name: Build PWA
@@ -75,9 +67,6 @@ jobs:
           name: dist
           path: ${{ env.OUTDIR }}
 
-      - name: Show downloaded files
-        run: ls -R ${{ env.OUTDIR }}
-
       - name: Parse deploy config from secrets
         id: cfg
         run: |
@@ -90,24 +79,29 @@ jobs:
           echo "target=${{ secrets.SSH_TARGET_STAGING }}" >> $GITHUB_OUTPUT
           echo "port=${{ secrets.SSH_PORT_STAGING }}" >> $GITHUB_OUTPUT
 
+      # === NEW STEP: Automatically get the server's fingerprint ===
+      - name: Generate known_hosts
+        id: gen_known
+        run: |
+          set -euo pipefail
+          HOST="${{ steps.cfg.outputs.host }}"
+          PORT="${{ steps.cfg.outputs.port:-22 }}"
+          echo "Scanning SSH host key for $HOST:$PORT"
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "$PORT" "$HOST" > host_key
+          echo "known_hosts<<EOF" >> $GITHUB_OUTPUT
+          cat host_key >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # === MODIFIED STEP: Use the generated fingerprint ===
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+          known_hosts: ${{ steps.gen_known.outputs.known_hosts }}
           if_key_exists: fail
 
-      - name: Check SSH connection & prepare target dir
-        env:
-          HOST:   ${{ steps.cfg.outputs.host }}
-          USER:   ${{ steps.cfg.outputs.user }}
-          TARGET: ${{ steps.cfg.outputs.target }}
-          PORT:   ${{ steps.cfg.outputs.port }}
-        run: |
-          set -euxo pipefail
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -p "${PORT:-22}" "$USER@$HOST" "mkdir -p '$TARGET' && test -w '$TARGET'"
-
-      - name: Deploy (rsync with verbose logging)
+      - name: Deploy (rsync)
         env:
           HOST:   ${{ steps.cfg.outputs.host }}
           USER:   ${{ steps.cfg.outputs.user }}
@@ -115,23 +109,14 @@ jobs:
           PORT:   ${{ steps.cfg.outputs.port }}
         run: |
           set -euo pipefail
-          # Automatically find the build output dir (e.g., dist/pwa)
           SOURCE_DIR=$(find dist -mindepth 1 -maxdepth 1 -type d | head -n 1)
-
           if [[ ! -d "$SOURCE_DIR" ]]; then
-            echo "::error:: Build output subdirectory not found in 'dist'!"
+            echo "::error:: Build output subdirectory not found!"
             exit 1
           fi
-
-          echo "--- Source Directory Contents ---"
-          ls -laR "$SOURCE_DIR"
-          echo "---------------------------------"
-          echo "Attempting to deploy from '$SOURCE_DIR' to '$USER@$HOST:$TARGET/'"
-
-          # Add --verbose and --progress for detailed debugging output
           rsync -avz --delete --progress \
             -e "ssh -o StrictHostKeyChecking=yes -p ${PORT:-22}" \
-            "$SOURCE_DIR/" "$USER@$HOST:$TARGET/"
+            "$SOURCE_DIR/" "$USER@@$HOST:$TARGET/"
 
       - name: Smoke check deployment
         env:
@@ -140,6 +125,4 @@ jobs:
           TARGET: ${{ steps.cfg.outputs.target }}
           PORT:   ${{ steps.cfg.outputs.port }}
         run: |
-          echo "Verifying deployment..."
           ssh -p "${PORT:-22}" "$USER@$HOST" "set -e; ls -lah '${TARGET}'; test -s '${TARGET}/index.html'"
-          echo "Smoke check passed: index.html is present and not empty."
