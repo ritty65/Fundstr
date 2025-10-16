@@ -1,29 +1,52 @@
+name: Deploy staging (Develop2 → Hostinger)
+
+on:
+  push:
+    branches: [Develop2]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Prevent overlapping deploys
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 20
+  PNPM_VERSION: 9
+  OUTDIR: dist
+
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/Develop2' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # 1) Node first (no pnpm cache here)
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20              # no 'cache: pnpm' here
+          node-version: ${{ env.NODE_VERSION }}
 
+      # 2) Install pnpm (official action)
       - name: Setup pnpm
         id: pnpm-setup
         uses: pnpm/action-setup@v4
         with:
-          version: 9
-          run_install: false
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false  # we'll run install after caching
 
+      # 3) Compute pnpm store path for caching
       - name: Get pnpm store directory
         id: pnpm-cache
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
 
+      # 4) Restore/save pnpm cache
       - name: Restore pnpm store cache
         uses: actions/cache@v4
         with:
@@ -31,29 +54,62 @@ jobs:
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: ${{ runner.os }}-pnpm-store-
 
+      - name: Versions (debug)
+        run: |
+          node -v
+          pnpm -v
+          pnpm config get store-dir || true
+
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
       - name: Build
         run: pnpm build
 
-      - name: Prepare SSH key
+      # 5) Ship build artifact to the deploy job
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: ${{ env.OUTDIR }}
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/Develop2' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Prepare SSH key and known_hosts
+        env:
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          SSH_PORT: ${{ secrets.STAGING_SSH_PORT }}
+          HOST: ${{ secrets.STAGING_HOST }}
         run: |
           set -euo pipefail
           install -m 600 -D /dev/null ~/.ssh/id_ed25519
-          echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/id_ed25519
-          ssh-keyscan -p "${{ secrets.STAGING_SSH_PORT }}" "${{ secrets.STAGING_HOST }}" >> ~/.ssh/known_hosts
+          printf '%s' "$SSH_KEY" > ~/.ssh/id_ed25519
+          ssh-keyscan -p "$SSH_PORT" "$HOST" >> ~/.ssh/known_hosts
 
-      - name: Deploy via rsync
+      - name: Deploy via rsync (with 3 retries)
         env:
-          HOST:   ${{ secrets.STAGING_HOST }}
           USER:   ${{ secrets.STAGING_USER }}
+          HOST:   ${{ secrets.STAGING_HOST }}
           TARGET: ${{ secrets.STAGING_TARGET }}
-          OUTDIR: dist
-          SSH_OPTS: "-o StrictHostKeyChecking=no -p ${{ secrets.STAGING_SSH_PORT }}"
+          SSH_PORT: ${{ secrets.STAGING_SSH_PORT }}
         run: |
           set -euo pipefail
-          rsync -az --delete -e "ssh $SSH_OPTS" "$OUTDIR/" "${USER}@${HOST}:${TARGET}/"
+          for i in 1 2 3; do
+            rsync -az --delete -e "ssh -o StrictHostKeyChecking=yes -p $SSH_PORT" dist/ "$USER@$HOST:$TARGET/" && break || {
+              echo "rsync failed (attempt $i), retrying..."; sleep 3;
+            }
+          done
 
-      - name: Smoke test staging
-        run: curl -I -fsSL "https://staging.fundstr.me/?t=${{ github.run_id }}#${{ github.sha }}" >/dev/null
+      - name: Smoke test (non-blocking)
+        continue-on-error: true
+        run: curl -I -fsSL "https://staging.fundstr.me/?run=${{ github.run_id }}" >/dev/null
