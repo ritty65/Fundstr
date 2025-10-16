@@ -8,14 +8,13 @@ on:
 permissions:
   contents: read
 
-# Prevent overlapping deploys
+# avoid overlapping deploys
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name }}
   cancel-in-progress: true
 
 env:
   NODE_VERSION: 20
-  PNPM_VERSION: 9
   OUTDIR: dist
 
 jobs:
@@ -27,51 +26,40 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 1) Node first (no pnpm cache here)
+      # Install pnpm — version is read from your package.json "packageManager".
+      # (Do NOT pass a version here to avoid double version sources.)
+      - name: Setup pnpm
+        id: pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      # Now enable Node + built-in pnpm cache
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: '**/pnpm-lock.yaml'
 
-      # 2) Install pnpm (official action)
-      - name: Setup pnpm
-        id: pnpm-setup
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-          run_install: false  # we'll run install after caching
-
-      # 3) Compute pnpm store path for caching
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
-
-      # 4) Restore/save pnpm cache
-      - name: Restore pnpm store cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-pnpm-store-
-
-      - name: Versions (debug)
+      - name: Print versions (debug)
         run: |
           node -v
           pnpm -v
-          pnpm config get store-dir || true
+          node -p "require('./package.json').packageManager || 'no packageManager'"
 
-      - name: Install deps
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build
         run: pnpm build
 
-      # 5) Ship build artifact to the deploy job
-      - name: Upload dist
+      - name: Upload dist artifact
         uses: actions/upload-artifact@v4
         with:
           name: dist
           path: ${{ env.OUTDIR }}
+          if-no-files-found: error
 
   deploy:
     needs: build
@@ -79,29 +67,29 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     steps:
-      - name: Download dist
+      - name: Download dist artifact
         uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist
 
-      - name: Prepare SSH key and known_hosts
+      - name: Prepare SSH key & known_hosts
         env:
-          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          SSH_KEY:  ${{ secrets.STAGING_SSH_KEY }}
           SSH_PORT: ${{ secrets.STAGING_SSH_PORT }}
-          HOST: ${{ secrets.STAGING_HOST }}
+          HOST:     ${{ secrets.STAGING_HOST }}
         run: |
           set -euo pipefail
           install -m 600 -D /dev/null ~/.ssh/id_ed25519
           printf '%s' "$SSH_KEY" > ~/.ssh/id_ed25519
-          ssh-keyscan -p "$SSH_PORT" "$HOST" >> ~/.ssh/known_hosts
+          ssh-keyscan -H -p "$SSH_PORT" "$HOST" >> ~/.ssh/known_hosts
 
-      - name: Deploy via rsync (with 3 retries)
+      - name: Deploy via rsync (with retries)
         env:
-          USER:   ${{ secrets.STAGING_USER }}
-          HOST:   ${{ secrets.STAGING_HOST }}
-          TARGET: ${{ secrets.STAGING_TARGET }}
-          SSH_PORT: ${{ secrets.STAGING_SSH_PORT }}
+          USER:    ${{ secrets.STAGING_USER }}
+          HOST:    ${{ secrets.STAGING_HOST }}
+          TARGET:  ${{ secrets.STAGING_TARGET }}
+          SSH_PORT:${{ secrets.STAGING_SSH_PORT }}
         run: |
           set -euo pipefail
           for i in 1 2 3; do
@@ -112,4 +100,4 @@ jobs:
 
       - name: Smoke test (non-blocking)
         continue-on-error: true
-        run: curl -I -fsSL "https://staging.fundstr.me/?run=${{ github.run_id }}" >/dev/null
+        run: curl -I -fsSL "https://staging.fundstr.me/?run=${{ github.run_id }}#${{ github.sha }}" >/dev/null
