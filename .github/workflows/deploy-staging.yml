@@ -7,6 +7,8 @@ on:
 
 env:
   NODE_VERSION: 20
+  # Choose build mode for staging: "spa" (recommended) or "pwa"
+  BUILD_MODE: spa
 
 concurrency:
   group: deploy-staging-${{ github.ref }}
@@ -34,10 +36,8 @@ jobs:
       - name: Use staging env (if present)
         run: if [ -f .env.staging ]; then cp .env.staging .env; fi
 
-      # ── Build mode ──
-      # For zero SW cache on staging, switch to: pnpm quasar build -m spa
-      - name: Build PWA
-        run: pnpm quasar build -m pwa
+      - name: Build app
+        run: pnpm quasar build -m ${{ env.BUILD_MODE }}
 
       - name: Upload dist
         uses: actions/upload-artifact@v4
@@ -66,19 +66,24 @@ jobs:
           echo "Build dir: $BUILD_DIR"
           ls -lah "$BUILD_DIR" | sed -n '1,80p'
 
-      # Preflight: make sure build is sane
+      # ✅ Robust preflight without pipefail issues
       - name: Verify build contents
         run: |
           set -euo pipefail
-          test -s "${{ steps.detect.outputs.BUILD_DIR }}/index.html" \
-            || (echo "::error:: index.html missing in build dir" && exit 1)
-          find "${{ steps.detect.outputs.BUILD_DIR }}" -maxdepth 2 -name "*.js" | head -n 1 \
-            || (echo "::error:: no JS bundles found" && exit 1)
+          DIR="${{ steps.detect.outputs.BUILD_DIR }}"
+          test -s "$DIR/index.html" || { echo "::error:: index.html missing in $DIR"; exit 1; }
+          # Look for at least one JS file anywhere under DIR; avoid head|pipefail
+          if ! find "$DIR" -type f -name "*.js" -print -quit | grep -q .; then
+            echo "::error:: no JS bundles found under $DIR"
+            echo "Tree (depth 2):"; find "$DIR" -maxdepth 2 -type f | sed -n '1,200p'
+            exit 1
+          fi
 
-      # Ship .htaccess + version.txt every deploy
+      # Always ship .htaccess + version.txt
       - name: Ensure .htaccess + version.txt
         run: |
-          cat > "${{ steps.detect.outputs.BUILD_DIR }}/.htaccess" <<'HTACCESS'
+          DIR="${{ steps.detect.outputs.BUILD_DIR }}"
+          cat > "$DIR/.htaccess" <<'HTACCESS'
           <IfModule mod_rewrite.c>
             RewriteEngine On
             RewriteBase /
@@ -102,9 +107,9 @@ jobs:
           </IfModule>
           HTACCESS
 
-          echo "${GITHUB_SHA} $(date -u '+%F %T UTC')" > "${{ steps.detect.outputs.BUILD_DIR }}/version.txt"
+          echo "${GITHUB_SHA} $(date -u '+%F %T UTC')" > "$DIR/version.txt"
 
-      # Dynamic known_hosts (no extra secret needed)
+      # Dynamic known_hosts
       - name: Generate known_hosts
         id: kh
         env:
@@ -128,7 +133,7 @@ jobs:
           known_hosts: ${{ steps.kh.outputs.known_hosts }}
           if_key_exists: replace
 
-      # Prepare target and guard path (atomic deploy uses __incoming / __backup)
+      # Atomic deploy (incoming → swap)
       - name: Prepare target dir
         env:
           HOST:   ${{ secrets.SSH_HOST }}
@@ -139,11 +144,10 @@ jobs:
           set -euxo pipefail
           case "$TARGET" in
             /home/*/domains/*/public_html/*) ;;
-            *) echo "::error:: Refusing to deploy to suspicious TARGET path: $TARGET"; exit 1;;
+            *) echo "::error:: suspicious TARGET path: $TARGET"; exit 1;;
           esac
-          ssh -p "${PORT:-22}" "$USER@$HOST" "mkdir -p '$TARGET.__incoming' '$TARGET.__backup' && ls -ld '$TARGET' || true"
+          ssh -p "${PORT:-22}" "$USER@$HOST" "mkdir -p '$TARGET.__incoming' '$TARGET.__backup'"
 
-      # Upload to __incoming first
       - name: Upload to __incoming (rsync)
         env:
           HOST:   ${{ secrets.SSH_HOST }}
@@ -156,7 +160,6 @@ jobs:
             "${{ steps.detect.outputs.BUILD_DIR }}/" \
             "$USER@$HOST:$TARGET.__incoming/"
 
-      # Atomic swap: rotate previous to __backup/prev, then move __incoming -> live
       - name: Atomic swap
         env:
           HOST:   ${{ secrets.SSH_HOST }}
@@ -174,12 +177,10 @@ jobs:
             mv "$TARGET.__incoming" "$TARGET"
           '
 
-      # Smoke tests: status + simple content probe
       - name: Smoke check
         run: |
           set -euo pipefail
           curl -fsSI https://staging.fundstr.me/ | sed -n '1,20p'
           curl -fsSI https://staging.fundstr.me/find-creators | sed -n '1,20p'
           curl -fsS  https://staging.fundstr.me/version.txt | tee /tmp/version.txt
-          # Basic content probe (adjust text if needed)
-          curl -fsS https://staging.fundstr.me/ | grep -i -E "Fundstr|Nostr User Search"
+          curl -fsS  https://staging.fundstr.me/ | grep -i -E "Fundstr|Nostr User Search"
