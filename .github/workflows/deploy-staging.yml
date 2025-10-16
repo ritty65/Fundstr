@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 
-# prevent overlapping deploys for the same branch
+# prevent overlapping deploys
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref_name }}
   cancel-in-progress: true
@@ -26,14 +26,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Install pnpm; version comes from package.json "packageManager"
+      # Uses pnpm version from package.json "packageManager"
       - name: Setup pnpm
-        id: pnpm
         uses: pnpm/action-setup@v4
         with:
           run_install: false
 
-      # Now enable Node + built-in pnpm cache
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -41,7 +39,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: '**/pnpm-lock.yaml'
 
-      - name: Print versions (debug)
+      - name: Versions (debug)
         run: |
           node -v
           pnpm -v
@@ -72,30 +70,68 @@ jobs:
           name: dist
           path: dist
 
+      # Resolve values from YOUR secrets (with safe default for port)
+      - name: Resolve config
+        id: cfg
+        run: |
+          set -euo pipefail
+          HOST="${{ secrets.SSH_HOST }}"
+          USER="${{ secrets.SSH_USER }}"
+          TARGET="${{ secrets.SSH_TARGET_STAGING }}"
+          PORT="${{ secrets.SSH_PORT }}"
+          # default Hostinger port if empty
+          if [ -z "$PORT" ]; then PORT=65002; fi
+          [ -n "$HOST" ]   || { echo "Missing secret SSH_HOST"; exit 1; }
+          [ -n "$USER" ]   || { echo "Missing secret SSH_USER"; exit 1; }
+          [ -n "$TARGET" ] || { echo "Missing secret SSH_TARGET_STAGING"; exit 1; }
+          echo "host=$HOST"     >> "$GITHUB_OUTPUT"
+          echo "user=$USER"     >> "$GITHUB_OUTPUT"
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "port=$PORT"     >> "$GITHUB_OUTPUT"
+          echo "✅ Using SSH port: $PORT"
+
       - name: Prepare SSH key & known_hosts
         env:
-          SSH_KEY:  ${{ secrets.STAGING_SSH_KEY }}
-          SSH_PORT: ${{ secrets.STAGING_SSH_PORT }}   # ← the missing space is here
-          HOST:     ${{ secrets.STAGING_HOST }}
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          HOST:    ${{ steps.cfg.outputs.host }}
+          PORT:    ${{ steps.cfg.outputs.port }}
         run: |
           set -euo pipefail
+          [ -n "$SSH_KEY" ] || { echo "Missing secret SSH_PRIVATE_KEY"; exit 1; }
           install -m 600 -D /dev/null ~/.ssh/id_ed25519
           printf '%s' "$SSH_KEY" > ~/.ssh/id_ed25519
-          ssh-keyscan -H -p "$SSH_PORT" "$HOST" >> ~/.ssh/known_hosts
+          ssh-keyscan -H -p "$PORT" "$HOST" >> ~/.ssh/known_hosts
 
-      - name: Deploy via rsync (with retries)
+      - name: Check SSH connection & prepare target dir
         env:
-          USER:     ${{ secrets.STAGING_USER }}
-          HOST:     ${{ secrets.STAGING_HOST }}
-          TARGET:   ${{ secrets.STAGING_TARGET }}
-          SSH_PORT: ${{ secrets.STAGING_SSH_PORT }}
+          HOST:   ${{ steps.cfg.outputs.host }}
+          USER:   ${{ steps.cfg.outputs.user }}
+          TARGET: ${{ steps.cfg.outputs.target }}
+          PORT:   ${{ steps.cfg.outputs.port }}
+        run: |
+          set -euxo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -p "$PORT" "$USER@$HOST" "mkdir -p '$TARGET' && test -w '$TARGET'"
+
+      - name: Deploy (rsync with fallback to scp)
+        env:
+          HOST:   ${{ steps.cfg.outputs.host }}
+          USER:   ${{ steps.cfg.outputs.user }}
+          TARGET: ${{ steps.cfg.outputs.target }}
+          PORT:   ${{ steps.cfg.outputs.port }}
         run: |
           set -euo pipefail
-          for i in 1 2 3; do
-            rsync -az --delete -e "ssh -o StrictHostKeyChecking=yes -p $SSH_PORT" dist/ "$USER@$HOST:$TARGET/" && break || {
-              echo "rsync failed (attempt $i), retrying..."; sleep 3;
-            }
-          done
+          if ssh -p "$PORT" "$USER@$HOST" 'command -v rsync >/dev/null 2>&1'; then
+            echo "Using rsync…"
+            for i in 1 2 3; do
+              rsync -az --delete -e "ssh -o StrictHostKeyChecking=yes -p $PORT" dist/ "$USER@$HOST:$TARGET/" && break || {
+                echo "rsync failed (attempt $i), retrying…"; sleep 3;
+              }
+            done
+          else
+            echo "rsync not found on remote; using scp -r"
+            scp -P "$PORT" -o StrictHostKeyChecking=yes -r dist/* "$USER@$HOST:$TARGET/"
+          fi
+          echo "✅ Deploy finished."
 
       - name: Smoke test (non-blocking)
         continue-on-error: true
