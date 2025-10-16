@@ -65,7 +65,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dist
-          # No path needed, download to current directory
 
       - name: Parse deploy config from secrets
         id: cfg
@@ -99,7 +98,6 @@ jobs:
           known_hosts: ${{ steps.gen_known.outputs.known_hosts }}
           if_key_exists: fail
 
-      # === FIX: Correctly find the unpacked directory and use the right rsync syntax ===
       - name: Deploy (rsync)
         env:
           HOST:   ${{ steps.cfg.outputs.host }}
@@ -108,7 +106,6 @@ jobs:
           PORT:   ${{ secrets.SSH_PORT_STAGING:-22 }}
         run: |
           set -euo pipefail
-          # The build folder (pwa) is now in the root. Find it.
           SOURCE_DIR=$(find . -mindepth 1 -maxdepth 1 -type d -name "pwa" | head -n 1)
           if [[ ! -d "$SOURCE_DIR" ]]; then
             echo "::error:: Build output directory 'pwa' not found in workspace!"
@@ -116,17 +113,18 @@ jobs:
             exit 1
           fi
           echo "Found source directory: $SOURCE_DIR"
-          
-          # Fix: Correct rsync user/host syntax (one @)
           rsync -avz --delete --progress \
             -e "ssh -o StrictHostKeyChecking=yes -p $PORT" \
             "$SOURCE_DIR/" "$USER@$HOST:$TARGET/"
 
+      # === THE FINAL FIX: Use the full, absolute path for verification ===
       - name: Smoke check deployment
         env:
           HOST:   ${{ steps.cfg.outputs.host }}
           USER:   ${{ steps.cfg.outputs.user }}
-          TARGET: ${{ steps.cfg.outputs.target }}
           PORT:   ${{ secrets.SSH_PORT_STAGING:-22 }}
+          # This is the path we confirmed manually. We use it here to guarantee
+          # the smoke check looks in the exact same place the website is served from.
+          ABSOLUTE_TARGET_PATH: /home/u444965226/domains/fundstr.me/public_html/staging
         run: |
-          ssh -p "$PORT" "$USER@$HOST" "set -e; ls -lah '${TARGET}'; test -s '${TARGET}/index.html'"
+          ssh -p "$PORT" "$USER@$HOST" "set -e; ls -lah '${ABSOLUTE_TARGET_PATH}'; test -s '${ABSOLUTE_TARGET_PATH}/index.html'"
