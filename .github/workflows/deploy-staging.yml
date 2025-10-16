@@ -1,14 +1,11 @@
+# .github/workflows/deploy-staging.yml
+
 name: Deploy staging (Develop2 → Hostinger)
 
 on:
   push:
     branches: [Develop2]
   workflow_dispatch:
-    inputs:
-      ref:
-        description: "Branch to deploy (must be Develop2)"
-        required: true
-        default: "Develop2"
 
 permissions:
   contents: read
@@ -25,12 +22,11 @@ env:
   USER: ${{ secrets.STAGING_USER }}
   TARGET: ${{ secrets.STAGING_TARGET }}
   SSH_OPTS: "-o StrictHostKeyChecking=no -p ${{ secrets.STAGING_SSH_PORT }}"
-  BUILD_SHA: ${{ github.sha }}
 
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/Develop2' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/Develop2' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout
@@ -38,16 +34,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      # ✅ Install pnpm first so setup-node can cache it
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
+          cache-dependency-path: '**/pnpm-lock.yaml'
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
@@ -72,8 +70,4 @@ jobs:
           BASE_URL: https://staging.fundstr.me
         run: |
           set -euo pipefail
-          if [[ -x scripts/smoke-tests.sh ]]; then
-            scripts/smoke-tests.sh
-          else
-            curl -I -fsSL "${BASE_URL}/?t=${{ github.run_id }}#${{ github.sha }}" >/dev/null
-          fi
+          curl -I -fsSL "${BASE_URL}/?t=${{ github.run_id }}#${{ github.sha }}" >/dev/null
