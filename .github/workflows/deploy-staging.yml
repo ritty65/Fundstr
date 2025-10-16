@@ -46,7 +46,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # NEW: Use staging environment variables for the build
       - name: Use staging .env
         run: |
           if [ -f .env.staging ]; then
@@ -108,7 +107,7 @@ jobs:
           set -euxo pipefail
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -p "${PORT:-22}" "$USER@$HOST" "mkdir -p '$TARGET' && test -w '$TARGET'"
 
-      - name: Deploy (rsync)
+      - name: Deploy (rsync with verbose logging)
         env:
           HOST:   ${{ steps.cfg.outputs.host }}
           USER:   ${{ steps.cfg.outputs.user }}
@@ -123,12 +122,17 @@ jobs:
             echo "::error:: Build output subdirectory not found in 'dist'!"
             exit 1
           fi
-          echo "Found build output, deploying from: $SOURCE_DIR"
 
-          # Use rsync with a trailing slash to copy the *contents*
-          rsync -az --delete -e "ssh -o StrictHostKeyChecking=yes -p ${PORT:-22}" "$SOURCE_DIR/" "$USER@$HOST:$TARGET/"
+          echo "--- Source Directory Contents ---"
+          ls -laR "$SOURCE_DIR"
+          echo "---------------------------------"
+          echo "Attempting to deploy from '$SOURCE_DIR' to '$USER@$HOST:$TARGET/'"
 
-      # NEW: Verify that the main page was deployed correctly
+          # Add --verbose and --progress for detailed debugging output
+          rsync -avz --delete --progress \
+            -e "ssh -o StrictHostKeyChecking=yes -p ${PORT:-22}" \
+            "$SOURCE_DIR/" "$USER@$HOST:$TARGET/"
+
       - name: Smoke check deployment
         env:
           HOST:   ${{ steps.cfg.outputs.host }}
