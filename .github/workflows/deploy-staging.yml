@@ -76,8 +76,7 @@ jobs:
           echo "host=${{ secrets.SSH_HOST }}" >> $GITHUB_OUTPUT
           echo "user=${{ secrets.SSH_USER_STAGING }}" >> $GITHUB_OUTPUT
           echo "target=${{ secrets.SSH_TARGET_STAGING }}" >> $GITHUB_OUTPUT
-          # FIX: Set a default port value correctly here, once.
-          echo "port=${{ secrets.SSH_PORT_STAGING || '22' }}" >> $GITHUB_OUTPUT
+          echo "port=${{ secrets.SSH_PORT_STAGING || '65002' }}" >> $GITHUB_OUTPUT
 
       - name: Generate known_hosts
         id: gen_known
@@ -104,7 +103,7 @@ jobs:
         env:
           HOST:   ${{ steps.cfg.outputs.host }}
           USER:   ${{ steps.cfg.outputs.user }}
-          TARGET: ${{ steps.cfg.outputs.target }}
+          TARGET: ${{ secrets.SSH_TARGET_STAGING }}
           PORT:   ${{ steps.cfg.outputs.port }}
         run: |
           set -euo pipefail
@@ -114,16 +113,40 @@ jobs:
             ls -R .
             exit 1
           fi
-          echo "Found source directory: $SOURCE_DIR"
           rsync -avz --delete --progress \
             -e "ssh -o StrictHostKeyChecking=yes -p $PORT" \
             "$SOURCE_DIR/" "$USER@$HOST:$TARGET/"
 
-      - name: Smoke check deployment
+      # === NEW DIAGNOSTIC SMOKE CHECK ===
+      - name: Diagnostic Smoke Check
         env:
           HOST:   ${{ steps.cfg.outputs.host }}
           USER:   ${{ steps.cfg.outputs.user }}
           PORT:   ${{ steps.cfg.outputs.port }}
-          ABSOLUTE_TARGET_PATH: /home/u444965226/domains/fundstr.me/public_html/staging
+          TARGET: ${{ secrets.SSH_TARGET_STAGING }}
         run: |
-          ssh -p "$PORT" "$USER@$HOST" "set -e; ls -lah '${ABSOLUTE_TARGET_PATH}'; test -s '${ABSOLUTE_TARGET_PATH}/index.html'"
+          ssh -p "$PORT" "$USER@$HOST" "
+            set -x  # Enable verbose command printing
+
+            echo '--- Checking target directory permissions and ownership ---'
+            ls -ld \"${TARGET}\"
+
+            echo '--- Checking contents of target directory ---'
+            ls -lah \"${TARGET}\"
+
+            echo '--- Checking parent directory for conflicting .htaccess ---'
+            PARENT_DIR=\$(dirname \"${TARGET}\")
+            ls -lah \"\${PARENT_DIR}\"
+            if [ -f \"\${PARENT_DIR}/.htaccess\" ]; then
+              echo '--- Contents of parent .htaccess ---'
+              cat \"\${PARENT_DIR}/.htaccess\"
+            fi
+
+            echo '--- Reading index.html directly ---'
+            cat \"${TARGET}/index.html\" | head -n 10
+
+            echo '--- Verifying index.html is not empty ---'
+            test -s \"${TARGET}/index.html\"
+
+            echo '--- All diagnostic checks passed on server ---'
+          "
