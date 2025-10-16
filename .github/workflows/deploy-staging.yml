@@ -8,6 +8,11 @@ on:
 env:
   NODE_VERSION: 20
 
+# avoid overlapping deploys
+concurrency:
+  group: deploy-staging-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -30,7 +35,7 @@ jobs:
       - name: Use staging env (if present)
         run: if [ -f .env.staging ]; then cp .env.staging .env; fi
 
-      # Build PWA (keep, or switch to -m spa for staging-only)
+      # Build PWA (switch to `-m spa` on staging if you want to disable SW caching)
       - name: Build PWA
         run: pnpm quasar build -m pwa
 
@@ -52,7 +57,7 @@ jobs:
           path: dist
 
       - name: Show dist
-        run: ls -lah dist && find dist -maxdepth 2 -type f | sed -n '1,80p'
+        run: ls -lah dist && find dist -maxdepth 2 -type f | sed -n '1,120p'
 
       # --- STEP 1: detect build dir (pwa or spa) ---
       - name: Detect build dir
@@ -94,13 +99,35 @@ jobs:
 
           echo "${GITHUB_SHA} $(date -u '+%F %T UTC')" > "${{ steps.detect.outputs.BUILD_DIR }}/version.txt"
 
-      # --- STEP 3: deploy the detected build dir ---
+      # --- STEP 3: generate known_hosts dynamically (no extra secret needed) ---
+      - name: Generate known_hosts
+        id: kh
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          PORT: ${{ secrets.SSH_PORT_STAGING }}
+        run: |
+          set -euo pipefail
+          : "${PORT:=22}"
+          echo "Scanning $HOST:$PORT ..."
+          ssh-keyscan -p "$PORT" -T 15 "$HOST" 2>/dev/null > kh.txt
+          if [ ! -s kh.txt ]; then
+            echo "::error:: ssh-keyscan returned nothing for $HOST:$PORT"
+            exit 1
+          fi
+          echo "known_hosts<<EOF" >> "$GITHUB_OUTPUT"
+          cat kh.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "Captured known_hosts:"; cat kh.txt
+
+      # --- STEP 4: install SSH key using generated known_hosts ---
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+          known_hosts: ${{ steps.kh.outputs.known_hosts }}
+          if_key_exists: replace
 
+      # --- STEP 5: deploy the detected build dir ---
       - name: Rsync deploy
         env:
           HOST:   ${{ secrets.SSH_HOST }}
@@ -109,11 +136,11 @@ jobs:
           PORT:   ${{ secrets.SSH_PORT_STAGING }}
         run: |
           set -euxo pipefail
-          rsync -az --delete -e "ssh -p ${PORT:-22}" \
+          rsync -az --delete -e "ssh -o StrictHostKeyChecking=yes -p ${PORT:-22}" \
             "${{ steps.detect.outputs.BUILD_DIR }}/" \
             "$USER@$HOST:$TARGET/"
 
       - name: Smoke check
         run: |
-          curl -fsSI https://staging.fundstr.me/ | sed -n '1,12p'
-          curl -fsSI https://staging.fundstr.me/find-creators | sed -n '1,12p'
+          curl -fsSI https://staging.fundstr.me/ | sed -n '1,20p'
+          curl -fsSI https://staging.fundstr.me/find-creators | sed -n '1,20p'
