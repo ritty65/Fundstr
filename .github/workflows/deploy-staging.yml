@@ -26,7 +26,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Uses pnpm version from package.json "packageManager"
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -43,13 +42,22 @@ jobs:
         run: |
           node -v
           pnpm -v
-          node -p "require('./package.json').packageManager || 'no packageManager'"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
+      # NEW: Use staging environment variables for the build
+      - name: Use staging .env
+        run: |
+          if [ -f .env.staging ]; then
+            echo "Applying .env.staging"
+            cp .env.staging .env
+          else
+            echo ".env.staging not found, skipping"
+          fi
+
+      - name: Build PWA
+        run: pnpm build -- -m pwa
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@v4
@@ -60,47 +68,35 @@ jobs:
 
   deploy:
     needs: build
-    if: github.ref == 'refs/heads/Develop2' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    environment: staging
     steps:
       - name: Download dist artifact
         uses: actions/download-artifact@v4
         with:
           name: dist
-          path: dist
+          path: ${{ env.OUTDIR }}
 
-      # Resolve values from YOUR secrets (with safe default for port)
-      - name: Resolve config
+      - name: Show downloaded files
+        run: ls -R ${{ env.OUTDIR }}
+
+      - name: Parse deploy config from secrets
         id: cfg
         run: |
           set -euo pipefail
-          HOST="${{ secrets.SSH_HOST }}"
-          USER="${{ secrets.SSH_USER }}"
-          TARGET="${{ secrets.SSH_TARGET_STAGING }}"
-          PORT="${{ secrets.SSH_PORT }}"
-          # default Hostinger port if empty
-          if [ -z "$PORT" ]; then PORT=65002; fi
-          [ -n "$HOST" ]   || { echo "Missing secret SSH_HOST"; exit 1; }
-          [ -n "$USER" ]   || { echo "Missing secret SSH_USER"; exit 1; }
-          [ -n "$TARGET" ] || { echo "Missing secret SSH_TARGET_STAGING"; exit 1; }
-          echo "host=$HOST"     >> "$GITHUB_OUTPUT"
-          echo "user=$USER"     >> "$GITHUB_OUTPUT"
-          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
-          echo "port=$PORT"     >> "$GITHUB_OUTPUT"
-          echo "✅ Using SSH port: $PORT"
+          if [[ -z "${{ secrets.SSH_HOST }}" || -z "${{ secrets.SSH_USER_STAGING }}" || -z "${{ secrets.SSH_TARGET_STAGING }}" ]]; then
+            echo "::error:: One or more secrets are missing: SSH_HOST, SSH_USER_STAGING, SSH_TARGET_STAGING"; exit 1
+          fi
+          echo "host=${{ secrets.SSH_HOST }}" >> $GITHUB_OUTPUT
+          echo "user=${{ secrets.SSH_USER_STAGING }}" >> $GITHUB_OUTPUT
+          echo "target=${{ secrets.SSH_TARGET_STAGING }}" >> $GITHUB_OUTPUT
+          echo "port=${{ secrets.SSH_PORT_STAGING }}" >> $GITHUB_OUTPUT
 
-      - name: Prepare SSH key & known_hosts
-        env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          HOST:    ${{ steps.cfg.outputs.host }}
-          PORT:    ${{ steps.cfg.outputs.port }}
-        run: |
-          set -euo pipefail
-          [ -n "$SSH_KEY" ] || { echo "Missing secret SSH_PRIVATE_KEY"; exit 1; }
-          install -m 600 -D /dev/null ~/.ssh/id_ed25519
-          printf '%s' "$SSH_KEY" > ~/.ssh/id_ed25519
-          ssh-keyscan -H -p "$PORT" "$HOST" >> ~/.ssh/known_hosts
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+          if_key_exists: fail
 
       - name: Check SSH connection & prepare target dir
         env:
@@ -110,9 +106,9 @@ jobs:
           PORT:   ${{ steps.cfg.outputs.port }}
         run: |
           set -euxo pipefail
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -p "$PORT" "$USER@$HOST" "mkdir -p '$TARGET' && test -w '$TARGET'"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -p "${PORT:-22}" "$USER@$HOST" "mkdir -p '$TARGET' && test -w '$TARGET'"
 
-      - name: Deploy (rsync with fallback to scp)
+      - name: Deploy (rsync)
         env:
           HOST:   ${{ steps.cfg.outputs.host }}
           USER:   ${{ steps.cfg.outputs.user }}
@@ -120,19 +116,26 @@ jobs:
           PORT:   ${{ steps.cfg.outputs.port }}
         run: |
           set -euo pipefail
-          if ssh -p "$PORT" "$USER@$HOST" 'command -v rsync >/dev/null 2>&1'; then
-            echo "Using rsync…"
-            for i in 1 2 3; do
-              rsync -az --delete -e "ssh -o StrictHostKeyChecking=yes -p $PORT" dist/ "$USER@$HOST:$TARGET/" && break || {
-                echo "rsync failed (attempt $i), retrying…"; sleep 3;
-              }
-            done
-          else
-            echo "rsync not found on remote; using scp -r"
-            scp -P "$PORT" -o StrictHostKeyChecking=yes -r dist/* "$USER@$HOST:$TARGET/"
-          fi
-          echo "✅ Deploy finished."
+          # Automatically find the build output dir (e.g., dist/pwa)
+          SOURCE_DIR=$(find dist -mindepth 1 -maxdepth 1 -type d | head -n 1)
 
-      - name: Smoke test (non-blocking)
-        continue-on-error: true
-        run: curl -I -fsSL "https://staging.fundstr.me/?run=${{ github.run_id }}#${{ github.sha }}" >/dev/null
+          if [[ ! -d "$SOURCE_DIR" ]]; then
+            echo "::error:: Build output subdirectory not found in 'dist'!"
+            exit 1
+          fi
+          echo "Found build output, deploying from: $SOURCE_DIR"
+
+          # Use rsync with a trailing slash to copy the *contents*
+          rsync -az --delete -e "ssh -o StrictHostKeyChecking=yes -p ${PORT:-22}" "$SOURCE_DIR/" "$USER@$HOST:$TARGET/"
+
+      # NEW: Verify that the main page was deployed correctly
+      - name: Smoke check deployment
+        env:
+          HOST:   ${{ steps.cfg.outputs.host }}
+          USER:   ${{ steps.cfg.outputs.user }}
+          TARGET: ${{ steps.cfg.outputs.target }}
+          PORT:   ${{ steps.cfg.outputs.port }}
+        run: |
+          echo "Verifying deployment..."
+          ssh -p "${PORT:-22}" "$USER@$HOST" "set -e; ls -lah '${TARGET}'; test -s '${TARGET}/index.html'"
+          echo "Smoke check passed: index.html is present and not empty."
