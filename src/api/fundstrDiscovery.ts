@@ -104,6 +104,26 @@ async function fetchJson<T>(path: string, options: FetchOptions = {}): Promise<T
   }
 }
 
+async function fetchJsonWithRetry<T>(
+  path: string,
+  options: FetchOptions = {},
+  retries = 3,
+  backoff = 300,
+): Promise<T> {
+  let lastError: unknown = null;
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fetchJson<T>(path, options);
+    } catch (error) {
+      lastError = error;
+      if (i < retries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, backoff * (i + 1)));
+      }
+    }
+  }
+  throw lastError;
+}
+
 function appendParams(url: string, params: Record<string, Nullable<string | number | boolean>>): string {
   const endpoint = new URL(url, API_BASE_URL);
   Object.entries(params).forEach(([key, value]) => {
@@ -410,7 +430,7 @@ function normalizeBundleTiers(bundle: NutzapBundle): LegacyCreatorTier[] {
     .filter((tier): tier is LegacyCreatorTier => Boolean(tier));
 }
 
-async function fetchCreators(options: { q: string; fresh?: boolean } & FetchOptions) {
+async function fetchCreators(options: { q:string; fresh?: boolean } & FetchOptions) {
   const { q, fresh = false, timeoutMs, signal } = options;
   const endpoint = appendParams('/discover/creators', {
     q: q && q.trim() ? q.trim() : '*',
@@ -418,7 +438,7 @@ async function fetchCreators(options: { q: string; fresh?: boolean } & FetchOpti
     swr: '1',
   });
 
-  const payload = await fetchJson<any>(endpoint, { signal, timeoutMs });
+  const payload = await fetchJsonWithRetry<any>(endpoint, { signal, timeoutMs });
   return normalizeCreatorsResponse(payload, q);
 }
 
@@ -434,7 +454,7 @@ async function fetchCreatorsByPubkeys(options: CreatorLookupOptions) {
     swr: options.swr === false ? undefined : '1',
   });
 
-  const payload = await fetchJson<any>(endpoint, {
+  const payload = await fetchJsonWithRetry<any>(endpoint, {
     signal: options.signal,
     timeoutMs: options.timeoutMs,
   });
@@ -452,7 +472,7 @@ async function fetchNutzapBundle(
     fresh: options.fresh ? '1' : '0',
   });
 
-  const bundle = await fetchJson<NutzapBundle>(endpoint, {
+  const bundle = await fetchJsonWithRetry<NutzapBundle>(endpoint, {
     signal: options.signal,
     timeoutMs: options.timeoutMs,
   });
