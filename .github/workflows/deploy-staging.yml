@@ -34,7 +34,8 @@ jobs:
       - name: Use staging env (if present)
         run: if [ -f .env.staging ]; then cp .env.staging .env; fi
 
-      # Use PWA or switch to -m spa if you want no SW on staging
+      # ── Build mode ──
+      # For zero SW cache on staging, switch to: pnpm quasar build -m spa
       - name: Build PWA
         run: pnpm quasar build -m pwa
 
@@ -55,12 +56,6 @@ jobs:
           name: dist
           path: dist
 
-      - name: Show dist
-        run: |
-          ls -lah dist
-          find dist -maxdepth 2 -type f | sed -n '1,120p'
-
-      # Detect whether build is dist/pwa or dist/spa
       - name: Detect build dir
         id: detect
         run: |
@@ -69,9 +64,18 @@ jobs:
           test -d "$BUILD_DIR"
           echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_OUTPUT"
           echo "Build dir: $BUILD_DIR"
-          ls -lah "$BUILD_DIR"
+          ls -lah "$BUILD_DIR" | sed -n '1,80p'
 
-      # Always ship .htaccess + version.txt
+      # Preflight: make sure build is sane
+      - name: Verify build contents
+        run: |
+          set -euo pipefail
+          test -s "${{ steps.detect.outputs.BUILD_DIR }}/index.html" \
+            || (echo "::error:: index.html missing in build dir" && exit 1)
+          find "${{ steps.detect.outputs.BUILD_DIR }}" -maxdepth 2 -name "*.js" | head -n 1 \
+            || (echo "::error:: no JS bundles found" && exit 1)
+
+      # Ship .htaccess + version.txt every deploy
       - name: Ensure .htaccess + version.txt
         run: |
           cat > "${{ steps.detect.outputs.BUILD_DIR }}/.htaccess" <<'HTACCESS'
@@ -100,7 +104,7 @@ jobs:
 
           echo "${GITHUB_SHA} $(date -u '+%F %T UTC')" > "${{ steps.detect.outputs.BUILD_DIR }}/version.txt"
 
-      # Generate known_hosts dynamically (no extra secret)
+      # Dynamic known_hosts (no extra secret needed)
       - name: Generate known_hosts
         id: kh
         env:
@@ -109,11 +113,9 @@ jobs:
         run: |
           set -euo pipefail
           : "${PORT:=22}"
-          echo "Scanning $HOST:$PORT ..."
           ssh-keyscan -p "$PORT" -T 15 "$HOST" 2>/dev/null > kh.txt
           if [ ! -s kh.txt ]; then
-            echo "::error:: ssh-keyscan returned nothing for $HOST:$PORT"
-            exit 1
+            echo "::error:: ssh-keyscan returned nothing for $HOST:$PORT"; exit 1
           fi
           echo "known_hosts<<EOF" >> "$GITHUB_OUTPUT"
           cat kh.txt >> "$GITHUB_OUTPUT"
@@ -126,7 +128,7 @@ jobs:
           known_hosts: ${{ steps.kh.outputs.known_hosts }}
           if_key_exists: replace
 
-      # ✅ PREPARE TARGET: create and verify remote path before rsync
+      # Prepare target and guard path (atomic deploy uses __incoming / __backup)
       - name: Prepare target dir
         env:
           HOST:   ${{ secrets.SSH_HOST }}
@@ -135,10 +137,14 @@ jobs:
           PORT:   ${{ secrets.SSH_PORT_STAGING }}
         run: |
           set -euxo pipefail
-          ssh -p "${PORT:-22}" "$USER@$HOST" "mkdir -p '$TARGET' && test -w '$TARGET' && ls -ld '$TARGET'"
+          case "$TARGET" in
+            /home/*/domains/*/public_html/*) ;;
+            *) echo "::error:: Refusing to deploy to suspicious TARGET path: $TARGET"; exit 1;;
+          esac
+          ssh -p "${PORT:-22}" "$USER@$HOST" "mkdir -p '$TARGET.__incoming' '$TARGET.__backup' && ls -ld '$TARGET' || true"
 
-      # Deploy the detected build dir
-      - name: Rsync deploy
+      # Upload to __incoming first
+      - name: Upload to __incoming (rsync)
         env:
           HOST:   ${{ secrets.SSH_HOST }}
           USER:   ${{ secrets.SSH_USER_STAGING }}
@@ -148,9 +154,32 @@ jobs:
           set -euxo pipefail
           rsync -az --delete -e "ssh -o StrictHostKeyChecking=yes -p ${PORT:-22}" \
             "${{ steps.detect.outputs.BUILD_DIR }}/" \
-            "$USER@$HOST:$TARGET/"
+            "$USER@$HOST:$TARGET.__incoming/"
 
+      # Atomic swap: rotate previous to __backup/prev, then move __incoming -> live
+      - name: Atomic swap
+        env:
+          HOST:   ${{ secrets.SSH_HOST }}
+          USER:   ${{ secrets.SSH_USER_STAGING }}
+          TARGET: ${{ secrets.SSH_TARGET_STAGING }}
+          PORT:   ${{ secrets.SSH_PORT_STAGING }}
+        run: |
+          set -euxo pipefail
+          ssh -p "${PORT:-22}" "$USER@$HOST" '
+            set -e
+            if [ -d "$TARGET" ]; then
+              rm -rf "$TARGET.__backup/prev" || true
+              mv "$TARGET" "$TARGET.__backup/prev"
+            fi
+            mv "$TARGET.__incoming" "$TARGET"
+          '
+
+      # Smoke tests: status + simple content probe
       - name: Smoke check
         run: |
+          set -euo pipefail
           curl -fsSI https://staging.fundstr.me/ | sed -n '1,20p'
           curl -fsSI https://staging.fundstr.me/find-creators | sed -n '1,20p'
+          curl -fsS  https://staging.fundstr.me/version.txt | tee /tmp/version.txt
+          # Basic content probe (adjust text if needed)
+          curl -fsS https://staging.fundstr.me/ | grep -i -E "Fundstr|Nostr User Search"
