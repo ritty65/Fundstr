@@ -5,148 +5,115 @@ on:
     branches: [Develop2]
   workflow_dispatch:
 
-permissions:
-  contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name }}
-  cancel-in-progress: true
-
 env:
   NODE_VERSION: 20
-  OUTDIR: dist
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          run_install: false
+      - uses: pnpm/action-setup@v4
+        with: { run_install: false }
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: '**/pnpm-lock.yaml'
 
-      - name: Install dependencies
+      - name: Install deps
         run: pnpm install --frozen-lockfile
 
-      - name: Use staging .env
-        run: |
-          if [ -f .env.staging ]; then
-            echo "Applying .env.staging"
-            cp .env.staging .env
-          fi
+      - name: Use staging env (if present)
+        run: if [ -f .env.staging ]; then cp .env.staging .env; fi
 
+      # Build PWA (keep, or switch to -m spa for staging-only)
       - name: Build PWA
-        run: pnpm build -- -m pwa
+        run: pnpm quasar build -m pwa
 
-      - name: Upload dist artifact
+      - name: Upload dist
         uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: ${{ env.OUTDIR }}
+          path: dist
           if-no-files-found: error
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Download dist artifact
+      - name: Download dist
         uses: actions/download-artifact@v4
         with:
           name: dist
+          path: dist
 
-      - name: Parse deploy config from secrets
-        id: cfg
+      - name: Show dist
+        run: ls -lah dist && find dist -maxdepth 2 -type f | sed -n '1,80p'
+
+      # --- STEP 1: detect build dir (pwa or spa) ---
+      - name: Detect build dir
+        id: detect
         run: |
           set -euo pipefail
-          if [[ -z "${{ secrets.SSH_HOST }}" || -z "${{ secrets.SSH_USER_STAGING }}" || -z "${{ secrets.SSH_TARGET_STAGING }}" ]]; then
-            echo "::error:: One or more secrets are missing: SSH_HOST, SSH_USER_STAGING, SSH_TARGET_STAGING"; exit 1
-          fi
-          echo "host=${{ secrets.SSH_HOST }}" >> $GITHUB_OUTPUT
-          echo "user=${{ secrets.SSH_USER_STAGING }}" >> $GITHUB_OUTPUT
-          echo "target=${{ secrets.SSH_TARGET_STAGING }}" >> $GITHUB_OUTPUT
-          echo "port=${{ secrets.SSH_PORT_STAGING || '65002' }}" >> $GITHUB_OUTPUT
+          BUILD_DIR="$(find dist -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          test -d "$BUILD_DIR"
+          echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_OUTPUT"
+          echo "Build dir: $BUILD_DIR"
+          ls -lah "$BUILD_DIR"
 
-      - name: Generate known_hosts
-        id: gen_known
-        env:
-          HOST: ${{ steps.cfg.outputs.host }}
-          PORT: ${{ steps.cfg.outputs.port }}
+      # --- STEP 2: ensure .htaccess + version.txt are present ---
+      - name: Ensure .htaccess + version.txt
         run: |
-          set -euo pipefail
-          echo "Scanning SSH host key for $HOST:$PORT"
-          mkdir -p ~/.ssh
-          ssh-keyscan -p "$PORT" "$HOST" > host_key
-          echo "known_hosts<<EOF" >> $GITHUB_OUTPUT
-          cat host_key >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          cat > "${{ steps.detect.outputs.BUILD_DIR }}/.htaccess" <<'HTACCESS'
+          <IfModule mod_rewrite.c>
+            RewriteEngine On
+            RewriteBase /
+            RewriteRule ^index\.html$ - [L]
+            RewriteCond %{REQUEST_FILENAME} !-f
+            RewriteCond %{REQUEST_FILENAME} !-d
+            RewriteRule . /index.html [L]
+          </IfModule>
+          <IfModule mod_headers.c>
+            <FilesMatch "^index\.html$">
+              Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+              Header set Pragma "no-cache"
+              Header set Expires "0"
+            </FilesMatch>
+            <FilesMatch "\.(js|css|png|jpg|svg|woff2)$">
+              Header set Cache-Control "public, max-age=31536000, immutable"
+            </FilesMatch>
+          </IfModule>
+          <IfModule LiteSpeed>
+            CacheDisable public /index.html
+          </IfModule>
+          HTACCESS
 
+          echo "${GITHUB_SHA} $(date -u '+%F %T UTC')" > "${{ steps.detect.outputs.BUILD_DIR }}/version.txt"
+
+      # --- STEP 3: deploy the detected build dir ---
       - name: Install SSH key
         uses: shimataro/ssh-key-action@v2
         with:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          known_hosts: ${{ steps.gen_known.outputs.known_hosts }}
-          if_key_exists: fail
+          known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
 
-      - name: Deploy (rsync)
+      - name: Rsync deploy
         env:
-          HOST:   ${{ steps.cfg.outputs.host }}
-          USER:   ${{ steps.cfg.outputs.user }}
+          HOST:   ${{ secrets.SSH_HOST }}
+          USER:   ${{ secrets.SSH_USER_STAGING }}
           TARGET: ${{ secrets.SSH_TARGET_STAGING }}
-          PORT:   ${{ steps.cfg.outputs.port }}
+          PORT:   ${{ secrets.SSH_PORT_STAGING }}
         run: |
-          set -euo pipefail
-          SOURCE_DIR=$(find . -mindepth 1 -maxdepth 1 -type d -name "pwa" | head -n 1)
-          if [[ ! -d "$SOURCE_DIR" ]]; then
-            echo "::error:: Build output directory 'pwa' not found in workspace!"
-            ls -R .
-            exit 1
-          fi
-          rsync -avz --delete --progress \
-            -e "ssh -o StrictHostKeyChecking=yes -p $PORT" \
-            "$SOURCE_DIR/" "$USER@$HOST:$TARGET/"
+          set -euxo pipefail
+          rsync -az --delete -e "ssh -p ${PORT:-22}" \
+            "${{ steps.detect.outputs.BUILD_DIR }}/" \
+            "$USER@$HOST:$TARGET/"
 
-      # === NEW DIAGNOSTIC SMOKE CHECK ===
-      - name: Diagnostic Smoke Check
-        env:
-          HOST:   ${{ steps.cfg.outputs.host }}
-          USER:   ${{ steps.cfg.outputs.user }}
-          PORT:   ${{ steps.cfg.outputs.port }}
-          TARGET: ${{ secrets.SSH_TARGET_STAGING }}
+      - name: Smoke check
         run: |
-          ssh -p "$PORT" "$USER@$HOST" "
-            set -x  # Enable verbose command printing
-
-            echo '--- Checking target directory permissions and ownership ---'
-            ls -ld \"${TARGET}\"
-
-            echo '--- Checking contents of target directory ---'
-            ls -lah \"${TARGET}\"
-
-            echo '--- Checking parent directory for conflicting .htaccess ---'
-            PARENT_DIR=\$(dirname \"${TARGET}\")
-            ls -lah \"\${PARENT_DIR}\"
-            if [ -f \"\${PARENT_DIR}/.htaccess\" ]; then
-              echo '--- Contents of parent .htaccess ---'
-              cat \"\${PARENT_DIR}/.htaccess\"
-            fi
-
-            echo '--- Reading index.html directly ---'
-            cat \"${TARGET}/index.html\" | head -n 10
-
-            echo '--- Verifying index.html is not empty ---'
-            test -s \"${TARGET}/index.html\"
-
-            echo '--- All diagnostic checks passed on server ---'
-          "
+          curl -fsSI https://staging.fundstr.me/ | sed -n '1,12p'
+          curl -fsSI https://staging.fundstr.me/find-creators | sed -n '1,12p'
