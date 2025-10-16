@@ -7,8 +7,7 @@ on:
 
 env:
   NODE_VERSION: 20
-  # Choose build mode for staging: "spa" (recommended) or "pwa"
-  BUILD_MODE: spa
+  BUILD_MODE: spa   # staging: SPA (no service worker). Change to 'pwa' if you want PWA here.
 
 concurrency:
   group: deploy-staging-${{ github.ref }}
@@ -66,20 +65,17 @@ jobs:
           echo "Build dir: $BUILD_DIR"
           ls -lah "$BUILD_DIR" | sed -n '1,80p'
 
-      # ✅ Robust preflight without pipefail issues
       - name: Verify build contents
         run: |
           set -euo pipefail
           DIR="${{ steps.detect.outputs.BUILD_DIR }}"
           test -s "$DIR/index.html" || { echo "::error:: index.html missing in $DIR"; exit 1; }
-          # Look for at least one JS file anywhere under DIR; avoid head|pipefail
           if ! find "$DIR" -type f -name "*.js" -print -quit | grep -q .; then
             echo "::error:: no JS bundles found under $DIR"
-            echo "Tree (depth 2):"; find "$DIR" -maxdepth 2 -type f | sed -n '1,200p'
+            find "$DIR" -maxdepth 2 -type f | sed -n '1,200p'
             exit 1
           fi
 
-      # Always ship .htaccess + version.txt
       - name: Ensure .htaccess + version.txt
         run: |
           DIR="${{ steps.detect.outputs.BUILD_DIR }}"
@@ -106,10 +102,8 @@ jobs:
             CacheDisable public /index.html
           </IfModule>
           HTACCESS
-
           echo "${GITHUB_SHA} $(date -u '+%F %T UTC')" > "$DIR/version.txt"
 
-      # Dynamic known_hosts
       - name: Generate known_hosts
         id: kh
         env:
@@ -133,7 +127,6 @@ jobs:
           known_hosts: ${{ steps.kh.outputs.known_hosts }}
           if_key_exists: replace
 
-      # Atomic deploy (incoming → swap)
       - name: Prepare target dir
         env:
           HOST:   ${{ secrets.SSH_HOST }}
@@ -146,7 +139,7 @@ jobs:
             /home/*/domains/*/public_html/*) ;;
             *) echo "::error:: suspicious TARGET path: $TARGET"; exit 1;;
           esac
-          ssh -p "${PORT:-22}" "$USER@$HOST" "mkdir -p '$TARGET.__incoming' '$TARGET.__backup'"
+          ssh -p "${PORT:-22}" "$USER@$HOST" "T='$TARGET'; mkdir -p \"\$T.__incoming\" \"\$T.__backup\""
 
       - name: Upload to __incoming (rsync)
         env:
@@ -168,14 +161,17 @@ jobs:
           PORT:   ${{ secrets.SSH_PORT_STAGING }}
         run: |
           set -euxo pipefail
-          ssh -p "${PORT:-22}" "$USER@$HOST" '
+          ssh -p "${PORT:-22}" "$USER@$HOST" "
             set -e
-            if [ -d "$TARGET" ]; then
-              rm -rf "$TARGET.__backup/prev" || true
-              mv "$TARGET" "$TARGET.__backup/prev"
+            T='$TARGET'
+            if [ -d \"\$T\" ]; then
+              rm -rf \"\$T.__backup/prev\" || true
+              mv \"\$T\" \"\$T.__backup/prev\"
             fi
-            mv "$TARGET.__incoming" "$TARGET"
-          '
+            test -d \"\$T.__incoming\" || { echo 'ERROR: missing '\"\$T.__incoming\"; exit 1; }
+            mv \"\$T.__incoming\" \"\$T\"
+            ls -lah \"\$T\" | sed -n '1,40p'
+          "
 
       - name: Smoke check
         run: |
