@@ -171,21 +171,160 @@
             </StepTemplate>
           </template>
           <template v-else>
-            <q-card flat bordered class="studio-card">
-              <div class="studio-card__header">
-                <div>
-                  <div class="text-subtitle1 text-weight-medium text-1">Workspace snapshot</div>
-                  <div class="text-caption text-2">Share your supporter-facing link and review metadata.</div>
+            <StepTemplate
+              class="studio-publish-step"
+              title="Review &amp; publish"
+              subtitle="Review readiness and publish to relay.fundstr.me."
+            >
+              <template #toolbar>
+                <q-btn
+                  flat
+                  dense
+                  icon="content_copy"
+                  label="Copy public link"
+                  :disable="!publicProfileUrl"
+                  @click="publicProfileUrl && copy(publicProfileUrl)"
+                />
+                <q-btn
+                  flat
+                  dense
+                  icon="travel_explore"
+                  label="Open data explorer"
+                  @click="requestExplorerOpen('banner')"
+                />
+              </template>
+
+              <div class="publish-step__form">
+                <q-input v-model="authorInput" label="Creator author (npub or hex)" dense filled />
+              </div>
+
+              <div class="publish-summary-grid">
+                <div class="publish-summary-tile">
+                  <div class="publish-summary-tile__label text-caption text-uppercase text-2">Display name</div>
+                  <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                    {{ summaryDisplayName }}
+                  </div>
+                  <div v-if="summaryAuthorKey" class="publish-summary-tile__meta text-caption text-2">
+                    Signer: {{ summaryAuthorKey }}
+                  </div>
+                  <div class="publish-summary-tile__meta text-caption text-2">
+                    Share: {{ publicProfileUrl || 'Author not ready' }}
+                  </div>
+                  <div v-if="lastPublishInfo" class="publish-summary-tile__meta text-caption text-2">
+                    {{ lastPublishInfo }}
+                  </div>
                 </div>
-                <div class="studio-card__header-actions row items-center q-gutter-sm">
+                <div class="publish-summary-tile">
+                  <div class="publish-summary-tile__label text-caption text-uppercase text-2">Tier address</div>
+                  <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                    {{ tierAddressPreview }}
+                  </div>
+                  <div class="publish-summary-tile__meta text-caption text-2">
+                    Publishing as {{ tierPublishSummaryLabel }}
+                  </div>
+                </div>
+                <div class="publish-summary-tile">
+                  <div class="publish-summary-tile__label text-caption text-uppercase text-2">Trusted mints</div>
+                  <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                    {{ mintList.length }} configured
+                  </div>
+                  <div class="publish-summary-tile__stack" v-if="mintList.length">
+                    <q-chip
+                      v-for="mint in mintList"
+                      :key="mint"
+                      dense
+                      outline
+                      color="primary"
+                      text-color="primary"
+                    >
+                      {{ mint }}
+                    </q-chip>
+                  </div>
+                  <div v-else class="publish-summary-tile__meta text-caption text-2">No mints configured.</div>
+                </div>
+                <div class="publish-summary-tile">
+                  <div class="publish-summary-tile__label text-caption text-uppercase text-2">Preferred relays</div>
+                  <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                    {{ relayList.length }} selected
+                  </div>
+                  <div class="publish-summary-tile__stack" v-if="relayList.length">
+                    <q-chip v-for="relay in relayList" :key="relay" dense outline>{{ relay }}</q-chip>
+                  </div>
+                  <div v-else class="publish-summary-tile__meta text-caption text-2">Relay selection pending.</div>
+                </div>
+                <div class="publish-summary-tile">
+                  <div class="publish-summary-tile__label text-caption text-uppercase text-2">Supporter tiers</div>
+                  <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                    {{ tiers.length }} total
+                  </div>
+                  <ul v-if="tiers.length" class="publish-summary-tile__list text-caption text-2">
+                    <li v-for="(tier, index) in tiers.slice(0, 4)" :key="tier.id || tier.title || `tier-${index}`">
+                      {{ tier.title || 'Untitled tier' }}
+                    </li>
+                    <li v-if="tiers.length > 4">+ {{ tiers.length - 4 }} more</li>
+                  </ul>
+                  <div v-else class="publish-summary-tile__meta text-caption text-2">No tiers configured yet.</div>
+                </div>
+              </div>
+
+              <div class="publish-readiness">
+                <div class="publish-readiness__title text-subtitle2 text-weight-medium text-1">
+                  Readiness checklist
+                </div>
+                <div class="publish-readiness__groups">
+                  <div
+                    v-for="group in readinessChecklist"
+                    :key="group.id"
+                    class="publish-readiness__group"
+                  >
+                    <div class="publish-readiness__group-label text-caption text-uppercase text-2">
+                      {{ group.label }}
+                    </div>
+                    <div class="publish-readiness__entries">
+                      <button
+                        v-for="item in group.items"
+                        :key="item.key"
+                        type="button"
+                        class="publish-readiness__entry"
+                        :class="[`is-${item.state}`, { 'is-clickable': !!item.step } ]"
+                        @click="handleReadinessNavigation(item)"
+                      >
+                        <div class="publish-readiness__entry-icon">
+                          <q-icon :name="item.icon" size="18px" />
+                        </div>
+                        <div class="publish-readiness__entry-content">
+                          <div class="publish-readiness__entry-label text-body2 text-1">
+                            {{ item.label }}
+                          </div>
+                          <div
+                            v-if="item.stepLabel"
+                            class="publish-readiness__entry-meta text-caption text-2"
+                          >
+                            {{ item.stepLabel }} step
+                          </div>
+                        </div>
+                        <div class="publish-readiness__entry-state text-caption">
+                          {{ item.stateLabel }}
+                        </div>
+                        <q-tooltip v-if="item.tooltip" class="bg-surface-2 text-1">
+                          {{ item.tooltip }}
+                        </q-tooltip>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="publish-step__actions">
+                <div class="publish-step__cta">
                   <q-btn
-                    outline
+                    class="publish-button"
                     color="primary"
-                    dense
-                    icon="send"
-                    label="Publish profile"
+                    unelevated
                     :disable="publishDisabled"
                     :loading="publishingAll"
+                    label="Publish profile &amp; tiers"
+                    icon="send"
                     @click="publishAll"
                   >
                     <q-tooltip v-if="publishHasGuidance" class="bg-surface-2 text-1">
@@ -200,165 +339,52 @@
                       </ul>
                     </q-tooltip>
                   </q-btn>
-                  <q-btn
-                    flat
-                    dense
-                    icon="content_copy"
-                    label="Copy link"
-                    :disable="!publicProfileUrl"
-                    @click="publicProfileUrl && copy(publicProfileUrl)"
-                  />
                 </div>
-              </div>
-              <div class="studio-card__body column q-gutter-lg">
-                <q-input v-model="authorInput" label="Creator author (npub or hex)" dense filled />
-                <div class="snapshot-block">
-                  <div class="snapshot-label text-caption text-uppercase text-2">Public profile link</div>
-                  <div class="snapshot-value">{{ publicProfileUrl || 'Author not ready' }}</div>
-                  <div v-if="lastPublishInfo" class="snapshot-meta text-caption text-2">{{ lastPublishInfo }}</div>
-                </div>
-                <div class="snapshot-readiness chip-row">
-                  <q-chip
-                    v-for="chip in readinessChips"
-                    :key="chip.key"
-                    dense
-                    size="sm"
-                    outline
-                    :class="['studio-readiness', `is-${chip.state}`]"
-                    :icon="chip.icon"
-                  >
-                    {{ chip.label }}
-                    <q-tooltip v-if="chip.tooltip" class="bg-surface-2 text-1">{{ chip.tooltip }}</q-tooltip>
-                  </q-chip>
-                </div>
-                <div class="row q-col-gutter-md">
-                  <div class="col-12 col-md-6">
-                    <div class="snapshot-block">
-                      <div class="snapshot-label text-caption text-uppercase text-2">Display name</div>
-                      <div class="snapshot-value">{{ summaryDisplayName }}</div>
-                      <div v-if="summaryAuthorKey" class="snapshot-meta text-caption text-2">Signer: {{ summaryAuthorKey }}</div>
-                    </div>
-                  </div>
-                  <div class="col-12 col-md-6">
-                    <div class="snapshot-block">
-                      <div class="snapshot-label text-caption text-uppercase text-2">Tier address</div>
-                      <div class="snapshot-value">{{ tierAddressPreview }}</div>
-                      <div class="snapshot-meta text-caption text-2">Publishing as {{ tierPublishSummaryLabel }}</div>
-                    </div>
-                  </div>
-                </div>
-                <div class="snapshot-chips">
+                <div v-if="publishHasGuidance" class="publish-blockers text-caption text-2">
+                  <q-icon name="info" size="16px" class="q-mr-xs" />
                   <div>
-                    <div class="snapshot-label text-caption text-uppercase text-2">Trusted mints</div>
-                    <div class="chip-row">
-                      <q-chip
-                        v-for="mint in mintList"
-                        :key="mint"
-                        dense
-                        outline
-                        color="primary"
-                        text-color="primary"
-                      >
-                        {{ mint }}
-                      </q-chip>
-                      <div v-if="!mintList.length" class="snapshot-meta text-caption text-2">No mints configured.</div>
-                    </div>
-                  </div>
-                  <div>
-                    <div class="snapshot-label text-caption text-uppercase text-2">Preferred relays</div>
-                    <div class="chip-row">
-                      <q-chip v-for="relay in relayList" :key="relay" dense outline>{{ relay }}</q-chip>
-                    </div>
+                    <span class="text-weight-medium" v-if="publishGuidanceHeading">
+                      {{ publishGuidanceHeading }}:
+                    </span>
+                    <ul class="publish-blockers__list">
+                      <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
+                    </ul>
                   </div>
                 </div>
               </div>
-            </q-card>
 
-            <q-card flat bordered class="studio-card">
-              <div class="studio-card__header">
-                <div>
-                  <div class="text-subtitle1 text-weight-medium text-1">Publish workflow</div>
-                  <div class="text-caption text-2">Push profile and tiers to relay.fundstr.me.</div>
+              <q-banner
+                v-if="activeDiagnostics"
+                class="studio-banner"
+                :class="`is-${activeDiagnostics?.level}`"
+              >
+                <div class="studio-banner__title">{{ activeDiagnostics?.title }}</div>
+                <div class="studio-banner__detail">{{ activeDiagnostics?.detail }}</div>
+                <div class="row q-gutter-sm q-mt-sm">
+                  <q-btn flat dense color="primary" label="Inspect" @click="handleDiagnosticsAlertCta" />
+                  <q-btn flat dense color="primary" label="Dismiss" @click="dismissDiagnosticsAttention" />
                 </div>
-              </div>
-              <div class="studio-card__body column q-gutter-md">
-                <div class="text-body2 text-2">
-                  Ready when signer, mints, P2PK, and tiers are configured. Relay diagnostics appear if publish fails.
-                </div>
-                <div class="row q-gutter-sm wrap items-start">
-                  <div class="column items-start q-gutter-xs">
-                    <q-btn
-                      class="publish-button"
-                      color="primary"
-                      unelevated
-                      :disable="publishDisabled"
-                      :loading="publishingAll"
-                      label="Publish profile &amp; tiers"
-                      icon="send"
-                      @click="publishAll"
-                    >
-                      <q-tooltip v-if="publishHasGuidance" class="bg-surface-2 text-1">
-                        <div
-                          v-if="publishGuidanceHeading"
-                          class="text-caption text-weight-medium q-mb-xs"
-                        >
-                          {{ publishGuidanceHeading }}:
-                        </div>
-                        <ul class="publish-blockers__tooltip-list">
-                          <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
-                        </ul>
-                      </q-tooltip>
-                    </q-btn>
-                    <div v-if="publishHasGuidance" class="publish-blockers text-caption text-2">
-                      <q-icon name="info" size="16px" class="q-mr-xs" />
-                      <div>
-                        <span class="text-weight-medium" v-if="publishGuidanceHeading">
-                          {{ publishGuidanceHeading }}:
-                        </span>
-                        <ul class="publish-blockers__list">
-                          <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
-                        </ul>
-                      </div>
+              </q-banner>
+              <div v-if="relayTimelinePreview.length" class="studio-timeline">
+                <div class="studio-timeline__header text-caption text-2">Recent relay activity</div>
+                <ul class="studio-timeline__list">
+                  <li
+                    v-for="entry in relayTimelinePreview"
+                    :key="entry.id"
+                    class="studio-timeline__item"
+                    :class="`is-${entry.level}`"
+                  >
+                    <div class="studio-timeline__message text-body2 text-1">{{ entry.message }}</div>
+                    <div class="studio-timeline__meta text-caption text-2">
+                      {{ formatActivityTime(entry.timestamp) }} · {{ entry.level }}
                     </div>
-                  </div>
-                  <q-btn
-                    flat
-                    color="primary"
-                    label="Copy public link"
-                    :disable="!publicProfileUrl"
-                    @click="publicProfileUrl && copy(publicProfileUrl)"
-                  />
-                  <q-btn flat color="primary" label="Open data explorer" @click="requestExplorerOpen('banner')" />
-                </div>
-                <q-banner v-if="activeDiagnostics" class="studio-banner" :class="`is-${activeDiagnostics?.level}`">
-                  <div class="studio-banner__title">{{ activeDiagnostics?.title }}</div>
-                  <div class="studio-banner__detail">{{ activeDiagnostics?.detail }}</div>
-                  <div class="row q-gutter-sm q-mt-sm">
-                    <q-btn flat dense color="primary" label="Inspect" @click="handleDiagnosticsAlertCta" />
-                    <q-btn flat dense color="primary" label="Dismiss" @click="dismissDiagnosticsAttention" />
-                  </div>
-                </q-banner>
-                <div v-if="relayTimelinePreview.length" class="studio-timeline">
-                  <div class="studio-timeline__header text-caption text-2">Recent relay activity</div>
-                  <ul class="studio-timeline__list">
-                    <li
-                      v-for="entry in relayTimelinePreview"
-                      :key="entry.id"
-                      class="studio-timeline__item"
-                      :class="`is-${entry.level}`"
-                    >
-                      <div class="studio-timeline__message text-body2 text-1">{{ entry.message }}</div>
-                      <div class="studio-timeline__meta text-caption text-2">
-                        {{ formatActivityTime(entry.timestamp) }} · {{ entry.level }}
-                      </div>
-                      <div v-if="entry.context" class="studio-timeline__context text-caption text-2">
-                        {{ entry.context }}
-                      </div>
-                    </li>
-                  </ul>
-                </div>
+                    <div v-if="entry.context" class="studio-timeline__context text-caption text-2">
+                      {{ entry.context }}
+                    </div>
+                  </li>
+                </ul>
               </div>
-            </q-card>
+            </StepTemplate>
           </template>
         </div>
       </main>
@@ -757,6 +783,12 @@ type ReadinessChip = {
   icon: string;
   required: boolean;
   tooltip?: string;
+};
+
+type ReadinessChecklistItem = ReadinessChip & {
+  step?: CreatorStudioStep;
+  stepLabel?: string;
+  stateLabel: string;
 };
 
 type StepStatus = 'ready' | 'pending' | 'attention' | 'optional';
@@ -1899,49 +1931,6 @@ const publishBlockers = computed<string[]>(() => {
   return blockers;
 });
 
-const publishDisabled = computed(
-  () => publishingAll.value || publishBlockers.value.length > 0
-);
-
-const publishWarnings = computed<string[]>(() => {
-  if (publishingAll.value) {
-    return [];
-  }
-
-  const warnings: string[] = [];
-
-  if (relayNeedsAttention.value) {
-    warnings.push('Restore relay connection health');
-  }
-
-  if (p2pkPointerReady.value && p2pkVerificationNeedsRefresh.value) {
-    warnings.push(
-      p2pkVerificationRecord.value
-        ? 'Refresh Cashu pointer verification to keep it trusted'
-        : 'Verify your Cashu pointer with an active mint',
-    );
-  }
-
-  return warnings;
-});
-
-const publishGuidanceHeading = computed(() => {
-  if (publishBlockers.value.length > 0) {
-    return 'Complete before publishing';
-  }
-  if (publishWarnings.value.length > 0) {
-    return 'Review before publishing';
-  }
-  return '';
-});
-
-const publishGuidanceItems = computed(() => [
-  ...publishBlockers.value,
-  ...publishWarnings.value,
-]);
-
-const publishHasGuidance = computed(() => publishGuidanceItems.value.length > 0);
-
 const tierFrequencyOptions = computed(() =>
   tierFrequencies.map(value => ({
     value,
@@ -2060,6 +2049,97 @@ const readinessChips = computed<ReadinessChip[]>(() => {
   );
 });
 
+const readinessStateLabels: Record<ReadinessChipState, string> = {
+  ready: 'Ready',
+  todo: 'Action needed',
+  optional: 'Optional',
+  warning: 'Needs attention',
+};
+
+const readinessStepMap = computed(() => {
+  const map = new Map<ReadinessChipKey, CreatorStudioStep>();
+  for (const definition of stepDefinitions) {
+    for (const key of definition.readinessKeys) {
+      if (!map.has(key)) {
+        map.set(key, definition.name);
+      }
+    }
+  }
+  return map;
+});
+
+const readinessChecklist = computed(() => {
+  const groups: { id: 'required' | 'optional'; label: string; items: ReadinessChecklistItem[] }[] = [
+    { id: 'required', label: 'Required to publish', items: [] },
+    { id: 'optional', label: 'Optional enhancements', items: [] },
+  ];
+
+  const stepLabelLookup = new Map<CreatorStudioStep, string>(
+    stepDefinitions.map(definition => [definition.name, definition.label] as const)
+  );
+
+  for (const chip of readinessChips.value) {
+    const step = readinessStepMap.value.get(chip.key);
+    const item: ReadinessChecklistItem = {
+      ...chip,
+      step,
+      stepLabel: step ? stepLabelLookup.get(step) : undefined,
+      stateLabel: readinessStateLabels[chip.state],
+    };
+    const targetGroup = chip.required ? groups[0] : groups[1];
+    targetGroup.items.push(item);
+  }
+
+  return groups.filter(group => group.items.length > 0);
+});
+
+const requiredReadinessReady = computed(() =>
+  readinessChips.value.filter(chip => chip.required).every(chip => chip.state === 'ready')
+);
+
+const publishWarnings = computed<string[]>(() => {
+  if (publishingAll.value) {
+    return [];
+  }
+
+  const warnings: string[] = [];
+
+  if (relayNeedsAttention.value) {
+    warnings.push('Restore relay connection health');
+  }
+
+  if (p2pkPointerReady.value && p2pkVerificationNeedsRefresh.value) {
+    warnings.push(
+      p2pkVerificationRecord.value
+        ? 'Refresh Cashu pointer verification to keep it trusted'
+        : 'Verify your Cashu pointer with an active mint',
+    );
+  }
+
+  return warnings;
+});
+
+const publishGuidanceHeading = computed(() => {
+  if (publishBlockers.value.length > 0) {
+    return 'Complete before publishing';
+  }
+  if (publishWarnings.value.length > 0) {
+    return 'Review before publishing';
+  }
+  return '';
+});
+
+const publishGuidanceItems = computed(() => [
+  ...publishBlockers.value,
+  ...publishWarnings.value,
+]);
+
+const publishHasGuidance = computed(() => publishGuidanceItems.value.length > 0);
+
+const publishDisabled = computed(
+  () => publishingAll.value || publishBlockers.value.length > 0 || !requiredReadinessReady.value
+);
+
 const steps = computed<StepEntry[]>(() => {
   const readinessMap = new Map(readinessChips.value.map(chip => [chip.key, chip] as const));
 
@@ -2150,6 +2230,14 @@ function goToStep(step: CreatorStudioStep) {
   }
 
   activeStep.value = step;
+}
+
+function handleReadinessNavigation(item: ReadinessChecklistItem) {
+  if (!item.step) {
+    return;
+  }
+
+  goToStep(item.step);
 }
 
 function goToPreviousStep() {
@@ -3253,35 +3341,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.studio-readiness {
-  --q-chip-padding: 2px 10px;
-  font-weight: 600;
-}
-
-.studio-readiness.is-ready {
-  background: var(--accent-500);
-  color: var(--text-inverse);
-  border-color: var(--accent-500);
-}
-
-.studio-readiness.is-todo {
-  background: color-mix(in srgb, var(--accent-200) 35%, transparent);
-  color: var(--accent-600);
-  border-color: color-mix(in srgb, var(--accent-200) 55%, transparent);
-}
-
-.studio-readiness.is-warning {
-  background: color-mix(in srgb, #f59e0b 25%, transparent);
-  color: #b45309;
-  border-color: color-mix(in srgb, #f59e0b 45%, transparent);
-}
-
-.studio-readiness.is-optional {
-  background: color-mix(in srgb, var(--surface-2) 90%, transparent);
-  color: var(--text-2);
-  border-color: var(--surface-contrast-border);
-}
-
 .studio-card {
   background: var(--surface-2);
   border-radius: 16px;
@@ -3334,6 +3393,176 @@ onBeforeUnmount(() => {
   overflow: auto;
 }
 
+.studio-publish-step {
+  flex: 1;
+  min-height: 0;
+}
+
+.publish-step__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.publish-summary-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.publish-summary-tile {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  padding: 16px;
+  background: color-mix(in srgb, var(--surface-2) 94%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.publish-summary-tile__value {
+  font-weight: 600;
+  color: var(--text-1);
+  word-break: break-word;
+}
+
+.publish-summary-tile__meta {
+  color: var(--text-2);
+  word-break: break-word;
+}
+
+.publish-summary-tile__stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.publish-summary-tile__list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.publish-readiness {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.publish-readiness__groups {
+  display: grid;
+  gap: 12px;
+}
+
+.publish-readiness__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.publish-readiness__entries {
+  display: grid;
+  gap: 8px;
+}
+
+.publish-readiness__entry {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--surface-2) 94%, transparent);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: inherit;
+  font: inherit;
+  width: 100%;
+  text-align: left;
+  cursor: default;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  appearance: none;
+}
+
+.publish-readiness__entry.is-clickable {
+  cursor: pointer;
+}
+
+.publish-readiness__entry.is-clickable:hover {
+  background: color-mix(in srgb, var(--surface-2) 90%, transparent);
+}
+
+.publish-readiness__entry:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: 2px;
+}
+
+.publish-readiness__entry-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+}
+
+.publish-readiness__entry-label {
+  font-weight: 600;
+}
+
+.publish-readiness__entry-meta {
+  color: var(--text-2);
+}
+
+.publish-readiness__entry-state {
+  margin-left: auto;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.publish-readiness__entry.is-ready {
+  border-color: rgba(33, 186, 69, 0.35);
+}
+
+.publish-readiness__entry.is-ready .publish-readiness__entry-state {
+  color: rgba(33, 186, 69, 0.9);
+}
+
+.publish-readiness__entry.is-warning {
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.publish-readiness__entry.is-warning .publish-readiness__entry-state {
+  color: #b45309;
+}
+
+.publish-readiness__entry.is-todo {
+  border-color: color-mix(in srgb, var(--accent-200) 65%, transparent);
+}
+
+.publish-readiness__entry.is-todo .publish-readiness__entry-state {
+  color: var(--accent-600);
+}
+
+.publish-readiness__entry.is-optional {
+  border-color: color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
+}
+
+.publish-readiness__entry.is-optional .publish-readiness__entry-state {
+  color: var(--text-2);
+}
+
+.publish-step__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.publish-step__cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
 .chip-input {
   display: flex;
   flex-direction: column;
@@ -3345,36 +3574,6 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-}
-
-.snapshot-block {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.snapshot-label {
-  letter-spacing: 0.08em;
-}
-
-.snapshot-value {
-  font-weight: 600;
-  color: var(--text-1);
-  word-break: break-word;
-}
-
-.snapshot-meta {
-  color: var(--text-2);
-}
-
-.snapshot-chips {
-  display: grid;
-  gap: 16px;
-}
-
-.snapshot-readiness {
-  border-top: 1px solid var(--surface-contrast-border);
-  padding-top: 12px;
 }
 
 .chip-row {
