@@ -78,6 +78,18 @@
                   <div v-if="tierFrequencyLabel(tier)" class="tier-row__cadence text-caption">
                     {{ tierFrequencyLabel(tier) }}
                   </div>
+                  <q-btn
+                    v-if="hasTierDescription(tier)"
+                    flat
+                    dense
+                    class="tier-row__details-toggle"
+                    no-caps
+                    :label="isTierExpanded(tier.id) ? 'Hide details' : 'Details'"
+                    :icon-right="isTierExpanded(tier.id) ? 'expand_less' : 'expand_more'"
+                    @click="toggleTierDetails(tier.id)"
+                    :aria-expanded="isTierExpanded(tier.id)"
+                    :aria-controls="`tier-desc-${tier.id}`"
+                  />
                 </div>
                 <div v-if="tierHighlight(tier)" class="tier-row__highlight text-body2 text-2">
                   {{ tierHighlight(tier) }}
@@ -107,6 +119,15 @@
                   @click="handleSubscribe(tier.id)"
                 />
               </div>
+              <q-slide-transition>
+                <div
+                  v-if="hasTierDescription(tier) && isTierExpanded(tier.id)"
+                  :id="`tier-desc-${tier.id}`"
+                  class="tier-row__details text-body2 text-1"
+                >
+                  {{ tier.description }}
+                </div>
+              </q-slide-transition>
             </div>
           </div>
           <div v-else class="empty-state">No subscription tiers found for this creator.</div>
@@ -163,6 +184,7 @@ const loading = ref(false);
 const creator = ref<Creator | null>(null);
 const tiers = ref<TierDetails[]>([]);
 const showLocal = ref(false);
+const expandedTierIds = ref<Record<string, boolean>>({});
 
 const discoveryClient = useFundstrDiscovery();
 
@@ -211,6 +233,20 @@ function onAvatarError(event: Event) {
 const hasTiers = computed(() => tiers.value.length > 0);
 
 const primaryTierId = computed(() => tiers.value[0]?.id ?? '');
+
+watch(
+  tiers,
+  (newTiers) => {
+    const nextState: Record<string, boolean> = {};
+    for (const tier of newTiers) {
+      if (expandedTierIds.value[tier.id]) {
+        nextState[tier.id] = true;
+      }
+    }
+    expandedTierIds.value = nextState;
+  },
+  { deep: true },
+);
 
 watch(
   () => props.show,
@@ -356,6 +392,30 @@ function tierMediaCountLabel(tier: TierDetails): string | null {
   return `${count} media ${count === 1 ? 'drop' : 'drops'}`;
 }
 
+function hasTierDescription(tier: TierDetails): boolean {
+  if (!tier.description) return false;
+  return tier.description.trim().length > 0;
+}
+
+function isTierExpanded(tierId: string): boolean {
+  if (!tierId) return false;
+  return Boolean(expandedTierIds.value[tierId]);
+}
+
+function toggleTierDetails(tierId: string) {
+  if (!tierId || !expandedTierIds.value) {
+    expandedTierIds.value = {};
+    return;
+  }
+  const nextState = { ...expandedTierIds.value };
+  if (nextState[tierId]) {
+    delete nextState[tierId];
+  } else {
+    nextState[tierId] = true;
+  }
+  expandedTierIds.value = nextState;
+}
+
 function cancelActiveRequest() {
   if (activeController) {
     activeController.abort();
@@ -368,6 +428,7 @@ function cancelActiveRequest() {
 function resetState() {
   creator.value = null;
   tiers.value = [];
+  expandedTierIds.value = {};
 }
 
 function normalizeTierDetails(rawTier: unknown): TierDetails | null {
@@ -687,6 +748,17 @@ onBeforeUnmount(() => {
   align-items: baseline;
 }
 
+.tier-row__details-toggle {
+  margin-left: auto;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.tier-row__details-toggle:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-500) 30%, transparent);
+  border-radius: 8px;
+}
+
 .tier-row__name {
   display: inline-flex;
   align-items: center;
@@ -752,6 +824,13 @@ onBeforeUnmount(() => {
 .tier-row__subscribe {
   font-weight: 600;
   min-width: 140px;
+}
+
+.tier-row__details {
+  margin-top: 12px;
+  padding-right: 12px;
+  color: var(--text-1);
+  line-height: 1.6;
 }
 
 .empty-state {
