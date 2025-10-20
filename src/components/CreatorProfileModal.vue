@@ -26,7 +26,7 @@
             <div class="hero-meta">
               <div class="hero-name">{{ displayName }}</div>
               <div v-if="nip05" class="hero-handle">{{ nip05 }}</div>
-              <div v-if="aboutText" class="hero-about text-body1">{{ aboutText }}</div>
+              <div v-if="aboutText" class="hero-about text-body2">{{ aboutText }}</div>
               <div v-if="creator" class="hero-actions">
                 <q-btn
                   unelevated
@@ -620,59 +620,25 @@ onBeforeUnmount(() => {
 }
 
 .hero-name {
-  font-size: 1.75rem;
+  font-size: 1.625rem;
   font-weight: 700;
-  letter-spacing: 0.005em;
-  line-height: 1.05;
+  letter-spacing: 0.01em;
   color: var(--text-1);
 }
 
 .hero-handle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 1.0625rem;
-  font-weight: 600;
-  flex-wrap: wrap;
-  row-gap: 4px;
-  color: color-mix(in srgb, var(--text-1) 94%, var(--accent-500) 6%);
-  letter-spacing: 0.04em;
-}
-
-.hero-handle::before {
-  content: '';
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--accent-500) 85%, transparent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-500) 18%, transparent);
-  flex: 0 0 10px;
+  font-size: 1rem;
+  font-weight: 650;
+  color: color-mix(in srgb, var(--text-1) 92%, var(--text-2) 8%);
+  letter-spacing: 0.045em;
 }
 
 .hero-about {
-  position: relative;
-  display: inline-block;
-  color: color-mix(in srgb, var(--text-1) 97%, var(--accent-500) 3%);
-  font-weight: 600;
-  letter-spacing: 0.008em;
-  line-height: 1.6;
-  padding-bottom: 8px;
+  color: color-mix(in srgb, var(--text-1) 96%, var(--text-2) 4%);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.55;
   white-space: pre-line;
-}
-
-.hero-about::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: min(160px, 60%);
-  height: 3px;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--accent-500) 80%, transparent) 0%,
-    color-mix(in srgb, var(--accent-600) 70%, transparent) 100%
-  );
 }
 
 .hero-actions {
@@ -819,23 +785,10 @@ onBeforeUnmount(() => {
 }
 
 .tier-row__highlight {
-  position: relative;
-  padding-left: 14px;
-  color: color-mix(in srgb, var(--text-1) 97%, var(--accent-500) 3%);
-  font-weight: 650;
-  letter-spacing: 0.008em;
-  line-height: 1.55;
-}
-
-.tier-row__highlight::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 4px;
-  bottom: 4px;
-  width: 4px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent-500) 75%, transparent);
+  color: var(--text-1);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.5;
 }
 
 .tier-row__meta {
@@ -850,10 +803,9 @@ onBeforeUnmount(() => {
   gap: 6px;
   padding: 4px 10px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--chip-bg) 82%, var(--surface-1) 18%);
-  color: color-mix(in srgb, var(--text-1) 92%, var(--chip-text) 8%);
+  background: var(--chip-bg);
+  color: var(--chip-text);
   font-size: 0.75rem;
-  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -871,10 +823,9 @@ onBeforeUnmount(() => {
 }
 
 .tier-row__price {
-  color: color-mix(in srgb, var(--text-1) 98%, var(--accent-500) 2%);
+  color: var(--text-1);
   font-weight: 700;
-  letter-spacing: 0.01em;
-  font-size: 1.15rem;
+  letter-spacing: 0.0125em;
 }
 
 .tier-row__subscribe {
