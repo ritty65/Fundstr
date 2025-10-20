@@ -69,71 +69,45 @@
         <q-card-section v-if="creator" class="tiers-section">
           <div class="section-heading">Subscription tiers</div>
           <div v-if="hasTiers" class="tiers-list">
-            <q-expansion-item
-              v-for="tier in tiers"
-              :key="tier.id"
-              bordered
-              expand-separator
-              class="tier-expansion"
-              :model-value="expandedTierId === tier.id"
-              @update:model-value="(expanded) => handleTierExpansionChange(tier.id, expanded)"
-            >
-              <template #header>
-                <div class="row items-center justify-between no-wrap full-width tier-header q-gutter-sm">
-                  <div class="tier-name text-subtitle2 text-weight-medium text-1">
+            <div v-for="tier in tiers" :key="tier.id" class="tier-row">
+              <div class="tier-row__content">
+                <div class="tier-row__header">
+                  <div class="tier-row__name text-subtitle2 text-weight-medium text-1">
                     {{ tier.name }}
                   </div>
-                  <div class="row items-center no-wrap tier-header__meta q-gutter-xs">
-                    <div class="tier-price text-subtitle2 text-weight-medium text-1">
-                      {{ formatTierPrice(tier) }} sats
-                    </div>
-                    <div
-                      v-if="tierFrequencyLabel(tier)"
-                      class="tier-frequency text-caption text-2"
-                    >
-                      {{ tierFrequencyLabel(tier) }}
-                    </div>
+                  <div v-if="tierFrequencyLabel(tier)" class="tier-row__cadence text-caption">
+                    {{ tierFrequencyLabel(tier) }}
                   </div>
                 </div>
-              </template>
-
-              <div class="tier-content">
-                <div v-if="tier.description" class="tier-description text-body2 q-pa-sm">
-                  {{ tier.description }}
+                <div v-if="tierHighlight(tier)" class="tier-row__highlight text-body2 text-2">
+                  {{ tierHighlight(tier) }}
                 </div>
-                <div v-if="tier.benefits?.length" class="tier-benefits q-mt-md">
-                  <div class="benefits-heading">Benefits</div>
-                  <ul>
-                    <li v-for="(benefit, index) in tier.benefits" :key="`${tier.id}-benefit-${index}`">
-                      {{ benefit }}
-                    </li>
-                  </ul>
-                </div>
-                <div v-if="tier.media?.length" class="tier-media q-mt-md">
-                  <div
-                    v-for="(mediaItem, mediaIndex) in tier.media"
-                    :key="`${tier.id}-media-${mediaIndex}`"
-                    class="tier-media__item"
-                  >
-                    <MediaPreview :url="mediaItem.url" />
-                  </div>
-                </div>
-                <div v-if="tier.welcomeMessage" class="tier-welcome q-mt-md">
-                  <div class="welcome-heading">Welcome message</div>
-                  <div class="welcome-copy">{{ tier.welcomeMessage }}</div>
-                </div>
-                <div class="row items-center justify-end tier-actions">
-                  <q-btn
-                    color="accent"
-                    class="tier-subscribe"
-                    unelevated
-                    no-caps
-                    label="Subscribe"
-                    @click="handleSubscribe(tier.id)"
-                  />
+                <div class="tier-row__meta" role="list">
+                  <span v-if="tierBenefitCountLabel(tier)" role="listitem" class="tier-row__meta-pill">
+                    {{ tierBenefitCountLabel(tier) }}
+                  </span>
+                  <span v-if="tierMediaCountLabel(tier)" role="listitem" class="tier-row__meta-pill">
+                    {{ tierMediaCountLabel(tier) }}
+                  </span>
+                  <span v-if="tier.welcomeMessage" role="listitem" class="tier-row__meta-pill">
+                    Welcome note
+                  </span>
                 </div>
               </div>
-            </q-expansion-item>
+              <div class="tier-row__cta">
+                <div class="tier-row__price text-subtitle2 text-weight-medium text-1">
+                  {{ tierPriceSummary(tier) }}
+                </div>
+                <q-btn
+                  color="accent"
+                  class="tier-row__subscribe"
+                  unelevated
+                  no-caps
+                  label="Subscribe"
+                  @click="handleSubscribe(tier.id)"
+                />
+              </div>
+            </div>
           </div>
           <div v-else class="empty-state">No subscription tiers found for this creator.</div>
         </q-card-section>
@@ -150,7 +124,6 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { nip19 } from 'nostr-tools';
-import MediaPreview from 'components/MediaPreview.vue';
 import { formatMsatToSats, type Creator } from 'src/lib/fundstrApi';
 import { useFundstrDiscovery } from 'src/api/fundstrDiscovery';
 import {
@@ -190,7 +163,6 @@ const loading = ref(false);
 const creator = ref<Creator | null>(null);
 const tiers = ref<TierDetails[]>([]);
 const showLocal = ref(false);
-const expandedTierId = ref<string | null>(null);
 
 const discoveryClient = useFundstrDiscovery();
 
@@ -273,10 +245,6 @@ watch(
   },
 );
 
-function handleTierExpansionChange(tierId: string, expanded: boolean) {
-  expandedTierId.value = expanded ? tierId : null;
-}
-
 async function fetchCreatorData(pubkey: string) {
   if (!pubkey) {
     return;
@@ -318,18 +286,15 @@ async function fetchCreatorData(pubkey: string) {
       .filter((tier): tier is TierDetails => tier !== null);
 
     tiers.value = mappedTiers;
-
-    expandedTierId.value = mappedTiers[0]?.id ?? null;
   } catch (error) {
     if ((error as any)?.name === 'AbortError') {
       return;
     }
     console.error('Failed to load creator profile', error);
-    if (requestId === currentRequestId) {
-      creator.value = null;
-      tiers.value = [];
-      expandedTierId.value = null;
-    }
+      if (requestId === currentRequestId) {
+        creator.value = null;
+        tiers.value = [];
+      }
   } finally {
     if (requestId === currentRequestId) {
       loading.value = false;
@@ -363,6 +328,34 @@ function formatTierPrice(tier: TierDetails): string {
   return formatMsatToSats(tier.priceMsat);
 }
 
+function tierPriceSummary(tier: TierDetails): string {
+  const price = `${formatTierPrice(tier)} sats`;
+  const cadence = tierFrequencyLabel(tier);
+  return cadence ? `${price} / ${cadence}` : price;
+}
+
+function tierHighlight(tier: TierDetails): string | null {
+  if (tier.benefits?.length) {
+    return tier.benefits[0];
+  }
+  if (tier.description) {
+    return truncateText(tier.description, 140);
+  }
+  return null;
+}
+
+function tierBenefitCountLabel(tier: TierDetails): string | null {
+  const count = tier.benefits?.length ?? 0;
+  if (!count) return null;
+  return `${count} benefit${count === 1 ? '' : 's'}`;
+}
+
+function tierMediaCountLabel(tier: TierDetails): string | null {
+  const count = tier.media?.length ?? 0;
+  if (!count) return null;
+  return `${count} media ${count === 1 ? 'drop' : 'drops'}`;
+}
+
 function cancelActiveRequest() {
   if (activeController) {
     activeController.abort();
@@ -375,7 +368,6 @@ function cancelActiveRequest() {
 function resetState() {
   creator.value = null;
   tiers.value = [];
-  expandedTierId.value = null;
 }
 
 function normalizeTierDetails(rawTier: unknown): TierDetails | null {
@@ -420,6 +412,14 @@ function normalizeTierDetails(rawTier: unknown): TierDetails | null {
     (typeof t.welcomeMessage === 'string' && t.welcomeMessage) || null;
 
   return { id, name, description, priceMsat, benefits, media, welcomeMessage, periodLabel };
+}
+
+function truncateText(text: string, maxLength = 140): string {
+  const clean = text.trim();
+  if (clean.length <= maxLength) {
+    return clean;
+  }
+  return `${clean.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 function parsePerks(value: unknown): string[] {
@@ -626,158 +626,122 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
-.tier-expansion {
-  border-radius: 16px;
+.tier-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+  padding: 20px 24px;
+  border-radius: 18px;
   background: var(--surface-1);
-}
-
-.tier-expansion :deep(.q-expansion-item__container) {
-  border-radius: inherit;
-  background: inherit;
-}
-
-.tier-expansion :deep(.q-item) {
-  padding: 16px 20px;
-}
-
-.tier-header {
-  width: 100%;
-  gap: 12px;
-}
-
-.tier-header__meta {
-  gap: 12px;
-}
-
-.tier-name {
-  font-size: 1.1rem;
-  font-weight: 600;
-}
-
-.tier-price {
-  font-weight: 700;
-  color: var(--accent-500);
-}
-
-.tier-frequency {
-  font-size: 0.9rem;
-  color: var(--text-2);
-}
-
-
-.tier-content {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  color: var(--text-2);
-  padding: 0 20px 20px;
-}
-
-.tier-description {
-  white-space: pre-line;
-  color: var(--text-1);
-}
-
-.tier-media {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.tier-media__item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.tier-media__image,
-.tier-media__video,
-.tier-media__audio,
-.tier-media__link {
-  border-radius: 12px;
   border: 1px solid var(--surface-contrast-border);
-  overflow: hidden;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--surface-2) 88%, var(--accent-500) 12%),
+    color-mix(in srgb, var(--surface-2) 95%, #000 5%)
+  );
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 60%, transparent);
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.tier-media__video {
-  display: block;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  max-height: 360px;
-  background: black;
+.tier-row::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 16px;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0));
+  pointer-events: none;
 }
 
-.tier-media__audio {
-  display: block;
-  width: 100%;
-  background: var(--surface-1);
+.tier-row:hover,
+.tier-row:focus-within {
+  border-color: var(--accent-500);
+  border-color: color-mix(in srgb, var(--accent-500) 60%, transparent);
+  transform: translateY(-2px);
+  box-shadow: 0 18px 32px rgba(0, 0, 0, 0.28);
 }
 
-.tier-media__link {
+.tier-row__content {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tier-row__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: baseline;
+}
+
+.tier-row__name {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 14px;
-  background: var(--surface-1);
-  color: var(--accent-500);
-  font-weight: 600;
-  text-decoration: none;
-  transition: color 0.2s ease, background-color 0.2s ease;
-  word-break: break-word;
-  width: 100%;
+  font-size: 1.05rem;
 }
 
-.tier-media__link:hover,
-.tier-media__link:focus-visible {
-  background: var(--accent-200);
-  color: var(--accent-600);
+.tier-row__name::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--accent-500);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-500) 20%, transparent);
 }
 
-.tier-media__link-text {
-  overflow-wrap: anywhere;
+.tier-row__cadence {
+  color: var(--text-2);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
-.tier-benefits {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.benefits-heading,
-.welcome-heading {
-  font-weight: 600;
+.tier-row__highlight {
   color: var(--text-1);
+  line-height: 1.5;
 }
 
-.tier-benefits ul {
-  padding-left: 18px;
-  margin: 0;
+.tier-row__meta {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
-.tier-benefits li {
-  list-style: disc;
+.tier-row__meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
-.tier-welcome {
+.tier-row__cta {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.welcome-copy {
-  white-space: pre-line;
-}
-
-.tier-actions {
+  align-items: flex-end;
+  justify-content: space-between;
   gap: 12px;
-  margin-top: 4px;
+  min-width: 170px;
+  text-align: right;
 }
 
-.tier-subscribe {
+.tier-row__price {
+  color: var(--text-1);
+}
+
+.tier-row__subscribe {
   font-weight: 600;
+  min-width: 140px;
 }
 
 .empty-state {
@@ -796,6 +760,30 @@ onBeforeUnmount(() => {
     flex-direction: column;
     align-items: flex-start;
     gap: 20px;
+  }
+
+  .tiers-section {
+    padding: 12px 16px 24px;
+  }
+
+  .tier-row {
+    flex-direction: column;
+    gap: 16px;
+    padding: 18px;
+  }
+
+  .tier-row__cta {
+    align-items: stretch;
+    text-align: left;
+    min-width: 0;
+  }
+
+  .tier-row__price {
+    align-self: flex-start;
+  }
+
+  .tier-row__subscribe {
+    width: 100%;
   }
 
   .hero-avatar {
