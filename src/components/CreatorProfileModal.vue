@@ -2,7 +2,8 @@
   <q-dialog
     v-model="showLocal"
     persistent
-    backdrop-filter="blur(2px) brightness(65%)"
+    backdrop-filter="blur(6px)"
+    style="width: 760px; max-width: 90vw;"
   >
     <q-card class="profile-card">
       <q-card-section class="profile-header">
@@ -456,8 +457,13 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+:deep(.q-dialog__backdrop) {
+  background-color: rgba(0, 0, 0, 0.7);
+}
+
 .profile-card {
-  width: min(720px, 92vw);
+  width: 100%;
+  max-width: 100%;
   background: var(--surface-2);
   color: var(--text-1);
   border-radius: 20px;
@@ -719,10 +725,6 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 599px) {
-  .profile-card {
-    width: min(92vw, 100%);
-  }
-
   .profile-header {
     flex-direction: column;
     align-items: flex-start;
