@@ -357,7 +357,9 @@ watch(
       return;
     }
     syncAncillaryState(entries.value);
-    const sanitized = entries.value.map(entry => draftToTier(entry));
+    const sanitized = entries.value.map((entry, index) =>
+      draftToTier(entry, props.tiers?.[index]),
+    );
     skipNextPropSync = true;
     emit('update:tiers', sanitized);
     emitValidation();

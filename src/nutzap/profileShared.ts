@@ -56,7 +56,7 @@ function extractExtension(url: string): string | null {
   return match ? match[1].toLowerCase() : null;
 }
 
-function inferTierMediaType(url: string, providedType?: string): TierMedia['type'] {
+export function inferTierMediaType(url: string, providedType?: string): TierMedia['type'] {
   const normalizedProvided = providedType?.toLowerCase().trim();
   if (normalizedProvided) {
     if (normalizedProvided === 'image' || normalizedProvided === 'video' || normalizedProvided === 'audio') {
