@@ -1,520 +1,572 @@
 <template>
   <q-page class="creator-studio-page bg-surface-1 q-pa-lg">
-    <div class="studio-header">
-      <div class="studio-header__brand">
-        <q-avatar size="40px" class="studio-header__avatar" color="accent" text-color="white">
-          <q-icon name="bolt" />
-        </q-avatar>
-        <div class="studio-header__titles">
-          <div class="studio-header__title text-1 text-weight-semibold">Nutzap Creator Studio</div>
-          <div class="studio-header__subtitle text-2">Craft your kind 10019 profile &amp; 30019/30000 tiers.</div>
+    <header class="studio-header">
+      <h1 class="studio-header__title text-1 text-weight-semibold">Nutzap Creator Studio</h1>
+    </header>
+
+    <div class="studio-layout">
+      <nav class="studio-navigation" aria-label="Creator studio progress">
+        <ol class="studio-stepper" role="list">
+          <li v-for="step in steps" :key="step.name" class="studio-stepper__item">
+            <button
+              class="studio-stepper__button"
+              type="button"
+              :class="[
+                { 'is-active': activeStep === step.name, 'is-complete': step.status === 'ready' },
+                `is-${step.status}`
+              ]"
+              @click="goToStep(step.name)"
+              :aria-current="activeStep === step.name ? 'step' : undefined"
+              :aria-describedby="`step-${step.name}-description step-${step.name}-status`"
+              :aria-label="`${step.label} – ${step.statusLabel}`"
+            >
+              <span class="studio-stepper__indicator" aria-hidden="true"></span>
+              <span class="studio-stepper__copy">
+                <span class="studio-stepper__label text-body1 text-weight-medium text-1">
+                  {{ step.label }}
+                </span>
+                <span class="studio-stepper__status text-caption text-2" :id="`step-${step.name}-status`">
+                  {{ step.statusLabel }}
+                </span>
+              </span>
+            </button>
+            <p class="studio-stepper__description text-caption text-2" :id="`step-${step.name}-description`">
+              {{ step.description }}
+            </p>
+          </li>
+        </ol>
+      </nav>
+
+      <main
+        class="studio-stage"
+        role="region"
+        aria-live="polite"
+        aria-labelledby="active-step-title"
+      >
+        <div class="studio-stage__header">
+          <q-btn
+            class="studio-stage__nav"
+            flat
+            dense
+            icon="arrow_back"
+            label="Back"
+            :disable="!canGoBack"
+            @click="goToPreviousStep"
+          />
+          <div class="studio-stage__details">
+            <div
+              class="studio-stage__title text-h6 text-weight-semibold text-1"
+              id="active-step-title"
+            >
+              {{ currentStep.label }}
+            </div>
+            <div class="studio-stage__subtitle text-caption text-2">
+              {{ currentStep.description }}
+            </div>
+          </div>
+          <q-btn
+            class="studio-stage__nav"
+            flat
+            dense
+            icon-right="arrow_forward"
+            label="Next"
+            :disable="!canGoNext"
+            @click="goToNextStep"
+          />
         </div>
-      </div>
-      <div class="studio-header__status" role="status" aria-live="polite">
-        <div class="studio-connection" :class="relayStatusDotClass">
-          <span class="studio-connection__dot" aria-hidden="true"></span>
-          <span class="studio-connection__label text-caption text-weight-medium">{{ relayStatusLabel }}</span>
-        </div>
-        <q-chip
-          v-for="chip in readinessChips"
-          :key="chip.key"
-          dense
-          size="sm"
-          outline
-          :class="['studio-readiness', `is-${chip.state}`]"
-          :icon="chip.icon"
-        >
-          {{ chip.label }}
-          <q-tooltip v-if="chip.tooltip" class="bg-surface-2 text-1">{{ chip.tooltip }}</q-tooltip>
-        </q-chip>
-      </div>
-    </div>
 
-    <div class="studio-grid">
-      <div class="studio-main">
-        <q-card flat bordered class="studio-card">
-          <div class="studio-card__header">
-            <div>
-              <div class="text-subtitle1 text-weight-medium text-1">Relay connection</div>
-              <div class="text-caption text-2">Connect to relay.fundstr.me with automatic fallback.</div>
-            </div>
-            <q-btn flat dense icon="science" label="Data explorer" @click="requestExplorerOpen('toolbar')" />
-          </div>
-          <div class="studio-card__body column q-gutter-md">
-            <q-input
-              v-model="relayUrlInput"
-              label="Relay URL (WS)"
-              dense
-              filled
-              :hint="relayUrlInputState === 'warning' ? relayUrlInputMessage : ''"
-              :hide-hint="relayUrlInputState !== 'warning'"
-              :error="relayUrlInputState === 'error' || !relayUrlInputValid"
-              :error-message="
-                relayUrlInputState === 'error'
-                  ? relayUrlInputMessage
-                  : 'Enter a valid wss:// relay'
-              "
-            />
-            <div class="row items-center justify-between wrap q-gutter-sm">
-              <q-toggle v-model="relayAutoReconnect" label="Auto reconnect" />
-              <div class="row q-gutter-sm">
-                <q-btn
-                  outline
-                  color="negative"
-                  label="Disconnect"
-                  icon="link_off"
-                  :disable="!relayIsConnected"
-                  @click="handleRelayDisconnect"
-                />
-                <q-btn
-                  color="primary"
-                  label="Connect"
-                  icon="bolt"
-                  :loading="relayConnectionStatus === 'connecting'"
-                  @click="handleRelayConnect"
-                />
-              </div>
-            </div>
-            <div class="studio-activity" v-if="activeRelayActivity">
-              <div class="text-caption text-2">Last activity</div>
-              <div class="text-body2 text-1">{{ activeRelayActivity?.message }}</div>
-              <div class="text-caption text-2" v-if="activeRelayActivityTimeLabel">
-                {{ activeRelayActivityTimeLabel }}
-              </div>
-            </div>
-            <div class="studio-alert" v-if="activeRelayAlertLabel">
-              <q-icon name="warning" size="16px" />
-              <span>{{ activeRelayAlertLabel }}</span>
-            </div>
-          </div>
-        </q-card>
-
-        <q-card flat bordered class="studio-card">
-          <div class="studio-card__header">
-            <div>
-              <div class="text-subtitle1 text-weight-medium text-1">Workspace snapshot</div>
-              <div class="text-caption text-2">Share your supporter-facing link and review metadata.</div>
-            </div>
-            <div class="studio-card__header-actions row items-center q-gutter-sm">
-              <q-btn
-                outline
-                color="primary"
-                dense
-                icon="send"
-                label="Publish profile"
-                :disable="publishDisabled"
-                :loading="publishingAll"
-                @click="publishAll"
-              >
-                <q-tooltip v-if="publishHasGuidance" class="bg-surface-2 text-1">
-                  <div
-                    v-if="publishGuidanceHeading"
-                    class="text-caption text-weight-medium q-mb-xs"
-                  >
-                    {{ publishGuidanceHeading }}:
-                  </div>
-                  <ul class="publish-blockers__tooltip-list">
-                    <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
-                  </ul>
-                </q-tooltip>
-              </q-btn>
-              <q-btn
-                flat
-                dense
-                icon="content_copy"
-                label="Copy link"
-                :disable="!publicProfileUrl"
-                @click="publicProfileUrl && copy(publicProfileUrl)"
-              />
-            </div>
-          </div>
-          <div class="studio-card__body column q-gutter-lg">
-            <q-input v-model="authorInput" label="Creator author (npub or hex)" dense filled />
-            <div class="snapshot-block">
-              <div class="snapshot-label text-caption text-uppercase text-2">Public profile link</div>
-              <div class="snapshot-value">{{ publicProfileUrl || 'Author not ready' }}</div>
-              <div v-if="lastPublishInfo" class="snapshot-meta text-caption text-2">{{ lastPublishInfo }}</div>
-            </div>
-            <div class="snapshot-readiness chip-row">
-              <q-chip
-                v-for="chip in readinessChips"
-                :key="chip.key"
-                dense
-                size="sm"
-                outline
-                :class="['studio-readiness', `is-${chip.state}`]"
-                :icon="chip.icon"
-              >
-                {{ chip.label }}
-                <q-tooltip v-if="chip.tooltip" class="bg-surface-2 text-1">{{ chip.tooltip }}</q-tooltip>
-              </q-chip>
-            </div>
-            <div class="row q-col-gutter-md">
-              <div class="col-12 col-md-6">
-                <div class="snapshot-block">
-                  <div class="snapshot-label text-caption text-uppercase text-2">Display name</div>
-                  <div class="snapshot-value">{{ summaryDisplayName }}</div>
-                  <div v-if="summaryAuthorKey" class="snapshot-meta text-caption text-2">Signer: {{ summaryAuthorKey }}</div>
+        <div class="studio-stage__body">
+          <template v-if="activeStep === 'setup'">
+            <q-card flat bordered class="studio-card">
+              <div class="studio-card__header">
+                <div>
+                  <div class="text-subtitle1 text-weight-medium text-1">Relay connection</div>
+                  <div class="text-caption text-2">Connect to relay.fundstr.me with automatic fallback.</div>
                 </div>
+                <q-btn flat dense icon="science" label="Data explorer" @click="requestExplorerOpen('toolbar')" />
               </div>
-              <div class="col-12 col-md-6">
-                <div class="snapshot-block">
-                  <div class="snapshot-label text-caption text-uppercase text-2">Tier address</div>
-                  <div class="snapshot-value">{{ tierAddressPreview }}</div>
-                  <div class="snapshot-meta text-caption text-2">Publishing as {{ tierPublishSummaryLabel }}</div>
-                </div>
-              </div>
-            </div>
-            <div class="snapshot-chips">
-              <div>
-                <div class="snapshot-label text-caption text-uppercase text-2">Trusted mints</div>
-                <div class="chip-row">
-                  <q-chip
-                    v-for="mint in mintList"
-                    :key="mint"
-                    dense
-                    outline
-                    color="primary"
-                    text-color="primary"
-                  >
-                    {{ mint }}
-                  </q-chip>
-                  <div v-if="!mintList.length" class="snapshot-meta text-caption text-2">No mints configured.</div>
-                </div>
-              </div>
-              <div>
-                <div class="snapshot-label text-caption text-uppercase text-2">Preferred relays</div>
-                <div class="chip-row">
-                  <q-chip v-for="relay in relayList" :key="relay" dense outline>{{ relay }}</q-chip>
-                </div>
-              </div>
-            </div>
-          </div>
-        </q-card>
-
-        <q-card flat bordered class="studio-card">
-          <div class="studio-card__header">
-            <div>
-              <div class="text-subtitle1 text-weight-medium text-1">Profile identity</div>
-              <div class="text-caption text-2">Update display metadata, trusted mints, relays, and P2PK keys.</div>
-            </div>
-          </div>
-          <div class="studio-card__body column q-gutter-lg">
-            <div class="row q-col-gutter-md">
-              <div class="col-12 col-md-6">
-                <q-input v-model="displayName" label="Display name" dense filled />
-              </div>
-              <div class="col-12 col-md-6">
+              <div class="studio-card__body column q-gutter-md">
                 <q-input
-                  v-model="pictureUrl"
-                  label="Picture URL"
+                  v-model="relayUrlInput"
+                  label="Relay URL (WS)"
                   dense
                   filled
-                  :error="!!pictureUrl && !isValidHttpUrl(pictureUrl)"
-                  error-message="Use http(s) URLs"
+                  :hint="relayUrlInputState === 'warning' ? relayUrlInputMessage : ''"
+                  :hide-hint="relayUrlInputState !== 'warning'"
+                  :error="relayUrlInputState === 'error' || !relayUrlInputValid"
+                  :error-message="
+                    relayUrlInputState === 'error'
+                      ? relayUrlInputMessage
+                      : 'Enter a valid wss:// relay'
+                  "
                 />
-              </div>
-            </div>
-
-            <div class="row q-col-gutter-md">
-              <div class="col-12 col-md-6">
-                <div class="chip-input">
-                  <div class="chip-input__label text-caption text-uppercase text-2">Trusted mints</div>
-                  <div class="chip-input__chips">
-                    <q-chip
-                      v-for="(mint, index) in composerMints"
-                      :key="mint"
-                      dense
+                <div class="row items-center justify-between wrap q-gutter-sm">
+                  <q-toggle v-model="relayAutoReconnect" label="Auto reconnect" />
+                  <div class="row q-gutter-sm">
+                    <q-btn
                       outline
+                      color="negative"
+                      label="Disconnect"
+                      icon="link_off"
+                      :disable="!relayIsConnected"
+                      @click="handleRelayDisconnect"
+                    />
+                    <q-btn
                       color="primary"
-                      text-color="primary"
-                      removable
-                      @remove="removeMint(index)"
-                    >
-                      {{ mint }}
-                    </q-chip>
-                    <q-input
-                      v-model="mintDraft"
-                      dense
-                      filled
-                      placeholder="Add mint & press enter"
-                      @keyup.enter.stop="commitMint"
-                      @blur="commitMint"
+                      label="Connect"
+                      icon="bolt"
+                      :loading="relayConnectionStatus === 'connecting'"
+                      @click="handleRelayConnect"
                     />
                   </div>
-                  <div class="text-caption text-2">Supports http or https endpoints.</div>
+                </div>
+                <div class="studio-activity" v-if="activeRelayActivity">
+                  <div class="text-caption text-2">Last activity</div>
+                  <div class="text-body2 text-1">{{ activeRelayActivity?.message }}</div>
+                  <div class="text-caption text-2" v-if="activeRelayActivityTimeLabel">
+                    {{ activeRelayActivityTimeLabel }}
+                  </div>
+                </div>
+                <div class="studio-alert" v-if="activeRelayAlertLabel">
+                  <q-icon name="warning" size="16px" />
+                  <span>{{ activeRelayAlertLabel }}</span>
                 </div>
               </div>
-              <div class="col-12 col-md-6">
-                <div class="chip-input">
-                  <div class="chip-input__label text-caption text-uppercase text-2">Preferred relays</div>
-                  <div class="chip-input__chips">
-                    <q-chip
-                      v-for="(relay, index) in composerRelays"
-                      :key="relay"
-                      dense
-                      outline
-                      removable
-                      @remove="removeRelay(index)"
-                    >
-                      {{ relay }}
-                    </q-chip>
+            </q-card>
+          </template>
+          <template v-else-if="activeStep === 'profile'">
+            <q-card flat bordered class="studio-card">
+              <div class="studio-card__header">
+                <div>
+                  <div class="text-subtitle1 text-weight-medium text-1">Profile identity</div>
+                  <div class="text-caption text-2">Update display metadata, trusted mints, relays, and P2PK keys.</div>
+                </div>
+              </div>
+              <div class="studio-card__body column q-gutter-lg">
+                <div class="row q-col-gutter-md">
+                  <div class="col-12 col-md-6">
+                    <q-input v-model="displayName" label="Display name" dense filled />
+                  </div>
+                  <div class="col-12 col-md-6">
                     <q-input
-                      v-model="relayDraft"
+                      v-model="pictureUrl"
+                      label="Picture URL"
                       dense
                       filled
-                      placeholder="wss://..."
-                      @keyup.enter.stop="commitRelay"
-                      @blur="commitRelay"
+                      :error="!!pictureUrl && !isValidHttpUrl(pictureUrl)"
+                      error-message="Use http(s) URLs"
                     />
                   </div>
-                  <div class="text-caption text-2">Automatically ensures relay.fundstr.me is included.</div>
                 </div>
-              </div>
-            </div>
 
-            <div class="studio-card__section">
-              <div class="text-subtitle2 text-1">Cashu P2PK (required for publishing)</div>
-              <div class="text-caption text-2 q-mt-xs">
-                Publish your Cashu pointer so supporters can route zaps directly to you.
-              </div>
-              <div class="row q-col-gutter-md q-mt-sm">
-                <div class="col-12 col-md-6">
-                  <q-select
-                    v-model="selectedP2pkPub"
-                    :options="p2pkSelectOptions"
-                    label="Saved P2PK keys"
-                    dense
-                    filled
-                    emit-value
-                    map-options
-                    clearable
-                    :disable="!p2pkSelectOptions.length"
-                    :hint="
-                      p2pkSelectOptions.length
-                        ? 'Choose the key you already use for zaps.'
-                        : 'Add a key to get started.'
-                    "
-                    @update:model-value="handleP2pkSelection"
-                    placeholder="Select a saved key"
-                  />
+                <div class="row q-col-gutter-md">
+                  <div class="col-12 col-md-6">
+                    <div class="chip-input">
+                      <div class="chip-input__label text-caption text-uppercase text-2">Trusted mints</div>
+                      <div class="chip-input__chips">
+                        <q-chip
+                          v-for="(mint, index) in composerMints"
+                          :key="mint"
+                          dense
+                          outline
+                          color="primary"
+                          text-color="primary"
+                          removable
+                          @remove="removeMint(index)"
+                        >
+                          {{ mint }}
+                        </q-chip>
+                        <q-input
+                          v-model="mintDraft"
+                          dense
+                          filled
+                          placeholder="Add mint & press enter"
+                          @keyup.enter.stop="commitMint"
+                          @blur="commitMint"
+                        />
+                      </div>
+                      <div class="text-caption text-2">Supports http or https endpoints.</div>
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <div class="chip-input">
+                      <div class="chip-input__label text-caption text-uppercase text-2">Preferred relays</div>
+                      <div class="chip-input__chips">
+                        <q-chip
+                          v-for="(relay, index) in composerRelays"
+                          :key="relay"
+                          dense
+                          outline
+                          removable
+                          @remove="removeRelay(index)"
+                        >
+                          {{ relay }}
+                        </q-chip>
+                        <q-input
+                          v-model="relayDraft"
+                          dense
+                          filled
+                          placeholder="wss://..."
+                          @keyup.enter.stop="commitRelay"
+                          @blur="commitRelay"
+                        />
+                      </div>
+                      <div class="text-caption text-2">Automatically ensures relay.fundstr.me is included.</div>
+                    </div>
+                  </div>
                 </div>
-                <div class="col-12 col-md-6 row items-center q-gutter-sm">
-                  <q-btn
-                    v-if="!addingNewP2pkKey"
-                    outline
-                    color="primary"
-                    icon="add"
-                    label="Add new key"
-                    @click="startAddingNewP2pkKey"
-                  />
-                  <q-btn
-                    v-else
-                    outline
-                    color="primary"
-                    icon="undo"
-                    label="Use saved key"
-                    :disable="!p2pkSelectOptions.length"
-                    @click="cancelAddingNewP2pkKey"
-                  />
-                </div>
-                <div class="col-12 col-md-6" v-if="addingNewP2pkKey">
-                  <q-input
-                    v-model="p2pkPriv"
-                    label="P2PK private key (hex)"
-                    dense
-                    filled
-                    type="password"
-                    autocomplete="off"
-                    :error="!!p2pkPriv && !/^[0-9a-fA-F]{64}$/.test(p2pkPriv)"
-                    error-message="64 hex characters"
-                  />
-                </div>
-                <div class="col-12 col-md-6 row items-center q-gutter-sm" v-if="addingNewP2pkKey">
-                  <q-btn outline color="primary" label="Derive public" @click="deriveP2pkPublicKey" />
-                  <q-btn color="primary" label="Generate" @click="generateP2pkKeypair" />
-                </div>
-                <div class="col-12">
-                  <div class="row q-col-gutter-sm items-start">
-                    <div class="col">
-                      <q-input
-                        v-model="p2pkPub"
-                        label="Publishing P2PK public"
+
+                <div class="studio-card__section">
+                  <div class="text-subtitle2 text-1">Cashu P2PK (required for publishing)</div>
+                  <div class="text-caption text-2 q-mt-xs">
+                    Publish your Cashu pointer so supporters can route zaps directly to you.
+                  </div>
+                  <div class="row q-col-gutter-md q-mt-sm">
+                    <div class="col-12 col-md-6">
+                      <q-select
+                        v-model="selectedP2pkPub"
+                        :options="p2pkSelectOptions"
+                        label="Saved P2PK keys"
                         dense
                         filled
-                        readonly
-                        :error="!!p2pkPubError"
-                        :error-message="p2pkPubError"
+                        emit-value
+                        map-options
+                        clearable
+                        :disable="!p2pkSelectOptions.length"
+                        :hint="
+                          p2pkSelectOptions.length
+                            ? 'Choose the key you already use for zaps.'
+                            : 'Add a key to get started.'
+                        "
+                        @update:model-value="handleP2pkSelection"
+                        placeholder="Select a saved key"
                       />
                     </div>
-                    <div class="col-auto self-start">
+                    <div class="col-12 col-md-6 row items-center q-gutter-sm">
                       <q-btn
+                        v-if="!addingNewP2pkKey"
                         outline
                         color="primary"
-                        icon="verified"
-                        label="Verify pointer"
-                        :loading="verifyingP2pkPointer"
-                        :disable="!p2pkPointerReady || verifyingP2pkPointer"
-                        @click="handleVerifyP2pkPointer"
+                        icon="add"
+                        label="Add new key"
+                        @click="startAddingNewP2pkKey"
+                      />
+                      <q-btn
+                        v-else
+                        outline
+                        color="primary"
+                        icon="undo"
+                        label="Use saved key"
+                        :disable="!p2pkSelectOptions.length"
+                        @click="cancelAddingNewP2pkKey"
                       />
                     </div>
-                  </div>
-                  <div
-                    v-if="p2pkVerificationHelper"
-                    class="text-caption q-mt-xs row items-center no-wrap"
-                    :class="p2pkVerificationHelperClass"
-                  >
-                    <q-icon
-                      v-if="p2pkVerificationHelperIcon"
-                      :name="p2pkVerificationHelperIcon"
-                      size="16px"
-                      class="q-mr-xs"
-                    />
-                    <span>{{ p2pkVerificationHelper.message }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <q-banner
-              dense
-              rounded
-              class="studio-signer-hint bg-surface-2 text-1"
-            >
-              <template #avatar>
-                <q-icon name="vpn_key" color="primary" />
-              </template>
-              <div class="studio-signer-hint__content">
-                <span>{{ signerStatusMessage }}</span>
-                <span
-                  v-if="usingStoreIdentity && activeIdentitySummary"
-                  class="studio-signer-hint__summary text-caption text-2"
-                >
-                  Connected as {{ activeIdentitySummary }}
-                </span>
-              </div>
-              <template v-if="!usingStoreIdentity" #action>
-                <q-btn
-                  flat
-                  dense
-                  color="primary"
-                  label="Connect signer"
-                  @click="openSharedSignerModal"
-                />
-              </template>
-            </q-banner>
-          </div>
-        </q-card>
-
-        <q-card flat bordered class="studio-card">
-          <div class="studio-card__header">
-            <div>
-              <div class="text-subtitle1 text-weight-medium text-1">Tiers &amp; strategy</div>
-              <div class="text-caption text-2">Compose your supporter offerings and preview tier formats.</div>
-            </div>
-          </div>
-          <div class="studio-card__body column q-gutter-lg">
-            <div class="row items-center justify-between wrap q-gutter-sm">
-              <q-btn-toggle
-                v-model="tierPreviewKind"
-                dense
-                toggle-color="primary"
-                :options="tierPreviewOptions"
-              />
-              <q-chip dense :color="tiersReady ? 'positive' : 'warning'" text-color="white">
-                {{ tiersReady ? 'Tiers valid' : 'Needs review' }}
-              </q-chip>
-            </div>
-            <TierComposer
-              :tiers="tiers"
-              :frequency-options="tierFrequencyOptions"
-              :show-errors="showTierValidation"
-              @update:tiers="handleTiersUpdate"
-              @validation-changed="handleTierValidation"
-            />
-          </div>
-        </q-card>
-
-        <q-card flat bordered class="studio-card">
-          <div class="studio-card__header">
-            <div>
-              <div class="text-subtitle1 text-weight-medium text-1">Publish workflow</div>
-              <div class="text-caption text-2">Push profile and tiers to relay.fundstr.me.</div>
-            </div>
-          </div>
-          <div class="studio-card__body column q-gutter-md">
-            <div class="text-body2 text-2">
-              Ready when signer, mints, P2PK, and tiers are configured. Relay diagnostics appear if publish fails.
-            </div>
-            <div class="row q-gutter-sm wrap items-start">
-              <div class="column items-start q-gutter-xs">
-                <q-btn
-                  class="publish-button"
-                  color="primary"
-                  unelevated
-                  :disable="publishDisabled"
-                  :loading="publishingAll"
-                  label="Publish profile &amp; tiers"
-                  icon="send"
-                  @click="publishAll"
-                >
-                  <q-tooltip v-if="publishHasGuidance" class="bg-surface-2 text-1">
-                    <div
-                      v-if="publishGuidanceHeading"
-                      class="text-caption text-weight-medium q-mb-xs"
-                    >
-                      {{ publishGuidanceHeading }}:
+                    <div class="col-12 col-md-6" v-if="addingNewP2pkKey">
+                      <q-input
+                        v-model="p2pkPriv"
+                        label="P2PK private key (hex)"
+                        dense
+                        filled
+                        type="password"
+                        autocomplete="off"
+                        :error="!!p2pkPriv && !/^[0-9a-fA-F]{64}$/.test(p2pkPriv)"
+                        error-message="64 hex characters"
+                      />
                     </div>
-                    <ul class="publish-blockers__tooltip-list">
-                      <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
-                    </ul>
-                  </q-tooltip>
-                </q-btn>
-                <div v-if="publishHasGuidance" class="publish-blockers text-caption text-2">
-                  <q-icon name="info" size="16px" class="q-mr-xs" />
-                  <div>
-                    <span class="text-weight-medium" v-if="publishGuidanceHeading">
-                      {{ publishGuidanceHeading }}:
+                    <div class="col-12 col-md-6 row items-center q-gutter-sm" v-if="addingNewP2pkKey">
+                      <q-btn outline color="primary" label="Derive public" @click="deriveP2pkPublicKey" />
+                      <q-btn color="primary" label="Generate" @click="generateP2pkKeypair" />
+                    </div>
+                    <div class="col-12">
+                      <div class="row q-col-gutter-sm items-start">
+                        <div class="col">
+                          <q-input
+                            v-model="p2pkPub"
+                            label="Publishing P2PK public"
+                            dense
+                            filled
+                            readonly
+                            :error="!!p2pkPubError"
+                            :error-message="p2pkPubError"
+                          />
+                        </div>
+                        <div class="col-auto self-start">
+                          <q-btn
+                            outline
+                            color="primary"
+                            icon="verified"
+                            label="Verify pointer"
+                            :loading="verifyingP2pkPointer"
+                            :disable="!p2pkPointerReady || verifyingP2pkPointer"
+                            @click="handleVerifyP2pkPointer"
+                          />
+                        </div>
+                      </div>
+                      <div
+                        v-if="p2pkVerificationHelper"
+                        class="text-caption q-mt-xs row items-center no-wrap"
+                        :class="p2pkVerificationHelperClass"
+                      >
+                        <q-icon
+                          v-if="p2pkVerificationHelperIcon"
+                          :name="p2pkVerificationHelperIcon"
+                          size="16px"
+                          class="q-mr-xs"
+                        />
+                        <span>{{ p2pkVerificationHelper.message }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <q-banner dense rounded class="studio-signer-hint bg-surface-2 text-1">
+                  <template #avatar>
+                    <q-icon name="vpn_key" color="primary" />
+                  </template>
+                  <div class="studio-signer-hint__content">
+                    <span>{{ signerStatusMessage }}</span>
+                    <span
+                      v-if="usingStoreIdentity && activeIdentitySummary"
+                      class="studio-signer-hint__summary text-caption text-2"
+                    >
+                      Connected as {{ activeIdentitySummary }}
                     </span>
-                    <ul class="publish-blockers__list">
-                      <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
-                    </ul>
+                  </div>
+                  <template v-if="!usingStoreIdentity" #action>
+                    <q-btn
+                      flat
+                      dense
+                      color="primary"
+                      label="Connect signer"
+                      @click="openSharedSignerModal"
+                    />
+                  </template>
+                </q-banner>
+              </div>
+            </q-card>
+          </template>
+          <template v-else-if="activeStep === 'tiers'">
+            <q-card flat bordered class="studio-card">
+              <div class="studio-card__header">
+                <div>
+                  <div class="text-subtitle1 text-weight-medium text-1">Tiers &amp; strategy</div>
+                  <div class="text-caption text-2">Compose your supporter offerings and preview tier formats.</div>
+                </div>
+              </div>
+              <div class="studio-card__body column q-gutter-lg">
+                <div class="row items-center justify-between wrap q-gutter-sm">
+                  <q-btn-toggle
+                    v-model="tierPreviewKind"
+                    dense
+                    toggle-color="primary"
+                    :options="tierPreviewOptions"
+                  />
+                  <q-chip dense :color="tiersReady ? 'positive' : 'warning'" text-color="white">
+                    {{ tiersReady ? 'Tiers valid' : 'Needs review' }}
+                  </q-chip>
+                </div>
+                <TierComposer
+                  :tiers="tiers"
+                  :frequency-options="tierFrequencyOptions"
+                  :show-errors="showTierValidation"
+                  @update:tiers="handleTiersUpdate"
+                  @validation-changed="handleTierValidation"
+                />
+              </div>
+            </q-card>
+          </template>
+          <template v-else>
+            <q-card flat bordered class="studio-card">
+              <div class="studio-card__header">
+                <div>
+                  <div class="text-subtitle1 text-weight-medium text-1">Workspace snapshot</div>
+                  <div class="text-caption text-2">Share your supporter-facing link and review metadata.</div>
+                </div>
+                <div class="studio-card__header-actions row items-center q-gutter-sm">
+                  <q-btn
+                    outline
+                    color="primary"
+                    dense
+                    icon="send"
+                    label="Publish profile"
+                    :disable="publishDisabled"
+                    :loading="publishingAll"
+                    @click="publishAll"
+                  >
+                    <q-tooltip v-if="publishHasGuidance" class="bg-surface-2 text-1">
+                      <div
+                        v-if="publishGuidanceHeading"
+                        class="text-caption text-weight-medium q-mb-xs"
+                      >
+                        {{ publishGuidanceHeading }}:
+                      </div>
+                      <ul class="publish-blockers__tooltip-list">
+                        <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
+                      </ul>
+                    </q-tooltip>
+                  </q-btn>
+                  <q-btn
+                    flat
+                    dense
+                    icon="content_copy"
+                    label="Copy link"
+                    :disable="!publicProfileUrl"
+                    @click="publicProfileUrl && copy(publicProfileUrl)"
+                  />
+                </div>
+              </div>
+              <div class="studio-card__body column q-gutter-lg">
+                <q-input v-model="authorInput" label="Creator author (npub or hex)" dense filled />
+                <div class="snapshot-block">
+                  <div class="snapshot-label text-caption text-uppercase text-2">Public profile link</div>
+                  <div class="snapshot-value">{{ publicProfileUrl || 'Author not ready' }}</div>
+                  <div v-if="lastPublishInfo" class="snapshot-meta text-caption text-2">{{ lastPublishInfo }}</div>
+                </div>
+                <div class="snapshot-readiness chip-row">
+                  <q-chip
+                    v-for="chip in readinessChips"
+                    :key="chip.key"
+                    dense
+                    size="sm"
+                    outline
+                    :class="['studio-readiness', `is-${chip.state}`]"
+                    :icon="chip.icon"
+                  >
+                    {{ chip.label }}
+                    <q-tooltip v-if="chip.tooltip" class="bg-surface-2 text-1">{{ chip.tooltip }}</q-tooltip>
+                  </q-chip>
+                </div>
+                <div class="row q-col-gutter-md">
+                  <div class="col-12 col-md-6">
+                    <div class="snapshot-block">
+                      <div class="snapshot-label text-caption text-uppercase text-2">Display name</div>
+                      <div class="snapshot-value">{{ summaryDisplayName }}</div>
+                      <div v-if="summaryAuthorKey" class="snapshot-meta text-caption text-2">Signer: {{ summaryAuthorKey }}</div>
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <div class="snapshot-block">
+                      <div class="snapshot-label text-caption text-uppercase text-2">Tier address</div>
+                      <div class="snapshot-value">{{ tierAddressPreview }}</div>
+                      <div class="snapshot-meta text-caption text-2">Publishing as {{ tierPublishSummaryLabel }}</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="snapshot-chips">
+                  <div>
+                    <div class="snapshot-label text-caption text-uppercase text-2">Trusted mints</div>
+                    <div class="chip-row">
+                      <q-chip
+                        v-for="mint in mintList"
+                        :key="mint"
+                        dense
+                        outline
+                        color="primary"
+                        text-color="primary"
+                      >
+                        {{ mint }}
+                      </q-chip>
+                      <div v-if="!mintList.length" class="snapshot-meta text-caption text-2">No mints configured.</div>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="snapshot-label text-caption text-uppercase text-2">Preferred relays</div>
+                    <div class="chip-row">
+                      <q-chip v-for="relay in relayList" :key="relay" dense outline>{{ relay }}</q-chip>
+                    </div>
                   </div>
                 </div>
               </div>
-              <q-btn flat color="primary" label="Copy public link" :disable="!publicProfileUrl" @click="publicProfileUrl && copy(publicProfileUrl)" />
-              <q-btn flat color="primary" label="Open data explorer" @click="requestExplorerOpen('banner')" />
-            </div>
-            <q-banner v-if="activeDiagnostics" class="studio-banner" :class="`is-${activeDiagnostics?.level}`">
-              <div class="studio-banner__title">{{ activeDiagnostics?.title }}</div>
-              <div class="studio-banner__detail">{{ activeDiagnostics?.detail }}</div>
-              <div class="row q-gutter-sm q-mt-sm">
-                <q-btn flat dense color="primary" label="Inspect" @click="handleDiagnosticsAlertCta" />
-                <q-btn flat dense color="primary" label="Dismiss" @click="dismissDiagnosticsAttention" />
+            </q-card>
+
+            <q-card flat bordered class="studio-card">
+              <div class="studio-card__header">
+                <div>
+                  <div class="text-subtitle1 text-weight-medium text-1">Publish workflow</div>
+                  <div class="text-caption text-2">Push profile and tiers to relay.fundstr.me.</div>
+                </div>
               </div>
-            </q-banner>
-            <div v-if="relayTimelinePreview.length" class="studio-timeline">
-              <div class="studio-timeline__header text-caption text-2">Recent relay activity</div>
-              <ul class="studio-timeline__list">
-                <li
-                  v-for="entry in relayTimelinePreview"
-                  :key="entry.id"
-                  class="studio-timeline__item"
-                  :class="`is-${entry.level}`"
-                >
-                  <div class="studio-timeline__message text-body2 text-1">{{ entry.message }}</div>
-                  <div class="studio-timeline__meta text-caption text-2">
-                    {{ formatActivityTime(entry.timestamp) }} · {{ entry.level }}
+              <div class="studio-card__body column q-gutter-md">
+                <div class="text-body2 text-2">
+                  Ready when signer, mints, P2PK, and tiers are configured. Relay diagnostics appear if publish fails.
+                </div>
+                <div class="row q-gutter-sm wrap items-start">
+                  <div class="column items-start q-gutter-xs">
+                    <q-btn
+                      class="publish-button"
+                      color="primary"
+                      unelevated
+                      :disable="publishDisabled"
+                      :loading="publishingAll"
+                      label="Publish profile &amp; tiers"
+                      icon="send"
+                      @click="publishAll"
+                    >
+                      <q-tooltip v-if="publishHasGuidance" class="bg-surface-2 text-1">
+                        <div
+                          v-if="publishGuidanceHeading"
+                          class="text-caption text-weight-medium q-mb-xs"
+                        >
+                          {{ publishGuidanceHeading }}:
+                        </div>
+                        <ul class="publish-blockers__tooltip-list">
+                          <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
+                        </ul>
+                      </q-tooltip>
+                    </q-btn>
+                    <div v-if="publishHasGuidance" class="publish-blockers text-caption text-2">
+                      <q-icon name="info" size="16px" class="q-mr-xs" />
+                      <div>
+                        <span class="text-weight-medium" v-if="publishGuidanceHeading">
+                          {{ publishGuidanceHeading }}:
+                        </span>
+                        <ul class="publish-blockers__list">
+                          <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
+                        </ul>
+                      </div>
+                    </div>
                   </div>
-                  <div v-if="entry.context" class="studio-timeline__context text-caption text-2">
-                    {{ entry.context }}
+                  <q-btn
+                    flat
+                    color="primary"
+                    label="Copy public link"
+                    :disable="!publicProfileUrl"
+                    @click="publicProfileUrl && copy(publicProfileUrl)"
+                  />
+                  <q-btn flat color="primary" label="Open data explorer" @click="requestExplorerOpen('banner')" />
+                </div>
+                <q-banner v-if="activeDiagnostics" class="studio-banner" :class="`is-${activeDiagnostics?.level}`">
+                  <div class="studio-banner__title">{{ activeDiagnostics?.title }}</div>
+                  <div class="studio-banner__detail">{{ activeDiagnostics?.detail }}</div>
+                  <div class="row q-gutter-sm q-mt-sm">
+                    <q-btn flat dense color="primary" label="Inspect" @click="handleDiagnosticsAlertCta" />
+                    <q-btn flat dense color="primary" label="Dismiss" @click="dismissDiagnosticsAttention" />
                   </div>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </q-card>
-      </div>
+                </q-banner>
+                <div v-if="relayTimelinePreview.length" class="studio-timeline">
+                  <div class="studio-timeline__header text-caption text-2">Recent relay activity</div>
+                  <ul class="studio-timeline__list">
+                    <li
+                      v-for="entry in relayTimelinePreview"
+                      :key="entry.id"
+                      class="studio-timeline__item"
+                      :class="`is-${entry.level}`"
+                    >
+                      <div class="studio-timeline__message text-body2 text-1">{{ entry.message }}</div>
+                      <div class="studio-timeline__meta text-caption text-2">
+                        {{ formatActivityTime(entry.timestamp) }} · {{ entry.level }}
+                      </div>
+                      <div v-if="entry.context" class="studio-timeline__context text-caption text-2">
+                        {{ entry.context }}
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </q-card>
+          </template>
+        </div>
+      </main>
 
       <aside class="studio-sidebar">
         <q-card flat bordered class="studio-preview">
@@ -898,7 +950,6 @@ const publicProfileUrl = computed(() => {
   return buildProfileUrl(authorNpubForShare.value, router);
 });
 
-const reviewPublishSectionOpen = ref(false);
 
 type ReadinessChipState = 'ready' | 'todo' | 'optional' | 'warning';
 type ReadinessChipKey = 'relay' | 'authorKey' | 'identity' | 'mint' | 'p2pk' | 'tiers';
@@ -911,6 +962,51 @@ type ReadinessChip = {
   required: boolean;
   tooltip?: string;
 };
+
+type StepStatus = 'ready' | 'pending' | 'attention' | 'optional';
+const stepOrder = ['setup', 'profile', 'tiers', 'publish'] as const;
+type CreatorStudioStep = (typeof stepOrder)[number];
+
+type StepDefinition = {
+  name: CreatorStudioStep;
+  label: string;
+  description: string;
+  readinessKeys: ReadinessChipKey[];
+};
+
+type StepEntry = StepDefinition & {
+  status: StepStatus;
+  statusLabel: string;
+};
+
+const stepDefinitions: StepDefinition[] = [
+  {
+    name: 'setup',
+    label: 'Relay & signer',
+    description: 'Connect to the relay and link a publishing signer.',
+    readinessKeys: ['relay', 'authorKey'],
+  },
+  {
+    name: 'profile',
+    label: 'Profile basics',
+    description: 'Establish your creator identity and payout details.',
+    readinessKeys: ['identity', 'mint', 'p2pk'],
+  },
+  {
+    name: 'tiers',
+    label: 'Supporter tiers',
+    description: 'Compose your supporter offerings and pricing tiers.',
+    readinessKeys: ['tiers'],
+  },
+  {
+    name: 'publish',
+    label: 'Review & publish',
+    description: 'Review readiness and publish to relay.fundstr.me.',
+    readinessKeys: ['relay', 'authorKey', 'mint', 'p2pk', 'tiers'],
+  },
+];
+
+const activeStep = ref<CreatorStudioStep>('setup');
 
 type DiagnosticsAttention = {
   id: number;
@@ -2163,6 +2259,75 @@ const readinessChips = computed<ReadinessChip[]>(() => {
   );
 });
 
+const steps = computed<StepEntry[]>(() => {
+  const readinessMap = new Map(readinessChips.value.map(chip => [chip.key, chip] as const));
+
+  return stepDefinitions.map(definition => {
+    const chips = definition.readinessKeys
+      .map(key => readinessMap.get(key))
+      .filter((chip): chip is ReadinessChip => Boolean(chip));
+
+    let status: StepStatus = 'ready';
+
+    if (chips.length === 0) {
+      status = 'ready';
+    } else {
+      const hasAttention = chips.some(chip => chip.state === 'warning');
+      const hasTodo = chips.some(chip => chip.state === 'todo');
+      const allOptional = chips.every(chip => chip.state === 'optional');
+      const allReady = chips.every(chip => chip.state === 'ready' || chip.state === 'optional');
+
+      if (hasAttention) {
+        status = 'attention';
+      } else if (hasTodo) {
+        status = 'pending';
+      } else if (allOptional) {
+        status = 'optional';
+      } else if (allReady) {
+        status = 'ready';
+      } else {
+        status = 'pending';
+      }
+    }
+
+    const statusLabel =
+      status === 'ready'
+        ? 'Ready'
+        : status === 'attention'
+          ? 'Needs attention'
+          : status === 'pending'
+            ? 'In progress'
+            : 'Optional';
+
+    return {
+      ...definition,
+      status,
+      statusLabel,
+    };
+  });
+});
+
+const currentStep = computed(() => steps.value.find(step => step.name === activeStep.value) ?? steps.value[0]!);
+const stepIndex = computed(() => stepOrder.indexOf(activeStep.value));
+const canGoBack = computed(() => stepIndex.value > 0);
+const canGoNext = computed(() => stepIndex.value < stepOrder.length - 1);
+
+function goToStep(step: CreatorStudioStep) {
+  activeStep.value = step;
+}
+
+function goToPreviousStep() {
+  if (stepIndex.value > 0) {
+    activeStep.value = stepOrder[stepIndex.value - 1];
+  }
+}
+
+function goToNextStep() {
+  if (stepIndex.value < stepOrder.length - 1) {
+    activeStep.value = stepOrder[stepIndex.value + 1];
+  }
+}
+
 const profileJsonPreview = computed(() => {
   let author = '<author>';
   try {
@@ -3095,50 +3260,206 @@ onBeforeUnmount(() => {
 }
 
 .studio-header {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--surface-contrast-border);
 }
 
-.studio-header__brand {
+.studio-header__title {
+  margin: 0;
+}
+
+.studio-layout {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1024px) {
+  .studio-layout {
+    grid-template-columns: minmax(220px, 260px) minmax(0, 2fr) minmax(320px, 1fr);
+    align-items: flex-start;
+  }
+}
+
+.studio-navigation {
+  position: relative;
+}
+
+.studio-stepper {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.studio-stepper__item {
+  position: relative;
+}
+
+.studio-stepper__button {
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.studio-header__avatar {
+  padding: 12px 16px 12px 20px;
   border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  position: relative;
 }
 
-.studio-header__titles {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.studio-stepper__button:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: 2px;
 }
 
-.studio-header__status {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
+.studio-stepper__button:hover {
+  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
 }
 
-.studio-connection {
+.studio-stepper__item:not(:last-child) .studio-stepper__button::after {
+  content: '';
+  position: absolute;
+  left: 30px;
+  top: 32px;
+  bottom: -24px;
+  width: 2px;
+  background: var(--surface-contrast-border);
+}
+
+.studio-stepper__indicator {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 2px solid var(--surface-contrast-border);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--surface-contrast-border);
+  justify-content: center;
+  transition: border-color 0.2s ease, background 0.2s ease;
 }
 
-.studio-connection__dot {
-  width: 10px;
-  height: 10px;
+.studio-stepper__indicator::after {
+  content: '';
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
-  background-color: currentColor;
+  background: transparent;
+  transition: background 0.2s ease;
+}
+
+.studio-stepper__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.studio-stepper__label {
+  display: block;
+}
+
+.studio-stepper__status {
+  color: var(--text-2);
+}
+
+.studio-stepper__description {
+  margin: 6px 0 0 52px;
+  max-width: 260px;
+}
+
+.studio-stepper__button.is-active {
+  border-color: color-mix(in srgb, var(--accent-200) 60%, transparent);
+  background: color-mix(in srgb, var(--accent-200) 22%, transparent);
+}
+
+.studio-stepper__button.is-active .studio-stepper__indicator {
+  border-color: var(--accent-500);
+}
+
+.studio-stepper__button.is-active .studio-stepper__indicator::after {
+  background: var(--accent-500);
+}
+
+.studio-stepper__button.is-ready .studio-stepper__indicator {
+  border-color: var(--accent-500);
+  background: color-mix(in srgb, var(--accent-500) 20%, transparent);
+}
+
+.studio-stepper__button.is-ready .studio-stepper__indicator::after {
+  background: var(--accent-500);
+}
+
+.studio-stepper__button.is-ready .studio-stepper__status {
+  color: var(--accent-600);
+}
+
+.studio-stepper__button.is-attention {
+  border-color: rgba(250, 204, 21, 0.45);
+  background: color-mix(in srgb, rgba(250, 204, 21, 0.25) 40%, transparent);
+}
+
+.studio-stepper__button.is-attention .studio-stepper__indicator {
+  border-color: rgba(250, 204, 21, 0.8);
+  background: color-mix(in srgb, rgba(250, 204, 21, 0.25) 40%, transparent);
+}
+
+.studio-stepper__button.is-attention .studio-stepper__indicator::after {
+  background: rgba(250, 204, 21, 0.95);
+}
+
+.studio-stepper__button.is-attention .studio-stepper__status {
+  color: rgba(180, 83, 9, 0.9);
+}
+
+.studio-stepper__button.is-pending .studio-stepper__indicator {
+  border-color: var(--accent-200);
+}
+
+.studio-stepper__button.is-optional .studio-stepper__indicator {
+  border-color: var(--surface-contrast-border);
+  background: color-mix(in srgb, var(--surface-2) 75%, transparent);
+}
+
+.studio-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.studio-stage__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.studio-stage__details {
+  flex: 1;
+  min-width: 0;
+}
+
+.studio-stage__title {
+  margin: 0;
+}
+
+.studio-stage__subtitle {
+  margin-top: 4px;
+}
+
+.studio-stage__nav {
+  min-width: 0;
+}
+
+.studio-stage__body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 .studio-readiness {
@@ -3168,25 +3489,6 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--surface-2) 90%, transparent);
   color: var(--text-2);
   border-color: var(--surface-contrast-border);
-}
-
-.studio-grid {
-  display: grid;
-  gap: 24px;
-  grid-template-columns: minmax(0, 1fr);
-}
-
-@media (min-width: 1024px) {
-  .studio-grid {
-    grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
-    align-items: flex-start;
-  }
-}
-
-.studio-main {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
 }
 
 .studio-card {
