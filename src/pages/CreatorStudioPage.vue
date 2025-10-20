@@ -102,215 +102,35 @@
             />
           </template>
           <template v-else-if="activeStep === 'profile'">
-            <q-card flat bordered class="studio-card">
-              <div class="studio-card__header">
-                <div>
-                  <div class="text-subtitle1 text-weight-medium text-1">Profile identity</div>
-                  <div class="text-caption text-2">Update display metadata, trusted mints, relays, and P2PK keys.</div>
-                </div>
-              </div>
-              <div class="studio-card__body column q-gutter-lg">
-                <div class="row q-col-gutter-md">
-                  <div class="col-12 col-md-6">
-                    <q-input v-model="displayName" label="Display name" dense filled />
-                  </div>
-                  <div class="col-12 col-md-6">
-                    <q-input
-                      v-model="pictureUrl"
-                      label="Picture URL"
-                      dense
-                      filled
-                      :error="!!pictureUrl && !isValidHttpUrl(pictureUrl)"
-                      error-message="Use http(s) URLs"
-                    />
-                  </div>
-                </div>
-
-                <div class="row q-col-gutter-md">
-                  <div class="col-12 col-md-6">
-                    <div class="chip-input">
-                      <div class="chip-input__label text-caption text-uppercase text-2">Trusted mints</div>
-                      <div class="chip-input__chips">
-                        <q-chip
-                          v-for="(mint, index) in composerMints"
-                          :key="mint"
-                          dense
-                          outline
-                          color="primary"
-                          text-color="primary"
-                          removable
-                          @remove="removeMint(index)"
-                        >
-                          {{ mint }}
-                        </q-chip>
-                        <q-input
-                          v-model="mintDraft"
-                          dense
-                          filled
-                          placeholder="Add mint & press enter"
-                          @keyup.enter.stop="commitMint"
-                          @blur="commitMint"
-                        />
-                      </div>
-                      <div class="text-caption text-2">Supports http or https endpoints.</div>
-                    </div>
-                  </div>
-                  <div class="col-12 col-md-6">
-                    <div class="chip-input">
-                      <div class="chip-input__label text-caption text-uppercase text-2">Preferred relays</div>
-                      <div class="chip-input__chips">
-                        <q-chip
-                          v-for="(relay, index) in composerRelays"
-                          :key="relay"
-                          dense
-                          outline
-                          removable
-                          @remove="removeRelay(index)"
-                        >
-                          {{ relay }}
-                        </q-chip>
-                        <q-input
-                          v-model="relayDraft"
-                          dense
-                          filled
-                          placeholder="wss://..."
-                          @keyup.enter.stop="commitRelay"
-                          @blur="commitRelay"
-                        />
-                      </div>
-                      <div class="text-caption text-2">Automatically ensures relay.fundstr.me is included.</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="studio-card__section">
-                  <div class="text-subtitle2 text-1">Cashu P2PK (required for publishing)</div>
-                  <div class="text-caption text-2 q-mt-xs">
-                    Publish your Cashu pointer so supporters can route zaps directly to you.
-                  </div>
-                  <div class="row q-col-gutter-md q-mt-sm">
-                    <div class="col-12 col-md-6">
-                      <q-select
-                        v-model="selectedP2pkPub"
-                        :options="p2pkSelectOptions"
-                        label="Saved P2PK keys"
-                        dense
-                        filled
-                        emit-value
-                        map-options
-                        clearable
-                        :disable="!p2pkSelectOptions.length"
-                        :hint="
-                          p2pkSelectOptions.length
-                            ? 'Choose the key you already use for zaps.'
-                            : 'Add a key to get started.'
-                        "
-                        @update:model-value="handleP2pkSelection"
-                        placeholder="Select a saved key"
-                      />
-                    </div>
-                    <div class="col-12 col-md-6 row items-center q-gutter-sm">
-                      <q-btn
-                        v-if="!addingNewP2pkKey"
-                        outline
-                        color="primary"
-                        icon="add"
-                        label="Add new key"
-                        @click="startAddingNewP2pkKey"
-                      />
-                      <q-btn
-                        v-else
-                        outline
-                        color="primary"
-                        icon="undo"
-                        label="Use saved key"
-                        :disable="!p2pkSelectOptions.length"
-                        @click="cancelAddingNewP2pkKey"
-                      />
-                    </div>
-                    <div class="col-12 col-md-6" v-if="addingNewP2pkKey">
-                      <q-input
-                        v-model="p2pkPriv"
-                        label="P2PK private key (hex)"
-                        dense
-                        filled
-                        type="password"
-                        autocomplete="off"
-                        :error="!!p2pkPriv && !/^[0-9a-fA-F]{64}$/.test(p2pkPriv)"
-                        error-message="64 hex characters"
-                      />
-                    </div>
-                    <div class="col-12 col-md-6 row items-center q-gutter-sm" v-if="addingNewP2pkKey">
-                      <q-btn outline color="primary" label="Derive public" @click="deriveP2pkPublicKey" />
-                      <q-btn color="primary" label="Generate" @click="generateP2pkKeypair" />
-                    </div>
-                    <div class="col-12">
-                      <div class="row q-col-gutter-sm items-start">
-                        <div class="col">
-                          <q-input
-                            v-model="p2pkPub"
-                            label="Publishing P2PK public"
-                            dense
-                            filled
-                            readonly
-                            :error="!!p2pkPubError"
-                            :error-message="p2pkPubError"
-                          />
-                        </div>
-                        <div class="col-auto self-start">
-                          <q-btn
-                            outline
-                            color="primary"
-                            icon="verified"
-                            label="Verify pointer"
-                            :loading="verifyingP2pkPointer"
-                            :disable="!p2pkPointerReady || verifyingP2pkPointer"
-                            @click="handleVerifyP2pkPointer"
-                          />
-                        </div>
-                      </div>
-                      <div
-                        v-if="p2pkVerificationHelper"
-                        class="text-caption q-mt-xs row items-center no-wrap"
-                        :class="p2pkVerificationHelperClass"
-                      >
-                        <q-icon
-                          v-if="p2pkVerificationHelperIcon"
-                          :name="p2pkVerificationHelperIcon"
-                          size="16px"
-                          class="q-mr-xs"
-                        />
-                        <span>{{ p2pkVerificationHelper.message }}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <q-banner dense rounded class="studio-signer-hint bg-surface-2 text-1">
-                  <template #avatar>
-                    <q-icon name="vpn_key" color="primary" />
-                  </template>
-                  <div class="studio-signer-hint__content">
-                    <span>{{ signerStatusMessage }}</span>
-                    <span
-                      v-if="usingStoreIdentity && activeIdentitySummary"
-                      class="studio-signer-hint__summary text-caption text-2"
-                    >
-                      Connected as {{ activeIdentitySummary }}
-                    </span>
-                  </div>
-                  <template v-if="!usingStoreIdentity" #action>
-                    <q-btn
-                      flat
-                      dense
-                      color="primary"
-                      label="Connect signer"
-                      @click="openSharedSignerModal"
-                    />
-                  </template>
-                </q-banner>
-              </div>
-            </q-card>
+            <ProfileStep
+              v-model:display-name="displayName"
+              v-model:picture-url="pictureUrl"
+              v-model:composer-mints="composerMints"
+              v-model:composer-relays="composerRelays"
+              v-model:p2pk-priv="p2pkPriv"
+              :p2pk-pub="p2pkPub"
+              :p2pk-pub-error="p2pkPubError"
+              :p2pk-select-options="p2pkSelectOptions"
+              :selected-p2pk-pub="selectedP2pkPub"
+              :adding-new-p2pk-key="addingNewP2pkKey"
+              :p2pk-pointer-ready="p2pkPointerReady"
+              :verifying-p2pk-pointer="verifyingP2pkPointer"
+              :p2pk-verification-helper="p2pkVerificationHelper"
+              :p2pk-verification-needs-refresh="p2pkVerificationNeedsRefresh"
+              :optional-metadata-complete="optionalMetadataComplete"
+              :advanced-encryption-complete="advancedEncryptionComplete"
+              :signer-status-message="signerStatusMessage"
+              :using-store-identity="usingStoreIdentity"
+              :active-identity-summary="activeIdentitySummary"
+              :primary-relay-url="CREATOR_STUDIO_RELAY_WS_URL"
+              :handle-p2pk-selection="handleP2pkSelection"
+              :start-adding-new-p2pk-key="startAddingNewP2pkKey"
+              :cancel-adding-new-p2pk-key="cancelAddingNewP2pkKey"
+              :derive-p2pk-public-key="deriveP2pkPublicKey"
+              :generate-p2pk-keypair="generateP2pkKeypair"
+              :handle-verify-p2pk-pointer="handleVerifyP2pkPointer"
+              :open-shared-signer-modal="openSharedSignerModal"
+            />
           </template>
           <template v-else-if="activeStep === 'tiers'">
             <q-card flat bordered class="studio-card">
@@ -653,6 +473,7 @@ import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/sec
 import { useRoute, useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import SetupStep from './creator-studio/SetupStep.vue';
+import ProfileStep from './creator-studio/ProfileStep.vue';
 import TierComposer from './nutzap-profile/TierComposer.vue';
 import NutzapExplorerPanel from 'src/nutzap/onepage/NutzapExplorerPanel.vue';
 import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
@@ -725,8 +546,6 @@ const publishingAll = ref(false);
 const lastPublishInfo = ref('');
 const hasAutoLoaded = ref(false);
 const previewTab = ref<'preview' | 'profile' | 'tiers'>('preview');
-const mintDraft = ref('');
-const relayDraft = ref('');
 const now = useNow({ interval: 60_000 });
 const lastExportProfile = ref('');
 const lastExportTiers = ref({ canonical: '', legacy: '' });
@@ -1877,30 +1696,6 @@ const p2pkVerificationHelper = computed(() => {
   };
 });
 
-const p2pkVerificationHelperClass = computed(() => {
-  const helper = p2pkVerificationHelper.value;
-  if (!helper) {
-    return 'text-2';
-  }
-  if (helper.tone === 'warning') {
-    return 'text-warning';
-  }
-  if (helper.tone === 'positive') {
-    return 'text-positive';
-  }
-  return 'text-2';
-});
-
-const p2pkVerificationHelperIcon = computed(() => {
-  if (!p2pkPointerReady.value) {
-    return '';
-  }
-  if (!p2pkVerificationRecord.value) {
-    return 'help_outline';
-  }
-  return p2pkVerificationNeedsRefresh.value ? 'warning' : 'check_circle';
-});
-
 const relayList = computed(() => {
   const entries = relaysText.value
     .split('\n')
@@ -2352,61 +2147,6 @@ function ensureComposerMintsSeeded() {
   if (!mintsText.value.trim() && mintList.value.length) {
     mintsText.value = mintList.value.join('\n');
   }
-}
-
-function commitMint() {
-  const candidate = mintDraft.value.trim();
-  if (!candidate) {
-    mintDraft.value = '';
-    return;
-  }
-  if (!isValidHttpUrl(candidate)) {
-    notifyWarning('Mint URLs must begin with http:// or https://', candidate);
-    return;
-  }
-  const existing = composerMints.value;
-  const exists = existing.some(entry => entry.toLowerCase() === candidate.toLowerCase());
-  if (!exists) {
-    composerMints.value = [...existing, candidate];
-  }
-  mintDraft.value = '';
-}
-
-function removeMint(index: number) {
-  ensureComposerMintsSeeded();
-  const current = [...composerMints.value];
-  if (index < 0 || index >= current.length) {
-    return;
-  }
-  current.splice(index, 1);
-  composerMints.value = current;
-}
-
-function commitRelay() {
-  const candidate = relayDraft.value.trim();
-  if (!candidate) {
-    relayDraft.value = '';
-    return;
-  }
-  const { sanitized, dropped } = buildRelayList([...composerRelays.value, candidate]);
-  if (dropped.includes(candidate)) {
-    notifyWarning('Discarded invalid relay URL', candidate);
-    relayDraft.value = '';
-    composerRelays.value = sanitized;
-    return;
-  }
-  composerRelays.value = sanitized;
-  relayDraft.value = '';
-}
-
-function removeRelay(index: number) {
-  const current = [...composerRelays.value];
-  if (index < 0 || index >= current.length) {
-    return;
-  }
-  current.splice(index, 1);
-  const { sanitized } = buildRelayList(current);
-  composerRelays.value = sanitized;
 }
 
 function downloadBundle() {
