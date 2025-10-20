@@ -622,19 +622,22 @@ onBeforeUnmount(() => {
 .hero-name {
   font-size: 1.625rem;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.01em;
+  color: var(--text-1);
 }
 
 .hero-handle {
   font-size: 1rem;
-  font-weight: 600;
-  color: var(--accent-500);
-  letter-spacing: 0.02em;
+  font-weight: 650;
+  color: color-mix(in srgb, var(--text-1) 92%, var(--text-2) 8%);
+  letter-spacing: 0.045em;
 }
 
 .hero-about {
-  color: var(--text-2);
-  line-height: 1.5;
+  color: color-mix(in srgb, var(--text-1) 96%, var(--text-2) 4%);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.55;
   white-space: pre-line;
 }
 
@@ -783,6 +786,8 @@ onBeforeUnmount(() => {
 
 .tier-row__highlight {
   color: var(--text-1);
+  font-weight: 600;
+  letter-spacing: 0.01em;
   line-height: 1.5;
 }
 
@@ -819,6 +824,8 @@ onBeforeUnmount(() => {
 
 .tier-row__price {
   color: var(--text-1);
+  font-weight: 700;
+  letter-spacing: 0.0125em;
 }
 
 .tier-row__subscribe {
