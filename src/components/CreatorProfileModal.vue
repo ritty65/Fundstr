@@ -16,7 +16,7 @@
             <div v-if="nip05" class="profile-handle">
               {{ nip05 }}
             </div>
-            <div v-if="aboutText" class="profile-about">
+            <div v-if="aboutText" class="profile-about text-body2 q-mt-xs">
               {{ aboutText }}
             </div>
           </div>
