@@ -77,62 +77,29 @@
 
         <div class="studio-stage__body">
           <template v-if="activeStep === 'setup'">
-            <q-card flat bordered class="studio-card">
-              <div class="studio-card__header">
-                <div>
-                  <div class="text-subtitle1 text-weight-medium text-1">Relay connection</div>
-                  <div class="text-caption text-2">Connect to relay.fundstr.me with automatic fallback.</div>
-                </div>
-                <q-btn flat dense icon="science" label="Data explorer" @click="requestExplorerOpen('toolbar')" />
-              </div>
-              <div class="studio-card__body column q-gutter-md">
-                <q-input
-                  v-model="relayUrlInput"
-                  label="Relay URL (WS)"
-                  dense
-                  filled
-                  :hint="relayUrlInputState === 'warning' ? relayUrlInputMessage : ''"
-                  :hide-hint="relayUrlInputState !== 'warning'"
-                  :error="relayUrlInputState === 'error' || !relayUrlInputValid"
-                  :error-message="
-                    relayUrlInputState === 'error'
-                      ? relayUrlInputMessage
-                      : 'Enter a valid wss:// relay'
-                  "
-                />
-                <div class="row items-center justify-between wrap q-gutter-sm">
-                  <q-toggle v-model="relayAutoReconnect" label="Auto reconnect" />
-                  <div class="row q-gutter-sm">
-                    <q-btn
-                      outline
-                      color="negative"
-                      label="Disconnect"
-                      icon="link_off"
-                      :disable="!relayIsConnected"
-                      @click="handleRelayDisconnect"
-                    />
-                    <q-btn
-                      color="primary"
-                      label="Connect"
-                      icon="bolt"
-                      :loading="relayConnectionStatus === 'connecting'"
-                      @click="handleRelayConnect"
-                    />
-                  </div>
-                </div>
-                <div class="studio-activity" v-if="activeRelayActivity">
-                  <div class="text-caption text-2">Last activity</div>
-                  <div class="text-body2 text-1">{{ activeRelayActivity?.message }}</div>
-                  <div class="text-caption text-2" v-if="activeRelayActivityTimeLabel">
-                    {{ activeRelayActivityTimeLabel }}
-                  </div>
-                </div>
-                <div class="studio-alert" v-if="activeRelayAlertLabel">
-                  <q-icon name="warning" size="16px" />
-                  <span>{{ activeRelayAlertLabel }}</span>
-                </div>
-              </div>
-            </q-card>
+            <SetupStep
+              v-model:relay-url-input="relayUrlInput"
+              v-model:relay-auto-reconnect="relayAutoReconnect"
+              v-model:author-input="authorInput"
+              :relay-url-input-state="relayUrlInputState"
+              :relay-url-input-message="relayUrlInputMessage"
+              :relay-url-input-valid="relayUrlInputValid"
+              :relay-connection-status="relayConnectionStatus"
+              :relay-is-connected="relayIsConnected"
+              :relay-needs-attention="relayNeedsAttention"
+              :active-relay-activity="activeRelayActivity"
+              :active-relay-activity-time-label="activeRelayActivityTimeLabel"
+              :active-relay-alert-label="activeRelayAlertLabel"
+              :signer-status-message="signerStatusMessage"
+              :using-store-identity="usingStoreIdentity"
+              :active-identity-summary="activeIdentitySummary"
+              :author-key-ready="authorKeyReady"
+              :setup-ready="setupStepReady"
+              :handle-relay-connect="handleRelayConnect"
+              :handle-relay-disconnect="handleRelayDisconnect"
+              :request-explorer-open="requestExplorerOpen"
+              :open-shared-signer-modal="openSharedSignerModal"
+            />
           </template>
           <template v-else-if="activeStep === 'profile'">
             <q-card flat bordered class="studio-card">
@@ -685,6 +652,7 @@ import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
+import SetupStep from './creator-studio/SetupStep.vue';
 import TierComposer from './nutzap-profile/TierComposer.vue';
 import NutzapExplorerPanel from 'src/nutzap/onepage/NutzapExplorerPanel.vue';
 import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
@@ -983,7 +951,7 @@ const stepDefinitions: StepDefinition[] = [
   {
     name: 'setup',
     label: 'Relay & signer',
-    description: 'Connect to the relay and link a publishing signer.',
+    description: 'Connect to the relay, confirm your signer, and enter your author npub.',
     readinessKeys: ['relay', 'authorKey'],
   },
   {
@@ -2155,6 +2123,7 @@ const tierFrequencyOptions = computed(() =>
 );
 
 const authorKeyReady = computed(() => authorInput.value.trim().length > 0);
+const setupStepReady = computed(() => !relayNeedsAttention.value && authorKeyReady.value);
 
 type ReadinessEntry = {
   key: ReadinessChipKey;
@@ -2310,7 +2279,15 @@ const steps = computed<StepEntry[]>(() => {
 const currentStep = computed(() => steps.value.find(step => step.name === activeStep.value) ?? steps.value[0]!);
 const stepIndex = computed(() => stepOrder.indexOf(activeStep.value));
 const canGoBack = computed(() => stepIndex.value > 0);
-const canGoNext = computed(() => stepIndex.value < stepOrder.length - 1);
+const canGoNext = computed(() => {
+  if (stepIndex.value >= stepOrder.length - 1) {
+    return false;
+  }
+  if (activeStep.value === 'setup') {
+    return setupStepReady.value;
+  }
+  return true;
+});
 
 function goToStep(step: CreatorStudioStep) {
   activeStep.value = step;
@@ -2323,9 +2300,10 @@ function goToPreviousStep() {
 }
 
 function goToNextStep() {
-  if (stepIndex.value < stepOrder.length - 1) {
-    activeStep.value = stepOrder[stepIndex.value + 1];
+  if (!canGoNext.value) {
+    return;
   }
+  activeStep.value = stepOrder[stepIndex.value + 1];
 }
 
 const profileJsonPreview = computed(() => {
