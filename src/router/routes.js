@@ -68,17 +68,6 @@ const routes = [
     ],
   },
   {
-    path: "/nutzap-profile",
-    component: () => import("layouts/FullscreenLayout.vue"),
-    children: [
-      {
-        path: "",
-        name: "NutzapProfile",
-        component: () => import("src/pages/NutzapProfilePage.vue"),
-      },
-    ],
-  },
-  {
     path: "/creator-studio",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [

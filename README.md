@@ -281,7 +281,7 @@ When opened, Fundstr automatically loads the profile for the provided `npub`. If
 
 ### Nutzap Private Relay Verification
 
-After publishing from `/nutzap-profile`, run through this checklist to confirm the
+After publishing from `/creator-studio`, run through this checklist to confirm the
 isolated relay flow:
 
 1. **Build & Typecheck** – `pnpm install` then `pnpm build` (or the equivalent npm commands).
@@ -290,7 +290,7 @@ isolated relay flow:
    curl -sH 'Accept: application/nostr+json' https://relay.primal.net/ | jq .
    curl -s 'https://relay.primal.net/req?filters=%5B%5D'
    ```
-3. **Page Behaviour** – load `/nutzap-profile`, publish tiers and profile, and verify the
+3. **Page Behaviour** – load `/creator-studio`, publish tiers and profile, and verify the
    publish acknowledgements (`via=ws` or `via=http`). Block WebSockets to confirm the HTTP
    fallback still succeeds.
 4. **CLI Verification** – confirm your `kind:10019` profile lives on the private relay only:
