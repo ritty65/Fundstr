@@ -3,7 +3,7 @@
     v-model="showLocal"
     persistent
     backdrop-filter="blur(6px)"
-    style="width: 760px; max-width: 90vw;"
+    style="width: 90%; max-width: 650px;"
   >
     <q-card class="profile-card">
       <q-card-section class="profile-header">
