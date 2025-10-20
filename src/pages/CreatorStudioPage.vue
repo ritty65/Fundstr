@@ -20,7 +20,9 @@
               :aria-describedby="`step-${step.name}-description step-${step.name}-status`"
               :aria-label="`${step.label} – ${step.statusLabel}`"
             >
-              <span class="studio-stepper__indicator" aria-hidden="true"></span>
+              <span class="studio-stepper__indicator" aria-hidden="true">
+                {{ step.indicator }}
+              </span>
               <span class="studio-stepper__copy">
                 <span class="studio-stepper__label text-body1 text-weight-medium text-1">
                   {{ step.label }}
@@ -54,6 +56,9 @@
             @click="goToPreviousStep"
           />
           <div class="studio-stage__details">
+            <div class="studio-stage__meta text-caption text-2">
+              Step {{ currentStepNumber }} of {{ steps.length }}
+            </div>
             <div
               class="studio-stage__title text-h6 text-weight-semibold text-1"
               id="active-step-title"
@@ -868,6 +873,7 @@ type StepDefinition = {
   label: string;
   description: string;
   readinessKeys: ReadinessChipKey[];
+  indicator: string;
 };
 
 type StepEntry = StepDefinition & {
@@ -881,24 +887,28 @@ const stepDefinitions: StepDefinition[] = [
     label: 'Relay & signer',
     description: 'Connect to the relay, confirm your signer, and enter your author npub.',
     readinessKeys: ['relay', 'authorKey'],
+    indicator: '1',
   },
   {
     name: 'profile',
     label: 'Profile basics',
     description: 'Establish your creator identity and payout details.',
     readinessKeys: ['identity', 'mint', 'p2pk'],
+    indicator: '2',
   },
   {
     name: 'tiers',
     label: 'Supporter tiers',
     description: 'Compose your supporter offerings and pricing tiers.',
     readinessKeys: ['tiers'],
+    indicator: '3',
   },
   {
     name: 'publish',
     label: 'Review & publish',
     description: 'Review readiness and publish to relay.fundstr.me.',
     readinessKeys: ['relay', 'authorKey', 'mint', 'p2pk', 'tiers'],
+    indicator: '4',
   },
 ];
 
@@ -2257,6 +2267,7 @@ const steps = computed<StepEntry[]>(() => {
 
 const currentStep = computed(() => steps.value.find(step => step.name === activeStep.value) ?? steps.value[0]!);
 const stepIndex = computed(() => stepOrder.indexOf(activeStep.value));
+const currentStepNumber = computed(() => (stepIndex.value >= 0 ? stepIndex.value + 1 : 1));
 const canGoBack = computed(() => stepIndex.value > 0);
 const canGoNext = computed(() => {
   if (stepIndex.value >= stepOrder.length - 1) {
@@ -3282,31 +3293,28 @@ onBeforeUnmount(() => {
 .studio-stepper__item:not(:last-child) .studio-stepper__button::after {
   content: '';
   position: absolute;
-  left: 30px;
-  top: 32px;
+  left: 36px;
+  top: 44px;
   bottom: -24px;
   width: 2px;
   background: var(--surface-contrast-border);
 }
 
 .studio-stepper__indicator {
-  width: 20px;
-  height: 20px;
+  width: 32px;
+  height: 32px;
   border-radius: 999px;
   border: 2px solid var(--surface-contrast-border);
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: border-color 0.2s ease, background 0.2s ease;
-}
-
-.studio-stepper__indicator::after {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: transparent;
-  transition: background 0.2s ease;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-2);
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  flex: 0 0 auto;
 }
 
 .studio-stepper__copy {
@@ -3373,19 +3381,14 @@ onBeforeUnmount(() => {
 
 .studio-stepper__button.is-active .studio-stepper__indicator {
   border-color: var(--accent-500);
-}
-
-.studio-stepper__button.is-active .studio-stepper__indicator::after {
   background: var(--accent-500);
+  color: var(--text-inverse);
 }
 
 .studio-stepper__button.is-ready .studio-stepper__indicator {
   border-color: var(--accent-500);
-  background: color-mix(in srgb, var(--accent-500) 20%, transparent);
-}
-
-.studio-stepper__button.is-ready .studio-stepper__indicator::after {
-  background: var(--accent-500);
+  background: color-mix(in srgb, var(--accent-500) 12%, transparent);
+  color: var(--accent-600);
 }
 
 .studio-stepper__button.is-ready .studio-stepper__status {
@@ -3399,11 +3402,8 @@ onBeforeUnmount(() => {
 
 .studio-stepper__button.is-attention .studio-stepper__indicator {
   border-color: rgba(250, 204, 21, 0.8);
-  background: color-mix(in srgb, rgba(250, 204, 21, 0.25) 40%, transparent);
-}
-
-.studio-stepper__button.is-attention .studio-stepper__indicator::after {
-  background: rgba(250, 204, 21, 0.95);
+  background: color-mix(in srgb, rgba(250, 204, 21, 0.2) 40%, transparent);
+  color: rgba(180, 83, 9, 0.95);
 }
 
 .studio-stepper__button.is-attention .studio-stepper__status {
@@ -3412,11 +3412,17 @@ onBeforeUnmount(() => {
 
 .studio-stepper__button.is-pending .studio-stepper__indicator {
   border-color: var(--accent-200);
+  background: color-mix(in srgb, var(--surface-2) 80%, transparent);
 }
 
 .studio-stepper__button.is-optional .studio-stepper__indicator {
   border-color: var(--surface-contrast-border);
   background: color-mix(in srgb, var(--surface-2) 75%, transparent);
+  color: var(--text-2);
+}
+
+.studio-stage__meta {
+  margin-bottom: 4px;
 }
 
 .studio-stage {
