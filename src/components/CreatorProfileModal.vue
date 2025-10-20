@@ -6,30 +6,57 @@
     style="width: 90%; max-width: 650px;"
   >
     <q-card class="profile-card">
-      <q-card-section class="profile-header">
-        <div class="header-main">
-          <q-avatar size="104px" class="profile-avatar">
-            <img :src="creatorAvatar" alt="Creator avatar" @error="onAvatarError" />
-          </q-avatar>
-          <div class="profile-info">
-            <div class="profile-name">{{ displayName }}</div>
-            <div v-if="nip05" class="profile-handle">
-              {{ nip05 }}
+      <q-card-section class="profile-hero">
+        <div class="hero-panel">
+          <q-btn
+            flat
+            round
+            dense
+            icon="close"
+            class="close-btn"
+            @click="close"
+            aria-label="Close creator profile"
+          />
+          <div class="hero-layout">
+            <div class="hero-avatar">
+              <q-avatar size="120px" class="profile-avatar">
+                <img :src="creatorAvatar" alt="Creator avatar" @error="onAvatarError" />
+              </q-avatar>
             </div>
-            <div v-if="aboutText" class="profile-about text-body2 q-mt-xs">
-              {{ aboutText }}
+            <div class="hero-meta">
+              <div class="hero-name">{{ displayName }}</div>
+              <div v-if="nip05" class="hero-handle">{{ nip05 }}</div>
+              <div v-if="aboutText" class="hero-about text-body2">{{ aboutText }}</div>
+              <div v-if="creator" class="hero-actions">
+                <q-btn
+                  unelevated
+                  class="action-button subscribe"
+                  color="accent"
+                  :disable="!hasTiers"
+                  label="Subscribe"
+                  no-caps
+                  @click="handleSubscribe(primaryTierId || undefined)"
+                />
+                <q-btn
+                  outline
+                  class="action-button"
+                  color="accent"
+                  label="Message"
+                  no-caps
+                  @click="$emit('message', pubkey)"
+                />
+                <q-btn
+                  outline
+                  class="action-button"
+                  color="accent"
+                  label="Donate"
+                  no-caps
+                  @click="$emit('donate', pubkey)"
+                />
+              </div>
             </div>
           </div>
         </div>
-        <q-btn
-          flat
-          round
-          dense
-          icon="close"
-          class="close-btn"
-          @click="close"
-          aria-label="Close creator profile"
-        />
       </q-card-section>
 
       <q-card-section v-if="loading" class="loading-state">
@@ -38,33 +65,6 @@
 
       <template v-else>
         <q-separator class="section-divider" />
-        <q-card-section v-if="creator" class="actions-section">
-          <q-btn
-            unelevated
-            class="action-button subscribe"
-            color="accent"
-            :disable="!hasTiers"
-            label="Subscribe"
-            no-caps
-            @click="handleSubscribe(primaryTierId || undefined)"
-          />
-          <q-btn
-            outline
-            class="action-button"
-            color="accent"
-            label="Message"
-            no-caps
-            @click="$emit('message', pubkey)"
-          />
-          <q-btn
-            outline
-            class="action-button"
-            color="accent"
-            label="Donate"
-            no-caps
-            @click="$emit('donate', pubkey)"
-          />
-        </q-card-section>
 
         <q-card-section v-if="creator" class="tiers-section">
           <div class="section-heading">Subscription tiers</div>
@@ -478,52 +478,123 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.profile-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 24px;
+
+.profile-hero {
+  padding: 0;
 }
 
-.header-main {
+.hero-panel {
+  position: relative;
+  padding: 36px 32px 32px;
+  border-radius: 0 0 40% 40% / 0 0 12% 12%;
+  background: linear-gradient(135deg, var(--accent-500) 0%, var(--surface-2) 60%);
+  overflow: hidden;
+  color: var(--text-inverse);
+}
+
+.hero-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 10% 15%, rgba(255, 255, 255, 0.25), transparent 55%);
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+.hero-panel::after {
+  content: '';
+  position: absolute;
+  width: 280px;
+  height: 280px;
+  right: -120px;
+  top: -140px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.18), transparent 70%);
+  filter: blur(0.5px);
+  pointer-events: none;
+}
+
+.hero-layout {
+  position: relative;
   display: flex;
-  align-items: flex-start;
-  gap: 20px;
+  align-items: center;
+  gap: 28px;
+  z-index: 1;
+}
+
+.hero-avatar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
 }
 
 .profile-avatar :deep(img) {
   border-radius: 50%;
-  border: 3px solid var(--surface-contrast-border);
+  border: 3px solid rgba(255, 255, 255, 0.45);
   object-fit: cover;
   width: 100%;
   height: 100%;
 }
 
-.profile-info {
+.hero-meta {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 12px;
   max-width: 420px;
 }
 
-.profile-name {
-  font-size: 1.5rem;
+.hero-name {
+  font-size: 1.875rem;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
-.profile-handle {
-  color: var(--accent-500);
+.hero-handle {
+  font-size: 1rem;
   font-weight: 600;
+  color: var(--accent-200);
+  letter-spacing: 0.02em;
 }
 
-.profile-about {
-  color: var(--text-2);
-  line-height: 1.5;
+.hero-about {
+  color: var(--text-inverse);
+  opacity: 0.85;
+  line-height: 1.6;
   white-space: pre-line;
 }
 
+.hero-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  flex-wrap: nowrap;
+}
+
+.action-button {
+  flex: 1;
+  font-weight: 600;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.action-button.subscribe {
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.25);
+}
+
+.action-button:not(.subscribe):hover,
+.action-button:not(.subscribe):focus-visible {
+  transform: translateY(-1px);
+}
+
 .close-btn {
-  color: var(--text-2);
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .loading-state {
@@ -535,22 +606,6 @@ onBeforeUnmount(() => {
 
 .section-divider {
   opacity: 0.5;
-}
-
-.actions-section {
-  display: flex;
-  gap: 12px;
-  padding: 24px;
-  padding-top: 16px;
-}
-
-.action-button {
-  flex: 1;
-  font-weight: 600;
-}
-
-.action-button.subscribe {
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
 }
 
 .tiers-section {
@@ -732,24 +787,34 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 599px) {
-  .profile-header {
+  .hero-panel {
+    padding: 28px 20px 24px;
+    border-radius: 0 0 28% 28% / 0 0 10% 10%;
+  }
+
+  .hero-layout {
     flex-direction: column;
     align-items: flex-start;
-    gap: 16px;
+    gap: 20px;
+  }
+
+  .hero-avatar {
+    padding: 4px;
+  }
+
+  .hero-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .hero-actions .action-button {
+    flex: 1 1 100%;
   }
 
   .close-btn {
-    position: absolute;
     top: 12px;
     right: 12px;
-  }
-
-  .header-main {
-    width: 100%;
-  }
-
-  .actions-section {
-    flex-direction: column;
   }
 }
 </style>
