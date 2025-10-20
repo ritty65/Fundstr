@@ -404,7 +404,13 @@ function normalizeTierDetails(rawTier: unknown): TierDetails | null {
     'Subscription tier';
 
   const description = typeof t.description === 'string' ? t.description : null;
-  const priceMsat = extractNumericValue(t.price_msat ?? t.priceMsat ?? t.amount_msat ?? t.amountMsat ?? null);
+  let priceMsat = extractNumericValue(t.price_msat ?? t.priceMsat ?? t.amount_msat ?? t.amountMsat ?? null);
+  if (priceMsat === null) {
+    const priceSat = extractNumericValue(t.price ?? null);
+    if (priceSat !== null) {
+      priceMsat = priceSat * 1000;
+    }
+  }
   const periodLabel =
     (typeof t.period === 'string' && t.period) ||
     (typeof t.cadence === 'string' && t.cadence) ||
