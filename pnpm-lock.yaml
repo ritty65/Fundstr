@@ -5,6 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  '@jimp/plugin-invert': 0.22.12
   form-data: ^4.0.4
   semver-regex: ^4.0.5
   http-cache-semantics: ^4.1.1
@@ -2097,14 +2098,13 @@ packages:
       '@jimp/utils': 0.14.0
     dev: false
 
-  /@jimp/plugin-invert@0.14.0(@jimp/custom@0.14.0):
-    resolution: {integrity: sha512-UaQW9X9vx8orQXYSjT5VcITkJPwDaHwrBbxxPoDG+F/Zgv4oV9fP+udDD6qmkgI9taU+44Fy+zm/J/gGcMWrdg==}
+  /@jimp/plugin-invert@0.22.12(@jimp/custom@0.14.0):
+    resolution: {integrity: sha512-N+6rwxdB+7OCR6PYijaA/iizXXodpxOGvT/smd/lxeXsZ/empHmFFFJ/FaXcYh19Tm04dGDaXcNF/dN5nm6+xQ==}
     peerDependencies:
       '@jimp/custom': '>=0.3.5'
     dependencies:
-      '@babel/runtime': 7.28.3
       '@jimp/custom': 0.14.0
-      '@jimp/utils': 0.14.0
+      '@jimp/utils': 0.22.12
     dev: false
 
   /@jimp/plugin-mask@0.14.0(@jimp/custom@0.14.0):
@@ -2227,7 +2227,7 @@ packages:
       '@jimp/plugin-fisheye': 0.14.0(@jimp/custom@0.14.0)
       '@jimp/plugin-flip': 0.14.0(@jimp/custom@0.14.0)(@jimp/plugin-rotate@0.14.0)
       '@jimp/plugin-gaussian': 0.14.0(@jimp/custom@0.14.0)
-      '@jimp/plugin-invert': 0.14.0(@jimp/custom@0.14.0)
+      '@jimp/plugin-invert': 0.22.12(@jimp/custom@0.14.0)
       '@jimp/plugin-mask': 0.14.0(@jimp/custom@0.14.0)
       '@jimp/plugin-normalize': 0.14.0(@jimp/custom@0.14.0)
       '@jimp/plugin-print': 0.14.0(@jimp/custom@0.14.0)(@jimp/plugin-blit@0.14.0)
@@ -2281,6 +2281,12 @@ packages:
     resolution: {integrity: sha512-MY5KFYUru0y74IsgM/9asDwb3ERxWxXEu3CRCZEvE7DtT86y1bR1XgtlSliMrptjz4qbivNGMQSvUBpEFJDp1A==}
     dependencies:
       '@babel/runtime': 7.28.3
+      regenerator-runtime: 0.13.11
+    dev: false
+
+  /@jimp/utils@0.22.12:
+    resolution: {integrity: sha512-yJ5cWUknGnilBq97ZXOyOS0HhsHOyAyjHwYfHxGbSyMTohgQI6sVyE8KPgDwH8HHW/nMKXk8TrSwAE71zt716Q==}
+    dependencies:
       regenerator-runtime: 0.13.11
     dev: false
 

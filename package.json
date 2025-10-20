@@ -116,6 +116,7 @@
   },
   "pnpm": {
     "overrides": {
+     "@jimp/plugin-invert": "0.22.12",
       "form-data": "^4.0.4",
       "semver-regex": "^4.0.5",
       "http-cache-semantics": "^4.1.1",
