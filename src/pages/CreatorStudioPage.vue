@@ -199,7 +199,7 @@
               </div>
 
               <div class="publish-summary-grid">
-                <div class="publish-summary-tile">
+                <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'profile' }">
                   <div class="publish-summary-tile__label text-caption text-uppercase text-2">Display name</div>
                   <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
                     {{ summaryDisplayName }}
@@ -213,8 +213,19 @@
                   <div v-if="lastPublishInfo" class="publish-summary-tile__meta text-caption text-2">
                     {{ lastPublishInfo }}
                   </div>
+                  <div class="publish-summary-tile__cta">
+                    <q-btn
+                      flat
+                      dense
+                      color="primary"
+                      icon="edit"
+                      label="Edit profile"
+                      :disable="activeStep === 'profile'"
+                      @click="goToStep('profile')"
+                    />
+                  </div>
                 </div>
-                <div class="publish-summary-tile">
+                <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'tiers' }">
                   <div class="publish-summary-tile__label text-caption text-uppercase text-2">Tier address</div>
                   <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
                     {{ tierAddressPreview }}
@@ -222,8 +233,19 @@
                   <div class="publish-summary-tile__meta text-caption text-2">
                     Publishing as {{ tierPublishSummaryLabel }}
                   </div>
+                  <div class="publish-summary-tile__cta">
+                    <q-btn
+                      flat
+                      dense
+                      color="primary"
+                      icon="tune"
+                      label="Edit tiers"
+                      :disable="activeStep === 'tiers'"
+                      @click="goToStep('tiers')"
+                    />
+                  </div>
                 </div>
-                <div class="publish-summary-tile">
+                <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'profile' }">
                   <div class="publish-summary-tile__label text-caption text-uppercase text-2">Trusted mints</div>
                   <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
                     {{ mintList.length }} configured
@@ -241,8 +263,19 @@
                     </q-chip>
                   </div>
                   <div v-else class="publish-summary-tile__meta text-caption text-2">No mints configured.</div>
+                  <div class="publish-summary-tile__cta">
+                    <q-btn
+                      flat
+                      dense
+                      color="primary"
+                      icon="inventory_2"
+                      label="Manage mints"
+                      :disable="activeStep === 'profile'"
+                      @click="goToStep('profile')"
+                    />
+                  </div>
                 </div>
-                <div class="publish-summary-tile">
+                <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'setup' }">
                   <div class="publish-summary-tile__label text-caption text-uppercase text-2">Preferred relays</div>
                   <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
                     {{ relayList.length }} selected
@@ -251,8 +284,19 @@
                     <q-chip v-for="relay in relayList" :key="relay" dense outline>{{ relay }}</q-chip>
                   </div>
                   <div v-else class="publish-summary-tile__meta text-caption text-2">Relay selection pending.</div>
+                  <div class="publish-summary-tile__cta">
+                    <q-btn
+                      flat
+                      dense
+                      color="primary"
+                      icon="lan"
+                      label="Edit relay setup"
+                      :disable="activeStep === 'setup'"
+                      @click="goToStep('setup')"
+                    />
+                  </div>
                 </div>
-                <div class="publish-summary-tile">
+                <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'tiers' }">
                   <div class="publish-summary-tile__label text-caption text-uppercase text-2">Supporter tiers</div>
                   <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
                     {{ tiers.length }} total
@@ -264,6 +308,17 @@
                     <li v-if="tiers.length > 4">+ {{ tiers.length - 4 }} more</li>
                   </ul>
                   <div v-else class="publish-summary-tile__meta text-caption text-2">No tiers configured yet.</div>
+                  <div class="publish-summary-tile__cta">
+                    <q-btn
+                      flat
+                      dense
+                      color="primary"
+                      icon="workspace_premium"
+                      label="Edit tiers"
+                      :disable="activeStep === 'tiers'"
+                      @click="goToStep('tiers')"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -390,7 +445,7 @@
       </main>
 
       <aside class="studio-sidebar">
-        <q-card flat bordered class="studio-preview">
+        <q-card flat bordered class="studio-preview" :data-active-step="activeStep">
           <div class="studio-preview__header">
             <div>
               <div class="text-subtitle1 text-weight-medium text-1">Preview &amp; payload</div>
@@ -415,8 +470,11 @@
           </q-tabs>
           <q-tab-panels v-model="previewTab" animated class="studio-preview__panels">
             <q-tab-panel name="preview">
-              <div class="preview-card">
-                <div class="preview-card__header">
+              <div class="preview-card" :class="{ 'is-highlighted': activeStep === 'publish' }">
+                <div
+                  class="preview-card__header"
+                  :class="{ 'is-highlighted': activeStep === 'profile' || activeStep === 'setup' }"
+                >
                   <div class="preview-avatar">
                     <q-avatar size="56px" color="accent" text-color="white">
                       {{ displayName ? displayName.charAt(0) : 'N' }}
@@ -427,10 +485,19 @@
                     <div class="text-caption text-2">{{ authorInput || 'npub…' }}</div>
                   </div>
                 </div>
-                <div class="preview-card__chips">
-                  <q-chip dense outline>mints: {{ Array.isArray(mintList) ? mintList.length : 0 }}</q-chip>
-                  <q-chip dense outline>relays: {{ Array.isArray(relayList) ? relayList.length : 0 }}</q-chip>
-                  <q-chip dense outline>tiers: {{ Array.isArray(tiers) ? tiers.length : 0 }}</q-chip>
+                <div
+                  class="preview-card__chips"
+                  :class="{ 'is-highlighted': activeStep === 'setup' || activeStep === 'tiers' }"
+                >
+                  <q-chip dense outline class="preview-chip" :class="{ 'is-highlighted': activeStep === 'profile' }">
+                    mints: {{ Array.isArray(mintList) ? mintList.length : 0 }}
+                  </q-chip>
+                  <q-chip dense outline class="preview-chip" :class="{ 'is-highlighted': activeStep === 'setup' }">
+                    relays: {{ Array.isArray(relayList) ? relayList.length : 0 }}
+                  </q-chip>
+                  <q-chip dense outline class="preview-chip" :class="{ 'is-highlighted': activeStep === 'tiers' }">
+                    tiers: {{ Array.isArray(tiers) ? tiers.length : 0 }}
+                  </q-chip>
                 </div>
               </div>
               <q-banner class="preview-banner" dense>
@@ -3147,16 +3214,31 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 24px;
   grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'nav'
+    'stage'
+    'sidebar';
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 768px) {
+  .studio-layout {
+    grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
+    grid-template-areas:
+      'nav nav'
+      'stage sidebar';
+  }
+}
+
+@media (min-width: 1280px) {
   .studio-layout {
     grid-template-columns: minmax(220px, 260px) minmax(0, 2fr) minmax(320px, 1fr);
+    grid-template-areas: 'nav stage sidebar';
     align-items: flex-start;
   }
 }
 
 .studio-navigation {
+  grid-area: nav;
   position: relative;
 }
 
@@ -3247,6 +3329,43 @@ onBeforeUnmount(() => {
   max-width: 260px;
 }
 
+@media (max-width: 1279.98px) {
+  .studio-navigation {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--surface-1);
+    padding: 8px 0;
+  }
+
+  .studio-stepper {
+    flex-direction: row;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    margin: 0 -8px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .studio-stepper__item {
+    flex: 0 0 auto;
+    min-width: 200px;
+  }
+
+  .studio-stepper__button {
+    padding: 12px 16px;
+  }
+
+  .studio-stepper__item:not(:last-child) .studio-stepper__button::after {
+    display: none;
+  }
+
+  .studio-stepper__description {
+    display: none;
+  }
+}
+
 .studio-stepper__button.is-active {
   border-color: color-mix(in srgb, var(--accent-200) 60%, transparent);
   background: color-mix(in srgb, var(--accent-200) 22%, transparent);
@@ -3301,6 +3420,7 @@ onBeforeUnmount(() => {
 }
 
 .studio-stage {
+  grid-area: stage;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -3418,6 +3538,13 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.publish-summary-tile.is-active {
+  border-color: color-mix(in srgb, var(--accent-200) 65%, transparent);
+  background: color-mix(in srgb, var(--accent-200) 18%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-200) 45%, transparent);
 }
 
 .publish-summary-tile__value {
@@ -3429,6 +3556,13 @@ onBeforeUnmount(() => {
 .publish-summary-tile__meta {
   color: var(--text-2);
   word-break: break-word;
+}
+
+.publish-summary-tile__cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .publish-summary-tile__stack {
@@ -3601,6 +3735,7 @@ onBeforeUnmount(() => {
 }
 
 .studio-sidebar {
+  grid-area: sidebar;
   position: relative;
 }
 
@@ -3613,6 +3748,13 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+@media (max-width: 1279.98px) {
+  .studio-preview {
+    position: static;
+    top: auto;
+  }
 }
 
 .studio-preview__header {
@@ -3641,16 +3783,63 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--surface-2) 92%, transparent);
 }
 
+.preview-card.is-highlighted {
+  border-color: color-mix(in srgb, var(--accent-200) 65%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-200) 45%, transparent);
+}
+
+
 .preview-card__header {
   display: flex;
   align-items: center;
   gap: 12px;
+  position: relative;
+  z-index: 0;
 }
+
+.preview-card__header.is-highlighted::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent-200) 22%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-200) 45%, transparent);
+  pointer-events: none;
+  z-index: -1;
+}
+
 
 .preview-card__chips {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  position: relative;
+  z-index: 0;
+}
+
+.preview-card__chips.is-highlighted::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent-200) 18%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-200) 45%, transparent);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.preview-chip {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.preview-chip.is-highlighted {
+  background: color-mix(in srgb, var(--accent-200) 28%, transparent);
+  border-color: color-mix(in srgb, var(--accent-200) 65%, transparent);
+  color: var(--accent-600);
+}
+
+.preview-chip.is-highlighted :deep(.q-chip__content) {
+  color: var(--accent-600);
 }
 
 .preview-banner {
