@@ -309,6 +309,7 @@ function normalizeCreator(row: CreatorRow): LegacyCreator {
 
   const metaRecord = toRecord(row.meta) ?? {};
   const profile: Record<string, unknown> = { ...metaRecord };
+  const tiers = Array.isArray(row.tiers) ? row.tiers.map(normalizeTier).filter(Boolean) : [];
 
   const lightning = normalizeLightning(profile);
   if (lightning) {
@@ -320,6 +321,9 @@ function normalizeCreator(row: CreatorRow): LegacyCreator {
   }
   if (typeof row.has_nutzap === 'boolean') {
     profile.has_nutzap = row.has_nutzap;
+  }
+  if ('nutzapProfile' in row && row.nutzapProfile !== undefined) {
+    profile.nutzapProfile = row.nutzapProfile;
   }
 
   const displayName = toNullableString(profile.display_name ?? (profile as any).displayName);
@@ -341,9 +345,8 @@ function normalizeCreator(row: CreatorRow): LegacyCreator {
     nip05,
     picture,
     banner,
-    tierSummary: null,
     metrics: undefined,
-    tiers: [],
+    tiers,
     cacheHit: false,
     featured: false,
   };
