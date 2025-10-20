@@ -26,7 +26,7 @@
             <div class="hero-meta">
               <div class="hero-name">{{ displayName }}</div>
               <div v-if="nip05" class="hero-handle">{{ nip05 }}</div>
-              <div v-if="aboutText" class="hero-about text-body2">{{ aboutText }}</div>
+              <div v-if="aboutText" class="hero-about text-body1 text-weight-medium">{{ aboutText }}</div>
               <div v-if="creator" class="hero-actions">
                 <q-btn
                   unelevated
@@ -620,25 +620,39 @@ onBeforeUnmount(() => {
 }
 
 .hero-name {
-  font-size: 1.625rem;
+  font-size: 1.75rem;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.005em;
+  line-height: 1.15;
   color: var(--text-1);
 }
 
 .hero-handle {
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 650;
-  color: color-mix(in srgb, var(--text-1) 92%, var(--text-2) 8%);
-  letter-spacing: 0.045em;
+  color: color-mix(in srgb, var(--text-1) 95%, var(--accent-500) 5%);
+  letter-spacing: 0.04em;
 }
 
 .hero-about {
-  color: color-mix(in srgb, var(--text-1) 96%, var(--text-2) 4%);
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  line-height: 1.55;
+  position: relative;
+  padding-bottom: 8px;
+  color: color-mix(in srgb, var(--text-1) 98%, var(--accent-500) 2%);
+  font-weight: 600;
+  letter-spacing: 0.012em;
+  line-height: 1.65;
   white-space: pre-line;
+}
+
+.hero-about::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 72px;
+  height: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-500) 82%, var(--surface-1) 18%);
 }
 
 .hero-actions {
@@ -785,10 +799,13 @@ onBeforeUnmount(() => {
 }
 
 .tier-row__highlight {
-  color: var(--text-1);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  line-height: 1.5;
+  color: color-mix(in srgb, var(--text-1) 97%, var(--accent-500) 3%);
+  font-weight: 650;
+  font-size: 1.02rem;
+  letter-spacing: 0.012em;
+  line-height: 1.55;
+  border-left: 3px solid color-mix(in srgb, var(--accent-500) 70%, transparent);
+  padding-left: 12px;
 }
 
 .tier-row__meta {
@@ -803,9 +820,10 @@ onBeforeUnmount(() => {
   gap: 6px;
   padding: 4px 10px;
   border-radius: 999px;
-  background: var(--chip-bg);
-  color: var(--chip-text);
-  font-size: 0.75rem;
+  background: color-mix(in srgb, var(--chip-bg) 75%, var(--surface-1) 25%);
+  color: color-mix(in srgb, var(--text-1) 94%, var(--chip-text) 6%);
+  font-size: 0.78rem;
+  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -823,9 +841,10 @@ onBeforeUnmount(() => {
 }
 
 .tier-row__price {
-  color: var(--text-1);
+  color: color-mix(in srgb, var(--text-1) 98%, var(--accent-500) 2%);
+  font-size: 1.125rem;
   font-weight: 700;
-  letter-spacing: 0.0125em;
+  letter-spacing: 0.01em;
 }
 
 .tier-row__subscribe {
