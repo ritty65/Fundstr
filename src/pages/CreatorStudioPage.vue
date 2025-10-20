@@ -52,7 +52,7 @@
             dense
             icon="arrow_back"
             label="Back"
-            :disable="!canGoBack"
+            :disable="!canGoBack || loading"
             @click="goToPreviousStep"
           />
           <div class="studio-stage__details">
@@ -75,12 +75,13 @@
             dense
             icon-right="arrow_forward"
             label="Next"
-            :disable="!canGoNext"
+            :disable="!canGoNext || loading"
             @click="goToNextStep"
           />
         </div>
 
-        <div class="studio-stage__body">
+        <div class="studio-stage__body" style="position: relative">
+          <q-inner-loading :showing="loading" color="primary" />
           <template v-if="activeStep === 'setup'">
             <SetupStep
               v-model:relay-url-input="relayUrlInput"
@@ -148,6 +149,7 @@
                   v-model="tierPreviewKind"
                   dense
                   toggle-color="primary"
+                  :disable="loading"
                   :options="tierPreviewOptions"
                 />
                 <q-chip dense :color="tiersReady ? 'positive' : 'warning'" text-color="white">
@@ -169,6 +171,7 @@
                   :tiers="tiers"
                   :frequency-options="tierFrequencyOptions"
                   :show-errors="showTierValidation"
+                  :disabled="loading"
                   @update:tiers="handleTiersUpdate"
                   @validation-changed="handleTierValidation"
                 />
@@ -328,52 +331,77 @@
               </div>
 
               <div class="publish-readiness">
-                <div class="publish-readiness__title text-subtitle2 text-weight-medium text-1">
-                  Readiness checklist
+              <div class="publish-readiness__title text-subtitle2 text-weight-medium text-1">
+                Readiness checklist
+              </div>
+              <div class="publish-readiness__groups" v-if="!loading">
+                <div
+                  v-for="group in readinessChecklist"
+                  :key="group.id"
+                  class="publish-readiness__group"
+                >
+                  <div class="publish-readiness__group-label text-caption text-uppercase text-2">
+                    {{ group.label }}
+                  </div>
+                  <div class="publish-readiness__entries">
+                    <button
+                      v-for="item in group.items"
+                      :key="item.key"
+                      type="button"
+                      class="publish-readiness__entry"
+                      :class="[`is-${item.state}`, { 'is-clickable': !!item.step } ]"
+                      @click="handleReadinessNavigation(item)"
+                    >
+                      <div class="publish-readiness__entry-icon">
+                        <q-icon :name="item.icon" size="18px" />
+                      </div>
+                      <div class="publish-readiness__entry-content">
+                        <div class="publish-readiness__entry-label text-body2 text-1">
+                          {{ item.label }}
+                        </div>
+                        <div
+                          v-if="item.stepLabel"
+                          class="publish-readiness__entry-meta text-caption text-2"
+                        >
+                          {{ item.stepLabel }} step
+                        </div>
+                      </div>
+                      <div class="publish-readiness__entry-state text-caption">
+                        {{ item.stateLabel }}
+                      </div>
+                      <q-tooltip v-if="item.tooltip" class="bg-surface-2 text-1">
+                        {{ item.tooltip }}
+                      </q-tooltip>
+                    </button>
+                  </div>
                 </div>
-                <div class="publish-readiness__groups">
-                  <div
-                    v-for="group in readinessChecklist"
-                    :key="group.id"
-                    class="publish-readiness__group"
-                  >
-                    <div class="publish-readiness__group-label text-caption text-uppercase text-2">
-                      {{ group.label }}
-                    </div>
-                    <div class="publish-readiness__entries">
-                      <button
-                        v-for="item in group.items"
-                        :key="item.key"
-                        type="button"
-                        class="publish-readiness__entry"
-                        :class="[`is-${item.state}`, { 'is-clickable': !!item.step } ]"
-                        @click="handleReadinessNavigation(item)"
-                      >
-                        <div class="publish-readiness__entry-icon">
-                          <q-icon :name="item.icon" size="18px" />
-                        </div>
-                        <div class="publish-readiness__entry-content">
-                          <div class="publish-readiness__entry-label text-body2 text-1">
-                            {{ item.label }}
-                          </div>
-                          <div
-                            v-if="item.stepLabel"
-                            class="publish-readiness__entry-meta text-caption text-2"
-                          >
-                            {{ item.stepLabel }} step
-                          </div>
-                        </div>
-                        <div class="publish-readiness__entry-state text-caption">
-                          {{ item.stateLabel }}
-                        </div>
-                        <q-tooltip v-if="item.tooltip" class="bg-surface-2 text-1">
-                          {{ item.tooltip }}
-                        </q-tooltip>
-                      </button>
+              </div>
+              <div class="publish-readiness__groups" v-else>
+                <div v-for="index in 2" :key="`readiness-skeleton-${index}`" class="publish-readiness__group">
+                  <div class="publish-readiness__group-label text-caption text-uppercase text-2">
+                    <q-skeleton type="text" width="120px" />
+                  </div>
+                  <div class="publish-readiness__entries">
+                    <div
+                      v-for="entryIndex in 3"
+                      :key="`readiness-skeleton-${index}-${entryIndex}`"
+                      class="publish-readiness__entry is-loading"
+                    >
+                      <div class="publish-readiness__entry-icon">
+                        <q-skeleton type="QAvatar" size="24px" />
+                      </div>
+                      <div class="publish-readiness__entry-content">
+                        <q-skeleton type="text" width="160px" class="q-mb-xs" />
+                        <q-skeleton type="text" width="100px" />
+                      </div>
+                      <div class="publish-readiness__entry-state text-caption">
+                        <q-skeleton type="text" width="60px" />
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
+            </div>
 
               <div class="publish-step__actions">
                 <div class="publish-step__cta">
@@ -450,7 +478,8 @@
       </main>
 
       <aside class="studio-sidebar">
-        <q-card flat bordered class="studio-preview" :data-active-step="activeStep">
+        <q-card flat bordered class="studio-preview" :data-active-step="activeStep" style="position: relative">
+          <q-inner-loading :showing="loading" color="primary" />
           <div class="studio-preview__header">
             <div>
               <div class="text-subtitle1 text-weight-medium text-1">Preview &amp; payload</div>
@@ -475,39 +504,55 @@
           </q-tabs>
           <q-tab-panels v-model="previewTab" animated class="studio-preview__panels">
             <q-tab-panel name="preview">
-              <div class="preview-card" :class="{ 'is-highlighted': activeStep === 'publish' }">
-                <div
-                  class="preview-card__header"
-                  :class="{ 'is-highlighted': activeStep === 'profile' || activeStep === 'setup' }"
-                >
+              <div v-if="loading" class="preview-card preview-card--skeleton">
+                <div class="preview-card__header">
                   <div class="preview-avatar">
-                    <q-avatar size="56px" color="accent" text-color="white">
-                      {{ displayName ? displayName.charAt(0) : 'N' }}
-                    </q-avatar>
+                    <q-skeleton type="QAvatar" size="56px" />
                   </div>
-                  <div>
-                    <div class="text-body1 text-weight-medium text-1">{{ displayName || 'Creator name' }}</div>
-                    <div class="text-caption text-2">{{ authorInput || 'npub…' }}</div>
+                  <div class="column q-gutter-xs">
+                    <q-skeleton type="text" width="140px" />
+                    <q-skeleton type="text" width="100px" />
                   </div>
                 </div>
-                <div
-                  class="preview-card__chips"
-                  :class="{ 'is-highlighted': activeStep === 'setup' || activeStep === 'tiers' }"
-                >
-                  <q-chip dense outline class="preview-chip" :class="{ 'is-highlighted': activeStep === 'profile' }">
-                    mints: {{ Array.isArray(mintList) ? mintList.length : 0 }}
-                  </q-chip>
-                  <q-chip dense outline class="preview-chip" :class="{ 'is-highlighted': activeStep === 'setup' }">
-                    relays: {{ Array.isArray(relayList) ? relayList.length : 0 }}
-                  </q-chip>
-                  <q-chip dense outline class="preview-chip" :class="{ 'is-highlighted': activeStep === 'tiers' }">
-                    tiers: {{ Array.isArray(tiers) ? tiers.length : 0 }}
-                  </q-chip>
+                <div class="preview-card__chips row q-gutter-xs">
+                  <q-skeleton v-for="chipIndex in 3" :key="`preview-chip-${chipIndex}`" type="QChip" width="96px" />
                 </div>
               </div>
-              <q-banner class="preview-banner" dense>
-                Publish pushes both events to relay.fundstr.me. Copy JSON if your publisher requires manual input.
-              </q-banner>
+              <template v-else>
+                <div class="preview-card" :class="{ 'is-highlighted': activeStep === 'publish' }">
+                  <div
+                    class="preview-card__header"
+                    :class="{ 'is-highlighted': activeStep === 'profile' || activeStep === 'setup' }"
+                  >
+                    <div class="preview-avatar">
+                      <q-avatar size="56px" color="accent" text-color="white">
+                        {{ displayName ? displayName.charAt(0) : 'N' }}
+                      </q-avatar>
+                    </div>
+                    <div>
+                      <div class="text-body1 text-weight-medium text-1">{{ displayName || 'Creator name' }}</div>
+                      <div class="text-caption text-2">{{ authorInput || 'npub…' }}</div>
+                    </div>
+                  </div>
+                  <div
+                    class="preview-card__chips"
+                    :class="{ 'is-highlighted': activeStep === 'setup' || activeStep === 'tiers' }"
+                  >
+                    <q-chip dense outline class="preview-chip" :class="{ 'is-highlighted': activeStep === 'profile' }">
+                      mints: {{ Array.isArray(mintList) ? mintList.length : 0 }}
+                    </q-chip>
+                    <q-chip dense outline class="preview-chip" :class="{ 'is-highlighted': activeStep === 'setup' }">
+                      relays: {{ Array.isArray(relayList) ? relayList.length : 0 }}
+                    </q-chip>
+                    <q-chip dense outline class="preview-chip" :class="{ 'is-highlighted': activeStep === 'tiers' }">
+                      tiers: {{ Array.isArray(tiers) ? tiers.length : 0 }}
+                    </q-chip>
+                  </div>
+                </div>
+                <q-banner class="preview-banner" dense>
+                  Publish pushes both events to relay.fundstr.me. Copy JSON if your publisher requires manual input.
+                </q-banner>
+              </template>
             </q-tab-panel>
             <q-tab-panel name="profile">
               <q-input :model-value="profileJsonPreview" type="textarea" rows="16" readonly filled />
@@ -2171,7 +2216,9 @@ const readinessChecklist = computed(() => {
 });
 
 const requiredReadinessReady = computed(() =>
-  readinessChips.value.filter(chip => chip.required).every(chip => chip.state === 'ready')
+  readinessChips.value
+    .filter(chip => chip.required)
+    .every(chip => chip.state === 'ready' || chip.state === 'warning')
 );
 
 const publishWarnings = computed<string[]>(() => {

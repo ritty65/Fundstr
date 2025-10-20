@@ -294,6 +294,10 @@ async function mountPage() {
     global: {
       plugins: [Quasar],
       stubs: {
+        'q-card': { template: '<div><slot /></div>' },
+        'q-input': { template: '<div><slot /><slot name="append" /></div>' },
+        'q-btn': { template: '<button><slot /></button>' },
+        'q-chip': { template: '<div><slot /></div>' },
         RelayStatusIndicator: true,
         NutzapExplorerSearch: true,
         NutzapLegacyExplorer: true,
@@ -402,7 +406,10 @@ describe("NutzapProfilePage explore summary", () => {
 
     const wrapper = await mountPage();
     (wrapper.vm as any).authorInput = VALID_HEX;
+    (wrapper.vm as any).authorInput = VALID_HEX;
     await (wrapper.vm as any).refreshSubscriptions(true);
+    await flushPromises();
+    await (wrapper.vm as any).loadAll();
     await flushPromises();
 
     (wrapper.vm as any).activeProfileStep = "explore";
@@ -449,7 +456,10 @@ describe("NutzapProfilePage share link", () => {
 
     const wrapper = await mountPage();
     (wrapper.vm as any).authorInput = VALID_HEX;
+    (wrapper.vm as any).authorInput = VALID_HEX;
     await (wrapper.vm as any).refreshSubscriptions(true);
+    await flushPromises();
+    await (wrapper.vm as any).loadAll();
     await flushPromises();
 
     (wrapper.vm as any).activeProfileStep = "explore";
@@ -495,9 +505,6 @@ describe("NutzapProfilePage publishing", () => {
     ];
     (wrapper.vm as any).tiersJsonError = null;
 
-    await (wrapper.vm as any).refreshSubscriptions(true);
-    await flushPromises();
-
     const state = ensureShared();
     state.signerRef.value = { sign: vi.fn() };
     state.publishTiersToRelayMock.mockResolvedValue({
@@ -514,7 +521,6 @@ describe("NutzapProfilePage publishing", () => {
 
     await (wrapper.vm as any).publishAll();
     await flushPromises();
-
     expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(1);
     expect(state.publishNostrEventMock).toHaveBeenCalledTimes(1);
     expect((wrapper.vm as any).lastPublishInfo).toContain("Tiers published");
@@ -537,9 +543,6 @@ describe("NutzapProfilePage publishing", () => {
     ];
     (wrapper.vm as any).tiersJsonError = null;
 
-    await (wrapper.vm as any).refreshSubscriptions(true);
-    await flushPromises();
-
     const state = ensureShared();
     state.signerRef.value = { sign: vi.fn() };
     const RelayPublishError = state.RelayPublishErrorCtor;
@@ -552,7 +555,6 @@ describe("NutzapProfilePage publishing", () => {
 
     await (wrapper.vm as any).publishAll();
     await flushPromises();
-
     expect(state.publishTiersToRelayMock).toHaveBeenCalledTimes(1);
     expect(state.publishNostrEventMock).not.toHaveBeenCalled();
     expect((wrapper.vm as any).lastPublishInfo).toContain("Publish rejected — id tier");
@@ -570,9 +572,6 @@ describe("NutzapProfilePage publishing", () => {
       { id: "tier", title: "Tier", price: 100, frequency: "monthly", media: [] },
     ];
     (wrapper.vm as any).tiersJsonError = null;
-
-    await (wrapper.vm as any).refreshSubscriptions(true);
-    await flushPromises();
 
     const state = ensureShared();
     state.signerRef.value = { sign: vi.fn() };
