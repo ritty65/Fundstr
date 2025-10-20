@@ -1,5 +1,5 @@
 <template>
-  <q-page class="nutzap-profile-page bg-surface-1 q-pa-xl">
+  <component :is="pageWrapperTag" class="nutzap-profile-page bg-surface-1 q-pa-xl">
     <div class="nutzap-profile-container">
       <q-card class="profile-card bg-surface-2 shadow-4 full-width">
         <div class="profile-card-header">
@@ -71,7 +71,7 @@
                 </div>
               </div>
               <div class="section-body column q-gutter-lg">
-                <div class="share-link-block" data-testid="profile-share-block">
+                <div class="share-link-block" data-testid="explore-summary-share">
                   <div class="share-link-label text-caption text-2">Public profile link</div>
                   <q-input
                     :model-value="publicProfileUrl"
@@ -128,6 +128,7 @@
                           dense
                           outline
                           class="summary-chip"
+                          data-testid="explore-mint-chip"
                         >
                           {{ mint }}
                         </q-chip>
@@ -143,10 +144,37 @@
                           dense
                           outline
                           class="summary-chip"
+                          data-testid="explore-relay-chip"
                         >
                           {{ relay }}
                         </q-chip>
                       </div>
+                    </div>
+                  </div>
+                  <div class="share-summary-column column q-gutter-md">
+                    <div class="summary-block" data-testid="summary-tier-preview">
+                      <div class="summary-label text-caption text-2">Tier overview</div>
+                      <ul class="summary-tier-list">
+                        <li
+                          v-for="tier in tierSummaryList"
+                          :key="tier.id || tier.title"
+                          class="summary-tier-item"
+                          data-testid="explore-tier-item"
+                        >
+                          <div class="summary-tier-item__title text-body2 text-1 text-weight-medium">
+                            {{ tier.title }}
+                          </div>
+                          <div class="summary-tier-item__meta text-caption text-2">
+                            {{ tier.priceLabel }} · {{ tier.frequencyLabel }}
+                          </div>
+                          <div
+                            v-if="tier.description"
+                            class="summary-tier-item__description text-caption text-2"
+                          >
+                            {{ tier.description }}
+                          </div>
+                        </li>
+                      </ul>
                     </div>
                   </div>
                 </div>
@@ -333,11 +361,11 @@
         </q-card>
       </q-dialog>
     </div>
-  </q-page>
+  </component>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref } from 'vue';
+import { computed, getCurrentInstance, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useEventBus, useLocalStorage } from '@vueuse/core';
@@ -395,6 +423,13 @@ const loading = ref(false);
 const publishingAll = ref(false);
 const lastPublishInfo = ref('');
 const hasAutoLoaded = ref(false);
+
+const instance = getCurrentInstance();
+const hasQPage = computed(() => {
+  const components = instance?.appContext.components ?? {};
+  return Boolean(components.QPage || components['QPage'] || components['q-page']);
+});
+const pageWrapperTag = computed(() => (hasQPage.value ? 'q-page' : 'div'));
 
 const relayClientRef = shallowRef<FundstrRelayClient | null>(null);
 let relayClientPromise: Promise<FundstrRelayClient> | null = null;
@@ -1200,6 +1235,12 @@ function applyProfileEvent(latest: any | null) {
     if (typeof parsed.p2pk === 'string') {
       setDerivedP2pk(parsed.p2pk);
     }
+    if (typeof parsed.p2pk_pubkey === 'string') {
+      setDerivedP2pk(parsed.p2pk_pubkey);
+    }
+    if (typeof parsed.name === 'string') {
+      displayName.value = parsed.name;
+    }
     if (Array.isArray(parsed.mints)) {
       mintsText.value = parsed.mints.join('\n');
     }
@@ -1711,6 +1752,12 @@ watch(
   { immediate: true }
 );
 
+defineExpose({
+  refreshSubscriptions,
+  publishAll,
+  loadAll,
+});
+
 onMounted(() => {
   void ensureSharedSignerInitialized();
   if (!relaysText.value) {
@@ -1976,6 +2023,22 @@ onBeforeUnmount(() => {
 
 .summary-empty {
   padding: 4px 0;
+  color: var(--text-2);
+}
+
+.summary-tier-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.summary-tier-item__meta {
+  color: var(--text-2);
+}
+
+.summary-tier-item__description {
   color: var(--text-2);
 }
 

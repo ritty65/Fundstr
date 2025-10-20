@@ -2,7 +2,14 @@
   <div class="tier-composer column q-gutter-md">
     <div class="row items-center justify-between">
       <div class="text-subtitle2">Manage Tiers ({{ entries.length }})</div>
-      <q-btn dense color="primary" label="Add Tier" icon="add" @click="addTier" />
+      <q-btn
+        dense
+        color="primary"
+        label="Add Tier"
+        icon="add"
+        :disable="isDisabled"
+        @click="addTier"
+      />
     </div>
 
     <div v-if="entries.length" class="column q-gutter-md">
@@ -35,7 +42,15 @@
             <q-chip v-if="cardHasVisibleErrors(index)" color="negative" text-color="white" dense>
               Fix errors
             </q-chip>
-            <q-btn dense flat round icon="delete" color="negative" @click="removeTier(index)" />
+            <q-btn
+              dense
+              flat
+              round
+              icon="delete"
+              color="negative"
+              :disable="isDisabled"
+              @click="removeTier(index)"
+            />
           </div>
         </q-card-section>
         <q-separator />
@@ -45,6 +60,7 @@
             label="Title"
             dense
             filled
+            :disable="isDisabled"
             @update:model-value="markTouched(tier.id, 'title')"
             @blur="markTouched(tier.id, 'title')"
             :error="shouldShowFieldError(index, 'title')"
@@ -59,6 +75,7 @@
                 dense
                 filled
                 min="0"
+                :disable="isDisabled"
                 @update:model-value="markTouched(tier.id, 'price')"
                 @blur="markTouched(tier.id, 'price')"
                 :error="shouldShowFieldError(index, 'price')"
@@ -74,6 +91,7 @@
                 label="Frequency"
                 dense
                 filled
+                :disable="isDisabled"
                 @update:model-value="markTouched(tier.id, 'frequency')"
                 :error="shouldShowFieldError(index, 'frequency')"
                 :error-message="shouldShowFieldError(index, 'frequency') ? validationAt(index).frequency : ''"
@@ -92,6 +110,7 @@
                 color="primary"
                 text-color="white"
                 outline
+                :disable="isDisabled"
                 @click="applyPreset(index, preset)"
               >
                 {{ preset.label }}
@@ -106,6 +125,7 @@
               class="tier-optional__toggle"
               :icon="isOptionalOpen(tier.id) ? 'expand_less' : 'expand_more'"
               :label="isOptionalOpen(tier.id) ? 'Hide optional details' : 'Add optional details'"
+              :disable="isDisabled"
               @click="toggleOptional(tier.id)"
             />
             <q-slide-transition>
@@ -117,13 +137,22 @@
                   dense
                   filled
                   autogrow
+                  :disable="isDisabled"
                   @update:model-value="markTouched(tier.id, 'description')"
                   @blur="markTouched(tier.id, 'description')"
                 />
                 <div class="column q-gutter-sm">
                   <div class="row items-center justify-between">
                     <div class="text-body2 text-2">Media (optional)</div>
-                    <q-btn dense flat color="primary" icon="add" label="Add Media" @click="addMedia(index)" />
+                    <q-btn
+                      dense
+                      flat
+                      color="primary"
+                      icon="add"
+                      label="Add Media"
+                      :disable="isDisabled"
+                      @click="addMedia(index)"
+                    />
                   </div>
                   <div v-if="tier.media.length" class="column q-gutter-sm">
                     <div
@@ -137,13 +166,22 @@
                           label="Media URL"
                           dense
                           filled
+                          :disable="isDisabled"
                           @update:model-value="markTouched(tier.id, 'media', mediaIndex)"
                           @blur="markTouched(tier.id, 'media', mediaIndex)"
                           :error="shouldShowMediaError(index, mediaIndex)"
                           :error-message="shouldShowMediaError(index, mediaIndex) ? mediaError(index, mediaIndex) || '' : ''"
                         />
                       </div>
-                      <q-btn dense flat round icon="delete" color="negative" @click="removeMedia(index, mediaIndex)" />
+                      <q-btn
+                        dense
+                        flat
+                        round
+                        icon="delete"
+                        color="negative"
+                        :disable="isDisabled"
+                        @click="removeMedia(index, mediaIndex)"
+                      />
                     </div>
                   </div>
                   <div v-else class="text-caption text-2">
@@ -180,12 +218,15 @@ const props = defineProps<{
   tiers: Tier[];
   frequencyOptions: { value: Tier['frequency']; label: string }[];
   showErrors?: boolean;
+  disabled?: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: 'update:tiers', tiers: Tier[]): void;
   (e: 'validation-changed', errors: TierFieldErrors[]): void;
 }>();
+
+const isDisabled = computed(() => props.disabled === true);
 
 type TierTouchedState = {
   title: boolean;
