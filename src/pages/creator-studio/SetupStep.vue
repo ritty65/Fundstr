@@ -121,7 +121,14 @@
           dense
           filled
           placeholder="npub1..."
-        />
+          :readonly="authorInputLocked"
+          :disable="authorInputLocked"
+          :hide-hint="!authorInputLocked"
+        >
+          <template v-if="authorInputLocked" #hint>
+            {{ authorInputLockHint }}
+          </template>
+        </q-input>
         <div class="studio-alert" v-if="!authorKeyReady">
           <q-icon name="info" size="16px" />
           <span>Enter the npub or hex author to unlock the next step.</span>
@@ -171,6 +178,8 @@ type SetupStepProps = {
   usingStoreIdentity: boolean;
   activeIdentitySummary: string | null;
   authorInput: string;
+  authorInputLocked: boolean;
+  authorInputLockHint: string;
   authorKeyReady: boolean;
   setupReady: boolean;
   handleRelayConnect: () => void;
@@ -230,6 +239,8 @@ const {
   usingStoreIdentity,
   activeIdentitySummary,
   authorKeyReady,
+  authorInputLocked,
+  authorInputLockHint,
   setupReady,
   handleRelayConnect,
   handleRelayDisconnect,

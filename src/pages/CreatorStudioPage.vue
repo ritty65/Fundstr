@@ -100,6 +100,8 @@
               :using-store-identity="usingStoreIdentity"
               :active-identity-summary="activeIdentitySummary"
               :author-key-ready="authorKeyReady"
+              :author-input-locked="authorInputLocked"
+              :author-input-lock-hint="authorInputLockHint"
               :setup-ready="setupStepReady"
               :handle-relay-connect="handleRelayConnect"
               :handle-relay-disconnect="handleRelayDisconnect"
@@ -203,7 +205,19 @@
               </template>
 
               <div class="publish-step__form">
-                <q-input v-model="authorInput" label="Creator author (npub or hex)" dense filled />
+                <q-input
+                  v-model="authorInput"
+                  label="Creator author (npub or hex)"
+                  dense
+                  filled
+                  :readonly="authorInputLocked"
+                  :disable="authorInputLocked"
+                  :hide-hint="!authorInputLocked"
+                >
+                  <template v-if="authorInputLocked" #hint>
+                    {{ authorInputLockHint }}
+                  </template>
+                </q-input>
               </div>
 
               <div class="publish-summary-grid">
@@ -659,6 +673,35 @@ const CREATOR_STUDIO_RELAY_WS_URL = 'wss://relay.fundstr.me';
 const CREATOR_STUDIO_RELAY_HTTP_URL = 'https://relay.fundstr.me/req';
 
 const authorInput = ref('');
+type AuthorLockSource = 'signer' | 'store' | 'profile';
+const authorLockSources = ref<AuthorLockSource[]>([]);
+const loadedProfileAuthorHex = ref<string | null>(null);
+
+function addAuthorLock(source: AuthorLockSource) {
+  if (!authorLockSources.value.includes(source)) {
+    authorLockSources.value = [...authorLockSources.value, source];
+  }
+}
+
+function removeAuthorLock(source: AuthorLockSource) {
+  if (authorLockSources.value.includes(source)) {
+    authorLockSources.value = authorLockSources.value.filter(entry => entry !== source);
+  }
+}
+
+const authorInputLocked = computed(() => authorLockSources.value.length > 0);
+const authorInputLockHint = computed(() => {
+  if (authorLockSources.value.includes('signer')) {
+    return 'Author comes from the connected Fundstr signer. Disconnect to change it.';
+  }
+  if (authorLockSources.value.includes('store')) {
+    return 'Author is synced from your saved Fundstr identity. Clear it to change the value.';
+  }
+  if (authorLockSources.value.includes('profile')) {
+    return 'Author was loaded from the published creator profile. Reset the workspace before changing it.';
+  }
+  return '';
+});
 const displayName = ref('');
 const pictureUrl = ref('');
 const p2pkPub = ref('');
@@ -1737,6 +1780,52 @@ const hasAuthorIdentity = computed(
     !!signerPubkeyTrimmed.value,
 );
 
+watch(
+  signerPubkeyTrimmed,
+  value => {
+    if (value) {
+      addAuthorLock('signer');
+      if (loadedProfileAuthorHex.value) {
+        addAuthorLock('profile');
+      }
+    } else {
+      removeAuthorLock('signer');
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  storeAuthorNpub,
+  value => {
+    if (value) {
+      addAuthorLock('store');
+      if (loadedProfileAuthorHex.value) {
+        addAuthorLock('profile');
+      }
+    } else {
+      removeAuthorLock('store');
+      if (!signerPubkeyTrimmed.value) {
+        removeAuthorLock('profile');
+      }
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  () => [signerPubkeyTrimmed.value, storeAuthorNpub.value] as const,
+  ([signerValue, storeValue]) => {
+    if (!signerValue && !storeValue) {
+      removeAuthorLock('profile');
+    }
+    if (loadedProfileAuthorHex.value && (signerValue || storeValue)) {
+      addAuthorLock('profile');
+    }
+  },
+  { immediate: true }
+);
+
 function shortenKey(value: string) {
   const trimmed = value.trim();
   if (trimmed.length <= 16) {
@@ -2496,6 +2585,8 @@ function applyProfileEvent(latest: any | null) {
     mintsText.value = '';
     relaysText.value = CREATOR_STUDIO_RELAY_WS_URL;
     seedMintsFromStoreIfEmpty();
+    loadedProfileAuthorHex.value = null;
+    removeAuthorLock('profile');
     return;
   }
 
@@ -2503,6 +2594,10 @@ function applyProfileEvent(latest: any | null) {
     const normalized = latest.pubkey.toLowerCase();
     const encoded = safeEncodeNpub(normalized);
     authorInput.value = encoded || normalized;
+    loadedProfileAuthorHex.value = normalized;
+    if (signerPubkeyTrimmed.value || storeAuthorNpub.value) {
+      addAuthorLock('profile');
+    }
   }
 
   try {
