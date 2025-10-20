@@ -1,5 +1,5 @@
 import { boot } from 'quasar/wrappers';
-import { ensureFundstrRelayClient } from 'src/pages/nutzap-profile/nostrHelpers';
+import { ensureFundstrRelayClient } from 'src/nutzap/relayPublishing';
 import { NUTZAP_RELAY_WSS } from 'src/nutzap/relayConfig';
 
 export default boot(async () => {

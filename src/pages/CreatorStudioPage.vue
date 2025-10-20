@@ -611,7 +611,7 @@ import SetupStep from './creator-studio/SetupStep.vue';
 import ProfileStep from './creator-studio/ProfileStep.vue';
 import StepTemplate from './creator-studio/StepTemplate.vue';
 import CreatorStudioPreviewCard from './creator-studio/CreatorStudioPreviewCard.vue';
-import TierComposer from './nutzap-profile/TierComposer.vue';
+import TierComposer from './creator-studio/TierComposer.vue';
 import NutzapExplorerPanel from 'src/nutzap/onepage/NutzapExplorerPanel.vue';
 import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
 import type { Tier } from 'src/nutzap/types';
@@ -629,15 +629,15 @@ import {
   LEGACY_TIER_KIND,
   buildTierPayloadForKind,
   type TierKind,
-} from './nutzap-profile/nostrHelpers';
-import type { NostrFilter } from './nutzap-profile/nostrHelpers';
+} from 'src/nutzap/relayPublishing';
+import type { NostrFilter } from 'src/nutzap/relayPublishing';
 import {
   normalizeAuthor,
   pickLatestReplaceable,
   pickLatestParamReplaceable,
   parseTiersContent,
 } from 'src/nutzap/profileShared';
-import { hasTierErrors, tierFrequencies, type TierFieldErrors } from './nutzap-profile/tierComposerUtils';
+import { hasTierErrors, tierFrequencies, type TierFieldErrors } from './creator-studio/tierComposerUtils';
 import { RelayPublishError, type FundstrRelayClient } from 'src/nutzap/relayClient';
 import { sanitizeRelayUrls } from 'src/utils/relay';
 import { useNutzapRelayTelemetry } from 'src/nutzap/useNutzapRelayTelemetry';

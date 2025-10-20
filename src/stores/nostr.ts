@@ -85,7 +85,7 @@ import {
   WS_FIRST_TIMEOUT_MS,
 } from "@/nutzap/relayEndpoints";
 import { getNutzapNdk } from "src/nutzap/ndkInstance";
-import { publishNostrEvent } from "src/pages/nutzap-profile/nostrHelpers";
+import { publishNostrEvent } from "src/nutzap/relayPublishing";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 
 // --- Relay connectivity helpers ---

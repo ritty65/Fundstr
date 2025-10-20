@@ -383,9 +383,9 @@ vi.mock('src/nutzap/ndkInstance', () => ({
   getNutzapNdk: () => ({ signer: undefined }),
 }));
 
-vi.mock('../../../src/pages/nutzap-profile/nostrHelpers', async () => {
+vi.mock('../../../src/nutzap/relayPublishing', async () => {
   const actual = await vi.importActual<any>(
-    '../../../src/pages/nutzap-profile/nostrHelpers',
+    '../../../src/nutzap/relayPublishing',
   );
   return {
     ...actual,
