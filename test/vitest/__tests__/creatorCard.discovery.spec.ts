@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
+import { nip19 } from 'nostr-tools';
 
 import CreatorCard from 'src/components/CreatorCard.vue';
 import { useCreatorsStore, FEATURED_CREATORS } from 'src/stores/creators';
+import { DONATION_FALLBACK_CREATORS } from 'src/config/donation-eligibility';
 
 const FEATURED_HEX = 'f'.repeat(64);
 
@@ -121,5 +123,62 @@ describe('CreatorCard featured metadata', () => {
     const avatar = wrapper.get('img.avatar');
     expect(avatar.attributes('src')).toBe('https://example.com/discovery-avatar.png');
     expect(avatar.attributes('alt')).toBe('Discovery Display Name');
+  });
+});
+
+describe('CreatorCard donation eligibility signals', () => {
+  const baseProfile = {
+    pubkey: 'a'.repeat(64),
+    profile: {},
+    followers: null,
+    following: null,
+    joined: null,
+  } as any;
+
+  const mountCard = (overrides: Record<string, unknown> = {}) =>
+    mount(CreatorCard, {
+      props: { profile: { ...baseProfile, ...overrides } },
+      global: { stubs },
+    });
+
+  const hasDonateButton = (wrapper: ReturnType<typeof mountCard>) =>
+    wrapper.findAll('[data-label="Donate"]').length > 0;
+
+  it('shows donate button when lightning address is present', () => {
+    const wrapper = mountCard({ profile: { lud16: 'tip@example.com' } });
+    expect(hasDonateButton(wrapper)).toBe(true);
+  });
+
+  it('shows donate button when has_nutzap flag is true', () => {
+    const wrapper = mountCard({ profile: { has_nutzap: true } });
+    expect(hasDonateButton(wrapper)).toBe(true);
+  });
+
+  it('shows donate button when tier summary reports tiers', () => {
+    const wrapper = mountCard({ tierSummary: { count: 2, cheapestPriceMsat: 1000 } });
+    expect(hasDonateButton(wrapper)).toBe(true);
+  });
+
+  it('shows donate button for configured fallback creators', () => {
+    const fallbackNpub = DONATION_FALLBACK_CREATORS[0];
+    const fallbackHex = (() => {
+      try {
+        const decoded = nip19.decode(fallbackNpub);
+        if (decoded.type === 'npub' && typeof decoded.data === 'string') {
+          return decoded.data;
+        }
+      } catch (error) {
+        console.warn('Failed to decode fallback npub for test', error);
+      }
+      return baseProfile.pubkey;
+    })();
+
+    const wrapper = mountCard({ pubkey: fallbackHex });
+    expect(hasDonateButton(wrapper)).toBe(true);
+  });
+
+  it('hides donate button when no donation signals exist', () => {
+    const wrapper = mountCard();
+    expect(hasDonateButton(wrapper)).toBe(false);
   });
 });
