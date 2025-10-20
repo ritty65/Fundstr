@@ -70,6 +70,7 @@ import { computed } from 'vue';
 import { nip19 } from 'nostr-tools';
 import type { Creator } from 'src/lib/fundstrApi';
 import { formatMsatToSats } from 'src/lib/fundstrApi';
+import { DONATION_FALLBACK_LOOKUP } from 'src/config/donation-eligibility';
 import {
   displayNameFromProfile,
   normalizeMeta,
@@ -146,15 +147,55 @@ const tierSummaryText = computed(() => {
 const followers = computed(() => props.profile.followers ?? null);
 
 const hasLightning = computed(() => {
-  const profile = (props.profile?.profile ?? {}) as Record<string, unknown>;
+  const profileRecord = (props.profile?.profile ?? {}) as Record<string, unknown>;
   const metaRecord = meta.value as Record<string, unknown>;
-  const candidates: Array<unknown> = [
+
+  const hasExplicitLightning = [
     metaRecord['lud16'],
     metaRecord['lud06'],
-    profile['lud16'],
-    profile['lud06'],
-  ];
-  return candidates.some((value) => typeof value === 'string' && value.trim().length > 0);
+    profileRecord['lud16'],
+    profileRecord['lud06'],
+  ].some((value) => typeof value === 'string' && value.trim().length > 0);
+  if (hasExplicitLightning) {
+    return true;
+  }
+
+  const isTruthy = (value: unknown) => {
+    if (value === true) return true;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      return normalized === 'true' || normalized === '1' || normalized === 'yes';
+    }
+    if (typeof value === 'number') {
+      return value === 1;
+    }
+    return false;
+  };
+
+  const hasNutzapSignal = [
+    profileRecord['has_nutzap'],
+    metaRecord['has_nutzap'],
+    (props.profile as Record<string, unknown> | null | undefined)?.['has_nutzap'],
+  ].some(isTruthy);
+  if (hasNutzapSignal) {
+    return true;
+  }
+
+  const tierSummary = props.profile?.tierSummary;
+  if (tierSummary && typeof tierSummary.count === 'number' && tierSummary.count > 0) {
+    return true;
+  }
+
+  if (Array.isArray(props.profile?.tiers) && props.profile.tiers.length > 0) {
+    return true;
+  }
+
+  const normalizedCandidates = [
+    typeof props.profile?.pubkey === 'string' ? props.profile.pubkey.trim().toLowerCase() : '',
+    npub.value ? npub.value.trim().toLowerCase() : '',
+  ].filter(Boolean);
+
+  return normalizedCandidates.some((candidate) => DONATION_FALLBACK_LOOKUP.has(candidate));
 });
 
 const isCached = computed(() => {
