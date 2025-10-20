@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ensureFundstrRelayClient } from 'src/pages/nutzap-profile/nostrHelpers';
+import { ensureFundstrRelayClient } from 'src/nutzap/relayPublishing';
 import { fundstrRelayClient } from 'src/nutzap/relayClient';
 
 describe('ensureFundstrRelayClient', () => {

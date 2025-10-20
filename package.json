@@ -21,8 +21,7 @@
     "ci:verify": "pnpm run build",
     "lint:fix": "eslint . --fix",
     "check:i18n": "node scripts/check-i18n.js",
-    "format:check": "prettier --check .",
-    "verify:nutzap": "ts-node scripts/verifyNutzapProfile.ts"
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@capacitor/clipboard": "^6.0.2",
