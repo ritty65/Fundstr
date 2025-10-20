@@ -504,51 +504,35 @@
           </q-tabs>
           <q-tab-panels v-model="previewTab" animated class="studio-preview__panels">
             <q-tab-panel name="preview">
-              <div v-if="loading" class="preview-card preview-card--skeleton">
-                <div class="preview-card__header">
-                  <div class="preview-avatar">
-                    <q-skeleton type="QAvatar" size="56px" />
-                  </div>
+              <div v-if="loading" class="preview-skeleton">
+                <div class="preview-skeleton__hero">
+                  <q-skeleton type="QAvatar" size="68px" />
                   <div class="column q-gutter-xs">
-                    <q-skeleton type="text" width="140px" />
-                    <q-skeleton type="text" width="100px" />
+                    <q-skeleton type="text" width="160px" />
+                    <q-skeleton type="text" width="120px" />
                   </div>
                 </div>
-                <div class="preview-card__chips row q-gutter-xs">
-                  <q-skeleton v-for="chipIndex in 3" :key="`preview-chip-${chipIndex}`" type="QChip" width="96px" />
+                <div class="preview-skeleton__chips row q-gutter-xs">
+                  <q-skeleton
+                    v-for="chipIndex in 3"
+                    :key="`preview-chip-${chipIndex}`"
+                    type="QChip"
+                    width="110px"
+                  />
                 </div>
+                <q-skeleton type="rect" height="96px" class="preview-skeleton__section" />
+                <q-skeleton type="rect" height="180px" class="preview-skeleton__section" />
+                <q-skeleton type="rect" height="140px" class="preview-skeleton__section" />
               </div>
               <template v-else>
-                <div class="preview-card" :class="{ 'is-highlighted': activeStep === 'publish' }">
-                  <div
-                    class="preview-card__header"
-                    :class="{ 'is-highlighted': activeStep === 'profile' || activeStep === 'setup' }"
-                  >
-                    <div class="preview-avatar">
-                      <q-avatar size="56px" color="accent" text-color="white">
-                        {{ displayName ? displayName.charAt(0) : 'N' }}
-                      </q-avatar>
-                    </div>
-                    <div>
-                      <div class="text-body1 text-weight-medium text-1">{{ displayName || 'Creator name' }}</div>
-                      <div class="text-caption text-2">{{ authorInput || 'npub…' }}</div>
-                    </div>
-                  </div>
-                  <div
-                    class="preview-card__chips"
-                    :class="{ 'is-highlighted': activeStep === 'setup' || activeStep === 'tiers' }"
-                  >
-                    <q-chip dense outline class="preview-chip" :class="{ 'is-highlighted': activeStep === 'profile' }">
-                      mints: {{ Array.isArray(mintList) ? mintList.length : 0 }}
-                    </q-chip>
-                    <q-chip dense outline class="preview-chip" :class="{ 'is-highlighted': activeStep === 'setup' }">
-                      relays: {{ Array.isArray(relayList) ? relayList.length : 0 }}
-                    </q-chip>
-                    <q-chip dense outline class="preview-chip" :class="{ 'is-highlighted': activeStep === 'tiers' }">
-                      tiers: {{ Array.isArray(tiers) ? tiers.length : 0 }}
-                    </q-chip>
-                  </div>
-                </div>
+                <CreatorStudioPreviewCard
+                  :display-name="displayName"
+                  :author-input="authorInput"
+                  :mint-list="mintList"
+                  :relay-list="relayList"
+                  :tiers="tiers"
+                  :active-step="activeStep"
+                />
                 <q-banner class="preview-banner" dense>
                   Publish pushes both events to relay.fundstr.me. Copy JSON if your publisher requires manual input.
                 </q-banner>
@@ -626,6 +610,7 @@ import { useQuasar } from 'quasar';
 import SetupStep from './creator-studio/SetupStep.vue';
 import ProfileStep from './creator-studio/ProfileStep.vue';
 import StepTemplate from './creator-studio/StepTemplate.vue';
+import CreatorStudioPreviewCard from './creator-studio/CreatorStudioPreviewCard.vue';
 import TierComposer from './nutzap-profile/TierComposer.vue';
 import NutzapExplorerPanel from 'src/nutzap/onepage/NutzapExplorerPanel.vue';
 import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
@@ -3826,73 +3811,29 @@ onBeforeUnmount(() => {
   background: transparent;
 }
 
-.preview-card {
-  border: 1px solid var(--surface-contrast-border);
-  border-radius: 12px;
-  padding: 16px;
+.preview-skeleton {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 1rem;
+  border-radius: 1.5rem;
+  padding: 1.25rem;
   background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 65%, transparent);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
 }
 
-.preview-card.is-highlighted {
-  border-color: color-mix(in srgb, var(--accent-200) 65%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-200) 45%, transparent);
-}
-
-
-.preview-card__header {
+.preview-skeleton__hero {
   display: flex;
+  gap: 0.75rem;
   align-items: center;
-  gap: 12px;
-  position: relative;
-  z-index: 0;
 }
 
-.preview-card__header.is-highlighted::after {
-  content: '';
-  position: absolute;
-  inset: -6px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--accent-200) 22%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-200) 45%, transparent);
-  pointer-events: none;
-  z-index: -1;
+.preview-skeleton__chips {
+  padding-left: 0.25rem;
 }
 
-
-.preview-card__chips {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  position: relative;
-  z-index: 0;
-}
-
-.preview-card__chips.is-highlighted::after {
-  content: '';
-  position: absolute;
-  inset: -6px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--accent-200) 18%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-200) 45%, transparent);
-  pointer-events: none;
-  z-index: -1;
-}
-
-.preview-chip {
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-}
-
-.preview-chip.is-highlighted {
-  background: color-mix(in srgb, var(--accent-200) 28%, transparent);
-  border-color: color-mix(in srgb, var(--accent-200) 65%, transparent);
-  color: var(--accent-600);
-}
-
-.preview-chip.is-highlighted :deep(.q-chip__content) {
-  color: var(--accent-600);
+.preview-skeleton__section {
+  border-radius: 1.25rem;
 }
 
 .preview-banner {
