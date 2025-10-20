@@ -79,7 +79,6 @@
                     {{ tierFrequencyLabel(tier) }}
                   </div>
                   <q-btn
-                    v-if="hasTierDescription(tier)"
                     flat
                     dense
                     class="tier-row__details-toggle"
@@ -121,11 +120,11 @@
               </div>
               <q-slide-transition>
                 <div
-                  v-if="hasTierDescription(tier) && isTierExpanded(tier.id)"
+                  v-if="isTierExpanded(tier.id)"
                   :id="`tier-desc-${tier.id}`"
                   class="tier-row__details text-body2 text-1"
                 >
-                  {{ tier.description }}
+                  {{ tierDescription(tier) }}
                 </div>
               </q-slide-transition>
             </div>
@@ -395,6 +394,13 @@ function tierMediaCountLabel(tier: TierDetails): string | null {
 function hasTierDescription(tier: TierDetails): boolean {
   if (!tier.description) return false;
   return tier.description.trim().length > 0;
+}
+
+function tierDescription(tier: TierDetails): string {
+  if (hasTierDescription(tier)) {
+    return tier.description!.trim();
+  }
+  return 'No Description';
 }
 
 function isTierExpanded(tierId: string): boolean {
