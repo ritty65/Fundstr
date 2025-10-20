@@ -74,8 +74,8 @@
               bordered
               expand-separator
               class="tier-expansion"
-              :model-value="isTierExpanded(tier.id)"
-              @update:model-value="(expanded) => setTierExpansion(tier.id, expanded)"
+              :model-value="expandedTierId === tier.id"
+              @update:model-value="(expanded) => handleTierExpansionChange(tier.id, expanded)"
             >
               <template #header>
                 <div class="row items-center justify-between no-wrap full-width tier-header">
@@ -182,7 +182,7 @@ const loading = ref(false);
 const creator = ref<Creator | null>(null);
 const tiers = ref<TierDetails[]>([]);
 const showLocal = ref(false);
-const expandedTiers = ref(new Set<string>());
+const expandedTierId = ref<string | null>(null);
 
 const discoveryClient = useFundstrDiscovery();
 
@@ -265,18 +265,8 @@ watch(
   },
 );
 
-const isTierExpanded = (tierId: string) => {
-  return expandedTiers.value.has(tierId);
-};
-
-function setTierExpansion(tierId: string, expanded: boolean) {
-  const newSet = new Set(expandedTiers.value);
-  if (expanded) {
-    newSet.add(tierId);
-  } else {
-    newSet.delete(tierId);
-  }
-  expandedTiers.value = newSet;
+function handleTierExpansionChange(tierId: string, expanded: boolean) {
+  expandedTierId.value = expanded ? tierId : null;
 }
 
 async function fetchCreatorData(pubkey: string) {
@@ -321,11 +311,7 @@ async function fetchCreatorData(pubkey: string) {
 
     tiers.value = mappedTiers;
 
-    if (mappedTiers.length > 0) {
-      expandedTiers.value = new Set([mappedTiers[0].id]);
-    } else {
-      expandedTiers.value.clear();
-    }
+    expandedTierId.value = mappedTiers[0]?.id ?? null;
   } catch (error) {
     if ((error as any)?.name === 'AbortError') {
       return;
@@ -334,7 +320,7 @@ async function fetchCreatorData(pubkey: string) {
     if (requestId === currentRequestId) {
       creator.value = null;
       tiers.value = [];
-      expandedTiers.value.clear();
+      expandedTierId.value = null;
     }
   } finally {
     if (requestId === currentRequestId) {
@@ -381,7 +367,7 @@ function cancelActiveRequest() {
 function resetState() {
   creator.value = null;
   tiers.value = [];
-  expandedTiers.value.clear();
+  expandedTierId.value = null;
 }
 
 function normalizeTierDetails(rawTier: unknown): TierDetails | null {
