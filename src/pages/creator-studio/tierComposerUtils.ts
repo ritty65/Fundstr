@@ -1,4 +1,6 @@
 import type { Tier } from 'src/nutzap/types';
+import { inferTierMediaType } from 'src/nutzap/profileShared';
+import { determineMediaType, normalizeMediaUrl } from 'src/utils/validateMedia';
 
 export type TierDraft = {
   id: string;
@@ -40,15 +42,109 @@ export function tierToDraft(tier: Tier): TierDraft {
   };
 }
 
-export function draftToTier(draft: TierDraft): Tier {
+type ExistingTierMedia = NonNullable<Tier['media']>[number];
+
+function normalizeExistingMedia(existingTier?: Tier): ExistingTierMedia[] {
+  if (!existingTier || !Array.isArray(existingTier.media)) {
+    return [];
+  }
+
+  return existingTier.media
+    .map(entry => {
+      if (!entry) return null;
+      const url = typeof entry.url === 'string' ? entry.url.trim() : '';
+      if (!url) return null;
+      const title = typeof entry.title === 'string' ? entry.title : undefined;
+      const rawType = typeof entry.type === 'string' ? entry.type.trim().toLowerCase() : '';
+      const allowedTypes: Array<NonNullable<ExistingTierMedia['type']>> = ['image', 'video', 'audio', 'link'];
+      const type = allowedTypes.includes(rawType as NonNullable<ExistingTierMedia['type']>)
+        ? (rawType as NonNullable<ExistingTierMedia['type']>)
+        : undefined;
+      return {
+        url,
+        ...(title ? { title } : {}),
+        ...(type ? { type } : {}),
+      } satisfies ExistingTierMedia;
+    })
+    .filter((entry): entry is ExistingTierMedia => Boolean(entry));
+}
+
+function buildExistingMediaLookup(existingTier?: Tier): Map<string, ExistingTierMedia[]> {
+  const lookup = new Map<string, ExistingTierMedia[]>();
+  for (const media of normalizeExistingMedia(existingTier)) {
+    const list = lookup.get(media.url) ?? [];
+    list.push(media);
+    lookup.set(media.url, list);
+  }
+  return lookup;
+}
+
+function resolveExistingMedia(
+  lookup: Map<string, ExistingTierMedia[]>,
+  url: string,
+): ExistingTierMedia | null {
+  const matches = lookup.get(url);
+  if (!matches || matches.length === 0) {
+    return null;
+  }
+  const match = matches.shift() ?? null;
+  if (!matches.length) {
+    lookup.delete(url);
+  }
+  return match;
+}
+
+function inferDraftMediaType(url: string, existing?: ExistingTierMedia): ExistingTierMedia['type'] {
+  const allowedTypes: Array<NonNullable<ExistingTierMedia['type']>> = ['image', 'video', 'audio', 'link'];
+  const existingType = existing?.type;
+  if (existingType && allowedTypes.includes(existingType)) {
+    return existingType;
+  }
+
+  const inferred = inferTierMediaType(url, existingType);
+  if (inferred && inferred !== 'link' && allowedTypes.includes(inferred)) {
+    return inferred;
+  }
+
+  const normalizedUrl = normalizeMediaUrl(url);
+  const detected = determineMediaType(normalizedUrl);
+
+  if (detected === 'image') {
+    return 'image';
+  }
+  if (detected === 'video' || detected === 'youtube') {
+    return 'video';
+  }
+  if (detected === 'audio') {
+    return 'audio';
+  }
+  if (detected === 'iframe') {
+    return 'link';
+  }
+
+  return undefined;
+}
+
+export function draftToTier(draft: TierDraft, existingTier?: Tier): Tier {
   const trimmedTitle = draft.title.trim();
   const priceNumber = draft.price === '' ? Number.NaN : Number(draft.price);
   const normalizedPrice = Number.isFinite(priceNumber) ? Math.round(priceNumber) : Number.NaN;
   const description = draft.description.trim();
+  const existingLookup = buildExistingMediaLookup(existingTier);
   const media = draft.media
-    .map(url => url.trim())
+    .map(rawUrl => rawUrl.trim())
     .filter(Boolean)
-    .map(url => ({ type: 'link', url }));
+    .map(url => {
+      const existing = resolveExistingMedia(existingLookup, url);
+      const type = inferDraftMediaType(url, existing);
+      const title = existing?.title?.trim();
+
+      return {
+        url,
+        ...(title ? { title } : {}),
+        ...(type ? { type } : {}),
+      } satisfies ExistingTierMedia;
+    });
 
   return {
     id: draft.id || `${Date.now()}-${Math.random()}`,
