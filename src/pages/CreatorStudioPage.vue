@@ -192,9 +192,13 @@
                   dense
                   icon="content_copy"
                   label="Copy public link"
-                  :disable="!publicProfileUrl"
-                  @click="publicProfileUrl && copy(publicProfileUrl)"
-                />
+                  :disable="!shareLinkReady"
+                  @click="shareLinkReady && copy(publicProfileUrl)"
+                >
+                  <q-tooltip v-if="shareLinkReady" class="bg-surface-2 text-1">
+                    Share this link so supporters can view your profile and tiers.
+                  </q-tooltip>
+                </q-btn>
                 <q-btn
                   flat
                   dense
@@ -230,7 +234,10 @@
                     Signer: {{ summaryAuthorKey }}
                   </div>
                   <div class="publish-summary-tile__meta text-caption text-2">
-                    Share: {{ publicProfileUrl || 'Author not ready' }}
+                    Share: {{ shareStatusLabel }}
+                  </div>
+                  <div class="publish-summary-tile__meta text-caption text-2">
+                    {{ shareHelperMessage }}
                   </div>
                   <div v-if="lastPublishInfo" class="publish-summary-tile__meta text-caption text-2">
                     {{ lastPublishInfo }}
@@ -724,6 +731,7 @@ const tierPreviewKind = ref<TierKind>(CANONICAL_TIER_KIND);
 const loading = ref(false);
 const publishingAll = ref(false);
 const lastPublishInfo = ref('');
+const profilePublished = ref(false);
 const hasAutoLoaded = ref(false);
 const previewTab = ref<'preview' | 'profile' | 'tiers'>('preview');
 const now = useNow({ interval: 60_000 });
@@ -915,6 +923,42 @@ const publicProfileUrl = computed(() => {
   }
 
   return buildProfileUrl(authorNpubForShare.value, router);
+});
+
+const shareLinkReady = computed(
+  () => profilePublished.value && !!publicProfileUrl.value && !relayNeedsAttention.value
+);
+
+const shareStatusLabel = computed(() => {
+  if (shareLinkReady.value) {
+    return publicProfileUrl.value;
+  }
+  if (!profilePublished.value) {
+    return 'Publish to unlock';
+  }
+  if (relayNeedsAttention.value) {
+    return 'Relay unhealthy';
+  }
+  if (!authorNpubForShare.value) {
+    return 'Waiting on author npub';
+  }
+  return 'Link unavailable';
+});
+
+const shareHelperMessage = computed(() => {
+  if (shareLinkReady.value) {
+    return 'Share this link so supporters can view your profile and tiers.';
+  }
+  if (!profilePublished.value) {
+    return 'Publish your profile to generate a link supporters can view.';
+  }
+  if (relayNeedsAttention.value) {
+    return 'Restore relay health before sharing your public link.';
+  }
+  if (!authorNpubForShare.value) {
+    return 'Enter a valid author npub to generate the public link.';
+  }
+  return 'Public link unavailable.';
 });
 
 
@@ -2587,6 +2631,7 @@ function applyProfileEvent(latest: any | null) {
     seedMintsFromStoreIfEmpty();
     loadedProfileAuthorHex.value = null;
     removeAuthorLock('profile');
+    profilePublished.value = false;
     return;
   }
 
@@ -2693,6 +2738,7 @@ function applyProfileEvent(latest: any | null) {
   }
 
   seedMintsFromStoreIfEmpty();
+  profilePublished.value = true;
 }
 
 async function loadTiers(authorHex: string) {
@@ -3235,6 +3281,7 @@ async function publishAll() {
       flagDiagnosticsAttention('publish', detail, 'warning');
     }
 
+    profilePublished.value = true;
     await Promise.all([loadTiers(reloadKey), loadProfile(reloadKey)]);
     await refreshSubscriptions(true);
   } catch (err) {
