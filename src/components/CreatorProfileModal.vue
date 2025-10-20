@@ -104,6 +104,15 @@
                     Welcome note
                   </span>
                 </div>
+                <q-slide-transition>
+                  <div
+                    v-if="isTierExpanded(tier.id)"
+                    :id="`tier-desc-${tier.id}`"
+                    class="tier-row__details text-body2 text-1"
+                  >
+                    {{ tierDescription(tier) }}
+                  </div>
+                </q-slide-transition>
               </div>
               <div class="tier-row__cta">
                 <div class="tier-row__price text-subtitle2 text-weight-medium text-1">
@@ -118,15 +127,6 @@
                   @click="handleSubscribe(tier.id)"
                 />
               </div>
-              <q-slide-transition>
-                <div
-                  v-if="isTierExpanded(tier.id)"
-                  :id="`tier-desc-${tier.id}`"
-                  class="tier-row__details text-body2 text-1"
-                >
-                  {{ tierDescription(tier) }}
-                </div>
-              </q-slide-transition>
             </div>
           </div>
           <div v-else class="empty-state">No subscription tiers found for this creator.</div>
@@ -840,7 +840,9 @@ onBeforeUnmount(() => {
 }
 
 .tier-row__details {
+  width: 100%;
   margin-top: 12px;
+  padding-left: 26px;
   padding-right: 12px;
   color: var(--text-1);
   line-height: 1.6;
@@ -889,6 +891,11 @@ onBeforeUnmount(() => {
 
   .tier-row__subscribe {
     width: 100%;
+  }
+
+  .tier-row__details {
+    padding-left: 0;
+    padding-right: 0;
   }
 
   .hero-avatar {
