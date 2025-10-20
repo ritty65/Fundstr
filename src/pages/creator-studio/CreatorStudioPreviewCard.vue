@@ -83,8 +83,37 @@
               </li>
             </ul>
           </div>
-          <div v-else class="preview-tier-card__placeholder text-2">
-            Add benefits to show what members receive at this tier.
+          <div v-if="tier.hasMedia" class="preview-tier-card__media">
+            <div
+              v-for="(item, mediaIndex) in tier.media"
+              :key="`${tier.id}-media-${mediaIndex}`"
+              class="preview-tier-card__media-item"
+            >
+              <template v-if="item.isLink">
+                <q-chip
+                  dense
+                  outline
+                  clickable
+                  tag="a"
+                  icon="link"
+                  class="preview-tier-card__media-chip"
+                  :href="item.url"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  {{ item.label }}
+                </q-chip>
+              </template>
+              <template v-else>
+                <MediaPreview :url="item.url" />
+              </template>
+            </div>
+          </div>
+          <div
+            v-if="!tier.hasBenefits && !tier.hasMedia"
+            class="preview-tier-card__placeholder text-2"
+          >
+            Add benefits or media to show what members receive at this tier.
           </div>
         </article>
       </div>
@@ -127,8 +156,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import MediaPreview from 'components/MediaPreview.vue';
 import type { Tier } from 'src/nutzap/types';
+import type { TierMedia } from 'stores/types';
 import { initialFromName, shortenNpub } from 'src/utils/profile';
+import { filterValidMedia } from 'src/utils/validateMedia';
 
 const props = defineProps<{
   displayName?: string | null;
@@ -197,6 +229,68 @@ function formatFrequency(value: Tier['frequency'] | undefined): string {
   }
 }
 
+type PreviewTierMedia = TierMedia & {
+  label: string;
+  isLink: boolean;
+};
+
+function formatMediaLabel(url: string, title?: string): string {
+  const trimmedTitle = title?.trim();
+  if (trimmedTitle) {
+    return trimmedTitle;
+  }
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, '');
+    return host || parsed.href;
+  } catch {
+    return 'Open link';
+  }
+}
+
+function normalizeTierMedia(input: unknown): PreviewTierMedia[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const collected: TierMedia[] = [];
+
+  for (const entry of input) {
+    if (!entry) {
+      continue;
+    }
+
+    if (typeof entry === 'string') {
+      const url = entry.trim();
+      if (url) {
+        collected.push({ url });
+      }
+      continue;
+    }
+
+    if (typeof entry === 'object') {
+      const media = entry as Record<string, unknown>;
+      const url = typeof media.url === 'string' ? media.url.trim() : '';
+      if (!url) {
+        continue;
+      }
+      const title = typeof media.title === 'string' ? media.title.trim() : undefined;
+      const rawType = typeof media.type === 'string' ? media.type.trim().toLowerCase() : '';
+      const allowedTypes: TierMedia['type'][] = ['image', 'video', 'audio', 'link'];
+      const type = allowedTypes.includes(rawType as TierMedia['type'])
+        ? (rawType as TierMedia['type'])
+        : undefined;
+      collected.push({ url, title, type });
+    }
+  }
+
+  return filterValidMedia(collected).map((media) => ({
+    ...media,
+    label: formatMediaLabel(media.url, media.title),
+    isLink: (media.type ?? '').toLowerCase() === 'link',
+  }));
+}
+
 const displayTiers = computed(() => {
   if (!Array.isArray(props.tiers)) {
     return [] as {
@@ -205,6 +299,8 @@ const displayTiers = computed(() => {
       description?: string;
       benefits: string[];
       hasBenefits: boolean;
+      media: PreviewTierMedia[];
+      hasMedia: boolean;
       priceLabel: string;
       frequencyLabel: string;
     }[];
@@ -218,14 +314,19 @@ const displayTiers = computed(() => {
       : 'Set a price';
     const frequencyLabel = formatFrequency(tier.frequency);
     const benefits = Array.isArray((tier as any).benefits)
-      ? ((tier as any).benefits as string[]).filter(item => item?.trim())
+      ? ((tier as any).benefits as string[])
+          .map(item => item?.trim())
+          .filter((item): item is string => Boolean(item))
       : [];
+    const media = normalizeTierMedia((tier as any).media);
     return {
       id: tier.id ?? `tier-${index}`,
       title: tier.title?.trim() || `Untitled tier #${index + 1}`,
-      description: tier.description?.trim(),
+      description: tier.description?.trim() || undefined,
       benefits,
       hasBenefits: benefits.length > 0,
+      media,
+      hasMedia: media.length > 0,
       priceLabel,
       frequencyLabel,
     };
@@ -485,6 +586,29 @@ const tiersHighlightClass = computed(() => ({
 
 .preview-tier-card__benefit {
   list-style: disc;
+}
+
+.preview-tier-card__media {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.preview-tier-card__media-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.preview-tier-card__media :deep(.media-preview-container) {
+  border-radius: 0.85rem;
+  box-shadow: 0 10px 22px rgba(10, 16, 28, 0.16);
+}
+
+.preview-tier-card__media-chip {
+  align-self: flex-start;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .preview-tier-card__placeholder {
