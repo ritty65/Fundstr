@@ -3,7 +3,7 @@
     v-model="showLocal"
     persistent
     backdrop-filter="blur(6px)"
-    style="width: 82%; max-width: 520px;"
+    style="width: min(94vw, 420px); max-width: 420px;"
   >
     <q-card class="profile-card">
       <q-card-section class="profile-hero">
@@ -534,9 +534,9 @@ onBeforeUnmount(() => {
   max-width: 100%;
   background: var(--surface-1);
   color: var(--text-1);
-  border-radius: 18px;
+  border-radius: 16px;
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 85%, transparent);
-  box-shadow: 0 26px 64px rgba(10, 14, 28, 0.28);
+  box-shadow: 0 22px 56px rgba(10, 14, 28, 0.26);
   position: relative;
   overflow: hidden;
 }
@@ -548,7 +548,7 @@ onBeforeUnmount(() => {
 
 .hero-panel {
   position: relative;
-  padding: 32px 28px 26px;
+  padding: 26px 24px 22px;
   background: var(--surface-1);
   overflow: hidden;
   color: var(--text-1);
@@ -686,10 +686,10 @@ onBeforeUnmount(() => {
 }
 
 .tiers-section {
-  padding: 20px 24px 28px;
+  padding: 18px 20px 24px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
 }
 
 .section-heading {
@@ -851,24 +851,24 @@ onBeforeUnmount(() => {
 
 @media (max-width: 599px) {
   .hero-panel {
-    padding: 24px 20px 20px;
+    padding: 22px 18px 18px;
   }
 
   .hero-layout {
     flex-direction: column;
     align-items: stretch;
-    gap: 18px;
+    gap: 16px;
   }
 
   .tiers-section {
-    padding: 16px 16px 24px;
+    padding: 16px 16px 22px;
   }
 
   .tier-row {
     flex-direction: column;
-    gap: 16px;
-    padding: 18px;
-    padding-left: 24px;
+    gap: 14px;
+    padding: 16px;
+    padding-left: 22px;
   }
 
   .tier-row__cta {
