@@ -3,7 +3,7 @@
     v-model="showLocal"
     persistent
     backdrop-filter="blur(6px)"
-    style="width: min(94vw, 420px); max-width: 420px;"
+    style="width: min(94vw, 360px); max-width: 360px;"
   >
     <q-card class="profile-card">
       <q-card-section class="profile-hero">
@@ -616,7 +616,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-width: 360px;
+  max-width: min(320px, 100%);
 }
 
 .hero-name {
