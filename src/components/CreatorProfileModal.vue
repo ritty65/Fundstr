@@ -3,10 +3,7 @@
     v-model="showLocal"
     persistent
     backdrop-filter="blur(6px)"
-    position="right"
-    transition-show="slide-left"
-    transition-hide="slide-right"
-    class="creator-profile-dialog"
+    style="width: 90%; max-width: 650px;"
   >
     <q-card class="profile-card">
       <q-card-section class="profile-header">
@@ -16,24 +13,11 @@
           </q-avatar>
           <div class="profile-info">
             <div class="profile-name">{{ displayName }}</div>
-            <div v-if="identityEntries.length" class="profile-section">
-              <div class="profile-section-label">Nostr handles</div>
-              <div class="profile-handle-list">
-                <div
-                  v-for="identity in identityEntries"
-                  :key="identity.label"
-                  class="profile-handle-chip"
-                >
-                  <span class="profile-handle-chip__label">{{ identity.label }}</span>
-                  <span class="profile-handle-chip__value">{{ identity.value }}</span>
-                </div>
-              </div>
+            <div v-if="nip05" class="profile-handle">
+              {{ nip05 }}
             </div>
-            <div v-if="aboutText" class="profile-section">
-              <div class="profile-section-label">About</div>
-              <div class="profile-about">
-                {{ aboutText }}
-              </div>
+            <div v-if="aboutText" class="profile-about text-body2 q-mt-xs">
+              {{ aboutText }}
             </div>
           </div>
         </div>
@@ -48,72 +32,43 @@
         />
       </q-card-section>
 
-      <div class="profile-body">
-        <q-card-section v-if="loading" class="loading-state">
-          <q-spinner color="accent" size="42px" />
+      <q-card-section v-if="loading" class="loading-state">
+        <q-spinner color="accent" size="42px" />
+      </q-card-section>
+
+      <template v-else>
+        <q-separator class="section-divider" />
+        <q-card-section v-if="creator" class="actions-section">
+          <q-btn
+            unelevated
+            class="action-button subscribe"
+            color="accent"
+            :disable="!hasTiers"
+            label="Subscribe"
+            no-caps
+            @click="handleSubscribe(primaryTierId || undefined)"
+          />
+          <q-btn
+            outline
+            class="action-button"
+            color="accent"
+            label="Message"
+            no-caps
+            @click="$emit('message', pubkey)"
+          />
+          <q-btn
+            outline
+            class="action-button"
+            color="accent"
+            label="Donate"
+            no-caps
+            @click="$emit('donate', pubkey)"
+          />
         </q-card-section>
 
-        <template v-else>
-          <q-separator v-if="creator" class="section-divider" />
-
-          <q-card-section v-if="creator" class="actions-section">
-            <div class="action-stack">
-              <q-btn
-                unelevated
-                class="action-tile action-tile--primary"
-                color="accent"
-                :disable="!hasTiers"
-                no-caps
-                @click="handleSubscribe(primaryTierId || undefined)"
-              >
-                <div class="action-tile__content">
-                  <q-icon name="loyalty" size="24px" />
-                  <div class="action-tile__labels">
-                    <span class="action-tile__title">Subscribe</span>
-                    <span class="action-tile__subtitle">
-                      {{ hasTiers ? 'Access member perks' : 'Tiers coming soon' }}
-                    </span>
-                  </div>
-                </div>
-              </q-btn>
-
-              <q-btn
-                flat
-                class="action-tile action-tile--secondary"
-                color="accent"
-                no-caps
-                @click="$emit('message', pubkey)"
-              >
-                <div class="action-tile__content">
-                  <q-icon name="chat" size="24px" />
-                  <div class="action-tile__labels">
-                    <span class="action-tile__title">Message</span>
-                    <span class="action-tile__subtitle">Start a conversation</span>
-                  </div>
-                </div>
-              </q-btn>
-
-              <q-btn
-                flat
-                class="action-tile action-tile--secondary"
-                color="accent"
-                no-caps
-                @click="$emit('donate', pubkey)"
-              >
-                <div class="action-tile__content">
-                  <q-icon name="volunteer_activism" size="24px" />
-                  <div class="action-tile__labels">
-                    <span class="action-tile__title">Donate</span>
-                    <span class="action-tile__subtitle">Support directly</span>
-                  </div>
-                </div>
-              </q-btn>
-            </div>
-          </q-card-section>
-
-          <q-card-section v-if="creator" class="tiers-section">
-            <div class="section-heading">Subscription tiers</div>
-            <div v-if="hasTiers" class="tiers-list">
+        <q-card-section v-if="creator" class="tiers-section">
+          <div class="section-heading">Subscription tiers</div>
+          <div v-if="hasTiers" class="tiers-list">
             <q-expansion-item
               v-for="tier in tiers"
               :key="tier.id"
@@ -124,23 +79,26 @@
               @update:model-value="(expanded) => handleTierExpansionChange(tier.id, expanded)"
             >
               <template #header>
-                <div class="tier-header">
-                  <div class="tier-name">
+                <div class="row items-center justify-between no-wrap full-width tier-header q-gutter-sm">
+                  <div class="tier-name text-subtitle2 text-weight-medium text-1">
                     {{ tier.name }}
                   </div>
-                  <div class="tier-header__meta">
-                    <span class="tier-pill tier-pill--price">
+                  <div class="row items-center no-wrap tier-header__meta q-gutter-xs">
+                    <div class="tier-price text-subtitle2 text-weight-medium text-1">
                       {{ formatTierPrice(tier) }} sats
-                    </span>
-                    <span v-if="tierFrequencyLabel(tier)" class="tier-pill tier-pill--frequency">
+                    </div>
+                    <div
+                      v-if="tierFrequencyLabel(tier)"
+                      class="tier-frequency text-caption text-2"
+                    >
                       {{ tierFrequencyLabel(tier) }}
-                    </span>
+                    </div>
                   </div>
                 </div>
               </template>
 
               <div class="tier-content">
-                <div v-if="tier.description" class="tier-description">
+                <div v-if="tier.description" class="tier-description text-body2 q-pa-sm">
                   {{ tier.description }}
                 </div>
                 <div v-if="tier.benefits?.length" class="tier-benefits q-mt-md">
@@ -164,14 +122,13 @@
                   <div class="welcome-heading">Welcome message</div>
                   <div class="welcome-copy">{{ tier.welcomeMessage }}</div>
                 </div>
-                <div class="tier-sticky-cta">
-                  <q-separator class="tier-sticky-cta__divider" />
+                <div class="row items-center justify-end tier-actions">
                   <q-btn
                     color="accent"
                     class="tier-subscribe"
                     unelevated
                     no-caps
-                    :label="`Subscribe to ${tier.name}`"
+                    label="Subscribe"
                     @click="handleSubscribe(tier.id)"
                   />
                 </div>
@@ -179,13 +136,12 @@
             </q-expansion-item>
           </div>
           <div v-else class="empty-state">No subscription tiers found for this creator.</div>
-          </q-card-section>
+        </q-card-section>
 
-          <q-card-section v-else class="empty-state">
-            We couldn't load this creator's profile. Please try again later.
-          </q-card-section>
-        </template>
-      </div>
+        <q-card-section v-else class="empty-state">
+          We couldn't load this creator's profile. Please try again later.
+        </q-card-section>
+      </template>
     </q-card>
   </q-dialog>
 </template>
@@ -274,19 +230,6 @@ const nip05 = computed(() => (typeof creatorMeta.value.nip05 === 'string' ? crea
 const aboutText = computed(() => {
   const about = typeof creatorMeta.value.about === 'string' ? creatorMeta.value.about.trim() : '';
   return about || '';
-});
-
-const identityEntries = computed(() => {
-  const entries: Array<{ label: string; value: string }> = [];
-  const nip05Value = nip05.value;
-  if (nip05Value) {
-    entries.push({ label: 'NIP-05', value: nip05Value });
-  }
-  const npubValue = creatorNpub.value;
-  if (npubValue) {
-    entries.push({ label: 'npub', value: npubValue });
-  }
-  return entries;
 });
 
 function onAvatarError(event: Event) {
@@ -522,34 +465,24 @@ onBeforeUnmount(() => {
 
 <style scoped>
 :deep(.q-dialog__backdrop) {
-  background-color: rgba(6, 8, 12, 0.35);
-}
-
-.creator-profile-dialog :deep(.q-dialog__inner) {
-  align-items: stretch;
-}
-
-.creator-profile-dialog :deep(.q-dialog__inner--right) {
-  justify-content: flex-end;
+  background-color: rgba(0, 0, 0, 0.7);
 }
 
 .profile-card {
-  width: min(420px, 100vw);
+  width: 100%;
+  max-width: 100%;
   background: var(--surface-2);
   color: var(--text-1);
-  border-radius: 24px 0 0 24px;
-  display: flex;
-  flex-direction: column;
-  max-height: 100vh;
-  box-shadow: 0 20px 32px rgba(0, 0, 0, 0.24);
+  border-radius: 20px;
+  position: relative;
+  overflow: hidden;
 }
 
 .profile-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 28px 28px 20px;
-  gap: 12px;
+  padding: 24px;
 }
 
 .header-main {
@@ -569,8 +502,8 @@ onBeforeUnmount(() => {
 .profile-info {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  max-width: 100%;
+  gap: 6px;
+  max-width: 420px;
 }
 
 .profile-name {
@@ -578,137 +511,50 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 
-.profile-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.profile-section-label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-2);
+.profile-handle {
+  color: var(--accent-500);
   font-weight: 600;
-}
-
-.profile-handle-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.profile-handle-chip {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: var(--surface-1);
-  border: 1px solid var(--surface-contrast-border);
-  min-width: 0;
-}
-
-.profile-handle-chip__label {
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-2);
-}
-
-.profile-handle-chip__value {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--text-1);
-  word-break: break-word;
 }
 
 .profile-about {
-  color: var(--text-1);
-  line-height: 1.6;
+  color: var(--text-2);
+  line-height: 1.5;
   white-space: pre-line;
-  font-size: 1rem;
 }
 
 .close-btn {
   color: var(--text-2);
 }
 
-.profile-body {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-
 .loading-state {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 64px 24px;
+  padding: 48px 24px;
 }
 
 .section-divider {
-  opacity: 0.35;
+  opacity: 0.5;
 }
 
 .actions-section {
-  padding: 20px 28px 12px;
-}
-
-.action-stack {
   display: flex;
-  flex-direction: column;
   gap: 12px;
+  padding: 24px;
+  padding-top: 16px;
 }
 
-.action-tile {
-  width: 100%;
-  text-align: left;
-  border-radius: 16px;
-  padding: 0;
-  min-height: 68px;
-}
-
-.action-tile :deep(.q-btn__content) {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 20px;
-}
-
-.action-tile__labels {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.action-tile__title {
-  font-size: 1.05rem;
+.action-button {
+  flex: 1;
   font-weight: 600;
 }
 
-.action-tile__subtitle {
-  font-size: 0.8rem;
-  color: var(--text-2);
-}
-
-.action-tile--primary {
-  box-shadow: 0 12px 30px rgba(19, 16, 46, 0.28);
-}
-
-.action-tile--secondary {
-  background: rgba(109, 93, 211, 0.12);
-  border: 1px solid rgba(109, 93, 211, 0.25);
-}
-
-.action-tile--secondary :deep(.q-icon) {
-  color: var(--accent-500);
+.action-button.subscribe {
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
 }
 
 .tiers-section {
-  padding: 12px 28px 28px;
+  padding: 16px 24px 28px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -736,66 +582,45 @@ onBeforeUnmount(() => {
 }
 
 .tier-expansion :deep(.q-item) {
-  padding: 18px 22px;
+  padding: 16px 20px;
 }
 
 .tier-header {
   width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  gap: 12px;
+}
+
+.tier-header__meta {
   gap: 12px;
 }
 
 .tier-name {
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   font-weight: 600;
-  color: var(--text-1);
 }
 
-.tier-header__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.tier-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-1);
-}
-
-.tier-pill--price {
-  background: rgba(109, 93, 211, 0.16);
+.tier-price {
+  font-weight: 700;
   color: var(--accent-500);
 }
 
-.tier-pill--frequency {
+.tier-frequency {
+  font-size: 0.9rem;
   color: var(--text-2);
 }
+
 
 .tier-content {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   color: var(--text-2);
-  padding: 0 22px 22px;
+  padding: 0 20px 20px;
 }
 
 .tier-description {
   white-space: pre-line;
   color: var(--text-1);
-  font-size: 0.95rem;
-  line-height: 1.6;
 }
 
 .tier-media {
@@ -891,65 +716,40 @@ onBeforeUnmount(() => {
   white-space: pre-line;
 }
 
-.tier-sticky-cta {
-  position: sticky;
-  bottom: -16px;
-  display: flex;
-  flex-direction: column;
+.tier-actions {
   gap: 12px;
-  padding: 12px 0 0;
-  background: linear-gradient(180deg, rgba(13, 15, 21, 0) 0%, var(--surface-1) 45%);
-}
-
-.tier-sticky-cta__divider {
-  opacity: 0.2;
+  margin-top: 4px;
 }
 
 .tier-subscribe {
   font-weight: 600;
-  width: 100%;
 }
 
 .empty-state {
-  padding: 32px 28px;
+  padding: 24px;
   color: var(--text-2);
   text-align: center;
 }
 
-@media (max-width: 959px) {
-  .profile-card {
-    border-radius: 24px 24px 0 0;
-    max-height: 90vh;
-  }
-
-  .creator-profile-dialog :deep(.q-dialog__inner) {
-    align-items: flex-end;
-  }
-}
-
 @media (max-width: 599px) {
-  .profile-card {
-    width: 100vw;
-    border-radius: 20px 20px 0 0;
-  }
-
   .profile-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 16px;
   }
 
   .close-btn {
     position: absolute;
-    top: 16px;
-    right: 16px;
+    top: 12px;
+    right: 12px;
   }
 
   .header-main {
     width: 100%;
   }
 
-  .profile-body {
-    max-height: 60vh;
+  .actions-section {
+    flex-direction: column;
   }
 }
 </style>
