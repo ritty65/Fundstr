@@ -97,9 +97,6 @@
                   <span v-if="tierBenefitCountLabel(tier)" role="listitem" class="tier-row__meta-pill">
                     {{ tierBenefitCountLabel(tier) }}
                   </span>
-                  <span v-if="tierMediaCountLabel(tier)" role="listitem" class="tier-row__meta-pill">
-                    {{ tierMediaCountLabel(tier) }}
-                  </span>
                   <span v-if="tier.welcomeMessage" role="listitem" class="tier-row__meta-pill">
                     Welcome note
                   </span>
@@ -110,7 +107,50 @@
                     :id="`tier-desc-${tier.id}`"
                     class="tier-row__details text-body2 text-1"
                   >
-                    {{ tierDescription(tier) }}
+                    <p v-if="hasTierDescription(tier)" class="tier-row__details-description">
+                      {{ tierDescription(tier) }}
+                    </p>
+                    <ul v-if="tierHasBenefits(tier)" class="tier-row__benefits">
+                      <li
+                        v-for="benefit in tierBenefits(tier)"
+                        :key="benefit"
+                        class="tier-row__benefit"
+                      >
+                        {{ benefit }}
+                      </li>
+                    </ul>
+                    <div v-if="tierHasMedia(tier)" class="tier-row__media">
+                      <div
+                        v-for="(item, mediaIndex) in tierMediaItems(tier)"
+                        :key="`${tier.id}-media-${mediaIndex}`"
+                        class="tier-row__media-item"
+                      >
+                        <template v-if="isTierMediaLink(item)">
+                          <q-chip
+                            dense
+                            outline
+                            clickable
+                            tag="a"
+                            icon="link"
+                            class="tier-row__media-chip"
+                            :href="item.url"
+                            target="_blank"
+                            rel="noopener"
+                          >
+                            {{ tierMediaLabel(item) }}
+                          </q-chip>
+                        </template>
+                        <template v-else>
+                          <MediaPreview :url="item.url" />
+                        </template>
+                      </div>
+                    </div>
+                    <div
+                      v-if="!hasTierDescription(tier) && !tierHasBenefits(tier) && !tierHasMedia(tier)"
+                      class="tier-row__details-empty text-2"
+                    >
+                      No additional details for this tier yet.
+                    </div>
                   </div>
                 </q-slide-transition>
               </div>
@@ -144,6 +184,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { nip19 } from 'nostr-tools';
+import MediaPreview from 'components/MediaPreview.vue';
 import { formatMsatToSats, type Creator } from 'src/lib/fundstrApi';
 import { useFundstrDiscovery } from 'src/api/fundstrDiscovery';
 import {
@@ -152,6 +193,8 @@ import {
   safeImageSrc,
   type ProfileMeta,
 } from 'src/utils/profile';
+import { filterValidMedia } from 'src/utils/validateMedia';
+import type { TierMedia as TierMediaItem } from 'stores/types';
 
 const props = defineProps<{
   show: boolean;
@@ -159,12 +202,6 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits(['close', 'message', 'donate']);
-
-interface TierMediaItem {
-  url: string;
-  title?: string;
-  type?: "image" | "video" | "audio" | "link";
-}
 
 interface TierDetails {
   id: string;
@@ -385,10 +422,38 @@ function tierBenefitCountLabel(tier: TierDetails): string | null {
   return `${count} benefit${count === 1 ? '' : 's'}`;
 }
 
-function tierMediaCountLabel(tier: TierDetails): string | null {
-  const count = tier.media?.length ?? 0;
-  if (!count) return null;
-  return `${count} media ${count === 1 ? 'drop' : 'drops'}`;
+function tierBenefits(tier: TierDetails): string[] {
+  return Array.isArray(tier.benefits) ? tier.benefits : [];
+}
+
+function tierHasBenefits(tier: TierDetails): boolean {
+  return tierBenefits(tier).length > 0;
+}
+
+function tierMediaItems(tier: TierDetails): TierMediaItem[] {
+  return Array.isArray(tier.media) ? tier.media : [];
+}
+
+function tierHasMedia(tier: TierDetails): boolean {
+  return tierMediaItems(tier).length > 0;
+}
+
+function isTierMediaLink(item: TierMediaItem): boolean {
+  return (item.type ?? '').toLowerCase() === 'link';
+}
+
+function tierMediaLabel(item: TierMediaItem): string {
+  const title = item.title?.trim();
+  if (title) {
+    return title;
+  }
+  try {
+    const parsed = new URL(item.url);
+    const host = parsed.hostname.replace(/^www\./, '');
+    return host || parsed.href;
+  } catch {
+    return 'Open link';
+  }
 }
 
 function hasTierDescription(tier: TierDetails): boolean {
@@ -397,10 +462,7 @@ function hasTierDescription(tier: TierDetails): boolean {
 }
 
 function tierDescription(tier: TierDetails): string {
-  if (hasTierDescription(tier)) {
-    return tier.description!.trim();
-  }
-  return 'No Description';
+  return (tier.description ?? '').trim();
 }
 
 function isTierExpanded(tierId: string): boolean {
@@ -452,7 +514,8 @@ function normalizeTierDetails(rawTier: unknown): TierDetails | null {
     (typeof t.title === 'string' && t.title.trim()) ||
     'Subscription tier';
 
-  const description = typeof t.description === 'string' ? t.description : null;
+  const rawDescription = typeof t.description === 'string' ? t.description.trim() : null;
+  const description = rawDescription && rawDescription.length > 0 ? rawDescription : null;
   let priceMsat = extractNumericValue(t.price_msat ?? t.priceMsat ?? t.amount_msat ?? t.amountMsat ?? null);
   if (priceMsat === null) {
     const priceSat = extractNumericValue(t.price ?? null);
@@ -467,12 +530,16 @@ function normalizeTierDetails(rawTier: unknown): TierDetails | null {
 
   const benefits =
     Array.isArray(t.benefits)
-      ? (t.benefits as unknown[]).filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+      ? (t.benefits as unknown[])
+          .filter((x): x is string => typeof x === 'string')
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0)
       : parsePerks(t.perks);
 
-  const media = Array.isArray(t.media)
+  const rawMedia = Array.isArray(t.media)
     ? (t.media as unknown[]).map(normalizeMediaItem).filter((m): m is TierMediaItem => m !== null)
     : [];
+  const media = filterValidMedia(rawMedia);
 
   const welcomeMessage =
     (typeof t.welcome_message === 'string' && t.welcome_message) ||
@@ -512,7 +579,14 @@ function extractNumericValue(value: unknown): number | null {
 }
 
 function normalizeMediaItem(entry: unknown): TierMediaItem | null {
-  if (!entry || typeof entry !== 'object') {
+  if (!entry) {
+    return null;
+  }
+  if (typeof entry === 'string') {
+    const url = entry.trim();
+    return url ? { url } : null;
+  }
+  if (typeof entry !== 'object') {
     return null;
   }
   const media = entry as Record<string, unknown>;
@@ -520,8 +594,13 @@ function normalizeMediaItem(entry: unknown): TierMediaItem | null {
   if (!url) {
     return null;
   }
-  const title = typeof media.title === 'string' ? media.title : undefined;
-  const type = typeof media.type === 'string' ? media.type : undefined;
+  const titleRaw = typeof media.title === 'string' ? media.title.trim() : '';
+  const title = titleRaw.length > 0 ? titleRaw : undefined;
+  const rawType = typeof media.type === 'string' ? media.type.trim().toLowerCase() : '';
+  const allowedTypes: TierMediaItem['type'][] = ['image', 'video', 'audio', 'link'];
+  const type = allowedTypes.includes(rawType as TierMediaItem['type'])
+    ? (rawType as TierMediaItem['type'])
+    : undefined;
   return { url, title, type };
 }
 
@@ -846,6 +925,54 @@ onBeforeUnmount(() => {
   padding-right: 12px;
   color: var(--text-1);
   line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tier-row__details-description {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.tier-row__benefits {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.tier-row__benefit {
+  list-style: disc;
+}
+
+.tier-row__media {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.tier-row__media-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tier-row__media :deep(.media-preview-container) {
+  border-radius: 0.9rem;
+  box-shadow: 0 14px 30px rgba(9, 15, 28, 0.18);
+}
+
+.tier-row__media-chip {
+  align-self: flex-start;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.tier-row__details-empty {
+  font-style: italic;
+  color: var(--text-2);
 }
 
 .empty-state {
