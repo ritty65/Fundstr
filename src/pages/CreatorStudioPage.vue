@@ -133,25 +133,33 @@
             />
           </template>
           <template v-else-if="activeStep === 'tiers'">
-            <q-card flat bordered class="studio-card">
-              <div class="studio-card__header">
-                <div>
-                  <div class="text-subtitle1 text-weight-medium text-1">Tiers &amp; strategy</div>
-                  <div class="text-caption text-2">Compose your supporter offerings and preview tier formats.</div>
-                </div>
-              </div>
-              <div class="studio-card__body column q-gutter-lg">
-                <div class="row items-center justify-between wrap q-gutter-sm">
-                  <q-btn-toggle
-                    v-model="tierPreviewKind"
-                    dense
-                    toggle-color="primary"
-                    :options="tierPreviewOptions"
-                  />
-                  <q-chip dense :color="tiersReady ? 'positive' : 'warning'" text-color="white">
-                    {{ tiersReady ? 'Tiers valid' : 'Needs review' }}
-                  </q-chip>
-                </div>
+            <StepTemplate
+              class="studio-tier-step"
+              title="Tiers &amp; strategy"
+              subtitle="Compose your supporter offerings and preview tier formats."
+            >
+              <template #toolbar>
+                <q-btn-toggle
+                  v-model="tierPreviewKind"
+                  dense
+                  toggle-color="primary"
+                  :options="tierPreviewOptions"
+                />
+                <q-chip dense :color="tiersReady ? 'positive' : 'warning'" text-color="white">
+                  {{ tiersReady ? 'Tiers valid' : 'Needs review' }}
+                </q-chip>
+              </template>
+
+              <q-banner
+                v-if="tierStepGuidance"
+                class="studio-tier-step__guidance"
+                dense
+              >
+                <q-icon name="info" size="16px" class="q-mr-sm" />
+                <div>{{ tierStepGuidance }}</div>
+              </q-banner>
+
+              <div class="studio-tier-step__composer">
                 <TierComposer
                   :tiers="tiers"
                   :frequency-options="tierFrequencyOptions"
@@ -160,7 +168,7 @@
                   @validation-changed="handleTierValidation"
                 />
               </div>
-            </q-card>
+            </StepTemplate>
           </template>
           <template v-else>
             <q-card flat bordered class="studio-card">
@@ -474,6 +482,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import SetupStep from './creator-studio/SetupStep.vue';
 import ProfileStep from './creator-studio/ProfileStep.vue';
+import StepTemplate from './creator-studio/StepTemplate.vue';
 import TierComposer from './nutzap-profile/TierComposer.vue';
 import NutzapExplorerPanel from 'src/nutzap/onepage/NutzapExplorerPanel.vue';
 import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
@@ -752,6 +761,7 @@ type ReadinessChip = {
 
 type StepStatus = 'ready' | 'pending' | 'attention' | 'optional';
 const stepOrder = ['setup', 'profile', 'tiers', 'publish'] as const;
+const tierStepIndex = stepOrder.indexOf('tiers');
 type CreatorStudioStep = (typeof stepOrder)[number];
 
 type StepDefinition = {
@@ -1797,6 +1807,24 @@ const tiersHaveErrors = computed(() =>
 
 const tiersReady = computed(() => tiers.value.length > 0 && !tiersHaveErrors.value);
 
+const tierStepGuidance = computed(() => {
+  if (tiersReady.value) {
+    return '';
+  }
+
+  if (tiers.value.length === 0) {
+    return 'Add at least one tier to continue.';
+  }
+
+  if (tiersHaveErrors.value) {
+    return showTierValidation.value
+      ? 'Resolve the highlighted validation issues before continuing.'
+      : 'Review tier validation before continuing.';
+  }
+
+  return 'Review your tier details before continuing.';
+});
+
 watch(
   tiersHaveErrors,
   hasErrors => {
@@ -1805,6 +1833,15 @@ watch(
     }
   },
   { immediate: true }
+);
+
+watch(
+  () => [activeStep.value, tiersHaveErrors.value] as const,
+  ([step, hasErrors]) => {
+    if (step === 'tiers' && hasErrors) {
+      showTierValidation.value = true;
+    }
+  }
 );
 
 const tierAddressPreview = computed(() => {
@@ -2078,13 +2115,40 @@ const canGoNext = computed(() => {
   if (stepIndex.value >= stepOrder.length - 1) {
     return false;
   }
+
   if (activeStep.value === 'setup') {
     return setupStepReady.value;
   }
+
+  if (activeStep.value === 'tiers') {
+    return tiersReady.value;
+  }
+
   return true;
 });
 
 function goToStep(step: CreatorStudioStep) {
+  if (step === activeStep.value) {
+    return;
+  }
+
+  const targetIndex = stepOrder.indexOf(step);
+
+  if (targetIndex === -1) {
+    return;
+  }
+
+  if (targetIndex > stepIndex.value && activeStep.value === 'tiers' && !tiersReady.value) {
+    showTierValidation.value = true;
+    return;
+  }
+
+  if (targetIndex > tierStepIndex && !tiersReady.value) {
+    showTierValidation.value = true;
+    activeStep.value = 'tiers';
+    return;
+  }
+
   activeStep.value = step;
 }
 
@@ -2095,6 +2159,11 @@ function goToPreviousStep() {
 }
 
 function goToNextStep() {
+  if (activeStep.value === 'tiers' && !tiersReady.value) {
+    showTierValidation.value = true;
+    return;
+  }
+
   if (!canGoNext.value) {
     return;
   }
@@ -3147,6 +3216,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  min-height: 0;
 }
 
 .studio-stage__header {
@@ -3178,6 +3248,9 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .studio-readiness {
@@ -3236,6 +3309,29 @@ onBeforeUnmount(() => {
   border-radius: 12px;
   padding: 16px;
   background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+}
+
+.studio-tier-step {
+  flex: 1;
+  min-height: 0;
+}
+
+.studio-tier-step__guidance {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--surface-2) 90%, transparent);
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  padding: 12px 16px;
+}
+
+.studio-tier-step__composer {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
 }
 
 .chip-input {
