@@ -67,69 +67,65 @@
 
         <q-card-section v-if="creator" class="tiers-section">
           <div class="section-heading">Subscription tiers</div>
-          <div v-if="hasTiers" class="tiers-grid">
-            <q-card v-for="tier in tiers" :key="tier.id" flat bordered class="tier-card">
-              <q-card-section class="tier-card__header">
-                <div class="tier-name">{{ tier.name }}</div>
-                <div class="tier-price">{{ formatTierPrice(tier) }} sats</div>
-                <div v-if="tierFrequencyLabel(tier)" class="tier-frequency">
-                  {{ tierFrequencyLabel(tier) }}
+          <div v-if="hasTiers" class="tiers-list">
+            <q-expansion-item
+              v-for="tier in tiers"
+              :key="tier.id"
+              bordered
+              expand-separator
+              class="tier-expansion"
+              :model-value="isTierExpanded(tier.id)"
+              @update:model-value="(expanded) => setTierExpansion(tier.id, expanded)"
+            >
+              <template #header>
+                <div class="row items-center justify-between no-wrap full-width tier-header">
+                  <div class="tier-name">{{ tier.name }}</div>
+                  <div class="row items-center no-wrap tier-header__meta">
+                    <div class="tier-price">{{ formatTierPrice(tier) }} sats</div>
+                    <div v-if="tierFrequencyLabel(tier)" class="tier-frequency">
+                      {{ tierFrequencyLabel(tier) }}
+                    </div>
+                  </div>
                 </div>
-              </q-card-section>
-              <q-slide-transition>
-                <div v-show="isTierExpanded(tier.id)">
-                  <q-separator class="tier-separator" />
-                  <q-card-section class="tier-body">
-                    <div v-if="tier.description" class="tier-description">
-                      {{ tier.description }}
-                    </div>
-                    <div v-if="tier.media?.length" class="tier-media">
-                      <div
-                        v-for="(mediaItem, mediaIndex) in tier.media"
-                        :key="`${tier.id}-media-${mediaIndex}`"
-                        class="tier-media__item"
-                      >
-                        <MediaPreview :url="mediaItem.url" />
-                      </div>
-                    </div>
-                    <div v-if="tier.benefits?.length" class="tier-benefits">
-                      <div class="benefits-heading">Benefits</div>
-                      <ul>
-                        <li v-for="(benefit, index) in tier.benefits" :key="`${tier.id}-benefit-${index}`">
-                          {{ benefit }}
-                        </li>
-                      </ul>
-                    </div>
-                    <div v-if="tier.welcomeMessage" class="tier-welcome">
-                      <div class="welcome-heading">Welcome message</div>
-                      <div class="welcome-copy">{{ tier.welcomeMessage }}</div>
-                    </div>
-                  </q-card-section>
+              </template>
+
+              <div class="tier-content">
+                <div v-if="tier.description" class="tier-description">
+                  {{ tier.description }}
                 </div>
-              </q-slide-transition>
-              <q-separator class="tier-separator" />
-              <q-card-actions class="tier-actions">
-                <q-btn
-                  flat
-                  no-caps
-                  class="expand-btn"
-                  color="accent"
-                  :icon-right="isTierExpanded(tier.id) ? 'expand_less' : 'expand_more'"
-                  @click="toggleTierExpansion(tier.id)"
-                >
-                  Details
-                </q-btn>
-                <q-space />
-                <q-btn
-                  color="accent"
-                  class="tier-subscribe"
-                  unelevated
-                  no-caps
-                  label="Subscribe"
-                  @click="handleSubscribe(tier.id)"
-                />
-              </q-card-actions>
-            </q-card>
+                <div v-if="tier.benefits?.length" class="tier-benefits">
+                  <div class="benefits-heading">Benefits</div>
+                  <ul>
+                    <li v-for="(benefit, index) in tier.benefits" :key="`${tier.id}-benefit-${index}`">
+                      {{ benefit }}
+                    </li>
+                  </ul>
+                </div>
+                <div v-if="tier.media?.length" class="tier-media">
+                  <div
+                    v-for="(mediaItem, mediaIndex) in tier.media"
+                    :key="`${tier.id}-media-${mediaIndex}`"
+                    class="tier-media__item"
+                  >
+                    <MediaPreview :url="mediaItem.url" />
+                  </div>
+                </div>
+                <div v-if="tier.welcomeMessage" class="tier-welcome">
+                  <div class="welcome-heading">Welcome message</div>
+                  <div class="welcome-copy">{{ tier.welcomeMessage }}</div>
+                </div>
+                <div class="row items-center justify-end tier-actions">
+                  <q-btn
+                    color="accent"
+                    class="tier-subscribe"
+                    unelevated
+                    no-caps
+                    label="Subscribe"
+                    @click="handleSubscribe(tier.id)"
+                  />
+                </div>
+              </div>
+            </q-expansion-item>
           </div>
           <div v-else class="empty-state">No subscription tiers found for this creator.</div>
         </q-card-section>
@@ -269,19 +265,19 @@ watch(
   },
 );
 
-function toggleTierExpansion(tierId: string) {
-  const newSet = new Set(expandedTiers.value);
-  if (newSet.has(tierId)) {
-    newSet.delete(tierId);
-  } else {
-    newSet.add(tierId);
-  }
-  expandedTiers.value = newSet;
-}
-
 const isTierExpanded = (tierId: string) => {
   return expandedTiers.value.has(tierId);
 };
+
+function setTierExpansion(tierId: string, expanded: boolean) {
+  const newSet = new Set(expandedTiers.value);
+  if (expanded) {
+    newSet.add(tierId);
+  } else {
+    newSet.delete(tierId);
+  }
+  expandedTiers.value = newSet;
+}
 
 async function fetchCreatorData(pubkey: string) {
   if (!pubkey) {
@@ -570,25 +566,33 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-.tiers-grid {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+.tiers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.tier-card {
-  background: var(--surface-1);
+.tier-expansion {
   border-radius: 16px;
-  border: 1px solid var(--surface-contrast-border);
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
+  background: var(--surface-1);
 }
 
-.tier-card__header {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.tier-expansion :deep(.q-expansion-item__container) {
+  border-radius: inherit;
+  background: inherit;
+}
+
+.tier-expansion :deep(.q-item) {
+  padding: 16px 20px;
+}
+
+.tier-header {
+  width: 100%;
+  gap: 12px;
+}
+
+.tier-header__meta {
+  gap: 12px;
 }
 
 .tier-name {
@@ -606,15 +610,13 @@ onBeforeUnmount(() => {
   color: var(--text-2);
 }
 
-.tier-separator {
-  opacity: 0.35;
-}
 
-.tier-body {
+.tier-content {
   display: flex;
   flex-direction: column;
   gap: 16px;
   color: var(--text-2);
+  padding: 0 20px 20px;
 }
 
 .tier-description {
@@ -716,16 +718,12 @@ onBeforeUnmount(() => {
 }
 
 .tier-actions {
-  padding: 8px;
-  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
 }
 
 .tier-subscribe {
   font-weight: 600;
-}
-
-.expand-btn {
-  font-weight: 500;
 }
 
 .empty-state {
