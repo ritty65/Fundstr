@@ -79,11 +79,18 @@
               @update:model-value="(expanded) => handleTierExpansionChange(tier.id, expanded)"
             >
               <template #header>
-                <div class="row items-center justify-between no-wrap full-width tier-header">
-                  <div class="tier-name">{{ tier.name }}</div>
-                  <div class="row items-center no-wrap tier-header__meta">
-                    <div class="tier-price">{{ formatTierPrice(tier) }} sats</div>
-                    <div v-if="tierFrequencyLabel(tier)" class="tier-frequency">
+                <div class="row items-center justify-between no-wrap full-width tier-header q-gutter-sm">
+                  <div class="tier-name text-subtitle2 text-weight-medium text-1">
+                    {{ tier.name }}
+                  </div>
+                  <div class="row items-center no-wrap tier-header__meta q-gutter-xs">
+                    <div class="tier-price text-subtitle2 text-weight-medium text-1">
+                      {{ formatTierPrice(tier) }} sats
+                    </div>
+                    <div
+                      v-if="tierFrequencyLabel(tier)"
+                      class="tier-frequency text-caption text-2"
+                    >
                       {{ tierFrequencyLabel(tier) }}
                     </div>
                   </div>
@@ -91,10 +98,10 @@
               </template>
 
               <div class="tier-content">
-                <div v-if="tier.description" class="tier-description">
+                <div v-if="tier.description" class="tier-description text-body2 q-pa-sm">
                   {{ tier.description }}
                 </div>
-                <div v-if="tier.benefits?.length" class="tier-benefits">
+                <div v-if="tier.benefits?.length" class="tier-benefits q-mt-md">
                   <div class="benefits-heading">Benefits</div>
                   <ul>
                     <li v-for="(benefit, index) in tier.benefits" :key="`${tier.id}-benefit-${index}`">
@@ -102,7 +109,7 @@
                     </li>
                   </ul>
                 </div>
-                <div v-if="tier.media?.length" class="tier-media">
+                <div v-if="tier.media?.length" class="tier-media q-mt-md">
                   <div
                     v-for="(mediaItem, mediaIndex) in tier.media"
                     :key="`${tier.id}-media-${mediaIndex}`"
@@ -111,7 +118,7 @@
                     <MediaPreview :url="mediaItem.url" />
                   </div>
                 </div>
-                <div v-if="tier.welcomeMessage" class="tier-welcome">
+                <div v-if="tier.welcomeMessage" class="tier-welcome q-mt-md">
                   <div class="welcome-heading">Welcome message</div>
                   <div class="welcome-copy">{{ tier.welcomeMessage }}</div>
                 </div>
