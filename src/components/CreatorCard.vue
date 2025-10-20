@@ -39,14 +39,15 @@
     <div class="creator-actions">
       <q-btn
         color="accent"
+        unelevated
         class="action-btn"
         label="View subscription tiers"
         no-caps
         @click.stop="$emit('view-tiers', profile.pubkey)"
       />
       <q-btn
-        flat
         color="accent"
+        outline
         class="action-btn"
         label="Message"
         no-caps
@@ -332,7 +333,51 @@ const isFeatured = computed(() => {
 .action-btn {
   width: 100%;
   font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   padding: 0.875rem 0;
+  border-radius: 0.75rem;
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.action-btn.q-btn--unelevated {
+  background: var(--accent-500);
+  color: var(--text-inverse);
+  box-shadow: 0 10px 24px -12px rgba(15, 23, 42, 0.45);
+}
+
+.action-btn.q-btn--unelevated:hover,
+.action-btn.q-btn--unelevated:focus-visible {
+  background: var(--accent-600);
+  box-shadow: 0 14px 30px -12px rgba(15, 23, 42, 0.55);
+}
+
+.action-btn.q-btn--outline {
+  border-width: 2px;
+  border-color: var(--accent-500);
+  color: var(--accent-500);
+  background: var(--surface-2);
+  background: color-mix(in srgb, var(--accent-200) 18%, transparent);
+}
+
+.action-btn.q-btn--outline:hover,
+.action-btn.q-btn--outline:focus-visible {
+  border-color: var(--accent-600);
+  color: var(--accent-600);
+  background: var(--accent-200);
+  background: color-mix(in srgb, var(--accent-200) 35%, transparent);
+}
+
+.action-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-200);
+  transform: translateY(-1px);
+}
+
+.action-btn:active {
+  transform: translateY(0);
+  box-shadow: none;
 }
 
 @media (min-width: 600px) {
