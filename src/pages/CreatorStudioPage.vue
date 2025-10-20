@@ -190,18 +190,6 @@
                 <q-btn
                   flat
                   dense
-                  icon="content_copy"
-                  label="Copy public link"
-                  :disable="!shareLinkReady"
-                  @click="shareLinkReady && copy(publicProfileUrl)"
-                >
-                  <q-tooltip v-if="shareLinkReady" class="bg-surface-2 text-1">
-                    Share this link so supporters can view your profile and tiers.
-                  </q-tooltip>
-                </q-btn>
-                <q-btn
-                  flat
-                  dense
                   icon="travel_explore"
                   label="Open data explorer"
                   @click="requestExplorerOpen('banner')"
@@ -223,6 +211,59 @@
                   </template>
                 </q-input>
               </div>
+
+              <section
+                class="publish-share-panel"
+                role="region"
+                aria-labelledby="publish-share-heading"
+              >
+                <div class="publish-share-panel__icon" aria-hidden="true">
+                  <q-icon name="campaign" size="28px" />
+                </div>
+                <div class="publish-share-panel__content">
+                  <div
+                    id="publish-share-heading"
+                    class="publish-share-panel__title text-subtitle1 text-weight-medium text-1"
+                  >
+                    Share your creator page
+                  </div>
+                  <p
+                    id="publish-share-helper"
+                    class="publish-share-panel__message text-body2 text-2"
+                  >
+                    {{ shareHelperMessage }}
+                  </p>
+                  <div
+                    id="publish-share-status"
+                    class="publish-share-panel__status text-caption"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <span class="publish-share-panel__status-label">
+                      {{ shareStatusLabel }}
+                    </span>
+                  </div>
+                  <div class="publish-share-panel__actions">
+                    <q-btn
+                      class="publish-share-panel__copy"
+                      color="primary"
+                      outline
+                      icon="content_copy"
+                      label="Copy public link"
+                      type="button"
+                      :aria-disabled="!shareLinkReady"
+                      :class="{ 'is-disabled': !shareLinkReady }"
+                      :tabindex="0"
+                      :aria-describedby="'publish-share-helper publish-share-status'"
+                      @click="shareLinkReady && copy(publicProfileUrl)"
+                    >
+                      <q-tooltip v-if="shareLinkReady" class="bg-surface-2 text-1">
+                        Share this link so supporters can view your profile and tiers.
+                      </q-tooltip>
+                    </q-btn>
+                  </div>
+                </div>
+              </section>
 
               <div class="publish-summary-grid">
                 <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'profile' }">
@@ -3702,6 +3743,67 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.publish-share-panel {
+  margin-top: 12px;
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--accent-200) 65%, transparent);
+  border-left: 4px solid var(--accent-500);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-2) 88%, var(--accent-200) 12%);
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.publish-share-panel__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-600);
+  background: color-mix(in srgb, var(--accent-200) 35%, transparent);
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+}
+
+.publish-share-panel__content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.publish-share-panel__message {
+  margin: 0;
+}
+
+.publish-share-panel__status {
+  color: var(--text-2);
+  word-break: break-word;
+}
+
+.publish-share-panel__status-label {
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.publish-share-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.publish-share-panel__copy.is-disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.publish-share-panel__copy.is-disabled:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: 2px;
 }
 
 .publish-summary-grid {
