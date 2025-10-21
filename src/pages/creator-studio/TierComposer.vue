@@ -172,6 +172,42 @@
                           :error="shouldShowMediaError(index, mediaIndex)"
                           :error-message="shouldShowMediaError(index, mediaIndex) ? mediaError(index, mediaIndex) || '' : ''"
                         />
+                        <div
+                          v-if="mediaPreviews[index] && mediaPreviews[index][mediaIndex]"
+                          class="tier-media-preview q-mt-sm"
+                        >
+                          <template v-if="mediaPreviews[index][mediaIndex]?.type === 'image'">
+                            <q-img
+                              :src="mediaPreviews[index][mediaIndex]?.src"
+                              :ratio="16 / 9"
+                              class="tier-media-preview__image"
+                              no-spinner
+                            />
+                          </template>
+                          <template v-else-if="mediaPreviews[index][mediaIndex]?.type === 'video'">
+                            <video
+                              :src="mediaPreviews[index][mediaIndex]?.src"
+                              class="tier-media-preview__video"
+                              controls
+                              playsinline
+                            />
+                          </template>
+                          <template v-else-if="mediaPreviews[index][mediaIndex]?.type === 'audio'">
+                            <audio
+                              :src="mediaPreviews[index][mediaIndex]?.src"
+                              class="tier-media-preview__audio"
+                              controls
+                            />
+                          </template>
+                          <template v-else>
+                            <iframe
+                              :src="mediaPreviews[index][mediaIndex]?.src"
+                              class="tier-media-preview__iframe"
+                              loading="lazy"
+                              allowfullscreen
+                            />
+                          </template>
+                        </div>
                       </div>
                       <q-btn
                         dense
@@ -213,6 +249,7 @@ import {
   type TierFieldErrors,
   validateTierDraft,
 } from './tierComposerUtils';
+import { determineMediaType, normalizeMediaUrl } from 'src/utils/validateMedia';
 
 const props = defineProps<{
   tiers: Tier[];
@@ -250,6 +287,11 @@ const optionalOpen = reactive<Record<string, boolean>>({});
 let syncingFromProps = false;
 let skipNextPropSync = false;
 
+type MediaPreview = {
+  type: 'image' | 'video' | 'audio' | 'iframe';
+  src: string;
+};
+
 const tierPresets: TierPreset[] = [
   { label: 'Supporter • 1k sats / monthly', title: 'Supporter', price: '1000', frequency: 'monthly' },
   { label: 'Backer • 5k sats / monthly', title: 'Backer', price: '5000', frequency: 'monthly' },
@@ -279,6 +321,48 @@ const tierSummaries = computed(() =>
       priceLabel,
     };
   })
+);
+
+function isHttpUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function createMediaPreview(rawUrl: string): MediaPreview | null {
+  if (typeof rawUrl !== 'string') {
+    return null;
+  }
+
+  const trimmed = rawUrl.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const normalized = normalizeMediaUrl(trimmed);
+  if (!normalized || !isHttpUrl(normalized)) {
+    return null;
+  }
+
+  const detected = determineMediaType(normalized);
+  if (detected === 'image') {
+    return { type: 'image', src: normalized };
+  }
+  if (detected === 'audio') {
+    return { type: 'audio', src: normalized };
+  }
+  if (detected === 'video') {
+    return { type: 'video', src: normalized };
+  }
+
+  return { type: 'iframe', src: normalized };
+}
+
+const mediaPreviews = computed(() =>
+  entries.value.map(entry => entry.media.map(url => createMediaPreview(url)))
 );
 
 function cloneErrors(results: TierFieldErrors[]): TierFieldErrors[] {
@@ -551,5 +635,35 @@ function applyPreset(index: number, preset: TierPreset) {
 
 .tier-optional__toggle {
   align-self: flex-start;
+}
+
+.tier-media-preview {
+  border: 1px solid var(--surface-contrast-border, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  padding: 8px;
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.tier-media-preview__image,
+.tier-media-preview__video,
+.tier-media-preview__iframe {
+  width: 100%;
+  border-radius: 6px;
+  display: block;
+}
+
+.tier-media-preview__video,
+.tier-media-preview__iframe {
+  aspect-ratio: 16 / 9;
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+.tier-media-preview__iframe {
+  border: 0;
+}
+
+.tier-media-preview__audio {
+  width: 100%;
+  display: block;
 }
 </style>
