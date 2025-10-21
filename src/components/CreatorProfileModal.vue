@@ -195,6 +195,7 @@ import {
 } from 'src/utils/profile';
 import { filterValidMedia } from 'src/utils/validateMedia';
 import type { TierMedia as TierMediaItem } from 'stores/types';
+import { toHex } from 'src/nostr/relayClient';
 
 const props = defineProps<{
   show: boolean;
@@ -350,10 +351,25 @@ async function fetchCreatorData(pubkey: string) {
     creator.value = fetchedCreator ?? null;
 
     const fetchedTiers = Array.isArray(fetchedCreator?.tiers)
-      ? fetchedCreator.tiers
+      ? [...fetchedCreator.tiers]
       : [];
 
-    const mappedTiers = fetchedTiers
+    let tierDetails: unknown[] = [];
+    try {
+      tierDetails = await fetchTierDetails(fetchedCreator, pubkey, controller.signal);
+    } catch (tierError) {
+      if ((tierError as any)?.name === 'AbortError') {
+        return;
+      }
+      console.error('Failed to load creator tiers', tierError);
+    }
+
+    if (requestId !== currentRequestId) {
+      return;
+    }
+
+    const combinedTiers = mergeTierSources(fetchedTiers, tierDetails);
+    const mappedTiers = combinedTiers
       .map((tier) => normalizeTierDetails(tier))
       .filter((tier): tier is TierDetails => tier !== null);
 
@@ -363,10 +379,10 @@ async function fetchCreatorData(pubkey: string) {
       return;
     }
     console.error('Failed to load creator profile', error);
-      if (requestId === currentRequestId) {
-        creator.value = null;
-        tiers.value = [];
-      }
+    if (requestId === currentRequestId) {
+      creator.value = null;
+      tiers.value = [];
+    }
   } finally {
     if (requestId === currentRequestId) {
       loading.value = false;
@@ -375,6 +391,239 @@ async function fetchCreatorData(pubkey: string) {
       activeController = null;
     }
   }
+}
+
+async function fetchTierDetails(
+  fetchedCreator: Creator | null,
+  inputPubkey: string,
+  signal: AbortSignal,
+): Promise<unknown[]> {
+  const candidates = collectPubkeyCandidates(fetchedCreator, inputPubkey);
+  if (!candidates.hex.length && !candidates.npub.length) {
+    return [];
+  }
+
+  let bestResult: unknown[] | null = null;
+  let lastError: unknown = null;
+
+  const tryFetch = async (id: string): Promise<unknown[] | null> => {
+    try {
+      const response = await discoveryClient.getCreatorTiers({
+        id,
+        fresh: true,
+        signal,
+      });
+      const tiers = Array.isArray(response?.tiers) ? response.tiers : [];
+      bestResult = tiers;
+      return tiers;
+    } catch (error) {
+      if ((error as any)?.name === 'AbortError') {
+        throw error;
+      }
+      lastError = error;
+      return null;
+    }
+  };
+
+  for (const hex of candidates.hex) {
+    const result = await tryFetch(hex);
+    if (result && result.length > 0) {
+      return result;
+    }
+  }
+
+  if (!bestResult || bestResult.length === 0) {
+    for (const npub of candidates.npub) {
+      const result = await tryFetch(npub);
+      if (result && result.length > 0) {
+        return result;
+      }
+    }
+  }
+
+  if (bestResult !== null) {
+    return bestResult;
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+
+  return [];
+}
+
+function collectPubkeyCandidates(
+  fetchedCreator: Creator | null,
+  inputPubkey: string,
+): { hex: string[]; npub: string[] } {
+  const hexCandidates = new Set<string>();
+  const npubCandidates = new Set<string>();
+
+  const addHexCandidate = (value: unknown) => {
+    if (typeof value !== 'string') {
+      return;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return;
+    }
+    try {
+      const hex = toHex(trimmed);
+      hexCandidates.add(hex);
+    } catch {
+      /* ignore invalid values */
+    }
+  };
+
+  const addNpubCandidate = (value: unknown) => {
+    if (typeof value !== 'string') {
+      return;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return;
+    }
+    if (trimmed.toLowerCase().startsWith('npub')) {
+      npubCandidates.add(trimmed);
+    }
+  };
+
+  addHexCandidate(fetchedCreator?.pubkey ?? null);
+  addHexCandidate(inputPubkey);
+  addNpubCandidate((fetchedCreator as any)?.npub ?? null);
+  addNpubCandidate(inputPubkey);
+
+  for (const hex of Array.from(hexCandidates)) {
+    try {
+      npubCandidates.add(nip19.npubEncode(hex));
+    } catch {
+      /* ignore encoding issues */
+    }
+  }
+
+  return {
+    hex: Array.from(hexCandidates),
+    npub: Array.from(npubCandidates),
+  };
+}
+
+function mergeTierSources(primary: unknown[], secondary: unknown[]): unknown[] {
+  const tierOrder: string[] = [];
+  const tierMap = new Map<string, Record<string, unknown>>();
+
+  const processList = (list: unknown[]) => {
+    for (const entry of list) {
+      if (!entry || typeof entry !== 'object') {
+        continue;
+      }
+      const id = resolveTierId(entry);
+      if (!id) {
+        continue;
+      }
+      const record = { ...(entry as Record<string, unknown>) };
+      if (!tierMap.has(id)) {
+        tierMap.set(id, record);
+        tierOrder.push(id);
+      } else {
+        const merged = mergeTierRecords(tierMap.get(id)!, record);
+        tierMap.set(id, merged);
+      }
+    }
+  };
+
+  processList(primary);
+  processList(secondary);
+
+  return tierOrder
+    .map((id) => tierMap.get(id))
+    .filter((tier): tier is Record<string, unknown> => Boolean(tier));
+}
+
+function mergeTierRecords(
+  base: Record<string, unknown>,
+  incoming: Record<string, unknown>,
+): Record<string, unknown> {
+  const benefits = selectPreferredArray(base.benefits, incoming.benefits);
+  const media = selectPreferredArray(base.media, incoming.media);
+  const welcomeMessage = selectPreferredWelcomeMessage(base.welcomeMessage, incoming.welcomeMessage);
+
+  const merged: Record<string, unknown> = {
+    ...base,
+    ...incoming,
+  };
+
+  if (benefits !== undefined) {
+    merged.benefits = benefits;
+  } else {
+    delete merged.benefits;
+  }
+
+  if (media !== undefined) {
+    merged.media = media;
+  } else {
+    delete merged.media;
+  }
+
+  if (welcomeMessage !== undefined) {
+    merged.welcomeMessage = welcomeMessage;
+  } else {
+    delete merged.welcomeMessage;
+  }
+
+  return merged;
+}
+
+function selectPreferredArray(
+  baseValue: unknown,
+  incomingValue: unknown,
+): unknown[] | undefined {
+  const baseArray = Array.isArray(baseValue) ? baseValue : undefined;
+  const incomingArray = Array.isArray(incomingValue) ? incomingValue : undefined;
+
+  if (incomingArray && baseArray) {
+    if (incomingArray.length > baseArray.length) {
+      return incomingArray;
+    }
+    if (incomingArray.length === baseArray.length && incomingArray.length > 0) {
+      return incomingArray;
+    }
+    return baseArray.length > 0 ? baseArray : undefined;
+  }
+
+  if (incomingArray) {
+    return incomingArray.length > 0 ? incomingArray : undefined;
+  }
+
+  if (baseArray) {
+    return baseArray.length > 0 ? baseArray : undefined;
+  }
+
+  return undefined;
+}
+
+function selectPreferredWelcomeMessage(
+  baseValue: unknown,
+  incomingValue: unknown,
+): string | null | undefined {
+  const incomingText = typeof incomingValue === 'string' ? incomingValue.trim() : '';
+  if (incomingText) {
+    return incomingText;
+  }
+
+  const baseText = typeof baseValue === 'string' ? baseValue.trim() : '';
+  if (baseText) {
+    return baseText;
+  }
+
+  if (incomingValue === null || incomingValue === undefined) {
+    return incomingValue as null | undefined;
+  }
+
+  if (baseValue === null || baseValue === undefined) {
+    return baseValue as null | undefined;
+  }
+
+  return null;
 }
 
 function close() {
@@ -499,14 +748,28 @@ function resetState() {
   expandedTierIds.value = {};
 }
 
+function resolveTierId(rawTier: unknown): string | null {
+  if (!rawTier || typeof rawTier !== 'object') return null;
+  const t = rawTier as Record<string, unknown>;
+
+  const candidates = [t.id, t.tier_id, t.d];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+  }
+
+  return null;
+}
+
 function normalizeTierDetails(rawTier: unknown): TierDetails | null {
   if (!rawTier || typeof rawTier !== 'object') return null;
   const t = rawTier as Record<string, unknown>;
 
-  const id =
-    (typeof t.id === 'string' && t.id.trim()) ||
-    (typeof t.tier_id === 'string' && t.tier_id.trim()) ||
-    (typeof t.d === 'string' && t.d.trim()) || '';
+  const id = resolveTierId(t);
   if (!id) return null;
 
   const name =
