@@ -425,8 +425,7 @@ export default {
     ...mapActions(useNPCStore, ["generateNPCConnection", "claimAllTokens"]),
     ...mapActions(useNostrStore, [
       "sendDirectMessageUnified",
-      "subscribeToNip04DirectMessages",
-      "subscribeToNip17DirectMessages",
+      "ensureDmListeners",
       "initSigner",
       "checkNip07Signer",
       "initNip07Signer",
@@ -728,8 +727,7 @@ export default {
       if (this.nwcEnabled) {
         this.listenToNWCCommands();
       }
-      this.subscribeToNip17DirectMessages();
-      this.subscribeToNip04DirectMessages();
+      this.ensureDmListeners({ suppressWarnings: true });
       this.startInvoiceCheckerWorker();
       this.startLockedTokensRedeemWorker();
       this.start();

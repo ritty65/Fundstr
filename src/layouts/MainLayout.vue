@@ -135,6 +135,8 @@ export default defineComponent({
   },
   setup() {
     const messenger = useMessengerStore();
+    const nostr = useNostrStore();
+    const nutzapStore = useNutzapStore();
     const router = useRouter();
     const route = useRoute();
     const conversationSearch = ref("");
@@ -263,11 +265,24 @@ export default defineComponent({
       stopHeartbeat();
     });
 
+    const ensureNutzapListener = () => {
+      const myPubkey = nostr.pubkey;
+      if (!myPubkey) return;
+      void nutzapStore.initListener(myPubkey).catch((err) => {
+        if (import.meta?.env?.DEV) {
+          console.warn("[nutzap] Failed to initialise listener", err);
+        }
+      });
+    };
+
     watch(
       relayStatus,
       (status, previous) => {
         if (status === "connected") {
           startHeartbeat();
+          if (!previous || previous !== "connected") {
+            ensureNutzapListener();
+          }
           if (previous && previous !== "connected") {
             refreshCachedNutzapProfiles();
           }
@@ -276,6 +291,15 @@ export default defineComponent({
         }
       },
       { immediate: true },
+    );
+
+    watch(
+      () => nostr.pubkey,
+      (pubkey) => {
+        if (pubkey && relayStatus.value === "connected") {
+          ensureNutzapListener();
+        }
+      },
     );
 
     // Drag-to-resize
@@ -343,8 +367,6 @@ export default defineComponent({
   async mounted() {
     const nostr = useNostrStore();
     await nostr.initSignerIfNotSet();
-    const myHex = nostr.pubkey;
-    useNutzapStore().initListener(myHex);
     creatorCacheService.start();
   },
 });
