@@ -86,6 +86,7 @@ import {
 } from "@/nutzap/relayEndpoints";
 import { getNutzapNdk } from "src/nutzap/ndkInstance";
 import { publishNostrEvent } from "src/nutzap/relayPublishing";
+import { useFundstrRelayStatus } from "src/nutzap/relayClient";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 
 // --- Relay connectivity helpers ---
@@ -1496,6 +1497,15 @@ type NostrEventLog = {
   created_at: number;
 };
 
+type InitNdkReadOnlyOptions = {
+  fundstrOnly?: boolean;
+  suppressWarnings?: boolean;
+};
+
+type DmListenerOptions = {
+  suppressWarnings?: boolean;
+};
+
 type CachedProfile = {
   profile: any;
   fetchedAt: number;
@@ -1589,6 +1599,8 @@ export const useNostrStore = defineStore("nostr", {
       profiles: useLocalStorage<
         Record<string, { profile: any; fetchedAt: number }>
       >("cashu.ndk.profiles", {}),
+      dmListenersStop: null as null | (() => void),
+      dmListenersOptions: null as DmListenerOptions | null,
     };
   },
   getters: {
@@ -1699,7 +1711,7 @@ export const useNostrStore = defineStore("nostr", {
       this.secureStorageLoaded = true;
     },
     initNdkReadOnly: async function (
-      opts: { fundstrOnly?: boolean } = {},
+      opts: InitNdkReadOnlyOptions = {},
     ) {
       await this.loadKeysFromStorage();
       const requestedMode =
@@ -1710,6 +1722,7 @@ export const useNostrStore = defineStore("nostr", {
             : undefined;
       const desiredMode = requestedMode ?? this.readOnlyMode ?? "default";
       const modeChanged = this.readOnlyMode !== desiredMode;
+      const suppressWarnings = opts.suppressWarnings === true;
       const ndk = await useNdk({
         requireSigner: false,
         fundstrOnly: opts.fundstrOnly,
@@ -1736,7 +1749,9 @@ export const useNostrStore = defineStore("nostr", {
         (ndk.pool as any).on?.("relay:stalled", (r: any) => {
           if (!this.failedRelays.includes(r.url)) {
             this.failedRelays.push(r.url);
-            notifyWarning(`Relay ${r.url} stalled, reconnecting`);
+            if (!suppressWarnings) {
+              notifyWarning(`Relay ${r.url} stalled, reconnecting`);
+            }
           }
           this.connectedRelays.delete(r.url);
           this.connected = this.connectedRelays.size > 0;
@@ -1747,10 +1762,14 @@ export const useNostrStore = defineStore("nostr", {
         });
       } catch (e: any) {
         console.warn("[nostr] read-only connect failed", e);
-        notifyWarning(`Failed to connect to relays`, e?.message ?? String(e));
+        if (!suppressWarnings) {
+          notifyWarning(`Failed to connect to relays`, e?.message ?? String(e));
+        }
         this.lastError = e?.message ?? String(e);
         this.connectionFailed = true;
-        window.dispatchEvent(new Event("nostr-connect-failed"));
+        if (!suppressWarnings) {
+          window.dispatchEvent(new Event("nostr-connect-failed"));
+        }
       }
     },
     disconnect: async function () {
@@ -2483,9 +2502,35 @@ export const useNostrStore = defineStore("nostr", {
       // @ts-expect-error -- dynamic invocation
       return await (this as any).sendDirectMessageUnified(...args);
     },
-    subscribeToNip04DirectMessages: async function () {
+    ensureDmListeners: function (options: DmListenerOptions = {}) {
+      this.dmListenersOptions = { ...options };
+      const status = useFundstrRelayStatus();
+      const startListeners = async () => {
+        const opts = this.dmListenersOptions ?? {};
+        await this.subscribeToNip17DirectMessages(opts);
+        await this.subscribeToNip04DirectMessages(opts);
+      };
+      if (!this.dmListenersStop) {
+        this.dmListenersStop = watch(
+          status,
+          (value, previous) => {
+            if (value === "connected" && previous !== "connected") {
+              void startListeners();
+            }
+          },
+          { immediate: true },
+        );
+      } else if (status.value === "connected") {
+        void startListeners();
+      }
+    },
+    subscribeToNip04DirectMessages: async function (
+      options: DmListenerOptions = {},
+    ) {
       await this.initSignerIfNotSet();
-      await this.initNdkReadOnly();
+      await this.initNdkReadOnly({
+        suppressWarnings: options.suppressWarnings,
+      });
       const privKey = this.privKeyHex;
       const pubKey = this.pubkey;
       let nip04DirectMessageEvents: Set<NDKEvent> = new Set();
@@ -2504,7 +2549,11 @@ export const useNostrStore = defineStore("nostr", {
         try {
           await ndk.connect();
         } catch (e: any) {
-          notifyWarning("Relay connection failed", e?.message ?? String(e));
+          if (!options.suppressWarnings) {
+            notifyWarning("Relay connection failed", e?.message ?? String(e));
+          } else if (import.meta?.env?.DEV) {
+            console.warn("[nostr] NIP-04 connect failed", e);
+          }
         }
         const sub = ndk.subscribe(
           {
@@ -2651,9 +2700,13 @@ export const useNostrStore = defineStore("nostr", {
       await event.sign(this.signer);
       await ndk.publish(event);
     },
-    subscribeToNip17DirectMessages: async function () {
+    subscribeToNip17DirectMessages: async function (
+      options: DmListenerOptions = {},
+    ) {
       await this.initSignerIfNotSet();
-      await this.initNdkReadOnly();
+      await this.initNdkReadOnly({
+        suppressWarnings: options.suppressWarnings,
+      });
       const privKey = this.privKeyHex;
       const pubKey = this.pubkey;
       let nip17DirectMessageEvents: Set<NDKEvent> = new Set();
@@ -2673,7 +2726,11 @@ export const useNostrStore = defineStore("nostr", {
         try {
           await ndk.connect();
         } catch (e: any) {
-          notifyWarning("Relay connection failed", e?.message ?? String(e));
+          if (!options.suppressWarnings) {
+            notifyWarning("Relay connection failed", e?.message ?? String(e));
+          } else if (import.meta?.env?.DEV) {
+            console.warn("[nostr] NIP-17 connect failed", e);
+          }
         }
         const sub = ndk.subscribe(
           {
