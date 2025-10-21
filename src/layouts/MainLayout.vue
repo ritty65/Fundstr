@@ -134,6 +134,8 @@ export default defineComponent({
     NewChatDialog,
   },
   setup() {
+    const nostr = useNostrStore();
+    const nutzap = useNutzapStore();
     const messenger = useMessengerStore();
     const router = useRouter();
     const route = useRoute();
@@ -185,6 +187,16 @@ export default defineComponent({
     );
 
     const relayStatus = useFundstrRelayStatus();
+    const ensureNutzapListener = () => {
+      if (relayStatus.value !== "connected") {
+        return;
+      }
+      const myHex = nostr.pubkey;
+      if (!myHex) {
+        return;
+      }
+      void nutzap.initListener(myHex);
+    };
     const showRelayBanner = computed(() => relayStatus.value !== "connected");
     const isRelayDisconnected = computed(() => relayStatus.value === "disconnected");
     const relayBannerClass = computed(() =>
@@ -258,6 +270,12 @@ export default defineComponent({
       window.addEventListener("focus", onWindowFocus);
     });
 
+    onMounted(async () => {
+      await nostr.initSignerIfNotSet();
+      ensureNutzapListener();
+      creatorCacheService.start();
+    });
+
     onBeforeUnmount(() => {
       window.removeEventListener("focus", onWindowFocus);
       stopHeartbeat();
@@ -268,8 +286,11 @@ export default defineComponent({
       (status, previous) => {
         if (status === "connected") {
           startHeartbeat();
-          if (previous && previous !== "connected") {
-            refreshCachedNutzapProfiles();
+          if (previous !== "connected") {
+            ensureNutzapListener();
+            if (previous) {
+              refreshCachedNutzapProfiles();
+            }
           }
         } else {
           stopHeartbeat();
@@ -339,14 +360,6 @@ export default defineComponent({
       reconnectFundstrRelay,
       route,
     };
-  },
-  async mounted() {
-    const nostr = useNostrStore();
-    await nostr.initSignerIfNotSet();
-    const myHex = nostr.pubkey;
-    useNutzapStore().initListener(myHex);
-    creatorCacheService.start();
-  },
 });
 </script>
 
