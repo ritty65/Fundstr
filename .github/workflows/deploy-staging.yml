@@ -180,3 +180,40 @@ jobs:
           curl -fsSI https://staging.fundstr.me/find-creators | sed -n '1,20p'
           curl -fsS  https://staging.fundstr.me/version.txt | tee /tmp/version.txt
           curl -fsS  https://staging.fundstr.me/ | grep -i -E "Fundstr|Nostr User Search"
+
+      - name: Verify main module bundle is reachable
+        run: |
+          set -euo pipefail
+          HTML="$(curl -fsS https://staging.fundstr.me/)"
+          SRC="$(printf '%s\n' "$HTML" \
+            | sed -nE 's/.*<script[^>]*type="module"[^>]*src="([^"]+)".*/\1/p' \
+            | head -n 1)"
+          if [ -z "$SRC" ]; then
+            echo "::error:: could not locate <script type=\"module\"> in staging index.html"
+            printf '%s\n' "$HTML" | sed -n '1,120p'
+            exit 1
+          fi
+          case "$SRC" in
+            http://*|https://*)
+              URL="$SRC"
+              ;;
+            /*)
+              URL="https://staging.fundstr.me$SRC"
+              ;;
+            *)
+              URL="https://staging.fundstr.me/$SRC"
+              ;;
+          esac
+          curl -sSI "$URL" -o /tmp/module_headers
+          STATUS="$(awk 'toupper($1) ~ /^HTTP\// {print $2; exit}' /tmp/module_headers)"
+          if [ "${STATUS:-}" != "200" ]; then
+            echo "::error:: expected HTTP 200 for $URL, got ${STATUS:-unknown}"
+            cat /tmp/module_headers
+            exit 1
+          fi
+          if ! grep -qi '^content-type:.*javascript' /tmp/module_headers; then
+            echo "::error:: $URL missing javascript content-type"
+            cat /tmp/module_headers
+            exit 1
+          fi
+          cat /tmp/module_headers

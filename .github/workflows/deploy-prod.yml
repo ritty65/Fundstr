@@ -109,3 +109,40 @@ jobs:
             -e "ssh -p ${{ secrets.SSH_PORT }}" \
             dist/pwa/ \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_PROD }}/"
+
+      - name: Verify main module bundle is reachable
+        run: |
+          set -euo pipefail
+          HTML="$(curl -fsS https://fundstr.me/)"
+          SRC="$(printf '%s\n' "$HTML" \
+            | sed -nE 's/.*<script[^>]*type="module"[^>]*src="([^"]+)".*/\1/p' \
+            | head -n 1)"
+          if [ -z "$SRC" ]; then
+            echo "::error:: could not locate <script type=\"module\"> in production index.html"
+            printf '%s\n' "$HTML" | sed -n '1,120p'
+            exit 1
+          fi
+          case "$SRC" in
+            http://*|https://*)
+              URL="$SRC"
+              ;;
+            /*)
+              URL="https://fundstr.me$SRC"
+              ;;
+            *)
+              URL="https://fundstr.me/$SRC"
+              ;;
+          esac
+          curl -sSI "$URL" -o /tmp/module_headers
+          STATUS="$(awk 'toupper($1) ~ /^HTTP\// {print $2; exit}' /tmp/module_headers)"
+          if [ "${STATUS:-}" != "200" ]; then
+            echo "::error:: expected HTTP 200 for $URL, got ${STATUS:-unknown}"
+            cat /tmp/module_headers
+            exit 1
+          fi
+          if ! grep -qi '^content-type:.*javascript' /tmp/module_headers; then
+            echo "::error:: $URL missing javascript content-type"
+            cat /tmp/module_headers
+            exit 1
+          fi
+          cat /tmp/module_headers
