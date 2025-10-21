@@ -3,179 +3,185 @@
     v-model="showLocal"
     persistent
     backdrop-filter="blur(6px)"
-    style="width: min(94vw, 360px); max-width: 360px;"
+    class="creator-profile-dialog"
   >
     <q-card class="profile-card">
-      <q-card-section class="profile-hero">
-        <div class="hero-panel">
-          <q-btn
-            flat
-            round
-            dense
-            icon="close"
-            class="close-btn"
-            @click="close"
-            aria-label="Close creator profile"
-          />
-          <div class="hero-layout">
-            <div class="hero-avatar">
-              <q-avatar size="120px" class="profile-avatar">
-                <img :src="creatorAvatar" alt="Creator avatar" @error="onAvatarError" />
-              </q-avatar>
-            </div>
-            <div class="hero-meta">
-              <div class="hero-name">{{ displayName }}</div>
-              <div v-if="nip05" class="hero-handle">{{ nip05 }}</div>
-              <div v-if="aboutText" class="hero-about text-body2">{{ aboutText }}</div>
-              <div v-if="creator" class="hero-actions">
-                <q-btn
-                  unelevated
-                  class="action-button subscribe"
-                  color="accent"
-                  :disable="!hasTiers"
-                  label="Subscribe"
-                  no-caps
-                  @click="handleSubscribe(primaryTierId || undefined)"
-                />
-                <q-btn
-                  outline
-                  class="action-button"
-                  color="accent"
-                  label="Message"
-                  no-caps
-                  @click="$emit('message', pubkey)"
-                />
-                <q-btn
-                  outline
-                  class="action-button"
-                  color="accent"
-                  label="Donate"
-                  no-caps
-                  @click="$emit('donate', pubkey)"
-                />
+      <div class="profile-card__layout">
+        <div class="profile-card__hero-column">
+          <q-card-section class="profile-hero">
+            <div class="hero-panel">
+              <q-btn
+                flat
+                round
+                dense
+                icon="close"
+                class="close-btn"
+                @click="close"
+                aria-label="Close creator profile"
+              />
+              <div class="hero-layout">
+                <div class="hero-avatar">
+                  <q-avatar size="120px" class="profile-avatar">
+                    <img :src="creatorAvatar" alt="Creator avatar" @error="onAvatarError" />
+                  </q-avatar>
+                </div>
+                <div class="hero-meta">
+                  <div class="hero-name">{{ displayName }}</div>
+                  <div v-if="nip05" class="hero-handle">{{ nip05 }}</div>
+                  <div v-if="aboutText" class="hero-about text-body2">{{ aboutText }}</div>
+                  <div v-if="creator" class="hero-actions">
+                    <q-btn
+                      unelevated
+                      class="action-button subscribe"
+                      color="accent"
+                      :disable="!hasTiers"
+                      label="Subscribe"
+                      no-caps
+                      @click="handleSubscribe(primaryTierId || undefined)"
+                    />
+                    <q-btn
+                      outline
+                      class="action-button"
+                      color="accent"
+                      label="Message"
+                      no-caps
+                      @click="$emit('message', pubkey)"
+                    />
+                    <q-btn
+                      outline
+                      class="action-button"
+                      color="accent"
+                      label="Donate"
+                      no-caps
+                      @click="$emit('donate', pubkey)"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          </q-card-section>
         </div>
-      </q-card-section>
+        <div class="profile-card__tiers-column">
+          <div v-if="loading" class="loading-state">
+            <q-spinner color="accent" size="42px" />
+          </div>
+          <q-scroll-area v-else class="profile-card__scroll">
+            <div class="profile-card__scroll-content">
+              <q-separator class="section-divider" />
 
-      <q-card-section v-if="loading" class="loading-state">
-        <q-spinner color="accent" size="42px" />
-      </q-card-section>
-
-      <template v-else>
-        <q-separator class="section-divider" />
-
-        <q-card-section v-if="creator" class="tiers-section">
-          <div class="section-heading">Subscription tiers</div>
-          <div v-if="hasTiers" class="tiers-list">
-            <div v-for="tier in tiers" :key="tier.id" class="tier-row">
-              <div class="tier-row__content">
-                <div class="tier-row__header">
-                  <div class="tier-row__name text-subtitle2 text-weight-medium text-1">
-                    {{ tier.name }}
-                  </div>
-                  <div v-if="tierFrequencyLabel(tier)" class="tier-row__cadence text-caption">
-                    {{ tierFrequencyLabel(tier) }}
-                  </div>
-                  <q-btn
-                    flat
-                    dense
-                    class="tier-row__details-toggle"
-                    no-caps
-                    :label="isTierExpanded(tier.id) ? 'Hide details' : 'Details'"
-                    :icon-right="isTierExpanded(tier.id) ? 'expand_less' : 'expand_more'"
-                    @click="toggleTierDetails(tier.id)"
-                    :aria-expanded="isTierExpanded(tier.id)"
-                    :aria-controls="`tier-desc-${tier.id}`"
-                  />
-                </div>
-                <div v-if="tierHighlight(tier)" class="tier-row__highlight text-body2 text-2">
-                  {{ tierHighlight(tier) }}
-                </div>
-                <div class="tier-row__meta" role="list">
-                  <span v-if="tierBenefitCountLabel(tier)" role="listitem" class="tier-row__meta-pill">
-                    {{ tierBenefitCountLabel(tier) }}
-                  </span>
-                  <span v-if="tier.welcomeMessage" role="listitem" class="tier-row__meta-pill">
-                    Welcome note
-                  </span>
-                </div>
-                <q-slide-transition>
-                  <div
-                    v-if="isTierExpanded(tier.id)"
-                    :id="`tier-desc-${tier.id}`"
-                    class="tier-row__details text-body2 text-1"
-                  >
-                    <p v-if="hasTierDescription(tier)" class="tier-row__details-description">
-                      {{ tierDescription(tier) }}
-                    </p>
-                    <ul v-if="tierHasBenefits(tier)" class="tier-row__benefits">
-                      <li
-                        v-for="benefit in tierBenefits(tier)"
-                        :key="benefit"
-                        class="tier-row__benefit"
-                      >
-                        {{ benefit }}
-                      </li>
-                    </ul>
-                    <div v-if="tierHasMedia(tier)" class="tier-row__media">
-                      <div
-                        v-for="(item, mediaIndex) in tierMediaItems(tier)"
-                        :key="`${tier.id}-media-${mediaIndex}`"
-                        class="tier-row__media-item"
-                      >
-                        <template v-if="isTierMediaLink(item)">
-                          <q-chip
-                            dense
-                            outline
-                            clickable
-                            tag="a"
-                            icon="link"
-                            class="tier-row__media-chip"
-                            :href="item.url"
-                            target="_blank"
-                            rel="noopener"
-                          >
-                            {{ tierMediaLabel(item) }}
-                          </q-chip>
-                        </template>
-                        <template v-else>
-                          <MediaPreview :url="item.url" />
-                        </template>
+              <div v-if="creator" class="tiers-section">
+                <div class="section-heading">Subscription tiers</div>
+                <div v-if="hasTiers" class="tiers-list">
+                  <div v-for="tier in tiers" :key="tier.id" class="tier-row">
+                    <div class="tier-row__content">
+                      <div class="tier-row__header">
+                        <div class="tier-row__name text-subtitle2 text-weight-medium text-1">
+                          {{ tier.name }}
+                        </div>
+                        <div v-if="tierFrequencyLabel(tier)" class="tier-row__cadence text-caption">
+                          {{ tierFrequencyLabel(tier) }}
+                        </div>
+                        <q-btn
+                          flat
+                          dense
+                          class="tier-row__details-toggle"
+                          no-caps
+                          :label="isTierExpanded(tier.id) ? 'Hide details' : 'Details'"
+                          :icon-right="isTierExpanded(tier.id) ? 'expand_less' : 'expand_more'"
+                          @click="toggleTierDetails(tier.id)"
+                          :aria-expanded="isTierExpanded(tier.id)"
+                          :aria-controls="`tier-desc-${tier.id}`"
+                        />
                       </div>
+                      <div v-if="tierHighlight(tier)" class="tier-row__highlight text-body2 text-2">
+                        {{ tierHighlight(tier) }}
+                      </div>
+                      <div class="tier-row__meta" role="list">
+                        <span v-if="tierBenefitCountLabel(tier)" role="listitem" class="tier-row__meta-pill">
+                          {{ tierBenefitCountLabel(tier) }}
+                        </span>
+                        <span v-if="tier.welcomeMessage" role="listitem" class="tier-row__meta-pill">
+                          Welcome note
+                        </span>
+                      </div>
+                      <q-slide-transition>
+                        <div
+                          v-if="isTierExpanded(tier.id)"
+                          :id="`tier-desc-${tier.id}`"
+                          class="tier-row__details text-body2 text-1"
+                        >
+                          <p v-if="hasTierDescription(tier)" class="tier-row__details-description">
+                            {{ tierDescription(tier) }}
+                          </p>
+                          <ul v-if="tierHasBenefits(tier)" class="tier-row__benefits">
+                            <li
+                              v-for="benefit in tierBenefits(tier)"
+                              :key="benefit"
+                              class="tier-row__benefit"
+                            >
+                              {{ benefit }}
+                            </li>
+                          </ul>
+                          <div v-if="tierHasMedia(tier)" class="tier-row__media">
+                            <div
+                              v-for="(item, mediaIndex) in tierMediaItems(tier)"
+                              :key="`${tier.id}-media-${mediaIndex}`"
+                              class="tier-row__media-item"
+                            >
+                              <template v-if="isTierMediaLink(item)">
+                                <q-chip
+                                  dense
+                                  outline
+                                  clickable
+                                  tag="a"
+                                  icon="link"
+                                  class="tier-row__media-chip"
+                                  :href="item.url"
+                                  target="_blank"
+                                  rel="noopener"
+                                >
+                                  {{ tierMediaLabel(item) }}
+                                </q-chip>
+                              </template>
+                              <template v-else>
+                                <MediaPreview :url="item.url" />
+                              </template>
+                            </div>
+                          </div>
+                          <div
+                            v-if="!hasTierDescription(tier) && !tierHasBenefits(tier) && !tierHasMedia(tier)"
+                            class="tier-row__details-empty text-2"
+                          >
+                            No additional details for this tier yet.
+                          </div>
+                        </div>
+                      </q-slide-transition>
                     </div>
-                    <div
-                      v-if="!hasTierDescription(tier) && !tierHasBenefits(tier) && !tierHasMedia(tier)"
-                      class="tier-row__details-empty text-2"
-                    >
-                      No additional details for this tier yet.
+                    <div class="tier-row__cta">
+                      <div class="tier-row__price text-subtitle2 text-weight-medium text-1">
+                        {{ tierPriceSummary(tier) }}
+                      </div>
+                      <q-btn
+                        color="accent"
+                        class="tier-row__subscribe"
+                        unelevated
+                        no-caps
+                        label="Subscribe"
+                        @click="handleSubscribe(tier.id)"
+                      />
                     </div>
                   </div>
-                </q-slide-transition>
-              </div>
-              <div class="tier-row__cta">
-                <div class="tier-row__price text-subtitle2 text-weight-medium text-1">
-                  {{ tierPriceSummary(tier) }}
                 </div>
-                <q-btn
-                  color="accent"
-                  class="tier-row__subscribe"
-                  unelevated
-                  no-caps
-                  label="Subscribe"
-                  @click="handleSubscribe(tier.id)"
-                />
+                <div v-else class="empty-state">No subscription tiers found for this creator.</div>
+              </div>
+
+              <div v-else class="empty-state">
+                We couldn't load this creator's profile. Please try again later.
               </div>
             </div>
-          </div>
-          <div v-else class="empty-state">No subscription tiers found for this creator.</div>
-        </q-card-section>
-
-        <q-card-section v-else class="empty-state">
-          We couldn't load this creator's profile. Please try again later.
-        </q-card-section>
-      </template>
+          </q-scroll-area>
+        </div>
+      </div>
     </q-card>
   </q-dialog>
 </template>
@@ -873,6 +879,15 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+:deep(.creator-profile-dialog .q-dialog__inner) {
+  width: 100%;
+  max-width: min(960px, 94vw);
+}
+
+:deep(.creator-profile-dialog .q-dialog__inner--minimized) {
+  width: 100%;
+}
+
 :deep(.q-dialog__backdrop) {
   background-color: rgba(0, 0, 0, 0.7);
 }
@@ -887,11 +902,49 @@ onBeforeUnmount(() => {
   box-shadow: 0 22px 56px rgba(10, 14, 28, 0.26);
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: min(92vh, 820px);
 }
 
+.profile-card__layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.profile-card__hero-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.profile-card__tiers-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: var(--surface-1);
+}
+
+.profile-card__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.profile-card__scroll-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  flex: 1 1 auto;
+}
 
 .profile-hero {
   padding: 0;
+  flex: 1 1 auto;
 }
 
 .hero-panel {
@@ -1022,10 +1075,12 @@ onBeforeUnmount(() => {
 }
 
 .loading-state {
+  flex: 1 1 auto;
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 48px 24px;
+  min-height: 0;
 }
 
 .section-divider {
@@ -1248,6 +1303,11 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 599px) {
+  :deep(.creator-profile-dialog .q-dialog__inner) {
+    width: 100%;
+    max-width: 100%;
+  }
+
   .hero-panel {
     padding: 22px 18px 18px;
   }
@@ -1305,6 +1365,18 @@ onBeforeUnmount(() => {
   .close-btn {
     top: 12px;
     right: 12px;
+  }
+}
+
+@media (min-width: 768px) {
+  .profile-card__layout {
+    display: grid;
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    height: 100%;
+  }
+
+  .profile-card__hero-column {
+    border-right: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
   }
 }
 </style>
