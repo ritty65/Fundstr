@@ -1,7 +1,6 @@
 <template>
   <q-dialog
     v-model="showLocal"
-    persistent
     backdrop-filter="blur(6px)"
     class="creator-profile-dialog"
   >
@@ -881,7 +880,7 @@ onBeforeUnmount(() => {
 <style scoped>
 :deep(.creator-profile-dialog .q-dialog__inner) {
   width: 100%;
-  max-width: min(960px, 94vw);
+  max-width: min(1024px, 94vw);
 }
 
 :deep(.creator-profile-dialog .q-dialog__inner--minimized) {
@@ -1368,10 +1367,10 @@ onBeforeUnmount(() => {
   }
 }
 
-@media (min-width: 768px) {
+@media (min-width: 960px) {
   .profile-card__layout {
     display: grid;
-    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
     height: 100%;
   }
 
