@@ -565,7 +565,9 @@ const tiersHighlightClass = computed(() => ({
   gap: 0.5rem;
 }
 
-.preview-tier-card__media :deep(.media-preview-container) {
+.preview-tier-card__media :deep(.media-preview__surface),
+.preview-tier-card__media :deep(.media-preview__audio),
+.preview-tier-card__media :deep(.media-preview__link-card) {
   border-radius: 0.85rem;
   box-shadow: 0 10px 22px rgba(10, 16, 28, 0.16);
 }
