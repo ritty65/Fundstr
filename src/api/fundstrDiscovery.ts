@@ -2,6 +2,7 @@ import type { App } from 'vue';
 import { inject } from 'vue';
 import { nip19 } from 'nostr-tools';
 import type { Creator as LegacyCreator, CreatorTier as LegacyCreatorTier } from 'src/lib/fundstrApi';
+import { normalizeTierMediaItems } from 'src/utils/validateMedia';
 
 const DEFAULT_BASE_URL = 'https://api.fundstr.me';
 const DEFAULT_TIMEOUT_MS = 12_000;
@@ -415,12 +416,15 @@ function normalizeTier(entry: NutzapTier): LegacyCreatorTier | null {
   const cadence = toNullableString(entry.cadence ?? entry.frequency ?? null);
   const description = toNullableString(entry.description ?? (entry as any).about ?? null);
 
+  const media = normalizeTierMediaItems(entry.media);
+
   return {
     id,
     name,
     amountMsat,
     cadence,
     description,
+    media,
   };
 }
 

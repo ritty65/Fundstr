@@ -160,7 +160,7 @@ import MediaPreview from 'components/MediaPreview.vue';
 import type { Tier } from 'src/nutzap/types';
 import type { TierMedia } from 'stores/types';
 import { initialFromName, shortenNpub } from 'src/utils/profile';
-import { filterValidMedia } from 'src/utils/validateMedia';
+import { normalizeTierMediaItems } from 'src/utils/validateMedia';
 
 const props = defineProps<{
   displayName?: string | null;
@@ -249,42 +249,7 @@ function formatMediaLabel(url: string, title?: string): string {
 }
 
 function normalizeTierMedia(input: unknown): PreviewTierMedia[] {
-  if (!Array.isArray(input)) {
-    return [];
-  }
-
-  const collected: TierMedia[] = [];
-
-  for (const entry of input) {
-    if (!entry) {
-      continue;
-    }
-
-    if (typeof entry === 'string') {
-      const url = entry.trim();
-      if (url) {
-        collected.push({ url });
-      }
-      continue;
-    }
-
-    if (typeof entry === 'object') {
-      const media = entry as Record<string, unknown>;
-      const url = typeof media.url === 'string' ? media.url.trim() : '';
-      if (!url) {
-        continue;
-      }
-      const title = typeof media.title === 'string' ? media.title.trim() : undefined;
-      const rawType = typeof media.type === 'string' ? media.type.trim().toLowerCase() : '';
-      const allowedTypes: TierMedia['type'][] = ['image', 'video', 'audio', 'link'];
-      const type = allowedTypes.includes(rawType as TierMedia['type'])
-        ? (rawType as TierMedia['type'])
-        : undefined;
-      collected.push({ url, title, type });
-    }
-  }
-
-  return filterValidMedia(collected).map((media) => ({
+  return normalizeTierMediaItems(input).map((media) => ({
     ...media,
     label: formatMediaLabel(media.url, media.title),
     isLink: (media.type ?? '').toLowerCase() === 'link',
