@@ -86,6 +86,7 @@ import {
 } from "@/nutzap/relayEndpoints";
 import { getNutzapNdk } from "src/nutzap/ndkInstance";
 import { publishNostrEvent } from "src/nutzap/relayPublishing";
+import { useFundstrRelayStatus } from "src/nutzap/relayClient";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 
 // --- Relay connectivity helpers ---
@@ -1520,6 +1521,15 @@ type InitSignerBehaviorOptions = {
   skipRelayConnect?: boolean;
 };
 
+type ReadOnlyInitOptions = {
+  fundstrOnly?: boolean;
+  suppressWarnings?: boolean;
+};
+
+type DmSubscriptionOptions = {
+  suppressWarnings?: boolean;
+};
+
 export const useNostrStore = defineStore("nostr", {
   state: () => {
     ensureNutzapProfileCacheHydrated();
@@ -1589,6 +1599,8 @@ export const useNostrStore = defineStore("nostr", {
       profiles: useLocalStorage<
         Record<string, { profile: any; fetchedAt: number }>
       >("cashu.ndk.profiles", {}),
+      dmListenersStop: null as null | (() => void),
+      dmListenersOptions: null as { suppressWarnings?: boolean } | null,
     };
   },
   getters: {
@@ -1698,21 +1710,20 @@ export const useNostrStore = defineStore("nostr", {
       );
       this.secureStorageLoaded = true;
     },
-    initNdkReadOnly: async function (
-      opts: { fundstrOnly?: boolean } = {},
-    ) {
+    initNdkReadOnly: async function (opts: ReadOnlyInitOptions = {}) {
       await this.loadKeysFromStorage();
+      const { fundstrOnly, suppressWarnings } = opts;
       const requestedMode =
-        opts.fundstrOnly === true
+        fundstrOnly === true
           ? "fundstr-only"
-          : opts.fundstrOnly === false
+          : fundstrOnly === false
             ? "default"
             : undefined;
       const desiredMode = requestedMode ?? this.readOnlyMode ?? "default";
       const modeChanged = this.readOnlyMode !== desiredMode;
       const ndk = await useNdk({
         requireSigner: false,
-        fundstrOnly: opts.fundstrOnly,
+        fundstrOnly,
       });
       if (modeChanged) {
         this.connected = false;
@@ -1747,10 +1758,14 @@ export const useNostrStore = defineStore("nostr", {
         });
       } catch (e: any) {
         console.warn("[nostr] read-only connect failed", e);
-        notifyWarning(`Failed to connect to relays`, e?.message ?? String(e));
+        if (!suppressWarnings) {
+          notifyWarning(`Failed to connect to relays`, e?.message ?? String(e));
+        }
         this.lastError = e?.message ?? String(e);
         this.connectionFailed = true;
-        window.dispatchEvent(new Event("nostr-connect-failed"));
+        if (!suppressWarnings) {
+          window.dispatchEvent(new Event("nostr-connect-failed"));
+        }
       }
     },
     disconnect: async function () {
@@ -2483,9 +2498,53 @@ export const useNostrStore = defineStore("nostr", {
       // @ts-expect-error -- dynamic invocation
       return await (this as any).sendDirectMessageUnified(...args);
     },
-    subscribeToNip04DirectMessages: async function () {
+    ensureDmListeners: function (options: DmSubscriptionOptions = {}) {
+      this.dmListenersOptions = options;
+      if (this.dmListenersStop) {
+        return;
+      }
+
+      const relayStatus = useFundstrRelayStatus();
+      const stop = watch(
+        relayStatus,
+        (status, previous) => {
+          if (status === "connected" && previous !== "connected") {
+            const opts = this.dmListenersOptions ?? {};
+            void this.subscribeToNip17DirectMessages(opts).catch((err) => {
+              if (!opts.suppressWarnings) {
+                notifyWarning(
+                  "Failed to subscribe to NIP-17 direct messages",
+                  err?.message ?? String(err),
+                );
+              } else {
+                console.warn("[nostr] Failed to subscribe to NIP-17 DMs", err);
+              }
+            });
+            void this.subscribeToNip04DirectMessages(opts).catch((err) => {
+              if (!opts.suppressWarnings) {
+                notifyWarning(
+                  "Failed to subscribe to NIP-04 direct messages",
+                  err?.message ?? String(err),
+                );
+              } else {
+                console.warn("[nostr] Failed to subscribe to NIP-04 DMs", err);
+              }
+            });
+          }
+        },
+        { immediate: true },
+      );
+
+      this.dmListenersStop = () => {
+        stop();
+        this.dmListenersStop = null;
+      };
+    },
+    subscribeToNip04DirectMessages: async function (
+      options: DmSubscriptionOptions = {},
+    ) {
       await this.initSignerIfNotSet();
-      await this.initNdkReadOnly();
+      await this.initNdkReadOnly(options);
       const privKey = this.privKeyHex;
       const pubKey = this.pubkey;
       let nip04DirectMessageEvents: Set<NDKEvent> = new Set();
@@ -2504,7 +2563,9 @@ export const useNostrStore = defineStore("nostr", {
         try {
           await ndk.connect();
         } catch (e: any) {
-          notifyWarning("Relay connection failed", e?.message ?? String(e));
+          if (!options.suppressWarnings) {
+            notifyWarning("Relay connection failed", e?.message ?? String(e));
+          }
         }
         const sub = ndk.subscribe(
           {
@@ -2651,9 +2712,11 @@ export const useNostrStore = defineStore("nostr", {
       await event.sign(this.signer);
       await ndk.publish(event);
     },
-    subscribeToNip17DirectMessages: async function () {
+    subscribeToNip17DirectMessages: async function (
+      options: DmSubscriptionOptions = {},
+    ) {
       await this.initSignerIfNotSet();
-      await this.initNdkReadOnly();
+      await this.initNdkReadOnly(options);
       const privKey = this.privKeyHex;
       const pubKey = this.pubkey;
       let nip17DirectMessageEvents: Set<NDKEvent> = new Set();
@@ -2673,7 +2736,9 @@ export const useNostrStore = defineStore("nostr", {
         try {
           await ndk.connect();
         } catch (e: any) {
-          notifyWarning("Relay connection failed", e?.message ?? String(e));
+          if (!options.suppressWarnings) {
+            notifyWarning("Relay connection failed", e?.message ?? String(e));
+          }
         }
         const sub = ndk.subscribe(
           {
