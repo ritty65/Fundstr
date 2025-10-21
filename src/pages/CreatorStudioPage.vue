@@ -763,6 +763,8 @@ const verifyingP2pkPointer = ref(false);
 let previousSelectedP2pkPub = '';
 const cachedMintsText = useLocalStorage<string>('nutzap.profile.mintsDraft', '');
 const mintsText = ref(cachedMintsText.value || '');
+const lastSeededMintDraft = ref('');
+const userModifiedMints = ref(false);
 const relaysText = ref(CREATOR_STUDIO_RELAY_WS_URL);
 const tiers = ref<Tier[]>([]);
 const handleTiersUpdate = (value: Tier[] | unknown) => {
@@ -882,6 +884,13 @@ const uiStore = useUiStore();
 
 watch(mintsText, value => {
   cachedMintsText.value = value;
+  const trimmed = value.trim();
+  if (!trimmed) {
+    userModifiedMints.value = false;
+    return;
+  }
+
+  userModifiedMints.value = trimmed !== lastSeededMintDraft.value;
 });
 
 const storeMintUrls = computed(() => {
@@ -906,19 +915,40 @@ const storeMintUrls = computed(() => {
   return urls;
 });
 
-function seedMintsFromStoreIfEmpty() {
-  if (mintsText.value.trim()) {
+function syncComposerMintsWithWallet(mintUrls: string[]) {
+  const normalized = mintUrls.map(entry => entry.trim()).filter(Boolean);
+  if (!normalized.length) {
     return;
   }
 
-  if (storeMintUrls.value.length > 0) {
-    mintsText.value = storeMintUrls.value.join('\n');
+  const joined = normalized.join('\n');
+  const trimmedDraft = mintsText.value.trim();
+
+  if (trimmedDraft === joined) {
+    lastSeededMintDraft.value = joined;
+    userModifiedMints.value = false;
+    return;
   }
+
+  if (userModifiedMints.value) {
+    return;
+  }
+
+  mintsText.value = joined;
+  lastSeededMintDraft.value = joined;
 }
 
-watch([storeActiveMintUrl, storedMints], () => {
-  seedMintsFromStoreIfEmpty();
-}, { immediate: true, deep: true });
+function seedMintsFromStoreIfEmpty() {
+  syncComposerMintsWithWallet(storeMintUrls.value);
+}
+
+watch(
+  () => storeMintUrls.value,
+  mintUrls => {
+    syncComposerMintsWithWallet(mintUrls);
+  },
+  { immediate: true, deep: true }
+);
 
 const route = useRoute();
 const router = useRouter();
@@ -1071,6 +1101,16 @@ const stepDefinitions: StepDefinition[] = [
 ];
 
 const activeStep = ref<CreatorStudioStep>('setup');
+
+watch(
+  () => activeStep.value,
+  step => {
+    if (step === 'profile') {
+      syncComposerMintsWithWallet(storeMintUrls.value);
+    }
+  },
+  { immediate: true }
+);
 
 type DiagnosticsAttention = {
   id: number;
