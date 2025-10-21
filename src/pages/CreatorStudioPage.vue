@@ -265,132 +265,146 @@
                 </div>
               </section>
 
-              <div class="publish-summary-grid">
-                <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'profile' }">
-                  <div class="publish-summary-tile__label text-caption text-uppercase text-2">Display name</div>
-                  <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
-                    {{ summaryDisplayName }}
-                  </div>
-                  <div v-if="summaryAuthorKey" class="publish-summary-tile__meta text-caption text-2">
-                    Signer: {{ summaryAuthorKey }}
-                  </div>
-                  <div class="publish-summary-tile__meta text-caption text-2">
-                    Share: {{ shareStatusLabel }}
-                  </div>
-                  <div class="publish-summary-tile__meta text-caption text-2">
-                    {{ shareHelperMessage }}
-                  </div>
-                  <div v-if="lastPublishInfo" class="publish-summary-tile__meta text-caption text-2">
-                    {{ lastPublishInfo }}
-                  </div>
-                  <div class="publish-summary-tile__cta">
-                    <q-btn
-                      flat
-                      dense
-                      color="primary"
-                      icon="edit"
-                      label="Edit profile"
-                      :disable="activeStep === 'profile'"
-                      @click="goToStep('profile')"
-                    />
+              <q-expansion-item
+                v-model="summaryExpanded"
+                class="publish-summary"
+                expand-icon="expand_more"
+                switch-toggle-side
+                dense
+                expand-separator
+                label="Creator setup summary"
+                :caption="summaryCaption"
+                toggle-aria-label="Toggle creator setup summary section"
+              >
+                <div class="publish-summary__content">
+                  <div class="publish-summary-grid">
+                    <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'profile' }">
+                      <div class="publish-summary-tile__label text-caption text-uppercase text-2">Display name</div>
+                      <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                        {{ summaryDisplayName }}
+                      </div>
+                      <div v-if="summaryAuthorKey" class="publish-summary-tile__meta text-caption text-2">
+                        Signer: {{ summaryAuthorKey }}
+                      </div>
+                      <div class="publish-summary-tile__meta text-caption text-2">
+                        Share: {{ shareStatusLabel }}
+                      </div>
+                      <div class="publish-summary-tile__meta text-caption text-2">
+                        {{ shareHelperMessage }}
+                      </div>
+                      <div v-if="lastPublishInfo" class="publish-summary-tile__meta text-caption text-2">
+                        {{ lastPublishInfo }}
+                      </div>
+                      <div class="publish-summary-tile__cta">
+                        <q-btn
+                          flat
+                          dense
+                          color="primary"
+                          icon="edit"
+                          label="Edit profile"
+                          :disable="activeStep === 'profile'"
+                          @click="goToStep('profile')"
+                        />
+                      </div>
+                    </div>
+                    <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'tiers' }">
+                      <div class="publish-summary-tile__label text-caption text-uppercase text-2">Tier address</div>
+                      <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                        {{ tierAddressPreview }}
+                      </div>
+                      <div class="publish-summary-tile__meta text-caption text-2">
+                        Publishing as {{ tierPublishSummaryLabel }}
+                      </div>
+                      <div class="publish-summary-tile__cta">
+                        <q-btn
+                          flat
+                          dense
+                          color="primary"
+                          icon="tune"
+                          label="Edit tiers"
+                          :disable="activeStep === 'tiers'"
+                          @click="goToStep('tiers')"
+                        />
+                      </div>
+                    </div>
+                    <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'profile' }">
+                      <div class="publish-summary-tile__label text-caption text-uppercase text-2">Trusted mints</div>
+                      <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                        {{ mintList.length }} configured
+                      </div>
+                      <div class="publish-summary-tile__stack" v-if="mintList.length">
+                        <q-chip
+                          v-for="mint in mintList"
+                          :key="mint"
+                          dense
+                          outline
+                          color="primary"
+                          text-color="primary"
+                        >
+                          {{ mint }}
+                        </q-chip>
+                      </div>
+                      <div v-else class="publish-summary-tile__meta text-caption text-2">No mints configured.</div>
+                      <div class="publish-summary-tile__cta">
+                        <q-btn
+                          flat
+                          dense
+                          color="primary"
+                          icon="inventory_2"
+                          label="Manage mints"
+                          :disable="activeStep === 'profile'"
+                          @click="goToStep('profile')"
+                        />
+                      </div>
+                    </div>
+                    <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'setup' }">
+                      <div class="publish-summary-tile__label text-caption text-uppercase text-2">Preferred relays</div>
+                      <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                        {{ relayList.length }} selected
+                      </div>
+                      <div class="publish-summary-tile__stack" v-if="relayList.length">
+                        <q-chip v-for="relay in relayList" :key="relay" dense outline>{{ relay }}</q-chip>
+                      </div>
+                      <div v-else class="publish-summary-tile__meta text-caption text-2">Relay selection pending.</div>
+                      <div class="publish-summary-tile__cta">
+                        <q-btn
+                          flat
+                          dense
+                          color="primary"
+                          icon="lan"
+                          label="Edit relay setup"
+                          :disable="activeStep === 'setup'"
+                          @click="goToStep('setup')"
+                        />
+                      </div>
+                    </div>
+                    <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'tiers' }">
+                      <div class="publish-summary-tile__label text-caption text-uppercase text-2">Supporter tiers</div>
+                      <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                        {{ tiers.length }} total
+                      </div>
+                      <ul v-if="tiers.length" class="publish-summary-tile__list text-caption text-2">
+                        <li v-for="(tier, index) in tiers.slice(0, 4)" :key="tier.id || tier.title || `tier-${index}`">
+                          {{ tier.title || 'Untitled tier' }}
+                        </li>
+                        <li v-if="tiers.length > 4">+ {{ tiers.length - 4 }} more</li>
+                      </ul>
+                      <div v-else class="publish-summary-tile__meta text-caption text-2">No tiers configured yet.</div>
+                      <div class="publish-summary-tile__cta">
+                        <q-btn
+                          flat
+                          dense
+                          color="primary"
+                          icon="workspace_premium"
+                          label="Edit tiers"
+                          :disable="activeStep === 'tiers'"
+                          @click="goToStep('tiers')"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'tiers' }">
-                  <div class="publish-summary-tile__label text-caption text-uppercase text-2">Tier address</div>
-                  <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
-                    {{ tierAddressPreview }}
-                  </div>
-                  <div class="publish-summary-tile__meta text-caption text-2">
-                    Publishing as {{ tierPublishSummaryLabel }}
-                  </div>
-                  <div class="publish-summary-tile__cta">
-                    <q-btn
-                      flat
-                      dense
-                      color="primary"
-                      icon="tune"
-                      label="Edit tiers"
-                      :disable="activeStep === 'tiers'"
-                      @click="goToStep('tiers')"
-                    />
-                  </div>
-                </div>
-                <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'profile' }">
-                  <div class="publish-summary-tile__label text-caption text-uppercase text-2">Trusted mints</div>
-                  <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
-                    {{ mintList.length }} configured
-                  </div>
-                  <div class="publish-summary-tile__stack" v-if="mintList.length">
-                    <q-chip
-                      v-for="mint in mintList"
-                      :key="mint"
-                      dense
-                      outline
-                      color="primary"
-                      text-color="primary"
-                    >
-                      {{ mint }}
-                    </q-chip>
-                  </div>
-                  <div v-else class="publish-summary-tile__meta text-caption text-2">No mints configured.</div>
-                  <div class="publish-summary-tile__cta">
-                    <q-btn
-                      flat
-                      dense
-                      color="primary"
-                      icon="inventory_2"
-                      label="Manage mints"
-                      :disable="activeStep === 'profile'"
-                      @click="goToStep('profile')"
-                    />
-                  </div>
-                </div>
-                <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'setup' }">
-                  <div class="publish-summary-tile__label text-caption text-uppercase text-2">Preferred relays</div>
-                  <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
-                    {{ relayList.length }} selected
-                  </div>
-                  <div class="publish-summary-tile__stack" v-if="relayList.length">
-                    <q-chip v-for="relay in relayList" :key="relay" dense outline>{{ relay }}</q-chip>
-                  </div>
-                  <div v-else class="publish-summary-tile__meta text-caption text-2">Relay selection pending.</div>
-                  <div class="publish-summary-tile__cta">
-                    <q-btn
-                      flat
-                      dense
-                      color="primary"
-                      icon="lan"
-                      label="Edit relay setup"
-                      :disable="activeStep === 'setup'"
-                      @click="goToStep('setup')"
-                    />
-                  </div>
-                </div>
-                <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'tiers' }">
-                  <div class="publish-summary-tile__label text-caption text-uppercase text-2">Supporter tiers</div>
-                  <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
-                    {{ tiers.length }} total
-                  </div>
-                  <ul v-if="tiers.length" class="publish-summary-tile__list text-caption text-2">
-                    <li v-for="(tier, index) in tiers.slice(0, 4)" :key="tier.id || tier.title || `tier-${index}`">
-                      {{ tier.title || 'Untitled tier' }}
-                    </li>
-                    <li v-if="tiers.length > 4">+ {{ tiers.length - 4 }} more</li>
-                  </ul>
-                  <div v-else class="publish-summary-tile__meta text-caption text-2">No tiers configured yet.</div>
-                  <div class="publish-summary-tile__cta">
-                    <q-btn
-                      flat
-                      dense
-                      color="primary"
-                      icon="workspace_premium"
-                      label="Edit tiers"
-                      :disable="activeStep === 'tiers'"
-                      @click="goToStep('tiers')"
-                    />
-                  </div>
-                </div>
-              </div>
+              </q-expansion-item>
 
               <div class="publish-readiness">
               <div class="publish-readiness__title text-subtitle2 text-weight-medium text-1">
@@ -2459,6 +2473,27 @@ const publishGuidanceItems = computed(() => [
 
 const publishHasGuidance = computed(() => publishGuidanceItems.value.length > 0);
 
+const summaryExpanded = ref(publishBlockers.value.length > 0);
+
+watch(
+  () => publishBlockers.value.length,
+  length => {
+    if (length > 0 && !summaryExpanded.value) {
+      summaryExpanded.value = true;
+    }
+  }
+);
+
+const summaryCaption = computed(() => {
+  if (publishBlockers.value.length > 0) {
+    return 'Resolve blockers before publishing.';
+  }
+  if (publishWarnings.value.length > 0) {
+    return 'Review warnings before publishing.';
+  }
+  return 'Review creator details before publishing.';
+});
+
 const publishDisabled = computed(
   () => publishingAll.value || publishBlockers.value.length > 0 || !requiredReadinessReady.value
 );
@@ -3846,7 +3881,37 @@ onBeforeUnmount(() => {
   outline-offset: 2px;
 }
 
+.publish-summary {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
+  overflow: hidden;
+}
+
+.publish-summary :deep(.q-expansion-item__header) {
+  padding: 14px 16px;
+  min-height: 0;
+}
+
+.publish-summary :deep(.q-item__label) {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.publish-summary :deep(.q-item__label--caption) {
+  color: var(--text-2);
+}
+
+.publish-summary :deep(.q-expansion-item__toggle-icon) {
+  color: var(--text-2);
+}
+
+.publish-summary__content {
+  padding: 0 16px 16px;
+}
+
 .publish-summary-grid {
+  margin-top: 8px;
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
