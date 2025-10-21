@@ -7,6 +7,7 @@ import { Event as NostrEvent } from "nostr-tools";
 import type { Tier } from "./types";
 import { toHex, type NostrEvent as RelayEvent } from "@/nostr/relayClient";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
+import { normalizeTierMediaItems } from "src/utils/validateMedia";
 import { type NutzapProfileDetails } from "@/nutzap/profileCache";
 import { useDiscovery } from "src/api/fundstrDiscovery";
 import type {
@@ -198,12 +199,14 @@ function convertDiscoveryTier(tier: DiscoveryCreatorTier): Tier | null {
   const price_sats = amountMsat !== null ? Math.max(0, Math.round(amountMsat / 1000)) : 0;
   const description = typeof tier.description === "string" ? tier.description : "";
 
+  const media = normalizeTierMediaItems(tier.media);
+
   return {
     id,
     name,
     price_sats,
     description,
-    media: [],
+    media,
   };
 }
 

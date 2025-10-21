@@ -1,5 +1,12 @@
 import type { TierMedia } from "stores/types";
 
+const ALLOWED_MEDIA_TYPES: NonNullable<TierMedia["type"]>[] = [
+  "image",
+  "video",
+  "audio",
+  "link",
+];
+
 export function isTrustedUrl(url: string): boolean {
   const cleaned = extractIframeSrc(url);
   return /^(https:\/\/|ipfs:\/\/|nostr:)/i.test(cleaned.trim());
@@ -77,4 +84,49 @@ export function filterValidMedia(media: TierMedia[] = []): TierMedia[] {
   return media
     .map((m) => ({ ...m, url: normalizeMediaUrl(m.url) }))
     .filter((m) => m.url && isTrustedUrl(m.url));
+}
+
+export function normalizeTierMediaItems(input: unknown): TierMedia[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const collected: TierMedia[] = [];
+
+  for (const entry of input) {
+    if (!entry) {
+      continue;
+    }
+
+    if (typeof entry === "string") {
+      const url = entry.trim();
+      if (url) {
+        collected.push({ url });
+      }
+      continue;
+    }
+
+    if (typeof entry === "object") {
+      const media = entry as Record<string, unknown>;
+      const url = typeof media.url === "string" ? media.url.trim() : "";
+      if (!url) {
+        continue;
+      }
+      const title = typeof media.title === "string" ? media.title.trim() : undefined;
+      const rawType = typeof media.type === "string" ? media.type.trim().toLowerCase() : "";
+      const normalizedType = rawType as NonNullable<TierMedia["type"]>;
+      const type = ALLOWED_MEDIA_TYPES.includes(normalizedType) ? normalizedType : undefined;
+
+      const normalized: TierMedia = { url };
+      if (title) {
+        normalized.title = title;
+      }
+      if (type) {
+        normalized.type = type;
+      }
+      collected.push(normalized);
+    }
+  }
+
+  return filterValidMedia(collected);
 }

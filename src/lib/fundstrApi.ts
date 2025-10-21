@@ -1,4 +1,6 @@
 import { nip19 } from "nostr-tools";
+import { normalizeTierMediaItems } from "../utils/validateMedia";
+import type { TierMedia } from "../stores/types";
 
 const DEFAULT_API_BASE = "/api/v1";
 const DEFAULT_LIMIT = 24;
@@ -26,6 +28,7 @@ export interface CreatorTier {
   amountMsat: number | null;
   cadence: string | null;
   description: string | null;
+  media?: TierMedia[] | null;
 }
 
 export interface CreatorTierSummary {
@@ -267,12 +270,16 @@ function normalizeTier(entry: unknown): CreatorTier | null {
   if (!idValue) {
     return null;
   }
+
+  const media = normalizeTierMediaItems(entry.media ?? (entry as any).media);
+
   return {
     id: idValue,
     name: toNullableString(entry.name) ?? "",
     amountMsat: toNullableNumber(entry.amount_msat ?? entry.amountMsat),
     cadence: toNullableString(entry.cadence ?? entry.interval ?? entry.frequency) ?? null,
     description: toNullableString(entry.description ?? entry.details) ?? null,
+    media,
   };
 }
 
