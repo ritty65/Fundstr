@@ -122,11 +122,32 @@
                               {{ benefit }}
                             </li>
                           </ul>
-                          <TierMediaGallery
-                            v-if="tierHasMedia(tier)"
-                            :media="tierMediaItems(tier)"
-                            class="tier-row__media"
-                          />
+                          <div v-if="tierHasMedia(tier)" class="tier-row__media">
+                            <div
+                              v-for="(item, mediaIndex) in tierMediaItems(tier)"
+                              :key="`${tier.id}-media-${mediaIndex}`"
+                              class="tier-row__media-item"
+                            >
+                              <template v-if="isTierMediaLink(item)">
+                                <q-chip
+                                  dense
+                                  outline
+                                  clickable
+                                  tag="a"
+                                  icon="link"
+                                  class="tier-row__media-chip"
+                                  :href="item.url"
+                                  target="_blank"
+                                  rel="noopener"
+                                >
+                                  {{ tierMediaLabel(item) }}
+                                </q-chip>
+                              </template>
+                              <template v-else>
+                                <MediaPreview :url="item.url" />
+                              </template>
+                            </div>
+                          </div>
                           <div
                             v-if="!hasTierDescription(tier) && !tierHasBenefits(tier) && !tierHasMedia(tier)"
                             class="tier-row__details-empty text-2"
@@ -169,7 +190,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { nip19 } from 'nostr-tools';
-import TierMediaGallery from 'components/TierMediaGallery.vue';
+import MediaPreview from 'components/MediaPreview.vue';
 import { formatMsatToSats, type Creator } from 'src/lib/fundstrApi';
 import { useFundstrDiscovery } from 'src/api/fundstrDiscovery';
 import {
@@ -670,6 +691,24 @@ function tierMediaItems(tier: TierDetails): TierMediaItem[] {
 
 function tierHasMedia(tier: TierDetails): boolean {
   return tierMediaItems(tier).length > 0;
+}
+
+function isTierMediaLink(item: TierMediaItem): boolean {
+  return (item.type ?? '').toLowerCase() === 'link';
+}
+
+function tierMediaLabel(item: TierMediaItem): string {
+  const title = item.title?.trim();
+  if (title) {
+    return title;
+  }
+  try {
+    const parsed = new URL(item.url);
+    const host = parsed.hostname.replace(/^www\./, '');
+    return host || parsed.href;
+  } catch {
+    return 'Open link';
+  }
 }
 
 function hasTierDescription(tier: TierDetails): boolean {
@@ -1227,7 +1266,26 @@ onBeforeUnmount(() => {
 }
 
 .tier-row__media {
-  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.tier-row__media-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tier-row__media :deep(.media-preview-container) {
+  border-radius: 0.9rem;
+  box-shadow: 0 14px 30px rgba(9, 15, 28, 0.18);
+}
+
+.tier-row__media-chip {
+  align-self: flex-start;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .tier-row__details-empty {
