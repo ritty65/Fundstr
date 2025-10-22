@@ -141,7 +141,7 @@
                           </q-chip>
                         </template>
                         <template v-else>
-                          <MediaPreview :url="item.url" />
+                          <MediaPreview :url="item.url" class="tier-row__media-preview" />
                         </template>
                       </div>
                     </div>
@@ -1214,17 +1214,34 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  align-items: center;
 }
 
 .tier-row__media-item {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  width: 100%;
+  align-items: center;
 }
 
-.tier-row__media :deep(.media-preview-container) {
+.tier-row__media-preview {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.tier-row__media-preview :deep(.media-preview-container) {
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
   border-radius: 0.9rem;
   box-shadow: 0 14px 30px rgba(9, 15, 28, 0.18);
+}
+
+.tier-row__media-preview :deep(audio) {
+  width: 100%;
+  max-width: 320px;
 }
 
 .tier-row__media-chip {
