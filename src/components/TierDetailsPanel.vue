@@ -31,76 +31,101 @@
         role="region"
         :aria-label="`Media for ${tierName}`"
       >
-        <div
-          class="tier-slide__media-stage"
-          :class="{ 'tier-slide__media-stage--placeholder': !activeMedia || isMediaLink(activeMedia) }"
-        >
-          <MediaPreview
-            v-if="activeMedia && !isMediaLink(activeMedia)"
-            :url="activeMedia.url"
-            layout="responsive"
-            class="tier-slide__media-preview"
-          />
-          <div v-else class="tier-slide__media-link" role="img" :aria-label="activeMediaLabel">
-            <q-icon name="link" size="36px" />
-            <span class="tier-slide__media-link-text">{{ activeMediaLabel }}</span>
-          </div>
-        </div>
-        <div v-if="activeMedia" class="tier-slide__media-meta">
-          <div class="tier-slide__media-info">
-            <div class="tier-slide__media-title">{{ mediaLabel(activeMedia) }}</div>
-            <div v-if="mediaSecondaryLabel(activeMedia)" class="tier-slide__media-subtitle text-caption text-2">
-              {{ mediaSecondaryLabel(activeMedia) }}
+        <div class="tier-slide__media-main">
+          <div
+            class="tier-slide__media-stage"
+            :class="[
+              { 'tier-slide__media-stage--placeholder': !activeMedia || isMediaLink(activeMedia) },
+              activeMediaStageClass,
+            ]"
+          >
+            <MediaPreview
+              v-if="activeMedia && !isMediaLink(activeMedia)"
+              :url="activeMedia.url"
+              layout="responsive"
+              class="tier-slide__media-preview"
+            />
+            <div v-else class="tier-slide__media-link" role="img" :aria-label="activeMediaLabel">
+              <q-icon name="link" size="36px" />
+              <span class="tier-slide__media-link-text">{{ activeMediaLabel }}</span>
+            </div>
+
+            <button
+              v-if="mediaItems.length > 1"
+              type="button"
+              class="tier-slide__media-arrow tier-slide__media-arrow--prev"
+              :aria-label="`Show previous media for ${tierName}`"
+              @click="goToPreviousMedia"
+            >
+              <q-icon name="chevron_left" size="20px" />
+            </button>
+            <button
+              v-if="mediaItems.length > 1"
+              type="button"
+              class="tier-slide__media-arrow tier-slide__media-arrow--next"
+              :aria-label="`Show next media for ${tierName}`"
+              @click="goToNextMedia"
+            >
+              <q-icon name="chevron_right" size="20px" />
+            </button>
+
+            <div
+              v-if="mediaItems.length > 1"
+              class="tier-slide__media-selectors"
+              role="listbox"
+              :aria-label="`Switch media for ${tierName}`"
+            >
+              <button
+                v-for="(item, mediaIndex) in mediaItems"
+                :key="`${item.url}-${mediaIndex}`"
+                type="button"
+                class="tier-slide__selector"
+                :class="{ 'tier-slide__selector--active': mediaIndex === activeMediaIndex }"
+                role="option"
+                :aria-selected="mediaIndex === activeMediaIndex"
+                :aria-label="`Show ${mediaLabel(item)}`"
+                :title="mediaLabel(item)"
+                @click="selectMedia(mediaIndex)"
+                @keydown.enter.prevent="selectMedia(mediaIndex)"
+                @keydown.space.prevent="selectMedia(mediaIndex)"
+              >
+                <span class="tier-slide__selector-index" aria-hidden="true">{{ mediaIndex + 1 }}</span>
+              </button>
             </div>
           </div>
-          <div class="tier-slide__media-actions">
-            <q-btn
-              flat
-              round
-              dense
-              color="accent"
-              icon="open_in_new"
-              class="tier-slide__media-action"
-              tag="a"
-              :href="activeMedia.url"
-              target="_blank"
-              rel="noopener"
-              :aria-label="`Open ${activeMediaLabel} in a new tab`"
-            />
-            <q-btn
-              flat
-              round
-              dense
-              color="accent"
-              icon="content_copy"
-              class="tier-slide__media-action"
-              :aria-label="`Copy link to ${activeMediaLabel}`"
-              @click.prevent="copyMediaLink(activeMedia.url)"
-            />
+          <div v-if="activeMedia" class="tier-slide__media-meta">
+            <div class="tier-slide__media-info">
+              <div class="tier-slide__media-title">{{ mediaLabel(activeMedia) }}</div>
+              <div v-if="mediaSecondaryLabel(activeMedia)" class="tier-slide__media-subtitle text-caption text-2">
+                {{ mediaSecondaryLabel(activeMedia) }}
+              </div>
+            </div>
+            <div class="tier-slide__media-actions">
+              <q-btn
+                flat
+                round
+                dense
+                color="accent"
+                icon="open_in_new"
+                class="tier-slide__media-action"
+                tag="a"
+                :href="activeMedia.url"
+                target="_blank"
+                rel="noopener"
+                :aria-label="`Open ${activeMediaLabel} in a new tab`"
+              />
+              <q-btn
+                flat
+                round
+                dense
+                color="accent"
+                icon="content_copy"
+                class="tier-slide__media-action"
+                :aria-label="`Copy link to ${activeMediaLabel}`"
+                @click.prevent="copyMediaLink(activeMedia.url)"
+              />
+            </div>
           </div>
-        </div>
-        <div
-          v-if="mediaItems.length > 1"
-          class="tier-slide__media-selectors"
-          role="listbox"
-          :aria-label="`Switch media for ${tierName}`"
-        >
-          <button
-            v-for="(item, mediaIndex) in mediaItems"
-            :key="`${item.url}-${mediaIndex}`"
-            type="button"
-            class="tier-slide__selector"
-            :class="{ 'tier-slide__selector--active': mediaIndex === activeMediaIndex }"
-            role="option"
-            :aria-selected="mediaIndex === activeMediaIndex"
-            :aria-label="`Show ${mediaLabel(item)}`"
-            :title="mediaLabel(item)"
-            @click="selectMedia(mediaIndex)"
-            @keydown.enter.prevent="selectMedia(mediaIndex)"
-            @keydown.space.prevent="selectMedia(mediaIndex)"
-          >
-            <span class="tier-slide__selector-index" aria-hidden="true">{{ mediaIndex + 1 }}</span>
-          </button>
         </div>
         <div
           v-if="mediaItems.length > 1"
@@ -253,6 +278,19 @@ const activeMedia = computed(() => {
 
 const activeMediaLabel = computed(() => (activeMedia.value ? mediaLabel(activeMedia.value) : 'Media item'));
 
+const activeMediaType = computed(() => (activeMedia.value?.type ?? '').toLowerCase());
+const activeMediaShape = computed(() => {
+  const type = activeMediaType.value;
+  if (type === 'image') return 'image';
+  if (type === 'video') return 'video';
+  if (type === 'audio') return 'audio';
+  if (type === 'iframe' || type === 'youtube' || type === 'nostr') return 'embed';
+  return null;
+});
+const activeMediaStageClass = computed(() =>
+  activeMediaShape.value ? `tier-slide__media-stage--${activeMediaShape.value}` : null,
+);
+
 const $q = useQuasar();
 
 function selectMedia(index: number) {
@@ -264,6 +302,24 @@ function selectMedia(index: number) {
     return;
   }
   const nextIndex = Math.min(Math.max(index, 0), items.length - 1);
+  activeMediaIndex.value = nextIndex;
+}
+
+function goToPreviousMedia() {
+  const items = mediaItems.value;
+  if (!items.length) {
+    return;
+  }
+  const previousIndex = (activeMediaIndex.value - 1 + items.length) % items.length;
+  activeMediaIndex.value = previousIndex;
+}
+
+function goToNextMedia() {
+  const items = mediaItems.value;
+  if (!items.length) {
+    return;
+  }
+  const nextIndex = (activeMediaIndex.value + 1) % items.length;
   activeMediaIndex.value = nextIndex;
 }
 
@@ -393,21 +449,31 @@ function emitSubscribe() {
   align-items: stretch;
 }
 
+
 .tier-slide__media {
   grid-area: media;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
+  gap: clamp(12px, 2vw, 18px);
+  background: color-mix(in srgb, var(--surface-2) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
   border-radius: 14px;
-  padding: clamp(12px, 2vw, 20px);
+  padding: clamp(12px, 1.8vw, 18px);
+}
+
+.tier-slide__media-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
 }
 
 .tier-slide__media-stage {
+  --tier-media-aspect: 16 / 9;
+  position: relative;
   width: 100%;
-  aspect-ratio: auto;
-  min-height: clamp(160px, 32vw, 320px);
+  aspect-ratio: var(--tier-media-aspect);
+  min-height: min(520px, 55vh);
   border-radius: 14px;
   overflow: hidden;
   background: color-mix(in srgb, var(--surface-1) 88%, black 12%);
@@ -418,16 +484,34 @@ function emitSubscribe() {
   justify-content: center;
 }
 
+.tier-slide__media-stage--image {
+  --tier-media-aspect: auto;
+}
+
+.tier-slide__media-stage--video,
+.tier-slide__media-stage--embed {
+  --tier-media-aspect: 16 / 9;
+}
+
+.tier-slide__media-stage--audio {
+  --tier-media-aspect: 1 / 1;
+}
+
 .tier-slide__media-stage--placeholder {
-  aspect-ratio: 4 / 3;
-  min-height: clamp(200px, 40vw, 320px);
+  --tier-media-aspect: 4 / 3;
+  min-height: min(440px, 55vh);
 }
 
 .tier-slide__media-preview :deep(.media-preview-container) {
   margin: 0;
   width: 100%;
   height: 100%;
+  aspect-ratio: inherit;
   border-radius: inherit;
+}
+
+.tier-slide__media-preview :deep(.media-preview-container--responsive img) {
+  height: 100%;
 }
 
 .tier-slide__media-preview :deep(img),
@@ -453,19 +537,20 @@ function emitSubscribe() {
   font-weight: 600;
 }
 
+
 .tier-slide__media-meta {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  align-items: center;
-  text-align: center;
+  align-items: flex-start;
+  text-align: left;
 }
 
 .tier-slide__media-info {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .tier-slide__media-title {
@@ -477,10 +562,12 @@ function emitSubscribe() {
   color: var(--text-2);
 }
 
+
 .tier-slide__media-actions {
   display: flex;
-  gap: 12px;
-  justify-content: center;
+  gap: 10px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
 }
 
 .tier-slide__media-action {
@@ -494,44 +581,87 @@ function emitSubscribe() {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-200) 60%, transparent);
 }
 
+
 .tier-slide__media-selectors {
-  display: flex;
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-1) 70%, transparent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(12px);
+  z-index: 2;
+}
+
+.tier-slide__media-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  flex-wrap: wrap;
-  gap: 10px;
+  border: none;
+  background: color-mix(in srgb, var(--surface-1) 72%, transparent);
+  color: var(--text-1);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  z-index: 2;
+}
+
+.tier-slide__media-arrow:hover {
+  background: color-mix(in srgb, var(--surface-1) 86%, transparent);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.22);
+}
+
+.tier-slide__media-arrow:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-200) 60%, transparent);
+}
+
+.tier-slide__media-arrow--prev {
+  left: 12px;
+}
+
+.tier-slide__media-arrow--next {
+  right: 12px;
 }
 
 .tier-slide__selector {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 20px;
+  height: 20px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
-  background: color-mix(in srgb, var(--surface-1) 96%, transparent);
-  color: var(--text-2);
-  font-size: 13px;
-  font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 60%, transparent);
+  background: color-mix(in srgb, var(--surface-1) 50%, transparent);
+  color: transparent;
+  font-size: 0;
   cursor: pointer;
-  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
 }
 
 .tier-slide__selector:focus-visible,
 .tier-slide__selector--active {
   border-color: var(--accent-500);
-  background: color-mix(in srgb, var(--accent-200) 32%, transparent);
-  color: color-mix(in srgb, var(--accent-600) 78%, var(--text-1) 22%);
+  background: color-mix(in srgb, var(--accent-200) 35%, transparent);
+}
+
+.tier-slide__selector--active {
+  transform: scale(1.1);
 }
 
 .tier-slide__selector-index {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  border-radius: inherit;
-  color: inherit;
+  display: none;
 }
 
 .tier-slide__media-thumbs {
@@ -583,6 +713,39 @@ function emitSubscribe() {
   justify-content: center;
   color: var(--accent-500);
   background: color-mix(in srgb, var(--accent-200) 30%, transparent);
+}
+
+@media (min-width: 1024px) {
+  .tier-slide__media {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .tier-slide__media-main {
+    flex: 1;
+  }
+
+  .tier-slide__media-meta {
+    padding-right: clamp(6px, 1.4vw, 14px);
+  }
+
+  .tier-slide__media-thumbs {
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    gap: 10px;
+    padding-bottom: 0;
+    padding-left: clamp(10px, 1.6vw, 16px);
+    overflow-x: visible;
+    overflow-y: auto;
+    max-height: min(55vh, 520px);
+    max-width: clamp(140px, 18vw, 220px);
+  }
+
+  .tier-slide__thumb {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+  }
 }
 
 .tier-slide__media--empty {
