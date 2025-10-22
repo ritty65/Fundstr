@@ -72,51 +72,102 @@
                   <div
                     v-for="tier in tiers"
                     :key="tier.id"
-                    :class="['tier-row', { 'tier-row--media-open': isTierExpanded(tier.id) && tierHasMedia(tier) }]"
+                    :class="[
+                      'tier-row',
+                      {
+                        'tier-row--media-open': isTierExpanded(tier.id) && tierHasMedia(tier),
+                        'tier-row--recommended': tier.id === recommendedTierId,
+                      },
+                    ]"
                   >
                     <div class="tier-row__content">
                       <div class="tier-row__header">
-                        <div class="tier-row__heading">
-                          <div class="tier-row__name text-subtitle2 text-weight-medium text-1">
-                            {{ tier.name }}
+                        <div class="tier-row__headline">
+                          <div class="tier-row__title">
+                            <div class="tier-row__name text-subtitle2 text-weight-medium text-1">
+                              {{ tier.name }}
+                            </div>
+                            <q-chip
+                              v-if="tier.id === recommendedTierId"
+                              dense
+                              class="tier-row__chip"
+                              color="accent"
+                              text-color="white"
+                              square
+                            >
+                              Recommended
+                            </q-chip>
                           </div>
-                          <div v-if="tierFrequencyLabel(tier)" class="tier-row__cadence text-caption">
-                            {{ tierFrequencyLabel(tier) }}
+                          <div class="tier-row__pricing">
+                            <div class="tier-row__price-amount text-h6 text-weight-bold text-1">
+                              {{ tierPriceSummary(tier) }}
+                            </div>
+                            <div
+                              v-if="tierFrequencyLabel(tier)"
+                              class="tier-row__price-cadence text-caption"
+                            >
+                              {{ tierFrequencyLabel(tier) }}
+                            </div>
                           </div>
                         </div>
-                        <q-btn
-                          flat
-                          dense
-                          class="tier-row__details-toggle"
-                          no-caps
-                          :label="isTierExpanded(tier.id) ? 'Hide details' : 'Details'"
-                          :icon-right="isTierExpanded(tier.id) ? 'expand_less' : 'expand_more'"
-                          @click="toggleTierDetails(tier.id)"
-                          :aria-expanded="isTierExpanded(tier.id)"
-                          :aria-controls="tierAriaControls(tier)"
-                        />
-                      </div>
-                      <div class="tier-row__cta">
-                        <div class="tier-row__price text-subtitle2 text-weight-medium text-1">
-                          {{ tierPriceSummary(tier) }}
+                        <div class="tier-row__header-actions">
+                          <q-btn
+                            color="accent"
+                            class="tier-row__subscribe"
+                            unelevated
+                            no-caps
+                            label="Subscribe"
+                            @click="handleSubscribe(tier.id)"
+                          />
+                          <q-btn
+                            flat
+                            dense
+                            class="tier-row__details-toggle"
+                            no-caps
+                            :label="isTierExpanded(tier.id) ? 'Hide details' : 'Details'"
+                            :icon-right="isTierExpanded(tier.id) ? 'expand_less' : 'expand_more'"
+                            @click="toggleTierDetails(tier.id)"
+                            :aria-expanded="isTierExpanded(tier.id)"
+                            :aria-controls="tierAriaControls(tier)"
+                          />
                         </div>
-                        <q-btn
-                          color="accent"
-                          class="tier-row__subscribe"
-                          unelevated
-                          no-caps
-                          label="Subscribe"
-                          @click="handleSubscribe(tier.id)"
-                        />
                       </div>
                       <div v-if="tierHighlight(tier)" class="tier-row__highlight text-body2 text-2">
                         {{ tierHighlight(tier) }}
                       </div>
+                      <div v-if="tierHasBenefits(tier)" class="tier-row__perks" role="list">
+                        <div
+                          v-for="benefit in tierBenefits(tier).slice(0, 3)"
+                          :key="`${tier.id}-badge-${benefit}`"
+                          class="tier-row__perk-badge"
+                          role="listitem"
+                        >
+                          <q-icon
+                            name="check_circle"
+                            size="16px"
+                            class="tier-row__perk-icon"
+                            aria-hidden="true"
+                          />
+                          <span class="tier-row__perk-text">{{ benefit }}</span>
+                        </div>
+                      </div>
                       <div class="tier-row__meta" role="list">
                         <span v-if="tierBenefitCountLabel(tier)" role="listitem" class="tier-row__meta-pill">
+                          <q-icon
+                            name="auto_awesome"
+                            size="14px"
+                            class="tier-row__meta-icon"
+                            aria-hidden="true"
+                          />
                           {{ tierBenefitCountLabel(tier) }}
                         </span>
                         <span v-if="tier.welcomeMessage" role="listitem" class="tier-row__meta-pill">
+                          <q-icon
+                            name="mail"
+                            size="14px"
+                            class="tier-row__meta-icon"
+                            aria-hidden="true"
+                          />
                           Welcome note
                         </span>
                       </div>
@@ -135,7 +186,13 @@
                               :key="benefit"
                               class="tier-row__benefit"
                             >
-                              {{ benefit }}
+                              <q-icon
+                                name="check_circle"
+                                size="18px"
+                                class="tier-row__benefit-icon"
+                                aria-hidden="true"
+                              />
+                              <span class="tier-row__benefit-text">{{ benefit }}</span>
                             </li>
                           </ul>
                           <div
@@ -289,6 +346,41 @@ function onAvatarError(event: Event) {
 const hasTiers = computed(() => tiers.value.length > 0);
 
 const primaryTierId = computed(() => tiers.value[0]?.id ?? '');
+
+const recommendedTierId = computed(() => {
+  if (!tiers.value.length) {
+    return '';
+  }
+
+  let best: TierDetails | null = null;
+
+  for (const tier of tiers.value) {
+    if (!best) {
+      best = tier;
+      continue;
+    }
+
+    const bestBenefits = Array.isArray(best.benefits) ? best.benefits.length : 0;
+    const tierBenefits = Array.isArray(tier.benefits) ? tier.benefits.length : 0;
+
+    if (tierBenefits > bestBenefits) {
+      best = tier;
+      continue;
+    }
+
+    if (tierBenefits === bestBenefits) {
+      const bestPrice = typeof best.priceMsat === 'number' ? best.priceMsat : Number.POSITIVE_INFINITY;
+      const tierPrice = typeof tier.priceMsat === 'number' ? tier.priceMsat : Number.POSITIVE_INFINITY;
+
+      if (tierPrice < bestPrice) {
+        best = tier;
+        continue;
+      }
+    }
+  }
+
+  return best?.id ?? '';
+});
 
 watch(
   tiers,
@@ -1145,11 +1237,31 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
+.tier-row--recommended {
+  border-color: color-mix(in srgb, var(--accent-500) 80%, transparent);
+  box-shadow: 0 26px 46px rgba(12, 20, 40, 0.28);
+}
+
+.tier-row--recommended::before {
+  background: linear-gradient(180deg, var(--accent-500) 0%, color-mix(in srgb, var(--accent-600) 75%, var(--accent-200) 25%) 100%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-500) 35%, transparent);
+}
+
+.tier-row--recommended .tier-row__chip {
+  background: color-mix(in srgb, var(--accent-500) 85%, var(--accent-200) 15%);
+}
+
 .tier-row:hover,
 .tier-row:focus-within {
   border-color: color-mix(in srgb, var(--accent-500) 55%, transparent);
   transform: translateY(-2px);
   box-shadow: 0 22px 42px rgba(10, 16, 32, 0.22);
+}
+
+.tier-row--recommended:hover,
+.tier-row--recommended:focus-within {
+  border-color: color-mix(in srgb, var(--accent-500) 92%, transparent);
+  box-shadow: 0 28px 52px rgba(12, 20, 40, 0.3);
 }
 
 .tier-row__content {
@@ -1170,23 +1282,32 @@ onBeforeUnmount(() => {
 .tier-row__header {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 16px;
-  align-items: baseline;
+  gap: 16px;
+  align-items: stretch;
+  justify-content: space-between;
   grid-column: 1;
 }
 
-.tier-row__details-toggle {
-  margin-left: auto;
-  font-weight: 600;
-  color: var(--text-1);
-}
-
-.tier-row__heading {
+.tier-row__headline {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 16px;
-  align-items: baseline;
+  gap: 14px 20px;
+  align-items: flex-start;
   min-width: 0;
+  flex: 1 1 auto;
+}
+
+.tier-row__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tier-row__details-toggle {
+  font-weight: 600;
+  color: var(--text-1);
+  align-self: center;
 }
 
 .tier-row__details-toggle:focus-visible {
@@ -1199,6 +1320,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   font-size: 1.05rem;
+  line-height: 1.2;
 }
 
 .tier-row__name::before {
@@ -1210,10 +1332,49 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-500) 20%, transparent);
 }
 
-.tier-row__cadence {
-  color: var(--text-2);
+.tier-row__chip {
+  font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
+}
+
+.tier-row__pricing {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: max-content;
+}
+
+.tier-row__price-amount {
+  font-size: 1.55rem;
+  line-height: 1.2;
+}
+
+.tier-row__price-cadence {
+  color: var(--text-2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.tier-row__header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.tier-row__subscribe {
+  font-weight: 600;
+  min-width: 140px;
+  box-shadow: 0 18px 32px rgba(10, 16, 32, 0.26);
+}
+
+.tier-row__header-actions .tier-row__details-toggle {
+  min-width: 132px;
 }
 
 .tier-row__highlight {
@@ -1221,19 +1382,48 @@ onBeforeUnmount(() => {
   font-weight: 600;
   letter-spacing: 0.01em;
   line-height: 1.5;
+  margin-top: 4px;
+}
+
+.tier-row__perks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.tier-row__perk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-200) 25%, transparent);
+  color: var(--text-1);
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+
+.tier-row__perk-icon {
+  color: color-mix(in srgb, var(--accent-500) 82%, var(--accent-200) 18%);
+}
+
+.tier-row__perk-text {
+  font-weight: 600;
 }
 
 .tier-row__meta {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  margin-top: 6px;
 }
 
 .tier-row__meta-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius: 999px;
   background: var(--chip-bg);
   color: var(--chip-text);
@@ -1242,38 +1432,20 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
 }
 
-.tier-row__cta {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  text-align: left;
-  align-items: stretch;
-  grid-column: 1;
-}
-
-.tier-row__price {
-  color: var(--text-1);
-  font-weight: 700;
-  letter-spacing: 0.0125em;
-}
-
-.tier-row__subscribe {
-  font-weight: 600;
-  min-width: 140px;
+.tier-row__meta-icon {
+  color: var(--accent-500);
 }
 
 .tier-row__details {
   width: 100%;
-  margin-top: 12px;
-  padding-left: 26px;
-  padding-right: 12px;
+  margin-top: 16px;
+  padding-left: 0;
+  padding-right: 0;
   color: var(--text-1);
   line-height: 1.6;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .tier-row__details-description {
@@ -1283,14 +1455,30 @@ onBeforeUnmount(() => {
 
 .tier-row__benefits {
   margin: 0;
-  padding-left: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .tier-row__benefit {
-  list-style: disc;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--surface-contrast-border) 50%, transparent);
+}
+
+.tier-row__benefit-icon {
+  color: var(--accent-500);
+  margin-top: 2px;
+}
+
+.tier-row__benefit-text {
+  flex: 1;
 }
 
 .tier-row__media {
@@ -1352,20 +1540,17 @@ onBeforeUnmount(() => {
   }
 
   .tier-row__content {
-    grid-template-columns: minmax(0, 1fr) auto;
-    column-gap: 18px;
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: 0;
   }
 
-  .tier-row--media-open .tier-row__content {
-    grid-column: 1;
+  .tier-row__header {
+    align-items: center;
   }
 
-  .tier-row__cta {
-    grid-column: 2;
-    text-align: right;
-    align-items: flex-end;
-    justify-self: end;
-    grid-row: 1;
+  .tier-row__header-actions {
+    flex-wrap: nowrap;
+    gap: 12px;
   }
 
   .tier-row__media {
@@ -1423,18 +1608,29 @@ onBeforeUnmount(() => {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .tier-row__cta {
-    grid-column: 1;
-    align-items: stretch;
-    text-align: left;
-  }
-
-  .tier-row__price {
-    align-self: flex-start;
-  }
-
   .tier-row__subscribe {
     width: 100%;
+  }
+
+  .tier-row__header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .tier-row__headline {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .tier-row__header-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .tier-row__header-actions .tier-row__subscribe,
+  .tier-row__header-actions .tier-row__details-toggle {
+    flex: 1 1 auto;
   }
 
   .tier-row__details {
