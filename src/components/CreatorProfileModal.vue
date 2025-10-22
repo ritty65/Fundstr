@@ -77,115 +77,126 @@
 
               <q-card-section v-if="creator" class="tiers-section">
                 <div class="section-heading">Subscription tiers</div>
-                <div v-if="hasTiers" class="tiers-list">
-                  <div
+                <div v-if="hasTiers" class="tiers-grid" role="list">
+                  <article
                     v-for="tier in tiers"
                     :key="tier.id"
                     :id="tierRowElementId(tier.id)"
                     :class="[
-                      'tier-row',
+                      'tier-card',
                       {
-                        'tier-row--focus': tier.id === focusedTierId,
+                        'tier-card--focus': tier.id === focusedTierId,
                       },
                     ]"
+                    role="listitem"
                   >
-                    <div class="tier-row__content">
-                      <header class="tier-row__header">
-                        <div class="tier-row__identity">
-                          <div class="tier-row__name text-subtitle2 text-weight-medium text-1">
+                    <div class="tier-card__content">
+                      <header class="tier-card__header">
+                        <div class="tier-card__identity">
+                          <div class="tier-card__name text-subtitle2 text-weight-medium text-1">
                             {{ tier.name }}
                           </div>
-                        </div>
-                        <div class="tier-row__cta">
-                          <div class="tier-row__pricing">
-                            <div class="tier-row__price-amount text-h6 text-weight-bold text-1">
-                              {{ formatTierPrice(tier) }} sats
-                            </div>
-                            <div
-                              v-if="tierFrequencyLabel(tier)"
-                              class="tier-row__price-cadence text-caption"
-                            >
-                              {{ tierFrequencyLabel(tier) }}
-                            </div>
+                          <div
+                            v-if="tierHighlight(tier)"
+                            class="tier-card__highlight text-body2 text-2"
+                          >
+                            {{ tierHighlight(tier) }}
                           </div>
-                          <q-btn
-                            color="accent"
-                            class="tier-row__subscribe"
-                            unelevated
-                            no-caps
-                            label="Subscribe"
-                            @click="handleSubscribe(tier.id)"
-                          />
+                        </div>
+                        <div class="tier-card__pricing">
+                          <div class="tier-card__price text-h6 text-weight-bold text-1">
+                            {{ formatTierPrice(tier) }} sats
+                          </div>
+                          <div
+                            v-if="tierFrequencyLabel(tier)"
+                            class="tier-card__cadence text-caption"
+                          >
+                            {{ tierFrequencyLabel(tier) }}
+                          </div>
                         </div>
                       </header>
 
-                      <div class="tier-row__body">
+                      <div v-if="tierHasBenefits(tier)" class="tier-card__perks" role="list">
                         <div
-                          v-if="tierHighlight(tier)"
-                          class="tier-row__highlight text-body2 text-2"
+                          v-for="benefit in tierBenefits(tier).slice(0, 3)"
+                          :key="`${tier.id}-badge-${benefit}`"
+                          class="tier-card__perk-chip"
+                          role="listitem"
                         >
-                          {{ tierHighlight(tier) }}
+                          <q-icon
+                            name="check_circle"
+                            size="16px"
+                            class="tier-card__perk-icon"
+                            aria-hidden="true"
+                          />
+                          <span class="tier-card__perk-text">{{ benefit }}</span>
                         </div>
-                        <div v-if="tierHasBenefits(tier)" class="tier-row__perks" role="list">
+                      </div>
+
+                      <details
+                        v-if="tierBenefitCountLabel(tier) || tier.welcomeMessage"
+                        class="tier-card__extras"
+                      >
+                        <summary class="tier-card__extras-summary text-body2">
+                          Membership extras
+                        </summary>
+                        <div class="tier-card__extras-body" role="list">
                           <div
-                            v-for="benefit in tierBenefits(tier).slice(0, 3)"
-                            :key="`${tier.id}-badge-${benefit}`"
-                            class="tier-row__perk-badge"
-                            role="listitem"
-                          >
-                            <q-icon
-                              name="check_circle"
-                              size="16px"
-                              class="tier-row__perk-icon"
-                              aria-hidden="true"
-                            />
-                            <span class="tier-row__perk-text">{{ benefit }}</span>
-                          </div>
-                        </div>
-                        <div class="tier-row__meta" role="list">
-                          <span
                             v-if="tierBenefitCountLabel(tier)"
                             role="listitem"
-                            class="tier-row__meta-pill"
+                            class="tier-card__extra-pill"
                           >
                             <q-icon
                               name="auto_awesome"
                               size="14px"
-                              class="tier-row__meta-icon"
+                              class="tier-card__extra-icon"
                               aria-hidden="true"
                             />
                             {{ tierBenefitCountLabel(tier) }}
-                          </span>
-                          <span v-if="tier.welcomeMessage" role="listitem" class="tier-row__meta-pill">
+                          </div>
+                          <div
+                            v-if="tier.welcomeMessage"
+                            role="listitem"
+                            class="tier-card__extra-pill"
+                          >
                             <q-icon
                               name="mail"
                               size="14px"
-                              class="tier-row__meta-icon"
+                              class="tier-card__extra-icon"
                               aria-hidden="true"
                             />
                             Welcome note
-                          </span>
+                          </div>
                         </div>
-                        <div class="tier-row__toggle">
-                          <q-btn
-                            flat
-                            dense
-                            class="tier-row__details-toggle"
-                            no-caps
-                            :label="isTierExpanded(tier.id) ? 'Hide details' : 'Details'"
-                            :icon-right="isTierExpanded(tier.id) ? 'expand_less' : 'expand_more'"
-                            @click="toggleTierDetails(tier.id)"
-                            :aria-expanded="isTierExpanded(tier.id)"
-                            :aria-controls="tierDetailsId(tier.id)"
-                          />
-                        </div>
+                      </details>
+
+                      <div class="tier-card__actions">
+                        <q-btn
+                          color="accent"
+                          class="tier-card__subscribe"
+                          unelevated
+                          no-caps
+                          label="Subscribe"
+                          @click="handleSubscribe(tier.id)"
+                        />
+                        <q-btn
+                          flat
+                          dense
+                          class="tier-card__details-toggle"
+                          no-caps
+                          :label="isTierExpanded(tier.id) ? 'Hide details' : 'Details'"
+                          :icon-right="isTierExpanded(tier.id) ? 'expand_less' : 'expand_more'"
+                          @click="toggleTierDetails(tier.id)"
+                          :aria-expanded="isTierExpanded(tier.id)"
+                          :aria-controls="tierDetailsId(tier.id)"
+                        />
                       </div>
 
                       <q-slide-transition>
                         <TierDetailsPanel
                           v-if="isTierExpanded(tier.id)"
                           :id="tierDetailsId(tier.id)"
-                          class="tier-row__details"
+                          class="tier-card__details"
                           :description="hasTierDescription(tier) ? tierDescription(tier) : null"
                           :benefits="tierBenefits(tier)"
                           :media-items="tierMediaItems(tier)"
@@ -193,7 +204,7 @@
                         />
                       </q-slide-transition>
                     </div>
-                  </div>
+                  </article>
                 </div>
                 <div v-else class="empty-state">No subscription tiers found for this creator.</div>
               </q-card-section>
@@ -1194,217 +1205,242 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-.tiers-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.tiers-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 18px;
 }
 
 
-.tier-row {
+.tier-card {
   position: relative;
-  padding: 22px 24px;
-  border-radius: 16px;
+  border-radius: 18px;
+  padding: 24px;
   background: color-mix(in srgb, var(--surface-1) 97%, var(--surface-2) 3%);
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 65%, transparent);
-  box-shadow: 0 12px 26px rgba(9, 15, 28, 0.12);
+  box-shadow: 0 14px 28px rgba(9, 15, 28, 0.14);
   transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.tier-row::before {
+.tier-card::before {
   content: '';
   position: absolute;
-  top: 18px;
-  bottom: 18px;
-  left: 18px;
-  width: 5px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent-500) 38%, transparent);
+  inset: 0;
+  border-radius: inherit;
   pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--accent-500) 18%, transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
 }
 
-.tier-row--focus {
-  border-color: color-mix(in srgb, var(--accent-500) 70%, transparent);
-  box-shadow: 0 16px 36px rgba(12, 20, 40, 0.18);
+.tier-card--focus {
+  border-color: color-mix(in srgb, var(--accent-500) 55%, transparent);
+  box-shadow: 0 18px 40px rgba(12, 20, 40, 0.22);
 }
 
-.tier-row--focus::before {
-  background: linear-gradient(180deg, var(--accent-500) 0%, color-mix(in srgb, var(--accent-600) 65%, var(--accent-200) 35%) 100%);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-500) 28%, transparent);
+.tier-card--focus::before {
+  opacity: 1;
 }
 
-.tier-row:hover,
-.tier-row:focus-within {
-  border-color: color-mix(in srgb, var(--accent-500) 45%, transparent);
+.tier-card:hover,
+.tier-card:focus-within {
+  border-color: color-mix(in srgb, var(--accent-500) 42%, transparent);
   transform: translateY(-2px);
-  box-shadow: 0 18px 36px rgba(10, 16, 32, 0.18);
+  box-shadow: 0 20px 46px rgba(10, 16, 32, 0.2);
 }
 
-
-.tier-row--focus:hover,
-.tier-row--focus:focus-within {
-  border-color: color-mix(in srgb, var(--accent-500) 85%, transparent);
-  box-shadow: 0 20px 42px rgba(12, 20, 40, 0.22);
-}
-
-.tier-row__content {
+.tier-card__content {
   position: relative;
-  z-index: 1;
-  display: grid;
-  gap: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
-.tier-row__header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+.tier-card__header {
+  display: flex;
+  flex-wrap: wrap;
   gap: 16px;
-  align-items: center;
+  justify-content: space-between;
+  align-items: flex-start;
 }
 
-.tier-row__identity {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.tier-row__name {
-  display: inline-flex;
-  align-items: center;
+.tier-card__identity {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
-  font-size: 1.05rem;
+  min-width: 0;
+  flex: 1 1 220px;
+}
+
+.tier-card__name {
+  position: relative;
+  padding-left: 18px;
   line-height: 1.2;
 }
 
-.tier-row__name::before {
+.tier-card__name::before {
   content: '';
-  width: 8px;
-  height: 8px;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px;
+  height: 10px;
   border-radius: 999px;
   background: var(--accent-500);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-500) 16%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-500) 22%, transparent);
 }
 
-.tier-row__cta {
-  display: grid;
-  gap: 10px;
-  align-content: start;
-  justify-items: end;
-}
-
-.tier-row__pricing {
-  display: grid;
-  gap: 4px;
-  text-align: right;
-}
-
-.tier-row__price-amount {
-  font-size: 1.1rem;
-}
-
-.tier-row__price-cadence {
-  color: var(--text-2);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.tier-row__subscribe {
-  font-weight: 600;
-  min-width: 140px;
-  box-shadow: 0 14px 26px rgba(10, 16, 32, 0.18);
-}
-
-.tier-row__body {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas:
-    'highlight'
-    'perks'
-    'meta'
-    'toggle';
-}
-
-.tier-row__highlight {
-  grid-area: highlight;
-  color: color-mix(in srgb, var(--text-1) 94%, var(--text-2) 6%);
+.tier-card__highlight {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 86%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 60%, transparent);
+  color: color-mix(in srgb, var(--text-1) 92%, var(--text-2) 8%);
   font-weight: 600;
   letter-spacing: 0.01em;
   line-height: 1.5;
 }
 
-.tier-row__perks {
-  grid-area: perks;
+.tier-card__pricing {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 120px;
 }
 
-.tier-row__perk-badge {
+.tier-card__price {
+  font-size: 1.1rem;
+}
+
+.tier-card__cadence {
+  color: var(--text-2);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tier-card__perks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tier-card__perk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent-500) 20%, transparent);
+  background: color-mix(in srgb, var(--accent-200) 10%, var(--surface-1) 90%);
+  color: color-mix(in srgb, var(--text-1) 94%, var(--text-2) 6%);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.tier-card__perk-icon {
+  color: color-mix(in srgb, var(--accent-500) 80%, var(--accent-600) 20%);
+}
+
+.tier-card__extras {
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 65%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 88%, transparent);
+  overflow: hidden;
+}
+
+.tier-card__extras[open] {
+  box-shadow: 0 10px 24px rgba(10, 16, 32, 0.1);
+}
+
+.tier-card__extras-summary {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--text-1) 92%, var(--text-2) 8%);
+  list-style: none;
+}
+
+.tier-card__extras-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tier-card__extras-summary::after {
+  content: '';
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-200) 20%, transparent);
+  mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M7 10l5 5 5-5z"/></svg>') center / 16px 16px no-repeat;
+  transition: transform 0.2s ease;
+}
+
+.tier-card__extras[open] .tier-card__extras-summary::after {
+  transform: rotate(180deg);
+}
+
+.tier-card__extras-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 16px 16px;
+}
+
+.tier-card__extra-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--accent-200) 18%, transparent);
-  color: var(--text-1);
-  font-size: 0.82rem;
-  line-height: 1.3;
-}
-
-.tier-row__perk-icon {
-  color: color-mix(in srgb, var(--accent-500) 78%, var(--accent-200) 22%);
-}
-
-.tier-row__perk-text {
+  background: color-mix(in srgb, var(--surface-1) 92%, var(--surface-2) 8%);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 62%, transparent);
+  color: color-mix(in srgb, var(--text-1) 90%, var(--text-2) 10%);
   font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
-.tier-row__meta {
-  grid-area: meta;
+.tier-card__extra-icon {
+  color: color-mix(in srgb, var(--accent-500) 78%, var(--accent-600) 22%);
+}
+
+.tier-card__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-}
-
-.tier-row__meta-pill {
-  display: inline-flex;
+  gap: 12px;
   align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  background: var(--chip-bg);
-  color: var(--chip-text);
-  font-size: 0.75rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  justify-content: space-between;
 }
 
-.tier-row__meta-icon {
-  color: var(--accent-500);
-}
-
-.tier-row__toggle {
-  grid-area: toggle;
-  display: flex;
-  justify-content: flex-start;
-}
-
-.tier-row__details-toggle {
+.tier-card__subscribe {
+  flex: 1 1 180px;
+  min-width: 0;
   font-weight: 600;
-  color: var(--text-1);
+  box-shadow: 0 16px 30px rgba(10, 16, 32, 0.2);
 }
 
-.tier-row__details-toggle:focus-visible {
+.tier-card__details-toggle {
+  font-weight: 600;
+  color: color-mix(in srgb, var(--accent-500) 90%, var(--accent-600) 10%);
+}
+
+.tier-card__details-toggle:focus-visible {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-500) 28%, transparent);
   border-radius: 8px;
 }
 
-.tier-row__details {
+.tier-card__details {
+  margin-top: -4px;
+  padding: 16px 18px;
   border-radius: 14px;
-  background: color-mix(in srgb, var(--surface-2) 24%, transparent);
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 65%, transparent);
-  padding: 16px 20px;
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+  background: color-mix(in srgb, var(--surface-1) 94%, var(--surface-2) 6%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface-1) 60%, transparent);
 }
 
 @media (min-width: 768px) {
@@ -1412,28 +1448,21 @@ onBeforeUnmount(() => {
     padding: 28px 0;
   }
 
-  .tier-row {
-    padding: 26px 28px;
+  .tier-card {
+    padding: 28px;
   }
 
-  .tier-row__content {
-    gap: 24px;
+  .tier-card__content {
+    gap: 22px;
   }
 
-  .tier-row__header {
-    grid-template-columns: minmax(0, 2fr) auto;
+  .tier-card__actions {
+    justify-content: flex-start;
   }
 
-  .tier-row__body {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-    grid-template-areas:
-      'highlight highlight'
-      'perks meta'
-      'toggle toggle';
-  }
-
-  .tier-row__subscribe {
-    min-width: 160px;
+  .tier-card__subscribe {
+    flex: 0 0 auto;
+    min-width: 180px;
   }
 }
 
@@ -1465,39 +1494,31 @@ onBeforeUnmount(() => {
     padding: 20px 20px 26px;
   }
 
-  .tier-row {
-    padding: 18px 20px 18px 26px;
+  .tier-card {
+    padding: 20px;
   }
 
-  .tier-row::before {
-    left: 12px;
-  }
-
-  .tier-row__header {
-    grid-template-columns: minmax(0, 1fr);
+  .tier-card__header {
+    flex-direction: column;
+    align-items: stretch;
     gap: 12px;
   }
 
-  .tier-row__cta {
-    justify-items: stretch;
-    align-content: stretch;
-    gap: 12px;
+  .tier-card__pricing {
+    align-items: flex-start;
   }
 
-  .tier-row__pricing {
-    text-align: left;
-    justify-items: start;
-  }
-
-  .tier-row__subscribe {
-    width: 100%;
-  }
-
-  .tier-row__body {
+  .tier-card__actions {
+    flex-direction: column;
+    align-items: stretch;
     gap: 10px;
   }
 
-  .tier-row__details {
+  .tier-card__subscribe {
+    width: 100%;
+  }
+
+  .tier-card__details {
     padding: 12px 16px;
   }
 
@@ -1590,6 +1611,19 @@ onBeforeUnmount(() => {
   .tiers-section {
     padding: 28px 40px 44px;
     gap: 24px;
+  }
+
+  .tiers-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+  }
+
+  .tier-card__pricing {
+    align-items: flex-end;
+  }
+
+  .tier-card__actions {
+    gap: 16px;
   }
 
   .empty-state {
