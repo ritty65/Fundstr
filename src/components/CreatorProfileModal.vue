@@ -136,42 +136,42 @@
                   </div>
 
                   <div class="tiers-carousel__controls" role="group" aria-label="Tier navigation controls">
-                    <q-btn
-                      dense
-                      flat
-                      round
-                      icon="chevron_left"
-                      class="tiers-carousel__control"
-                      :disable="!canGoPrevious"
-                      aria-label="View previous tier"
-                      @click="goToPreviousTier"
-                    />
-                    <div class="tiers-carousel__dots" role="tablist" aria-label="Select tier">
-                      <button
-                        v-for="(tier, index) in tiers"
-                        :key="`dot-${tier.id}`"
-                        class="tiers-carousel__dot"
-                        :class="{ 'tiers-carousel__dot--active': index === activeTierIndex }"
-                        role="tab"
-                        type="button"
-                        :aria-selected="index === activeTierIndex"
-                        :tabindex="index === activeTierIndex ? 0 : -1"
-                        :aria-label="`Show tier ${index + 1} of ${tiers.length}: ${tier.name}`"
-                        @click="setActiveTier(index)"
-                        @keydown.enter.prevent="setActiveTier(index)"
-                        @keydown.space.prevent="setActiveTier(index)"
+                    <div class="tiers-carousel__controls-inner">
+                      <q-btn
+                        flat
+                        round
+                        icon="chevron_left"
+                        class="tiers-carousel__control"
+                        :disable="!canGoPrevious"
+                        aria-label="View previous tier"
+                        @click="goToPreviousTier"
+                      />
+                      <div class="tiers-carousel__dots" role="tablist" aria-label="Select tier">
+                        <button
+                          v-for="(tier, index) in tiers"
+                          :key="`dot-${tier.id}`"
+                          class="tiers-carousel__dot"
+                          :class="{ 'tiers-carousel__dot--active': index === activeTierIndex }"
+                          role="tab"
+                          type="button"
+                          :aria-selected="index === activeTierIndex"
+                          :tabindex="index === activeTierIndex ? 0 : -1"
+                          :aria-label="`Show tier ${index + 1} of ${tiers.length}: ${tier.name}`"
+                          @click="setActiveTier(index)"
+                          @keydown.enter.prevent="setActiveTier(index)"
+                          @keydown.space.prevent="setActiveTier(index)"
+                        />
+                      </div>
+                      <q-btn
+                        flat
+                        round
+                        icon="chevron_right"
+                        class="tiers-carousel__control"
+                        :disable="!canGoNext"
+                        aria-label="View next tier"
+                        @click="goToNextTier"
                       />
                     </div>
-                    <q-btn
-                      dense
-                      flat
-                      round
-                      icon="chevron_right"
-                      class="tiers-carousel__control"
-                      :disable="!canGoNext"
-                      aria-label="View next tier"
-                      @click="goToNextTier"
-                    />
                   </div>
                 </div>
                 <div v-else class="empty-state">No subscription tiers found for this creator.</div>
@@ -1312,21 +1312,33 @@ onBeforeUnmount(() => {
 .tiers-carousel {
   display: flex;
   flex-direction: column;
-  gap: clamp(16px, 2vw, 24px);
+  gap: clamp(20px, 2.4vw, 28px);
+  padding: clamp(20px, 4vw, 30px);
+  border-radius: 32px;
+  background: color-mix(in srgb, var(--surface-2) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
 }
 
 .tiers-carousel__viewport {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 2px;
+  gap: clamp(18px, 2vw, 24px);
+  padding: clamp(24px, 3vw, 32px);
   outline: none;
-  border-radius: 26px;
+  border-radius: 28px;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--surface-1) 96%, transparent) 0%,
+    color-mix(in srgb, var(--surface-2) 88%, transparent) 100%
+  );
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.16), 0 8px 20px rgba(15, 23, 42, 0.12);
 }
 
 .tiers-carousel__viewport:focus-visible {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-200) 50%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-200) 50%, transparent),
+    0 24px 48px rgba(15, 23, 42, 0.16),
+    0 8px 20px rgba(15, 23, 42, 0.12);
 }
 
 .tiers-carousel__slide {
@@ -1335,46 +1347,83 @@ onBeforeUnmount(() => {
 
 .tiers-carousel__controls {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: clamp(12px, 2vw, 20px);
+  width: 100%;
+}
+
+.tiers-carousel__controls-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(18px, 3vw, 32px);
+  width: 100%;
+  flex-wrap: wrap;
 }
 
 .tiers-carousel__control {
-  color: var(--text-2);
-  transition: color 0.2s ease, transform 0.2s ease;
+  color: var(--text-1);
+  background: color-mix(in srgb, var(--surface-2) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  border-radius: 999px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tiers-carousel__control .q-icon {
+  font-size: 1.35rem;
 }
 
 .tiers-carousel__control:focus-visible {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-500) 40%, transparent);
-  border-radius: 999px;
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-500) 40%, transparent),
+    0 12px 30px rgba(15, 23, 42, 0.16);
 }
 
 .tiers-carousel__control:enabled:hover {
   color: var(--accent-500);
-  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--accent-200) 25%, var(--surface-2) 75%);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.18);
+}
+
+.tiers-carousel__control:enabled:active {
+  transform: translateY(0);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
 }
 
 .tiers-carousel__dots {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  gap: clamp(12px, 2vw, 18px);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-2) 86%, transparent);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
 }
 
 .tiers-carousel__dot {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
+  background: color-mix(in srgb, var(--surface-contrast-border) 82%, transparent);
   border: none;
   padding: 0;
   cursor: pointer;
-  transition: transform 0.2s ease, background-color 0.2s ease;
+  transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .tiers-carousel__dot--active {
   background: var(--accent-500);
   transform: scale(1.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent-500) 35%, transparent);
 }
 
 .tiers-carousel__dot:focus-visible {
@@ -1395,11 +1444,22 @@ onBeforeUnmount(() => {
   }
 
   .tiers-carousel {
-    gap: clamp(20px, 2vw, 28px);
+    gap: clamp(24px, 2.4vw, 32px);
   }
 
   .tiers-carousel__controls {
-    gap: 16px;
+    gap: clamp(14px, 1.6vw, 20px);
+  }
+
+  .tiers-carousel__controls-inner {
+    gap: clamp(20px, 2.6vw, 36px);
+  }
+
+  .tiers-carousel__control {
+    width: 52px;
+    height: 52px;
+    min-width: 52px;
+    min-height: 52px;
   }
 }
 @media (max-width: 599px) {
@@ -1430,8 +1490,32 @@ onBeforeUnmount(() => {
     padding: 20px 20px 26px;
   }
 
+  .tiers-carousel {
+    padding: 16px 16px 20px;
+    border-radius: 28px;
+  }
+
+  .tiers-carousel__viewport {
+    padding: 20px;
+  }
+
   .tiers-carousel__controls {
-    gap: 10px;
+    gap: 14px;
+  }
+
+  .tiers-carousel__controls-inner {
+    gap: 16px;
+  }
+
+  .tiers-carousel__dots {
+    padding: 6px 12px;
+  }
+
+  .tiers-carousel__control {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .profile-sticky-footer {
@@ -1503,11 +1587,16 @@ onBeforeUnmount(() => {
   }
 
   .tiers-carousel__viewport {
-    padding: 4px;
+    padding: clamp(28px, 2.4vw, 38px);
   }
 
   .tiers-carousel__controls {
-    gap: 18px;
+    gap: clamp(16px, 1.4vw, 22px);
+  }
+
+  .tiers-carousel__controls-inner {
+    gap: clamp(24px, 3vw, 40px);
+    max-width: 520px;
   }
 
   .empty-state {
