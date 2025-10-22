@@ -1208,24 +1208,25 @@ onBeforeUnmount(() => {
 }
 
 .hero-name {
-  font-size: clamp(1.55rem, 1.3vw + 1.3rem, 2.2rem);
-  font-weight: 700;
+  font-size: clamp(2.4rem, 2.4vw + 1.6rem, 3.4rem);
+  font-weight: 800;
   letter-spacing: 0.01em;
   color: var(--text-1);
 }
 
 .hero-handle {
-  font-size: clamp(0.95rem, 0.4vw + 0.9rem, 1.1rem);
-  font-weight: 650;
+  font-size: clamp(1.25rem, 0.8vw + 1.1rem, 1.6rem);
+  font-weight: 700;
   color: color-mix(in srgb, var(--text-1) 92%, var(--text-2) 8%);
   letter-spacing: 0.045em;
 }
 
 .hero-about {
   color: color-mix(in srgb, var(--text-1) 96%, var(--text-2) 4%);
-  font-weight: 500;
+  font-size: clamp(1.2rem, 0.8vw + 1.1rem, 1.6rem);
+  font-weight: 550;
   letter-spacing: 0.01em;
-  line-height: 1.5;
+  line-height: 1.7;
   white-space: pre-line;
 }
 
@@ -1311,8 +1312,8 @@ onBeforeUnmount(() => {
 }
 
 .section-heading {
-  font-size: 1.125rem;
-  font-weight: 600;
+  font-size: clamp(1.6rem, 1vw + 1.4rem, 2.2rem);
+  font-weight: 700;
 }
 
 .tiers-carousel {

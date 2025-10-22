@@ -396,15 +396,16 @@ function emitSubscribe() {
 }
 
 .tier-slide__name {
-  font-size: clamp(1.75rem, 1vw + 1.5rem, 2.4rem);
-  font-weight: 700;
+  font-size: clamp(2.3rem, 1.6vw + 1.9rem, 3.1rem);
+  font-weight: 800;
   line-height: 1.15;
 }
 
 .tier-slide__summary {
   max-width: 56ch;
-  font-size: clamp(1rem, 0.6vw + 0.9rem, 1.25rem);
-  line-height: 1.55;
+  font-size: clamp(1.3rem, 0.9vw + 1.1rem, 1.65rem);
+  font-weight: 600;
+  line-height: 1.6;
 }
 
 .tier-slide__perks {
@@ -768,25 +769,26 @@ function emitSubscribe() {
   grid-area: info;
   display: flex;
   flex-direction: column;
-  gap: clamp(12px, 2.6vh, 20px);
+  gap: clamp(16px, 3vh, 26px);
   min-height: 0;
 }
 
 .tier-slide__section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: clamp(12px, 1.2vw, 18px);
 }
 
 .tier-slide__section-heading {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 600;
+  gap: 10px;
+  font-weight: 700;
 }
 
 .tier-slide__section-title {
-  font-size: clamp(1.05rem, 0.35vw + 1rem, 1.15rem);
+  font-size: clamp(1.35rem, 0.6vw + 1.2rem, 1.75rem);
+  font-weight: 700;
   line-height: 1.35;
 }
 
@@ -795,8 +797,8 @@ function emitSubscribe() {
 }
 
 .tier-slide__copy {
-  font-size: clamp(1.05rem, 0.3vw + 1.02rem, 1.16rem);
-  line-height: 1.65;
+  font-size: clamp(1.3rem, 0.6vw + 1.2rem, 1.8rem);
+  line-height: 1.75;
   white-space: pre-wrap;
 }
 
