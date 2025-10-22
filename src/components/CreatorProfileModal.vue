@@ -64,14 +64,20 @@
         <q-card-section v-if="creator" class="tiers-section">
           <div class="section-heading">Subscription tiers</div>
           <div v-if="hasTiers" class="tiers-list">
-            <div v-for="tier in tiers" :key="tier.id" class="tier-row">
+            <div
+              v-for="tier in tiers"
+              :key="tier.id"
+              :class="['tier-row', { 'tier-row--media-open': isTierExpanded(tier.id) && tierHasMedia(tier) }]"
+            >
               <div class="tier-row__content">
                 <div class="tier-row__header">
-                  <div class="tier-row__name text-subtitle2 text-weight-medium text-1">
-                    {{ tier.name }}
-                  </div>
-                  <div v-if="tierFrequencyLabel(tier)" class="tier-row__cadence text-caption">
-                    {{ tierFrequencyLabel(tier) }}
+                  <div class="tier-row__heading">
+                    <div class="tier-row__name text-subtitle2 text-weight-medium text-1">
+                      {{ tier.name }}
+                    </div>
+                    <div v-if="tierFrequencyLabel(tier)" class="tier-row__cadence text-caption">
+                      {{ tierFrequencyLabel(tier) }}
+                    </div>
                   </div>
                   <q-btn
                     flat
@@ -82,7 +88,20 @@
                     :icon-right="isTierExpanded(tier.id) ? 'expand_less' : 'expand_more'"
                     @click="toggleTierDetails(tier.id)"
                     :aria-expanded="isTierExpanded(tier.id)"
-                    :aria-controls="`tier-desc-${tier.id}`"
+                    :aria-controls="tierAriaControls(tier)"
+                  />
+                </div>
+                <div class="tier-row__cta">
+                  <div class="tier-row__price text-subtitle2 text-weight-medium text-1">
+                    {{ tierPriceSummary(tier) }}
+                  </div>
+                  <q-btn
+                    color="accent"
+                    class="tier-row__subscribe"
+                    unelevated
+                    no-caps
+                    label="Subscribe"
+                    @click="handleSubscribe(tier.id)"
                   />
                 </div>
                 <div v-if="tierHighlight(tier)" class="tier-row__highlight text-body2 text-2">
@@ -99,7 +118,7 @@
                 <q-slide-transition>
                   <div
                     v-if="isTierExpanded(tier.id)"
-                    :id="`tier-desc-${tier.id}`"
+                    :id="tierDetailsId(tier.id)"
                     class="tier-row__details text-body2 text-1"
                   >
                     <p v-if="hasTierDescription(tier)" class="tier-row__details-description">
@@ -114,32 +133,6 @@
                         {{ benefit }}
                       </li>
                     </ul>
-                    <div v-if="tierHasMedia(tier)" class="tier-row__media">
-                      <div
-                        v-for="(item, mediaIndex) in tierMediaItems(tier)"
-                        :key="`${tier.id}-media-${mediaIndex}`"
-                        class="tier-row__media-item"
-                      >
-                        <template v-if="isTierMediaLink(item)">
-                          <q-chip
-                            dense
-                            outline
-                            clickable
-                            tag="a"
-                            icon="link"
-                            class="tier-row__media-chip"
-                            :href="item.url"
-                            target="_blank"
-                            rel="noopener"
-                          >
-                            {{ tierMediaLabel(item) }}
-                          </q-chip>
-                        </template>
-                        <template v-else>
-                          <MediaPreview :url="item.url" class="tier-row__media-preview" />
-                        </template>
-                      </div>
-                    </div>
                     <div
                       v-if="!hasTierDescription(tier) && !tierHasBenefits(tier) && !tierHasMedia(tier)"
                       class="tier-row__details-empty text-2"
@@ -149,19 +142,42 @@
                   </div>
                 </q-slide-transition>
               </div>
-              <div class="tier-row__cta">
-                <div class="tier-row__price text-subtitle2 text-weight-medium text-1">
-                  {{ tierPriceSummary(tier) }}
+              <q-slide-transition>
+                <div
+                  v-if="isTierExpanded(tier.id) && tierHasMedia(tier)"
+                  :id="tierMediaId(tier.id)"
+                  class="tier-row__media"
+                >
+                  <div
+                    v-for="(item, mediaIndex) in tierMediaItems(tier)"
+                    :key="`${tier.id}-media-${mediaIndex}`"
+                    class="tier-row__media-item"
+                  >
+                    <template v-if="isTierMediaLink(item)">
+                      <q-chip
+                        dense
+                        outline
+                        clickable
+                        tag="a"
+                        icon="link"
+                        class="tier-row__media-chip"
+                        :href="item.url"
+                        target="_blank"
+                        rel="noopener"
+                      >
+                        {{ tierMediaLabel(item) }}
+                      </q-chip>
+                    </template>
+                    <template v-else>
+                      <MediaPreview
+                        :url="item.url"
+                        layout="responsive"
+                        class="tier-row__media-preview"
+                      />
+                    </template>
+                  </div>
                 </div>
-                <q-btn
-                  color="accent"
-                  class="tier-row__subscribe"
-                  unelevated
-                  no-caps
-                  label="Subscribe"
-                  @click="handleSubscribe(tier.id)"
-                />
-              </div>
+              </q-slide-transition>
             </div>
           </div>
           <div v-else class="empty-state">No subscription tiers found for this creator.</div>
@@ -682,6 +698,22 @@ function tierHasMedia(tier: TierDetails): boolean {
   return tierMediaItems(tier).length > 0;
 }
 
+function tierDetailsId(tierId: string): string {
+  return `tier-desc-${tierId}`;
+}
+
+function tierMediaId(tierId: string): string {
+  return `tier-media-${tierId}`;
+}
+
+function tierAriaControls(tier: TierDetails): string {
+  const controls = [tierDetailsId(tier.id)];
+  if (tierHasMedia(tier) && isTierExpanded(tier.id)) {
+    controls.push(tierMediaId(tier.id));
+  }
+  return controls.join(' ');
+}
+
 function isTierMediaLink(item: TierMediaItem): boolean {
   return (item.type ?? '').toLowerCase() === 'link';
 }
@@ -1053,8 +1085,7 @@ onBeforeUnmount(() => {
 
 .tier-row {
   position: relative;
-  display: flex;
-  align-items: stretch;
+  display: grid;
   gap: 24px;
   padding: 20px 24px 20px 32px;
   border-radius: 16px;
@@ -1062,6 +1093,7 @@ onBeforeUnmount(() => {
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 88%, transparent);
   box-shadow: 0 18px 36px rgba(9, 15, 28, 0.18);
   transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .tier-row::before {
@@ -1086,10 +1118,16 @@ onBeforeUnmount(() => {
 .tier-row__content {
   position: relative;
   z-index: 1;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  grid-column: 1 / -1;
+}
+
+.tier-row__highlight,
+.tier-row__meta,
+.tier-row__details {
+  grid-column: 1;
 }
 
 .tier-row__header {
@@ -1097,12 +1135,21 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 8px 16px;
   align-items: baseline;
+  grid-column: 1;
 }
 
 .tier-row__details-toggle {
   margin-left: auto;
   font-weight: 600;
   color: var(--text-1);
+}
+
+.tier-row__heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  align-items: baseline;
+  min-width: 0;
 }
 
 .tier-row__details-toggle:focus-visible {
@@ -1163,11 +1210,10 @@ onBeforeUnmount(() => {
   z-index: 1;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  justify-content: space-between;
   gap: 12px;
-  min-width: 160px;
-  text-align: right;
+  text-align: left;
+  align-items: stretch;
+  grid-column: 1;
 }
 
 .tier-row__price {
@@ -1211,10 +1257,11 @@ onBeforeUnmount(() => {
 }
 
 .tier-row__media {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 0.75rem;
-  align-items: center;
+  align-content: start;
+  grid-column: 1 / -1;
+  align-self: stretch;
 }
 
 .tier-row__media-item {
@@ -1222,26 +1269,23 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 0.5rem;
   width: 100%;
-  align-items: center;
 }
 
 .tier-row__media-preview {
   width: 100%;
-  display: flex;
-  justify-content: center;
+  display: block;
 }
 
 .tier-row__media-preview :deep(.media-preview-container) {
   width: 100%;
-  max-width: 320px;
-  margin: 0 auto;
+  max-width: none;
   border-radius: 0.9rem;
   box-shadow: 0 14px 30px rgba(9, 15, 28, 0.18);
 }
 
 .tier-row__media-preview :deep(audio) {
   width: 100%;
-  max-width: 320px;
+  max-width: none;
 }
 
 .tier-row__media-chip {
@@ -1262,6 +1306,41 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--surface-1) 94%, var(--surface-2) 6%);
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 85%, transparent);
+}
+
+@media (min-width: 768px) {
+  .tier-row {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 1fr);
+    align-items: start;
+  }
+
+  .tier-row__content {
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 18px;
+  }
+
+  .tier-row--media-open .tier-row__content {
+    grid-column: 1;
+  }
+
+  .tier-row__cta {
+    grid-column: 2;
+    text-align: right;
+    align-items: flex-end;
+    justify-self: end;
+    grid-row: 1;
+  }
+
+  .tier-row__media {
+    grid-column: 1 / -1;
+  }
+
+  .tier-row--media-open .tier-row__media {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    justify-self: stretch;
+  }
 }
 
 @media (max-width: 599px) {
@@ -1289,16 +1368,20 @@ onBeforeUnmount(() => {
   }
 
   .tier-row {
-    flex-direction: column;
     gap: 14px;
     padding: 16px;
     padding-left: 22px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tier-row__content {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .tier-row__cta {
+    grid-column: 1;
     align-items: stretch;
     text-align: left;
-    min-width: 0;
   }
 
   .tier-row__price {

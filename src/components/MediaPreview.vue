@@ -1,18 +1,18 @@
 <template>
   <div v-if="src">
-    <div v-if="type === 'image'" class="media-preview-container q-mb-sm">
+    <div v-if="type === 'image'" :class="containerClasses" :style="containerStyle">
       <img :src="src" />
     </div>
-    <div v-else-if="type === 'youtube'" class="media-preview-container q-mb-sm">
+    <div v-else-if="type === 'youtube'" :class="containerClasses" :style="containerStyle">
       <iframe :src="src" frameborder="0" allowfullscreen></iframe>
     </div>
-    <div v-else-if="type === 'iframe'" class="media-preview-container q-mb-sm">
+    <div v-else-if="type === 'iframe'" :class="containerClasses" :style="containerStyle">
       <iframe :src="src" frameborder="0"></iframe>
     </div>
-    <div v-else-if="type === 'nostr'" class="media-preview-container q-mb-sm">
+    <div v-else-if="type === 'nostr'" :class="containerClasses" :style="containerStyle">
       <iframe :src="src" frameborder="0"></iframe>
     </div>
-    <div v-else-if="type === 'video'" class="media-preview-container q-mb-sm">
+    <div v-else-if="type === 'video'" :class="containerClasses" :style="containerStyle">
       <video :src="src" controls></video>
     </div>
     <audio
@@ -32,7 +32,10 @@ import {
   determineMediaType,
 } from "src/utils/validateMedia";
 
-const props = defineProps<{ url: string }>();
+const props = defineProps<{
+  url: string;
+  layout?: "default" | "responsive";
+}>();
 
 const src = computed(() => {
   const n = normalizeMediaUrl(props.url);
@@ -41,6 +44,20 @@ const src = computed(() => {
 
 const type = computed(() =>
   src.value ? determineMediaType(src.value) : "image",
+);
+
+const isResponsiveImage = computed(
+  () => (props.layout ?? "default") === "responsive" && type.value === "image",
+);
+
+const containerClasses = computed(() => [
+  "media-preview-container",
+  "q-mb-sm",
+  isResponsiveImage.value ? "media-preview-container--responsive" : null,
+]);
+
+const containerStyle = computed(() =>
+  isResponsiveImage.value ? { "--media-preview-aspect": "auto" } : undefined,
 );
 </script>
 

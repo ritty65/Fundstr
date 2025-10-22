@@ -1,7 +1,7 @@
 .media-preview-container {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: var(--media-preview-aspect, 16 / 9);
   overflow: hidden;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
@@ -16,4 +16,13 @@
 
 .media-preview-container img {
   object-fit: cover;
+}
+
+.media-preview-container--responsive {
+  --media-preview-aspect: auto;
+}
+
+.media-preview-container--responsive img {
+  height: auto;
+  object-fit: contain;
 }
