@@ -24,14 +24,31 @@
                 />
                 <div class="hero-layout">
                   <div class="hero-avatar">
-                    <q-avatar size="120px" class="profile-avatar">
+                    <q-avatar size="96px" class="profile-avatar">
                       <img :src="creatorAvatar" alt="Creator avatar" @error="onAvatarError" />
                     </q-avatar>
                   </div>
                   <div class="hero-meta">
                     <div class="hero-name">{{ displayName }}</div>
                     <div v-if="nip05" class="hero-handle">{{ nip05 }}</div>
-                    <div v-if="aboutText" class="hero-about text-body2">{{ aboutText }}</div>
+                    <div
+                      v-if="aboutText"
+                      class="hero-about text-body2"
+                      :class="{ 'hero-about--clamped': shouldClampBio && !isBioExpanded }"
+                    >
+                      {{ aboutText }}
+                    </div>
+                    <div v-if="shouldClampBio" class="hero-about__toggle">
+                      <q-btn
+                        flat
+                        dense
+                        no-caps
+                        padding="4px 10px"
+                        color="accent"
+                        :label="isBioExpanded ? 'Hide bio' : 'Read bio'"
+                        @click="toggleBio()"
+                      />
+                    </div>
                     <div v-if="creator" class="hero-actions">
                       <q-btn
                         unelevated
@@ -46,6 +63,7 @@
                         outline
                         class="action-button"
                         color="accent"
+                        icon="mail"
                         label="Message"
                         no-caps
                         @click="$emit('message', pubkey)"
@@ -54,6 +72,7 @@
                         outline
                         class="action-button"
                         color="accent"
+                        icon="volunteer_activism"
                         label="Donate"
                         no-caps
                         @click="$emit('donate', pubkey)"
@@ -73,8 +92,6 @@
             </q-card-section>
 
             <template v-else>
-              <q-separator class="section-divider" />
-
               <q-card-section v-if="creator" class="tiers-section">
                 <div class="section-heading">Subscription tiers</div>
                 <div v-if="hasTiers" class="tiers-grid" role="list">
@@ -96,11 +113,8 @@
                           <div class="tier-card__name text-subtitle2 text-weight-medium text-1">
                             {{ tier.name }}
                           </div>
-                          <div
-                            v-if="tierHighlight(tier)"
-                            class="tier-card__highlight text-body2 text-2"
-                          >
-                            {{ tierHighlight(tier) }}
+                          <div v-if="tierSummary(tier)" class="tier-card__summary text-body2 text-2">
+                            {{ tierSummary(tier) }}
                           </div>
                         </div>
                         <div class="tier-card__pricing">
@@ -277,6 +291,7 @@ const showLocal = ref(false);
 const isDialogMaximized = computed(() => $q.screen.lt.sm);
 const expandedTierIds = ref<Record<string, boolean>>({});
 const focusedTierId = ref<string | null>(null);
+const isBioExpanded = ref(false);
 
 const discoveryClient = useFundstrDiscovery();
 
@@ -318,8 +333,26 @@ const aboutText = computed(() => {
   return about || '';
 });
 
+const shouldClampBio = computed(() => {
+  const about = aboutText.value;
+  if (!about) return false;
+  if (about.length > 240) return true;
+  return about.split(/\r?\n/).length > 3;
+});
+
+watch(aboutText, () => {
+  isBioExpanded.value = false;
+});
+
 function onAvatarError(event: Event) {
   (event.target as HTMLImageElement).src = safeImageSrc(null, displayName.value, 200);
+}
+
+function toggleBio() {
+  if (!shouldClampBio.value) {
+    return;
+  }
+  isBioExpanded.value = !isBioExpanded.value;
 }
 
 const hasTiers = computed(() => tiers.value.length > 0);
@@ -731,12 +764,12 @@ function formatTierPrice(tier: TierDetails): string {
   return formatMsatToSats(tier.priceMsat);
 }
 
-function tierHighlight(tier: TierDetails): string | null {
+function tierSummary(tier: TierDetails): string | null {
+  if (tier.description) {
+    return truncateText(tier.description, 180);
+  }
   if (tier.benefits?.length) {
     return tier.benefits[0];
-  }
-  if (tier.description) {
-    return truncateText(tier.description, 140);
   }
   return null;
 }
@@ -951,13 +984,13 @@ onBeforeUnmount(() => {
 }
 
 .profile-dialog {
-  width: min(96vw, 1360px);
-  max-width: 1360px;
+  width: min(90vw, 1440px);
+  max-width: 1440px;
 }
 
 .profile-card {
   width: 100%;
-  max-width: 1360px;
+  max-width: 1440px;
   background: var(--surface-1);
   color: var(--text-1);
   border-radius: 16px;
@@ -967,8 +1000,8 @@ onBeforeUnmount(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  height: min(95vh, 1040px);
-  max-height: min(95vh, 1040px);
+  height: min(94vh, 1040px);
+  max-height: min(94vh, 1040px);
 }
 
 .profile-dialog--maximized {
@@ -984,8 +1017,9 @@ onBeforeUnmount(() => {
 }
 
 .profile-layout {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 100%;
+  grid-template-rows: auto 1fr;
   height: 100%;
 }
 
@@ -993,6 +1027,7 @@ onBeforeUnmount(() => {
   position: relative;
   display: flex;
   flex-direction: column;
+  border-bottom: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
 }
 
 .profile-layout__content {
@@ -1093,7 +1128,8 @@ onBeforeUnmount(() => {
   position: relative;
   display: flex;
   align-items: flex-start;
-  gap: clamp(20px, 3vw, 28px);
+  gap: clamp(16px, 2.4vw, 24px);
+  flex-wrap: wrap;
   z-index: 1;
 }
 
@@ -1103,10 +1139,10 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   padding: 6px;
-  border-radius: 20px;
+  border-radius: 16px;
   background: color-mix(in srgb, var(--surface-1) 85%, var(--surface-2) 15%);
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
-  box-shadow: 0 20px 38px rgba(9, 15, 28, 0.24);
+  box-shadow: 0 16px 30px rgba(9, 15, 28, 0.22);
 }
 
 .profile-avatar :deep(img) {
@@ -1120,7 +1156,7 @@ onBeforeUnmount(() => {
 .hero-meta {
   display: flex;
   flex-direction: column;
-  gap: clamp(12px, 2vw, 18px);
+  gap: clamp(10px, 1.6vw, 16px);
   flex: 1 1 260px;
   min-width: 0;
 }
@@ -1143,21 +1179,34 @@ onBeforeUnmount(() => {
   color: color-mix(in srgb, var(--text-1) 96%, var(--text-2) 4%);
   font-weight: 500;
   letter-spacing: 0.01em;
-  line-height: 1.6;
+  line-height: 1.5;
   white-space: pre-line;
+}
+
+.hero-about--clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hero-about__toggle {
+  display: flex;
+  justify-content: flex-start;
 }
 
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-top: clamp(16px, 3vw, 24px);
+  gap: 10px;
+  margin-top: clamp(12px, 2.4vw, 20px);
 }
 
 .action-button {
-  flex: 1 1 160px;
+  flex: 0 1 auto;
   min-width: 0;
   font-weight: 600;
+  padding: 10px 18px;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
@@ -1291,15 +1340,13 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-500) 22%, transparent);
 }
 
-.tier-card__highlight {
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--surface-2) 86%, transparent);
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 60%, transparent);
-  color: color-mix(in srgb, var(--text-1) 92%, var(--text-2) 8%);
-  font-weight: 600;
-  letter-spacing: 0.01em;
+.tier-card__summary {
+  color: color-mix(in srgb, var(--text-1) 86%, var(--text-2) 14%);
   line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .tier-card__pricing {
@@ -1448,6 +1495,10 @@ onBeforeUnmount(() => {
     padding: 28px 0;
   }
 
+  .tiers-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+
   .tier-card {
     padding: 28px;
   }
@@ -1553,68 +1604,61 @@ onBeforeUnmount(() => {
 
 @media (min-width: 1024px) {
   .profile-layout {
-    display: grid;
-    grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
-    column-gap: 44px;
-    align-items: flex-start;
-    height: 100%;
+    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+    grid-template-rows: 100%;
+    column-gap: 32px;
+    align-items: stretch;
   }
 
   .profile-layout__hero {
-    align-self: stretch;
+    border-bottom: none;
+    border-right: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
   }
 
   .hero-rail {
     position: sticky;
     top: 0;
-    border-radius: 26px;
-    border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 82%, transparent);
-    box-shadow: 0 26px 52px rgba(9, 14, 28, 0.2);
-    background: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface-1) 95%, var(--surface-2) 5%) 0%,
-      color-mix(in srgb, var(--surface-1) 98%, var(--surface-2) 2%) 100%
-    );
-    overflow: hidden;
+    height: 100%;
+    overflow-y: auto;
   }
 
   .hero-panel {
-    padding: clamp(30px, 4vw, 40px) clamp(30px, 4.5vw, 44px) clamp(26px, 3.6vw, 38px);
     border-bottom: none;
+    min-height: 100%;
+    padding: 36px 32px;
   }
 
   .hero-layout {
-    gap: clamp(28px, 3vw, 40px);
+    flex-direction: column;
+    align-items: stretch;
+    gap: 18px;
   }
 
   .hero-meta {
-    gap: clamp(16px, 2vw, 24px);
+    gap: clamp(14px, 2vw, 20px);
   }
 
   .hero-actions {
-    margin-top: clamp(24px, 3vw, 36px);
-    gap: clamp(16px, 2vw, 24px);
+    flex-wrap: nowrap;
+    gap: 16px;
+    margin-top: 24px;
+  }
+
+  .hero-actions .action-button {
+    flex: 1 1 auto;
   }
 
   .profile-layout__body {
-    padding: 32px 0;
-  }
-
-  .section-divider {
-    margin: 0 40px;
-  }
-
-  .loading-state {
-    padding: 56px 40px;
+    padding: 36px 40px 40px;
   }
 
   .tiers-section {
-    padding: 28px 40px 44px;
+    padding: 0;
     gap: 24px;
   }
 
   .tiers-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 24px;
   }
 

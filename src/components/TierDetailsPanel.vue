@@ -34,17 +34,60 @@
         <q-icon name="collections_bookmark" size="20px" class="tier-details-panel__icon" aria-hidden="true" />
         <span class="tier-details-panel__title">Extras &amp; resources</span>
       </header>
+      <div v-if="featuredMedia" class="tier-details-panel__media-feature">
+        <MediaPreview
+          :url="featuredMedia.url"
+          layout="responsive"
+          class="tier-details-panel__media-feature-preview"
+        />
+        <div class="tier-details-panel__media-feature-body">
+          <div class="tier-details-panel__media-feature-text">
+            <span class="tier-details-panel__media-feature-title">{{ mediaLabel(featuredMedia) }}</span>
+            <span
+              v-if="mediaSecondaryLabel(featuredMedia)"
+              class="tier-details-panel__media-feature-meta"
+            >
+              {{ mediaSecondaryLabel(featuredMedia) }}
+            </span>
+          </div>
+          <div class="tier-details-panel__media-feature-actions">
+            <q-btn
+              flat
+              dense
+              class="tier-details-panel__media-feature-action"
+              icon="open_in_new"
+              color="accent"
+              tag="a"
+              :href="featuredMedia.url"
+              target="_blank"
+              rel="noopener"
+              :aria-label="`Open ${mediaLabel(featuredMedia)} in a new tab`"
+            />
+            <q-btn
+              flat
+              dense
+              class="tier-details-panel__media-feature-action"
+              icon="content_copy"
+              color="accent"
+              :aria-label="`Copy link to ${mediaLabel(featuredMedia)}`"
+              @click.prevent="copyMediaLink(featuredMedia.url)"
+            />
+          </div>
+        </div>
+      </div>
       <div class="tier-details-panel__media-strip" role="list">
         <article
           v-for="(item, index) in mediaItems"
           :key="`${item.url}-${index}`"
           class="tier-details-panel__media-tile"
+          :class="{ 'tier-details-panel__media-tile--active': index === featuredIndex }"
           role="listitem"
           tabindex="0"
           :aria-label="mediaAriaLabel(item)"
-          @click="onTileClick($event, item)"
-          @keydown.enter.prevent="openMedia(item)"
-          @keydown.space.prevent="openMedia(item)"
+          :aria-pressed="index === featuredIndex"
+          @click="onTileClick($event, item, index)"
+          @keydown.enter.prevent="selectFeaturedMedia(index)"
+          @keydown.space.prevent="selectFeaturedMedia(index)"
         >
           <div class="tier-details-panel__media-thumb">
             <template v-if="isMediaLink(item)">
@@ -102,7 +145,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { copyToClipboard, useQuasar } from 'quasar';
 import MediaPreview from 'components/MediaPreview.vue';
 import type { TierMedia as TierMediaItem } from 'stores/types';
@@ -125,11 +168,36 @@ const description = computed(() => props.description?.trim() ?? '');
 const welcomeMessage = computed(() => props.welcomeMessage?.trim() ?? '');
 const benefits = computed(() => (Array.isArray(props.benefits) ? props.benefits : []));
 const mediaItems = computed(() => props.mediaItems);
+const featuredIndex = ref(-1);
+
+const featuredMedia = computed(() => {
+  const items = mediaItems.value;
+  if (!items.length) {
+    return null;
+  }
+  const index = featuredIndex.value;
+  if (index < 0 || index >= items.length) {
+    return items[0];
+  }
+  return items[index];
+});
 
 const $q = useQuasar();
 
 function isMediaLink(item: TierMediaItem): boolean {
   return (item.type ?? '').toLowerCase() === 'link';
+}
+
+function selectFeaturedMedia(index: number) {
+  if (!Number.isInteger(index)) {
+    return;
+  }
+  const items = mediaItems.value;
+  if (!items.length) {
+    return;
+  }
+  const safeIndex = Math.min(Math.max(index, 0), items.length - 1);
+  featuredIndex.value = safeIndex;
 }
 
 function mediaLabel(item: TierMediaItem): string {
@@ -165,19 +233,12 @@ function mediaAriaLabel(item: TierMediaItem): string {
   return meta ? `${label} – ${meta}` : label;
 }
 
-function onTileClick(event: MouseEvent, item: TierMediaItem) {
+function onTileClick(event: MouseEvent, item: TierMediaItem, index: number) {
   const target = event.target as HTMLElement | null;
   if (target?.closest('[data-media-action]')) {
     return;
   }
-  openMedia(item);
-}
-
-function openMedia(item: TierMediaItem) {
-  if (!item.url) {
-    return;
-  }
-  window.open(item.url, '_blank', 'noopener');
+  selectFeaturedMedia(index);
 }
 
 async function copyMediaLink(url?: string) {
@@ -200,6 +261,21 @@ async function copyMediaLink(url?: string) {
     });
   }
 }
+
+watch(
+  mediaItems,
+  (items) => {
+    if (!items.length) {
+      featuredIndex.value = -1;
+      return;
+    }
+    if (featuredIndex.value < 0 || featuredIndex.value >= items.length) {
+      const firstPlayable = items.findIndex((item) => !isMediaLink(item));
+      featuredIndex.value = firstPlayable >= 0 ? firstPlayable : 0;
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <style scoped>
@@ -266,6 +342,59 @@ async function copyMediaLink(url?: string) {
   gap: 18px;
 }
 
+.tier-details-panel__media-feature {
+  display: grid;
+  gap: 14px;
+  background: color-mix(in srgb, var(--surface-2) 65%, transparent);
+  border-radius: 18px;
+  padding: 16px 18px 20px;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--surface-contrast-border) 55%, transparent),
+    0 16px 26px rgba(10, 16, 32, 0.12);
+}
+
+.tier-details-panel__media-feature-preview :deep(.media-preview-container) {
+  border-radius: 14px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+
+.tier-details-panel__media-feature-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.tier-details-panel__media-feature-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tier-details-panel__media-feature-title {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text-1);
+  line-height: 1.35;
+}
+
+.tier-details-panel__media-feature-meta {
+  color: var(--text-2);
+  font-size: 0.85rem;
+}
+
+.tier-details-panel__media-feature-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.tier-details-panel__media-feature-action {
+  border-radius: 999px;
+}
+
 .tier-details-panel__media-strip {
   display: flex;
   gap: 16px;
@@ -285,7 +414,7 @@ async function copyMediaLink(url?: string) {
 }
 
 .tier-details-panel__media-tile {
-  flex: 0 0 240px;
+  flex: 0 0 280px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -296,6 +425,12 @@ async function copyMediaLink(url?: string) {
   cursor: pointer;
   scroll-snap-align: start;
   transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.tier-details-panel__media-tile--active {
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--accent-500) 38%, transparent),
+    0 14px 28px rgba(10, 16, 32, 0.2);
 }
 
 .tier-details-panel__media-tile:focus-visible {
@@ -317,7 +452,7 @@ async function copyMediaLink(url?: string) {
   overflow: hidden;
   border-radius: 14px;
   background: color-mix(in srgb, var(--surface-1) 90%, transparent);
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 16 / 9;
 }
 
 .tier-details-panel__media-preview :deep(.media-preview-container) {
@@ -374,6 +509,10 @@ async function copyMediaLink(url?: string) {
   gap: 6px;
 }
 
+.tier-details-panel__media-actions > :deep(.q-btn) {
+  border-radius: 10px;
+}
+
 .tier-details-panel__empty {
   padding: 16px 0;
   font-size: 0.9rem;
@@ -384,12 +523,24 @@ async function copyMediaLink(url?: string) {
     overflow: visible;
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 18px;
     padding: 0;
     margin: 0;
   }
 
   .tier-details-panel__media-tile {
     flex: 1 1 auto;
+  }
+}
+
+@media (min-width: 1024px) {
+  .tier-details-panel__media-feature {
+    gap: 18px;
+    padding: 18px 22px 24px;
+  }
+
+  .tier-details-panel__media-strip {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   }
 }
 </style>
