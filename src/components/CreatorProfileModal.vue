@@ -1,7 +1,6 @@
 <template>
   <q-dialog
     v-model="showLocal"
-    persistent
     backdrop-filter="blur(6px)"
     class="profile-dialog"
     :class="dialogClasses"
