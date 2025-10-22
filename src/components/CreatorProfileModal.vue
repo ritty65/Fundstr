@@ -4,12 +4,13 @@
     persistent
     backdrop-filter="blur(6px)"
     class="profile-dialog"
-    :class="{ 'profile-dialog--maximized': isDialogMaximized }"
+    :class="dialogClasses"
     :maximized="isDialogMaximized"
+    content-class="profile-dialog__inner"
   >
-    <q-card class="profile-card">
-      <div class="profile-layout">
-        <div class="profile-layout__hero">
+    <q-card class="profile-card" :class="{ 'profile-card--two-column': isDesktopViewport }">
+      <div class="profile-layout" :class="{ 'profile-layout--two-column': isDesktopViewport }">
+        <div class="profile-layout__hero" :class="{ 'profile-layout__hero--desktop': isDesktopViewport }">
           <div class="hero-rail">
             <q-card-section class="profile-hero">
               <div class="hero-panel">
@@ -49,7 +50,11 @@
                         @click="toggleBio()"
                       />
                     </div>
-                    <div v-if="creator" class="hero-actions">
+                    <div
+                      v-if="creator"
+                      class="hero-actions"
+                      :class="{ 'hero-actions--inline': isHeroActionsInline }"
+                    >
                       <q-btn
                         unelevated
                         class="action-button subscribe"
@@ -85,7 +90,7 @@
           </div>
         </div>
 
-        <div class="profile-layout__content">
+        <div class="profile-layout__content" :class="{ 'profile-layout__content--desktop': isDesktopViewport }">
           <div class="profile-layout__body">
             <q-card-section v-if="loading" class="loading-state">
               <q-spinner color="accent" size="42px" />
@@ -228,7 +233,7 @@
               </q-card-section>
             </template>
           </div>
-          <div class="profile-sticky-footer" v-if="hasTiers && $q.screen.lt.md">
+          <div class="profile-sticky-footer" v-if="showStickyFooter">
             <q-btn
               unelevated
               color="accent"
@@ -288,7 +293,14 @@ const loading = ref(false);
 const creator = ref<Creator | null>(null);
 const tiers = ref<TierDetails[]>([]);
 const showLocal = ref(false);
-const isDialogMaximized = computed(() => $q.screen.lt.sm);
+const isMobileViewport = computed(() => $q.screen.lt.sm);
+const isDesktopViewport = computed(() => $q.screen.gt.sm);
+const isDialogMaximized = computed(() => isMobileViewport.value || isDesktopViewport.value);
+const dialogClasses = computed(() => ({
+  'profile-dialog--maximized': isDialogMaximized.value,
+  'profile-dialog--mobile': isMobileViewport.value,
+  'profile-dialog--desktop': isDesktopViewport.value,
+}));
 const expandedTierIds = ref<Record<string, boolean>>({});
 const focusedTierId = ref<string | null>(null);
 const isBioExpanded = ref(false);
@@ -356,6 +368,9 @@ function toggleBio() {
 }
 
 const hasTiers = computed(() => tiers.value.length > 0);
+
+const showStickyFooter = computed(() => hasTiers.value && $q.screen.lt.md);
+const isHeroActionsInline = computed(() => $q.screen.gt.sm);
 
 const primaryTierId = computed(() => tiers.value[0]?.id ?? '');
 
@@ -984,32 +999,45 @@ onBeforeUnmount(() => {
 }
 
 .profile-dialog {
-  width: min(90vw, 1440px);
-  max-width: 1440px;
+  width: 100%;
+  max-width: none;
+}
+
+.profile-dialog__inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: clamp(16px, 4vh, 40px) clamp(16px, 6vw, 84px);
+  box-sizing: border-box;
+}
+
+.profile-dialog--mobile .profile-dialog__inner {
+  padding: 0;
+  align-items: stretch;
 }
 
 .profile-card {
-  width: 100%;
-  max-width: 1440px;
+  width: min(100%, 1260px);
   background: var(--surface-1);
   color: var(--text-1);
-  border-radius: 16px;
+  border-radius: 24px;
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 85%, transparent);
   box-shadow: 0 22px 56px rgba(10, 14, 28, 0.26);
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  height: min(94vh, 1040px);
-  max-height: min(94vh, 1040px);
+  height: 100%;
+  max-height: min(96vh, 1400px);
+  min-height: 0;
 }
 
-.profile-dialog--maximized {
-  width: 100vw;
-  max-width: 100vw;
+.profile-card--two-column {
+  width: min(100%, 1320px);
 }
 
-.profile-dialog--maximized .profile-card {
+.profile-dialog--mobile .profile-card {
   border-radius: 0;
   height: 100%;
   max-height: none;
@@ -1018,9 +1046,17 @@ onBeforeUnmount(() => {
 
 .profile-layout {
   display: grid;
-  grid-template-columns: 100%;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr;
+  min-height: 0;
   height: 100%;
+}
+
+.profile-layout--two-column {
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  grid-template-rows: 1fr;
+  column-gap: clamp(32px, 5vw, 64px);
+  align-items: stretch;
 }
 
 .profile-layout__hero {
@@ -1028,6 +1064,12 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   border-bottom: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
+  min-height: 0;
+}
+
+.profile-layout__hero--desktop {
+  border-bottom: none;
+  border-right: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
 }
 
 .profile-layout__content {
@@ -1038,6 +1080,10 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
+.profile-layout__content--desktop {
+  padding-right: clamp(8px, 1.4vw, 18px);
+}
+
 .profile-layout__body {
   display: flex;
   flex-direction: column;
@@ -1045,7 +1091,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 24px 0;
+  padding: clamp(24px, 4vh, 40px) clamp(16px, 5vw, 56px);
   scrollbar-gutter: stable;
 }
 
@@ -1086,6 +1132,14 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid color-mix(in srgb, var(--surface-contrast-border) 78%, transparent);
 }
 
+.profile-layout__hero--desktop .hero-rail {
+  border-bottom: none;
+  height: 100%;
+  overflow-y: auto;
+  padding-right: clamp(8px, 1vw, 16px);
+  scrollbar-gutter: stable;
+}
+
 .hero-panel {
   position: relative;
   padding: clamp(24px, 3.5vw, 32px) clamp(24px, 4vw, 34px) clamp(20px, 3vw, 28px);
@@ -1093,6 +1147,12 @@ onBeforeUnmount(() => {
   overflow: hidden;
   color: var(--text-1);
   border-bottom: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
+}
+
+.profile-layout__hero--desktop .hero-panel {
+  border-bottom: none;
+  min-height: 100%;
+  padding: clamp(36px, 5vh, 56px) clamp(32px, 4vw, 48px);
 }
 
 .hero-panel::before {
@@ -1131,6 +1191,12 @@ onBeforeUnmount(() => {
   gap: clamp(16px, 2.4vw, 24px);
   flex-wrap: wrap;
   z-index: 1;
+}
+
+.profile-layout__hero--desktop .hero-layout {
+  flex-direction: column;
+  align-items: stretch;
+  gap: clamp(18px, 2vw, 28px);
 }
 
 .hero-avatar {
@@ -1197,17 +1263,32 @@ onBeforeUnmount(() => {
 
 .hero-actions {
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: clamp(16px, 2.4vw, 24px);
+  width: 100%;
+}
+
+.hero-actions--inline {
+  flex-direction: row;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: clamp(12px, 2.4vw, 20px);
+  align-items: center;
+  gap: 14px;
+  width: auto;
 }
 
 .action-button {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
+  width: 100%;
   font-weight: 600;
   padding: 10px 18px;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.hero-actions--inline .action-button {
+  flex: 0 1 auto;
+  width: auto;
 }
 
 .action-button.subscribe {
@@ -1492,7 +1573,11 @@ onBeforeUnmount(() => {
 
 @media (min-width: 768px) {
   .profile-layout__body {
-    padding: 28px 0;
+    padding: clamp(28px, 4vh, 44px) clamp(24px, 6vw, 60px);
+  }
+
+  .profile-layout--two-column .profile-layout__body {
+    padding: clamp(32px, 4vh, 52px) clamp(36px, 6vw, 72px);
   }
 
   .tiers-grid {
@@ -1520,7 +1605,7 @@ onBeforeUnmount(() => {
 @media (max-width: 599px) {
 
   .profile-layout__body {
-    padding: 20px 0;
+    padding: 20px 16px 24px;
   }
 
   .hero-rail {
@@ -1587,13 +1672,12 @@ onBeforeUnmount(() => {
   }
 
   .hero-actions {
-    width: 100%;
     gap: 10px;
     margin-top: 16px;
   }
 
   .hero-actions .action-button {
-    flex: 1 1 100%;
+    width: 100%;
   }
 
   .close-btn {
@@ -1603,53 +1687,38 @@ onBeforeUnmount(() => {
 }
 
 @media (min-width: 1024px) {
-  .profile-layout {
-    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
-    grid-template-rows: 100%;
-    column-gap: 32px;
-    align-items: stretch;
+  .profile-dialog__inner {
+    padding: clamp(20px, 5vh, 48px) clamp(28px, 6vw, 96px);
   }
 
-  .profile-layout__hero {
-    border-bottom: none;
-    border-right: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
+  .profile-layout--two-column {
+    column-gap: clamp(40px, 4vw, 72px);
   }
 
-  .hero-rail {
-    position: sticky;
-    top: 0;
-    height: 100%;
-    overflow-y: auto;
+  .profile-layout__hero--desktop .hero-rail {
+    padding-right: clamp(12px, 1.6vw, 24px);
   }
 
-  .hero-panel {
-    border-bottom: none;
-    min-height: 100%;
-    padding: 36px 32px;
-  }
-
-  .hero-layout {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 18px;
+  .profile-layout__hero--desktop .hero-panel {
+    padding: clamp(40px, 6vh, 64px) clamp(36px, 4vw, 56px);
   }
 
   .hero-meta {
-    gap: clamp(14px, 2vw, 20px);
+    gap: clamp(16px, 2vw, 24px);
   }
 
-  .hero-actions {
+  .hero-actions--inline {
     flex-wrap: nowrap;
-    gap: 16px;
+    gap: 18px;
     margin-top: 24px;
   }
 
-  .hero-actions .action-button {
-    flex: 1 1 auto;
+  .hero-actions--inline .action-button {
+    flex: 1 1 180px;
   }
 
-  .profile-layout__body {
-    padding: 36px 40px 40px;
+  .profile-layout--two-column .profile-layout__body {
+    padding: clamp(36px, 5vh, 56px) clamp(44px, 6vw, 84px);
   }
 
   .tiers-section {
@@ -1671,18 +1740,17 @@ onBeforeUnmount(() => {
   }
 
   .empty-state {
-    padding: 28px 40px;
+    padding: 32px 48px;
   }
 }
 
 @media (min-width: 1280px) {
-  .profile-layout {
-    grid-template-columns: minmax(340px, 480px) minmax(0, 1fr);
-    column-gap: 56px;
+  .profile-layout--two-column {
+    column-gap: clamp(48px, 4vw, 88px);
   }
 
-  .hero-actions .action-button {
-    flex: 1 1 180px;
+  .hero-actions--inline .action-button {
+    flex: 1 1 200px;
   }
 }
 </style>
