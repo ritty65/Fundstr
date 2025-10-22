@@ -992,7 +992,7 @@ onBeforeUnmount(() => {
 }
 
 .profile-card {
-  width: min(100%, 1260px);
+  width: min(100%, 1440px);
   background: var(--surface-1);
   color: var(--text-1);
   border-radius: 24px;
@@ -1003,12 +1003,12 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  max-height: min(96vh, 1400px);
+  max-height: min(98vh, 1600px);
   min-height: 0;
 }
 
 .profile-card--two-column {
-  width: min(100%, 1320px);
+  width: min(100%, 1500px);
 }
 
 .profile-dialog--mobile .profile-card {
@@ -1027,7 +1027,7 @@ onBeforeUnmount(() => {
 }
 
 .profile-layout--two-column {
-  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  grid-template-columns: minmax(360px, 460px) minmax(0, 1.3fr);
   grid-template-rows: 1fr;
   column-gap: clamp(32px, 5vw, 64px);
   align-items: stretch;
@@ -1055,17 +1055,17 @@ onBeforeUnmount(() => {
 }
 
 .profile-layout__content--desktop {
-  padding-right: clamp(8px, 1.4vw, 18px);
+  padding-right: clamp(4px, 1vw, 16px);
 }
 
 .profile-layout__body {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: clamp(16px, 3vh, 32px);
   min-height: 0;
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: clamp(24px, 4vh, 40px) clamp(16px, 5vw, 56px);
+  padding: clamp(24px, 3.8vh, 40px) clamp(12px, 4vw, 44px);
   scrollbar-gutter: stable;
 }
 
