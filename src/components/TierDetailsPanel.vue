@@ -319,11 +319,6 @@ function emitSubscribe() {
   display: none;
   flex-direction: column;
   gap: clamp(20px, 4vh, 32px);
-  background: color-mix(in srgb, var(--surface-1) 97%, var(--surface-2) 3%);
-  border-radius: 20px;
-  --tier-slide-padding: clamp(12px, 2vw, 20px);
-  padding: var(--tier-slide-padding);
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
   min-height: 0;
 }
 
