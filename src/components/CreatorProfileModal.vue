@@ -1,10 +1,5 @@
 <template>
-  <q-dialog
-    v-model="showLocal"
-    persistent
-    backdrop-filter="blur(6px)"
-    style="width: min(94vw, 360px); max-width: 360px;"
-  >
+  <q-dialog v-model="showLocal" persistent backdrop-filter="blur(6px)" class="profile-dialog">
     <q-card class="profile-card">
       <q-card-section class="profile-hero">
         <div class="hero-panel">
@@ -877,9 +872,14 @@ onBeforeUnmount(() => {
   background-color: rgba(0, 0, 0, 0.7);
 }
 
+.profile-dialog {
+  width: min(94vw, 960px);
+  max-width: 960px;
+}
+
 .profile-card {
   width: 100%;
-  max-width: 100%;
+  max-width: 960px;
   background: var(--surface-1);
   color: var(--text-1);
   border-radius: 16px;
@@ -896,7 +896,7 @@ onBeforeUnmount(() => {
 
 .hero-panel {
   position: relative;
-  padding: 26px 24px 22px;
+  padding: 28px 28px 24px;
   background: var(--surface-1);
   overflow: hidden;
   color: var(--text-1);
@@ -936,7 +936,7 @@ onBeforeUnmount(() => {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 28px;
   z-index: 1;
 }
 
@@ -963,8 +963,8 @@ onBeforeUnmount(() => {
 .hero-meta {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-width: min(320px, 100%);
+  gap: 12px;
+  max-width: min(440px, 100%);
 }
 
 .hero-name {
@@ -991,8 +991,8 @@ onBeforeUnmount(() => {
 
 .hero-actions {
   display: flex;
-  gap: 10px;
-  margin-top: 16px;
+  gap: 12px;
+  margin-top: 18px;
   flex-wrap: nowrap;
 }
 
@@ -1265,6 +1265,15 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 599px) {
+  .profile-dialog {
+    width: 100vw;
+    max-width: 100vw;
+  }
+
+  .profile-card {
+    border-radius: 0;
+  }
+
   .hero-panel {
     padding: 22px 18px 18px;
   }
@@ -1322,6 +1331,27 @@ onBeforeUnmount(() => {
   .close-btn {
     top: 12px;
     right: 12px;
+  }
+}
+
+@media (min-width: 900px) {
+  .hero-panel {
+    padding: 36px 42px 32px;
+  }
+
+  .hero-layout {
+    align-items: flex-start;
+    gap: 36px;
+  }
+
+  .hero-meta {
+    gap: 14px;
+    max-width: 520px;
+  }
+
+  .hero-actions {
+    margin-top: 24px;
+    gap: 16px;
   }
 }
 </style>
