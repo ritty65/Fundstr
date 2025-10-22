@@ -10,58 +10,60 @@
     <q-card class="profile-card">
       <div class="profile-layout">
         <div class="profile-layout__hero">
-          <q-card-section class="profile-hero">
-            <div class="hero-panel">
-              <q-btn
-                flat
-                round
-                dense
-                icon="close"
-                class="close-btn"
-                @click="close"
-                aria-label="Close creator profile"
-              />
-              <div class="hero-layout">
-                <div class="hero-avatar">
-                  <q-avatar size="120px" class="profile-avatar">
-                    <img :src="creatorAvatar" alt="Creator avatar" @error="onAvatarError" />
-                  </q-avatar>
-                </div>
-                <div class="hero-meta">
-                  <div class="hero-name">{{ displayName }}</div>
-                  <div v-if="nip05" class="hero-handle">{{ nip05 }}</div>
-                  <div v-if="aboutText" class="hero-about text-body2">{{ aboutText }}</div>
-                  <div v-if="creator" class="hero-actions">
-                    <q-btn
-                      unelevated
-                      class="action-button subscribe"
-                      color="accent"
-                      :disable="!hasTiers"
-                      label="Subscribe"
-                      no-caps
-                      @click="handleSubscribe(primaryTierId || undefined)"
-                    />
-                    <q-btn
-                      outline
-                      class="action-button"
-                      color="accent"
-                      label="Message"
-                      no-caps
-                      @click="$emit('message', pubkey)"
-                    />
-                    <q-btn
-                      outline
-                      class="action-button"
-                      color="accent"
-                      label="Donate"
-                      no-caps
-                      @click="$emit('donate', pubkey)"
-                    />
+          <div class="hero-rail">
+            <q-card-section class="profile-hero">
+              <div class="hero-panel">
+                <q-btn
+                  flat
+                  round
+                  dense
+                  icon="close"
+                  class="close-btn"
+                  @click="close"
+                  aria-label="Close creator profile"
+                />
+                <div class="hero-layout">
+                  <div class="hero-avatar">
+                    <q-avatar size="120px" class="profile-avatar">
+                      <img :src="creatorAvatar" alt="Creator avatar" @error="onAvatarError" />
+                    </q-avatar>
+                  </div>
+                  <div class="hero-meta">
+                    <div class="hero-name">{{ displayName }}</div>
+                    <div v-if="nip05" class="hero-handle">{{ nip05 }}</div>
+                    <div v-if="aboutText" class="hero-about text-body2">{{ aboutText }}</div>
+                    <div v-if="creator" class="hero-actions">
+                      <q-btn
+                        unelevated
+                        class="action-button subscribe"
+                        color="accent"
+                        :disable="!hasTiers"
+                        label="Subscribe"
+                        no-caps
+                        @click="handleSubscribe(primaryTierId || undefined)"
+                      />
+                      <q-btn
+                        outline
+                        class="action-button"
+                        color="accent"
+                        label="Message"
+                        no-caps
+                        @click="$emit('message', pubkey)"
+                      />
+                      <q-btn
+                        outline
+                        class="action-button"
+                        color="accent"
+                        label="Donate"
+                        no-caps
+                        @click="$emit('donate', pubkey)"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </q-card-section>
+            </q-card-section>
+          </div>
         </div>
 
         <div class="profile-layout__content">
@@ -979,6 +981,8 @@ onBeforeUnmount(() => {
 
 .profile-layout__hero {
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .profile-layout__content {
@@ -1028,9 +1032,18 @@ onBeforeUnmount(() => {
   padding: 0;
 }
 
+.hero-rail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background: color-mix(in srgb, var(--surface-1) 96%, var(--surface-2) 4%);
+  border-bottom: 1px solid color-mix(in srgb, var(--surface-contrast-border) 78%, transparent);
+}
+
 .hero-panel {
   position: relative;
-  padding: 28px 28px 24px;
+  padding: clamp(24px, 3.5vw, 32px) clamp(24px, 4vw, 34px) clamp(20px, 3vw, 28px);
   background: var(--surface-1);
   overflow: hidden;
   color: var(--text-1);
@@ -1070,7 +1083,7 @@ onBeforeUnmount(() => {
   position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 24px;
+  gap: clamp(20px, 3vw, 28px);
   z-index: 1;
 }
 
@@ -1097,19 +1110,20 @@ onBeforeUnmount(() => {
 .hero-meta {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  max-width: min(440px, 100%);
+  gap: clamp(12px, 2vw, 18px);
+  flex: 1 1 260px;
+  min-width: 0;
 }
 
 .hero-name {
-  font-size: 1.625rem;
+  font-size: clamp(1.55rem, 1.3vw + 1.3rem, 2.2rem);
   font-weight: 700;
   letter-spacing: 0.01em;
   color: var(--text-1);
 }
 
 .hero-handle {
-  font-size: 1rem;
+  font-size: clamp(0.95rem, 0.4vw + 0.9rem, 1.1rem);
   font-weight: 650;
   color: color-mix(in srgb, var(--text-1) 92%, var(--text-2) 8%);
   letter-spacing: 0.045em;
@@ -1119,19 +1133,20 @@ onBeforeUnmount(() => {
   color: color-mix(in srgb, var(--text-1) 96%, var(--text-2) 4%);
   font-weight: 500;
   letter-spacing: 0.01em;
-  line-height: 1.55;
+  line-height: 1.6;
   white-space: pre-line;
 }
 
 .hero-actions {
   display: flex;
-  gap: 14px;
-  margin-top: 20px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: clamp(16px, 3vw, 24px);
 }
 
 .action-button {
-  flex: 1;
+  flex: 1 1 160px;
+  min-width: 0;
   font-weight: 600;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
@@ -1441,6 +1456,10 @@ onBeforeUnmount(() => {
     padding: 20px 0;
   }
 
+  .hero-rail {
+    border-bottom: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
+  }
+
   .hero-panel {
     padding: 24px 20px 20px;
   }
@@ -1510,8 +1529,8 @@ onBeforeUnmount(() => {
 
   .hero-actions {
     width: 100%;
-    flex-wrap: wrap;
     gap: 10px;
+    margin-top: 16px;
   }
 
   .hero-actions .action-button {
@@ -1527,38 +1546,46 @@ onBeforeUnmount(() => {
 @media (min-width: 1024px) {
   .profile-layout {
     display: grid;
-    grid-template-columns: 360px minmax(0, 1fr);
-    column-gap: 36px;
+    grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+    column-gap: 44px;
+    align-items: flex-start;
     height: 100%;
   }
 
   .profile-layout__hero {
-    position: sticky;
-    top: 0;
-    align-self: start;
-    width: 360px;
+    align-self: stretch;
   }
 
-  .profile-layout__content {
-    min-height: 0;
+  .hero-rail {
+    position: sticky;
+    top: 0;
+    border-radius: 26px;
+    border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 82%, transparent);
+    box-shadow: 0 26px 52px rgba(9, 14, 28, 0.2);
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-1) 95%, var(--surface-2) 5%) 0%,
+      color-mix(in srgb, var(--surface-1) 98%, var(--surface-2) 2%) 100%
+    );
+    overflow: hidden;
   }
 
   .hero-panel {
-    padding: 34px 36px 30px;
+    padding: clamp(30px, 4vw, 40px) clamp(30px, 4.5vw, 44px) clamp(26px, 3.6vw, 38px);
+    border-bottom: none;
   }
 
   .hero-layout {
-    gap: 32px;
+    gap: clamp(28px, 3vw, 40px);
   }
 
   .hero-meta {
-    gap: 16px;
-    max-width: 560px;
+    gap: clamp(16px, 2vw, 24px);
   }
 
   .hero-actions {
-    margin-top: 28px;
-    gap: 18px;
+    margin-top: clamp(24px, 3vw, 36px);
+    gap: clamp(16px, 2vw, 24px);
   }
 
   .profile-layout__body {
@@ -1566,20 +1593,31 @@ onBeforeUnmount(() => {
   }
 
   .section-divider {
-    margin: 0 36px;
+    margin: 0 40px;
   }
 
   .loading-state {
-    padding: 56px 36px;
+    padding: 56px 40px;
   }
 
   .tiers-section {
-    padding: 28px 36px 40px;
-    gap: 22px;
+    padding: 28px 40px 44px;
+    gap: 24px;
   }
 
   .empty-state {
-    padding: 28px 36px;
+    padding: 28px 40px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .profile-layout {
+    grid-template-columns: minmax(340px, 480px) minmax(0, 1fr);
+    column-gap: 56px;
+  }
+
+  .hero-actions .action-button {
+    flex: 1 1 180px;
   }
 }
 </style>
