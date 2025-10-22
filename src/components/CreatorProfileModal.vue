@@ -81,10 +81,11 @@
                   <div
                     v-for="tier in tiers"
                     :key="tier.id"
+                    :id="tierRowElementId(tier.id)"
                     :class="[
                       'tier-row',
                       {
-                        'tier-row--recommended': tier.id === recommendedTierId,
+                        'tier-row--focus': tier.id === focusedTierId,
                       },
                     ]"
                   >
@@ -94,16 +95,6 @@
                           <div class="tier-row__name text-subtitle2 text-weight-medium text-1">
                             {{ tier.name }}
                           </div>
-                          <q-chip
-                            v-if="tier.id === recommendedTierId"
-                            dense
-                            class="tier-row__chip"
-                            color="accent"
-                            text-color="white"
-                            square
-                          >
-                            Recommended
-                          </q-chip>
                         </div>
                         <div class="tier-row__cta">
                           <div class="tier-row__pricing">
@@ -218,9 +209,9 @@
               color="accent"
               class="profile-sticky-footer__cta"
               no-caps
-              label="Subscribe to recommended tier"
-              :disable="!recommendedTierId && !primaryTierId"
-              @click="handleSubscribe(recommendedTierId || primaryTierId || undefined)"
+              label="Choose a tier"
+              :disable="!primaryTierId"
+              @click="focusTierSelection()"
             />
           </div>
         </div>
@@ -274,6 +265,7 @@ const tiers = ref<TierDetails[]>([]);
 const showLocal = ref(false);
 const isDialogMaximized = computed(() => $q.screen.lt.sm);
 const expandedTierIds = ref<Record<string, boolean>>({});
+const focusedTierId = ref<string | null>(null);
 
 const discoveryClient = useFundstrDiscovery();
 
@@ -323,40 +315,7 @@ const hasTiers = computed(() => tiers.value.length > 0);
 
 const primaryTierId = computed(() => tiers.value[0]?.id ?? '');
 
-const recommendedTierId = computed(() => {
-  if (!tiers.value.length) {
-    return '';
-  }
-
-  let best: TierDetails | null = null;
-
-  for (const tier of tiers.value) {
-    if (!best) {
-      best = tier;
-      continue;
-    }
-
-    const bestBenefits = Array.isArray(best.benefits) ? best.benefits.length : 0;
-    const tierBenefits = Array.isArray(tier.benefits) ? tier.benefits.length : 0;
-
-    if (tierBenefits > bestBenefits) {
-      best = tier;
-      continue;
-    }
-
-    if (tierBenefits === bestBenefits) {
-      const bestPrice = typeof best.priceMsat === 'number' ? best.priceMsat : Number.POSITIVE_INFINITY;
-      const tierPrice = typeof tier.priceMsat === 'number' ? tier.priceMsat : Number.POSITIVE_INFINITY;
-
-      if (tierPrice < bestPrice) {
-        best = tier;
-        continue;
-      }
-    }
-  }
-
-  return best?.id ?? '';
-});
+let focusTimeout: ReturnType<typeof setTimeout> | null = null;
 
 watch(
   tiers,
@@ -368,6 +327,9 @@ watch(
       }
     }
     expandedTierIds.value = nextState;
+    if (focusedTierId.value && !newTiers.some((tier) => tier.id === focusedTierId.value)) {
+      focusedTierId.value = null;
+    }
   },
   { deep: true },
 );
@@ -728,6 +690,28 @@ function handleSubscribe(tierId?: string) {
   close();
 }
 
+function focusTierSelection() {
+  const tierId = primaryTierId.value;
+  if (!tierId) {
+    return;
+  }
+
+  expandedTierIds.value = { ...expandedTierIds.value, [tierId]: true };
+  focusedTierId.value = tierId;
+  clearFocusTimeout();
+  focusTimeout = setTimeout(() => {
+    focusedTierId.value = null;
+    focusTimeout = null;
+  }, 1600);
+
+  if (typeof window !== 'undefined') {
+    window.requestAnimationFrame(() => {
+      const element = document.getElementById(tierRowElementId(tierId));
+      element?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
+}
+
 function tierFrequencyLabel(tier: TierDetails): string | null {
   return tier.periodLabel;
 }
@@ -766,6 +750,11 @@ function tierMediaItems(tier: TierDetails): TierMediaItem[] {
 
 function tierDetailsId(tierId: string): string {
   return `tier-desc-${tierId}`;
+}
+
+function tierRowElementId(tierId: string): string {
+  const safeId = tierId.replace(/[^A-Za-z0-9_-]/g, '-');
+  return `tier-row-${safeId}`;
 }
 
 function hasTierDescription(tier: TierDetails): boolean {
@@ -809,6 +798,8 @@ function resetState() {
   creator.value = null;
   tiers.value = [];
   expandedTierIds.value = {};
+  focusedTierId.value = null;
+  clearFocusTimeout();
 }
 
 function resolveTierId(rawTier: unknown): string | null {
@@ -930,8 +921,16 @@ function normalizeMediaItem(entry: unknown): TierMediaItem | null {
   return { url, title, type };
 }
 
+function clearFocusTimeout() {
+  if (focusTimeout !== null) {
+    clearTimeout(focusTimeout);
+    focusTimeout = null;
+  }
+}
+
 onBeforeUnmount(() => {
   cancelActiveRequest();
+  clearFocusTimeout();
 });
 </script>
 
@@ -1224,18 +1223,14 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-.tier-row--recommended {
+.tier-row--focus {
   border-color: color-mix(in srgb, var(--accent-500) 70%, transparent);
   box-shadow: 0 16px 36px rgba(12, 20, 40, 0.18);
 }
 
-.tier-row--recommended::before {
+.tier-row--focus::before {
   background: linear-gradient(180deg, var(--accent-500) 0%, color-mix(in srgb, var(--accent-600) 65%, var(--accent-200) 35%) 100%);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-500) 28%, transparent);
-}
-
-.tier-row--recommended .tier-row__chip {
-  background: color-mix(in srgb, var(--accent-500) 78%, var(--accent-200) 22%);
 }
 
 .tier-row:hover,
@@ -1245,8 +1240,9 @@ onBeforeUnmount(() => {
   box-shadow: 0 18px 36px rgba(10, 16, 32, 0.18);
 }
 
-.tier-row--recommended:hover,
-.tier-row--recommended:focus-within {
+
+.tier-row--focus:hover,
+.tier-row--focus:focus-within {
   border-color: color-mix(in srgb, var(--accent-500) 85%, transparent);
   box-shadow: 0 20px 42px rgba(12, 20, 40, 0.22);
 }
@@ -1287,15 +1283,6 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   background: var(--accent-500);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-500) 16%, transparent);
-}
-
-.tier-row__chip {
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 4px 10px;
 }
 
 .tier-row__cta {
