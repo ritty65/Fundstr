@@ -318,7 +318,7 @@ function emitSubscribe() {
   gap: clamp(20px, 4vh, 32px);
   background: color-mix(in srgb, var(--surface-1) 97%, var(--surface-2) 3%);
   border-radius: 20px;
-  --tier-slide-padding: clamp(20px, 3vw, 32px);
+  --tier-slide-padding: clamp(16px, 2.6vw, 24px);
   padding: var(--tier-slide-padding);
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
   min-height: 0;
@@ -392,7 +392,7 @@ function emitSubscribe() {
   grid-template-areas:
     'media'
     'info';
-  gap: clamp(28px, 5vw, 48px);
+  gap: clamp(24px, 4.2vw, 40px);
   align-items: stretch;
 }
 
@@ -403,19 +403,19 @@ function emitSubscribe() {
   gap: 18px;
   background: color-mix(in srgb, var(--surface-2) 85%, transparent);
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
-  border-radius: 16px;
-  padding: clamp(20px, 3vw, 28px);
+  border-radius: 14px;
+  padding: clamp(16px, 2.4vw, 24px);
 }
 
 .tier-slide__media-stage {
   width: 100%;
   aspect-ratio: 4 / 3;
   min-height: clamp(240px, 52vw, 420px);
-  border-radius: 16px;
+  border-radius: 14px;
   overflow: hidden;
   background: color-mix(in srgb, var(--surface-1) 88%, black 12%);
-  border: 1px solid color-mix(in srgb, var(--accent-200) 45%, transparent);
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.12), 0 0 0 1px color-mix(in srgb, var(--accent-200) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-200) 38%, transparent);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.1), 0 0 0 1px color-mix(in srgb, var(--accent-200) 48%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -662,7 +662,7 @@ function emitSubscribe() {
 
 @media (max-width: 1023px) {
   .tier-slide__body {
-    gap: clamp(20px, 6vw, 32px);
+    gap: clamp(20px, 5.2vw, 30px);
   }
 
   .tier-slide__title {
