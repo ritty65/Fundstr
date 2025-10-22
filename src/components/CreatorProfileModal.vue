@@ -982,7 +982,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  padding: clamp(16px, 4vh, 40px) clamp(16px, 6vw, 84px);
+  padding: clamp(12px, 3vh, 28px) clamp(12px, 4.5vw, 48px);
   box-sizing: border-box;
 }
 
@@ -1061,11 +1061,11 @@ onBeforeUnmount(() => {
 .profile-layout__body {
   display: flex;
   flex-direction: column;
-  gap: clamp(16px, 3vh, 32px);
+  gap: clamp(16px, 2.8vh, 28px);
   min-height: 0;
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: clamp(24px, 3.8vh, 40px) clamp(12px, 4vw, 44px);
+  padding: clamp(20px, 3.4vh, 32px) clamp(12px, 3.5vw, 32px);
   scrollbar-gutter: stable;
 }
 
@@ -1298,7 +1298,7 @@ onBeforeUnmount(() => {
 }
 
 .tiers-section {
-  padding: 24px 28px 32px;
+  padding: clamp(16px, 3vw, 22px) clamp(16px, 4vw, 24px) clamp(20px, 4vw, 28px);
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -1312,9 +1312,9 @@ onBeforeUnmount(() => {
 .tiers-carousel {
   display: flex;
   flex-direction: column;
-  gap: clamp(20px, 2.4vw, 28px);
-  padding: clamp(20px, 4vw, 30px);
-  border-radius: 32px;
+  gap: clamp(18px, 2vw, 24px);
+  padding: clamp(16px, 3vw, 24px);
+  border-radius: 30px;
   background: color-mix(in srgb, var(--surface-2) 78%, transparent);
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
 }
@@ -1323,22 +1323,22 @@ onBeforeUnmount(() => {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: clamp(18px, 2vw, 24px);
-  padding: clamp(24px, 3vw, 32px);
+  gap: clamp(16px, 2vw, 22px);
+  padding: clamp(18px, 2.4vw, 26px);
   outline: none;
-  border-radius: 28px;
+  border-radius: 24px;
   background: linear-gradient(
     160deg,
     color-mix(in srgb, var(--surface-1) 96%, transparent) 0%,
     color-mix(in srgb, var(--surface-2) 88%, transparent) 100%
   );
-  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.16), 0 8px 20px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.14), 0 6px 18px rgba(15, 23, 42, 0.1);
 }
 
 .tiers-carousel__viewport:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-200) 50%, transparent),
-    0 24px 48px rgba(15, 23, 42, 0.16),
-    0 8px 20px rgba(15, 23, 42, 0.12);
+    0 20px 40px rgba(15, 23, 42, 0.14),
+    0 6px 18px rgba(15, 23, 42, 0.1);
 }
 
 .tiers-carousel__slide {
@@ -1350,7 +1350,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: clamp(12px, 2vw, 20px);
+  gap: clamp(10px, 1.6vw, 18px);
   width: 100%;
 }
 
@@ -1358,7 +1358,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(18px, 3vw, 32px);
+  gap: clamp(16px, 2.4vw, 28px);
   width: 100%;
   flex-wrap: wrap;
 }
@@ -1436,23 +1436,23 @@ onBeforeUnmount(() => {
 }
 @media (min-width: 768px) {
   .profile-layout__body {
-    padding: clamp(28px, 4vh, 44px) clamp(24px, 6vw, 60px);
+    padding: clamp(24px, 3.6vh, 36px) clamp(20px, 5vw, 40px);
   }
 
   .profile-layout--two-column .profile-layout__body {
-    padding: clamp(32px, 4vh, 52px) clamp(36px, 6vw, 72px);
+    padding: clamp(28px, 3.8vh, 42px) clamp(26px, 5.4vw, 48px);
   }
 
   .tiers-carousel {
-    gap: clamp(24px, 2.4vw, 32px);
+    gap: clamp(20px, 2.2vw, 28px);
   }
 
   .tiers-carousel__controls {
-    gap: clamp(14px, 1.6vw, 20px);
+    gap: clamp(12px, 1.4vw, 18px);
   }
 
   .tiers-carousel__controls-inner {
-    gap: clamp(20px, 2.6vw, 36px);
+    gap: clamp(18px, 2.4vw, 32px);
   }
 
   .tiers-carousel__control {
@@ -1465,7 +1465,7 @@ onBeforeUnmount(() => {
 @media (max-width: 599px) {
 
   .profile-layout__body {
-    padding: 20px 16px 24px;
+    padding: 18px 14px 22px;
   }
 
   .hero-rail {
@@ -1487,28 +1487,28 @@ onBeforeUnmount(() => {
   }
 
   .tiers-section {
-    padding: 20px 20px 26px;
+    padding: 16px 16px 22px;
   }
 
   .tiers-carousel {
-    padding: 16px 16px 20px;
-    border-radius: 28px;
+    padding: 14px 14px 18px;
+    border-radius: 24px;
   }
 
   .tiers-carousel__viewport {
-    padding: 20px;
+    padding: 16px 18px;
   }
 
   .tiers-carousel__controls {
-    gap: 14px;
+    gap: 12px;
   }
 
   .tiers-carousel__controls-inner {
-    gap: 16px;
+    gap: 14px;
   }
 
   .tiers-carousel__dots {
-    padding: 6px 12px;
+    padding: 6px 10px;
   }
 
   .tiers-carousel__control {
@@ -1548,11 +1548,11 @@ onBeforeUnmount(() => {
 
 @media (min-width: 1024px) {
   .profile-dialog__inner {
-    padding: clamp(20px, 5vh, 48px) clamp(28px, 6vw, 96px);
+    padding: clamp(16px, 4vh, 32px) clamp(20px, 5vw, 52px);
   }
 
   .profile-layout--two-column {
-    column-gap: clamp(40px, 4vw, 72px);
+    column-gap: clamp(36px, 3.8vw, 64px);
   }
 
   .profile-layout__hero--desktop .hero-rail {
@@ -1578,7 +1578,7 @@ onBeforeUnmount(() => {
   }
 
   .profile-layout--two-column .profile-layout__body {
-    padding: clamp(36px, 5vh, 56px) clamp(44px, 6vw, 84px);
+    padding: clamp(28px, 4.2vh, 44px) clamp(24px, 5vw, 52px);
   }
 
   .tiers-section {
@@ -1587,16 +1587,16 @@ onBeforeUnmount(() => {
   }
 
   .tiers-carousel__viewport {
-    padding: clamp(28px, 2.4vw, 38px);
+    padding: clamp(22px, 2vw, 28px);
   }
 
   .tiers-carousel__controls {
-    gap: clamp(16px, 1.4vw, 22px);
+    gap: clamp(14px, 1.2vw, 20px);
   }
 
   .tiers-carousel__controls-inner {
-    gap: clamp(24px, 3vw, 40px);
-    max-width: 520px;
+    gap: clamp(20px, 2.4vw, 32px);
+    max-width: 480px;
   }
 
   .empty-state {
