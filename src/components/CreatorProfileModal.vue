@@ -65,7 +65,7 @@
         </div>
 
         <div class="profile-layout__content">
-          <div class="profile-layout__scroll">
+          <div class="profile-layout__body">
             <q-card-section v-if="loading" class="loading-state">
               <q-spinner color="accent" size="42px" />
             </q-card-section>
@@ -209,17 +209,17 @@
                 We couldn't load this creator's profile. Please try again later.
               </q-card-section>
             </template>
-            <div class="profile-sticky-footer" v-if="hasTiers">
-              <q-btn
-                unelevated
-                color="accent"
-                class="profile-sticky-footer__cta"
-                no-caps
-                label="Subscribe to recommended tier"
-                :disable="!recommendedTierId && !primaryTierId"
-                @click="handleSubscribe(recommendedTierId || primaryTierId || undefined)"
-              />
-            </div>
+          </div>
+          <div class="profile-sticky-footer" v-if="hasTiers && $q.screen.lt.md">
+            <q-btn
+              unelevated
+              color="accent"
+              class="profile-sticky-footer__cta"
+              no-caps
+              label="Subscribe to recommended tier"
+              :disable="!recommendedTierId && !primaryTierId"
+              @click="handleSubscribe(recommendedTierId || primaryTierId || undefined)"
+            />
           </div>
         </div>
       </div>
@@ -939,13 +939,13 @@ onBeforeUnmount(() => {
 }
 
 .profile-dialog {
-  width: min(96vw, 1140px);
-  max-width: 1140px;
+  width: min(96vw, 1360px);
+  max-width: 1360px;
 }
 
 .profile-card {
   width: 100%;
-  max-width: 1140px;
+  max-width: 1360px;
   background: var(--surface-1);
   color: var(--text-1);
   border-radius: 16px;
@@ -955,8 +955,8 @@ onBeforeUnmount(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  height: min(96vh, 940px);
-  max-height: min(96vh, 940px);
+  height: min(95vh, 1040px);
+  max-height: min(95vh, 1040px);
 }
 
 .profile-dialog--maximized {
@@ -986,24 +986,25 @@ onBeforeUnmount(() => {
   flex-direction: column;
   min-height: 0;
   flex: 1 1 auto;
+  height: 100%;
 }
 
-.profile-layout__scroll {
+.profile-layout__body {
   display: flex;
   flex-direction: column;
   gap: 0;
   min-height: 0;
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 32px 0;
+  padding: 24px 0;
   scrollbar-gutter: stable;
 }
 
 .profile-sticky-footer {
   position: sticky;
   bottom: 0;
-  margin-top: 24px;
-  padding: 16px 28px 28px;
+  margin-top: 20px;
+  padding: 14px 24px 24px;
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--surface-1) 94%, transparent) 0%,
@@ -1029,7 +1030,7 @@ onBeforeUnmount(() => {
 
 .hero-panel {
   position: relative;
-  padding: 32px 32px 28px;
+  padding: 28px 28px 24px;
   background: var(--surface-1);
   overflow: hidden;
   color: var(--text-1);
@@ -1158,20 +1159,20 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 56px 32px;
+  padding: 48px 28px;
 }
 
 .section-divider {
   opacity: 1;
   background: color-mix(in srgb, var(--surface-contrast-border) 90%, transparent);
-  margin: 0 32px;
+  margin: 0 28px;
 }
 
 .tiers-section {
-  padding: 28px 32px 36px;
+  padding: 24px 28px 32px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
 }
 
 .section-heading {
@@ -1405,6 +1406,10 @@ onBeforeUnmount(() => {
 }
 
 @media (min-width: 768px) {
+  .profile-layout__body {
+    padding: 28px 0;
+  }
+
   .tier-row {
     padding: 26px 28px;
   }
@@ -1432,8 +1437,8 @@ onBeforeUnmount(() => {
 
 @media (max-width: 599px) {
 
-  .profile-layout__scroll {
-    padding: 24px 0;
+  .profile-layout__body {
+    padding: 20px 0;
   }
 
   .hero-panel {
@@ -1491,7 +1496,7 @@ onBeforeUnmount(() => {
   }
 
   .profile-sticky-footer {
-    margin-top: 20px;
+    margin-top: 16px;
     padding: 12px 20px 24px;
   }
 
@@ -1519,11 +1524,11 @@ onBeforeUnmount(() => {
   }
 }
 
-@media (min-width: 900px) {
+@media (min-width: 1024px) {
   .profile-layout {
     display: grid;
     grid-template-columns: 360px minmax(0, 1fr);
-    column-gap: 32px;
+    column-gap: 36px;
     height: 100%;
   }
 
@@ -1539,7 +1544,7 @@ onBeforeUnmount(() => {
   }
 
   .hero-panel {
-    padding: 40px 36px 36px;
+    padding: 34px 36px 30px;
   }
 
   .hero-layout {
@@ -1548,7 +1553,7 @@ onBeforeUnmount(() => {
 
   .hero-meta {
     gap: 16px;
-    max-width: 520px;
+    max-width: 560px;
   }
 
   .hero-actions {
@@ -1556,21 +1561,25 @@ onBeforeUnmount(() => {
     gap: 18px;
   }
 
+  .profile-layout__body {
+    padding: 32px 0;
+  }
+
   .section-divider {
     margin: 0 36px;
   }
 
   .loading-state {
-    padding: 64px 40px;
+    padding: 56px 36px;
   }
 
   .tiers-section {
-    padding: 32px 40px 44px;
-    gap: 24px;
+    padding: 28px 36px 40px;
+    gap: 22px;
   }
 
   .empty-state {
-    padding: 32px 40px;
+    padding: 28px 36px;
   }
 }
 </style>
