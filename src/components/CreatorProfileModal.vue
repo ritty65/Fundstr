@@ -1,5 +1,12 @@
 <template>
-  <q-dialog v-model="showLocal" persistent backdrop-filter="blur(6px)" class="profile-dialog">
+  <q-dialog
+    v-model="showLocal"
+    persistent
+    backdrop-filter="blur(6px)"
+    class="profile-dialog"
+    :class="{ 'profile-dialog--maximized': isDialogMaximized }"
+    :maximized="isDialogMaximized"
+  >
     <q-card class="profile-card">
       <div class="profile-layout">
         <div class="profile-layout__hero">
@@ -260,6 +267,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { nip19 } from 'nostr-tools';
+import { useQuasar } from 'quasar';
 import MediaPreview from 'components/MediaPreview.vue';
 import { formatMsatToSats, type Creator } from 'src/lib/fundstrApi';
 import { useFundstrDiscovery } from 'src/api/fundstrDiscovery';
@@ -292,11 +300,13 @@ interface TierDetails {
 }
 
 const router = useRouter();
+const $q = useQuasar();
 
 const loading = ref(false);
 const creator = ref<Creator | null>(null);
 const tiers = ref<TierDetails[]>([]);
 const showLocal = ref(false);
+const isDialogMaximized = computed(() => $q.screen.lt.sm);
 const expandedTierIds = ref<Record<string, boolean>>({});
 
 const discoveryClient = useFundstrDiscovery();
@@ -1005,13 +1015,13 @@ onBeforeUnmount(() => {
 }
 
 .profile-dialog {
-  width: min(94vw, 960px);
-  max-width: 960px;
+  width: min(96vw, 1140px);
+  max-width: 1140px;
 }
 
 .profile-card {
   width: 100%;
-  max-width: 960px;
+  max-width: 1140px;
   background: var(--surface-1);
   color: var(--text-1);
   border-radius: 16px;
@@ -1021,7 +1031,20 @@ onBeforeUnmount(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  max-height: min(92vh, 820px);
+  height: min(96vh, 940px);
+  max-height: min(96vh, 940px);
+}
+
+.profile-dialog--maximized {
+  width: 100vw;
+  max-width: 100vw;
+}
+
+.profile-dialog--maximized .profile-card {
+  border-radius: 0;
+  height: 100%;
+  max-height: none;
+  min-height: 100%;
 }
 
 .profile-layout {
@@ -1038,6 +1061,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  flex: 1 1 auto;
 }
 
 .profile-layout__scroll {
@@ -1045,8 +1069,10 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 0;
   min-height: 0;
-  overflow-y: visible;
-  padding-bottom: 32px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 32px 0;
+  scrollbar-gutter: stable;
 }
 
 
@@ -1566,17 +1592,8 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 599px) {
-  .profile-dialog {
-    width: 100vw;
-    max-width: 100vw;
-  }
-
-  .profile-card {
-    border-radius: 0;
-  }
-
   .profile-layout__scroll {
-    padding-bottom: 24px;
+    padding: 24px 0;
   }
 
   .hero-panel {
@@ -1675,12 +1692,6 @@ onBeforeUnmount(() => {
 
   .profile-layout__content {
     min-height: 0;
-  }
-
-  .profile-layout__scroll {
-    overflow-y: auto;
-    padding: 32px 0 32px;
-    scrollbar-gutter: stable;
   }
 
   .hero-panel {
