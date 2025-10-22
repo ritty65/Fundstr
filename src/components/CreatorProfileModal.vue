@@ -8,9 +8,9 @@
     :maximized="isDialogMaximized"
     content-class="profile-dialog__inner"
   >
-    <q-card class="profile-card" :class="{ 'profile-card--two-column': isDesktopViewport }">
-      <div class="profile-layout" :class="{ 'profile-layout--two-column': isDesktopViewport }">
-        <div class="profile-layout__hero" :class="{ 'profile-layout__hero--desktop': isDesktopViewport }">
+    <q-card class="profile-card" :class="{ 'profile-card--two-column': isTwoColumnViewport }">
+      <div class="profile-layout" :class="{ 'profile-layout--two-column': isTwoColumnViewport }">
+        <div class="profile-layout__hero" :class="{ 'profile-layout__hero--desktop': isTwoColumnViewport }">
           <div class="hero-rail">
             <q-card-section class="profile-hero">
               <div class="hero-panel">
@@ -90,7 +90,7 @@
           </div>
         </div>
 
-        <div class="profile-layout__content" :class="{ 'profile-layout__content--desktop': isDesktopViewport }">
+        <div class="profile-layout__content" :class="{ 'profile-layout__content--desktop': isTwoColumnViewport }">
           <div class="profile-layout__body">
             <q-card-section v-if="loading" class="loading-state">
               <q-spinner color="accent" size="42px" />
@@ -244,6 +244,7 @@ const tiers = ref<TierDetails[]>([]);
 const showLocal = ref(false);
 const isMobileViewport = computed(() => $q.screen.lt.sm);
 const isDesktopViewport = computed(() => $q.screen.gt.sm);
+const isTwoColumnViewport = computed(() => $q.screen.width >= 1280);
 const isDialogMaximized = computed(() => isMobileViewport.value || isDesktopViewport.value);
 const dialogClasses = computed(() => ({
   'profile-dialog--maximized': isDialogMaximized.value,
@@ -1027,9 +1028,8 @@ onBeforeUnmount(() => {
 }
 
 .profile-layout--two-column {
-  grid-template-columns: minmax(360px, 460px) minmax(0, 1.3fr);
-  grid-template-rows: 1fr;
-  column-gap: clamp(32px, 5vw, 64px);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
   align-items: stretch;
 }
 
@@ -1067,6 +1067,12 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   padding: clamp(20px, 3.4vh, 32px) clamp(12px, 3.5vw, 32px);
   scrollbar-gutter: stable;
+  width: 100%;
+  margin-top: clamp(16px, 3vh, 28px);
+}
+
+.profile-layout--two-column .profile-layout__body {
+  margin-top: 0;
 }
 
 .profile-sticky-footer {
@@ -1551,10 +1557,6 @@ onBeforeUnmount(() => {
     padding: clamp(16px, 4vh, 32px) clamp(20px, 5vw, 52px);
   }
 
-  .profile-layout--two-column {
-    column-gap: clamp(36px, 3.8vw, 64px);
-  }
-
   .profile-layout__hero--desktop .hero-rail {
     padding-right: clamp(12px, 1.6vw, 24px);
   }
@@ -1605,7 +1607,9 @@ onBeforeUnmount(() => {
 }
 @media (min-width: 1280px) {
   .profile-layout--two-column {
-    column-gap: clamp(48px, 4vw, 88px);
+    grid-template-columns: minmax(360px, 460px) minmax(0, 1.3fr);
+    grid-template-rows: 1fr;
+    column-gap: clamp(40px, 4vw, 88px);
   }
 
   .hero-actions--inline .action-button {
