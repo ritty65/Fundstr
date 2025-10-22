@@ -1,147 +1,151 @@
 <template>
-  <div :id="id" class="tier-details-panel text-body2 text-1">
-    <section v-if="hasDescription" class="tier-details-panel__section">
-      <header class="tier-details-panel__heading">
-        <q-icon name="subject" size="20px" class="tier-details-panel__icon" aria-hidden="true" />
-        <span class="tier-details-panel__title">About this tier</span>
-      </header>
-      <p class="tier-details-panel__copy">{{ description }}</p>
-    </section>
-
-    <section v-if="hasWelcome" class="tier-details-panel__section">
-      <header class="tier-details-panel__heading">
-        <q-icon name="celebration" size="20px" class="tier-details-panel__icon" aria-hidden="true" />
-        <span class="tier-details-panel__title">Welcome experience</span>
-      </header>
-      <p class="tier-details-panel__copy">{{ welcomeMessage }}</p>
-    </section>
-
-    <section v-if="hasBenefits" class="tier-details-panel__section tier-details-panel__section--benefits">
-      <header class="tier-details-panel__heading">
-        <q-icon name="workspace_premium" size="20px" class="tier-details-panel__icon" aria-hidden="true" />
-        <span class="tier-details-panel__title">Perks included</span>
-      </header>
-      <ul class="tier-details-panel__benefit-list">
-        <li v-for="benefit in benefits" :key="benefit" class="tier-details-panel__benefit-item">
-          <q-icon name="task_alt" size="18px" class="tier-details-panel__benefit-icon" aria-hidden="true" />
-          <span class="tier-details-panel__benefit-text">{{ benefit }}</span>
-        </li>
-      </ul>
-    </section>
-
-    <section v-if="hasMedia" class="tier-details-panel__section tier-details-panel__section--media">
-      <header class="tier-details-panel__heading">
-        <q-icon name="collections_bookmark" size="20px" class="tier-details-panel__icon" aria-hidden="true" />
-        <span class="tier-details-panel__title">Extras &amp; resources</span>
-      </header>
-      <div v-if="featuredMedia" class="tier-details-panel__media-feature">
-        <MediaPreview
-          :url="featuredMedia.url"
-          layout="responsive"
-          class="tier-details-panel__media-feature-preview"
-        />
-        <div class="tier-details-panel__media-feature-body">
-          <div class="tier-details-panel__media-feature-text">
-            <span class="tier-details-panel__media-feature-title">{{ mediaLabel(featuredMedia) }}</span>
-            <span
-              v-if="mediaSecondaryLabel(featuredMedia)"
-              class="tier-details-panel__media-feature-meta"
-            >
-              {{ mediaSecondaryLabel(featuredMedia) }}
-            </span>
-          </div>
-          <div class="tier-details-panel__media-feature-actions">
-            <q-btn
-              flat
-              dense
-              class="tier-details-panel__media-feature-action"
-              icon="open_in_new"
-              color="accent"
-              tag="a"
-              :href="featuredMedia.url"
-              target="_blank"
-              rel="noopener"
-              :aria-label="`Open ${mediaLabel(featuredMedia)} in a new tab`"
-            />
-            <q-btn
-              flat
-              dense
-              class="tier-details-panel__media-feature-action"
-              icon="content_copy"
-              color="accent"
-              :aria-label="`Copy link to ${mediaLabel(featuredMedia)}`"
-              @click.prevent="copyMediaLink(featuredMedia.url)"
-            />
-          </div>
+  <article
+    class="tier-slide text-1"
+    :class="{ 'tier-slide--active': isActive }"
+    role="group"
+    aria-roledescription="slide"
+    :aria-label="`Tier ${index + 1} of ${total}: ${tierName}`"
+    :aria-hidden="!isActive"
+  >
+    <header class="tier-slide__header">
+      <div class="tier-slide__title">
+        <div class="tier-slide__name text-h6 text-weight-bold">{{ tierName }}</div>
+        <div v-if="summary" class="tier-slide__summary text-body2 text-2">{{ summary }}</div>
+        <div v-if="primaryPerks.length" class="tier-slide__perks" role="list">
+          <span v-for="perk in primaryPerks" :key="`perk-${perk}`" class="tier-slide__perk" role="listitem">
+            <q-icon name="check_circle" size="16px" class="tier-slide__perk-icon" aria-hidden="true" />
+            <span>{{ perk }}</span>
+          </span>
         </div>
       </div>
-      <div class="tier-details-panel__media-strip" role="list">
-        <article
-          v-for="(item, index) in mediaItems"
-          :key="`${item.url}-${index}`"
-          class="tier-details-panel__media-tile"
-          :class="{ 'tier-details-panel__media-tile--active': index === featuredIndex }"
-          role="listitem"
-          tabindex="0"
-          :aria-label="mediaAriaLabel(item)"
-          :aria-pressed="index === featuredIndex"
-          @click="onTileClick($event, item, index)"
-          @keydown.enter.prevent="selectFeaturedMedia(index)"
-          @keydown.space.prevent="selectFeaturedMedia(index)"
-        >
-          <div class="tier-details-panel__media-thumb">
-            <template v-if="isMediaLink(item)">
-              <div class="tier-details-panel__media-link-preview" aria-hidden="true">
-                <q-icon name="link" size="28px" />
-              </div>
-            </template>
-            <template v-else>
-              <MediaPreview
-                :url="item.url"
-                layout="responsive"
-                class="tier-details-panel__media-preview"
-              />
-            </template>
-          </div>
-          <div class="tier-details-panel__media-body">
-            <div class="tier-details-panel__media-text">
-              <span class="tier-details-panel__media-label">{{ mediaLabel(item) }}</span>
-              <span v-if="mediaSecondaryLabel(item)" class="tier-details-panel__media-meta">{{ mediaSecondaryLabel(item) }}</span>
-            </div>
-            <div class="tier-details-panel__media-actions">
-              <q-btn
-                flat
-                dense
-                round
-                icon="open_in_new"
-                tag="a"
-                :href="item.url"
-                target="_blank"
-                rel="noopener"
-                color="accent"
-                data-media-action
-                :aria-label="`Open ${mediaLabel(item)} in a new tab`"
-              />
-              <q-btn
-                flat
-                dense
-                round
-                icon="content_copy"
-                color="accent"
-                data-media-action
-                :aria-label="`Copy link to ${mediaLabel(item)}`"
-                @click.stop.prevent="copyMediaLink(item.url)"
-              />
-            </div>
-          </div>
-        </article>
+      <div class="tier-slide__pricing">
+        <div class="tier-slide__price text-weight-bold">{{ priceLabel }}</div>
+        <div v-if="frequencyLabel" class="tier-slide__frequency text-caption text-2">{{ frequencyLabel }}</div>
       </div>
-    </section>
+    </header>
 
-    <div v-if="!hasAnyContent" class="tier-details-panel__empty text-2">
-      No additional details for this tier yet.
+    <div class="tier-slide__body">
+      <section
+        v-if="hasMedia"
+        class="tier-slide__media"
+        role="region"
+        :aria-label="`Media for ${tierName}`"
+      >
+        <div class="tier-slide__media-stage">
+          <MediaPreview
+            v-if="activeMedia && !isMediaLink(activeMedia)"
+            :url="activeMedia.url"
+            layout="responsive"
+            class="tier-slide__media-preview"
+          />
+          <div v-else class="tier-slide__media-link" role="img" :aria-label="activeMediaLabel">
+            <q-icon name="link" size="36px" />
+            <span class="tier-slide__media-link-text">{{ activeMediaLabel }}</span>
+          </div>
+        </div>
+        <div class="tier-slide__media-info" v-if="activeMedia">
+          <div class="tier-slide__media-title">{{ mediaLabel(activeMedia) }}</div>
+          <div v-if="mediaSecondaryLabel(activeMedia)" class="tier-slide__media-meta text-caption text-2">
+            {{ mediaSecondaryLabel(activeMedia) }}
+          </div>
+        </div>
+        <div class="tier-slide__media-actions" v-if="activeMedia">
+          <q-btn
+            flat
+            dense
+            color="accent"
+            icon="open_in_new"
+            class="tier-slide__media-action"
+            tag="a"
+            :href="activeMedia.url"
+            target="_blank"
+            rel="noopener"
+            :aria-label="`Open ${activeMediaLabel} in a new tab`"
+          />
+          <q-btn
+            flat
+            dense
+            color="accent"
+            icon="content_copy"
+            class="tier-slide__media-action"
+            :aria-label="`Copy link to ${activeMediaLabel}`"
+            @click.prevent="copyMediaLink(activeMedia.url)"
+          />
+        </div>
+        <div
+          v-if="mediaItems.length > 1"
+          class="tier-slide__media-thumbnails"
+          role="listbox"
+          :aria-label="`Choose media for ${tierName}`"
+        >
+          <button
+            v-for="(item, mediaIndex) in mediaItems"
+            :key="`${item.url}-${mediaIndex}`"
+            type="button"
+            class="tier-slide__thumbnail"
+            :class="{ 'tier-slide__thumbnail--active': mediaIndex === activeMediaIndex }"
+            role="option"
+            :aria-selected="mediaIndex === activeMediaIndex"
+            @click="selectMedia(mediaIndex)"
+            @keydown.enter.prevent="selectMedia(mediaIndex)"
+            @keydown.space.prevent="selectMedia(mediaIndex)"
+          >
+            <div class="tier-slide__thumbnail-figure" aria-hidden="true">
+              <template v-if="!isMediaLink(item)">
+                <img :src="item.url" alt="" />
+              </template>
+              <template v-else>
+                <q-icon name="link" size="22px" />
+              </template>
+            </div>
+            <span class="tier-slide__thumbnail-label text-caption">{{ mediaLabel(item) }}</span>
+          </button>
+        </div>
+      </section>
+      <section v-else class="tier-slide__media tier-slide__media--empty" aria-label="Tier media">
+        <div class="tier-slide__media-empty text-2">Creator hasn't added media yet.</div>
+      </section>
+
+      <div class="tier-slide__info">
+        <section v-if="hasDescription" class="tier-slide__section">
+          <header class="tier-slide__section-heading">
+            <q-icon name="subject" size="20px" class="tier-slide__section-icon" aria-hidden="true" />
+            <span class="tier-slide__section-title">About this tier</span>
+          </header>
+          <p class="tier-slide__copy">{{ description }}</p>
+        </section>
+
+        <section v-if="hasBenefits" class="tier-slide__section">
+          <header class="tier-slide__section-heading">
+            <q-icon name="workspace_premium" size="20px" class="tier-slide__section-icon" aria-hidden="true" />
+            <span class="tier-slide__section-title">Perks included</span>
+          </header>
+          <ul class="tier-slide__benefits">
+            <li v-for="benefit in benefits" :key="benefit" class="tier-slide__benefit">
+              <q-icon name="task_alt" size="18px" class="tier-slide__benefit-icon" aria-hidden="true" />
+              <span>{{ benefit }}</span>
+            </li>
+          </ul>
+        </section>
+
+        <section v-if="hasWelcome" class="tier-slide__section">
+          <header class="tier-slide__section-heading">
+            <q-icon name="celebration" size="20px" class="tier-slide__section-icon" aria-hidden="true" />
+            <span class="tier-slide__section-title">Welcome experience</span>
+          </header>
+          <p class="tier-slide__copy">{{ welcomeMessage }}</p>
+        </section>
+
+        <div v-if="!hasDetails" class="tier-slide__empty text-2">
+          The creator hasn't shared additional details for this tier yet.
+        </div>
+
+        <div class="tier-slide__cta">
+          <q-btn color="accent" unelevated no-caps label="Subscribe" @click="emitSubscribe" />
+        </div>
+      </div>
     </div>
-  </div>
+  </article>
 </template>
 
 <script setup lang="ts">
@@ -151,44 +155,79 @@ import MediaPreview from 'components/MediaPreview.vue';
 import type { TierMedia as TierMediaItem } from 'stores/types';
 
 const props = defineProps<{
-  id?: string;
+  tierId: string;
+  tierName: string;
+  priceLabel: string;
+  frequencyLabel: string | null;
+  summary: string | null;
   description: string | null;
   benefits: string[];
-  mediaItems: TierMediaItem[];
   welcomeMessage: string | null;
+  mediaItems: TierMediaItem[];
+  index: number;
+  total: number;
+  isActive: boolean;
 }>();
 
-const hasDescription = computed(() => Boolean(props.description?.trim()));
-const hasBenefits = computed(() => Array.isArray(props.benefits) && props.benefits.length > 0);
-const hasMedia = computed(() => props.mediaItems.length > 0);
-const hasWelcome = computed(() => Boolean(props.welcomeMessage?.trim()));
-const hasAnyContent = computed(() => hasDescription.value || hasBenefits.value || hasMedia.value || hasWelcome.value);
+const emit = defineEmits<{
+  (e: 'subscribe', tierId: string): void;
+}>();
 
+const summary = computed(() => props.summary ?? '');
+const benefits = computed(() =>
+  Array.isArray(props.benefits)
+    ? props.benefits.map((benefit) => benefit.trim()).filter((benefit) => benefit.length > 0)
+    : [],
+);
+const hasBenefits = computed(() => benefits.value.length > 0);
+const primaryPerks = computed(() => benefits.value.slice(0, 3));
 const description = computed(() => props.description?.trim() ?? '');
+const hasDescription = computed(() => description.value.length > 0);
 const welcomeMessage = computed(() => props.welcomeMessage?.trim() ?? '');
-const benefits = computed(() => (Array.isArray(props.benefits) ? props.benefits : []));
-const mediaItems = computed(() => props.mediaItems);
-const featuredIndex = ref(-1);
+const hasWelcome = computed(() => welcomeMessage.value.length > 0);
+const hasDetails = computed(() => hasDescription.value || hasBenefits.value || hasWelcome.value);
 
-const featuredMedia = computed(() => {
+const mediaItems = computed(() => (Array.isArray(props.mediaItems) ? props.mediaItems : []));
+const hasMedia = computed(() => mediaItems.value.length > 0);
+const activeMediaIndex = ref(0);
+
+watch(
+  mediaItems,
+  (items) => {
+    if (!items.length) {
+      activeMediaIndex.value = 0;
+      return;
+    }
+    if (activeMediaIndex.value >= items.length) {
+      activeMediaIndex.value = 0;
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.isActive,
+  (active) => {
+    if (active) {
+      activeMediaIndex.value = 0;
+    }
+  },
+);
+
+const activeMedia = computed(() => {
   const items = mediaItems.value;
   if (!items.length) {
     return null;
   }
-  const index = featuredIndex.value;
-  if (index < 0 || index >= items.length) {
-    return items[0];
-  }
+  const index = Math.min(Math.max(activeMediaIndex.value, 0), items.length - 1);
   return items[index];
 });
 
+const activeMediaLabel = computed(() => (activeMedia.value ? mediaLabel(activeMedia.value) : 'Media item'));
+
 const $q = useQuasar();
 
-function isMediaLink(item: TierMediaItem): boolean {
-  return (item.type ?? '').toLowerCase() === 'link';
-}
-
-function selectFeaturedMedia(index: number) {
+function selectMedia(index: number) {
   if (!Number.isInteger(index)) {
     return;
   }
@@ -196,351 +235,342 @@ function selectFeaturedMedia(index: number) {
   if (!items.length) {
     return;
   }
-  const safeIndex = Math.min(Math.max(index, 0), items.length - 1);
-  featuredIndex.value = safeIndex;
+  const nextIndex = Math.min(Math.max(index, 0), items.length - 1);
+  activeMediaIndex.value = nextIndex;
+}
+
+function isMediaLink(item: TierMediaItem | null | undefined): boolean {
+  const type = (item?.type ?? '').toLowerCase();
+  return type === 'link';
 }
 
 function mediaLabel(item: TierMediaItem): string {
-  const title = item.title?.trim();
-  if (title) {
-    return title;
+  if (item.title && item.title.trim()) {
+    return item.title.trim();
   }
-  try {
-    const parsed = new URL(item.url);
-    const host = parsed.hostname.replace(/^www\./, '');
-    return host || parsed.href;
-  } catch {
-    return 'Open link';
-  }
+  const type = (item.type ?? '').toLowerCase();
+  if (type === 'audio') return 'Audio clip';
+  if (type === 'video') return 'Video';
+  if (type === 'image') return 'Image';
+  if (type === 'link') return 'Link';
+  return 'Media item';
 }
 
-function mediaSecondaryLabel(item: TierMediaItem): string {
-  if (!item.url) {
-    return '';
-  }
-  try {
-    const parsed = new URL(item.url);
-    const host = parsed.hostname.replace(/^www\./, '');
-    return host || parsed.protocol.replace(':', '');
-  } catch {
-    return '';
-  }
+function mediaSecondaryLabel(item: TierMediaItem): string | null {
+  const type = (item.type ?? '').toLowerCase();
+  if (type === 'audio') return 'Tap to listen';
+  if (type === 'video') return 'Tap to play';
+  if (type === 'image') return 'Tap to view full image';
+  if (type === 'link') return 'Opens in a new tab';
+  return null;
 }
 
-function mediaAriaLabel(item: TierMediaItem): string {
-  const label = mediaLabel(item);
-  const meta = mediaSecondaryLabel(item);
-  return meta ? `${label} – ${meta}` : label;
-}
-
-function onTileClick(event: MouseEvent, item: TierMediaItem, index: number) {
-  const target = event.target as HTMLElement | null;
-  if (target?.closest('[data-media-action]')) {
-    return;
-  }
-  selectFeaturedMedia(index);
-}
-
-async function copyMediaLink(url?: string) {
+async function copyMediaLink(url: string) {
   if (!url) {
     return;
   }
   try {
     await copyToClipboard(url);
-    $q.notify?.({
-      type: 'positive',
-      message: 'Link copied to clipboard',
-      timeout: 1200,
-    });
+    $q.notify({ type: 'positive', message: 'Link copied to clipboard' });
   } catch (error) {
     console.error('Failed to copy link', error);
-    $q.notify?.({
-      type: 'negative',
-      message: 'Unable to copy link',
-      timeout: 1600,
-    });
+    $q.notify({ type: 'negative', message: 'Unable to copy link' });
   }
 }
 
-watch(
-  mediaItems,
-  (items) => {
-    if (!items.length) {
-      featuredIndex.value = -1;
-      return;
-    }
-    if (featuredIndex.value < 0 || featuredIndex.value >= items.length) {
-      const firstPlayable = items.findIndex((item) => !isMediaLink(item));
-      featuredIndex.value = firstPlayable >= 0 ? firstPlayable : 0;
-    }
-  },
-  { immediate: true },
-);
+function emitSubscribe() {
+  if (!props.tierId) {
+    return;
+  }
+  emit('subscribe', props.tierId);
+}
 </script>
 
 <style scoped>
-.tier-details-panel {
+.tier-slide {
+  display: none;
+  flex-direction: column;
+  gap: clamp(20px, 4vh, 32px);
+  background: color-mix(in srgb, var(--surface-1) 97%, var(--surface-2) 3%);
+  border-radius: 20px;
+  padding: clamp(20px, 3vw, 32px);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
+  min-height: 0;
+}
+
+.tier-slide--active {
+  display: flex;
+}
+
+.tier-slide__header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: clamp(12px, 3vw, 24px);
+  align-items: flex-start;
+}
+
+.tier-slide__title {
   display: flex;
   flex-direction: column;
-  gap: 26px;
-  padding: 22px 0 6px;
+  gap: 8px;
+  max-width: 70%;
 }
 
-.tier-details-panel__section {
-  display: grid;
-  gap: 16px;
+.tier-slide__name {
+  line-height: 1.2;
 }
 
-.tier-details-panel__heading {
+.tier-slide__summary {
+  max-width: 56ch;
+}
+
+.tier-slide__perks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tier-slide__perk {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  font-weight: 650;
-  color: var(--text-1);
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-200) 25%, transparent);
+  color: var(--accent-600);
+  font-size: 13px;
+  font-weight: 600;
 }
 
-.tier-details-panel__title {
-  font-size: 0.95rem;
-  letter-spacing: 0.02em;
+.tier-slide__perk-icon {
+  color: var(--accent-500);
 }
 
-.tier-details-panel__icon {
-  color: color-mix(in srgb, var(--accent-500) 72%, var(--accent-200) 28%);
+.tier-slide__pricing {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  white-space: nowrap;
 }
 
-.tier-details-panel__copy {
+.tier-slide__price {
+  font-size: clamp(20px, 3vw, 28px);
+}
+
+.tier-slide__body {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: clamp(24px, 4vw, 40px);
+  align-items: start;
+}
+
+.tier-slide__media {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
+  border-radius: 16px;
+  padding: clamp(16px, 2vw, 20px);
+}
+
+.tier-slide__media-stage {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface-1) 92%, black 8%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tier-slide__media-preview :deep(.media-preview-container) {
   margin: 0;
-  white-space: pre-line;
-  line-height: 1.6;
+  width: 100%;
+  height: 100%;
 }
 
-.tier-details-panel__benefit-list {
+.tier-slide__media-preview :deep(img),
+.tier-slide__media-preview :deep(video),
+.tier-slide__media-preview :deep(iframe) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tier-slide__media-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--accent-500);
+  text-align: center;
+  padding: 20px;
+}
+
+.tier-slide__media-link-text {
+  font-weight: 600;
+}
+
+.tier-slide__media-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tier-slide__media-title {
+  font-weight: 600;
+}
+
+.tier-slide__media-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.tier-slide__media-thumbnails {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.tier-slide__thumbnail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
+  border-radius: 12px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--surface-1) 95%, transparent);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tier-slide__thumbnail:focus-visible,
+.tier-slide__thumbnail--active {
+  border-color: var(--accent-500);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-500) 50%, transparent);
+}
+
+.tier-slide__thumbnail-figure {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface-1) 85%, black 15%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+}
+
+.tier-slide__thumbnail-figure img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tier-slide__thumbnail-label {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.tier-slide__media--empty {
+  align-items: center;
+  justify-content: center;
+}
+
+.tier-slide__media-empty {
+  text-align: center;
+  padding: 32px;
+}
+
+.tier-slide__info {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(16px, 3vh, 24px);
+}
+
+.tier-slide__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tier-slide__section-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.tier-slide__section-title {
+  font-size: 15px;
+}
+
+.tier-slide__section-icon {
+  color: var(--accent-500);
+}
+
+.tier-slide__copy {
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.tier-slide__benefits {
+  list-style: none;
   margin: 0;
   padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.tier-details-panel__benefit-item {
+.tier-slide__benefit {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  border-radius: 12px;
-  padding: 10px 12px;
-  background: color-mix(in srgb, var(--surface-2) 45%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--surface-contrast-border) 40%, transparent);
+  gap: 8px;
 }
 
-.tier-details-panel__benefit-icon {
+.tier-slide__benefit-icon {
   color: var(--accent-500);
   margin-top: 2px;
 }
 
-.tier-details-panel__section--media {
-  gap: 18px;
+.tier-slide__empty {
+  padding: 16px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 80%, transparent);
 }
 
-.tier-details-panel__media-feature {
-  display: grid;
-  gap: 14px;
-  background: color-mix(in srgb, var(--surface-2) 65%, transparent);
-  border-radius: 18px;
-  padding: 16px 18px 20px;
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--surface-contrast-border) 55%, transparent),
-    0 16px 26px rgba(10, 16, 32, 0.12);
-}
-
-.tier-details-panel__media-feature-preview :deep(.media-preview-container) {
-  border-radius: 14px;
-  aspect-ratio: 16 / 9;
-  overflow: hidden;
-}
-
-.tier-details-panel__media-feature-body {
+.tier-slide__cta {
+  margin-top: auto;
   display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  justify-content: space-between;
-  align-items: flex-start;
+  justify-content: flex-start;
 }
 
-.tier-details-panel__media-feature-text {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.tier-details-panel__media-feature-title {
-  font-weight: 700;
-  font-size: 1rem;
-  color: var(--text-1);
-  line-height: 1.35;
-}
-
-.tier-details-panel__media-feature-meta {
-  color: var(--text-2);
-  font-size: 0.85rem;
-}
-
-.tier-details-panel__media-feature-actions {
-  display: inline-flex;
-  gap: 8px;
-}
-
-.tier-details-panel__media-feature-action {
-  border-radius: 999px;
-}
-
-.tier-details-panel__media-strip {
-  display: flex;
-  gap: 16px;
-  overflow-x: auto;
-  padding: 4px 2px;
-  margin: 0 -2px;
-  scroll-snap-type: x proximity;
-}
-
-.tier-details-panel__media-strip::-webkit-scrollbar {
-  height: 6px;
-}
-
-.tier-details-panel__media-strip::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
-}
-
-.tier-details-panel__media-tile {
-  flex: 0 0 280px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  background: color-mix(in srgb, var(--surface-2) 78%, transparent);
-  border-radius: 18px;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--surface-contrast-border) 60%, transparent);
-  padding: 14px;
-  cursor: pointer;
-  scroll-snap-align: start;
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.tier-details-panel__media-tile--active {
-  box-shadow:
-    inset 0 0 0 2px color-mix(in srgb, var(--accent-500) 38%, transparent),
-    0 14px 28px rgba(10, 16, 32, 0.2);
-}
-
-.tier-details-panel__media-tile:focus-visible {
-  outline: none;
-  box-shadow:
-    inset 0 0 0 2px color-mix(in srgb, var(--accent-500) 50%, transparent),
-    0 0 0 2px color-mix(in srgb, var(--accent-200) 60%, transparent);
-  transform: translateY(-1px);
-}
-
-.tier-details-panel__media-tile:hover {
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--accent-500) 25%, transparent),
-    0 8px 18px -12px rgba(0, 0, 0, 0.32);
-}
-
-.tier-details-panel__media-thumb {
-  position: relative;
-  overflow: hidden;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--surface-1) 90%, transparent);
-  aspect-ratio: 16 / 9;
-}
-
-.tier-details-panel__media-preview :deep(.media-preview-container) {
-  border-radius: 14px;
-  height: 100%;
-}
-
-.tier-details-panel__media-link-preview {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-  color: var(--accent-500);
-  background: color-mix(in srgb, var(--accent-200) 20%, transparent);
-  font-size: 1.8rem;
-}
-
-.tier-details-panel__media-body {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
-.tier-details-panel__media-text {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.tier-details-panel__media-label {
-  font-weight: 650;
-  font-size: 0.95rem;
-  color: var(--text-1);
-  line-height: 1.3;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.tier-details-panel__media-meta {
-  color: var(--text-2);
-  font-size: 0.8rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tier-details-panel__media-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.tier-details-panel__media-actions > :deep(.q-btn) {
-  border-radius: 10px;
-}
-
-.tier-details-panel__empty {
-  padding: 16px 0;
-  font-size: 0.9rem;
-}
-
-@media (min-width: 768px) {
-  .tier-details-panel__media-strip {
-    overflow: visible;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 18px;
-    padding: 0;
-    margin: 0;
+@media (max-width: 1023px) {
+  .tier-slide__body {
+    grid-template-columns: 1fr;
   }
 
-  .tier-details-panel__media-tile {
-    flex: 1 1 auto;
-  }
-}
-
-@media (min-width: 1024px) {
-  .tier-details-panel__media-feature {
-    gap: 18px;
-    padding: 18px 22px 24px;
+  .tier-slide__title {
+    max-width: none;
   }
 
-  .tier-details-panel__media-strip {
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  .tier-slide__pricing {
+    align-items: flex-start;
+  }
+
+  .tier-slide__cta {
+    justify-content: stretch;
+  }
+
+  .tier-slide__cta :deep(.q-btn) {
+    width: 100%;
   }
 }
 </style>
