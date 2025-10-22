@@ -993,7 +993,7 @@ onBeforeUnmount(() => {
 }
 
 .profile-card {
-  width: min(100%, 1440px);
+  width: min(100%, 1680px);
   background: var(--surface-1);
   color: var(--text-1);
   border-radius: 24px;
@@ -1009,7 +1009,7 @@ onBeforeUnmount(() => {
 }
 
 .profile-card--two-column {
-  width: min(100%, 1500px);
+  width: min(100%, 1760px);
 }
 
 .profile-dialog--mobile .profile-card {
@@ -1055,7 +1055,7 @@ onBeforeUnmount(() => {
 }
 
 .profile-layout__content--desktop {
-  padding-right: clamp(4px, 1vw, 16px);
+  padding-right: clamp(0px, 0.6vw, 12px);
 }
 
 .profile-layout__body {
@@ -1606,7 +1606,7 @@ onBeforeUnmount(() => {
 }
 @media (min-width: 1280px) {
   .profile-layout--two-column {
-    grid-template-columns: minmax(360px, 460px) minmax(0, 1.3fr);
+    grid-template-columns: minmax(340px, 420px) minmax(0, 1.8fr);
     grid-template-rows: 1fr;
     column-gap: clamp(40px, 4vw, 88px);
   }

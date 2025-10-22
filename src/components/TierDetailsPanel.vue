@@ -719,6 +719,8 @@ function emitSubscribe() {
   .tier-slide__media {
     flex-direction: row;
     align-items: flex-start;
+    gap: clamp(10px, 1.4vw, 16px);
+    padding: clamp(12px, 1.4vw, 16px);
   }
 
   .tier-slide__media-main {
@@ -726,20 +728,20 @@ function emitSubscribe() {
   }
 
   .tier-slide__media-meta {
-    padding-right: clamp(6px, 1.4vw, 14px);
+    padding-right: clamp(4px, 1vw, 12px);
   }
 
   .tier-slide__media-thumbs {
     flex-direction: column;
     justify-content: flex-start;
     align-items: stretch;
-    gap: 10px;
+    gap: clamp(8px, 1.1vw, 12px);
     padding-bottom: 0;
-    padding-left: clamp(10px, 1.6vw, 16px);
+    padding-left: clamp(8px, 1.2vw, 12px);
     overflow-x: visible;
     overflow-y: auto;
     max-height: min(55vh, 520px);
-    max-width: clamp(140px, 18vw, 220px);
+    max-width: clamp(120px, 14vw, 180px);
   }
 
   .tier-slide__thumb {
