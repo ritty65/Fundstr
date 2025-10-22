@@ -787,13 +787,28 @@ function formatTierPrice(tier: TierDetails): string {
 }
 
 function tierSummary(tier: TierDetails): string | null {
-  if (tier.description) {
-    return truncateText(tier.description, 180);
+  const perks = tierBenefits(tier);
+  const cadence = typeof tier.periodLabel === 'string' ? tier.periodLabel.trim() : '';
+
+  const highlightedPerks = perks.slice(0, 2);
+  const remainingPerks = Math.max(perks.length - highlightedPerks.length, 0);
+  const summaryParts: string[] = [];
+
+  if (highlightedPerks.length) {
+    const perkSummary = highlightedPerks.join(', ');
+    const moreSuffix = remainingPerks > 0 ? ` +${remainingPerks} more` : '';
+    summaryParts.push(`Perks: ${perkSummary}${moreSuffix}`);
   }
-  if (tier.benefits?.length) {
-    return tier.benefits[0];
+
+  if (cadence) {
+    summaryParts.push(`Cadence: ${cadence}`);
   }
-  return null;
+
+  if (!summaryParts.length) {
+    return null;
+  }
+
+  return summaryParts.join(' • ');
 }
 
 function tierBenefits(tier: TierDetails): string[] {

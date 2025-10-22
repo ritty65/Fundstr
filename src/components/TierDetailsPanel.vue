@@ -74,31 +74,25 @@
         </div>
         <div
           v-if="mediaItems.length > 1"
-          class="tier-slide__media-thumbnails"
+          class="tier-slide__media-selectors"
           role="listbox"
-          :aria-label="`Choose media for ${tierName}`"
+          :aria-label="`Switch media for ${tierName}`"
         >
           <button
             v-for="(item, mediaIndex) in mediaItems"
             :key="`${item.url}-${mediaIndex}`"
             type="button"
-            class="tier-slide__thumbnail"
-            :class="{ 'tier-slide__thumbnail--active': mediaIndex === activeMediaIndex }"
+            class="tier-slide__selector"
+            :class="{ 'tier-slide__selector--active': mediaIndex === activeMediaIndex }"
             role="option"
             :aria-selected="mediaIndex === activeMediaIndex"
+            :aria-label="`Show ${mediaLabel(item)}`"
             @click="selectMedia(mediaIndex)"
             @keydown.enter.prevent="selectMedia(mediaIndex)"
             @keydown.space.prevent="selectMedia(mediaIndex)"
           >
-            <div class="tier-slide__thumbnail-figure" aria-hidden="true">
-              <template v-if="!isMediaLink(item)">
-                <img :src="item.url" alt="" />
-              </template>
-              <template v-else>
-                <q-icon name="link" size="22px" />
-              </template>
-            </div>
-            <span class="tier-slide__thumbnail-label text-caption">{{ mediaLabel(item) }}</span>
+            <span class="tier-slide__selector-index" aria-hidden="true">{{ mediaIndex + 1 }}</span>
+            <span class="tier-slide__selector-label">{{ mediaLabel(item) }}</span>
           </button>
         </div>
       </section>
@@ -173,7 +167,7 @@ const emit = defineEmits<{
   (e: 'subscribe', tierId: string): void;
 }>();
 
-const summary = computed(() => props.summary ?? '');
+const summary = computed(() => (props.summary ?? '').trim());
 const benefits = computed(() =>
   Array.isArray(props.benefits)
     ? props.benefits.map((benefit) => benefit.trim()).filter((benefit) => benefit.length > 0)
@@ -431,51 +425,53 @@ function emitSubscribe() {
   gap: 8px;
 }
 
-.tier-slide__media-thumbnails {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+.tier-slide__media-selectors {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-.tier-slide__thumbnail {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
-  border-radius: 12px;
-  padding: 8px;
-  background: color-mix(in srgb, var(--surface-1) 95%, transparent);
+.tier-slide__selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
+  background: color-mix(in srgb, var(--surface-1) 96%, transparent);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  text-align: left;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
 }
 
-.tier-slide__thumbnail:focus-visible,
-.tier-slide__thumbnail--active {
+.tier-slide__selector:focus-visible,
+.tier-slide__selector--active {
   border-color: var(--accent-500);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-500) 50%, transparent);
+  background: color-mix(in srgb, var(--accent-200) 32%, transparent);
+  color: color-mix(in srgb, var(--accent-600) 78%, var(--text-1) 22%);
 }
 
-.tier-slide__thumbnail-figure {
-  position: relative;
-  border-radius: 10px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--surface-1) 85%, black 15%);
-  display: flex;
+.tier-slide__selector-index {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 72px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent-200) 40%, transparent);
+  color: var(--accent-600);
+  font-size: 12px;
+  font-weight: 700;
 }
 
-.tier-slide__thumbnail-figure img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.tier-slide__thumbnail-label {
-  color: var(--text-2);
-  font-weight: 600;
+.tier-slide__selector-label {
+  display: inline-flex;
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tier-slide__media--empty {
