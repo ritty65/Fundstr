@@ -99,131 +99,80 @@
             <template v-else>
               <q-card-section v-if="creator" class="tiers-section">
                 <div class="section-heading">Subscription tiers</div>
-                <div v-if="hasTiers" class="tiers-grid" role="list">
-                  <article
-                    v-for="tier in tiers"
-                    :key="tier.id"
-                    :id="tierRowElementId(tier.id)"
-                    :class="[
-                      'tier-card',
-                      {
-                        'tier-card--focus': tier.id === focusedTierId,
-                      },
-                    ]"
-                    role="listitem"
+                <div
+                  v-if="hasTiers"
+                  class="tiers-carousel"
+                  role="region"
+                  aria-roledescription="carousel"
+                  aria-label="Creator subscription tiers"
+                >
+                  <div
+                    class="tiers-carousel__viewport"
+                    ref="carouselViewportRef"
+                    tabindex="0"
+                    role="group"
+                    :aria-label="activeTierAnnouncement"
+                    aria-live="polite"
+                    @keydown="onCarouselKeydown"
                   >
-                    <div class="tier-card__content">
-                      <header class="tier-card__header">
-                        <div class="tier-card__identity">
-                          <div class="tier-card__name text-subtitle2 text-weight-medium text-1">
-                            {{ tier.name }}
-                          </div>
-                          <div v-if="tierSummary(tier)" class="tier-card__summary text-body2 text-2">
-                            {{ tierSummary(tier) }}
-                          </div>
-                        </div>
-                        <div class="tier-card__pricing">
-                          <div class="tier-card__price text-h6 text-weight-bold text-1">
-                            {{ formatTierPrice(tier) }} sats
-                          </div>
-                          <div
-                            v-if="tierFrequencyLabel(tier)"
-                            class="tier-card__cadence text-caption"
-                          >
-                            {{ tierFrequencyLabel(tier) }}
-                          </div>
-                        </div>
-                      </header>
+                    <TierDetailsPanel
+                      v-for="(tier, index) in tiers"
+                      :key="tier.id"
+                      class="tiers-carousel__slide"
+                      :is-active="index === activeTierIndex"
+                      :tier-name="tier.name"
+                      :tier-id="tier.id"
+                      :price-label="`${formatTierPrice(tier)} sats`"
+                      :frequency-label="tierFrequencyLabel(tier)"
+                      :summary="tierSummary(tier)"
+                      :description="hasTierDescription(tier) ? tierDescription(tier) : null"
+                      :benefits="tierBenefits(tier)"
+                      :welcome-message="tier.welcomeMessage"
+                      :media-items="tierMediaItems(tier)"
+                      :total="tiers.length"
+                      :index="index"
+                      @subscribe="handleSubscribe"
+                    />
+                  </div>
 
-                      <div v-if="tierHasBenefits(tier)" class="tier-card__perks" role="list">
-                        <div
-                          v-for="benefit in tierBenefits(tier).slice(0, 3)"
-                          :key="`${tier.id}-badge-${benefit}`"
-                          class="tier-card__perk-chip"
-                          role="listitem"
-                        >
-                          <q-icon
-                            name="check_circle"
-                            size="16px"
-                            class="tier-card__perk-icon"
-                            aria-hidden="true"
-                          />
-                          <span class="tier-card__perk-text">{{ benefit }}</span>
-                        </div>
-                      </div>
-
-                      <details
-                        v-if="tierBenefitCountLabel(tier) || tier.welcomeMessage"
-                        class="tier-card__extras"
-                      >
-                        <summary class="tier-card__extras-summary text-body2">
-                          Membership extras
-                        </summary>
-                        <div class="tier-card__extras-body" role="list">
-                          <div
-                            v-if="tierBenefitCountLabel(tier)"
-                            role="listitem"
-                            class="tier-card__extra-pill"
-                          >
-                            <q-icon
-                              name="auto_awesome"
-                              size="14px"
-                              class="tier-card__extra-icon"
-                              aria-hidden="true"
-                            />
-                            {{ tierBenefitCountLabel(tier) }}
-                          </div>
-                          <div
-                            v-if="tier.welcomeMessage"
-                            role="listitem"
-                            class="tier-card__extra-pill"
-                          >
-                            <q-icon
-                              name="mail"
-                              size="14px"
-                              class="tier-card__extra-icon"
-                              aria-hidden="true"
-                            />
-                            Welcome note
-                          </div>
-                        </div>
-                      </details>
-
-                      <div class="tier-card__actions">
-                        <q-btn
-                          color="accent"
-                          class="tier-card__subscribe"
-                          unelevated
-                          no-caps
-                          label="Subscribe"
-                          @click="handleSubscribe(tier.id)"
-                        />
-                        <q-btn
-                          flat
-                          dense
-                          class="tier-card__details-toggle"
-                          no-caps
-                          :label="isTierExpanded(tier.id) ? 'Hide details' : 'Details'"
-                          :icon-right="isTierExpanded(tier.id) ? 'expand_less' : 'expand_more'"
-                          @click="toggleTierDetails(tier.id)"
-                          :aria-expanded="isTierExpanded(tier.id)"
-                          :aria-controls="tierDetailsId(tier.id)"
-                        />
-                      </div>
-
-                      <q-slide-transition>
-                        <TierDetailsPanel
-                          v-if="isTierExpanded(tier.id)"
-                          :id="tierDetailsId(tier.id)"
-                          class="tier-card__details"
-                          :description="hasTierDescription(tier) ? tierDescription(tier) : null"
-                          :benefits="tierBenefits(tier)"
-                          :media-items="tierMediaItems(tier)"
-                          :welcome-message="tier.welcomeMessage"
-                        />
-                      </q-slide-transition>
+                  <div class="tiers-carousel__controls" role="group" aria-label="Tier navigation controls">
+                    <q-btn
+                      dense
+                      flat
+                      round
+                      icon="chevron_left"
+                      class="tiers-carousel__control"
+                      :disable="!canGoPrevious"
+                      aria-label="View previous tier"
+                      @click="goToPreviousTier"
+                    />
+                    <div class="tiers-carousel__dots" role="tablist" aria-label="Select tier">
+                      <button
+                        v-for="(tier, index) in tiers"
+                        :key="`dot-${tier.id}`"
+                        class="tiers-carousel__dot"
+                        :class="{ 'tiers-carousel__dot--active': index === activeTierIndex }"
+                        role="tab"
+                        type="button"
+                        :aria-selected="index === activeTierIndex"
+                        :tabindex="index === activeTierIndex ? 0 : -1"
+                        :aria-label="`Show tier ${index + 1} of ${tiers.length}: ${tier.name}`"
+                        @click="setActiveTier(index)"
+                        @keydown.enter.prevent="setActiveTier(index)"
+                        @keydown.space.prevent="setActiveTier(index)"
+                      />
                     </div>
-                  </article>
+                    <q-btn
+                      dense
+                      flat
+                      round
+                      icon="chevron_right"
+                      class="tiers-carousel__control"
+                      :disable="!canGoNext"
+                      aria-label="View next tier"
+                      @click="goToNextTier"
+                    />
+                  </div>
                 </div>
                 <div v-else class="empty-state">No subscription tiers found for this creator.</div>
               </q-card-section>
@@ -301,14 +250,74 @@ const dialogClasses = computed(() => ({
   'profile-dialog--mobile': isMobileViewport.value,
   'profile-dialog--desktop': isDesktopViewport.value,
 }));
-const expandedTierIds = ref<Record<string, boolean>>({});
-const focusedTierId = ref<string | null>(null);
+const activeTierIndex = ref(0);
 const isBioExpanded = ref(false);
+const carouselViewportRef = ref<HTMLElement | null>(null);
 
 const discoveryClient = useFundstrDiscovery();
 
 let currentRequestId = 0;
 let activeController: AbortController | null = null;
+
+const activeTierAnnouncement = computed(() => {
+  const total = tiers.value.length;
+  if (!total) {
+    return 'No subscription tiers available yet';
+  }
+  const index = Math.min(Math.max(activeTierIndex.value, 0), total - 1);
+  const tier = tiers.value[index];
+  if (!tier) {
+    return 'No subscription tiers available yet';
+  }
+  return `Viewing tier ${index + 1} of ${total}: ${tier.name}`;
+});
+
+const canGoPrevious = computed(() => activeTierIndex.value > 0);
+const canGoNext = computed(() => activeTierIndex.value < tiers.value.length - 1);
+
+function setActiveTier(index: number) {
+  if (!Number.isInteger(index)) return;
+  const total = tiers.value.length;
+  if (!total) {
+    activeTierIndex.value = 0;
+    return;
+  }
+  const nextIndex = Math.min(Math.max(index, 0), total - 1);
+  activeTierIndex.value = nextIndex;
+}
+
+function goToPreviousTier() {
+  if (!canGoPrevious.value) {
+    return;
+  }
+  setActiveTier(activeTierIndex.value - 1);
+}
+
+function goToNextTier() {
+  if (!canGoNext.value) {
+    return;
+  }
+  setActiveTier(activeTierIndex.value + 1);
+}
+
+function onCarouselKeydown(event: KeyboardEvent) {
+  if (event.defaultPrevented) {
+    return;
+  }
+  if (event.key === 'ArrowRight') {
+    event.preventDefault();
+    goToNextTier();
+  } else if (event.key === 'ArrowLeft') {
+    event.preventDefault();
+    goToPreviousTier();
+  } else if (event.key === 'Home') {
+    event.preventDefault();
+    setActiveTier(0);
+  } else if (event.key === 'End') {
+    event.preventDefault();
+    setActiveTier(tiers.value.length - 1);
+  }
+}
 
 const creatorMeta = computed<ProfileMeta>(() => {
   const c = creator.value;
@@ -374,20 +383,16 @@ const isHeroActionsInline = computed(() => $q.screen.gt.sm);
 
 const primaryTierId = computed(() => tiers.value[0]?.id ?? '');
 
-let focusTimeout: ReturnType<typeof setTimeout> | null = null;
-
 watch(
   tiers,
   (newTiers) => {
-    const nextState: Record<string, boolean> = {};
-    for (const tier of newTiers) {
-      if (expandedTierIds.value[tier.id]) {
-        nextState[tier.id] = true;
-      }
+    if (!newTiers.length) {
+      activeTierIndex.value = 0;
+      return;
     }
-    expandedTierIds.value = nextState;
-    if (focusedTierId.value && !newTiers.some((tier) => tier.id === focusedTierId.value)) {
-      focusedTierId.value = null;
+    const maxIndex = newTiers.length - 1;
+    if (activeTierIndex.value > maxIndex) {
+      activeTierIndex.value = maxIndex;
     }
   },
   { deep: true },
@@ -750,23 +755,25 @@ function handleSubscribe(tierId?: string) {
 }
 
 function focusTierSelection() {
-  const tierId = primaryTierId.value;
-  if (!tierId) {
+  if (!tiers.value.length) {
     return;
   }
 
-  expandedTierIds.value = { ...expandedTierIds.value, [tierId]: true };
-  focusedTierId.value = tierId;
-  clearFocusTimeout();
-  focusTimeout = setTimeout(() => {
-    focusedTierId.value = null;
-    focusTimeout = null;
-  }, 1600);
+  const tierId = primaryTierId.value;
+  if (tierId) {
+    const targetIndex = tiers.value.findIndex((tier) => tier.id === tierId);
+    if (targetIndex >= 0) {
+      setActiveTier(targetIndex);
+    }
+  } else {
+    setActiveTier(0);
+  }
 
   if (typeof window !== 'undefined') {
     window.requestAnimationFrame(() => {
-      const element = document.getElementById(tierRowElementId(tierId));
-      element?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      const viewport = carouselViewportRef.value;
+      viewport?.focus();
+      viewport?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
   }
 }
@@ -789,31 +796,12 @@ function tierSummary(tier: TierDetails): string | null {
   return null;
 }
 
-function tierBenefitCountLabel(tier: TierDetails): string | null {
-  const count = tier.benefits?.length ?? 0;
-  if (!count) return null;
-  return `${count} benefit${count === 1 ? '' : 's'}`;
-}
-
 function tierBenefits(tier: TierDetails): string[] {
   return Array.isArray(tier.benefits) ? tier.benefits : [];
 }
 
-function tierHasBenefits(tier: TierDetails): boolean {
-  return tierBenefits(tier).length > 0;
-}
-
 function tierMediaItems(tier: TierDetails): TierMediaItem[] {
   return Array.isArray(tier.media) ? tier.media : [];
-}
-
-function tierDetailsId(tierId: string): string {
-  return `tier-desc-${tierId}`;
-}
-
-function tierRowElementId(tierId: string): string {
-  const safeId = tierId.replace(/[^A-Za-z0-9_-]/g, '-');
-  return `tier-row-${safeId}`;
 }
 
 function hasTierDescription(tier: TierDetails): boolean {
@@ -823,25 +811,6 @@ function hasTierDescription(tier: TierDetails): boolean {
 
 function tierDescription(tier: TierDetails): string {
   return (tier.description ?? '').trim();
-}
-
-function isTierExpanded(tierId: string): boolean {
-  if (!tierId) return false;
-  return Boolean(expandedTierIds.value[tierId]);
-}
-
-function toggleTierDetails(tierId: string) {
-  if (!tierId || !expandedTierIds.value) {
-    expandedTierIds.value = {};
-    return;
-  }
-  const nextState = { ...expandedTierIds.value };
-  if (nextState[tierId]) {
-    delete nextState[tierId];
-  } else {
-    nextState[tierId] = true;
-  }
-  expandedTierIds.value = nextState;
 }
 
 function cancelActiveRequest() {
@@ -856,9 +825,7 @@ function cancelActiveRequest() {
 function resetState() {
   creator.value = null;
   tiers.value = [];
-  expandedTierIds.value = {};
-  focusedTierId.value = null;
-  clearFocusTimeout();
+  activeTierIndex.value = 0;
 }
 
 function resolveTierId(rawTier: unknown): string | null {
@@ -980,16 +947,8 @@ function normalizeMediaItem(entry: unknown): TierMediaItem | null {
   return { url, title, type };
 }
 
-function clearFocusTimeout() {
-  if (focusTimeout !== null) {
-    clearTimeout(focusTimeout);
-    focusTimeout = null;
-  }
-}
-
 onBeforeUnmount(() => {
   cancelActiveRequest();
-  clearFocusTimeout();
 });
 </script>
 
@@ -1335,242 +1294,82 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-.tiers-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 18px;
+.tiers-carousel {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(16px, 2vw, 24px);
 }
 
-
-.tier-card {
-  position: relative;
-  border-radius: 18px;
-  padding: 24px;
-  background: color-mix(in srgb, var(--surface-1) 97%, var(--surface-2) 3%);
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 65%, transparent);
-  box-shadow: 0 14px 28px rgba(9, 15, 28, 0.14);
-  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.tier-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  border: 1px solid color-mix(in srgb, var(--accent-500) 18%, transparent);
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.tier-card--focus {
-  border-color: color-mix(in srgb, var(--accent-500) 55%, transparent);
-  box-shadow: 0 18px 40px rgba(12, 20, 40, 0.22);
-}
-
-.tier-card--focus::before {
-  opacity: 1;
-}
-
-.tier-card:hover,
-.tier-card:focus-within {
-  border-color: color-mix(in srgb, var(--accent-500) 42%, transparent);
-  transform: translateY(-2px);
-  box-shadow: 0 20px 46px rgba(10, 16, 32, 0.2);
-}
-
-.tier-card__content {
+.tiers-carousel__viewport {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-}
-
-.tier-card__header {
-  display: flex;
-  flex-wrap: wrap;
   gap: 16px;
-  justify-content: space-between;
-  align-items: flex-start;
+  padding: 2px;
+  outline: none;
+  border-radius: 26px;
 }
 
-.tier-card__identity {
+.tiers-carousel__viewport:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-200) 50%, transparent);
+}
+
+.tiers-carousel__slide {
+  width: 100%;
+}
+
+.tiers-carousel__controls {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-  flex: 1 1 220px;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
 }
 
-.tier-card__name {
-  position: relative;
-  padding-left: 18px;
-  line-height: 1.2;
-}
-
-.tier-card__name::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  background: var(--accent-500);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-500) 22%, transparent);
-}
-
-.tier-card__summary {
-  color: color-mix(in srgb, var(--text-1) 86%, var(--text-2) 14%);
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.tier-card__pricing {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  min-width: 120px;
-}
-
-.tier-card__price {
-  font-size: 1.1rem;
-}
-
-.tier-card__cadence {
+.tiers-carousel__control {
   color: var(--text-2);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  transition: color 0.2s ease, transform 0.2s ease;
 }
 
-.tier-card__perks {
+.tiers-carousel__control:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-500) 40%, transparent);
+  border-radius: 999px;
+}
+
+.tiers-carousel__control:enabled:hover {
+  color: var(--accent-500);
+  transform: translateY(-1px);
+}
+
+.tiers-carousel__dots {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
 }
 
-.tier-card__perk-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
+.tiers-carousel__dot {
+  width: 12px;
+  height: 12px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--accent-500) 20%, transparent);
-  background: color-mix(in srgb, var(--accent-200) 10%, var(--surface-1) 90%);
-  color: color-mix(in srgb, var(--text-1) 94%, var(--text-2) 6%);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.tier-card__perk-icon {
-  color: color-mix(in srgb, var(--accent-500) 80%, var(--accent-600) 20%);
-}
-
-.tier-card__extras {
-  border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 65%, transparent);
-  background: color-mix(in srgb, var(--surface-2) 88%, transparent);
-  overflow: hidden;
-}
-
-.tier-card__extras[open] {
-  box-shadow: 0 10px 24px rgba(10, 16, 32, 0.1);
-}
-
-.tier-card__extras-summary {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
+  background: color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
+  border: none;
+  padding: 0;
   cursor: pointer;
-  font-weight: 600;
-  color: color-mix(in srgb, var(--text-1) 92%, var(--text-2) 8%);
-  list-style: none;
+  transition: transform 0.2s ease, background-color 0.2s ease;
 }
 
-.tier-card__extras-summary::-webkit-details-marker {
-  display: none;
+.tiers-carousel__dot--active {
+  background: var(--accent-500);
+  transform: scale(1.15);
 }
 
-.tier-card__extras-summary::after {
-  content: '';
-  width: 20px;
-  height: 20px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent-200) 20%, transparent);
-  mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M7 10l5 5 5-5z"/></svg>') center / 16px 16px no-repeat;
-  transition: transform 0.2s ease;
+.tiers-carousel__dot:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-500) 45%, transparent);
 }
 
-.tier-card__extras[open] .tier-card__extras-summary::after {
-  transform: rotate(180deg);
+.tiers-carousel__dot:hover {
+  background: color-mix(in srgb, var(--accent-500) 30%, transparent);
 }
-
-.tier-card__extras-body {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 12px 16px 16px;
-}
-
-.tier-card__extra-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-1) 92%, var(--surface-2) 8%);
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 62%, transparent);
-  color: color-mix(in srgb, var(--text-1) 90%, var(--text-2) 10%);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.tier-card__extra-icon {
-  color: color-mix(in srgb, var(--accent-500) 78%, var(--accent-600) 22%);
-}
-
-.tier-card__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.tier-card__subscribe {
-  flex: 1 1 180px;
-  min-width: 0;
-  font-weight: 600;
-  box-shadow: 0 16px 30px rgba(10, 16, 32, 0.2);
-}
-
-.tier-card__details-toggle {
-  font-weight: 600;
-  color: color-mix(in srgb, var(--accent-500) 90%, var(--accent-600) 10%);
-}
-
-.tier-card__details-toggle:focus-visible {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-500) 28%, transparent);
-  border-radius: 8px;
-}
-
-.tier-card__details {
-  margin-top: -4px;
-  padding: 16px 18px;
-  border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
-  background: color-mix(in srgb, var(--surface-1) 94%, var(--surface-2) 6%);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface-1) 60%, transparent);
-}
-
 @media (min-width: 768px) {
   .profile-layout__body {
     padding: clamp(28px, 4vh, 44px) clamp(24px, 6vw, 60px);
@@ -1580,28 +1379,14 @@ onBeforeUnmount(() => {
     padding: clamp(32px, 4vh, 52px) clamp(36px, 6vw, 72px);
   }
 
-  .tiers-grid {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  .tiers-carousel {
+    gap: clamp(20px, 2vw, 28px);
   }
 
-  .tier-card {
-    padding: 28px;
-  }
-
-  .tier-card__content {
-    gap: 22px;
-  }
-
-  .tier-card__actions {
-    justify-content: flex-start;
-  }
-
-  .tier-card__subscribe {
-    flex: 0 0 auto;
-    min-width: 180px;
+  .tiers-carousel__controls {
+    gap: 16px;
   }
 }
-
 @media (max-width: 599px) {
 
   .profile-layout__body {
@@ -1630,32 +1415,8 @@ onBeforeUnmount(() => {
     padding: 20px 20px 26px;
   }
 
-  .tier-card {
-    padding: 20px;
-  }
-
-  .tier-card__header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-  }
-
-  .tier-card__pricing {
-    align-items: flex-start;
-  }
-
-  .tier-card__actions {
-    flex-direction: column;
-    align-items: stretch;
+  .tiers-carousel__controls {
     gap: 10px;
-  }
-
-  .tier-card__subscribe {
-    width: 100%;
-  }
-
-  .tier-card__details {
-    padding: 12px 16px;
   }
 
   .profile-sticky-footer {
@@ -1726,24 +1487,18 @@ onBeforeUnmount(() => {
     gap: 24px;
   }
 
-  .tiers-grid {
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 24px;
+  .tiers-carousel__viewport {
+    padding: 4px;
   }
 
-  .tier-card__pricing {
-    align-items: flex-end;
-  }
-
-  .tier-card__actions {
-    gap: 16px;
+  .tiers-carousel__controls {
+    gap: 18px;
   }
 
   .empty-state {
     padding: 32px 48px;
   }
 }
-
 @media (min-width: 1280px) {
   .profile-layout--two-column {
     column-gap: clamp(48px, 4vw, 88px);
