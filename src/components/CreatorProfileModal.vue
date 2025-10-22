@@ -1212,6 +1212,7 @@ onBeforeUnmount(() => {
   font-weight: 800;
   letter-spacing: 0.01em;
   color: var(--text-1);
+  overflow-wrap: anywhere;
 }
 
 .hero-handle {
@@ -1219,6 +1220,7 @@ onBeforeUnmount(() => {
   font-weight: 700;
   color: color-mix(in srgb, var(--text-1) 92%, var(--text-2) 8%);
   letter-spacing: 0.045em;
+  overflow-wrap: anywhere;
 }
 
 .hero-about {
@@ -1607,7 +1609,7 @@ onBeforeUnmount(() => {
 }
 @media (min-width: 1280px) {
   .profile-layout--two-column {
-    grid-template-columns: minmax(340px, 420px) minmax(0, 1.8fr);
+    grid-template-columns: minmax(340px, clamp(440px, 32vw, 620px)) minmax(0, 1fr);
     grid-template-rows: 1fr;
     column-gap: clamp(40px, 4vw, 88px);
   }
