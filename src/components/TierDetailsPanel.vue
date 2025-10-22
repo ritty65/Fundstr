@@ -194,7 +194,15 @@
         </div>
 
         <div class="tier-slide__cta">
-          <q-btn color="accent" unelevated no-caps label="Subscribe" @click="emitSubscribe" />
+          <q-btn
+            class="tier-slide__subscribe-button"
+            color="accent"
+            unelevated
+            no-caps
+            size="lg"
+            label="Subscribe"
+            @click="emitSubscribe"
+          />
         </div>
       </div>
     </div>
@@ -832,7 +840,16 @@ function emitSubscribe() {
   margin-top: auto;
   padding-top: clamp(24px, 5vh, 40px);
   display: flex;
-  justify-content: flex-start;
+  justify-content: center;
+}
+
+.tier-slide__cta :deep(.tier-slide__subscribe-button) {
+  padding: clamp(14px, 1.3vw, 18px) clamp(28px, 2.6vw, 36px);
+  font-size: clamp(1.1rem, 0.8vw + 1rem, 1.45rem);
+  font-weight: 700;
+  min-width: clamp(200px, 45%, 320px);
+  max-width: clamp(260px, 55%, 360px);
+  border-radius: 999px;
 }
 
 @media (max-width: 1023px) {
@@ -846,11 +863,13 @@ function emitSubscribe() {
   }
 
   .tier-slide__cta {
-    justify-content: stretch;
+    justify-content: center;
   }
 
-  .tier-slide__cta :deep(.q-btn) {
+  .tier-slide__cta :deep(.tier-slide__subscribe-button) {
     width: 100%;
+    min-width: 0;
+    max-width: none;
   }
 }
 
