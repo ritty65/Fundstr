@@ -31,7 +31,10 @@
         role="region"
         :aria-label="`Media for ${tierName}`"
       >
-        <div class="tier-slide__media-stage">
+        <div
+          class="tier-slide__media-stage"
+          :class="{ 'tier-slide__media-stage--placeholder': !activeMedia || isMediaLink(activeMedia) }"
+        >
           <MediaPreview
             v-if="activeMedia && !isMediaLink(activeMedia)"
             :url="activeMedia.url"
@@ -318,7 +321,7 @@ function emitSubscribe() {
   gap: clamp(20px, 4vh, 32px);
   background: color-mix(in srgb, var(--surface-1) 97%, var(--surface-2) 3%);
   border-radius: 20px;
-  --tier-slide-padding: clamp(16px, 2.6vw, 24px);
+  --tier-slide-padding: clamp(12px, 2vw, 20px);
   padding: var(--tier-slide-padding);
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
   min-height: 0;
@@ -329,9 +332,8 @@ function emitSubscribe() {
 }
 
 .tier-slide__header {
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: clamp(12px, 3vw, 24px);
   align-items: flex-start;
 }
@@ -340,7 +342,6 @@ function emitSubscribe() {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-width: 70%;
 }
 
 .tier-slide__name {
@@ -379,6 +380,7 @@ function emitSubscribe() {
   align-items: flex-end;
   gap: 4px;
   white-space: nowrap;
+  justify-self: end;
 }
 
 .tier-slide__price {
@@ -392,7 +394,7 @@ function emitSubscribe() {
   grid-template-areas:
     'media'
     'info';
-  gap: clamp(24px, 4.2vw, 40px);
+  gap: clamp(18px, 3.4vw, 28px);
   align-items: stretch;
 }
 
@@ -400,17 +402,17 @@ function emitSubscribe() {
   grid-area: media;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   background: color-mix(in srgb, var(--surface-2) 85%, transparent);
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
   border-radius: 14px;
-  padding: clamp(16px, 2.4vw, 24px);
+  padding: clamp(12px, 2vw, 20px);
 }
 
 .tier-slide__media-stage {
   width: 100%;
-  aspect-ratio: 4 / 3;
-  min-height: clamp(240px, 52vw, 420px);
+  aspect-ratio: auto;
+  min-height: clamp(160px, 32vw, 320px);
   border-radius: 14px;
   overflow: hidden;
   background: color-mix(in srgb, var(--surface-1) 88%, black 12%);
@@ -419,6 +421,11 @@ function emitSubscribe() {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.tier-slide__media-stage--placeholder {
+  aspect-ratio: 4 / 3;
+  min-height: clamp(200px, 40vw, 320px);
 }
 
 .tier-slide__media-preview :deep(.media-preview-container) {
@@ -597,7 +604,7 @@ function emitSubscribe() {
   grid-area: info;
   display: flex;
   flex-direction: column;
-  gap: clamp(16px, 3vh, 24px);
+  gap: clamp(12px, 2.6vh, 20px);
   min-height: 0;
 }
 
@@ -662,15 +669,12 @@ function emitSubscribe() {
 
 @media (max-width: 1023px) {
   .tier-slide__body {
-    gap: clamp(20px, 5.2vw, 30px);
-  }
-
-  .tier-slide__title {
-    max-width: none;
+    gap: clamp(16px, 4.6vw, 24px);
   }
 
   .tier-slide__pricing {
     align-items: flex-start;
+    justify-self: start;
   }
 
   .tier-slide__cta {
@@ -679,6 +683,18 @@ function emitSubscribe() {
 
   .tier-slide__cta :deep(.q-btn) {
     width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .tier-slide__header {
+    grid-template-columns: 1fr;
+  }
+
+  .tier-slide__pricing {
+    justify-self: start;
+    width: 100%;
+    padding-top: 4px;
   }
 }
 </style>
