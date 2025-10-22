@@ -43,34 +43,38 @@
             <span class="tier-slide__media-link-text">{{ activeMediaLabel }}</span>
           </div>
         </div>
-        <div class="tier-slide__media-info" v-if="activeMedia">
-          <div class="tier-slide__media-title">{{ mediaLabel(activeMedia) }}</div>
-          <div v-if="mediaSecondaryLabel(activeMedia)" class="tier-slide__media-meta text-caption text-2">
-            {{ mediaSecondaryLabel(activeMedia) }}
+        <div v-if="activeMedia" class="tier-slide__media-meta">
+          <div class="tier-slide__media-info">
+            <div class="tier-slide__media-title">{{ mediaLabel(activeMedia) }}</div>
+            <div v-if="mediaSecondaryLabel(activeMedia)" class="tier-slide__media-subtitle text-caption text-2">
+              {{ mediaSecondaryLabel(activeMedia) }}
+            </div>
           </div>
-        </div>
-        <div class="tier-slide__media-actions" v-if="activeMedia">
-          <q-btn
-            flat
-            dense
-            color="accent"
-            icon="open_in_new"
-            class="tier-slide__media-action"
-            tag="a"
-            :href="activeMedia.url"
-            target="_blank"
-            rel="noopener"
-            :aria-label="`Open ${activeMediaLabel} in a new tab`"
-          />
-          <q-btn
-            flat
-            dense
-            color="accent"
-            icon="content_copy"
-            class="tier-slide__media-action"
-            :aria-label="`Copy link to ${activeMediaLabel}`"
-            @click.prevent="copyMediaLink(activeMedia.url)"
-          />
+          <div class="tier-slide__media-actions">
+            <q-btn
+              flat
+              round
+              dense
+              color="accent"
+              icon="open_in_new"
+              class="tier-slide__media-action"
+              tag="a"
+              :href="activeMedia.url"
+              target="_blank"
+              rel="noopener"
+              :aria-label="`Open ${activeMediaLabel} in a new tab`"
+            />
+            <q-btn
+              flat
+              round
+              dense
+              color="accent"
+              icon="content_copy"
+              class="tier-slide__media-action"
+              :aria-label="`Copy link to ${activeMediaLabel}`"
+              @click.prevent="copyMediaLink(activeMedia.url)"
+            />
+          </div>
         </div>
         <div
           v-if="mediaItems.length > 1"
@@ -87,12 +91,39 @@
             role="option"
             :aria-selected="mediaIndex === activeMediaIndex"
             :aria-label="`Show ${mediaLabel(item)}`"
+            :title="mediaLabel(item)"
             @click="selectMedia(mediaIndex)"
             @keydown.enter.prevent="selectMedia(mediaIndex)"
             @keydown.space.prevent="selectMedia(mediaIndex)"
           >
             <span class="tier-slide__selector-index" aria-hidden="true">{{ mediaIndex + 1 }}</span>
-            <span class="tier-slide__selector-label">{{ mediaLabel(item) }}</span>
+          </button>
+        </div>
+        <div
+          v-if="mediaItems.length > 1"
+          class="tier-slide__media-thumbs"
+          aria-hidden="true"
+        >
+          <button
+            v-for="(item, mediaIndex) in mediaItems"
+            :key="`${item.url}-${mediaIndex}`"
+            type="button"
+            class="tier-slide__thumb"
+            :class="{ 'tier-slide__thumb--active': mediaIndex === activeMediaIndex }"
+            :title="mediaLabel(item)"
+            tabindex="-1"
+            @click="selectMedia(mediaIndex)"
+            @keydown.enter.prevent="selectMedia(mediaIndex)"
+            @keydown.space.prevent="selectMedia(mediaIndex)"
+          >
+            <MediaPreview
+              v-if="!isMediaLink(item)"
+              :url="item.url"
+              class="tier-slide__thumb-preview"
+            />
+            <div v-else class="tier-slide__thumb-link" aria-hidden="true">
+              <q-icon name="link" size="18px" />
+            </div>
           </button>
         </div>
       </section>
@@ -369,7 +400,7 @@ function emitSubscribe() {
   grid-area: media;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
   background: color-mix(in srgb, var(--surface-2) 85%, transparent);
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
   border-radius: 16px;
@@ -378,10 +409,13 @@ function emitSubscribe() {
 
 .tier-slide__media-stage {
   width: 100%;
-  aspect-ratio: 16 / 9;
-  border-radius: 12px;
+  aspect-ratio: 4 / 3;
+  min-height: clamp(240px, 52vw, 420px);
+  border-radius: 16px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--surface-1) 92%, black 8%);
+  background: color-mix(in srgb, var(--surface-1) 88%, black 12%);
+  border: 1px solid color-mix(in srgb, var(--accent-200) 45%, transparent);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.12), 0 0 0 1px color-mix(in srgb, var(--accent-200) 55%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -391,6 +425,7 @@ function emitSubscribe() {
   margin: 0;
   width: 100%;
   height: 100%;
+  border-radius: inherit;
 }
 
 .tier-slide__media-preview :deep(img),
@@ -416,32 +451,60 @@ function emitSubscribe() {
   font-weight: 600;
 }
 
+.tier-slide__media-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  text-align: center;
+}
+
 .tier-slide__media-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  align-items: center;
 }
 
 .tier-slide__media-title {
   font-weight: 600;
+  font-size: clamp(15px, 1.8vw, 18px);
+}
+
+.tier-slide__media-subtitle {
+  color: var(--text-2);
 }
 
 .tier-slide__media-actions {
   display: flex;
-  gap: 8px;
+  gap: 12px;
+  justify-content: center;
+}
+
+.tier-slide__media-action {
+  --q-btn-padding: 6px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  background: color-mix(in srgb, var(--accent-200) 35%, transparent);
+  color: var(--accent-600);
+}
+
+.tier-slide__media-action:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-200) 60%, transparent);
 }
 
 .tier-slide__media-selectors {
   display: flex;
+  justify-content: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
 
 .tier-slide__selector {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
   background: color-mix(in srgb, var(--surface-1) 96%, transparent);
@@ -463,21 +526,61 @@ function emitSubscribe() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--accent-200) 40%, transparent);
-  color: var(--accent-600);
-  font-size: 12px;
-  font-weight: 700;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  color: inherit;
 }
 
-.tier-slide__selector-label {
+.tier-slide__media-thumbs {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.tier-slide__thumb {
   display: inline-flex;
-  max-width: 22ch;
+  width: 72px;
+  aspect-ratio: 1 / 1;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
+  background: color-mix(in srgb, var(--surface-1) 95%, transparent);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tier-slide__thumb:hover {
+  transform: translateY(-2px);
+}
+
+.tier-slide__thumb--active {
+  border-color: color-mix(in srgb, var(--accent-500) 65%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-200) 50%, transparent);
+}
+
+.tier-slide__thumb-preview :deep(.media-preview-container) {
+  height: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: inherit;
+  box-shadow: none;
+}
+
+.tier-slide__thumb-preview :deep(img),
+.tier-slide__thumb-preview :deep(video),
+.tier-slide__thumb-preview :deep(iframe) {
+  object-fit: cover;
+}
+
+.tier-slide__thumb-link {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-500);
+  background: color-mix(in srgb, var(--accent-200) 30%, transparent);
 }
 
 .tier-slide__media--empty {
