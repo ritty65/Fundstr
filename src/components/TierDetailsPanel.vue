@@ -396,11 +396,15 @@ function emitSubscribe() {
 }
 
 .tier-slide__name {
-  line-height: 1.2;
+  font-size: clamp(1.75rem, 1vw + 1.5rem, 2.4rem);
+  font-weight: 700;
+  line-height: 1.15;
 }
 
 .tier-slide__summary {
   max-width: 56ch;
+  font-size: clamp(1rem, 0.6vw + 0.9rem, 1.25rem);
+  line-height: 1.55;
 }
 
 .tier-slide__perks {
@@ -782,7 +786,8 @@ function emitSubscribe() {
 }
 
 .tier-slide__section-title {
-  font-size: 15px;
+  font-size: clamp(1.05rem, 0.35vw + 1rem, 1.15rem);
+  line-height: 1.35;
 }
 
 .tier-slide__section-icon {
@@ -790,7 +795,8 @@ function emitSubscribe() {
 }
 
 .tier-slide__copy {
-  line-height: 1.6;
+  font-size: clamp(1.05rem, 0.3vw + 1.02rem, 1.16rem);
+  line-height: 1.65;
   white-space: pre-wrap;
 }
 
