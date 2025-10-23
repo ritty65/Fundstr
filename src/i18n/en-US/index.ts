@@ -156,6 +156,13 @@ export const messages = {
           caption: "Terms of Service",
         },
       },
+      supporters: {
+        title: "Supporters",
+        supporters: {
+          title: "Fundstr Supporters",
+          caption: "Highlighted donors and contributors",
+        },
+      },
       about: {
         title: "About",
         about: { title: "About", caption: "About this app" },
