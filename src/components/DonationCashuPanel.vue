@@ -48,28 +48,24 @@
       </div>
 
       <div class="cashu-panel__section">
-        <div class="cashu-panel__section-title">{{ t('DonationPrompt.cashu.tiersHeading') }}</div>
-        <div v-if="limitedTiers.length" class="cashu-panel__tier-grid">
-          <button
-            v-for="tier in limitedTiers"
-            :key="tier.id"
-            type="button"
-            class="cashu-panel__tier"
-            :class="{ 'cashu-panel__tier--active': tier.id === selectedTierId }"
-            @click="selectTier(tier.id)"
-          >
-            <div class="cashu-panel__tier-name">{{ tier.title }}</div>
-            <div class="cashu-panel__tier-price">{{ formatPrice(tier) }}</div>
-            <div class="cashu-panel__tier-frequency text-2">{{ frequencyLabel(tier) }}</div>
-          </button>
-        </div>
-        <div v-else class="cashu-panel__empty text-2">
-          {{ t('DonationPrompt.cashu.tiersEmpty') }}
-        </div>
-      </div>
-
-      <div class="cashu-panel__section">
         <div class="cashu-panel__section-title">{{ t('DonationPrompt.cashu.donateHeading') }}</div>
+        <div v-if="presetAmounts.length" class="cashu-panel__preset-wrapper">
+          <div class="cashu-panel__preset-label text-2">
+            {{ t('DonationPrompt.cashu.quickPresetsLabel') }}
+          </div>
+          <div class="cashu-panel__preset-grid">
+            <button
+              v-for="preset in presetAmounts"
+              :key="preset"
+              type="button"
+              class="cashu-panel__preset"
+              :class="{ 'cashu-panel__preset--active': preset === activePreset }"
+              @click="selectPreset(preset)"
+            >
+              {{ t('DonationPrompt.cashu.priceLabel', { amount: numberFormatter.format(preset) }) }}
+            </button>
+          </div>
+        </div>
         <q-input
           v-model.number="amount"
           type="number"
@@ -120,18 +116,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { v4 as uuidv4 } from 'uuid'
 import { fetchNutzapProfile } from 'stores/nostr'
 import { queryNutzapTiers } from '@/nostr/relayClient'
 import { useCashuStore } from 'stores/cashu'
 import { notifyError, notifySuccess } from 'src/js/notify'
-
-interface NormalizedTier {
-  id: string
-  title: string
-  price: number | null
-  frequency: 'one_time' | 'monthly' | 'yearly'
-}
 
 defineOptions({
   name: 'DonationCashuPanel'
@@ -150,13 +138,13 @@ const cashuStore = useCashuStore()
 const panelLoading = ref(true)
 const panelError = ref('')
 const profile = ref<{ hexPub: string; trustedMints: string[] } | null>(null)
-const tiers = ref<NormalizedTier[]>([])
-const selectedTierId = ref<string | null>(null)
 const amount = ref<number | null>(null)
 const sending = ref(false)
 const sendError = ref('')
 const avatarLoadFailed = ref(false)
 const supporterNpubValue = computed(() => props.supporterNpub?.trim() ?? '')
+const presetAmounts = ref<number[]>([])
+const activePreset = ref<number | null>(null)
 
 const numberFormatter = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 0
@@ -171,7 +159,6 @@ const initials = computed(() => {
 })
 
 const trustedMints = computed(() => profile.value?.trustedMints ?? [])
-const limitedTiers = computed(() => tiers.value.slice(0, 3))
 const isSending = computed(() => sending.value || cashuStore.loading)
 const isSendDisabled = computed(() => {
   if (!amount.value || amount.value <= 0) {
@@ -196,9 +183,9 @@ async function loadData() {
   panelLoading.value = true
   panelError.value = ''
   profile.value = null
-  tiers.value = []
-  selectedTierId.value = null
   amount.value = null
+  presetAmounts.value = []
+  activePreset.value = null
 
   if (!npub) {
     panelError.value = t('DonationPrompt.cashu.errors.profileMissing')
@@ -224,20 +211,22 @@ async function loadData() {
       if (tierEvent?.content) {
         const parsed = JSON.parse(tierEvent.content)
         if (Array.isArray(parsed)) {
-          tiers.value = parsed
-            .map(parseTier)
-            .filter((tier): tier is NormalizedTier => tier !== null)
-            .sort(sortTiers)
+          const extracted = parsed
+            .map(extractTierAmount)
+            .filter((value): value is number => Number.isFinite(value) && value > 0)
+            .map((value) => Math.round(value))
+          const unique = Array.from(new Set(extracted)).sort((a, b) => a - b)
+          presetAmounts.value = unique
         }
       }
     } catch (error) {
       console.warn('[donation] failed to load Cashu tiers', error)
     }
 
-    const pricedTier = tiers.value.find((tier) => tier.price !== null)
-    if (pricedTier) {
-      selectedTierId.value = pricedTier.id
-      amount.value = pricedTier.price
+    const suggested = presetAmounts.value[presetAmounts.value.length - 1]
+    if (typeof suggested === 'number') {
+      amount.value = suggested
+      activePreset.value = suggested
     } else {
       amount.value = 1000
     }
@@ -253,94 +242,35 @@ function onAvatarError() {
   avatarLoadFailed.value = true
 }
 
-function parseTier(raw: any): NormalizedTier | null {
+function extractTierAmount(raw: any): number | null {
   if (!raw) {
     return null
   }
-  const id = typeof raw.id === 'string' && raw.id.trim().length > 0 ? raw.id : uuidv4()
-  const titleSource =
-    (typeof raw.title === 'string' && raw.title.trim()) ||
-    (typeof raw.name === 'string' && raw.name.trim()) ||
-    ''
-  const title = titleSource || t('DonationPrompt.cashu.defaultTierName')
 
-  let price: number | null = null
-  const priceCandidates = [
-    raw.price,
-    raw.price_sats,
-    raw.priceSats,
-    raw.amount,
-    raw.amount_sats,
-    raw.amountSats
-  ]
+  const priceCandidates = [raw.price, raw.price_sats, raw.priceSats, raw.amount, raw.amount_sats, raw.amountSats]
   for (const candidate of priceCandidates) {
     if (candidate !== undefined && candidate !== null) {
       const numeric = Number(candidate)
       if (Number.isFinite(numeric)) {
-        price = numeric
-        break
+        return numeric
       }
     }
   }
-  if (price === null && (raw.price_msat || raw.amount_msat || raw.amountMsat)) {
+
+  if (raw.price_msat || raw.amount_msat || raw.amountMsat) {
     const msats = Number(raw.price_msat ?? raw.amount_msat ?? raw.amountMsat)
     if (Number.isFinite(msats)) {
-      price = Math.max(0, Math.round(msats / 1000))
+      return Math.max(0, Math.round(msats / 1000))
     }
   }
 
-  return {
-    id,
-    title,
-    price,
-    frequency: normalizeFrequency(raw.frequency ?? raw.cadence ?? raw.interval)
-  }
+  return null
 }
 
-function normalizeFrequency(input: unknown): NormalizedTier['frequency'] {
-  if (typeof input !== 'string') {
-    return 'monthly'
-  }
-  const value = input.trim().toLowerCase()
-  if (!value) {
-    return 'monthly'
-  }
-  if (value.includes('year')) {
-    return 'yearly'
-  }
-  if (value.includes('one') || value.includes('single')) {
-    return 'one_time'
-  }
-  return 'monthly'
-}
-
-function sortTiers(a: NormalizedTier, b: NormalizedTier) {
-  const priceA = a.price ?? Number.POSITIVE_INFINITY
-  const priceB = b.price ?? Number.POSITIVE_INFINITY
-  if (priceA !== priceB) {
-    return priceA - priceB
-  }
-  return a.title.localeCompare(b.title)
-}
-
-function formatPrice(tier: NormalizedTier): string {
-  if (tier.price === null) {
-    return t('DonationPrompt.cashu.flexibleAmount')
-  }
-  return t('DonationPrompt.cashu.priceLabel', { amount: numberFormatter.format(tier.price) })
-}
-
-function frequencyLabel(tier: NormalizedTier): string {
-  return t(`DonationPrompt.cashu.frequency.${tier.frequency}`)
-}
-
-function selectTier(tierId: string) {
-  selectedTierId.value = tierId
-  const tier = tiers.value.find((item) => item.id === tierId)
-  if (tier && tier.price !== null) {
-    amount.value = tier.price
-    sendError.value = ''
-  }
+function selectPreset(preset: number) {
+  activePreset.value = preset
+  amount.value = preset
+  sendError.value = ''
 }
 
 async function sendCashuDonation() {
@@ -368,6 +298,17 @@ async function sendCashuDonation() {
     sending.value = false
   }
 }
+
+watch(amount, (value) => {
+  if (value === null) {
+    activePreset.value = null
+    return
+  }
+
+  if (!presetAmounts.value.includes(value)) {
+    activePreset.value = null
+  }
+})
 </script>
 
 <style scoped>
@@ -426,44 +367,42 @@ async function sendCashuDonation() {
   margin-bottom: 8px;
 }
 
-.cashu-panel__tier-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+.cashu-panel__preset-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cashu-panel__preset-label {
+  font-size: 0.85rem;
+}
+
+.cashu-panel__preset-grid {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-.cashu-panel__tier {
+.cashu-panel__preset {
   background: var(--surface-1);
   border: 1px solid var(--surface-contrast-border, rgba(0, 0, 0, 0.08));
-  border-radius: 10px;
-  padding: 10px;
-  text-align: left;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-weight: 600;
+  font-size: 0.9rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.cashu-panel__tier:hover,
-.cashu-panel__tier:focus {
+.cashu-panel__preset:hover,
+.cashu-panel__preset:focus {
   border-color: var(--accent-200);
   box-shadow: 0 0 0 2px rgba(93, 135, 255, 0.15);
 }
 
-.cashu-panel__tier--active {
+.cashu-panel__preset--active {
   border-color: var(--accent-500);
   box-shadow: 0 0 0 2px rgba(93, 135, 255, 0.25);
-}
-
-.cashu-panel__tier-name {
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.cashu-panel__tier-price {
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-.cashu-panel__tier-frequency {
-  font-size: 0.8rem;
 }
 
 .cashu-panel__empty {
