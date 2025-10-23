@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { createI18n } from 'vue-i18n'
 import { LOCAL_STORAGE_KEYS } from '../../../src/constants/localStorageKeys'
+import { messages as enUSMessages } from '../../../src/i18n/en-US'
 
 const mockGetCreatorsByPubkeys = vi.fn()
 
@@ -29,9 +31,16 @@ async function loadComponent(envOverrides: Record<string, string> = {}) {
   ;({ default: DonationPrompt } = await import('../../../src/components/DonationPrompt.vue'))
 }
 
-const mountComponent = () =>
-  mount(DonationPrompt, {
+const mountComponent = () => {
+  const i18n = createI18n({
+    legacy: false,
+    locale: 'en-US',
+    messages: { 'en-US': enUSMessages }
+  })
+
+  return mount(DonationPrompt, {
     global: {
+      plugins: [i18n],
       stubs: {
         QDialog: { template: '<div><slot /></div>' },
         QCard: { template: '<div><slot /></div>' },
@@ -47,10 +56,12 @@ const mountComponent = () =>
           props: ['label', 'disable'],
           template: '<button v-bind="$attrs" :disabled="disable">{{ label }}</button>'
         },
-        VueQrcode: { template: '<div />' }
+        VueQrcode: { template: '<div />' },
+        DonationNutzapPanel: { template: '<div class="nutzap-panel-stub" />' }
       }
     }
   })
+}
 
 describe('DonationPrompt', () => {
   beforeEach(() => {
@@ -81,11 +92,17 @@ describe('DonationPrompt', () => {
   it('disables donate button when no address is configured', async () => {
     await loadComponent()
     const wrapper = mountComponent()
+    await flushPromises()
+    // Defaults to Nutzap tab so the Liquid/Bitcoin donate button is hidden
     const donateBtn = wrapper
       .findAll('button')
-      .find((b) => b.text() === 'Donate Now')
-    expect(donateBtn?.attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('Donation address not configured')
+      .find((b) => b.text().includes('Join') || b.text().includes('Donate'))
+    expect(donateBtn).toBeUndefined()
+    expect(wrapper.vm.tab).toBe('nutzap')
+    // Switching to Liquid tab should surface the address warning
+    wrapper.vm.tab = 'liquid'
+    await flushPromises()
+    expect(wrapper.text()).toContain('No Liquid address configured.')
   })
 
   it('renders Liquid and Bitcoin tabs when configured', async () => {

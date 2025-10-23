@@ -10,14 +10,29 @@ const visible = ref(false);
 const liquid = ref(import.meta.env.VITE_DONATION_LIQUID_ADDRESS || '');
 const bitcoin = ref(import.meta.env.VITE_DONATION_BITCOIN || '');
 const supporterIdentifier = (import.meta.env.VITE_DONATION_SUPPORTER_NPUB || '').trim();
-const tab = ref<'liquid' | 'bitcoin'>(liquid.value ? 'liquid' : 'bitcoin');
+const nutzapSupporterNpub = 'npub1mxmqzhgvla9wrgc8qlptmuylqzal2c50pc744zcm9kunhekv6g3s63ytu0';
+
+type DonationTab = 'liquid' | 'bitcoin' | 'nutzap';
+
+const getDefaultTab = (): DonationTab => {
+  if (liquid.value) {
+    return 'liquid';
+  }
+  if (bitcoin.value) {
+    return 'bitcoin';
+  }
+  return 'nutzap';
+};
+
+const tab = ref<DonationTab>(getDefaultTab());
 const liquidQRCode = computed(() => (liquid.value ? `liquidnetwork:${liquid.value}` : ''));
 const bitcoinQRCode = computed(() => (bitcoin.value ? `bitcoin:${bitcoin.value}` : ''));
 const noAddress = computed(() => !liquid.value && !bitcoin.value);
-const hasPaymentRails = computed(() => !noAddress.value);
+const hasPaymentRails = computed(() => !noAddress.value || Boolean(nutzapSupporterNpub));
 
 const discoveryClient = createFundstrDiscoveryClient();
 const supporterDisplayName = ref('Fundstr');
+const supporterAvatarUrl = ref('');
 const supporterTiers = ref<CreatorTier[]>([]);
 const supporterTierPreviews = computed(() =>
   supporterTiers.value
@@ -38,15 +53,6 @@ const supporterTierPreviews = computed(() =>
 const tiersLoading = ref(false);
 const tiersError = ref('');
 const showTierPreview = computed(() => Boolean(supporterIdentifier));
-const donateLabel = computed(() => {
-  const topTier = supporterTierPreviews.value[0];
-  if (topTier) {
-    const priceSuffix = topTier.priceLabel !== 'Flexible amount' ? ` (${topTier.priceLabel})` : '';
-    return `Join ${topTier.name}${priceSuffix}`;
-  }
-  return 'Donate Now';
-});
-
 let tiersInitialized = false;
 let tiersPromise: Promise<void> | null = null;
 
@@ -66,7 +72,11 @@ const isOptedOut = () => localStorage.getItem(LOCAL_STORAGE_KEYS.DONATION_OPT_OU
 
 interface OpenOptions {
   bypassGate?: boolean;
+  defaultTab?: DonationTab;
 }
+
+const isDonationTab = (value: string): value is DonationTab =>
+  value === 'liquid' || value === 'bitcoin' || value === 'nutzap';
 
 const open = (options?: OpenOptions) => {
   const bypassGate = options?.bypassGate === true;
@@ -85,6 +95,19 @@ const open = (options?: OpenOptions) => {
     if (launchCount < LAUNCH_THRESHOLD && daysSince < DAY_THRESHOLD) {
       return false;
     }
+  }
+
+  const requestedTab = options?.defaultTab;
+  if (requestedTab && isDonationTab(requestedTab)) {
+    if (requestedTab === 'liquid' && !liquid.value) {
+      tab.value = getDefaultTab();
+    } else if (requestedTab === 'bitcoin' && !bitcoin.value) {
+      tab.value = getDefaultTab();
+    } else {
+      tab.value = requestedTab;
+    }
+  } else {
+    tab.value = getDefaultTab();
   }
 
   visible.value = true;
@@ -158,15 +181,23 @@ const ensureSupporterTiers = async (force = false) => {
         if (display) {
           supporterDisplayName.value = display;
         }
+        const meta = match.meta || {};
+        const avatarCandidate =
+          (typeof meta?.picture === 'string' && meta.picture) ||
+          (typeof match.picture === 'string' && match.picture) ||
+          '';
+        supporterAvatarUrl.value = avatarCandidate;
         supporterTiers.value = Array.isArray(match.tiers) ? match.tiers.filter(isValidTier) : [];
         tiersInitialized = true;
       } else {
         supporterTiers.value = [];
+        supporterAvatarUrl.value = '';
         tiersInitialized = true;
       }
     } catch (error) {
       supporterTiers.value = [];
       tiersInitialized = false;
+      supporterAvatarUrl.value = '';
       tiersError.value =
         error instanceof Error && error.message
           ? error.message
@@ -299,20 +330,22 @@ export const useDonationPrompt = () => ({
   close,
   copy,
   donate,
-  donateLabel,
   hasPaymentRails,
   later,
   liquid,
   liquidQRCode,
   never,
   noAddress,
+  nutzapSupporterNpub,
   open,
   reloadSupporterTiers,
   showTierPreview,
   supporterDisplayName,
+  supporterAvatarUrl,
   supporterTierPreviews,
   tab,
   tiersError,
   tiersLoading,
   visible,
+  getDefaultTab,
 });

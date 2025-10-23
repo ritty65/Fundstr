@@ -61,6 +61,68 @@ export const messages = {
       },
     },
   },
+  DonationPrompt: {
+    title: "Support {name}",
+    tabs: {
+      nutzap: "Nutzap",
+      liquid: "Liquid",
+      bitcoin: "Bitcoin",
+    },
+    labels: {
+      liquid: "Liquid",
+      bitcoin: "Bitcoin",
+    },
+    actions: {
+      copyLiquid: "Copy Liquid address",
+      copyBitcoin: "Copy Bitcoin address",
+    },
+    status: {
+      noLiquid: "No Liquid address configured.",
+      noBitcoin: "No Bitcoin address configured.",
+    },
+    membership: {
+      heading: "Membership tiers",
+      loading: "Loading supporter tiers…",
+      retry: "Retry",
+      empty: "No tier information available right now.",
+      flexibleAmount: "Flexible amount",
+    },
+    buttons: {
+      never: "Never Ask Again",
+      later: "Remind Me Later",
+      joinFlexible: "Join {name}",
+      joinTierWithPrice: "Join {name} ({price})",
+      donate: "Donate Now",
+    },
+    nutzap: {
+      tagline: "Send locked Cashu tokens directly to Fundstr.",
+      tiersHeading: "Featured tiers",
+      tiersEmpty: "No Nutzap tiers published yet.",
+      donateHeading: "Cashu donation",
+      amountLabel: "Amount (sats)",
+      donateCta: "Send via Cashu",
+      trustedMintsHeading: "Trusted mints",
+      trustedMintsEmpty: "No trusted mints listed.",
+      errors: {
+        profileMissing: "Fundstr has not published a Nutzap profile yet.",
+        loadFailed: "Unable to load Nutzap profile right now.",
+        invalidAmount: "Enter a valid donation amount.",
+      },
+      notifications: {
+        success: "Cashu tokens queued for delivery!",
+        failure: "Unable to send Cashu tokens. Please try again later.",
+      },
+      frequency: {
+        monthly: "monthly",
+        yearly: "yearly",
+        one_time: "one-time",
+      },
+      flexibleAmount: "Flexible amount",
+      priceLabel: "{amount} sats",
+      avatarAlt: "{name} avatar",
+      defaultTierName: "Support tier",
+    },
+  },
   wallet: {
     notifications: {
       balance_too_low: "Balance is too low",
