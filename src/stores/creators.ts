@@ -9,7 +9,7 @@ import { toHex, type NostrEvent as RelayEvent } from "@/nostr/relayClient";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import { normalizeTierMediaItems } from "src/utils/validateMedia";
 import { type NutzapProfileDetails } from "@/nutzap/profileCache";
-import { useDiscovery } from "src/api/fundstrDiscovery";
+import { useDiscovery, type NutzapBundle, type NutzapTier } from "src/api/fundstrDiscovery";
 import type {
   Creator as DiscoveryCreator,
   CreatorTier as DiscoveryCreatorTier,
@@ -183,6 +183,82 @@ function extractProfileDetailsFromDiscovery(
   };
 }
 
+function convertNutzapTierToDiscovery(tier: NutzapTier): DiscoveryCreatorTier | null {
+  if (!tier || typeof tier !== "object") {
+    return null;
+  }
+
+  const idCandidate =
+    (typeof tier.id === "string" && tier.id.trim()) ||
+    (typeof (tier as any).identifier === "string" && (tier as any).identifier.trim()) ||
+    (typeof (tier as any).d === "string" && (tier as any).d.trim()) ||
+    "";
+
+  const id = idCandidate.trim();
+  if (!id) {
+    return null;
+  }
+
+  const rawName =
+    (typeof tier.name === "string" && tier.name.trim()) ||
+    (typeof (tier as any).title === "string" && (tier as any).title.trim()) ||
+    "";
+  const name = rawName || `Tier ${id.substring(0, 6).toUpperCase()}`;
+
+  const amountCandidates = [
+    typeof tier.amountMsat === "number" ? tier.amountMsat : null,
+    typeof (tier as any).amount_msat === "number" ? (tier as any).amount_msat : null,
+    typeof (tier as any).price_msat === "number" ? (tier as any).price_msat : null,
+    typeof tier.price_sats === "number" ? tier.price_sats * 1000 : null,
+    typeof (tier as any).priceSats === "number" ? (tier as any).priceSats * 1000 : null,
+  ];
+  let amountMsat: number | null = null;
+  for (const candidate of amountCandidates) {
+    if (typeof candidate === "number" && Number.isFinite(candidate)) {
+      amountMsat = candidate;
+      break;
+    }
+  }
+
+  const cadence =
+    (typeof tier.cadence === "string" && tier.cadence.trim()) ||
+    (typeof tier.frequency === "string" && tier.frequency.trim()) ||
+    (typeof (tier as any).interval === "string" && (tier as any).interval.trim()) ||
+    null;
+
+  const description =
+    (typeof tier.description === "string" && tier.description) ||
+    (typeof (tier as any).about === "string" && (tier as any).about) ||
+    null;
+
+  const media = normalizeTierMediaItems((tier as any).media);
+
+  const candidate: DiscoveryCreatorTier = {
+    id,
+    name,
+    amountMsat,
+    cadence,
+    description,
+    media,
+  };
+
+  const intervalDaysCandidate =
+    typeof (tier as any).intervalDays === "number"
+      ? (tier as any).intervalDays
+      : typeof (tier as any).interval_days === "number"
+        ? (tier as any).interval_days
+        : null;
+  if (intervalDaysCandidate !== null) {
+    (candidate as any).intervalDays = intervalDaysCandidate;
+  }
+
+  if ((tier as any).benefits !== undefined) {
+    (candidate as any).benefits = (tier as any).benefits;
+  }
+
+  return candidate;
+}
+
 function convertDiscoveryTier(tier: DiscoveryCreatorTier): Tier | null {
   if (!tier || typeof tier.id !== "string") {
     return null;
@@ -229,6 +305,29 @@ export async function fetchFundstrProfileBundle(
   const pubkey = toHex(pubkeyInput);
   const normalizedPubkey = pubkey.toLowerCase();
   let lastError: unknown = null;
+  let nutzapFallbackAttempted = false;
+
+  const nutzapBundlePromise = (async (): Promise<NutzapBundle | null> => {
+    nutzapFallbackAttempted = true;
+    try {
+      return await discovery.getNutzapBundle(pubkey, true);
+    } catch (freshError) {
+      console.warn("fetchFundstrProfileBundle nutzap bundle fresh fetch failed", {
+        pubkey,
+        error: freshError,
+      });
+      try {
+        return await discovery.getNutzapBundle(pubkey, false);
+      } catch (cachedError) {
+        lastError = cachedError;
+        console.error("fetchFundstrProfileBundle nutzap bundle fetch failed", {
+          pubkey,
+          error: cachedError,
+        });
+        return null;
+      }
+    }
+  })();
 
   const fetchCreatorByQuery = async (query: string): Promise<DiscoveryCreator | null> => {
     const trimmed = typeof query === "string" ? query.trim() : "";
@@ -282,38 +381,95 @@ export async function fetchFundstrProfileBundle(
     }
   }
 
-  if (!creator) {
+  const nutzapBundle = await nutzapBundlePromise;
+
+  if (!creator && !nutzapBundle) {
     throw new FundstrProfileFetchError("No profile records returned from discovery", {
-      fallbackAttempted: false,
+      fallbackAttempted: nutzapFallbackAttempted,
       cause: lastError ?? undefined,
     });
   }
 
-  const profile = cloneDiscoveryProfile(creator.profile);
+  const baseProfile = creator ? cloneDiscoveryProfile(creator.profile) : null;
+
+  let profile: Record<string, any> | null = baseProfile;
+  if (nutzapBundle) {
+    if (nutzapBundle.meta && !isRecord(nutzapBundle.meta)) {
+      console.error("fetchFundstrProfileBundle received malformed meta payload", {
+        pubkey,
+        meta: nutzapBundle.meta,
+      });
+    }
+    const metaRecord = isRecord(nutzapBundle.meta)
+      ? (nutzapBundle.meta as Record<string, unknown>)
+      : null;
+    if (metaRecord || nutzapBundle.nutzapProfile !== undefined) {
+      profile = {
+        ...(profile ?? {}),
+        ...(metaRecord ?? {}),
+      };
+      if (nutzapBundle.nutzapProfile !== undefined && profile) {
+        profile.nutzapProfile = nutzapBundle.nutzapProfile;
+      }
+      if (profile && Object.keys(profile).length === 0) {
+        profile = null;
+      }
+    }
+    if (nutzapBundle.tiers !== undefined && !Array.isArray(nutzapBundle.tiers)) {
+      console.error("fetchFundstrProfileBundle received malformed tiers payload", {
+        pubkey,
+        tiers: nutzapBundle.tiers,
+      });
+    }
+  }
+
   const profileDetails = extractProfileDetailsFromDiscovery(profile);
   const relayHints = collectRelayHintsFromProfile(profile, null, profileDetails);
 
   let followers: number | null = null;
-  if (typeof creator.followers === "number" && Number.isFinite(creator.followers)) {
+  if (creator && typeof creator.followers === "number" && Number.isFinite(creator.followers)) {
     followers = creator.followers;
   }
 
   let following: number | null = null;
-  if (typeof creator.following === "number" && Number.isFinite(creator.following)) {
+  if (creator && typeof creator.following === "number" && Number.isFinite(creator.following)) {
     following = creator.following;
   }
 
   let joined: number | null = null;
-  if (typeof creator.joined === "number" && Number.isFinite(creator.joined)) {
+  if (creator && typeof creator.joined === "number" && Number.isFinite(creator.joined)) {
     joined = creator.joined;
   }
 
-  const tierCandidates: DiscoveryCreatorTier[] = Array.isArray(creator.tiers)
-    ? (creator.tiers as DiscoveryCreatorTier[])
-    : [];
+  const tierMap = new Map<string, DiscoveryCreatorTier>();
+  const addTierCandidate = (candidate: DiscoveryCreatorTier | null | undefined) => {
+    if (!candidate || typeof candidate.id !== "string") {
+      return;
+    }
+    const trimmed = candidate.id.trim();
+    if (!trimmed) {
+      return;
+    }
+    tierMap.set(trimmed, { ...candidate, id: trimmed });
+  };
+
+  if (Array.isArray(creator?.tiers)) {
+    for (const tier of creator.tiers as DiscoveryCreatorTier[]) {
+      addTierCandidate(tier);
+    }
+  }
+
+  if (Array.isArray(nutzapBundle?.tiers)) {
+    for (const tier of nutzapBundle.tiers as NutzapTier[]) {
+      const converted = convertNutzapTierToDiscovery(tier);
+      if (converted) {
+        addTierCandidate(converted);
+      }
+    }
+  }
 
   const ensureTierCandidates = async () => {
-    if (tierCandidates.length) {
+    if (tierMap.size) {
       return;
     }
     const loadTiers = async (
@@ -328,7 +484,9 @@ export async function fetchFundstrProfileBundle(
         }
         const tierResponse = await discovery.getCreatorTiers(tierRequest);
         if (Array.isArray(tierResponse.tiers) && tierResponse.tiers.length) {
-          tierCandidates.push(...(tierResponse.tiers as DiscoveryCreatorTier[]));
+          for (const tier of tierResponse.tiers as DiscoveryCreatorTier[]) {
+            addTierCandidate(tier);
+          }
         }
       } catch (error) {
         onError(error);
@@ -339,7 +497,7 @@ export async function fetchFundstrProfileBundle(
       /* ignore cached lookup errors; retry with fresh */
     });
 
-    if (!tierCandidates.length) {
+    if (!tierMap.size) {
       await loadTiers(pubkey, true, (error) => {
         console.warn("fetchFundstrProfileBundle discovery tier lookup failed", {
           pubkey,
@@ -348,7 +506,7 @@ export async function fetchFundstrProfileBundle(
       });
     }
 
-    if (!tierCandidates.length) {
+    if (!tierMap.size) {
       let npubId: string | null = null;
       try {
         npubId = nip19.npubEncode(pubkey);
@@ -359,7 +517,7 @@ export async function fetchFundstrProfileBundle(
         await loadTiers(npubId, false, () => {
           /* ignore cached lookup errors; retry with fresh */
         });
-        if (!tierCandidates.length) {
+        if (!tierMap.size) {
           await loadTiers(npubId, true, (npubError) => {
             console.warn("fetchFundstrProfileBundle discovery tier lookup via npub failed", {
               pubkey,
@@ -373,10 +531,16 @@ export async function fetchFundstrProfileBundle(
 
   await ensureTierCandidates();
 
-  const tiers = tierCandidates
+  const tiers = Array.from(tierMap.values())
     .map((tier) => convertDiscoveryTier(tier))
     .filter((tier): tier is Tier => tier !== null)
     .map((tier) => normalizeTier(tier));
+
+  const fetchedFromFallback = Boolean(
+    nutzapBundle &&
+      ((typeof nutzapBundle.source === "string" && /relay|fallback/i.test(nutzapBundle.source)) ||
+        Boolean(nutzapBundle.stale)),
+  );
 
   return {
     profile,
@@ -386,7 +550,7 @@ export async function fetchFundstrProfileBundle(
     joined,
     profileDetails,
     relayHints,
-    fetchedFromFallback: false,
+    fetchedFromFallback,
     tiers: tiers.length ? tiers : null,
   };
 }
