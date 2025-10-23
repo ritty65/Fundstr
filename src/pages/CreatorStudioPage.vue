@@ -725,6 +725,7 @@ import { maybeRepublishNutzapProfile } from 'src/stores/creatorHub';
 import { useNostrStore } from 'src/stores/nostr';
 import { useUiStore } from 'src/stores/ui';
 import { useP2pkDiagnostics } from 'src/composables/useP2pkDiagnostics';
+import { seedProfileIdentityFromMetadata } from './creator-studio/identitySeed';
 
 const P2PK_VERIFICATION_STALE_MS = 1000 * 60 * 60 * 24 * 7;
 const CREATOR_STUDIO_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
@@ -794,6 +795,11 @@ const previewTab = ref<'preview' | 'profile' | 'tiers'>('preview');
 const now = useNow({ interval: 60_000 });
 const lastExportProfile = ref('');
 const lastExportTiers = ref({ canonical: '', legacy: '' });
+const identityMetadataSeedingBlocked = ref(false);
+const identityMetadataSeededPubkey = ref<string | null>(null);
+const identityMetadataSeedingInProgress = ref(false);
+const applyingProfileEvent = ref(false);
+let identityMetadataSeedRun = 0;
 
 const relayClientRef = shallowRef<FundstrRelayClient | null>(null);
 let relayClientPromise: Promise<FundstrRelayClient> | null = null;
@@ -886,15 +892,39 @@ watch(
 );
 
 const mintsStore = useMintsStore();
+const nostrStore = useNostrStore();
 const { activeMintUrl: storeActiveMintUrl, mints: storedMints } = storeToRefs(mintsStore);
+const { npub: storeNpub } = storeToRefs(nostrStore);
 const activeMintUrlTrimmed = computed(() => {
   const value = storeActiveMintUrl.value;
   return typeof value === 'string' ? value.trim() : '';
 });
-
-const nostrStore = useNostrStore();
-const { npub: storeNpub } = storeToRefs(nostrStore);
 const uiStore = useUiStore();
+
+watch(
+  [displayName, pictureUrl],
+  ([nextName, nextPicture], [prevName, prevPicture]) => {
+    if (identityMetadataSeedingInProgress.value || applyingProfileEvent.value) {
+      return;
+    }
+
+    const trimmedNextName = typeof nextName === 'string' ? nextName.trim() : '';
+    const trimmedNextPicture =
+      typeof nextPicture === 'string' ? nextPicture.trim() : '';
+    const trimmedPrevName = typeof prevName === 'string' ? prevName.trim() : '';
+    const trimmedPrevPicture =
+      typeof prevPicture === 'string' ? prevPicture.trim() : '';
+
+    if (
+      trimmedNextName !== trimmedPrevName ||
+      trimmedNextPicture !== trimmedPrevPicture
+    ) {
+      if (trimmedNextName || trimmedNextPicture) {
+        identityMetadataSeedingBlocked.value = true;
+      }
+    }
+  }
+);
 
 watch(mintsText, value => {
   cachedMintsText.value = value;
@@ -1911,6 +1941,72 @@ const signerPubkeyTrimmed = computed(() => {
   return typeof value === 'string' ? value.trim() : '';
 });
 
+const identityMetadataPubkey = computed(() => {
+  if (usingStoreIdentity.value && signerPubkeyTrimmed.value) {
+    return signerPubkeyTrimmed.value;
+  }
+  if (signerPubkeyTrimmed.value) {
+    return signerPubkeyTrimmed.value;
+  }
+  if (storeAuthorNpub.value) {
+    return storeAuthorNpub.value;
+  }
+  return '';
+});
+
+async function maybeSeedIdentityMetadata() {
+  if (identityMetadataSeedingBlocked.value) {
+    return;
+  }
+
+  if (displayName.value.trim() || pictureUrl.value.trim()) {
+    return;
+  }
+
+  const candidate = identityMetadataPubkey.value;
+  const resolved = candidate ? nostrStore.resolvePubkey(candidate) : undefined;
+  if (!resolved) {
+    return;
+  }
+
+  if (identityMetadataSeededPubkey.value === resolved) {
+    return;
+  }
+
+  const sequence = ++identityMetadataSeedRun;
+  identityMetadataSeedingInProgress.value = true;
+
+  try {
+    const profile = await nostrStore.getProfile(resolved);
+    if (sequence !== identityMetadataSeedRun) {
+      return;
+    }
+
+    const result = seedProfileIdentityFromMetadata(profile, {
+      displayName,
+      pictureUrl,
+    });
+
+    if (result.seededAny) {
+      identityMetadataSeededPubkey.value = resolved;
+    }
+  } catch (err) {
+    console.warn('[nutzap] failed to seed profile identity metadata', err);
+  } finally {
+    if (sequence === identityMetadataSeedRun) {
+      identityMetadataSeedingInProgress.value = false;
+    }
+  }
+}
+
+watch(
+  [usingStoreIdentity, storeAuthorNpub, signerPubkeyTrimmed],
+  () => {
+    void maybeSeedIdentityMetadata();
+  },
+  { immediate: true }
+);
+
 const hasAuthorIdentity = computed(
   () =>
     !!authorInput.value.trim() ||
@@ -2733,60 +2829,110 @@ function buildRelayList(rawRelays: string[]) {
 }
 
 function applyProfileEvent(latest: any | null) {
-  if (!latest) {
-    displayName.value = '';
-    pictureUrl.value = '';
-    p2pkPub.value = '';
-    p2pkPriv.value = '';
-    p2pkDerivedPub.value = '';
-    selectedP2pkPub.value = '';
-    p2pkPubError.value = '';
-    previousSelectedP2pkPub = '';
-    mintsText.value = '';
-    relaysText.value = CREATOR_STUDIO_RELAY_WS_URL;
-    seedMintsFromStoreIfEmpty();
-    loadedProfileAuthorHex.value = null;
-    removeAuthorLock('profile');
-    profilePublished.value = false;
-    return;
-  }
-
-  if (typeof latest.pubkey === 'string' && latest.pubkey) {
-    const normalized = latest.pubkey.toLowerCase();
-    const encoded = safeEncodeNpub(normalized);
-    authorInput.value = encoded || normalized;
-    loadedProfileAuthorHex.value = normalized;
-    if (signerPubkeyTrimmed.value || storeAuthorNpub.value) {
-      addAuthorLock('profile');
-    }
-  }
-
+  applyingProfileEvent.value = true;
   try {
-    const parsed = latest.content ? JSON.parse(latest.content) : {};
-    if (typeof parsed.p2pk === 'string') {
-      const candidate = parsed.p2pk.trim();
-      const entries = Array.isArray(p2pkKeys.value) ? p2pkKeys.value : [];
-      const match = entries.find(entry =>
-        entry && typeof entry.publicKey === 'string'
-          ? entry.publicKey.trim().toLowerCase() === candidate.toLowerCase()
-          : false
-      );
-      if (match) {
-        handleP2pkSelection(match.publicKey);
-      } else {
-        selectedP2pkPub.value = '';
-        p2pkPriv.value = '';
-        applyValidatedP2pk(candidate);
+    if (!latest) {
+      displayName.value = '';
+      pictureUrl.value = '';
+      p2pkPub.value = '';
+      p2pkPriv.value = '';
+      p2pkDerivedPub.value = '';
+      selectedP2pkPub.value = '';
+      p2pkPubError.value = '';
+      previousSelectedP2pkPub = '';
+      mintsText.value = '';
+      relaysText.value = CREATOR_STUDIO_RELAY_WS_URL;
+      seedMintsFromStoreIfEmpty();
+      loadedProfileAuthorHex.value = null;
+      removeAuthorLock('profile');
+      identityMetadataSeedingBlocked.value = false;
+      identityMetadataSeededPubkey.value = null;
+      profilePublished.value = false;
+      void maybeSeedIdentityMetadata();
+      return;
+    }
+
+    if (typeof latest.pubkey === 'string' && latest.pubkey) {
+      const normalized = latest.pubkey.toLowerCase();
+      const encoded = safeEncodeNpub(normalized);
+      authorInput.value = encoded || normalized;
+      loadedProfileAuthorHex.value = normalized;
+      if (signerPubkeyTrimmed.value || storeAuthorNpub.value) {
+        addAuthorLock('profile');
       }
-    } else {
-      handleP2pkSelection(null);
     }
-    if (Array.isArray(parsed.mints)) {
-      mintsText.value = parsed.mints.join('\n');
+
+    try {
+      const parsed = latest.content ? JSON.parse(latest.content) : {};
+      if (typeof parsed.p2pk === 'string') {
+        const candidate = parsed.p2pk.trim();
+        const entries = Array.isArray(p2pkKeys.value) ? p2pkKeys.value : [];
+        const match = entries.find(entry =>
+          entry && typeof entry.publicKey === 'string'
+            ? entry.publicKey.trim().toLowerCase() === candidate.toLowerCase()
+            : false
+        );
+        if (match) {
+          handleP2pkSelection(match.publicKey);
+        } else {
+          selectedP2pkPub.value = '';
+          p2pkPriv.value = '';
+          applyValidatedP2pk(candidate);
+        }
+      } else {
+        handleP2pkSelection(null);
+      }
+      if (Array.isArray(parsed.mints)) {
+        mintsText.value = parsed.mints.join('\n');
+      }
+      if (Array.isArray(parsed.relays) && parsed.relays.length > 0) {
+        const rawRelays = parsed.relays
+          .map((entry: unknown) => (typeof entry === 'string' ? entry.trim() : ''))
+          .filter(Boolean);
+        const { sanitized, dropped } = buildRelayList(rawRelays);
+        if (dropped.length > 0) {
+          notifyWarning(
+            dropped.length === 1
+              ? 'Discarded invalid relay URL'
+              : 'Discarded invalid relay URLs',
+            dropped.join(', ')
+          );
+        }
+        relaysText.value = sanitized.join('\n');
+      } else {
+        relaysText.value = CREATOR_STUDIO_RELAY_WS_URL;
+      }
+      if (typeof parsed.tierAddr === 'string') {
+        const [kindPart, , dPart] = parsed.tierAddr.split(':');
+        const maybeKind = Number(kindPart);
+        if (
+          (maybeKind === CANONICAL_TIER_KIND || maybeKind === LEGACY_TIER_KIND) &&
+          dPart === 'tiers'
+        ) {
+          tierPreviewKind.value = maybeKind as TierKind;
+        }
+      }
+    } catch (err) {
+      console.warn('[nutzap] failed to parse profile content', err);
     }
-    if (Array.isArray(parsed.relays) && parsed.relays.length > 0) {
-      const rawRelays = parsed.relays
-        .map((entry: unknown) => (typeof entry === 'string' ? entry.trim() : ''))
+
+    const tags = Array.isArray(latest.tags) ? latest.tags : [];
+    const nameTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'name' && t[1]);
+    if (nameTag) {
+      displayName.value = nameTag[1];
+    }
+    const pictureTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'picture' && t[1]);
+    if (pictureTag) {
+      pictureUrl.value = pictureTag[1];
+    }
+    const mintTags = tags.filter((t: any) => Array.isArray(t) && t[0] === 'mint' && t[1]);
+    if (!mintsText.value && mintTags.length) {
+      mintsText.value = mintTags.map((t: any) => t[1]).join('\n');
+    }
+    const relayTags = tags.filter((t: any) => Array.isArray(t) && t[0] === 'relay' && t[1]);
+    if ((!relaysText.value || relaysText.value === CREATOR_STUDIO_RELAY_WS_URL) && relayTags.length) {
+      const rawRelays = relayTags
+        .map((t: any) => (typeof t[1] === 'string' ? t[1].trim() : ''))
         .filter(Boolean);
       const { sanitized, dropped } = buildRelayList(rawRelays);
       if (dropped.length > 0) {
@@ -2798,63 +2944,22 @@ function applyProfileEvent(latest: any | null) {
         );
       }
       relaysText.value = sanitized.join('\n');
-    } else {
-      relaysText.value = CREATOR_STUDIO_RELAY_WS_URL;
     }
-    if (typeof parsed.tierAddr === 'string') {
-      const [kindPart, , dPart] = parsed.tierAddr.split(':');
-      const maybeKind = Number(kindPart);
-      if (
-        (maybeKind === CANONICAL_TIER_KIND || maybeKind === LEGACY_TIER_KIND) &&
-        dPart === 'tiers'
-      ) {
-        tierPreviewKind.value = maybeKind as TierKind;
+    if (!p2pkPub.value) {
+      const pkTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'pubkey' && t[1]);
+      if (pkTag) {
+        selectedP2pkPub.value = '';
+        p2pkPriv.value = '';
+        applyValidatedP2pk(pkTag[1]);
       }
     }
-  } catch (err) {
-    console.warn('[nutzap] failed to parse profile content', err);
-  }
 
-  const tags = Array.isArray(latest.tags) ? latest.tags : [];
-  const nameTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'name' && t[1]);
-  if (nameTag) {
-    displayName.value = nameTag[1];
+    seedMintsFromStoreIfEmpty();
+    profilePublished.value = true;
+    identityMetadataSeedingBlocked.value = true;
+  } finally {
+    applyingProfileEvent.value = false;
   }
-  const pictureTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'picture' && t[1]);
-  if (pictureTag) {
-    pictureUrl.value = pictureTag[1];
-  }
-  const mintTags = tags.filter((t: any) => Array.isArray(t) && t[0] === 'mint' && t[1]);
-  if (!mintsText.value && mintTags.length) {
-    mintsText.value = mintTags.map((t: any) => t[1]).join('\n');
-  }
-  const relayTags = tags.filter((t: any) => Array.isArray(t) && t[0] === 'relay' && t[1]);
-  if ((!relaysText.value || relaysText.value === CREATOR_STUDIO_RELAY_WS_URL) && relayTags.length) {
-    const rawRelays = relayTags
-      .map((t: any) => (typeof t[1] === 'string' ? t[1].trim() : ''))
-      .filter(Boolean);
-    const { sanitized, dropped } = buildRelayList(rawRelays);
-    if (dropped.length > 0) {
-      notifyWarning(
-        dropped.length === 1
-          ? 'Discarded invalid relay URL'
-          : 'Discarded invalid relay URLs',
-        dropped.join(', ')
-      );
-    }
-    relaysText.value = sanitized.join('\n');
-  }
-  if (!p2pkPub.value) {
-    const pkTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'pubkey' && t[1]);
-    if (pkTag) {
-      selectedP2pkPub.value = '';
-      p2pkPriv.value = '';
-      applyValidatedP2pk(pkTag[1]);
-    }
-  }
-
-  seedMintsFromStoreIfEmpty();
-  profilePublished.value = true;
 }
 
 async function loadTiers(authorHex: string) {
