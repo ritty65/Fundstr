@@ -1,15 +1,54 @@
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { copyToClipboard } from 'quasar';
+import { nip19 } from 'nostr-tools';
+import { createFundstrDiscoveryClient } from '@/api/fundstrDiscovery';
 import { LOCAL_STORAGE_KEYS } from '@/constants/localStorageKeys';
+import type { CreatorTier } from '@/lib/fundstrApi';
+import { formatMsatToSats } from '@/lib/fundstrApi';
 
 const visible = ref(false);
-const tab = ref<'lightning' | 'bitcoin'>('lightning');
-const lightning = ref(import.meta.env.VITE_DONATION_LIGHTNING || '');
+const liquid = ref(import.meta.env.VITE_DONATION_LIQUID_ADDRESS || '');
 const bitcoin = ref(import.meta.env.VITE_DONATION_BITCOIN || '');
-const lightningQRCode = computed(() => (lightning.value ? `lightning:${lightning.value}` : ''));
+const supporterIdentifier = (import.meta.env.VITE_DONATION_SUPPORTER_NPUB || '').trim();
+const tab = ref<'liquid' | 'bitcoin'>(liquid.value ? 'liquid' : 'bitcoin');
+const liquidQRCode = computed(() => (liquid.value ? `liquidnetwork:${liquid.value}` : ''));
 const bitcoinQRCode = computed(() => (bitcoin.value ? `bitcoin:${bitcoin.value}` : ''));
-const noAddress = computed(() => !lightning.value && !bitcoin.value);
+const noAddress = computed(() => !liquid.value && !bitcoin.value);
 const hasPaymentRails = computed(() => !noAddress.value);
+
+const discoveryClient = createFundstrDiscoveryClient();
+const supporterDisplayName = ref('Fundstr');
+const supporterTiers = ref<CreatorTier[]>([]);
+const supporterTierPreviews = computed(() =>
+  supporterTiers.value
+    .slice()
+    .sort((a, b) => tierAmount(a) - tierAmount(b))
+    .slice(0, 3)
+    .map((tier) => {
+      const priceLabel = formatTierPrice(tier.amountMsat);
+      const cadenceLabel = formatTierCadence(tier.cadence);
+      return {
+        id: tier.id,
+        name: tier.name,
+        priceLabel,
+        cadenceLabel,
+      };
+    }),
+);
+const tiersLoading = ref(false);
+const tiersError = ref('');
+const showTierPreview = computed(() => Boolean(supporterIdentifier));
+const donateLabel = computed(() => {
+  const topTier = supporterTierPreviews.value[0];
+  if (topTier) {
+    const priceSuffix = topTier.priceLabel !== 'Flexible amount' ? ` (${topTier.priceLabel})` : '';
+    return `Join ${topTier.name}${priceSuffix}`;
+  }
+  return 'Donate Now';
+});
+
+let tiersInitialized = false;
+let tiersPromise: Promise<void> | null = null;
 
 const LAUNCH_THRESHOLD = 5;
 const DAY_THRESHOLD = 7;
@@ -49,6 +88,7 @@ const open = (options?: OpenOptions) => {
   }
 
   visible.value = true;
+  void ensureSupporterTiers();
   return true;
 };
 
@@ -57,8 +97,8 @@ const close = () => {
 };
 
 const donate = () => {
-  if (tab.value === 'lightning' && lightning.value) {
-    window.open(`lightning:${lightning.value}`, '_blank');
+  if (tab.value === 'liquid' && liquid.value) {
+    window.open(`liquidnetwork:${liquid.value}`, '_blank');
   } else if (tab.value === 'bitcoin' && bitcoin.value) {
     window.open(`bitcoin:${bitcoin.value}`, '_blank');
   }
@@ -87,19 +127,192 @@ const copy = async (text: string) => {
   }
 };
 
+const ensureSupporterTiers = async (force = false) => {
+  if (!supporterIdentifier) {
+    supporterTiers.value = [];
+    return;
+  }
+
+  if (!force && (tiersInitialized || tiersLoading.value)) {
+    await tiersPromise;
+    return;
+  }
+
+  tiersLoading.value = true;
+  tiersError.value = '';
+
+  const request = (async () => {
+    try {
+      const response = await discoveryClient.getCreatorsByPubkeys({
+        npubs: [supporterIdentifier],
+        fresh: false,
+        swr: true,
+      });
+
+      const results = Array.isArray(response.results) ? response.results : [];
+      const supporterHex = decodeIdentifierToHex(supporterIdentifier);
+      const match = findMatchingCreator(results, supporterHex);
+
+      if (match) {
+        const display = normalizeName(match.displayName) || normalizeName(match.name);
+        if (display) {
+          supporterDisplayName.value = display;
+        }
+        supporterTiers.value = Array.isArray(match.tiers) ? match.tiers.filter(isValidTier) : [];
+        tiersInitialized = true;
+      } else {
+        supporterTiers.value = [];
+        tiersInitialized = true;
+      }
+    } catch (error) {
+      supporterTiers.value = [];
+      tiersInitialized = false;
+      tiersError.value =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Unable to load supporter tiers right now. Please try again later.';
+    } finally {
+      tiersLoading.value = false;
+      tiersPromise = null;
+    }
+  })();
+
+  tiersPromise = request;
+  await request;
+};
+
+const reloadSupporterTiers = () => ensureSupporterTiers(true);
+
+watch(
+  () => visible.value,
+  (isVisible) => {
+    if (isVisible) {
+      void ensureSupporterTiers();
+    }
+  },
+);
+
+function normalizeName(value: unknown): string {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : '';
+}
+
+function decodeIdentifierToHex(identifier: string): string {
+  const trimmed = identifier.trim();
+  if (!trimmed) {
+    return '';
+  }
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  if (trimmed.startsWith('npub') || trimmed.startsWith('nprofile')) {
+    try {
+      const decoded = nip19.decode(trimmed);
+      if (typeof decoded.data === 'string') {
+        return decoded.data.toLowerCase();
+      }
+      if (decoded.data && typeof decoded.data === 'object' && 'pubkey' in decoded.data) {
+        const pubkey = (decoded.data as Record<string, unknown>).pubkey;
+        if (typeof pubkey === 'string') {
+          return pubkey.toLowerCase();
+        }
+      }
+    } catch {
+      return '';
+    }
+  }
+  return '';
+}
+
+function findMatchingCreator(creators: any[], supporterHex: string) {
+  if (!Array.isArray(creators)) {
+    return null;
+  }
+  if (supporterHex) {
+    const normalizedHex = supporterHex.toLowerCase();
+    const matched = creators.find((creator) =>
+      creator && typeof creator.pubkey === 'string' && creator.pubkey.trim().toLowerCase() === normalizedHex,
+    );
+    if (matched) {
+      return matched;
+    }
+  }
+  return creators.length ? creators[0] : null;
+}
+
+function isValidTier(tier: CreatorTier | null | undefined): tier is CreatorTier {
+  return Boolean(tier && typeof tier.id === 'string' && tier.id.trim());
+}
+
+function tierAmount(tier: CreatorTier): number {
+  if (!tier || tier.amountMsat === null || tier.amountMsat === undefined) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return Number(tier.amountMsat);
+}
+
+function formatTierPrice(amountMsat: number | null | undefined): string {
+  if (amountMsat === null || amountMsat === undefined || !Number.isFinite(amountMsat)) {
+    return 'Flexible amount';
+  }
+  return `${formatMsatToSats(amountMsat)} sats`;
+}
+
+function formatTierCadence(cadence: string | null | undefined): string {
+  if (!cadence) {
+    return '';
+  }
+  const normalized = cadence.trim().toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+  switch (normalized) {
+    case 'month':
+    case 'monthly':
+      return 'monthly';
+    case 'week':
+    case 'weekly':
+      return 'weekly';
+    case 'year':
+    case 'yearly':
+    case 'annual':
+      return 'yearly';
+    case 'day':
+    case 'daily':
+      return 'daily';
+    case 'one-time':
+    case 'one time':
+    case 'onetime':
+    case 'single':
+      return 'one-time';
+    default:
+      return normalized;
+  }
+}
+
 export const useDonationPrompt = () => ({
   bitcoin,
   bitcoinQRCode,
   close,
   copy,
   donate,
+  donateLabel,
   hasPaymentRails,
   later,
-  lightning,
-  lightningQRCode,
+  liquid,
+  liquidQRCode,
   never,
   noAddress,
   open,
+  reloadSupporterTiers,
+  showTierPreview,
+  supporterDisplayName,
+  supporterTierPreviews,
   tab,
+  tiersError,
+  tiersLoading,
   visible,
 });
