@@ -26,7 +26,7 @@ export default configure(() => ({
   build: {
     target: { browser: ['es2022'] },
     sourcemap: true,
-    publicPath: '/',
+    publicPath: './',
     vueRouterMode: 'history',
     extendViteConf (viteConf) {
       viteConf.resolve = viteConf.resolve || {}
