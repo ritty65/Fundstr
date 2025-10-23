@@ -15,6 +15,11 @@ export interface SupporterProfile {
  */
 export const SUPPORTERS: SupporterProfile[] = [
   {
+    name: "KalonAxiarch",
+    npub: "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
+    blurb: "Creator of Fundstr leading privacy-first patronage tools across the Nostr ecosystem.",
+  },
+  {
     name: "Kalon Axiarch",
     npub: "npub18pqmz8t3sfp7r7eewdzpth4n9h4u45q4dxsv3sv9k67xw8rs3f5sl9vh9s",
     blurb: "Fundstr's founding supporter championing open, censorship-resistant tools for creators.",
