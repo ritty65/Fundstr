@@ -152,6 +152,7 @@
                 :frequency-label="frequencyLabel(t)"
                 :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
                 :subscribe-disabled="isGuest"
+                :collapse-media="isCustomLinkView"
                 @subscribe="openSubscribe"
               >
                 <template v-if="needsSignerSetupTooltip" #subscribe-tooltip>
@@ -423,6 +424,18 @@ export default defineComponent({
     const isGuest = computed(() => !welcomeStore.welcomeCompleted);
     const needsSignerSetupTooltip = computed(
       () => isGuest.value || !nostr.hasIdentity,
+    );
+
+    const isCustomLinkView = ref(false);
+
+    watch(
+      () => route.query.tierId,
+      (tierId) => {
+        if (typeof tierId === "string" && tierId.length > 0) {
+          isCustomLinkView.value = true;
+        }
+      },
+      { immediate: true },
     );
 
     const mergeUniqueUrls = (...lists: Array<string[] | undefined>) => {
@@ -919,6 +932,7 @@ export default defineComponent({
       profileUrl,
       isGuest,
       needsSignerSetupTooltip,
+      isCustomLinkView,
       gotoWelcome,
     };
   },
