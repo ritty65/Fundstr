@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useNutzapStore } from "../src/stores/nutzap";
+import { useCashuStore } from "../src/stores/cashu";
 import { cashuDb } from "../src/stores/dexie";
 import { subscriptionPayload } from "../src/utils/receipt-utils";
 
@@ -65,7 +65,7 @@ beforeEach(async () => {
 
 describe("subscribeToTier", () => {
   it("sends minimal DM payload", async () => {
-    const store = useNutzapStore();
+    const store = useCashuStore();
     await store.subscribeToTier({
       creator: { nostrPubkey: "c", cashuP2pk: "pk" },
       tierId: "tier",
@@ -87,7 +87,7 @@ describe("subscribeToTier", () => {
   });
 
   it("enforces trusted mints when provided", async () => {
-    const store = useNutzapStore();
+    const store = useCashuStore();
     findSpendableMint.mockReturnValue(null);
     await expect(
       store.subscribeToTier({

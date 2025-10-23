@@ -28,13 +28,13 @@
 
 <script lang="ts">
 import { defineComponent, computed } from "vue";
-import { useNutzapStore } from "stores/nutzap";
+import { useCashuStore } from "stores/cashu";
 import token from "src/js/token";
 
 export default defineComponent({
   name: "NutzapNotification",
   setup() {
-    const store = useNutzapStore();
+    const store = useCashuStore();
     const entries = computed(() => {
       return store.incoming.map((ev) => {
         let amount = 0;

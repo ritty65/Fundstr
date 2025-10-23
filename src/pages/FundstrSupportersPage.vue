@@ -243,7 +243,7 @@ function donate(pubkey: string) {
 }
 
 function supportFundstr() {
-  const opened = openDonationPrompt({ bypassGate: true, defaultTab: 'nutzap' });
+  const opened = openDonationPrompt({ bypassGate: true, defaultTab: 'cashu' });
   console.info('[supporters] Want to support CTA clicked', { opened });
 }
 

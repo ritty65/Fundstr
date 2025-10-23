@@ -39,7 +39,7 @@ export const LOCAL_STORAGE_KEYS = {
   CASHU_NPC_CONNECTIONS: "cashu.npc.connections",
   CASHU_NPC_DOMAIN: "cashu.npc.domain",
   CASHU_NPC_ENABLED: "cashu.npc.enabled",
-  CASHU_NUTZAP_SENDQUEUE: "cashu.nutzap.sendQueue",
+  CASHU_CASHU_SENDQUEUE: "cashu.cashu.sendQueue",
   CASHU_NWC_CONNECTIONS: "cashu.nwc.connections",
   CASHU_NWC_ENABLED: "cashu.nwc.enabled",
   CASHU_NWC_RELAYS: "cashu.nwc.relays",

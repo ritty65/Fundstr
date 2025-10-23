@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useNutzapStore, calcUnlock } from "../../../src/stores/nutzap";
+import { useCashuStore, calcUnlock } from "../../../src/stores/cashu";
 import { cashuDb } from "../../../src/stores/dexie";
 
 let fetchNutzapProfile: any;
@@ -101,7 +101,7 @@ beforeEach(async () => {
 
 describe("Nutzap store", () => {
   it("send() calculates unlockDate from startDate", async () => {
-    const store = useNutzapStore();
+    const store = useCashuStore();
     const start = 1000;
     await store.send({
       npub: "receiver",
@@ -117,7 +117,7 @@ describe("Nutzap store", () => {
   });
 
   it("_onZap inserts row only once for duplicate event", async () => {
-    const store = useNutzapStore();
+    const store = useCashuStore();
     const ev = {
       id: "1",
       pubkey: "sender",
@@ -135,7 +135,7 @@ describe("Nutzap store", () => {
   });
 
   it("subscribeToTier stores locked tokens", async () => {
-    const store = useNutzapStore();
+    const store = useCashuStore();
     const start = 1000;
     const ok = await store.subscribeToTier({
       creator: { nostrPubkey: "creator", cashuP2pk: "pk" },
@@ -158,7 +158,7 @@ describe("Nutzap store", () => {
   });
 
   it("subscribeToTier throws when creator key invalid", async () => {
-    const store = useNutzapStore();
+    const store = useCashuStore();
     // override isValidPubkey to return false for this test
     isValidPubkey = vi.fn(() => false);
     await expect(
@@ -175,7 +175,7 @@ describe("Nutzap store", () => {
 
   it("queues token when DM send fails", async () => {
     sendDm = vi.fn(async () => ({ success: false }));
-    const store = useNutzapStore();
+    const store = useCashuStore();
     await store.send({ npub: "receiver", amount: 1, periods: 1, startDate: 0 });
     expect(store.sendQueue.length).toBe(1);
     expect(store.sendQueue[0].npub).toBe("hex");

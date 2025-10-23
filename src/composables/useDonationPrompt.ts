@@ -10,9 +10,9 @@ const visible = ref(false);
 const liquid = ref(import.meta.env.VITE_DONATION_LIQUID_ADDRESS || '');
 const bitcoin = ref(import.meta.env.VITE_DONATION_BITCOIN || '');
 const supporterIdentifier = (import.meta.env.VITE_DONATION_SUPPORTER_NPUB || '').trim();
-const nutzapSupporterNpub = 'npub1mxmqzhgvla9wrgc8qlptmuylqzal2c50pc744zcm9kunhekv6g3s63ytu0';
+const cashuSupporterNpub = 'npub1mxmqzhgvla9wrgc8qlptmuylqzal2c50pc744zcm9kunhekv6g3s63ytu0';
 
-type DonationTab = 'liquid' | 'bitcoin' | 'nutzap';
+type DonationTab = 'liquid' | 'bitcoin' | 'cashu';
 
 const getDefaultTab = (): DonationTab => {
   if (liquid.value) {
@@ -21,14 +21,14 @@ const getDefaultTab = (): DonationTab => {
   if (bitcoin.value) {
     return 'bitcoin';
   }
-  return 'nutzap';
+  return 'cashu';
 };
 
 const tab = ref<DonationTab>(getDefaultTab());
 const liquidQRCode = computed(() => (liquid.value ? `liquidnetwork:${liquid.value}` : ''));
 const bitcoinQRCode = computed(() => (bitcoin.value ? `bitcoin:${bitcoin.value}` : ''));
 const noAddress = computed(() => !liquid.value && !bitcoin.value);
-const hasPaymentRails = computed(() => !noAddress.value || Boolean(nutzapSupporterNpub));
+const hasPaymentRails = computed(() => !noAddress.value || Boolean(cashuSupporterNpub));
 
 const discoveryClient = createFundstrDiscoveryClient();
 const supporterDisplayName = ref('Fundstr');
@@ -76,7 +76,7 @@ interface OpenOptions {
 }
 
 const isDonationTab = (value: string): value is DonationTab =>
-  value === 'liquid' || value === 'bitcoin' || value === 'nutzap';
+  value === 'liquid' || value === 'bitcoin' || value === 'cashu';
 
 const open = (options?: OpenOptions) => {
   const bypassGate = options?.bypassGate === true;
@@ -336,7 +336,7 @@ export const useDonationPrompt = () => ({
   liquidQRCode,
   never,
   noAddress,
-  nutzapSupporterNpub,
+  cashuSupporterNpub,
   open,
   reloadSupporterTiers,
   showTierPreview,
