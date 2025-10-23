@@ -149,6 +149,12 @@
             :label="$t('SendTokenDialog.inputs.memo.label')"
           />
           <q-toggle
+            v-model="sendData.anonymous"
+            color="primary"
+            :label="$t('SendTokenDialog.inputs.anonymous_toggle.label')"
+            class="q-mt-sm"
+          />
+          <q-toggle
             v-model="showLockInput"
             color="primary"
             :label="$t('SendTokenDialog.inputs.lock_toggle.label')"
@@ -638,6 +644,7 @@ import { useCameraStore } from "src/stores/camera";
 import { useP2PKStore } from "src/stores/p2pk";
 import { nip19, ProfilePointer } from "nostr-tools";
 import { ensureCompressed } from "src/utils/ecash";
+import { getOrCreateBrowserId } from "@/utils/browserId";
 import TokenInformation from "components/TokenInformation.vue";
 import {
   getDecodedToken,
@@ -646,6 +653,7 @@ import {
 } from "@cashu/cashu-ts";
 import { useBucketsStore } from "src/stores/buckets";
 import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
+import { sendDonationDm, type DonationRail } from "@/services/donationDm";
 
 import { mapActions, mapState, mapWritableState } from "pinia";
 import ChooseMint from "components/ChooseMint.vue";
@@ -881,6 +889,7 @@ export default defineComponent({
         this.sendData.tokensBase64 = "";
         this.sendData.historyToken = null;
         this.sendData.paymentRequest = null;
+        this.sendData.anonymous = false;
         this.recipientPubkey = "";
         this.sendViaNostr = false;
       }
@@ -921,6 +930,99 @@ export default defineComponent({
     ...mapActions(useP2PKStore, ["isValidPubkey", "sendToLock"]),
     ...mapActions(useCameraStore, ["closeCamera", "showCamera"]),
     ...mapActions(useMintsStore, ["toggleUnit"]),
+    resolveRecipientPubkey(pubkey?: string | null) {
+      if (!pubkey) {
+        return null;
+      }
+
+      let recipient = pubkey.trim();
+      if (recipient.startsWith("npub") || recipient.startsWith("nprofile")) {
+        try {
+          const decoded = nip19.decode(recipient);
+          if (decoded.type === "npub") {
+            return decoded.data as string;
+          }
+          if (decoded.type === "nprofile") {
+            return (decoded.data as ProfilePointer).pubkey;
+          }
+        } catch (error) {
+          console.error(error);
+          return null;
+        }
+      }
+
+      return recipient;
+    },
+    async sendDonationNotification(
+      amount: number,
+      rail: DonationRail,
+      options?: {
+        recipientPubkey?: string | null;
+        sendViaNostr?: boolean;
+        anonymous?: boolean;
+        memo?: string | null;
+      },
+    ) {
+      const recipientPubkey =
+        options?.recipientPubkey ?? this.recipientPubkey ?? null;
+      const sendViaNostr =
+        options?.sendViaNostr ?? (this.sendViaNostr as boolean | undefined);
+      const memo = options?.memo ?? this.sendData.memo;
+      const anonymous =
+        options?.anonymous ?? (this.sendData.anonymous ?? false);
+
+      if (!sendViaNostr || !recipientPubkey || this.offline) {
+        return;
+      }
+
+      const browserId = getOrCreateBrowserId();
+      if (!browserId) {
+        return;
+      }
+
+      const recipient = this.resolveRecipientPubkey(recipientPubkey);
+      if (!recipient) {
+        return;
+      }
+
+      try {
+        const nostrStore = useNostrStore();
+        const { success, event } = await sendDonationDm(
+          (target, content) =>
+            nostrStore.sendDirectMessageUnified(target, content),
+          {
+            targetPubkey: recipient,
+            amount,
+            rail,
+            browserId,
+            memo,
+            anonymous,
+          },
+        );
+
+        if (success) {
+          if (event) {
+            useDmChatsStore().addOutgoing(event);
+          }
+          notifySuccess(
+            this.$t(
+              "FindCreators.notifications.donation_dm_sent",
+            ) as string,
+          );
+        } else {
+          notifyError(
+            this.$t(
+              "FindCreators.notifications.donation_dm_failed",
+            ) as string,
+          );
+        }
+      } catch (error) {
+        console.error("Failed to send donation DM", error);
+        notifyError(
+          this.$t("FindCreators.notifications.donation_dm_failed") as string,
+        );
+      }
+    },
     onDialogShown() {
       this.$nextTick(() => {
         if (this.$refs.amountInput) {
@@ -1189,6 +1291,12 @@ export default defineComponent({
         this.sendData.tokens = sendProofs;
 
         this.sendData.tokensBase64 = this.serializeProofs(sendProofs);
+        const donationContext = {
+          recipientPubkey: this.recipientPubkey,
+          sendViaNostr: this.sendViaNostr,
+          memo: this.sendData.memo,
+          anonymous: this.sendData.anonymous ?? false,
+        };
         if (this.sendViaNostr && this.recipientPubkey) {
           try {
             let recipient = this.recipientPubkey;
@@ -1280,6 +1388,7 @@ export default defineComponent({
         });
 
         if (!this.offline) {
+          void this.sendDonationNotification(sendAmount, "cashu", donationContext);
           this.onTokenPaid(historyToken);
         }
       } catch (error) {
@@ -1329,6 +1438,9 @@ export default defineComponent({
         let sendAmount = Math.floor(
           this.sendData.amount * this.activeUnitCurrencyMultiplyer,
         );
+        const rail: DonationRail = this.sendData.paymentRequest
+          ? "lightning"
+          : "cashu";
         const mintWallet = this.mintWallet(this.activeMintUrl, this.activeUnit);
         const bucketId = this.sendData.bucketId;
         let { _, sendProofs } = await this.send(
@@ -1343,6 +1455,12 @@ export default defineComponent({
         // update UI
         this.sendData.tokens = sendProofs;
         this.sendData.tokensBase64 = this.serializeProofs(sendProofs);
+        const donationContext = {
+          recipientPubkey: this.recipientPubkey,
+          sendViaNostr: this.sendViaNostr,
+          memo: this.sendData.memo,
+          anonymous: this.sendData.anonymous ?? false,
+        };
         if (this.sendViaNostr && this.recipientPubkey) {
           try {
             let recipient = this.recipientPubkey;
@@ -1418,6 +1536,7 @@ export default defineComponent({
         this.sendData.historyToken = historyToken;
 
         if (!this.offline) {
+          void this.sendDonationNotification(sendAmount, rail, donationContext);
           this.onTokenPaid(historyToken);
         }
       } catch (error) {
