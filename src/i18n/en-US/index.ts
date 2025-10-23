@@ -63,8 +63,7 @@ export const messages = {
   },
   DonationPrompt: {
     title: "Support {name}",
-    tabs: {
-      nutzap: "Nutzap",
+    tabs: { cashu: "Cashu",
       liquid: "Liquid",
       bitcoin: "Bitcoin",
     },
@@ -94,18 +93,18 @@ export const messages = {
       joinTierWithPrice: "Join {name} ({price})",
       donate: "Donate Now",
     },
-    nutzap: {
+    cashu: {
       tagline: "Send locked Cashu tokens directly to Fundstr.",
       tiersHeading: "Featured tiers",
-      tiersEmpty: "No Nutzap tiers published yet.",
+      tiersEmpty: "No Cashu tiers published yet.",
       donateHeading: "Cashu donation",
       amountLabel: "Amount (sats)",
       donateCta: "Send via Cashu",
       trustedMintsHeading: "Trusted mints",
       trustedMintsEmpty: "No trusted mints listed.",
       errors: {
-        profileMissing: "Fundstr has not published a Nutzap profile yet.",
-        loadFailed: "Unable to load Nutzap profile right now.",
+        profileMissing: "Fundstr has not published a Cashu profile yet.",
+        loadFailed: "Unable to load Cashu profile right now.",
         invalidAmount: "Enter a valid donation amount.",
       },
       notifications: {
@@ -436,7 +435,7 @@ export const messages = {
         "Generate a key pair to receive P2PK-locked ecash. Warning - This feature is experimental. Only use with small amounts. If you lose your private keys, nobody will be able to unlock the ecash locked to it anymore.",
       generate_button: "Generate key",
       import_button: "Import nsec",
-      publish_profile_button: "Publish Nutzap profile",
+      publish_profile_button: "Publish Cashu profile",
       quick_access: {
         toggle: "Quick access to lock",
         description:
@@ -1386,9 +1385,9 @@ export const messages = {
       subscription_failed: "Subscription failed",
     },
     explainers: {
-      heading: "How Nutzap subscriptions work",
+      heading: "How Cashu subscriptions work",
       intro:
-        "Here's how Nutzap keeps your support flowing with ecash you control.",
+        "Here's how Cashu keeps your support flowing with ecash you control.",
       ctaLabel: "@:CreatorHub.profile.finishSetup",
       ctaAria: "Finish onboarding to subscribe",
       ctaHint:
@@ -1397,7 +1396,7 @@ export const messages = {
         subscriptions: {
           title: "Subscriptions you control",
           body:
-            "Choose a tier and Nutzap signs zap payments from your wallet on the cadence you set—funds only move with your approval.",
+            "Choose a tier and Cashu signs zap payments from your wallet on the cadence you set—funds only move with your approval.",
         },
         trustedMints: {
           title: "Trusted mints",
@@ -1853,10 +1852,10 @@ export const messages = {
       p2pkLabel: "P2PK public key",
       trustedMintsLabel: "Trusted mints",
       relaysLabel: "Relays",
-      howNutzapWorks: {
-        title: "How Nutzap works",
+      howCashuWorks: {
+        title: "How Cashu works",
         intro:
-          "Nutzap keeps your support flowing with non-custodial ecash and signed relay instructions.",
+          "Cashu keeps your support flowing with non-custodial ecash and signed relay instructions.",
         points: [
           "You connect to the creator's trusted mints to fund your wallet.",
           "Subscriptions send pre-signed zap instructions on the schedule you choose.",

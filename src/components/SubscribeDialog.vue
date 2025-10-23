@@ -87,7 +87,7 @@ import {
 } from "stores/nostr";
 import { notifySuccess, notifyError } from "src/js/notify";
 import { storeToRefs } from "pinia";
-import { useNutzapStore } from "stores/nutzap";
+import { useCashuStore } from "stores/cashu";
 import { useI18n } from "vue-i18n";
 import { NdkBootError } from "boot/ndk";
 import { useBootErrorStore } from "stores/bootError";
@@ -112,7 +112,7 @@ export default defineComponent({
     const bucketsStore = useBucketsStore();
     const mintsStore = useMintsStore();
     const uiStore = useUiStore();
-    const nutzap = useNutzapStore();
+    const cashuStore = useCashuStore();
     const nostr = useNostrStore();
     const bootErrorStore = useBootErrorStore();
     const router = useRouter();
@@ -255,7 +255,7 @@ export default defineComponent({
           nostrPubkey: creatorHex,
           cashuP2pk: profile.p2pkPubkey,
         };
-        const success = await nutzap.subscribeToTier({
+        const success = await cashuStore.subscribeToTier({
           creator,
           tierId: props.tier?.id ?? props.tier?.name ?? "tier",
           price: tierPrice.value,

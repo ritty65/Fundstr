@@ -116,7 +116,7 @@ import ConversationList from "components/ConversationList.vue";
 import UserInfo from "components/UserInfo.vue";
 import NewChatDialog from "components/NewChatDialog.vue";
 import { useNostrStore, refreshCachedNutzapProfiles } from "src/stores/nostr";
-import { useNutzapStore } from "src/stores/nutzap";
+import { useCashuStore } from "src/stores/cashu";
 import { useMessengerStore } from "src/stores/messenger";
 import { useUiStore } from "src/stores/ui";
 import { NAV_DRAWER_WIDTH, NAV_DRAWER_GUTTER } from "src/constants/layout";
@@ -136,7 +136,7 @@ export default defineComponent({
   setup() {
     const messenger = useMessengerStore();
     const nostr = useNostrStore();
-    const nutzapStore = useNutzapStore();
+    const cashuStore = useCashuStore();
     const router = useRouter();
     const route = useRoute();
     const conversationSearch = ref("");
@@ -268,7 +268,7 @@ export default defineComponent({
     const ensureNutzapListener = () => {
       const myPubkey = nostr.pubkey;
       if (!myPubkey) return;
-      void nutzapStore.initListener(myPubkey).catch((err) => {
+      void cashuStore.initListener(myPubkey).catch((err) => {
         if (import.meta?.env?.DEV) {
           console.warn("[nutzap] Failed to initialise listener", err);
         }

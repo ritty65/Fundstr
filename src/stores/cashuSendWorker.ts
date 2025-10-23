@@ -1,8 +1,8 @@
 import { defineStore } from "pinia";
-import { useNutzapStore } from "./nutzap";
+import { useCashuStore } from "./cashu";
 import { useMessengerStore } from "./messenger";
 
-export const useNutzapSendWorker = defineStore("nutzapSendWorker", {
+export const useCashuSendWorker = defineStore("cashuSendWorker", {
   state: () => ({
     interval: 5000,
     worker: null as NodeJS.Timeout | null,
@@ -21,9 +21,9 @@ export const useNutzapSendWorker = defineStore("nutzapSendWorker", {
     },
     async process() {
       const messenger = useMessengerStore();
-      const nutzap = useNutzapStore();
-      if (!messenger.isConnected() || !nutzap.sendQueue.length) return;
-      await nutzap.retryQueuedSends();
+      const cashu = useCashuStore();
+      if (!messenger.isConnected() || !cashu.sendQueue.length) return;
+      await cashu.retryQueuedSends();
     },
   },
 });

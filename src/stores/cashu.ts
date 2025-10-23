@@ -57,14 +57,14 @@ interface SendParams {
   frequency?: SubscriptionFrequency;
 }
 
-export interface NutzapQueuedSend {
+export interface CashuQueuedSend {
   npub: string;
   token: string;
   unlockTime: number;
   createdAt: number;
 }
 
-export const useNutzapStore = defineStore("nutzap", {
+export const useCashuStore = defineStore("cashu", {
   state: () => ({
     incoming: [] as NostrEvent[], // raw kind:9321 events waiting to be claimed
     loading: false,
@@ -72,14 +72,14 @@ export const useNutzapStore = defineStore("nutzap", {
     subscription: null as NDKSubscription | null,
     listenerStarted: false,
     watchInitialized: false,
-    sendQueue: useLocalStorage<NutzapQueuedSend[]>(
-      "cashu.nutzap.sendQueue",
+    sendQueue: useLocalStorage<CashuQueuedSend[]>(
+      "cashu.cashu.sendQueue",
       [],
     ),
   }),
 
   actions: {
-    queueSend(data: NutzapQueuedSend) {
+    queueSend(data: CashuQueuedSend) {
       this.sendQueue.push(data);
     },
 
@@ -87,7 +87,7 @@ export const useNutzapStore = defineStore("nutzap", {
       this.sendQueue.splice(0, this.sendQueue.length);
     },
 
-    async resendQueued(item: NutzapQueuedSend) {
+    async resendQueued(item: CashuQueuedSend) {
       const messenger = useMessengerStore();
       const payload = subscriptionPayload(item.token, item.unlockTime, {
         subscription_id: "",

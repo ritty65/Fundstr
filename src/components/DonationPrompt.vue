@@ -6,15 +6,15 @@
       </q-card-section>
       <q-card-section>
         <q-tabs v-model="tab" dense class="text-primary donation-tabs">
-          <q-tab name="nutzap" :label="t('DonationPrompt.tabs.nutzap')" />
+          <q-tab name="cashu" :label="t('DonationPrompt.tabs.cashu')" />
           <q-tab name="liquid" :label="t('DonationPrompt.tabs.liquid')" />
           <q-tab name="bitcoin" :label="t('DonationPrompt.tabs.bitcoin')" />
         </q-tabs>
         <q-separator />
         <q-tab-panels v-model="tab" animated>
-          <q-tab-panel name="nutzap" class="q-pt-md">
-            <DonationNutzapPanel
-              :supporter-npub="nutzapSupporterNpub"
+          <q-tab-panel name="cashu" class="q-pt-md">
+            <DonationCashuPanel
+              :supporter-npub="cashuSupporterNpub"
               :supporter-display-name="supporterDisplayName"
               :supporter-avatar-url="supporterAvatarUrl"
             />
@@ -97,7 +97,7 @@
         <q-btn flat :label="t('DonationPrompt.buttons.never')" @click="never" />
         <q-btn flat :label="t('DonationPrompt.buttons.later')" @click="later" />
         <q-btn
-          v-if="tab !== 'nutzap'"
+          v-if="tab !== 'cashu'"
           color="primary"
           :label="donateButtonLabel"
           @click="donate"
@@ -113,7 +113,7 @@ import { computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import VueQrcode from '@chenfengyuan/vue-qrcode'
 import { useDonationPrompt } from '@/composables/useDonationPrompt'
-import DonationNutzapPanel from './DonationNutzapPanel.vue'
+import DonationCashuPanel from './DonationCashuPanel.vue'
 
 defineOptions({
   name: 'DonationPrompt'
@@ -133,7 +133,7 @@ const {
   liquid,
   liquidQRCode,
   never,
-  nutzapSupporterNpub,
+  cashuSupporterNpub,
   open,
   reloadSupporterTiers,
   showTierPreview,

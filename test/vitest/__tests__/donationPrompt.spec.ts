@@ -57,7 +57,7 @@ const mountComponent = () => {
           template: '<button v-bind="$attrs" :disabled="disable">{{ label }}</button>'
         },
         VueQrcode: { template: '<div />' },
-        DonationNutzapPanel: { template: '<div class="nutzap-panel-stub" />' }
+        DonationCashuPanel: { template: '<div class="cashu-panel-stub" />' }
       }
     }
   })
@@ -93,12 +93,12 @@ describe('DonationPrompt', () => {
     await loadComponent()
     const wrapper = mountComponent()
     await flushPromises()
-    // Defaults to Nutzap tab so the Liquid/Bitcoin donate button is hidden
+    // Defaults to Cashu tab so the Liquid/Bitcoin donate button is hidden
     const donateBtn = wrapper
       .findAll('button')
       .find((b) => b.text().includes('Join') || b.text().includes('Donate'))
     expect(donateBtn).toBeUndefined()
-    expect(wrapper.vm.tab).toBe('nutzap')
+    expect(wrapper.vm.tab).toBe('cashu')
     // Switching to Liquid tab should surface the address warning
     wrapper.vm.tab = 'liquid'
     await flushPromises()

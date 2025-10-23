@@ -425,7 +425,7 @@ import { useUiStore } from "stores/ui";
 import { useNostrStore } from "stores/nostr";
 import { useMessengerStore } from "stores/messenger";
 import { useSubscriptionsStore } from "stores/subscriptions";
-import { useNutzapStore } from "stores/nutzap";
+import { useCashuStore } from "stores/cashu";
 import { useCreatorSubscriptionsStore } from "stores/creatorSubscriptions";
 import { fetchNutzapProfile, RelayConnectionError } from "stores/nostr";
 import { useRouter } from "vue-router";
@@ -453,10 +453,10 @@ const mintsStore = useMintsStore();
 const uiStore = useUiStore();
 const proofsStore = useProofsStore();
 const sendTokensStore = useSendTokensStore();
-const nutzap = useNutzapStore();
+const cashuStore = useCashuStore();
 const creatorSubscriptionsStore = useCreatorSubscriptionsStore();
 const { activeUnit } = storeToRefs(mintsStore);
-const { sendQueue } = storeToRefs(nutzap);
+const { sendQueue } = storeToRefs(cashuStore);
 const { subscriptions: creatorSubscriptions } = storeToRefs(
   creatorSubscriptionsStore,
 );
@@ -685,8 +685,8 @@ async function confirmMessage() {
 }
 
 async function retryQueuedSends() {
-  await nutzap.retryQueuedSends();
-  nutzap.clearSendQueue();
+  await cashuStore.retryQueuedSends();
+  cashuStore.clearSendQueue();
 }
 
 function cancelSubscription(pubkey: string) {
@@ -738,7 +738,7 @@ function extendSubscription(pubkey: string) {
         notifyError("Creator has not published a Nutzap profile (kind-10019)");
         return;
       }
-      const newTokens = await nutzap.send({
+      const newTokens = await cashuStore.send({
         npub: pubkey,
         periods,
         amount: row.monthly,
