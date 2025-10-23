@@ -44,6 +44,7 @@ export default route(async function (/* { store, ssrContext } */) {
       to.matched.some((r) => r.name === "PublicCreatorProfile") ||
       to.path.startsWith("/creator/");
     const isPublicDiscover = to.path === "/find-creators";
+    const isSupporters = to.path === "/supporters";
     const isCreatorStudio = to.path === "/creator-studio";
     const restore = useRestoreStore();
 
@@ -58,6 +59,7 @@ export default route(async function (/* { store, ssrContext } */) {
       to.path !== "/restore" &&
       !isPublicProfile &&
       !isPublicDiscover &&
+      !isSupporters &&
       !isCreatorStudio
     ) {
       next({ path: "/welcome", query: { first: "1" } });
