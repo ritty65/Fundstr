@@ -815,6 +815,9 @@ export const messages = {
       memo: {
         label: "Message",
       },
+      anonymous_toggle: {
+        label: "Send anonymously",
+      },
     },
     actions: {
       close: {
@@ -1313,6 +1316,8 @@ export const messages = {
     },
     notifications: {
       donation_sent: "Donation sent",
+      donation_dm_sent: "Creator notified of your donation",
+      donation_dm_failed: "Couldn't notify the creator over DM",
       message_sent: "Message sent",
       subscription_success: "Subscription successful",
       invalid_creator_pubkey: "Invalid creator pubkey",
