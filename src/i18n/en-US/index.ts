@@ -82,7 +82,6 @@ export const messages = {
     buttons: {
       never: "Never Ask Again",
       later: "Remind Me Later",
-      donate: "Donate Now",
     },
     cashu: {
       tagline: "Send locked Cashu tokens directly to Fundstr.",

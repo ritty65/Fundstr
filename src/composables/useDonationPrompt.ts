@@ -27,8 +27,9 @@ const getDefaultTab = (): DonationTab => {
 const tab = ref<DonationTab>(getDefaultTab());
 const liquidQRCode = computed(() => (liquid.value ? `liquidnetwork:${liquid.value}` : ''));
 const bitcoinQRCode = computed(() => (bitcoin.value ? `bitcoin:${bitcoin.value}` : ''));
-const noAddress = computed(() => !liquid.value && !bitcoin.value);
-const hasPaymentRails = computed(() => !noAddress.value || Boolean(cashuSupporterNpub));
+const hasPaymentRails = computed(
+  () => Boolean(liquid.value || bitcoin.value || cashuSupporterNpub),
+);
 
 const discoveryClient = createFundstrDiscoveryClient();
 const supporterDisplayName = ref('Fundstr');
@@ -97,17 +98,6 @@ const open = (options?: OpenOptions) => {
 
 const close = () => {
   visible.value = false;
-};
-
-const donate = () => {
-  if (tab.value === 'liquid' && liquid.value) {
-    window.open(`liquidnetwork:${liquid.value}`, '_blank');
-  } else if (tab.value === 'bitcoin' && bitcoin.value) {
-    window.open(`bitcoin:${bitcoin.value}`, '_blank');
-  }
-  localStorage.setItem(LOCAL_STORAGE_KEYS.DONATION_LAST_PROMPT, Date.now().toString());
-  setLaunchCount(0);
-  close();
 };
 
 const later = () => {
@@ -252,13 +242,11 @@ export const useDonationPrompt = () => ({
   bitcoinQRCode,
   close,
   copy,
-  donate,
   hasPaymentRails,
   later,
   liquid,
   liquidQRCode,
   never,
-  noAddress,
   cashuSupporterNpub,
   open,
   supporterDisplayName,

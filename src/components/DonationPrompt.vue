@@ -72,20 +72,13 @@
       <q-card-actions align="right">
         <q-btn flat :label="t('DonationPrompt.buttons.never')" @click="never" />
         <q-btn flat :label="t('DonationPrompt.buttons.later')" @click="later" />
-        <q-btn
-          v-if="tab !== 'cashu'"
-          color="primary"
-          :label="donateButtonLabel"
-          @click="donate"
-          :disable="isDonateDisabled"
-        />
       </q-card-actions>
     </q-card>
   </q-dialog>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import VueQrcode from '@chenfengyuan/vue-qrcode'
 import { useDonationPrompt } from '@/composables/useDonationPrompt'
@@ -103,7 +96,6 @@ const {
   bitcoin,
   bitcoinQRCode,
   copy,
-  donate,
   getDefaultTab,
   later,
   liquid,
@@ -116,18 +108,6 @@ const {
   tab,
   visible
 } = useDonationPrompt()
-
-const donateButtonLabel = computed(() => t('DonationPrompt.buttons.donate'))
-
-const isDonateDisabled = computed(() => {
-  if (tab.value === 'liquid') {
-    return !liquid.value
-  }
-  if (tab.value === 'bitcoin') {
-    return !bitcoin.value
-  }
-  return false
-})
 
 onMounted(() => {
   open({ defaultTab: getDefaultTab() })
