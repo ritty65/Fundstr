@@ -115,7 +115,7 @@ describe('DonationPrompt', () => {
     expect(wrapper.html()).toContain('bitcoin:bc1qexampleaddress')
   })
 
-  it('shows supporter tiers and updates CTA label', async () => {
+  it('fetches supporter profile without relying on tiers', async () => {
     const supporterHex = 'f'.repeat(64)
 
     await loadComponent({
@@ -147,12 +147,11 @@ describe('DonationPrompt', () => {
     const wrapper = mountComponent()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Membership tiers')
-    expect(wrapper.text()).toContain('Supporter')
-    expect(wrapper.text()).toContain('5,000 sats')
+    expect(mockGetCreatorsByPubkeys).toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('Membership tiers')
     const donateBtn = wrapper
       .findAll('button')
-      .find((b) => b.text().includes('Join Supporter'))
-    expect(donateBtn?.text()).toContain('Join Supporter (5,000 sats)')
+      .find((b) => b.text().includes('Donate'))
+    expect(donateBtn?.text()).toBe('Donate Now')
   })
 })

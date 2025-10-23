@@ -3,8 +3,6 @@ import { copyToClipboard } from 'quasar';
 import { nip19 } from 'nostr-tools';
 import { createFundstrDiscoveryClient } from '@/api/fundstrDiscovery';
 import { LOCAL_STORAGE_KEYS } from '@/constants/localStorageKeys';
-import type { CreatorTier } from '@/lib/fundstrApi';
-import { formatMsatToSats } from '@/lib/fundstrApi';
 
 const visible = ref(false);
 const liquid = ref(import.meta.env.VITE_DONATION_LIQUID_ADDRESS || '');
@@ -33,28 +31,8 @@ const hasPaymentRails = computed(() => !noAddress.value || Boolean(cashuSupporte
 const discoveryClient = createFundstrDiscoveryClient();
 const supporterDisplayName = ref('Fundstr');
 const supporterAvatarUrl = ref('');
-const supporterTiers = ref<CreatorTier[]>([]);
-const supporterTierPreviews = computed(() =>
-  supporterTiers.value
-    .slice()
-    .sort((a, b) => tierAmount(a) - tierAmount(b))
-    .slice(0, 3)
-    .map((tier) => {
-      const priceLabel = formatTierPrice(tier.amountMsat);
-      const cadenceLabel = formatTierCadence(tier.cadence);
-      return {
-        id: tier.id,
-        name: tier.name,
-        priceLabel,
-        cadenceLabel,
-      };
-    }),
-);
-const tiersLoading = ref(false);
-const tiersError = ref('');
-const showTierPreview = computed(() => Boolean(supporterIdentifier));
-let tiersInitialized = false;
-let tiersPromise: Promise<void> | null = null;
+let supporterProfileInitialized = false;
+let supporterProfilePromise: Promise<void> | null = null;
 
 const LAUNCH_THRESHOLD = 5;
 const DAY_THRESHOLD = 7;
@@ -111,7 +89,7 @@ const open = (options?: OpenOptions) => {
   }
 
   visible.value = true;
-  void ensureSupporterTiers();
+  void ensureSupporterProfile();
   return true;
 };
 
@@ -150,21 +128,25 @@ const copy = async (text: string) => {
   }
 };
 
-const ensureSupporterTiers = async (force = false) => {
+const ensureSupporterProfile = async (force = false) => {
   if (!supporterIdentifier) {
-    supporterTiers.value = [];
+    supporterDisplayName.value = 'Fundstr';
+    supporterAvatarUrl.value = '';
+    supporterProfileInitialized = true;
     return;
   }
 
-  if (!force && (tiersInitialized || tiersLoading.value)) {
-    await tiersPromise;
-    return;
+  if (!force) {
+    if (supporterProfileInitialized) {
+      return;
+    }
+    if (supporterProfilePromise) {
+      await supporterProfilePromise;
+      return;
+    }
   }
 
-  tiersLoading.value = true;
-  tiersError.value = '';
-
-  const request = (async () => {
+  supporterProfilePromise = (async () => {
     try {
       const response = await discoveryClient.getCreatorsByPubkeys({
         npubs: [supporterIdentifier],
@@ -187,38 +169,27 @@ const ensureSupporterTiers = async (force = false) => {
           (typeof match.picture === 'string' && match.picture) ||
           '';
         supporterAvatarUrl.value = avatarCandidate;
-        supporterTiers.value = Array.isArray(match.tiers) ? match.tiers.filter(isValidTier) : [];
-        tiersInitialized = true;
       } else {
-        supporterTiers.value = [];
         supporterAvatarUrl.value = '';
-        tiersInitialized = true;
       }
+      supporterProfileInitialized = true;
     } catch (error) {
-      supporterTiers.value = [];
-      tiersInitialized = false;
+      console.warn('[donation] failed to load supporter profile', error);
       supporterAvatarUrl.value = '';
-      tiersError.value =
-        error instanceof Error && error.message
-          ? error.message
-          : 'Unable to load supporter tiers right now. Please try again later.';
+      supporterProfileInitialized = false;
     } finally {
-      tiersLoading.value = false;
-      tiersPromise = null;
+      supporterProfilePromise = null;
     }
   })();
 
-  tiersPromise = request;
-  await request;
+  await supporterProfilePromise;
 };
-
-const reloadSupporterTiers = () => ensureSupporterTiers(true);
 
 watch(
   () => visible.value,
   (isVisible) => {
     if (isVisible) {
-      void ensureSupporterTiers();
+      void ensureSupporterProfile();
     }
   },
 );
@@ -274,56 +245,6 @@ function findMatchingCreator(creators: any[], supporterHex: string) {
   return creators.length ? creators[0] : null;
 }
 
-function isValidTier(tier: CreatorTier | null | undefined): tier is CreatorTier {
-  return Boolean(tier && typeof tier.id === 'string' && tier.id.trim());
-}
-
-function tierAmount(tier: CreatorTier): number {
-  if (!tier || tier.amountMsat === null || tier.amountMsat === undefined) {
-    return Number.POSITIVE_INFINITY;
-  }
-  return Number(tier.amountMsat);
-}
-
-function formatTierPrice(amountMsat: number | null | undefined): string {
-  if (amountMsat === null || amountMsat === undefined || !Number.isFinite(amountMsat)) {
-    return 'Flexible amount';
-  }
-  return `${formatMsatToSats(amountMsat)} sats`;
-}
-
-function formatTierCadence(cadence: string | null | undefined): string {
-  if (!cadence) {
-    return '';
-  }
-  const normalized = cadence.trim().toLowerCase();
-  if (!normalized) {
-    return '';
-  }
-  switch (normalized) {
-    case 'month':
-    case 'monthly':
-      return 'monthly';
-    case 'week':
-    case 'weekly':
-      return 'weekly';
-    case 'year':
-    case 'yearly':
-    case 'annual':
-      return 'yearly';
-    case 'day':
-    case 'daily':
-      return 'daily';
-    case 'one-time':
-    case 'one time':
-    case 'onetime':
-    case 'single':
-      return 'one-time';
-    default:
-      return normalized;
-  }
-}
-
 export const useDonationPrompt = () => ({
   bitcoin,
   bitcoinQRCode,
@@ -338,14 +259,9 @@ export const useDonationPrompt = () => ({
   noAddress,
   cashuSupporterNpub,
   open,
-  reloadSupporterTiers,
-  showTierPreview,
   supporterDisplayName,
   supporterAvatarUrl,
-  supporterTierPreviews,
   tab,
-  tiersError,
-  tiersLoading,
   visible,
   getDefaultTab,
 });
