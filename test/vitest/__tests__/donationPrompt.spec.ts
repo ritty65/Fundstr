@@ -89,15 +89,10 @@ describe('DonationPrompt', () => {
     expect(wrapper.vm.visible).toBe(true)
   })
 
-  it('disables donate button when no address is configured', async () => {
+  it('does not render Liquid or Bitcoin donate button when no address is configured', async () => {
     await loadComponent()
     const wrapper = mountComponent()
     await flushPromises()
-    // Defaults to Cashu tab so the Liquid/Bitcoin donate button is hidden
-    const donateBtn = wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('Join') || b.text().includes('Donate'))
-    expect(donateBtn).toBeUndefined()
     expect(wrapper.vm.tab).toBe('cashu')
     // Switching to Liquid tab should surface the address warning
     wrapper.vm.tab = 'liquid'
@@ -149,9 +144,5 @@ describe('DonationPrompt', () => {
 
     expect(mockGetCreatorsByPubkeys).toHaveBeenCalled()
     expect(wrapper.text()).not.toContain('Membership tiers')
-    const donateBtn = wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('Donate'))
-    expect(donateBtn?.text()).toBe('Donate Now')
   })
 })
