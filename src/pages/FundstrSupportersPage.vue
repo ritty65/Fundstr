@@ -16,6 +16,9 @@
         These Nostr public keys belong to early supporters and donors who help Fundstr grow.
         We are grateful for their contributions to privacy-preserving creator tools.
       </p>
+      <div v-if="canShowSupportCta" class="q-mt-md">
+        <q-btn color="primary" unelevated @click="supportFundstr">Want to support?</q-btn>
+      </div>
     </div>
 
     <section class="supporters-section">
@@ -103,12 +106,15 @@ import { useRouter } from 'vue-router';
 import { useSendTokensStore } from 'stores/sendTokensStore';
 import { useDonationPresetsStore } from 'stores/donationPresets';
 import { useNostrStore } from 'stores/nostr';
+import { useDonationPrompt } from '@/composables/useDonationPrompt';
 
 const discoveryClient = createFundstrDiscoveryClient();
 const router = useRouter();
 const sendTokensStore = useSendTokensStore();
 const donationStore = useDonationPresetsStore();
 const nostr = useNostrStore();
+const { open: openDonationPrompt, hasPaymentRails } = useDonationPrompt();
+const canShowSupportCta = hasPaymentRails;
 
 const loadingSupporters = ref(false);
 const supportersError = ref('');
@@ -234,6 +240,11 @@ function startChat(pubkey: string) {
 function donate(pubkey: string) {
   selectedPubkey.value = pubkey;
   showDonateDialog.value = true;
+}
+
+function supportFundstr() {
+  const opened = openDonationPrompt({ bypassGate: true });
+  console.info('[supporters] Want to support CTA clicked', { opened });
 }
 
 function handleDonate({

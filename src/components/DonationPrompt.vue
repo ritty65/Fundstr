@@ -74,78 +74,47 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { copyToClipboard } from 'quasar'
-import { LOCAL_STORAGE_KEYS } from '@/constants/localStorageKeys'
-
+import { onMounted, watch } from 'vue'
 import VueQrcode from '@chenfengyuan/vue-qrcode'
-
-const visible = ref(false)
-const tab = ref('lightning')
-const lightning = ref(import.meta.env.VITE_DONATION_LIGHTNING || '')
-const bitcoin = ref(import.meta.env.VITE_DONATION_BITCOIN || '')
-const lightningQRCode = ref(lightning.value ? `lightning:${lightning.value}` : '')
-const bitcoinQRCode = ref(bitcoin.value ? `bitcoin:${bitcoin.value}` : '')
-const noAddress = computed(() => !lightning.value && !bitcoin.value)
+import { useDonationPrompt } from '@/composables/useDonationPrompt'
 
 defineOptions({
   name: 'DonationPrompt'
 })
 
-const LAUNCH_THRESHOLD = 5
-const DAY_THRESHOLD = 7
+const emit = defineEmits<{ (event: 'opened'): void }>()
 
-const getLaunchCount = () => parseInt(localStorage.getItem(LOCAL_STORAGE_KEYS.DONATION_LAUNCH_COUNT) || '0')
-const setLaunchCount = (v: number) => localStorage.setItem(LOCAL_STORAGE_KEYS.DONATION_LAUNCH_COUNT, v.toString())
+const {
+  bitcoin,
+  bitcoinQRCode,
+  copy,
+  donate,
+  later,
+  lightning,
+  lightningQRCode,
+  never,
+  noAddress,
+  open,
+  tab,
+  visible
+} = useDonationPrompt()
 
 onMounted(() => {
-  const optOut = localStorage.getItem(LOCAL_STORAGE_KEYS.DONATION_OPT_OUT) === 'true'
-  if (optOut) return
-
-  const launchCount = getLaunchCount() + 1
-  setLaunchCount(launchCount)
-
-  const lastPrompt = parseInt(
-    localStorage.getItem(LOCAL_STORAGE_KEYS.DONATION_LAST_PROMPT) ||
-      Date.now().toString()
-  )
-  const daysSince = (Date.now() - lastPrompt) / (1000 * 60 * 60 * 24)
-
-  if (launchCount >= LAUNCH_THRESHOLD || daysSince >= DAY_THRESHOLD) {
-    visible.value = true
-  }
+  open()
 })
 
-const donate = () => {
-  if (tab.value === 'lightning' && lightning.value) {
-    window.open(`lightning:${lightning.value}`, '_blank')
-  } else if (tab.value === 'bitcoin' && bitcoin.value) {
-    window.open(`bitcoin:${bitcoin.value}`, '_blank')
+watch(
+  () => visible.value,
+  (isVisible, wasVisible) => {
+    if (isVisible && !wasVisible) {
+      emit('opened')
+    }
   }
-  localStorage.setItem(LOCAL_STORAGE_KEYS.DONATION_LAST_PROMPT, Date.now().toString())
-  setLaunchCount(0)
-  visible.value = false
-}
+)
 
-const later = () => {
-  localStorage.setItem(LOCAL_STORAGE_KEYS.DONATION_LAST_PROMPT, Date.now().toString())
-  setLaunchCount(0)
-  visible.value = false
-}
-
-const never = () => {
-  localStorage.setItem(LOCAL_STORAGE_KEYS.DONATION_OPT_OUT, 'true')
-  setLaunchCount(0)
-  visible.value = false
-}
-
-async function copy(text: string) {
-  try {
-    await copyToClipboard(text)
-  } catch {
-    // ignore copy errors
-  }
-}
+defineExpose({
+  visible
+})
 </script>
 
 <style scoped>
