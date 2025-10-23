@@ -84,7 +84,10 @@ async function fetchJson<T>(path: string, options: FetchOptions = {}): Promise<T
       method: 'GET',
       headers: {
         Accept: 'application/json',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
       },
+      cache: 'no-store',
       signal: mergedSignal,
     });
 
@@ -92,6 +95,30 @@ async function fetchJson<T>(path: string, options: FetchOptions = {}): Promise<T
       const body = await response.text();
       const suffix = body ? `: ${body}` : '';
       throw new Error(`Discovery request failed (${response.status})${suffix}`);
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (contentType && !contentType.toLowerCase().includes('application/json')) {
+      console.error('[fundstr-discovery] Unexpected content type', {
+        url,
+        contentType,
+      });
+    } else if (!contentType) {
+      console.warn('[fundstr-discovery] Missing content type header', { url });
+    }
+
+    const cacheControl = response.headers.get('cache-control');
+    if (cacheControl) {
+      const maxAgeMatch = cacheControl.match(/max-age=([0-9]+)/i);
+      if (maxAgeMatch) {
+        const maxAge = Number(maxAgeMatch[1]);
+        if (Number.isFinite(maxAge) && maxAge > 60) {
+          console.warn('[fundstr-discovery] Cache-Control max-age too high', {
+            url,
+            cacheControl,
+          });
+        }
+      }
     }
 
     const text = await response.text();
@@ -122,6 +149,11 @@ async function fetchJsonWithRetry<T>(
       }
     }
   }
+  console.error('[fundstr-discovery] Exhausted fetch retries', {
+    path,
+    retries,
+    lastError,
+  });
   throw lastError;
 }
 
