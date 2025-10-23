@@ -171,6 +171,22 @@
         </q-item-section>
       </q-item>
       <q-item-label header>{{
+        $t("MainHeader.menu.supporters.title")
+      }}</q-item-label>
+      <q-item clickable @click="gotoSupporters">
+        <q-item-section avatar>
+          <q-icon name="favorite" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>{{
+            $t("MainHeader.menu.supporters.supporters.title")
+          }}</q-item-label>
+          <q-item-label caption>{{
+            $t("MainHeader.menu.supporters.supporters.caption")
+          }}</q-item-label>
+        </q-item-section>
+      </q-item>
+      <q-item-label header>{{
         $t("MainHeader.menu.about.title")
       }}</q-item-label>
       <q-item clickable @click="gotoAbout">
@@ -234,6 +250,7 @@ const gotoSubscriptions = () => goto("/subscriptions");
 const gotoChats = () => goto("/nostr-messenger");
 const gotoNostrLogin = () => goto("/nostr-login");
 const gotoTerms = () => goto("/terms");
+const gotoSupporters = () => goto("/supporters");
 const gotoAbout = () => goto("/about");
 const gotoWelcome = () => goto("/welcome");
 

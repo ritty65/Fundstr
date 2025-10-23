@@ -139,6 +139,16 @@ const routes = [
     ],
   },
   {
+    path: "/supporters",
+    component: () => import("layouts/FullscreenLayout.vue"),
+    children: [
+      {
+        path: "",
+        component: () => import("src/pages/FundstrSupportersPage.vue"),
+      },
+    ],
+  },
+  {
     path: "/about",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
