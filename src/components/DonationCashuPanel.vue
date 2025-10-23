@@ -73,11 +73,65 @@
           outlined
           :label="t('DonationPrompt.cashu.amountLabel')"
           min="1"
+          :disable="isAuthBlocked"
         />
         <div v-if="sendError" class="cashu-panel__send-error text-negative text-caption q-mt-xs">
           {{ sendError }}
         </div>
+        <div v-if="ctaMode" class="cashu-panel__auth-cta q-mt-sm">
+          <div class="cashu-panel__cta-title">
+            {{
+              t(
+                ctaMode === 'signin'
+                  ? 'DonationPrompt.cashu.ctas.signInTitle'
+                  : 'DonationPrompt.cashu.ctas.setupTitle'
+              )
+            }}
+          </div>
+          <div class="cashu-panel__cta-description text-2">
+            {{
+              t(
+                ctaMode === 'signin'
+                  ? 'DonationPrompt.cashu.ctas.signInDescription'
+                  : 'DonationPrompt.cashu.ctas.setupDescription'
+              )
+            }}
+          </div>
+          <q-btn
+            color="accent"
+            unelevated
+            class="cashu-panel__cta-button q-mt-sm"
+            :label="
+              t(
+                ctaMode === 'signin'
+                  ? 'DonationPrompt.cashu.ctas.signInCta'
+                  : 'DonationPrompt.cashu.ctas.setupCta'
+              )
+            "
+            @click="ctaMode === 'signin' ? handleSignIn() : handleWalletSetup()"
+          />
+          <div v-if="ctaMode === 'setup'" class="cashu-panel__quick-links q-mt-sm">
+            <div class="cashu-panel__quick-links-label text-2">
+              {{ t('DonationPrompt.cashu.ctas.quickLinksLabel') }}
+            </div>
+            <div class="cashu-panel__quick-links-grid">
+              <q-btn
+                v-for="link in walletQuickLinks"
+                :key="link.href"
+                outline
+                color="accent"
+                size="sm"
+                class="cashu-panel__quick-link"
+                :label="t(link.labelKey)"
+                :href="link.href"
+                target="_blank"
+                rel="noopener"
+              />
+            </div>
+          </div>
+        </div>
         <q-btn
+          v-else
           color="accent"
           unelevated
           class="cashu-panel__cta q-mt-sm"
@@ -86,6 +140,14 @@
           :disable="isSendDisabled"
           @click="sendCashuDonation"
         />
+        <div v-if="showExplainer" class="cashu-panel__explainer q-mt-md">
+          <div class="cashu-panel__explainer-title text-1">
+            {{ t('DonationPrompt.cashu.explainer.heading') }}
+          </div>
+          <p class="cashu-panel__explainer-body text-2">
+            {{ t('DonationPrompt.cashu.explainer.body') }}
+          </p>
+        </div>
       </div>
 
       <div class="cashu-panel__section">
@@ -115,11 +177,15 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { fetchNutzapProfile } from 'stores/nostr'
+import { fetchNutzapProfile, useNostrStore } from 'stores/nostr'
+import { useMintsStore } from 'stores/mints'
 import { queryNutzapTiers } from '@/nostr/relayClient'
 import { useCashuStore } from 'stores/cashu'
 import { notifyError, notifySuccess } from 'src/js/notify'
+import { useDonationPrompt, CASHU_SUPPORTER_NPUB } from '@/composables/useDonationPrompt'
 
 defineOptions({
   name: 'DonationCashuPanel'
@@ -133,7 +199,14 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
+const router = useRouter()
+const { close } = useDonationPrompt()
 const cashuStore = useCashuStore()
+const nostrStore = useNostrStore()
+const mintsStore = useMintsStore()
+
+const { pubkey } = storeToRefs(nostrStore)
+const { mints, activeMintUrl } = storeToRefs(mintsStore)
 
 const panelLoading = ref(true)
 const panelError = ref('')
@@ -142,9 +215,38 @@ const amount = ref<number | null>(null)
 const sending = ref(false)
 const sendError = ref('')
 const avatarLoadFailed = ref(false)
-const supporterNpubValue = computed(() => props.supporterNpub?.trim() ?? '')
+const supporterNpubValue = computed(() => (props.supporterNpub?.trim() || CASHU_SUPPORTER_NPUB).trim())
 const presetAmounts = ref<number[]>([])
 const activePreset = ref<number | null>(null)
+
+type CtaMode = 'signin' | 'setup' | null
+
+const isSignedIn = computed(() => Boolean(pubkey.value && pubkey.value.trim()))
+const hasWalletSetup = computed(
+  () => mints.value.length > 0 && Boolean(activeMintUrl.value && activeMintUrl.value.trim())
+)
+const ctaMode = computed<CtaMode>(() => {
+  if (!isSignedIn.value) {
+    return 'signin'
+  }
+  if (!hasWalletSetup.value) {
+    return 'setup'
+  }
+  return null
+})
+const isAuthBlocked = computed(() => ctaMode.value !== null)
+const showExplainer = computed(() => !isAuthBlocked.value)
+
+const walletQuickLinks = [
+  {
+    labelKey: 'DonationPrompt.cashu.ctas.quickLinkDesktop',
+    href: 'https://cashu.space/wallet'
+  },
+  {
+    labelKey: 'DonationPrompt.cashu.ctas.quickLinkMobile',
+    href: 'https://cashu.space/apps'
+  }
+] as const
 
 const numberFormatter = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 0
@@ -161,6 +263,9 @@ const initials = computed(() => {
 const trustedMints = computed(() => profile.value?.trustedMints ?? [])
 const isSending = computed(() => sending.value || cashuStore.loading)
 const isSendDisabled = computed(() => {
+  if (isAuthBlocked.value) {
+    return true
+  }
   if (!amount.value || amount.value <= 0) {
     return true
   }
@@ -173,6 +278,10 @@ watch(
     void loadData()
   }
 )
+
+watch(ctaMode, () => {
+  sendError.value = ''
+})
 
 onMounted(() => {
   void loadData()
@@ -274,6 +383,9 @@ function selectPreset(preset: number) {
 }
 
 async function sendCashuDonation() {
+  if (isAuthBlocked.value) {
+    return
+  }
   if (!amount.value || amount.value <= 0) {
     sendError.value = t('DonationPrompt.cashu.errors.invalidAmount')
     return
@@ -291,12 +403,26 @@ async function sendCashuDonation() {
   } catch (error) {
     console.error('[donation] failed to send Cashu donation', error)
     const message = error instanceof Error ? error.message : ''
-    const fallback = message || t('DonationPrompt.cashu.notifications.failure')
-    notifyError(fallback)
-    sendError.value = fallback
+    const lowered = message.toLowerCase()
+    const fallback = lowered.includes('nostr')
+      ? t('DonationPrompt.cashu.notifications.dmFailure')
+      : t('DonationPrompt.cashu.notifications.failure')
+    const finalMessage = message || fallback
+    notifyError(finalMessage)
+    sendError.value = finalMessage
   } finally {
     sending.value = false
   }
+}
+
+async function handleSignIn() {
+  close()
+  await router.push('/nostr-login')
+}
+
+async function handleWalletSetup() {
+  close()
+  await router.push('/wallet')
 }
 
 watch(amount, (value) => {
@@ -398,6 +524,52 @@ watch(amount, (value) => {
 .cashu-panel__preset:focus {
   border-color: var(--accent-200);
   box-shadow: 0 0 0 2px rgba(93, 135, 255, 0.15);
+}
+
+.cashu-panel__auth-cta {
+  background: var(--surface-1);
+  border: 1px solid var(--surface-contrast-border, rgba(0, 0, 0, 0.08));
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cashu-panel__cta-title {
+  font-weight: 600;
+}
+
+.cashu-panel__cta-button {
+  align-self: flex-start;
+}
+
+.cashu-panel__quick-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cashu-panel__quick-links-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cashu-panel__quick-link {
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+
+.cashu-panel__explainer {
+  background: rgba(93, 135, 255, 0.08);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.cashu-panel__explainer-title {
+  font-weight: 600;
+  margin-bottom: 4px;
 }
 
 .cashu-panel__preset--active {

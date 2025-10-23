@@ -91,6 +91,21 @@ export const messages = {
       donateCta: "Send via Cashu",
       trustedMintsHeading: "Trusted mints",
       trustedMintsEmpty: "No trusted mints listed.",
+      ctas: {
+        signInTitle: "Sign in to send Cashu",
+        signInDescription: "Fundstr uses your Nostr identity to DM locked Cashu tokens.",
+        signInCta: "Sign in with Nostr",
+        setupTitle: "Set up your Cashu wallet",
+        setupDescription: "Connect a Cashu mint so we can send from a mint your supporter trusts.",
+        setupCta: "Open wallet setup",
+        quickLinksLabel: "Need a Cashu app?",
+        quickLinkDesktop: "Open Cashu web app",
+        quickLinkMobile: "Install Cashu mobile",
+      },
+      explainer: {
+        heading: "How Cashu DMs work",
+        body: "Fundstr locks your sats into a Cashu token and DMs it using one of the trusted mints listed above. Only the supporter can unlock it once they accept the DM.",
+      },
       errors: {
         profileMissing: "Fundstr has not published a Cashu profile yet.",
         loadFailed: "Unable to load Cashu profile right now.",
@@ -98,7 +113,8 @@ export const messages = {
       },
       notifications: {
         success: "Cashu tokens queued for delivery!",
-        failure: "Unable to send Cashu tokens. Please try again later.",
+        failure: "Unable to queue the Cashu DM. Check your wallet setup and try again.",
+        dmFailure: "We couldn't deliver the Nostr DM. Confirm your relays are reachable, then retry from Wallet → Outbox.",
       },
       priceLabel: "{amount} sats",
       avatarAlt: "{name} avatar",
