@@ -266,14 +266,14 @@
             </article>
             <article class="profile-card profile-card--copy">
               <h3 class="profile-card__title text-subtitle1">
-                {{ $t('CreatorHub.profile.howNutzapWorks.title') }}
+                {{ $t('CreatorHub.profile.howCashuWorks.title') }}
               </h3>
               <p class="profile-card__text text-2">
-                {{ $t('CreatorHub.profile.howNutzapWorks.intro') }}
+                {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
               </p>
               <ul class="profile-card__list">
                 <li
-                  v-for="(item, index) in howNutzapWorksList"
+                  v-for="(item, index) in howCashuWorksList"
                   :key="index"
                   class="profile-card__list-item text-2"
                 >
@@ -805,8 +805,8 @@ export default defineComponent({
       return [];
     });
 
-    const howNutzapWorksList = computed(() => {
-      const items = t("CreatorHub.profile.howNutzapWorks.points", {
+    const howCashuWorksList = computed(() => {
+      const items = t("CreatorHub.profile.howCashuWorks.points", {
         returnObjects: true,
       }) as unknown;
       if (Array.isArray(items)) {
@@ -901,7 +901,7 @@ export default defineComponent({
       hasFollowerStats,
       trustedMints,
       relayList,
-      howNutzapWorksList,
+      howCashuWorksList,
       faqEntries,
       retryLabel,
       fallbackActive,
