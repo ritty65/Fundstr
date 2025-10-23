@@ -2155,8 +2155,8 @@ export const messages = {
         profile: "Create my profile",
         find: "Find creators",
       },
-    },
-    7: {
+  },
+  7: {
       title: "Stay organized and safe",
       body: "Manage who you support, organize funds with Buckets, and back up your wallet (export file or Nostr-based sync, if enabled).",
       cta: {
@@ -2175,6 +2175,19 @@ export const messages = {
       next: "Next",
       back: "Back",
       skip: "Skip",
+    },
+  },
+  FundstrSupportersPage: {
+    tiers: {
+      title: "Support Fundstr",
+      subtitle: "Pick a tier to back privacy-first creator tools across Nostr.",
+      supportCta: "Support Fundstr",
+      priceWithFrequency: "{price} sats · {frequency}",
+      frequency: {
+        monthly: "per month",
+        yearly: "per year",
+        one_time: "one-time support",
+      },
     },
   },
   welcome,
