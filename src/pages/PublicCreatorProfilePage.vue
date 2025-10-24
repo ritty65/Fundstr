@@ -417,8 +417,9 @@ import {
   useCreatorsStore,
   fetchFundstrProfileBundle,
   FundstrProfileFetchError,
+  type FundstrProfileBundle,
 } from "stores/creators";
-import { useNostrStore } from "stores/nostr";
+import { useNostrStore, fetchNutzapProfile } from "stores/nostr";
 import { buildProfileUrl } from "src/utils/profileUrl";
 import { deriveCreatorKeys } from "src/utils/nostrKeys";
 
@@ -504,6 +505,7 @@ export default defineComponent({
     const following = ref<number | null>(null);
     const loadingTiers = ref(true);
     const refreshingTiers = ref(false);
+    const refreshTaskCount = ref(0);
     const tierFetchError = computed(() => creators.tierFetchError);
     const isGuest = computed(() => !welcomeStore.welcomeCompleted);
     const needsSignerSetupTooltip = computed(
@@ -536,6 +538,130 @@ export default defineComponent({
       return Array.from(urls);
     };
 
+    const toStringList = (input: unknown): string[] => {
+      const values: string[] = [];
+      const append = (value: unknown) => {
+        if (typeof value !== "string") return;
+        const trimmed = value.trim();
+        if (!trimmed) return;
+        values.push(trimmed);
+      };
+      if (Array.isArray(input)) {
+        for (const entry of input) {
+          append(entry);
+        }
+      } else if (input instanceof Set) {
+        for (const entry of input) {
+          append(entry);
+        }
+      } else if (input && typeof input === "object") {
+        for (const key of Object.keys(input as Record<string, unknown>)) {
+          append(key);
+        }
+      } else {
+        append(input);
+      }
+      const unique = Array.from(new Set(values));
+      unique.sort((a, b) => a.localeCompare(b));
+      return unique;
+    };
+
+    const listsEqual = (a: string[], b: string[]): boolean => {
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i += 1) {
+        if (a[i] !== b[i]) return false;
+      }
+      return true;
+    };
+
+    const normalizeTierSnapshot = (list: unknown): string => {
+      if (!Array.isArray(list)) return "[]";
+      const normalized = (list as Array<Record<string, any>>)
+        .map((tier) => {
+          if (!tier || typeof tier !== "object") return null;
+          const id = typeof tier.id === "string" ? tier.id : "";
+          if (!id) return null;
+          const name = typeof tier.name === "string" ? tier.name : "";
+          const priceRaw =
+            typeof tier.price_sats === "number"
+              ? tier.price_sats
+              : typeof tier.price === "number"
+                ? tier.price
+                : undefined;
+          const description =
+            typeof tier.description === "string" ? tier.description : "";
+          const frequency =
+            typeof tier.frequency === "string" ? tier.frequency : undefined;
+          const intervalDays =
+            typeof tier.intervalDays === "number" ? tier.intervalDays : undefined;
+          const benefits = Array.isArray(tier.benefits)
+            ? tier.benefits
+                .map((benefit) =>
+                  typeof benefit === "string" ? benefit : String(benefit),
+                )
+                .filter((benefit) => benefit.length > 0)
+            : [];
+          return {
+            id,
+            name,
+            price: typeof priceRaw === "number" ? Math.round(priceRaw) : undefined,
+            description,
+            frequency,
+            intervalDays,
+            benefits,
+          };
+        })
+        .filter(
+          (tier): tier is {
+            id: string;
+            name: string;
+            price?: number;
+            description: string;
+            frequency?: string;
+            intervalDays?: number;
+            benefits: string[];
+          } => tier !== null,
+        )
+        .sort((a, b) => a.id.localeCompare(b.id));
+      return JSON.stringify(normalized);
+    };
+
+    const tiersEqual = (
+      a: any[] | undefined,
+      b: any[] | undefined,
+    ): boolean => normalizeTierSnapshot(a) === normalizeTierSnapshot(b);
+
+    const applyBundleTierList = (tierList: any[] | null | undefined) => {
+      if (!creatorHex || !Array.isArray(tierList)) return;
+      const existing = creators.tiersMap[creatorHex];
+      if (existing && tiersEqual(existing, tierList)) {
+        return;
+      }
+      creators.tiersMap[creatorHex] = tierList.map((tier: any) =>
+        tier && typeof tier === "object" ? { ...tier } : tier,
+      );
+    };
+
+    const beginRefresh = () => {
+      refreshTaskCount.value += 1;
+      refreshingTiers.value = true;
+    };
+
+    const endRefresh = () => {
+      if (refreshTaskCount.value > 0) {
+        refreshTaskCount.value -= 1;
+      }
+      if (refreshTaskCount.value <= 0) {
+        refreshTaskCount.value = 0;
+        refreshingTiers.value = false;
+      }
+    };
+
+    const resetRefreshState = () => {
+      refreshTaskCount.value = 0;
+      refreshingTiers.value = false;
+    };
+
     const fetchTiers = async () => {
       if (!creatorHex) {
         loadingTiers.value = false;
@@ -544,7 +670,7 @@ export default defineComponent({
       if (!hasInitialTierData.value) {
         loadingTiers.value = true;
       }
-      refreshingTiers.value = true;
+      beginRefresh();
       creators.tierFetchError = false;
       try {
         await creators.fetchCreator(creatorHex, true);
@@ -558,7 +684,7 @@ export default defineComponent({
         fallbackActive.value = true;
         fallbackFailed.value = true;
       } finally {
-        refreshingTiers.value = false;
+        endRefresh();
         if (!hasInitialTierData.value) {
           loadingTiers.value = false;
         }
@@ -578,11 +704,111 @@ export default defineComponent({
     watch(tierFetchError, (errored) => {
       if (errored) {
         loadingTiers.value = false;
-        refreshingTiers.value = false;
+        resetRefreshState();
         fallbackActive.value = true;
         fallbackFailed.value = true;
       }
     });
+
+    const refreshProfileFromRelay = async (
+      bundle: FundstrProfileBundle | null,
+    ): Promise<void> => {
+      if (!creatorHex) return;
+      beginRefresh();
+      try {
+        let fallbackAttempted = false;
+        let relayProfile = await fetchNutzapProfile(creatorHex, {
+          fundstrOnly: true,
+        });
+        if (!relayProfile) {
+          fallbackAttempted = true;
+          relayProfile = await fetchNutzapProfile(creatorHex);
+        }
+        if (!relayProfile) {
+          if (fallbackAttempted) {
+            fallbackActive.value = true;
+            fallbackFailed.value = true;
+          }
+          return;
+        }
+
+        if (fallbackAttempted) {
+          fallbackActive.value = true;
+          fallbackFailed.value = false;
+          fallbackRelays.value = mergeUniqueUrls(
+            fallbackRelays.value,
+            relayProfile.relays,
+          );
+        }
+
+        const cachedDetails = bundle?.profileDetails ?? null;
+        const cachedMints = toStringList(
+          cachedDetails?.trustedMints ?? profile.value.trustedMints,
+        );
+        const cachedRelays = toStringList(
+          cachedDetails?.relays ?? profile.value.relays,
+        );
+        const nextMints = toStringList(relayProfile.trustedMints);
+        const nextRelays = toStringList(relayProfile.relays);
+        const currentTierAddr =
+          typeof profile.value.tierAddr === "string"
+            ? profile.value.tierAddr
+            : typeof cachedDetails?.tierAddr === "string"
+              ? cachedDetails.tierAddr
+              : "";
+        const nextTierAddr =
+          typeof relayProfile.tierAddr === "string" ? relayProfile.tierAddr : "";
+        const currentP2pk =
+          typeof profile.value.p2pkPubkey === "string"
+            ? profile.value.p2pkPubkey
+            : typeof cachedDetails?.p2pkPubkey === "string"
+              ? cachedDetails.p2pkPubkey
+              : "";
+
+        const updates: Record<string, unknown> = {};
+        let hasDiff = false;
+
+        if (!listsEqual(cachedMints, nextMints)) {
+          updates.trustedMints = nextMints;
+          hasDiff = true;
+        }
+        if (!listsEqual(cachedRelays, nextRelays)) {
+          updates.relays = nextRelays;
+          hasDiff = true;
+        }
+        if (nextTierAddr && nextTierAddr !== currentTierAddr) {
+          updates.tierAddr = nextTierAddr;
+          hasDiff = true;
+        }
+        if (relayProfile.p2pkPubkey && relayProfile.p2pkPubkey !== currentP2pk) {
+          updates.p2pkPubkey = relayProfile.p2pkPubkey;
+          hasDiff = true;
+        }
+
+        if (Object.keys(updates).length) {
+          profile.value = {
+            ...profile.value,
+            ...updates,
+          };
+        }
+        if (updates.relays) {
+          profileRelayHints.value = mergeUniqueUrls(
+            profileRelayHints.value,
+            nextRelays,
+          );
+        }
+
+        if (hasDiff && Array.isArray(bundle?.tiers)) {
+          applyBundleTierList(bundle!.tiers);
+        }
+      } catch (error) {
+        console.error("[creator-profile] Failed to refresh relay profile", error);
+        fallbackActive.value = true;
+        fallbackFailed.value = true;
+      } finally {
+        endRefresh();
+      }
+    };
 
     const loadProfile = async () => {
       const tierPromise = fetchTiers();
@@ -593,7 +819,7 @@ export default defineComponent({
       }
 
       const profilePromise = fetchFundstrProfileBundle(creatorHex)
-        .then((bundle) => {
+        .then(async (bundle) => {
           if (!bundle) return;
           const { profile: profileData, followers: followersCount, following: followingCount } =
             bundle;
@@ -608,17 +834,25 @@ export default defineComponent({
             profile.value = nextProfile;
           }
           if (bundle.profileDetails) {
-            const { trustedMints, relays, tierAddr } = bundle.profileDetails;
+            const { trustedMints, relays, tierAddr, p2pkPubkey } = bundle.profileDetails;
+            const relayCandidates = toStringList(relays);
+            const mintCandidates = toStringList(trustedMints);
             profile.value = {
               ...profile.value,
-              ...(Array.isArray(trustedMints)
-                ? { trustedMints }
-                : {}),
-              ...(Array.isArray(relays) || relays?.length
-                ? { relays }
-                : {}),
+              trustedMints: mintCandidates,
+              relays: relayCandidates,
               ...(tierAddr ? { tierAddr } : {}),
+              ...(p2pkPubkey ? { p2pkPubkey } : {}),
             };
+            if (relayCandidates.length) {
+              profileRelayHints.value = mergeUniqueUrls(
+                profileRelayHints.value,
+                relayCandidates,
+              );
+            }
+          }
+          if (Array.isArray(bundle.tiers)) {
+            applyBundleTierList(bundle.tiers);
           }
           if (typeof followersCount === "number") {
             followers.value = followersCount;
@@ -640,6 +874,7 @@ export default defineComponent({
             );
           }
           profileLoadError.value = null;
+          await refreshProfileFromRelay(bundle);
         })
         .catch((err) => {
           const error = err instanceof Error ? err : new Error(String(err));
