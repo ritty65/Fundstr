@@ -146,6 +146,8 @@ const resetComponentDeps = () => {
     followers: 0,
     following: 0,
     relayHints: [],
+    fetchedFromFallback: false,
+    fallbackTimestamps: null,
   });
 };
 

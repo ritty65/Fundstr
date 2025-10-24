@@ -4,9 +4,14 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import { createPinia, setActivePinia } from "pinia";
 import { reactive, defineComponent, nextTick } from "vue";
 import { nip19 } from "nostr-tools";
+import * as relayClient from "@/nostr/relayClient";
+import * as notifyModule from "src/js/notify";
 
 const copy = vi.fn();
 const buildProfileUrl = vi.fn(() => "https://profile/url");
+let queryNostrSpy: ReturnType<typeof vi.spyOn>;
+let queryNutzapTiersSpy: ReturnType<typeof vi.spyOn>;
+let notifySuccessSpy: ReturnType<typeof vi.spyOn>;
 
 vi.mock("components/SubscribeDialog.vue", () => ({
   default: defineComponent({
@@ -136,6 +141,7 @@ const QSpinnerStub = defineComponent({
 
 describe("PublicCreatorProfilePage", () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     vi.clearAllMocks();
     fetchCreatorMock = vi.fn().mockImplementation(async (pubkey: string) => {
       creatorsStore.tiersMap[pubkey] = [
@@ -156,17 +162,34 @@ describe("PublicCreatorProfilePage", () => {
       profileDetails: null,
       relayHints: [],
       fetchedFromFallback: false,
+      fallbackTimestamps: null,
+      tiers: null,
     });
     creatorsStore = reactive({
       tiersMap: reactive({}),
       tierFetchError: false,
       fetchCreator: fetchCreatorMock,
+      saveTierCache: vi.fn(async (pubkey: string, tiers: any[]) => {
+        creatorsStore.tiersMap[pubkey] = Array.isArray(tiers)
+          ? tiers.map((tier: any) => ({ ...tier }))
+          : [];
+      }),
+      updateTierCacheState: vi.fn((pubkey: string, tiers: any[] | null) => {
+        creatorsStore.tiersMap[pubkey] = Array.isArray(tiers)
+          ? tiers.map((tier: any) => ({ ...tier }))
+          : [];
+      }),
     });
     priceStore.bitcoinPrice = 0;
     welcomeStore.welcomeCompleted = true;
     nostrStore.hasIdentity = true;
     copy.mockClear();
     buildProfileUrl.mockReturnValue("https://profile/url");
+    queryNostrSpy = vi.spyOn(relayClient, "queryNostr").mockResolvedValue([]);
+    queryNutzapTiersSpy = vi
+      .spyOn(relayClient, "queryNutzapTiers")
+      .mockResolvedValue(null as any);
+    notifySuccessSpy = vi.spyOn(notifyModule, "notifySuccess").mockImplementation(() => {});
   });
 
   function mountPage(router: ReturnType<typeof createRouter>) {
@@ -216,6 +239,67 @@ describe("PublicCreatorProfilePage", () => {
     expect(wrapper.vm.selectedTier?.id).toBe("tier-1");
     expect(wrapper.vm.showSubscribeDialog).toBe(true);
     expect(router.currentRoute.value.query.tierId).toBeUndefined();
+  });
+
+  it("recovers tiers after fallback relay refresh", async () => {
+    const sampleHex = "b".repeat(64);
+    const sampleNpub = nip19.npubEncode(sampleHex);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+      ],
+    });
+    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub } });
+    await router.isReady();
+
+    const fallbackTiers = [
+      { id: "cached-tier", name: "Cached", description: "", price_sats: 500, benefits: [], media: [] },
+    ];
+    fetchFundstrProfileBundleMock.mockResolvedValueOnce({
+      profile: { display_name: "Creator" },
+      profileEvent: null,
+      followers: 5,
+      following: 3,
+      profileDetails: { relays: ["wss://cached"] },
+      relayHints: ["wss://cached"],
+      fetchedFromFallback: true,
+      fallbackTimestamps: { profile: 50, tiers: 80 },
+      tiers: fallbackTiers,
+    });
+
+    queryNostrSpy.mockResolvedValue([
+      {
+        id: "meta1",
+        kind: 0,
+        pubkey: sampleHex,
+        created_at: 200,
+        tags: [],
+        content: JSON.stringify({ name: "Relay Creator" }),
+      },
+    ]);
+    queryNutzapTiersSpy.mockResolvedValue({
+      id: "tierEvt",
+      kind: 30019,
+      pubkey: sampleHex,
+      created_at: 200,
+      tags: [["d", "tiers"]],
+      content: JSON.stringify([
+        { id: "relay-tier", title: "Relay Tier", price: 2100, description: "Fresh" },
+      ]),
+    });
+
+    const wrapper = mountPage(router);
+    await flushPromises();
+    await nextTick();
+    await flushPromises();
+
+    const tierList = creatorsStore.tiersMap[sampleHex];
+    expect(Array.isArray(tierList)).toBe(true);
+    expect(tierList[0].id).toBe("relay-tier");
+    expect(wrapper.vm.fallbackActive).toBe(false);
+    expect(wrapper.vm.fallbackRecoveryMessage).toContain("Live data restored from relays.");
+    expect(notifySuccessSpy).toHaveBeenCalledWith("Live data restored from relays.");
   });
 
   it("normalizes hex route params and uses them for lookups", async () => {

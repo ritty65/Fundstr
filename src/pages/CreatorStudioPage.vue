@@ -2522,6 +2522,7 @@ const workspaceDiffersFromRelay = computed(() => profileModified.value || tiersM
 
 const shouldPromptPublishUpdates = computed(
   () =>
+    profilePublished.value &&
     workspaceDiffersFromRelay.value &&
     relayVerificationState.value !== 'pending' &&
     relayVerificationState.value !== 'mismatch'
@@ -2746,7 +2747,7 @@ const readinessChips = computed<ReadinessChip[]>(() => {
           ? ('optional' as ReadinessChipState)
           : undefined,
       actionState: shouldPromptPublishUpdates.value
-        ? ('todo' as ReadinessChipState)
+        ? ('warning' as ReadinessChipState)
         : relayVerificationState.value === 'mismatch'
           ? ('warning' as ReadinessChipState)
           : relayVerificationState.value === 'pending'
@@ -2824,7 +2825,9 @@ const readinessChecklist = computed(() => {
 const requiredReadinessReady = computed(() =>
   readinessChips.value
     .filter(chip => chip.required)
-    .every(chip => chip.state === 'ready' || chip.state === 'warning')
+    .every(chip =>
+      chip.state === 'ready' || chip.state === 'warning' || chip.state === 'optional'
+    )
 );
 
 const publishWarnings = computed<string[]>(() => {

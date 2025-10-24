@@ -33,6 +33,15 @@
         </div>
       </q-banner>
 
+      <q-banner
+        v-if="fallbackRecoveryMessage"
+        class="profile-page__banner bg-positive text-inverse"
+        icon="cloud_done"
+        aria-live="polite"
+      >
+        {{ fallbackRecoveryMessage }}
+      </q-banner>
+
       <div
         class="profile-hero-area"
         :class="{
@@ -567,6 +576,8 @@ import {
   type FundstrProfileBundle,
 } from "stores/creators";
 import { useNostrStore, fetchNutzapProfile } from "stores/nostr";
+import { queryNostr, queryNutzapTiers, pickLatestReplaceable } from "@/nostr/relayClient";
+import { parseTierDefinitionEvent } from "@/nostr/tiers";
 import { buildProfileUrl } from "src/utils/profileUrl";
 import { deriveCreatorKeys } from "src/utils/nostrKeys";
 
@@ -594,6 +605,7 @@ import {
   daysToFrequency,
   type SubscriptionFrequency,
 } from "src/constants/subscriptionFrequency";
+import { notifySuccess } from "src/js/notify";
 
 export default defineComponent({
   name: "PublicCreatorProfilePage",
@@ -651,6 +663,8 @@ export default defineComponent({
     const fallbackActive = ref(false);
     const fallbackFailed = ref(false);
     const fallbackRelays = ref<string[]>([]);
+    const fallbackRecoveryMessage = ref("");
+    let fallbackRecoveryTask: Promise<void> | null = null;
     const profileLoadError = ref<Error | null>(null);
     const creatorTierList = computed(() =>
       creatorHex.value ? creators.tiersMap[creatorHex.value] : undefined,
@@ -759,6 +773,109 @@ export default defineComponent({
         }
       }
       return Array.from(urls);
+    };
+
+    const runFallbackRecovery = async (bundle: FundstrProfileBundle) => {
+      const expectedPubkey = creatorHex.value;
+      if (!expectedPubkey) {
+        return;
+      }
+
+      const fallbackProfileTs = bundle.fallbackTimestamps?.profile ?? null;
+      const fallbackTiersTs = bundle.fallbackTimestamps?.tiers ?? null;
+      const relayCandidates = mergeUniqueUrls(
+        bundle.relayHints,
+        fallbackRelays.value,
+        bundle.profileDetails?.relays,
+      );
+      const fanout = relayCandidates.length ? relayCandidates : [];
+
+      const [metaResult, tierResult] = await Promise.allSettled([
+        queryNostr(
+          [{ kinds: [0], authors: [expectedPubkey], limit: 1 }],
+          { fanout, allowFanoutFallback: true, wsTimeoutMs: 2000 },
+        ),
+        queryNutzapTiers(expectedPubkey, {
+          fanout,
+          allowFanoutFallback: true,
+          wsTimeoutMs: 2000,
+        }),
+      ]);
+
+      let hasRecovered = false;
+
+      if (metaResult.status === "fulfilled" && Array.isArray(metaResult.value)) {
+        const latest = pickLatestReplaceable(metaResult.value, {
+          kind: 0,
+          pubkey: expectedPubkey,
+        });
+        if (latest && (fallbackProfileTs === null || latest.created_at > fallbackProfileTs)) {
+          try {
+            const parsed = latest.content ? JSON.parse(latest.content) : null;
+            if (parsed && typeof parsed === "object" && creatorHex.value === expectedPubkey) {
+              const updates: Record<string, any> = { ...(parsed as Record<string, any>) };
+              if (typeof updates.picture === "string" && !isTrustedUrl(updates.picture)) {
+                delete updates.picture;
+              }
+              if (typeof updates.banner === "string" && !isTrustedUrl(updates.banner)) {
+                delete updates.banner;
+              }
+              profile.value = {
+                ...profile.value,
+                ...updates,
+              };
+              hasRecovered = true;
+            }
+          } catch (error) {
+            console.warn("[creator-profile] Failed to parse relay metadata", error);
+          }
+        }
+      }
+
+      if (tierResult.status === "fulfilled") {
+        const tierEvent = tierResult.value;
+        if (
+          tierEvent &&
+          typeof tierEvent === "object" &&
+          (fallbackTiersTs === null || tierEvent.created_at > fallbackTiersTs)
+        ) {
+          const parsedTiers = parseTierDefinitionEvent(tierEvent as any);
+          if (Array.isArray(parsedTiers) && parsedTiers.length && creatorHex.value === expectedPubkey) {
+            applyBundleTierList(parsedTiers);
+            try {
+              await creators.saveTierCache(expectedPubkey, parsedTiers, tierEvent as any, {
+                updatedAt: tierEvent.created_at ?? null,
+              });
+            } catch (error) {
+              console.warn("[creator-profile] Failed to persist recovered tiers", error);
+            }
+            hasRecovered = true;
+          }
+        }
+      }
+
+      if (hasRecovered && creatorHex.value === expectedPubkey) {
+        fallbackActive.value = false;
+        fallbackFailed.value = false;
+        const message = translationWithFallback(
+          "CreatorHub.profile.fallbackRecovered",
+          "Live data restored from relays.",
+        );
+        fallbackRecoveryMessage.value = message;
+        notifySuccess(message);
+      }
+    };
+
+    const scheduleFallbackRecovery = (bundle: FundstrProfileBundle) => {
+      if (!bundle.fetchedFromFallback || !creatorHex.value) {
+        return;
+      }
+      if (fallbackRecoveryTask) {
+        return;
+      }
+      fallbackRecoveryTask = runFallbackRecovery(bundle).finally(() => {
+        fallbackRecoveryTask = null;
+      });
     };
 
     const toStringList = (input: unknown): string[] => {
@@ -893,6 +1010,8 @@ export default defineComponent({
       fallbackActive.value = false;
       fallbackFailed.value = false;
       fallbackRelays.value = [];
+      fallbackRecoveryMessage.value = "";
+      fallbackRecoveryTask = null;
       profileLoadError.value = null;
       followers.value = null;
       following.value = null;
@@ -1128,6 +1247,8 @@ export default defineComponent({
               fallbackRelays.value,
               bundle.relayHints,
             );
+            fallbackRecoveryMessage.value = "";
+            scheduleFallbackRecovery(bundle);
           }
           profileLoadError.value = null;
           await refreshProfileFromRelay(bundle, { forceRelayRefresh });
@@ -1616,6 +1737,7 @@ export default defineComponent({
       fallbackBannerText,
       fallbackRelaysLabel,
       fallbackFailed,
+      fallbackRecoveryMessage,
       // no markdown rendering needed
       formatFiat,
       getPrice,

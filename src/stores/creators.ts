@@ -210,6 +210,36 @@ function convertDiscoveryTier(tier: DiscoveryCreatorTier): Tier | null {
   };
 }
 
+function pickTimestamp(
+  source: Record<string, number> | null | undefined,
+  candidates: string[],
+): number | null {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+  const entries = Object.entries(source);
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const normalized = candidate.toLowerCase();
+    for (const [key, rawValue] of entries) {
+      if (!key) continue;
+      if (key === candidate || key.toLowerCase() === normalized) {
+        const value = Number(rawValue);
+        if (Number.isFinite(value)) {
+          return value;
+        }
+      }
+    }
+  }
+  for (const [, rawValue] of entries) {
+    const value = Number(rawValue);
+    if (Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
 export interface FundstrProfileBundle {
   profile: Record<string, any> | null;
   profileEvent: RelayEvent | null;
@@ -219,6 +249,7 @@ export interface FundstrProfileBundle {
   profileDetails: NutzapProfileDetails | null;
   relayHints: string[];
   fetchedFromFallback: boolean;
+  fallbackTimestamps: { profile?: number | null; tiers?: number | null } | null;
   tiers: Tier[] | null;
 }
 
@@ -258,6 +289,8 @@ export async function fetchFundstrProfileBundle(
     cached: DiscoveryCreator | null;
     fresh: DiscoveryCreator | null;
     freshError: unknown | null;
+    cachedTimestamp: number | null;
+    freshTimestamp: number | null;
   }
 
   const fetchCreatorByQuery = async (query: string): Promise<CreatorQueryResult> => {
@@ -267,9 +300,11 @@ export async function fetchFundstrProfileBundle(
     }
 
     let cached: DiscoveryCreator | null = null;
+    let cachedTimestamp: number | null = null;
+    let cachedResponse: Awaited<ReturnType<typeof discovery.getCreators>> | null = null;
     try {
-      const response = await discovery.getCreators({ q: trimmed, fresh: false });
-      cached = findCreatorMatch(response.results as DiscoveryCreator[]);
+      cachedResponse = await discovery.getCreators({ q: trimmed, fresh: false });
+      cached = findCreatorMatch(cachedResponse.results as DiscoveryCreator[]);
     } catch (error) {
       lastError = error;
       console.warn("fetchFundstrProfileBundle cached discovery query failed", {
@@ -278,17 +313,23 @@ export async function fetchFundstrProfileBundle(
       });
     }
 
+    if (cached && cachedResponse?.timestamps) {
+      cachedTimestamp = pickTimestamp(cachedResponse.timestamps, [cached.pubkey, "profile", "meta"]);
+    }
+
     let fresh: DiscoveryCreator | null = null;
     let freshError: unknown | null = null;
+    let freshTimestamp: number | null = null;
+    let freshResponse: Awaited<ReturnType<typeof discovery.getCreators>> | null = null;
     const shouldFetchFresh = forceRefresh || !cached;
     if (shouldFetchFresh) {
       try {
-        const response = await discovery.getCreators({
+        freshResponse = await discovery.getCreators({
           q: trimmed,
           fresh: true,
           timeoutMs: undefined,
         });
-        fresh = findCreatorMatch(response.results as DiscoveryCreator[]);
+        fresh = findCreatorMatch(freshResponse.results as DiscoveryCreator[]);
       } catch (error) {
         freshError = error;
         lastError = error;
@@ -297,9 +338,12 @@ export async function fetchFundstrProfileBundle(
           error,
         });
       }
+      if (fresh && freshResponse?.timestamps) {
+        freshTimestamp = pickTimestamp(freshResponse.timestamps, [fresh.pubkey, "profile", "meta"]);
+      }
     }
 
-    return { query: trimmed, cached, fresh, freshError };
+    return { query: trimmed, cached, fresh, freshError, cachedTimestamp, freshTimestamp };
   };
 
   const creatorResults: CreatorQueryResult[] = [];
@@ -362,14 +406,20 @@ export async function fetchFundstrProfileBundle(
     cached: DiscoveryCreatorTier[];
     fresh: DiscoveryCreatorTier[] | null;
     freshError: unknown | null;
+    cachedTimestamp: number | null;
+    freshTimestamp: number | null;
   }
 
   const fetchTiersForId = async (id: string): Promise<TierQueryResult> => {
     const cached: DiscoveryCreatorTier[] = [];
+    let cachedTimestamp: number | null = null;
     try {
       const response = await discovery.getCreatorTiers({ id, fresh: false });
       if (Array.isArray(response.tiers)) {
         cached.push(...(response.tiers as DiscoveryCreatorTier[]));
+      }
+      if (response.timestamps) {
+        cachedTimestamp = pickTimestamp(response.timestamps, ["tiers", id]);
       }
     } catch (error) {
       lastError = error;
@@ -381,6 +431,7 @@ export async function fetchFundstrProfileBundle(
 
     let fresh: DiscoveryCreatorTier[] | null = null;
     let freshError: unknown | null = null;
+    let freshTimestamp: number | null = null;
     const shouldFetchFresh = forceRefresh || cached.length === 0;
     if (shouldFetchFresh) {
       try {
@@ -395,6 +446,9 @@ export async function fetchFundstrProfileBundle(
         } else {
           fresh = [];
         }
+        if (response.timestamps) {
+          freshTimestamp = pickTimestamp(response.timestamps, ["tiers", id]);
+        }
       } catch (error) {
         freshError = error;
         fresh = null;
@@ -406,7 +460,7 @@ export async function fetchFundstrProfileBundle(
       }
     }
 
-    return { id, cached, fresh, freshError };
+    return { id, cached, fresh, freshError, cachedTimestamp, freshTimestamp };
   };
 
   const tierResults: TierQueryResult[] = [];
@@ -486,10 +540,23 @@ export async function fetchFundstrProfileBundle(
     ? baseBundle.tiers.map((tier) => normalizeTier(tier))
     : null;
 
+  const fetchedFromFallback = usedCachedProfileFallback || usedCachedTierFallback;
+  const fallbackTimestampPayload = fetchedFromFallback
+    ? {
+        ...(usedCachedProfileFallback
+          ? { profile: firstAvailable?.cachedTimestamp ?? null }
+          : {}),
+        ...(usedCachedTierFallback
+          ? { tiers: tierFallbackSource?.cachedTimestamp ?? null }
+          : {}),
+      }
+    : null;
+
   return {
     ...baseBundle,
     tiers: normalizedTiers && normalizedTiers.length ? normalizedTiers : null,
-    fetchedFromFallback: usedCachedProfileFallback || usedCachedTierFallback,
+    fetchedFromFallback,
+    fallbackTimestamps: fallbackTimestampPayload,
   };
 }
 
@@ -529,6 +596,7 @@ function buildBundleFromDiscoveryCreator(
     profileDetails,
     relayHints,
     fetchedFromFallback: false,
+    fallbackTimestamps: null,
     tiers: tiers.length ? tiers : null,
   };
 }

@@ -238,6 +238,7 @@ export interface DiscoveryTiersResponse {
   tiers: LegacyCreatorTier[];
   cached: boolean;
   tookMs: number;
+  timestamps?: Record<string, number> | null;
 }
 
 export interface FundstrDiscoveryClient {
@@ -247,6 +248,7 @@ export interface FundstrDiscoveryClient {
     results: LegacyCreator[];
     cached: boolean;
     tookMs: number;
+    timestamps: Record<string, number>;
   }>;
   getCreatorsByPubkeys(options: { npubs: string[]; fresh?: boolean; swr?: boolean; signal?: AbortSignal; timeoutMs?: number }): Promise<{
     count: number;
@@ -255,6 +257,7 @@ export interface FundstrDiscoveryClient {
     cached: boolean;
     tookMs: number;
     query: string;
+    timestamps: Record<string, number>;
   }>;
   discoverCreators(q: string, timeoutMs?: number, signal?: AbortSignal): Promise<{
     count: number;
@@ -262,6 +265,7 @@ export interface FundstrDiscoveryClient {
     results: LegacyCreator[];
     cached: boolean;
     tookMs: number;
+    timestamps: Record<string, number>;
   }>;
   getCreatorTiers(request: { id: string; fresh?: boolean; signal?: AbortSignal; timeoutMs?: number }): Promise<DiscoveryTiersResponse>;
   getNutzapBundle(npubOrHex: string, fresh?: boolean, timeoutMs?: number, signal?: AbortSignal): Promise<NutzapBundle>;
@@ -353,6 +357,25 @@ function normalizeCreator(row: CreatorRow): LegacyCreator {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function normalizeTimestampMap(source: unknown): Record<string, number> {
+  if (!isRecord(source)) {
+    return {};
+  }
+  const timestamps: Record<string, number> = {};
+  for (const [key, rawValue] of Object.entries(source)) {
+    if (!key) continue;
+    const value = Number(rawValue);
+    if (Number.isFinite(value)) {
+      timestamps[key] = value;
+    }
+  }
+  return timestamps;
+}
+
 function normalizeCreatorsResponse(payload: any, fallbackQuery = '*'): {
   count: number;
   warnings: string[];
@@ -360,6 +383,7 @@ function normalizeCreatorsResponse(payload: any, fallbackQuery = '*'): {
   cached: boolean;
   tookMs: number;
   query: string;
+  timestamps: Record<string, number>;
 } {
   const query = typeof payload?.query === 'string' && payload.query.trim().length
     ? payload.query.trim()
@@ -389,7 +413,9 @@ function normalizeCreatorsResponse(payload: any, fallbackQuery = '*'): {
 
   const cached = Boolean(payload?.cached ?? payload?.swr_cache_hit);
 
-  return { query, count, results, warnings, tookMs, cached };
+  const timestamps = normalizeTimestampMap(payload?.timestamps);
+
+  return { query, count, results, warnings, tookMs, cached, timestamps };
 }
 
 function normalizeTier(entry: NutzapTier): LegacyCreatorTier | null {
@@ -501,6 +527,7 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
       results: response.results,
       cached: response.cached,
       tookMs: response.tookMs,
+      timestamps: response.timestamps,
     };
   }
 
@@ -519,6 +546,7 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
       cached: response.cached,
       tookMs: response.tookMs,
       query: response.query,
+      timestamps: response.timestamps,
     };
   }
 
@@ -530,6 +558,7 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
       results: response.results,
       cached: response.cached,
       tookMs: response.tookMs,
+      timestamps: response.timestamps,
     };
   }
 
@@ -543,6 +572,7 @@ export function createFundstrDiscoveryClient(): FundstrDiscoveryClient {
       tiers,
       cached: !bundle.stale,
       tookMs: 0,
+      timestamps: normalizeTimestampMap(bundle.timestamps),
     };
   }
 
