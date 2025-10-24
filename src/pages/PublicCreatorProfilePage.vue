@@ -2096,7 +2096,8 @@ export default defineComponent({
 
 @media (min-width: 1024px) {
   .profile-card__media {
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
   }
 }
 
@@ -2107,15 +2108,20 @@ export default defineComponent({
   gap: 1rem;
 }
 
+.profile-card__media-main {
+  grid-column: 1 / -1;
+}
+
 .profile-card__media-aside {
   gap: 1.25rem;
+  grid-column: 1 / -1;
 }
 
 .profile-card__video {
   position: relative;
   width: 100%;
-  max-width: 48rem;
-  margin-inline: auto;
+  max-width: none;
+  margin-inline: 0;
   border-radius: 1.125rem;
   overflow: hidden;
   background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 64, 175, 0.55));
@@ -2127,7 +2133,7 @@ export default defineComponent({
   width: 100%;
   height: 100%;
   aspect-ratio: 16 / 9;
-  max-height: clamp(260px, 45vw, 520px);
+  max-height: clamp(320px, 52vw, 680px);
   object-fit: cover;
   background: #000;
 }
@@ -2135,6 +2141,7 @@ export default defineComponent({
 .profile-card__caption {
   margin: 0;
   line-height: 1.6;
+  font-size: clamp(0.95rem, 0.9rem + 0.25vw, 1.15rem);
 }
 
 .profile-card__highlight {
