@@ -818,7 +818,9 @@ export default defineComponent({
         return;
       }
 
-      const profilePromise = fetchFundstrProfileBundle(creatorHex)
+      const profilePromise = fetchFundstrProfileBundle(creatorHex, {
+        forceRefresh: true,
+      })
         .then(async (bundle) => {
           if (!bundle) return;
           const { profile: profileData, followers: followersCount, following: followingCount } =

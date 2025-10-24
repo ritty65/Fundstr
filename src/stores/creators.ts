@@ -222,12 +222,18 @@ export interface FundstrProfileBundle {
   tiers: Tier[] | null;
 }
 
+export interface FetchFundstrProfileBundleOptions {
+  forceRefresh?: boolean;
+}
+
 export async function fetchFundstrProfileBundle(
   pubkeyInput: string,
+  options: FetchFundstrProfileBundleOptions = {},
 ): Promise<FundstrProfileBundle> {
   const discovery = useDiscovery();
   const pubkey = toHex(pubkeyInput);
   const normalizedPubkey = pubkey.toLowerCase();
+  const forceRefresh = Boolean(options?.forceRefresh);
   let lastError: unknown = null;
 
   const findCreatorMatch = (
@@ -274,20 +280,23 @@ export async function fetchFundstrProfileBundle(
 
     let fresh: DiscoveryCreator | null = null;
     let freshError: unknown | null = null;
-    try {
-      const response = await discovery.getCreators({
-        q: trimmed,
-        fresh: true,
-        timeoutMs: undefined,
-      });
-      fresh = findCreatorMatch(response.results as DiscoveryCreator[]);
-    } catch (error) {
-      freshError = error;
-      lastError = error;
-      console.error("fetchFundstrProfileBundle discovery query failed", {
-        query: trimmed,
-        error,
-      });
+    const shouldFetchFresh = forceRefresh || !cached;
+    if (shouldFetchFresh) {
+      try {
+        const response = await discovery.getCreators({
+          q: trimmed,
+          fresh: true,
+          timeoutMs: undefined,
+        });
+        fresh = findCreatorMatch(response.results as DiscoveryCreator[]);
+      } catch (error) {
+        freshError = error;
+        lastError = error;
+        console.error("fetchFundstrProfileBundle discovery query failed", {
+          query: trimmed,
+          error,
+        });
+      }
     }
 
     return { query: trimmed, cached, fresh, freshError };
@@ -372,26 +381,29 @@ export async function fetchFundstrProfileBundle(
 
     let fresh: DiscoveryCreatorTier[] | null = null;
     let freshError: unknown | null = null;
-    try {
-      const request: { id: string; fresh: boolean; timeoutMs?: number } = {
-        id,
-        fresh: true,
-      };
-      request.timeoutMs = undefined;
-      const response = await discovery.getCreatorTiers(request);
-      if (Array.isArray(response.tiers)) {
-        fresh = response.tiers as DiscoveryCreatorTier[];
-      } else {
-        fresh = [];
+    const shouldFetchFresh = forceRefresh || cached.length === 0;
+    if (shouldFetchFresh) {
+      try {
+        const request: { id: string; fresh?: boolean; timeoutMs?: number } = {
+          id,
+          fresh: true,
+        };
+        request.timeoutMs = undefined;
+        const response = await discovery.getCreatorTiers(request);
+        if (Array.isArray(response.tiers)) {
+          fresh = response.tiers as DiscoveryCreatorTier[];
+        } else {
+          fresh = [];
+        }
+      } catch (error) {
+        freshError = error;
+        fresh = null;
+        lastError = error;
+        console.error("fetchFundstrProfileBundle discovery tier lookup failed", {
+          id,
+          error,
+        });
       }
-    } catch (error) {
-      freshError = error;
-      fresh = null;
-      lastError = error;
-      console.error("fetchFundstrProfileBundle discovery tier lookup failed", {
-        id,
-        error,
-      });
     }
 
     return { id, cached, fresh, freshError };
@@ -1175,7 +1187,9 @@ export const useCreatorsStore = defineStore("creators", {
 
         const fetchPromise = (async (): Promise<CreatorProfile | null> => {
           try {
-            const bundle = await fetchFundstrProfileBundle(pubkey);
+            const bundle = await fetchFundstrProfileBundle(pubkey, {
+              forceRefresh,
+            });
             return await this.applyBundleToCache(pubkey, bundle, { cacheHit: false });
           } catch (error) {
             console.error("[creators] Discovery profile fetch failed", {
