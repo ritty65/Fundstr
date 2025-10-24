@@ -91,6 +91,32 @@
         </div>
       </section>
 
+      <section v-if="primaryTier" class="profile-cta bg-surface-2 text-1 q-pa-lg q-gutter-y-sm">
+        <div class="profile-cta__header">
+          <div class="profile-cta__pricing">
+            <span class="profile-cta__sats">{{ primaryPriceSatsDisplay }} sats</span>
+            <span v-if="primaryPriceFiat" class="profile-cta__fiat text-2">≈ {{ primaryPriceFiat }}</span>
+            <span v-if="primaryFrequencyLabel" class="profile-cta__frequency text-2">
+              {{ primaryFrequencyLabel }}
+            </span>
+          </div>
+          <q-btn
+            color="primary"
+            class="profile-cta__button"
+            :label="$t('CreatorHub.profile.subscribeCta')"
+            :disable="isGuest"
+            @click="openSubscribe(primaryTier)"
+          >
+            <q-tooltip v-if="needsSignerSetupTooltip">
+              {{ $t('CreatorHub.profile.guestTooltip') }}
+            </q-tooltip>
+          </q-btn>
+        </div>
+        <p class="profile-cta__microcopy text-2">
+          {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
+        </p>
+      </section>
+
       <main class="profile-layout">
         <section class="profile-section">
           <header class="profile-section__header">
@@ -354,6 +380,32 @@
         v-model="showReceiptDialog"
         :receipts="receiptList"
       />
+    </div>
+
+    <div
+      v-if="primaryTier"
+      class="profile-cta-mobile bg-surface-2 text-1 q-px-md q-py-sm"
+    >
+      <div class="profile-cta-mobile__content">
+        <div class="profile-cta__pricing">
+          <span class="profile-cta__sats">{{ primaryPriceSatsDisplay }} sats</span>
+          <span v-if="primaryPriceFiat" class="profile-cta__fiat text-2">≈ {{ primaryPriceFiat }}</span>
+        </div>
+        <q-btn
+          color="primary"
+          class="profile-cta__button"
+          :label="$t('CreatorHub.profile.subscribeCta')"
+          :disable="isGuest"
+          @click="openSubscribe(primaryTier)"
+        >
+          <q-tooltip v-if="needsSignerSetupTooltip">
+            {{ $t('CreatorHub.profile.guestTooltip') }}
+          </q-tooltip>
+        </q-btn>
+      </div>
+      <p class="profile-cta__microcopy text-2">
+        {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
+      </p>
     </div>
   </div>
 </template>
@@ -713,6 +765,39 @@ export default defineComponent({
 
     const profileUrl = computed(() => buildProfileUrl(creatorNpub, router));
 
+    const primaryTier = computed<any | null>(() => {
+      const tierList = tiers.value;
+      if (!Array.isArray(tierList) || tierList.length === 0) {
+        return null;
+      }
+      let candidate: any | null = null;
+      for (const tier of tierList) {
+        if (!tier) continue;
+        if (!candidate || getPrice(tier) < getPrice(candidate)) {
+          candidate = tier;
+        }
+      }
+      return candidate;
+    });
+
+    const primaryPriceSats = computed(() =>
+      primaryTier.value ? getPrice(primaryTier.value) : 0,
+    );
+
+    const primaryPriceFiat = computed(() => {
+      if (!primaryTier.value) return "";
+      return formatFiat(getPrice(primaryTier.value));
+    });
+
+    const primaryFrequencyLabel = computed(() =>
+      primaryTier.value ? frequencyLabel(primaryTier.value) : "",
+    );
+
+    const primaryPriceSatsDisplay = computed(() => {
+      const sats = primaryPriceSats.value;
+      return new Intl.NumberFormat(navigator.language).format(sats);
+    });
+
     const profileDisplayName = computed(() =>
       displayNameFromProfile(profileMeta.value, creatorNpub),
     );
@@ -960,6 +1045,10 @@ export default defineComponent({
       formatFiat,
       getPrice,
       frequencyLabel,
+      primaryTier,
+      primaryPriceFiat,
+      primaryPriceSatsDisplay,
+      primaryFrequencyLabel,
       openSubscribe,
       confirmSubscribe,
       retryFetchTiers,
@@ -1039,6 +1128,77 @@ export default defineComponent({
 .profile-hero__details {
   flex: 1;
   min-width: 0;
+}
+
+.profile-cta {
+  position: sticky;
+  top: 1rem;
+  margin-bottom: 2.5rem;
+  border-radius: 1.25rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  z-index: 1;
+}
+
+.profile-cta__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.profile-cta__pricing {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.profile-cta__sats {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.profile-cta__fiat,
+.profile-cta__frequency {
+  display: block;
+}
+
+.profile-cta__button {
+  flex-shrink: 0;
+  min-width: 160px;
+}
+
+.profile-cta__microcopy {
+  margin: 0;
+}
+
+.profile-cta-mobile {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  margin: 0 auto;
+  border-top-left-radius: 1.25rem;
+  border-top-right-radius: 1.25rem;
+  box-shadow: 0 -12px 28px rgba(0, 0, 0, 0.12);
+  display: none;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 2;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0) + 0.25rem);
+}
+
+.profile-cta-mobile__content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
 .profile-hero__heading {
@@ -1336,6 +1496,29 @@ export default defineComponent({
   .profile-hero__avatar {
     width: 100px;
     height: 100px;
+  }
+
+  .profile-cta {
+    display: none;
+  }
+
+  .profile-cta-mobile {
+    display: flex;
+    max-width: min(100%, 88rem);
+  }
+
+  .profile-cta-mobile__content {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .profile-cta__button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .profile-page__inner {
+    padding-bottom: 6.5rem;
   }
 
   .profile-tier__header {
