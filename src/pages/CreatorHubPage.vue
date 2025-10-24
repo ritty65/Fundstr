@@ -79,16 +79,6 @@
       <div class="row items-center justify-between q-mb-lg">
         <div class="text-h5">Creator Hub</div>
         <div class="row items-center q-gutter-sm">
-          <SaveStatusIndicator :status="saveStatus" :error-message="saveError || undefined" />
-          <q-btn
-            color="primary"
-            unelevated
-            dense
-            label="Publish changes"
-            :disable="!isDirty || isSaving"
-            :loading="isSaving"
-            @click="publishProfileBundle"
-          />
           <ThemeToggle />
         </div>
       </div>
@@ -239,6 +229,13 @@
           @save="refreshTiers"
         />
       </div>
+      <PublishBar
+        v-if="isDirty"
+        :publishing="publishing"
+        :report="publishReport"
+        :fallback-used="fallbackUsed"
+        @publish="publishProfileBundle"
+      />
       <RelayScannerDialog
         v-model="showRelayScanner"
         @relays-selected="onRelaysSelected"
@@ -261,12 +258,11 @@ import TierItem from "components/TierItem.vue";
 import AddTierDialog from "components/AddTierDialog.vue";
 import DeleteModal from "components/DeleteModal.vue";
 import ThemeToggle from "components/ThemeToggle.vue";
-import SaveStatusIndicator from "components/SaveStatusIndicator.vue";
+import PublishBar from "components/PublishBar.vue";
 import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 import RelayScannerDialog from "components/RelayScannerDialog.vue";
 import RelayManagerDialog from "components/RelayManagerDialog.vue";
 import { useCreatorProfileStore } from "stores/creatorProfile";
-import { useNow } from "@vueuse/core";
 
 const {
   profile,
@@ -288,11 +284,11 @@ const {
   updateOrder,
   refreshTiers,
   performDelete,
+  publishing,
   publishErrors,
+  publishReport,
+  fallbackUsed,
   isDirty,
-  isSaving,
-  saveError,
-  lastSaveSuccessTimestamp,
   profileRelays,
   connectedCount,
   totalRelays,
@@ -323,31 +319,6 @@ const nsec = ref("");
 const router = useRouter();
 const { copy } = useClipboard();
 const profileUrl = computed(() => buildProfileUrl(npub.value, router));
-
-type SaveIndicatorStatus = "idle" | "unsaved" | "saving" | "success" | "error";
-
-const nowRef = useNow({ interval: 1000 });
-
-const saveStatus = computed<SaveIndicatorStatus>(() => {
-  if (isSaving.value) {
-    return "saving";
-  }
-  if (saveError.value) {
-    return "error";
-  }
-  const currentTime =
-    nowRef.value instanceof Date ? nowRef.value.getTime() : nowRef.value;
-  if (
-    lastSaveSuccessTimestamp.value &&
-    currentTime - lastSaveSuccessTimestamp.value < 5000
-  ) {
-    return "success";
-  }
-  if (isDirty.value) {
-    return "unsaved";
-  }
-  return "idle";
-});
 
 const fundstrRelayStatusLabel = computed(() => {
   switch (fundstrRelayStatus.value) {
