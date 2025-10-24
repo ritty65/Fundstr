@@ -151,6 +151,7 @@ vi.mock("vue-i18n", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
+import TierSummaryCard from "src/components/TierSummaryCard.vue";
 import PublicCreatorProfilePage from "src/pages/PublicCreatorProfilePage.vue";
 
 const SubscribeDialogGlobalStub = defineComponent({
@@ -432,5 +433,33 @@ describe("PublicCreatorProfilePage", () => {
     expect(tierList.some((tier: any) => tier.id === "tier-live")).toBe(true);
     expect(fetchCreatorMock).toHaveBeenCalledTimes(1);
   });
+  
+  it("uses default benefits for standard profile views", async () => {
+    const sampleHex = "f".repeat(64);
+    const sampleNpub = nip19.npubEncode(sampleHex);
+    const wrapper = await mountPageAt({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+    });
 
+    const card = wrapper.findComponent(TierSummaryCard);
+    expect(card.exists()).toBe(true);
+    expect(card.props("useDefaultBenefits")).toBe(true);
+  });
+
+  it("disables default benefits when viewing a custom tier link", async () => {
+    const sampleHex = "1".repeat(64);
+    nostrStore.hasIdentity = false;
+    const sampleNpub = nip19.npubEncode(sampleHex);
+    const wrapper = await mountPageAt({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+      query: { tierId: "tier-1" },
+    });
+
+    const card = wrapper.findComponent(TierSummaryCard);
+    expect(card.exists()).toBe(true);
+    expect(card.props("useDefaultBenefits")).toBe(false);
+    nostrStore.hasIdentity = true;
+  });
 });

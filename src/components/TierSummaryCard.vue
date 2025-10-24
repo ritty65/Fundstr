@@ -160,26 +160,26 @@ const defaultBenefits = [
   "Early drops & behind-the-scenes",
 ];
 
+const normalizedBenefits = computed(() =>
+  (props.tier?.benefits ?? [])
+    .map((benefit) => (typeof benefit === "string" ? benefit.trim() : ""))
+    .filter((benefit) => benefit.length > 0),
+);
+
 const displayBenefits = computed(() => {
-  const benefits = props.tier?.benefits ?? [];
+  const benefits = normalizedBenefits.value;
 
   if (!props.useDefaultBenefits) {
     return benefits;
   }
 
-  const normalizedBenefits = benefits.filter(
-    (benefit) => benefit.trim().length > 0,
-  );
-
-  if (normalizedBenefits.length >= 3) {
-    return normalizedBenefits;
+  if (benefits.length >= 3) {
+    return benefits;
   }
 
-  const fallback = defaultBenefits.filter(
-    (benefit) => !normalizedBenefits.includes(benefit),
-  );
+  const fallback = defaultBenefits.filter((benefit) => !benefits.includes(benefit));
 
-  return [...normalizedBenefits, ...fallback].slice(0, 3);
+  return [...benefits, ...fallback].slice(0, 3);
 });
 const hasBenefits = computed(() => displayBenefits.value.length > 0);
 

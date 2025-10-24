@@ -48,4 +48,43 @@ describe("TierSummaryCard", () => {
     expect(toggle.attributes("aria-expanded")).toBe("true");
     expect(wrapper.find(".tier-card__media").exists()).toBe(true);
   });
+
+  it("fills in default benefits when provided list is sparse", () => {
+    const wrapper = mountComponent({
+      tier: { ...baseTier, benefits: ["Custom perk"] },
+    });
+
+    const benefits = wrapper
+      .findAll(".tier-card__benefit")
+      .map((node) => node.text());
+
+    expect(benefits).toEqual([
+      "Custom perk",
+      "Member-only posts",
+      "Private chat & updates",
+    ]);
+    expect(wrapper.find(".tier-card__section-title").text()).toBe("Benefits");
+  });
+
+  it("hides the benefits section when defaults are disabled and none are provided", () => {
+    const wrapper = mountComponent({
+      tier: { ...baseTier, benefits: ["   "] },
+      useDefaultBenefits: false,
+    });
+
+    expect(wrapper.find(".tier-card__benefits").exists()).toBe(false);
+  });
+
+  it("shows supplied benefits without defaults when explicitly disabled", () => {
+    const wrapper = mountComponent({
+      tier: { ...baseTier, benefits: ["  Exclusive stream access "] },
+      useDefaultBenefits: false,
+    });
+
+    const benefits = wrapper
+      .findAll(".tier-card__benefit")
+      .map((node) => node.text());
+
+    expect(benefits).toEqual(["Exclusive stream access"]);
+  });
 });

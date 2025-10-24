@@ -195,6 +195,7 @@
                       :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
                       :subscribe-disabled="isGuest"
                       :collapse-media="isCustomLinkView"
+                      :use-default-benefits="!isCustomLinkView"
                       @subscribe="openSubscribe"
                     >
                       <template v-if="needsSignerSetupTooltip" #subscribe-tooltip>
