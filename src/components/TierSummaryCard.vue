@@ -279,7 +279,7 @@ const emitSubscribe = () => {
   flex-direction: column;
   align-items: flex-end;
   gap: 0.25rem;
-  white-space: nowrap;
+  text-align: right;
 }
 
 .tier-card__sats {
