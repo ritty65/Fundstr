@@ -73,7 +73,6 @@
             <ul class="links">
               <li><router-link to="/find-creators"><span class="emj">🔍</span>Find Creators</router-link></li>
               <li><router-link to="/creator-studio"><span class="emj">👩‍🎨</span>Creator Studio</router-link></li>
-              <li><router-link to="/my-profile"><span class="emj">👤</span>My Profile</router-link></li>
             </ul>
           </article>
 
