@@ -48,12 +48,25 @@ export function isNostrEventUrl(url: string): boolean {
   );
 }
 
-export function extractIframeSrc(input: string): string {
-  const match = input.trim().match(/<iframe[^>]*src=['"]([^'"]+)['"][^>]*>/i);
-  return match ? match[1].trim() : input.trim();
+export function extractIframeSrc(input: unknown): string {
+  if (typeof input !== "string") {
+    return "";
+  }
+
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const match = trimmed.match(/<iframe[^>]*src=['"]([^'"]+)['"][^>]*>/i);
+  return match ? match[1].trim() : trimmed;
 }
 
-export function normalizeMediaUrl(url: string): string {
+export function normalizeMediaUrl(url: unknown): string {
+  if (typeof url !== "string") {
+    return "";
+  }
+
   const cleaned = extractIframeSrc(url);
   return normalizeYouTube(ipfsToGateway(normalizeNostrEventUrl(cleaned)));
 }
