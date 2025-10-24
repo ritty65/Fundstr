@@ -224,6 +224,7 @@ const emitSubscribe = () => {
   border-radius: 1.25rem;
   padding: 1.25rem 1.5rem;
   box-shadow: 0 16px 28px rgba(18, 18, 23, 0.08);
+  height: 100%;
 }
 
 .tier-card__header {
