@@ -230,35 +230,59 @@ export async function fetchFundstrProfileBundle(
   const normalizedPubkey = pubkey.toLowerCase();
   let lastError: unknown = null;
 
-  const fetchCreatorByQuery = async (query: string): Promise<DiscoveryCreator | null> => {
-    const trimmed = typeof query === "string" ? query.trim() : "";
-    if (!trimmed) {
+  const findCreatorMatch = (
+    results: DiscoveryCreator[] | undefined,
+  ): DiscoveryCreator | null => {
+    if (!Array.isArray(results)) {
       return null;
     }
-
-    try {
-      const response = await discovery.getCreators({ q: trimmed, fresh: false });
-      for (const entry of response.results) {
-        if (typeof entry.pubkey === "string" && entry.pubkey.toLowerCase() === normalizedPubkey) {
-          return entry;
-        }
+    for (const entry of results) {
+      if (typeof entry?.pubkey !== "string") {
+        continue;
       }
-    } catch (error) {
-      lastError = error;
+      if (entry.pubkey.toLowerCase() === normalizedPubkey) {
+        return entry;
+      }
+    }
+    return null;
+  };
+
+  interface CreatorQueryResult {
+    query: string;
+    cached: DiscoveryCreator | null;
+    fresh: DiscoveryCreator | null;
+    freshError: unknown | null;
+  }
+
+  const fetchCreatorByQuery = async (query: string): Promise<CreatorQueryResult> => {
+    const trimmed = typeof query === "string" ? query.trim() : "";
+    if (!trimmed) {
+      return { query: "", cached: null, fresh: null, freshError: null };
     }
 
+    let cached: DiscoveryCreator | null = null;
+    try {
+      const response = await discovery.getCreators({ q: trimmed, fresh: false });
+      cached = findCreatorMatch(response.results as DiscoveryCreator[]);
+    } catch (error) {
+      lastError = error;
+      console.warn("fetchFundstrProfileBundle cached discovery query failed", {
+        query: trimmed,
+        error,
+      });
+    }
+
+    let fresh: DiscoveryCreator | null = null;
+    let freshError: unknown | null = null;
     try {
       const response = await discovery.getCreators({
         q: trimmed,
         fresh: true,
         timeoutMs: undefined,
       });
-      for (const entry of response.results) {
-        if (typeof entry.pubkey === "string" && entry.pubkey.toLowerCase() === normalizedPubkey) {
-          return entry;
-        }
-      }
+      fresh = findCreatorMatch(response.results as DiscoveryCreator[]);
     } catch (error) {
+      freshError = error;
       lastError = error;
       console.error("fetchFundstrProfileBundle discovery query failed", {
         query: trimmed,
@@ -266,128 +290,194 @@ export async function fetchFundstrProfileBundle(
       });
     }
 
-    return null;
+    return { query: trimmed, cached, fresh, freshError };
   };
 
-  let creator: DiscoveryCreator | null = await fetchCreatorByQuery(pubkey);
-  if (!creator) {
-    let npubQuery: string | null = null;
-    try {
-      npubQuery = nip19.npubEncode(pubkey);
-    } catch (error) {
-      console.warn("Failed to encode pubkey to npub for discovery lookup", error);
-    }
+  const creatorResults: CreatorQueryResult[] = [];
+  creatorResults.push(await fetchCreatorByQuery(pubkey));
+
+  let npubQuery: string | null = null;
+  try {
+    npubQuery = nip19.npubEncode(pubkey);
+  } catch (error) {
+    npubQuery = null;
+    console.warn("Failed to encode pubkey to npub for discovery lookup", error);
+  }
+
+  if (
+    (!creatorResults[0].fresh && !creatorResults[0].cached) ||
+    (creatorResults[0].cached && !creatorResults[0].fresh && npubQuery)
+  ) {
     if (npubQuery) {
-      creator = await fetchCreatorByQuery(npubQuery);
+      creatorResults.push(await fetchCreatorByQuery(npubQuery));
     }
   }
 
-  if (!creator) {
+  const firstAvailable = creatorResults.find(
+    (result) => result.cached || result.fresh,
+  );
+  const freshMatch = creatorResults.find((result) => result.fresh);
+  const finalCreator = freshMatch?.fresh ?? firstAvailable?.cached ?? null;
+  const initialCreator = firstAvailable?.cached ?? firstAvailable?.fresh ?? finalCreator ?? null;
+
+  if (!finalCreator) {
     throw new FundstrProfileFetchError("No profile records returned from discovery", {
-      fallbackAttempted: false,
+      fallbackAttempted: creatorResults.some((result) => Boolean(result.cached)),
       cause: lastError ?? undefined,
     });
   }
 
-  const profile = cloneDiscoveryProfile(creator.profile);
-  const profileDetails = extractProfileDetailsFromDiscovery(profile);
-  const relayHints = collectRelayHintsFromProfile(profile, null, profileDetails);
-
-  let followers: number | null = null;
-  if (typeof creator.followers === "number" && Number.isFinite(creator.followers)) {
-    followers = creator.followers;
-  }
-
-  let following: number | null = null;
-  if (typeof creator.following === "number" && Number.isFinite(creator.following)) {
-    following = creator.following;
-  }
-
-  let joined: number | null = null;
-  if (typeof creator.joined === "number" && Number.isFinite(creator.joined)) {
-    joined = creator.joined;
-  }
-
-  const tierCandidates: DiscoveryCreatorTier[] = Array.isArray(creator.tiers)
-    ? (creator.tiers as DiscoveryCreatorTier[])
-    : [];
-
-  const ensureTierCandidates = async () => {
-    if (tierCandidates.length) {
-      return;
+  let usedCachedProfileFallback = false;
+  if (!freshMatch?.fresh && firstAvailable?.cached) {
+    usedCachedProfileFallback = true;
+    if (firstAvailable.freshError) {
+      console.warn("fetchFundstrProfileBundle using cached discovery profile", {
+        query: firstAvailable.query,
+        error: firstAvailable.freshError,
+      });
+    } else {
+      console.warn("fetchFundstrProfileBundle using cached discovery profile", {
+        query: firstAvailable?.query ?? pubkey,
+        reason: "fresh profile result unavailable",
+      });
     }
-    const loadTiers = async (
-      id: string,
-      fresh: boolean,
-      onError: (error: unknown) => void,
-    ) => {
-      try {
-        const tierRequest = { id, fresh };
-        if (fresh) {
-          tierRequest.timeoutMs = undefined;
-        }
-        const tierResponse = await discovery.getCreatorTiers(tierRequest);
-        if (Array.isArray(tierResponse.tiers) && tierResponse.tiers.length) {
-          tierCandidates.push(...(tierResponse.tiers as DiscoveryCreatorTier[]));
-        }
-      } catch (error) {
-        onError(error);
+  }
+
+  const tierIdentifiers: string[] = [pubkey];
+  if (npubQuery) {
+    tierIdentifiers.push(npubQuery);
+  }
+
+  interface TierQueryResult {
+    id: string;
+    cached: DiscoveryCreatorTier[];
+    fresh: DiscoveryCreatorTier[] | null;
+    freshError: unknown | null;
+  }
+
+  const fetchTiersForId = async (id: string): Promise<TierQueryResult> => {
+    const cached: DiscoveryCreatorTier[] = [];
+    try {
+      const response = await discovery.getCreatorTiers({ id, fresh: false });
+      if (Array.isArray(response.tiers)) {
+        cached.push(...(response.tiers as DiscoveryCreatorTier[]));
       }
-    };
-
-    await loadTiers(pubkey, false, () => {
-      /* ignore cached lookup errors; retry with fresh */
-    });
-
-    if (!tierCandidates.length) {
-      await loadTiers(pubkey, true, (error) => {
-        console.warn("fetchFundstrProfileBundle discovery tier lookup failed", {
-          pubkey,
-          error,
-        });
+    } catch (error) {
+      lastError = error;
+      console.warn("fetchFundstrProfileBundle cached tier lookup failed", {
+        id,
+        error,
       });
     }
 
-    if (!tierCandidates.length) {
-      let npubId: string | null = null;
-      try {
-        npubId = nip19.npubEncode(pubkey);
-      } catch {
-        npubId = null;
+    let fresh: DiscoveryCreatorTier[] | null = null;
+    let freshError: unknown | null = null;
+    try {
+      const request: { id: string; fresh: boolean; timeoutMs?: number } = {
+        id,
+        fresh: true,
+      };
+      request.timeoutMs = undefined;
+      const response = await discovery.getCreatorTiers(request);
+      if (Array.isArray(response.tiers)) {
+        fresh = response.tiers as DiscoveryCreatorTier[];
+      } else {
+        fresh = [];
       }
-      if (npubId) {
-        await loadTiers(npubId, false, () => {
-          /* ignore cached lookup errors; retry with fresh */
-        });
-        if (!tierCandidates.length) {
-          await loadTiers(npubId, true, (npubError) => {
-            console.warn("fetchFundstrProfileBundle discovery tier lookup via npub failed", {
-              pubkey,
-              error: npubError,
-            });
-          });
-        }
-      }
+    } catch (error) {
+      freshError = error;
+      fresh = null;
+      lastError = error;
+      console.error("fetchFundstrProfileBundle discovery tier lookup failed", {
+        id,
+        error,
+      });
     }
+
+    return { id, cached, fresh, freshError };
   };
 
-  await ensureTierCandidates();
+  const tierResults: TierQueryResult[] = [];
+  for (const id of tierIdentifiers) {
+    tierResults.push(await fetchTiersForId(id));
+    const lastTierResult = tierResults[tierResults.length - 1];
+    if (lastTierResult.fresh !== null) {
+      break;
+    }
+  }
 
-  const tiers = tierCandidates
-    .map((tier) => convertDiscoveryTier(tier))
-    .filter((tier): tier is Tier => tier !== null)
-    .map((tier) => normalizeTier(tier));
+  const tierFreshMatch = tierResults.find((result) => result.fresh !== null);
+  const tierFallbackSource = tierResults.find((result) => result.cached.length > 0);
+  const finalTierCandidates = tierFreshMatch
+    ? [...(tierFreshMatch.fresh ?? [])]
+    : tierFallbackSource?.cached
+      ? [...tierFallbackSource.cached]
+      : [];
+  const initialTierCandidates = tierFallbackSource?.cached?.length
+    ? [...tierFallbackSource.cached]
+    : tierFreshMatch?.fresh
+      ? [...tierFreshMatch.fresh]
+      : [];
+
+  let usedCachedTierFallback = false;
+  if (!tierFreshMatch && tierFallbackSource?.cached?.length) {
+    usedCachedTierFallback = true;
+    if (tierFallbackSource.freshError) {
+      console.warn("fetchFundstrProfileBundle using cached discovery tiers", {
+        id: tierFallbackSource.id,
+        error: tierFallbackSource.freshError,
+      });
+    } else {
+      console.warn("fetchFundstrProfileBundle using cached discovery tiers", {
+        id: tierFallbackSource.id,
+        reason: "fresh tier result unavailable",
+      });
+    }
+  }
+
+  const selectCreatorForBundle = (
+    source: DiscoveryCreator | null,
+    tiers: DiscoveryCreatorTier[],
+  ): DiscoveryCreator | null => {
+    if (!source) {
+      return null;
+    }
+    return {
+      ...(source as DiscoveryCreator),
+      tiers,
+    };
+  };
+
+  const initialCreatorForBundle = selectCreatorForBundle(
+    initialCreator,
+    initialTierCandidates,
+  );
+  const finalCreatorForBundle = selectCreatorForBundle(
+    finalCreator,
+    finalTierCandidates,
+  );
+
+  const baseBundle = finalCreatorForBundle
+    ? buildBundleFromDiscoveryCreator(finalCreatorForBundle)
+    : initialCreatorForBundle
+      ? buildBundleFromDiscoveryCreator(initialCreatorForBundle)
+      : null;
+
+  if (!baseBundle) {
+    throw new FundstrProfileFetchError("No profile records returned from discovery", {
+      fallbackAttempted: usedCachedProfileFallback || usedCachedTierFallback,
+      cause: lastError ?? undefined,
+    });
+  }
+
+  const normalizedTiers = Array.isArray(baseBundle.tiers)
+    ? baseBundle.tiers.map((tier) => normalizeTier(tier))
+    : null;
 
   return {
-    profile,
-    profileEvent: null,
-    followers,
-    following,
-    joined,
-    profileDetails,
-    relayHints,
-    fetchedFromFallback: false,
-    tiers: tiers.length ? tiers : null,
+    ...baseBundle,
+    tiers: normalizedTiers && normalizedTiers.length ? normalizedTiers : null,
+    fetchedFromFallback: usedCachedProfileFallback || usedCachedTierFallback,
   };
 }
 
@@ -1049,17 +1139,15 @@ export const useCreatorsStore = defineStore("creators", {
         });
       }
 
-      if (Array.isArray(bundle.tiers)) {
-        try {
-          this.updateTierCacheState(pubkey, bundle.tiers, null, {
-            updatedAt: bundle.joined ?? null,
-          });
-        } catch (tierCacheError) {
-          console.error("[creators] Failed to update warm tier cache", {
-            pubkey,
-            error: tierCacheError,
-          });
-        }
+      try {
+        this.updateTierCacheState(pubkey, bundle.tiers ?? null, null, {
+          updatedAt: bundle.joined ?? null,
+        });
+      } catch (tierCacheError) {
+        console.error("[creators] Failed to update warm tier cache", {
+          pubkey,
+          error: tierCacheError,
+        });
       }
 
       try {
@@ -1079,6 +1167,36 @@ export const useCreatorsStore = defineStore("creators", {
       const now = Date.now();
       const cacheExpiry = 3 * 60 * 60 * 1000; // 3 hours
 
+      const triggerNetworkFetch = () => {
+        const existing = this.inFlightCreatorRequests[pubkey];
+        if (existing) {
+          return existing;
+        }
+
+        const fetchPromise = (async (): Promise<CreatorProfile | null> => {
+          try {
+            const bundle = await fetchFundstrProfileBundle(pubkey);
+            return await this.applyBundleToCache(pubkey, bundle, { cacheHit: false });
+          } catch (error) {
+            console.error("[creators] Discovery profile fetch failed", {
+              pubkey,
+              error,
+            });
+            throw error;
+          }
+        })();
+
+        this.inFlightCreatorRequests[pubkey] = fetchPromise;
+
+        fetchPromise.finally(() => {
+          if (this.inFlightCreatorRequests[pubkey] === fetchPromise) {
+            delete this.inFlightCreatorRequests[pubkey];
+          }
+        });
+
+        return fetchPromise;
+      };
+
       if (!forceRefresh) {
         try {
           await this.ensureCreatorCacheFromDexie(pubkey);
@@ -1091,11 +1209,13 @@ export const useCreatorsStore = defineStore("creators", {
 
         const warmCached = this.buildCreatorProfileFromCache(pubkey);
         if (warmCached) {
+          triggerNetworkFetch().catch(() => {});
           return { ...warmCached, cacheHit: true };
         }
 
         const cached = await db.profiles.get(pubkey);
         if (cached && now - cached.fetchedAt < cacheExpiry) {
+          triggerNetworkFetch().catch(() => {});
           return { ...cached.profile, cacheHit: true } as CreatorProfile;
         }
 
@@ -1105,28 +1225,7 @@ export const useCreatorsStore = defineStore("creators", {
         }
       }
 
-      const fetchPromise = (async (): Promise<CreatorProfile | null> => {
-        try {
-          const bundle = await fetchFundstrProfileBundle(pubkey);
-          return await this.applyBundleToCache(pubkey, bundle, { cacheHit: false });
-        } catch (error) {
-          console.error("[creators] Discovery profile fetch failed", {
-            pubkey,
-            error,
-          });
-          throw error;
-        }
-      })();
-
-      this.inFlightCreatorRequests[pubkey] = fetchPromise;
-
-      try {
-        return await fetchPromise;
-      } finally {
-        if (this.inFlightCreatorRequests[pubkey] === fetchPromise) {
-          delete this.inFlightCreatorRequests[pubkey];
-        }
-      }
+      return await triggerNetworkFetch();
     },
 
     async loadFeatured(npubs: string[], opts: { fresh?: boolean } = {}) {
