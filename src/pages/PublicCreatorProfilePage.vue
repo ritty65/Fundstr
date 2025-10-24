@@ -121,7 +121,10 @@
           </div>
         </div>
         <div v-if="!isCustomLinkView && primaryTier" class="profile-hero-sidebar">
-          <section v-if="primaryTier" class="profile-cta bg-surface-2 text-1 q-pa-lg q-gutter-y-sm">
+          <section
+            v-if="!isCustomLinkView && primaryTier"
+            class="profile-cta bg-surface-2 text-1 q-pa-lg q-gutter-y-sm"
+          >
             <div class="profile-cta__header">
               <div class="profile-cta__pricing">
                 <span class="profile-cta__sats">{{ primaryPriceSatsDisplay }} sats</span>
@@ -428,7 +431,7 @@
     </div>
 
     <div
-      v-if="primaryTier"
+      v-if="!isCustomLinkView && primaryTier"
       class="profile-cta-mobile bg-surface-2 text-1 q-px-md q-py-sm"
     >
       <div class="profile-cta-mobile__content">
@@ -570,27 +573,25 @@ export default defineComponent({
       const tierList = Array.isArray(tiers.value)
         ? tiers.value.filter((tier: any) => tier)
         : [];
-      if (!tierList.length || !isCustomLinkView.value) {
+      if (!tierList.length) {
+        return tierList;
+      }
+      if (!isCustomLinkView.value) {
         return tierList;
       }
       const tierId = customTierId.value;
       if (!tierId) {
-        return tierList;
+        return [];
       }
       const normalizedId = String(tierId);
-      const index = tierList.findIndex((tier: any) => {
+      const selected = tierList.find((tier: any) => {
         const candidateId =
           typeof tier.id === "string" || typeof tier.id === "number"
             ? String(tier.id)
             : "";
         return candidateId === normalizedId;
       });
-      if (index <= 0) {
-        return tierList;
-      }
-      const reordered = tierList.slice();
-      const [selected] = reordered.splice(index, 1);
-      return [selected, ...reordered];
+      return selected ? [selected] : [];
     });
     const hasInitialTierData = computed(
       () => creatorTierList.value !== undefined,
