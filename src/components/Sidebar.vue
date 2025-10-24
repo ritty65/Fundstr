@@ -68,7 +68,7 @@ const navLinks = [
 ];
 
 const accountLinks = [
-  { to: "/my-profile", label: "Profile", icon: "person" },
+  { to: "/creator-studio", label: "Creator Studio", icon: "dashboard_customize" },
   { to: "/subscriptions", label: "Subscriptions", icon: "auto_awesome_motion" },
 ];
 

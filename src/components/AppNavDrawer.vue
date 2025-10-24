@@ -86,19 +86,6 @@
           <q-item-label caption>Manage Nutzap profile &amp; tiers</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item v-if="!isGuest" clickable @click="gotoMyProfile">
-        <q-item-section avatar>
-          <q-icon name="person" />
-        </q-item-section>
-        <q-item-section>
-          <q-item-label>{{
-            $t("MainHeader.menu.myProfile.myProfile.title")
-          }}</q-item-label>
-          <q-item-label caption>{{
-            $t("MainHeader.menu.myProfile.myProfile.caption")
-          }}</q-item-label>
-        </q-item-section>
-      </q-item>
       <q-item v-if="!isGuest" clickable @click="gotoBuckets">
         <q-item-section avatar>
           <q-icon name="inventory_2" />
@@ -229,7 +216,6 @@ const gotoWallet = () => goto("/wallet");
 const gotoSettings = () => goto("/settings");
 const gotoFindCreators = () => goto("/find-creators");
 const gotoCreatorStudio = () => goto("/creator-studio");
-const gotoMyProfile = () => goto("/my-profile");
 const gotoBuckets = () => goto("/buckets");
 const gotoSubscriptions = () => goto("/subscriptions");
 const gotoChats = () => goto("/nostr-messenger");
