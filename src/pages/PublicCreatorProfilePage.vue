@@ -3,7 +3,7 @@
     class="profile-page bg-surface-1 text-1"
     :class="{ 'profile-page--custom': isCustomLinkView }"
   >
-    <div class="profile-page__inner q-pa-md">
+    <div class="profile-page__inner">
       <div class="profile-page__back q-mb-md">
         <q-btn flat color="primary" to="/find-creators">{{
           $t("CreatorHub.profile.back")
@@ -33,89 +33,91 @@
         </div>
       </q-banner>
 
-      <section class="profile-hero" :class="{ 'profile-hero--with-banner': heroBannerUrl }">
-        <div
-          v-if="heroBannerUrl"
-          class="profile-hero__banner"
-          :style="heroBannerStyle"
-          role="presentation"
-        />
-        <div class="profile-hero__content bg-surface-2">
-          <div class="profile-hero__avatar" aria-hidden="true">
-            <img
-              v-if="profileAvatar"
-              :src="profileAvatar"
-              :alt="profileDisplayName"
-              @error="onHeroAvatarError"
-            />
-            <div v-else class="profile-hero__avatar-placeholder">{{ profileInitials }}</div>
-          </div>
-          <div class="profile-hero__details">
-            <div class="profile-hero__heading">
-              <h1 class="profile-hero__name text-h4">{{ profileDisplayName }}</h1>
-              <q-btn
-                flat
-                round
-                dense
-                icon="content_copy"
-                :aria-label="$t('CreatorHub.profile.copyProfileLink')"
-                @click="copy(profileUrl)"
+      <div class="profile-hero-area" :class="{ 'profile-hero-area--with-cta': !!primaryTier }">
+        <section class="profile-hero" :class="{ 'profile-hero--with-banner': heroBannerUrl }">
+          <div
+            v-if="heroBannerUrl"
+            class="profile-hero__banner"
+            :style="heroBannerStyle"
+            role="presentation"
+          />
+          <div class="profile-hero__content bg-surface-2">
+            <div class="profile-hero__avatar" aria-hidden="true">
+              <img
+                v-if="profileAvatar"
+                :src="profileAvatar"
+                :alt="profileDisplayName"
+                @error="onHeroAvatarError"
               />
+              <div v-else class="profile-hero__avatar-placeholder">{{ profileInitials }}</div>
             </div>
-            <p v-if="profileHandle" class="profile-hero__handle text-2">@{{ profileHandle }}</p>
-            <div v-if="hasFollowerStats" class="profile-hero__stats text-2">
-              <span v-if="followers !== null">
-                {{ $t('CreatorHub.profile.followers', { count: followers }) }}
-              </span>
-              <span v-if="following !== null">
-                {{ $t('CreatorHub.profile.following', { count: following }) }}
-              </span>
-            </div>
-            <div v-if="metadataChips.length" class="profile-hero__chips" role="list">
-              <q-chip
-                v-for="chip in metadataChips"
-                :key="chip.id"
-                dense
-                outline
-                :icon="chip.icon"
-                :label="chip.label"
-                :tag="chip.href ? 'a' : 'div'"
-                :href="chip.href"
-                :target="chip.href ? '_blank' : undefined"
-                :rel="chip.href ? 'noopener noreferrer' : undefined"
-                :clickable="!!chip.href"
-                role="listitem"
-              />
+            <div class="profile-hero__details">
+              <div class="profile-hero__heading">
+                <h1 class="profile-hero__name text-h4">{{ profileDisplayName }}</h1>
+                <q-btn
+                  flat
+                  round
+                  dense
+                  icon="content_copy"
+                  :aria-label="$t('CreatorHub.profile.copyProfileLink')"
+                  @click="copy(profileUrl)"
+                />
+              </div>
+              <p v-if="profileHandle" class="profile-hero__handle text-2">@{{ profileHandle }}</p>
+              <div v-if="hasFollowerStats" class="profile-hero__stats text-2">
+                <span v-if="followers !== null">
+                  {{ $t('CreatorHub.profile.followers', { count: followers }) }}
+                </span>
+                <span v-if="following !== null">
+                  {{ $t('CreatorHub.profile.following', { count: following }) }}
+                </span>
+              </div>
+              <div v-if="metadataChips.length" class="profile-hero__chips" role="list">
+                <q-chip
+                  v-for="chip in metadataChips"
+                  :key="chip.id"
+                  dense
+                  outline
+                  :icon="chip.icon"
+                  :label="chip.label"
+                  :tag="chip.href ? 'a' : 'div'"
+                  :href="chip.href"
+                  :target="chip.href ? '_blank' : undefined"
+                  :rel="chip.href ? 'noopener noreferrer' : undefined"
+                  :clickable="!!chip.href"
+                  role="listitem"
+                />
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section v-if="primaryTier" class="profile-cta bg-surface-2 text-1 q-pa-lg q-gutter-y-sm">
-        <div class="profile-cta__header">
-          <div class="profile-cta__pricing">
-            <span class="profile-cta__sats">{{ primaryPriceSatsDisplay }} sats</span>
-            <span v-if="primaryPriceFiat" class="profile-cta__fiat text-2">≈ {{ primaryPriceFiat }}</span>
-            <span v-if="primaryFrequencyLabel" class="profile-cta__frequency text-2">
-              {{ primaryFrequencyLabel }}
-            </span>
+        <section v-if="primaryTier" class="profile-cta bg-surface-2 text-1 q-pa-lg q-gutter-y-sm">
+          <div class="profile-cta__header">
+            <div class="profile-cta__pricing">
+              <span class="profile-cta__sats">{{ primaryPriceSatsDisplay }} sats</span>
+              <span v-if="primaryPriceFiat" class="profile-cta__fiat text-2">≈ {{ primaryPriceFiat }}</span>
+              <span v-if="primaryFrequencyLabel" class="profile-cta__frequency text-2">
+                {{ primaryFrequencyLabel }}
+              </span>
+            </div>
+            <q-btn
+              color="primary"
+              class="profile-cta__button"
+              :label="$t('CreatorHub.profile.subscribeCta')"
+              :disable="isGuest"
+              @click="openSubscribe(primaryTier)"
+            >
+              <q-tooltip v-if="needsSignerSetupTooltip">
+                {{ $t('CreatorHub.profile.guestTooltip') }}
+              </q-tooltip>
+            </q-btn>
           </div>
-          <q-btn
-            color="primary"
-            class="profile-cta__button"
-            :label="$t('CreatorHub.profile.subscribeCta')"
-            :disable="isGuest"
-            @click="openSubscribe(primaryTier)"
-          >
-            <q-tooltip v-if="needsSignerSetupTooltip">
-              {{ $t('CreatorHub.profile.guestTooltip') }}
-            </q-tooltip>
-          </q-btn>
-        </div>
-        <p class="profile-cta__microcopy text-2">
-          {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
-        </p>
-      </section>
+          <p class="profile-cta__microcopy text-2">
+            {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
+          </p>
+        </section>
+      </div>
 
       <main class="profile-layout">
         <section class="profile-section">
@@ -1424,8 +1426,10 @@ export default defineComponent({
 }
 
 .profile-page__inner {
-  max-width: min(100%, 88rem);
+  width: 100%;
+  max-width: 96rem;
   margin: 0 auto;
+  padding: clamp(1.25rem, 4vw, 3rem) clamp(1.5rem, 6vw, 4rem);
 }
 
 .profile-page__banner {
@@ -1433,9 +1437,17 @@ export default defineComponent({
   border-radius: 1rem;
 }
 
+.profile-hero-area {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2rem;
+  margin-bottom: 2.5rem;
+}
+
 .profile-hero {
   position: relative;
-  margin-bottom: 2.5rem;
+  margin: 0;
+  grid-column: 1 / -1;
 }
 
 .profile-hero__banner {
@@ -1488,7 +1500,7 @@ export default defineComponent({
 .profile-cta {
   position: sticky;
   top: 1rem;
-  margin-bottom: 2.5rem;
+  margin: 0;
   border-radius: 1.25rem;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
   display: flex;
@@ -1642,9 +1654,13 @@ export default defineComponent({
 
 
 .profile-tier-grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2rem;
+}
+
+.profile-tier-grid--custom {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .profile-tier-grid > .profile-section {
@@ -1662,12 +1678,6 @@ export default defineComponent({
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 1.5rem;
   align-items: stretch;
-}
-
-.profile-page--custom .profile-tier-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
 }
 
 .profile-page--custom .profile-tier-list {
@@ -1842,6 +1852,25 @@ export default defineComponent({
   margin: 0.75rem 0 0;
 }
 
+@media (min-width: 1200px) {
+  .profile-page__inner {
+    max-width: 110rem;
+  }
+}
+
+@media (min-width: 1440px) {
+  .profile-page__inner {
+    max-width: 120rem;
+    padding-inline: clamp(2rem, 6vw, 5rem);
+  }
+}
+
+@media (min-width: 1680px) {
+  .profile-page__inner {
+    max-width: 128rem;
+  }
+}
+
 @media (max-width: 767px) {
   .profile-hero__content {
     flex-direction: column;
@@ -1859,7 +1888,7 @@ export default defineComponent({
 
   .profile-cta-mobile {
     display: flex;
-    max-width: min(100%, 88rem);
+    max-width: min(100%, 96rem);
   }
 
   .profile-cta-mobile__content {
@@ -1891,16 +1920,22 @@ export default defineComponent({
 }
 
 @media (min-width: 1024px) {
-  .profile-tier-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
-    gap: 2rem;
-    align-items: stretch;
+  .profile-hero-area--with-cta {
+    grid-template-columns: minmax(0, 1.8fr) minmax(320px, 1fr);
+    align-items: start;
   }
 
-  .profile-page--custom .profile-tier-grid {
-    display: flex;
-    flex-direction: column;
+  .profile-hero-area--with-cta > .profile-hero {
+    grid-column: auto;
+  }
+
+  .profile-cta {
+    top: 2rem;
+  }
+
+  .profile-tier-grid:not(.profile-tier-grid--custom) {
+    grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+    align-items: start;
   }
 }
 </style>
