@@ -679,6 +679,7 @@ export function normalizeMintUrl(value: string | null | undefined) {
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch, type Ref } from 'vue';
 import { useEventBus, useLocalStorage, useNow } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
+import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
 import { useRoute, useRouter } from 'vue-router';
@@ -816,6 +817,26 @@ type PublishStageOutcome = {
 };
 type PublishStageOutcomeMap = Partial<Record<PublishStageName, PublishStageOutcome>>;
 const publishStageQueue = ref<PublishStageJob[]>([]);
+const expectedRelayPayloadHashes = reactive<Record<PublishStageName, string | null>>({
+  canonicalTiers: null,
+  legacyTiers: null,
+  profile: null,
+});
+const observedRelayPayloadHashes = reactive<Record<PublishStageName, string | null>>({
+  canonicalTiers: null,
+  legacyTiers: null,
+  profile: null,
+});
+type RelayVerificationState = 'idle' | 'pending' | 'confirmed' | 'mismatch';
+const relayVerificationState = ref<RelayVerificationState>('idle');
+const relayVerificationMessage = ref('');
+let lastRelayVerificationState: RelayVerificationState = 'idle';
+let relayVerificationAttentionId: number | null = null;
+let verificationRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let verificationRetryAttempts = 0;
+const VERIFICATION_RETRY_DELAY_MS = 2000;
+const MAX_VERIFICATION_RETRIES = 3;
+const textEncoder = new TextEncoder();
 const publishStateMachine = reactive<{
   currentStage: PublishStageName | null;
   failedStage: PublishStageName | null;
@@ -1123,7 +1144,14 @@ const shareHelperMessage = computed(() => {
 
 
 type ReadinessChipState = 'ready' | 'todo' | 'optional' | 'warning';
-type ReadinessChipKey = 'relay' | 'authorKey' | 'identity' | 'mint' | 'p2pk' | 'tiers';
+type ReadinessChipKey =
+  | 'relay'
+  | 'authorKey'
+  | 'identity'
+  | 'mint'
+  | 'p2pk'
+  | 'tiers'
+  | 'verification';
 
 type ReadinessChip = {
   key: ReadinessChipKey;
@@ -1184,7 +1212,7 @@ const stepDefinitions: StepDefinition[] = [
     name: 'publish',
     label: 'Review & publish',
     description: 'Review readiness and publish to relay.fundstr.me.',
-    readinessKeys: ['relay', 'authorKey', 'mint', 'p2pk', 'tiers'],
+    readinessKeys: ['relay', 'authorKey', 'mint', 'p2pk', 'tiers', 'verification'],
     indicator: '4',
   },
 ];
@@ -1558,6 +1586,166 @@ watch(
   }
 );
 
+function computePayloadHash(content: string | null | undefined): string | null {
+  if (typeof content !== 'string') {
+    return null;
+  }
+  return bytesToHex(sha256(textEncoder.encode(content)));
+}
+
+function setObservedRelayPayloadHash(stage: PublishStageName, content: string | null | undefined) {
+  observedRelayPayloadHashes[stage] = computePayloadHash(content);
+}
+
+function clearRelayVerificationRetry() {
+  if (verificationRetryTimer) {
+    clearTimeout(verificationRetryTimer);
+    verificationRetryTimer = null;
+  }
+  verificationRetryAttempts = 0;
+}
+
+function scheduleVerificationRetry() {
+  if (verificationRetryTimer || verificationRetryAttempts >= MAX_VERIFICATION_RETRIES) {
+    return;
+  }
+
+  verificationRetryTimer = setTimeout(() => {
+    verificationRetryTimer = null;
+    verificationRetryAttempts += 1;
+    const targetAuthor = activeAuthorHex;
+    if (targetAuthor) {
+      void Promise.all([loadTiers(targetAuthor), loadProfile(targetAuthor)]).catch(err => {
+        console.warn('[nutzap] relay verification retry failed', err);
+      });
+    } else {
+      void loadAll();
+    }
+  }, VERIFICATION_RETRY_DELAY_MS);
+}
+
+function setRelayVerificationState(
+  nextState: RelayVerificationState,
+  message: string,
+  _affectedStages: PublishStageName[],
+) {
+  const previous = lastRelayVerificationState;
+  relayVerificationState.value = nextState;
+  relayVerificationMessage.value = message;
+
+  if (nextState === 'mismatch') {
+    scheduleVerificationRetry();
+    const existingAttentionMatches =
+      !!relayVerificationAttentionId &&
+      diagnosticsAttention.value?.id === relayVerificationAttentionId &&
+      diagnosticsAttention.value?.detail === message;
+    if (!existingAttentionMatches) {
+      flagDiagnosticsAttention('publish', message, 'warning');
+      relayVerificationAttentionId = diagnosticsAttention.value?.id ?? null;
+    }
+    if (previous !== 'mismatch') {
+      logRelayActivity('warning', 'Relay copy mismatch detected', message);
+    }
+  } else {
+    if (relayVerificationAttentionId && diagnosticsAttention.value?.id === relayVerificationAttentionId) {
+      dismissDiagnosticsAttention();
+    }
+    relayVerificationAttentionId = null;
+    clearRelayVerificationRetry();
+    if (previous === 'mismatch' && nextState === 'confirmed') {
+      logRelayActivity('success', 'Relay copy realigned', message);
+    } else if (nextState === 'confirmed' && previous === 'pending') {
+      logRelayActivity('success', 'Relay copy confirmed', message);
+    }
+  }
+
+  if (nextState === 'pending' && previous !== 'pending') {
+    logRelayActivity('info', 'Awaiting relay copy verification', message);
+  }
+
+  if (nextState !== 'mismatch') {
+    verificationRetryAttempts = 0;
+  }
+
+  lastRelayVerificationState = nextState;
+}
+
+function evaluateRelayVerificationState() {
+  const expectedStages = publishStageOrder.filter(stage => !!expectedRelayPayloadHashes[stage]);
+
+  if (expectedStages.length === 0) {
+    const observedStages = publishStageOrder.filter(stage => !!observedRelayPayloadHashes[stage]);
+    const message = observedStages.length
+      ? 'No publish pending verification.'
+      : 'Publish to push your Nutzap profile to the relay.';
+    setRelayVerificationState('idle', message, observedStages);
+    return;
+  }
+
+  const mismatched = expectedStages.filter(stage => {
+    const expected = expectedRelayPayloadHashes[stage];
+    const observed = observedRelayPayloadHashes[stage];
+    return observed !== null && observed !== expected;
+  });
+
+  if (mismatched.length > 0) {
+    const label = formatStageList(mismatched);
+    const message = label
+      ? `Relay copy mismatch for ${label}. Retrying shortly…`
+      : 'Relay copy mismatch detected. Retrying shortly…';
+    setRelayVerificationState('mismatch', message, mismatched);
+    return;
+  }
+
+  const missing = expectedStages.filter(stage => !observedRelayPayloadHashes[stage]);
+  if (missing.length > 0) {
+    const label = formatStageList(missing);
+    const message = label
+      ? `Awaiting relay copy for ${label}…`
+      : 'Awaiting relay copy…';
+    setRelayVerificationState('pending', message, missing);
+    return;
+  }
+
+  const label = formatStageList(expectedStages);
+  const message = label ? `Relay copy confirmed for ${label}.` : 'Relay copy confirmed.';
+  setRelayVerificationState('confirmed', message, expectedStages);
+}
+
+function beginRelayVerification(payloads: Partial<Record<PublishStageName, string | null>>) {
+  clearRelayVerificationRetry();
+
+  for (const stage of publishStageOrder) {
+    if (stage in payloads) {
+      const content = payloads[stage] ?? null;
+      const hash = computePayloadHash(content);
+      expectedRelayPayloadHashes[stage] = hash;
+      observedRelayPayloadHashes[stage] = null;
+    } else {
+      expectedRelayPayloadHashes[stage] = null;
+    }
+  }
+
+  evaluateRelayVerificationState();
+}
+
+function resetRelayVerificationTracking(options?: { preserveObserved?: boolean }) {
+  const preserveObserved = options?.preserveObserved ?? false;
+
+  for (const stage of publishStageOrder) {
+    expectedRelayPayloadHashes[stage] = null;
+    if (!preserveObserved) {
+      observedRelayPayloadHashes[stage] = null;
+    }
+  }
+
+  clearRelayVerificationRetry();
+  relayVerificationAttentionId = null;
+  relayVerificationState.value = 'idle';
+  relayVerificationMessage.value = '';
+  lastRelayVerificationState = 'idle';
+  evaluateRelayVerificationState();
+}
 watch(
   relayConnectionUrl,
   nextUrl => {
@@ -2404,6 +2592,10 @@ const publishBlockers = computed<string[]>(() => {
     blockers.push('Resolve tier validation issues');
   }
 
+  if (relayVerificationState.value === 'mismatch') {
+    blockers.push(relayVerificationMessage.value || 'Resolve relay copy mismatch');
+  }
+
   return blockers;
 });
 
@@ -2501,6 +2693,29 @@ const readinessChips = computed<ReadinessChip[]>(() => {
       readyIcon: 'task_alt',
       actionIcon: 'playlist_add',
     },
+    {
+      key: 'verification',
+      ready: relayVerificationState.value === 'confirmed' || relayVerificationState.value === 'idle',
+      required: true,
+      readyLabel:
+        relayVerificationState.value === 'confirmed' ? 'Relay copy confirmed' : 'No publish pending',
+      actionLabel:
+        relayVerificationState.value === 'mismatch' ? 'Relay copy mismatch' : 'Awaiting relay copy',
+      readyIcon: relayVerificationState.value === 'confirmed' ? 'verified' : 'pending',
+      actionIcon: relayVerificationState.value === 'mismatch' ? 'report_problem' : 'hourglass_top',
+      readyTooltip: relayVerificationMessage.value || undefined,
+      actionTooltip: relayVerificationMessage.value || undefined,
+      readyState:
+        relayVerificationState.value === 'idle'
+          ? ('optional' as ReadinessChipState)
+          : undefined,
+      actionState:
+        relayVerificationState.value === 'mismatch'
+          ? ('warning' as ReadinessChipState)
+          : relayVerificationState.value === 'pending'
+            ? ('warning' as ReadinessChipState)
+            : ('todo' as ReadinessChipState),
+    },
   ];
 
   return entries.map(entry =>
@@ -2584,6 +2799,10 @@ const publishWarnings = computed<string[]>(() => {
 
   if (relayNeedsAttention.value) {
     warnings.push('Restore relay connection health');
+  }
+
+  if (relayVerificationState.value === 'pending') {
+    warnings.push(relayVerificationMessage.value || 'Awaiting relay copy confirmation');
   }
 
   if (p2pkPointerReady.value && p2pkVerificationNeedsRefresh.value) {
@@ -2830,6 +3049,9 @@ function handleTierValidation(results: TierFieldErrors[]) {
 function applyTiersEvent(event: any | null, overrideKind?: TierKind | null) {
   if (!event) {
     tiers.value = [];
+    setObservedRelayPayloadHash('canonicalTiers', null);
+    setObservedRelayPayloadHash('legacyTiers', null);
+    evaluateRelayVerificationState();
     return;
   }
 
@@ -2843,10 +3065,13 @@ function applyTiersEvent(event: any | null, overrideKind?: TierKind | null) {
 
   if (eventKind) {
     tierPreviewKind.value = eventKind;
+    const stage = eventKind === CANONICAL_TIER_KIND ? 'canonicalTiers' : 'legacyTiers';
+    setObservedRelayPayloadHash(stage, typeof event?.content === 'string' ? event.content : null);
   }
 
   const content = typeof event?.content === 'string' ? event.content : undefined;
   tiers.value = parseTiersContent(content);
+  evaluateRelayVerificationState();
 }
 
 function buildRelayList(rawRelays: string[]) {
@@ -2875,6 +3100,8 @@ function buildRelayList(rawRelays: string[]) {
 
 function applyProfileEvent(latest: any | null) {
   applyingProfileEvent.value = true;
+  const profileContent = typeof latest?.content === 'string' ? latest.content : null;
+  setObservedRelayPayloadHash('profile', profileContent);
   try {
     if (!latest) {
       displayName.value = '';
@@ -2908,7 +3135,7 @@ function applyProfileEvent(latest: any | null) {
     }
 
     try {
-      const parsed = latest.content ? JSON.parse(latest.content) : {};
+      const parsed = profileContent ? JSON.parse(profileContent) : {};
       if (typeof parsed.p2pk === 'string') {
         const candidate = parsed.p2pk.trim();
         const entries = Array.isArray(p2pkKeys.value) ? p2pkKeys.value : [];
@@ -3004,7 +3231,35 @@ function applyProfileEvent(latest: any | null) {
     identityMetadataSeedingBlocked.value = true;
   } finally {
     applyingProfileEvent.value = false;
+    evaluateRelayVerificationState();
   }
+}
+
+function findLatestTierEvent(events: readonly any[], kind: TierKind) {
+  let latest: any | null = null;
+
+  for (const event of events) {
+    if (!event || typeof event !== 'object') {
+      continue;
+    }
+    if (typeof (event as any).kind !== 'number' || (event as any).kind !== kind) {
+      continue;
+    }
+    const tags = Array.isArray((event as any).tags) ? (event as any).tags : [];
+    const dTag = tags.find(tag => Array.isArray(tag) && tag[0] === 'd');
+    const dValue = typeof dTag?.[1] === 'string' ? dTag[1] : '';
+    if (dValue && dValue !== 'tiers') {
+      continue;
+    }
+    if (
+      !latest ||
+      ((event as any).created_at ?? 0) > ((latest as any).created_at ?? 0)
+    ) {
+      latest = event;
+    }
+  }
+
+  return latest;
 }
 
 async function loadTiers(authorHex: string) {
@@ -3019,6 +3274,16 @@ async function loadTiers(authorHex: string) {
       },
     ]);
 
+    const canonicalEvent = findLatestTierEvent(events, CANONICAL_TIER_KIND);
+    const legacyEvent = findLatestTierEvent(events, LEGACY_TIER_KIND);
+    setObservedRelayPayloadHash(
+      'canonicalTiers',
+      typeof canonicalEvent?.content === 'string' ? canonicalEvent.content : null,
+    );
+    setObservedRelayPayloadHash(
+      'legacyTiers',
+      typeof legacyEvent?.content === 'string' ? legacyEvent.content : null,
+    );
     const latest = pickLatestParamReplaceable(events);
     applyTiersEvent(latest);
   } catch (err) {
@@ -3218,12 +3483,14 @@ async function refreshSubscriptions(force = false) {
       applyProfileEvent(null);
       applyTiersEvent(null);
     }
+    resetRelayVerificationTracking();
     return;
   }
 
   if (previousHex && previousHex !== nextHex) {
     applyProfileEvent(null);
     applyTiersEvent(null);
+    resetRelayVerificationTracking();
   }
 
   try {
@@ -3420,6 +3687,16 @@ function stagePublishJobs(authorHex: string) {
       compensating: false,
     },
   ];
+
+  const canonicalPayload = JSON.stringify(
+    buildTierPayloadForKind(canonicalSnapshot, CANONICAL_TIER_KIND),
+  );
+  const legacyPayload = JSON.stringify(buildTierPayloadForKind(legacySnapshot, LEGACY_TIER_KIND));
+  beginRelayVerification({
+    canonicalTiers: canonicalPayload,
+    legacyTiers: legacyPayload,
+    profile: profileTemplate.content,
+  });
 }
 
 function queueCompensation(failedStage: PublishStageName): PublishStageName[] {
@@ -3799,6 +4076,7 @@ async function publishAll() {
     await Promise.all([loadTiers(reloadKey), loadProfile(reloadKey)]);
     await refreshSubscriptions(true);
   } catch (err) {
+    resetRelayVerificationTracking({ preserveObserved: true });
     console.error('[nutzap] publish profile workflow failed', err);
     if (err instanceof PublishWorkflowError) {
       const original = err.original;
@@ -3926,6 +4204,7 @@ onBeforeUnmount(() => {
     stopRelayStatusListener = null;
   }
   reloadAfterReconnect = false;
+  clearRelayVerificationRetry();
 });
 </script>
 
