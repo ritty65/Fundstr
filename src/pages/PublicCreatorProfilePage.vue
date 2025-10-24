@@ -1871,6 +1871,10 @@ export default defineComponent({
   margin-bottom: 2.5rem;
 }
 
+.profile-hero-area--with-featured {
+  align-items: stretch;
+}
+
 .profile-hero {
   position: relative;
   margin: 0;
@@ -1902,6 +1906,8 @@ export default defineComponent({
   grid-column: 1 / -1;
   display: flex;
   justify-content: center;
+  align-self: stretch;
+  width: 100%;
 }
 
 .profile-hero-feature__media {
@@ -1914,6 +1920,7 @@ export default defineComponent({
   flex-direction: column;
   align-items: center;
   gap: clamp(1rem, 1.5vw, 1.75rem);
+  height: 100%;
 }
 
 .profile-hero-feature__video {
@@ -2452,7 +2459,24 @@ export default defineComponent({
   }
 
   .profile-hero-area--with-cta.profile-hero-area--with-featured {
-    grid-template-columns: minmax(0, 1.6fr) minmax(360px, 1fr);
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+
+  .profile-hero-area--with-featured {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+
+  .profile-hero-area--with-featured > .profile-hero {
+    grid-column: 1;
+  }
+
+  .profile-hero-area--with-featured .profile-hero-feature {
+    grid-column: 2;
+    height: 100%;
+  }
+
+  .profile-hero-area--with-featured .profile-hero-feature__media {
+    max-width: 100%;
   }
 
   .profile-hero-area--with-featured .profile-hero-sidebar {
