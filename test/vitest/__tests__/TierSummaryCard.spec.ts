@@ -87,4 +87,13 @@ describe("TierSummaryCard", () => {
 
     expect(benefits).toEqual(["Exclusive stream access"]);
   });
+
+  it("suppresses the benefits section when showBenefits is false", () => {
+    const wrapper = mountComponent({
+      tier: { ...baseTier, benefits: ["Priority support"] },
+      showBenefits: false,
+    });
+
+    expect(wrapper.find(".tier-card__benefits").exists()).toBe(false);
+  });
 });

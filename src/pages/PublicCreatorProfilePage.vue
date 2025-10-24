@@ -220,6 +220,7 @@
                       :subscribe-disabled="isGuest"
                       :collapse-media="isCustomLinkView"
                       :use-default-benefits="!isCustomLinkView"
+                      :show-benefits="!isCustomLinkView"
                       @subscribe="openSubscribe"
                     >
                       <template v-if="needsSignerSetupTooltip" #subscribe-tooltip>
