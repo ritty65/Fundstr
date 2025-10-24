@@ -16,6 +16,46 @@
         These Nostr public keys belong to early supporters and donors who help Fundstr grow.
         We are grateful for their contributions to privacy-preserving creator tools.
       </p>
+      <div v-if="tierLoading || showTierWidget" class="fundstr-tier-widget q-mt-xl">
+        <div class="fundstr-tier-widget__header">
+          <h2 class="text-h5 text-weight-medium q-mb-xs">
+            {{ t('FundstrSupportersPage.tiers.title') }}
+          </h2>
+          <p class="text-body2 text-2 q-mb-md">
+            {{ t('FundstrSupportersPage.tiers.subtitle') }}
+          </p>
+        </div>
+        <div v-if="tierLoading" class="fundstr-tier-widget__skeletons">
+          <q-skeleton
+            v-for="placeholder in tierSkeletons"
+            :key="placeholder"
+            type="rect"
+            class="fundstr-tier-widget__skeleton bg-surface-2"
+          />
+        </div>
+        <div v-else-if="showTierWidget" class="fundstr-tier-widget__grid">
+          <div v-for="tier in supportTierCards" :key="tier.id" class="fundstr-tier-widget__card bg-surface-2 text-1">
+            <div class="fundstr-tier-widget__card-header">
+              <div class="fundstr-tier-widget__title">{{ tier.title }}</div>
+              <div class="fundstr-tier-widget__price">{{ tier.priceLabel }}</div>
+            </div>
+            <ul v-if="tier.perks.length" class="fundstr-tier-widget__perks text-2">
+              <li v-for="(perk, index) in tier.perks" :key="`${tier.id}-perk-${index}`">{{ perk }}</li>
+            </ul>
+            <p v-else-if="tier.description" class="fundstr-tier-widget__description text-2">
+              {{ tier.description }}
+            </p>
+            <q-btn
+              color="accent"
+              unelevated
+              class="fundstr-tier-widget__cta"
+              :label="t('FundstrSupportersPage.tiers.supportCta')"
+              no-caps
+              @click="supportFundstr"
+            />
+          </div>
+        </div>
+      </div>
       <div v-if="canShowSupportCta" class="q-mt-md">
         <q-btn color="primary" unelevated @click="supportFundstr">Want to support?</q-btn>
       </div>
@@ -93,8 +133,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { nip19 } from 'nostr-tools';
+import { computed, onMounted, ref, watch } from 'vue';
+import { nip19, type Event as NostrEvent } from 'nostr-tools';
+import { useLocalStorage } from '@vueuse/core';
 import CreatorProfileModal from 'components/CreatorProfileModal.vue';
 import CreatorCard from 'components/CreatorCard.vue';
 import DonateDialog from 'components/DonateDialog.vue';
@@ -105,8 +146,11 @@ import { SUPPORTERS } from 'src/data/supporters';
 import { useRouter } from 'vue-router';
 import { useSendTokensStore } from 'stores/sendTokensStore';
 import { useDonationPresetsStore } from 'stores/donationPresets';
-import { useNostrStore } from 'stores/nostr';
+import { fetchNutzapProfile, useNostrStore } from 'stores/nostr';
 import { useDonationPrompt } from '@/composables/useDonationPrompt';
+import { queryNutzapTiers } from '@/nostr/relayClient';
+import { FUNDSTR_REQ_URL, FUNDSTR_WS_URL, WS_FIRST_TIMEOUT_MS } from '@/nutzap/relayEndpoints';
+import { useI18n } from 'vue-i18n';
 
 const discoveryClient = createFundstrDiscoveryClient();
 const router = useRouter();
@@ -115,6 +159,79 @@ const donationStore = useDonationPresetsStore();
 const nostr = useNostrStore();
 const { open: openDonationPrompt, hasPaymentRails } = useDonationPrompt();
 const canShowSupportCta = hasPaymentRails;
+const { t, locale } = useI18n();
+
+type TierFrequency = 'monthly' | 'yearly' | 'one_time';
+
+interface SupportTier {
+  id: string;
+  title: string;
+  priceSats: number;
+  frequency: TierFrequency;
+  description: string;
+  perks: string[];
+}
+
+interface SupportTierCardView extends SupportTier {
+  priceLabel: string;
+}
+
+interface CachedNutzapProfile {
+  hexPub: string;
+  p2pkPubkey: string;
+  trustedMints: string[];
+  relays?: string[];
+  tierAddr?: string;
+}
+
+interface NutzapProfileCacheRecord {
+  profile: CachedNutzapProfile | null;
+  fetchedAt: number;
+}
+
+interface PersistedNutzapProfileCache {
+  version: number;
+  entries: Record<string, NutzapProfileCacheRecord>;
+}
+
+const FUNDSTR_SUPPORT_NPUB = 'npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m';
+
+const fundstrSupportHex = computed(() => decodeNpubToHex(FUNDSTR_SUPPORT_NPUB));
+
+const nutzapProfileCache =
+  typeof window === 'undefined'
+    ? ref<PersistedNutzapProfileCache>({ version: 1, entries: {} })
+    : useLocalStorage<PersistedNutzapProfileCache>('cashu.ndk.nutzapProfileCache', {
+        version: 1,
+        entries: {},
+      });
+
+const supportTiers = ref<SupportTier[]>([]);
+const tierLoading = ref(false);
+const lastProfileFetchedAt = ref<number | null>(null);
+const tierRequestReady = ref(false);
+let activeTierRequestId = 0;
+
+const priceFormatter = computed(
+  () => new Intl.NumberFormat(locale.value || undefined, { maximumFractionDigits: 0 }),
+);
+
+const supportTierCards = computed<SupportTierCardView[]>(() =>
+  supportTiers.value.map((tier) => ({
+    ...tier,
+    priceLabel: t('FundstrSupportersPage.tiers.priceWithFrequency', {
+      price: priceFormatter.value.format(tier.priceSats),
+      frequency: t(`FundstrSupportersPage.tiers.frequency.${tier.frequency}`),
+    }),
+  })),
+);
+
+const showTierWidget = computed(() => supportTierCards.value.length > 0);
+
+const tierSkeletons = computed(() => {
+  const count = supportTierCards.value.length || 3;
+  return Array.from({ length: count }, (_, index) => index);
+});
 
 const loadingSupporters = ref(false);
 const supportersError = ref('');
@@ -132,7 +249,189 @@ const skeletonPlaceholders = computed(() => {
 
 onMounted(() => {
   void loadSupporterProfiles();
+  void initializeFundstrTiers();
 });
+
+watch(
+  () => {
+    const hex = fundstrSupportHex.value;
+    if (!hex) {
+      return null;
+    }
+    const entry = nutzapProfileCache.value.entries?.[hex];
+    return entry?.fetchedAt ?? null;
+  },
+  (fetchedAt) => {
+    if (!tierRequestReady.value) {
+      if (typeof fetchedAt === 'number') {
+        lastProfileFetchedAt.value = fetchedAt;
+      }
+      return;
+    }
+    if (typeof fetchedAt === 'number' && fetchedAt === lastProfileFetchedAt.value) {
+      return;
+    }
+    lastProfileFetchedAt.value = fetchedAt ?? null;
+    void loadFundstrSupportTiers();
+  },
+);
+
+async function initializeFundstrTiers() {
+  try {
+    await loadFundstrSupportTiers();
+  } finally {
+    tierRequestReady.value = true;
+  }
+}
+
+function getFundstrProfileEntry(): NutzapProfileCacheRecord | undefined {
+  const hex = fundstrSupportHex.value;
+  if (!hex) {
+    return undefined;
+  }
+  const entries = nutzapProfileCache.value.entries ?? {};
+  return entries[hex];
+}
+
+function normalizeSupportTier(raw: unknown, index: number): SupportTier | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+  const candidate = raw as Record<string, unknown>;
+  const idSource = [candidate.id, candidate.identifier, candidate.slug]
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .find((value) => value.length > 0);
+  const nameSource = [candidate.title, candidate.name]
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .find((value) => value.length > 0);
+  const title = nameSource ?? '';
+  if (!title) {
+    return null;
+  }
+  const priceSource =
+    candidate.price ?? candidate.price_sats ?? candidate.priceSats ?? candidate.amount ?? 0;
+  const priceNumber = Number(priceSource);
+  const priceSats = Number.isFinite(priceNumber) ? Math.max(0, Math.round(priceNumber)) : 0;
+  const rawFrequency =
+    typeof candidate.frequency === 'string' ? candidate.frequency.trim().toLowerCase() : '';
+  const normalizedFrequency = (() => {
+    if (rawFrequency === 'one-time' || rawFrequency === 'one time') {
+      return 'one_time';
+    }
+    if (rawFrequency === 'yearly') {
+      return 'yearly';
+    }
+    if (rawFrequency === 'one_time' || rawFrequency === 'monthly') {
+      return rawFrequency as TierFrequency;
+    }
+    return 'monthly' as const;
+  })();
+  const description =
+    typeof candidate.description === 'string' ? candidate.description.trim() : '';
+  const benefitSource = Array.isArray(candidate.benefits)
+    ? candidate.benefits
+    : Array.isArray(candidate.perks)
+      ? candidate.perks
+      : [];
+  let perks = Array.isArray(benefitSource)
+    ? benefitSource
+        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+        .filter((entry) => entry.length > 0)
+    : [];
+  if (!perks.length && description) {
+    const lines = description
+      .split(/\r?\n+/)
+      .map((line) => line.replace(/^[\-\*\u2022]\s*/, '').trim())
+      .filter((line) => line.length > 0);
+    if (lines.length > 1) {
+      perks = lines;
+    }
+  }
+  const id = idSource && idSource.length > 0 ? idSource : `tier-${index}`;
+  return {
+    id,
+    title,
+    priceSats,
+    frequency: normalizedFrequency,
+    description,
+    perks,
+  };
+}
+
+function parseTierEvent(event: NostrEvent | null): SupportTier[] {
+  if (!event || typeof event.content !== 'string') {
+    return [];
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(event.content);
+  } catch (error) {
+    console.warn('[supporters] Unable to parse tier JSON', error);
+    return [];
+  }
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const tiers = parsed
+    .map((entry, index) => normalizeSupportTier(entry, index))
+    .filter((tier): tier is SupportTier => tier !== null)
+    .filter((tier) => {
+      if (seen.has(tier.id)) {
+        return false;
+      }
+      seen.add(tier.id);
+      return true;
+    })
+    .sort((a, b) => a.priceSats - b.priceSats);
+  return tiers;
+}
+
+async function loadFundstrSupportTiers(): Promise<void> {
+  const hex = fundstrSupportHex.value;
+  if (!hex) {
+    supportTiers.value = [];
+    return;
+  }
+  const requestId = ++activeTierRequestId;
+  tierLoading.value = true;
+  try {
+    let profileEntry = getFundstrProfileEntry();
+    let profile = profileEntry?.profile ?? null;
+    if (!profile) {
+      profile = await fetchNutzapProfile(FUNDSTR_SUPPORT_NPUB, { fundstrOnly: true });
+      profileEntry = getFundstrProfileEntry();
+    }
+    if (!profile || !profile.tierAddr) {
+      if (requestId === activeTierRequestId) {
+        supportTiers.value = [];
+      }
+      return;
+    }
+    const tierEvent = await queryNutzapTiers(profile.hexPub ?? hex, {
+      fanout: Array.isArray(profile.relays) ? profile.relays : undefined,
+      httpBase: FUNDSTR_REQ_URL,
+      fundstrWsUrl: FUNDSTR_WS_URL,
+      wsTimeoutMs: Math.min(WS_FIRST_TIMEOUT_MS, 1200),
+      allowFanoutFallback: true,
+    });
+    const tiers = parseTierEvent(tierEvent);
+    if (requestId === activeTierRequestId) {
+      supportTiers.value = tiers;
+    }
+  } catch (error) {
+    console.warn('[supporters] Failed to load Fundstr tiers', error);
+    if (requestId === activeTierRequestId) {
+      supportTiers.value = [];
+    }
+  } finally {
+    if (requestId === activeTierRequestId) {
+      tierLoading.value = false;
+      const entry = getFundstrProfileEntry();
+      lastProfileFetchedAt.value = entry?.fetchedAt ?? lastProfileFetchedAt.value;
+    }
+  }
+}
 
 async function loadSupporterProfiles() {
   if (!supporterNpubs.value.length) {
@@ -284,6 +583,103 @@ function handleDonate({
   max-width: 720px;
   margin-left: auto;
   margin-right: auto;
+}
+
+.fundstr-tier-widget {
+  border: 1px solid var(--surface-contrast-border, rgba(0, 0, 0, 0.08));
+  border-radius: 20px;
+  background-color: var(--surface-2);
+  padding: 24px;
+  text-align: left;
+}
+
+.hero .fundstr-tier-widget {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 900px;
+}
+
+.fundstr-tier-widget__header {
+  text-align: left;
+}
+
+.fundstr-tier-widget__grid,
+.fundstr-tier-widget__skeletons {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.fundstr-tier-widget__skeleton {
+  height: 220px;
+  border-radius: 16px;
+}
+
+.fundstr-tier-widget__card {
+  border: 1px solid var(--surface-contrast-border, rgba(0, 0, 0, 0.08));
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fundstr-tier-widget__card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fundstr-tier-widget__title {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.fundstr-tier-widget__price {
+  font-size: 0.95rem;
+  color: var(--text-2);
+}
+
+.fundstr-tier-widget__perks {
+  margin: 0;
+  padding-left: 18px;
+  list-style-type: disc;
+}
+
+.fundstr-tier-widget__perks li + li {
+  margin-top: 4px;
+}
+
+.fundstr-tier-widget__description {
+  margin: 0;
+}
+
+.fundstr-tier-widget__cta {
+  margin-top: auto;
+  align-self: flex-start;
+}
+
+@media (max-width: 599px) {
+  .fundstr-tier-widget {
+    padding: 20px;
+  }
+
+  .fundstr-tier-widget__card {
+    padding: 16px;
+  }
+
+  .fundstr-tier-widget__header {
+    text-align: center;
+  }
+
+  .fundstr-tier-widget__grid,
+  .fundstr-tier-widget__skeletons {
+    grid-template-columns: 1fr;
+  }
+
+  .fundstr-tier-widget__cta {
+    align-self: stretch;
+  }
 }
 
 .supporters-section {

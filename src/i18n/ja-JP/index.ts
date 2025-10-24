@@ -2148,6 +2148,19 @@ export const messages = {
       },
     },
   },
+  FundstrSupportersPage: {
+    tiers: {
+      title: "Support Fundstr",
+      subtitle: "Pick a tier to back privacy-first creator tools across Nostr.",
+      supportCta: "Support Fundstr",
+      priceWithFrequency: "{price} sats · {frequency}",
+      frequency: {
+        monthly: "per month",
+        yearly: "per year",
+        one_time: "one-time support",
+      },
+    },
+  },
 };
 
 export default {
