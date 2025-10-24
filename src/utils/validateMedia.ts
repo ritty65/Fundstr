@@ -80,10 +80,38 @@ export function determineMediaType(
   return "iframe";
 }
 
+function hasNonEmptyStringUrl(
+  media: unknown,
+): media is { url: string } & Record<string, unknown> {
+  if (!media || typeof media !== "object") {
+    return false;
+  }
+
+  const candidate = media as { url?: unknown };
+  if (typeof candidate.url !== "string") {
+    return false;
+  }
+
+  return candidate.url.trim().length > 0;
+}
+
 export function filterValidMedia(media: TierMedia[] = []): TierMedia[] {
-  return media
-    .map((m) => ({ ...m, url: normalizeMediaUrl(m.url) }))
-    .filter((m) => m.url && isTrustedUrl(m.url));
+  const sanitized: TierMedia[] = [];
+
+  for (const entry of media) {
+    if (!hasNonEmptyStringUrl(entry)) {
+      continue;
+    }
+
+    const normalizedUrl = normalizeMediaUrl(entry.url);
+    if (!normalizedUrl || !isTrustedUrl(normalizedUrl)) {
+      continue;
+    }
+
+    sanitized.push({ ...entry, url: normalizedUrl });
+  }
+
+  return sanitized;
 }
 
 export function normalizeTierMediaItems(input: unknown): TierMedia[] {
