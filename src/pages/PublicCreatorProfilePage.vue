@@ -175,35 +175,78 @@
               <div v-else-if="!tiers.length" class="profile-section__state text-2">
                 {{ $t('CreatorHub.profile.noTiers') }}
               </div>
-              <div v-else class="profile-tier-list">
-                <TierSummaryCard
-                  v-for="t in tiers"
-                  :key="t.id"
-                  :tier="t"
-                  :price-sats="getPrice(t)"
-                  :price-fiat="formatFiat(getPrice(t))"
-                  :frequency-label="frequencyLabel(t)"
-                  :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
-                  :subscribe-disabled="isGuest"
-                  :collapse-media="isCustomLinkView"
-                  @subscribe="openSubscribe"
-                >
-                  <template v-if="needsSignerSetupTooltip" #subscribe-tooltip>
-                    <q-tooltip>{{ $t('CreatorHub.profile.guestTooltip') }}</q-tooltip>
-                  </template>
-                  <template #footer-note>
-                    {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
-                  </template>
-                  <template v-if="creatorHex" #default>
-                    <PaywalledContent
-                      :creator-npub="creatorHex"
-                      :tier-id="t.id"
-                      class="profile-tier__paywalled"
+              <div v-else>
+                <article class="profile-card profile-card--copy q-mb-xl">
+                  <h3 class="profile-card__title text-subtitle1">
+                    {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                  </h3>
+                  <p class="profile-card__text text-2">
+                    {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
+                  </p>
+                  <div class="profile-card__video">
+                    <video
+                      controls
+                      preload="metadata"
+                      playsinline
+                      poster="https://m.primal.net/HsMt.jpg"
                     >
-                      <div>{{ $t('CreatorHub.profile.paywalledPreview') }}</div>
-                    </PaywalledContent>
-                  </template>
-                </TierSummaryCard>
+                      <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
+                      {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
+                    </video>
+                    <div class="sr-only">
+                      <a href="https://m.primal.net/HsMt.mp4" target="_blank" rel="noopener">
+                        {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                      </a>
+                    </div>
+                  </div>
+                  <div v-if="howCashuWorksHighlight" class="profile-card__highlight text-body2">
+                    <span class="profile-card__highlight-label text-2">
+                      {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                    </span>
+                    <p class="profile-card__highlight-text">
+                      {{ howCashuWorksHighlight }}
+                    </p>
+                  </div>
+                  <ul class="profile-card__list">
+                    <li
+                      v-for="(item, index) in howCashuWorksList"
+                      :key="index"
+                      class="profile-card__list-item text-2"
+                    >
+                      {{ item }}
+                    </li>
+                  </ul>
+                </article>
+                <div class="profile-tier-list">
+                  <TierSummaryCard
+                    v-for="t in tiers"
+                    :key="t.id"
+                    :tier="t"
+                    :price-sats="getPrice(t)"
+                    :price-fiat="formatFiat(getPrice(t))"
+                    :frequency-label="frequencyLabel(t)"
+                    :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
+                    :subscribe-disabled="isGuest"
+                    :collapse-media="isCustomLinkView"
+                    @subscribe="openSubscribe"
+                  >
+                    <template v-if="needsSignerSetupTooltip" #subscribe-tooltip>
+                      <q-tooltip>{{ $t('CreatorHub.profile.guestTooltip') }}</q-tooltip>
+                    </template>
+                    <template #footer-note>
+                      {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
+                    </template>
+                    <template v-if="creatorHex" #default>
+                      <PaywalledContent
+                        :creator-npub="creatorHex"
+                        :tier-id="t.id"
+                        class="profile-tier__paywalled"
+                      >
+                        <div>{{ $t('CreatorHub.profile.paywalledPreview') }}</div>
+                      </PaywalledContent>
+                    </template>
+                  </TierSummaryCard>
+                </div>
               </div>
               <q-banner
                 v-if="tierFetchError && tiers.length"
@@ -297,47 +340,6 @@
                   </div>
                   <RelayBadgeList :relays="relayList" />
                 </div>
-              </article>
-              <article class="profile-card profile-card--copy">
-                <h3 class="profile-card__title text-subtitle1">
-                  {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                </h3>
-                <p class="profile-card__text text-2">
-                  {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
-                </p>
-                <div class="profile-card__video">
-                  <video
-                    controls
-                    preload="metadata"
-                    playsinline
-                    poster="https://m.primal.net/HsMt.jpg"
-                  >
-                    <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
-                    {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
-                  </video>
-                  <div class="sr-only">
-                    <a href="https://m.primal.net/HsMt.mp4" target="_blank" rel="noopener">
-                      {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                    </a>
-                  </div>
-                </div>
-                <div v-if="howCashuWorksHighlight" class="profile-card__highlight text-body2">
-                  <span class="profile-card__highlight-label text-2">
-                    {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                  </span>
-                  <p class="profile-card__highlight-text">
-                    {{ howCashuWorksHighlight }}
-                  </p>
-                </div>
-                <ul class="profile-card__list">
-                  <li
-                    v-for="(item, index) in howCashuWorksList"
-                    :key="index"
-                    class="profile-card__list-item text-2"
-                  >
-                    {{ item }}
-                  </li>
-                </ul>
               </article>
             </div>
           </section>
