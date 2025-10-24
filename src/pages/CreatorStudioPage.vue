@@ -2824,7 +2824,7 @@ const readinessChecklist = computed(() => {
 const requiredReadinessReady = computed(() =>
   readinessChips.value
     .filter(chip => chip.required)
-    .every(chip => chip.state === 'ready' || chip.state === 'warning')
+    .every(chip => chip.state === 'ready' || chip.state === 'warning' || chip.state === 'optional')
 );
 
 const publishWarnings = computed<string[]>(() => {

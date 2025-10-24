@@ -714,6 +714,19 @@ describe('CreatorStudioPage publishAll fallback', () => {
 
     await wrapper.vm.$nextTick();
 
+    vmAny.relayProfileSnapshot = {
+      content: vmAny.profileJsonPreview,
+      displayName: vmAny.displayName?.trim?.() ?? '',
+      pictureUrl: vmAny.pictureUrl?.trim?.() ?? '',
+      pubkeyTag: (vmAny.p2pkDerivedPub || vmAny.p2pkPub || '').trim(),
+    };
+    vmAny.relayTiersSnapshot = {
+      canonical: vmAny.canonicalTiersJsonPreview,
+      legacy: vmAny.legacyTiersJsonPreview,
+    };
+
+    await wrapper.vm.$nextTick();
+
     expect(vmAny.publishDisabled).toBe(false);
     expect(vmAny.publishWarnings).toEqual(['Restore relay connection health']);
     expect(vmAny.publishGuidanceHeading).toBe('Review before publishing');

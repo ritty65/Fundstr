@@ -36,7 +36,7 @@ Think Patreon, but built for the Nostr ecosystem and leveraging the privacy and 
 
 ### Publishing & Trusted Mints
 
-- Use the **Publish** button in the Creator Hub to atomically publish your profile bundle (kinds 0, 10002, 10019) and tier definitions (`kind:30000` with `d="tiers"`). The payment profile (kind 10019) includes a `tierAddr` field referencing your tier set (`30000:<pubkey>:tiers`). See [`docs/nutzap_profile.md`](docs/nutzap_profile.md) for the full schema.
+- Use the **Publish** button in the Creator Studio to atomically publish your profile bundle (kinds 0, 10002, 10019) and tier definitions (`kind:30000` with `d="tiers"`). The payment profile (kind 10019) includes a `tierAddr` field referencing your tier set (`30000:<pubkey>:tiers`). See [`docs/nutzap_profile.md`](docs/nutzap_profile.md) for the full schema.
 - Trusted mint URLs must begin with `http://` or `https://`; `wss://` endpoints are rejected.
 - If your trusted mint list is empty, supporters may pay from any mint.
 
@@ -147,7 +147,7 @@ Troubleshooting: Some browsers block the `beforeinstallprompt` event. If no inst
 
 ### 3. For Creators
 
-1. Go to the **Creator Hub** section.
+1. Go to the **Creator Studio** section.
 2. Set up your profile and link your npub.
 3. Make sure a Nostr signer (NIP-07 extension or nsec key) is connected and at least one relay is configured.
 4. Define support tiers and benefits.
@@ -158,7 +158,7 @@ Troubleshooting: Some browsers block the `beforeinstallprompt` event. If no inst
 
 The **DM-per-token** workflow allows fans to pledge recurring payments by
 sending one locked Cashu token each period via Nostr DM. Creators must publish a
-`kind:10019` profile from the Creator Hub so supporters know which P2PK key and
+`kind:10019` profile from the Creator Studio so supporters know which P2PK key and
 mint URLs to use.
 
 1. Supporter opens the subscription dialog on a creator's page.
@@ -169,7 +169,7 @@ mint URLs to use.
 
 ### Media Previews for Tiers
 
-Creators can attach media links to each tier so supporters can preview what they’ll receive. Simply add trusted URLs (e.g. YouTube, IPFS, or other HTTPS resources) when defining your tiers in the Creator Hub. The app doesn’t host any files itself – it only stores the links you provide and renders previews from those sources.
+Creators can attach media links to each tier so supporters can preview what they’ll receive. Simply add trusted URLs (e.g. YouTube, IPFS, or other HTTPS resources) when defining your tiers in the Creator Studio. The app doesn’t host any files itself – it only stores the links you provide and renders previews from those sources.
 
 You can also supply raw `<iframe>` snippets for custom embeds or include a `nostr:` link that references an event ID. If a `nostr:` link is provided, the preview displays the linked event’s content. These previews appear both on a creator’s profile and when browsing tiers from the **find creators** page.
 **Preview layout tips**
@@ -178,7 +178,7 @@ You can also supply raw `<iframe>` snippets for custom embeds or include a `nost
 - Images and videos are scaled to fit while maintaining their own ratio.
 - Content with very different dimensions may be letterboxed or cropped depending on the source embed.
 
-You can access this documentation from the Creator Hub: look for the "Learn more" link next to the Media Preview help icon when editing tiers.
+You can access this documentation from the Creator Studio: look for the "Learn more" link next to the Media Preview help icon when editing tiers.
 
 Example `kind:30000` event content:
 

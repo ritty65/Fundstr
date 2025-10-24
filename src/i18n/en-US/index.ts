@@ -187,7 +187,7 @@ export const messages = {
         },
       },
       creatorHub: {
-        title: "Creator Hub",
+        title: "Creator Studio",
         caption: "Creator tools",
       },
       myProfile: {
