@@ -861,6 +861,21 @@ const previewTab = ref<'preview' | 'profile' | 'tiers'>('preview');
 const now = useNow({ interval: 60_000 });
 const lastExportProfile = ref('');
 const lastExportTiers = ref({ canonical: '', legacy: '' });
+
+type RelayProfileSnapshot = {
+  content: string;
+  displayName: string;
+  pictureUrl: string;
+  pubkeyTag: string;
+};
+
+type RelayTierSnapshot = {
+  canonical: string;
+  legacy: string;
+};
+
+const relayProfileSnapshot = ref<RelayProfileSnapshot | null>(null);
+const relayTiersSnapshot = ref<RelayTierSnapshot | null>(null);
 const identityMetadataSeedingBlocked = ref(false);
 const identityMetadataSeededPubkey = ref<string | null>(null);
 const identityMetadataSeedingInProgress = ref(false);
@@ -2503,6 +2518,15 @@ const tiersHaveErrors = computed(() =>
 
 const tiersReady = computed(() => tiers.value.length > 0 && !tiersHaveErrors.value);
 
+const workspaceDiffersFromRelay = computed(() => profileModified.value || tiersModified.value);
+
+const shouldPromptPublishUpdates = computed(
+  () =>
+    workspaceDiffersFromRelay.value &&
+    relayVerificationState.value !== 'pending' &&
+    relayVerificationState.value !== 'mismatch'
+);
+
 const tierStepGuidance = computed(() => {
   if (tiersReady.value) {
     return '';
@@ -2695,22 +2719,35 @@ const readinessChips = computed<ReadinessChip[]>(() => {
     },
     {
       key: 'verification',
-      ready: relayVerificationState.value === 'confirmed' || relayVerificationState.value === 'idle',
+      ready:
+        !shouldPromptPublishUpdates.value &&
+        (relayVerificationState.value === 'confirmed' || relayVerificationState.value === 'idle'),
       required: true,
       readyLabel:
         relayVerificationState.value === 'confirmed' ? 'Relay copy confirmed' : 'No publish pending',
       actionLabel:
-        relayVerificationState.value === 'mismatch' ? 'Relay copy mismatch' : 'Awaiting relay copy',
+        shouldPromptPublishUpdates.value
+          ? 'Publish updates'
+          : relayVerificationState.value === 'mismatch'
+            ? 'Relay copy mismatch'
+            : 'Awaiting relay copy',
       readyIcon: relayVerificationState.value === 'confirmed' ? 'verified' : 'pending',
-      actionIcon: relayVerificationState.value === 'mismatch' ? 'report_problem' : 'hourglass_top',
+      actionIcon: shouldPromptPublishUpdates.value
+        ? 'cloud_upload'
+        : relayVerificationState.value === 'mismatch'
+          ? 'report_problem'
+          : 'hourglass_top',
       readyTooltip: relayVerificationMessage.value || undefined,
-      actionTooltip: relayVerificationMessage.value || undefined,
+      actionTooltip: shouldPromptPublishUpdates.value
+        ? 'Local edits differ from the relay copy. Publish to sync your updates.'
+        : relayVerificationMessage.value || undefined,
       readyState:
-        relayVerificationState.value === 'idle'
+        !shouldPromptPublishUpdates.value && relayVerificationState.value === 'idle'
           ? ('optional' as ReadinessChipState)
           : undefined,
-      actionState:
-        relayVerificationState.value === 'mismatch'
+      actionState: shouldPromptPublishUpdates.value
+        ? ('todo' as ReadinessChipState)
+        : relayVerificationState.value === 'mismatch'
           ? ('warning' as ReadinessChipState)
           : relayVerificationState.value === 'pending'
             ? ('warning' as ReadinessChipState)
@@ -2803,6 +2840,10 @@ const publishWarnings = computed<string[]>(() => {
 
   if (relayVerificationState.value === 'pending') {
     warnings.push(relayVerificationMessage.value || 'Awaiting relay copy confirmation');
+  }
+
+  if (shouldPromptPublishUpdates.value) {
+    warnings.push('Publish to sync your latest updates with the relay.');
   }
 
   if (p2pkPointerReady.value && p2pkVerificationNeedsRefresh.value) {
@@ -3012,12 +3053,61 @@ const tiersJsonPreview = computed(() =>
     ? canonicalTiersJsonPreview.value
     : legacyTiersJsonPreview.value
 );
-const profileModified = computed(() => profileJsonPreview.value !== lastExportProfile.value);
-const tiersModified = computed(
-  () =>
-    canonicalTiersJsonPreview.value !== lastExportTiers.value.canonical ||
-    legacyTiersJsonPreview.value !== lastExportTiers.value.legacy
-);
+
+function captureCurrentProfileSnapshot(): RelayProfileSnapshot {
+  return {
+    content: profileJsonPreview.value,
+    displayName: displayName.value.trim(),
+    pictureUrl: pictureUrl.value.trim(),
+    pubkeyTag: (p2pkDerivedPub.value || p2pkPub.value).trim(),
+  };
+}
+
+function captureCurrentTierSnapshot(): RelayTierSnapshot {
+  return {
+    canonical: canonicalTiersJsonPreview.value,
+    legacy: legacyTiersJsonPreview.value,
+  };
+}
+
+function updateRelayProfileSnapshot() {
+  relayProfileSnapshot.value = captureCurrentProfileSnapshot();
+}
+
+function updateRelayTiersSnapshot() {
+  relayTiersSnapshot.value = captureCurrentTierSnapshot();
+}
+
+if (!relayProfileSnapshot.value) {
+  updateRelayProfileSnapshot();
+}
+
+if (!relayTiersSnapshot.value) {
+  updateRelayTiersSnapshot();
+}
+
+const profileModified = computed(() => {
+  const snapshot = relayProfileSnapshot.value;
+  if (!snapshot) {
+    return false;
+  }
+  const current = captureCurrentProfileSnapshot();
+  return (
+    snapshot.content !== current.content ||
+    snapshot.displayName !== current.displayName ||
+    snapshot.pictureUrl !== current.pictureUrl ||
+    snapshot.pubkeyTag !== current.pubkeyTag
+  );
+});
+
+const tiersModified = computed(() => {
+  const snapshot = relayTiersSnapshot.value;
+  if (!snapshot) {
+    return false;
+  }
+  const current = captureCurrentTierSnapshot();
+  return snapshot.canonical !== current.canonical || snapshot.legacy !== current.legacy;
+});
 
 function ensureComposerMintsSeeded() {
   if (!mintsText.value.trim() && mintList.value.length) {
@@ -3051,6 +3141,7 @@ function applyTiersEvent(event: any | null, overrideKind?: TierKind | null) {
     tiers.value = [];
     setObservedRelayPayloadHash('canonicalTiers', null);
     setObservedRelayPayloadHash('legacyTiers', null);
+    updateRelayTiersSnapshot();
     evaluateRelayVerificationState();
     return;
   }
@@ -3071,6 +3162,7 @@ function applyTiersEvent(event: any | null, overrideKind?: TierKind | null) {
 
   const content = typeof event?.content === 'string' ? event.content : undefined;
   tiers.value = parseTiersContent(content);
+  updateRelayTiersSnapshot();
   evaluateRelayVerificationState();
 }
 
@@ -3115,6 +3207,7 @@ function applyProfileEvent(latest: any | null) {
       mintsText.value = '';
       relaysText.value = CREATOR_STUDIO_RELAY_WS_URL;
       seedMintsFromStoreIfEmpty();
+      updateRelayProfileSnapshot();
       loadedProfileAuthorHex.value = null;
       removeAuthorLock('profile');
       identityMetadataSeedingBlocked.value = false;
@@ -3227,6 +3320,7 @@ function applyProfileEvent(latest: any | null) {
     }
 
     seedMintsFromStoreIfEmpty();
+    updateRelayProfileSnapshot();
     profilePublished.value = true;
     identityMetadataSeedingBlocked.value = true;
   } finally {
