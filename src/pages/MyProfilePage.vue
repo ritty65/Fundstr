@@ -6,7 +6,7 @@
     ]"
   >
     <div class="q-mb-md">
-      <q-btn flat color="primary" to="/creator-hub">
+      <q-btn flat color="primary" to="/creator-studio">
         {{ $t("CreatorHub.profile.back") }}
       </q-btn>
     </div>
@@ -270,7 +270,7 @@ export default defineComponent({
     }
 
     function editProfile() {
-      router.push("/creator-hub");
+      router.push("/creator-studio");
     }
 
     async function saveProfile() {

@@ -77,20 +77,7 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item v-if="!isGuest" clickable @click="gotoCreatorHub">
-        <q-item-section avatar>
-          <CreatorHubIcon class="themed-icon q-icon" />
-        </q-item-section>
-        <q-item-section>
-          <q-item-label>{{
-            $t("MainHeader.menu.creatorHub.title")
-          }}</q-item-label>
-          <q-item-label caption>{{
-            $t("MainHeader.menu.creatorHub.caption")
-          }}</q-item-label>
-        </q-item-section>
-      </q-item>
-      <q-item clickable @click="gotoCreatorStudio">
+      <q-item v-if="!isGuest" clickable @click="gotoCreatorStudio">
         <q-item-section avatar>
           <q-icon name="dashboard_customize" />
         </q-item-section>
@@ -226,7 +213,6 @@ import { useQuasar } from "quasar";
 import EssentialLink from "components/EssentialLink.vue";
 import { NAV_DRAWER_WIDTH } from "src/constants/layout";
 import FindCreatorsIcon from "src/components/icons/FindCreatorsIcon.vue";
-import CreatorHubIcon from "src/components/icons/CreatorHubIcon.vue";
 
 const ui = useUiStore();
 const router = useRouter();
@@ -242,7 +228,6 @@ function goto(path: string) {
 const gotoWallet = () => goto("/wallet");
 const gotoSettings = () => goto("/settings");
 const gotoFindCreators = () => goto("/find-creators");
-const gotoCreatorHub = () => goto("/creator-hub");
 const gotoCreatorStudio = () => goto("/creator-studio");
 const gotoMyProfile = () => goto("/my-profile");
 const gotoBuckets = () => goto("/buckets");

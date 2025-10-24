@@ -41,13 +41,6 @@ const routes = [
     ],
   },
   {
-    path: "/creator-hub",
-    component: () => import("layouts/FullscreenLayout.vue"),
-    children: [
-      { path: "", component: () => import("src/pages/CreatorHubPage.vue") },
-    ],
-  },
-  {
     path: "/creator-subscribers",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [

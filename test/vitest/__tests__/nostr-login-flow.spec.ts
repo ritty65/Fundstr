@@ -109,9 +109,9 @@ describe("welcome flow with nsec", () => {
 
     welcome.closeWelcome();
 
-    const routes = [{ path: "/creator-hub", component: CreatorHubPage }];
+    const routes = [{ path: "/creator-studio", component: CreatorHubPage }];
     const router = createRouter({ history: createMemoryHistory(), routes });
-    await router.push("/creator-hub");
+    await router.push("/creator-studio");
     await router.isReady();
 
     const wrapperHub = mount({ template: "<router-view />" }, {

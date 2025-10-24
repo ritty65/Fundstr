@@ -72,7 +72,7 @@
             <header class="card-head"><span class="emj">⭐</span><h3>Creators</h3></header>
             <ul class="links">
               <li><router-link to="/find-creators"><span class="emj">🔍</span>Find Creators</router-link></li>
-              <li><router-link to="/creator-hub"><span class="emj">👩‍🎨</span>Creator Hub</router-link></li>
+              <li><router-link to="/creator-studio"><span class="emj">👩‍🎨</span>Creator Studio</router-link></li>
               <li><router-link to="/my-profile"><span class="emj">👤</span>My Profile</router-link></li>
             </ul>
           </article>
@@ -247,7 +247,7 @@
         <div class="cta-row">
           <button class="btn solid" @click="installPwa">Install PWA</button>
           <a class="btn outline" href="https://github.com/ritty65/Fundstr" target="_blank" rel="noopener">View Code</a>
-          <router-link class="btn outline" to="/creator-hub">Support Fundstr</router-link>
+          <router-link class="btn outline" to="/creator-studio">Support Fundstr</router-link>
         </div>
       </section>
     </div>
