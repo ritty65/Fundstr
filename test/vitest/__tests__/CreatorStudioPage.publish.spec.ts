@@ -715,7 +715,10 @@ describe('CreatorStudioPage publishAll fallback', () => {
     await wrapper.vm.$nextTick();
 
     expect(vmAny.publishDisabled).toBe(false);
-    expect(vmAny.publishWarnings).toEqual(['Restore relay connection health']);
+    expect(vmAny.publishWarnings).toEqual([
+      'Restore relay connection health',
+      'Publish to sync your latest updates with the relay.',
+    ]);
     expect(vmAny.publishGuidanceHeading).toBe('Review before publishing');
 
     const publishAll =
