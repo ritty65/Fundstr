@@ -18,11 +18,10 @@
         </p>
       </div>
       <div class="tier-card__pricing">
-        <div class="tier-card__sats">{{ formattedSats }} sats</div>
-        <div v-if="showFiat" class="tier-card__fiat text-2">≈ {{ priceFiat }}</div>
-        <div v-if="showFrequency" class="tier-card__frequency text-2">
-          {{ frequencyLabel }}
+        <div class="tier-card__sats">
+          {{ formattedSats }} sats / {{ frequencyDisplay }}
         </div>
+        <span v-if="showFiat" class="tier-card__fiat text-2">≈ {{ priceFiat }}</span>
       </div>
     </header>
     <div v-if="hasBenefits" class="tier-card__benefits">
@@ -119,6 +118,7 @@ const props = withDefaults(
     subscribeDisabled?: boolean;
     badges?: BadgeInput[];
     collapseMedia?: boolean;
+    useDefaultBenefits?: boolean;
   }>(),
   {
     tier: () => ({ name: "" }),
@@ -128,6 +128,7 @@ const props = withDefaults(
     subscribeDisabled: false,
     badges: () => [],
     collapseMedia: false,
+    useDefaultBenefits: true,
   },
 );
 
@@ -149,9 +150,37 @@ const showFiat = computed(() => {
   return String(props.priceFiat).trim().length > 0;
 });
 
-const showFrequency = computed(() => Boolean(props.frequencyLabel));
+const frequencyDisplay = computed(
+  () => props.frequencyLabel?.trim() || "month",
+);
 
-const displayBenefits = computed(() => props.tier?.benefits ?? []);
+const defaultBenefits = [
+  "Member-only posts",
+  "Private chat & updates",
+  "Early drops & behind-the-scenes",
+];
+
+const displayBenefits = computed(() => {
+  const benefits = props.tier?.benefits ?? [];
+
+  if (!props.useDefaultBenefits) {
+    return benefits;
+  }
+
+  const normalizedBenefits = benefits.filter(
+    (benefit) => benefit.trim().length > 0,
+  );
+
+  if (normalizedBenefits.length >= 3) {
+    return normalizedBenefits;
+  }
+
+  const fallback = defaultBenefits.filter(
+    (benefit) => !normalizedBenefits.includes(benefit),
+  );
+
+  return [...normalizedBenefits, ...fallback].slice(0, 3);
+});
 const hasBenefits = computed(() => displayBenefits.value.length > 0);
 
 const displayMedia = computed(() => props.tier?.media ?? []);
