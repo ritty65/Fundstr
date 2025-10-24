@@ -37,6 +37,7 @@
         class="profile-hero-area"
         :class="{
           'profile-hero-area--with-cta': !!primaryTier,
+          'profile-hero-area--with-featured': isCustomLinkView,
         }"
       >
         <section class="profile-hero" :class="{ 'profile-hero--with-banner': heroBannerUrl }">
@@ -96,6 +97,29 @@
             </div>
           </div>
         </section>
+        <div v-if="isCustomLinkView" class="profile-hero-feature">
+          <div class="profile-hero-feature__media bg-surface-2">
+            <div class="profile-hero-feature__video profile-card__video">
+              <video
+                controls
+                preload="metadata"
+                playsinline
+                poster="https://m.primal.net/HsMt.jpg"
+              >
+                <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
+                {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
+              </video>
+              <div class="sr-only">
+                <a href="https://m.primal.net/HsMt.mp4" target="_blank" rel="noopener">
+                  {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                </a>
+              </div>
+            </div>
+            <p class="profile-hero-feature__caption profile-card__caption text-2">
+              {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
+            </p>
+          </div>
+        </div>
         <div v-if="!isCustomLinkView && primaryTier" class="profile-hero-sidebar">
           <section v-if="primaryTier" class="profile-cta bg-surface-2 text-1 q-pa-lg q-gutter-y-sm">
             <div class="profile-cta__header">
@@ -309,7 +333,7 @@
                   <RelayBadgeList :relays="relayList" />
                 </div>
               </article>
-              <article class="profile-card profile-card--copy">
+              <article v-if="!isCustomLinkView" class="profile-card profile-card--copy">
                 <h3 class="profile-card__title text-subtitle1">
                   {{ $t('CreatorHub.profile.howCashuWorks.title') }}
                 </h3>
@@ -1872,6 +1896,34 @@ export default defineComponent({
   overflow: hidden;
 }
 
+.profile-hero-feature {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+}
+
+.profile-hero-feature__media {
+  width: 100%;
+  max-width: min(960px, 80vw);
+  border-radius: 1.5rem;
+  padding: clamp(1.75rem, 3vw, 3rem);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(1rem, 1.5vw, 1.75rem);
+}
+
+.profile-hero-feature__video {
+  width: 100%;
+}
+
+.profile-hero-feature__caption {
+  margin: 0;
+  text-align: center;
+  max-width: 52ch;
+}
+
 .profile-hero__avatar {
   flex-shrink: 0;
   width: 120px;
@@ -2234,8 +2286,8 @@ export default defineComponent({
 .profile-card__video {
   position: relative;
   width: 100%;
-  max-width: none;
-  margin-inline: 0;
+  max-width: min(960px, 80vw);
+  margin-inline: auto;
   border-radius: 1.125rem;
   overflow: hidden;
   background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 64, 175, 0.55));
@@ -2245,11 +2297,17 @@ export default defineComponent({
 .profile-card__video video {
   display: block;
   width: 100%;
-  height: 100%;
   aspect-ratio: 16 / 9;
-  max-height: clamp(320px, 52vw, 680px);
+  height: auto;
   object-fit: cover;
   background: #000;
+}
+
+@media (max-width: 767px) {
+  .profile-hero-feature__media,
+  .profile-card__video {
+    max-width: 100%;
+  }
 }
 
 .profile-card__caption {
