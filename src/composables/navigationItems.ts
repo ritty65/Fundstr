@@ -1,7 +1,6 @@
 import { computed, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import FindCreatorsIcon from 'src/components/icons/FindCreatorsIcon.vue'
-import CreatorHubIcon from 'src/components/icons/CreatorHubIcon.vue'
 
 export interface NavigationItem {
   id: string
@@ -35,13 +34,6 @@ export function useNavigationItems() {
       iconComponent: FindCreatorsIcon,
       fanText: t('AboutPage.navigation.items.findCreators.fan'),
       creatorText: t('AboutPage.navigation.items.findCreators.creator'),
-    },
-    {
-      id: 'creatorHub',
-      menuItem: t('MainHeader.menu.creatorHub.title'),
-      iconComponent: CreatorHubIcon,
-      fanText: t('AboutPage.navigation.items.creatorHub.fan'),
-      creatorText: t('AboutPage.navigation.items.creatorHub.creator'),
     },
     {
       id: 'myProfile',

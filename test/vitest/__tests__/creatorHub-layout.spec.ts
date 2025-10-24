@@ -96,7 +96,7 @@ describe("CreatorHubPage layout", () => {
     const wrapper = shallowMount(FullscreenLayout, {
       global: {
         stubs: { "router-view": CreatorHubPage },
-        mocks: { $route: { path: "/creator-hub" } },
+        mocks: { $route: { path: "/creator-studio" } },
       },
     });
     expect(wrapper.find("publish-bar-stub").exists()).toBe(true);
