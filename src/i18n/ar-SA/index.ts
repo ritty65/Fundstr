@@ -1837,6 +1837,11 @@ export const messages = {
       retry: "Retry",
       subscribeCta: "Subscribe",
       subscribeMicrocopy: "Cancel anytime • Privacy-first via Cashu",
+      featuredTierBadge: "Featured Tier",
+      moreOptions: "More options",
+      featuredTierMissing:
+        "This featured tier isn't available right now. Explore other ways to support below.",
+      featuredTierMissingCta: "Browse all tiers",
       guestTooltip:
         "Connect and unlock your Nostr signer, then finish setup to subscribe.",
       signerAlert: {
