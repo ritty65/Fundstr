@@ -1837,7 +1837,7 @@ export const messages = {
       tierRefreshError: "Failed to refresh tiers – check relay connectivity.",
       retry: "Retry",
       subscribeCta: "Subscribe",
-      subscribeMicrocopy: "Cancel anytime from your subscriptions dashboard.",
+      subscribeMicrocopy: "Cancel anytime • Privacy-first via Cashu",
       guestTooltip:
         "Connect and unlock your Nostr signer, then finish setup to subscribe.",
       signerAlert: {
