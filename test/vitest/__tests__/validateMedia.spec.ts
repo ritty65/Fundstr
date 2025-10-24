@@ -44,6 +44,13 @@ describe("validateMedia", () => {
     expect(normalizeMediaUrl(snippet)).toBe("https://example.com/embed");
   });
 
+  it("returns empty string for non-string media inputs", () => {
+    expect(extractIframeSrc(undefined)).toBe("");
+    expect(extractIframeSrc(null)).toBe("");
+    expect(normalizeMediaUrl(undefined)).toBe("");
+    expect(normalizeMediaUrl(123 as unknown as string)).toBe("");
+  });
+
   it("detects media type", () => {
     expect(determineMediaType("https://example.com/video.mp4")).toBe("video");
     expect(determineMediaType("https://example.com/song.mp3")).toBe("audio");
