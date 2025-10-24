@@ -1923,6 +1923,10 @@ export default defineComponent({
   height: 100%;
 }
 
+.profile-page--custom .profile-hero-feature__media {
+  max-width: min(1180px, clamp(90vw, 92vw, 95vw));
+}
+
 .profile-hero-feature__video {
   width: 100%;
 }
@@ -2313,6 +2317,7 @@ export default defineComponent({
   width: 100%;
   aspect-ratio: 16 / 9;
   height: auto;
+  max-height: min(70vh, 720px);
   object-fit: cover;
   background: #000;
 }
