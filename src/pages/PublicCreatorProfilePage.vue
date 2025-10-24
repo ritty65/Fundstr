@@ -2394,12 +2394,39 @@ export default defineComponent({
   .profile-page__inner {
     max-width: 110rem;
   }
+
+  .profile-page--custom .profile-page__inner {
+    max-width: none;
+    width: 100%;
+    padding-inline: clamp(1.5rem, 4vw, 3rem);
+  }
+
+  .profile-page--custom .profile-tier-grid {
+    gap: 2.5rem;
+  }
+
+  .profile-page--custom .profile-tier-list {
+    gap: 1.75rem;
+  }
+
+  .profile-page--custom .profile-section__text,
+  .profile-page--custom .profile-faq__answer,
+  .profile-page--custom .profile-card__caption,
+  .profile-page--custom .profile-card__text,
+  .profile-page--custom .profile-card__highlight-text {
+    max-width: 72ch;
+    margin-inline: auto;
+  }
 }
 
 @media (min-width: 1440px) {
   .profile-page__inner {
     max-width: 120rem;
     padding-inline: clamp(2rem, 6vw, 5rem);
+  }
+
+  .profile-page--custom .profile-page__inner {
+    padding-inline: clamp(2rem, 3vw, 3.5rem);
   }
 }
 
