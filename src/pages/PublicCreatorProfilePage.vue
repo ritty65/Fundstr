@@ -560,13 +560,14 @@ import {
   watch,
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import type { NDKSubscription } from "@nostr-dev-kit/ndk";
 import {
   useCreatorsStore,
   fetchFundstrProfileBundle,
   FundstrProfileFetchError,
   type FundstrProfileBundle,
 } from "stores/creators";
-import { useNostrStore, fetchNutzapProfile } from "stores/nostr";
+import { useNostrStore, fetchNutzapProfile, urlsToRelaySet } from "stores/nostr";
 import { buildProfileUrl } from "src/utils/profileUrl";
 import { deriveCreatorKeys } from "src/utils/nostrKeys";
 
@@ -589,11 +590,14 @@ import {
   type ProfileMeta,
 } from "src/utils/profile";
 import { useClipboard } from "src/composables/useClipboard";
+import { useNdk } from "src/composables/useNdk";
 import { useWelcomeStore } from "stores/welcome";
 import {
   daysToFrequency,
   type SubscriptionFrequency,
 } from "src/constants/subscriptionFrequency";
+import { parseTierDefinitionEvent } from "src/nostr/tiers";
+import { parseNutzapProfileEvent } from "@/nutzap/profileCache";
 
 export default defineComponent({
   name: "PublicCreatorProfilePage",
@@ -687,6 +691,24 @@ export default defineComponent({
     const refreshingTiers = ref(false);
     const refreshTaskCount = ref(0);
     const autoRefreshQueued = ref(false);
+    let realtimeSubscription: NDKSubscription | null = null;
+    let realtimeSubscriptionKey = "";
+    let realtimeStartToken = 0;
+    let latestMetadataEvent: { createdAt: number; id: string } | null = null;
+    let latestProfileDetailsEvent: { createdAt: number; id: string } | null = null;
+    const latestTierEvents = new Map<string, { createdAt: number; id: string }>();
+
+    const stopRealtimeSubscription = () => {
+      if (realtimeSubscription) {
+        try {
+          realtimeSubscription.stop();
+        } catch (error) {
+          console.warn("[creator-profile] Failed to stop relay subscription", error);
+        }
+      }
+      realtimeSubscription = null;
+      realtimeSubscriptionKey = "";
+    };
     const tierFetchError = computed(() => creators.tierFetchError);
     const moreOptionsTiers = computed(() => {
       if (!isCustomLinkView.value) return [] as any[];
@@ -854,6 +876,318 @@ export default defineComponent({
       b: any[] | undefined,
     ): boolean => normalizeTierSnapshot(a) === normalizeTierSnapshot(b);
 
+    const subscriptionRelayCandidates = computed(() =>
+      mergeUniqueUrls(
+        profileRelayHints.value,
+        toStringList(profile.value?.relays),
+        fallbackRelays.value,
+      ),
+    );
+
+    const isNewerEvent = (
+      current: { createdAt: number; id: string } | null,
+      candidate: { created_at?: number; id?: string },
+    ): boolean => {
+      const createdAt =
+        typeof candidate.created_at === "number" ? candidate.created_at : 0;
+      if (!current) {
+        return true;
+      }
+      if (createdAt !== current.createdAt) {
+        return createdAt > current.createdAt;
+      }
+      const candidateId = typeof candidate.id === "string" ? candidate.id : "";
+      return candidateId > current.id;
+    };
+
+    const applyMetadataEvent = (event: any) => {
+      if (!creatorHex.value || (event?.pubkey && event.pubkey !== creatorHex.value)) {
+        return;
+      }
+      if (!isNewerEvent(latestMetadataEvent, event)) {
+        return;
+      }
+      let parsed: Record<string, any> | null = {};
+      if (event?.content) {
+        try {
+          parsed = JSON.parse(event.content);
+        } catch (error) {
+          console.warn("[creator-profile] Failed to parse profile metadata", error);
+          parsed = null;
+        }
+      }
+      if (!parsed || typeof parsed !== "object") {
+        latestMetadataEvent = {
+          createdAt: typeof event?.created_at === "number" ? event.created_at : 0,
+          id: typeof event?.id === "string" ? event.id : "",
+        };
+        return;
+      }
+
+      const hasOwn = (obj: Record<string, any>, key: string) =>
+        Object.prototype.hasOwnProperty.call(obj, key);
+
+      const normalized = normalizeMeta(parsed);
+      const nextProfile: Record<string, any> = { ...profile.value };
+      let changed = false;
+
+      const assignValue = (
+        key: string,
+        value: unknown,
+        shouldAssign: boolean,
+      ) => {
+        if (!shouldAssign) return;
+        if (value === undefined) {
+          if (key in nextProfile) {
+            delete nextProfile[key];
+            changed = true;
+          }
+          return;
+        }
+        if (nextProfile[key] !== value) {
+          nextProfile[key] = value;
+          changed = true;
+        }
+      };
+
+      const hasDisplayName =
+        hasOwn(parsed, "display_name") ||
+        hasOwn(parsed, "displayName") ||
+        hasOwn(parsed, "username");
+      assignValue("display_name", normalized.display_name ?? null, hasDisplayName);
+      assignValue("name", normalized.name ?? null, hasOwn(parsed, "name"));
+      assignValue("about", normalized.about ?? null, hasOwn(parsed, "about"));
+      assignValue("nip05", normalized.nip05 ?? null, hasOwn(parsed, "nip05"));
+      assignValue("website", normalized.website ?? null, hasOwn(parsed, "website"));
+
+      if (hasOwn(parsed, "picture")) {
+        const rawPicture = typeof parsed.picture === "string" ? parsed.picture.trim() : "";
+        if (rawPicture && isTrustedUrl(rawPicture)) {
+          assignValue("picture", rawPicture, true);
+        } else if ("picture" in nextProfile) {
+          delete nextProfile.picture;
+          changed = true;
+        }
+      }
+
+      const updateMediaField = (field: string) => {
+        if (!hasOwn(parsed, field)) return;
+        const raw = typeof parsed[field] === "string" ? parsed[field].trim() : "";
+        if (raw && isTrustedUrl(raw)) {
+          assignValue(field, raw, true);
+        } else if (field in nextProfile) {
+          delete nextProfile[field];
+          changed = true;
+        }
+      };
+      updateMediaField("banner");
+      updateMediaField("cover");
+      updateMediaField("header");
+
+      if (changed) {
+        profile.value = nextProfile;
+      }
+
+      latestMetadataEvent = {
+        createdAt: typeof event?.created_at === "number" ? event.created_at : 0,
+        id: typeof event?.id === "string" ? event.id : "",
+      };
+    };
+
+    const applyNutzapProfileEvent = (event: any) => {
+      if (!creatorHex.value || (event?.pubkey && event.pubkey !== creatorHex.value)) {
+        return;
+      }
+      if (!isNewerEvent(latestProfileDetailsEvent, event)) {
+        return;
+      }
+      const raw = typeof event?.rawEvent === "function" ? event.rawEvent() : event;
+      const details = parseNutzapProfileEvent(raw) ?? null;
+      latestProfileDetailsEvent = {
+        createdAt: typeof event?.created_at === "number" ? event.created_at : 0,
+        id: typeof event?.id === "string" ? event.id : "",
+      };
+      if (!details) {
+        return;
+      }
+
+      hasLoadedRelayProfile.value = true;
+
+      const cachedMints = toStringList(profile.value?.trustedMints ?? profile.value?.mints);
+      const cachedRelays = toStringList(profile.value?.relays);
+      const nextMints = toStringList(details.trustedMints);
+      const nextRelays = toStringList(details.relays);
+      const currentTierAddr =
+        typeof profile.value?.tierAddr === "string" ? profile.value.tierAddr : "";
+      const nextTierAddr = typeof details.tierAddr === "string" ? details.tierAddr : "";
+      const currentP2pk =
+        typeof profile.value?.p2pkPubkey === "string" ? profile.value.p2pkPubkey : "";
+      const nextP2pk =
+        typeof details.p2pkPubkey === "string" ? details.p2pkPubkey : "";
+
+      const updates: Record<string, unknown> = {};
+      let hasDiff = false;
+
+      if (!listsEqual(cachedMints, nextMints)) {
+        updates.trustedMints = nextMints;
+        hasDiff = true;
+      }
+      if (!listsEqual(cachedRelays, nextRelays)) {
+        updates.relays = nextRelays;
+        hasDiff = true;
+      }
+      if (nextTierAddr && nextTierAddr !== currentTierAddr) {
+        updates.tierAddr = nextTierAddr;
+        hasDiff = true;
+      }
+      if (nextP2pk && nextP2pk !== currentP2pk) {
+        updates.p2pkPubkey = nextP2pk;
+        hasDiff = true;
+      }
+
+      if (Object.keys(updates).length) {
+        profile.value = {
+          ...profile.value,
+          ...updates,
+        };
+      }
+
+      if (nextRelays.length) {
+        profileRelayHints.value = mergeUniqueUrls(
+          profileRelayHints.value,
+          nextRelays,
+        );
+      }
+    };
+
+    const applyTierEvent = (event: any) => {
+      if (!creatorHex.value || (event?.pubkey && event.pubkey !== creatorHex.value)) {
+        return;
+      }
+      const raw = typeof event?.rawEvent === "function" ? event.rawEvent() : event;
+      const tags = Array.isArray(raw?.tags) ? raw.tags : [];
+      let dTag = "tiers";
+      for (const tag of tags) {
+        if (Array.isArray(tag) && tag[0] === "d" && typeof tag[1] === "string") {
+          dTag = tag[1];
+          break;
+        }
+      }
+      if (dTag !== "tiers") {
+        return;
+      }
+      const latestForD = latestTierEvents.get(dTag) ?? null;
+      if (!isNewerEvent(latestForD, event)) {
+        return;
+      }
+
+      let tierList: any[] = [];
+      try {
+        tierList = parseTierDefinitionEvent(raw);
+      } catch (error) {
+        console.warn("[creator-profile] Failed to parse tier definition event", error);
+      }
+
+      latestTierEvents.set(dTag, {
+        createdAt: typeof event?.created_at === "number" ? event.created_at : 0,
+        id: typeof event?.id === "string" ? event.id : "",
+      });
+
+      if (!Array.isArray(tierList) || tierList.length === 0) {
+        return;
+      }
+
+      applyBundleTierList(tierList);
+      loadingTiers.value = false;
+    };
+
+    const handleRealtimeEvent = (event: any) => {
+      if (!event || typeof event.kind !== "number") {
+        return;
+      }
+      switch (event.kind) {
+        case 0:
+          applyMetadataEvent(event);
+          break;
+        case 10019:
+          applyNutzapProfileEvent(event);
+          break;
+        case 30019:
+          applyTierEvent(event);
+          break;
+        default:
+          break;
+      }
+    };
+
+    const ensureRealtimeSubscription = async () => {
+      const pubkey = creatorHex.value;
+      const relayList = subscriptionRelayCandidates.value;
+      const key = `${pubkey ?? ""}|${relayList.join(",")}`;
+      if (!pubkey) {
+        stopRealtimeSubscription();
+        return;
+      }
+      if (realtimeSubscription && realtimeSubscriptionKey === key) {
+        const start = (realtimeSubscription as any)?.start;
+        if (typeof start === "function") {
+          try {
+            start.call(realtimeSubscription);
+          } catch (error) {
+            console.warn("[creator-profile] Failed to restart relay subscription", error);
+          }
+        }
+        return;
+      }
+
+      const token = ++realtimeStartToken;
+      stopRealtimeSubscription();
+
+      try {
+        const ndk = await useNdk({ requireSigner: false });
+        let relaySet: Awaited<ReturnType<typeof urlsToRelaySet>> | undefined;
+        if (relayList.length) {
+          try {
+            relaySet = await urlsToRelaySet(relayList);
+          } catch (error) {
+            console.warn("[creator-profile] Failed to resolve relay hints", error);
+            relaySet = undefined;
+          }
+        }
+
+        if (token !== realtimeStartToken) {
+          return;
+        }
+
+        const sub = ndk.subscribe(
+          { kinds: [0, 10019, 30019], authors: [pubkey] },
+          { closeOnEose: false },
+          relaySet,
+        );
+        sub.on("event", handleRealtimeEvent);
+        const start = (sub as any)?.start;
+        if (typeof start === "function") {
+          try {
+            start.call(sub);
+          } catch (error) {
+            console.warn("[creator-profile] Failed to start relay subscription", error);
+          }
+        }
+        realtimeSubscription = sub;
+        realtimeSubscriptionKey = key;
+      } catch (error) {
+        console.error("[creator-profile] Failed to open relay subscription", error);
+      }
+    };
+
+    watch(
+      () => [creatorHex.value, subscriptionRelayCandidates.value.join(",")],
+      () => {
+        void ensureRealtimeSubscription();
+      },
+      { immediate: true },
+    );
+
     const applyBundleTierList = (tierList: any[] | null | undefined) => {
       if (!creatorHex.value || !Array.isArray(tierList)) return;
       const existing = creators.tiersMap[creatorHex.value];
@@ -905,6 +1239,11 @@ export default defineComponent({
       showSetupDialog.value = false;
       showReceiptDialog.value = false;
       clearAutoRefreshTimer();
+      stopRealtimeSubscription();
+      realtimeStartToken += 1;
+      latestMetadataEvent = null;
+      latestProfileDetailsEvent = null;
+      latestTierEvents.clear();
     };
 
     const fetchTiers = async () => {
@@ -1240,6 +1579,7 @@ export default defineComponent({
 
       await loadProfile({ forceRelayRefresh: true });
       scheduleAutoRefresh();
+      void ensureRealtimeSubscription();
 
       if (!creatorHex.value) return;
       const tierId = route.query.tierId as string | undefined;
@@ -1266,6 +1606,7 @@ export default defineComponent({
     onActivated(() => {
       requestAutoRefresh();
       scheduleAutoRefresh();
+      void ensureRealtimeSubscription();
     });
 
     onUnmounted(() => {
@@ -1273,6 +1614,7 @@ export default defineComponent({
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", handleVisibilityChange);
       }
+      stopRealtimeSubscription();
     });
 
     const formatTs = (ts: number) => {
