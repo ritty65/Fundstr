@@ -269,9 +269,6 @@ export function useCreatorHub() {
   const showTierDialog = ref(false);
   const currentTier = ref<Partial<Tier>>({});
   const publishing = ref(false);
-  const isSaving = ref(false);
-  const saveError = ref<string | null>(null);
-  const lastSaveSuccessTimestamp = ref(0);
   const publishErrors = ref<
     | { message: string; details?: any }
     | null
@@ -625,8 +622,6 @@ export function useCreatorHub() {
       return;
     }
     publishing.value = true;
-    isSaving.value = true;
-    saveError.value = null;
     publishErrors.value = null;
     publishReport.value = null;
     fallbackUsed.value = [];
@@ -675,9 +670,7 @@ export function useCreatorHub() {
           notifyError(
             "System clock is too far ahead; adjust your device time.",
           );
-          saveError.value = "System clock is too far ahead; adjust your device time.";
           publishing.value = false;
-          isSaving.value = false;
           return;
         }
         createdAt = Math.floor(trustedMs / 1000);
@@ -824,8 +817,6 @@ export function useCreatorHub() {
       if (publishReport.value.anySuccess) {
         store.tierDefinitionKind = NUTZAP_TIERS_KIND;
         profileStore.markClean();
-        lastSaveSuccessTimestamp.value = Date.now();
-        saveError.value = null;
         notifySuccess("Profile and tiers updated");
       } else {
         console.table(publishReport.value.byRelay);
@@ -833,15 +824,12 @@ export function useCreatorHub() {
           message: "Unable to publish to all relays",
           details: publishReport.value,
         };
-        saveError.value = "Unable to publish to all relays";
       }
     } catch (e: any) {
       publishErrors.value = { message: e?.message || String(e) };
       notifyError(e?.message || "Failed to publish profile");
-      saveError.value = e?.message || "Failed to publish profile";
     } finally {
       publishing.value = false;
-      isSaving.value = false;
       debug("creatorHub:publishing:done");
     }
   }
@@ -885,9 +873,6 @@ export function useCreatorHub() {
     publishErrors,
     publishReport,
     fallbackUsed,
-    isSaving,
-    saveError,
-    lastSaveSuccessTimestamp,
     npub,
     isDirty,
     login,
