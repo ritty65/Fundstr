@@ -19,7 +19,7 @@ import { useLockedTokensStore } from "./lockedTokens";
 import { useSignerStore } from "./signer";
 import { notifyApiError, notifyError } from "src/js/notify";
 import { cashuDb } from "./dexie";
-import { maybeRepublishNutzapProfile } from "./creatorHub";
+import { maybeRepublishNutzapProfile } from "src/nutzap/profileRepublish";
 
 /** Return `{ pub, priv }` where `pub` is SEC-compressed hex. */
 export function generateP2pkKeyPair(): { pub: string; priv: string } {

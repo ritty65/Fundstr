@@ -25,7 +25,7 @@ import { ref, computed, watch } from "vue";
 import { WalletProof } from "src/types/proofs";
 import { useProofsStore } from "./proofs";
 import { useI18n } from "vue-i18n";
-import { maybeRepublishNutzapProfile } from "./creatorHub";
+import { maybeRepublishNutzapProfile } from "src/nutzap/profileRepublish";
 import { useCreatorProfileStore } from "./creatorProfile";
 import { i18n } from "src/boot/i18n";
 

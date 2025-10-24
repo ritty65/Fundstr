@@ -352,7 +352,7 @@ vi.mock('src/stores/mints', () => ({
   },
 }));
 
-vi.mock('src/stores/creatorHub', () => ({
+vi.mock('src/nutzap/profileRepublish', () => ({
   maybeRepublishNutzapProfile: vi.fn(async () => {}),
 }));
 

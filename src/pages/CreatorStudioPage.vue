@@ -726,7 +726,7 @@ import { useNutzapSignerWorkspace } from 'src/nutzap/useNutzapSignerWorkspace';
 import { useP2PKStore } from 'src/stores/p2pk';
 import { useWalletStore } from 'src/stores/wallet';
 import { useMintsStore } from 'src/stores/mints';
-import { maybeRepublishNutzapProfile } from 'src/stores/creatorHub';
+import { maybeRepublishNutzapProfile } from 'src/nutzap/profileRepublish';
 import { useNostrStore } from 'src/stores/nostr';
 import { useUiStore } from 'src/stores/ui';
 import { useP2pkDiagnostics } from 'src/composables/useP2pkDiagnostics';
