@@ -35,7 +35,7 @@ const cards: Card[] = [
     ],
   },
   {
-    title: 'Creator Hub',
+    title: 'Creator Studio',
     text: 'Publish a profile; get support.',
     bullets: [
       'Set display name and tiers',
