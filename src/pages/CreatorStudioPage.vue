@@ -676,7 +676,17 @@ export function normalizeMintUrl(value: string | null | undefined) {
 </script>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch, type Ref } from 'vue';
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  shallowRef,
+  toRaw,
+  watch,
+  type Ref,
+} from 'vue';
 import { useEventBus, useLocalStorage, useNow } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
 import { sha256 } from '@noble/hashes/sha256';
@@ -3720,16 +3730,41 @@ function cloneTier(tier: Tier): Tier {
   };
 }
 
+function toPlainStringList(source: unknown, { unique = false }: { unique?: boolean } = {}) {
+  const rawValue = source != null ? toRaw(source as any) : source;
+  const candidate = Array.isArray(rawValue) ? rawValue : Array.isArray(source) ? (source as any[]) : [];
+  const seen = unique ? new Set<string>() : null;
+  const result: string[] = [];
+
+  for (const entry of candidate) {
+    const trimmed = typeof entry === 'string' ? entry.trim() : '';
+    if (!trimmed) {
+      continue;
+    }
+    if (seen) {
+      if (seen.has(trimmed)) {
+        continue;
+      }
+      seen.add(trimmed);
+    }
+    result.push(trimmed);
+  }
+
+  return result;
+}
+
 function buildProfileTemplate(authorHex: string) {
-  const relays = relayList.value;
-  const p2pkHex = p2pkPub.value.trim();
-  const tagPubkey = (p2pkDerivedPub.value || p2pkHex).trim();
+  const relays = toPlainStringList(relayList.value, { unique: true });
+  const mints = toPlainStringList(mintList.value, { unique: true });
+  const p2pkHex = (typeof p2pkPub.value === 'string' ? p2pkPub.value : '').trim();
+  const derivedPub = typeof p2pkDerivedPub.value === 'string' ? p2pkDerivedPub.value : '';
+  const tagPubkey = (derivedPub || p2pkHex).trim();
   const canonicalTierPointer = `${CANONICAL_TIER_KIND}:${authorHex}:tiers`;
   const legacyTierPointer = `${LEGACY_TIER_KIND}:${authorHex}:tiers`;
   const content = JSON.stringify({
     v: 1,
     p2pk: p2pkHex,
-    mints: mintList.value,
+    mints,
     relays,
     tierAddr: canonicalTierPointer,
     legacyTierAddr: legacyTierPointer,
@@ -3738,7 +3773,7 @@ function buildProfileTemplate(authorHex: string) {
   const tags: string[][] = [
     ['t', 'nutzap-profile'],
     ['client', 'fundstr'],
-    ...mintList.value.map(mint => ['mint', mint, 'sat']),
+    ...mints.map(mint => ['mint', mint, 'sat']),
     ...relays.map(relay => ['relay', relay]),
   ];
 
