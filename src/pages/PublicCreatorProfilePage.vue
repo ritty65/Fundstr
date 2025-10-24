@@ -411,7 +411,15 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, computed, watch } from "vue";
+import {
+  defineComponent,
+  ref,
+  onMounted,
+  onActivated,
+  onUnmounted,
+  computed,
+  watch,
+} from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   useCreatorsStore,
@@ -521,11 +529,22 @@ export default defineComponent({
     const loadingTiers = ref(true);
     const refreshingTiers = ref(false);
     const refreshTaskCount = ref(0);
+    const autoRefreshQueued = ref(false);
     const tierFetchError = computed(() => creators.tierFetchError);
     const isGuest = computed(() => !welcomeStore.welcomeCompleted);
     const needsSignerSetupTooltip = computed(
       () => isGuest.value || !nostr.hasIdentity,
     );
+
+    const REFRESH_INTERVAL_MS = 2 * 60 * 1000;
+    let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+    const clearAutoRefreshTimer = () => {
+      if (refreshTimer !== null) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+      }
+    };
 
     const isCustomLinkView = ref(false);
     const syncCustomLinkView = () => {
@@ -674,6 +693,7 @@ export default defineComponent({
     const resetRefreshState = () => {
       refreshTaskCount.value = 0;
       refreshingTiers.value = false;
+      autoRefreshQueued.value = false;
     };
 
     const resetCreatorState = () => {
@@ -693,6 +713,7 @@ export default defineComponent({
       showSubscribeDialog.value = false;
       showSetupDialog.value = false;
       showReceiptDialog.value = false;
+      clearAutoRefreshTimer();
     };
 
     const fetchTiers = async () => {
@@ -924,6 +945,36 @@ export default defineComponent({
 
       await Promise.all([profilePromise, tierPromise]);
     };
+    const requestAutoRefresh = () => {
+      if (!creatorHex.value) return;
+      if (refreshTaskCount.value > 0) {
+        autoRefreshQueued.value = true;
+        return;
+      }
+      autoRefreshQueued.value = false;
+      void loadProfile();
+    };
+
+    const scheduleAutoRefresh = () => {
+      clearAutoRefreshTimer();
+      if (!creatorHex.value) return;
+      refreshTimer = setInterval(() => {
+        requestAutoRefresh();
+      }, REFRESH_INTERVAL_MS);
+    };
+
+    watch(refreshTaskCount, (count) => {
+      if (count === 0 && autoRefreshQueued.value) {
+        requestAutoRefresh();
+      }
+    });
+
+    const handleVisibilityChange = () => {
+      if (typeof document === "undefined") return;
+      if (document.visibilityState === "visible") {
+        requestAutoRefresh();
+      }
+    };
     // initialization handled in onMounted
 
     watch(
@@ -939,6 +990,7 @@ export default defineComponent({
         resetCreatorState();
         syncCustomLinkView();
         await loadProfile();
+        scheduleAutoRefresh();
       },
     );
 
@@ -967,7 +1019,12 @@ export default defineComponent({
     };
 
     onMounted(async () => {
+      if (typeof document !== "undefined") {
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+      }
+
       await loadProfile();
+      scheduleAutoRefresh();
 
       if (!creatorHex.value) return;
       const tierId = route.query.tierId as string | undefined;
@@ -988,6 +1045,18 @@ export default defineComponent({
         const stop = watch(tiers, () => {
           if (tryOpen()) stop();
         });
+      }
+    });
+
+    onActivated(() => {
+      requestAutoRefresh();
+      scheduleAutoRefresh();
+    });
+
+    onUnmounted(() => {
+      clearAutoRefreshTimer();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
       }
     });
 
