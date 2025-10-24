@@ -676,7 +676,7 @@ export function normalizeMintUrl(value: string | null | undefined) {
 </script>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch, type Ref } from 'vue';
 import { useEventBus, useLocalStorage, useNow } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
@@ -714,7 +714,11 @@ import {
   parseTiersContent,
 } from 'src/nutzap/profileShared';
 import { hasTierErrors, tierFrequencies, type TierFieldErrors } from './creator-studio/tierComposerUtils';
-import { RelayPublishError, type FundstrRelayClient } from 'src/nutzap/relayClient';
+import {
+  RelayPublishError,
+  type FundstrRelayClient,
+  type FundstrRelayPublishResult,
+} from 'src/nutzap/relayClient';
 import { sanitizeRelayUrls } from 'src/utils/relay';
 import { useNutzapRelayTelemetry } from 'src/nutzap/useNutzapRelayTelemetry';
 import { useNutzapSignerWorkspace } from 'src/nutzap/useNutzapSignerWorkspace';
@@ -788,6 +792,47 @@ const handleTiersUpdate = (value: Tier[] | unknown) => {
 const tierPreviewKind = ref<TierKind>(CANONICAL_TIER_KIND);
 const loading = ref(false);
 const publishingAll = ref(false);
+const publishStageOrder = ['legacyTiers', 'canonicalTiers', 'profile'] as const;
+type PublishStageName = (typeof publishStageOrder)[number];
+type PublishStageJobStatus = 'pending' | 'completed' | 'failed';
+type TierStageJob = {
+  stage: 'canonicalTiers' | 'legacyTiers';
+  kind: typeof CANONICAL_TIER_KIND | typeof LEGACY_TIER_KIND;
+  tiers: Tier[];
+};
+type ProfileStageJob = {
+  stage: 'profile';
+  template: { kind: number; tags: any[]; content: string };
+};
+type PublishStageJob = (TierStageJob | ProfileStageJob) & {
+  status: PublishStageJobStatus;
+  attempts: number;
+  lastError?: string;
+  compensating?: boolean;
+};
+type PublishStageOutcome = {
+  result: FundstrRelayPublishResult;
+  usedFallback: boolean;
+};
+type PublishStageOutcomeMap = Partial<Record<PublishStageName, PublishStageOutcome>>;
+const publishStageQueue = ref<PublishStageJob[]>([]);
+const publishStateMachine = reactive<{
+  currentStage: PublishStageName | null;
+  failedStage: PublishStageName | null;
+  completedStages: Record<PublishStageName, boolean>;
+  processing: boolean;
+}>(
+  {
+    currentStage: null,
+    failedStage: null,
+    completedStages: {
+      canonicalTiers: false,
+      legacyTiers: false,
+      profile: false,
+    },
+    processing: false,
+  }
+);
 const lastPublishInfo = ref('');
 const profilePublished = ref(false);
 const hasAutoLoaded = ref(false);
@@ -3264,6 +3309,336 @@ function describeFallbackReason(error: unknown): string {
   return typeof error === 'string' ? error : 'Relay publish failed';
 }
 
+class PublishWorkflowError extends Error {
+  readonly stage: PublishStageName;
+  readonly original: unknown;
+  readonly outcomes: PublishStageOutcomeMap;
+  readonly fallbackNotices: string[];
+  readonly requeuedStages: PublishStageName[];
+
+  constructor(
+    stage: PublishStageName,
+    original: unknown,
+    outcomes: PublishStageOutcomeMap,
+    fallbackNotices: string[],
+    requeuedStages: PublishStageName[],
+  ) {
+    super(original instanceof Error ? original.message : String(original));
+    this.name = 'PublishWorkflowError';
+    this.stage = stage;
+    this.original = original;
+    this.outcomes = outcomes;
+    this.fallbackNotices = fallbackNotices;
+    this.requeuedStages = requeuedStages;
+  }
+}
+
+function resetPublishStateMachine() {
+  publishStateMachine.currentStage = null;
+  publishStateMachine.failedStage = null;
+  publishStateMachine.processing = false;
+  for (const stage of publishStageOrder) {
+    publishStateMachine.completedStages[stage] = false;
+  }
+}
+
+function cloneTier(tier: Tier): Tier {
+  return {
+    ...tier,
+    media: Array.isArray(tier.media) ? tier.media.map(entry => ({ ...entry })) : undefined,
+  };
+}
+
+function buildProfileTemplate(authorHex: string) {
+  const relays = relayList.value;
+  const p2pkHex = p2pkPub.value.trim();
+  const tagPubkey = (p2pkDerivedPub.value || p2pkHex).trim();
+  const canonicalTierPointer = `${CANONICAL_TIER_KIND}:${authorHex}:tiers`;
+  const legacyTierPointer = `${LEGACY_TIER_KIND}:${authorHex}:tiers`;
+  const content = JSON.stringify({
+    v: 1,
+    p2pk: p2pkHex,
+    mints: mintList.value,
+    relays,
+    tierAddr: canonicalTierPointer,
+    legacyTierAddr: legacyTierPointer,
+  });
+
+  const tags: string[][] = [
+    ['t', 'nutzap-profile'],
+    ['client', 'fundstr'],
+    ...mintList.value.map(mint => ['mint', mint, 'sat']),
+    ...relays.map(relay => ['relay', relay]),
+  ];
+
+  if (tagPubkey) {
+    tags.push(['pubkey', tagPubkey]);
+  }
+  if (!tags.some(tag => tag[0] === 'a' && tag[1] === canonicalTierPointer)) {
+    tags.push(['a', canonicalTierPointer]);
+  }
+  if (!tags.some(tag => tag[0] === 'a' && tag[1] === legacyTierPointer)) {
+    tags.push(['a', legacyTierPointer]);
+  }
+  if (displayName.value.trim()) {
+    tags.push(['name', displayName.value.trim()]);
+  }
+  if (pictureUrl.value.trim()) {
+    tags.push(['picture', pictureUrl.value.trim()]);
+  }
+
+  return { kind: 10019, tags, content };
+}
+
+function stagePublishJobs(authorHex: string) {
+  const legacySnapshot = tiers.value.map(cloneTier);
+  const canonicalSnapshot = tiers.value.map(cloneTier);
+  const profileTemplate = buildProfileTemplate(authorHex);
+
+  publishStageQueue.value = [
+    {
+      stage: 'legacyTiers',
+      kind: LEGACY_TIER_KIND,
+      tiers: legacySnapshot,
+      status: 'pending',
+      attempts: 0,
+      compensating: false,
+    },
+    {
+      stage: 'canonicalTiers',
+      kind: CANONICAL_TIER_KIND,
+      tiers: canonicalSnapshot,
+      status: 'pending',
+      attempts: 0,
+      compensating: false,
+    },
+    {
+      stage: 'profile',
+      template: profileTemplate,
+      status: 'pending',
+      attempts: 0,
+      compensating: false,
+    },
+  ];
+}
+
+function queueCompensation(failedStage: PublishStageName): PublishStageName[] {
+  const failedIndex = publishStageOrder.indexOf(failedStage);
+  const requeued: PublishStageName[] = [];
+  for (const job of publishStageQueue.value) {
+    const stageIndex = publishStageOrder.indexOf(job.stage);
+    if (stageIndex < failedIndex && job.status === 'completed') {
+      job.status = 'pending';
+      job.compensating = true;
+      job.lastError = undefined;
+      publishStateMachine.completedStages[job.stage] = false;
+      requeued.push(job.stage);
+    }
+  }
+  publishStageQueue.value = [...publishStageQueue.value];
+  publishStateMachine.failedStage = failedStage;
+  return requeued;
+}
+
+function describeStageLabel(stage: PublishStageName): string {
+  if (stage === 'canonicalTiers') {
+    return 'canonical tiers';
+  }
+  if (stage === 'legacyTiers') {
+    return 'legacy tiers';
+  }
+  return 'profile';
+}
+
+async function executeTierStage(
+  job: Extract<PublishStageJob, { stage: 'canonicalTiers' | 'legacyTiers' }>,
+  relayUrl: string,
+  fallbackNotices: string[],
+): Promise<PublishStageOutcome> {
+  try {
+    const result = await publishTiersToRelay(job.tiers, job.kind, {
+      send: publishEventToRelay,
+      relayUrl,
+    });
+    return { result, usedFallback: false };
+  } catch (err) {
+    if (!shouldUseHttpFallback(err)) {
+      throw err;
+    }
+    const fallbackResult = await publishTiersToRelay(job.tiers, job.kind, {
+      relayUrl,
+    });
+    const reason = describeFallbackReason(err);
+    const prefix = job.compensating ? 'Compensation replay' : 'Publish';
+    const stageLabel = describeStageLabel(job.stage);
+    fallbackNotices.push(
+      `${prefix} for ${stageLabel} used HTTP fallback${reason ? ` — ${reason}` : ''}.`,
+    );
+    return { result: fallbackResult, usedFallback: true };
+  }
+}
+
+async function executeProfileStage(
+  job: Extract<PublishStageJob, { stage: 'profile' }>,
+  relayUrl: string,
+  fallbackNotices: string[],
+): Promise<PublishStageOutcome> {
+  try {
+    const result = await publishNostrEvent(job.template, {
+      send: publishEventToRelay,
+      relayUrl,
+    });
+    return { result, usedFallback: false };
+  } catch (err) {
+    if (!shouldUseHttpFallback(err)) {
+      throw err;
+    }
+    const fallbackClient = await ensureRelayClientInitialized(relayUrl);
+    const fallbackResult = await fallbackClient.publish(job.template);
+    const reason = describeFallbackReason(err);
+    const prefix = job.compensating ? 'Compensation profile replay' : 'Publish profile';
+    fallbackNotices.push(`${prefix} used HTTP fallback${reason ? ` — ${reason}` : ''}.`);
+    return { result: fallbackResult, usedFallback: true };
+  }
+}
+
+async function processPublishQueue(options: {
+  relayUrl: string;
+  fallbackNotices: string[];
+  onlyCompensation?: boolean;
+}): Promise<{
+  outcomes: PublishStageOutcomeMap;
+  compensationApplied: boolean;
+  processedStages: PublishStageName[];
+}> {
+  const { relayUrl, fallbackNotices, onlyCompensation = false } = options;
+  const outcomes: PublishStageOutcomeMap = {};
+  let compensationApplied = false;
+  const processedStages: PublishStageName[] = [];
+
+  publishStateMachine.processing = true;
+  publishStateMachine.failedStage = null;
+
+  try {
+    for (const stage of publishStageOrder) {
+      const job = publishStageQueue.value.find(entry => entry.stage === stage);
+      if (!job) {
+        continue;
+      }
+      if (onlyCompensation && !job.compensating) {
+        continue;
+      }
+      if (job.status === 'completed' && !job.compensating) {
+        continue;
+      }
+
+      publishStateMachine.currentStage = stage;
+      job.status = 'pending';
+      job.lastError = undefined;
+      job.attempts += 1;
+
+      try {
+        const outcome =
+          job.stage === 'profile'
+            ? await executeProfileStage(job, relayUrl, fallbackNotices)
+            : await executeTierStage(job, relayUrl, fallbackNotices);
+        outcomes[stage] = outcome;
+        job.status = 'completed';
+        if (job.compensating) {
+          compensationApplied = true;
+          job.compensating = false;
+        }
+        publishStateMachine.completedStages[stage] = true;
+        processedStages.push(stage);
+      } catch (err) {
+        job.status = 'failed';
+        job.lastError = err instanceof Error ? err.message : String(err);
+        publishStateMachine.completedStages[stage] = false;
+        const requeuedStages = queueCompensation(stage);
+        throw new PublishWorkflowError(stage, err, { ...outcomes }, [...fallbackNotices], requeuedStages);
+      }
+    }
+  } finally {
+    publishStateMachine.processing = false;
+    publishStateMachine.currentStage = null;
+    publishStageQueue.value = [...publishStageQueue.value];
+  }
+
+  return { outcomes, compensationApplied, processedStages };
+}
+
+function formatTierSummary(
+  stage: 'canonicalTiers' | 'legacyTiers',
+  outcome: PublishStageOutcome,
+): string {
+  const result = outcome.result;
+  const eventId = result.ack?.id ?? result.event?.id;
+  const relayMessage =
+    typeof result.ack?.message === 'string' && result.ack.message ? ` — ${result.ack.message}` : '';
+  const fallbackNote =
+    outcome.usedFallback || result.ack?.via === 'http' || (result as any)?.via === 'http'
+      ? ' via HTTP fallback'
+      : '';
+  const kind = stage === 'canonicalTiers' ? CANONICAL_TIER_KIND : LEGACY_TIER_KIND;
+  const label = stage === 'canonicalTiers' ? 'Canonical tiers' : 'Legacy tiers';
+  if (eventId) {
+    return `${label} published${fallbackNote} (kind ${kind}) — id ${eventId}${relayMessage}`;
+  }
+  return `${label} published${fallbackNote} (kind ${kind})${relayMessage}`;
+}
+
+function buildTierSummary(outcomes: PublishStageOutcomeMap) {
+  const canonicalOutcome = outcomes.canonicalTiers;
+  const legacyOutcome = outcomes.legacyTiers;
+  const canonicalSummary = canonicalOutcome ? formatTierSummary('canonicalTiers', canonicalOutcome) : '';
+  const legacySummary = legacyOutcome ? formatTierSummary('legacyTiers', legacyOutcome) : '';
+  return {
+    canonicalOutcome,
+    legacyOutcome,
+    summary: `${canonicalSummary} ${legacySummary}`.trim(),
+  };
+}
+
+function computeFallbackUsed(outcome?: PublishStageOutcome): boolean {
+  if (!outcome) {
+    return false;
+  }
+  return (
+    outcome.usedFallback ||
+    outcome.result.ack?.via === 'http' ||
+    (outcome.result as any)?.via === 'http'
+  );
+}
+
+function formatProfileSummary(outcome?: PublishStageOutcome) {
+  if (!outcome) {
+    return { summary: '', fallbackUsed: false };
+  }
+  const result = outcome.result;
+  const eventId = result.ack?.id ?? result.event?.id;
+  const relayMessage =
+    typeof result.ack?.message === 'string' && result.ack.message ? ` — ${result.ack.message}` : '';
+  const fallbackNote =
+    outcome.usedFallback || result.ack?.via === 'http' || (result as any)?.via === 'http'
+      ? ' via HTTP fallback'
+      : '';
+  const summary = eventId
+    ? `Profile published${fallbackNote} — id ${eventId}${relayMessage}`
+    : `Profile published${fallbackNote} to relay.fundstr.me.${relayMessage}`;
+  return { summary, fallbackUsed: computeFallbackUsed(outcome) };
+}
+
+function formatStageList(stages: PublishStageName[]): string {
+  if (stages.length === 0) {
+    return '';
+  }
+  const labels = stages.map(stage => describeStageLabel(stage));
+  if (labels.length === 1) {
+    return labels[0];
+  }
+  return `${labels.slice(0, -1).join(', ')} and ${labels.slice(-1)[0]}`;
+}
+
 async function publishAll() {
   let authorHex: string;
   try {
@@ -3312,126 +3687,49 @@ async function publishAll() {
     const fallbackNotices: string[] = [];
     const relayUrl = relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL;
 
-    const publishTierWithFallback = async (kind: TierKind) => {
-      try {
-        const result = await publishTiersToRelay(tiers.value, kind, {
-          send: publishEventToRelay,
-          relayUrl,
-        });
-        return { result, usedFallback: false as const };
-      } catch (err) {
-        if (!shouldUseHttpFallback(err)) {
-          throw err;
-        }
-        const fallbackResult = await publishTiersToRelay(tiers.value, kind, {
-          relayUrl,
-        });
-        const reason = describeFallbackReason(err);
-        fallbackNotices.push(
-          `Tiers (kind ${kind}) publish used HTTP fallback${reason ? ` — ${reason}` : ''}.`
-        );
-        return { result: fallbackResult, usedFallback: true as const };
-      }
-    };
+    resetPublishStateMachine();
 
-    const legacyOutcome = await publishTierWithFallback(LEGACY_TIER_KIND);
-    const canonicalOutcome = await publishTierWithFallback(CANONICAL_TIER_KIND);
+    const compensationResult = await processPublishQueue({
+      relayUrl,
+      fallbackNotices,
+      onlyCompensation: true,
+    });
+
+    if (compensationResult.compensationApplied) {
+      const restoredStages = formatStageList(compensationResult.processedStages);
+      if (restoredStages) {
+        const detail = `Compensation replayed ${restoredStages} before staging new publish data.`;
+        logRelayActivity('info', 'Publish compensation completed', detail);
+        flagDiagnosticsAttention(
+          'publish',
+          `${detail} Latest staged payloads will now publish.`,
+          'warning',
+        );
+      }
+    }
+
+    resetPublishStateMachine();
+    stagePublishJobs(authorHex);
+
+    const { outcomes, compensationApplied } = await processPublishQueue({
+      relayUrl,
+      fallbackNotices,
+    });
+
+    const { canonicalOutcome, legacyOutcome, summary } = buildTierSummary(outcomes);
+    const profileOutcome = outcomes.profile;
+    tierSummary = summary;
+
+    if (!canonicalOutcome || !legacyOutcome || !profileOutcome) {
+      throw new Error('Publish pipeline did not complete all stages.');
+    }
 
     const canonicalResult = canonicalOutcome.result;
     const legacyResult = legacyOutcome.result;
-
-    const canonicalEventId = canonicalResult.ack?.id ?? canonicalResult.event?.id;
-    const legacyEventId = legacyResult.ack?.id ?? legacyResult.event?.id;
-
-    const canonicalRelayMessage =
-      typeof canonicalResult.ack?.message === 'string' && canonicalResult.ack.message
-        ? ` — ${canonicalResult.ack.message}`
-        : '';
-    const legacyRelayMessage =
-      typeof legacyResult.ack?.message === 'string' && legacyResult.ack.message
-        ? ` — ${legacyResult.ack.message}`
-        : '';
-
-    const canonicalFallbackNote =
-      canonicalOutcome.usedFallback || canonicalResult.ack?.via === 'http' ? ' via HTTP fallback' : '';
-    const legacyFallbackNote =
-      legacyOutcome.usedFallback || legacyResult.ack?.via === 'http' ? ' via HTTP fallback' : '';
-
-    const canonicalSummary = canonicalEventId
-      ? `Canonical tiers published${canonicalFallbackNote} (kind ${CANONICAL_TIER_KIND}) — id ${canonicalEventId}${canonicalRelayMessage}`
-      : `Canonical tiers published${canonicalFallbackNote} (kind ${CANONICAL_TIER_KIND})${canonicalRelayMessage}`;
-    const legacySummary = legacyEventId
-      ? `Legacy tiers published${legacyFallbackNote} (kind ${LEGACY_TIER_KIND}) — id ${legacyEventId}${legacyRelayMessage}`
-      : `Legacy tiers published${legacyFallbackNote} (kind ${LEGACY_TIER_KIND})${legacyRelayMessage}`;
-
-    tierSummary = `${canonicalSummary} ${legacySummary}`.trim();
-
-    const relays = relayList.value;
-    const p2pkHex = p2pkPub.value.trim();
-    const tagPubkey = (p2pkDerivedPub.value || p2pkHex).trim();
-    const canonicalTierPointer = `${CANONICAL_TIER_KIND}:${authorHex}:tiers`;
-    const legacyTierPointer = `${LEGACY_TIER_KIND}:${authorHex}:tiers`;
-    const content = JSON.stringify({
-      v: 1,
-      p2pk: p2pkHex,
-      mints: mintList.value,
-      relays,
-      tierAddr: canonicalTierPointer,
-      legacyTierAddr: legacyTierPointer,
-    });
-
-    const tags: string[][] = [
-      ['t', 'nutzap-profile'],
-      ['client', 'fundstr'],
-      ...mintList.value.map(mint => ['mint', mint, 'sat']),
-      ...relays.map(relay => ['relay', relay]),
-    ];
-    if (tagPubkey) {
-      tags.push(['pubkey', tagPubkey]);
-    }
-    if (!tags.some(tag => tag[0] === 'a' && tag[1] === canonicalTierPointer)) {
-      tags.push(['a', canonicalTierPointer]);
-    }
-    if (!tags.some(tag => tag[0] === 'a' && tag[1] === legacyTierPointer)) {
-      tags.push(['a', legacyTierPointer]);
-    }
-    if (displayName.value.trim()) {
-      tags.push(['name', displayName.value.trim()]);
-    }
-    if (pictureUrl.value.trim()) {
-      tags.push(['picture', pictureUrl.value.trim()]);
-    }
-
-    const profileTemplate = { kind: 10019, tags, content };
-
-    const profileOutcome = await (async () => {
-      try {
-        const result = await publishNostrEvent(profileTemplate, {
-          send: publishEventToRelay,
-          relayUrl: relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL,
-        });
-        return { result, usedFallback: false as const };
-      } catch (err) {
-        if (!shouldUseHttpFallback(err)) {
-          throw err;
-        }
-        const fallbackClient = await ensureRelayClientInitialized(
-          relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL
-        );
-        const fallbackResult = await fallbackClient.publish(profileTemplate);
-        const reason = describeFallbackReason(err);
-        fallbackNotices.push(
-          `Profile publish used HTTP fallback${reason ? ` — ${reason}` : ''}.`
-        );
-        return { result: fallbackResult, usedFallback: true as const };
-      }
-    })();
-
     const profileResult = profileOutcome.result;
+
     const signerPubkey =
-      profileResult.event?.pubkey ||
-      canonicalResult.event?.pubkey ||
-      legacyResult.event?.pubkey;
+      profileResult.event?.pubkey || canonicalResult.event?.pubkey || legacyResult.event?.pubkey;
     const reloadKey = typeof signerPubkey === 'string' && signerPubkey ? signerPubkey : authorHex;
     if (typeof signerPubkey === 'string' && signerPubkey) {
       const normalizedSigner = signerPubkey.toLowerCase();
@@ -3447,18 +3745,8 @@ async function publishAll() {
       }
     }
 
-    const profileEventId = profileResult.ack?.id ?? profileResult.event?.id;
-    const profileRelayMessage =
-      typeof profileResult.ack?.message === 'string' && profileResult.ack.message
-        ? ` — ${profileResult.ack.message}`
-        : '';
-    const profileFallbackNote =
-      profileOutcome.usedFallback || profileResult.ack?.via === 'http' ? ' via HTTP fallback' : '';
-    const profileSummary = profileEventId
-      ? `Profile published${profileFallbackNote} — id ${profileEventId}${profileRelayMessage}`
-      : `Profile published${profileFallbackNote} to relay.fundstr.me.${profileRelayMessage}`;
-
-    lastPublishInfo.value = `${tierSummary} ${profileSummary}`.trim();
+    const profileSummaryData = formatProfileSummary(profileOutcome);
+    lastPublishInfo.value = `${tierSummary} ${profileSummaryData.summary}`.trim();
 
     const canonicalAckLabel =
       typeof canonicalResult.ack?.message === 'string' && canonicalResult.ack.message
@@ -3476,15 +3764,13 @@ async function publishAll() {
       `Nutzap profile published (profile ${profileAckLabel}, canonical tiers ${canonicalAckLabel}, legacy tiers ${legacyAckLabel}).`
     );
 
-    const canonicalFallbackUsed =
-      canonicalOutcome.usedFallback || canonicalResult.ack?.via === 'http' || (canonicalResult as any)?.via === 'http';
-    const legacyFallbackUsed =
-      legacyOutcome.usedFallback || legacyResult.ack?.via === 'http' || (legacyResult as any)?.via === 'http';
-    const profileFallbackUsed =
-      profileOutcome.usedFallback || profileResult.ack?.via === 'http' || profileResult.via === 'http';
-    const canonicalIdLabel = canonicalEventId ?? 'unknown';
-    const legacyIdLabel = legacyEventId ?? 'unknown';
-    const profileIdLabel = profileEventId ?? 'unknown';
+    const canonicalFallbackUsed = computeFallbackUsed(canonicalOutcome);
+    const legacyFallbackUsed = computeFallbackUsed(legacyOutcome);
+    const profileFallbackUsed = profileSummaryData.fallbackUsed;
+
+    const canonicalEventId = canonicalResult.ack?.id ?? canonicalResult.event?.id ?? 'unknown';
+    const legacyEventId = legacyResult.ack?.id ?? legacyResult.event?.id ?? 'unknown';
+    const profileEventId = profileResult.ack?.id ?? profileResult.event?.id ?? 'unknown';
     const successContext = `HTTP fallback used — profile: ${
       profileFallbackUsed ? 'yes' : 'no'
     }, canonical tiers: ${canonicalFallbackUsed ? 'yes' : 'no'}, legacy tiers: ${
@@ -3492,9 +3778,16 @@ async function publishAll() {
     }`;
     logRelayActivity(
       'success',
-      `Publish succeeded (profile ${profileIdLabel}, canonical ${canonicalIdLabel}, legacy ${legacyIdLabel})`,
+      `Publish succeeded (profile ${profileEventId}, canonical ${canonicalEventId}, legacy ${legacyEventId})`,
       successContext,
     );
+
+    if (compensationApplied) {
+      const detail =
+        'Compensation replayed staged publish steps before final success. Verify that relay data is now consistent.';
+      logRelayActivity('info', 'Publish compensation restored staged data', detail);
+      flagDiagnosticsAttention('publish', detail, 'warning');
+    }
 
     if (fallbackNotices.length) {
       const detail = fallbackNotices.join(' ');
@@ -3507,26 +3800,62 @@ async function publishAll() {
     await refreshSubscriptions(true);
   } catch (err) {
     console.error('[nutzap] publish profile workflow failed', err);
-    const ack = (err as any)?.ack as { id?: string; message?: string } | undefined;
-    const isRelayError = err instanceof RelayPublishError || (ack && typeof ack.id === 'string');
-    if (isRelayError) {
-      const message = ack?.message ?? 'Relay rejected event.';
+    if (err instanceof PublishWorkflowError) {
+      const original = err.original;
+      const tierDetails = buildTierSummary(err.outcomes);
+      tierSummary = tierDetails.summary;
+      const stageLabel = describeStageLabel(err.stage);
+      const ack = (original as any)?.ack as { id?: string; message?: string } | undefined;
+      const fallbackMessage =
+        ack?.message ??
+        (original instanceof RelayPublishError
+          ? original.message
+          : original instanceof Error
+            ? original.message
+            : err.message || 'Unable to publish Nutzap profile.');
       const ackId = ack?.id ?? 'unknown';
-      const rejectionDetail = `Publish rejected — id ${ackId}${
-        ack?.message ? ` — ${ack?.message}` : ''
-      }`;
-      lastPublishInfo.value = tierSummary
-        ? `${tierSummary} ${rejectionDetail}`
-        : rejectionDetail;
-      notifyError(message);
-      flagDiagnosticsAttention('publish', message);
+      const rejectionDetail = ack
+        ? `Publish ${stageLabel} rejected — id ${ackId}${ack?.message ? ` — ${ack.message}` : ''}`
+        : `Publish ${stageLabel} failed${fallbackMessage ? ` — ${fallbackMessage}` : ''}`;
+      lastPublishInfo.value = tierSummary ? `${tierSummary} ${rejectionDetail}` : rejectionDetail;
+      notifyError(fallbackMessage);
+      if (err.fallbackNotices.length) {
+        const fallbackDetail = err.fallbackNotices.join(' ');
+        logRelayActivity('warning', 'Publish used HTTP fallback', fallbackDetail);
+        flagDiagnosticsAttention('publish', fallbackDetail, 'warning');
+      }
+      const requeueLabel = formatStageList(err.requeuedStages);
+      if (requeueLabel) {
+        const detail = `${rejectionDetail}. Compensation queued for ${requeueLabel}.`;
+        logRelayActivity('warning', 'Publish staged retry queued', detail);
+        flagDiagnosticsAttention('publish', detail, 'warning');
+      } else {
+        logRelayActivity('error', 'Publish stage failed', rejectionDetail);
+        flagDiagnosticsAttention('publish', rejectionDetail);
+      }
       requestExplorerOpen('publish-error');
     } else {
-      const fallback = err instanceof Error ? err.message : 'Unable to publish Nutzap profile.';
-      lastPublishInfo.value = tierSummary ? `${tierSummary} ${fallback}` : fallback;
-      notifyError(fallback);
-      flagDiagnosticsAttention('publish', fallback);
-      requestExplorerOpen('publish-error');
+      const ack = (err as any)?.ack as { id?: string; message?: string } | undefined;
+      const isRelayError = err instanceof RelayPublishError || (ack && typeof ack.id === 'string');
+      if (isRelayError) {
+        const message = ack?.message ?? 'Relay rejected event.';
+        const ackId = ack?.id ?? 'unknown';
+        const rejectionDetail = `Publish rejected — id ${ackId}${
+          ack?.message ? ` — ${ack?.message}` : ''
+        }`;
+        lastPublishInfo.value = tierSummary
+          ? `${tierSummary} ${rejectionDetail}`
+          : rejectionDetail;
+        notifyError(message);
+        flagDiagnosticsAttention('publish', message);
+        requestExplorerOpen('publish-error');
+      } else {
+        const fallback = err instanceof Error ? err.message : 'Unable to publish Nutzap profile.';
+        lastPublishInfo.value = tierSummary ? `${tierSummary} ${fallback}` : fallback;
+        notifyError(fallback);
+        flagDiagnosticsAttention('publish', fallback);
+        requestExplorerOpen('publish-error');
+      }
     }
   } finally {
     publishingAll.value = false;
