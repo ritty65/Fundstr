@@ -464,16 +464,31 @@ export default defineComponent({
     const creatorParam =
       (route.params.npubOrHex ?? route.params.npub) as string | undefined;
     const decodeError = ref<string | null>(null);
-    let creatorNpub = creatorParam ?? "";
-    let creatorHex: string | null = null;
-    try {
-      const keys = deriveCreatorKeys(creatorParam);
-      creatorNpub = keys.npub;
-      creatorHex = keys.hex;
-    } catch (err) {
-      decodeError.value =
-        "We couldn't load this creator profile. Double-check the link and try again.";
-    }
+    const creatorNpub = ref<string>(creatorParam ?? "");
+    const creatorHex = ref<string | null>(null);
+    const decodeFailureMessage =
+      "We couldn't load this creator profile. Double-check the link and try again.";
+
+    const currentCreatorParam = ref<string>(creatorParam ?? "");
+
+    const updateCreatorKeys = (param: string | undefined) => {
+      const nextParam = typeof param === "string" ? param : "";
+      creatorNpub.value = nextParam;
+      creatorHex.value = null;
+      decodeError.value = null;
+      if (!nextParam) {
+        return;
+      }
+      try {
+        const keys = deriveCreatorKeys(param);
+        creatorNpub.value = keys.npub;
+        creatorHex.value = keys.hex;
+      } catch (err) {
+        decodeError.value = decodeFailureMessage;
+      }
+    };
+
+    updateCreatorKeys(creatorParam);
     const creators = useCreatorsStore();
     const nostr = useNostrStore();
     const priceStore = usePriceStore();
@@ -490,7 +505,7 @@ export default defineComponent({
     const fallbackRelays = ref<string[]>([]);
     const profileLoadError = ref<Error | null>(null);
     const creatorTierList = computed(() =>
-      creatorHex ? creators.tiersMap[creatorHex] : undefined,
+      creatorHex.value ? creators.tiersMap[creatorHex.value] : undefined,
     );
     const tiers = computed(() => creatorTierList.value ?? []);
     const hasInitialTierData = computed(
@@ -513,16 +528,15 @@ export default defineComponent({
     );
 
     const isCustomLinkView = ref(false);
+    const syncCustomLinkView = () => {
+      const tierId = route.query.tierId;
+      isCustomLinkView.value =
+        typeof tierId === "string" && tierId.length > 0;
+    };
 
-    watch(
-      () => route.query.tierId,
-      (tierId) => {
-        if (typeof tierId === "string" && tierId.length > 0) {
-          isCustomLinkView.value = true;
-        }
-      },
-      { immediate: true },
-    );
+    watch(() => route.query.tierId, syncCustomLinkView, {
+      immediate: true,
+    });
 
     const mergeUniqueUrls = (...lists: Array<string[] | undefined>) => {
       const urls = new Set<string>();
@@ -632,12 +646,12 @@ export default defineComponent({
     ): boolean => normalizeTierSnapshot(a) === normalizeTierSnapshot(b);
 
     const applyBundleTierList = (tierList: any[] | null | undefined) => {
-      if (!creatorHex || !Array.isArray(tierList)) return;
-      const existing = creators.tiersMap[creatorHex];
+      if (!creatorHex.value || !Array.isArray(tierList)) return;
+      const existing = creators.tiersMap[creatorHex.value];
       if (existing && tiersEqual(existing, tierList)) {
         return;
       }
-      creators.tiersMap[creatorHex] = tierList.map((tier: any) =>
+      creators.tiersMap[creatorHex.value] = tierList.map((tier: any) =>
         tier && typeof tier === "object" ? { ...tier } : tier,
       );
     };
@@ -662,8 +676,27 @@ export default defineComponent({
       refreshingTiers.value = false;
     };
 
+    const resetCreatorState = () => {
+      profile.value = {};
+      profileRelayHints.value = [];
+      fallbackActive.value = false;
+      fallbackFailed.value = false;
+      fallbackRelays.value = [];
+      profileLoadError.value = null;
+      followers.value = null;
+      following.value = null;
+      loadingTiers.value = true;
+      resetRefreshState();
+      creators.tierFetchError = false;
+      selectedTier.value = null;
+      receiptList.value = [];
+      showSubscribeDialog.value = false;
+      showSetupDialog.value = false;
+      showReceiptDialog.value = false;
+    };
+
     const fetchTiers = async () => {
-      if (!creatorHex) {
+      if (!creatorHex.value) {
         loadingTiers.value = false;
         return;
       }
@@ -673,7 +706,7 @@ export default defineComponent({
       beginRefresh();
       creators.tierFetchError = false;
       try {
-        await creators.fetchCreator(creatorHex, true);
+        await creators.fetchCreator(creatorHex.value, true);
         if (creators.tierFetchError) {
           fallbackActive.value = true;
           fallbackFailed.value = true;
@@ -713,16 +746,16 @@ export default defineComponent({
     const refreshProfileFromRelay = async (
       bundle: FundstrProfileBundle | null,
     ): Promise<void> => {
-      if (!creatorHex) return;
+      if (!creatorHex.value) return;
       beginRefresh();
       try {
         let fallbackAttempted = false;
-        let relayProfile = await fetchNutzapProfile(creatorHex, {
+        let relayProfile = await fetchNutzapProfile(creatorHex.value, {
           fundstrOnly: true,
         });
         if (!relayProfile) {
           fallbackAttempted = true;
-          relayProfile = await fetchNutzapProfile(creatorHex);
+          relayProfile = await fetchNutzapProfile(creatorHex.value);
         }
         if (!relayProfile) {
           if (fallbackAttempted) {
@@ -813,12 +846,12 @@ export default defineComponent({
     const loadProfile = async () => {
       const tierPromise = fetchTiers();
 
-      if (!creatorHex) {
+      if (!creatorHex.value) {
         await tierPromise;
         return;
       }
 
-      const profilePromise = fetchFundstrProfileBundle(creatorHex, {
+      const profilePromise = fetchFundstrProfileBundle(creatorHex.value, {
         forceRefresh: true,
       })
         .then(async (bundle) => {
@@ -893,12 +926,28 @@ export default defineComponent({
     };
     // initialization handled in onMounted
 
+    watch(
+      () => (route.params.npubOrHex ?? route.params.npub) as string | undefined,
+      async (nextParam) => {
+        const normalized = typeof nextParam === "string" ? nextParam : "";
+        if (normalized === currentCreatorParam.value) {
+          syncCustomLinkView();
+          return;
+        }
+        currentCreatorParam.value = normalized;
+        updateCreatorKeys(nextParam);
+        resetCreatorState();
+        syncCustomLinkView();
+        await loadProfile();
+      },
+    );
+
     const retryFetchTiers = () => {
       void fetchTiers();
     };
 
     const openSubscribe = (tier: any) => {
-      if (!creatorHex) {
+      if (!creatorHex.value) {
         return;
       }
       selectedTier.value = tier;
@@ -920,7 +969,7 @@ export default defineComponent({
     onMounted(async () => {
       await loadProfile();
 
-      if (!creatorHex) return;
+      if (!creatorHex.value) return;
       const tierId = route.query.tierId as string | undefined;
       if (!nostr.hasIdentity || !tierId) return;
       const tryOpen = () => {
@@ -929,7 +978,7 @@ export default defineComponent({
           openSubscribe(t);
           router.replace({
             name: "PublicCreatorProfile",
-            params: { npubOrHex: creatorNpub },
+            params: { npubOrHex: creatorNpub.value },
           });
           return true;
         }
@@ -1000,7 +1049,7 @@ export default defineComponent({
       }
     }
 
-    const profileUrl = computed(() => buildProfileUrl(creatorNpub, router));
+    const profileUrl = computed(() => buildProfileUrl(creatorNpub.value, router));
 
     const primaryTier = computed<any | null>(() => {
       const tierList = tiers.value;
@@ -1036,7 +1085,7 @@ export default defineComponent({
     });
 
     const profileDisplayName = computed(() =>
-      displayNameFromProfile(profileMeta.value, creatorNpub),
+      displayNameFromProfile(profileMeta.value, creatorNpub.value),
     );
 
     const profileHandle = computed(() => {
