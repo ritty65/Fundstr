@@ -2173,8 +2173,12 @@ export default defineComponent({
 
 @media (min-width: 1024px) {
   .profile-infrastructure {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 24rem) minmax(0, 1fr);
     align-items: start;
+  }
+
+  .profile-card--copy {
+    grid-column: 1 / -1;
   }
 }
 
