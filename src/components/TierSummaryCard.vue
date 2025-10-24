@@ -24,7 +24,7 @@
         <span v-if="showFiat" class="tier-card__fiat text-2">≈ {{ priceFiat }}</span>
       </div>
     </header>
-    <div v-if="hasBenefits" class="tier-card__benefits">
+    <div v-if="showBenefits && hasBenefits" class="tier-card__benefits">
       <h5 class="tier-card__section-title text-2">Benefits</h5>
       <ul class="tier-card__benefit-list">
         <li
@@ -119,6 +119,7 @@ const props = withDefaults(
     badges?: BadgeInput[];
     collapseMedia?: boolean;
     useDefaultBenefits?: boolean;
+    showBenefits?: boolean;
   }>(),
   {
     tier: () => ({ name: "" }),
@@ -129,6 +130,7 @@ const props = withDefaults(
     badges: () => [],
     collapseMedia: false,
     useDefaultBenefits: true,
+    showBenefits: true,
   },
 );
 
