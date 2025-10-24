@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { TierMedia } from "../../../src/stores/types";
 import {
   isTrustedUrl,
   normalizeYouTube,
@@ -66,5 +67,19 @@ describe("validateMedia", () => {
       { url: "https://good.com/ok.png" },
     ]);
     expect(media).toEqual([{ url: "https://good.com/ok.png" }]);
+  });
+
+  it("skips entries without a string url", () => {
+    const raw = [
+      { url: "https://good.com/ok.png", title: "Valid", type: "image" },
+      { title: "Missing URL", type: "image" },
+      null,
+    ] as unknown as TierMedia[];
+
+    const media = filterValidMedia(raw);
+
+    expect(media).toEqual([
+      { url: "https://good.com/ok.png", title: "Valid", type: "image" },
+    ]);
   });
 });
