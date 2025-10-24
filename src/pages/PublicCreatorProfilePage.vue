@@ -272,6 +272,30 @@
               <p class="profile-card__text text-2">
                 {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
               </p>
+              <div class="profile-card__video">
+                <video
+                  controls
+                  preload="metadata"
+                  playsinline
+                  poster="https://m.primal.net/HsMt.jpg"
+                >
+                  <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
+                  {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
+                </video>
+                <div class="sr-only">
+                  <a href="https://m.primal.net/HsMt.mp4" target="_blank" rel="noopener">
+                    {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                  </a>
+                </div>
+              </div>
+              <div v-if="howCashuWorksHighlight" class="profile-card__highlight text-body2">
+                <span class="profile-card__highlight-label text-2">
+                  {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                </span>
+                <p class="profile-card__highlight-text">
+                  {{ howCashuWorksHighlight }}
+                </p>
+              </div>
               <ul class="profile-card__list">
                 <li
                   v-for="(item, index) in howCashuWorksList"
@@ -828,6 +852,8 @@ export default defineComponent({
       return typeof items === "string" ? [items] : [];
     });
 
+    const howCashuWorksHighlight = computed(() => howCashuWorksList.value[0] || "");
+
     const faqEntries = computed(() => {
       const raw = profile.value.faq;
       if (!raw) return [] as Array<{ question: string; answer: string }>;
@@ -915,6 +941,7 @@ export default defineComponent({
       trustedMints,
       relayList,
       howCashuWorksList,
+      howCashuWorksHighlight,
       faqEntries,
       retryLabel,
       fallbackActive,
@@ -1180,6 +1207,52 @@ export default defineComponent({
 
 .profile-card__list-item {
   position: relative;
+}
+
+.profile-card__video {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.profile-card__video video {
+  width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+  display: block;
+  background: #000;
+}
+
+.profile-card__highlight {
+  background: rgba(0, 0, 0, 0.04);
+  border-left: 4px solid var(--accent-500);
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.profile-card__highlight-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.profile-card__highlight-text {
+  margin: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .profile-faq {
