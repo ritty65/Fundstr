@@ -1,5 +1,8 @@
 <template>
-  <div class="profile-page bg-surface-1 text-1">
+  <div
+    class="profile-page bg-surface-1 text-1"
+    :class="{ 'profile-page--custom': isCustomLinkView }"
+  >
     <div class="profile-page__inner q-pa-md">
       <div class="profile-page__back q-mb-md">
         <q-btn flat color="primary" to="/find-creators">{{
@@ -103,7 +106,10 @@
           </div>
         </section>
 
-        <div class="profile-tier-grid">
+        <div
+          class="profile-tier-grid"
+          :class="{ 'profile-tier-grid--custom': isCustomLinkView }"
+        >
           <section class="profile-section" aria-live="polite">
             <header class="profile-section__header profile-section__header--with-spinner">
               <h2 class="profile-section__title text-h5">
@@ -1142,6 +1148,22 @@ export default defineComponent({
   gap: 1rem;
 }
 
+.profile-page--custom .profile-tier-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.profile-page--custom .profile-tier-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+.profile-page--custom .profile-tier-list > * {
+  height: 100%;
+}
+
 .profile-tier__paywalled {
   margin-top: 0.5rem;
   padding: 0.75rem;
@@ -1335,6 +1357,11 @@ export default defineComponent({
     grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
     gap: 2rem;
     align-items: stretch;
+  }
+
+  .profile-page--custom .profile-tier-grid {
+    display: flex;
+    flex-direction: column;
   }
 }
 </style>
