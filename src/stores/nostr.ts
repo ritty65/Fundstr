@@ -70,13 +70,7 @@ import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useMessengerStore } from "./messenger";
 import { decryptDM } from "../nostr/crypto";
-import { useCreatorHubStore } from "./creatorHub";
 import { useCreatorProfileStore } from "./creatorProfile";
-import {
-  LEGACY_NUTZAP_TIERS_KIND,
-  NUTZAP_TIERS_KIND,
-} from "src/nutzap/relayConfig";
-import { mapInternalTierToWire } from "src/nostr/tiers";
 import { buildKind10019NutzapProfile } from "src/nostr/builders";
 import { NutzapProfileSchema, type NutzapProfilePayload } from "src/nostr/nutzapProfile";
 import {
@@ -166,90 +160,6 @@ export interface CreatorProfilePayload {
   p2pkPub: string;
   mints: string[];
   tierAddr?: string;
-}
-
-export interface TierPayload {
-  id: string;
-  price: number;
-  [key: string]: any;
-}
-
-export async function publishCreatorBundleBounded(opts: {
-  profile: CreatorProfilePayload;
-  tiers?: TierPayload[];
-  writeRelays: string[];
-  forceRepublish?: boolean;
-  ackTimeoutMs?: number;
-  minConnected?: number;
-}): Promise<PublishResult> {
-  const {
-    writeRelays,
-    profile,
-    tiers,
-    forceRepublish = false,
-    ackTimeoutMs = 4000,
-    minConnected = 2,
-  } = opts;
-
-  const conn = await ensureWriteConnectivity(writeRelays, {
-    minConnected,
-    timeoutMs: 6000,
-    cap: 6,
-  });
-
-  if (conn.urlsConnected.length === 0) {
-    return {
-      okOn: [],
-      failedOn: conn.urlsTried,
-      missingAcks: [],
-      elapsedMs: conn.elapsedMs,
-    };
-  }
-
-  const started = Date.now();
-  const ndk = await getNdk();
-
-  if (tiers && tiers.length) {
-    await publishTierDefinitions(tiers, {
-      ndk,
-      force: forceRepublish,
-      relays: conn.urlsConnected,
-    });
-  }
-
-  const { okOn, failedOn, missingAcks } = await publishDiscoveryProfileWithAcks(
-    ndk,
-    profile,
-    {
-      ackTimeoutMs,
-      targetRelays: conn.urlsConnected,
-    },
-  );
-
-  return {
-    okOn,
-    failedOn,
-    missingAcks,
-    elapsedMs: Date.now() - started,
-  };
-}
-
-async function publishTierDefinitions(
-  tiers: TierPayload[],
-  opts: { ndk: NDK; relays: string[]; force?: boolean },
-): Promise<void> {
-  const { ndk, relays } = opts;
-  const ev = new NDKEvent(ndk);
-  ev.kind = 30000 as NDKKind;
-  ev.tags = [["d", "tiers"]];
-  ev.created_at = Math.floor(Date.now() / 1000);
-  ev.content = JSON.stringify(tiers);
-  await ev.sign();
-
-  const relaySet = await urlsToRelaySet(relays);
-  if (relaySet) {
-    await ev.publish(relaySet);
-  }
 }
 
 async function publishDiscoveryProfileWithAcks(
@@ -1366,78 +1276,6 @@ export async function publishDiscoveryProfile(opts: {
   };
 }
 
-export async function publishCreatorBundle(opts: {
-  publishTiers?: "auto" | "force" | "skip";
-} = {}): Promise<{ failedRelays: string[] }> {
-  const mode = opts.publishTiers ?? "auto";
-  const hub = useCreatorHubStore();
-  const profile = useCreatorProfileStore();
-  const p2pk = useP2PKStore();
-  const nostr = useNostrStore();
-
-  await nostr.initSignerIfNotSet();
-  if (!nostr.signer) {
-    throw new Error("Signer required to publish profile");
-  }
-
-  const p2pkPub = p2pk.firstKey?.publicKey;
-  if (!p2pkPub) {
-    throw new Error("No Cashu P2PK key available");
-  }
-
-  const tiersArray = hub.getTierArray();
-  const canonicalTiers = tiersArray.map((tier) => mapInternalTierToWire(tier));
-  const tiersFingerprint = JSON.stringify(canonicalTiers);
-  const preferredKind =
-    hub.tierDefinitionKind && hub.tierDefinitionKind === LEGACY_NUTZAP_TIERS_KIND
-      ? LEGACY_NUTZAP_TIERS_KIND
-      : NUTZAP_TIERS_KIND;
-  const tierAddr = tiersArray.length
-    ? `${preferredKind}:${nostr.pubkey}:tiers`
-    : undefined;
-  const result = await publishDiscoveryProfile({
-    profile: profile.profile,
-    p2pkPub,
-    mints: profile.mints,
-    relays: profile.relays,
-    tierAddr,
-  });
-
-  const failedRelays = result.byRelay.filter((r) => !r.ok).map((r) => r.url);
-
-  let tiersPublished = false;
-  if (
-    mode === "force" ||
-    (mode === "auto" && tiersFingerprint !== hub.lastPublishedTiersHash)
-  ) {
-    await hub.publishTierDefinitions();
-    hub.lastPublishedTiersHash = tiersFingerprint;
-    tiersPublished = true;
-  }
-
-  if (tiersPublished) {
-    if (failedRelays.length) {
-      notifyWarning(
-        `Profile & tiers published; failed: ${failedRelays.join(", ")}`,
-      );
-    } else {
-      notifySuccess("Profile & tiers published.");
-    }
-  } else {
-    if (failedRelays.length) {
-      notifyWarning(
-        `Profile published but some relays failed: ${failedRelays.join(", ")}`,
-      );
-    } else {
-      notifySuccess(
-        "Profile published: metadata, relays, payment profile.",
-      );
-    }
-  }
-
-  return { failedRelays };
-}
-
 /** Publishes a ‘kind:9321’ Nutzap event. */
 export async function publishNutzap(opts: {
   content: string;
@@ -2013,11 +1851,6 @@ export const useNostrStore = defineStore("nostr", {
       }
       try {
         useMessengerStore().start();
-      } catch (e) {
-        console.error(e);
-      }
-      try {
-        useCreatorHubStore().loadTiersFromNostr();
       } catch (e) {
         console.error(e);
       }

@@ -28,16 +28,16 @@
 <script lang="ts">
 import { defineComponent, ref, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { useCreatorHubStore } from "stores/creatorHub";
 import { useNostrStore } from "stores/nostr";
 import { generateSecretKey, nip19 } from "nostr-tools";
 import { hexToBytes } from "@noble/hashes/utils";
+import { useNostrAuth } from "src/composables/useNostrAuth";
 
 export default defineComponent({
   name: "NostrLogin",
   setup() {
     const nostr = useNostrStore();
-    const creatorHubStore = useCreatorHubStore();
+    const { loginWithExtension } = useNostrAuth();
     const key = ref(nostr.activePrivateKeyNsec || nostr.privKeyHex || "");
     const hasExistingKey = computed(() => !!key.value);
     const router = useRouter();
@@ -85,7 +85,7 @@ export default defineComponent({
       if (!available) return;
       try {
         await nostr.connectBrowserSigner();
-        await creatorHubStore.login();
+        await loginWithExtension();
         if (redirect) {
           router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
         } else {

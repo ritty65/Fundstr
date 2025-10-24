@@ -91,8 +91,6 @@ export const LOCAL_STORAGE_KEYS = {
   CASHU_WORKER_INVOICES_LASTPENDINGINVOICECHECK:
     "cashu.worker.invoices.lastPendingInvoiceCheck",
   CASHU_WORKER_INVOICES_QUOTESQUEUE: "cashu.worker.invoices.quotesQueue",
-  CREATORHUB_TIERORDER: "creatorHub.tierOrder",
-  CREATORHUB_TIERS: "creatorHub.tiers",
   CREATORPROFILE_ABOUT: "creatorProfile.about",
   CREATORPROFILE_DISPLAY_NAME: "creatorProfile.display_name",
   CREATORPROFILE_MINTS: "creatorProfile.mints",

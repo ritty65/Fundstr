@@ -42,7 +42,7 @@ import { useI18n } from 'vue-i18n'
 import { useQuasar } from 'quasar'
 import { useNostrStore } from 'src/stores/nostr'
 import { useWelcomeStore } from 'src/stores/welcome'
-import { useCreatorHubStore } from 'src/stores/creatorHub'
+import { useNostrAuth } from 'src/composables/useNostrAuth'
 import NostrBackupDialog from 'src/components/welcome/NostrBackupDialog.vue'
 import { nip19 } from 'nostr-tools'
 import { hexToBytes } from '@noble/hashes/utils'
@@ -51,7 +51,7 @@ const { t } = useI18n()
 const $q = useQuasar()
 const nostr = useNostrStore()
 const welcome = useWelcomeStore()
-const creatorHubStore = useCreatorHubStore()
+const { loginWithExtension, loginWithSecret } = useNostrAuth()
 const id = 'welcome-nostr-title'
 
 const nsec = ref('')
@@ -140,7 +140,7 @@ async function connectNip07() {
     if (!nostr.signer) {
       await nostr.connectBrowserSigner()
     }
-    await creatorHubStore.login()
+    await loginWithExtension()
     welcome.nostrSetupCompleted = true
     npub.value = nostr.npub
     connected.value = true
@@ -157,7 +157,7 @@ async function connectNip07() {
   async function generate() {
     error.value = ''
     await nostr.initWalletSeedPrivateKeySigner()
-    await creatorHubStore.login(nostr.activePrivateKeyNsec)
+    await loginWithSecret(nostr.activePrivateKeyNsec)
     welcome.nostrSetupCompleted = true
     npub.value = nostr.npub
     backupNsec.value = nostr.activePrivateKeyNsec
@@ -190,7 +190,7 @@ async function importKey() {
   }
     try {
       await nostr.initPrivateKeySigner(nsecToUse)
-      await creatorHubStore.login(nostr.activePrivateKeyNsec)
+      await loginWithSecret(nostr.activePrivateKeyNsec)
       welcome.nostrSetupCompleted = true
       npub.value = nostr.npub
       backupNsec.value = nostr.activePrivateKeyNsec
