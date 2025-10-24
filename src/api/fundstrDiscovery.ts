@@ -476,7 +476,7 @@ async function fetchNutzapBundle(
   const npub = resolveNpub(identifier);
   const endpoint = appendParams('/nutzap/profile-and-tiers', {
     npub,
-    fresh: options.fresh ? '1' : '0',
+    fresh: options.fresh ? '1' : undefined,
   });
 
   const bundle = await fetchJsonWithRetry<NutzapBundle>(endpoint, {
