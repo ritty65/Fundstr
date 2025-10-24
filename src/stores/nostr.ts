@@ -1149,7 +1149,7 @@ async function fetchNutzapProfileFromNetwork(
 
 export async function fetchNutzapProfile(
   npubOrHex: string,
-  opts: { fundstrOnly?: boolean } = {},
+  opts: { fundstrOnly?: boolean; forceRefresh?: boolean } = {},
 ): Promise<NutzapProfile | null> {
   let hex: string;
   try {
@@ -1161,19 +1161,27 @@ export async function fetchNutzapProfile(
   ensureNutzapProfileCacheHydrated();
   pruneExpiredNutzapProfiles();
 
+  const { forceRefresh = false, fundstrOnly } = opts;
+  const fetchOpts = fundstrOnly === undefined ? {} : { fundstrOnly };
   const status = getNutzapProfileCacheStatus(hex);
   if (status) {
     if (status.isExpired) {
       removeNutzapProfileCacheEntry(hex);
     } else {
-      if (status.isStale) {
-        scheduleNutzapProfileRefresh(hex, opts);
+      if (status.isStale && !forceRefresh) {
+        scheduleNutzapProfileRefresh(hex, fetchOpts);
       }
-      return status.entry.profile;
+      if (!forceRefresh) {
+        return status.entry.profile;
+      }
     }
   }
 
-  const profile = await scheduleNutzapProfileRefresh(hex, opts, true);
+  const profile = await scheduleNutzapProfileRefresh(hex, fetchOpts, true);
+
+  if (forceRefresh) {
+    persistNutzapProfileCacheEntry(hex, profile);
+  }
   return profile;
 }
 
