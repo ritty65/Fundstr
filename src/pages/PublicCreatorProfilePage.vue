@@ -647,6 +647,7 @@ export default defineComponent({
     const profile = ref<any>({});
     const profileMeta = computed<ProfileMeta>(() => normalizeMeta(profile.value ?? {}));
     const profileRelayHints = ref<string[]>([]);
+    const hasLoadedRelayProfile = ref(false);
     const fallbackActive = ref(false);
     const fallbackFailed = ref(false);
     const fallbackRelays = ref<string[]>([]);
@@ -888,6 +889,7 @@ export default defineComponent({
     const resetCreatorState = () => {
       profile.value = {};
       profileRelayHints.value = [];
+      hasLoadedRelayProfile.value = false;
       fallbackActive.value = false;
       fallbackFailed.value = false;
       fallbackRelays.value = [];
@@ -955,17 +957,25 @@ export default defineComponent({
 
     const refreshProfileFromRelay = async (
       bundle: FundstrProfileBundle | null,
+      opts: { forceRelayRefresh?: boolean } = {},
     ): Promise<void> => {
       if (!creatorHex.value) return;
       beginRefresh();
       try {
+        const shouldForceRefresh =
+          opts.forceRelayRefresh === true ||
+          fallbackActive.value ||
+          !hasLoadedRelayProfile.value;
         let fallbackAttempted = false;
         let relayProfile = await fetchNutzapProfile(creatorHex.value, {
           fundstrOnly: true,
+          forceRefresh: shouldForceRefresh,
         });
         if (!relayProfile) {
           fallbackAttempted = true;
-          relayProfile = await fetchNutzapProfile(creatorHex.value);
+          relayProfile = await fetchNutzapProfile(creatorHex.value, {
+            forceRefresh: true,
+          });
         }
         if (!relayProfile) {
           if (fallbackAttempted) {
@@ -975,6 +985,7 @@ export default defineComponent({
           return;
         }
 
+        hasLoadedRelayProfile.value = true;
         if (fallbackAttempted) {
           fallbackActive.value = true;
           fallbackFailed.value = false;
@@ -1053,7 +1064,7 @@ export default defineComponent({
       }
     };
 
-    const loadProfile = async () => {
+    const loadProfile = async ({ forceRelayRefresh = false } = {}) => {
       const tierPromise = fetchTiers();
 
       if (!creatorHex.value) {
@@ -1119,7 +1130,7 @@ export default defineComponent({
             );
           }
           profileLoadError.value = null;
-          await refreshProfileFromRelay(bundle);
+          await refreshProfileFromRelay(bundle, { forceRelayRefresh });
         })
         .catch((err) => {
           const error = err instanceof Error ? err : new Error(String(err));
@@ -1141,7 +1152,7 @@ export default defineComponent({
         return;
       }
       autoRefreshQueued.value = false;
-      void loadProfile();
+      void loadProfile({ forceRelayRefresh: true });
     };
 
     const scheduleAutoRefresh = () => {
@@ -1227,7 +1238,7 @@ export default defineComponent({
         document.addEventListener("visibilitychange", handleVisibilityChange);
       }
 
-      await loadProfile();
+      await loadProfile({ forceRelayRefresh: true });
       scheduleAutoRefresh();
 
       if (!creatorHex.value) return;
