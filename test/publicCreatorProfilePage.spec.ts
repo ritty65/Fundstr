@@ -1,12 +1,68 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
-import { createMemoryHistory, createRouter } from "vue-router";
 import { createPinia, setActivePinia } from "pinia";
-import { reactive, defineComponent, nextTick } from "vue";
+import { reactive, defineComponent, nextTick, computed } from "vue";
 import { nip19 } from "nostr-tools";
 
 const copy = vi.fn();
 const buildProfileUrl = vi.fn(() => "https://profile/url");
+
+const ndkMocks = vi.hoisted(() => {
+  const subscribeMock = vi.fn();
+  const useNdkMock = vi.fn();
+  const subscriptions: any[] = [];
+  return { subscribeMock, useNdkMock, subscriptions };
+});
+const { subscribeMock, useNdkMock, subscriptions: ndkSubscriptions } = ndkMocks;
+
+const nostrMocks = vi.hoisted(() => ({
+  fetchNutzapProfileMock: vi.fn(),
+  urlsToRelaySetMock: vi.fn(),
+}));
+const { fetchNutzapProfileMock, urlsToRelaySetMock } = nostrMocks;
+
+const routeState = reactive({
+  name: "PublicCreatorProfile",
+  params: {} as Record<string, any>,
+  query: {} as Record<string, any>,
+  fullPath: "/",
+});
+const routerCurrentRoute = computed(() => routeState);
+let routerPushMock: ReturnType<typeof vi.fn>;
+let routerReplaceMock: ReturnType<typeof vi.fn>;
+
+function applyRouteLocation(location: Parameters<typeof routerPushMock>[0]) {
+  const target =
+    typeof location === "string"
+      ? { path: location }
+      : (location ?? {}) as Record<string, any>;
+  if (typeof target.name === "string") {
+    routeState.name = target.name;
+  }
+  const params = (target.params ?? {}) as Record<string, any>;
+  for (const key of Object.keys(routeState.params)) {
+    delete routeState.params[key];
+  }
+  Object.assign(routeState.params, params);
+  const query = (target.query ?? {}) as Record<string, any>;
+  for (const key of Object.keys(routeState.query)) {
+    delete routeState.query[key];
+  }
+  Object.assign(routeState.query, query);
+  if (typeof target.path === "string") {
+    routeState.fullPath = target.path;
+  } else if (typeof target.fullPath === "string") {
+    routeState.fullPath = target.fullPath;
+  } else if (routeState.name) {
+    const id =
+      typeof params.npubOrHex === "string"
+        ? params.npubOrHex
+        : typeof params.npub === "string"
+          ? params.npub
+          : "";
+    routeState.fullPath = id ? `/creator/${id}` : "/";
+  }
+}
 
 vi.mock("components/SubscribeDialog.vue", () => ({
   default: defineComponent({
@@ -58,6 +114,9 @@ const nostrStore = {
   fetchFollowingCount: vi.fn().mockResolvedValue(3),
 };
 
+vi.mock("src/composables/useNdk", () => ({
+  useNdk: (...args: any[]) => useNdkMock(...args),
+}));
 vi.mock("stores/creators", () => ({
   useCreatorsStore: () => creatorsStore,
   fetchFundstrProfileBundle: (...args: any[]) => fetchFundstrProfileBundleMock(...args),
@@ -73,7 +132,21 @@ vi.mock("stores/welcome", () => ({
 }));
 vi.mock("stores/nostr", () => ({
   useNostrStore: () => nostrStore,
+  fetchNutzapProfile: (...args: any[]) => fetchNutzapProfileMock(...args),
+  urlsToRelaySet: (...args: any[]) => urlsToRelaySetMock(...args),
 }));
+vi.mock("vue-router", async () => {
+  const actual = await vi.importActual<typeof import("vue-router")>("vue-router");
+  return {
+    ...actual,
+    useRoute: () => routeState,
+    useRouter: () => ({
+      push: routerPushMock,
+      replace: routerReplaceMock,
+      currentRoute: routerCurrentRoute,
+    }),
+  };
+});
 vi.mock("vue-i18n", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
@@ -137,6 +210,36 @@ const QSpinnerStub = defineComponent({
 describe("PublicCreatorProfilePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    fetchNutzapProfileMock.mockReset();
+    fetchNutzapProfileMock.mockResolvedValue(null);
+    urlsToRelaySetMock.mockReset();
+    urlsToRelaySetMock.mockResolvedValue(undefined);
+    subscribeMock.mockReset();
+    useNdkMock.mockReset();
+    ndkSubscriptions.length = 0;
+    subscribeMock.mockImplementation(() => {
+      const handlers: Record<string, Function[]> = {};
+      const subscription = {
+        on: vi.fn((event: string, handler: Function) => {
+          (handlers[event] ||= []).push(handler);
+        }),
+        start: vi.fn(),
+        stop: vi.fn(),
+        emit(payload: any) {
+          (handlers.event || []).forEach((handler) => handler(payload));
+        },
+      };
+      ndkSubscriptions.push(subscription);
+      return subscription;
+    });
+    routerPushMock = vi.fn(async (location) => {
+      applyRouteLocation(location);
+    });
+    routerReplaceMock = vi.fn(async (location) => {
+      applyRouteLocation(location);
+    });
+    applyRouteLocation({ name: "PublicCreatorProfile", params: {}, query: {}, path: "/" });
+    useNdkMock.mockImplementation(async () => ({ subscribe: subscribeMock }));
     fetchCreatorMock = vi.fn().mockImplementation(async (pubkey: string) => {
       creatorsStore.tiersMap[pubkey] = [
         {
@@ -169,12 +272,15 @@ describe("PublicCreatorProfilePage", () => {
     buildProfileUrl.mockReturnValue("https://profile/url");
   });
 
-  function mountPage(router: ReturnType<typeof createRouter>) {
+  function mountPage(initialLocation?: Parameters<typeof routerPushMock>[0]) {
     const pinia = createPinia();
     setActivePinia(pinia);
+    if (initialLocation) {
+      applyRouteLocation(initialLocation);
+    }
     return mount(PublicCreatorProfilePage, {
       global: {
-        plugins: [router, pinia],
+        plugins: [pinia],
         mocks: {
           $t: (key: string) => key,
         },
@@ -194,43 +300,36 @@ describe("PublicCreatorProfilePage", () => {
     });
   }
 
+  async function mountPageAt(location: Parameters<typeof routerPushMock>[0]) {
+    const wrapper = mountPage(location);
+    await flushPromises();
+    await nextTick();
+    return wrapper;
+  }
+
   it("opens the requested tier when tierId query param is provided", async () => {
     const sampleHex = "a".repeat(64);
     const sampleNpub = nip19.npubEncode(sampleHex);
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes: [
-        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
-      ],
+    const wrapper = await mountPageAt({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+      query: { tierId: "tier-1" },
     });
-    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub }, query: { tierId: "tier-1" } });
-    await router.isReady();
-
-    const wrapper = mountPage(router);
-    await flushPromises();
-    await nextTick();
 
     expect(fetchCreatorMock).toHaveBeenCalled();
     expect(fetchCreatorMock.mock.calls[0][0]).toBe(sampleHex);
     expect(fetchCreatorMock.mock.calls[0][1]).toBe(true);
     expect(wrapper.vm.selectedTier?.id).toBe("tier-1");
     expect(wrapper.vm.showSubscribeDialog).toBe(true);
-    expect(router.currentRoute.value.query.tierId).toBeUndefined();
+    expect(routerCurrentRoute.value.query.tierId).toBeUndefined();
   });
 
   it("normalizes hex route params and uses them for lookups", async () => {
     const sampleHex = "d".repeat(64);
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes: [
-        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
-      ],
+    const wrapper = await mountPageAt({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleHex },
     });
-    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleHex } });
-    await router.isReady();
-
-    const wrapper = mountPage(router);
-    await flushPromises();
 
     expect(fetchCreatorMock).toHaveBeenCalledWith(sampleHex, true);
     expect(wrapper.vm.creatorHex).toBe(sampleHex);
@@ -240,18 +339,10 @@ describe("PublicCreatorProfilePage", () => {
   it("copies the profile URL when the copy button is clicked", async () => {
     const sampleHex = "b".repeat(64);
     const sampleNpub = nip19.npubEncode(sampleHex);
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes: [
-        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
-      ],
+    const wrapper = await mountPageAt({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
     });
-    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub } });
-    await router.isReady();
-
-    const wrapper = mountPage(router);
-    await flushPromises();
-    await nextTick();
 
     const copyButton = wrapper.find('[data-icon="content_copy"]');
     expect(copyButton.exists()).toBe(true);
@@ -263,18 +354,10 @@ describe("PublicCreatorProfilePage", () => {
   it("shows tier error banner and retries fetch when retry button is clicked", async () => {
     const sampleHex = "c".repeat(64);
     const sampleNpub = nip19.npubEncode(sampleHex);
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes: [
-        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
-      ],
+    const wrapper = await mountPageAt({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
     });
-    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub } });
-    await router.isReady();
-
-    const wrapper = mountPage(router);
-    await flushPromises();
-    await nextTick();
 
     creatorsStore.tierFetchError = true;
     await nextTick();
@@ -291,20 +374,63 @@ describe("PublicCreatorProfilePage", () => {
   });
 
   it("shows a friendly error when the pubkey cannot be decoded", async () => {
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes: [
-        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
-      ],
+    const wrapper = await mountPageAt({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: "invalid" },
     });
-    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: "invalid" } });
-    await router.isReady();
 
-    const wrapper = mountPage(router);
     await flushPromises();
+    await nextTick();
 
     const banners = wrapper.findAll(".q-banner");
     expect(banners.some((b) => b.text().includes("We couldn't load this creator profile"))).toBe(true);
     expect(fetchCreatorMock).not.toHaveBeenCalled();
   });
+
+  it("updates tiers immediately when a realtime tier event arrives", async () => {
+    const sampleHex = "e".repeat(64);
+    const sampleNpub = nip19.npubEncode(sampleHex);
+    await mountPageAt({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+    });
+
+    expect(subscribeMock).toHaveBeenCalled();
+    const sub = ndkSubscriptions[ndkSubscriptions.length - 1] as any;
+    expect(sub).toBeTruthy();
+
+    const tierEventRaw = {
+      id: "evt-live",
+      kind: 30019,
+      pubkey: sampleHex,
+      created_at: Math.floor(Date.now() / 1000) + 5,
+      tags: [["d", "tiers"]],
+      content: JSON.stringify({
+        v: 1,
+        tiers: [
+          {
+            id: "tier-live",
+            title: "Live Tier",
+            price: 2500,
+            description: "Live tier description",
+            benefits: ["Live benefit"],
+          },
+        ],
+      }),
+    };
+
+    sub.emit({
+      ...tierEventRaw,
+      rawEvent: () => tierEventRaw,
+    });
+
+    await flushPromises();
+    await nextTick();
+
+    const tierList = creatorsStore.tiersMap[sampleHex];
+    expect(Array.isArray(tierList)).toBe(true);
+    expect(tierList.some((tier: any) => tier.id === "tier-live")).toBe(true);
+    expect(fetchCreatorMock).toHaveBeenCalledTimes(1);
+  });
+
 });

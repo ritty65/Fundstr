@@ -30,6 +30,7 @@ export default defineConfig({
       "test/vitest/__tests__/TierSummaryCard.spec.ts",
       "test/creatorStudio/tierComposerUtils.spec.ts",
       "src/js/__tests__/nutzapProfile.test.ts",
+      "test/publicCreatorProfilePage.spec.ts",
     ],
   },
   resolve: {
