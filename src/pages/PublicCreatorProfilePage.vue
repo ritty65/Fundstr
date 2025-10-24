@@ -103,211 +103,213 @@
           </div>
         </section>
 
-        <section class="profile-section" aria-live="polite">
-          <header class="profile-section__header profile-section__header--with-spinner">
-            <h2 class="profile-section__title text-h5">
-              {{ $t('CreatorHub.profile.sections.tiers') }}
-            </h2>
-            <q-spinner-dots
-              v-if="refreshingTiers && !loadingTiers"
-              size="sm"
-              class="profile-section__spinner text-2"
-            />
-          </header>
-          <div v-if="loadingTiers" class="profile-section__state">
-            <q-spinner-hourglass />
-          </div>
-          <template v-else>
-            <q-banner
-              v-if="tierFetchError && !tiers.length"
-              class="profile-page__banner bg-surface-2"
-            >
-              {{ $t('CreatorHub.profile.tierLoadError') }}
-              <template #action>
-                <button
-                  type="button"
-                  class="profile-retry-hidden"
-                  tabindex="-1"
-                  aria-hidden="true"
-                  @click="retryFetchTiers"
-                >{{ retryLabel }}</button>
-                <q-btn
-                  flat
-                  color="primary"
-                  :label="retryLabel"
-                  @click="retryFetchTiers"
-                />
-              </template>
-            </q-banner>
-            <div v-else-if="!tiers.length" class="profile-section__state text-2">
-              {{ $t('CreatorHub.profile.noTiers') }}
+        <div class="profile-tier-grid">
+          <section class="profile-section" aria-live="polite">
+            <header class="profile-section__header profile-section__header--with-spinner">
+              <h2 class="profile-section__title text-h5">
+                {{ $t('CreatorHub.profile.sections.tiers') }}
+              </h2>
+              <q-spinner-dots
+                v-if="refreshingTiers && !loadingTiers"
+                size="sm"
+                class="profile-section__spinner text-2"
+              />
+            </header>
+            <div v-if="loadingTiers" class="profile-section__state">
+              <q-spinner-hourglass />
             </div>
-            <div v-else class="profile-tier-list">
-              <TierSummaryCard
-                v-for="t in tiers"
-                :key="t.id"
-                :tier="t"
-                :price-sats="getPrice(t)"
-                :price-fiat="formatFiat(getPrice(t))"
-                :frequency-label="frequencyLabel(t)"
-                :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
-                :subscribe-disabled="isGuest"
-                :collapse-media="isCustomLinkView"
-                @subscribe="openSubscribe"
+            <template v-else>
+              <q-banner
+                v-if="tierFetchError && !tiers.length"
+                class="profile-page__banner bg-surface-2"
               >
-                <template v-if="needsSignerSetupTooltip" #subscribe-tooltip>
-                  <q-tooltip>{{ $t('CreatorHub.profile.guestTooltip') }}</q-tooltip>
+                {{ $t('CreatorHub.profile.tierLoadError') }}
+                <template #action>
+                  <button
+                    type="button"
+                    class="profile-retry-hidden"
+                    tabindex="-1"
+                    aria-hidden="true"
+                    @click="retryFetchTiers"
+                  >{{ retryLabel }}</button>
+                  <q-btn
+                    flat
+                    color="primary"
+                    :label="retryLabel"
+                    @click="retryFetchTiers"
+                  />
                 </template>
-                <template #footer-note>
-                  {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
+              </q-banner>
+              <div v-else-if="!tiers.length" class="profile-section__state text-2">
+                {{ $t('CreatorHub.profile.noTiers') }}
+              </div>
+              <div v-else class="profile-tier-list">
+                <TierSummaryCard
+                  v-for="t in tiers"
+                  :key="t.id"
+                  :tier="t"
+                  :price-sats="getPrice(t)"
+                  :price-fiat="formatFiat(getPrice(t))"
+                  :frequency-label="frequencyLabel(t)"
+                  :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
+                  :subscribe-disabled="isGuest"
+                  :collapse-media="isCustomLinkView"
+                  @subscribe="openSubscribe"
+                >
+                  <template v-if="needsSignerSetupTooltip" #subscribe-tooltip>
+                    <q-tooltip>{{ $t('CreatorHub.profile.guestTooltip') }}</q-tooltip>
+                  </template>
+                  <template #footer-note>
+                    {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
+                  </template>
+                  <template v-if="creatorHex" #default>
+                    <PaywalledContent
+                      :creator-npub="creatorHex"
+                      :tier-id="t.id"
+                      class="profile-tier__paywalled"
+                    >
+                      <div>{{ $t('CreatorHub.profile.paywalledPreview') }}</div>
+                    </PaywalledContent>
+                  </template>
+                </TierSummaryCard>
+              </div>
+              <q-banner
+                v-if="tierFetchError && tiers.length"
+                class="profile-page__banner bg-surface-2"
+              >
+                {{ $t('CreatorHub.profile.tierRefreshError') }}
+                <template #action>
+                  <button
+                    type="button"
+                    class="profile-retry-hidden"
+                    tabindex="-1"
+                    aria-hidden="true"
+                    @click="retryFetchTiers"
+                  >{{ retryLabel }}</button>
+                  <q-btn
+                    flat
+                    color="primary"
+                    :label="retryLabel"
+                    @click="retryFetchTiers"
+                  />
                 </template>
-                <template v-if="creatorHex" #default>
-                  <PaywalledContent
-                    :creator-npub="creatorHex"
-                    :tier-id="t.id"
-                    class="profile-tier__paywalled"
-                  >
-                    <div>{{ $t('CreatorHub.profile.paywalledPreview') }}</div>
-                  </PaywalledContent>
-                </template>
-              </TierSummaryCard>
-            </div>
-            <q-banner
-              v-if="tierFetchError && tiers.length"
-              class="profile-page__banner bg-surface-2"
-            >
-              {{ $t('CreatorHub.profile.tierRefreshError') }}
-              <template #action>
-                <button
-                  type="button"
-                  class="profile-retry-hidden"
-                  tabindex="-1"
-                  aria-hidden="true"
-                  @click="retryFetchTiers"
-                >{{ retryLabel }}</button>
-                <q-btn
-                  flat
-                  color="primary"
-                  :label="retryLabel"
-                  @click="retryFetchTiers"
-                />
-              </template>
-            </q-banner>
-          </template>
-        </section>
+              </q-banner>
+            </template>
+          </section>
 
-        <section class="profile-section profile-section--infrastructure">
-          <header class="profile-section__header">
-            <h2 class="profile-section__title text-h5">
-              {{ $t('CreatorHub.profile.sections.infrastructure') }}
-            </h2>
-          </header>
-          <div class="profile-section__body profile-infrastructure">
-            <article class="profile-card">
-              <h3 class="profile-card__title text-subtitle1">
-                {{ $t('CreatorHub.profile.infrastructureDetails') }}
-              </h3>
-              <div v-if="profile.p2pkPubkey" class="profile-card__row">
-                <div class="profile-card__label text-2">
-                  <span>{{ $t('CreatorHub.profile.p2pkLabel') }}</span>
-                  <q-btn
-                    flat
-                    dense
-                    round
-                    size="sm"
-                    class="profile-card__info-btn"
-                    icon="info"
-                    :aria-label="$t('FindCreators.explainers.tooltips.p2pk')"
-                  >
-                    <q-tooltip anchor="top middle" self="bottom middle">
-                      {{ $t('FindCreators.explainers.tooltips.p2pk') }}
-                    </q-tooltip>
-                  </q-btn>
+          <section class="profile-section profile-section--infrastructure">
+            <header class="profile-section__header">
+              <h2 class="profile-section__title text-h5">
+                {{ $t('CreatorHub.profile.sections.infrastructure') }}
+              </h2>
+            </header>
+            <div class="profile-section__body profile-infrastructure">
+              <article class="profile-card">
+                <h3 class="profile-card__title text-subtitle1">
+                  {{ $t('CreatorHub.profile.infrastructureDetails') }}
+                </h3>
+                <div v-if="profile.p2pkPubkey" class="profile-card__row">
+                  <div class="profile-card__label text-2">
+                    <span>{{ $t('CreatorHub.profile.p2pkLabel') }}</span>
+                    <q-btn
+                      flat
+                      dense
+                      round
+                      size="sm"
+                      class="profile-card__info-btn"
+                      icon="info"
+                      :aria-label="$t('FindCreators.explainers.tooltips.p2pk')"
+                    >
+                      <q-tooltip anchor="top middle" self="bottom middle">
+                        {{ $t('FindCreators.explainers.tooltips.p2pk') }}
+                      </q-tooltip>
+                    </q-btn>
+                  </div>
+                  <code class="profile-card__value">{{ profile.p2pkPubkey }}</code>
                 </div>
-                <code class="profile-card__value">{{ profile.p2pkPubkey }}</code>
-              </div>
-              <div class="profile-card__row">
-                <div class="profile-card__label text-2">
-                  <span>{{ $t('CreatorHub.profile.trustedMintsLabel') }}</span>
-                  <q-btn
-                    flat
-                    dense
-                    round
-                    size="sm"
-                    class="profile-card__info-btn"
-                    icon="info"
-                    :aria-label="$t('FindCreators.explainers.tooltips.trustedMints')"
-                  >
-                    <q-tooltip anchor="top middle" self="bottom middle">
-                      {{ $t('FindCreators.explainers.tooltips.trustedMints') }}
-                    </q-tooltip>
-                  </q-btn>
+                <div class="profile-card__row">
+                  <div class="profile-card__label text-2">
+                    <span>{{ $t('CreatorHub.profile.trustedMintsLabel') }}</span>
+                    <q-btn
+                      flat
+                      dense
+                      round
+                      size="sm"
+                      class="profile-card__info-btn"
+                      icon="info"
+                      :aria-label="$t('FindCreators.explainers.tooltips.trustedMints')"
+                    >
+                      <q-tooltip anchor="top middle" self="bottom middle">
+                        {{ $t('FindCreators.explainers.tooltips.trustedMints') }}
+                      </q-tooltip>
+                    </q-btn>
+                  </div>
+                  <MintSafetyList :mints="trustedMints" />
                 </div>
-                <MintSafetyList :mints="trustedMints" />
-              </div>
-              <div class="profile-card__row">
-                <div class="profile-card__label text-2">
-                  <span>{{ $t('CreatorHub.profile.relaysLabel') }}</span>
-                  <q-btn
-                    flat
-                    dense
-                    round
-                    size="sm"
-                    class="profile-card__info-btn"
-                    icon="info"
-                    :aria-label="$t('FindCreators.explainers.tooltips.relays')"
-                  >
-                    <q-tooltip anchor="top middle" self="bottom middle">
-                      {{ $t('FindCreators.explainers.tooltips.relays') }}
-                    </q-tooltip>
-                  </q-btn>
+                <div class="profile-card__row">
+                  <div class="profile-card__label text-2">
+                    <span>{{ $t('CreatorHub.profile.relaysLabel') }}</span>
+                    <q-btn
+                      flat
+                      dense
+                      round
+                      size="sm"
+                      class="profile-card__info-btn"
+                      icon="info"
+                      :aria-label="$t('FindCreators.explainers.tooltips.relays')"
+                    >
+                      <q-tooltip anchor="top middle" self="bottom middle">
+                        {{ $t('FindCreators.explainers.tooltips.relays') }}
+                      </q-tooltip>
+                    </q-btn>
+                  </div>
+                  <RelayBadgeList :relays="relayList" />
                 </div>
-                <RelayBadgeList :relays="relayList" />
-              </div>
-            </article>
-            <article class="profile-card profile-card--copy">
-              <h3 class="profile-card__title text-subtitle1">
-                {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-              </h3>
-              <p class="profile-card__text text-2">
-                {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
-              </p>
-              <div class="profile-card__video">
-                <video
-                  controls
-                  preload="metadata"
-                  playsinline
-                  poster="https://m.primal.net/HsMt.jpg"
-                >
-                  <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
-                  {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
-                </video>
-                <div class="sr-only">
-                  <a href="https://m.primal.net/HsMt.mp4" target="_blank" rel="noopener">
-                    {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                  </a>
-                </div>
-              </div>
-              <div v-if="howCashuWorksHighlight" class="profile-card__highlight text-body2">
-                <span class="profile-card__highlight-label text-2">
+              </article>
+              <article class="profile-card profile-card--copy">
+                <h3 class="profile-card__title text-subtitle1">
                   {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                </span>
-                <p class="profile-card__highlight-text">
-                  {{ howCashuWorksHighlight }}
+                </h3>
+                <p class="profile-card__text text-2">
+                  {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
                 </p>
-              </div>
-              <ul class="profile-card__list">
-                <li
-                  v-for="(item, index) in howCashuWorksList"
-                  :key="index"
-                  class="profile-card__list-item text-2"
-                >
-                  {{ item }}
-                </li>
-              </ul>
-            </article>
-          </div>
-        </section>
+                <div class="profile-card__video">
+                  <video
+                    controls
+                    preload="metadata"
+                    playsinline
+                    poster="https://m.primal.net/HsMt.jpg"
+                  >
+                    <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
+                    {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
+                  </video>
+                  <div class="sr-only">
+                    <a href="https://m.primal.net/HsMt.mp4" target="_blank" rel="noopener">
+                      {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                    </a>
+                  </div>
+                </div>
+                <div v-if="howCashuWorksHighlight" class="profile-card__highlight text-body2">
+                  <span class="profile-card__highlight-label text-2">
+                    {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                  </span>
+                  <p class="profile-card__highlight-text">
+                    {{ howCashuWorksHighlight }}
+                  </p>
+                </div>
+                <ul class="profile-card__list">
+                  <li
+                    v-for="(item, index) in howCashuWorksList"
+                    :key="index"
+                    class="profile-card__list-item text-2"
+                  >
+                    {{ item }}
+                  </li>
+                </ul>
+              </article>
+            </div>
+          </section>
+        </div>
 
         <section class="profile-section">
           <header class="profile-section__header">
@@ -1117,6 +1119,23 @@ export default defineComponent({
   overflow: hidden;
 }
 
+
+.profile-tier-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.profile-tier-grid > .profile-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.profile-tier-grid > .profile-section .profile-section__body {
+  flex: 1;
+}
+
 .profile-tier-list {
   display: flex;
   flex-direction: column;
@@ -1131,13 +1150,20 @@ export default defineComponent({
 }
 
 .profile-section--infrastructure .profile-section__body {
+  flex: 1;
   gap: 1.5rem;
 }
 
 .profile-infrastructure {
+  flex: 1;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: 1fr;
   gap: 1.5rem;
+}
+
+.profile-infrastructure .profile-card {
+  height: 100%;
 }
 
 .profile-card {
@@ -1300,6 +1326,15 @@ export default defineComponent({
 
   .profile-tier__subscribe {
     width: 100%;
+  }
+}
+
+@media (min-width: 1024px) {
+  .profile-tier-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+    gap: 2rem;
+    align-items: stretch;
   }
 }
 </style>
