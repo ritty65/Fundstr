@@ -1143,9 +1143,10 @@ export default defineComponent({
 }
 
 .profile-tier-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  align-items: stretch;
 }
 
 .profile-page--custom .profile-tier-grid {
