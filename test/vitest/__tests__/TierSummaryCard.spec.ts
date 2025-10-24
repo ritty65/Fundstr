@@ -49,7 +49,7 @@ describe("TierSummaryCard", () => {
     expect(wrapper.find(".tier-card__media").exists()).toBe(true);
   });
 
-  it("fills in default benefits when provided list is sparse", () => {
+  it("renders only provided benefits without fallbacks", () => {
     const wrapper = mountComponent({
       tier: { ...baseTier, benefits: ["Custom perk"] },
     });
@@ -58,18 +58,13 @@ describe("TierSummaryCard", () => {
       .findAll(".tier-card__benefit")
       .map((node) => node.text());
 
-    expect(benefits).toEqual([
-      "Custom perk",
-      "Member-only posts",
-      "Private chat & updates",
-    ]);
+    expect(benefits).toEqual(["Custom perk"]);
     expect(wrapper.find(".tier-card__section-title").text()).toBe("Benefits");
   });
 
-  it("hides the benefits section when defaults are disabled and none are provided", () => {
+  it("hides the benefits section when normalized benefits are empty", () => {
     const wrapper = mountComponent({
       tier: { ...baseTier, benefits: ["   "] },
-      useDefaultBenefits: false,
     });
 
     expect(wrapper.find(".tier-card__benefits").exists()).toBe(false);
