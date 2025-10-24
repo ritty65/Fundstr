@@ -2,16 +2,6 @@
   <article class="tier-card">
     <header class="tier-card__header">
       <div class="tier-card__title-block">
-        <div v-if="normalizedBadges.length" class="tier-card__badges">
-          <span
-            v-for="badge in normalizedBadges"
-            :key="badge.key"
-            class="tier-card__badge"
-            :style="badge.style"
-          >
-            <span class="tier-card__badge-label">{{ badge.label }}</span>
-          </span>
-        </div>
         <h4 class="tier-card__title text-1">{{ tier?.name }}</h4>
         <p v-if="tier?.description" class="tier-card__description text-2">
           {{ tier.description }}
@@ -99,15 +89,6 @@ type TierDetails = {
   media?: TierMedia[];
 } | null;
 
-type BadgeInput =
-  | string
-  | {
-      label: string;
-      color?: string;
-      textColor?: string;
-      key?: string | number;
-    };
-
 const props = withDefaults(
   defineProps<{
     tier: TierDetails;
@@ -116,7 +97,6 @@ const props = withDefaults(
     frequencyLabel?: string;
     subscribeLabel?: string;
     subscribeDisabled?: boolean;
-    badges?: BadgeInput[];
     collapseMedia?: boolean;
     useDefaultBenefits?: boolean;
     showBenefits?: boolean;
@@ -127,7 +107,6 @@ const props = withDefaults(
     frequencyLabel: "",
     subscribeLabel: "Subscribe",
     subscribeDisabled: false,
-    badges: () => [],
     collapseMedia: false,
     useDefaultBenefits: true,
     showBenefits: true,
@@ -189,26 +168,6 @@ const mediaToggleLabel = computed(() =>
 
 const mediaIdBase = useId().replace(/[^a-zA-Z0-9_-]/g, "");
 const mediaSectionId = `tier-media-${mediaIdBase}`;
-
-const normalizedBadges = computed(() =>
-  (props.badges ?? []).map((badge, index) => {
-    if (typeof badge === "string") {
-      return {
-        label: badge,
-        style: undefined,
-        key: `${badge}-${index}`,
-      };
-    }
-    return {
-      label: badge.label,
-      style: {
-        background: badge.color ?? "var(--accent-200)",
-        color: badge.textColor ?? "var(--accent-600)",
-      },
-      key: badge.key ?? `${badge.label}-${index}`,
-    };
-  }),
-);
 
 const hasFooter = computed(
   () =>
@@ -380,31 +339,6 @@ const emitSubscribe = () => {
 
 .tier-card__footer-note {
   text-align: right;
-}
-
-.tier-card__badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.tier-card__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.25rem 0.6rem;
-  border-radius: 999px;
-  background: var(--accent-200);
-  color: var(--accent-600);
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.tier-card__badge-label {
-  white-space: nowrap;
 }
 
 .tier-card__title-block {
