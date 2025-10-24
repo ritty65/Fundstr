@@ -980,7 +980,7 @@ export default defineComponent({
 }
 
 .profile-page__inner {
-  max-width: 1100px;
+  max-width: min(100%, 88rem);
   margin: 0 auto;
 }
 
