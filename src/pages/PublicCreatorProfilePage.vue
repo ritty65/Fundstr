@@ -2177,8 +2177,9 @@ export default defineComponent({
     align-items: start;
   }
 
-  .profile-card--copy {
-    grid-column: 1 / -1;
+  .profile-infrastructure > .profile-card--copy {
+    grid-column: 2;
+    grid-row: 1;
   }
 }
 
@@ -2292,8 +2293,8 @@ export default defineComponent({
 .profile-card__video {
   position: relative;
   width: 100%;
-  max-width: min(960px, 80vw);
-  margin-inline: auto;
+  max-width: 100%;
+  margin-inline: 0;
   border-radius: 1.125rem;
   overflow: hidden;
   background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 64, 175, 0.55));
