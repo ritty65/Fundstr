@@ -568,13 +568,13 @@
             <q-tab name="profile">
               <template #default>
                 <span>10019 JSON</span>
-                <span v-if="profileModified" class="modified-dot" aria-hidden="true"></span>
+                <span v-if="profileDirty" class="modified-dot" aria-hidden="true"></span>
               </template>
             </q-tab>
             <q-tab name="tiers">
               <template #default>
                 <span>{{ tierPreviewLabel }} JSON</span>
-                <span v-if="tiersModified" class="modified-dot" aria-hidden="true"></span>
+                <span v-if="tiersDirty" class="modified-dot" aria-hidden="true"></span>
               </template>
             </q-tab>
           </q-tabs>
@@ -726,9 +726,11 @@ import { useNutzapSignerWorkspace } from 'src/nutzap/useNutzapSignerWorkspace';
 import { useP2PKStore } from 'src/stores/p2pk';
 import { useWalletStore } from 'src/stores/wallet';
 import { useMintsStore } from 'src/stores/mints';
+import { useCreatorProfileStore } from 'src/stores/creatorProfile';
 import { maybeRepublishNutzapProfile } from 'src/nutzap/profileRepublish';
 import { useNostrStore } from 'src/stores/nostr';
 import { useUiStore } from 'src/stores/ui';
+import { useCreatorHub } from 'src/composables/useCreatorHub';
 import { useP2pkDiagnostics } from 'src/composables/useP2pkDiagnostics';
 import { seedProfileIdentityFromMetadata } from './creator-studio/identitySeed';
 
@@ -770,8 +772,22 @@ const authorInputLockHint = computed(() => {
   }
   return '';
 });
-const displayName = ref('');
-const pictureUrl = ref('');
+const creatorProfileStore = useCreatorProfileStore();
+const { display_name, picture, mints, relays } = storeToRefs(creatorProfileStore);
+
+const displayName = computed({
+  get: () => display_name.value,
+  set: value => {
+    display_name.value = value;
+  },
+});
+
+const pictureUrl = computed({
+  get: () => picture.value,
+  set: value => {
+    picture.value = value;
+  },
+});
 const p2pkPub = ref('');
 const p2pkPriv = ref('');
 const p2pkDerivedPub = ref('');
@@ -782,11 +798,32 @@ const hasManuallyToggledP2pk = ref(false);
 const verifyingP2pkPointer = ref(false);
 let previousSelectedP2pkPub = '';
 const cachedMintsText = useLocalStorage<string>('nutzap.profile.mintsDraft', '');
-const mintsText = ref(cachedMintsText.value || '');
+const mintsText = ref('');
 const lastSeededMintDraft = ref('');
 const userModifiedMints = ref(false);
-const relaysText = ref(CREATOR_STUDIO_RELAY_WS_URL);
-const tiers = ref<Tier[]>([]);
+const relaysText = ref('');
+const creatorHub = useCreatorHub();
+type RelayProfileSnapshot = {
+  content: string;
+  displayName: string;
+  pictureUrl: string;
+  pubkeyTag: string;
+};
+
+type RelayTierSnapshot = {
+  canonical: string;
+  legacy: string;
+};
+
+const relayProfileSnapshot = ref<RelayProfileSnapshot | null>(null);
+const relayTiersSnapshot = ref<RelayTierSnapshot | null>(null);
+const tiers = computed<Tier[]>({
+  get: () => creatorHub.tierDrafts.value,
+  set: value => {
+    const normalized = Array.isArray(value) ? value : [];
+    creatorHub.replaceTierDrafts(normalized);
+  },
+});
 const handleTiersUpdate = (value: Tier[] | unknown) => {
   tiers.value = Array.isArray(value) ? value : [];
 };
@@ -862,20 +899,6 @@ const now = useNow({ interval: 60_000 });
 const lastExportProfile = ref('');
 const lastExportTiers = ref({ canonical: '', legacy: '' });
 
-type RelayProfileSnapshot = {
-  content: string;
-  displayName: string;
-  pictureUrl: string;
-  pubkeyTag: string;
-};
-
-type RelayTierSnapshot = {
-  canonical: string;
-  legacy: string;
-};
-
-const relayProfileSnapshot = ref<RelayProfileSnapshot | null>(null);
-const relayTiersSnapshot = ref<RelayTierSnapshot | null>(null);
 const identityMetadataSeedingBlocked = ref(false);
 const identityMetadataSeededPubkey = ref<string | null>(null);
 const identityMetadataSeedingInProgress = ref(false);
@@ -981,6 +1004,8 @@ const activeMintUrlTrimmed = computed(() => {
   return typeof value === 'string' ? value.trim() : '';
 });
 const uiStore = useUiStore();
+let skipNextMintsSync = false;
+let skipNextRelaysSync = false;
 
 watch(
   [displayName, pictureUrl],
@@ -1007,16 +1032,80 @@ watch(
   }
 );
 
+watch(
+  mints,
+  next => {
+    const normalized = Array.isArray(next)
+      ? next.map(entry => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)
+      : [];
+    skipNextMintsSync = true;
+    mintsText.value = normalized.join('\n');
+  },
+  { immediate: true, deep: true }
+);
+
 watch(mintsText, value => {
   cachedMintsText.value = value;
   const trimmed = value.trim();
   if (!trimmed) {
     userModifiedMints.value = false;
+  } else {
+    userModifiedMints.value = trimmed !== lastSeededMintDraft.value;
+  }
+
+  if (skipNextMintsSync) {
+    skipNextMintsSync = false;
     return;
   }
 
-  userModifiedMints.value = trimmed !== lastSeededMintDraft.value;
+  const entries = value
+    .split('\n')
+    .map(entry => entry.trim())
+    .filter(Boolean);
+  creatorProfileStore.setProfile({ mints: entries });
 });
+
+watch(
+  relays,
+  next => {
+    const normalized = Array.isArray(next)
+      ? next.map(entry => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)
+      : [];
+    const joined = normalized.length ? normalized.join('\n') : CREATOR_STUDIO_RELAY_WS_URL;
+    skipNextRelaysSync = true;
+    relaysText.value = joined;
+  },
+  { immediate: true, deep: true }
+);
+
+watch(relaysText, value => {
+  if (skipNextRelaysSync) {
+    skipNextRelaysSync = false;
+    return;
+  }
+
+  const rawEntries = value
+    .split('\n')
+    .map(entry => entry.trim())
+    .filter(Boolean);
+  const { sanitized } = buildRelayList(rawEntries);
+  creatorProfileStore.setProfile({ relays: sanitized });
+});
+
+if ((!Array.isArray(mints.value) || mints.value.length === 0) && cachedMintsText.value.trim()) {
+  const cachedEntries = cachedMintsText.value
+    .split('\n')
+    .map(entry => entry.trim())
+    .filter(Boolean);
+  if (cachedEntries.length) {
+    creatorProfileStore.setProfile({ mints: cachedEntries });
+  }
+}
+
+if (!Array.isArray(relays.value) || relays.value.length === 0) {
+  const { sanitized } = buildRelayList([]);
+  creatorProfileStore.setProfile({ relays: sanitized });
+}
 
 const storeMintUrls = computed(() => {
   const urls: string[] = [];
@@ -2434,7 +2523,12 @@ const composerMints = computed<string[]>({
       .map(entry => entry.trim())
       .filter(Boolean),
   set: entries => {
-    mintsText.value = entries.map(entry => entry.trim()).filter(Boolean).join('\n');
+    const normalized = Array.isArray(entries)
+      ? entries.map(entry => entry.trim()).filter(Boolean)
+      : [];
+    skipNextMintsSync = true;
+    mintsText.value = normalized.join('\n');
+    creatorProfileStore.setProfile({ mints: normalized });
   },
 });
 
@@ -2445,7 +2539,13 @@ const composerRelays = computed<string[]>({
       .map(entry => entry.trim())
       .filter(Boolean),
   set: entries => {
-    relaysText.value = entries.map(entry => entry.trim()).filter(Boolean).join('\n');
+    const normalized = Array.isArray(entries)
+      ? entries.map(entry => entry.trim()).filter(Boolean)
+      : [];
+    const { sanitized } = buildRelayList(normalized);
+    skipNextRelaysSync = true;
+    relaysText.value = sanitized.join('\n');
+    creatorProfileStore.setProfile({ relays: sanitized });
   },
 });
 
@@ -2517,12 +2617,13 @@ const tiersHaveErrors = computed(() =>
 );
 
 const tiersReady = computed(() => tiers.value.length > 0 && !tiersHaveErrors.value);
-
-const workspaceDiffersFromRelay = computed(() => profileModified.value || tiersModified.value);
+const profileDirty = computed(() => creatorProfileStore.isDirty);
+const tiersDirty = computed(() => creatorHub.tiersDirty.value);
+const workspaceDirty = computed(() => creatorHub.isDirty.value);
 
 const shouldPromptPublishUpdates = computed(
   () =>
-    workspaceDiffersFromRelay.value &&
+    workspaceDirty.value &&
     relayVerificationState.value !== 'pending' &&
     relayVerificationState.value !== 'mismatch'
 );
@@ -3054,59 +3155,35 @@ const tiersJsonPreview = computed(() =>
     : legacyTiersJsonPreview.value
 );
 
-function captureCurrentProfileSnapshot(): RelayProfileSnapshot {
-  return {
-    content: profileJsonPreview.value,
-    displayName: displayName.value.trim(),
-    pictureUrl: pictureUrl.value.trim(),
-    pubkeyTag: (p2pkDerivedPub.value || p2pkPub.value).trim(),
-  };
-}
-
-function captureCurrentTierSnapshot(): RelayTierSnapshot {
-  return {
-    canonical: canonicalTiersJsonPreview.value,
-    legacy: legacyTiersJsonPreview.value,
-  };
-}
-
-function updateRelayProfileSnapshot() {
-  relayProfileSnapshot.value = captureCurrentProfileSnapshot();
-}
-
-function updateRelayTiersSnapshot() {
-  relayTiersSnapshot.value = captureCurrentTierSnapshot();
-}
-
-if (!relayProfileSnapshot.value) {
-  updateRelayProfileSnapshot();
-}
-
-if (!relayTiersSnapshot.value) {
-  updateRelayTiersSnapshot();
-}
-
-const profileModified = computed(() => {
-  const snapshot = relayProfileSnapshot.value;
+watch(relayProfileSnapshot, snapshot => {
   if (!snapshot) {
-    return false;
+    return;
   }
-  const current = captureCurrentProfileSnapshot();
-  return (
-    snapshot.content !== current.content ||
-    snapshot.displayName !== current.displayName ||
-    snapshot.pictureUrl !== current.pictureUrl ||
-    snapshot.pubkeyTag !== current.pubkeyTag
-  );
+  const normalizedDisplayName =
+    typeof displayName.value === 'string' ? displayName.value.trim() : '';
+  const normalizedPictureUrl =
+    typeof pictureUrl.value === 'string' ? pictureUrl.value.trim() : '';
+  const normalizedPubkeyTag = (p2pkDerivedPub.value || p2pkPub.value || '').trim();
+  const matchesSnapshot =
+    snapshot.content === profileJsonPreview.value &&
+    snapshot.displayName === normalizedDisplayName &&
+    snapshot.pictureUrl === normalizedPictureUrl &&
+    snapshot.pubkeyTag === normalizedPubkeyTag;
+  if (matchesSnapshot) {
+    creatorProfileStore.markClean();
+  }
 });
 
-const tiersModified = computed(() => {
-  const snapshot = relayTiersSnapshot.value;
+watch(relayTiersSnapshot, snapshot => {
   if (!snapshot) {
-    return false;
+    return;
   }
-  const current = captureCurrentTierSnapshot();
-  return snapshot.canonical !== current.canonical || snapshot.legacy !== current.legacy;
+  const matchesSnapshot =
+    snapshot.canonical === canonicalTiersJsonPreview.value &&
+    snapshot.legacy === legacyTiersJsonPreview.value;
+  if (matchesSnapshot) {
+    creatorHub.markTierDraftsClean();
+  }
 });
 
 function ensureComposerMintsSeeded() {
@@ -3141,7 +3218,7 @@ function applyTiersEvent(event: any | null, overrideKind?: TierKind | null) {
     tiers.value = [];
     setObservedRelayPayloadHash('canonicalTiers', null);
     setObservedRelayPayloadHash('legacyTiers', null);
-    updateRelayTiersSnapshot();
+    creatorHub.markTierDraftsClean();
     evaluateRelayVerificationState();
     return;
   }
@@ -3162,7 +3239,7 @@ function applyTiersEvent(event: any | null, overrideKind?: TierKind | null) {
 
   const content = typeof event?.content === 'string' ? event.content : undefined;
   tiers.value = parseTiersContent(content);
-  updateRelayTiersSnapshot();
+  creatorHub.markTierDraftsClean();
   evaluateRelayVerificationState();
 }
 
@@ -3194,25 +3271,29 @@ function applyProfileEvent(latest: any | null) {
   applyingProfileEvent.value = true;
   const profileContent = typeof latest?.content === 'string' ? latest.content : null;
   setObservedRelayPayloadHash('profile', profileContent);
+  let parsedMints: string[] | undefined;
+  let parsedRelays: string[] | undefined;
   try {
     if (!latest) {
-      displayName.value = '';
-      pictureUrl.value = '';
+      creatorProfileStore.setProfile({
+        display_name: '',
+        picture: '',
+        mints: [],
+        relays: buildRelayList([]).sanitized,
+      });
+      creatorProfileStore.markClean();
       p2pkPub.value = '';
       p2pkPriv.value = '';
       p2pkDerivedPub.value = '';
       selectedP2pkPub.value = '';
       p2pkPubError.value = '';
       previousSelectedP2pkPub = '';
-      mintsText.value = '';
-      relaysText.value = CREATOR_STUDIO_RELAY_WS_URL;
-      seedMintsFromStoreIfEmpty();
-      updateRelayProfileSnapshot();
       loadedProfileAuthorHex.value = null;
       removeAuthorLock('profile');
       identityMetadataSeedingBlocked.value = false;
       identityMetadataSeededPubkey.value = null;
       profilePublished.value = false;
+      seedMintsFromStoreIfEmpty();
       void maybeSeedIdentityMetadata();
       return;
     }
@@ -3229,6 +3310,7 @@ function applyProfileEvent(latest: any | null) {
 
     try {
       const parsed = profileContent ? JSON.parse(profileContent) : {};
+
       if (typeof parsed.p2pk === 'string') {
         const candidate = parsed.p2pk.trim();
         const entries = Array.isArray(p2pkKeys.value) ? p2pkKeys.value : [];
@@ -3248,7 +3330,9 @@ function applyProfileEvent(latest: any | null) {
         handleP2pkSelection(null);
       }
       if (Array.isArray(parsed.mints)) {
-        mintsText.value = parsed.mints.join('\n');
+        parsedMints = parsed.mints
+          .map((entry: unknown) => (typeof entry === 'string' ? entry.trim() : ''))
+          .filter(Boolean);
       }
       if (Array.isArray(parsed.relays) && parsed.relays.length > 0) {
         const rawRelays = parsed.relays
@@ -3263,9 +3347,7 @@ function applyProfileEvent(latest: any | null) {
             dropped.join(', ')
           );
         }
-        relaysText.value = sanitized.join('\n');
-      } else {
-        relaysText.value = CREATOR_STUDIO_RELAY_WS_URL;
+        parsedRelays = sanitized;
       }
       if (typeof parsed.tierAddr === 'string') {
         const [kindPart, , dPart] = parsed.tierAddr.split(':');
@@ -3283,32 +3365,39 @@ function applyProfileEvent(latest: any | null) {
 
     const tags = Array.isArray(latest.tags) ? latest.tags : [];
     const nameTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'name' && t[1]);
-    if (nameTag) {
-      displayName.value = nameTag[1];
-    }
+    const nextDisplayName = nameTag ? nameTag[1] : displayName.value;
     const pictureTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'picture' && t[1]);
-    if (pictureTag) {
-      pictureUrl.value = pictureTag[1];
-    }
+    const nextPictureUrl = pictureTag ? pictureTag[1] : pictureUrl.value;
     const mintTags = tags.filter((t: any) => Array.isArray(t) && t[0] === 'mint' && t[1]);
-    if (!mintsText.value && mintTags.length) {
-      mintsText.value = mintTags.map((t: any) => t[1]).join('\n');
+    let nextMints = parsedMints ? [...parsedMints] : Array.isArray(mints.value) ? [...mints.value] : [];
+    if (!nextMints.length && Array.isArray(mintTags) && mintTags.length) {
+      nextMints = mintTags.map((t: any) => t[1]).filter((value: string) => typeof value === 'string' && value.trim());
+      nextMints = nextMints.map(entry => entry.trim());
     }
     const relayTags = tags.filter((t: any) => Array.isArray(t) && t[0] === 'relay' && t[1]);
-    if ((!relaysText.value || relaysText.value === CREATOR_STUDIO_RELAY_WS_URL) && relayTags.length) {
+    let nextRelays = parsedRelays ? [...parsedRelays] : Array.isArray(relays.value) ? [...relays.value] : [];
+    const hasOnlyDefaultRelay =
+      nextRelays.length === 0 ||
+      (nextRelays.length === 1 && nextRelays[0] === CREATOR_STUDIO_RELAY_WS_URL);
+    if (hasOnlyDefaultRelay && relayTags.length) {
       const rawRelays = relayTags
         .map((t: any) => (typeof t[1] === 'string' ? t[1].trim() : ''))
         .filter(Boolean);
-      const { sanitized, dropped } = buildRelayList(rawRelays);
-      if (dropped.length > 0) {
-        notifyWarning(
-          dropped.length === 1
-            ? 'Discarded invalid relay URL'
-            : 'Discarded invalid relay URLs',
-          dropped.join(', ')
-        );
+      if (rawRelays.length) {
+        const { sanitized, dropped } = buildRelayList(rawRelays);
+        if (dropped.length > 0) {
+          notifyWarning(
+            dropped.length === 1
+              ? 'Discarded invalid relay URL'
+              : 'Discarded invalid relay URLs',
+            dropped.join(', ')
+          );
+        }
+        nextRelays = sanitized;
       }
-      relaysText.value = sanitized.join('\n');
+    }
+    if (!nextRelays.length) {
+      nextRelays = buildRelayList([]).sanitized;
     }
     if (!p2pkPub.value) {
       const pkTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'pubkey' && t[1]);
@@ -3319,8 +3408,14 @@ function applyProfileEvent(latest: any | null) {
       }
     }
 
+    creatorProfileStore.setProfile({
+      display_name: typeof nextDisplayName === 'string' ? nextDisplayName : '',
+      picture: typeof nextPictureUrl === 'string' ? nextPictureUrl : '',
+      mints: nextMints,
+      relays: nextRelays,
+    });
+    creatorProfileStore.markClean();
     seedMintsFromStoreIfEmpty();
-    updateRelayProfileSnapshot();
     profilePublished.value = true;
     identityMetadataSeedingBlocked.value = true;
   } finally {
