@@ -82,8 +82,8 @@
           <q-icon name="dashboard_customize" />
         </q-item-section>
         <q-item-section>
-          <q-item-label>Creator Studio</q-item-label>
-          <q-item-label caption>Manage Nutzap profile &amp; tiers</q-item-label>
+          <q-item-label>Creator Dashboard</q-item-label>
+          <q-item-label caption>Manage your profile &amp; supporter tiers</q-item-label>
         </q-item-section>
       </q-item>
       <q-item v-if="!isGuest" clickable @click="gotoBuckets">
