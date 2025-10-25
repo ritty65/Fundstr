@@ -856,6 +856,119 @@ describe('CreatorStudioPage auto republish fallback', () => {
   });
 });
 
+describe('CreatorStudio publish structured clone safety', () => {
+  it('sanitizes reactive profile templates before signing and sending', async () => {
+    const actualRelayPublishing = await vi.importActual<any>(
+      '../../../src/nutzap/relayPublishing',
+    );
+
+    const originalWindow = (globalThis as any).window;
+    const signEventMock = vi.fn(async (unsigned: any) => {
+      structuredClone(unsigned);
+      return {
+        ...unsigned,
+        id: 'a'.repeat(64),
+        pubkey: 'b'.repeat(64),
+        sig: 'c'.repeat(128),
+      };
+    });
+
+    (globalThis as any).window = {
+      ...(originalWindow ?? {}),
+      nostr: { signEvent: signEventMock },
+    };
+
+    const sendMock = vi.fn(async (event: any) => {
+      structuredClone(event);
+      return {
+        id: event.id,
+        accepted: true,
+        via: 'websocket' as const,
+      };
+    });
+
+    const template = {
+      kind: 10019,
+      tags: reactive([
+        reactive(['t', 'nutzap-profile']),
+        ref(['relay', 'wss://relay.example']) as any,
+        ref(['mint', 'https://mint.example', 'sat']) as any,
+      ]) as any,
+      content: ref('  { "foo": "bar" }  ') as any,
+      created_at: undefined,
+    };
+
+    try {
+      const result = await actualRelayPublishing.publishNostrEvent(template, { send: sendMock });
+
+      expect(signEventMock).toHaveBeenCalledTimes(1);
+      expect(sendMock).toHaveBeenCalledTimes(1);
+      expect(result.ack.accepted).toBe(true);
+    } finally {
+      if (originalWindow === undefined) {
+        delete (globalThis as any).window;
+      } else {
+        (globalThis as any).window = originalWindow;
+      }
+    }
+  });
+
+  it('sanitizes HTTP fallback publishes with reactive templates', async () => {
+    const client = new FundstrRelayClient('wss://relay.example');
+    (client as any).allowWsWrites = false;
+
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async (_input: any, init?: any) => {
+      const payload = init?.body ? JSON.parse(init.body as string) : {};
+      structuredClone(payload);
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: payload?.id ?? 'fallback-id', accepted: true }),
+      } as unknown as Response;
+    });
+    (globalThis as any).fetch = fetchMock;
+
+    const originalWindow = (globalThis as any).window;
+    const signEventMock = vi.fn(async (unsigned: any) => {
+      structuredClone(unsigned);
+      return {
+        ...unsigned,
+        id: '1'.repeat(64),
+        pubkey: '2'.repeat(64),
+        sig: '3'.repeat(128),
+      };
+    });
+    (globalThis as any).window = {
+      ...(originalWindow ?? {}),
+      nostr: { signEvent: signEventMock },
+    };
+
+    const template = {
+      kind: ref(30019) as any,
+      tags: reactive([ref(['d', 'tiers'])]) as any,
+      content: ref('{}') as any,
+      created_at: ref(1700000000.1) as any,
+    };
+
+    try {
+      const result = await client.publish(template);
+
+      expect(signEventMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(result.ack.via).toBe('http');
+      expect(result.ack.accepted).toBe(true);
+    } finally {
+      if (originalWindow === undefined) {
+        delete (globalThis as any).window;
+      } else {
+        (globalThis as any).window = originalWindow;
+      }
+      (globalThis as any).fetch = originalFetch;
+    }
+  });
+});
+
 describe('FundstrRelayClient publish fallback', () => {
   it('uses HTTP fallback when relay publish times out', async () => {
     const client = new FundstrRelayClient('wss://relay.example');
