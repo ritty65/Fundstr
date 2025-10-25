@@ -185,7 +185,7 @@ export const messages = {
           caption: "Discover creators",
         },
       },
-      creatorHub: {
+      creatorStudio: {
         title: "Creator Studio",
         caption: "Creator tools",
       },
@@ -1781,39 +1781,6 @@ export const messages = {
     restored_amount_success_text: "Restored { amount }",
   },
   CreatorHub: {
-    login: {
-      title: "Creator Login",
-      nip07: "Login with Nostr Extension",
-      nsec: "nsec",
-      nsec_button: "Login with nsec",
-      nsec_warning:
-        "Entering your nsec in a web app is dangerous. Use NIP-07 if possible.",
-    },
-    dashboard: {
-      title: "Creator Dashboard",
-      logout: "Logout",
-      edit_profile: "Edit Profile",
-      manage_tiers: "Manage Tiers",
-      add_tier: "Add Tier",
-      save_tier: "Save Tier",
-      delete_tier: "Delete Tier",
-      inputs: {
-        title: {
-          label: "Title",
-        },
-        price: {
-          label: "Cost / month (sats)",
-        },
-        description: {
-          label: "Description (Markdown)",
-        },
-      },
-      welcome_message: "Welcome Message",
-      currency_labels: {
-        usd: "USD",
-        eur: "EUR",
-      },
-    },
     profile: {
       back: "Back",
       tiers: "Subscription Tiers",
@@ -1971,7 +1938,7 @@ export const messages = {
             "Your public storefront as seen by visitors. Great for a quick audit of how your profile appears worldwide.",
         },
 
-        creatorHub: {
+        creatorStudio: {
           fan: "Publish a profile; get support.",
           creator: "Set tiers, goals and withdraw earnings.",
         },
@@ -2027,7 +1994,7 @@ export const messages = {
       },
     },
   },
-  creatorHub: {
+  creatorStudio: {
     publish: "Publish Profile",
     publishBar: {
       unsavedChanges: "Unsaved changes",
@@ -2063,8 +2030,8 @@ export const messages = {
       title: "Get to Know the App",
       lead: "Explore these key sections to start using the wallet:",
       bullets: {
-        creatorHub: {
-          label: "CreatorHub",
+        creatorStudio: {
+          label: "Creator Studio",
           desc: "Publish your profile and find creators.",
         },
         subscriptions: {
