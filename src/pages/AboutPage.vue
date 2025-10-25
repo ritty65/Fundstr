@@ -10,6 +10,11 @@
               A privacy-first Bitcoin wallet, social chat, and creator-monetisation hub
               built on the open-source Cashu ecash protocol and the decentralised Nostr network.
             </p>
+            <div class="cta-row hero-cta">
+              <button class="btn solid" @click="installPwa">Install PWA</button>
+              <router-link class="btn outline" to="/wallet">Launch Wallet</router-link>
+              <router-link class="btn outline" to="/creator-studio">Creator Studio</router-link>
+            </div>
           </div>
           <div class="hero-alert">
             <div class="alpha">
@@ -389,6 +394,7 @@ function installPwa () {
 /* CTA */
 .cta{background:linear-gradient(90deg,rgba(var(--acRGB),.10),rgba(var(--acRGB),.05)); border-radius:1rem}
 .cta-row{display:flex; gap:.75rem; flex-wrap:wrap; justify-content:center; margin-top:1rem}
+.hero-cta{justify-content:flex-start}
 .btn{font-weight:700; padding:.9rem 1.25rem; border-radius:.6rem; border:2px solid var(--ac500); text-decoration:none}
 .btn.solid{background:var(--ac500); color:#fff}
 .btn.outline{color:var(--ac500)}
