@@ -2928,6 +2928,48 @@ const requiredReadinessReady = computed(() =>
     .every(chip => chip.state === 'ready' || chip.state === 'warning' || chip.state === 'optional')
 );
 
+const publishBlockReason = computed(() => {
+  if (publishingAll.value) {
+    return '';
+  }
+
+  if (publishBlockers.value.length > 0) {
+    return publishBlockers.value[0] ?? '';
+  }
+
+  if (!requiredReadinessReady.value) {
+    if (!setupStepReady.value) {
+      if (relayNeedsAttention.value) {
+        return 'Restore relay connection health before publishing.';
+      }
+
+      if (!authorKeyReady.value) {
+        return 'Connect your author key before publishing.';
+      }
+
+      return 'Complete the setup step before publishing.';
+    }
+
+    if (!tiersReady.value) {
+      if (tiers.value.length === 0) {
+        return 'Add at least one tier before publishing.';
+      }
+
+      if (tiersHaveErrors.value) {
+        return 'Resolve tier validation issues before publishing.';
+      }
+
+      return 'Review your tiers before publishing.';
+    }
+  }
+
+  if (workspaceDirty.value) {
+    return 'Publish to sync your latest updates with the relay.';
+  }
+
+  return '';
+});
+
 const publishWarnings = computed<string[]>(() => {
   if (publishingAll.value) {
     return [];
