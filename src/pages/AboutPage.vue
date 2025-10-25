@@ -226,11 +226,14 @@
           />
         </div>
 
-        <div class="cards cards--3">
+        <div v-if="filteredFaqs.length" class="cards cards--3">
           <details v-for="(f, i) in filteredFaqs" :key="i" class="card">
             <summary class="faq-q">{{ f.q }}</summary>
             <div class="faq-a" v-html="f.a"></div>
           </details>
+        </div>
+        <div v-else class="card center" aria-live="polite">
+          <p class="lead">No questions found. Try a different search.</p>
         </div>
       </section>
 
