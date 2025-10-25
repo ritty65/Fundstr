@@ -1,7 +1,7 @@
 <template>
   <q-page class="creator-studio-page bg-surface-1 q-pa-lg">
     <header class="studio-header">
-      <h1 class="studio-header__title text-1 text-weight-semibold">Nutzap Creator Studio</h1>
+      <h1 class="studio-header__title text-1 text-weight-semibold">Creator Dashboard</h1>
     </header>
 
     <div class="studio-layout">
