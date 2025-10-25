@@ -15,16 +15,36 @@
               <router-link class="btn outline" to="/wallet">Launch Wallet</router-link>
               <router-link class="btn outline" to="/creator-studio">Creator Studio</router-link>
             </div>
-          </div>
-          <div class="hero-alert">
-            <div class="alpha">
-              <span aria-hidden="true" class="alpha-icon">⚠️</span>
+            <div class="hero-warning alpha" role="note" aria-live="polite">
+              <div class="hero-warning__title">
+                <span aria-hidden="true" class="alpha-icon">⚠️</span>
+                <span class="hero-warning__label">Alpha release</span>
+              </div>
               <p>
                 Fundstr is experimental alpha software. Features may break or change,
                 and loss of funds is possible. Use only small amounts you can afford to lose.
               </p>
             </div>
           </div>
+          <aside class="hero-aside" aria-label="Fundstr snapshot">
+            <div class="hero-aside__card">
+              <h2 class="hero-aside__title">Why build Fundstr?</h2>
+              <ul class="hero-stats">
+                <li>
+                  <span class="hero-stats__metric">100% custody</span>
+                  <span class="hero-stats__meta">You hold your keys, ecash, and identity.</span>
+                </li>
+                <li>
+                  <span class="hero-stats__metric">Built on Cashu + Nostr</span>
+                  <span class="hero-stats__meta">Open protocols powering private payments and social discovery.</span>
+                </li>
+                <li>
+                  <span class="hero-stats__metric">Creator ready</span>
+                  <span class="hero-stats__meta">Tools for tipping, memberships, and direct audience support.</span>
+                </li>
+              </ul>
+            </div>
+          </aside>
         </div>
       </section>
 
@@ -400,11 +420,30 @@ function installPwa () {
 .section-nav__link:active{background:rgba(var(--acRGB),.3);}
 .section-nav__link:focus-visible{outline:none; box-shadow:0 0 0 2px var(--s1),0 0 0 5px rgba(var(--acRGB),.55);}
 
-.hero-grid{display:grid; grid-template-columns:1.3fr .7fr; gap:2rem}
-@media (max-width: 960px){ .hero-grid{grid-template-columns:1fr; } }
+.hero-grid{display:grid; gap:2rem; align-items:start}
+@media (min-width: 1024px){
+  .hero-grid{grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr)}
+}
 
-.alpha{background:var(--s2); border:1px solid rgba(var(--acRGB),.35); border-radius:1rem; padding:1rem 1.25rem; box-shadow:0 0 16px rgba(var(--acRGB),.15);}
-.alpha-icon{font-size:1.75rem; margin-right:.5rem;}
+.hero-copy{display:flex; flex-direction:column; gap:1.25rem}
+.hero-warning{margin-top:1.25rem; color:var(--txt);}
+.hero-warning p{margin:0; font-size:.95rem; line-height:1.55;}
+.hero-warning__title{display:flex; align-items:center; gap:.5rem; font-weight:700; font-size:.85rem; letter-spacing:.08em; text-transform:uppercase; color:var(--ac500);}
+.hero-warning__label{display:inline-flex; align-items:center;}
+
+.hero-aside{display:flex; align-items:stretch}
+.hero-aside__card{background:var(--s2); border:1px solid rgba(var(--acRGB),.2); border-radius:1rem; padding:1.5rem; box-shadow:0 10px 25px rgba(0,0,0,.22); display:flex; flex-direction:column; gap:1rem;}
+.hero-aside__title{margin:0; font-size:1.1rem; font-weight:700;}
+.hero-stats{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:1rem;}
+.hero-stats__metric{display:block; font-weight:700; font-size:1rem; color:var(--ac500);}
+.hero-stats__meta{display:block; font-size:.95rem; line-height:1.5; color:var(--txt); opacity:.75;}
+@media (max-width: 640px){
+  .hero-warning{margin-top:1rem;}
+  .hero-aside__card{padding:1.25rem;}
+}
+
+.alpha{background:var(--s2); border:1px solid rgba(var(--acRGB),.35); border-radius:1rem; padding:1rem 1.25rem; box-shadow:0 0 16px rgba(var(--acRGB),.15); display:flex; flex-direction:column; gap:.75rem;}
+.alpha-icon{font-size:1.75rem; margin-right:0;}
 
 /* Grid helpers */
 .cards{display:grid; gap:1rem}
