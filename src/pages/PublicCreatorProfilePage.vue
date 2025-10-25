@@ -32,100 +32,63 @@
         </div>
       </q-banner>
 
-      <div
-        class="profile-hero-area"
-        :class="{
-          'profile-hero-area--with-cta': !!primaryTier,
-        }"
-      >
-        <section class="profile-hero" :class="{ 'profile-hero--with-banner': heroBannerUrl }">
-          <div
-            v-if="heroBannerUrl"
-            class="profile-hero__banner"
-            :style="heroBannerStyle"
-            role="presentation"
-          />
-          <div class="profile-hero__content bg-surface-2">
-            <div class="profile-hero__avatar" aria-hidden="true">
-              <img
-                v-if="profileAvatar"
-                :src="profileAvatar"
-                :alt="profileDisplayName"
-                @error="onHeroAvatarError"
+      <section class="profile-hero" :class="{ 'profile-hero--with-banner': heroBannerUrl }">
+        <div
+          v-if="heroBannerUrl"
+          class="profile-hero__banner"
+          :style="heroBannerStyle"
+          role="presentation"
+        />
+        <div class="profile-hero__content bg-surface-2">
+          <div class="profile-hero__avatar" aria-hidden="true">
+            <img
+              v-if="profileAvatar"
+              :src="profileAvatar"
+              :alt="profileDisplayName"
+              @error="onHeroAvatarError"
+            />
+            <div v-else class="profile-hero__avatar-placeholder">{{ profileInitials }}</div>
+          </div>
+          <div class="profile-hero__details">
+            <div class="profile-hero__heading">
+              <h1 class="profile-hero__name text-h4">{{ profileDisplayName }}</h1>
+              <q-btn
+                flat
+                round
+                dense
+                icon="content_copy"
+                :aria-label="$t('CreatorHub.profile.copyProfileLink')"
+                @click="copy(profileUrl)"
               />
-              <div v-else class="profile-hero__avatar-placeholder">{{ profileInitials }}</div>
             </div>
-            <div class="profile-hero__details">
-              <div class="profile-hero__heading">
-                <h1 class="profile-hero__name text-h4">{{ profileDisplayName }}</h1>
-                <q-btn
-                  flat
-                  round
-                  dense
-                  icon="content_copy"
-                  :aria-label="$t('CreatorHub.profile.copyProfileLink')"
-                  @click="copy(profileUrl)"
-                />
-              </div>
-              <p v-if="profileHandle" class="profile-hero__handle text-2">@{{ profileHandle }}</p>
-              <div v-if="hasFollowerStats" class="profile-hero__stats text-2">
-                <span v-if="followers !== null">
-                  {{ $t('CreatorHub.profile.followers', { count: followers }) }}
-                </span>
-                <span v-if="following !== null">
-                  {{ $t('CreatorHub.profile.following', { count: following }) }}
-                </span>
-              </div>
-              <div v-if="metadataChips.length" class="profile-hero__chips" role="list">
-                <q-chip
-                  v-for="chip in metadataChips"
-                  :key="chip.id"
-                  dense
-                  outline
-                  :icon="chip.icon"
-                  :label="chip.label"
-                  :tag="chip.href ? 'a' : 'div'"
-                  :href="chip.href"
-                  :target="chip.href ? '_blank' : undefined"
-                  :rel="chip.href ? 'noopener noreferrer' : undefined"
-                  :clickable="!!chip.href"
-                  role="listitem"
-                />
-              </div>
+            <p v-if="profileHandle" class="profile-hero__handle text-2">@{{ profileHandle }}</p>
+            <div v-if="hasFollowerStats" class="profile-hero__stats text-2">
+              <span v-if="followers !== null">
+                {{ $t('CreatorHub.profile.followers', { count: followers }) }}
+              </span>
+              <span v-if="following !== null">
+                {{ $t('CreatorHub.profile.following', { count: following }) }}
+              </span>
+            </div>
+            <div v-if="metadataChips.length" class="profile-hero__chips" role="list">
+              <q-chip
+                v-for="chip in metadataChips"
+                :key="chip.id"
+                dense
+                outline
+                :icon="chip.icon"
+                :label="chip.label"
+                :tag="chip.href ? 'a' : 'div'"
+                :href="chip.href"
+                :target="chip.href ? '_blank' : undefined"
+                :rel="chip.href ? 'noopener noreferrer' : undefined"
+                :clickable="!!chip.href"
+                role="listitem"
+              />
             </div>
           </div>
-        </section>
-        <div
-          v-if="primaryTier"
-          class="profile-hero-sidebar"
-        >
-          <section v-if="primaryTier" class="profile-cta bg-surface-2 text-1 q-pa-lg q-gutter-y-sm">
-            <div class="profile-cta__header">
-              <div class="profile-cta__pricing">
-                <span class="profile-cta__sats">{{ primaryPriceSatsDisplay }} sats</span>
-                <span v-if="primaryPriceFiat" class="profile-cta__fiat text-2">≈ {{ primaryPriceFiat }}</span>
-                <span v-if="primaryFrequencyLabel" class="profile-cta__frequency text-2">
-                  {{ primaryFrequencyLabel }}
-                </span>
-              </div>
-              <q-btn
-                color="primary"
-                class="profile-cta__button"
-                :label="$t('CreatorHub.profile.subscribeCta')"
-                :disable="isGuest"
-                @click="openSubscribe(primaryTier)"
-              >
-                <q-tooltip v-if="needsSignerSetupTooltip">
-                  {{ $t('CreatorHub.profile.guestTooltip') }}
-                </q-tooltip>
-              </q-btn>
-            </div>
-            <p class="profile-cta__microcopy text-2">
-              {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
-            </p>
-          </section>
         </div>
-      </div>
+      </section>
 
       <main class="profile-layout">
         <section class="profile-section">
@@ -418,31 +381,6 @@
       />
     </div>
 
-    <div
-      v-if="primaryTier"
-      class="profile-cta-mobile bg-surface-2 text-1 q-px-md q-py-sm"
-    >
-      <div class="profile-cta-mobile__content">
-        <div class="profile-cta__pricing">
-          <span class="profile-cta__sats">{{ primaryPriceSatsDisplay }} sats</span>
-          <span v-if="primaryPriceFiat" class="profile-cta__fiat text-2">≈ {{ primaryPriceFiat }}</span>
-        </div>
-        <q-btn
-          color="primary"
-          class="profile-cta__button"
-          :label="$t('CreatorHub.profile.subscribeCta')"
-          :disable="isGuest"
-          @click="openSubscribe(primaryTier)"
-        >
-          <q-tooltip v-if="needsSignerSetupTooltip">
-            {{ $t('CreatorHub.profile.guestTooltip') }}
-          </q-tooltip>
-        </q-btn>
-      </div>
-      <p class="profile-cta__microcopy text-2">
-        {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
-      </p>
-    </div>
   </div>
 </template>
 
@@ -1154,39 +1092,6 @@ export default defineComponent({
 
     const profileUrl = computed(() => buildProfileUrl(creatorNpub.value, router));
 
-    const primaryTier = computed<any | null>(() => {
-      const tierList = tiers.value;
-      if (!Array.isArray(tierList) || tierList.length === 0) {
-        return null;
-      }
-      let candidate: any | null = null;
-      for (const tier of tierList) {
-        if (!tier) continue;
-        if (!candidate || getPrice(tier) < getPrice(candidate)) {
-          candidate = tier;
-        }
-      }
-      return candidate;
-    });
-
-    const primaryPriceSats = computed(() =>
-      primaryTier.value ? getPrice(primaryTier.value) : 0,
-    );
-
-    const primaryPriceFiat = computed(() => {
-      if (!primaryTier.value) return "";
-      return formatFiat(getPrice(primaryTier.value));
-    });
-
-    const primaryFrequencyLabel = computed(() =>
-      primaryTier.value ? frequencyLabel(primaryTier.value) : "",
-    );
-
-    const primaryPriceSatsDisplay = computed(() => {
-      const sats = primaryPriceSats.value;
-      return new Intl.NumberFormat(navigator.language).format(sats);
-    });
-
     const profileDisplayName = computed(() =>
       displayNameFromProfile(profileMeta.value, creatorNpub.value),
     );
@@ -1434,10 +1339,6 @@ export default defineComponent({
       formatFiat,
       getPrice,
       frequencyLabel,
-      primaryTier,
-      primaryPriceFiat,
-      primaryPriceSatsDisplay,
-      primaryFrequencyLabel,
       openSubscribe,
       confirmSubscribe,
       retryFetchTiers,
@@ -1468,17 +1369,9 @@ export default defineComponent({
   border-radius: 1rem;
 }
 
-.profile-hero-area {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2rem;
-  margin-bottom: 2.5rem;
-}
-
 .profile-hero {
   position: relative;
-  margin: 0;
-  grid-column: 1 / -1;
+  margin: 0 0 2.5rem;
 }
 
 .profile-hero__banner {
@@ -1554,85 +1447,8 @@ export default defineComponent({
   min-width: 0;
 }
 
-.profile-hero-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
 .profile-tier-list :deep(.tier-card__benefits) {
   display: none !important;
-}
-
-.profile-cta {
-  position: sticky;
-  top: 1rem;
-  margin: 0;
-  border-radius: 1.25rem;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  z-index: 1;
-}
-
-.profile-cta__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.profile-cta__pricing {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.profile-cta__sats {
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
-.profile-cta__fiat,
-.profile-cta__frequency {
-  display: block;
-}
-
-.profile-cta__button {
-  flex-shrink: 0;
-  min-width: 160px;
-}
-
-.profile-cta__microcopy {
-  margin: 0;
-}
-
-.profile-cta-mobile {
-  position: sticky;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  width: 100%;
-  margin: 0 auto;
-  border-top-left-radius: 1.25rem;
-  border-top-right-radius: 1.25rem;
-  box-shadow: 0 -12px 28px rgba(0, 0, 0, 0.12);
-  display: none;
-  flex-direction: column;
-  gap: 0.5rem;
-  z-index: 2;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0) + 0.25rem);
-}
-
-.profile-cta-mobile__content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
 }
 
 .profile-hero__heading {
@@ -2030,29 +1846,6 @@ export default defineComponent({
     height: 100px;
   }
 
-  .profile-cta {
-    display: none;
-  }
-
-  .profile-cta-mobile {
-    display: flex;
-    max-width: min(100%, 96rem);
-  }
-
-  .profile-cta-mobile__content {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .profile-cta__button {
-    width: 100%;
-    min-width: 0;
-  }
-
-  .profile-page__inner {
-    padding-bottom: 6.5rem;
-  }
-
   .profile-tier__header {
     flex-direction: column;
     align-items: flex-start;
@@ -2068,19 +1861,6 @@ export default defineComponent({
 }
 
 @media (min-width: 1024px) {
-  .profile-hero-area--with-cta {
-    grid-template-columns: minmax(0, 1.8fr) minmax(320px, 1fr);
-    align-items: start;
-  }
-
-  .profile-hero-area--with-cta > .profile-hero {
-    grid-column: auto;
-  }
-
-  .profile-cta {
-    top: 2rem;
-  }
-
   .profile-layout {
     display: grid;
     grid-template-columns: minmax(0, 3.5fr) minmax(320px, 1fr);
