@@ -1,7 +1,6 @@
 <template>
   <div
     class="profile-page bg-surface-1 text-1"
-    :class="{ 'profile-page--custom': isCustomLinkView }"
   >
     <div class="profile-page__inner">
       <div class="profile-page__back q-mb-md">
@@ -37,7 +36,6 @@
         class="profile-hero-area"
         :class="{
           'profile-hero-area--with-cta': !!primaryTier,
-          'profile-hero-area--with-featured': isCustomLinkView && !!featuredTier,
         }"
       >
         <section class="profile-hero" :class="{ 'profile-hero--with-banner': heroBannerUrl }">
@@ -98,7 +96,7 @@
           </div>
         </section>
         <div
-          v-if="primaryTier || featuredTier || showFeaturedTierFallback"
+          v-if="primaryTier"
           class="profile-hero-sidebar"
         >
           <section v-if="primaryTier" class="profile-cta bg-surface-2 text-1 q-pa-lg q-gutter-y-sm">
@@ -126,52 +124,6 @@
               {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
             </p>
           </section>
-
-          <section v-if="featuredTier" class="profile-featured-tier bg-surface-2 text-1">
-            <TierSummaryCard
-              class="tier-card--featured"
-              :tier="featuredTier"
-              :price-sats="getPrice(featuredTier)"
-              :price-fiat="formatFiat(getPrice(featuredTier))"
-              :frequency-label="frequencyLabel(featuredTier)"
-              :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
-              :subscribe-disabled="isGuest"
-              :badges="[$t('CreatorHub.profile.featuredTierBadge')]"
-              @subscribe="openSubscribe"
-            >
-              <template v-if="needsSignerSetupTooltip" #subscribe-tooltip>
-                <q-tooltip>{{ $t('CreatorHub.profile.guestTooltip') }}</q-tooltip>
-              </template>
-              <template #footer-note>
-                {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
-              </template>
-              <template v-if="creatorHex" #default>
-                <PaywalledContent
-                  :creator-npub="creatorHex"
-                  :tier-id="featuredTier.id"
-                  class="profile-tier__paywalled"
-                >
-                  <div>{{ $t('CreatorHub.profile.paywalledPreview') }}</div>
-                </PaywalledContent>
-              </template>
-            </TierSummaryCard>
-          </section>
-
-          <section
-            v-else-if="showFeaturedTierFallback"
-            class="profile-featured-tier profile-featured-tier--fallback bg-surface-2 text-1"
-          >
-            <div class="profile-featured-tier__fallback text-body1">
-              {{ $t('CreatorHub.profile.featuredTierMissing') }}
-            </div>
-            <q-btn
-              flat
-              color="primary"
-              class="profile-featured-tier__cta"
-              :label="$t('CreatorHub.profile.featuredTierMissingCta')"
-              @click="clearCustomTierLink"
-            />
-          </section>
         </div>
       </div>
 
@@ -195,69 +147,8 @@
           </div>
         </section>
 
-        <section class="profile-section profile-section--video-explainer">
-          <header class="profile-section__header">
-            <h2 class="profile-section__title text-h5">
-              {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-            </h2>
-          </header>
-          <div class="profile-section__body">
-            <article class="profile-card profile-card--copy">
-              <h3 class="profile-card__title text-subtitle1">
-                {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-              </h3>
-              <div class="profile-card__media">
-                <div class="profile-card__media-main">
-                  <div class="profile-card__video">
-                    <video
-                      controls
-                      preload="metadata"
-                      playsinline
-                      poster="https://m.primal.net/HsMt.jpg"
-                    >
-                      <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
-                      {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
-                    </video>
-                    <div class="sr-only">
-                      <a href="https://m.primal.net/HsMt.mp4" target="_blank" rel="noopener">
-                        {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                      </a>
-                    </div>
-                  </div>
-                  <p class="profile-card__caption profile-card__text text-2">
-                    {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
-                  </p>
-                </div>
-                <div
-                  v-if="howCashuWorksHighlight || howCashuWorksList.length"
-                  class="profile-card__media-aside"
-                >
-                  <div v-if="howCashuWorksHighlight" class="profile-card__highlight text-body2">
-                    <span class="profile-card__highlight-label text-2">
-                      {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                    </span>
-                    <p class="profile-card__highlight-text">
-                      {{ howCashuWorksHighlight }}
-                    </p>
-                  </div>
-                  <ul v-if="howCashuWorksList.length" class="profile-card__list">
-                    <li
-                      v-for="(item, index) in howCashuWorksList"
-                      :key="index"
-                      class="profile-card__list-item text-2"
-                    >
-                      {{ item }}
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </article>
-          </div>
-        </section>
-
         <div
           class="profile-tier-grid"
-          :class="{ 'profile-tier-grid--custom': isCustomLinkView }"
         >
           <section class="profile-section" aria-live="polite">
             <header class="profile-section__header profile-section__header--with-spinner">
@@ -298,108 +189,36 @@
               <div v-else-if="!tiers.length" class="profile-section__state text-2">
                 {{ $t('CreatorHub.profile.noTiers') }}
               </div>
-                <template v-else>
-                  <template v-if="isCustomLinkView">
-                    <div
-                      v-if="featuredTier && moreOptionsTiers.length"
-                      class="profile-tier-more"
-                    >
-                      <h3 class="profile-tier-more__title text-subtitle1">
-                        {{ $t('CreatorHub.profile.moreOptions') }}
-                      </h3>
-                      <div class="profile-tier-list profile-tier-list--more">
-                        <TierSummaryCard
-                          v-for="t in moreOptionsTiers"
-                          :key="t.id"
-                          :tier="t"
-                          :price-sats="getPrice(t)"
-                          :price-fiat="formatFiat(getPrice(t))"
-                          :frequency-label="frequencyLabel(t)"
-                          :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
-                          :subscribe-disabled="isGuest"
-                          :collapse-media="true"
-                          @subscribe="openSubscribe"
-                        >
-                          <template v-if="needsSignerSetupTooltip" #subscribe-tooltip>
-                            <q-tooltip>{{ $t('CreatorHub.profile.guestTooltip') }}</q-tooltip>
-                          </template>
-                          <template #footer-note>
-                            {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
-                          </template>
-                          <template v-if="creatorHex" #default>
-                            <PaywalledContent
-                              :creator-npub="creatorHex"
-                              :tier-id="t.id"
-                              class="profile-tier__paywalled"
-                            >
-                              <div>{{ $t('CreatorHub.profile.paywalledPreview') }}</div>
-                            </PaywalledContent>
-                          </template>
-                        </TierSummaryCard>
-                      </div>
-                    </div>
-                    <div v-else-if="!featuredTier" class="profile-tier-list">
-                      <TierSummaryCard
-                        v-for="t in tiers"
-                        :key="t.id"
-                        :tier="t"
-                        :price-sats="getPrice(t)"
-                        :price-fiat="formatFiat(getPrice(t))"
-                        :frequency-label="frequencyLabel(t)"
-                        :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
-                        :subscribe-disabled="isGuest"
-                        :collapse-media="true"
-                        @subscribe="openSubscribe"
-                      >
-                        <template v-if="needsSignerSetupTooltip" #subscribe-tooltip>
-                          <q-tooltip>{{ $t('CreatorHub.profile.guestTooltip') }}</q-tooltip>
-                        </template>
-                        <template #footer-note>
-                          {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
-                        </template>
-                        <template v-if="creatorHex" #default>
-                          <PaywalledContent
-                            :creator-npub="creatorHex"
-                            :tier-id="t.id"
-                            class="profile-tier__paywalled"
-                          >
-                            <div>{{ $t('CreatorHub.profile.paywalledPreview') }}</div>
-                          </PaywalledContent>
-                        </template>
-                      </TierSummaryCard>
-                    </div>
+              <div v-else class="profile-tier-list">
+                <TierSummaryCard
+                  v-for="t in tiers"
+                  :key="t.id"
+                  :tier="t"
+                  :price-sats="getPrice(t)"
+                  :price-fiat="formatFiat(getPrice(t))"
+                  :frequency-label="frequencyLabel(t)"
+                  :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
+                  :subscribe-disabled="isGuest"
+                  :collapse-media="false"
+                  @subscribe="openSubscribe"
+                >
+                  <template v-if="needsSignerSetupTooltip" #subscribe-tooltip>
+                    <q-tooltip>{{ $t('CreatorHub.profile.guestTooltip') }}</q-tooltip>
                   </template>
-                  <div v-else class="profile-tier-list">
-                    <TierSummaryCard
-                      v-for="t in tiers"
-                      :key="t.id"
-                      :tier="t"
-                      :price-sats="getPrice(t)"
-                      :price-fiat="formatFiat(getPrice(t))"
-                      :frequency-label="frequencyLabel(t)"
-                      :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
-                      :subscribe-disabled="isGuest"
-                      :collapse-media="false"
-                      @subscribe="openSubscribe"
+                  <template #footer-note>
+                    {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
+                  </template>
+                  <template v-if="creatorHex" #default>
+                    <PaywalledContent
+                      :creator-npub="creatorHex"
+                      :tier-id="t.id"
+                      class="profile-tier__paywalled"
                     >
-                      <template v-if="needsSignerSetupTooltip" #subscribe-tooltip>
-                        <q-tooltip>{{ $t('CreatorHub.profile.guestTooltip') }}</q-tooltip>
-                      </template>
-                      <template #footer-note>
-                        {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
-                      </template>
-                      <template v-if="creatorHex" #default>
-                        <PaywalledContent
-                          :creator-npub="creatorHex"
-                          :tier-id="t.id"
-                          class="profile-tier__paywalled"
-                        >
-                          <div>{{ $t('CreatorHub.profile.paywalledPreview') }}</div>
-                        </PaywalledContent>
-                      </template>
-                    </TierSummaryCard>
-                  </div>
-                </template>
+                      <div>{{ $t('CreatorHub.profile.paywalledPreview') }}</div>
+                    </PaywalledContent>
+                  </template>
+                </TierSummaryCard>
+              </div>
               <q-banner
                 v-if="tierFetchError && tiers.length"
                 class="profile-page__banner bg-surface-2"
@@ -496,6 +315,69 @@
             </div>
           </section>
         </div>
+
+        <section class="profile-section profile-section--video-explainer">
+          <details class="profile-collapsible-section">
+            <summary class="profile-collapsible-section__summary">
+              <h2 class="profile-section__title text-h5">
+                {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+              </h2>
+              <q-icon class="profile-collapsible-section__icon" name="expand_more" />
+            </summary>
+            <div class="profile-section__body q-mt-md">
+              <article class="profile-card profile-card--copy">
+                <h3 class="profile-card__title text-subtitle1">
+                  {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                </h3>
+                <div class="profile-card__media">
+                  <div class="profile-card__media-main">
+                    <div class="profile-card__video">
+                      <video
+                        controls
+                        preload="metadata"
+                        playsinline
+                        poster="https://m.primal.net/HsMt.jpg"
+                      >
+                        <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
+                        {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
+                      </video>
+                      <div class="sr-only">
+                        <a href="https://m.primal.net/HsMt.mp4" target="_blank" rel="noopener">
+                          {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                        </a>
+                      </div>
+                    </div>
+                    <p class="profile-card__caption profile-card__text text-2">
+                      {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
+                    </p>
+                  </div>
+                  <div
+                    v-if="howCashuWorksHighlight || howCashuWorksList.length"
+                    class="profile-card__media-aside"
+                  >
+                    <div v-if="howCashuWorksHighlight" class="profile-card__highlight text-body2">
+                      <span class="profile-card__highlight-label text-2">
+                        {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                      </span>
+                      <p class="profile-card__highlight-text">
+                        {{ howCashuWorksHighlight }}
+                      </p>
+                    </div>
+                    <ul v-if="howCashuWorksList.length" class="profile-card__list">
+                      <li
+                        v-for="(item, index) in howCashuWorksList"
+                        :key="index"
+                        class="profile-card__list-item text-2"
+                      >
+                        {{ item }}
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </details>
+        </section>
 
         <section class="profile-section">
           <header class="profile-section__header">
@@ -676,23 +558,6 @@ export default defineComponent({
       creatorHex.value ? creators.tiersMap[creatorHex.value] : undefined,
     );
     const tiers = computed(() => creatorTierList.value ?? []);
-    const featuredTier = computed<any | null>(() => {
-      if (!isCustomLinkView.value) return null;
-      const tierId = customTierId.value;
-      if (!tierId) return null;
-      const tierList = tiers.value ?? [];
-      for (const tier of tierList) {
-        if (!tier) continue;
-        const candidateId =
-          typeof tier.id === "string" || typeof tier.id === "number"
-            ? String(tier.id)
-            : "";
-        if (candidateId === tierId) {
-          return tier;
-        }
-      }
-      return null;
-    });
     const hasInitialTierData = computed(
       () => creatorTierList.value !== undefined,
     );
@@ -708,36 +573,6 @@ export default defineComponent({
     const refreshTaskCount = ref(0);
     const autoRefreshQueued = ref(false);
     const tierFetchError = computed(() => creators.tierFetchError);
-    const moreOptionsTiers = computed(() => {
-      if (!isCustomLinkView.value) return [] as any[];
-      const tierList = tiers.value ?? [];
-      if (!Array.isArray(tierList) || tierList.length === 0) {
-        return [] as any[];
-      }
-      if (!featuredTier.value) {
-        return tierList;
-      }
-      const featuredId =
-        typeof featuredTier.value.id === "string" ||
-        typeof featuredTier.value.id === "number"
-          ? String(featuredTier.value.id)
-          : "";
-      return tierList.filter((tier: any) => {
-        if (!tier) return false;
-        const candidateId =
-          typeof tier.id === "string" || typeof tier.id === "number"
-            ? String(tier.id)
-            : "";
-        return candidateId !== featuredId;
-      });
-    });
-    const showFeaturedTierFallback = computed(
-      () =>
-        isCustomLinkView.value &&
-        !loadingTiers.value &&
-        !featuredTier.value &&
-        !tierFetchError.value,
-    );
     const isGuest = computed(() => !welcomeStore.welcomeCompleted);
     const needsSignerSetupTooltip = computed(
       () => isGuest.value || !nostr.hasIdentity,
@@ -752,20 +587,6 @@ export default defineComponent({
         refreshTimer = null;
       }
     };
-
-    const customTierId = ref<string | null>(null);
-    const isCustomLinkView = computed(
-      () => typeof customTierId.value === "string" && customTierId.value.length > 0,
-    );
-    const syncCustomLinkView = () => {
-      const tierId = route.query.tierId;
-      customTierId.value =
-        typeof tierId === "string" && tierId.length > 0 ? tierId : null;
-    };
-
-    watch(() => route.query.tierId, syncCustomLinkView, {
-      immediate: true,
-    });
 
     const mergeUniqueUrls = (...lists: Array<string[] | undefined>) => {
       const urls = new Set<string>();
@@ -1202,13 +1023,11 @@ export default defineComponent({
       async (nextParam) => {
         const normalized = typeof nextParam === "string" ? nextParam : "";
         if (normalized === currentCreatorParam.value) {
-          syncCustomLinkView();
           return;
         }
         currentCreatorParam.value = normalized;
         updateCreatorKeys(nextParam);
         resetCreatorState();
-        syncCustomLinkView();
         await loadProfile();
         scheduleAutoRefresh();
       },
@@ -1216,21 +1035,6 @@ export default defineComponent({
 
     const retryFetchTiers = () => {
       void fetchTiers();
-    };
-
-    const clearCustomTierLink = () => {
-      customTierId.value = null;
-      const nextQuery = { ...route.query } as Record<string, any>;
-      delete nextQuery.tierId;
-      if (!creatorNpub.value) {
-        router.replace({ query: nextQuery });
-        return;
-      }
-      router.replace({
-        name: "PublicCreatorProfile",
-        params: { npubOrHex: creatorNpub.value },
-        query: nextQuery,
-      });
     };
 
     const openSubscribe = (tier: any) => {
@@ -1356,9 +1160,6 @@ export default defineComponent({
     const profileUrl = computed(() => buildProfileUrl(creatorNpub.value, router));
 
     const primaryTier = computed<any | null>(() => {
-      if (featuredTier.value) {
-        return featuredTier.value;
-      }
       const tierList = tiers.value;
       if (!Array.isArray(tierList) || tierList.length === 0) {
         return null;
@@ -1610,8 +1411,6 @@ export default defineComponent({
       heroBannerUrl,
       heroBannerStyle,
       tiers,
-      featuredTier,
-      moreOptionsTiers,
       showSubscribeDialog,
       showSetupDialog,
       showReceiptDialog,
@@ -1651,9 +1450,6 @@ export default defineComponent({
       profileUrl,
       isGuest,
       needsSignerSetupTooltip,
-      isCustomLinkView,
-      showFeaturedTierFallback,
-      clearCustomTierLink,
       gotoWelcome,
     };
   },
@@ -1769,80 +1565,8 @@ export default defineComponent({
   gap: 1.5rem;
 }
 
-.profile-featured-tier {
-  border-radius: 1.5rem;
-  padding: clamp(1.5rem, 3vw, 2.25rem);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
-  border: 1px solid var(--accent-200);
-}
-
-.profile-featured-tier--fallback {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.profile-featured-tier__fallback {
-  margin: 0;
-}
-
-.profile-featured-tier__cta {
-  align-self: flex-start;
-}
-
-.tier-card--featured {
-  border: none;
-  box-shadow: none;
-  padding: 0;
-  background: transparent;
-}
-
-.tier-card--featured :deep(.tier-card__header) {
-  align-items: flex-start;
-}
-
-.tier-card--featured :deep(.tier-card__title) {
-  font-size: clamp(1.5rem, 3vw, 2rem);
-  font-weight: 700;
-}
-
-/*
-  Hides the redundant "Benefits" list inside all TierSummaryCard
-  instances by using a deep selector.
-*/
-.profile-featured-tier :deep(.tier-card__benefits),
 .profile-tier-list :deep(.tier-card__benefits) {
   display: none !important;
-}
-
-.tier-card--featured :deep(.tier-card__description) {
-  font-size: 1.05rem;
-}
-
-.tier-card--featured :deep(.tier-card__sats) {
-  font-size: clamp(1.25rem, 3vw, 1.5rem);
-  font-weight: 600;
-}
-
-.tier-card--featured :deep(.tier-card__subscribe) {
-  font-size: 1.05rem;
-  padding: 0.85rem 1.5rem;
-}
-
-.profile-tier-more {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.profile-tier-more__title {
-  margin: 0;
-}
-
-.profile-tier-list--more {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1.5rem;
 }
 
 .profile-cta {
@@ -1988,6 +1712,45 @@ export default defineComponent({
   align-items: center;
 }
 
+.profile-collapsible-section {
+  border-radius: 1rem;
+  background: var(--surface-2);
+  padding: 0.5rem 1.5rem;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+}
+
+.profile-collapsible-section__summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+  padding: 0.75rem 0;
+}
+
+.profile-collapsible-section__summary::-webkit-details-marker {
+  display: none;
+}
+
+.profile-collapsible-section__summary:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: 4px;
+  border-radius: 0.25rem;
+}
+
+.profile-collapsible-section__icon {
+  font-size: 1.5rem;
+  transition: transform 0.2s ease-in-out;
+}
+
+.profile-collapsible-section[open] > .profile-collapsible-section__summary > .profile-collapsible-section__icon {
+  transform: rotate(180deg);
+}
+
+.profile-collapsible-section[open] > .profile-section__body {
+  padding-bottom: 1rem;
+}
+
 .profile-retry-hidden {
   position: absolute;
   width: 1px;
@@ -2007,10 +1770,6 @@ export default defineComponent({
   gap: 2rem;
 }
 
-.profile-tier-grid--custom {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 .profile-tier-grid > .profile-section {
   display: flex;
   flex-direction: column;
@@ -2023,19 +1782,10 @@ export default defineComponent({
 
 .profile-tier-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1.5rem;
-  align-items: stretch;
-}
-
-.profile-page--custom .profile-tier-list {
-  display: grid;
+  /* Increased minmax to 320px to make cards bigger */
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 1.5rem;
-}
-
-.profile-page--custom .profile-tier-list > * {
-  height: 100%;
+  align-items: stretch;
 }
 
 .profile-tier__paywalled {
@@ -2327,18 +2077,6 @@ export default defineComponent({
     align-items: start;
   }
 
-  .profile-hero-area--with-cta.profile-hero-area--with-featured {
-    grid-template-columns: minmax(0, 1.6fr) minmax(360px, 1fr);
-  }
-
-  .profile-hero-area--with-featured .profile-hero-sidebar {
-    gap: 2rem;
-  }
-
-  .tier-card--featured :deep(.tier-card__subscribe) {
-    width: 100%;
-  }
-
   .profile-hero-area--with-cta > .profile-hero {
     grid-column: auto;
   }
@@ -2347,9 +2085,25 @@ export default defineComponent({
     top: 2rem;
   }
 
-  .profile-tier-grid:not(.profile-tier-grid--custom) {
-    grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  .profile-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 2.5fr) minmax(320px, 1fr);
     align-items: start;
+    gap: 2rem;
+  }
+
+  .profile-tier-grid {
+    display: contents;
+  }
+
+  .profile-tier-grid > .profile-section {
+    grid-column: 1 / 2;
+  }
+
+  .profile-section--infrastructure {
+    grid-column: 2 / 3;
+    position: sticky;
+    top: 2rem;
   }
 }
 </style>
