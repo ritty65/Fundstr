@@ -28,6 +28,19 @@
         </div>
       </section>
 
+      <!-- Section nav -->
+      <nav class="section-nav fade" aria-label="About sections">
+        <ul class="section-nav__list">
+          <li><a class="pill section-nav__link" href="#vision">Vision</a></li>
+          <li><a class="pill section-nav__link" href="#site-overview">Site Overview</a></li>
+          <li><a class="pill section-nav__link" href="#how-it-works">How it Works</a></li>
+          <li><a class="pill section-nav__link" href="#who-for">Who It's For</a></li>
+          <li><a class="pill section-nav__link" href="#trust">Trust</a></li>
+          <li><a class="pill section-nav__link" href="#faq">FAQ</a></li>
+          <li><a class="pill section-nav__link" href="#community">Community</a></li>
+        </ul>
+      </nav>
+
       <!-- Vision -->
       <section class="section fade" id="vision">
         <div class="two-col">
@@ -352,6 +365,13 @@ function installPwa () {
 .lead{font-size:1.1rem; line-height:1.65;}
 .grad{background:linear-gradient(90deg,#a855f7,#4f46e5,#0ea5e9); -webkit-background-clip:text; -webkit-text-fill-color:transparent;}
 
+.section-nav{margin:0 0 3rem;}
+.section-nav__list{display:flex; flex-wrap:wrap; gap:.75rem; align-items:center; padding:0; margin:0; list-style:none;}
+.section-nav__link{display:inline-flex; align-items:center; justify-content:center; padding:.35rem .95rem; margin:0; text-decoration:none; font-weight:600; transition:background-color .2s, border-color .2s, box-shadow .2s, color .2s;}
+.section-nav__link:hover{background:rgba(var(--acRGB),.22); border-color:rgba(var(--acRGB),.55);}
+.section-nav__link:active{background:rgba(var(--acRGB),.3);}
+.section-nav__link:focus-visible{outline:none; box-shadow:0 0 0 2px var(--s1),0 0 0 5px rgba(var(--acRGB),.55);}
+
 .hero-grid{display:grid; grid-template-columns:1.3fr .7fr; gap:2rem}
 @media (max-width: 960px){ .hero-grid{grid-template-columns:1fr; } }
 
@@ -394,6 +414,11 @@ function installPwa () {
 .emj{font-size:1.25rem}
 .emj.xl{font-size:2rem}
 .pill{display:inline-block; padding:.35rem .75rem; border-radius:999px; font-weight:700; letter-spacing:.02em; background:rgba(var(--acRGB),.15); color:var(--ac500); border:1px solid var(--ac500); margin-bottom:.5rem}
+
+@media (min-width: 1024px){
+  .section-nav{position:sticky; top:1rem; z-index:5; padding:.75rem 1rem; background:var(--s2); border:1px solid rgba(var(--acRGB),.22); border-radius:999px; box-shadow:0 10px 30px rgba(0,0,0,.18); backdrop-filter:blur(12px);}
+  .section-nav__list{justify-content:center;}
+}
 
 /* Rail connectors for steps */
 .rail .step{position:relative}
