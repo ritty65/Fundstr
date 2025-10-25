@@ -97,27 +97,37 @@
       <section class="section fade" id="site-overview">
         <h2 class="h2 grad center">Site Overview</h2>
         <div class="cards cards--4">
-          <component
-            v-for="card in siteOverviewCards"
+          <div
+            v-for="(card, cardIndex) in siteOverviewCards"
             :key="card.title"
-            :is="card.href ? 'a' : 'router-link'"
-            class="card card-link"
-            :to="card.to"
-            :href="card.href"
-            :target="card.target"
-            :rel="card.rel"
+            class="card card--overview"
+            role="group"
+            :aria-labelledby="`overview-card-${cardIndex}-title`"
+            :aria-describedby="`overview-card-${cardIndex}-shortcuts`"
           >
-            <header class="card-head">
+            <component
+              :is="card.href ? 'a' : 'router-link'"
+              class="card-link__primary"
+              :id="`overview-card-${cardIndex}-title`"
+              :aria-describedby="`overview-card-${cardIndex}-shortcuts`"
+              v-bind="card.href ? { href: card.href, target: card.target, rel: card.rel } : { to: card.to }"
+            >
               <span class="emj">{{ card.emoji }}</span>
               <h3>{{ card.title }}</h3>
-            </header>
-            <ul class="links">
+            </component>
+            <ul class="links" :id="`overview-card-${cardIndex}-shortcuts`">
               <li v-for="item in card.links" :key="item.label">
                 <span class="emj">{{ item.emoji }}</span>
-                <span class="link-text">{{ item.label }}</span>
+                <component
+                  :is="item.href ? 'a' : 'router-link'"
+                  class="link-text"
+                  v-bind="item.href ? { href: item.href, target: item.target, rel: item.rel } : { to: item.to }"
+                >
+                  {{ item.label }}
+                </component>
               </li>
             </ul>
-          </component>
+          </div>
         </div>
       </section>
 
@@ -393,9 +403,9 @@ const siteOverviewCards = [
     title: 'Money',
     to: '/wallet',
     links: [
-      { emoji: '💳', label: 'Wallet' },
-      { emoji: '📦', label: 'Buckets' },
-      { emoji: '📄', label: 'Subscriptions' },
+      { emoji: '💳', label: 'Wallet', to: '/wallet' },
+      { emoji: '📦', label: 'Buckets', to: '/buckets' },
+      { emoji: '📄', label: 'Subscriptions', to: '/subscriptions' },
     ],
   },
   {
@@ -403,8 +413,8 @@ const siteOverviewCards = [
     title: 'Creators',
     to: '/find-creators',
     links: [
-      { emoji: '🔍', label: 'Find Creators' },
-      { emoji: '👩‍🎨', label: 'Creator Studio' },
+      { emoji: '🔍', label: 'Find Creators', to: '/find-creators' },
+      { emoji: '👩‍🎨', label: 'Creator Studio', to: '/creator-studio' },
     ],
   },
   {
@@ -412,8 +422,8 @@ const siteOverviewCards = [
     title: 'Comms',
     to: '/nostr-messenger',
     links: [
-      { emoji: '💬', label: 'Nostr Messenger' },
-      { emoji: '🔑', label: 'Nostr Login' },
+      { emoji: '💬', label: 'Nostr Messenger', to: '/nostr-messenger' },
+      { emoji: '🔑', label: 'Nostr Login', to: '/nostr-login' },
     ],
   },
   {
@@ -421,11 +431,11 @@ const siteOverviewCards = [
     title: 'System',
     to: '/settings',
     links: [
-      { emoji: '⚙️', label: 'Settings' },
-      { emoji: '🔄', label: 'Restore' },
-      { emoji: '⚠️', label: 'Already Running' },
-      { emoji: 'ℹ️', label: 'Welcome' },
-      { emoji: '⚖️', label: 'Terms' },
+      { emoji: '⚙️', label: 'Settings', to: '/settings' },
+      { emoji: '🔄', label: 'Restore', to: '/restore' },
+      { emoji: '⚠️', label: 'Already Running', to: '/already-running' },
+      { emoji: 'ℹ️', label: 'Welcome', to: '/welcome' },
+      { emoji: '⚖️', label: 'Terms', to: '/terms' },
     ],
   },
 ]
@@ -541,14 +551,20 @@ function installPwa () {
 
 /* Cards */
 .card{background:var(--s2); border:1px solid rgba(var(--acRGB),.18); border-radius:1rem; padding:1.25rem; box-shadow:0 4px 10px rgba(0,0,0,.25); transition:transform .2s, box-shadow .2s, border-color .2s; display:block; color:inherit; text-decoration:none;}
-.card-link{cursor:pointer;}
-.card-link:hover,.card-link:focus-visible{transform:translateY(-6px); box-shadow:0 12px 22px rgba(0,0,0,.3); border-color:rgba(var(--acRGB),.35);}
-.card-link:focus-visible{outline:none; box-shadow:0 0 0 3px var(--s1),0 0 0 6px rgba(var(--acRGB),.55),0 12px 22px rgba(0,0,0,.3);}
-.card-head{display:flex; align-items:center; gap:.5rem; margin-bottom:.5rem}
+.card--overview{display:flex; flex-direction:column; gap:.75rem;}
+.card--overview:hover{transform:translateY(-6px); box-shadow:0 12px 22px rgba(0,0,0,.3); border-color:rgba(var(--acRGB),.35);}
+.card--overview:focus-within{transform:translateY(-6px); border-color:rgba(var(--acRGB),.35); box-shadow:0 0 0 3px var(--s1),0 0 0 6px rgba(var(--acRGB),.55),0 12px 22px rgba(0,0,0,.3);}
+.card-link__primary{display:flex; align-items:center; gap:.5rem; color:inherit; text-decoration:none; font-weight:700; transition:color .2s ease;}
+.card-link__primary:hover{color:var(--ac500);}
+.card-link__primary:focus-visible{outline:none; color:var(--ac500);}
+.card-link__primary h3{margin:0;}
 .card-summary{display:flex; align-items:flex-start; gap:.5rem}
 .summary-text{display:flex; flex-direction:column; white-space:normal; /* ensure wrapping */}
 .links{list-style:none; padding:0; margin:0}
 .links li{display:flex; align-items:center; gap:.5rem; font-weight:600;}
+.link-text{display:inline-flex; align-items:center; color:inherit; text-decoration:none; border-radius:.45rem; padding:.05rem .35rem; transition:color .2s ease, background-color .2s ease, box-shadow .2s ease;}
+.link-text:hover{color:var(--ac500); background:rgba(var(--acRGB),.14);}
+.link-text:focus-visible{outline:none; color:var(--ac500); background:rgba(var(--acRGB),.18); box-shadow:0 0 0 2px var(--s1),0 0 0 5px rgba(var(--acRGB),.55);}
 .emj{font-size:1.25rem}
 .emj.xl{font-size:2rem}
 .pill{display:inline-block; padding:.35rem .75rem; border-radius:999px; font-weight:700; letter-spacing:.02em; background:rgba(var(--acRGB),.15); color:var(--ac500); border:1px solid var(--ac500); margin-bottom:.5rem}
