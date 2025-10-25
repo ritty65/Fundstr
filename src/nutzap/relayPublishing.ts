@@ -13,6 +13,7 @@ import {
   HTTP_FALLBACK_TIMEOUT_MS,
 } from 'src/nutzap/relayEndpoints';
 import { getNutzapNdk } from 'src/nutzap/ndkInstance';
+import { prepareUnsignedEvent, type UnsignedEvent } from '../nostr/serializableEvent';
 
 export {
   FUNDSTR_WS_URL,
@@ -157,22 +158,18 @@ export function buildTierPayloadForKind(tiers: Tier[], kind: TierKind) {
   };
 }
 
-async function signPublishTemplate(template: {
-  kind: number;
-  tags: any[];
-  content: string;
-  created_at?: number;
-}): Promise<NostrEvent> {
+async function signPublishTemplate(template: UnsignedEvent): Promise<NostrEvent> {
   const created_at = template.created_at ?? Math.floor(Date.now() / 1000);
+  const payload: UnsignedEvent = { ...template, created_at };
   const maybeWindow = typeof window !== 'undefined' ? (window as any) : (globalThis as any)?.window;
   const nostrSigner = maybeWindow?.nostr;
   let signed: unknown;
 
   if (nostrSigner?.signEvent) {
-    signed = await nostrSigner.signEvent({ ...template, created_at });
+    signed = await nostrSigner.signEvent(payload);
   } else {
     const ndk = getNutzapNdk();
-    const event = new NDKEvent(ndk, { ...template, created_at });
+    const event = new NDKEvent(ndk, payload);
     await event.sign();
     signed = await event.toNostrEvent();
   }
@@ -193,12 +190,14 @@ export async function publishNostrEvent(
   },
   options?: PublishNostrEventOptions
 ): Promise<FundstrRelayPublishResult> {
+  const unsigned = prepareUnsignedEvent(template);
+
   if (!options?.send) {
     const client = await ensureFundstrRelayClient(options?.relayUrl);
-    return client.publish(template);
+    return client.publish(unsigned);
   }
 
-  const event = await signPublishTemplate(template);
+  const event = await signPublishTemplate(unsigned);
   const ack = await options.send(event);
   return { ack, event };
 }

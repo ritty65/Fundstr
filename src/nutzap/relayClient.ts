@@ -1,6 +1,7 @@
 import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { getCurrentScope, onScopeDispose, readonly, ref, type Ref } from 'vue';
 import { getNutzapNdk } from './ndkInstance';
+import { prepareUnsignedEvent, type UnsignedEvent } from '../nostr/serializableEvent';
 import { NUTZAP_ALLOW_WSS_WRITES, NUTZAP_RELAY_WSS } from './relayConfig';
 import { FUNDSTR_EVT_URL, HTTP_FALLBACK_TIMEOUT_MS, WS_FIRST_TIMEOUT_MS } from './relayEndpoints';
 
@@ -393,17 +394,17 @@ export class FundstrRelayClient {
   }
 
   private async signEvent(template: FundstrRelayPublishTemplate): Promise<NostrEvent> {
-    const created_at = template.created_at ?? Math.floor(Date.now() / 1000);
+    const unsigned: UnsignedEvent = prepareUnsignedEvent(template);
     let signed: unknown;
 
     const maybeWindow = typeof window !== 'undefined' ? (window as any) : (globalThis as any)?.window;
     const nostrSigner = maybeWindow?.nostr;
 
     if (nostrSigner?.signEvent) {
-      signed = await nostrSigner.signEvent({ ...template, created_at });
+      signed = await nostrSigner.signEvent(unsigned);
     } else {
       const ndk = getNutzapNdk();
-      const event = new NDKEvent(ndk, { ...template, created_at });
+      const event = new NDKEvent(ndk, unsigned);
       await event.sign();
       signed = await event.toNostrEvent();
     }
