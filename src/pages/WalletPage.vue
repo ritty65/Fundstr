@@ -92,6 +92,7 @@
                   name="buckets"
                   :label="$t('WalletPage.tabs.buckets.label')"
                 ></q-tab>
+                <q-tab name="info" label="Info"></q-tab>
               </q-tabs>
 
               <q-tab-panels class="bg-surface-2" v-model="tab" animated>
@@ -114,6 +115,119 @@
               </q-tab-panel>
               <q-tab-panel name="buckets" class="q-px-sm">
                 <BucketManager />
+              </q-tab-panel>
+              <q-tab-panel name="info" class="q-px-sm">
+                <q-card class="cashu-info-card bg-surface-2">
+                  <q-card-section class="text-1">
+                    <div class="text-h6 text-1 q-mb-md">What is Cashu?</div>
+                    <p>
+                      Cashu is an open protocol that revives the idea of Chaumian e-cash for
+                      the Lightning era. Instead of balances being held on a server, Cashu uses
+                      <strong>blind signatures</strong> to mint ecash tokens that only you can
+                      spend. A Cashu mint signs withdrawal requests without seeing the actual
+                      value or owner of the proofs, so your balance stays private while still
+                      being 100% backed by sats held by the mint.
+                    </p>
+                    <p>
+                      When you deposit Lightning funds, the mint issues a collection of proofs
+                      (think of them as digital banknotes). Each proof contains a random secret
+                      known only to you and is signed by the mint. To spend, you reveal the
+                      secret to the mint and it checks the signature. Because every proof can be
+                      spent only once, the mint prevents double-spends while never learning who
+                      funded or redeemed the tokens.
+                    </p>
+                  </q-card-section>
+                  <q-separator dark inset></q-separator>
+                  <q-card-section class="text-1 q-gutter-y-sm">
+                    <div class="text-subtitle1 text-1">Why it matters</div>
+                    <ul class="cashu-info-list">
+                      <li>
+                        <strong>Privacy-first:</strong> Blind signatures keep your transaction
+                        graph hidden from the mint or outside observers.
+                      </li>
+                      <li>
+                        <strong>Instant and final:</strong> Proofs settle immediately between
+                        users, and redemption via Lightning is as fast as the network allows.
+                      </li>
+                      <li>
+                        <strong>Interoperable:</strong> Wallets can withdraw, transfer, and
+                        deposit across any Cashu-compatible mint, enabling fluid movement of
+                        sats between communities.
+                      </li>
+                      <li>
+                        <strong>Composable:</strong> Proofs can be bundled, split, or locked in
+                        smart workflows like buckets, time-locks, or programmable payouts.
+                      </li>
+                    </ul>
+                  </q-card-section>
+                  <q-separator dark inset></q-separator>
+                  <q-card-section class="text-1">
+                    <div class="text-subtitle1 text-1 q-mb-sm">How a typical flow works</div>
+                    <div class="cashu-flow-grid">
+                      <div>
+                        <div class="cashu-flow-step">1. Request</div>
+                        <p>
+                          Send a Lightning payment to the mint (via invoice, swap-in, or direct
+                          deposit). The mint prepares blinded tokens worth the exact amount you
+                          paid.
+                        </p>
+                      </div>
+                      <div>
+                        <div class="cashu-flow-step">2. Minting</div>
+                        <p>
+                          You unblind and store the signed proofs locally. Only you can unlock
+                          them because the mint never sees the secrets inside the proofs.
+                        </p>
+                      </div>
+                      <div>
+                        <div class="cashu-flow-step">3. Spending</div>
+                        <p>
+                          Share proofs with anyone you trust or redeem them in apps. Spent
+                          proofs are invalidated, while change is reissued as brand-new proofs to
+                          preserve privacy.
+                        </p>
+                      </div>
+                      <div>
+                        <div class="cashu-flow-step">4. Redemption</div>
+                        <p>
+                          When you want to exit, present your proofs to the mint and receive a
+                          Lightning payout or on-chain swap, closing the loop.
+                        </p>
+                      </div>
+                    </div>
+                  </q-card-section>
+                  <q-separator dark inset></q-separator>
+                  <q-card-section class="text-1">
+                    <div class="text-subtitle1 text-1 q-mb-sm">Learn by watching</div>
+                    <p class="q-mb-md">
+                      Prefer a quick overview? Watch this short explainer video to see Cashu in
+                      action and understand how Fundstr integrates Chaumian ecash into your
+                      wallet experience.
+                    </p>
+                    <div class="cashu-video-wrapper">
+                      <video
+                        class="cashu-video"
+                        controls
+                        preload="metadata"
+                      >
+                        <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
+                        Your browser does not support the video tag.
+                      </video>
+                    </div>
+                    <div class="q-mt-md">
+                      <q-btn
+                        outline
+                        color="primary"
+                        icon="play_circle"
+                        label="Open video in new tab"
+                        type="a"
+                        href="https://m.primal.net/HsMt.mp4"
+                        target="_blank"
+                        rel="noopener"
+                      />
+                    </div>
+                  </q-card-section>
+                </q-card>
               </q-tab-panel>
             </q-tab-panels>
           </q-expansion-item>
@@ -228,6 +342,54 @@ body.body--dark .wallet-action-btn:active {
   position: absolute;
   z-index: 1;
   padding-bottom: 15px;
+}
+
+.cashu-info-card {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 16px;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.25);
+  backdrop-filter: blur(6px);
+}
+
+.cashu-info-card p {
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.cashu-info-list {
+  padding-left: 1.25rem;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.cashu-info-list li + li {
+  margin-top: 0.5rem;
+}
+
+.cashu-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1.25rem;
+}
+
+.cashu-flow-step {
+  font-weight: 600;
+  color: var(--text-1);
+  margin-bottom: 0.25rem;
+}
+
+.cashu-video-wrapper {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--surface-contrast-border);
+  box-shadow: 0 10px 22px rgba(8, 47, 73, 0.25);
+}
+
+.cashu-video {
+  width: 100%;
+  display: block;
+  background: #000;
 }
 </style>
 <script>import windowMixin from 'src/mixins/windowMixin'
