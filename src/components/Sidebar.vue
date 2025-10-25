@@ -68,7 +68,11 @@ const navLinks = [
 ];
 
 const accountLinks = [
-  { to: "/creator-studio", label: "Creator Studio", icon: "dashboard_customize" },
+  {
+    to: "/creator-studio",
+    label: "Creator Dashboard",
+    icon: "dashboard_customize",
+  },
   { to: "/subscriptions", label: "Subscriptions", icon: "auto_awesome_motion" },
 ];
 
