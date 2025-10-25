@@ -1227,13 +1227,28 @@ export default defineComponent({
     });
 
     const howCashuWorksList = computed(() => {
-      const items = t("CreatorHub.profile.howCashuWorks.points", {
+      const translationKey = "CreatorHub.profile.howCashuWorks.points";
+      const items = t(translationKey, {
         returnObjects: true,
       }) as unknown;
+
       if (Array.isArray(items)) {
-        return items as string[];
+        return (items as unknown[]).reduce<string[]>((acc, item) => {
+          if (typeof item !== "string") return acc;
+          const trimmed = item.trim();
+          if (trimmed && trimmed !== translationKey) {
+            acc.push(trimmed);
+          }
+          return acc;
+        }, []);
       }
-      return typeof items === "string" ? [items] : [];
+
+      if (typeof items === "string") {
+        const trimmed = items.trim();
+        return trimmed && trimmed !== translationKey ? [trimmed] : [];
+      }
+
+      return [];
     });
 
     const howCashuWorksHighlight = computed(() => howCashuWorksList.value[0] || "");
