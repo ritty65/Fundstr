@@ -319,62 +319,57 @@
         <section class="profile-section profile-section--video-explainer">
           <details class="profile-collapsible-section">
             <summary class="profile-collapsible-section__summary">
-              <h2 class="profile-section__title text-h5">
+              <h3 class="profile-card__title text-subtitle1">
                 {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-              </h2>
+              </h3>
               <q-icon class="profile-collapsible-section__icon" name="expand_more" />
             </summary>
-            <div class="profile-section__body q-mt-md">
-              <article class="profile-card profile-card--copy">
-                <h3 class="profile-card__title text-subtitle1">
-                  {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                </h3>
-                <div class="profile-card__media">
-                  <div class="profile-card__media-main">
-                    <div class="profile-card__video">
-                      <video
-                        controls
-                        preload="metadata"
-                        playsinline
-                        poster="https://m.primal.net/HsMt.jpg"
-                      >
-                        <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
-                        {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
-                      </video>
-                      <div class="sr-only">
-                        <a href="https://m.primal.net/HsMt.mp4" target="_blank" rel="noopener">
-                          {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                        </a>
-                      </div>
-                    </div>
-                    <p class="profile-card__caption profile-card__text text-2">
+            <div class="profile-section__body">
+              <div class="profile-card__media">
+                <div class="profile-card__media-main">
+                  <div class="profile-card__video">
+                    <video
+                      controls
+                      preload="metadata"
+                      playsinline
+                      poster="https://m.primal.net/HsMt.jpg"
+                    >
+                      <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
                       {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
+                    </video>
+                    <div class="sr-only">
+                      <a href="https://m.primal.net/HsMt.mp4" target="_blank" rel="noopener">
+                        {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                      </a>
+                    </div>
+                  </div>
+                  <p class="profile-card__caption profile-card__text text-2">
+                    {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
+                  </p>
+                </div>
+                <div
+                  v-if="howCashuWorksHighlight || howCashuWorksList.length"
+                  class="profile-card__media-aside"
+                >
+                  <div v-if="howCashuWorksHighlight" class="profile-card__highlight text-body2">
+                    <span class="profile-card__highlight-label text-2">
+                      {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                    </span>
+                    <p class="profile-card__highlight-text">
+                      {{ howCashuWorksHighlight }}
                     </p>
                   </div>
-                  <div
-                    v-if="howCashuWorksHighlight || howCashuWorksList.length"
-                    class="profile-card__media-aside"
-                  >
-                    <div v-if="howCashuWorksHighlight" class="profile-card__highlight text-body2">
-                      <span class="profile-card__highlight-label text-2">
-                        {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                      </span>
-                      <p class="profile-card__highlight-text">
-                        {{ howCashuWorksHighlight }}
-                      </p>
-                    </div>
-                    <ul v-if="howCashuWorksList.length" class="profile-card__list">
-                      <li
-                        v-for="(item, index) in howCashuWorksList"
-                        :key="index"
-                        class="profile-card__list-item text-2"
-                      >
-                        {{ item }}
-                      </li>
-                    </ul>
-                  </div>
+                  <ul v-if="howCashuWorksList.length" class="profile-card__list">
+                    <li
+                      v-for="(item, index) in howCashuWorksList"
+                      :key="index"
+                      class="profile-card__list-item text-2"
+                    >
+                      {{ item }}
+                    </li>
+                  </ul>
                 </div>
-              </article>
+              </div>
             </div>
           </details>
         </section>
@@ -1463,7 +1458,7 @@ export default defineComponent({
 
 .profile-page__inner {
   width: 100%;
-  max-width: 96rem;
+  max-width: 110rem;
   margin: 0 auto;
   padding: clamp(1.25rem, 4vw, 3rem) clamp(1.5rem, 6vw, 4rem);
 }
@@ -1715,7 +1710,7 @@ export default defineComponent({
 .profile-collapsible-section {
   border-radius: 1rem;
   background: var(--surface-2);
-  padding: 0.5rem 1.5rem;
+  padding: 1.5rem;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
 }
 
@@ -1725,7 +1720,7 @@ export default defineComponent({
   align-items: center;
   cursor: pointer;
   list-style: none;
-  padding: 0.75rem 0;
+  padding: 0;
 }
 
 .profile-collapsible-section__summary::-webkit-details-marker {
@@ -1749,6 +1744,7 @@ export default defineComponent({
 
 .profile-collapsible-section[open] > .profile-section__body {
   padding-bottom: 1rem;
+  margin-top: 1rem;
 }
 
 .profile-retry-hidden {
@@ -2006,20 +2002,20 @@ export default defineComponent({
 
 @media (min-width: 1200px) {
   .profile-page__inner {
-    max-width: 110rem;
+    max-width: 130rem;
   }
 }
 
 @media (min-width: 1440px) {
   .profile-page__inner {
-    max-width: 120rem;
+    max-width: 150rem;
     padding-inline: clamp(2rem, 6vw, 5rem);
   }
 }
 
 @media (min-width: 1680px) {
   .profile-page__inner {
-    max-width: 128rem;
+    max-width: 160rem;
   }
 }
 
@@ -2087,7 +2083,7 @@ export default defineComponent({
 
   .profile-layout {
     display: grid;
-    grid-template-columns: minmax(0, 2.5fr) minmax(320px, 1fr);
+    grid-template-columns: minmax(0, 3.5fr) minmax(320px, 1fr);
     align-items: start;
     gap: 2rem;
   }
