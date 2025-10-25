@@ -106,10 +106,25 @@
       <section class="section fade" id="how-it-works">
         <h2 class="h2 grad center">How Ecash Works</h2>
         <p class="lead center">Bitcoin in → private e-cash out → social payments everywhere.</p>
-        <div class="cards cards--3 rail">
-          <div class="card step"><span class="emj xl">₿</span><h3>Your Bitcoin</h3><p>From any wallet</p></div>
-          <div class="card step"><span class="emj xl">🏦</span><h3>The Mint</h3><p>Issues ecash tokens</p></div>
-          <div class="card step"><span class="emj xl">👛</span><h3>Fundstr Wallet</h3><p>Spend privately</p></div>
+        <div class="how-layout">
+          <figure class="how-video">
+            <video
+              class="how-video__player"
+              controls
+              preload="metadata"
+              poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 630'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop offset='0' stop-color='%231a1b2b'/%3E%3Cstop offset='1' stop-color='%232a2547'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23g)' width='1200' height='630'/%3E%3Cpath d='M180 420h280v40H180zM180 170h280v40H180zM740 170h280v40H740zM740 420h280v40H740z' fill='%233f83f8' opacity='.45'/%3E%3Ccircle cx='600' cy='315' r='120' fill='none' stroke='%23a855f7' stroke-width='32' stroke-dasharray='60 40' stroke-linecap='round' opacity='.65'/%3E%3Ctext x='600' y='310' text-anchor='middle' fill='%23f9fafb' font-family='Inter,Arial,sans-serif' font-size='72' font-weight='700'%3EEcash Flow%3C/text%3E%3Ctext x='600' y='380' text-anchor='middle' fill='%23d1d5db' font-family='Inter,Arial,sans-serif' font-size='32' font-weight='500'%3EDeposit %26%231859; Mint %26%231859; Spend%3C/text%3E%3C/svg%3E"
+              src="https://m.primal.net/HsMt.mp4"
+              aria-label="Short walkthrough showing how Fundstr turns Bitcoin deposits into private ecash you can spend socially"
+            ></video>
+            <figcaption class="how-video__caption">
+              Watch a quick walkthrough of Fundstr converting a Bitcoin deposit into private ecash ready for social payments.
+            </figcaption>
+          </figure>
+          <div class="cards cards--3 rail">
+            <div class="card step"><span class="emj xl">₿</span><h3>Your Bitcoin</h3><p>From any wallet</p></div>
+            <div class="card step"><span class="emj xl">🏦</span><h3>The Mint</h3><p>Issues ecash tokens</p></div>
+            <div class="card step"><span class="emj xl">👛</span><h3>Fundstr Wallet</h3><p>Spend privately</p></div>
+          </div>
         </div>
       </section>
 
@@ -347,6 +362,13 @@ function installPwa () {
 .cards--4{grid-template-columns:repeat(4,minmax(0,1fr))}
 @media (max-width: 1024px){ .cards--3,.cards--4{grid-template-columns:repeat(2,minmax(0,1fr))} }
 @media (max-width: 640px){ .cards--2,.cards--3,.cards--4{grid-template-columns:1fr} }
+
+.how-layout{display:grid; gap:1.5rem; align-items:start}
+@media (min-width: 1024px){ .how-layout{grid-template-columns:1.1fr .9fr} }
+
+.how-video{margin:0; background:var(--s2); border:1px solid rgba(var(--acRGB),.2); border-radius:1rem; padding:1rem; box-shadow:0 8px 20px rgba(0,0,0,.22)}
+.how-video__player{display:block; width:100%; height:auto; border-radius:.75rem; background:#000}
+.how-video__caption{margin-top:.75rem; font-size:.95rem; line-height:1.5; color:var(--txt)}
 
 .two-col{display:grid; grid-template-columns:1fr 1fr; gap:2rem}
 @media (max-width: 960px){ .two-col{grid-template-columns:1fr} }
