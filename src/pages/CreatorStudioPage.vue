@@ -107,6 +107,9 @@
               :handle-relay-disconnect="handleRelayDisconnect"
               :request-explorer-open="requestExplorerOpen"
               :open-shared-signer-modal="openSharedSignerModal"
+              :signer-attached="authoringSignerAttached"
+              :signer-help-url="NIP07_HELP_URL"
+              :request-signer-attach="requestSignerAttachment"
             />
           </template>
           <template v-else-if="activeStep === 'profile'">
@@ -176,6 +179,7 @@
                   :disabled="loading"
                   @update:tiers="handleTiersUpdate"
                   @validation-changed="handleTierValidation"
+                  @request-refresh-from-relay="handleTierRefreshRequest"
                 />
               </div>
             </StepTemplate>
@@ -702,7 +706,6 @@ import TierComposer from './creator-studio/TierComposer.vue';
 import NutzapExplorerPanel from 'src/nutzap/onepage/NutzapExplorerPanel.vue';
 import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
 import type { Tier } from 'src/nutzap/types';
-import { getNutzapNdk } from 'src/nutzap/ndkInstance';
 import { nip19 } from 'nostr-tools';
 import { useClipboard } from 'src/composables/useClipboard';
 import { buildProfileUrl } from 'src/utils/profileUrl';
@@ -743,6 +746,14 @@ import { useUiStore } from 'src/stores/ui';
 import { useCreatorHub } from 'src/composables/useCreatorHub';
 import { useP2pkDiagnostics } from 'src/composables/useP2pkDiagnostics';
 import { seedProfileIdentityFromMetadata } from './creator-studio/identitySeed';
+import { attachNip07SignerIfAvailable, connectNdk, ndkWrite } from 'src/nostr/ndk';
+
+const NIP07_HELP_URL =
+  'https://guides.getalby.com/alby-browser-extension/nostr/how-to-sign-with-nostr-browser-extension';
+
+void connectNdk().catch(err => {
+  console.warn('[CreatorStudio] failed to connect NDK clients', err);
+});
 
 const P2PK_VERIFICATION_STALE_MS = 1000 * 60 * 60 * 24 * 7;
 const CREATOR_STUDIO_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
@@ -840,6 +851,10 @@ const handleTiersUpdate = (value: Tier[] | unknown) => {
 const tierPreviewKind = ref<TierKind>(CANONICAL_TIER_KIND);
 const loading = ref(false);
 const publishingAll = ref(false);
+const nip07SignerDetected = ref(false);
+const authoringSignerAttached = ref(false);
+let loggedAuthoringSignerAttach = false;
+const publishQueueAllowed = true;
 const publishStageOrder = ['legacyTiers', 'canonicalTiers', 'profile'] as const;
 type PublishStageName = (typeof publishStageOrder)[number];
 type PublishStageJobStatus = 'pending' | 'completed' | 'failed';
@@ -2025,7 +2040,7 @@ function persistComposerKeyToStore(pubHex: string, privHex: string) {
 
   walletStore.setActiveP2pk(normalizedPub, normalizedPriv);
 
-  if (!signer.value) {
+  if (!authoringSignerAttached.value) {
     notifyWarning(
       'Stored new P2PK key. Connect your Nostr signer and publish to update your Nutzap profile.',
     );
@@ -2261,11 +2276,44 @@ const {
 
 const activeIdentitySummary = computed(() => connectedIdentitySummary.value);
 
-const signerStatusMessage = computed(() => {
-  if (usingStoreIdentity.value) {
-    return 'Shared Fundstr signer connected for this workspace.';
+function setAuthoringSignerActive(active: boolean) {
+  if (active && !loggedAuthoringSignerAttach) {
+    console.log('Authoring NDK signer attached');
+    loggedAuthoringSignerAttach = true;
   }
-  return 'No shared signer is active. Use “Connect signer” to open the shared signer modal.';
+  authoringSignerAttached.value = active;
+}
+
+function tryAttachNip07Signer(): boolean {
+  const attached = attachNip07SignerIfAvailable();
+  nip07SignerDetected.value = attached;
+  if (attached) {
+    setAuthoringSignerActive(true);
+  }
+  return attached;
+}
+
+const requestSignerAttachment = () => {
+  const attached = tryAttachNip07Signer();
+  if (!attached && !signer.value) {
+    setAuthoringSignerActive(false);
+  }
+  return attached;
+};
+
+requestSignerAttachment();
+
+const signerStatusMessage = computed(() => {
+  if (authoringSignerAttached.value) {
+    if (usingStoreIdentity.value) {
+      return 'Shared Fundstr signer connected for this workspace.';
+    }
+    if (nip07SignerDetected.value) {
+      return 'Browser signer ready. Approve access in your NIP-07 extension when prompted.';
+    }
+    return 'Signer connected for publishing.';
+  }
+  return 'Install or enable a NIP-07 signer (e.g., nos2x, Alby) and approve access.';
 });
 
 function openSharedSignerModal() {
@@ -2692,16 +2740,12 @@ function safeEncodeNpub(pubHex: string) {
   }
 }
 
-const publishBlockers = computed<string[]>(() => {
+const publishValidationBlockers = computed<string[]>(() => {
   if (publishingAll.value) {
     return [];
   }
 
   const blockers: string[] = [];
-
-  if (!signer.value) {
-    blockers.push('Connect a signer');
-  }
 
   if (!hasAuthorIdentity.value) {
     blockers.push('Provide a creator author (npub or hex)');
@@ -2727,12 +2771,25 @@ const publishBlockers = computed<string[]>(() => {
     blockers.push('Resolve tier validation issues');
   }
 
-  if (relayVerificationState.value === 'mismatch') {
-    blockers.push(relayVerificationMessage.value || 'Resolve relay copy mismatch');
-  }
-
   return blockers;
 });
+
+const publishBlockers = computed<string[]>(() => {
+  const blockers = [...publishValidationBlockers.value];
+  if (!authoringSignerAttached.value) {
+    blockers.unshift('Connect a NIP-07 signer (nos2x, Alby)');
+  }
+  return blockers;
+});
+
+const localValidationOk = computed(() => publishValidationBlockers.value.length === 0);
+
+const canPublish = computed(
+  () =>
+    authoringSignerAttached.value &&
+    localValidationOk.value &&
+    (relayIsConnected.value || publishQueueAllowed),
+);
 
 const tierFrequencyOptions = computed(() =>
   tierFrequencies.map(value => ({
@@ -2998,6 +3055,10 @@ const publishWarnings = computed<string[]>(() => {
     warnings.push(relayVerificationMessage.value || 'Awaiting relay copy confirmation');
   }
 
+  if (relayVerificationState.value === 'mismatch') {
+    warnings.push(relayVerificationMessage.value || 'Relay copy mismatch. Publish to overwrite.');
+  }
+
   if (shouldPromptPublishUpdates.value) {
     warnings.push('Publish to sync your latest updates with the relay.');
   }
@@ -3051,9 +3112,7 @@ const summaryCaption = computed(() => {
   return 'Review creator details before publishing.';
 });
 
-const publishDisabled = computed(
-  () => publishingAll.value || publishBlockers.value.length > 0 || !requiredReadinessReady.value
-);
+const publishDisabled = computed(() => publishingAll.value || !canPublish.value);
 
 const steps = computed<StepEntry[]>(() => {
   const readinessMap = new Map(readinessChips.value.map(chip => [chip.key, chip] as const));
@@ -3268,6 +3327,73 @@ function handleTierValidation(results: TierFieldErrors[]) {
   tierValidationResults.value = results;
 }
 
+function handleTierRefreshRequest() {
+  if (!activeAuthorHex) {
+    return;
+  }
+  void loadTiers(activeAuthorHex).catch(err => {
+    console.warn('[nutzap] failed to reload tiers from relay', err);
+  });
+}
+
+type ComparableTier = {
+  id: string;
+  title: string;
+  price: number;
+  frequency: string;
+  description: string;
+  media: Array<{ url: string; title: string; type: string }>;
+};
+
+function normalizeTierForComparison(tier: Tier): ComparableTier {
+  const media = Array.isArray(tier.media)
+    ? tier.media.map(entry => ({
+        url: typeof entry?.url === 'string' ? entry.url.trim() : '',
+        title: typeof entry?.title === 'string' ? entry.title.trim() : '',
+        type: typeof entry?.type === 'string' ? entry.type : '',
+      }))
+    : [];
+
+  return {
+    id: typeof tier.id === 'string' ? tier.id : '',
+    title: typeof tier.title === 'string' ? tier.title : '',
+    price: typeof tier.price === 'number' && Number.isFinite(tier.price) ? tier.price : 0,
+    frequency: typeof tier.frequency === 'string' ? tier.frequency : '',
+    description: typeof tier.description === 'string' ? tier.description : '',
+    media,
+  };
+}
+
+function tiersEqual(left: Tier[], right: Tier[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    const a = normalizeTierForComparison(left[index]);
+    const b = normalizeTierForComparison(right[index]);
+    if (
+      a.id !== b.id ||
+      a.title !== b.title ||
+      a.price !== b.price ||
+      a.frequency !== b.frequency ||
+      a.description !== b.description
+    ) {
+      return false;
+    }
+    if (a.media.length !== b.media.length) {
+      return false;
+    }
+    for (let mediaIndex = 0; mediaIndex < a.media.length; mediaIndex += 1) {
+      const mediaA = a.media[mediaIndex];
+      const mediaB = b.media[mediaIndex];
+      if (mediaA.url !== mediaB.url || mediaA.title !== mediaB.title || mediaA.type !== mediaB.type) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 function applyTiersEvent(event: any | null, overrideKind?: TierKind | null) {
   if (!event) {
     tiers.value = [];
@@ -3293,7 +3419,13 @@ function applyTiersEvent(event: any | null, overrideKind?: TierKind | null) {
   }
 
   const content = typeof event?.content === 'string' ? event.content : undefined;
-  tiers.value = parseTiersContent(content);
+  const parsed = parseTiersContent(content);
+  if (tiersEqual(parsed, tiers.value)) {
+    creatorHub.markTierDraftsClean();
+    evaluateRelayVerificationState();
+    return;
+  }
+  tiers.value = parsed;
   creatorHub.markTierDraftsClean();
   evaluateRelayVerificationState();
 }
@@ -4169,8 +4301,8 @@ async function publishAll() {
     return;
   }
 
-  if (!signer.value) {
-    notifyError('Connect a Nostr signer to publish.');
+  if (!requestSignerAttachment() && !authoringSignerAttached.value) {
+    notifyError('Connect a NIP-07 signer (nos2x, Alby) to publish.');
     return;
   }
 
@@ -4203,6 +4335,12 @@ async function publishAll() {
   lastPublishInfo.value = '';
 
   let tierSummary = '';
+
+  const publishStart = performance.now();
+  console.log('[CreatorStudio] publish:start', {
+    author: authorHex,
+    tiers: tiers.value.length,
+  });
 
   try {
     const fallbackNotices: string[] = [];
@@ -4317,11 +4455,24 @@ async function publishAll() {
     }
 
     profilePublished.value = true;
-    await Promise.all([loadTiers(reloadKey), loadProfile(reloadKey)]);
+    console.log('[CreatorStudio] publish:success', {
+      durationMs: Math.round(performance.now() - publishStart),
+    });
+    try {
+      const verificationStart = performance.now();
+      await Promise.all([loadTiers(reloadKey), loadProfile(reloadKey)]);
+      console.log('[CreatorStudio] publish:verify:success', {
+        durationMs: Math.round(performance.now() - verificationStart),
+      });
+    } catch (verificationError) {
+      console.warn('[CreatorStudio] publish:verify:failed', verificationError);
+      notifyWarning('Published locally; relay verification pending.');
+    }
     await refreshSubscriptions(true);
   } catch (err) {
     resetRelayVerificationTracking({ preserveObserved: true });
     console.error('[nutzap] publish profile workflow failed', err);
+    console.log('[CreatorStudio] publish:fail', err);
     if (err instanceof PublishWorkflowError) {
       const original = err.original;
       const tierDetails = buildTierSummary(err.outcomes);
@@ -4395,8 +4546,27 @@ watch(
 watch(
   signer,
   newSigner => {
-    const ndk = getNutzapNdk();
-    ndk.signer = newSigner ?? undefined;
+    if (newSigner) {
+      if (typeof (newSigner as any).user === 'function') {
+        ndkWrite.signer = newSigner as any;
+        setAuthoringSignerActive(true);
+        return;
+      }
+
+      ndkWrite.signer = undefined;
+      setAuthoringSignerActive(false);
+      if (tryAttachNip07Signer()) {
+        return;
+      }
+      return;
+    }
+
+    if (tryAttachNip07Signer()) {
+      return;
+    }
+
+    ndkWrite.signer = undefined;
+    setAuthoringSignerActive(false);
   },
   { immediate: true }
 );

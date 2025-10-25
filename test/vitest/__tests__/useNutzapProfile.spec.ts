@@ -44,11 +44,20 @@ vi.mock('@/nostr/relayClient', () => ({
 
 const getNutzapNdkMock = vi.fn(() => ({}));
 
+function createSignerStub() {
+  return {
+    user: vi.fn(async () => ({
+      npub: 'npub1stub',
+      hexpubkey: 'f'.repeat(64),
+    })),
+  };
+}
+
 vi.mock('@/nutzap/ndkInstance', () => ({
   getNutzapNdk: getNutzapNdkMock,
 }));
 
-const signerRef = ref({});
+const signerRef = ref(createSignerStub());
 const pubkeyRef = ref('f'.repeat(64));
 
 vi.mock('@/nutzap/signer', () => ({
@@ -71,7 +80,7 @@ describe('useNutzapProfile tier address', () => {
     queryNutzapProfileMock.mockClear();
     queryNutzapTiersMock.mockClear();
     getNutzapNdkMock.mockClear();
-    signerRef.value = {};
+    signerRef.value = createSignerStub();
     pubkeyRef.value = PUBKEY;
   });
 

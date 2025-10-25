@@ -1,6 +1,8 @@
 import type { Creator } from './fundstrApi';
 
-const DISCOVERY_API_BASE = 'https://api.fundstr.me/discover';
+const DISCOVERY_API_BASE = (
+  import.meta.env.VITE_DISCOVERY_BASE_URL ?? 'https://api.fundstr.me/discover'
+).replace(/\/+$/u, '');
 
 export interface DiscoveryResponse {
   count: number;
