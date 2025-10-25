@@ -9,13 +9,6 @@
         }}</q-btn>
       </div>
 
-      <q-banner v-if="isGuest" class="profile-page__banner bg-surface-2 text-2" icon="info">
-        {{ $t("CreatorHub.profile.guestCta") }}
-        <template #action>
-          <q-btn flat color="primary" :label="$t('CreatorHub.profile.finishSetup')" @click="gotoWelcome" />
-        </template>
-      </q-banner>
-
       <q-banner v-if="decodeError" class="profile-page__banner bg-negative text-white">
         {{ decodeError }}
       </q-banner>
@@ -109,6 +102,68 @@
             </p>
           </div>
         </section>
+
+        <section class="profile-section profile-section--video-explainer">
+          <header class="profile-section__header">
+            <h2 class="profile-section__title text-h5">
+              {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+            </h2>
+          </header>
+          <div class="profile-section__body">
+            <div class="profile-card__media">
+              <div class="profile-card__media-main">
+                <div class="profile-card__video">
+                  <video
+                    controls
+                    preload="metadata"
+                    playsinline
+                    poster="https://m.primal.net/HsMt.jpg"
+                  >
+                    <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
+                    {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
+                  </video>
+                  <div class="sr-only">
+                    <a href="https://m.primal.net/HsMt.mp4" target="_blank" rel="noopener">
+                      {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                    </a>
+                  </div>
+                </div>
+                <p class="profile-card__caption profile-card__text text-2">
+                  {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
+                </p>
+              </div>
+              <div
+                v-if="howCashuWorksHighlight || howCashuWorksList.length"
+                class="profile-card__media-aside"
+              >
+                <div v-if="howCashuWorksHighlight" class="profile-card__highlight text-body2">
+                  <span class="profile-card__highlight-label text-2">
+                    {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                  </span>
+                  <p class="profile-card__highlight-text">
+                    {{ howCashuWorksHighlight }}
+                  </p>
+                </div>
+                <ul v-if="howCashuWorksList.length" class="profile-card__list">
+                  <li
+                    v-for="(item, index) in howCashuWorksList"
+                    :key="index"
+                    class="profile-card__list-item text-2"
+                  >
+                    {{ item }}
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <q-banner v-if="isGuest" class="profile-page__banner bg-surface-2 text-2" icon="info">
+          {{ $t("CreatorHub.profile.guestCta") }}
+          <template #action>
+            <q-btn flat color="primary" :label="$t('CreatorHub.profile.finishSetup')" @click="gotoWelcome" />
+          </template>
+        </q-banner>
 
         <div
           class="profile-tier-grid"
@@ -278,64 +333,6 @@
             </div>
           </section>
         </div>
-
-        <section class="profile-section profile-section--video-explainer">
-          <details class="profile-collapsible-section">
-            <summary class="profile-collapsible-section__summary">
-              <h3 class="profile-card__title text-subtitle1">
-                {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-              </h3>
-              <q-icon class="profile-collapsible-section__icon" name="expand_more" />
-            </summary>
-            <div class="profile-section__body">
-              <div class="profile-card__media">
-                <div class="profile-card__media-main">
-                  <div class="profile-card__video">
-                    <video
-                      controls
-                      preload="metadata"
-                      playsinline
-                      poster="https://m.primal.net/HsMt.jpg"
-                    >
-                      <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
-                      {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
-                    </video>
-                    <div class="sr-only">
-                      <a href="https://m.primal.net/HsMt.mp4" target="_blank" rel="noopener">
-                        {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                      </a>
-                    </div>
-                  </div>
-                  <p class="profile-card__caption profile-card__text text-2">
-                    {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
-                  </p>
-                </div>
-                <div
-                  v-if="howCashuWorksHighlight || howCashuWorksList.length"
-                  class="profile-card__media-aside"
-                >
-                  <div v-if="howCashuWorksHighlight" class="profile-card__highlight text-body2">
-                    <span class="profile-card__highlight-label text-2">
-                      {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                    </span>
-                    <p class="profile-card__highlight-text">
-                      {{ howCashuWorksHighlight }}
-                    </p>
-                  </div>
-                  <ul v-if="howCashuWorksList.length" class="profile-card__list">
-                    <li
-                      v-for="(item, index) in howCashuWorksList"
-                      :key="index"
-                      class="profile-card__list-item text-2"
-                    >
-                      {{ item }}
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </details>
-        </section>
 
         <section class="profile-section">
           <header class="profile-section__header">
@@ -1521,46 +1518,6 @@ export default defineComponent({
   display: flex;
   justify-content: center;
   align-items: center;
-}
-
-.profile-collapsible-section {
-  border-radius: 1rem;
-  background: var(--surface-2);
-  padding: 1.5rem;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
-}
-
-.profile-collapsible-section__summary {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-  list-style: none;
-  padding: 0;
-}
-
-.profile-collapsible-section__summary::-webkit-details-marker {
-  display: none;
-}
-
-.profile-collapsible-section__summary:focus-visible {
-  outline: 2px solid var(--accent-500);
-  outline-offset: 4px;
-  border-radius: 0.25rem;
-}
-
-.profile-collapsible-section__icon {
-  font-size: 1.5rem;
-  transition: transform 0.2s ease-in-out;
-}
-
-.profile-collapsible-section[open] > .profile-collapsible-section__summary > .profile-collapsible-section__icon {
-  transform: rotate(180deg);
-}
-
-.profile-collapsible-section[open] > .profile-section__body {
-  padding-bottom: 1rem;
-  margin-top: 1rem;
 }
 
 .profile-retry-hidden {
