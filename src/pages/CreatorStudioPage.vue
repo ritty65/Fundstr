@@ -551,6 +551,16 @@
             </StepTemplate>
           </template>
         </div>
+
+        <div
+          v-if="workspaceDirty"
+          class="studio-card__footer-blurb text-caption text-2"
+        >
+          <q-icon name="info" size="16px" class="q-mr-xs" />
+          <span>
+            {{ publishBlockReason || 'Publish to sync your latest updates with the relay.' }}
+          </span>
+        </div>
       </main>
 
       <aside class="studio-sidebar">
