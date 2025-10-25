@@ -552,16 +552,16 @@
           </template>
         </div>
 
-        <div
-          v-if="workspaceDirty"
-          class="studio-card__footer-blurb text-caption text-2"
-        >
-          <q-icon name="info" size="16px" class="q-mr-xs" />
-          <span>
-            {{ publishBlockReason || 'Publish to sync your latest updates with the relay.' }}
-          </span>
-        </div>
       </main>
+
+      <div
+        v-if="workspaceDirty"
+        class="studio-card__footer-blurb text-caption"
+        :class="publishBlockReason ? 'text-warning' : 'text-2'"
+      >
+        <span v-if="publishBlockReason">{{ publishBlockReason }}</span>
+        <span v-else>Publish to sync your latest updates with the relay.</span>
+      </div>
 
       <aside class="studio-sidebar">
         <q-card flat bordered class="studio-preview" :data-active-step="activeStep" style="position: relative">
@@ -2939,44 +2939,47 @@ const requiredReadinessReady = computed(() =>
 );
 
 const publishBlockReason = computed(() => {
-  if (publishingAll.value) {
+  // If we are not dirty or are already publishing, show no reason.
+  if (!workspaceDirty.value || publishingAll.value) {
     return '';
   }
 
+  // Check for global hard-stop blockers first
   if (publishBlockers.value.length > 0) {
-    return publishBlockers.value[0] ?? '';
+    return publishBlockers.value[0];
   }
 
+  // Check Step 2: Setup
+  if (!setupStepReady.value) {
+    if (relayNeedsAttention.value) {
+      return 'Restore relay connection health before publishing.';
+    }
+    if (!authorKeyReady.value) {
+      return 'Enter the creator author to publish.';
+    }
+    // Generic fallback for setup step
+    return 'Complete relay & author setup to publish.';
+  }
+
+  // Check Step 3: Tiers (This is a common block)
+  if (!tiersReady.value) {
+    if (tiers.value.length === 0) {
+      return 'Create at least one tier to publish.';
+    }
+    if (tiersHaveErrors.value) {
+      return 'Resolve tier validation issues before publishing.';
+    }
+    // Generic fallback for tiers step
+    return 'Review your tier setup before publishing.';
+  }
+
+  // Check Step 4: Readiness
   if (!requiredReadinessReady.value) {
-    if (!setupStepReady.value) {
-      if (relayNeedsAttention.value) {
-        return 'Restore relay connection health before publishing.';
-      }
-
-      if (!authorKeyReady.value) {
-        return 'Connect your author key before publishing.';
-      }
-
-      return 'Complete the setup step before publishing.';
-    }
-
-    if (!tiersReady.value) {
-      if (tiers.value.length === 0) {
-        return 'Add at least one tier before publishing.';
-      }
-
-      if (tiersHaveErrors.value) {
-        return 'Resolve tier validation issues before publishing.';
-      }
-
-      return 'Review your tiers before publishing.';
-    }
+    return 'Complete the required readiness checklist before publishing.';
   }
 
-  if (workspaceDirty.value) {
-    return 'Publish to sync your latest updates with the relay.';
-  }
-
+  // If we are dirty but no blockers are found, return an empty string
+  // This will allow the "Publish to sync..." message to show.
   return '';
 });
 
