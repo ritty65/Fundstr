@@ -52,6 +52,15 @@ const creatorStudioStubs = {
   NutzapExplorerPanel: { template: '<div />' },
 };
 
+function createSignerStub() {
+  return {
+    user: vi.fn(async () => ({
+      npub: 'npub1stub',
+      hexpubkey: 'f'.repeat(64),
+    })),
+  };
+}
+
 function createEventBus<T>() {
   const listeners = new Set<(event: T) => void>();
   return {
@@ -170,7 +179,7 @@ function ensureShared(): SharedMocks {
       clientPublishMock,
       clientRequestOnceMock,
       relayClientInstance,
-      signerRef: ref({}),
+      signerRef: ref(createSignerStub()),
       p2pkStoreMock,
       walletStoreMock,
     };
@@ -412,7 +421,7 @@ beforeEach(() => {
 describe('CreatorStudioPage publishAll fallback', () => {
   it('logs relay telemetry after successful publish', async () => {
     const state = ensureShared();
-    state.signerRef.value = {};
+    state.signerRef.value = createSignerStub();
 
     const tierEvent = {
       id: 'tier-event-id',
@@ -576,7 +585,7 @@ describe('CreatorStudioPage publishAll fallback', () => {
       },
     });
 
-    state.signerRef.value = {};
+    state.signerRef.value = createSignerStub();
 
     (wrapper.vm as any).authorInput = VALID_HEX;
     (wrapper.vm as any).displayName = 'Creator';
@@ -701,7 +710,7 @@ describe('CreatorStudioPage publishAll fallback', () => {
       },
     });
 
-    state.signerRef.value = {};
+    state.signerRef.value = createSignerStub();
 
     const vmAny = wrapper.vm as any;
     vmAny.authorInput = VALID_HEX;
@@ -758,7 +767,7 @@ describe('CreatorStudioPage publishAll fallback', () => {
 describe('CreatorStudioPage auto republish fallback', () => {
   it('auto republish succeeds via HTTP when the websocket publish times out', async () => {
     const state = ensureShared();
-    state.signerRef.value = {};
+    state.signerRef.value = createSignerStub();
     state.p2pkStoreMock.p2pkKeys = [];
     state.p2pkStoreMock.firstKey = null;
 

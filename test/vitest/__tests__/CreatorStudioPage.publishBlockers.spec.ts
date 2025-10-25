@@ -48,6 +48,15 @@ const creatorStudioStubs = {
   NutzapExplorerPanel: { template: '<div />' },
 };
 
+function createSignerStub() {
+  return {
+    user: vi.fn(async () => ({
+      npub: 'npub1stub',
+      hexpubkey: 'f'.repeat(64),
+    })),
+  };
+}
+
 function createEventBus<T>() {
   const listeners = new Set<(event: T) => void>();
   return {
@@ -184,7 +193,7 @@ function ensureShared(): SharedMocks {
       clientPublishMock,
       clientRequestOnceMock,
       relayClientInstance,
-      signerRef: ref({}),
+      signerRef: ref(createSignerStub()),
       p2pkStoreMock,
       walletStoreMock,
       verificationRecordRef,
@@ -451,7 +460,7 @@ describe('CreatorStudioPage publish blockers vs warnings', () => {
 
     // Ensure other blockers are cleared
     setSetupValue(wrapper, 'authorInput', VALID_HEX);
-    state.signerRef.value = {};
+    state.signerRef.value = createSignerStub();
     setSetupValue(wrapper, 'mintsText', 'https://mint.example');
     setSetupValue(wrapper, 'tiers', [
       { id: 'tier-1', title: 'Tier 1', price: 1000, frequency: 'monthly', description: '' },

@@ -261,6 +261,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:tiers', tiers: Tier[]): void;
   (e: 'validation-changed', errors: TierFieldErrors[]): void;
+  (e: 'request-refresh-from-relay'): void;
 }>();
 
 const isDisabled = computed(() => props.disabled === true);
@@ -281,11 +282,18 @@ type TierPreset = {
 };
 
 const entries = ref<TierDraft[]>([]);
+const isLocallyDirty = ref(false);
 const validations = ref<TierFieldErrors[]>([]);
 const touched = reactive<Record<string, TierTouchedState>>({});
 const optionalOpen = reactive<Record<string, boolean>>({});
 let syncingFromProps = false;
 let skipNextPropSync = false;
+
+function onAnyUserChange() {
+  if (!isLocallyDirty.value) {
+    isLocallyDirty.value = true;
+  }
+}
 
 type MediaPreview = {
   type: 'image' | 'video' | 'audio' | 'iframe';
@@ -417,8 +425,13 @@ watch(
       emitValidation();
       return;
     }
+    if (isLocallyDirty.value) {
+      return;
+    }
     syncingFromProps = true;
-    entries.value = tiers.map(tier => tierToDraft(tier));
+    const normalized = Array.isArray(tiers) ? tiers : [];
+    entries.value = normalized.map(tier => tierToDraft(tier));
+    isLocallyDirty.value = false;
     syncAncillaryState(entries.value);
     // ensure empty composer still allows adding media rows later
     if (!entries.value.length) {
@@ -440,6 +453,7 @@ watch(
     if (syncingFromProps) {
       return;
     }
+    onAnyUserChange();
     syncAncillaryState(entries.value);
     const sanitized = entries.value.map((entry, index) =>
       draftToTier(entry, props.tiers?.[index]),
@@ -461,6 +475,22 @@ function ensureTouchedEntry(id: string) {
       media: [],
     };
   }
+}
+
+function discardLocalEditsAndReload() {
+  isLocallyDirty.value = false;
+  skipNextPropSync = false;
+  syncingFromProps = true;
+  const nextDrafts = Array.isArray(props.tiers)
+    ? props.tiers.map(tier => tierToDraft(tier))
+    : [];
+  entries.value = nextDrafts;
+  syncAncillaryState(entries.value);
+  emitValidation();
+  void nextTick(() => {
+    syncingFromProps = false;
+    emit('request-refresh-from-relay');
+  });
 }
 
 function validationAt(index: number): TierFieldErrors {
@@ -607,6 +637,8 @@ function applyPreset(index: number, preset: TierPreset) {
   markTouched(draft.id, 'price');
   markTouched(draft.id, 'frequency');
 }
+
+defineExpose({ discardLocalEditsAndReload });
 </script>
 
 <style scoped>

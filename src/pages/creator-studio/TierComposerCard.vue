@@ -16,21 +16,30 @@
       >
         {{ tiersReady ? 'Valid' : 'Needs review' }}
       </q-chip>
+      <q-btn
+        flat
+        dense
+        icon="refresh"
+        label="Reload from relay"
+        @click="handleDiscardLocal"
+      />
     </div>
     <div class="section-body column q-gutter-md">
       <TierComposer
+        ref="composerRef"
         :tiers="tiers"
         :frequency-options="frequencyOptions"
         :show-errors="showErrors"
         @update:tiers="value => emit('update:tiers', value)"
         @validation-changed="value => emit('validation-changed', value)"
+        @request-refresh-from-relay="() => emit('request-refresh-from-relay')"
       />
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { toRefs, type PropType } from 'vue';
+import { ref, toRefs, type PropType } from 'vue';
 import TierComposer from './TierComposer.vue';
 import type { Tier } from 'src/nutzap/types';
 import type { TierFieldErrors } from './tierComposerUtils';
@@ -50,9 +59,16 @@ const props = defineProps({
 const emit = defineEmits<{
   (e: 'update:tiers', value: Tier[]): void;
   (e: 'validation-changed', value: TierFieldErrors[]): void;
+  (e: 'request-refresh-from-relay'): void;
 }>();
 
 const { tiers, frequencyOptions, showErrors, tiersReady } = toRefs(props);
+
+const composerRef = ref<InstanceType<typeof TierComposer> | null>(null);
+
+function handleDiscardLocal() {
+  composerRef.value?.discardLocalEditsAndReload();
+}
 </script>
 
 <style scoped>

@@ -115,6 +115,25 @@
             />
           </template>
         </q-banner>
+        <div v-if="!signerAttached" class="studio-alert studio-alert--info">
+          <q-icon name="extension" size="16px" />
+          <div class="column q-gutter-xs">
+            <span>Install/enable a NIP-07 signer (e.g., nos2x, Alby) and approve access.</span>
+            <div class="row q-gutter-sm">
+              <q-btn
+                flat
+                dense
+                color="primary"
+                label="Signer help"
+                type="a"
+                :href="signerHelpUrl"
+                target="_blank"
+                rel="noopener"
+              />
+              <q-btn flat dense color="primary" label="Retry detection" @click="handleSignerRetry" />
+            </div>
+          </div>
+        </div>
         <q-input
           v-model="authorInputModel"
           label="Creator author (npub or hex)"
@@ -177,6 +196,8 @@ type SetupStepProps = {
   signerStatusMessage: string;
   usingStoreIdentity: boolean;
   activeIdentitySummary: string | null;
+  signerAttached: boolean;
+  signerHelpUrl: string;
   authorInput: string;
   authorInputLocked: boolean;
   authorInputLockHint: string;
@@ -186,6 +207,7 @@ type SetupStepProps = {
   handleRelayDisconnect: () => void;
   requestExplorerOpen: (source: ExplorerOpenSource) => void;
   openSharedSignerModal: () => void;
+  requestSignerAttach: () => void;
 };
 
 const props = defineProps<SetupStepProps>();
@@ -195,6 +217,10 @@ const emit = defineEmits<{
   (event: 'update:relayAutoReconnect', value: boolean): void;
   (event: 'update:authorInput', value: string): void;
 }>();
+
+function handleSignerRetry() {
+  props.requestSignerAttach();
+}
 
 const relayUrlModel = computed({
   get: () => props.relayUrlInput,
@@ -238,6 +264,8 @@ const {
   signerStatusMessage,
   usingStoreIdentity,
   activeIdentitySummary,
+  signerAttached,
+  signerHelpUrl,
   authorKeyReady,
   authorInputLocked,
   authorInputLockHint,
@@ -252,3 +280,13 @@ const {
   relayUrlInputValid,
 } = props;
 </script>
+
+<style scoped>
+.studio-alert--info {
+  color: var(--text-1);
+}
+
+.studio-alert--info .q-icon {
+  color: var(--q-primary);
+}
+</style>

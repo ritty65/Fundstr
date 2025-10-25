@@ -24,6 +24,18 @@ export { FEATURED_CREATORS } from "src/config/featured-creators";
 export type CreatorProfile = FundstrCreator;
 export type CreatorRow = CreatorProfile;
 
+const FRESH_RETRY_BASE_MS = 1500;
+const FRESH_RETRY_MAX_MS = 30000;
+const FRESH_WARN_DEBOUNCE_MS = 60000;
+
+let nextProfileFreshAttemptAt = 0;
+let profileFreshFailureCount = 0;
+let lastProfileWarnAt = 0;
+
+let nextTiersFreshAttemptAt = 0;
+let tiersFreshFailureCount = 0;
+let lastTiersWarnAt = 0;
+
 export class FundstrProfileFetchError extends Error {
   fallbackAttempted: boolean;
 
@@ -280,7 +292,9 @@ export async function fetchFundstrProfileBundle(
 
     let fresh: DiscoveryCreator | null = null;
     let freshError: unknown | null = null;
-    const shouldFetchFresh = forceRefresh || !cached;
+    const now = Date.now();
+    const allowFresh = forceRefresh || now >= nextProfileFreshAttemptAt;
+    const shouldFetchFresh = (forceRefresh || !cached) && allowFresh;
     if (shouldFetchFresh) {
       try {
         const response = await discovery.getCreators({
@@ -289,9 +303,19 @@ export async function fetchFundstrProfileBundle(
           timeoutMs: undefined,
         });
         fresh = findCreatorMatch(response.results as DiscoveryCreator[]);
+        profileFreshFailureCount = 0;
+        nextProfileFreshAttemptAt = 0;
       } catch (error) {
         freshError = error;
         lastError = error;
+        if (!forceRefresh) {
+          profileFreshFailureCount = Math.min(profileFreshFailureCount + 1, 6);
+          const delay = Math.min(
+            FRESH_RETRY_BASE_MS * 2 ** Math.max(profileFreshFailureCount - 1, 0),
+            FRESH_RETRY_MAX_MS,
+          );
+          nextProfileFreshAttemptAt = Date.now() + delay;
+        }
         console.error("fetchFundstrProfileBundle discovery query failed", {
           query: trimmed,
           error,
@@ -340,15 +364,23 @@ export async function fetchFundstrProfileBundle(
   if (!freshMatch?.fresh && firstAvailable?.cached) {
     usedCachedProfileFallback = true;
     if (firstAvailable.freshError) {
-      console.warn("fetchFundstrProfileBundle using cached discovery profile", {
-        query: firstAvailable.query,
-        error: firstAvailable.freshError,
-      });
+      const nowWarn = Date.now();
+      if (nowWarn - lastProfileWarnAt > FRESH_WARN_DEBOUNCE_MS) {
+        console.warn("fetchFundstrProfileBundle using cached discovery profile", {
+          query: firstAvailable.query,
+          error: firstAvailable.freshError,
+        });
+        lastProfileWarnAt = nowWarn;
+      }
     } else {
-      console.warn("fetchFundstrProfileBundle using cached discovery profile", {
-        query: firstAvailable?.query ?? pubkey,
-        reason: "fresh profile result unavailable",
-      });
+      const nowWarn = Date.now();
+      if (nowWarn - lastProfileWarnAt > FRESH_WARN_DEBOUNCE_MS) {
+        console.warn("fetchFundstrProfileBundle using cached discovery profile", {
+          query: firstAvailable?.query ?? pubkey,
+          reason: "fresh profile result unavailable",
+        });
+        lastProfileWarnAt = nowWarn;
+      }
     }
   }
 
@@ -381,7 +413,9 @@ export async function fetchFundstrProfileBundle(
 
     let fresh: DiscoveryCreatorTier[] | null = null;
     let freshError: unknown | null = null;
-    const shouldFetchFresh = forceRefresh || cached.length === 0;
+    const now = Date.now();
+    const allowFresh = forceRefresh || now >= nextTiersFreshAttemptAt;
+    const shouldFetchFresh = (forceRefresh || cached.length === 0) && allowFresh;
     if (shouldFetchFresh) {
       try {
         const request: { id: string; fresh?: boolean; timeoutMs?: number } = {
@@ -395,10 +429,20 @@ export async function fetchFundstrProfileBundle(
         } else {
           fresh = [];
         }
+        tiersFreshFailureCount = 0;
+        nextTiersFreshAttemptAt = 0;
       } catch (error) {
         freshError = error;
         fresh = null;
         lastError = error;
+        if (!forceRefresh) {
+          tiersFreshFailureCount = Math.min(tiersFreshFailureCount + 1, 6);
+          const delay = Math.min(
+            FRESH_RETRY_BASE_MS * 2 ** Math.max(tiersFreshFailureCount - 1, 0),
+            FRESH_RETRY_MAX_MS,
+          );
+          nextTiersFreshAttemptAt = Date.now() + delay;
+        }
         console.error("fetchFundstrProfileBundle discovery tier lookup failed", {
           id,
           error,
@@ -435,15 +479,23 @@ export async function fetchFundstrProfileBundle(
   if (!tierFreshMatch && tierFallbackSource?.cached?.length) {
     usedCachedTierFallback = true;
     if (tierFallbackSource.freshError) {
-      console.warn("fetchFundstrProfileBundle using cached discovery tiers", {
-        id: tierFallbackSource.id,
-        error: tierFallbackSource.freshError,
-      });
+      const nowWarn = Date.now();
+      if (nowWarn - lastTiersWarnAt > FRESH_WARN_DEBOUNCE_MS) {
+        console.warn("fetchFundstrProfileBundle using cached discovery tiers", {
+          id: tierFallbackSource.id,
+          error: tierFallbackSource.freshError,
+        });
+        lastTiersWarnAt = nowWarn;
+      }
     } else {
-      console.warn("fetchFundstrProfileBundle using cached discovery tiers", {
-        id: tierFallbackSource.id,
-        reason: "fresh tier result unavailable",
-      });
+      const nowWarn = Date.now();
+      if (nowWarn - lastTiersWarnAt > FRESH_WARN_DEBOUNCE_MS) {
+        console.warn("fetchFundstrProfileBundle using cached discovery tiers", {
+          id: tierFallbackSource.id,
+          reason: "fresh tier result unavailable",
+        });
+        lastTiersWarnAt = nowWarn;
+      }
     }
   }
 
