@@ -517,6 +517,7 @@ function installPwa () {
 
 /* Grid helpers */
 .cards{display:grid; gap:1rem}
+.cards > *{min-width:0}
 .cards--2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .cards--3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .cards--4{grid-template-columns:repeat(4,minmax(0,1fr))}
@@ -541,6 +542,7 @@ function installPwa () {
 
 /* Cards */
 .card{background:var(--s2); border:1px solid rgba(var(--acRGB),.18); border-radius:1rem; padding:1.25rem; box-shadow:0 4px 10px rgba(0,0,0,.25); transition:transform .2s, box-shadow .2s, border-color .2s; display:block; color:inherit; text-decoration:none;}
+.card,.card h3,.card p,.card .link-text,.summary-title,.summary-desc{overflow-wrap:anywhere; word-break:break-word;}
 .card-link{cursor:pointer;}
 .card-link:hover,.card-link:focus-visible{transform:translateY(-6px); box-shadow:0 12px 22px rgba(0,0,0,.3); border-color:rgba(var(--acRGB),.35);}
 .card-link:focus-visible{outline:none; box-shadow:0 0 0 3px var(--s1),0 0 0 6px rgba(var(--acRGB),.55),0 12px 22px rgba(0,0,0,.3);}
