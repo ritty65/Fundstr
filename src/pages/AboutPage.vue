@@ -77,41 +77,27 @@
       <section class="section fade" id="site-overview">
         <h2 class="h2 grad center">Site Overview</h2>
         <div class="cards cards--4">
-          <article class="card">
-            <header class="card-head"><span class="emj">💰</span><h3>Money</h3></header>
+          <component
+            v-for="card in siteOverviewCards"
+            :key="card.title"
+            :is="card.href ? 'a' : 'router-link'"
+            class="card card-link"
+            :to="card.to"
+            :href="card.href"
+            :target="card.target"
+            :rel="card.rel"
+          >
+            <header class="card-head">
+              <span class="emj">{{ card.emoji }}</span>
+              <h3>{{ card.title }}</h3>
+            </header>
             <ul class="links">
-              <li><router-link to="/wallet"><span class="emj">💳</span>Wallet</router-link></li>
-              <li><router-link to="/buckets"><span class="emj">📦</span>Buckets</router-link></li>
-              <li><router-link to="/subscriptions"><span class="emj">📄</span>Subscriptions</router-link></li>
+              <li v-for="item in card.links" :key="item.label">
+                <span class="emj">{{ item.emoji }}</span>
+                <span class="link-text">{{ item.label }}</span>
+              </li>
             </ul>
-          </article>
-
-          <article class="card">
-            <header class="card-head"><span class="emj">⭐</span><h3>Creators</h3></header>
-            <ul class="links">
-              <li><router-link to="/find-creators"><span class="emj">🔍</span>Find Creators</router-link></li>
-              <li><router-link to="/creator-studio"><span class="emj">👩‍🎨</span>Creator Studio</router-link></li>
-            </ul>
-          </article>
-
-          <article class="card">
-            <header class="card-head"><span class="emj">💬</span><h3>Comms</h3></header>
-            <ul class="links">
-              <li><router-link to="/nostr-messenger"><span class="emj">💬</span>Nostr Messenger</router-link></li>
-              <li><router-link to="/nostr-login"><span class="emj">🔑</span>Nostr Login</router-link></li>
-            </ul>
-          </article>
-
-          <article class="card">
-            <header class="card-head"><span class="emj">⚙️</span><h3>System</h3></header>
-            <ul class="links">
-              <li><router-link to="/settings"><span class="emj">⚙️</span>Settings</router-link></li>
-              <li><router-link to="/restore"><span class="emj">🔄</span>Restore</router-link></li>
-              <li><router-link to="/already-running"><span class="emj">⚠️</span>Already Running</router-link></li>
-              <li><router-link to="/welcome"><span class="emj">ℹ️</span>Welcome</router-link></li>
-              <li><router-link to="/terms"><span class="emj">⚖️</span>Terms</router-link></li>
-            </ul>
-          </article>
+          </component>
         </div>
       </section>
 
@@ -317,6 +303,48 @@ onMounted(() => {
 onBeforeUnmount(() => io?.disconnect())
 
 const faqQuery = ref('')
+const siteOverviewCards = [
+  {
+    emoji: '💰',
+    title: 'Money',
+    to: '/wallet',
+    links: [
+      { emoji: '💳', label: 'Wallet' },
+      { emoji: '📦', label: 'Buckets' },
+      { emoji: '📄', label: 'Subscriptions' },
+    ],
+  },
+  {
+    emoji: '⭐',
+    title: 'Creators',
+    to: '/find-creators',
+    links: [
+      { emoji: '🔍', label: 'Find Creators' },
+      { emoji: '👩‍🎨', label: 'Creator Studio' },
+    ],
+  },
+  {
+    emoji: '💬',
+    title: 'Comms',
+    to: '/nostr-messenger',
+    links: [
+      { emoji: '💬', label: 'Nostr Messenger' },
+      { emoji: '🔑', label: 'Nostr Login' },
+    ],
+  },
+  {
+    emoji: '⚙️',
+    title: 'System',
+    to: '/settings',
+    links: [
+      { emoji: '⚙️', label: 'Settings' },
+      { emoji: '🔄', label: 'Restore' },
+      { emoji: '⚠️', label: 'Already Running' },
+      { emoji: 'ℹ️', label: 'Welcome' },
+      { emoji: '⚖️', label: 'Terms' },
+    ],
+  },
+]
 const faqs = ref([
   { q: 'What if a fan stops paying?', a: 'Creator view » Their timelocked token never unlocks for you. Fundstr flags the user as “Expired” and hides future paid posts. Fan view » You simply don’t renew. No recurring pull, no surprise charges.' },
   { q: 'Can I withdraw to a Lightning wallet?', a: 'Yes. Wallet → Send → Lightning Invoice. Paste the invoice from any external wallet; Fundstr melts tokens at the mint and pays it.' },
@@ -403,14 +431,15 @@ function installPwa () {
 .feature-icon{display:flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,var(--ac500),#4f46e5); color:#fff}
 
 /* Cards */
-.card{background:var(--s2); border:1px solid rgba(var(--acRGB),.18); border-radius:1rem; padding:1.25rem; box-shadow:0 4px 10px rgba(0,0,0,.25); transition:transform .2s, box-shadow .2s, border-color .2s;}
-.card:hover{transform:translateY(-6px); box-shadow:0 12px 22px rgba(0,0,0,.3); border-color:rgba(var(--acRGB),.35)}
+.card{background:var(--s2); border:1px solid rgba(var(--acRGB),.18); border-radius:1rem; padding:1.25rem; box-shadow:0 4px 10px rgba(0,0,0,.25); transition:transform .2s, box-shadow .2s, border-color .2s; display:block; color:inherit; text-decoration:none;}
+.card-link{cursor:pointer;}
+.card-link:hover,.card-link:focus-visible{transform:translateY(-6px); box-shadow:0 12px 22px rgba(0,0,0,.3); border-color:rgba(var(--acRGB),.35);}
+.card-link:focus-visible{outline:none; box-shadow:0 0 0 3px var(--s1),0 0 0 6px rgba(var(--acRGB),.55),0 12px 22px rgba(0,0,0,.3);}
 .card-head{display:flex; align-items:center; gap:.5rem; margin-bottom:.5rem}
 .card-summary{display:flex; align-items:flex-start; gap:.5rem}
 .summary-text{display:flex; flex-direction:column; white-space:normal; /* ensure wrapping */}
 .links{list-style:none; padding:0; margin:0}
-.links a{display:inline-flex; align-items:center; gap:.5rem; text-decoration:none}
-.links a:hover{text-decoration:underline}
+.links li{display:flex; align-items:center; gap:.5rem; font-weight:600;}
 .emj{font-size:1.25rem}
 .emj.xl{font-size:2rem}
 .pill{display:inline-block; padding:.35rem .75rem; border-radius:999px; font-weight:700; letter-spacing:.02em; background:rgba(var(--acRGB),.15); color:var(--ac500); border:1px solid var(--ac500); margin-bottom:.5rem}
