@@ -113,7 +113,7 @@
         <div
           class="profile-tier-grid"
         >
-          <section class="profile-section" aria-live="polite">
+          <section class="profile-section profile-section--tiers" aria-live="polite">
             <header class="profile-section__header profile-section__header--with-spinner">
               <h2 class="profile-section__title text-h5">
                 {{ $t('CreatorHub.profile.sections.tiers') }}
@@ -204,6 +204,61 @@
                 </template>
               </q-banner>
             </template>
+          </section>
+
+          <section class="profile-section profile-section--video-explainer">
+            <header class="profile-section__header">
+              <h2 class="profile-section__title text-h5">
+                {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+              </h2>
+            </header>
+            <div class="profile-section__body">
+              <div class="profile-card__media">
+                <div class="profile-card__media-main">
+                  <div class="profile-card__video">
+                    <video
+                      controls
+                      preload="metadata"
+                      playsinline
+                      poster="https://m.primal.net/HsMt.jpg"
+                    >
+                      <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
+                      {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
+                    </video>
+                    <div class="sr-only">
+                      <a href="https://m.primal.net/HsMt.mp4" target="_blank" rel="noopener">
+                        {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                      </a>
+                    </div>
+                  </div>
+                  <p class="profile-card__caption profile-card__text text-2">
+                    {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
+                  </p>
+                </div>
+                <div
+                  v-if="howCashuWorksHighlight || howCashuWorksList.length"
+                  class="profile-card__media-aside"
+                >
+                  <div v-if="howCashuWorksHighlight" class="profile-card__highlight text-body2">
+                    <span class="profile-card__highlight-label text-2">
+                      {{ $t('CreatorHub.profile.howCashuWorks.title') }}
+                    </span>
+                    <p class="profile-card__highlight-text">
+                      {{ howCashuWorksHighlight }}
+                    </p>
+                  </div>
+                  <ul v-if="howCashuWorksList.length" class="profile-card__list">
+                    <li
+                      v-for="(item, index) in howCashuWorksList"
+                      :key="index"
+                      class="profile-card__list-item text-2"
+                    >
+                      {{ item }}
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
           </section>
 
           <section class="profile-section profile-section--infrastructure">
@@ -306,61 +361,6 @@
                 )
               }}
             </p>
-          </div>
-        </section>
-
-        <section class="profile-section profile-section--video-explainer">
-          <header class="profile-section__header">
-            <h2 class="profile-section__title text-h5">
-              {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-            </h2>
-          </header>
-          <div class="profile-section__body">
-            <div class="profile-card__media">
-              <div class="profile-card__media-main">
-                <div class="profile-card__video">
-                  <video
-                    controls
-                    preload="metadata"
-                    playsinline
-                    poster="https://m.primal.net/HsMt.jpg"
-                  >
-                    <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
-                    {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
-                  </video>
-                  <div class="sr-only">
-                    <a href="https://m.primal.net/HsMt.mp4" target="_blank" rel="noopener">
-                      {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                    </a>
-                  </div>
-                </div>
-                <p class="profile-card__caption profile-card__text text-2">
-                  {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
-                </p>
-              </div>
-              <div
-                v-if="howCashuWorksHighlight || howCashuWorksList.length"
-                class="profile-card__media-aside"
-              >
-                <div v-if="howCashuWorksHighlight" class="profile-card__highlight text-body2">
-                  <span class="profile-card__highlight-label text-2">
-                    {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                  </span>
-                  <p class="profile-card__highlight-text">
-                    {{ howCashuWorksHighlight }}
-                  </p>
-                </div>
-                <ul v-if="howCashuWorksList.length" class="profile-card__list">
-                  <li
-                    v-for="(item, index) in howCashuWorksList"
-                    :key="index"
-                    class="profile-card__list-item text-2"
-                  >
-                    {{ item }}
-                  </li>
-                </ul>
-              </div>
-            </div>
           </div>
         </section>
       </main>
@@ -1533,10 +1533,18 @@ export default defineComponent({
 }
 
 
+
 .profile-tier-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 2rem;
+  align-items: start;
+}
+
+.profile-section--tiers,
+.profile-section--video-explainer,
+.profile-section--infrastructure {
+  grid-column: 1 / -1;
 }
 
 .profile-tier-grid > .profile-section {
@@ -1691,15 +1699,16 @@ export default defineComponent({
   grid-column: 1 / -1;
 }
 
+
 .profile-card__video {
   position: relative;
   width: 100%;
   max-width: none;
   margin-inline: 0;
-  border-radius: 1.125rem;
+  border-radius: 1.25rem;
   overflow: hidden;
   background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 64, 175, 0.55));
-  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.35);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.4);
 }
 
 .profile-card__video video {
@@ -1707,7 +1716,7 @@ export default defineComponent({
   width: 100%;
   height: 100%;
   aspect-ratio: 16 / 9;
-  max-height: clamp(320px, 52vw, 680px);
+  max-height: clamp(360px, 50vw, 780px);
   object-fit: cover;
   background: #000;
 }
@@ -1826,17 +1835,25 @@ export default defineComponent({
   }
 
   .profile-tier-grid {
-    display: contents;
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 2.85fr) minmax(320px, 2fr);
+    grid-template-areas:
+      "tiers video"
+      "infra video";
   }
 
-  .profile-tier-grid > .profile-section {
-    grid-column: 1 / 2;
+  .profile-section--tiers {
+    grid-area: tiers;
+  }
+
+  .profile-section--infrastructure {
+    grid-area: infra;
   }
 
   .profile-section--video-explainer {
-    grid-column: 2 / 3;
+    grid-area: video;
     position: sticky;
-    top: 2rem;
+    top: 1.5rem;
   }
 }
 </style>
