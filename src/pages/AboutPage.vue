@@ -305,22 +305,86 @@ const isDark = ref($q.dark.isActive)
 watchEffect(() => (isDark.value = $q.dark.isActive))
 
 const root = ref<HTMLElement | null>(null)
-let io: IntersectionObserver | null = null
+let fadeObserver: IntersectionObserver | null = null
+let sectionObserver: IntersectionObserver | null = null
+let navLinks: HTMLAnchorElement[] = []
+let observedSections: HTMLElement[] = []
+const sectionVisibility = new Map<Element, number>()
+let currentActiveSection: string | null = null
 
 const { deferredPrompt, promptInstall } = usePwaInstall()
 
+function updateActiveLink (nextId: string | null) {
+  if (currentActiveSection === nextId) return
+
+  currentActiveSection = nextId
+  navLinks.forEach(link => {
+    const isActive = nextId ? link.hash === `#${nextId}` : false
+    link.classList.toggle('active', isActive)
+    if (isActive) {
+      link.setAttribute('aria-current', 'true')
+    } else {
+      link.removeAttribute('aria-current')
+    }
+  })
+}
+
 onMounted(() => {
-  io = new IntersectionObserver((entries) => {
-    entries.forEach((e) => {
-      if (e.isIntersecting) {
-        e.target.classList.add('visible')
-        io?.unobserve(e.target)
+  const pageRoot = root.value
+  if (!pageRoot) return
+
+  fadeObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible')
+        fadeObserver?.unobserve(entry.target)
       }
     })
   }, { threshold: 0.12 })
-  root.value?.querySelectorAll<HTMLElement>('.fade').forEach(el => io?.observe(el))
+
+  pageRoot.querySelectorAll<HTMLElement>('.fade').forEach(el => fadeObserver?.observe(el))
+
+  navLinks = Array.from(pageRoot.querySelectorAll<HTMLAnchorElement>('.section-nav__link'))
+  observedSections = navLinks
+    .map(link => (link.hash ? pageRoot.querySelector<HTMLElement>(link.hash) : null))
+    .filter((section): section is HTMLElement => Boolean(section))
+
+  if (!observedSections.length) return
+
+  sectionObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        sectionVisibility.set(entry.target, entry.intersectionRatio)
+      } else {
+        sectionVisibility.delete(entry.target)
+      }
+    })
+
+    if (sectionVisibility.size > 0) {
+      const [topSection] = Array.from(sectionVisibility.entries()).sort((a, b) => b[1] - a[1])
+      if (topSection) {
+        const element = topSection[0] as HTMLElement
+        updateActiveLink(element.id)
+      }
+      return
+    }
+
+    const firstSectionTop = observedSections[0]?.getBoundingClientRect().top ?? 0
+    if (firstSectionTop > 0) {
+      updateActiveLink(null)
+    }
+  }, { rootMargin: '-45% 0px -45% 0px', threshold: [0, 0.1, 0.25, 0.5, 0.75] })
+
+  observedSections.forEach(section => sectionObserver?.observe(section))
 })
-onBeforeUnmount(() => io?.disconnect())
+onBeforeUnmount(() => {
+  fadeObserver?.disconnect()
+  sectionObserver?.disconnect()
+  sectionVisibility.clear()
+  navLinks = []
+  observedSections = []
+  currentActiveSection = null
+})
 
 const faqQuery = ref('')
 const siteOverviewCards = [
@@ -413,12 +477,18 @@ function installPwa () {
 .lead{font-size:1.1rem; line-height:1.65;}
 .grad{background:linear-gradient(90deg,#a855f7,#4f46e5,#0ea5e9); -webkit-background-clip:text; -webkit-text-fill-color:transparent;}
 
-.section-nav{margin:0 0 3rem;}
-.section-nav__list{display:flex; flex-wrap:wrap; gap:.75rem; align-items:center; padding:0; margin:0; list-style:none;}
-.section-nav__link{display:inline-flex; align-items:center; justify-content:center; padding:.35rem .95rem; margin:0; text-decoration:none; font-weight:600; transition:background-color .2s, border-color .2s, box-shadow .2s, color .2s;}
+.section-nav{position:sticky; top:0; z-index:15; margin:0 -1.25rem 3rem; padding:.5rem 1.25rem; background:var(--s1); backdrop-filter:blur(12px); border-bottom:1px solid rgba(var(--acRGB),.16);}
+.section-nav__list{display:flex; gap:.75rem; align-items:center; padding:.25rem 0; margin:0; list-style:none; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:thin; scroll-snap-type:x proximity;}
+.section-nav__list::-webkit-scrollbar{height:6px;}
+.section-nav__list::-webkit-scrollbar-thumb{background:rgba(var(--acRGB),.35); border-radius:999px;}
+.section-nav__list::-webkit-scrollbar-track{background:transparent;}
+.section-nav__link{display:inline-flex; align-items:center; justify-content:center; padding:.35rem .95rem; margin:0; text-decoration:none; font-weight:600; transition:background-color .2s, border-color .2s, box-shadow .2s, color .2s; flex:0 0 auto; white-space:nowrap; scroll-snap-align:center;}
 .section-nav__link:hover{background:rgba(var(--acRGB),.22); border-color:rgba(var(--acRGB),.55);}
 .section-nav__link:active{background:rgba(var(--acRGB),.3);}
+.section-nav__link.active{background:rgba(var(--acRGB),.28); border-color:rgba(var(--acRGB),.65); color:var(--ac500); box-shadow:0 6px 18px rgba(var(--acRGB),.2);}
+.section-nav__link.active:hover{background:rgba(var(--acRGB),.32);}
 .section-nav__link:focus-visible{outline:none; box-shadow:0 0 0 2px var(--s1),0 0 0 5px rgba(var(--acRGB),.55);}
+.section-nav__link.active:focus-visible{box-shadow:0 0 0 2px var(--s1),0 0 0 6px rgba(var(--acRGB),.65);}
 
 .hero-grid{display:grid; gap:2rem; align-items:start}
 @media (min-width: 1024px){
@@ -483,9 +553,9 @@ function installPwa () {
 .emj.xl{font-size:2rem}
 .pill{display:inline-block; padding:.35rem .75rem; border-radius:999px; font-weight:700; letter-spacing:.02em; background:rgba(var(--acRGB),.15); color:var(--ac500); border:1px solid var(--ac500); margin-bottom:.5rem}
 
-@media (min-width: 1024px){
-  .section-nav{position:sticky; top:1rem; z-index:5; padding:.75rem 1rem; background:var(--s2); border:1px solid rgba(var(--acRGB),.22); border-radius:999px; box-shadow:0 10px 30px rgba(0,0,0,.18); backdrop-filter:blur(12px);}
-  .section-nav__list{justify-content:center;}
+@media (min-width: 768px){
+  .section-nav{margin:0 0 3rem; top:1rem; padding:.75rem 1rem; border:1px solid rgba(var(--acRGB),.22); border-radius:999px; background:var(--s2); box-shadow:0 10px 30px rgba(0,0,0,.18); border-bottom:none;}
+  .section-nav__list{justify-content:center; overflow:visible;}
 }
 
 /* Rail connectors for steps */
