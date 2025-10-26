@@ -1,18 +1,22 @@
 import { describe, it, beforeEach, afterEach, expect, vi } from "vitest";
 
-const toastSuccessMock = vi.fn<(message: string) => void>();
-const toastErrorMock = vi.fn<(message: string) => void>();
-const tMock = vi.fn<(key: string) => string>();
-const writeText = vi.fn<[string], Promise<void>>();
+const hoisted = vi.hoisted(() => ({
+  toastSuccessMock: vi.fn<(message: string) => void>(),
+  toastErrorMock: vi.fn<(message: string) => void>(),
+  tMock: vi.fn<(key: string) => string>(),
+  writeText: vi.fn<[string], Promise<void>>(),
+}));
+
+const { toastSuccessMock, toastErrorMock, tMock, writeText } = hoisted;
 
 vi.mock("src/js/toast", () => ({
-  toastSuccess: toastSuccessMock,
-  toastError: toastErrorMock,
+  toastSuccess: hoisted.toastSuccessMock,
+  toastError: hoisted.toastErrorMock,
 }));
 
 vi.mock("vue-i18n", () => ({
   useI18n: () => ({
-    t: tMock,
+    t: hoisted.tMock,
   }),
 }));
 
@@ -76,6 +80,21 @@ describe("useClipboard", () => {
     await flushPromises();
 
     expect(writeText).toHaveBeenCalledWith("should fail");
+    expect(tMock).toHaveBeenCalledWith("copy_failed");
+    expect(toastErrorMock).toHaveBeenCalledWith("translated:copy_failed");
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+
+  it("handles unsupported clipboard environments", async () => {
+    vi.stubGlobal("navigator", undefined as unknown as Navigator);
+
+    const { copy } = useClipboard();
+
+    copy("unsupported");
+
+    await flushPromises();
+
+    expect(writeText).not.toHaveBeenCalled();
     expect(tMock).toHaveBeenCalledWith("copy_failed");
     expect(toastErrorMock).toHaveBeenCalledWith("translated:copy_failed");
     expect(toastSuccessMock).not.toHaveBeenCalled();

@@ -127,4 +127,14 @@ describe('useP2pkDiagnostics', () => {
 
     nowSpy.mockRestore();
   });
+
+  it('fetches mint info when cache is empty', async () => {
+    mintsStoreMock.activeInfo = undefined;
+
+    const { verifyPointer } = useP2pkDiagnostics();
+    await verifyPointer('pubkey');
+
+    expect(walletGetInfoMock).toHaveBeenCalledTimes(1);
+    expect(walletGetKeysMock).toHaveBeenCalledTimes(1);
+  });
 });
