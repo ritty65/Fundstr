@@ -43,6 +43,9 @@ export default defineConfig({
       "test/vitest/composables/useNostrProfiles.spec.ts",
       "test/vitest/composables/useCreatorHub.spec.ts",
       "test/vitest/composables/useNdk.spec.ts",
+      "test/SendDialog.interaction.spec.ts",
+      "test/SendTokenDialog.interaction.spec.ts",
+      "test/AddMintDialog.interaction.spec.ts",
     ],
   },
   resolve: {
