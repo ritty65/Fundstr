@@ -24,6 +24,7 @@ async function openMainMenu(page: any) {
 
 test.describe.serial("end-to-end happy paths", () => {
   test("runs primary user journeys with mocked data", async ({ page }) => {
+    await page.goto("/");
     const api = createE2EApi(page);
     await api.reset();
     await api.bootstrap();
