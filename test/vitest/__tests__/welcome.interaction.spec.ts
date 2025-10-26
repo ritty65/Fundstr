@@ -543,6 +543,92 @@ describe('NostrSetupWizard', () => {
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([false])
   })
 
+  it('shows connect error and keeps wizard on connect step when messenger connect fails', async () => {
+    const error = new Error('Relay connection failed')
+    messengerStore.connect = vi.fn().mockRejectedValue(error)
+
+    const wrapper = mountWizard()
+
+    const step1 = wrapper.get('[data-step="step-1"]')
+    const keyInput = step1
+      .findAll('input')
+      .find((input) => input.attributes('type') !== 'radio')
+    await keyInput!.setValue('nsec1examplekey')
+    const nextFromKey = step1.findAll('button').find((btn) => btn.text() === 'Next')
+    await nextFromKey!.trigger('click')
+    await flushPromises()
+
+    const step2 = wrapper.get('[data-step="step-2"]')
+    const relayInput = step2.find('input')
+    await relayInput.setValue('wss://relay.test')
+    await relayInput.trigger('keyup', { key: 'Enter' })
+    await nextTick()
+    const nextFromRelays = step2.findAll('button').find((btn) => btn.text() === 'Next')
+    await nextFromRelays!.trigger('click')
+    await flushPromises()
+
+    const step3 = wrapper.get('[data-step="step-3"]')
+    const connectBtn = step3.findAll('button').find((btn) => btn.text() === 'Connect')
+    await connectBtn!.trigger('click')
+    await flushPromises()
+    await nextTick()
+
+    expect((wrapper.vm as any).connectError).toBe('Relay connection failed')
+    expect(step3.text()).toContain('Relay connection failed')
+    expect(step3.text()).not.toContain('Connected!')
+    const finishBtn = step3.findAll('button').find((btn) => btn.text() === 'Finish')
+    expect(finishBtn).toBeUndefined()
+  })
+
+  it('recovers from a failed connect attempt once messenger connect resolves', async () => {
+    messengerStore.connected = false
+    messengerStore.connect = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Relay connection failed'))
+      .mockImplementationOnce(async (relays: string[]) => {
+        messengerStore.connected = true
+        messengerStore.relays = [...relays]
+      })
+
+    const wrapper = mountWizard()
+
+    const step1 = wrapper.get('[data-step="step-1"]')
+    const keyInput = step1
+      .findAll('input')
+      .find((input) => input.attributes('type') !== 'radio')
+    await keyInput!.setValue('nsec1examplekey')
+    const nextFromKey = step1.findAll('button').find((btn) => btn.text() === 'Next')
+    await nextFromKey!.trigger('click')
+    await flushPromises()
+
+    const step2 = wrapper.get('[data-step="step-2"]')
+    const relayInput = step2.find('input')
+    await relayInput.setValue('wss://relay.test')
+    await relayInput.trigger('keyup', { key: 'Enter' })
+    await nextTick()
+    const nextFromRelays = step2.findAll('button').find((btn) => btn.text() === 'Next')
+    await nextFromRelays!.trigger('click')
+    await flushPromises()
+
+    const step3 = wrapper.get('[data-step="step-3"]')
+    const connectBtn = () => step3.findAll('button').find((btn) => btn.text() === 'Connect')
+
+    await connectBtn()!.trigger('click')
+    await flushPromises()
+    await nextTick()
+
+    expect((wrapper.vm as any).connectError).toBe('Relay connection failed')
+    expect(step3.text()).toContain('Relay connection failed')
+
+    await connectBtn()!.trigger('click')
+    await flushPromises()
+    await nextTick()
+
+    expect(step3.text()).toContain('Connected!')
+    const finishBtn = step3.findAll('button').find((btn) => btn.text() === 'Finish')
+    expect(finishBtn).toBeTruthy()
+  })
+
   it('prevents advancing when key missing and handles extension failure', async () => {
     nostrStore.checkNip07Signer.mockResolvedValue(false)
     const wrapper = mountWizard()
