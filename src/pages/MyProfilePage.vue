@@ -3,6 +3,43 @@
     <div class="profile-grid q-gutter-md">
       <div class="profile-primary column q-gutter-md">
         <q-card class="profile-hero bg-surface-2">
+          <q-banner
+            v-if="isProfileIncomplete"
+            class="profile-incomplete-banner bg-surface-1"
+            dense
+          >
+            <div class="banner-header">
+              <q-icon name="error_outline" class="banner-icon" />
+              <div class="banner-text">
+                <div class="banner-title text-subtitle1 text-1">
+                  Complete your profile
+                </div>
+                <div class="banner-description text-body2 text-2">
+                  Finish these details so supporters can trust and share your work.
+                </div>
+              </div>
+            </div>
+            <ul class="banner-checklist">
+              <li
+                v-for="item in missingProfileItems"
+                :key="item.key"
+                class="banner-item"
+              >
+                <div class="banner-item-text">
+                  <span class="banner-item-label text-body1 text-1">{{ item.label }}</span>
+                  <span class="banner-item-helper text-caption text-2">{{ item.helper }}</span>
+                </div>
+                <q-btn
+                  size="sm"
+                  color="primary"
+                  outline
+                  class="banner-item-action"
+                  @click="goToCreatorStudioStep(item.step)"
+                  :label="item.ctaLabel"
+                />
+              </li>
+            </ul>
+          </q-banner>
           <q-card-section class="hero-header row items-start q-col-gutter-lg">
             <q-avatar size="96px" class="hero-avatar">
               <img
@@ -279,15 +316,73 @@ const npub = computed(() => derivedKeys.value?.npub || "");
 const mints = computed(() => creatorProfile.mints || []);
 const relays = computed(() => creatorProfile.relays || []);
 
-const isProfileIncomplete = computed(() => {
-  const hasDisplayName = Boolean(creatorProfile.display_name?.trim());
-  const hasAbout = Boolean(creatorProfile.about?.trim());
-  const hasPubkey = Boolean(creatorProfile.pubkey?.trim());
-  const hasMints = Boolean(creatorProfile.mints?.length);
-  const hasRelays = Boolean(creatorProfile.relays?.length);
+type CreatorStudioStep = "setup" | "profile" | "tiers" | "publish";
 
-  return !(hasDisplayName && hasAbout && hasPubkey && hasMints && hasRelays);
+type MissingProfileItem = {
+  key: string;
+  label: string;
+  helper: string;
+  ctaLabel: string;
+  step: CreatorStudioStep;
+};
+
+const missingProfileItems = computed<MissingProfileItem[]>(() => {
+  const items: MissingProfileItem[] = [];
+
+  if (!creatorProfile.display_name?.trim()) {
+    items.push({
+      key: "display-name",
+      label: "Add a display name",
+      helper: "Introduce yourself so supporters recognize you.",
+      ctaLabel: "Add name",
+      step: "profile",
+    });
+  }
+
+  if (!creatorProfile.about?.trim()) {
+    items.push({
+      key: "about",
+      label: "Share an about section",
+      helper: "Explain what you create and why supporters should join.",
+      ctaLabel: "Write bio",
+      step: "profile",
+    });
+  }
+
+  if (!creatorProfile.pubkey?.trim()) {
+    items.push({
+      key: "pubkey",
+      label: "Connect your pubkey",
+      helper: "Link your Nostr identity to publish and get discovered.",
+      ctaLabel: "Connect pubkey",
+      step: "setup",
+    });
+  }
+
+  if (!creatorProfile.mints?.length) {
+    items.push({
+      key: "mints",
+      label: "Add Cashu mints",
+      helper: "Enable supporters to send you payments.",
+      ctaLabel: "Manage mints",
+      step: "profile",
+    });
+  }
+
+  if (!creatorProfile.relays?.length) {
+    items.push({
+      key: "relays",
+      label: "Configure relays",
+      helper: "Publish updates and stay reachable on Nostr.",
+      ctaLabel: "Manage relays",
+      step: "setup",
+    });
+  }
+
+  return items;
 });
+
+const isProfileIncomplete = computed(() => missingProfileItems.value.length > 0);
 
 const shareUrl = computed(() => {
   if (!derivedKeys.value) return "";
@@ -343,6 +438,13 @@ async function shareProfile() {
     message: "Profile link copied to clipboard",
   });
 }
+
+function goToCreatorStudioStep(step: CreatorStudioStep) {
+  router.push({
+    name: "CreatorStudio",
+    query: { step },
+  });
+}
 </script>
 
 <style scoped lang="scss">
@@ -379,6 +481,80 @@ async function shareProfile() {
 .profile-hero {
   border: 1px solid var(--surface-contrast-border);
   border-radius: 20px;
+}
+
+.profile-incomplete-banner {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 16px;
+  margin: 16px 16px 0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.banner-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.banner-icon {
+  color: var(--accent-500);
+  font-size: 24px;
+}
+
+.banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.banner-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.banner-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 12px;
+  border: 1px solid var(--surface-contrast-border);
+}
+
+.banner-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.banner-item-action {
+  width: 100%;
+}
+
+@media (min-width: 600px) {
+  .profile-incomplete-banner {
+    margin: 24px 24px 0;
+    padding: 20px;
+  }
+
+  .banner-item {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .banner-item-action {
+    width: auto;
+  }
 }
 
 .hero-header {

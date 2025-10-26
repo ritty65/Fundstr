@@ -1349,6 +1349,35 @@ const stepDefinitions: StepDefinition[] = [
 const activeStep = ref<CreatorStudioStep>('setup');
 
 watch(
+  () => route.query?.step,
+  step => {
+    if (typeof step !== 'string') {
+      return;
+    }
+    if (stepOrder.includes(step as CreatorStudioStep)) {
+      activeStep.value = step as CreatorStudioStep;
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  () => activeStep.value,
+  step => {
+    const currentStep = typeof route.query?.step === 'string' ? route.query.step : undefined;
+    if (currentStep === step) {
+      return;
+    }
+
+    router
+      .replace({
+        query: { ...route.query, step },
+      })
+      .catch(() => {});
+  }
+);
+
+watch(
   () => activeStep.value,
   step => {
     if (step === 'profile') {
