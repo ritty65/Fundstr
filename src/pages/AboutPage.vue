@@ -528,10 +528,11 @@ function installPwa () {
 /* Grid helpers */
 .cards{display:grid; gap:1rem}
 .cards--2{grid-template-columns:repeat(2,minmax(0,1fr))}
-.cards--3{grid-template-columns:repeat(3,minmax(0,1fr))}
-.cards--4{grid-template-columns:repeat(4,minmax(0,1fr))}
-@media (max-width: 1024px){ .cards--3,.cards--4{grid-template-columns:repeat(2,minmax(0,1fr))} }
+.cards--3{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.cards--4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
 @media (max-width: 640px){ .cards--2,.cards--3,.cards--4{grid-template-columns:1fr} }
+
+.rail.cards--3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
 
 .how-layout{display:grid; gap:1.5rem; align-items:start}
 @media (min-width: 1024px){ .how-layout{grid-template-columns:1.1fr .9fr} }
@@ -568,6 +569,10 @@ function installPwa () {
 .emj{font-size:1.25rem}
 .emj.xl{font-size:2rem}
 .pill{display:inline-block; padding:.35rem .75rem; border-radius:999px; font-weight:700; letter-spacing:.02em; background:rgba(var(--acRGB),.15); color:var(--ac500); border:1px solid var(--ac500); margin-bottom:.5rem}
+
+.card h3,
+.card p,
+.link-text{overflow-wrap:anywhere; word-break:break-word}
 
 @media (min-width: 768px){
   .section-nav{margin:0 0 3rem; top:1rem; padding:.75rem 1rem; border:1px solid rgba(var(--acRGB),.22); border-radius:999px; background:var(--s2); box-shadow:0 10px 30px rgba(0,0,0,.18); border-bottom:none;}
