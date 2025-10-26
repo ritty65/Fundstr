@@ -196,28 +196,30 @@ describe("PayInvoiceDialog invalid states", () => {
 
     await nextTick();
 
-    const errorButton = wrapper
-      .findAll("button")
-      .find((btn) =>
-        btn.text().includes("PayInvoiceDialog.invoice.actions.pay.error"),
-      );
+    expect(wrapper.html()).toContain(
+      "PayInvoiceDialog.invoice.actions.pay.error",
+    );
 
-    expect(errorButton).toBeDefined();
-    expect(errorButton!.attributes()["disabled"]).toBeDefined();
+    const disabledButton = wrapper.find("button[disabled]");
+    expect(disabledButton.exists()).toBe(true);
 
     const walletStore = useWalletStore();
     walletStore.payInvoiceData.meltQuote.error = "";
 
     await nextTick();
 
-    const payButton = wrapper
+    expect(wrapper.html()).toContain(
+      "PayInvoiceDialog.invoice.actions.pay.label",
+    );
+
+    const enabledButton = wrapper
       .findAll("button")
       .find((btn) =>
         btn.text().includes("PayInvoiceDialog.invoice.actions.pay.label"),
       );
 
-    expect(payButton).toBeDefined();
-    expect(payButton!.attributes()["disabled"]).toBeUndefined();
+    expect(enabledButton).toBeDefined();
+    expect(enabledButton!.attributes()["disabled"]).toBeUndefined();
   });
 
   it("shows LNURL helper text, blocks submission while invalid, and submits once the amount is corrected", async () => {
@@ -255,5 +257,71 @@ describe("PayInvoiceDialog invalid states", () => {
     await form.trigger("submit.prevent");
 
     expect(walletStore.lnurlPaySecond).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the pay button while a melt request is blocking and restores it afterwards", async () => {
+    const { wrapper } = mountDialog({ activeBalance: 50, meltAmount: 5 });
+
+    const walletStore = useWalletStore();
+    walletStore.payInvoiceData.blocking = true;
+
+    await nextTick();
+
+    expect(wrapper.html()).toContain(
+      "PayInvoiceDialog.invoice.actions.pay.in_progress",
+    );
+
+    const blockingButton = wrapper.find("button[disabled]");
+    expect(blockingButton.exists()).toBe(true);
+
+    walletStore.payInvoiceData.blocking = false;
+    walletStore.payInvoiceData.meltQuote.error = "";
+
+    await nextTick();
+
+    const payButton = wrapper
+      .findAll("button")
+      .find((btn) =>
+        btn.text().includes("PayInvoiceDialog.invoice.actions.pay.label"),
+      );
+
+    expect(payButton).toBeDefined();
+    expect(payButton!.attributes()["disabled"]).toBeUndefined();
+  });
+
+  it("invokes meltInvoiceData after clearing a previous network failure", async () => {
+    const { wrapper } = mountDialog({ activeBalance: 50, meltAmount: 5 });
+
+    const walletStore = useWalletStore();
+    walletStore.payInvoiceData.meltQuote.error = "network down";
+
+    await nextTick();
+
+    expect(wrapper.html()).toContain(
+      "PayInvoiceDialog.invoice.actions.pay.error",
+    );
+
+    const errorButton = wrapper.find("button[disabled]");
+    expect(errorButton.exists()).toBe(true);
+
+    walletStore.payInvoiceData.meltQuote.error = "";
+
+    await nextTick();
+
+    const payButton = wrapper
+      .findAll("button")
+      .find((btn) =>
+        btn.text().includes("PayInvoiceDialog.invoice.actions.pay.label"),
+      );
+
+    expect(payButton).toBeDefined();
+
+    walletStore.meltInvoiceData = vi.fn();
+    walletStore.payInvoiceData.bucketId = DEFAULT_BUCKET_ID;
+
+    await payButton!.trigger("click");
+
+    expect(walletStore.meltInvoiceData).toHaveBeenCalledTimes(1);
+    expect(walletStore.meltInvoiceData).toHaveBeenCalledWith(DEFAULT_BUCKET_ID);
   });
 });
