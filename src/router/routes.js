@@ -52,7 +52,14 @@ const routes = [
   },
   {
     path: "/my-profile",
-    redirect: "/creator-studio",
+    component: () => import("layouts/FullscreenLayout.vue"),
+    children: [
+      {
+        path: "",
+        name: "MyProfile",
+        component: () => import("src/pages/MyProfilePage.vue"),
+      },
+    ],
   },
   {
     path: "/creator-studio",
