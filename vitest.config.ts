@@ -22,6 +22,8 @@ export default defineConfig({
     singleThread: true,
     setupFiles: ["./test/vitest/setup-file.js"],
     include: [
+      "test/vitest/__tests__/cashu.spec.ts",
+      "test/vitest/__tests__/nostr.spec.ts",
       "test/vitest/__tests__/buckets.spec.ts",
       "test/vitest/__tests__/creators-tiers.spec.ts",
       "test/vitest/__tests__/CreatorStudioPage.publish.spec.ts",
@@ -30,6 +32,8 @@ export default defineConfig({
       "test/vitest/__tests__/TierSummaryCard.spec.ts",
       "test/creatorStudio/tierComposerUtils.spec.ts",
       "src/js/__tests__/nutzapProfile.test.ts",
+      "test/vitest/__tests__/migrations.spec.ts",
+      "test/vitest/__tests__/media-preview.spec.ts",
     ],
   },
   resolve: {

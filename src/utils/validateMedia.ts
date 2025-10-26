@@ -8,8 +8,25 @@ const ALLOWED_MEDIA_TYPES: NonNullable<TierMedia["type"]>[] = [
 ];
 
 export function isTrustedUrl(url: string): boolean {
-  const cleaned = extractIframeSrc(url);
-  return /^(https:\/\/|ipfs:\/\/|nostr:)/i.test(cleaned.trim());
+  const cleaned = extractIframeSrc(url).trim();
+  if (!cleaned) return false;
+
+  // Second layer of defense: check for characters that could break out of attributes.
+  if (['"', "'", '<', '>'].some(char => cleaned.includes(char))) {
+    return false;
+  }
+
+  try {
+    // Use the browser's URL parser to safely handle all parts of the URL.
+    const parsed = new URL(cleaned);
+
+    // Explicitly whitelist only safe, well-known protocols.
+    // This blocks javascript:, data:, blob:, etc. by default.
+    return ['http:', 'https:', 'ipfs:', 'nostr:'].includes(parsed.protocol);
+  } catch (e) {
+    // The URL constructor will throw if the URL is malformed in any way.
+    return false;
+  }
 }
 
 export function normalizeYouTube(url: string): string {

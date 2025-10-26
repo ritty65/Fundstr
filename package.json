@@ -16,7 +16,7 @@
     "checkformat": "prettier --check .",
     "test": "node --max-old-space-size=8192 --experimental-vm-modules node_modules/vitest/vitest.mjs run",
     "test:ci": "vitest run",
-    "test:e2e": "playwright test test/e2e/profile.sanitize.spec.ts",
+    "test:e2e": "playwright test test/e2e/",
     "types": "tsc -p tsconfig.local.json --noEmit",
     "ci:verify": "pnpm run build",
     "lint:fix": "eslint . --fix",

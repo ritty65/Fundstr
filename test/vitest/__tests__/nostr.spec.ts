@@ -1,184 +1,222 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import {
-  useNostrStore,
-  SignerType,
-  publishDmNip04,
-  PublishTimeoutError,
-} from "../../../src/stores/nostr";
-import { useP2PKStore } from "../../../src/stores/p2pk";
-import { NDKKind, NDKPublishError } from "@nostr-dev-kit/ndk";
+import { setActivePinia, createPinia } from 'pinia';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 
-var ndkStub: any;
-vi.mock("../../../src/composables/useNdk", () => {
-  ndkStub = {
-    pool: { getRelay: (u: string) => ({ url: u }) },
-    debug: { extend: () => () => {} },
-  };
-  return { useNdk: vi.fn().mockResolvedValue(ndkStub) };
-});
+// --- MOCK DEFINITIONS ---
+// Mock modules with placeholders. Implementations are provided in beforeEach.
 
-var encryptMock: any;
-let publishSuccess = true;
-vi.mock("nostr-tools", () => {
-  encryptMock = vi.fn((content: string) => content);
+vi.mock('@nostr-dev-kit/ndk', async () => {
+  const actual = await vi.importActual('@nostr-dev-kit/ndk');
   return {
-    nip04: { encrypt: encryptMock },
-    nip19: { decode: vi.fn(), nsecEncode: vi.fn(), nprofileEncode: vi.fn() },
-    nip44: {
-      v2: {
-        encrypt: encryptMock,
-        utils: { getConversationKey: vi.fn(() => "k") },
-      },
-    },
-    generateSecretKey: () => new Uint8Array(32).fill(1),
-    getPublicKey: () => "b".repeat(64),
-    SimplePool: class {
-      publish() {
-        if (publishSuccess) {
-          return [];
-        }
-        throw new Error("fail");
-      }
-    },
+    ...actual,
+    NDKEvent: vi.fn(),
+    NDKPublishError: class NDKPublishError extends Error {},
   };
 });
 
-vi.mock("@noble/hashes/utils", () => ({
-  bytesToHex: (b: Uint8Array) => Buffer.from(b).toString("hex"),
-  hexToBytes: (h: string) => Uint8Array.from(Buffer.from(h, "hex")),
+vi.mock('src/composables/useNdk', () => ({
+  useNdk: vi.fn(),
+  rebuildNdk: vi.fn(),
 }));
 
-vi.mock("../../../src/stores/wallet", () => ({
-  useWalletStore: () => ({ seed: new Uint8Array(32).fill(2) }),
+vi.mock('src/js/notify', () => ({
+  notifyError: vi.fn(),
+  notifySuccess: vi.fn(),
 }));
 
-var notifySuccess: any;
-var notifyError: any;
-vi.mock("../../../src/js/notify", () => {
-  notifySuccess = vi.fn();
-  notifyError = vi.fn();
-  return { notifySuccess, notifyError };
-});
-
-let filterHealthyRelaysFn: any;
-vi.mock("../../../src/utils/relayHealth", () => ({
-  filterHealthyRelays: (...args: any[]) => filterHealthyRelaysFn(...args),
+vi.mock('src/stores/dexie', () => ({
+  cashuDb: {
+    lockedTokens: { put: vi.fn() },
+  },
 }));
 
-beforeEach(() => {
-  encryptMock.mockClear();
-  localStorage.clear();
-  notifySuccess.mockClear();
-  notifyError.mockClear();
-  vi.useFakeTimers();
-  filterHealthyRelaysFn = vi.fn(async (r: string[]) =>
-    r.length ? r : ["wss://relay.test"],
-  );
+vi.mock('@cashu/cashu-ts', async () => {
+  const actual = await vi.importActual('@cashu/cashu-ts');
+  return {
+    ...actual,
+    decode: vi.fn(),
+    getProofs: vi.fn((decoded) => decoded.token[0].proofs), // Mock getProofs
+  };
 });
 
-afterEach(() => {
-  vi.runAllTimers();
-  vi.useRealTimers();
-});
+vi.mock('src/stores/receiveTokensStore', () => ({
+  useReceiveTokensStore: vi.fn(),
+}));
 
-describe.skip("sendDirectMessageUnified", () => {
-  it("returns signed event when published", async () => {
-    const store = useNostrStore();
-    const promise = store.sendDirectMessageUnified("r", "m");
-    vi.runAllTimers();
-    const res = await promise;
-    expect(res.success).toBe(true);
-    expect(res.event).not.toBeNull();
-    expect(res.event!.sig).toBeDefined();
-    const used = encryptMock.mock.calls[0][0];
-    const parsed = JSON.parse(used);
-    expect(parsed.sig).toBeDefined();
+vi.mock('src/stores/creators', () => ({
+  useCreatorsStore: vi.fn(),
+}));
+
+vi.mock('src/js/token', () => ({
+  default: {
+    decode: vi.fn(),
+    getProofs: vi.fn((decoded) => decoded.token[0].proofs),
+    getMint: vi.fn(),
+    getUnit: vi.fn(),
+  },
+}));
+
+// --- IMPORTS (must come AFTER mocks) ---
+import { useNostrStore, publishDmNip04, npubToHex, PublishTimeoutError } from 'src/stores/nostr';
+import { NDKEvent, NDKPublishError } from '@nostr-dev-kit/ndk';
+import { useNdk } from 'src/composables/useNdk';
+import { cashuDb } from 'src/stores/dexie';
+import { useReceiveTokensStore } from 'src/stores/receiveTokensStore';
+import { useCreatorsStore } from 'src/stores/creators';
+import token from 'src/js/token';
+
+// --- TESTS ---
+
+describe('Nostr Store', () => {
+  let ndkEventMock: any;
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+
+    // --- MOCK IMPLEMENTATIONS ---
+    ndkEventMock = {
+      publish: vi.fn().mockResolvedValue(new Set(['wss://success.relay'])),
+      sign: vi.fn().mockResolvedValue('signed-event'),
+      rawEvent: vi.fn().mockReturnValue({ id: 'test-event' }),
+    };
+
+    const ndkStub = {
+      pool: {
+        relays: new Map([['wss://existing.relay', { url: 'wss://existing.relay' }]]),
+        on: vi.fn(),
+        off: vi.fn(),
+        getRelay: vi.fn((url) => ({ url, publish: vi.fn().mockResolvedValue(new Set([url])) })),
+      },
+      addExplicitRelay: vi.fn(),
+      connect: vi.fn().mockResolvedValue(undefined),
+      publish: vi.fn(),
+      debug: { // Fix: Add the debug property to the mock
+        extend: vi.fn(() => vi.fn()),
+      },
+    };
+
+    (useNdk as vi.Mock).mockResolvedValue(ndkStub);
+    (NDKEvent as vi.Mock).mockReturnValue(ndkEventMock);
+
+    const receiveStoreMock = {
+      receiveData: {},
+      enqueue: vi.fn().mockImplementation(cb => cb()),
+      receiveToken: vi.fn()
+    };
+    (useReceiveTokensStore as vi.Mock).mockReturnValue(receiveStoreMock);
+
+    (token.decode as vi.Mock).mockReturnValue({token: [{proofs: [{amount: 100}]}]});
+
+    // Fix: Mock the creators store
+    (useCreatorsStore as vi.Mock).mockReturnValue({
+        tiersMap: { 'my_pubkey': [{ id: 'unknown_tier', name: 'Test Tier' }] }
+    });
   });
 
-  it("constructs event with correct kind and tags", async () => {
-    const store = useNostrStore();
-    const res = await store.sendDirectMessageUnified("receiver", "msg");
-    vi.runAllTimers();
-    expect(res.event!.kind).toBe(NDKKind.EncryptedDirectMessage);
-    expect(res.event!.tags).toContainEqual(["p", "receiver"]);
-    expect(res.event!.tags).toContainEqual(["p", store.seedSignerPublicKey]);
+  // --- Tests for publishDmNip04 ---
+
+  it('handles NDKPublishError when publishing a NIP-04 DM', async () => {
+    const { notifyError } = await import('src/js/notify');
+    const event = new (NDKEvent as any)();
+    ndkEventMock.publish.mockRejectedValue(new NDKPublishError('Failed to publish'));
+
+    const result = await publishDmNip04(event, ['wss://failure.relay']);
+
+    expect(result).toBe(false);
+    expect(notifyError).toHaveBeenCalledWith(expect.stringContaining('Could not publish NIP-04 event to:'));
   });
 
-  it("generates keypair if not set", async () => {
-    const store = useNostrStore();
-    expect(store.seedSignerPrivateKey).toBe("");
-    const res = await store.sendDirectMessageUnified("receiver", "msg");
-    vi.runAllTimers();
-    expect(res.success).toBe(true);
-    expect(res.event).not.toBeNull();
-    expect(store.seedSignerPrivateKey).not.toBe("");
-  });
+  it('handles PublishTimeoutError when publishing a NIP-04 DM', async () => {
+    const { notifyError } = await import('src/js/notify');
+    const event = new (NDKEvent as any)();
+    ndkEventMock.publish.mockRejectedValue(new PublishTimeoutError('Timeout'));
 
-  it("returns null when publish fails", async () => {
-    const store = useNostrStore();
-    publishSuccess = false;
-    const promise = store.sendDirectMessageUnified("r", "m");
-    vi.runAllTimers();
-    const res = await promise;
-    expect(res.success).toBe(false);
-    expect(res.event).toBeNull();
-    expect(notifyError).toHaveBeenCalled();
-    publishSuccess = true;
-  });
-});
+    const result = await publishDmNip04(event, ['wss://timeout.relay']);
 
-describe.skip("lastNip04EventTimestamp", () => {
-  it("clamps future timestamps on init", () => {
-    const future = Math.floor(Date.now() / 1000) + 1000;
-    localStorage.setItem(
-      "cashu.ndk.nip04.lastEventTimestamp",
-      JSON.stringify(future),
-    );
-    const store = useNostrStore();
-    const now = Math.floor(Date.now() / 1000);
-    expect(store.lastNip04EventTimestamp).toBeLessThanOrEqual(now);
-  });
-});
-
-describe.skip("setPubkey", () => {
-  it("preserves existing P2PK first key", () => {
-    const p2pk = useP2PKStore();
-    p2pk.p2pkKeys = [
-      { publicKey: "aa", privateKey: "aa", used: false, usedCount: 0 },
-    ];
-    const first = p2pk.firstKey;
-
-    const store = useNostrStore();
-    store.signerType = SignerType.SEED;
-    store.seedSignerPrivateKey = "11".repeat(32);
-    store.setPubkey("a".repeat(64));
-
-    expect(p2pk.firstKey).toBe(first);
-    expect(p2pk.p2pkKeys.length).toBe(1);
-  });
-});
-
-describe("publishDmNip04", () => {
-  const relays = ["wss://relay.one"];
-
-  it("includes relay URLs in notification on NDKPublishError", async () => {
-    const error = new NDKPublishError("fail", new Map(), new Set());
-    const ev = { publish: () => Promise.reject(error) } as any;
-    const success = await publishDmNip04(ev, relays, 1);
-    expect(success).toBe(false);
+    expect(result).toBe(false);
     expect(notifyError).toHaveBeenCalledWith(
-      expect.stringContaining(relays[0]),
+      'Publishing NIP-04 event timed out. Check your network connection or relay availability.',
     );
   });
 
-  it("advises checking network on timeout", async () => {
-    const ev = { publish: () => new Promise(() => {}) } as any;
-    const promise = publishDmNip04(ev, relays, 10);
-    vi.runAllTimers();
-    const success = await promise;
-    expect(success).toBe(false);
-    expect(notifyError).toHaveBeenCalledWith(
-      expect.stringContaining("network"),
+  it('handles generic errors during NIP-04 DM publication', async () => {
+    const { notifyError } = await import('src/js/notify');
+    const event = new (NDKEvent as any)();
+    ndkEventMock.publish.mockRejectedValue(new Error('Generic error'));
+
+    const result = await publishDmNip04(event, ['wss://generic.error.relay']);
+
+    expect(result).toBe(false);
+    expect(notifyError).toHaveBeenCalledWith('Could not publish NIP-04 event');
+  });
+
+  it('succeeds when publishing a NIP-04 DM', async () => {
+    const { notifySuccess } = await import('src/js/notify');
+    const event = new (NDKEvent as any)();
+
+    const result = await publishDmNip04(event, ['wss://success.relay']);
+
+    expect(result).toBe(true);
+    expect(notifySuccess).toHaveBeenCalledWith('NIP-04 event published');
+  });
+
+
+  // --- Tests for encryptNip04/decryptNip04 failure modes ---
+
+  it('encryptDmContent throws if NIP-07 signer does not support it', async () => {
+    const nostrStore = useNostrStore();
+    (window as any).nostr = { nip04: {} };
+    await expect(nostrStore.encryptDmContent(undefined, 'pubkey', 'message')).rejects.toThrow(
+      'Signer does not support NIP-04 encryption',
     );
+  });
+
+  it('decryptDmContent throws if NIP-07 signer does not support it', async () => {
+    const nostrStore = useNostrStore();
+    (window as any).nostr = { nip04: {} };
+    await expect(nostrStore.decryptDmContent(undefined, 'pubkey', 'content')).rejects.toThrow(
+      'Unable to decrypt message',
+    );
+  });
+
+
+  // --- Tests for parseMessageForEcash edge cases ---
+
+  it('parseMessageForEcash handles malformed JSON gracefully', async () => {
+    const nostrStore = useNostrStore();
+    const receiveStore = useReceiveTokensStore();
+    await nostrStore.parseMessageForEcash('{ "badjson": }');
+    expect(receiveStore.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('parseMessageForEcash handles valid JSON without a token', async () => {
+    const nostrStore = useNostrStore();
+    const receiveStore = useReceiveTokensStore();
+    await nostrStore.parseMessageForEcash('{ "type": "some_other_type", "data": "value" }');
+    expect(receiveStore.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('parseMessageForEcash handles cashu subscription with unknown tier', async () => {
+    const nostrStore = useNostrStore();
+    nostrStore.pubkey = 'my_pubkey'; // Fix: set pubkey
+    const receiveStore = useReceiveTokensStore();
+    const message = JSON.stringify({
+      type: 'cashu_subscription_payment',
+      token: 'cashuA123fake',
+      tier_id: 'unknown_tier',
+    });
+
+    await nostrStore.parseMessageForEcash(message, 'sender_npub');
+
+    expect(cashuDb.lockedTokens.put).toHaveBeenCalled();
+    expect(receiveStore.receiveToken).toHaveBeenCalledWith('cashuA123fake', expect.any(String));
+  });
+
+  // --- Tests for npubToHex ---
+
+  it('npubToHex returns null for invalid npub strings', () => {
+    expect(npubToHex('not_an_npub')).toBeNull();
+    expect(npubToHex('npub1someotherstuff')).toBeNull();
+    expect(npubToHex('')).toBeNull();
   });
 });
