@@ -8,6 +8,7 @@ import { useUiStore } from "src/stores/ui";
 import { useSendTokensStore } from "src/stores/sendTokensStore";
 import { useMintsStore } from "src/stores/mints";
 import { useWalletStore } from "src/stores/wallet";
+import { useCameraStore } from "src/stores/camera";
 import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
 
 const notifyMocks = vi.hoisted(() => ({
@@ -195,6 +196,50 @@ describe("SendDialog invalid states", () => {
     expect(walletStore.payInvoiceData.invoice).toBeNull();
     expect(walletStore.payInvoiceData.lnurlpay).toBeNull();
     expect(walletStore.payInvoiceData.input.request).toBe("");
+    expect(notifyMocks.notifyWarning).not.toHaveBeenCalled();
+  });
+
+  it("clears stale lightning state after a failed attempt once a mint comes back online", async () => {
+    const { wrapper } = mountDialog({ mints: [] });
+
+    const lightningButton = wrapper
+      .findAll("button")
+      .find((btn) => btn.text().includes("SendDialog.actions.lightning.label"));
+
+    expect(lightningButton).toBeDefined();
+
+    await lightningButton!.trigger("click");
+
+    const uiStore = useUiStore();
+    const walletStore = useWalletStore();
+    const cameraStore = useCameraStore();
+    const mintsStore = useMintsStore();
+
+    walletStore.payInvoiceData.invoice = { description: "old" } as any;
+    walletStore.payInvoiceData.lnurlpay = { domain: "legacy" } as any;
+    walletStore.payInvoiceData.lnurlauth = { k1: "token" } as any;
+    walletStore.payInvoiceData.domain = "legacy.example";
+    walletStore.payInvoiceData.input.request = "bolt11";
+    walletStore.payInvoiceData.input.comment = "comment";
+    walletStore.payInvoiceData.input.paymentChecker = { id: "checker" } as any;
+    cameraStore.camera.show = true;
+
+    notifyMocks.notifyWarning.mockClear();
+
+    mintsStore.mints = [{}];
+    uiStore.showSendDialog = true;
+
+    await nextTick();
+    await lightningButton!.trigger("click");
+
+    expect(walletStore.payInvoiceData.invoice).toBeNull();
+    expect(walletStore.payInvoiceData.lnurlpay).toBeNull();
+    expect(walletStore.payInvoiceData.lnurlauth).toBeNull();
+    expect(walletStore.payInvoiceData.domain).toBe("");
+    expect(walletStore.payInvoiceData.input.request).toBe("");
+    expect(walletStore.payInvoiceData.input.comment).toBe("");
+    expect(walletStore.payInvoiceData.input.paymentChecker).toBeNull();
+    expect(cameraStore.camera.show).toBe(false);
     expect(notifyMocks.notifyWarning).not.toHaveBeenCalled();
   });
 });

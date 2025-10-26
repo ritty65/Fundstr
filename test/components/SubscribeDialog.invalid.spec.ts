@@ -4,6 +4,15 @@ import { nextTick, reactive, ref } from "vue";
 
 import SubscribeDialog from "src/components/SubscribeDialog.vue";
 
+const notifyMocks = vi.hoisted(() => ({
+  notify: vi.fn(),
+  notifyError: vi.fn(),
+  notifySuccess: vi.fn(),
+  notifyWarning: vi.fn(),
+}));
+
+vi.mock("src/js/notify", () => notifyMocks);
+
 const bucketList = ref([
   { id: "default", name: "Default" },
 ]);
@@ -48,6 +57,8 @@ const fetchNutzapProfileMock = vi.fn(async () => ({
   picture: "pic",
 }));
 
+class RelayConnectionErrorMock extends Error {}
+
 vi.mock("stores/donationPresets", () => ({
   useDonationPresetsStore: () => donationStoreMock,
 }));
@@ -70,7 +81,7 @@ vi.mock("stores/nostr", () => ({
   useNostrStore: () => nostrStoreMock,
   fetchNutzapProfile: fetchNutzapProfileMock,
   npubToHex: (value: string) => value,
-  RelayConnectionError: class RelayConnectionError extends Error {},
+  RelayConnectionError: RelayConnectionErrorMock,
 }));
 
 vi.mock("stores/cashu", () => ({
@@ -189,6 +200,8 @@ describe("SubscribeDialog invalid states", () => {
     cashuStoreMock.subscribeToTier.mockClear();
     fetchNutzapProfileMock.mockClear();
     bootErrorStoreMock.set.mockClear();
+    notifyMocks.notifyError.mockClear();
+    notifyMocks.notifySuccess.mockClear();
   });
 
   it("surfaces the signer warning banner and disables confirmation until a signer is present", async () => {
@@ -240,5 +253,56 @@ describe("SubscribeDialog invalid states", () => {
 
     expect(confirmButton).toBeDefined();
     expect(confirmButton!.attributes()["disabled"]).toBeUndefined();
+  });
+
+  it("surfaces relay connectivity failures when fetching the creator profile fails", async () => {
+    const wrapper = mountDialog({ signer: { pubkey: "abc" } });
+
+    fetchNutzapProfileMock.mockRejectedValueOnce(
+      new RelayConnectionErrorMock("offline"),
+    );
+
+    const confirmButton = wrapper
+      .findAll("button")
+      .find((btn) => btn.text().includes("global.actions.ok.label"));
+
+    expect(confirmButton).toBeDefined();
+
+    await confirmButton!.trigger("click");
+    await nextTick();
+
+    expect(cashuStoreMock.subscribeToTier).not.toHaveBeenCalled();
+    expect(notifyMocks.notifyError).toHaveBeenCalledWith(
+      "Unable to connect to Nostr relays",
+    );
+    expect(bootErrorStoreMock.set).not.toHaveBeenCalled();
+  });
+
+  it("reports subscription errors returned by the Cashu store and leaves the dialog open", async () => {
+    const wrapper = mountDialog({ signer: { pubkey: "abc" } });
+
+    fetchNutzapProfileMock.mockResolvedValueOnce({
+      p2pkPubkey: "p2pk",
+      relays: [],
+      trustedMints: [],
+      name: "Creator",
+      picture: "pic",
+    });
+    cashuStoreMock.subscribeToTier.mockRejectedValueOnce(
+      new Error("network offline"),
+    );
+
+    const confirmButton = wrapper
+      .findAll("button")
+      .find((btn) => btn.text().includes("global.actions.ok.label"));
+
+    expect(confirmButton).toBeDefined();
+
+    await confirmButton!.trigger("click");
+    await nextTick();
+
+    expect(cashuStoreMock.subscribeToTier).toHaveBeenCalledTimes(1);
+    expect(notifyMocks.notifyError).toHaveBeenCalledWith("network offline");
+    expect(wrapper.emitted()["update:modelValue"]).toBeUndefined();
   });
 });
