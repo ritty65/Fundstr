@@ -53,6 +53,7 @@ export default defineConfig({
       "test/message-input.interaction.spec.ts",
       "test/message-list.behavior.spec.ts",
       "test/conversation-list.behavior.spec.ts",
+      "test/stores/payment-request.store.spec.ts",
     ],
   },
   resolve: {
