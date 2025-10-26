@@ -1,37 +1,17 @@
 import { test, expect } from "@playwright/test";
-import { createE2EApi } from "./support/e2e-api";
-
-async function completeOnboarding(page: any) {
-  await page.goto("/");
-  await expect(page).toHaveURL(/welcome/);
-  const nextButton = page.getByRole("button", { name: /Next|Finish/i });
-
-  await page.getByRole("button", { name: /Next/i }).click();
-  await page.getByRole("button", { name: /Next/i }).click();
-  await page.getByRole("button", { name: /Next/i }).click();
-  await page.getByLabel("I understand I must back up my recovery/seed.").click();
-  await page.getByRole("button", { name: /Next/i }).click();
-  await page.getByRole("button", { name: /Next/i }).click();
-  await page.getByLabel("I accept the Terms of Service.").click();
-  await nextButton.click();
-  await page.getByRole("button", { name: /Finish|Start using wallet/i }).click();
-  await expect(page).toHaveURL(/about/);
-}
-
-async function openWallet(page: any) {
-  await page.getByRole("button", { name: /Toggle navigation/i }).click();
-  await page.getByText("Wallet", { exact: true }).click();
-  await expect(page).toHaveURL(/\/wallet/);
-}
+import type { E2EApi } from "./support/e2e-api";
+import {
+  bootstrapAndCompleteOnboarding,
+  openWallet,
+  TEST_KEYSET_ID,
+  TEST_MINT_URL,
+} from "./support/journey-fixtures";
 
 async function setupWallet(page: any) {
-  const api = createE2EApi(page);
-  await api.reset();
-  await api.bootstrap();
-  await completeOnboarding(page);
+  const api = await bootstrapAndCompleteOnboarding(page);
   await api.seedMint({
-    url: "https://mint.test",
-    keysetId: "e2e-keyset",
+    url: TEST_MINT_URL,
+    keysetId: TEST_KEYSET_ID,
   });
   await openWallet(page);
   return api;
@@ -39,7 +19,7 @@ async function setupWallet(page: any) {
 
 async function requestMintTopUp(
   page: any,
-  api: ReturnType<typeof createE2EApi>,
+  api: E2EApi,
   amount: number,
   proofAmounts: number[],
   description?: string,
@@ -66,7 +46,7 @@ async function requestMintTopUp(
 }
 
 async function createMockInvoice(
-  api: ReturnType<typeof createE2EApi>,
+  api: E2EApi,
   amount: number,
   description?: string,
 ) {

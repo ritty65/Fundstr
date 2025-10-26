@@ -320,6 +320,19 @@ pnpm test
 Some tests communicate with an external Cashu mint. Ensure network connectivity
 or provide the required environment variables before running the suite.
 
+### E2E happy-path coverage
+
+Playwright specs under `test/e2e/` exercise the primary journeys with deterministic mocks. Run them individually while iterating:
+
+```bash
+pnpm exec playwright test test/e2e/onboarding-happy-path.spec.ts
+pnpm exec playwright test test/e2e/wallet-flows-happy-path.spec.ts
+pnpm exec playwright test test/e2e/creator-setup-happy-path.spec.ts
+pnpm exec playwright test test/e2e/subscription-happy-path.spec.ts
+```
+
+Each spec reuses the shared helpers in `test/e2e/support/journey-fixtures.ts` so the mocked mints, relay responses, and wallet payments stay deterministic.
+
 ## Updated UI Components
 
 The wallet interface now uses three new Vue components:
