@@ -360,8 +360,10 @@ async function shareProfile() {
   width: 100%;
 }
 
-.profile-secondary {
-  order: -1;
+@media (min-width: 600px) and (max-width: 899px) {
+  .profile-secondary {
+    order: -1;
+  }
 }
 
 @media (min-width: 900px) {
