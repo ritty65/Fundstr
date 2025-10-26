@@ -32,6 +32,7 @@ export default defineConfig({
       "test/cashu-sendQueue.spec.ts",
       "test/encryptNip04.spec.ts",
       "test/dexie-migrations.spec.ts",
+      "test/MediaPreview.sanitize.spec.ts",
       "src/js/__tests__/nutzapProfile.test.ts",
     ],
   },
