@@ -34,6 +34,11 @@ export default defineConfig({
       "test/dexie-migrations.spec.ts",
       "test/MediaPreview.sanitize.spec.ts",
       "src/js/__tests__/nutzapProfile.test.ts",
+      "test/mints.store.spec.ts",
+      "test/invoiceHistory.store.spec.ts",
+      "test/settings.store.spec.ts",
+      "test/mnemonic.store.spec.ts",
+      "test/restore.store.spec.ts",
     ],
   },
   resolve: {
