@@ -9,8 +9,14 @@ import { useSettingsStore } from "src/stores/settings";
 import { useCreatorProfileStore } from "src/stores/creatorProfile";
 import { useSubscriptionsStore } from "src/stores/subscriptions";
 import { useMessengerStore } from "src/stores/messenger";
+import { useTokensStore } from "src/stores/tokens";
+import { useInvoiceHistoryStore } from "src/stores/invoiceHistory";
 import type { MessengerMessage } from "src/stores/messenger";
 import type { Proof } from "@cashu/cashu-ts";
+import type { WalletProof } from "src/types/proofs";
+import { MintQuoteState, MeltQuoteState } from "@cashu/cashu-ts";
+import { currentDateStr } from "src/js/utils";
+import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
 
 declare global {
   interface Window {
@@ -26,6 +32,313 @@ function deleteIndexedDb(name: string): Promise<void> {
     request.onblocked = () => resolve();
   });
 }
+
+type CreditProofsHandler = (amounts: number[]) => Promise<void>;
+
+type MintQuoteMock = {
+  id: string;
+  amount: number;
+  unit: string;
+  request: string;
+  expiry: number;
+  mintUrl: string;
+  state: (typeof MintQuoteState)[keyof typeof MintQuoteState];
+};
+
+type LightningInvoiceMock = {
+  id: string;
+  request: string;
+  amount: number;
+  unit: string;
+  description: string;
+  feeReserve: number;
+  state: (typeof MeltQuoteState)[keyof typeof MeltQuoteState];
+};
+
+class WalletMockController {
+  private readonly wallet = useWalletStore();
+  private readonly proofsStore = useProofsStore();
+  private readonly tokensStore = useTokensStore();
+  private readonly invoiceHistoryStore = useInvoiceHistoryStore();
+  private readonly mintsStore = useMintsStore();
+
+  private creditProofsHandler: CreditProofsHandler | null = null;
+  private installed = false;
+  private mintCounter = 1;
+  private meltCounter = 1;
+  private lastMintQuote: string | null = null;
+  private mintQuotes = new Map<string, MintQuoteMock>();
+  private lightningInvoices = new Map<string, LightningInvoiceMock>();
+  private invoicesByRequest = new Map<string, LightningInvoiceMock>();
+
+  private readonly originalRequestMint = this.wallet.requestMint.bind(this.wallet);
+  private readonly originalDecodeRequest = this.wallet.decodeRequest.bind(this.wallet);
+  private readonly originalMeltQuoteInvoiceData = this.wallet.meltQuoteInvoiceData.bind(
+    this.wallet,
+  );
+  private readonly originalMelt = this.wallet.melt.bind(this.wallet);
+
+  install() {
+    if (this.installed) {
+      return;
+    }
+
+    const controller = this;
+
+    this.wallet.requestMint = async function (amount: number, mintWallet: any) {
+      const unit = mintWallet.unit ?? controller.mintsStore.activeUnit ?? "sat";
+      const mintUrl = mintWallet.mint?.mintUrl ?? controller.mintsStore.activeMintUrl;
+      const quoteId = `mock-quote-${controller.mintCounter++}`;
+      const response: MintQuoteMock = {
+        id: quoteId,
+        amount,
+        unit,
+        request: `lnbc${amount}mock${quoteId}`,
+        expiry: Date.now() + 10 * 60 * 1000,
+        mintUrl,
+        state: MintQuoteState.UNPAID,
+      };
+      controller.mintQuotes.set(quoteId, response);
+      controller.lastMintQuote = quoteId;
+
+      this.invoiceData.amount = amount;
+      this.invoiceData.bolt11 = response.request;
+      this.invoiceData.quote = quoteId;
+      this.invoiceData.date = currentDateStr();
+      this.invoiceData.status = "pending";
+      this.invoiceData.mint = mintUrl;
+      this.invoiceData.unit = unit;
+      this.invoiceData.mintQuote = {
+        quote: quoteId,
+        request: response.request,
+        amount,
+        unit,
+        expiry: response.expiry,
+        state: MintQuoteState.UNPAID,
+      } as any;
+      controller.invoiceHistoryStore.invoiceHistory.push({
+        ...this.invoiceData,
+      });
+
+      return this.invoiceData.mintQuote;
+    };
+
+    this.wallet.decodeRequest = async function (req: string) {
+      const trimmed = req.trim();
+      const invoice = controller.invoicesByRequest.get(trimmed);
+      if (!invoice) {
+        return controller.originalDecodeRequest(trimmed);
+      }
+
+      this.payInvoiceData.input.request = invoice.request;
+      const invoiceData = Object.freeze({
+        bolt11: invoice.request,
+        memo: invoice.description,
+        sat: invoice.amount,
+        msat: invoice.amount * 1000,
+        fsat: invoice.amount,
+        hash: `mock-hash-${invoice.id}`,
+        description: invoice.description,
+        timestamp: Math.floor(Date.now() / 1000),
+        expireDate: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        expired: false,
+      });
+      this.payInvoiceData.invoice = invoiceData as any;
+      this.payInvoiceData.blocking = false;
+      this.payInvoiceData.meltQuote.response = {
+        quote: invoice.id,
+        amount: invoice.amount,
+        fee_reserve: invoice.feeReserve,
+        state: invoice.state,
+        expiry: Date.now() + 10 * 60 * 1000,
+        request: invoice.request,
+        unit: invoice.unit,
+      } as any;
+      this.payInvoiceData.meltQuote.error = "";
+      this.payInvoiceData.show = true;
+    };
+
+    this.wallet.meltQuoteInvoiceData = async function () {
+      const request = this.payInvoiceData.input.request;
+      const invoice = controller.invoicesByRequest.get(request);
+      if (!invoice) {
+        return controller.originalMeltQuoteInvoiceData();
+      }
+      const response = {
+        quote: invoice.id,
+        amount: invoice.amount,
+        fee_reserve: invoice.feeReserve,
+        state: invoice.state,
+        expiry: Date.now() + 10 * 60 * 1000,
+        request: invoice.request,
+        unit: invoice.unit,
+      } as any;
+      this.payInvoiceData.meltQuote.response = response;
+      this.payInvoiceData.meltQuote.error = "";
+      this.payInvoiceData.blocking = false;
+      return response;
+    };
+
+    this.wallet.melt = async function (proofs: WalletProof[], quote: any, mintWallet: any) {
+      const invoice = controller.mintQuotes.get(quote.quote) ||
+        controller.lightningInvoices.get(quote.quote);
+      const lightning = controller.lightningInvoices.get(quote.quote);
+      if (!lightning) {
+        return controller.originalMelt(proofs, quote, mintWallet);
+      }
+
+      await this.addOutgoingPendingInvoiceToHistory({
+        ...quote,
+        request: lightning.request,
+        unit: lightning.unit,
+      } as any);
+
+      const bucketId = proofs[0]?.bucketId ?? DEFAULT_BUCKET_ID;
+      const amountNeeded = quote.amount + quote.fee_reserve;
+      let remaining = amountNeeded;
+      const toSpend: Proof[] = [];
+      for (const proof of proofs) {
+        if (remaining <= 0) {
+          break;
+        }
+        toSpend.push(proof);
+        remaining -= proof.amount;
+      }
+      if (remaining > 0) {
+        throw new Error("insufficient proofs for mock melt");
+      }
+
+      await controller.proofsStore.removeProofs(toSpend, bucketId);
+
+      const serialized = controller.proofsStore.serializeProofs(toSpend);
+      controller.tokensStore.addPaidToken({
+        amount: -quote.amount,
+        token: serialized,
+        mint: mintWallet.mint?.mintUrl ?? controller.mintsStore.activeMintUrl,
+        unit: mintWallet.unit ?? controller.mintsStore.activeUnit,
+        description: this.payInvoiceData.invoice?.description ?? "",
+        bucketId,
+      });
+
+      controller.invoiceHistoryStore.updateOutgoingInvoiceInHistory(
+        {
+          ...quote,
+          state: MeltQuoteState.PAID,
+        } as any,
+        { status: "paid", amount: -quote.amount },
+      );
+
+      lightning.state = MeltQuoteState.PAID;
+      this.payInvoiceData.meltQuote.response = {
+        ...quote,
+        state: MeltQuoteState.PAID,
+      } as any;
+      this.payInvoiceData.invoice = { sat: 0, memo: "", bolt11: "" } as any;
+      this.payInvoiceData.show = false;
+
+      return {
+        quote: {
+          ...quote,
+          state: MeltQuoteState.PAID,
+        },
+        change: [],
+      } as any;
+    };
+
+    this.installed = true;
+  }
+
+  setCreditProofsHandler(handler: CreditProofsHandler) {
+    this.creditProofsHandler = handler;
+  }
+
+  reset() {
+    this.mintCounter = 1;
+    this.meltCounter = 1;
+    this.lastMintQuote = null;
+    this.mintQuotes.clear();
+    this.lightningInvoices.clear();
+    this.invoicesByRequest.clear();
+  }
+
+  getLastMintQuote() {
+    return this.lastMintQuote;
+  }
+
+  async payMintQuote(
+    quoteId: string,
+    options?: { proofAmounts?: number[]; description?: string },
+  ) {
+    const quote = this.mintQuotes.get(quoteId);
+    if (!quote) {
+      throw new Error(`Unknown mint quote ${quoteId}`);
+    }
+    const amounts = options?.proofAmounts?.length
+      ? options.proofAmounts
+      : [quote.amount];
+    if (this.creditProofsHandler) {
+      await this.creditProofsHandler(amounts);
+    }
+    quote.state = MintQuoteState.PAID;
+    const invoice = this.invoiceHistoryStore.invoiceHistory.find(
+      (entry) => entry.quote === quoteId,
+    );
+    if (invoice) {
+      invoice.status = "paid";
+      invoice.mintQuote = {
+        ...invoice.mintQuote,
+        state: MintQuoteState.PAID,
+      } as any;
+    }
+    this.wallet.invoiceData.status = "paid";
+    this.wallet.invoiceData.mintQuote = {
+      ...(this.wallet.invoiceData.mintQuote as any),
+      state: MintQuoteState.PAID,
+    };
+
+    const tokenId = `mock-mint-token-${quoteId}-${Date.now()}`;
+    this.tokensStore.addPaidToken({
+      amount: quote.amount,
+      token: tokenId,
+      mint: quote.mintUrl,
+      unit: quote.unit,
+      description: options?.description ?? invoice?.memo ?? "",
+      bucketId: invoice?.bucketId ?? DEFAULT_BUCKET_ID,
+    });
+  }
+
+  createLightningInvoice(config: {
+    amount: number;
+    description?: string;
+    feeReserve?: number;
+  }) {
+    const id = `mock-ln-${this.meltCounter++}`;
+    const request = `mock-ln-invoice-${id}`;
+    const invoice: LightningInvoiceMock = {
+      id,
+      request,
+      amount: config.amount,
+      unit: this.mintsStore.activeUnit || "sat",
+      description: config.description ?? "",
+      feeReserve: config.feeReserve ?? 0,
+      state: MeltQuoteState.UNPAID,
+    };
+    this.lightningInvoices.set(id, invoice);
+    this.invoicesByRequest.set(request, invoice);
+    return { request, quote: id };
+  }
+
+  getHistoryTokens() {
+    return this.tokensStore.historyTokens.slice();
+  }
+
+  getInvoiceHistory() {
+    return this.invoiceHistoryStore.invoiceHistory.slice();
+  }
+}
+
+const walletMock = new WalletMockController();
+walletMock.install();
 
 export default boot(() => {
   if (!import.meta.env.VITE_E2E) {
@@ -64,6 +377,7 @@ export default boot(() => {
       mints.activeMintUrl = "";
       mints.activeProofs = [];
       await nextTick();
+      walletMock.reset();
     },
     async bootstrap() {
       const mnemonic = useMnemonicStore();
@@ -216,7 +530,31 @@ export default boot(() => {
         conversationCount: conversation.length,
       };
     },
+    walletMockPayMintQuote(
+      quote: string,
+      options?: { proofAmounts?: number[]; description?: string },
+    ) {
+      return walletMock.payMintQuote(quote, options);
+    },
+    walletMockGetLastMintQuote() {
+      return walletMock.getLastMintQuote();
+    },
+    walletMockCreateLightningInvoice(config: {
+      amount: number;
+      description?: string;
+      feeReserve?: number;
+    }) {
+      return walletMock.createLightningInvoice(config);
+    },
+    getHistoryTokens() {
+      return walletMock.getHistoryTokens();
+    },
+    getInvoiceHistory() {
+      return walletMock.getInvoiceHistory();
+    },
   };
+
+  walletMock.setCreditProofsHandler((amounts) => api.creditProofs(amounts));
 
   window.__FUNDSTR_E2E__ = api;
 });
