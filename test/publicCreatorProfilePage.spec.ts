@@ -74,8 +74,32 @@ vi.mock("stores/welcome", () => ({
 vi.mock("stores/nostr", () => ({
   useNostrStore: () => nostrStore,
 }));
+const translations: Record<string, string> = {
+  "CreatorHub.profile.retry": "Retry",
+  "CreatorHub.profile.tierLoadError": "Failed to load tiers – check relay connectivity.",
+  "CreatorHub.profile.tierRefreshError": "Failed to refresh tiers – check relay connectivity.",
+  "CreatorHub.profile.fallbackFailed": "Could not load creator. Please try again later.",
+  "CreatorHub.profile.fallbackActive": "Fundstr relay is slow, loading data from public relays…",
+  "CreatorHub.profile.fallbackRelaysLabel": "Attempting relays:",
+  "CreatorHub.profile.followers": "{count} followers",
+  "CreatorHub.profile.following": "{count} following",
+};
+
+function translate(key: string, params?: Record<string, unknown>): string {
+  const template = translations[key];
+  if (!template) {
+    return key;
+  }
+  if (!params) {
+    return template;
+  }
+  return template.replace(/\{(\w+)\}/g, (_, name: string) =>
+    params[name] !== undefined ? String(params[name]) : `{${name}}`,
+  );
+}
+
 vi.mock("vue-i18n", () => ({
-  useI18n: () => ({ t: (key: string) => key }),
+  useI18n: () => ({ t: (key: string, params?: Record<string, unknown>) => translate(key, params) }),
 }));
 
 import PublicCreatorProfilePage from "src/pages/PublicCreatorProfilePage.vue";
@@ -131,7 +155,7 @@ const QTooltipStub = defineComponent({
 
 const QSpinnerStub = defineComponent({
   name: "QSpinnerHourglass",
-  template: `<div class="q-spinner"></div>`,
+  template: `<div class="q-spinner-hourglass"></div>`,
 });
 
 describe("PublicCreatorProfilePage", () => {
@@ -258,6 +282,115 @@ describe("PublicCreatorProfilePage", () => {
     await copyButton.trigger("click");
 
     expect(copy).toHaveBeenCalledWith("https://profile/url");
+  });
+
+  it("shows an hourglass spinner while tiers are loading", async () => {
+    const sampleHex = "e".repeat(64);
+    const sampleNpub = nip19.npubEncode(sampleHex);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+      ],
+    });
+    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub } });
+    await router.isReady();
+
+    const wrapper = mountPage(router);
+    await flushPromises();
+
+    wrapper.vm.loadingTiers = true;
+    wrapper.vm.refreshingTiers = true;
+    await nextTick();
+
+    expect(wrapper.find(".q-spinner-hourglass").exists()).toBe(true);
+  });
+
+  it("shows tier error banner text when tier loading fails", async () => {
+    const sampleHex = "f".repeat(64);
+    const sampleNpub = nip19.npubEncode(sampleHex);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+      ],
+    });
+    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub } });
+    await router.isReady();
+
+    fetchCreatorMock.mockReset();
+    fetchCreatorMock.mockRejectedValueOnce(new Error("failed"));
+
+    const wrapper = mountPage(router);
+    await flushPromises();
+    await nextTick();
+
+    const tierBanner = wrapper
+      .findAll(".q-banner")
+      .find((banner) => banner.text().includes("Failed to load tiers"));
+
+    expect(tierBanner).toBeTruthy();
+  });
+
+  it("shows tier refresh error text when refresh fails with existing tiers", async () => {
+    const sampleHex = "g".repeat(64);
+    const sampleNpub = nip19.npubEncode(sampleHex);
+    creatorsStore.tiersMap[sampleHex] = [
+      {
+        id: "existing-tier",
+        name: "Existing Tier",
+        description: "Description",
+        benefits: [],
+        media: [],
+      },
+    ];
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+      ],
+    });
+    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub } });
+    await router.isReady();
+
+    fetchCreatorMock.mockReset();
+    fetchCreatorMock.mockRejectedValueOnce(new Error("failed"));
+
+    const wrapper = mountPage(router);
+    await flushPromises();
+    await nextTick();
+
+    const refreshBanner = wrapper
+      .findAll(".q-banner")
+      .find((banner) => banner.text().includes("Failed to refresh tiers"));
+
+    expect(refreshBanner).toBeTruthy();
+  });
+
+  it("shows a friendly banner when the Fundstr profile bundle fails", async () => {
+    const sampleHex = "h".repeat(64);
+    const sampleNpub = nip19.npubEncode(sampleHex);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+      ],
+    });
+    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub } });
+    await router.isReady();
+
+    fetchFundstrProfileBundleMock.mockRejectedValueOnce(new Error("bundle failed"));
+
+    const wrapper = mountPage(router);
+    await flushPromises();
+    await nextTick();
+
+    const fallbackBanner = wrapper
+      .findAll(".q-banner")
+      .find((banner) => banner.text().includes("Could not load creator"));
+
+    expect(fallbackBanner).toBeTruthy();
   });
 
   it("shows tier error banner and retries fetch when retry button is clicked", async () => {

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { createPinia, setActivePinia } from "pinia";
-import { reactive } from "vue";
+import { reactive, nextTick } from "vue";
 import FindCreators from "src/pages/FindCreators.vue";
 
 const getCreatorsMock = vi.fn().mockResolvedValue({
@@ -119,5 +119,57 @@ describe("FindCreators.vue", () => {
     await flushPromises();
 
     expect(creatorsStore.searchCreators).not.toHaveBeenCalled();
+  });
+
+  it("shows search skeletons while results are loading", async () => {
+    const wrapper = mountComponent();
+    await flushPromises();
+
+    creatorsStore.searching = true;
+    await nextTick();
+
+    const skeletonRegion = wrapper.find('[aria-label="Searching creators"]');
+    expect(skeletonRegion.exists()).toBe(true);
+    expect(wrapper.findAll(".result-skeleton").length).toBeGreaterThan(0);
+  });
+
+  it("shows featured skeletons while curated creators load", async () => {
+    const wrapper = mountComponent();
+    await flushPromises();
+
+    creatorsStore.loadingFeatured = true;
+    await nextTick();
+
+    expect(wrapper.findAll(".featured-skeleton").length).toBeGreaterThan(0);
+  });
+
+  it("shows search error banner text when a search fails", async () => {
+    const wrapper = mountComponent();
+    await flushPromises();
+
+    creatorsStore.error = "Search failed";
+    creatorsStore.searching = false;
+    await nextTick();
+
+    const bannerText = wrapper
+      .findAll(".status-banner__text")
+      .find((node) => node.text() === "Search failed");
+
+    expect(bannerText).toBeTruthy();
+  });
+
+  it("shows featured status banner text when available", async () => {
+    const wrapper = mountComponent();
+    await flushPromises();
+
+    creatorsStore.featuredError = "Could not load featured";
+    creatorsStore.loadingFeatured = false;
+    await nextTick();
+
+    const bannerText = wrapper
+      .findAll(".status-banner__text")
+      .find((node) => node.text() === "Could not load featured");
+
+    expect(bannerText).toBeTruthy();
   });
 });
