@@ -47,6 +47,9 @@ export default defineConfig({
       "test/SendDialog.interaction.spec.ts",
       "test/SendTokenDialog.interaction.spec.ts",
       "test/AddMintDialog.interaction.spec.ts",
+      "test/message-input.interaction.spec.ts",
+      "test/message-list.behavior.spec.ts",
+      "test/conversation-list.behavior.spec.ts",
     ],
   },
   resolve: {
