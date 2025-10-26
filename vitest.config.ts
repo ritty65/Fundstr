@@ -60,6 +60,7 @@ export default defineConfig({
       "test/components/LoginPanel.interaction.spec.ts",
       "test/components/NostrSetupWizard.interaction.spec.ts",
       "test/components/NostrIdentityManager.interaction.spec.ts",
+      "test/composables/useClipboard.spec.ts",
       "test/composables/useP2pkDiagnostics.spec.ts",
       "test/composables/usePwaInstall.spec.ts",
       "test/stores/payment-request.store.spec.ts",

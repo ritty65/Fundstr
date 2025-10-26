@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 class MockBeforeInstallPromptEvent extends Event {
   prompt = vi.fn<[], Promise<void>>().mockResolvedValue();
@@ -12,6 +12,10 @@ class MockBeforeInstallPromptEvent extends Event {
 describe('usePwaInstall', () => {
   beforeEach(() => {
     vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('caches the beforeinstallprompt event and prevents default', async () => {
@@ -48,5 +52,18 @@ describe('usePwaInstall', () => {
     await promptInstall();
 
     expect(event.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it('no-ops when window is unavailable', async () => {
+    const originalWindow = globalThis.window;
+    vi.stubGlobal('window', undefined as unknown as Window & typeof globalThis);
+
+    const { usePwaInstall } = await import('src/composables/usePwaInstall');
+    const { deferredPrompt, promptInstall } = usePwaInstall();
+
+    expect(deferredPrompt.value).toBeNull();
+    await expect(promptInstall()).resolves.toBeUndefined();
+
+    vi.stubGlobal('window', originalWindow);
   });
 });
