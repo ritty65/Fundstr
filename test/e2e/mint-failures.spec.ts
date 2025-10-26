@@ -1,11 +1,29 @@
 import { test, expect } from "@playwright/test";
 
 test("handles mint HTTP failures without crediting balance", async ({ page }) => {
-  await page.route("**/mint?*", (route) =>
-    route.fulfill({ status: 500, body: "Mint down" }),
-  );
+  let resolveMintRequest!: (url: string) => void;
+  const mintRequest = new Promise<string>((resolve) => {
+    resolveMintRequest = resolve;
+  });
 
-  await page.setContent(`
+  const mintUrlPattern = /https:\/\/fundstr\.test\/mint\?amount=200/;
+
+  await page.context().route(mintUrlPattern, (route) => {
+    resolveMintRequest(route.request().url());
+    route.fulfill({ status: 500, body: "Mint down" });
+  });
+
+  const originUrl = "https://fundstr.test/";
+
+  await page.context().route(originUrl, (route) => {
+    route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: "<!DOCTYPE html><html><head></head><body></body></html>",
+    });
+  });
+
+  const html = `
     <button id="check">Check Mint</button>
     <div id="status"></div>
     <script>
@@ -29,15 +47,18 @@ test("handles mint HTTP failures without crediting balance", async ({ page }) =>
         checkMint();
       });
     </script>
-  `);
+  `;
 
-  const [response] = await Promise.all([
-    page.waitForResponse((res) => res.url().includes("/mint?amount=200")),
-    page.click("#check"),
-  ]);
+  await page.goto(originUrl);
+  await page.setContent(html, { url: originUrl });
+  await page.context().unroute(originUrl);
 
-  expect(response.status()).toBe(500);
+  await page.click("#check");
+
+  const interceptedUrl = await mintRequest;
+  expect(interceptedUrl).toBe("https://fundstr.test/mint?amount=200");
   await expect(page.locator("#status")).toHaveText("Mint unavailable");
   const balance = await page.evaluate(() => localStorage.getItem('cashu.wallet.balance'));
   expect(balance).toBe("0");
+  await page.context().unroute(mintUrlPattern);
 });
