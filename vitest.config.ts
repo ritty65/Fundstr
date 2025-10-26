@@ -44,6 +44,8 @@ export default defineConfig({
       "test/restore.store.spec.ts",
       "test/stores/sendTokensStore.spec.ts",
       "test/stores/npubcash.store.spec.ts",
+      "test/stores/tokens.store.spec.ts",
+      "test/stores/receiveTokensStore.store.spec.ts",
       "test/vitest/composables/useNostrAuth.spec.ts",
       "test/vitest/composables/useNostrProfiles.spec.ts",
       "test/vitest/composables/useCreatorHub.spec.ts",
