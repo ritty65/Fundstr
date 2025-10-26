@@ -1,29 +1,16 @@
 import { test, expect } from "@playwright/test";
 import { createE2EApi } from "./support/e2e-api";
-
-async function completeOnboarding(page: any) {
-  await page.goto("/");
-  await expect(page).toHaveURL(/welcome/);
-  const nextButton = page.getByRole("button", { name: /Next|Finish/i });
-
-  await page.getByRole("button", { name: /Next/i }).click();
-  await page.getByRole("button", { name: /Next/i }).click();
-  await page.getByRole("button", { name: /Next/i }).click();
-  await page.getByLabel("I understand I must back up my recovery/seed.").click();
-  await page.getByRole("button", { name: /Next/i }).click();
-  await page.getByRole("button", { name: /Next/i }).click();
-  await page.getByLabel("I accept the Terms of Service.").click();
-  await nextButton.click();
-  await page.getByRole("button", { name: /Finish|Start using wallet/i }).click();
-  await expect(page).toHaveURL(/about/);
-}
-
-async function openMainMenu(page: any) {
-  await page.getByRole("button", { name: /Toggle navigation/i }).click();
-}
+import {
+  completeOnboarding,
+  openMainMenu,
+  resetBrowserState,
+  TEST_MINT_URL,
+  TEST_KEYSET_ID,
+} from "./support/journey-fixtures";
 
 test.describe.serial("end-to-end happy paths", () => {
   test("runs primary user journeys with mocked data", async ({ page }) => {
+    await resetBrowserState(page);
     await page.goto("/");
     const api = createE2EApi(page);
     await api.reset();
@@ -32,8 +19,8 @@ test.describe.serial("end-to-end happy paths", () => {
     await completeOnboarding(page);
 
     await api.seedMint({
-      url: "https://mint.test",
-      keysetId: "e2e-keyset",
+      url: TEST_MINT_URL,
+      keysetId: TEST_KEYSET_ID,
     });
     await api.creditProofs([2000, 1000, 1000, 1000]);
 
