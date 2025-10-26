@@ -28,6 +28,7 @@ export default defineConfig({
       "test/vitest/__tests__/creatorCard.discovery.spec.ts",
       "test/vitest/__tests__/donationPrompt.spec.ts",
       "test/vitest/__tests__/TierSummaryCard.spec.ts",
+      "test/vitest/__tests__/welcome.interaction.spec.ts",
       "test/creatorStudio/tierComposerUtils.spec.ts",
       "test/cashu-sendQueue.spec.ts",
       "test/encryptNip04.spec.ts",
