@@ -42,6 +42,7 @@ export default defineConfig({
       "test/settings.store.spec.ts",
       "test/mnemonic.store.spec.ts",
       "test/restore.store.spec.ts",
+      "test/stores/sendTokensStore.spec.ts",
       "test/vitest/composables/useNostrAuth.spec.ts",
       "test/vitest/composables/useNostrProfiles.spec.ts",
       "test/vitest/composables/useCreatorHub.spec.ts",
