@@ -31,6 +31,14 @@
               </div>
               <div class="row wrap items-center q-gutter-sm hero-actions">
                 <q-btn
+                  v-if="isProfileIncomplete"
+                  color="primary"
+                  icon="edit"
+                  unelevated
+                  :to="{ name: 'CreatorStudio' }"
+                  :label="$t('MainHeader.menu.creatorStudio.title')"
+                />
+                <q-btn
                   color="primary"
                   icon="content_copy"
                   outline
@@ -53,6 +61,14 @@
                   :disable="!shareUrl"
                   @click="shareProfile"
                   :label="$t('actions.shareProfile')"
+                />
+                <q-btn
+                  v-if="!isProfileIncomplete"
+                  color="primary"
+                  icon="edit"
+                  unelevated
+                  :to="{ name: 'CreatorStudio' }"
+                  :label="$t('MainHeader.menu.creatorStudio.title')"
                 />
               </div>
             </div>
@@ -262,6 +278,16 @@ const npub = computed(() => derivedKeys.value?.npub || "");
 
 const mints = computed(() => creatorProfile.mints || []);
 const relays = computed(() => creatorProfile.relays || []);
+
+const isProfileIncomplete = computed(() => {
+  const hasDisplayName = Boolean(creatorProfile.display_name?.trim());
+  const hasAbout = Boolean(creatorProfile.about?.trim());
+  const hasPubkey = Boolean(creatorProfile.pubkey?.trim());
+  const hasMints = Boolean(creatorProfile.mints?.length);
+  const hasRelays = Boolean(creatorProfile.relays?.length);
+
+  return !(hasDisplayName && hasAbout && hasPubkey && hasMints && hasRelays);
+});
 
 const shareUrl = computed(() => {
   if (!derivedKeys.value) return "";
