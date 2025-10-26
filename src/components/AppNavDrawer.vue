@@ -77,13 +77,17 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item v-if="!isGuest" clickable @click="gotoCreatorStudio">
+      <q-item v-if="!isGuest" clickable @click="gotoMyProfile">
         <q-item-section avatar>
-          <q-icon name="dashboard_customize" />
+          <q-icon name="account_circle" />
         </q-item-section>
         <q-item-section>
-          <q-item-label>Creator Dashboard</q-item-label>
-          <q-item-label caption>Manage your profile &amp; supporter tiers</q-item-label>
+          <q-item-label>{{
+            $t("MainHeader.menu.myProfile.myProfile.title")
+          }}</q-item-label>
+          <q-item-label caption>{{
+            $t("MainHeader.menu.myProfile.myProfile.caption")
+          }}</q-item-label>
         </q-item-section>
       </q-item>
       <q-item v-if="!isGuest" clickable @click="gotoBuckets">
@@ -215,7 +219,7 @@ function goto(path: string) {
 const gotoWallet = () => goto("/wallet");
 const gotoSettings = () => goto("/settings");
 const gotoFindCreators = () => goto("/find-creators");
-const gotoCreatorStudio = () => goto("/creator-studio");
+const gotoMyProfile = () => goto("/my-profile");
 const gotoBuckets = () => goto("/buckets");
 const gotoSubscriptions = () => goto("/subscriptions");
 const gotoChats = () => goto("/nostr-messenger");
