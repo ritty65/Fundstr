@@ -74,6 +74,8 @@
     "@playwright/test": "^1.54.2",
     "@quasar/app-vite": "^2.3.0",
     "@quasar/vite-plugin": "^1.10.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@testing-library/vue": "^8.1.0",
     "@types/node": "^20.12.11",
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
@@ -116,7 +118,7 @@
   },
   "pnpm": {
     "overrides": {
-     "@jimp/plugin-invert": "0.22.12",
+      "@jimp/plugin-invert": "0.22.12",
       "form-data": "^4.0.4",
       "semver-regex": "^4.0.5",
       "http-cache-semantics": "^4.1.1",
