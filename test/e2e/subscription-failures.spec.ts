@@ -1,4 +1,12 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+const setContentWithOrigin = async (
+  page: Page,
+  html: string,
+  url = "https://fundstr.test/subscriptions"
+) => {
+  await page.setContent(html, { url });
+};
 
 test.describe("subscription failure handling", () => {
   test("queues failed DMs and drains after relay recovery", async ({ page }) => {
@@ -36,7 +44,7 @@ test.describe("subscription failure handling", () => {
       (window as any).WebSocket = MockSocket as any;
     });
 
-    await page.setContent(`
+    await setContentWithOrigin(page, `
       <button id="subscribe">Subscribe</button>
       <script>
         localStorage.clear();
@@ -76,7 +84,7 @@ test.describe("subscription failure handling", () => {
           sendDm();
         };
       </script>
-    `, { url: 'https://fundstr.test/subscriptions' });
+    `);
 
     await page.click("#subscribe");
     await page.waitForFunction(() => {
@@ -102,7 +110,7 @@ test.describe("subscription failure handling", () => {
   });
 
   test("double click subscription charges once and records single lock", async ({ page }) => {
-    await page.setContent(`
+    await setContentWithOrigin(page, `
       <button id="double">Subscribe</button>
       <script>
         localStorage.clear();
