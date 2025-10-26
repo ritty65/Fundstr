@@ -57,6 +57,7 @@ export default defineConfig({
       "test/message-input.interaction.spec.ts",
       "test/message-list.behavior.spec.ts",
       "test/conversation-list.behavior.spec.ts",
+      "test/components/LoginPanel.interaction.spec.ts",
       "test/components/NostrSetupWizard.interaction.spec.ts",
       "test/components/NostrIdentityManager.interaction.spec.ts",
       "test/composables/useP2pkDiagnostics.spec.ts",
