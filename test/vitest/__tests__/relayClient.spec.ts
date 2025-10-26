@@ -8,6 +8,7 @@ import {
   pickLatestReplaceable,
   queryNostr,
   queryNutzapProfile,
+  toHex,
   type NostrEvent,
 } from "@/nostr/relayClient";
 
@@ -114,6 +115,18 @@ describe("relayClient dedup & replaceable handling", () => {
   });
 });
 
+describe("relayClient pubkey coercion", () => {
+  it("accepts raw hex keys and normalizes case", () => {
+    const key = "ABCDEF".repeat(10) + "AB";
+    expect(toHex(key)).toBe(key.toLowerCase());
+  });
+
+  it("throws on malformed identifiers", () => {
+    expect(() => toHex("npub1invalid"))
+      .toThrowErrorMatchingInlineSnapshot("\"Invalid npub or hex pubkey\"");
+  });
+});
+
 describe("relayClient transport", () => {
   const originalFetch = globalThis.fetch;
   const originalWebSocket = (globalThis as any).WebSocket;
@@ -191,6 +204,13 @@ describe("relayClient transport", () => {
 
     expect(ThrowingWebSocket).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    clearRelayFailureCache("wss://relay.fundstr.network");
+
+    await queryNostr(filters, { preferFundstr: true, wsTimeoutMs: 10 });
+
+    expect(ThrowingWebSocket).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("normalises npub authors to hex when querying profiles", async () => {

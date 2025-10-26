@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCashuStore, calcUnlock } from "../../../src/stores/cashu";
 import { cashuDb } from "../../../src/stores/dexie";
+import { NdkBootError } from "../../../src/boot/ndk";
+import { RelayConnectionError } from "../../../src/stores/nostr";
 
 let fetchNutzapProfile: any;
 let publishNutzap: any;
@@ -15,6 +17,20 @@ let sendDm: any;
 let ndkSendFn: any;
 let filterHealthyRelaysFn: any;
 let isValidPubkey: any;
+let bootErrorSet: any;
+let notifyError: any;
+
+vi.mock("../../../src/stores/bootError", () => ({
+  useBootErrorStore: () => ({
+    set: (...args: any[]) => bootErrorSet(...args),
+  }),
+}));
+
+vi.mock("../../../src/js/notify", () => ({
+  notifyError: (...args: any[]) => notifyError(...args),
+  notifyWarning: vi.fn(),
+  notifySuccess: vi.fn(),
+}));
 
 vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   const actual = await importOriginal();
@@ -97,6 +113,8 @@ beforeEach(async () => {
   ndkSendFn = vi.fn();
   filterHealthyRelaysFn = vi.fn(async (r: string[]) => r);
   isValidPubkey = vi.fn(() => true);
+  bootErrorSet = vi.fn();
+  notifyError = vi.fn();
 });
 
 describe("Nutzap store", () => {
@@ -179,5 +197,59 @@ describe("Nutzap store", () => {
     await store.send({ npub: "receiver", amount: 1, periods: 1, startDate: 0 });
     expect(store.sendQueue.length).toBe(1);
     expect(store.sendQueue[0].npub).toBe("hex");
+  });
+
+  it("captures NDK boot errors during subscribeToTier and queues token", async () => {
+    sendDm = vi.fn(async () => {
+      throw new NdkBootError("boot failed");
+    });
+    const store = useCashuStore();
+    const success = await store.subscribeToTier({
+      creator: { nostrPubkey: "creator", cashuP2pk: "pk" },
+      tierId: "tier",
+      periods: 1,
+      price: 1,
+      startDate: 0,
+      relayList: [],
+    });
+
+    expect(success).toBe(true);
+    expect(bootErrorSet).toHaveBeenCalledWith(expect.any(NdkBootError));
+    expect(store.sendQueue.length).toBe(1);
+    expect(store.sendQueue[0]).toMatchObject({ npub: "creator" });
+  });
+
+  it("surfaces relay connectivity errors when fetching Nutzap profile", async () => {
+    fetchNutzapProfile = vi.fn(async () => {
+      throw new RelayConnectionError("offline");
+    });
+    const store = useCashuStore();
+
+    await expect(
+      store.send({ npub: "receiver", amount: 1, periods: 1, startDate: 0 }),
+    ).resolves.toBeUndefined();
+
+    expect(notifyError).toHaveBeenCalledWith(
+      "Unable to connect to Nostr relays",
+    );
+    expect(store.error).toBeNull();
+    expect(store.sendQueue.length).toBe(0);
+  });
+
+  it("resends queued token successfully", async () => {
+    const store = useCashuStore();
+    const queued = {
+      npub: "npub1abc",
+      token: "token-str",
+      unlockTime: 123,
+      createdAt: 111,
+    } as any;
+    store.queueSend(queued);
+    sendDm = vi.fn(async () => ({ success: true }));
+
+    const result = await store.resendQueued(queued);
+
+    expect(result).toBe(true);
+    expect(store.sendQueue.length).toBe(0);
   });
 });
