@@ -467,6 +467,55 @@ describe("cashu stores", () => {
       );
     });
 
+    it("surfaces network failures from POST transports", async () => {
+      const store = usePRStore();
+      (global.fetch as any) = vi.fn().mockRejectedValue(new Error("offline"));
+
+      await store.payPostPaymentRequest(
+        { id: "req", unit: "sat" } as any,
+        { type: PaymentRequestTransportType.POST, target: "https://endpoint" },
+        "token-str",
+      );
+
+      expect(notifyMock.notifyError).toHaveBeenCalledWith(
+        "Could not pay request",
+      );
+    });
+
+    it("notifies success once a POST transport request eventually succeeds", async () => {
+      const store = usePRStore();
+      const request = { id: "req", unit: "sat" } as any;
+      const transport = {
+        type: PaymentRequestTransportType.POST,
+        target: "https://endpoint",
+      } as const;
+
+      const fetchMock = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("offline"))
+        .mockResolvedValue({ ok: true, statusText: "OK" });
+
+      (global.fetch as any) = fetchMock;
+
+      notifyMock.notifyError.mockClear();
+      notifyMock.notifySuccess.mockClear();
+
+      await store.payPostPaymentRequest(request, transport, "token-str");
+
+      expect(notifyMock.notifyError).toHaveBeenCalledWith(
+        "Could not pay request",
+      );
+
+      notifyMock.notifyError.mockClear();
+      notifyMock.notifySuccess.mockClear();
+
+      await store.payPostPaymentRequest(request, transport, "token-str");
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(notifyMock.notifyError).not.toHaveBeenCalled();
+      expect(notifyMock.notifySuccess).toHaveBeenCalledWith("Payment sent");
+    });
+
     it("surfaces nostr errors while still notifying success", async () => {
       const store = usePRStore();
       nostrStoreMock.sendNip17DirectMessageToNprofile = vi

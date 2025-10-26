@@ -11,6 +11,7 @@ import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
 
 const notifyMocks = vi.hoisted(() => ({
   notifyWarning: vi.fn(),
+  notifyError: vi.fn(),
 }));
 
 vi.mock("src/js/notify", () => notifyMocks);
@@ -130,6 +131,7 @@ function mountSendDialog(options?: {
 describe("SendDialog interactions", () => {
   beforeEach(() => {
     notifyWarning.mockClear();
+    notifyMocks.notifyError.mockClear();
   });
 
   it("warns and closes when attempting to send tokens without mints", async () => {
@@ -175,6 +177,7 @@ describe("SendDialog interactions", () => {
     expect(sendTokensStore.sendData.p2pkPubkey).toBe("");
     expect(sendTokensStore.sendData.paymentRequest).toBeUndefined();
     expect(sendTokensStore.sendData.bucketId).toBe(DEFAULT_BUCKET_ID);
+    expect(notifyWarning).not.toHaveBeenCalled();
   });
 
   it("warns and closes when parsing lightning without mints", async () => {
@@ -218,5 +221,6 @@ describe("SendDialog interactions", () => {
     expect(walletStore.payInvoiceData.input.paymentChecker).toBeNull();
     expect(cameraStore.camera.show).toBe(false);
     expect(uiStore.showSendDialog).toBe(false);
+    expect(notifyWarning).not.toHaveBeenCalled();
   });
 });
