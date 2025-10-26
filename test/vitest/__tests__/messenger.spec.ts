@@ -28,9 +28,11 @@ const lsStore: Record<string, string> = {};
 
 var decryptDm: any;
 var subscribeMock: any;
+var resolvePubkey: any;
 vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   const actual = await importOriginal();
   decryptDm = vi.fn(async () => "msg");
+  resolvePubkey = vi.fn((pk: string) => pk);
   const store = {
     decryptDmContent: decryptDm,
     initSignerIfNotSet: vi.fn(),
@@ -39,6 +41,7 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
     pubkey: "pub",
     connected: true,
     signerType: "NIP07",
+    resolvePubkey,
   } as any;
   return { ...actual, useNostrStore: () => store };
 });
@@ -72,6 +75,7 @@ beforeEach(() => {
   publishMock.mockClear();
   notifySpy.mockClear();
   notifyErrorSpy.mockClear();
+  resolvePubkey.mockImplementation((pk: string) => pk);
 });
 
 describe("messenger store", () => {
@@ -142,5 +146,60 @@ describe("messenger store", () => {
     (messenger as any).eventLog = { bad: true } as any;
     expect(messenger.sendQueue.length).toBe(0);
     expect(Array.isArray(messenger.eventLog)).toBe(true);
+  });
+
+  it("normalizes unknown pubkeys to empty string", () => {
+    const messenger = useMessengerStore();
+    resolvePubkey.mockReturnValueOnce("");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(messenger.normalizeKey("npub1bad" as any)).toBe("");
+    expect(warn).toHaveBeenCalledWith("[messenger] invalid pubkey", "npub1bad");
+    warn.mockRestore();
+  });
+
+  it("notifies when retrying without browser signer", async () => {
+    const messenger = useMessengerStore();
+    (globalThis as any).nostr = undefined;
+    await messenger.retryMessage({
+      id: "1",
+      pubkey: "alice",
+      content: "hi",
+      created_at: 1,
+      outgoing: true,
+      status: "failed",
+    } as any);
+    expect(notifyErrorSpy).toHaveBeenCalledWith(
+      "Cannot retry – no Nostr extension",
+    );
+  });
+
+  it("retries each failed message in the queue", async () => {
+    const messenger = useMessengerStore();
+    const retrySpy = vi
+      .spyOn(messenger, "retryMessage")
+      .mockResolvedValueOnce(undefined as any);
+    messenger.eventLog.push(
+      {
+        id: "1",
+        pubkey: "bob",
+        content: "pending",
+        created_at: 1,
+        outgoing: true,
+        status: "failed",
+      } as any,
+      {
+        id: "2",
+        pubkey: "carol",
+        content: "pending",
+        created_at: 2,
+        outgoing: true,
+        status: "failed",
+      } as any,
+    );
+
+    await messenger.retryFailedMessages();
+
+    expect(retrySpy).toHaveBeenCalledTimes(2);
+    retrySpy.mockRestore();
   });
 });
