@@ -76,7 +76,7 @@ test.describe("subscription failure handling", () => {
           sendDm();
         };
       </script>
-    `);
+    `, { url: 'https://fundstr.test/subscriptions' });
 
     await page.click("#subscribe");
     await page.waitForFunction(() => {
