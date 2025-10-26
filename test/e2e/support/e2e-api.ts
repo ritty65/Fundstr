@@ -68,6 +68,36 @@ export class E2EApi {
       conversationCount: number;
     }>("getSnapshot");
   }
+
+  walletMockPayMintQuote(
+    quote: string,
+    options?: { proofAmounts?: number[]; description?: string },
+  ) {
+    return this.call("walletMockPayMintQuote", quote, options);
+  }
+
+  walletMockGetLastMintQuote() {
+    return this.call<string | null>("walletMockGetLastMintQuote");
+  }
+
+  walletMockCreateLightningInvoice(config: {
+    amount: number;
+    description?: string;
+    feeReserve?: number;
+  }) {
+    return this.call<{ request: string; quote: string }>(
+      "walletMockCreateLightningInvoice",
+      config,
+    );
+  }
+
+  getHistoryTokens() {
+    return this.call<any[]>("getHistoryTokens");
+  }
+
+  getInvoiceHistory() {
+    return this.call<any[]>("getInvoiceHistory");
+  }
 }
 
 export function createE2EApi(page: Page): E2EApi {
