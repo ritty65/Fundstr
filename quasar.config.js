@@ -19,6 +19,7 @@ export default configure(() => ({
     'nostr-provider',
     'prefetch-featured-creators',
     'fundstrRelay',
+    'e2e-test-api',
   ],
 
   css: ['app.scss', 'base.scss', 'buckets.scss'],
