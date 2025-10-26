@@ -151,8 +151,16 @@
                   {{ mint }}
                 </q-chip>
               </div>
-              <div v-else class="text-2 text-body2 empty-placeholder">
-                No mints connected yet.
+              <div v-else class="column q-gutter-sm items-start">
+                <div class="empty-placeholder text-body2 text-2">
+                  No mints connected yet.
+                </div>
+                <q-btn
+                  color="primary"
+                  flat
+                  label="Manage mints"
+                  @click="goToCreatorStudioStep('profile')"
+                />
               </div>
             </q-card-section>
           </q-card>
@@ -180,8 +188,16 @@
                   {{ relay }}
                 </q-chip>
               </div>
-              <div v-else class="text-2 text-body2 empty-placeholder">
-                No relays configured yet.
+              <div v-else class="column q-gutter-sm items-start">
+                <div class="empty-placeholder text-body2 text-2">
+                  No relays configured yet.
+                </div>
+                <q-btn
+                  color="primary"
+                  flat
+                  label="Manage relays"
+                  @click="goToCreatorStudioStep('setup')"
+                />
               </div>
             </q-card-section>
           </q-card>
