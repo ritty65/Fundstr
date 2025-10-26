@@ -49,6 +49,8 @@ function createMount(options?: {
   activeBalance?: number;
   meltAmount?: number;
   meltError?: string;
+  activeMintUrl?: string;
+  mints?: Array<Record<string, unknown>>;
 }) {
   const pinia = createTestingPinia({
     createSpy: vi.fn,
@@ -82,9 +84,9 @@ function createMount(options?: {
         totalUnitBalance: options?.activeBalance ?? 5,
         activeUnit: "sat",
         activeProofs: [],
-        mints: [],
+        mints: options?.mints ?? [],
         addMintBlocking: false,
-        activeMintUrl: "https://mint",
+        activeMintUrl: options?.activeMintUrl ?? "https://mint",
       },
       price: {
         bitcoinPrice: 0,
@@ -208,5 +210,31 @@ describe("PayInvoiceDialog interactions", () => {
 
     const disabledButton = wrapper.find("button[disabled]");
     expect(disabledButton.exists()).toBe(true);
+  });
+
+  it("shows the offline warning chip and withholds the pay action when no mint is active", async () => {
+    const { wrapper } = createMount({
+      activeBalance: 0,
+      meltAmount: 5,
+      activeMintUrl: "",
+      mints: [],
+    });
+
+    await nextTick();
+
+    expect(wrapper.html()).toContain(
+      "PayInvoiceDialog.invoice.balance_too_low_warning_text",
+    );
+
+    const payButton = wrapper
+      .findAll("button")
+      .find((btn) =>
+        btn.text().includes("PayInvoiceDialog.invoice.actions.pay.label"),
+      );
+
+    expect(payButton).toBeUndefined();
+
+    const mintsStore = useMintsStore();
+    expect(mintsStore.activeMintUrl).toBe("");
   });
 });

@@ -51,6 +51,7 @@ export default defineConfig({
       "test/SendDialog.interaction.spec.ts",
       "test/SendTokenDialog.interaction.spec.ts",
       "test/AddMintDialog.interaction.spec.ts",
+      "test/ReceiveDialog.interaction.spec.ts",
       "test/PayInvoiceDialog.interaction.spec.ts",
       "test/ReceiveTokenDialog.interaction.spec.ts",
       "test/message-input.interaction.spec.ts",
