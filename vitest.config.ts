@@ -31,6 +31,7 @@ export default defineConfig({
       "test/creatorStudio/tierComposerUtils.spec.ts",
       "test/cashu-sendQueue.spec.ts",
       "test/encryptNip04.spec.ts",
+      "test/dexie-migrations.spec.ts",
       "src/js/__tests__/nutzapProfile.test.ts",
     ],
   },
