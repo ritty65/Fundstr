@@ -47,7 +47,9 @@ export const useSendTokensStore = defineStore("sendTokensStore", {
       this.sendData.paymentRequest = undefined;
       this.sendData.historyToken = undefined;
       this.sendData.bucketId = DEFAULT_BUCKET_ID;
-       this.sendData.anonymous = false;
+      this.sendData.anonymous = false;
+      this.showSendTokens = false;
+      this.showLockInput = false;
       this.recipientPubkey = "";
       this.sendViaNostr = false;
     },
