@@ -66,47 +66,69 @@
                   Tell supporters who you are and what you create.
                 </div>
               </div>
-              <div class="row wrap items-center q-gutter-sm hero-actions">
+              <div class="hero-actions">
                 <q-btn
-                  v-if="isProfileIncomplete"
+                  class="hero-primary-action"
                   color="primary"
                   icon="edit"
                   unelevated
                   :to="{ name: 'CreatorStudio' }"
-                  :label="$t('MainHeader.menu.creatorStudio.title')"
+                  :label="primaryActionLabel"
                 />
-                <q-btn
+                <q-btn-dropdown
+                  class="hero-secondary-dropdown"
                   color="primary"
-                  icon="content_copy"
                   outline
-                  :disable="!npub"
-                  @click="handleCopy(npub, 'npub')"
-                  :label="$t('actions.copyNpub')"
-                />
-                <q-btn
-                  color="primary"
-                  icon="key"
-                  outline
-                  :disable="!pubkey"
-                  @click="handleCopy(pubkey, 'pubkey')"
-                  label="Copy pubkey"
-                />
-                <q-btn
-                  color="primary"
-                  icon="ios_share"
-                  unelevated
-                  :disable="!shareUrl"
-                  @click="shareProfile"
-                  :label="$t('actions.shareProfile')"
-                />
-                <q-btn
-                  v-if="!isProfileIncomplete"
-                  color="primary"
-                  icon="edit"
-                  unelevated
-                  :to="{ name: 'CreatorStudio' }"
-                  :label="$t('MainHeader.menu.creatorStudio.title')"
-                />
+                  dropdown-icon="expand_more"
+                  :aria-label="secondaryActionsAriaLabel"
+                  :disable="secondaryActionsDisabled"
+                  :label="secondaryActionsLabel"
+                >
+                  <q-list>
+                    <q-item
+                      clickable
+                      tag="button"
+                      v-close-popup
+                      :disable="!npub"
+                      @click="handleCopy(npub, 'npub')"
+                    >
+                      <q-item-section avatar>
+                        <q-icon name="content_copy" />
+                      </q-item-section>
+                      <q-item-section>
+                        <q-item-label>{{ $t('actions.copyNpub') }}</q-item-label>
+                      </q-item-section>
+                    </q-item>
+                    <q-item
+                      clickable
+                      tag="button"
+                      v-close-popup
+                      :disable="!pubkey"
+                      @click="handleCopy(pubkey, 'pubkey')"
+                    >
+                      <q-item-section avatar>
+                        <q-icon name="key" />
+                      </q-item-section>
+                      <q-item-section>
+                        <q-item-label>Copy pubkey</q-item-label>
+                      </q-item-section>
+                    </q-item>
+                    <q-item
+                      clickable
+                      tag="button"
+                      v-close-popup
+                      :disable="!shareUrl"
+                      @click="shareProfile"
+                    >
+                      <q-item-section avatar>
+                        <q-icon name="ios_share" />
+                      </q-item-section>
+                      <q-item-section>
+                        <q-item-label>{{ $t('actions.shareProfile') }}</q-item-label>
+                      </q-item-section>
+                    </q-item>
+                  </q-list>
+                </q-btn-dropdown>
               </div>
             </div>
           </q-card-section>
@@ -412,6 +434,18 @@ const shareUrl = computed(() => {
   return new URL(resolved.href, window.location.origin).toString();
 });
 
+const primaryActionLabel = computed(() =>
+  isProfileIncomplete.value
+    ? "Complete profile"
+    : t("MainHeader.menu.creatorStudio.title"),
+);
+
+const secondaryActionsLabel = computed(() => "Share & copy");
+const secondaryActionsAriaLabel = computed(() => "Profile secondary actions");
+const secondaryActionsDisabled = computed(
+  () => !npub.value && !pubkey.value && !shareUrl.value,
+);
+
 const supportersLink = computed(() => "https://docs.cashu.space/contribute");
 
 const chipStyle = computed(() => ({
@@ -601,6 +635,38 @@ function goToCreatorStudioStep(step: CreatorStudioStep) {
 
 .hero-actions {
   margin-top: 8px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+
+.hero-primary-action {
+  flex: 1 1 auto;
+}
+
+.hero-secondary-dropdown {
+  flex: 0 0 auto;
+}
+
+.hero-secondary-dropdown :deep(.q-btn) {
+  height: 100%;
+}
+
+@media (max-width: 599px) {
+  .hero-actions {
+    flex-direction: column;
+  }
+
+  .hero-primary-action,
+  .hero-secondary-dropdown {
+    width: 100%;
+  }
+
+  .hero-secondary-dropdown :deep(.q-btn) {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 .hero-contact {
