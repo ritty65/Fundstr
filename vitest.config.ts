@@ -37,6 +37,7 @@ export default defineConfig({
       "test/MediaPreview.sanitize.spec.ts",
       "src/js/__tests__/nutzapProfile.test.ts",
       "test/mints.store.spec.ts",
+      "test/stores/proofs.store.spec.ts",
       "test/invoiceHistory.store.spec.ts",
       "test/settings.store.spec.ts",
       "test/mnemonic.store.spec.ts",
