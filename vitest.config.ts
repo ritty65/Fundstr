@@ -64,6 +64,7 @@ export default defineConfig({
       "test/stores/nostr.signers.spec.ts",
       "test/stores/signer.store.spec.ts",
       "test/stores/subscriptions.store.spec.ts",
+      "test/stores/storage.store.spec.ts",
       "test/vitest/composables/useNostrAuth.spec.ts",
       "test/vitest/composables/useNostrProfiles.spec.ts",
       "test/vitest/composables/useCreatorHub.spec.ts",
