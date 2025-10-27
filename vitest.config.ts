@@ -36,6 +36,7 @@ export default defineConfig({
       "test/encryptNip04.spec.ts",
       "test/dexie-migrations.spec.ts",
       "test/MediaPreview.sanitize.spec.ts",
+      "test/lib/fundstrApi.spec.ts",
       "test/utils/core-helpers.spec.ts",
       "test/utils/app-helpers.spec.ts",
       "test/utils/wallet-helpers.spec.ts",
