@@ -90,6 +90,7 @@ export default defineConfig({
       "test/wallet-store.spec.ts",
       "test/wallet-store.decodeRequest.spec.ts",
       "test/wallet-store.handleBolt11Invoice.spec.ts",
+      "test/wallet-store.attemptRedeem.spec.ts",
       "test/pages/WalletPage.spec.ts",
       "test/pages/NostrMessenger.spec.ts",
       "test/pages/Settings.spec.ts",
