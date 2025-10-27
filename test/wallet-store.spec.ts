@@ -117,9 +117,9 @@ beforeEach(() => {
     setPrivateKeyUsed: vi.fn(),
   });
   Object.assign(proofsStoreMock, {
-    addProofs: vi.fn(),
-    removeProofs: vi.fn(),
-    setReserved: vi.fn(),
+    addProofs: vi.fn(async () => {}),
+    removeProofs: vi.fn(async () => {}),
+    setReserved: vi.fn(async () => {}),
   });
   Object.assign(uiStoreMock, {
     lockMutex: vi.fn(async () => {}),
@@ -162,6 +162,51 @@ describe("wallet store", () => {
       proofsWeHave: proofs,
     });
     expect(proofsStoreMock.setReserved).toHaveBeenCalled();
+  });
+
+  it("reconciles spent proofs when the mint reports tokens already spent", async () => {
+    const walletStore = useWalletStore();
+    const proofs = [
+      { secret: "s1", amount: 2, id: "a", C: "c1" } as any,
+    ];
+
+    walletStore.spendableProofs = vi.fn(() => proofs);
+    walletStore.coinSelect = vi.fn(
+      (_spendable: any, _wallet: any, _amount: number, _includeFees: boolean) =>
+        proofs,
+    );
+    walletStore.signP2PKIfNeeded = vi.fn((p: any) => p);
+    walletStore.getKeyset = vi.fn(() => "kid");
+    walletStore.keysetCounter = vi.fn(() => 1);
+    walletStore.increaseKeysetCounter = vi.fn();
+
+    const reconcileSpy = vi
+      .spyOn(walletStore, "reconcileSpentProofs")
+      .mockResolvedValue();
+
+    const wallet = {
+      mint: { mintUrl: "mint" },
+      unit: "sat",
+      getFeesForProofs: vi.fn(() => 0),
+      send: vi.fn(async () => {
+        throw { message: "Token already spent" };
+      }),
+    } as any;
+
+    await expect(
+      walletStore.send(proofs, wallet, 1, false, false, DEFAULT_BUCKET_ID),
+    ).rejects.toMatchObject({ message: "Token already spent" });
+
+    expect(wallet.send).toHaveBeenCalledWith(1, proofs, {
+      counter: 1,
+      keysetId: "kid",
+      proofsWeHave: proofs,
+    });
+    expect(reconcileSpy).toHaveBeenCalledWith(proofs);
+    expect(notifyErrorMock).toHaveBeenCalled();
+    expect(notifyApiErrorMock).not.toHaveBeenCalled();
+    expect(proofsStoreMock.setReserved).toHaveBeenCalledWith(proofs, false);
+    expect(proofsStoreMock.removeProofs).not.toHaveBeenCalled();
   });
 
   it("retries redeem until attemptRedeem succeeds", async () => {
