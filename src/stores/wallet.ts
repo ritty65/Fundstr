@@ -696,12 +696,6 @@ export const useWalletStore = defineStore("wallet", {
           (p) => typeof p.secret === "string" && p.secret.startsWith('["P2PK"'),
         );
 
-        if (needsSig && !localPriv) {
-          throw new Error(
-            "You do not have the private key to unlock this token.",
-          );
-        }
-
         let privkey = localPriv || (nostrStore as any).activePrivkeyHex;
 
         let remoteSigned = false;
