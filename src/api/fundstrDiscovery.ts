@@ -582,3 +582,9 @@ export function useFundstrDiscovery(): FundstrDiscoveryClient {
 }
 
 export const useDiscovery = () => discoveryClientInstance;
+
+export const __test__ = {
+  createTimeoutSignal,
+  fetchJsonWithRetry,
+  normalizeCreator,
+};
