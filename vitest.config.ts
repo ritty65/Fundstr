@@ -81,6 +81,7 @@ export default defineConfig({
       "test/pages/NostrMessenger.spec.ts",
       "test/pages/Settings.spec.ts",
       "test/pages/Restore.spec.ts",
+      "test/pages/TierComposer.interaction.spec.ts",
       "test/nostr/builders.spec.ts",
       "test/nostr/signer.spec.ts",
       "test/nostr/readBackAndFallback.spec.ts",
