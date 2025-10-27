@@ -1668,6 +1668,7 @@ export const useWalletStore = defineStore("wallet", {
       await this.meltQuoteInvoiceData();
     },
     handleCashuToken: function () {
+      const receiveStore = useReceiveTokensStore();
       this.payInvoiceData.show = false;
       receiveStore.showReceiveTokens = true;
     },
@@ -1682,6 +1683,7 @@ export const useWalletStore = defineStore("wallet", {
       await prStore.decodePaymentRequest(req);
     },
     decodeRequest: async function (req: string) {
+      const receiveStore = useReceiveTokensStore();
       const p2pkStore = useP2PKStore();
       req = req.trim();
       this.payInvoiceData.input.request = req;

@@ -84,6 +84,7 @@ export default defineConfig({
       "test/composables/useP2pkDiagnostics.spec.ts",
       "test/composables/usePwaInstall.spec.ts",
       "test/stores/payment-request.store.spec.ts",
+      "test/wallet-store.decodeRequest.spec.ts",
       "test/pages/WalletPage.spec.ts",
       "test/pages/NostrMessenger.spec.ts",
       "test/pages/Settings.spec.ts",
