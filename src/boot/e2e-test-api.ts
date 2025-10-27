@@ -390,8 +390,32 @@ export default boot(() => {
       url: string;
       nickname?: string;
       keysetId: string;
+      keys?: Record<number, string>;
+      info?: {
+        name?: string;
+        pubkey?: string;
+        version?: string;
+      };
     }) {
       const mints = useMintsStore();
+      const defaultKeys = {
+        1: "02" + "1".repeat(64),
+        2: "02" + "2".repeat(64),
+        4: "02" + "3".repeat(64),
+        8: "02" + "4".repeat(64),
+        16: "02" + "5".repeat(64),
+        32: "02" + "6".repeat(64),
+        64: "02" + "7".repeat(64),
+        128: "02" + "8".repeat(64),
+        256: "02" + "9".repeat(64),
+        512: "02" + "a".repeat(64),
+        1024: "02" + "b".repeat(64),
+      } satisfies Record<number, string>;
+      const infoDefaults = {
+        name: "E2E Mint",
+        pubkey: "e2e",
+        version: "0.0-test",
+      } as const;
       const mintEntry = {
         url: config.url,
         nickname: config.nickname ?? "E2E Mint",
@@ -406,25 +430,12 @@ export default boot(() => {
           {
             id: config.keysetId,
             unit: "sat",
-            keys: {
-              1: "02" + "1".repeat(64),
-              2: "02" + "2".repeat(64),
-              4: "02" + "3".repeat(64),
-              8: "02" + "4".repeat(64),
-              16: "02" + "5".repeat(64),
-              32: "02" + "6".repeat(64),
-              64: "02" + "7".repeat(64),
-              128: "02" + "8".repeat(64),
-              256: "02" + "9".repeat(64),
-              512: "02" + "a".repeat(64),
-              1024: "02" + "b".repeat(64),
-            },
+            keys: config.keys ?? defaultKeys,
           },
         ],
         info: {
-          name: "E2E Mint",
-          pubkey: "e2e",
-          version: "0.0-test",
+          ...infoDefaults,
+          ...config.info,
           contact: [],
           nuts: {
             4: { methods: [], disabled: false },

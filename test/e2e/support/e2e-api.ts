@@ -24,7 +24,17 @@ export class E2EApi {
     return this.call("bootstrap");
   }
 
-  seedMint(config: { url: string; nickname?: string; keysetId: string }) {
+  seedMint(config: {
+    url: string;
+    nickname?: string;
+    keysetId: string;
+    keys?: Record<number, string>;
+    info?: {
+      name?: string;
+      pubkey?: string;
+      version?: string;
+    };
+  }) {
     return this.call("seedMint", config);
   }
 
