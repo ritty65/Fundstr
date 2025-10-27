@@ -258,6 +258,52 @@ async function getStoredMintPubkey(page: Page) {
   });
 }
 
+async function getStoredNostrPubkey(page: Page) {
+  return page.evaluate(async () => {
+    const STORAGE_SECRET = "cashu_ndk_storage_key";
+    const SALT = "cashu_ndk_salt";
+    const encoded = localStorage.getItem("cashu.ndk.pubkey");
+    if (!encoded) return null;
+
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(STORAGE_SECRET),
+      { name: "PBKDF2" },
+      false,
+      ["deriveKey"],
+    );
+    const key = await crypto.subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt: encoder.encode(SALT),
+        iterations: 100000,
+        hash: "SHA-256",
+      },
+      keyMaterial,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["decrypt"],
+    );
+
+    const bytes = Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0));
+    const iv = bytes.slice(0, 12);
+    const ciphertext = bytes.slice(12);
+
+    try {
+      const decrypted = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv },
+        key,
+        ciphertext,
+      );
+      return new TextDecoder().decode(decrypted);
+    } catch (error) {
+      console.error("Failed to decrypt nostr pubkey", error);
+      return null;
+    }
+  });
+}
+
 test.describe("account restore", () => {
   test("restores balances from mnemonic", async ({ page }) => {
     const { mintMock } = await prepareRestorePage(page);
@@ -269,6 +315,8 @@ test.describe("account restore", () => {
 
     const storedPubkey = await getStoredMintPubkey(page);
     expect(storedPubkey).toBe(mintMock.pubkey);
+    const nostrPubkey = await getStoredNostrPubkey(page);
+    expect(nostrPubkey).toBe(mintMock.pubkey);
     expect(mintMock.restoreCallCount()).toBeGreaterThan(0);
   });
 
