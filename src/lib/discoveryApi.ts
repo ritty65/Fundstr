@@ -4,6 +4,13 @@ const DISCOVERY_API_BASE = (
   import.meta.env.VITE_DISCOVERY_BASE_URL ?? 'https://api.fundstr.me/discover'
 ).replace(/\/+$/u, '');
 
+class DiscoveryRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DiscoveryRequestError';
+  }
+}
+
 export interface DiscoveryResponse {
   count: number;
   warnings: string[];
@@ -30,7 +37,7 @@ export async function searchCreators(
 
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new Error(
+      throw new DiscoveryRequestError(
         `Request failed with status ${response.status}: ${errorBody || 'Unknown error'}`,
       );
     }
@@ -53,6 +60,9 @@ export async function searchCreators(
       throw error;
     }
     console.error('Failed to search creators:', error);
+    if (error instanceof DiscoveryRequestError) {
+      throw error;
+    }
     // Return a consistent empty/error state for the UI to handle gracefully
     return {
       count: 0,
