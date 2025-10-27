@@ -1762,17 +1762,17 @@ export const useWalletStore = defineStore("wallet", {
         this.payInvoiceData.lnurlpay.domain = host
           .split("https://")[1]
           .split("/")[0];
+        let autofillAmount: number | null = null;
         if (
           this.payInvoiceData.lnurlpay.maxSendable ==
           this.payInvoiceData.lnurlpay.minSendable
         ) {
-          this.payInvoiceData.input.amount =
-            this.payInvoiceData.lnurlpay.maxSendable / 1000;
+          autofillAmount = this.payInvoiceData.lnurlpay.maxSendable / 1000;
         }
         this.payInvoiceData.invoice = null;
         this.payInvoiceData.input = {
           request: "",
-          amount: null,
+          amount: autofillAmount,
           comment: "",
           quote: "",
         };

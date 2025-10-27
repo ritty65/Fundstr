@@ -1,14 +1,45 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
 import { useWalletStore } from "stores/wallet";
 import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
 import { bytesToHex } from "@noble/hashes/utils";
 import { getPublicKey } from "@noble/secp256k1";
+
+const axiosGetMock = vi.fn();
+vi.mock("axios", () => ({
+  default: {
+    get: (...args: any[]) => axiosGetMock(...args),
+  },
+}));
+
+const bech32DecodeMock = vi.fn();
+const bech32FromWordsMock = vi.fn();
+vi.mock("bech32", () => ({
+  bech32: {
+    decode: (...args: any[]) => bech32DecodeMock(...args),
+    fromWords: (...args: any[]) => bech32FromWordsMock(...args),
+  },
+}));
 
 const proofsStoreMock: any = {};
 const uiStoreMock: any = {};
 const receiveStoreMock: any = {};
 const prStoreMock: any = {};
 const p2pkStoreMock: any = {};
+const mintsStoreMock: any = {
+  activeUnit: "sat",
+  activeMintUrl: "mint",
+  mints: [{ url: "mint", keys: [], keysets: [] }],
+  activeKeys: [],
+  activeKeysets: [],
+  mintUnitProofs: () => [],
+};
+const priceStoreMock: any = { bitcoinPrice: 0 };
+
+const notifyApiErrorMock = vi.fn();
+const notifyErrorMock = vi.fn();
+const notifyWarningMock = vi.fn();
+const notifyMock = vi.fn();
 
 vi.mock("stores/receiveTokensStore", () => ({
   useReceiveTokensStore: () => receiveStoreMock,
@@ -27,14 +58,7 @@ vi.mock("stores/proofs", () => ({
 }));
 
 vi.mock("stores/mints", () => ({
-  useMintsStore: () => ({
-    activeUnit: "sat",
-    activeMintUrl: "mint",
-    mints: [{ url: "mint", keys: [], keysets: [] }],
-    activeKeys: [],
-    activeKeysets: [],
-    mintUnitProofs: () => [],
-  }),
+  useMintsStore: () => mintsStoreMock,
 }));
 
 vi.mock("stores/ui", () => ({
@@ -44,15 +68,37 @@ vi.mock("stores/ui", () => ({
 vi.mock("stores/signer", () => ({
   useSignerStore: () => ({ reset: vi.fn(), method: null }),
 }));
+
+vi.mock("stores/price", () => ({
+  usePriceStore: () => priceStoreMock,
+}));
+
 vi.mock("src/js/notify", () => ({
-  notifyApiError: vi.fn(),
-  notifyError: vi.fn(),
-  notifyWarning: vi.fn(),
-  notify: vi.fn(),
+  notifyApiError: (...args: any[]) => notifyApiErrorMock(...args),
+  notifyError: (...args: any[]) => notifyErrorMock(...args),
+  notifyWarning: (...args: any[]) => notifyWarningMock(...args),
+  notify: (...args: any[]) => notifyMock(...args),
 }));
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  axiosGetMock.mockReset();
+  bech32DecodeMock.mockReset();
+  bech32FromWordsMock.mockReset();
+  notifyApiErrorMock.mockReset();
+  notifyErrorMock.mockReset();
+  notifyWarningMock.mockReset();
+  notifyMock.mockReset();
+  setActivePinia(createPinia());
+  Object.assign(mintsStoreMock, {
+    activeUnit: "sat",
+    activeMintUrl: "mint",
+    mints: [{ url: "mint", keys: [], keysets: [] }],
+    activeKeys: [],
+    activeKeysets: [],
+    mintUnitProofs: () => [],
+  });
+  priceStoreMock.bitcoinPrice = 0;
   Object.assign(receiveStoreMock, {
     receiveData: {
       tokensBase64: "",
@@ -79,6 +125,8 @@ beforeEach(() => {
     lockMutex: vi.fn(async () => {}),
     unlockMutex: vi.fn(),
   });
+  const walletStore = useWalletStore();
+  walletStore.$reset?.();
 });
 
 describe("wallet store", () => {
@@ -180,5 +228,192 @@ describe("wallet store", () => {
     expect(walletStore.activeP2pk.privateKey).toBe(priv);
     expect(receiveStoreMock.receiveData.p2pkPrivateKey).toBe(priv);
     expect(prStoreMock.showPRKData).toBe("");
+  });
+
+  describe("lnurlPayFirst", () => {
+    it("fetches payRequest data for a lightning address", async () => {
+      const walletStore = useWalletStore();
+      walletStore.t = (key: string) => key;
+
+      const lnurlData = {
+        tag: "payRequest",
+        callback: "https://lnurl.example/cb",
+        minSendable: 1000,
+        maxSendable: 2000,
+      } as any;
+      axiosGetMock.mockResolvedValueOnce({ data: lnurlData });
+
+      await walletStore.lnurlPayFirst("alice@example.com");
+
+      expect(axiosGetMock).toHaveBeenCalledWith(
+        "https://example.com/.well-known/lnurlp/alice",
+      );
+      expect(walletStore.payInvoiceData.lnurlpay).toMatchObject({
+        ...lnurlData,
+        domain: "example.com",
+      });
+      expect(walletStore.payInvoiceData.show).toBe(true);
+    });
+
+    it("decodes a bech32 LNURL and populates lnurlpay data", async () => {
+      const walletStore = useWalletStore();
+      walletStore.t = (key: string) => key;
+
+      const host = "https://lnurl.example/.well-known/lnurl";
+      const encodedHost = Array.from(new TextEncoder().encode(host));
+      bech32DecodeMock.mockReturnValueOnce({ words: [1, 2, 3] });
+      bech32FromWordsMock.mockReturnValueOnce(encodedHost);
+      const lnurlData = {
+        tag: "payRequest",
+        callback: "https://lnurl.example/cb",
+        minSendable: 2000,
+        maxSendable: 4000,
+      } as any;
+      axiosGetMock.mockResolvedValueOnce({ data: lnurlData });
+
+      await walletStore.lnurlPayFirst("LNURL1EXAMPLE");
+
+      expect(bech32DecodeMock).toHaveBeenCalledWith("LNURL1EXAMPLE", 20000);
+      expect(axiosGetMock).toHaveBeenCalledWith(host);
+      expect(walletStore.payInvoiceData.lnurlpay).toMatchObject({
+        ...lnurlData,
+        domain: "lnurl.example",
+      });
+    });
+
+    it("auto-fills amount when min and max sendable match", async () => {
+      const walletStore = useWalletStore();
+      walletStore.t = (key: string) => key;
+
+      const lnurlData = {
+        tag: "payRequest",
+        callback: "https://lnurl.example/cb",
+        minSendable: 5000,
+        maxSendable: 5000,
+      } as any;
+      axiosGetMock.mockResolvedValueOnce({ data: lnurlData });
+
+      await walletStore.lnurlPayFirst("bob@example.com");
+
+      expect(walletStore.payInvoiceData.input.amount).toBe(5);
+    });
+
+    it("notifies when the host cannot be resolved", async () => {
+      const walletStore = useWalletStore();
+      walletStore.t = (key: string) => key;
+
+      await walletStore.lnurlPayFirst("not-an-lnurl");
+
+      expect(notifyErrorMock).toHaveBeenCalledWith(
+        "wallet.notifications.invalid_lnurl",
+        "wallet.notifications.lnurl_error",
+      );
+    });
+  });
+
+  describe("lnurlPaySecond", () => {
+    beforeEach(() => {
+      const walletStore = useWalletStore();
+      walletStore.t = (key: string) => key;
+    });
+
+    it("notifies when amount is null", async () => {
+      const walletStore = useWalletStore();
+
+      walletStore.payInvoiceData.input.amount = null;
+
+      await walletStore.lnurlPaySecond();
+
+      expect(notifyErrorMock).toHaveBeenCalledWith(
+        "wallet.notifications.no_amount",
+        "wallet.notifications.lnurl_error",
+      );
+      expect(axiosGetMock).not.toHaveBeenCalled();
+    });
+
+    it("notifies when lnurl data is missing", async () => {
+      const walletStore = useWalletStore();
+
+      walletStore.payInvoiceData.input.amount = 1;
+      walletStore.payInvoiceData.lnurlpay = null as any;
+
+      await walletStore.lnurlPaySecond();
+
+      expect(notifyErrorMock).toHaveBeenCalledWith(
+        "wallet.notifications.no_lnurl_data",
+        "wallet.notifications.lnurl_error",
+      );
+      expect(axiosGetMock).not.toHaveBeenCalled();
+    });
+
+    it("converts USD amounts to sats before requesting the invoice", async () => {
+      const walletStore = useWalletStore();
+      mintsStoreMock.activeUnit = "usd";
+      priceStoreMock.bitcoinPrice = 50000;
+      walletStore.payInvoiceData.input.amount = 1;
+      walletStore.payInvoiceData.lnurlpay = {
+        tag: "payRequest",
+        minSendable: 1000,
+        maxSendable: 1_000_000_000,
+        callback: "https://lnurl.example/cb",
+      } as any;
+      walletStore.decodeRequest = vi.fn();
+      axiosGetMock.mockResolvedValueOnce({
+        data: { status: "OK", pr: "lnbc1usd" },
+      });
+
+      await walletStore.lnurlPaySecond();
+
+      expect(axiosGetMock).toHaveBeenCalledWith(
+        "https://lnurl.example/cb?amount=2000000",
+      );
+      expect(walletStore.decodeRequest).toHaveBeenCalledWith("lnbc1usd");
+    });
+
+    it("notifies when the lnurl callback returns an error", async () => {
+      const walletStore = useWalletStore();
+
+      walletStore.payInvoiceData.input.amount = 1;
+      walletStore.payInvoiceData.lnurlpay = {
+        tag: "payRequest",
+        minSendable: 1000,
+        maxSendable: 2000000,
+        callback: "https://lnurl.example/cb",
+      } as any;
+      axiosGetMock.mockResolvedValueOnce({
+        data: { status: "ERROR", reason: "bad" },
+      });
+
+      await walletStore.lnurlPaySecond();
+
+      expect(notifyErrorMock).toHaveBeenCalledWith(
+        "bad",
+        "wallet.notifications.lnurl_error",
+      );
+      expect(axiosGetMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("requests a payment request and decodes it on success", async () => {
+      const walletStore = useWalletStore();
+
+      walletStore.payInvoiceData.input.amount = 2;
+      walletStore.payInvoiceData.lnurlpay = {
+        tag: "payRequest",
+        minSendable: 1000,
+        maxSendable: 10_000_000,
+        callback: "https://lnurl.example/cb",
+      } as any;
+      walletStore.decodeRequest = vi.fn();
+      axiosGetMock.mockResolvedValueOnce({
+        data: { status: "OK", pr: "lnbc1invoice" },
+      });
+
+      await walletStore.lnurlPaySecond();
+
+      expect(axiosGetMock).toHaveBeenCalledWith(
+        "https://lnurl.example/cb?amount=2000",
+      );
+      expect(walletStore.decodeRequest).toHaveBeenCalledWith("lnbc1invoice");
+    });
   });
 });
