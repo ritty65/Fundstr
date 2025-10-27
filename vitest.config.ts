@@ -35,6 +35,8 @@ export default defineConfig({
       "test/encryptNip04.spec.ts",
       "test/dexie-migrations.spec.ts",
       "test/MediaPreview.sanitize.spec.ts",
+      "test/utils/core-helpers.spec.ts",
+      "test/utils/app-helpers.spec.ts",
       "src/js/__tests__/nutzapProfile.test.ts",
       "test/mints.store.spec.ts",
       "test/stores/proofs.store.spec.ts",
