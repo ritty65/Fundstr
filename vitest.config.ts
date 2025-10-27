@@ -37,6 +37,7 @@ export default defineConfig({
       "test/dexie-migrations.spec.ts",
       "test/MediaPreview.sanitize.spec.ts",
       "test/lib/fundstrApi.spec.ts",
+      "test/lib/publishWithFallback.spec.ts",
       "test/api/fundstrDiscovery.spec.ts",
       "test/utils/core-helpers.spec.ts",
       "test/utils/app-helpers.spec.ts",
