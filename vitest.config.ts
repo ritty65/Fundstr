@@ -47,6 +47,7 @@ export default defineConfig({
       "src/js/__tests__/nutzapProfile.test.ts",
       "test/mints.store.spec.ts",
       "test/stores/mints.balance.spec.ts",
+      "test/stores/migrations.store.spec.ts",
       "test/stores/proofs.store.spec.ts",
       "test/stores/fetchFundstrProfileBundle.spec.ts",
       "test/invoiceHistory.store.spec.ts",
