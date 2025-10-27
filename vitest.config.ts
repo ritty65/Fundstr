@@ -45,6 +45,7 @@ export default defineConfig({
       "test/mints.store.spec.ts",
       "test/stores/mints.balance.spec.ts",
       "test/stores/proofs.store.spec.ts",
+      "test/stores/fetchFundstrProfileBundle.spec.ts",
       "test/invoiceHistory.store.spec.ts",
       "test/settings.store.spec.ts",
       "test/mnemonic.store.spec.ts",
