@@ -61,6 +61,7 @@ export default defineConfig({
       "test/stores/nwc.store.spec.ts",
       "test/stores/ndkBoot.store.spec.ts",
       "test/stores/lockedTokensDexie.store.spec.ts",
+      "test/stores/nostr.fetchMints.spec.ts",
       "test/stores/nostr.signers.spec.ts",
       "test/stores/signer.store.spec.ts",
       "test/stores/subscriptions.store.spec.ts",
