@@ -1,6 +1,7 @@
 import { boot } from "quasar/wrappers";
 import { nextTick } from "vue";
 import { useWelcomeStore } from "src/stores/welcome";
+import { useWalletStore } from "src/stores/wallet";
 import { useMnemonicStore } from "src/stores/mnemonic";
 import { useMintsStore } from "src/stores/mints";
 import { useProofsStore } from "src/stores/proofs";
