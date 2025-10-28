@@ -9,11 +9,6 @@ type Env = {
   RELAY_REQ_TIMEOUT_MS?: string;
 };
 
-type JsonResponseOptions = {
-  contentType?: string;
-  headers?: Record<string, string>;
-};
-
 const FALLBACK_ALLOW_HEADERS = 'content-type,accept,cache-control';
 
 function buildCorsHeaders(req?: Request): Record<string, string> {
@@ -107,8 +102,7 @@ async function handle(req: Request, env: Env, _ctx: unknown): Promise<Response> 
 }
 
 async function handleReq(url: URL, env: Env): Promise<Response> {
-  const nostrResponse: JsonResponseOptions = { contentType: 'application/nostr+json' };
-  const parsed = parseFilters(url.searchParams.get('filters'), nostrResponse);
+  const parsed = parseFilters(url.searchParams.get('filters'));
   if ('error' in parsed) {
     return parsed.error;
   }
@@ -118,30 +112,30 @@ async function handleReq(url: URL, env: Env): Promise<Response> {
   if (httpTarget) {
     try {
       const upstreamUrl = buildReqUrl(httpTarget, json);
-      const proxied = await proxyHttpReq(upstreamUrl, nostrResponse);
+      const proxied = await proxyHttpReq(upstreamUrl);
       return proxied;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return jsonResponse({ ok: false, events: [], message }, 502, nostrResponse);
+      return jsonResponse({ ok: false, events: [], message }, 502);
     }
   }
 
   const wsTarget = pickWsTarget(url, env);
   if (!wsTarget) {
-    return jsonResponse({ ok: false, events: [], message: 'no-upstream' }, 502, nostrResponse);
+    return jsonResponse({ ok: false, events: [], message: 'no-upstream' }, 502);
   }
 
   const timeoutMs = parseTimeout(env.RELAY_REQ_TIMEOUT_MS) ?? 2500;
   try {
     const events = await queryViaWebSocket(wsTarget, filters, timeoutMs);
-    return jsonResponse({ ok: true, events }, 200, nostrResponse);
+    return jsonResponse({ ok: true, events });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return jsonResponse({ ok: false, events: [], message }, 502, nostrResponse);
+    return jsonResponse({ ok: false, events: [], message }, 502);
   }
 }
 
-function parseFilters(raw: string | null, errorOptions: JsonResponseOptions):
+function parseFilters(raw: string | null):
   | { filters: unknown[]; json: string }
   | { error: Response } {
   if (!raw || !raw.trim()) {
@@ -151,20 +145,12 @@ function parseFilters(raw: string | null, errorOptions: JsonResponseOptions):
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) {
-      return {
-        error: jsonResponse(
-          { ok: false, events: [], message: 'filters must be an array' },
-          400,
-          errorOptions,
-        ),
-      };
+      return { error: jsonResponse({ ok: false, events: [], message: 'filters must be an array' }, 400) };
     }
     return { filters: parsed, json: JSON.stringify(parsed) };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'invalid filters';
-    return {
-      error: jsonResponse({ ok: false, events: [], message }, 400, errorOptions),
-    };
+    return { error: jsonResponse({ ok: false, events: [], message }, 400) };
   }
 }
 
@@ -226,7 +212,7 @@ function buildEventUrl(target: string): URL {
   return upstream;
 }
 
-async function proxyHttpReq(upstreamUrl: URL, responseOptions: JsonResponseOptions): Promise<Response> {
+async function proxyHttpReq(upstreamUrl: URL): Promise<Response> {
   const resp = await fetch(upstreamUrl.toString(), {
     headers: {
       Accept: 'application/nostr+json, application/json',
@@ -245,7 +231,6 @@ async function proxyHttpReq(upstreamUrl: URL, responseOptions: JsonResponseOptio
       return jsonResponse(
         { ok: false, events: [], message, upstream: text.slice(0, 256) },
         502,
-        responseOptions,
       );
     }
   }
@@ -255,10 +240,10 @@ async function proxyHttpReq(upstreamUrl: URL, responseOptions: JsonResponseOptio
       parsed && typeof parsed === 'object' && parsed !== null && 'message' in parsed && typeof (parsed as any).message === 'string'
         ? (parsed as any).message
         : text || `HTTP ${resp.status}`;
-    return jsonResponse({ ok: false, events: [], message }, resp.status, responseOptions);
+    return jsonResponse({ ok: false, events: [], message }, resp.status);
   }
 
-  return jsonResponse(normalizeUpstreamPayload(parsed), 200, responseOptions);
+  return jsonResponse(normalizeUpstreamPayload(parsed));
 }
 
 async function handleEvent(req: Request, url: URL, env: Env): Promise<Response> {
@@ -428,14 +413,13 @@ function parseTimeout(raw: string | undefined): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function jsonResponse(body: unknown, status = 200, options: JsonResponseOptions = {}): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       ...DEFAULT_CORS_HEADERS,
-      'Content-Type': options.contentType ?? 'application/json',
+      'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
-      ...(options.headers ?? {}),
     },
   });
 }
