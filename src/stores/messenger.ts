@@ -1,8 +1,8 @@
 import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
 import { watch, computed } from "vue";
-import { Event as NostrEvent, SimplePool } from "nostr-tools";
-import { SignerType, useNostrStore, RelayAck } from "./nostr";
+import { Event as NostrEvent } from "nostr-tools";
+import { SignerType, useNostrStore, RelayAck, publishWithAcks } from "./nostr";
 import { v4 as uuidv4 } from "uuid";
 import { useSettingsStore } from "./settings";
 import { DEFAULT_RELAYS } from "src/config/relays";
@@ -25,6 +25,8 @@ import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useNdk } from "src/composables/useNdk";
 import { NDKEvent } from "@nostr-dev-kit/ndk";
+import { publishEventViaHttp, requestEventsViaHttp } from "@/utils/fundstrRelayHttp";
+import { FUNDSTR_EVT_URL } from "@/nutzap/relayEndpoints";
 
 function ensureMap(ref: { value: any }) {
   if (
@@ -287,6 +289,67 @@ export const useMessengerStore = defineStore("messenger", {
         console.warn("[messenger] signer unavailable, continuing read-only", e);
       }
     },
+    countConnectedRelays(ndk: any): number {
+      try {
+        const relays = ndk?.pool?.relays;
+        if (!relays) return 0;
+        if (typeof relays.values === "function") {
+          let count = 0;
+          for (const relay of relays.values()) {
+            if (relay?.connected) count++;
+          }
+          return count;
+        }
+        if (Array.isArray(relays)) {
+          return relays.reduce(
+            (acc, relay) => acc + (relay?.connected ? 1 : 0),
+            0,
+          );
+        }
+        if (typeof relays === "object") {
+          return Object.values(relays).reduce(
+            (acc, relay) => acc + ((relay as any)?.connected ? 1 : 0),
+            0,
+          );
+        }
+      } catch (err) {
+        console.warn("[messenger.countConnectedRelays]", err);
+      }
+      return 0;
+    },
+    async syncDmViaHttp(pubkey: string | undefined, since: number) {
+      if (!pubkey) return;
+      const sinceFilter = since > 0 ? { since } : {};
+      const filters = [
+        { kinds: [4], "#p": [pubkey], ...sinceFilter },
+        { kinds: [4], authors: [pubkey], ...sinceFilter },
+      ];
+      try {
+        const events = await requestEventsViaHttp(filters);
+        if (!Array.isArray(events) || events.length === 0) {
+          return;
+        }
+        const sorted = events
+          .filter((e) => e && typeof e === "object")
+          .sort((a, b) => (a?.created_at || 0) - (b?.created_at || 0));
+        const seen = new Set<string>();
+        for (const raw of sorted) {
+          const event = raw as NostrEvent;
+          if (event.id && seen.has(event.id)) continue;
+          if (event.id) seen.add(event.id);
+          if (event.pubkey === pubkey) {
+            this.pushOwnMessage(event);
+          } else {
+            await this.addIncomingMessage(event);
+          }
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err ?? "error");
+        console.error("[messenger.syncDmViaHttp]", err);
+        notifyError(`Failed to sync DMs via HTTP fallback: ${message}`);
+        throw err instanceof Error ? err : new Error(message);
+      }
+    },
     async sendDm(
       recipient: string,
       message: string,
@@ -327,39 +390,71 @@ export const useMessengerStore = defineStore("messenger", {
           created_at: Math.floor(Date.now() / 1000),
         } as any;
         const signed = await ext.signEvent(event);
-        const relayList = relays?.length ? relays : (this.relays as any);
-        let success = 0;
-        const pool = new SimplePool();
-        for (const r of relayList) {
+        const relayList = Array.from(
+          new Set(relays?.length ? relays : (this.relays as any)),
+        );
+        let relayResults: Record<string, RelayAck> = {};
+
+        if (relayList.length > 0) {
           try {
-            await pool.publish([r], signed);
-            success++;
-          } catch (e) {
-            console.warn(`[messenger.sendDm] publish failed on ${r}`, e);
+            relayResults = await publishWithAcks(signed as any, relayList);
+          } catch (err) {
+            console.warn("[messenger.sendDm] publishWithAcks failed", err);
+            const reason = err instanceof Error ? err.message : String(err ?? "error");
+            for (const url of relayList) {
+              if (!relayResults[url]) {
+                relayResults[url] = { ok: false, reason };
+              }
+            }
           }
         }
-        if (success > 0) {
+
+        let delivered = Object.values(relayResults).some((ack) => ack?.ok);
+        const httpKey = FUNDSTR_EVT_URL || "http";
+
+        if (!delivered) {
+          try {
+            await publishEventViaHttp(signed as any);
+            relayResults[httpKey] = { ok: true };
+            delivered = true;
+          } catch (httpErr) {
+            const reason =
+              httpErr instanceof Error ? httpErr.message : String(httpErr ?? "error");
+            relayResults[httpKey] = { ok: false, reason };
+            console.error("[messenger.sendDm] HTTP fallback failed", httpErr);
+          }
+        }
+
+        msg.relayResults = relayResults;
+
+        if (delivered) {
           msg.id = signed.id;
           msg.created_at = signed.created_at ?? msg.created_at;
           msg.status = "sent";
           this.pushOwnMessage(signed);
           notifySuccess("DM sent");
           return { success: true, event: signed };
-        } else {
-          msg.status = "failed";
-          if (!this.eventLog.some((m) => m.id === msg.id)) {
-            this.eventLog.push(msg);
-          }
-          notifyError("Failed to send DM");
-          return { success: false, event: null };
         }
-      } catch (e) {
-        console.error("[messenger.sendDm]", e);
+
         msg.status = "failed";
         if (!this.eventLog.some((m) => m.id === msg.id)) {
           this.eventLog.push(msg);
         }
-        notifyError("Failed to send DM");
+        const failedRelays = Object.entries(relayResults).filter(([, ack]) => !ack?.ok);
+        const summary = failedRelays
+          .map(([url, ack]) => (ack?.reason ? `${url}: ${ack.reason}` : url))
+          .join(", ");
+        notifyError(summary ? `Failed to send DM: ${summary}` : "Failed to send DM");
+        return { success: false, event: null };
+      } catch (e) {
+        console.error("[messenger.sendDm]", e);
+        msg.status = "failed";
+        const reason = e instanceof Error ? e.message : String(e ?? "error");
+        msg.relayResults = { error: { ok: false, reason } };
+        if (!this.eventLog.some((m) => m.id === msg.id)) {
+          this.eventLog.push(msg);
+        }
+        notifyError(`Failed to send DM: ${reason}`);
         return { success: false, event: null };
       }
     },
@@ -828,39 +923,84 @@ export const useMessengerStore = defineStore("messenger", {
     async start() {
       if (this.started) return;
       this.normalizeStoredConversations();
+      const nostr = useNostrStore();
+      const since = this.eventLog[this.eventLog.length - 1]?.created_at || 0;
+      let httpFallbackNeeded = false;
+      let incomingSub: any = null;
+      let outgoingSub: any = null;
       try {
         this.dmUnsub?.();
         await this.loadIdentity();
-        const nostr = useNostrStore();
         const ndk = await useNdk();
-        const since = this.eventLog[this.eventLog.length - 1]?.created_at || 0;
-        const incomingSub = ndk.subscribe(
-          { kinds: [4], "#p": [nostr.pubkey], since },
-          { closeOnEose: false, groupable: false },
-        );
-        incomingSub.on("event", async (event: NDKEvent) => {
-          const raw = await event.toNostrEvent();
-          this.addIncomingMessage(raw as NostrEvent);
-        });
-        const outgoingSub = ndk.subscribe(
-          { kinds: [4], authors: [nostr.pubkey], since },
-          { closeOnEose: false, groupable: false },
-        );
-        outgoingSub.on("event", async (event: NDKEvent) => {
-          const raw = await event.toNostrEvent();
-          this.pushOwnMessage(raw as NostrEvent);
-        });
-        this.dmUnsub = () => {
+        httpFallbackNeeded = this.countConnectedRelays(ndk) === 0;
+        const sinceFilter = since > 0 ? { since } : {};
+        const subscribeSafe = (
+          filter: Record<string, any>,
+          handler: (event: NDKEvent) => Promise<void> | void,
+        ) => {
           try {
-            incomingSub.stop();
-          } catch {}
-          try {
-            outgoingSub.stop();
-          } catch {}
+            const sub = ndk.subscribe(filter, {
+              closeOnEose: false,
+              groupable: false,
+            });
+            sub.on("event", async (event: NDKEvent) => {
+              try {
+                await handler(event);
+              } catch (err) {
+                console.error("[messenger.start] subscription handler failed", err);
+              }
+            });
+            return sub;
+          } catch (err) {
+            console.error("[messenger.start] failed to subscribe", err);
+            return null;
+          }
         };
+
+        incomingSub = subscribeSafe(
+          { kinds: [4], "#p": [nostr.pubkey], ...sinceFilter },
+          async (event: NDKEvent) => {
+            const raw = await event.toNostrEvent();
+            this.addIncomingMessage(raw as NostrEvent);
+          },
+        );
+
+        if (!incomingSub) {
+          httpFallbackNeeded = true;
+        }
+
+        outgoingSub = subscribeSafe(
+          { kinds: [4], authors: [nostr.pubkey], ...sinceFilter },
+          async (event: NDKEvent) => {
+            const raw = await event.toNostrEvent();
+            this.pushOwnMessage(raw as NostrEvent);
+          },
+        );
+
+        if (incomingSub || outgoingSub) {
+          this.dmUnsub = () => {
+            try {
+              incomingSub?.stop();
+            } catch {}
+            try {
+              outgoingSub?.stop();
+            } catch {}
+          };
+        } else {
+          this.dmUnsub = null;
+        }
       } catch (e) {
         console.error("[messenger.start]", e);
+        this.dmUnsub = null;
+        httpFallbackNeeded = true;
       } finally {
+        if (httpFallbackNeeded) {
+          try {
+            await this.syncDmViaHttp(nostr.pubkey, since);
+          } catch (err) {
+            console.error("[messenger.start] HTTP fallback failed", err);
+          }
+        }
         this.started = true;
       }
     },
