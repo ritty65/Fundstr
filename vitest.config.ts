@@ -107,6 +107,7 @@ export default defineConfig({
       "test/nostr/signer.spec.ts",
       "test/nostr/readBackAndFallback.spec.ts",
       "test/nostr/publishNostrEvent.spec.ts",
+      "test/nostr/discovery.fallback.spec.ts",
       "test/nutzap/creatorCache.service.spec.ts",
       "test/boot/**/*.spec.ts",
     ],
