@@ -106,7 +106,6 @@ const routes = [
   {
     path: "/restore",
     component: () => import("layouts/FullscreenLayout.vue"),
-    meta: { hideHeader: true },
     children: [{ path: "", component: () => import("src/pages/Restore.vue") }],
   },
   {
