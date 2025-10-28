@@ -37,6 +37,7 @@ export async function bootstrapAndCompleteOnboarding(
 
 export async function resetBrowserState(page: Page): Promise<void> {
   await page.context().clearCookies();
+  await page.waitForSelector('#q-app', { state: 'attached' });
   await page.evaluate(async () => {
     localStorage.clear();
     sessionStorage.clear();

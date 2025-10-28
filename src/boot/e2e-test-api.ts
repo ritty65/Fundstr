@@ -88,6 +88,7 @@ class WalletMockController {
       return;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const controller = this;
 
     this.wallet.requestMint = async function (amount: number, mintWallet: any) {

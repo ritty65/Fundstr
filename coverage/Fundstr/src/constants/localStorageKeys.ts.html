@@ -1,0 +1,400 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for Fundstr/src/constants/localStorageKeys.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../../prettify.css" />
+    <link rel="stylesheet" href="../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../../index.html">All files</a> / <a href="index.html">Fundstr/src/constants</a> localStorageKeys.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>105/105</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/0</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>0/0</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>105/105</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line high'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">export const LOCAL_STORAGE_KEYS = {
+  CASHU_P2PKKEYS: "cashu.P2PKKeys",
+  CASHU_ACTIVEMINTURL: "cashu.activeMintUrl",
+  CASHU_ACTIVEUNIT: "cashu.activeUnit",
+  CASHU_ACTIVE_P2PK: "cashu.activeP2pk",
+  CASHU_BUCKETRULES: "cashu.bucketRules",
+  CASHU_BUCKETS: "cashu.buckets",
+  CASHU_DEXIE_MIGRATED: "cashu.dexie.migrated",
+  CASHU_DMCHATS: "cashu.dmChats",
+  CASHU_DMCHATS_UNREAD: "cashu.dmChats.unread",
+  CASHU_DONATIONPRESETS: "cashu.donationPresets",
+  CASHU_HISTORYTOKENS: "cashu.historyTokens",
+  CASHU_INVOICEHISTORY: "cashu.invoiceHistory",
+  CASHU_KEYSETCOUNTERS: "cashu.keysetCounters",
+  CASHU_LASTLOCALSTORAGECLEANUP: "cashu.lastLocalStorageCleanUp",
+  CASHU_LOCKEDTOKENS: "cashu.lockedTokens",
+  CASHU_MESSENGER_CONVERSATIONS: "cashu.messenger.conversations",
+  CASHU_MESSENGER_DRAWEROPEN: "cashu.messenger.drawerOpen",
+  CASHU_MESSENGER_DRAWERMINI: "cashu.messenger.drawerMini",
+  CASHU_MESSENGER_EVENTLOG: "cashu.messenger.eventLog",
+  CASHU_MESSENGER_PINNED: "cashu.messenger.pinned",
+  CASHU_MESSENGER_UNREAD: "cashu.messenger.unread",
+  CASHU_MIGRATIONS_VERSION: "cashu.migrations.version",
+  CASHU_MINTS: "cashu.mints",
+  CASHU_MNEMONIC: "cashu.mnemonic",
+  CASHU_NDK_NIP04_LASTEVENTTIMESTAMP: "cashu.ndk.nip04.lastEventTimestamp",
+  CASHU_NDK_NIP17_LASTEVENTTIMESTAMP: "cashu.ndk.nip17.lastEventTimestamp",
+  CASHU_NDK_MINTRECOMMENDATIONS: "cashu.ndk.mintRecommendations",
+  CASHU_NDK_NIP17EVENTIDSWEHAVESEEN: "cashu.ndk.nip17EventIdsWeHaveSeen",
+  CASHU_NDK_NIP46TOKEN: "cashu.ndk.nip46Token",
+  CASHU_NDK_PRIVATEKEYSIGNERPRIVATEKEY: "cashu.ndk.privateKeySignerPrivateKey",
+  CASHU_NDK_PUBKEY: "cashu.ndk.pubkey",
+  CASHU_NDK_SEEDSIGNERPRIVATEKEY: "cashu.ndk.seedSignerPrivateKey",
+  CASHU_NDK_SEEDSIGNERPUBLICKEY: "cashu.ndk.seedSignerPublicKey",
+  CASHU_NDK_SIGNERTYPE: "cashu.ndk.signerType",
+  CASHU_NPC_ADDRESS: "cashu.npc.address",
+  CASHU_NPC_AUTOMATICCLAIM: "cashu.npc.automaticClaim",
+  CASHU_NPC_BASEURL: "cashu.npc.baseURL",
+  CASHU_NPC_CONNECTIONS: "cashu.npc.connections",
+  CASHU_NPC_DOMAIN: "cashu.npc.domain",
+  CASHU_NPC_ENABLED: "cashu.npc.enabled",
+  CASHU_CASHU_SENDQUEUE: "cashu.cashu.sendQueue",
+  CASHU_NWC_CONNECTIONS: "cashu.nwc.connections",
+  CASHU_NWC_ENABLED: "cashu.nwc.enabled",
+  CASHU_NWC_RELAYS: "cashu.nwc.relays",
+  CASHU_NWC_SEENCOMMANDSUNTIL: "cashu.nwc.seenCommandsUntil",
+  CASHU_OLDMNEMONICCOUNTERS: "cashu.oldMnemonicCounters",
+  CASHU_P2PK_SHOWP2PKBUTTONINDRAWER: "cashu.p2pk.showP2PkButtonInDrawer",
+  CASHU_P2PK_VERIFICATIONS: "cashu.p2pk.verifications",
+  CASHU_PR_ENABLE: "cashu.pr.enable",
+  CASHU_PR_RECEIVE: "cashu.pr.receive",
+  CASHU_PRICE_BITCOINPRICE: "cashu.price.bitcoinPrice",
+  CASHU_PRICE_BITCOINPRICELASTUPDATED: "cashu.price.bitcoinPriceLastUpdated",
+  CASHU_RESTORE_MNEMONICTORESTORE: "cashu.restore.mnemonicToRestore",
+  CASHU_RESTORE_SHOWRESTOREDIALOG: "cashu.restore.showRestoreDialog",
+  CASHU_SETTINGS_AUDITORAPIURL: "cashu.settings.auditorApiUrl",
+  CASHU_SETTINGS_AUDITORENABLED: "cashu.settings.auditorEnabled",
+  CASHU_SETTINGS_AUDITORURL: "cashu.settings.auditorUrl",
+  CASHU_SETTINGS_AUTOPASTEECASHRECEIVE: "cashu.settings.autoPasteEcashReceive",
+  CASHU_SETTINGS_AUTOREDEEMLOCKEDTOKENS:
+    "cashu.settings.autoRedeemLockedTokens",
+  CASHU_SETTINGS_CHECKINCOMINGINVOICES: "cashu.settings.checkIncomingInvoices",
+  CASHU_SETTINGS_CHECKINVOICESONSTARTUP:
+    "cashu.settings.checkInvoicesOnStartup",
+  CASHU_SETTINGS_CHECKSENTTOKENS: "cashu.settings.checkSentTokens",
+  CASHU_SETTINGS_DEFAULTNOSTRRELAYS: "cashu.settings.defaultNostrRelays",
+  CASHU_SETTINGS_ENABLERECEIVESWAPS: "cashu.settings.enableReceiveSwaps",
+  CASHU_SETTINGS_GETBITCOINPRICE: "cashu.settings.getBitcoinPrice",
+  CASHU_SETTINGS_INCLUDEFEESINSENDAMOUNT:
+    "cashu.settings.includeFeesInSendAmount",
+  CASHU_SETTINGS_NFCENCODING: "cashu.settings.nfcEncoding",
+  CASHU_SETTINGS_PERIODICALLYCHECKINCOMINGINVOICES:
+    "cashu.settings.periodicallyCheckIncomingInvoices",
+  CASHU_SETTINGS_SEARCHBACKENDURL: "cashu.settings.searchBackendUrl",
+  CASHU_SETTINGS_TIERSINDEXERURL: "cashu.settings.tiersIndexerUrl",
+  CASHU_SETTINGS_USENUMERICKEYBOARD: "cashu.settings.useNumericKeyboard",
+  CASHU_SETTINGS_USEWEBSOCKETS: "cashu.settings.useWebsockets",
+  CASHU_UI_EXPANDHISTORY: "cashu.ui.expandHistory",
+  CASHU_UI_EXPANDP2PKKEYS: "cashu.ui.expandP2PKKeys",
+  CASHU_UI_EXPANDPROFILEDETAILS: "cashu.ui.expandProfileDetails",
+  CASHU_UI_EXPANDTIERLIST: "cashu.ui.expandTierList",
+  CASHU_UI_HIDEBALANCE: "cashu.ui.hideBalance",
+  CASHU_UI_LASTBALANCECACHED: "cashu.ui.lastBalanceCached",
+  CASHU_UI_SHOWDEBUGCONSOLE: "cashu.ui.showDebugConsole",
+  CASHU_UI_SHOWNFCBUTTONINDRAWER: "cashu.ui.showNfcButtonInDrawer",
+  CASHU_UI_TAB: "cashu.ui.tab",
+  CASHU_WELCOME_CURRENTSLIDE: "cashu.welcome.currentSlide",
+  CASHU_WELCOME_SEEDACKNOWLEDGED: "cashu.welcome.seedAcknowledged",
+  CASHU_WELCOME_SHOWWELCOME: "cashu.welcome.showWelcome",
+  CASHU_WELCOME_TERMSACCEPTED: "cashu.welcome.termsAccepted",
+  CASHU_WORKER_INVOICES_LASTPENDINGINVOICECHECK:
+    "cashu.worker.invoices.lastPendingInvoiceCheck",
+  CASHU_WORKER_INVOICES_QUOTESQUEUE: "cashu.worker.invoices.quotesQueue",
+  CREATORPROFILE_ABOUT: "creatorProfile.about",
+  CREATORPROFILE_DISPLAY_NAME: "creatorProfile.display_name",
+  CREATORPROFILE_MINTS: "creatorProfile.mints",
+  CREATORPROFILE_PICTURE: "creatorProfile.picture",
+  CREATORPROFILE_PUBKEY: "creatorProfile.pubkey",
+  CREATORPROFILE_RELAYS: "creatorProfile.relays",
+  FIRST_RUN_DONE: "fundstr:firstRunDone",
+  FUNDSTR_BROWSER_ID: "fundstr:browserId",
+  DONATION_OPT_OUT: "fundstr:donationOptOut",
+  DONATION_LAST_PROMPT: "fundstr:lastDonationPromptTime",
+  DONATION_LAUNCH_COUNT: "fundstr:donationLaunchCount",
+} as const;
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2025-10-26T10:47:01.696Z
+            </div>
+        <script src="../../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../../sorter.js"></script>
+        <script src="../../../block-navigation.js"></script>
+    </body>
+</html>
+    
