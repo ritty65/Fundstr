@@ -95,11 +95,34 @@
         dense
         outline
         @click="restoreAllMints"
-        :disabled="!isMnemonicValid || restoringState"
+        :disabled="!isMnemonicValid || restoringState || !hasMints"
       >
         <q-spinner-hourglass size="sm" v-if="restoringState" class="q-mr-sm" />
         {{ restoreAllMintsText }}
       </q-btn>
+      <q-banner
+        v-if="!hasMints"
+        rounded
+        dense
+        class="q-mt-md bg-warning text-black"
+      >
+        <div class="row items-center no-wrap">
+          <div class="col">
+            {{ $t("RestoreView.restore_mints.empty_state.message") }}
+          </div>
+          <div class="col-auto">
+            <q-btn
+              flat
+              dense
+              color="primary"
+              class="q-ml-md"
+              @click="goToMints"
+            >
+              {{ $t("RestoreView.restore_mints.empty_state.action") }}
+            </q-btn>
+          </div>
+        </div>
+      </q-banner>
       <q-list padding class="q-pt-md">
         <!-- List mints here -->
         <div v-for="mint in mints" :key="mint.url">
@@ -180,7 +203,7 @@ import { useRestoreStore } from "src/stores/restore";
 import { useWalletStore } from "src/stores/wallet";
 import { useMnemonicStore } from "src/stores/mnemonic";
 import { useUiStore } from "src/stores/ui";
-import { notifyError, notifySuccess } from "src/js/notify";
+import { notifyError, notifySuccess, notifyWarning } from "src/js/notify";
 
 export default defineComponent({
   name: "RestoreView",
@@ -212,10 +235,16 @@ export default defineComponent({
       const words = this.mnemonicToRestore.trim().split(/\s+/);
       return words.length >= 12;
     },
+    hasMints() {
+      return Array.isArray(this.mints) && this.mints.length > 0;
+    },
   },
   methods: {
     ...mapActions(useRestoreStore, ["restoreMint"]),
-    ...mapActions(useUiStore, ["pasteFromClipboard"]),
+    ...mapActions(useUiStore, {
+      pasteFromClipboard: "pasteFromClipboard",
+      setUiTab: "setTab",
+    }),
     mintClass(mint) {
       return new MintClass(mint);
     },
@@ -259,9 +288,20 @@ export default defineComponent({
         notifyError(this.$t("RestoreView.actions.paste.error"));
       }
     },
+    goToMints() {
+      this.setUiTab("mints");
+      this.$router.push("/wallet");
+    },
     async restoreAllMints() {
       let i = 0;
       if (!this.validateMnemonic()) {
+        return;
+      }
+      if (!this.hasMints) {
+        notifyWarning(
+          this.$t("RestoreView.actions.restore_all_mints.no_mints_warning"),
+          this.$t("RestoreView.actions.restore_all_mints.no_mints_caption"),
+        );
         return;
       }
       try {
