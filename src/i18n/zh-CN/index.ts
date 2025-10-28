@@ -167,7 +167,13 @@ export const messages = {
     menu: {
       wallet: { title: "@:FullscreenHeader.actions.back.label" },
       nostrMessenger: { title: "@:AboutPage.siteOverview.nostrMessengerTitle" },
-      restore: { title: "@:AboutPage.siteOverview.restoreTitle" },
+      restore: {
+        title: "@:AboutPage.siteOverview.restoreTitle",
+        restore: {
+          title: "@:AboutPage.siteOverview.restoreTitle",
+          caption: "@:AboutPage.siteOverview.restore.description",
+        },
+      },
       alreadyRunning: { title: "@:AboutPage.siteOverview.alreadyRunningTitle" },
       welcome: { title: "@:AboutPage.siteOverview.welcomeTitle" },
       nostrLogin: { title: "@:AboutPage.siteOverview.nostrLoginTitle" },

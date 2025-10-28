@@ -129,6 +129,19 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
+      <q-item v-if="!isGuest" clickable @click="gotoRestore">
+        <q-item-section avatar>
+          <q-icon name="settings_backup_restore" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>{{
+            $t("MainHeader.menu.restore.restore.title")
+          }}</q-item-label>
+          <q-item-label caption>{{
+            $t("MainHeader.menu.restore.restore.caption")
+          }}</q-item-label>
+        </q-item-section>
+      </q-item>
       <q-item v-if="!isGuest" clickable @click="gotoChats">
         <q-item-section avatar>
           <q-icon name="chat" />
@@ -236,6 +249,7 @@ const gotoCreatorStudio = () => goto("/creator-studio");
 const gotoMyProfile = () => goto("/my-profile");
 const gotoBuckets = () => goto("/buckets");
 const gotoSubscriptions = () => goto("/subscriptions");
+const gotoRestore = () => goto("/restore");
 const gotoChats = () => goto("/nostr-messenger");
 const gotoNostrLogin = () => goto("/nostr-login");
 const gotoTerms = () => goto("/terms");
