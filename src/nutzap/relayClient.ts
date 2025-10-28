@@ -532,8 +532,43 @@ export class FundstrRelayClient {
   }
 
   private async publishViaHttp(event: NostrEvent): Promise<FundstrRelayPublishAck> {
+    const baseFetch = typeof fetch === 'function' ? fetch.bind(globalThis) : undefined;
+    const fetchOptions: Parameters<typeof publishEventViaHttp>[1] = baseFetch
+      ? {
+          fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+            const response = await baseFetch(input, init);
+            if (!response || !response.ok) {
+              return response;
+            }
+
+            if (typeof Response === 'undefined' || typeof response.clone !== 'function') {
+              return response;
+            }
+
+            let normalizedBody: string | null = null;
+            try {
+              const bodyText = await response.clone().text();
+              normalizedBody = this.normalizeHttpPublishAckBody(bodyText, event);
+            } catch {
+              normalizedBody = null;
+            }
+
+            if (normalizedBody === null) {
+              return response;
+            }
+
+            const headers = new Headers(response.headers);
+            return new Response(normalizedBody, {
+              status: response.status,
+              statusText: response.statusText,
+              headers,
+            });
+          }) as typeof fetch,
+        }
+      : {};
+
     try {
-      const ack = (await publishEventViaHttp(event)) as FundstrRelayPublishAck;
+      const ack = (await publishEventViaHttp(event, fetchOptions)) as FundstrRelayPublishAck;
       this.pushLog('info', `HTTP publish accepted for event ${ack.id}`);
       return ack;
     } catch (err) {
@@ -542,6 +577,73 @@ export class FundstrRelayClient {
       }
       throw err;
     }
+  }
+
+  private normalizeHttpPublishAckBody(bodyText: string, event: NostrEvent): string | null {
+    const trimmed = bodyText.trim();
+    if (!trimmed) {
+      return JSON.stringify({ id: event.id, accepted: true });
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      parsed = undefined;
+    }
+
+    if (Array.isArray(parsed)) {
+      const [kind, eventId, okValue, message] = parsed;
+      if (typeof kind === 'string' && kind.toUpperCase() === 'OK') {
+        const ack = {
+          id: typeof eventId === 'string' && eventId ? eventId : event.id,
+          accepted: this.isOkAccepted(okValue),
+          message:
+            typeof message === 'string' && message.trim().length > 0 ? message : undefined,
+        };
+        return JSON.stringify(ack);
+      }
+      return null;
+    }
+
+    if (parsed && typeof parsed === 'object') {
+      return null;
+    }
+
+    const value = typeof parsed === 'string' ? parsed : trimmed;
+    if (/^\s*ok\b/i.test(value)) {
+      const message = value.replace(/^\s*ok\b[:\s-]*/i, '').trim();
+      const ack = {
+        id: event.id,
+        accepted: true,
+        message: message.length > 0 ? message : undefined,
+      };
+      return JSON.stringify(ack);
+    }
+
+    return null;
+  }
+
+  private isOkAccepted(value: unknown): boolean {
+    if (value === true) {
+      return true;
+    }
+    if (value === false || value === null) {
+      return false;
+    }
+    if (typeof value === 'number') {
+      return value === 1;
+    }
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true' || normalized === '1' || normalized === 'ok') {
+        return true;
+      }
+      if (normalized === 'false' || normalized === '0') {
+        return false;
+      }
+    }
+    return false;
   }
 
   private shouldFallbackAfterRelayError(error: RelayPublishError): boolean {
