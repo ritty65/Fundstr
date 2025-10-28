@@ -706,6 +706,11 @@ export const messages = {
       label: "Restore Mints",
       caption:
         'Select the mint to restore. You can add more mints in the main screen under "Mints" and restore them here.',
+      empty_state: {
+        message:
+          "You haven't added any mints yet. Add your historical mints before running a restore.",
+        action: "Open Wallet Mints",
+      },
     },
     actions: {
       paste: {
@@ -724,6 +729,9 @@ export const messages = {
         in_progress: "Restoring mint { index } of { length } …",
         success: "Restore finished successfully",
         error: "Error restoring mints - { error }",
+        no_mints_warning: "Add at least one mint before restoring.",
+        no_mints_caption:
+          'Open the Wallet and select the "Mints" tab to add the mints you want to restore.',
       },
     },
   },
