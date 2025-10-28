@@ -77,6 +77,19 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
+      <q-item v-if="!isGuest" clickable @click="gotoCreatorStudio">
+        <q-item-section avatar>
+          <q-icon name="dashboard_customize" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>{{
+            $t("MainHeader.menu.creatorStudio.title")
+          }}</q-item-label>
+          <q-item-label caption>{{
+            $t("MainHeader.menu.creatorStudio.caption")
+          }}</q-item-label>
+        </q-item-section>
+      </q-item>
       <q-item v-if="!isGuest" clickable @click="gotoMyProfile">
         <q-item-section avatar>
           <q-icon name="account_circle" />
@@ -219,6 +232,7 @@ function goto(path: string) {
 const gotoWallet = () => goto("/wallet");
 const gotoSettings = () => goto("/settings");
 const gotoFindCreators = () => goto("/find-creators");
+const gotoCreatorStudio = () => goto("/creator-studio");
 const gotoMyProfile = () => goto("/my-profile");
 const gotoBuckets = () => goto("/buckets");
 const gotoSubscriptions = () => goto("/subscriptions");
