@@ -2,7 +2,7 @@
 
 ## Symptoms seen in staging
 - Browser devtools show repeated `Firefox can’t establish a connection to the server at wss://relay.fundstr.me` together with the same message for public relays such as `relay.snort.social` and `nos.lol`.
-- HTTP fallbacks to `https://relay-proxy.fundstr.workers.dev/event` fail the CORS preflight: the response omits the `Access-Control-Allow-Headers: content-type` permission so Firefox aborts the `fetch` with `NetworkError`.
+- HTTP fallbacks to `https://relay.fundstr.me/event` fail the CORS preflight: the response omits the `Access-Control-Allow-Headers: content-type` permission so Firefox aborts the `fetch` with `NetworkError`.
 - The Creator Studio console prints `No active mint. This should not happen. switching to first one.` which comes from the Pinia mint store when it cannot resolve an active mint.
 
 Those symptoms line up with the way Fundstr’s Nostr layer is wired: the SPA assumes the first-party relay is reachable and will short-circuit if that host is down or blocks cross-origin requests.
@@ -12,12 +12,12 @@ Those symptoms line up with the way Fundstr’s Nostr layer is wired: the SPA as
 - Development and test builds keep the toggle enabled by default. To force-enable the logs in other environments, set `VITE_RELAY_DEBUG_LOGS=true` before building or flip the flag at runtime via the Pinia settings store (e.g. `useSettingsStore().relayDebugLogsEnabled.value = true`).【F:src/stores/settings.ts†L5-L74】【F:src/boot/ndk.ts†L83-L129】
 
 ## How the client is configured
-- The primary relay endpoints are hard-coded to `wss://relay.fundstr.me` / `https://relay-proxy.fundstr.workers.dev` and copied into every default relay list (`DEFAULT_RELAYS`, `FALLBACK_RELAYS`, `FREE_RELAYS`).【F:src/config/relays.ts†L1-L33】
+- The primary relay endpoints are hard-coded to `wss://relay.fundstr.me` / `https://relay.fundstr.me` and copied into every default relay list (`DEFAULT_RELAYS`, `FALLBACK_RELAYS`, `FREE_RELAYS`).【F:src/config/relays.ts†L1-L33】
 - The Nutzap stack reads the Vite env overrides but still defaults to that Fundstr relay and derives the HTTP `/req` and `/event` endpoints from it.【F:src/nutzap/relayConfig.ts†L1-L36】【F:src/nutzap/relayEndpoints.ts†L1-L86】
 - `getNutzapNdk` bootstraps an `NDK` instance with `explicitRelayUrls: [NUTZAP_RELAY_WSS]`, so Creator Studio can only talk to the primary relay unless it reconnects to a different URL.【F:src/nutzap/ndkInstance.ts†L1-L15】
 - The Creator Studio relay console (`useRelayConnection`) drives a single WebSocket connection to the configured relay, retries with exponential backoff, and records the status that surfaces in the UI.【F:src/nutzap/onepage/useRelayConnection.ts†L1-L206】
-- If the WebSocket cannot come up, publish operations fall back to `POST https://relay-proxy.fundstr.workers.dev/event` with the JSON body and `content-type: application/json` header.【F:src/nutzap/relayClient.ts†L531-L590】
-- Read-side fallbacks query `GET https://relay-proxy.fundstr.workers.dev/req?filters=…` with the same Accept header; the helper logs and bails if the HTTP response is not JSON.【F:src/nutzap/relayClient.ts†L819-L899】
+- If the WebSocket cannot come up, publish operations fall back to `POST https://relay.fundstr.me/event` with the JSON body and `content-type: application/json` header.【F:src/nutzap/relayClient.ts†L531-L590】
+- Read-side fallbacks query `GET https://relay.fundstr.me/req?filters=…` with the same Accept header; the helper logs and bails if the HTTP response is not JSON.【F:src/nutzap/relayClient.ts†L819-L899】
 - Separately, the Pinia mint store logs “No active mint…” whenever it has at least one mint in local storage but `activeMintUrl` is blank; it then tries to promote the first mint as a stop-gap.【F:src/stores/mints.ts†L239-L251】
 
 ## Likely root causes
@@ -41,6 +41,6 @@ Those symptoms line up with the way Fundstr’s Nostr layer is wired: the SPA as
   This mirrors what the SPA expects in `publishViaHttp` and prevents the Firefox errors.【F:src/nutzap/relayClient.ts†L531-L590】
 - **Fallback relays:** Once Fundstr relay is healthy, validate that reads/publishes succeed with a known public relay by temporarily overriding `VITE_NUTZAP_PRIMARY_RELAY_WSS` to `wss://relay.damus.io` and ensuring the UI shows a successful connection. That isolates whether the problem is global or Fundstr-specific.【F:src/nutzap/relayConfig.ts†L11-L34】
 - **Mint UX:** Decide whether to seed a default mint or downgrade the “No active mint” log to a debug-level message so Creator Studio operators are not alarmed.【F:src/stores/mints.ts†L239-L251】
-- **Service worker host list:** Update `src-pwa/custom-service-worker.js` so the network-only rule covers `relay.fundstr.me` and the Cloudflare worker host as well. This avoids stale caches if the relay ever sits behind a CDN that honours cache headers.【F:src-pwa/custom-service-worker.js†L37-L45】
+- **Service worker host list:** Update `src-pwa/custom-service-worker.js` so the network-only rule covers `relay.fundstr.me` as well. This avoids stale caches if the relay ever sits behind a CDN that honours cache headers.【F:src-pwa/custom-service-worker.js†L37-L45】
 
 Addressing the WebSocket reachability and CORS headers should resolve the critical Creator Studio failures; the remaining items are quality-of-life improvements to reduce noise and keep the relay migration tidy.

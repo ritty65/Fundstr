@@ -1,5 +1,5 @@
 export const FUNDSTR_PRIMARY_RELAY = 'wss://relay.fundstr.me';
-export const FUNDSTR_PRIMARY_RELAY_HTTP = 'https://relay-proxy.fundstr.workers.dev';
+export const FUNDSTR_PRIMARY_RELAY_HTTP = 'https://relay.fundstr.me';
 export const PRIMARY_RELAY = FUNDSTR_PRIMARY_RELAY;
 
 export const FALLBACK_RELAYS: string[] = [

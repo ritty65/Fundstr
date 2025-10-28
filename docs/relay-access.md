@@ -14,7 +14,7 @@ Publishes must send a fully signed NIP-01 event to /event; the client validates 
    bounded by a ~1.5&nbsp;s timeout to keep the UI responsive.
 3. If the socket cannot be opened or returns no events, the client
    automatically performs the same query over HTTP:
-   `https://relay-proxy.fundstr.workers.dev/req?filters=…`.
+   `https://relay.fundstr.me/req?filters=…`.
 4. When Fundstr returns no data the client **can** fan out across a vetted pool
   of public relays (`relay.fundstr.me`, `relay.snort.social`, `nos.lol`,
   `relay.damus.io`). This behaviour is opt-in via
@@ -27,7 +27,7 @@ All fetches, including the service-worker passthrough, use
 responses are never cached.
 
 Publishing Nutzap events uses a direct HTTP POST to
-`https://relay-proxy.fundstr.workers.dev/event`. The relay responds with a JSON payload shaped
+`https://relay.fundstr.me/event`. The relay responds with a JSON payload shaped
 like `{ ok, id, accepted, message }`. Callers must treat a publish as successful
 **only** when `accepted === true`. When `accepted` is false the provided relay
 `message` should be surfaced to the user verbatim.
