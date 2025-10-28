@@ -97,6 +97,7 @@ export default defineConfig({
       "test/wallet-store.decodeRequest.spec.ts",
       "test/wallet-store.handleBolt11Invoice.spec.ts",
       "test/wallet-store.attemptRedeem.spec.ts",
+      "test/wallet-store.checkTokenSpendable.spec.ts",
       "test/wallet-store.onTokenPaid.spec.ts",
       "test/wallet-store.melt.spec.ts",
       "test/pages/WalletPage.spec.ts",
