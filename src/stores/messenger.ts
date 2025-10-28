@@ -1,8 +1,8 @@
 import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
 import { watch, computed } from "vue";
-import { Event as NostrEvent } from "nostr-tools";
-import { SignerType, useNostrStore, RelayAck, publishWithAcks } from "./nostr";
+import { Event as NostrEvent, relayInit } from "nostr-tools";
+import { SignerType, useNostrStore } from "./nostr";
 import { v4 as uuidv4 } from "uuid";
 import { useSettingsStore } from "./settings";
 import { DEFAULT_RELAYS } from "src/config/relays";
@@ -26,7 +26,17 @@ import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useNdk } from "src/composables/useNdk";
 import { NDKEvent } from "@nostr-dev-kit/ndk";
 import { publishEventViaHttp, requestEventsViaHttp } from "@/utils/fundstrRelayHttp";
-import { FUNDSTR_EVT_URL } from "@/nutzap/relayEndpoints";
+import {
+  DM_RELAY_ALLOWLIST,
+  DM_WS_ACK_TIMEOUT_MS,
+  DM_HTTP_ACK_TIMEOUT_MS,
+  DM_HTTP_EVENT_URL,
+  DM_HTTP_REQ_URL,
+  DM_HTTP_POLL_INTERVAL_MS,
+  DM_REQUIRE_AUTH,
+  DM_AUTH_CACHE_TTL_MS,
+} from "@/config/dm";
+import { resolveDmSigner, type DmSigner } from "src/nostr/dmSigner";
 
 function ensureMap(ref: { value: any }) {
   if (
@@ -70,6 +80,15 @@ function generateContentTags(
   return { content: safeContent, tags: safeTags };
 }
 
+export type DmRelayAck = {
+  ok: boolean;
+  id?: string;
+  message?: string;
+  error?: string;
+  elapsedMs?: number;
+  via?: "ws" | "http";
+};
+
 export interface SubscriptionPayment {
   token: string;
   subscription_id: string;
@@ -97,7 +116,7 @@ export type MessengerMessage = {
   subscriptionPayment?: SubscriptionPayment;
   tokenPayload?: any;
   autoRedeem?: boolean;
-  relayResults?: Record<string, RelayAck>;
+      relayResults?: Record<string, DmRelayAck>;
 };
 
 export const useMessengerStore = defineStore("messenger", {
@@ -172,12 +191,44 @@ export const useMessengerStore = defineStore("messenger", {
       drawerMini,
       started: false,
       dmUnsub: null as null | (() => void),
+      signerMode: "unknown" as "unknown" | "extension" | "software" | "unavailable",
+      transportMode: "ws" as "ws" | "http" | "offline",
+      lastTransportError: null as string | null,
+      httpPollHandle: null as ReturnType<typeof setInterval> | null,
+      relayDiagnostics: {} as Record<string, DmRelayAck>,
+      authCache: {} as Record<string, number>,
+      transportWatcherStop: null as null | (() => void),
     };
   },
   getters: {
     connected(): boolean {
       const nostr = useNostrStore();
       return nostr.connected;
+    },
+    signerBadge(): string {
+      switch (this.signerMode) {
+        case "extension":
+          return "Extension signer";
+        case "software":
+          return "Software signer (nsec)";
+        case "unavailable":
+          return "No signer";
+        default:
+          return "Detecting signer";
+      }
+    },
+    transportBadge(): string {
+      switch (this.transportMode) {
+        case "ws":
+          return "WS online";
+        case "http":
+          return "Fallback (HTTP)";
+        default:
+          return "Offline";
+      }
+    },
+    isHttpFallback(): boolean {
+      return this.transportMode === "http";
     },
     sendQueue(): MessengerMessage[] {
       if (!Array.isArray(this.eventLog)) this.eventLog = [];
@@ -325,7 +376,10 @@ export const useMessengerStore = defineStore("messenger", {
         { kinds: [4], authors: [pubkey], ...sinceFilter },
       ];
       try {
-        const events = await requestEventsViaHttp(filters);
+        const events = await requestEventsViaHttp(filters, {
+          url: DM_HTTP_REQ_URL,
+          timeoutMs: DM_HTTP_ACK_TIMEOUT_MS,
+        });
         if (!Array.isArray(events) || events.length === 0) {
           return;
         }
@@ -350,6 +404,217 @@ export const useMessengerStore = defineStore("messenger", {
         throw err instanceof Error ? err : new Error(message);
       }
     },
+    setTransportMode(mode: "ws" | "http" | "offline") {
+      if (this.transportMode !== mode) {
+        this.transportMode = mode;
+      }
+    },
+    startHttpPolling(pubkey: string | undefined) {
+      if (this.httpPollHandle || !pubkey) return;
+      const poll = async () => {
+        try {
+          const since = this.eventLog[this.eventLog.length - 1]?.created_at || 0;
+          await this.syncDmViaHttp(pubkey, since);
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err ?? "error");
+          console.warn("[messenger.startHttpPolling]", reason);
+        }
+      };
+      void poll();
+      this.httpPollHandle = setInterval(poll, DM_HTTP_POLL_INTERVAL_MS);
+    },
+    stopHttpPolling() {
+      if (this.httpPollHandle) {
+        clearInterval(this.httpPollHandle);
+        this.httpPollHandle = null;
+      }
+    },
+    clearTransportWatcher() {
+      if (this.transportWatcherStop) {
+        this.transportWatcherStop();
+        this.transportWatcherStop = null;
+      }
+    },
+    async detectSignerMode() {
+      try {
+        const signer = await resolveDmSigner();
+        this.setSignerMode(signer ? signer.mode : "unavailable");
+      } catch (err) {
+        console.warn("[messenger.detectSignerMode]", err);
+        this.setSignerMode("unavailable");
+      }
+    },
+    setSignerMode(mode: "extension" | "software" | "unavailable" | "unknown") {
+      if (this.signerMode !== mode) {
+        this.signerMode = mode;
+      }
+    },
+    isAuthError(reason?: string): boolean {
+      if (!reason) return false;
+      const lowered = reason.toLowerCase();
+      return (
+        lowered.includes("auth") ||
+        lowered.includes("restricted") ||
+        lowered.includes("challenge")
+      );
+    },
+    async waitForAuthChallenge(relay: any): Promise<string | null> {
+      const direct = typeof relay.challenge === "string" ? relay.challenge : "";
+      if (direct) return direct;
+      const started = Date.now();
+      while (Date.now() - started < DM_WS_ACK_TIMEOUT_MS) {
+        const current = typeof relay.challenge === "string" ? relay.challenge : "";
+        if (current) return current;
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      return typeof relay.challenge === "string" ? relay.challenge : null;
+    },
+    async performRelayAuth(relay: any, signer: DmSigner, url: string) {
+      const challenge = await this.waitForAuthChallenge(relay);
+      if (!challenge) {
+        throw new Error("AUTH challenge not received");
+      }
+      await relay.auth(async (authEvent: NostrEvent) => {
+        const pubkey = await signer.getPubkeyHex();
+        const eventToSign: NostrEvent = {
+          ...authEvent,
+          pubkey,
+        } as NostrEvent;
+        return await signer.signEvent(eventToSign);
+      });
+      this.authCache[url] = Date.now();
+    },
+    async publishOnceToRelay(
+      relay: any,
+      event: NostrEvent,
+    ): Promise<DmRelayAck> {
+      const started = Date.now();
+      return await new Promise((resolve) => {
+        let settled = false;
+        const publishTimer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          resolve({
+            ok: false,
+            error: "timeout",
+            via: "ws",
+            elapsedMs: Date.now() - started,
+          });
+        }, DM_WS_ACK_TIMEOUT_MS);
+        let pub;
+        try {
+          pub = relay.publish(event);
+        } catch (err) {
+          clearTimeout(publishTimer);
+          const error = err instanceof Error ? err.message : String(err ?? "error");
+          resolve({
+            ok: false,
+            error,
+            via: "ws",
+            elapsedMs: Date.now() - started,
+          });
+          return;
+        }
+        pub.on("ok", (id?: string) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(publishTimer);
+          resolve({
+            ok: true,
+            id: id || event.id,
+            via: "ws",
+            elapsedMs: Date.now() - started,
+          });
+        });
+        pub.on("failed", (reason: any) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(publishTimer);
+          const message =
+            typeof reason === "string"
+              ? reason
+              : reason?.message
+                ? String(reason.message)
+                : JSON.stringify(reason ?? "error");
+          resolve({
+            ok: false,
+            error: message,
+            via: "ws",
+            elapsedMs: Date.now() - started,
+          });
+        });
+      });
+    },
+    async publishToRelay(
+      url: string,
+      event: NostrEvent,
+      signer: DmSigner,
+    ): Promise<DmRelayAck> {
+      const relay = relayInit(url);
+      const start = Date.now();
+      try {
+        await Promise.race([
+          relay.connect(),
+          new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error("connect timeout")),
+              DM_WS_ACK_TIMEOUT_MS,
+            ),
+          ),
+        ]);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err ?? "error");
+        try {
+          relay.close();
+        } catch {}
+        return {
+          ok: false,
+          error: message,
+          via: "ws",
+          elapsedMs: Date.now() - start,
+        };
+      }
+
+      let ack = await this.publishOnceToRelay(relay, event);
+      if (!ack.ok && DM_REQUIRE_AUTH && this.isAuthError(ack.error)) {
+        try {
+          await this.performRelayAuth(relay, signer, url);
+          ack = await this.publishOnceToRelay(relay, event);
+        } catch (authErr) {
+          const message =
+            authErr instanceof Error ? authErr.message : String(authErr ?? "error");
+          ack = {
+            ok: false,
+            error: message,
+            via: "ws",
+            elapsedMs: Date.now() - start,
+          };
+        }
+      }
+
+      try {
+        relay.close();
+      } catch {}
+      return ack;
+    },
+    async publishViaWebsocket(
+      event: NostrEvent,
+      signer: DmSigner,
+      relays: string[],
+    ): Promise<{ results: Record<string, DmRelayAck>; anyOk: boolean }> {
+      const results: Record<string, DmRelayAck> = {};
+      for (const url of relays) {
+        try {
+          const ack = await this.publishToRelay(url, event, signer);
+          results[url] = ack;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err ?? "error");
+          results[url] = { ok: false, error: message, via: "ws" };
+        }
+      }
+      const anyOk = Object.values(results).some((ack) => ack?.ok);
+      return { results, anyOk };
+    },
     async sendDm(
       recipient: string,
       message: string,
@@ -360,7 +625,6 @@ export const useMessengerStore = defineStore("messenger", {
       recipient = this.normalizeKey(recipient);
       if (!recipient) return { success: false, event: null };
       await this.loadIdentity();
-      const nostr = useNostrStore();
       const { content: safeMessage } = generateContentTags(message);
       const msg = this.addOutgoingMessage(
         recipient,
@@ -371,92 +635,148 @@ export const useMessengerStore = defineStore("messenger", {
         "pending",
         tokenPayload,
       );
-      const ext: any = (window as any).nostr;
-      if (!ext?.nip04?.encrypt || !ext?.signEvent || !nostr.pubkey) {
-        msg.status = "failed";
-        if (!this.eventLog.some((m) => m.id === msg.id)) {
-          this.eventLog.push(msg);
-        }
-        notifyError("No Nostr extension detected");
-        return { success: false, event: null };
-      }
+
+      let signer: DmSigner | null = null;
       try {
-        const ciphertext = await ext.nip04.encrypt(recipient, safeMessage);
-        const event: NostrEvent = {
-          kind: 4,
-          pubkey: nostr.pubkey!,
-          content: ciphertext,
-          tags: [["p", recipient]],
-          created_at: Math.floor(Date.now() / 1000),
-        } as any;
-        const signed = await ext.signEvent(event);
-        const relayList = Array.from(
-          new Set(relays?.length ? relays : (this.relays as any)),
-        );
-        let relayResults: Record<string, RelayAck> = {};
+        signer = await resolveDmSigner();
+      } catch (err) {
+        console.error("[messenger.sendDm] failed to resolve signer", err);
+      }
 
-        if (relayList.length > 0) {
-          try {
-            relayResults = await publishWithAcks(signed as any, relayList);
-          } catch (err) {
-            console.warn("[messenger.sendDm] publishWithAcks failed", err);
-            const reason = err instanceof Error ? err.message : String(err ?? "error");
-            for (const url of relayList) {
-              if (!relayResults[url]) {
-                relayResults[url] = { ok: false, reason };
-              }
-            }
-          }
-        }
-
-        let delivered = Object.values(relayResults).some((ack) => ack?.ok);
-        const httpKey = FUNDSTR_EVT_URL || "http";
-
-        if (!delivered) {
-          try {
-            await publishEventViaHttp(signed as any);
-            relayResults[httpKey] = { ok: true };
-            delivered = true;
-          } catch (httpErr) {
-            const reason =
-              httpErr instanceof Error ? httpErr.message : String(httpErr ?? "error");
-            relayResults[httpKey] = { ok: false, reason };
-            console.error("[messenger.sendDm] HTTP fallback failed", httpErr);
-          }
-        }
-
-        msg.relayResults = relayResults;
-
-        if (delivered) {
-          msg.id = signed.id;
-          msg.created_at = signed.created_at ?? msg.created_at;
-          msg.status = "sent";
-          this.pushOwnMessage(signed);
-          notifySuccess("DM sent");
-          return { success: true, event: signed };
-        }
-
+      if (!signer) {
+        this.setSignerMode("unavailable");
         msg.status = "failed";
+        msg.relayResults = { signer: { ok: false, error: "No signer" } };
         if (!this.eventLog.some((m) => m.id === msg.id)) {
           this.eventLog.push(msg);
         }
-        const failedRelays = Object.entries(relayResults).filter(([, ack]) => !ack?.ok);
-        const summary = failedRelays
-          .map(([url, ack]) => (ack?.reason ? `${url}: ${ack.reason}` : url))
-          .join(", ");
-        notifyError(summary ? `Failed to send DM: ${summary}` : "Failed to send DM");
-        return { success: false, event: null };
-      } catch (e) {
-        console.error("[messenger.sendDm]", e);
-        msg.status = "failed";
-        const reason = e instanceof Error ? e.message : String(e ?? "error");
-        msg.relayResults = { error: { ok: false, reason } };
-        if (!this.eventLog.some((m) => m.id === msg.id)) {
-          this.eventLog.push(msg);
-        }
-        notifyError(`Failed to send DM: ${reason}`);
+        notifyError("No signer available. Install a Nostr extension or import your nsec.");
         return { success: false, event: null };
       }
+
+      this.setSignerMode(signer.mode);
+
+      let ciphertext: string;
+      try {
+        ciphertext = await signer.nip04.encrypt(recipient, safeMessage);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        msg.status = "failed";
+        msg.relayResults = { encrypt: { ok: false, error: reason } };
+        if (!this.eventLog.some((m) => m.id === msg.id)) {
+          this.eventLog.push(msg);
+        }
+        notifyError(`Failed to encrypt DM: ${reason}`);
+        return { success: false, event: null };
+      }
+
+      let pubkey: string;
+      try {
+        pubkey = await signer.getPubkeyHex();
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        msg.status = "failed";
+        msg.relayResults = { signer: { ok: false, error: reason } };
+        if (!this.eventLog.some((m) => m.id === msg.id)) {
+          this.eventLog.push(msg);
+        }
+        notifyError(`Failed to resolve pubkey: ${reason}`);
+        return { success: false, event: null };
+      }
+
+      const createdAt = Math.floor(Date.now() / 1000);
+      const unsigned: NostrEvent = {
+        kind: 4,
+        pubkey,
+        content: ciphertext,
+        tags: [["p", recipient]],
+        created_at: createdAt,
+      } as NostrEvent;
+
+      let signed: NostrEvent;
+      try {
+        signed = await signer.signEvent(unsigned);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        msg.status = "failed";
+        msg.relayResults = { signer: { ok: false, error: reason } };
+        if (!this.eventLog.some((m) => m.id === msg.id)) {
+          this.eventLog.push(msg);
+        }
+        notifyError(`Failed to sign DM: ${reason}`);
+        return { success: false, event: null };
+      }
+
+      const relayList = Array.from(
+        new Set(relays?.length ? relays : DM_RELAY_ALLOWLIST),
+      );
+      const wsResults = await this.publishViaWebsocket(signed, signer, relayList);
+      let relayResults: Record<string, DmRelayAck> = { ...wsResults.results };
+      let delivered = wsResults.anyOk;
+      let transport: "ws" | "http" | "failed" = delivered ? "ws" : "failed";
+
+      if (!delivered) {
+        try {
+          const ack = await publishEventViaHttp(signed as any, {
+            url: DM_HTTP_EVENT_URL,
+            timeoutMs: DM_HTTP_ACK_TIMEOUT_MS,
+          });
+          relayResults[DM_HTTP_EVENT_URL] = {
+            ok: ack.accepted,
+            id: ack.id,
+            message: ack.message,
+            via: "http",
+          };
+          delivered = ack.accepted;
+          transport = delivered ? "http" : "failed";
+        } catch (httpErr) {
+          const reason =
+            httpErr instanceof Error ? httpErr.message : String(httpErr ?? "error");
+          relayResults[DM_HTTP_EVENT_URL] = {
+            ok: false,
+            error: reason,
+            via: "http",
+          };
+          this.lastTransportError = reason;
+        }
+      }
+
+      this.relayDiagnostics = { ...this.relayDiagnostics, ...relayResults };
+
+      if (transport === "ws") {
+        this.stopHttpPolling();
+        this.setTransportMode("ws");
+      } else if (transport === "http") {
+        this.setTransportMode("http");
+        this.startHttpPolling(pubkey);
+      } else if (!delivered) {
+        this.setTransportMode("offline");
+      }
+
+      msg.relayResults = relayResults;
+
+      if (delivered) {
+        msg.id = signed.id;
+        msg.created_at = signed.created_at ?? msg.created_at;
+        msg.status = "sent";
+        this.pushOwnMessage(signed);
+        notifySuccess("DM sent");
+        return { success: true, event: signed };
+      }
+
+      msg.status = "failed";
+      if (!this.eventLog.some((m) => m.id === msg.id)) {
+        this.eventLog.push(msg);
+      }
+      const failedRelays = Object.entries(relayResults).filter(([, ack]) => !ack?.ok);
+      const summary = failedRelays
+        .map(([url, ack]) => {
+          const details = ack?.error || ack?.message;
+          return details ? `${url}: ${details}` : url;
+        })
+        .join(", ");
+      notifyError(summary ? `Failed to send DM: ${summary}` : "Failed to send DM");
+      return { success: false, event: null };
     },
     async sendToken(
       recipient: string,
@@ -931,8 +1251,23 @@ export const useMessengerStore = defineStore("messenger", {
       try {
         this.dmUnsub?.();
         await this.loadIdentity();
+        await this.detectSignerMode();
         const ndk = await useNdk();
         httpFallbackNeeded = this.countConnectedRelays(ndk) === 0;
+        if (!this.transportWatcherStop) {
+          this.transportWatcherStop = watch(
+            () => nostr.connected,
+            (connected) => {
+              if (!connected) {
+                this.setTransportMode("http");
+                this.startHttpPolling(nostr.pubkey);
+              } else {
+                this.stopHttpPolling();
+                this.setTransportMode("ws");
+              }
+            },
+          );
+        }
         const sinceFilter = since > 0 ? { since } : {};
         const subscribeSafe = (
           filter: Record<string, any>,
@@ -986,6 +1321,9 @@ export const useMessengerStore = defineStore("messenger", {
               outgoingSub?.stop();
             } catch {}
           };
+          this.stopHttpPolling();
+          this.setTransportMode("ws");
+          httpFallbackNeeded = false;
         } else {
           this.dmUnsub = null;
         }
@@ -995,11 +1333,16 @@ export const useMessengerStore = defineStore("messenger", {
         httpFallbackNeeded = true;
       } finally {
         if (httpFallbackNeeded) {
+          this.setTransportMode("http");
+          this.startHttpPolling(nostr.pubkey);
           try {
             await this.syncDmViaHttp(nostr.pubkey, since);
           } catch (err) {
             console.error("[messenger.start] HTTP fallback failed", err);
           }
+        } else {
+          this.stopHttpPolling();
+          if (this.transportMode !== "ws") this.setTransportMode("ws");
         }
         this.started = true;
       }
@@ -1028,6 +1371,9 @@ export const useMessengerStore = defineStore("messenger", {
     disconnect() {
       const nostr = useNostrStore();
       nostr.disconnect();
+      this.stopHttpPolling();
+      this.clearTransportWatcher();
+      this.setTransportMode("offline");
     },
 
 
