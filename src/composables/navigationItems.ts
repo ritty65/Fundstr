@@ -36,6 +36,13 @@ export function useNavigationItems() {
       creatorText: t('AboutPage.navigation.items.findCreators.creator'),
     },
     {
+      id: 'creatorStudio',
+      menuItem: t('MainHeader.menu.creatorStudio.title'),
+      icon: 'dashboard_customize',
+      fanText: t('AboutPage.navigation.items.creatorStudio.fan'),
+      creatorText: t('AboutPage.navigation.items.creatorStudio.creator'),
+    },
+    {
       id: 'myProfile',
       menuItem: t('MainHeader.menu.myProfile.title'),
       icon: 'person',
