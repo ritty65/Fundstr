@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
-import { FUNDSTR_EVT_URL } from "../../../src/nutzap/relayEndpoints";
 
 const lsStore: Record<string, string> = {};
 (globalThis as any).localStorage = {
@@ -23,11 +22,49 @@ const lsStore: Record<string, string> = {};
 var decryptDm: any;
 var subscribeMock: any;
 var resolvePubkey: any;
-var publishWithAcksMock: any;
 var publishEventViaHttpMock: any;
 var requestEventsViaHttpMock: any;
 var useNdkMock: any;
 var ndkInstance: any;
+var relayInitMock: any;
+var relayExpectations: Record<string, { ok: boolean; error?: string }>;
+
+vi.mock("nostr-tools", async (importOriginal) => {
+  const actual = await importOriginal();
+  relayExpectations = {};
+  relayInitMock = vi.fn((url: string) => {
+    const relay = {
+      url,
+      challenge: "",
+      connect: vi.fn(async () => {}),
+      close: vi.fn(() => {}),
+      auth: vi.fn(async () => {}),
+      publish: vi.fn((event: any) => {
+        const okHandlers: ((id?: string) => void)[] = [];
+        const failHandlers: ((reason: any) => void)[] = [];
+        setTimeout(() => {
+          const expectation = relayExpectations[url] ?? { ok: true };
+          if (expectation.ok) {
+            okHandlers.forEach((handler) => handler(event.id));
+          } else {
+            failHandlers.forEach((handler) => handler(expectation.error ?? "error"));
+          }
+        }, 0);
+        return {
+          on: (eventName: string, handler: any) => {
+            if (eventName === "ok") okHandlers.push(handler);
+            if (eventName === "failed") failHandlers.push(handler);
+          },
+        };
+      }),
+    };
+    return relay;
+  });
+  return {
+    ...actual,
+    relayInit: relayInitMock,
+  };
+});
 
 vi.mock("../../../src/utils/fundstrRelayHttp", () => {
   publishEventViaHttpMock = vi.fn(async () => ({
@@ -48,7 +85,6 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   const actual = await importOriginal();
   decryptDm = vi.fn(async () => "msg");
   resolvePubkey = vi.fn((pk: string) => pk);
-  publishWithAcksMock = vi.fn(async () => ({}));
   const store = {
     decryptDmContent: decryptDm,
     initSignerIfNotSet: vi.fn(),
@@ -62,7 +98,6 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
   return {
     ...actual,
     useNostrStore: () => store,
-    publishWithAcks: publishWithAcksMock,
   };
 });
 
@@ -96,7 +131,6 @@ beforeEach(() => {
   const m = useMessengerStore();
   (m as any).eventLog = [];
   (m as any).conversations = {};
-  publishWithAcksMock.mockClear();
   publishEventViaHttpMock.mockClear();
   requestEventsViaHttpMock.mockClear();
   subscribeMock.mockClear();
@@ -104,10 +138,7 @@ beforeEach(() => {
   notifySpy.mockClear();
   notifyErrorSpy.mockClear();
   resolvePubkey.mockImplementation((pk: string) => pk);
-  publishWithAcksMock.mockResolvedValue({
-    "wss://a": { ok: true },
-    "wss://b": { ok: true },
-  });
+  relayExpectations = {};
   publishEventViaHttpMock.mockResolvedValue({
     id: "http",
     accepted: true,
@@ -125,11 +156,14 @@ describe("messenger store", () => {
       signEvent: vi.fn(async (e) => ({ ...e, id: "id", sig: "sig" })),
     };
     messenger.relays = ["wss://a", "wss://b"] as any;
-    await messenger.sendDm("r", "m");
-    expect(publishWithAcksMock).toHaveBeenCalledTimes(1);
-    const [, relaysArg] = publishWithAcksMock.mock.calls[0];
-    expect(relaysArg).toEqual(["wss://a", "wss://b"]);
+    relayExpectations["wss://a"] = { ok: true };
+    relayExpectations["wss://b"] = { ok: true };
+    await messenger.sendDm("r", "m", ["wss://a", "wss://b"]);
+    expect(relayInitMock).toHaveBeenCalledWith("wss://a");
+    expect(relayInitMock).toHaveBeenCalledWith("wss://b");
     expect(publishEventViaHttpMock).not.toHaveBeenCalled();
+    const convo = messenger.conversations.r;
+    expect(convo?.[0].status).toBe("sent");
   });
 
   it("decrypts incoming messages with extension", async () => {
@@ -178,8 +212,9 @@ describe("messenger store", () => {
       nip04: { encrypt: vi.fn(async () => "enc"), decrypt: vi.fn() },
       signEvent: vi.fn(async (e) => ({ ...e, id: "id", sig: "sig" })),
     };
-    await messenger.sendDm("r", { bad: "obj" } as any);
-    expect(publishWithAcksMock).toHaveBeenCalled();
+    relayExpectations["wss://relay"] = { ok: true };
+    await messenger.sendDm("r", { bad: "obj" } as any, ["wss://relay"]);
+    expect(relayInitMock).toHaveBeenCalled();
     expect(messenger.conversations.r[0].content).toBe("");
   });
 
@@ -255,17 +290,22 @@ describe("messenger store", () => {
       nip04: { encrypt: vi.fn(async () => "enc"), decrypt: vi.fn() },
       signEvent: vi.fn(async (e) => ({ ...e, id: "id", sig: "sig" })),
     };
-    messenger.relays = ["wss://a"] as any;
-    publishWithAcksMock.mockResolvedValue({ "wss://a": { ok: false, reason: "down" } });
+    relayExpectations["wss://a"] = { ok: false, error: "down" };
 
-    await messenger.sendDm("npub1alice", "hello");
+    await messenger.sendDm("npub1alice", "hello", ["wss://a"]);
 
     expect(publishEventViaHttpMock).toHaveBeenCalled();
     const convo = messenger.conversations.npub1alice;
     expect(convo?.[0].status).toBe("sent");
-    const httpKey = FUNDSTR_EVT_URL || "http";
-    expect(convo?.[0].relayResults?.["wss://a"]).toEqual({ ok: false, reason: "down" });
-    expect(convo?.[0].relayResults?.[httpKey]).toEqual({ ok: true });
+    expect(convo?.[0].relayResults?.["wss://a"]).toEqual({
+      ok: false,
+      error: "down",
+      via: "ws",
+    });
+    const httpEntry = Object.entries(convo?.[0].relayResults ?? {}).find(
+      ([, ack]) => ack?.via === "http",
+    );
+    expect(httpEntry?.[1].ok).toBe(true);
   });
 
   it("reports HTTP fallback error when publish fails over HTTP", async () => {
@@ -274,11 +314,10 @@ describe("messenger store", () => {
       nip04: { encrypt: vi.fn(async () => "enc"), decrypt: vi.fn() },
       signEvent: vi.fn(async (e) => ({ ...e, id: "id", sig: "sig" })),
     };
-    messenger.relays = ["wss://a"] as any;
-    publishWithAcksMock.mockResolvedValue({ "wss://a": { ok: false, reason: "down" } });
+    relayExpectations["wss://a"] = { ok: false, error: "down" };
     publishEventViaHttpMock.mockRejectedValue(new Error("offline"));
 
-    await messenger.sendDm("npub1bob", "hello");
+    await messenger.sendDm("npub1bob", "hello", ["wss://a"]);
 
     expect(publishEventViaHttpMock).toHaveBeenCalled();
     expect(notifyErrorSpy).toHaveBeenCalledWith(
@@ -286,8 +325,10 @@ describe("messenger store", () => {
     );
     const convo = messenger.conversations.npub1bob;
     expect(convo?.[0].status).toBe("failed");
-    const httpKey = FUNDSTR_EVT_URL || "http";
-    expect(convo?.[0].relayResults?.[httpKey]?.ok).toBe(false);
+    const httpEntry = Object.entries(convo?.[0].relayResults ?? {}).find(
+      ([, ack]) => ack?.via === "http",
+    );
+    expect(httpEntry?.[1]?.ok).toBe(false);
   });
 
   it("hydrates messages via HTTP fallback when no relays connect", async () => {

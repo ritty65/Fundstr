@@ -63,6 +63,15 @@
       Relays: {{ connectedRelayHosts.join(', ') }}
       <q-tooltip>{{ connectedRelayHosts.join(', ') }}</q-tooltip>
     </div>
+    <div class="row q-gutter-xs q-mt-xs">
+      <q-badge outline color="primary">{{ messenger.signerBadge }}</q-badge>
+      <q-badge
+        outline
+        :color="messenger.isHttpFallback ? 'warning' : 'secondary'"
+      >
+        {{ messenger.transportBadge }}
+      </q-badge>
+    </div>
     <ChatSendTokenDialog
       ref="chatSendTokenDialogRef"
       :recipient="props.pubkey"
