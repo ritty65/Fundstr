@@ -57,6 +57,27 @@
       </template>
     </div>
     <div
+      v-if="signerBadge || transportBadge"
+      class="row items-center q-mt-xs q-gutter-xs"
+    >
+      <q-badge
+        v-if="signerBadge"
+        outline
+        color="primary"
+        class="text-caption"
+      >
+        {{ signerBadge }}
+      </q-badge>
+      <q-badge
+        v-if="transportBadge"
+        outline
+        :color="transportColor"
+        class="text-caption"
+      >
+        {{ transportBadge }}
+      </q-badge>
+    </div>
+    <div
       v-if="connectedRelayHosts.length"
       class="text-caption text-2 ellipsis q-mt-xs"
     >
@@ -125,6 +146,39 @@ const initials = computed(() => {
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }
   return name.slice(0, 2).toUpperCase();
+});
+
+const signerBadge = computed(() => {
+  switch (messenger.signerMode) {
+    case "extension":
+      return "Extension signer";
+    case "software":
+      return "Software signer (nsec)";
+    default:
+      return "";
+  }
+});
+
+const transportBadge = computed(() => {
+  switch (messenger.transportMode) {
+    case "ws":
+      return "WS online";
+    case "http":
+      return "Fallback (HTTP)";
+    default:
+      return "Offline";
+  }
+});
+
+const transportColor = computed(() => {
+  switch (messenger.transportMode) {
+    case "ws":
+      return "positive";
+    case "http":
+      return "warning";
+    default:
+      return "negative";
+  }
 });
 
 const chatSendTokenDialogRef = ref<InstanceType<

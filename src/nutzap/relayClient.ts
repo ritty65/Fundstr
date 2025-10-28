@@ -78,6 +78,17 @@ export type RequestOnceOptions = {
   httpFallback?: RequestOnceHttpFallback;
 };
 
+export type FundstrRelayAuthHandler = (
+  challenge: string,
+  relayUrl: string,
+) => Promise<NostrEvent | null>;
+
+export type FundstrRelayAuthOptions = {
+  enabled: boolean;
+  handler?: FundstrRelayAuthHandler | null;
+  cacheMs?: number;
+};
+
 function normalizeRelayUrl(url?: string): string {
   return (url ?? '').replace(/\s+/g, '').replace(/\/+$/, '').toLowerCase();
 }
@@ -142,6 +153,12 @@ export class FundstrRelayClient {
   private readonly statusRef = ref<FundstrRelayStatus>(this.status);
   private readonly logRef = ref<FundstrRelayLogEntry[]>([]);
   private logSequence = 0;
+  private authEnabled = false;
+  private authHandler: FundstrRelayAuthHandler | null = null;
+  private authCacheMs = 5 * 60 * 1000;
+  private lastAuthAt = 0;
+  private lastAuthChallenge: string | null = null;
+  private pendingAuth: Promise<void> | null = null;
 
   constructor(private readonly relayUrl: string) {
     this.WSImpl = typeof WebSocket !== 'undefined' ? WebSocket : (globalThis as any)?.WebSocket;
@@ -263,7 +280,10 @@ export class FundstrRelayClient {
 
   async publish(eventTemplate: FundstrRelayPublishTemplate): Promise<FundstrRelayPublishResult> {
     const event = await this.signEvent(eventTemplate);
+    return await this.publishSigned(event);
+  }
 
+  async publishSigned(event: NostrEvent): Promise<FundstrRelayPublishResult> {
     if (!this.WSImpl || !this.allowWsWrites) {
       const ack = await this.publishViaHttp(event);
       return { ack, event };
@@ -289,6 +309,27 @@ export class FundstrRelayClient {
       this.pushLog('warn', 'WebSocket publish failed, using HTTP fallback', err);
       const ack = await this.publishViaHttp(event);
       return { ack, event };
+    }
+  }
+
+  setAuthOptions(options: FundstrRelayAuthOptions | null): void {
+    if (!options) {
+      this.authEnabled = false;
+      this.authHandler = null;
+      this.lastAuthAt = 0;
+      this.lastAuthChallenge = null;
+      return;
+    }
+
+    this.authEnabled = options.enabled === true;
+    this.authHandler = options.handler ?? null;
+    const cache = options.cacheMs;
+    if (typeof cache === 'number' && Number.isFinite(cache) && cache > 0) {
+      this.authCacheMs = Math.floor(cache);
+    }
+    if (!this.authEnabled) {
+      this.lastAuthAt = 0;
+      this.lastAuthChallenge = null;
     }
   }
 
@@ -745,6 +786,55 @@ export class FundstrRelayClient {
     this.pushLog('warn', 'Relay NOTICE', message);
   }
 
+  private handleAuthRequest(challenge: unknown) {
+    if (!this.authEnabled || !this.authHandler) {
+      this.pushLog('warn', 'Relay requested AUTH but handler disabled');
+      return;
+    }
+
+    if (typeof challenge !== 'string' || !challenge.trim()) {
+      this.pushLog('warn', 'Relay sent invalid AUTH challenge', { challenge });
+      return;
+    }
+
+    const normalized = challenge.trim();
+    const now = Date.now();
+    if (
+      this.lastAuthChallenge === normalized &&
+      now - this.lastAuthAt < this.authCacheMs
+    ) {
+      this.pushLog('info', 'Skipping AUTH response due to cache window', {
+        challenge: normalized,
+      });
+      return;
+    }
+
+    if (this.pendingAuth) {
+      this.pushLog('info', 'AUTH request already pending, skipping duplicate', {
+        challenge: normalized,
+      });
+      return;
+    }
+
+    this.pendingAuth = (async () => {
+      try {
+        const event = await this.authHandler!(normalized, this.relayUrl);
+        if (!event) {
+          this.pushLog('warn', 'AUTH handler returned no event');
+          return;
+        }
+        this.send(['AUTH', event]);
+        this.lastAuthAt = Date.now();
+        this.lastAuthChallenge = normalized;
+        this.pushLog('info', 'Sent AUTH response');
+      } catch (err) {
+        this.pushLog('warn', 'Failed to produce AUTH response', err);
+      } finally {
+        this.pendingAuth = null;
+      }
+    })();
+  }
+
   private resolveSocketWaiters(socket: WebSocket) {
     for (const waiter of Array.from(this.socketWaiters)) {
       if (waiter.socket !== socket) continue;
@@ -953,6 +1043,12 @@ export class FundstrRelayClient {
         if (type === 'NOTICE') {
           const [noticeMessage] = rest;
           this.handlePublishNotice(noticeMessage);
+          return;
+        }
+
+        if (type === 'AUTH') {
+          const [challenge] = rest;
+          this.handleAuthRequest(challenge);
           return;
         }
       } catch (err) {
