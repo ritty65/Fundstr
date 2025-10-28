@@ -245,6 +245,9 @@ export default defineComponent({
       pasteFromClipboard: "pasteFromClipboard",
       setUiTab: "setTab",
     }),
+    formatCurrency(amount, unit) {
+      return useUiStore().formatCurrency(amount, unit);
+    },
     mintClass(mint) {
       return new MintClass(mint);
     },
