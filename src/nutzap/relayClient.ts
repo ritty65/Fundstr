@@ -3,7 +3,12 @@ import { getCurrentScope, onScopeDispose, readonly, ref, type Ref } from 'vue';
 import { getNutzapNdk } from './ndkInstance';
 import { prepareUnsignedEvent, type UnsignedEvent } from '../nostr/serializableEvent';
 import { NUTZAP_ALLOW_WSS_WRITES, NUTZAP_RELAY_WSS } from './relayConfig';
-import { FUNDSTR_EVT_URL, HTTP_FALLBACK_TIMEOUT_MS, WS_FIRST_TIMEOUT_MS } from './relayEndpoints';
+import { WS_FIRST_TIMEOUT_MS } from './relayEndpoints';
+import {
+  publishEventViaHttp,
+  requestEventsViaHttp,
+  buildRequestUrl,
+} from '@/utils/fundstrRelayHttp';
 
 export type FundstrRelayStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 
@@ -80,9 +85,6 @@ function normalizeRelayUrl(url?: string): string {
 export const FUNDSTR_RELAY_LOG_LIMIT = 200;
 const MAX_RECONNECT_DELAY_MS = 30000;
 const INITIAL_RECONNECT_DELAY_MS = 500;
-const DEFAULT_HTTP_ACCEPT =
-  'application/nostr+json, application/json;q=0.9, */*;q=0.1';
-
 const HEX_64_REGEX = /^[0-9a-f]{64}$/i;
 const HEX_128_REGEX = /^[0-9a-f]{128}$/i;
 
@@ -530,65 +532,16 @@ export class FundstrRelayClient {
   }
 
   private async publishViaHttp(event: NostrEvent): Promise<FundstrRelayPublishAck> {
-    const { controller, dispose } = this.createAbortController(HTTP_FALLBACK_TIMEOUT_MS);
-    let response: Response | undefined;
-    let bodyText = '';
-
     try {
-      response = await fetch(FUNDSTR_EVT_URL, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          Accept: DEFAULT_HTTP_ACCEPT,
-        },
-        body: JSON.stringify(event),
-        cache: 'no-store',
-        signal: controller?.signal,
-      });
-      bodyText = await response.text();
+      const ack = (await publishEventViaHttp(event)) as FundstrRelayPublishAck;
+      this.pushLog('info', `HTTP publish accepted for event ${ack.id}`);
+      return ack;
     } catch (err) {
-      dispose();
-      if (this.isAbortError(err)) {
-        throw new Error(`Publish request timed out after ${HTTP_FALLBACK_TIMEOUT_MS}ms`);
+      if (err instanceof Error) {
+        this.pushLog('error', 'HTTP publish failed', err);
       }
-      throw err instanceof Error ? err : new Error(String(err));
+      throw err;
     }
-
-    dispose();
-
-    if (!response) {
-      throw new Error('Relay publish failed: no response received');
-    }
-
-    const normalizeSnippet = (input: string) => input.replace(/\s+/g, ' ').trim().slice(0, 200) || '[empty response body]';
-
-    if (!response.ok) {
-      const snippet = normalizeSnippet(bodyText);
-      throw new Error(`Relay rejected with status ${response.status}: ${snippet}`);
-    }
-
-    let ackRaw: any = null;
-    if (bodyText) {
-      try {
-        ackRaw = JSON.parse(bodyText);
-      } catch (err) {
-        throw new Error('Relay returned invalid JSON', { cause: err });
-      }
-    }
-
-    const ack: FundstrRelayPublishAck = {
-      id: typeof ackRaw?.id === 'string' && ackRaw.id ? ackRaw.id : event.id,
-      accepted: ackRaw?.accepted === true,
-      message: typeof ackRaw?.message === 'string' ? ackRaw.message : undefined,
-      via: 'http',
-    };
-
-    if (!ack.accepted) {
-      throw new RelayPublishError(ack.message ?? 'Relay rejected event', { ack, event });
-    }
-
-    this.pushLog('info', `HTTP publish accepted for event ${ack.id}`);
-    return ack;
   }
 
   private shouldFallbackAfterRelayError(error: RelayPublishError): boolean {
@@ -821,124 +774,17 @@ export class FundstrRelayClient {
     filters: NostrFilter[],
     fallback: RequestOnceHttpFallback
   ): Promise<any[]> {
-    const requestUrl = this.buildRequestUrl(fallback.url, filters);
-    const timeoutMs = fallback.timeoutMs ?? 0;
-    const { controller, dispose } = this.createAbortController(timeoutMs);
-    let response: Response | undefined;
-    let bodyText = '';
-
+    const requestUrl = buildRequestUrl(fallback.url, filters);
     this.pushLog('info', 'HTTP fallback request', { url: requestUrl });
 
     try {
-      response = await fetch(requestUrl, {
-        method: 'GET',
-        headers: {
-          Accept: DEFAULT_HTTP_ACCEPT,
-          ...(fallback.headers ?? {}),
-        },
-        cache: 'no-store',
-        signal: controller?.signal,
-      });
-      bodyText = await response.text();
+      return await requestEventsViaHttp(filters, fallback);
     } catch (err) {
-      dispose();
-      if (this.isAbortError(err)) {
-        throw new Error(
-          `HTTP fallback timed out after ${timeoutMs}ms (url: ${requestUrl})`
-        );
+      if (err instanceof Error) {
+        this.pushLog('error', 'HTTP fallback request failed', err);
       }
-      const message = err instanceof Error ? err.message : String(err);
-      throw new Error(`${message} (url: ${requestUrl})`, {
-        cause: err instanceof Error ? err : undefined,
-      });
+      throw err;
     }
-
-    dispose();
-
-    if (!response) {
-      return [];
-    }
-
-    const normalizeSnippet = (input: string) =>
-      input
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 200);
-
-    if (!response.ok) {
-      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
-      throw new Error(
-        `HTTP query failed with status ${response.status}: ${snippet} (url: ${requestUrl})`
-      );
-    }
-
-    const contentType = response.headers.get('content-type') || '';
-    const normalizedType = contentType.toLowerCase();
-    const isJson =
-      normalizedType.includes('application/json') ||
-      normalizedType.includes('application/nostr+json');
-
-    if (!isJson) {
-      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
-      const typeLabel = contentType || 'unknown content-type';
-      this.pushLog('warn', 'HTTP fallback returned non-JSON payload', {
-        status: response.status,
-        contentType: typeLabel,
-        snippet,
-        url: requestUrl,
-      });
-      return [];
-    }
-
-    let data: any = null;
-    try {
-      data = bodyText ? JSON.parse(bodyText) : null;
-    } catch (err) {
-      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
-      throw new Error(
-        `HTTP ${response.status} returned invalid JSON: ${snippet} (url: ${requestUrl})`,
-        { cause: err }
-      );
-    }
-
-    if (Array.isArray(data)) {
-      return data;
-    }
-    if (data && Array.isArray((data as any).events)) {
-      return (data as any).events as any[];
-    }
-    return [];
-  }
-
-  private buildRequestUrl(base: string, filters: NostrFilter[]): string {
-    const serialized = JSON.stringify(filters);
-    try {
-      const url = new URL(base);
-      url.searchParams.set('filters', serialized);
-      return url.toString();
-    } catch {
-      const separator = base.includes('?') ? '&' : '?';
-      return `${base}${separator}filters=${encodeURIComponent(serialized)}`;
-    }
-  }
-
-  private createAbortController(timeoutMs: number): {
-    controller: AbortController | null;
-    dispose: () => void;
-  } {
-    if (typeof AbortController === 'undefined' || timeoutMs <= 0) {
-      return { controller: null, dispose: () => {} };
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      controller.abort();
-    }, timeoutMs);
-    return {
-      controller,
-      dispose: () => {
-        clearTimeout(timer);
-      },
-    };
   }
 
   private isAbortError(err: unknown): boolean {
