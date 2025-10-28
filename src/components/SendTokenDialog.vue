@@ -911,6 +911,7 @@ export default defineComponent({
     },
   },
   methods: {
+    ...mapActions(useUiStore, ["formatCurrency"]),
     ...mapActions(useWorkersStore, ["clearAllWorkers"]),
     ...mapActions(useWalletStore, [
       "send",
