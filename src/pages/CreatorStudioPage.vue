@@ -761,7 +761,7 @@ const HTTP_DEFAULT_ACCEPT =
   'application/nostr+json, application/json;q=0.9, */*;q=0.1';
 
 const CREATOR_STUDIO_RELAY_WS_URL = 'wss://relay.fundstr.me';
-const CREATOR_STUDIO_RELAY_HTTP_URL = 'https://relay.fundstr.me/req';
+const CREATOR_STUDIO_RELAY_HTTP_URL = 'https://relay-proxy.fundstr.workers.dev/req';
 
 const authorInput = ref('');
 type AuthorLockSource = 'signer' | 'store' | 'profile';
