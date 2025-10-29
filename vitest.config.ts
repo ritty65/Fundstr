@@ -68,6 +68,7 @@ export default defineConfig({
       "test/stores/nostr.fetchMints.spec.ts",
       "test/stores/nostr.signers.spec.ts",
       "test/stores/signer.store.spec.ts",
+      "test/stores/messenger.dedup.spec.ts",
       "test/stores/subscriptions.store.spec.ts",
       "test/stores/storage.store.spec.ts",
       "test/stores/ui.store.spec.ts",

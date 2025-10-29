@@ -249,6 +249,7 @@ export default defineComponent({
       lastRoutePubkey.value = normalized;
       messenger.startChat(normalized);
       messenger.setCurrentConversation(normalized);
+      void messenger.ensureConversationSubscription(normalized, "route-change");
 
       if ($q.screen.lt.md) {
         messenger.setDrawer(false);

@@ -76,6 +76,8 @@ export class E2EApi {
     content?: string;
     relays?: string[];
     attachment?: { name: string; type: string } | null;
+    eventId?: string;
+    createdAt?: number;
   }) {
     return this.call("messengerCreateLocalEcho", config);
   }
@@ -90,6 +92,29 @@ export class E2EApi {
 
   messengerClearSendMock() {
     return this.call("messengerClearSendMock");
+  }
+
+  messengerDropConversationSubscription() {
+    return this.call("messengerDropConversationSubscription");
+  }
+
+  messengerResumeConversationSubscription() {
+    return this.call("messengerResumeConversationSubscription");
+  }
+
+  messengerDeliverEvent(event: {
+    id: string;
+    pubkey: string;
+    content: string;
+    created_at?: number;
+    tags?: string[][];
+    kind?: number;
+  }) {
+    return this.call("messengerDeliverEvent", event);
+  }
+
+  getNostrPubkey() {
+    return this.call<string | null>("getNostrPubkey");
   }
 
   getSnapshot() {

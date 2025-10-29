@@ -52,6 +52,153 @@ import {
   type FundstrRelayAuthOptions,
 } from "@/nutzap/relayClient";
 
+export type DedupMergeReason =
+  | "event-map"
+  | "conversation"
+  | "event-log"
+  | "local-echo";
+
+export interface DedupMergeResult {
+  message: MessengerMessage;
+  created: boolean;
+  deduped: boolean;
+  reason?: DedupMergeReason;
+}
+
+export interface DedupMergeParams {
+  eventId?: string | null;
+  eventMap: Record<string, MessengerMessage>;
+  eventLog: MessengerMessage[];
+  conversation: MessengerMessage[];
+  localEchoIndex: Record<string, MessengerMessage>;
+  createMessage: () => MessengerMessage;
+  onRegister?: (message: MessengerMessage) => void;
+}
+
+function insertUniqueMessage(
+  list: MessengerMessage[],
+  message: MessengerMessage,
+) {
+  let exists = false;
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const entry = list[i];
+    if (entry === message) {
+      exists = true;
+      continue;
+    }
+    if (entry.id === message.id) {
+      list.splice(i, 1);
+    }
+  }
+  if (!exists) {
+    list.push(message);
+  }
+}
+
+export function mergeMessengerEvent(params: DedupMergeParams): DedupMergeResult {
+  const {
+    eventId,
+    eventMap,
+    eventLog,
+    conversation,
+    localEchoIndex,
+    createMessage,
+    onRegister,
+  } = params;
+
+  const lookupLocalEcho = () =>
+    Object.values(localEchoIndex).find((entry) => {
+      const echo = entry.localEcho;
+      if (!echo) return false;
+      return echo.eventId === eventId || entry.id === eventId;
+    });
+
+  let existing: MessengerMessage | undefined;
+  let reason: DedupMergeReason | undefined;
+  if (eventId && eventMap[eventId]) {
+    existing = eventMap[eventId];
+    reason = "event-map";
+  } else if (eventId) {
+    existing = conversation.find((m) => m.id === eventId);
+    if (existing) {
+      reason = "conversation";
+    }
+  }
+
+  if (!existing && eventId) {
+    existing = eventLog.find((m) => m.id === eventId);
+    if (existing) {
+      reason = "event-log";
+    }
+  }
+
+  if (!existing && eventId) {
+    existing = lookupLocalEcho();
+    if (existing) {
+      reason = "local-echo";
+    }
+  }
+
+  if (existing) {
+    insertUniqueMessage(conversation, existing);
+    insertUniqueMessage(eventLog, existing);
+    if (eventId) {
+      eventMap[eventId] = existing;
+    }
+    if (existing.id) {
+      eventMap[existing.id] = existing;
+    }
+    const echo = existing.localEcho;
+    if (echo?.eventId) {
+      eventMap[echo.eventId] = existing;
+    }
+    if (echo?.localId) {
+      localEchoIndex[echo.localId] = existing;
+    }
+    onRegister?.(existing);
+    return {
+      message: existing,
+      created: false,
+      deduped: true,
+      reason,
+    };
+  }
+
+  const message = createMessage();
+  insertUniqueMessage(conversation, message);
+  insertUniqueMessage(eventLog, message);
+  if (message.id) {
+    eventMap[message.id] = message;
+  }
+  if (eventId) {
+    eventMap[eventId] = message;
+  }
+  const echo = message.localEcho;
+  if (echo?.eventId) {
+    eventMap[echo.eventId] = message;
+  }
+  if (echo?.localId) {
+    localEchoIndex[echo.localId] = message;
+  }
+  onRegister?.(message);
+  return {
+    message,
+    created: true,
+    deduped: false,
+    reason: undefined,
+  };
+}
+
+interface ConversationSubscriptionHandle {
+  pubkey: string;
+  stop: () => void;
+  fetchEvent: (eventId: string, meta?: { reason?: string }) => Promise<boolean>;
+}
+
+let activeConversationSubscription: ConversationSubscriptionHandle | null = null;
+let conversationWatchStop: null | (() => void) = null;
+let conversationRelayOff: null | (() => void) = null;
+
 function ensureMap(ref: { value: any }) {
   if (
     !ref.value ||
@@ -238,14 +385,29 @@ export const useMessengerStore = defineStore("messenger", {
       [] as MessengerMessage[],
     );
     if (!Array.isArray(eventLog.value)) eventLog.value = [];
+    const eventMap: Record<string, MessengerMessage> = {};
     const localEchoTimeouts: Record<string, ReturnType<typeof setTimeout> | null> = {};
     const localEchoIndex: Record<string, MessengerMessage> = {};
+    const conversationSubscriptionRef = ref<ConversationSubscriptionHandle | null>(null);
     const drawerOpen = useLocalStorage<boolean>(storageKey("drawerOpen"), true);
     const drawerMini = useLocalStorage<boolean>(
       storageKey("drawerMini"),
       false,
     );
     const signerInitCache = ref<SignerInitOutcome | null>(null);
+
+    for (const message of eventLog.value) {
+      if (!message || typeof message !== "object") continue;
+      if (message.id) {
+        eventMap[message.id] = message;
+      }
+      if (message.localEcho?.eventId) {
+        eventMap[message.localEcho.eventId] = message;
+      }
+      if (message.localEcho?.localId) {
+        localEchoIndex[message.localEcho.localId] = message;
+      }
+    }
 
     watch(
       () => nostrStore.pubkey,
@@ -264,6 +426,16 @@ export const useMessengerStore = defineStore("messenger", {
         for (const key of Object.keys(localEchoIndex)) {
           delete localEchoIndex[key];
         }
+        for (const key of Object.keys(eventMap)) {
+          delete eventMap[key];
+        }
+        conversationSubscriptionRef.value = null;
+        activeConversationSubscription?.stop();
+        activeConversationSubscription = null;
+        conversationWatchStop?.();
+        conversationWatchStop = null;
+        conversationRelayOff?.();
+        conversationRelayOff = null;
         signerInitCache.value = null;
       },
     );
@@ -275,6 +447,7 @@ export const useMessengerStore = defineStore("messenger", {
       pinned,
       aliases,
       eventLog,
+      eventMap,
       currentConversation: "",
       drawerOpen,
       drawerMini,
@@ -292,6 +465,7 @@ export const useMessengerStore = defineStore("messenger", {
       dmRequireAuth: DM_REQUIRE_AUTH,
       localEchoTimeouts,
       localEchoIndex,
+      conversationSubscription: conversationSubscriptionRef,
     };
   },
   getters: {
@@ -343,6 +517,300 @@ export const useMessengerStore = defineStore("messenger", {
       this.localEchoTimeouts[meta.localId] = setTimeout(() => {
         void this.handleLocalEchoTimeout(meta.localId);
       }, LOCAL_ECHO_TIMEOUT_MS);
+    },
+    registerMessage(
+      msg: MessengerMessage,
+      extraIds: Array<string | null | undefined> = [],
+    ) {
+      if (!msg) return;
+      const ids = new Set<string>();
+      if (msg.id) ids.add(msg.id);
+      for (const id of extraIds) {
+        if (id) ids.add(id);
+      }
+      const echo = msg.localEcho;
+      if (echo?.eventId) ids.add(echo.eventId);
+      if (echo?.localId) {
+        this.localEchoIndex[echo.localId] = msg;
+      }
+      for (const id of ids) {
+        this.eventMap[id] = msg;
+      }
+    },
+    async createConversationSubscription(
+      pubkey: string,
+      opts: { reason?: string } = {},
+    ): Promise<ConversationSubscriptionHandle | null> {
+      const normalized = this.normalizeKey(pubkey);
+      if (!normalized) return null;
+      const nostr = useNostrStore();
+      if (!nostr.pubkey) return null;
+      try {
+        const ndk = await useNdk({ requireSigner: false });
+        const unsubscribers: Array<() => void> = [];
+        const subscribe = (
+          filter: Record<string, any>,
+          source: "incoming" | "outgoing",
+        ) => {
+          try {
+            const sub = ndk.subscribe(filter, {
+              closeOnEose: false,
+              groupable: false,
+            });
+            sub.on("event", async (ndkEvent: NDKEvent) => {
+              try {
+                const raw = await ndkEvent.toNostrEvent();
+                if ((raw as NostrEvent).pubkey === nostr.pubkey) {
+                  this.pushOwnMessage(raw as NostrEvent);
+                } else {
+                  await this.addIncomingMessage(raw as NostrEvent);
+                }
+              } catch (err) {
+                console.error(
+                  "[messenger.conversationSubscription] handler failed",
+                  { filter, source },
+                  err,
+                );
+              }
+            });
+            unsubscribers.push(() => {
+              try {
+                sub.stop();
+              } catch {}
+            });
+          } catch (err) {
+            console.error(
+              "[messenger.conversationSubscription] failed to subscribe",
+              { filter, source },
+              err,
+            );
+          }
+        };
+
+        subscribe(
+          { kinds: [4], authors: [nostr.pubkey], "#p": [normalized] },
+          "outgoing",
+        );
+        subscribe(
+          { kinds: [4], authors: [normalized], "#p": [nostr.pubkey] },
+          "incoming",
+        );
+
+        const reason = opts.reason ?? "unknown";
+        emitDmCounter("dm_conversation_subscription_start", {
+          pubkey: normalized,
+          reason,
+        });
+        console.info("[messenger.subscription] conversation start", {
+          pubkey: normalized,
+          reason,
+        });
+
+        const handle: ConversationSubscriptionHandle = {
+          pubkey: normalized,
+          stop: () => {
+            for (const stop of unsubscribers) {
+              try {
+                stop();
+              } catch {}
+            }
+          },
+          fetchEvent: async (eventId: string, meta?: { reason?: string }) => {
+            if (!eventId) return false;
+            const fetchReason = meta?.reason ?? "manual";
+            try {
+              const ndkEvent = (await ndk.fetchEvent(
+                { ids: [eventId] },
+                { closeOnEose: true, groupable: false },
+              )) as NDKEvent | null;
+              if (!ndkEvent) {
+                emitDmCounter("dm_fallback_fetch_failure", {
+                  pubkey: normalized,
+                  eventId,
+                  reason: fetchReason,
+                  result: "not_found",
+                });
+                console.info(
+                  "[messenger.subscription] fallback fetch missing",
+                  { pubkey: normalized, eventId, reason: fetchReason },
+                );
+                return false;
+              }
+              const nostrEvent = await ndkEvent.toNostrEvent();
+              if ((nostrEvent as NostrEvent).pubkey === nostr.pubkey) {
+                this.pushOwnMessage(nostrEvent as NostrEvent);
+              } else {
+                await this.addIncomingMessage(nostrEvent as NostrEvent);
+              }
+              emitDmCounter("dm_fallback_fetch_success", {
+                pubkey: normalized,
+                eventId,
+                reason: fetchReason,
+              });
+              console.info("[messenger.subscription] fallback fetch success", {
+                pubkey: normalized,
+                eventId,
+                reason: fetchReason,
+              });
+              return true;
+            } catch (err) {
+              emitDmCounter("dm_fallback_fetch_failure", {
+                pubkey: normalized,
+                eventId,
+                reason: fetchReason,
+                error:
+                  err instanceof Error ? err.message : String(err ?? "unknown"),
+              });
+              console.warn("[messenger.subscription] fallback fetch failed", {
+                pubkey: normalized,
+                eventId,
+                reason: fetchReason,
+                error: err,
+              });
+              return false;
+            }
+          },
+        };
+
+        return handle;
+      } catch (err) {
+        console.warn(
+          "[messenger.conversationSubscription] failed to initialize",
+          err,
+        );
+        return null;
+      }
+    },
+    teardownActiveConversationSubscription() {
+      if (activeConversationSubscription) {
+        try {
+          activeConversationSubscription.stop();
+        } catch (err) {
+          console.warn(
+            "[messenger.conversationSubscription] failed to teardown",
+            err,
+          );
+        }
+      }
+      activeConversationSubscription = null;
+      this.conversationSubscription = null;
+    },
+    async ensureConversationSubscription(
+      pubkey: string | null | undefined,
+      reason = "manual",
+      opts: { force?: boolean } = {},
+    ) {
+      if (!pubkey) {
+        this.teardownActiveConversationSubscription();
+        return;
+      }
+      const normalized = this.normalizeKey(pubkey);
+      if (!normalized) {
+        this.teardownActiveConversationSubscription();
+        return;
+      }
+      if (!opts.force && activeConversationSubscription?.pubkey === normalized) {
+        return;
+      }
+      this.teardownActiveConversationSubscription();
+      const handle = await this.createConversationSubscription(normalized, {
+        reason,
+      });
+      if (handle) {
+        activeConversationSubscription = handle;
+        this.conversationSubscription = handle;
+      } else {
+        activeConversationSubscription = null;
+        this.conversationSubscription = null;
+      }
+    },
+    async initializeConversationSubscriptionWatcher() {
+      if (conversationWatchStop) return;
+      try {
+        const ndk = await useNdk({ requireSigner: false });
+        const onRelayConnect = (relay: any) => {
+          if (!this.currentConversation) return;
+          emitDmCounter("dm_conversation_subscription_reconnect", {
+            pubkey: this.currentConversation,
+            relay: relay?.url ?? "unknown",
+          });
+          console.info("[messenger.subscription] relay reconnect", {
+            pubkey: this.currentConversation,
+            relay: relay?.url,
+          });
+          void this.ensureConversationSubscription(
+            this.currentConversation,
+            "relay-connect",
+            { force: true },
+          );
+        };
+        ndk.pool.on("relay:connect", onRelayConnect);
+        conversationRelayOff = () => {
+          ndk.pool.off?.("relay:connect", onRelayConnect);
+        };
+        conversationWatchStop = watch(
+          () => this.currentConversation,
+          (next, prev) => {
+            if (next === prev) return;
+            void this.ensureConversationSubscription(next, "current-change");
+          },
+          { immediate: true },
+        );
+      } catch (err) {
+        console.warn(
+          "[messenger.conversationSubscription] failed to setup watcher",
+          err,
+        );
+      }
+    },
+    async fetchConversationEvent(
+      pubkey: string,
+      eventId: string,
+      reason = "manual",
+    ): Promise<boolean> {
+      if (!eventId) return false;
+      const normalized = this.normalizeKey(pubkey);
+      if (!normalized) return false;
+      let handle = activeConversationSubscription;
+      let temporary: ConversationSubscriptionHandle | null = null;
+      if (!handle || handle.pubkey !== normalized) {
+        temporary = await this.createConversationSubscription(normalized, {
+          reason: `${reason}-temp`,
+        });
+        handle = temporary;
+      }
+      if (!handle) {
+        return false;
+      }
+      try {
+        return await handle.fetchEvent(eventId, { reason });
+      } finally {
+        if (temporary) {
+          try {
+            temporary.stop();
+          } catch {}
+        }
+      }
+    },
+    pauseConversationSubscription() {
+      this.teardownActiveConversationSubscription();
+    },
+    async resumeConversationSubscription(reason = "manual") {
+      if (!this.currentConversation) return false;
+      await this.ensureConversationSubscription(
+        this.currentConversation,
+        reason,
+        { force: true },
+      );
+      return activeConversationSubscription !== null;
+    },
+    async deliverDmEventForTesting(event: NostrEvent) {
+      const nostr = useNostrStore();
+      if (event.pubkey === nostr.pubkey) {
+        this.pushOwnMessage(event);
+      } else {
+        await this.addIncomingMessage(event);
+      }
     },
     mergeRelayAckResults(
       msg: MessengerMessage,
@@ -430,6 +898,7 @@ export const useMessengerStore = defineStore("messenger", {
       const recovered = await this.recoverLocalEchoFromRelays(
         meta.localId,
         meta.eventId,
+        msg.pubkey,
       );
       if (recovered) {
         emitDmCounter("dm_dedup_hits", {
@@ -441,24 +910,10 @@ export const useMessengerStore = defineStore("messenger", {
     async recoverLocalEchoFromRelays(
       localId: string,
       eventId: string,
+      pubkey: string,
     ): Promise<boolean> {
       try {
-        const ndk = await useNdk({ requireSigner: false });
-        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-        const timeoutPromise = new Promise<null>((resolve) => {
-          timeoutHandle = setTimeout(() => resolve(null), 4000);
-        });
-        const ndkEvent = (await Promise.race([
-          ndk.fetchEvent({ ids: [eventId] }, { closeOnEose: true, groupable: false }),
-          timeoutPromise,
-        ])) as NDKEvent | null | undefined;
-        if (timeoutHandle) clearTimeout(timeoutHandle);
-        if (!ndkEvent) {
-          return false;
-        }
-        const nostrEvent = await ndkEvent.toNostrEvent();
-        this.pushOwnMessage(nostrEvent as NostrEvent);
-        return true;
+        return await this.fetchConversationEvent(pubkey, eventId, "timeout-recovery");
       } catch (err) {
         console.warn("[messenger.recoverLocalEchoFromRelays]", err);
         return false;
@@ -901,6 +1356,7 @@ export const useMessengerStore = defineStore("messenger", {
           }
         }
       }
+      this.registerMessage(msg, [previousId, meta.eventId, event.id]);
 
       let relayResults: Record<string, RelayAck> = {};
       let delivered = false;
@@ -1321,6 +1777,7 @@ export const useMessengerStore = defineStore("messenger", {
         this.conversations[pubkey] = [...existingConversation, msg];
       }
       this.eventLog = [...this.eventLog, msg];
+      this.registerMessage(msg);
       return msg;
     },
 
@@ -1398,10 +1855,16 @@ export const useMessengerStore = defineStore("messenger", {
     },
     pushOwnMessage(event: NostrEvent) {
       if (!Array.isArray(this.eventLog)) this.eventLog = [];
-      let msg = this.eventLog.find((m) => m.id === event.id);
+      const eventId = event.id;
+      let msg = (eventId ? this.eventMap[eventId] : undefined) as
+        | MessengerMessage
+        | undefined;
+      if (!msg) {
+        msg = this.eventLog.find((m) => m.id === eventId);
+      }
       if (!msg) {
         msg = Object.values(this.localEchoIndex).find(
-          (entry) => entry.localEcho?.eventId === event.id,
+          (entry) => entry.localEcho?.eventId === eventId,
         );
         if (msg) {
           if (!this.eventLog.some((existing) => existing === msg)) {
@@ -1413,6 +1876,12 @@ export const useMessengerStore = defineStore("messenger", {
         }
       }
       if (!msg) return;
+      if (!this.conversations[msg.pubkey]) {
+        this.conversations[msg.pubkey] = [];
+      }
+      insertUniqueMessage(this.conversations[msg.pubkey], msg);
+      insertUniqueMessage(this.eventLog, msg);
+      this.registerMessage(msg, [eventId]);
       if (event.kind) {
         msg.protocol = event.kind === 1059 ? "nip17" : "nip04";
       }
@@ -1462,11 +1931,6 @@ export const useMessengerStore = defineStore("messenger", {
       if (!Array.isArray(this.eventLog)) this.eventLog = [];
       const nostr = useNostrStore();
       if (event.pubkey === nostr.pubkey) {
-        return;
-      }
-      const existing = this.eventLog.find((m) => m.id === event.id);
-      if (existing) {
-        if (existing.outgoing) this.pushOwnMessage(event);
         return;
       }
       const lastSignerAttempt = this.signerInitCache;
@@ -1530,19 +1994,19 @@ export const useMessengerStore = defineStore("messenger", {
             return;
           }
         } else {
-        const now = Date.now();
-        if (now - lastDecryptError > 30000) {
-          notifyError(
-            "Failed to decrypt message – ensure your Nostr extension is unlocked",
-          );
-          lastDecryptError = now;
-        } else {
-          console.warn(
-            "Failed to decrypt message – ensure your Nostr extension is unlocked",
-            e,
-          );
-        }
-        return;
+          const now = Date.now();
+          if (now - lastDecryptError > 30000) {
+            notifyError(
+              "Failed to decrypt message – ensure your Nostr extension is unlocked",
+            );
+            lastDecryptError = now;
+          } else {
+            console.warn(
+              "Failed to decrypt message – ensure your Nostr extension is unlocked",
+              e,
+            );
+          }
+          return;
         }
       }
       let subscriptionInfo: SubscriptionPayment | undefined;
@@ -1556,8 +2020,8 @@ export const useMessengerStore = defineStore("messenger", {
         let payload: any;
         try {
           payload = JSON.parse(trimmed);
-        } catch (e) {
-          console.debug("[messenger.addIncomingMessage] invalid JSON", e);
+        } catch (parseErr) {
+          console.debug("[messenger.addIncomingMessage] invalid JSON", parseErr);
           continue;
         }
         const sub = parseSubscriptionPaymentPayload(payload);
@@ -1651,7 +2115,6 @@ export const useMessengerStore = defineStore("messenger", {
                 useLockedTokensStore().addLockedToken({
                   amount,
                   tokenString: payload.token,
-
                   token: payload.token,
                   pubkey: event.pubkey,
                   locktime: payload.unlock_time ?? payload.unlockTime,
@@ -1671,7 +2134,7 @@ export const useMessengerStore = defineStore("messenger", {
         }
       }
       const sanitized = sanitizeMessage(decrypted);
-      const msg: MessengerMessage = {
+      const baseMessage: MessengerMessage = {
         id: event.id,
         pubkey: event.pubkey,
         content: sanitized,
@@ -1679,28 +2142,49 @@ export const useMessengerStore = defineStore("messenger", {
         outgoing: false,
         protocol: event.kind === 1059 ? "nip17" : "nip04",
       };
-      if (/^data:[^;]+;base64,/.test(sanitized)) {
-        const type = sanitized.substring(5, sanitized.indexOf(";"));
-        msg.attachment = { type, name: "" };
-      }
-      if (subscriptionInfo) {
-        msg.subscriptionPayment = subscriptionInfo;
-        msg.autoRedeem = true;
-      }
-      if (tokenPayload) {
-        msg.tokenPayload = tokenPayload;
-      }
       if (!this.conversations[event.pubkey]) {
         this.conversations[event.pubkey] = [];
       }
-      if (!this.conversations[event.pubkey].some((m) => m.id === event.id))
-        this.conversations[event.pubkey].push(msg);
-      this.unreadCounts[event.pubkey] =
-        (this.unreadCounts[event.pubkey] || 0) + 1;
-      this.eventLog.push(msg);
-      if (this.currentConversation !== event.pubkey) {
-        const snippet = msg.content.slice(0, 40);
-        notifySuccess(snippet);
+      const conversation = this.conversations[event.pubkey]!;
+      const mergeResult = mergeMessengerEvent({
+        eventId: event.id,
+        eventMap: this.eventMap,
+        eventLog: this.eventLog,
+        conversation,
+        localEchoIndex: this.localEchoIndex,
+        createMessage: () => baseMessage,
+        onRegister: (message) => this.registerMessage(message, [event.id]),
+      });
+      const target = mergeResult.message;
+      target.content = sanitized;
+      target.created_at = event.created_at ?? target.created_at;
+      target.outgoing = false;
+      target.protocol = event.kind === 1059 ? "nip17" : "nip04";
+      if (/^data:[^;]+;base64,/.test(sanitized)) {
+        const type = sanitized.substring(5, sanitized.indexOf(";"));
+        target.attachment = { type, name: "" };
+      }
+      if (subscriptionInfo) {
+        target.subscriptionPayment = subscriptionInfo;
+        target.autoRedeem = true;
+      }
+      if (tokenPayload) {
+        target.tokenPayload = tokenPayload;
+      }
+      if (mergeResult.created) {
+        this.unreadCounts[event.pubkey] =
+          (this.unreadCounts[event.pubkey] || 0) + 1;
+        if (this.currentConversation !== event.pubkey) {
+          const snippet = target.content.slice(0, 40);
+          notifySuccess(snippet);
+        }
+      } else if (mergeResult.deduped) {
+        emitDmCounter("dm_dedup_drop", {
+          eventId: event.id,
+          pubkey: event.pubkey,
+          reason: mergeResult.reason || "unknown",
+          source: "incoming",
+        });
       }
     },
 
@@ -1787,6 +2271,21 @@ export const useMessengerStore = defineStore("messenger", {
             console.error("[messenger.start] HTTP fallback failed", err);
           }
         }
+        try {
+          await this.initializeConversationSubscriptionWatcher();
+          if (this.currentConversation) {
+            await this.ensureConversationSubscription(
+              this.currentConversation,
+              "start",
+              { force: true },
+            );
+          }
+        } catch (err) {
+          console.warn(
+            "[messenger.start] failed to initialize conversation subscription",
+            err,
+          );
+        }
         this.started = true;
       }
     },
@@ -1819,6 +2318,11 @@ export const useMessengerStore = defineStore("messenger", {
         this.relayStatusStop();
         this.relayStatusStop = null;
       }
+      this.teardownActiveConversationSubscription();
+      conversationWatchStop?.();
+      conversationWatchStop = null;
+      conversationRelayOff?.();
+      conversationRelayOff = null;
     },
 
 
@@ -1839,6 +2343,7 @@ export const useMessengerStore = defineStore("messenger", {
       this.createConversation(pubkey);
       this.markRead(pubkey);
       this.setCurrentConversation(pubkey);
+      void this.ensureConversationSubscription(pubkey, "start-chat");
     },
 
     markRead(pubkey: string) {
