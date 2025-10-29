@@ -26,15 +26,15 @@ export type CreatorRow = CreatorProfile;
 
 const FRESH_RETRY_BASE_MS = 1500;
 const FRESH_RETRY_MAX_MS = 30000;
-const FRESH_WARN_DEBOUNCE_MS = 60000;
+const FRESH_FALLBACK_LOG_DEBOUNCE_MS = 60000;
 
 let nextProfileFreshAttemptAt = 0;
 let profileFreshFailureCount = 0;
-let lastProfileWarnAt = 0;
+let lastProfileFallbackLogAt = 0;
 
 let nextTiersFreshAttemptAt = 0;
 let tiersFreshFailureCount = 0;
-let lastTiersWarnAt = 0;
+let lastTierFallbackLogAt = 0;
 
 export class FundstrProfileFetchError extends Error {
   fallbackAttempted: boolean;
@@ -365,21 +365,21 @@ export async function fetchFundstrProfileBundle(
     usedCachedProfileFallback = true;
     if (firstAvailable.freshError) {
       const nowWarn = Date.now();
-      if (nowWarn - lastProfileWarnAt > FRESH_WARN_DEBOUNCE_MS) {
-        console.warn("fetchFundstrProfileBundle using cached discovery profile", {
+      if (nowWarn - lastProfileFallbackLogAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
+        console.debug("fetchFundstrProfileBundle using cached discovery profile", {
           query: firstAvailable.query,
           error: firstAvailable.freshError,
         });
-        lastProfileWarnAt = nowWarn;
+        lastProfileFallbackLogAt = nowWarn;
       }
     } else {
       const nowWarn = Date.now();
-      if (nowWarn - lastProfileWarnAt > FRESH_WARN_DEBOUNCE_MS) {
-        console.warn("fetchFundstrProfileBundle using cached discovery profile", {
+      if (nowWarn - lastProfileFallbackLogAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
+        console.debug("fetchFundstrProfileBundle using cached discovery profile", {
           query: firstAvailable?.query ?? pubkey,
           reason: "fresh profile result unavailable",
         });
-        lastProfileWarnAt = nowWarn;
+        lastProfileFallbackLogAt = nowWarn;
       }
     }
   }
@@ -480,21 +480,21 @@ export async function fetchFundstrProfileBundle(
     usedCachedTierFallback = true;
     if (tierFallbackSource.freshError) {
       const nowWarn = Date.now();
-      if (nowWarn - lastTiersWarnAt > FRESH_WARN_DEBOUNCE_MS) {
-        console.warn("fetchFundstrProfileBundle using cached discovery tiers", {
+      if (nowWarn - lastTierFallbackLogAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
+        console.debug("fetchFundstrProfileBundle using cached discovery tiers", {
           id: tierFallbackSource.id,
           error: tierFallbackSource.freshError,
         });
-        lastTiersWarnAt = nowWarn;
+        lastTierFallbackLogAt = nowWarn;
       }
     } else {
       const nowWarn = Date.now();
-      if (nowWarn - lastTiersWarnAt > FRESH_WARN_DEBOUNCE_MS) {
-        console.warn("fetchFundstrProfileBundle using cached discovery tiers", {
+      if (nowWarn - lastTierFallbackLogAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
+        console.debug("fetchFundstrProfileBundle using cached discovery tiers", {
           id: tierFallbackSource.id,
           reason: "fresh tier result unavailable",
         });
-        lastTiersWarnAt = nowWarn;
+        lastTierFallbackLogAt = nowWarn;
       }
     }
   }
