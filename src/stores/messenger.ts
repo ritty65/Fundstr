@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
 import { watch, computed, ref, type Ref } from "vue";
+import { liveQuery } from "dexie";
 import { Event as NostrEvent } from "nostr-tools";
 import { SignerType, useNostrStore, type RelayAck } from "./nostr";
 import { v4 as uuidv4 } from "uuid";
@@ -380,6 +381,7 @@ export const useMessengerStore = defineStore("messenger", {
       false,
     );
     const signerInitCache = ref<SignerInitOutcome | null>(null);
+    const failedOutboxCount = ref(0);
 
     let loadGenerationCounter = 0;
     let mutationGenerationCounter = 0;
@@ -545,6 +547,33 @@ export const useMessengerStore = defineStore("messenger", {
       messengerDb.markMigrationComplete(1);
     };
 
+    let outboxFailureSubscription: { unsubscribe(): void } | null = null;
+
+    const subscribeOutboxFailures = (owner: string) => {
+      if (!MESSENGER_OUTBOX_ENABLED || IS_TEST_ENV || !owner) {
+        outboxFailureSubscription?.unsubscribe();
+        outboxFailureSubscription = null;
+        failedOutboxCount.value = 0;
+        return;
+      }
+
+      outboxFailureSubscription?.unsubscribe();
+      outboxFailureSubscription = liveQuery(() =>
+        messengerDb.outbox
+          .where("[owner+status]")
+          .equals([owner, "failed_perm"])
+          .count(),
+      ).subscribe({
+        next: (count) => {
+          failedOutboxCount.value = count;
+        },
+        error: (err) => {
+          console.error("[messenger.outboxFailures] subscription failed", err);
+          failedOutboxCount.value = 0;
+        },
+      });
+    };
+
     const loadOwnerState = async (owner: string) => {
       try {
         const loadToken = ++loadGenerationCounter;
@@ -602,6 +631,7 @@ export const useMessengerStore = defineStore("messenger", {
     const ownerComputed = computed(() => nostrStore.pubkey || "anon");
 
     void loadOwnerState(ownerComputed.value);
+    subscribeOutboxFailures(ownerComputed.value);
 
     watch(
       () => nostrStore.pubkey,
@@ -620,6 +650,8 @@ export const useMessengerStore = defineStore("messenger", {
         conversationRelayOff?.();
         conversationRelayOff = null;
         signerInitCache.value = null;
+        failedOutboxCount.value = 0;
+        subscribeOutboxFailures(ownerComputed.value);
         void loadOwnerState(ownerComputed.value);
       },
     );
@@ -654,6 +686,7 @@ export const useMessengerStore = defineStore("messenger", {
       outboxQuorum: OUTBOX_DELIVERY_QUORUM,
       outboxPumpActive: false,
       outboxPumpRequested: false,
+      failedOutboxCount,
       rebuildIndexes,
       loadOwnerState,
       recordMutation,
@@ -2467,47 +2500,46 @@ export const useMessengerStore = defineStore("messenger", {
         return false;
       }
     },
-    async retrySend(localId: string): Promise<SendDmResult | void> {
-      const msg = this.findMessageByLocalId(localId);
+    async retryOutboxItem(
+      localId: string,
+      existingRecord?: MessengerOutboxRecord | null,
+    ): Promise<SendDmResult | void> {
+      if (!this.outboxEnabled) return;
+      if (!localId) return { success: false, event: null };
+      const msg =
+        this.findMessageByLocalId(localId) ||
+        (existingRecord?.messageId
+          ? (this.eventMap?.[existingRecord.messageId] as
+              | MessengerMessage
+              | undefined)
+          : undefined);
       if (!msg || !msg.localEcho) {
         notifyError("Retry failed – message not found");
-        return;
+        return { success: false, event: null };
       }
       const meta = msg.localEcho;
-      const payload = meta.payload ?? {
+      const payloadSource = meta.payload ?? {
         content: msg.content,
         attachment: msg.attachment,
         tokenPayload: msg.tokenPayload,
       };
-      meta.status = "pending";
       meta.error = null;
-      meta.updatedAt = Date.now();
-      meta.timerStartedAt = null;
       meta.relayResults = {};
-      msg.status = "pending";
       msg.relayResults = {};
+      meta.payload = {
+        content: payloadSource.content,
+        attachment: payloadSource.attachment,
+        tokenPayload: payloadSource.tokenPayload,
+      };
       this.scheduleLocalEcho(meta, msg);
-      if (!this.outboxEnabled) {
-        meta.attempt += 1;
-        emitDmCounter("dm_retry", { localId: meta.localId, attempt: meta.attempt });
-        return await this.executeSendWithMeta({
-          msg,
-          meta,
-          recipient: msg.pubkey,
-          safeMessage: payload.content,
-          attachment: payload.attachment,
-          tokenPayload: payload.tokenPayload,
-          relayTargets: meta.relays,
-        });
-      }
 
       try {
         const now = Date.now();
-        const existing = await messengerDb.outbox.get(localId);
+        const existing = existingRecord ?? (await messengerDb.outbox.get(localId));
         const basePayload = {
-          content: payload.content,
-          attachment: payload.attachment,
-          tokenPayload: payload.tokenPayload,
+          content: payloadSource.content,
+          attachment: payloadSource.attachment,
+          tokenPayload: payloadSource.tokenPayload,
           created_at: msg.created_at,
         };
         const nextRecord: MessengerOutboxRecord = existing
@@ -2557,6 +2589,70 @@ export const useMessengerStore = defineStore("messenger", {
         notifyError(`Failed to queue DM retry: ${reason}`);
         return { success: false, event: null };
       }
+    },
+    async retrySend(localId: string): Promise<SendDmResult | void> {
+      if (this.outboxEnabled) {
+        return await this.retryOutboxItem(localId);
+      }
+      const msg = this.findMessageByLocalId(localId);
+      if (!msg || !msg.localEcho) {
+        notifyError("Retry failed – message not found");
+        return;
+      }
+      const meta = msg.localEcho;
+      const payload = meta.payload ?? {
+        content: msg.content,
+        attachment: msg.attachment,
+        tokenPayload: msg.tokenPayload,
+      };
+      meta.error = null;
+      meta.relayResults = {};
+      msg.relayResults = {};
+      this.scheduleLocalEcho(meta, msg);
+      meta.attempt += 1;
+      emitDmCounter("dm_retry", { localId: meta.localId, attempt: meta.attempt });
+      return await this.executeSendWithMeta({
+        msg,
+        meta,
+        recipient: msg.pubkey,
+        safeMessage: payload.content,
+        attachment: payload.attachment,
+        tokenPayload: payload.tokenPayload,
+        relayTargets: meta.relays,
+      });
+    },
+    async outboxRetryAll(): Promise<number> {
+      if (!this.outboxEnabled) {
+        const queue = Array.isArray(this.sendQueue) ? this.sendQueue.slice() : [];
+        let retried = 0;
+        for (const msg of queue) {
+          const localId = msg?.localEcho?.localId;
+          if (!localId) continue;
+          const result = await this.retrySend(localId);
+          if (result && typeof result === "object" && "success" in result) {
+            if (result.success) retried += 1;
+          } else {
+            retried += 1;
+          }
+        }
+        return retried;
+      }
+
+      const owner = this.getOwnerKey();
+      const records = await messengerDb.outbox
+        .where("[owner+status]")
+        .equals([owner, "failed_perm"])
+        .toArray();
+      let retried = 0;
+      for (const record of records) {
+        const localId = record.localId || record.id;
+        if (!localId) continue;
+        const result = await this.retryOutboxItem(localId, record);
+        if (result && typeof result === "object" && "success" in result && result.success) {
+          retried += 1;
+        }
+      }
+      return retried;
     },
     addOutgoingMessage(
       pubkey: string,
