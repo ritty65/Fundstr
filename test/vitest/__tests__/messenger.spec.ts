@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
+import { ref, nextTick } from "vue";
 import { FUNDSTR_EVT_URL } from "../../../src/nutzap/relayEndpoints";
+import { DM_POLL_INTERVAL_MS } from "../../../src/config/dm";
 
 const lsStore: Record<string, string> = {};
 (globalThis as any).localStorage = {
@@ -28,6 +30,18 @@ var publishEventViaHttpMock: any;
 var requestEventsViaHttpMock: any;
 var useNdkMock: any;
 var ndkInstance: any;
+
+const relayStatusRef = ref<
+  "connecting" | "connected" | "reconnecting" | "disconnected"
+>("connecting");
+
+vi.mock("../../../src/nutzap/relayClient", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    useFundstrRelayStatus: () => relayStatusRef,
+  };
+});
 
 vi.mock("../../../src/utils/fundstrRelayHttp", () => {
   publishEventViaHttpMock = vi.fn(async () => ({
@@ -93,6 +107,7 @@ import { useMessengerStore } from "../../../src/stores/messenger";
 beforeEach(() => {
   setActivePinia(createPinia());
   for (const k in lsStore) delete lsStore[k];
+  relayStatusRef.value = "connecting";
   const m = useMessengerStore();
   (m as any).eventLog = [];
   (m as any).conversations = {};
@@ -344,5 +359,81 @@ describe("messenger store", () => {
     expect(notifyErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining("http offline"),
     );
+  });
+
+  it("only enables HTTP polling when the relay is disconnected", () => {
+    const messenger = useMessengerStore();
+    const startSpy = vi
+      .spyOn(messenger, "startHttpPolling")
+      .mockImplementation(() => {});
+    messenger.httpFallbackEnabled = false;
+    relayStatusRef.value = "connecting";
+
+    messenger.setHttpFallbackEnabled(true);
+
+    expect(startSpy).not.toHaveBeenCalled();
+
+    relayStatusRef.value = "disconnected";
+    messenger.setHttpFallbackEnabled(true);
+
+    expect(startSpy).toHaveBeenCalledTimes(1);
+    startSpy.mockRestore();
+  });
+
+  it("starts HTTP polling only after the relay disconnects", async () => {
+    const messenger = useMessengerStore();
+    const startSpy = vi
+      .spyOn(messenger, "startHttpPolling")
+      .mockImplementation(() => {});
+
+    relayStatusRef.value = "connecting";
+    messenger.setupTransportWatcher();
+    await nextTick();
+
+    expect(startSpy).not.toHaveBeenCalled();
+
+    relayStatusRef.value = "disconnected";
+    await nextTick();
+
+    expect(startSpy).toHaveBeenCalledTimes(1);
+
+    relayStatusRef.value = "connected";
+    await nextTick();
+
+    expect(messenger.transportMode).toBe("ws");
+    startSpy.mockRestore();
+    messenger.relayStatusStop?.();
+  });
+
+  it("stops HTTP polling once the relay reconnects", async () => {
+    const messenger = useMessengerStore();
+    const syncSpy = vi
+      .spyOn(messenger, "performHttpSync")
+      .mockResolvedValue(undefined);
+
+    relayStatusRef.value = "disconnected";
+    vi.useFakeTimers();
+
+    try {
+      messenger.startHttpPolling();
+      await vi.runAllTicks();
+
+      expect(syncSpy).toHaveBeenCalledTimes(1);
+
+      relayStatusRef.value = "connected";
+      await nextTick();
+
+      vi.advanceTimersByTime(Math.max(5000, DM_POLL_INTERVAL_MS));
+      await vi.runAllTicks();
+
+      expect(syncSpy).toHaveBeenCalledTimes(1);
+      expect(messenger.httpPollTimer).toBeNull();
+      expect(messenger.httpFallbackActive).toBe(false);
+    } finally {
+      vi.useRealTimers();
+      syncSpy.mockRestore();
+      messenger.stopHttpPolling();
+      messenger.relayStatusStop?.();
+    }
   });
 });
