@@ -373,16 +373,16 @@ async function updateAutoRedeem(val: boolean) {
 }
 
 .bubble-outgoing {
-  background-color: var(--accent-500);
-  color: var(--bubble-outgoing-text);
+  background-color: var(--accent-500, var(--q-primary));
+  color: var(--bubble-outgoing-text, #fff);
   border-radius: 12px 0 12px 12px;
 }
 
 .bubble-incoming {
-  background-color: color-mix(in srgb, var(--surface-2), white 15%);
-  color: var(--text-1);
+  background-color: color-mix(in srgb, var(--surface-2, #f7f7f7), white 15%);
+  color: var(--text-1, #111);
   border-radius: 0 12px 12px 12px;
-  border: 1px solid var(--surface-contrast-border);
+  border: 1px solid var(--surface-contrast-border, rgba(0, 0, 0, 0.08));
 }
 
 .token-wrapper {
