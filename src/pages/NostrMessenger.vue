@@ -129,6 +129,7 @@ import type NDK from "@nostr-dev-kit/ndk";
 import ActiveChatHeader from "components/ActiveChatHeader.vue";
 import MessageList from "components/MessageList.vue";
 import MessageInput from "components/MessageInput.vue";
+import type { FileMeta } from "src/utils/messengerFiles";
 import ChatSendTokenDialog from "components/ChatSendTokenDialog.vue";
 import NostrSetupWizard from "components/NostrSetupWizard.vue";
 import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
@@ -339,26 +340,25 @@ export default defineComponent({
       return queue;
     });
 
-    const sendMessage = (
-      payload:
-        | string
-        | {
-            text: string;
-            attachment?: { dataUrl: string; name: string; type: string };
-          },
-    ) => {
+    const sendMessage = (payload: { text: string; files?: FileMeta[] }) => {
       if (!selected.value) return;
-      if (typeof payload === "string") {
-        messenger.sendDm(selected.value, payload);
+      const files = Array.isArray(payload.files) && payload.files.length
+        ? payload.files
+        : undefined;
+      const text = payload.text.trim();
+      if (files?.length) {
+        messenger.sendDm(
+          selected.value,
+          text,
+          undefined,
+          undefined,
+          undefined,
+          files,
+        );
         return;
       }
-      const { text, attachment } = payload;
-      if (text) messenger.sendDm(selected.value, text);
-      if (attachment) {
-        messenger.sendDm(selected.value, attachment.dataUrl, undefined, {
-          name: attachment.name,
-          type: attachment.type,
-        });
+      if (text) {
+        messenger.sendDm(selected.value, text);
       }
     };
 

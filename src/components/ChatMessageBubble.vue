@@ -54,8 +54,39 @@
             </div>
           </template>
           <template v-else>
+            <div v-if="hasFileAttachments" class="column q-gutter-sm q-mb-sm">
+              <div
+                v-for="file in fileAttachments"
+                :key="file.url || file.name"
+                class="chat-attachment bg-surface-2 q-pa-sm rounded-borders"
+              >
+                <q-img
+                  v-if="isAttachmentImage(file)"
+                  :src="file.thumb || file.url"
+                  :ratio="1"
+                  class="chat-attachment__preview"
+                  style="max-width: 280px; max-height: 280px"
+                />
+                <div class="chat-attachment__meta">
+                  <a
+                    :href="file.url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="chat-attachment__link"
+                  >
+                    {{ file.name || "attachment" }}
+                  </a>
+                  <div class="chat-attachment__details text-caption">
+                    <span>{{ file.mime }}</span>
+                    <span v-if="file.bytes" class="q-ml-xs">
+                      • {{ formatBytes(file.bytes) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
             <q-img
-              v-if="imageSrc"
+              v-else-if="imageSrc"
               :src="imageSrc"
               style="max-width: 300px; max-height: 300px"
               class="q-mb-sm"
@@ -70,8 +101,14 @@
                 {{ attachmentName }}
               </a>
             </template>
-            <template v-else>
-              {{ message.content }}
+            <template v-if="textContent">
+              <div
+                v-if="hasFileAttachments"
+                class="chat-text q-mt-xs"
+              >
+                {{ textContent }}
+              </div>
+              <div v-else class="chat-text">{{ textContent }}</div>
             </template>
           </template>
         </div>
@@ -155,6 +192,8 @@ import { useP2PKStore } from "src/stores/p2pk";
 import { useNostrStore } from "src/stores/nostr";
 import { useMessengerStore } from "src/stores/messenger";
 import { nip19 } from "nostr-tools";
+import { stripFileMetaLines } from "src/utils/messengerFiles";
+import type { FileMeta } from "src/utils/messengerFiles";
 
 const props = defineProps<{
   message: MessengerMessage;
@@ -177,6 +216,19 @@ const showAvatar = computed(() => {
 const p2pk = useP2PKStore();
 const nostr = useNostrStore();
 const messenger = useMessengerStore();
+
+const fileAttachments = computed<FileMeta[]>(
+  () => props.message.filesPayload ?? [],
+);
+const hasFileAttachments = computed(() => fileAttachments.value.length > 0);
+const textContent = computed(() => {
+  const cleaned = stripFileMetaLines(props.message.content || "");
+  if (cleaned) return cleaned;
+  if (!hasFileAttachments.value) {
+    return props.message.content || "";
+  }
+  return "";
+});
 
 const avatarPubkey = computed(() =>
   props.message.outgoing ? nostr.pubkey : props.message.pubkey,
@@ -229,32 +281,45 @@ const retrySend = async () => {
   }
 };
 
-const isDataUrl = computed(() => props.message.content.startsWith("data:"));
+const isDataUrl = computed(() => textContent.value.startsWith("data:"));
 const isSafeDataUrl = computed(() =>
-  /^data:(image|audio|video)\//i.test(props.message.content),
+  /^data:(image|audio|video)\//i.test(textContent.value),
 );
-const isImageDataUrl = computed(() =>
-  props.message.content.startsWith("data:image"),
-);
-const isHttpUrl = computed(() => /^https?:\/\//.test(props.message.content));
+const isImageDataUrl = computed(() => textContent.value.startsWith("data:image"));
+const isHttpUrl = computed(() => /^https?:\/\//.test(textContent.value));
 const isImageLink = computed(
   () =>
     isHttpUrl.value &&
-    /\.(png|jpe?g|gif|webp|svg)$/i.test(props.message.content),
+    /\.(png|jpe?g|gif|webp|svg)$/i.test(textContent.value),
 );
 const imageSrc = computed(() =>
-  isImageDataUrl.value || isImageLink.value ? props.message.content : "",
+  isImageDataUrl.value || isImageLink.value ? textContent.value : "",
 );
 const isFile = computed(() => isSafeDataUrl.value || isHttpUrl.value);
-const attachmentUrl = computed(() =>
-  isFile.value ? props.message.content : "#",
-);
+const attachmentUrl = computed(() => (isFile.value ? textContent.value : "#"));
 const attachmentName = computed(
   () =>
     props.message.attachment?.name ||
-    props.message.content.split("/").pop()?.split("?")[0] ||
+    textContent.value.split("/").pop()?.split("?")[0] ||
     "file",
 );
+
+const isAttachmentImage = (file: FileMeta) =>
+  typeof file?.mime === "string" && file.mime.startsWith("image/");
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "";
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  const rounded = size % 1 === 0 ? size : Number(size.toFixed(1));
+  return `${rounded} ${units[unitIndex]}`;
+}
 
 const receiveStore = useReceiveTokensStore();
 const redeemed = ref(false);
@@ -399,5 +464,39 @@ async function updateAutoRedeem(val: boolean) {
 .token-wrapper .chip {
   max-width: 100%;
   margin-bottom: 4px; /* spacing between chips */
+}
+
+.chat-attachment {
+  border: 1px solid var(--surface-contrast-border, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+}
+
+.chat-attachment__preview {
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.chat-attachment__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat-attachment__link {
+  font-weight: 600;
+  color: inherit;
+  word-break: break-word;
+}
+
+.chat-attachment__details {
+  color: var(--text-2, #555);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chat-text {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

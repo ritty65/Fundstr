@@ -69,6 +69,13 @@ import {
   useFundstrRelayStatus,
   type FundstrRelayAuthOptions,
 } from "@/nutzap/relayClient";
+import {
+  buildEventContent,
+  extractFilesFromContent,
+  normalizeFileMeta,
+  stripFileMetaLines,
+} from "src/utils/messengerFiles";
+import type { FileMeta } from "src/utils/messengerFiles";
 
 export type DedupMergeReason =
   | "event-map"
@@ -274,8 +281,10 @@ export interface LocalEchoMeta {
   attempt: number;
   payload: {
     content: string;
+    text?: string;
     attachment?: MessageAttachment;
     tokenPayload?: any;
+    filesPayload?: FileMeta[];
   };
 }
 
@@ -292,6 +301,7 @@ export type MessengerMessage = {
   attachment?: MessageAttachment;
   subscriptionPayment?: SubscriptionPayment;
   tokenPayload?: any;
+  filesPayload?: FileMeta[];
   autoRedeem?: boolean;
   relayResults?: Record<string, RelayAck>;
   localEcho?: LocalEchoMeta;
@@ -1551,12 +1561,21 @@ export const useMessengerStore = defineStore("messenger", {
       relays?: string[],
       attachment?: MessageAttachment,
       tokenPayload?: any,
+      filesPayload?: FileMeta[],
     ): Promise<SendDmResult> {
       recipient = this.normalizeKey(recipient);
       if (!recipient) return { success: false, event: null };
-      const baseMessage =
-        typeof message === "string" && message.length > 0 ? message : "";
-      const safeMessage = sanitizeMessage(baseMessage);
+      const baseMessage = typeof message === "string" ? message : "";
+      const textContent = sanitizeMessage(baseMessage);
+      const normalizedFiles = Array.isArray(filesPayload)
+        ? filesPayload
+            .map((file) => normalizeFileMeta(file))
+            .filter((file): file is FileMeta => !!file)
+        : [];
+      const eventContent = buildEventContent(textContent, normalizedFiles);
+      if (!eventContent && !attachment && !tokenPayload) {
+        return { success: false, event: null };
+      }
       const relayTargets = relays ? Array.from(new Set(relays)) : undefined;
       const now = Date.now();
       const meta: LocalEchoMeta = {
@@ -1572,15 +1591,17 @@ export const useMessengerStore = defineStore("messenger", {
         relays: relayTargets,
         attempt: 1,
         payload: {
-          content: safeMessage,
+          content: eventContent,
+          text: textContent,
           attachment,
           tokenPayload,
+          filesPayload: normalizedFiles.length ? normalizedFiles : undefined,
         },
       };
 
       const msg = this.addOutgoingMessage(
         recipient,
-        safeMessage,
+        textContent,
         undefined,
         undefined,
         attachment,
@@ -1590,6 +1611,7 @@ export const useMessengerStore = defineStore("messenger", {
       );
       msg.relayResults = {};
       msg.tokenPayload = tokenPayload;
+      msg.filesPayload = normalizedFiles.length ? normalizedFiles : undefined;
       this.scheduleLocalEcho(meta, msg);
 
       if (!this.outboxEnabled) {
@@ -1597,18 +1619,22 @@ export const useMessengerStore = defineStore("messenger", {
           msg,
           meta,
           recipient,
-          safeMessage,
+          contentToSend: eventContent,
+          textContent,
           attachment,
           tokenPayload,
+          filesPayload: normalizedFiles,
           relayTargets,
         });
       }
 
       const outboxPayload = {
         recipient,
-        content: safeMessage,
+        content: eventContent,
+        text: textContent,
         attachment,
         tokenPayload,
+        filesPayload: normalizedFiles.length ? normalizedFiles : undefined,
         created_at: msg.created_at,
       };
 
@@ -1656,12 +1682,23 @@ export const useMessengerStore = defineStore("messenger", {
       msg: MessengerMessage;
       meta: LocalEchoMeta;
       recipient: string;
-      safeMessage: string;
+      contentToSend: string;
+      textContent: string;
       attachment?: MessageAttachment;
       tokenPayload?: any;
+      filesPayload?: FileMeta[];
       relayTargets?: string[];
     }): Promise<SendDmResult> {
-      const { msg, meta, recipient, safeMessage, attachment, tokenPayload } = options;
+      const {
+        msg,
+        meta,
+        recipient,
+        contentToSend,
+        textContent,
+        attachment,
+        tokenPayload,
+        filesPayload,
+      } = options;
       const relayTargets = options.relayTargets;
 
       try {
@@ -1688,7 +1725,7 @@ export const useMessengerStore = defineStore("messenger", {
 
       let event: NostrEvent;
       try {
-        event = await buildKind4Event(signerInfo.signer, recipient, safeMessage);
+        event = await buildKind4Event(signerInfo.signer, recipient, contentToSend);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err ?? "error");
         const relayResults = { encryption: { ok: false, reason } } as Record<string, RelayAck>;
@@ -1700,9 +1737,11 @@ export const useMessengerStore = defineStore("messenger", {
       msg.created_at = event.created_at ?? msg.created_at;
       meta.eventId = event.id;
       meta.payload = {
-        content: safeMessage,
+        content: contentToSend,
+        text: textContent,
         attachment,
         tokenPayload,
+        filesPayload: filesPayload?.length ? filesPayload : undefined,
       };
       if (relayTargets?.length) {
         meta.relays = relayTargets;
@@ -1714,6 +1753,8 @@ export const useMessengerStore = defineStore("messenger", {
       if (event.id) {
         msg.id = event.id;
       }
+      msg.content = textContent;
+      msg.filesPayload = filesPayload?.length ? filesPayload : undefined;
       this.registerMessage(msg, [meta.eventId, event.id, previousId, meta.localId]);
 
       let relayResults: Record<string, RelayAck> = {};
@@ -2053,15 +2094,34 @@ export const useMessengerStore = defineStore("messenger", {
       }
 
       const payloadSource = (record.payload ?? {}) as Record<string, any>;
+      const sourceFiles = Array.isArray(payloadSource.filesPayload)
+        ? payloadSource.filesPayload
+        : meta.payload?.filesPayload ?? msg.filesPayload ?? [];
+      const normalizedFiles = Array.isArray(sourceFiles)
+        ? sourceFiles
+            .map((entry: unknown) => normalizeFileMeta(entry))
+            .filter((entry): entry is FileMeta => !!entry)
+        : [];
+      const contentCandidate =
+        typeof payloadSource.content === "string"
+          ? payloadSource.content
+          : meta.payload?.content ??
+            buildEventContent(
+              meta.payload?.text ?? msg.content ?? "",
+              normalizedFiles,
+            );
+      const textCandidate =
+        typeof payloadSource.text === "string"
+          ? payloadSource.text
+          : meta.payload?.text ?? stripFileMetaLines(contentCandidate);
       const payload = {
-        content:
-          typeof payloadSource.content === "string"
-            ? payloadSource.content
-            : meta.payload?.content ?? msg.content ?? "",
+        content: contentCandidate,
+        text: textCandidate,
         attachment:
           payloadSource.attachment ?? meta.payload?.attachment ?? msg.attachment,
         tokenPayload:
           payloadSource.tokenPayload ?? meta.payload?.tokenPayload ?? msg.tokenPayload,
+        filesPayload: normalizedFiles,
       };
 
       const recipientKey = this.normalizeKey(
@@ -2177,9 +2237,12 @@ export const useMessengerStore = defineStore("messenger", {
         return;
       }
 
-      msg.content = payload.content ?? "";
+      msg.content = payload.text ?? payload.content ?? "";
       msg.attachment = payload.attachment;
       msg.tokenPayload = payload.tokenPayload;
+      msg.filesPayload = payload.filesPayload.length
+        ? payload.filesPayload
+        : undefined;
       msg.created_at = event.created_at ?? msg.created_at ?? Math.floor(now / 1000);
       if (event.kind) {
         msg.protocol = event.kind === 1059 ? "nip17" : "nip04";
@@ -2519,17 +2582,21 @@ export const useMessengerStore = defineStore("messenger", {
       }
       const meta = msg.localEcho;
       const payloadSource = meta.payload ?? {
-        content: msg.content,
+        content: buildEventContent(msg.content ?? "", msg.filesPayload ?? []),
+        text: msg.content ?? "",
         attachment: msg.attachment,
         tokenPayload: msg.tokenPayload,
+        filesPayload: msg.filesPayload,
       };
       meta.error = null;
       meta.relayResults = {};
       msg.relayResults = {};
       meta.payload = {
         content: payloadSource.content,
+        text: payloadSource.text,
         attachment: payloadSource.attachment,
         tokenPayload: payloadSource.tokenPayload,
+        filesPayload: payloadSource.filesPayload,
       };
       this.scheduleLocalEcho(meta, msg);
 
@@ -2538,8 +2605,10 @@ export const useMessengerStore = defineStore("messenger", {
         const existing = existingRecord ?? (await messengerDb.outbox.get(localId));
         const basePayload = {
           content: payloadSource.content,
+          text: payloadSource.text,
           attachment: payloadSource.attachment,
           tokenPayload: payloadSource.tokenPayload,
+          filesPayload: payloadSource.filesPayload,
           created_at: msg.created_at,
         };
         const nextRecord: MessengerOutboxRecord = existing
@@ -2810,6 +2879,8 @@ export const useMessengerStore = defineStore("messenger", {
         }
       }
       if (!msg) return;
+      const outboundFiles = extractFilesFromContent(event.content || msg.content || "");
+      msg.filesPayload = outboundFiles.length ? outboundFiles : msg.filesPayload;
       if (!this.conversations[msg.pubkey]) {
         this.conversations[msg.pubkey] = [];
       }
@@ -2948,6 +3019,7 @@ export const useMessengerStore = defineStore("messenger", {
       }
       let subscriptionInfo: SubscriptionPayment | undefined;
       let tokenPayload: any | undefined;
+      const filePayloads: FileMeta[] = [];
       const lines = decrypted.split("\n").filter((l) => l.trim().length > 0);
       for (const line of lines) {
         const trimmed = line.trim();
@@ -2959,6 +3031,11 @@ export const useMessengerStore = defineStore("messenger", {
           payload = JSON.parse(trimmed);
         } catch (parseErr) {
           console.debug("[messenger.addIncomingMessage] invalid JSON", parseErr);
+          continue;
+        }
+        const fileMeta = normalizeFileMeta(payload);
+        if (fileMeta) {
+          filePayloads.push(fileMeta);
           continue;
         }
         const sub = parseSubscriptionPaymentPayload(payload);
@@ -3078,6 +3155,7 @@ export const useMessengerStore = defineStore("messenger", {
         created_at: event.created_at,
         outgoing: false,
         protocol: event.kind === 1059 ? "nip17" : "nip04",
+        filesPayload: filePayloads.length ? filePayloads : undefined,
       };
       if (!this.conversations[event.pubkey]) {
         this.conversations[event.pubkey] = [];
@@ -3097,6 +3175,7 @@ export const useMessengerStore = defineStore("messenger", {
       target.created_at = event.created_at ?? target.created_at;
       target.outgoing = false;
       target.protocol = event.kind === 1059 ? "nip17" : "nip04";
+      target.filesPayload = filePayloads.length ? filePayloads : undefined;
       if (/^data:[^;]+;base64,/.test(sanitized)) {
         const type = sanitized.substring(5, sanitized.indexOf(";"));
         target.attachment = { type, name: "" };

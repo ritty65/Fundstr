@@ -13,6 +13,8 @@ import { useMessengerStore } from "src/stores/messenger";
 import { useTokensStore } from "src/stores/tokens";
 import { useInvoiceHistoryStore } from "src/stores/invoiceHistory";
 import type { LocalEchoMeta, MessengerMessage } from "src/stores/messenger";
+import { buildEventContent, normalizeFileMeta } from "src/utils/messengerFiles";
+import type { FileMeta } from "src/utils/messengerFiles";
 import type { Proof } from "@cashu/cashu-ts";
 import type { WalletProof } from "src/types/proofs";
 import { MintQuoteState, MeltQuoteState } from "@cashu/cashu-ts";
@@ -564,6 +566,7 @@ export default boot(() => {
       pubkey: string;
       content?: string;
       relays?: string[];
+      filesPayload?: FileMeta[];
       attachment?: { name: string; type: string } | null;
       eventId?: string;
       createdAt?: number;
@@ -574,6 +577,15 @@ export default boot(() => {
       const attachment = config.attachment
         ? { type: config.attachment.type, name: config.attachment.name }
         : undefined;
+      const rawFiles = Array.isArray(config.filesPayload)
+        ? config.filesPayload
+        : undefined;
+      const normalizedFiles = Array.isArray(rawFiles)
+        ? rawFiles
+            .map((file) => normalizeFileMeta(file))
+            .filter((file): file is FileMeta => !!file)
+        : [];
+      const eventContent = buildEventContent(content, normalizedFiles);
       const localId =
         typeof crypto?.randomUUID === "function"
           ? crypto.randomUUID()
@@ -595,9 +607,11 @@ export default boot(() => {
         relays: config.relays,
         attempt: 1,
         payload: {
-          content,
+          content: eventContent,
+          text: content,
           attachment,
           tokenPayload: undefined,
+          filesPayload: normalizedFiles.length ? normalizedFiles : undefined,
         },
       };
       const message = messenger.addOutgoingMessage(
@@ -610,6 +624,7 @@ export default boot(() => {
         undefined,
         meta,
       );
+      message.filesPayload = normalizedFiles.length ? normalizedFiles : undefined;
       messenger.started = true;
       messenger.currentConversation = key;
       messenger.scheduleLocalEcho(meta, message);
