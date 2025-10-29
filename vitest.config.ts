@@ -89,6 +89,7 @@ export default defineConfig({
       "test/components/InvoicesTable.behavior.spec.ts",
       "test/components/TokenCarousel.behavior.spec.ts",
       "test/components/TierCard.behavior.spec.ts",
+      "test/components/UserInfo.behavior.spec.ts",
       "test/composables/useClipboard.spec.ts",
       "test/composables/useP2pkDiagnostics.spec.ts",
       "test/composables/usePwaInstall.spec.ts",
