@@ -88,13 +88,45 @@
           {{ time }}
           <q-tooltip>{{ isoTime }}</q-tooltip>
         </span>
-        <q-icon
-          v-if="message.outgoing"
-          :name="statusIcon"
-          size="16px"
-          class="q-ml-xs"
-          :color="statusColor"
-        />
+        <template v-if="message.outgoing">
+          <q-spinner
+            v-if="statusState === 'pending'"
+            size="16px"
+            class="q-ml-xs"
+            color="primary"
+          />
+          <q-icon
+            v-else-if="statusState === 'sent'"
+            name="done"
+            size="16px"
+            class="q-ml-xs"
+            color="positive"
+          />
+          <q-icon
+            v-else-if="statusState === 'failed'"
+            name="error"
+            size="16px"
+            class="q-ml-xs"
+            color="negative"
+          />
+          <q-btn
+            v-if="canRetry"
+            flat
+            dense
+            class="q-ml-xs"
+            size="sm"
+            color="primary"
+            @click="retrySend"
+          >
+            Retry
+          </q-btn>
+          <span
+            v-if="statusState === 'failed' && message.localEcho?.error"
+            class="q-ml-xs text-negative"
+          >
+            {{ message.localEcho.error }}
+          </span>
+        </template>
       </div>
     </div>
     <q-avatar
@@ -169,27 +201,29 @@ const time = computed(() =>
 const isoTime = computed(() =>
   new Date(props.message.created_at * 1000).toISOString(),
 );
-const statusIcon = computed(() => {
+const statusState = computed<"pending" | "sent" | "failed" | null>(() => {
+  const localStatus = props.message.localEcho?.status;
+  if (localStatus) return localStatus;
   const status = props.message.status;
-  switch (status) {
-    case "pending":
-      return "schedule";
-    case "sent_unconfirmed":
-      return "done";
-    case "confirmed":
-      return "done_all";
-    case "failed":
-      return "error";
-    default:
-      return "";
-  }
+  if (status === "confirmed" || status === "sent_unconfirmed") return "sent";
+  if (status === "pending" || status === "sent") return status as "pending" | "sent";
+  if (status === "failed") return "failed";
+  return null;
 });
 
-const statusColor = computed(() => {
-  const status = props.message.status;
-  if (status === "failed") return "negative";
-  return "grey";
+const canRetry = computed(() => {
+  return (
+    props.message.outgoing &&
+    statusState.value === "failed" &&
+    Boolean(props.message.localEcho?.localId)
+  );
 });
+
+const retrySend = async () => {
+  const localId = props.message.localEcho?.localId;
+  if (!localId) return;
+  await messenger.retrySend(localId);
+};
 
 const isDataUrl = computed(() => props.message.content.startsWith("data:"));
 const isSafeDataUrl = computed(() =>

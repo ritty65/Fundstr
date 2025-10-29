@@ -71,6 +71,27 @@ export class E2EApi {
     return this.call("seedConversation", pubkey, messages);
   }
 
+  messengerCreateLocalEcho(config: {
+    pubkey: string;
+    content?: string;
+    relays?: string[];
+    attachment?: { name: string; type: string } | null;
+  }) {
+    return this.call("messengerCreateLocalEcho", config);
+  }
+
+  messengerMarkLocalEchoSent(localId: string) {
+    return this.call("messengerMarkLocalEchoSent", localId);
+  }
+
+  messengerSetSendMock(config: { mode: "success" | "failure"; reason?: string }) {
+    return this.call("messengerSetSendMock", config);
+  }
+
+  messengerClearSendMock() {
+    return this.call("messengerClearSendMock");
+  }
+
   getSnapshot() {
     return this.call<{
       balance: number;

@@ -92,12 +92,7 @@
           <div class="row items-center no-wrap">
             <span>{{ (messenger.sendQueue || []).length }} message(s) failed</span>
             <q-space />
-            <q-btn
-              flat
-              dense
-              label="Retry"
-              @click="messenger.retryFailedMessages"
-            />
+            <q-btn flat dense label="Retry" @click="retryFailedQueue" />
           </div>
         </q-banner>
         <q-spinner v-if="loading" size="lg" color="primary" />
@@ -359,6 +354,18 @@ export default defineComponent({
       }
     };
 
+    const retryFailedQueue = async () => {
+      const queue = Array.isArray(messenger.sendQueue)
+        ? messenger.sendQueue.slice()
+        : [];
+      for (const msg of queue) {
+        const localId = msg?.localEcho?.localId;
+        if (localId) {
+          await messenger.retrySend(localId);
+        }
+      }
+    };
+
     function openSendTokenDialog() {
       if (!selected.value) return;
       (chatSendTokenDialogRef.value as any)?.show();
@@ -408,6 +415,7 @@ export default defineComponent({
       openSetupWizardFromError,
       sendMessage,
       openSendTokenDialog,
+      retryFailedQueue,
       reconnectAll,
       connectedCount,
       totalRelays,
