@@ -30,6 +30,7 @@ var publishEventViaHttpMock: any;
 var requestEventsViaHttpMock: any;
 var useNdkMock: any;
 var ndkInstance: any;
+var sanitizeSpy: any;
 
 const relayStatusRef = ref<
   "connecting" | "connected" | "reconnecting" | "disconnected"
@@ -111,9 +112,10 @@ vi.mock("../../../src/composables/useNdk", () => {
   return { useNdk: useNdkMock };
 });
 
-vi.mock("../../../src/js/message-utils", () => ({
-  sanitizeMessage: vi.fn((s: string) => s),
-}));
+vi.mock("../../../src/js/message-utils", () => {
+  sanitizeSpy = vi.fn((s: string) => s);
+  return { sanitizeMessage: sanitizeSpy };
+});
 
 var notifySpy: any;
 var notifyErrorSpy: any;
@@ -158,6 +160,8 @@ beforeEach(() => {
   subscribeMock.mockClear();
   useNdkMock.mockClear();
   notifySpy.mockClear();
+  sanitizeSpy.mockClear();
+  sanitizeSpy.mockImplementation((s: string) => s);
   notifyErrorSpy.mockClear();
   notifyWarningSpy.mockClear();
   resolvePubkey.mockImplementation((pk: string) => pk);
@@ -198,6 +202,53 @@ describe("messenger store", () => {
     expect(publishEventViaHttpMock).not.toHaveBeenCalled();
   });
 
+  it("sanitizes outgoing messages while preserving emoji", async () => {
+    const messenger = useMessengerStore();
+    (globalThis as any).nostr = {
+      nip04: { encrypt: vi.fn(async () => "enc"), decrypt: vi.fn() },
+      signEvent: vi.fn(async (e) => ({ ...e, id: "id", sig: "sig" })),
+      getPublicKey: vi.fn(async () => "f".repeat(64)),
+    };
+    messenger.relays = ["wss://relay"] as any;
+    publishWithAcksMock.mockResolvedValue({ "wss://relay": { ok: true } });
+    const loadSpy = vi.spyOn(messenger, "loadIdentity").mockResolvedValue();
+    const refreshSpy = vi
+      .spyOn(messenger, "refreshSignerMode")
+      .mockResolvedValue();
+    const signerSpy = vi
+      .spyOn(dmSigner, "getActiveDmSigner")
+      .mockResolvedValue({
+        mode: "extension",
+        signer: {
+          getPubkeyHex: vi.fn(async () => "f".repeat(64)),
+          nip04Encrypt: vi.fn(async () => "enc"),
+          nip04Decrypt: vi.fn(),
+          signEvent: vi.fn(async (event) => ({
+            ...event,
+            id: "id",
+            sig: "sig",
+          })),
+        },
+      } as any);
+
+    sanitizeSpy.mockImplementation((s: string) => s.replace(/\u0000/g, ""));
+
+    const addSpy = vi.spyOn(messenger, "addOutgoingMessage");
+
+    await messenger.sendDm("npub1alice", "Hello🙂\u0000");
+
+    expect(sanitizeSpy).toHaveBeenCalledWith("Hello🙂\u0000");
+    expect(addSpy).toHaveBeenCalled();
+    expect(addSpy.mock.calls[0]?.[1]).toBe("Hello🙂");
+    const added = addSpy.mock.results[0]?.value;
+    expect(added?.content).toBe("Hello🙂");
+
+    signerSpy.mockRestore();
+    loadSpy.mockRestore();
+    refreshSpy.mockRestore();
+    addSpy.mockRestore();
+  });
+
   it("decrypts incoming messages with extension", async () => {
     const messenger = useMessengerStore();
     const decryptFn = vi.fn(async () => "msg");
@@ -213,6 +264,29 @@ describe("messenger store", () => {
       created_at: 1,
     } as any);
     expect(decryptFn).toHaveBeenCalledWith("s", "c?iv=1");
+  });
+
+  it("sanitizes incoming messages while preserving emoji", async () => {
+    const messenger = useMessengerStore();
+    decryptDm.mockResolvedValue("Incoming🙂\u0000");
+    (globalThis as any).nostr = {
+      nip04: { decrypt: vi.fn(async () => "Incoming🙂\u0000"), encrypt: vi.fn() },
+      signEvent: vi.fn(),
+      getPublicKey: vi.fn(async () => "f".repeat(64)),
+    };
+
+    sanitizeSpy.mockImplementation((s: string) => s.replace(/\u0000/g, ""));
+
+    await messenger.addIncomingMessage({
+      id: "evt1",
+      pubkey: "sender",
+      content: "cipher",
+      created_at: 1,
+    } as any);
+
+    expect(sanitizeSpy).toHaveBeenCalledWith("Incoming🙂\u0000");
+    const convo = messenger.conversations["sender"];
+    expect(convo?.[0]?.content).toBe("Incoming🙂");
   });
 
   it("caches failed signer initialization for incoming messages", async () => {
