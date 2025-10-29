@@ -603,13 +603,29 @@ export const useMessengerStore = defineStore("messenger", {
       let delivered = false;
       let sentVia: DmTransportMode | null = null;
       let httpRejected = false;
+      let confirmationTriggered = false;
+
+      const triggerConfirmation = () => {
+        if (confirmationTriggered) return;
+        confirmationTriggered = true;
+        msg.status = "sent_unconfirmed";
+        void this.confirmMessageDelivery(msg.id, event.id);
+      };
 
       const relayTargets = Array.from(new Set(relays?.length ? relays : DM_RELAYS));
 
-      for (const relayUrl of relayTargets) {
-        if (!relayUrl) continue;
-        try {
-          const client = await ensureFundstrRelayClient(relayUrl);
+      try {
+        for (const relayUrl of relayTargets) {
+          if (!relayUrl) continue;
+          let client: Awaited<ReturnType<typeof ensureFundstrRelayClient>> | null = null;
+          try {
+            client = await ensureFundstrRelayClient(relayUrl);
+          } catch (err) {
+            const reason = err instanceof Error ? err.message : String(err ?? "error");
+            relayResults[relayUrl] = { ok: false, reason };
+            continue;
+          }
+
           const authOptions: FundstrRelayAuthOptions = this.dmRequireAuth
             ? {
                 enabled: true,
@@ -619,52 +635,79 @@ export const useMessengerStore = defineStore("messenger", {
               }
             : { enabled: false };
           client.setAuthOptions(authOptions);
-          const result = await client.publishSigned(event);
-          const ack = result.ack;
-          relayResults[relayUrl] = {
-            ok: ack.accepted,
-            reason: ack.message,
-          };
-          if (ack.accepted) {
-            delivered = true;
-            sentVia = "ws";
-            break;
-          }
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err ?? "error");
-          relayResults[relayUrl] = { ok: false, reason };
-        }
-      }
 
-      if (!delivered) {
-        try {
-          const ack = await publishEventViaHttp(event, {
-            url: DM_HTTP_EVENT_URL,
-            timeoutMs: DM_HTTP_ACK_TIMEOUT_MS,
-          });
-          relayResults[DM_HTTP_EVENT_URL] = {
-            ok: ack.accepted,
-            reason: ack.message,
-          };
-          if (ack.accepted) {
-            delivered = true;
-            sentVia = "http";
-          } else {
-            httpRejected = true;
+          try {
+            const result = await client.publishSigned(event);
+            triggerConfirmation();
+            const ack = result.ack;
+            relayResults[relayUrl] = {
+              ok: ack.accepted,
+              reason: ack.message,
+            };
+            if (ack.accepted) {
+              delivered = true;
+              sentVia = "ws";
+              break;
+            }
+          } catch (err) {
+            const reason = err instanceof Error ? err.message : String(err ?? "error");
+            relayResults[relayUrl] = { ok: false, reason };
+            throw err;
           }
-        } catch (httpErr) {
-          const reason =
-            httpErr instanceof Error ? httpErr.message : String(httpErr ?? "error");
-          relayResults[DM_HTTP_EVENT_URL] = { ok: false, reason };
-          console.error("[messenger.sendDm] HTTP fallback failed", httpErr);
         }
+
+        if (!delivered) {
+          try {
+            const ack = await publishEventViaHttp(event, {
+              url: DM_HTTP_EVENT_URL,
+              timeoutMs: DM_HTTP_ACK_TIMEOUT_MS,
+            });
+            triggerConfirmation();
+            relayResults[DM_HTTP_EVENT_URL] = {
+              ok: ack.accepted,
+              reason: ack.message,
+            };
+            if (ack.accepted) {
+              delivered = true;
+              sentVia = "http";
+            } else {
+              httpRejected = true;
+            }
+          } catch (httpErr) {
+            const reason =
+              httpErr instanceof Error ? httpErr.message : String(httpErr ?? "error");
+            relayResults[DM_HTTP_EVENT_URL] = { ok: false, reason };
+            console.error("[messenger.sendDm] HTTP fallback failed", httpErr);
+          }
+        }
+
+        if (!delivered && !httpRejected) {
+          const failedRelays = Object.entries(relayResults).filter(
+            ([, ack]) => !ack?.ok,
+          );
+          const summary = failedRelays
+            .map(([url, ack]) => (ack?.reason ? `${url}: ${ack.reason}` : url))
+            .join(", ");
+          throw new Error(summary ? `Failed to send DM: ${summary}` : "Failed to send DM");
+        }
+      } catch (err) {
+        msg.status = "failed";
+        msg.relayResults = relayResults;
+        if (!this.eventLog.some((m) => m.id === msg.id)) {
+          this.eventLog.push(msg);
+        }
+        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        notifyError(
+          reason && reason.startsWith("Failed to send DM")
+            ? reason
+            : `Failed to send DM: ${reason}`,
+        );
+        return { success: false, event };
       }
 
       msg.relayResults = relayResults;
 
       if (delivered) {
-        msg.status = "sent_unconfirmed";
-        this.pushOwnMessage(event);
         if (sentVia === "ws") {
           this.transportMode = "ws";
         } else if (sentVia === "http") {
@@ -679,17 +722,6 @@ export const useMessengerStore = defineStore("messenger", {
         msg.status = "pending";
         return { success: false, event };
       }
-
-      msg.status = "failed";
-      if (!this.eventLog.some((m) => m.id === msg.id)) {
-        this.eventLog.push(msg);
-      }
-      const failedRelays = Object.entries(relayResults).filter(([, ack]) => !ack?.ok);
-      const summary = failedRelays
-        .map(([url, ack]) => (ack?.reason ? `${url}: ${ack.reason}` : url))
-        .join(", ");
-      notifyError(summary ? `Failed to send DM: ${summary}` : "Failed to send DM");
-      return { success: false, event };
     },
     async sendToken(
       recipient: string,
@@ -934,6 +966,45 @@ export const useMessengerStore = defineStore("messenger", {
       return msg;
     },
 
+    async confirmMessageDelivery(messageId: string, eventId: string) {
+      const targetId = eventId || messageId;
+      if (!targetId) return;
+      const timeoutMs = 8_000;
+      try {
+        const ndk = await useNdk({ requireSigner: false });
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+        const timeoutPromise = new Promise<null>((resolve) => {
+          timeoutHandle = setTimeout(() => resolve(null), timeoutMs);
+        });
+        const ndkEvent = (await Promise.race([
+          ndk.fetchEvent({ ids: [targetId] }, { closeOnEose: true, groupable: false }),
+          timeoutPromise,
+        ])) as NDKEvent | null | undefined;
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        if (!ndkEvent) return;
+
+        const msg =
+          this.eventLog.find((m) => m.id === messageId) ||
+          this.eventLog.find((m) => m.id === targetId);
+        if (!msg) return;
+
+        try {
+          const nostrEvent = await ndkEvent.toNostrEvent();
+          this.pushOwnMessage(nostrEvent as NostrEvent);
+        } catch (conversionErr) {
+          console.error(
+            "[messenger.confirmMessageDelivery] failed to convert event",
+            conversionErr,
+          );
+        }
+
+        if (msg.status === "sent_unconfirmed" || msg.status === "pending") {
+          msg.status = "confirmed";
+        }
+      } catch (err) {
+        console.error("[messenger.confirmMessageDelivery] failed", err);
+      }
+    },
     pushOwnMessage(event: NostrEvent) {
       if (!Array.isArray(this.eventLog)) this.eventLog = [];
       const msg = this.eventLog.find((m) => m.id === event.id);
