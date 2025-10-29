@@ -938,15 +938,20 @@ export const useMessengerStore = defineStore("messenger", {
     },
     async addIncomingMessage(event: NostrEvent, plaintext?: string) {
       if (!Array.isArray(this.eventLog)) this.eventLog = [];
-      await this.loadIdentity();
       const nostr = useNostrStore();
+      if (event.pubkey === nostr.pubkey) {
+        return;
+      }
+      const existing = this.eventLog.find((m) => m.id === event.id);
+      if (existing) {
+        if (existing.outgoing) this.pushOwnMessage(event);
+        return;
+      }
+      await this.loadIdentity();
       let privKey: string | undefined = undefined;
       if (nostr.signerType !== SignerType.NIP07) {
         privKey = nostr.privKeyHex;
         if (!privKey) return;
-      }
-      if (event.pubkey === nostr.pubkey) {
-        return;
       }
       const signerInfo = await getActiveDmSigner();
       if (signerInfo) {
@@ -1131,11 +1136,6 @@ export const useMessengerStore = defineStore("messenger", {
             }
           }
         }
-      }
-      const existing = this.eventLog.find((m) => m.id === event.id);
-      if (existing) {
-        if (existing.outgoing) this.pushOwnMessage(event);
-        return;
       }
       const sanitized = sanitizeMessage(decrypted);
       const msg: MessengerMessage = {
