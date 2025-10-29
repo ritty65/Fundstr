@@ -18,6 +18,8 @@ import type { WalletProof } from "src/types/proofs";
 import { MintQuoteState, MeltQuoteState } from "@cashu/cashu-ts";
 import { currentDateStr } from "src/js/utils";
 import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
+import type { Event as NostrEvent } from "nostr-tools";
+import { useNostrStore } from "src/stores/nostr";
 
 declare global {
   interface Window {
@@ -563,6 +565,8 @@ export default boot(() => {
       content?: string;
       relays?: string[];
       attachment?: { name: string; type: string } | null;
+      eventId?: string;
+      createdAt?: number;
     }) {
       const key = messenger.normalizeKey(config.pubkey);
       const now = Date.now();
@@ -574,9 +578,13 @@ export default boot(() => {
         typeof crypto?.randomUUID === "function"
           ? crypto.randomUUID()
           : `local-${Math.random().toString(36).slice(2)}`;
+      const eventId = config.eventId ?? null;
+      const createdAtSeconds = Math.floor(
+        (config.createdAt ?? now) / 1000,
+      );
       const meta: LocalEchoMeta = {
         localId,
-        eventId: null,
+        eventId,
         status: "pending",
         relayResults: {},
         createdAt: now,
@@ -595,8 +603,8 @@ export default boot(() => {
       const message = messenger.addOutgoingMessage(
         key,
         content,
-        Math.floor(now / 1000),
-        undefined,
+        createdAtSeconds,
+        eventId ?? undefined,
         attachment,
         "pending",
         undefined,
@@ -643,6 +651,35 @@ export default boot(() => {
     },
     messengerClearSendMock() {
       messengerSendMock = null;
+    },
+    messengerDropConversationSubscription() {
+      messenger.pauseConversationSubscription();
+      return true;
+    },
+    messengerResumeConversationSubscription() {
+      return messenger.resumeConversationSubscription("e2e");
+    },
+    messengerDeliverEvent(event: {
+      id: string;
+      pubkey: string;
+      content: string;
+      created_at?: number;
+      tags?: string[][];
+      kind?: number;
+    }) {
+      return messenger.deliverDmEventForTesting({
+        id: event.id,
+        pubkey: event.pubkey,
+        content: event.content,
+        created_at:
+          event.created_at ?? Math.floor(Date.now() / 1000),
+        kind: event.kind ?? 4,
+        tags: event.tags ?? [],
+        sig: "",
+      } as NostrEvent);
+    },
+    getNostrPubkey() {
+      return useNostrStore().pubkey;
     },
     getSnapshot() {
       const mints = useMintsStore();
