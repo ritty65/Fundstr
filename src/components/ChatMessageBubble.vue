@@ -173,13 +173,13 @@ const statusIcon = computed(() => {
   const status = props.message.status;
   switch (status) {
     case "pending":
-      return "query_builder";
-    case "sent":
-      return "check";
+      return "schedule";
+    case "sent_unconfirmed":
+      return "done";
+    case "confirmed":
+      return "done_all";
     case "failed":
       return "error";
-    case "delivered":
-      return "check";
     default:
       return "";
   }
