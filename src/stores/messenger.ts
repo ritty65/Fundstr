@@ -648,6 +648,11 @@ export const useMessengerStore = defineStore("messenger", {
           (p) => p.bucketId === bucketId,
         );
 
+        if (!proofsForBucket.length) {
+          notifyError("No tokens available in the selected bucket.");
+          return false;
+        }
+
         const { sendProofs } = await wallet.send(
           proofsForBucket,
           mintWallet,
