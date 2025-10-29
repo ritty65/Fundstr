@@ -18,6 +18,17 @@ import { useBucketsStore } from "./buckets";
 import { useLockedTokensStore } from "./lockedTokens";
 import { useDmChatsStore } from "./dmChats";
 import { cashuDb, type LockedToken } from "./dexie";
+import {
+  loadConversationState,
+  loadMessengerMessages,
+  messengerDb,
+  removeConversationState,
+  saveMessengerMessage,
+  saveMessengerMessages,
+  writeConversationMeta,
+  type ConversationMetaKey,
+  type ConversationMetaValue,
+} from "./messengerDb";
 import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
 import tokenUtil from "src/js/token";
 import { subscriptionPayload } from "src/utils/receipt-utils";
@@ -199,17 +210,6 @@ let activeConversationSubscription: ConversationSubscriptionHandle | null = null
 let conversationWatchStop: null | (() => void) = null;
 let conversationRelayOff: null | (() => void) = null;
 
-function ensureMap(ref: { value: any }) {
-  if (
-    !ref.value ||
-    typeof ref.value !== "object" ||
-    Array.isArray(ref.value) ||
-    Object.getPrototypeOf(ref.value) !== Object.prototype
-  ) {
-    ref.value = {};
-  }
-}
-
 let lastDecryptError = 0;
 
 const SIGNER_INIT_RETRY_WINDOW_MS = 30_000;
@@ -360,31 +360,11 @@ export const useMessengerStore = defineStore("messenger", {
       new Set(userRelays.length ? userRelays : DEFAULT_RELAYS),
     );
 
-    const conversations = useLocalStorage<Record<string, MessengerMessage[]>>(
-      storageKey("conversations"),
-      {} as Record<string, MessengerMessage[]>,
-    );
-    ensureMap(conversations);
-    const unreadCounts = useLocalStorage<Record<string, number>>(
-      storageKey("unread"),
-      {} as Record<string, number>,
-    );
-    ensureMap(unreadCounts);
-    const pinned = useLocalStorage<Record<string, boolean>>(
-      storageKey("pinned"),
-      {} as Record<string, boolean>,
-    );
-    ensureMap(pinned);
-    const aliases = useLocalStorage<Record<string, string>>(
-      storageKey("aliases"),
-      {} as Record<string, string>,
-    );
-    ensureMap(aliases);
-    const eventLog = useLocalStorage<MessengerMessage[]>(
-      storageKey("eventLog"),
-      [] as MessengerMessage[],
-    );
-    if (!Array.isArray(eventLog.value)) eventLog.value = [];
+    const conversations = ref<Record<string, MessengerMessage[]>>({});
+    const unreadCounts = ref<Record<string, number>>({});
+    const pinned = ref<Record<string, boolean>>({});
+    const aliases = ref<Record<string, string>>({});
+    const eventLog = ref<MessengerMessage[]>([]);
     const eventMap: Record<string, MessengerMessage> = {};
     const localEchoTimeouts: Record<string, ReturnType<typeof setTimeout> | null> = {};
     const localEchoIndex: Record<string, MessengerMessage> = {};
@@ -396,18 +376,227 @@ export const useMessengerStore = defineStore("messenger", {
     );
     const signerInitCache = ref<SignerInitOutcome | null>(null);
 
-    for (const message of eventLog.value) {
-      if (!message || typeof message !== "object") continue;
-      if (message.id) {
-        eventMap[message.id] = message;
+    let loadGenerationCounter = 0;
+    let mutationGenerationCounter = 0;
+
+    const recordMutation = () => {
+      mutationGenerationCounter += 1;
+    };
+
+    const rebuildIndexes = (messages: MessengerMessage[] = []) => {
+      Object.values(localEchoTimeouts).forEach((timer) => {
+        if (timer) clearTimeout(timer);
+      });
+      for (const key of Object.keys(localEchoTimeouts)) {
+        delete localEchoTimeouts[key];
       }
-      if (message.localEcho?.eventId) {
-        eventMap[message.localEcho.eventId] = message;
+      for (const key of Object.keys(localEchoIndex)) {
+        delete localEchoIndex[key];
       }
-      if (message.localEcho?.localId) {
-        localEchoIndex[message.localEcho.localId] = message;
+      for (const key of Object.keys(eventMap)) {
+        delete eventMap[key];
       }
-    }
+      for (const message of messages) {
+        if (!message || typeof message !== "object") continue;
+        if (message.id) {
+          eventMap[message.id] = message;
+        }
+        const echo = message.localEcho;
+        if (echo?.eventId) {
+          eventMap[echo.eventId] = message;
+        }
+        if (echo?.localId) {
+          localEchoIndex[echo.localId] = message;
+        }
+      }
+    };
+
+    const migrateLegacyStorage = async () => {
+      if (messengerDb.migrationVersion) return;
+      const legacy: Record<
+        string,
+        {
+          conversations: Record<string, MessengerMessage[]>;
+          eventLog: MessengerMessage[];
+          unread: Record<string, number>;
+          pinned: Record<string, boolean>;
+          aliases: Record<string, string>;
+        }
+      > = {};
+      const prefix = "cashu.messenger.";
+      for (let idx = 0; idx < localStorage.length; idx += 1) {
+        const key = localStorage.key(idx);
+        if (!key || !key.startsWith(prefix)) continue;
+        const remainder = key.slice(prefix.length);
+        const dotIndex = remainder.indexOf(".");
+        if (dotIndex <= 0) continue;
+        const ownerKey = remainder.slice(0, dotIndex);
+        const suffix = remainder.slice(dotIndex + 1);
+        try {
+          const raw = localStorage.getItem(key);
+          if (raw === null) continue;
+          const parsed = JSON.parse(raw);
+          if (!legacy[ownerKey]) {
+            legacy[ownerKey] = {
+              conversations: {},
+              eventLog: [],
+              unread: {},
+              pinned: {},
+              aliases: {},
+            };
+          }
+          const bucket = legacy[ownerKey];
+          switch (suffix) {
+            case "conversations":
+              if (parsed && typeof parsed === "object") {
+                bucket.conversations = parsed as Record<
+                  string,
+                  MessengerMessage[]
+                >;
+              }
+              break;
+            case "eventLog":
+              if (Array.isArray(parsed)) {
+                bucket.eventLog = parsed as MessengerMessage[];
+              }
+              break;
+            case "unread":
+              if (parsed && typeof parsed === "object") {
+                bucket.unread = parsed as Record<string, number>;
+              }
+              break;
+            case "pinned":
+              if (parsed && typeof parsed === "object") {
+                bucket.pinned = parsed as Record<string, boolean>;
+              }
+              break;
+            case "aliases":
+              if (parsed && typeof parsed === "object") {
+                bucket.aliases = parsed as Record<string, string>;
+              }
+              break;
+            default:
+              break;
+          }
+        } catch (err) {
+          console.warn("[messenger.migration] failed to parse", key, err);
+        }
+      }
+
+      const ownerKeys = Object.keys(legacy);
+      for (const ownerKey of ownerKeys) {
+        const data = legacy[ownerKey];
+        const messageMap = new Map<string, MessengerMessage>();
+        const addMessage = (msg: MessengerMessage) => {
+          if (!msg || typeof msg !== "object") return;
+          const id = msg.id || `${Date.now()}-${Math.random()}`;
+          msg.id = id;
+          messageMap.set(id, msg);
+        };
+        if (Array.isArray(data.eventLog)) {
+          for (const msg of data.eventLog) addMessage(msg);
+        }
+        if (data.conversations && typeof data.conversations === "object") {
+          for (const msgs of Object.values(data.conversations)) {
+            if (!Array.isArray(msgs)) continue;
+            for (const msg of msgs) addMessage(msg);
+          }
+        }
+        const allMessages = Array.from(messageMap.values());
+        if (allMessages.length) {
+          await saveMessengerMessages(ownerKey, allMessages);
+        }
+        if (data.conversations) {
+          for (const [pubkey, list] of Object.entries(data.conversations)) {
+            const ids = Array.isArray(list)
+              ? list
+                  .map((msg) => {
+                    const id = msg?.id;
+                    return id ? String(id) : null;
+                  })
+                  .filter((id): id is string => !!id)
+              : [];
+            if (ids.length) {
+              await writeConversationMeta(ownerKey, pubkey, "conversation", ids);
+            }
+          }
+        }
+        for (const [pubkey, value] of Object.entries(data.unread || {})) {
+          if (typeof value === "number") {
+            await writeConversationMeta(ownerKey, pubkey, "unread", value);
+          }
+        }
+        for (const [pubkey, value] of Object.entries(data.pinned || {})) {
+          if (typeof value === "boolean") {
+            await writeConversationMeta(ownerKey, pubkey, "pinned", value);
+          }
+        }
+        for (const [pubkey, value] of Object.entries(data.aliases || {})) {
+          if (typeof value === "string") {
+            await writeConversationMeta(ownerKey, pubkey, "alias", value);
+          }
+        }
+      }
+      messengerDb.markMigrationComplete(1);
+    };
+
+    const loadOwnerState = async (owner: string) => {
+      try {
+        const loadToken = ++loadGenerationCounter;
+        const mutationToken = mutationGenerationCounter;
+        await migrateLegacyStorage();
+        const [messages, meta] = await Promise.all([
+          loadMessengerMessages(owner),
+          loadConversationState(owner),
+        ]);
+        if (loadToken !== loadGenerationCounter) {
+          return;
+        }
+        if (mutationGenerationCounter !== mutationToken) {
+          return;
+        }
+        const grouped: Record<string, MessengerMessage[]> = {};
+        const byId = new Map<string, MessengerMessage>();
+        messages.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+        for (const msg of messages) {
+          if (!msg || typeof msg !== "object") continue;
+          if (!msg.id) {
+            msg.id = `${Date.now()}-${Math.random()}`;
+          }
+          byId.set(msg.id, msg);
+        }
+        for (const [pubkey, ids] of Object.entries(meta.conversations)) {
+          const arr: MessengerMessage[] = [];
+          for (const id of ids) {
+            const found = byId.get(id);
+            if (found) arr.push(found);
+          }
+          if (arr.length) {
+            grouped[pubkey] = arr;
+          }
+        }
+        for (const msg of messages) {
+          const key = msg.pubkey;
+          if (!grouped[key]) grouped[key] = [];
+          if (!grouped[key].includes(msg)) {
+            grouped[key].push(msg);
+          }
+        }
+        conversations.value = grouped;
+        eventLog.value = messages;
+        unreadCounts.value = { ...meta.unread };
+        pinned.value = { ...meta.pinned };
+        aliases.value = { ...meta.aliases };
+        rebuildIndexes(messages);
+        mutationGenerationCounter += 1;
+      } catch (err) {
+        console.error("[messenger] failed to load state", err);
+      }
+    };
+
+    const ownerComputed = computed(() => nostrStore.pubkey || "anon");
+
+    void loadOwnerState(ownerComputed.value);
 
     watch(
       () => nostrStore.pubkey,
@@ -417,18 +606,7 @@ export const useMessengerStore = defineStore("messenger", {
         pinned.value = {} as any;
         aliases.value = {} as any;
         eventLog.value = [] as any;
-        Object.values(localEchoTimeouts).forEach((timer) => {
-          if (timer) clearTimeout(timer);
-        });
-        for (const key of Object.keys(localEchoTimeouts)) {
-          delete localEchoTimeouts[key];
-        }
-        for (const key of Object.keys(localEchoIndex)) {
-          delete localEchoIndex[key];
-        }
-        for (const key of Object.keys(eventMap)) {
-          delete eventMap[key];
-        }
+        rebuildIndexes([]);
         conversationSubscriptionRef.value = null;
         activeConversationSubscription?.stop();
         activeConversationSubscription = null;
@@ -437,6 +615,7 @@ export const useMessengerStore = defineStore("messenger", {
         conversationRelayOff?.();
         conversationRelayOff = null;
         signerInitCache.value = null;
+        void loadOwnerState(ownerComputed.value);
       },
     );
 
@@ -466,6 +645,9 @@ export const useMessengerStore = defineStore("messenger", {
       localEchoTimeouts,
       localEchoIndex,
       conversationSubscription: conversationSubscriptionRef,
+      rebuildIndexes,
+      loadOwnerState,
+      recordMutation,
     };
   },
   getters: {
@@ -485,6 +667,65 @@ export const useMessengerStore = defineStore("messenger", {
     },
   },
   actions: {
+    getOwnerKey(): string {
+      const nostr = useNostrStore();
+      return nostr?.pubkey || "anon";
+    },
+    async persistMessage(msg: MessengerMessage) {
+      if (!msg) return;
+      try {
+        await saveMessengerMessage(this.getOwnerKey(), msg);
+      } catch (err) {
+        console.error("[messenger.persistMessage] failed", err);
+      }
+    },
+    async persistConversationMeta(pubkey: string, key: ConversationMetaKey) {
+      const normalized = this.normalizeKey(pubkey);
+      if (!normalized) return;
+      const owner = this.getOwnerKey();
+      try {
+        let value: ConversationMetaValue = null;
+        if (key === "unread") {
+          value = this.unreadCounts?.[normalized] ?? 0;
+        } else if (key === "pinned") {
+          const pinnedValue = this.pinned?.[normalized];
+          value = typeof pinnedValue === "boolean" ? pinnedValue : null;
+        } else if (key === "alias") {
+          const aliasValue = this.aliases?.[normalized];
+          value = aliasValue && aliasValue.trim() ? aliasValue : null;
+        } else if (key === "conversation") {
+          const conv = this.conversations?.[normalized] ?? [];
+          value = Array.isArray(conv)
+            ? conv
+                .map((entry) => entry?.id)
+                .filter((id): id is string => typeof id === "string" && id.length > 0)
+            : [];
+        }
+        if (value === null || value === undefined || value === "") {
+          await writeConversationMeta(owner, normalized, key, null);
+        } else {
+          await writeConversationMeta(owner, normalized, key, value);
+        }
+      } catch (err) {
+        console.error(
+          "[messenger.persistConversationMeta] failed",
+          { pubkey: normalized, key },
+          err,
+        );
+      }
+    },
+    async persistConversationSnapshot(pubkey: string) {
+      await this.persistConversationMeta(pubkey, "conversation");
+    },
+    async removeConversationStorage(pubkey: string) {
+      const normalized = this.normalizeKey(pubkey);
+      if (!normalized) return;
+      try {
+        await removeConversationState(this.getOwnerKey(), normalized);
+      } catch (err) {
+        console.error("[messenger.removeConversationStorage] failed", err);
+      }
+    },
     findMessageByLocalId(localId: string): MessengerMessage | undefined {
       if (!localId) return undefined;
       const indexed = this.localEchoIndex?.[localId];
@@ -517,6 +758,8 @@ export const useMessengerStore = defineStore("messenger", {
       this.localEchoTimeouts[meta.localId] = setTimeout(() => {
         void this.handleLocalEchoTimeout(meta.localId);
       }, LOCAL_ECHO_TIMEOUT_MS);
+      this.recordMutation();
+      void this.persistMessage(msg);
     },
     registerMessage(
       msg: MessengerMessage,
@@ -536,6 +779,9 @@ export const useMessengerStore = defineStore("messenger", {
       for (const id of ids) {
         this.eventMap[id] = msg;
       }
+      this.recordMutation();
+      void this.persistMessage(msg);
+      void this.persistConversationSnapshot(msg.pubkey);
     },
     async createConversationSubscription(
       pubkey: string,
@@ -826,6 +1072,8 @@ export const useMessengerStore = defineStore("messenger", {
       }
       msg.relayResults = next;
       meta.relayResults = metaNext;
+      this.recordMutation();
+      void this.persistMessage(msg);
     },
     markLocalEchoSent(
       msg: MessengerMessage,
@@ -859,6 +1107,8 @@ export const useMessengerStore = defineStore("messenger", {
           latency,
         });
       }
+      this.recordMutation();
+      void this.persistMessage(msg);
     },
     markLocalEchoFailed(
       msg: MessengerMessage,
@@ -876,6 +1126,8 @@ export const useMessengerStore = defineStore("messenger", {
       meta.error = reason;
       msg.status = "failed";
       this.mergeRelayAckResults(msg, meta, relayResults);
+      this.recordMutation();
+      void this.persistMessage(msg);
     },
     async handleLocalEchoTimeout(localId: string) {
       const msg = this.findMessageByLocalId(localId);
@@ -1126,6 +1378,20 @@ export const useMessengerStore = defineStore("messenger", {
         msg.pubkey = normalized;
         return true;
       });
+      for (const key of Object.keys(this.conversations)) {
+        void this.persistConversationSnapshot(key);
+      }
+      for (const key of Object.keys(this.unreadCounts)) {
+        void this.persistConversationMeta(key, "unread");
+      }
+      for (const key of Object.keys(this.pinned)) {
+        void this.persistConversationMeta(key, "pinned");
+      }
+      for (const key of Object.keys(this.aliases)) {
+        void this.persistConversationMeta(key, "alias");
+      }
+      this.rebuildIndexes(this.eventLog);
+      this.recordMutation();
     },
     async loadIdentity(options: { refresh?: boolean } = {}) {
       const { refresh = false } = options;
@@ -1335,7 +1601,11 @@ export const useMessengerStore = defineStore("messenger", {
       if (event.kind) {
         msg.protocol = event.kind === 1059 ? "nip17" : "nip04";
       }
-      this.registerMessage(msg, [meta.eventId, event.id]);
+      const previousId = msg.id;
+      if (event.id) {
+        msg.id = event.id;
+      }
+      this.registerMessage(msg, [meta.eventId, event.id, previousId, meta.localId]);
 
       let relayResults: Record<string, RelayAck> = {};
       let delivered = false;
@@ -1348,7 +1618,8 @@ export const useMessengerStore = defineStore("messenger", {
       const ensureConfirmation = () => {
         if (confirmationTriggered) return;
         confirmationTriggered = true;
-        void this.confirmMessageDelivery(msg.id, event.id);
+        const confirmId = meta.eventId || msg.id;
+        void this.confirmMessageDelivery(confirmId, event.id);
       };
 
       try {
@@ -1778,6 +2049,8 @@ export const useMessengerStore = defineStore("messenger", {
       }
       eventLogRef.value.push(msg);
       this.registerMessage(msg);
+      this.recordMutation();
+      void this.persistConversationSnapshot(pubkey);
       return msg;
     },
 
@@ -1926,6 +2199,9 @@ export const useMessengerStore = defineStore("messenger", {
           };
         }
       } catch {}
+      void this.persistConversationSnapshot(msg.pubkey);
+      void this.persistMessage(msg);
+      this.recordMutation();
     },
     async addIncomingMessage(event: NostrEvent, plaintext?: string) {
       if (!Array.isArray(this.eventLog)) this.eventLog = [];
@@ -2178,6 +2454,7 @@ export const useMessengerStore = defineStore("messenger", {
           const snippet = target.content.slice(0, 40);
           notifySuccess(snippet);
         }
+        void this.persistConversationMeta(event.pubkey, "unread");
       } else if (mergeResult.deduped) {
         emitDmCounter("dm_dedup_drop", {
           eventId: event.id,
@@ -2186,6 +2463,9 @@ export const useMessengerStore = defineStore("messenger", {
           source: "incoming",
         });
       }
+      void this.persistConversationSnapshot(event.pubkey);
+      void this.persistMessage(target);
+      this.recordMutation();
     },
 
     async start() {
@@ -2331,10 +2611,13 @@ export const useMessengerStore = defineStore("messenger", {
       if (!pubkey) return;
       if (!this.conversations[pubkey]) {
         this.conversations[pubkey] = [];
+        void this.persistConversationSnapshot(pubkey);
       }
       if (this.unreadCounts[pubkey] === undefined) {
         this.unreadCounts[pubkey] = 0;
+        void this.persistConversationMeta(pubkey, "unread");
       }
+      this.recordMutation();
     },
 
     startChat(pubkey: string) {
@@ -2350,12 +2633,16 @@ export const useMessengerStore = defineStore("messenger", {
       pubkey = this.normalizeKey(pubkey);
       if (!pubkey) return;
       this.unreadCounts[pubkey] = 0;
+      void this.persistConversationMeta(pubkey, "unread");
+      this.recordMutation();
     },
 
     togglePin(pubkey: string) {
       pubkey = this.normalizeKey(pubkey);
       if (!pubkey) return;
       this.pinned[pubkey] = !this.pinned[pubkey];
+      void this.persistConversationMeta(pubkey, "pinned");
+      this.recordMutation();
     },
 
     deleteConversation(pubkey: string) {
@@ -2365,9 +2652,11 @@ export const useMessengerStore = defineStore("messenger", {
       delete this.unreadCounts[pubkey];
       delete this.pinned[pubkey];
       delete this.aliases[pubkey];
+      void this.removeConversationStorage(pubkey);
       if (this.currentConversation === pubkey) {
         this.currentConversation = "";
       }
+      this.recordMutation();
     },
 
     setAlias(pubkey: string, alias: string) {
@@ -2382,6 +2671,8 @@ export const useMessengerStore = defineStore("messenger", {
       } else {
         delete this.aliases[pubkey];
       }
+      void this.persistConversationMeta(pubkey, "alias");
+      this.recordMutation();
     },
 
     getAlias(pubkey: string): string | undefined {
