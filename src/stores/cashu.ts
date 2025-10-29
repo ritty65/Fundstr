@@ -247,7 +247,7 @@ export const useCashuStore = defineStore("cashu", {
 
         const tokenStr = proofsStore.serializeProofs(sendProofs);
         try {
-          const { success, event } = await messenger.sendDm(
+          const { success } = await messenger.sendDm(
             creator.nostrPubkey,
             JSON.stringify(
               subscriptionPayload(
@@ -407,12 +407,12 @@ export const useCashuStore = defineStore("cashu", {
           const token = proofsStore.serializeProofs(sendProofs);
 
           try {
-            const { success, event } = await messenger.sendDm(
-              profile.hexPub,
-              JSON.stringify(
-                subscriptionPayload(token, unlockDate, {
-                  subscription_id: subscriptionId,
-                  tier_id: "nutzap",
+          const { success } = await messenger.sendDm(
+            profile.hexPub,
+            JSON.stringify(
+              subscriptionPayload(token, unlockDate, {
+                subscription_id: subscriptionId,
+                tier_id: "nutzap",
                   month_index: i + 1,
                   total_months: periods,
                 }),
