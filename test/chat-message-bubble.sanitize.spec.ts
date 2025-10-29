@@ -26,4 +26,28 @@ describe("ChatMessageBubble", () => {
     });
     expect(wrapper.find("a").exists()).toBe(false);
   });
+
+  it("renders emoji and non-ASCII content", async () => {
+    (window as any).windowMixin = {};
+    const ChatMessageBubble = (
+      await import("src/components/ChatMessageBubble.vue")
+    ).default;
+    const pinia = createTestingPinia({ createSpy: vi.fn });
+    const nostr = useNostrStore();
+    nostr.pubkey = "pk";
+    nostr.getProfile = vi.fn().mockResolvedValue(null);
+    const message = {
+      id: "2",
+      pubkey: "friend",
+      content: "Hello 👋 Привет 😊",
+      created_at: 0,
+      outgoing: false,
+    };
+    const wrapper = shallowMount(ChatMessageBubble, {
+      props: { message },
+      global: { plugins: [pinia] },
+    });
+
+    expect(wrapper.text()).toContain("Hello 👋 Привет 😊");
+  });
 });
