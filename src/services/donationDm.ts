@@ -24,6 +24,9 @@ export interface DonationDmResult {
   success: boolean;
   payload: DonationDmPayload;
   event?: unknown;
+  localId?: string;
+  eventId?: string | null;
+  confirmationPending?: boolean;
   error?: unknown;
 }
 
@@ -57,7 +60,13 @@ export async function sendDonationDm(
   sendFn: (
     targetPubkey: string,
     content: string,
-  ) => Promise<{ success?: boolean; event?: unknown }>,
+  ) => Promise<{
+    success?: boolean;
+    event?: unknown;
+    localId?: string;
+    eventId?: string | null;
+    confirmationPending?: boolean;
+  }>,
   input: DonationDmInput,
 ): Promise<DonationDmResult> {
   const payload = createDonationDmPayload(input);
@@ -70,6 +79,9 @@ export async function sendDonationDm(
       success: !!result?.success,
       payload,
       event: result?.event,
+      localId: result?.localId,
+      eventId: (result as any)?.eventId ?? undefined,
+      confirmationPending: result?.confirmationPending,
     };
   } catch (error) {
     return {

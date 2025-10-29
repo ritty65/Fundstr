@@ -25,6 +25,12 @@ import {
   removeConversationState,
   saveMessengerMessage,
   saveMessengerMessages,
+  getDueOutboxItems,
+  rankRelays,
+  recordRelayResult,
+  upsertOutbox,
+  updateOutboxStatus,
+  type MessengerOutboxRecord,
   writeConversationMeta,
   type ConversationMetaKey,
   type ConversationMetaValue,
@@ -236,18 +242,6 @@ function parseSubscriptionPaymentPayload(obj: any):
   };
 }
 
-function generateContentTags(
-  content?: unknown,
-  tags?: unknown,
-): { content: string; tags: string[][] } {
-  const safeContent =
-    typeof content === "string" && content
-      ? sanitizeMessage(content)
-      : "";
-  const safeTags: string[][] = Array.isArray(tags) ? (tags as string[][]) : [];
-  return { content: safeContent, tags: safeTags };
-}
-
 export interface SubscriptionPayment {
   token: string;
   subscription_id: string;
@@ -307,6 +301,8 @@ type SendDmResult = {
   event: NostrEvent | null;
   confirmationPending?: boolean;
   httpAck?: HttpPublishAck | null;
+  localId?: string;
+  eventId?: string | null;
 };
 
 const NON_RETRYABLE_ACK_PATTERNS = [
@@ -321,6 +317,15 @@ const NON_RETRYABLE_ACK_PATTERNS = [
 ];
 
 const LOCAL_ECHO_TIMEOUT_MS = 5_000;
+
+const MESSENGER_OUTBOX_ENABLED = true;
+const OUTBOX_DELIVERY_QUORUM = 2;
+const OUTBOX_BACKOFF_BASE_MS = 2_000;
+const OUTBOX_BACKOFF_MAX_MS = 120_000;
+const OUTBOX_BACKOFF_JITTER_RATIO = 0.25;
+const OUTBOX_MAX_ATTEMPTS = 6;
+const IS_TEST_ENV =
+  typeof process !== "undefined" && process?.env?.VITEST === "true";
 
 function isNonRetryableHttpAck(ack: HttpPublishAck | null | undefined): boolean {
   if (!ack?.message) return false;
@@ -645,6 +650,10 @@ export const useMessengerStore = defineStore("messenger", {
       localEchoTimeouts,
       localEchoIndex,
       conversationSubscription: conversationSubscriptionRef,
+      outboxEnabled: MESSENGER_OUTBOX_ENABLED && !IS_TEST_ENV,
+      outboxQuorum: OUTBOX_DELIVERY_QUORUM,
+      outboxPumpActive: false,
+      outboxPumpRequested: false,
       rebuildIndexes,
       loadOwnerState,
       recordMutation,
@@ -670,6 +679,15 @@ export const useMessengerStore = defineStore("messenger", {
     getOwnerKey(): string {
       const nostr = useNostrStore();
       return nostr?.pubkey || "anon";
+    },
+    computeBackoffMs(attempt: number): number {
+      const normalizedAttempt = Number.isFinite(attempt) ? Math.max(1, Math.floor(attempt)) : 1;
+      const exponential = OUTBOX_BACKOFF_BASE_MS * Math.pow(2, normalizedAttempt - 1);
+      const capped = Math.min(OUTBOX_BACKOFF_MAX_MS, exponential);
+      const jitterRange = capped * OUTBOX_BACKOFF_JITTER_RATIO;
+      const jitterOffset = jitterRange * (Math.random() * 2 - 1);
+      const value = Math.max(OUTBOX_BACKOFF_BASE_MS, Math.round(capped + jitterOffset));
+      return value;
     },
     async persistMessage(msg: MessengerMessage) {
       if (!msg) return;
@@ -746,18 +764,22 @@ export const useMessengerStore = defineStore("messenger", {
     },
     scheduleLocalEcho(meta: LocalEchoMeta, msg: MessengerMessage) {
       this.clearLocalEchoTimer(meta.localId);
-      meta.timerStartedAt = Date.now();
-      meta.updatedAt = meta.timerStartedAt;
+      const now = Date.now();
+      const shouldStartTimer = !this.outboxEnabled;
+      meta.timerStartedAt = shouldStartTimer ? now : null;
+      meta.updatedAt = now;
       if (!meta.createdAt) {
-        meta.createdAt = meta.timerStartedAt;
+        meta.createdAt = now;
       }
       meta.status = "pending";
       msg.localEcho = meta;
       msg.status = "pending";
       this.localEchoIndex[meta.localId] = msg;
-      this.localEchoTimeouts[meta.localId] = setTimeout(() => {
-        void this.handleLocalEchoTimeout(meta.localId);
-      }, LOCAL_ECHO_TIMEOUT_MS);
+      if (shouldStartTimer) {
+        this.localEchoTimeouts[meta.localId] = setTimeout(() => {
+          void this.handleLocalEchoTimeout(meta.localId);
+        }, LOCAL_ECHO_TIMEOUT_MS);
+      }
       this.recordMutation();
       void this.persistMessage(msg);
     },
@@ -990,10 +1012,12 @@ export const useMessengerStore = defineStore("messenger", {
             { force: true },
           );
         };
-        ndk.pool.on("relay:connect", onRelayConnect);
-        conversationRelayOff = () => {
-          ndk.pool.off?.("relay:connect", onRelayConnect);
-        };
+        if (typeof ndk?.pool?.on === "function") {
+          ndk.pool.on("relay:connect", onRelayConnect);
+          conversationRelayOff = () => {
+            ndk.pool.off?.("relay:connect", onRelayConnect);
+          };
+        }
         conversationWatchStop = watch(
           () => this.currentConversation,
           (next, prev) => {
@@ -1497,8 +1521,9 @@ export const useMessengerStore = defineStore("messenger", {
     ): Promise<SendDmResult> {
       recipient = this.normalizeKey(recipient);
       if (!recipient) return { success: false, event: null };
-
-      const { content: safeMessage } = generateContentTags(message);
+      const baseMessage =
+        typeof message === "string" && message.length > 0 ? message : "";
+      const safeMessage = sanitizeMessage(baseMessage);
       const relayTargets = relays ? Array.from(new Set(relays)) : undefined;
       const now = Date.now();
       const meta: LocalEchoMeta = {
@@ -1531,17 +1556,68 @@ export const useMessengerStore = defineStore("messenger", {
         meta,
       );
       msg.relayResults = {};
+      msg.tokenPayload = tokenPayload;
       this.scheduleLocalEcho(meta, msg);
 
-      return await this.executeSendWithMeta({
-        msg,
-        meta,
+      if (!this.outboxEnabled) {
+        return await this.executeSendWithMeta({
+          msg,
+          meta,
+          recipient,
+          safeMessage,
+          attachment,
+          tokenPayload,
+          relayTargets,
+        });
+      }
+
+      const outboxPayload = {
         recipient,
-        safeMessage,
+        content: safeMessage,
         attachment,
         tokenPayload,
-        relayTargets,
-      });
+        created_at: msg.created_at,
+      };
+
+      const record: MessengerOutboxRecord = {
+        id: meta.localId,
+        owner: this.getOwnerKey(),
+        messageId: msg.id,
+        localId: meta.localId,
+        recipient,
+        status: "queued",
+        nextAttemptAt: now,
+        attemptCount: 0,
+        payload: outboxPayload,
+        relays: relayTargets,
+        lastError: null,
+        relayResults: {},
+        ackCount: 0,
+        firstAckAt: null,
+        lastAckAt: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      try {
+        await upsertOutbox(record);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        this.markLocalEchoFailed(msg, meta, reason);
+        notifyError(`Failed to queue DM: ${reason}`);
+        return { success: false, event: null };
+      }
+
+      emitDmCounter("dm_outbox_queued", { localId: meta.localId });
+      void this.outboxPump();
+
+      return {
+        success: true,
+        event: null,
+        confirmationPending: true,
+        localId: meta.localId,
+        eventId: null,
+      };
     },
     async executeSendWithMeta(options: {
       msg: MessengerMessage;
@@ -1793,6 +1869,435 @@ export const useMessengerStore = defineStore("messenger", {
 
       return { success: false, event };
     },
+    async publishWithQuorum(options: {
+      event: NostrEvent;
+      relays?: string[];
+      signer: SignerType;
+      allowHttpFallback?: boolean;
+    }): Promise<{
+      ackMap: Record<string, RelayAck>;
+      acceptedCount: number;
+      firstAck: { transport: DmTransportMode; relay: string; ack: RelayAck } | null;
+      httpAck: HttpPublishAck | null;
+      nonRetryableHttpAck: boolean;
+      lastError?: string;
+    }> {
+      const {
+        event,
+        relays,
+        signer,
+        allowHttpFallback = this.httpFallbackEnabled,
+      } = options;
+      const ackMap: Record<string, RelayAck> = {};
+      let acceptedCount = 0;
+      let firstAck: {
+        transport: DmTransportMode;
+        relay: string;
+        ack: RelayAck;
+      } | null = null;
+      let httpAck: HttpPublishAck | null = null;
+      let nonRetryableHttpAck = false;
+      let lastError: string | undefined;
+
+      const relayCandidates = Array.isArray(relays) && relays.length
+        ? relays
+        : Array.isArray(this.relays) && this.relays.length
+          ? Array.from(new Set(this.relays))
+          : Array.from(new Set([...DM_RELAYS]));
+
+      for (const relayUrl of relayCandidates) {
+        if (!relayUrl) continue;
+        if (acceptedCount >= this.outboxQuorum) break;
+        let ackRecord: RelayAck;
+        try {
+          const client = await ensureFundstrRelayClient(relayUrl);
+          const authOptions: FundstrRelayAuthOptions = this.dmRequireAuth
+            ? {
+                enabled: true,
+                cacheMs: DM_AUTH_CACHE_MS,
+                handler: async (challenge, url) =>
+                  await buildAuthEvent(signer, challenge, url),
+              }
+            : { enabled: false };
+          client.setAuthOptions(authOptions);
+          const result = await client.publishSigned(event);
+          const ack = result.ack;
+          ackRecord = {
+            ok: ack.accepted,
+            reason: ack.message,
+          };
+          ackMap[relayUrl] = ackRecord;
+          await recordRelayResult(relayUrl, ack.accepted);
+          if (ack.accepted) {
+            acceptedCount += 1;
+            if (!firstAck) {
+              firstAck = { transport: "ws", relay: relayUrl, ack: ackRecord };
+            }
+          } else if (ack.message) {
+            lastError = ack.message;
+          }
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err ?? "error");
+          ackRecord = { ok: false, reason };
+          ackMap[relayUrl] = ackRecord;
+          await recordRelayResult(relayUrl, false);
+          lastError = reason;
+        }
+      }
+
+      if (acceptedCount >= this.outboxQuorum) {
+        return { ackMap, acceptedCount, firstAck, httpAck, nonRetryableHttpAck, lastError };
+      }
+
+      if (allowHttpFallback) {
+        try {
+          const ack = await publishEventViaHttp(event, {
+            url: DM_HTTP_EVENT_URL,
+            timeoutMs: DM_HTTP_ACK_TIMEOUT_MS,
+          });
+          const ackRecord: RelayAck = {
+            ok: ack.accepted,
+            reason: ack.message,
+          };
+          ackMap[DM_HTTP_EVENT_URL] = ackRecord;
+          httpAck = ack;
+          if (ack.accepted) {
+            acceptedCount += 1;
+            if (!firstAck) {
+              firstAck = {
+                transport: "http",
+                relay: DM_HTTP_EVENT_URL,
+                ack: ackRecord,
+              };
+            }
+          } else {
+            nonRetryableHttpAck = isNonRetryableHttpAck(ack);
+            if (ack.message) {
+              lastError = ack.message;
+            }
+          }
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err ?? "error");
+          ackMap[DM_HTTP_EVENT_URL] = { ok: false, reason };
+          lastError = reason;
+        }
+      }
+
+      return { ackMap, acceptedCount, firstAck, httpAck, nonRetryableHttpAck, lastError };
+    },
+    async deliverOutboxItem(record: MessengerOutboxRecord): Promise<void> {
+      if (!this.outboxEnabled) return;
+      if (!record) return;
+      const localId = record.localId || record.id;
+      const existingByLocal = localId ? this.findMessageByLocalId(localId) : undefined;
+      const existingByMessage = record.messageId
+        ? (this.eventMap?.[record.messageId] as MessengerMessage | undefined)
+        : undefined;
+      const msg = existingByLocal || existingByMessage;
+      if (!msg) {
+        await updateOutboxStatus(record.id, "failed_perm", {
+          lastError: "Message no longer available",
+        });
+        return;
+      }
+      const meta = msg.localEcho;
+      if (!meta) {
+        await updateOutboxStatus(record.id, "failed_perm", {
+          lastError: "Message metadata missing",
+        });
+        return;
+      }
+
+      const now = Date.now();
+      const attemptNumber = (record.attemptCount ?? 0) + 1;
+      const ackMapAll: Record<string, RelayAck> = {
+        ...(record.relayResults ?? {}),
+      };
+      let ackCount = record.ackCount ?? 0;
+
+      if (Object.keys(ackMapAll).length) {
+        this.mergeRelayAckResults(msg, meta, ackMapAll);
+      }
+
+      const payloadSource = (record.payload ?? {}) as Record<string, any>;
+      const payload = {
+        content:
+          typeof payloadSource.content === "string"
+            ? payloadSource.content
+            : meta.payload?.content ?? msg.content ?? "",
+        attachment:
+          payloadSource.attachment ?? meta.payload?.attachment ?? msg.attachment,
+        tokenPayload:
+          payloadSource.tokenPayload ?? meta.payload?.tokenPayload ?? msg.tokenPayload,
+      };
+
+      const recipientKey = this.normalizeKey(
+        record.recipient ||
+          (typeof payloadSource.recipient === "string"
+            ? payloadSource.recipient
+            : msg.pubkey),
+      );
+      if (!recipientKey) {
+        await updateOutboxStatus(record.id, "failed_perm", {
+          lastError: "Invalid recipient",
+        });
+        this.markLocalEchoFailed(msg, meta, "Invalid recipient", ackMapAll);
+        return;
+      }
+
+      const commitRelayResults = (updates?: Record<string, RelayAck>) => {
+        if (!updates) return;
+        for (const [relayUrl, ack] of Object.entries(updates)) {
+          ackMapAll[relayUrl] = ack;
+        }
+      };
+
+      const handlePermanentFailure = async (reason: string) => {
+        commitRelayResults();
+        this.mergeRelayAckResults(msg, meta, ackMapAll);
+        await updateOutboxStatus(record.id, "failed_perm", {
+          lastError: reason,
+          relayResults: ackMapAll,
+          messageId: msg.id,
+          ackCount,
+          lastAckAt: ackCount > 0 ? Date.now() : record.lastAckAt ?? null,
+        });
+        this.markLocalEchoFailed(msg, meta, reason, ackMapAll);
+        notifyError(
+          reason.startsWith("Failed to send DM") ? reason : `Failed to send DM: ${reason}`,
+        );
+      };
+
+      const scheduleRetry = async (
+        reason: string,
+        opts: { nonRetryable?: boolean } = {},
+      ) => {
+        if (opts.nonRetryable || attemptNumber >= OUTBOX_MAX_ATTEMPTS) {
+          await handlePermanentFailure(reason);
+          return;
+        }
+        const backoffMs = this.computeBackoffMs(attemptNumber);
+        const nextAttemptAt = Date.now() + backoffMs;
+        commitRelayResults();
+        this.mergeRelayAckResults(msg, meta, ackMapAll);
+        meta.error = reason;
+        meta.updatedAt = Date.now();
+        meta.attempt = attemptNumber + 1;
+        await updateOutboxStatus(record.id, "retry_scheduled", {
+          lastError: reason,
+          relayResults: ackMapAll,
+          nextAttemptAt,
+          ackCount,
+          messageId: msg.id,
+          lastAckAt: ackCount > 0 ? Date.now() : record.lastAckAt ?? null,
+        });
+        emitDmCounter("dm_retry", {
+          localId: meta.localId,
+          attempt: meta.attempt,
+          backoffMs,
+        });
+      };
+
+      meta.payload = payload;
+      meta.attempt = attemptNumber;
+      meta.error = null;
+      meta.updatedAt = now;
+      if (!meta.timerStartedAt) {
+        meta.timerStartedAt = now;
+      }
+      msg.status = meta.status;
+
+      await updateOutboxStatus(record.id, "delivering", {
+        attemptCount: attemptNumber,
+        nextAttemptAt: now,
+        lastError: null,
+      });
+
+      try {
+        await this.loadIdentity({ refresh: false });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        await scheduleRetry(`Failed to prepare DM signer: ${reason}`);
+        return;
+      }
+
+      await this.refreshSignerMode();
+      const signerInfo = await getActiveDmSigner();
+      if (!signerInfo) {
+        await handlePermanentFailure("No signer available for direct messages");
+        return;
+      }
+      this.signerMode = signerInfo.mode;
+
+      let event = (payloadSource.event as NostrEvent | undefined) || undefined;
+      try {
+        if (!event) {
+          event = await buildKind4Event(signerInfo.signer, recipientKey, payload.content ?? "");
+        }
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        await handlePermanentFailure(`Failed to encrypt DM: ${reason}`);
+        return;
+      }
+      if (!event) {
+        await handlePermanentFailure("Failed to build DM event");
+        return;
+      }
+
+      msg.content = payload.content ?? "";
+      msg.attachment = payload.attachment;
+      msg.tokenPayload = payload.tokenPayload;
+      msg.created_at = event.created_at ?? msg.created_at ?? Math.floor(now / 1000);
+      if (event.kind) {
+        msg.protocol = event.kind === 1059 ? "nip17" : "nip04";
+      }
+      meta.eventId = event.id;
+      const previousId = msg.id;
+      if (event.id && previousId !== event.id) {
+        msg.id = event.id;
+      }
+      if (Array.isArray(record.relays) && record.relays.length) {
+        meta.relays = record.relays.slice();
+      }
+      this.registerMessage(msg, [meta.eventId, event.id, previousId, meta.localId]);
+
+      const relayCandidates = Array.isArray(record.relays) && record.relays.length
+        ? record.relays
+        : Array.isArray(meta.relays) && meta.relays.length
+          ? meta.relays
+          : Array.isArray(this.relays) && this.relays.length
+            ? this.relays
+            : Array.from(new Set([...DM_RELAYS]));
+      const uniqueRelays = Array.from(new Set(relayCandidates.filter(Boolean)));
+      const rankedRelays = uniqueRelays.length ? await rankRelays(uniqueRelays) : [];
+      if (rankedRelays.length) {
+        meta.relays = rankedRelays.slice();
+      }
+
+      const updatedPayload = {
+        ...payloadSource,
+        ...payload,
+        event,
+      };
+      const baseRecord: MessengerOutboxRecord = {
+        ...record,
+        status: "delivering",
+        attemptCount: attemptNumber,
+        nextAttemptAt: now,
+        messageId: event.id,
+        payload: updatedPayload,
+        relays: rankedRelays.length ? rankedRelays : record.relays,
+        relayResults: ackMapAll,
+        ackCount,
+        createdAt: record.createdAt,
+        updatedAt: now,
+      };
+      if (record.firstAckAt) baseRecord.firstAckAt = record.firstAckAt;
+      if (record.lastAckAt) baseRecord.lastAckAt = record.lastAckAt;
+      await upsertOutbox(baseRecord);
+
+      let publishResult: Awaited<ReturnType<typeof this.publishWithQuorum>>;
+      try {
+        publishResult = await this.publishWithQuorum({
+          event,
+          relays: rankedRelays,
+          signer: signerInfo.signer,
+          allowHttpFallback: this.httpFallbackEnabled,
+        });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        await scheduleRetry(reason);
+        return;
+      }
+
+      const ackUpdates = publishResult.ackMap ?? {};
+      commitRelayResults(ackUpdates);
+      this.mergeRelayAckResults(msg, meta, ackUpdates);
+      ackCount = Math.max(ackCount, publishResult.acceptedCount);
+      if (publishResult.firstAck) {
+        const { transport, relay, ack } = publishResult.firstAck;
+        if (transport === "http") {
+          this.transportMode = "http";
+          this.startHttpPolling();
+        } else if (transport === "ws") {
+          this.transportMode = "ws";
+        }
+        this.markLocalEchoSent(msg, meta, { [relay]: ack }, transport);
+        ackCount = Math.max(ackCount, 1);
+        baseRecord.firstAckAt = baseRecord.firstAckAt ?? Date.now();
+      }
+      if (publishResult.acceptedCount > 0) {
+        baseRecord.lastAckAt = Date.now();
+      }
+      baseRecord.ackCount = ackCount;
+      baseRecord.relayResults = { ...ackMapAll };
+      await upsertOutbox(baseRecord);
+
+      if (ackCount >= this.outboxQuorum) {
+        await updateOutboxStatus(record.id, "delivered", {
+          relayResults: ackMapAll,
+          ackCount,
+          lastAckAt: baseRecord.lastAckAt ?? Date.now(),
+          firstAckAt: baseRecord.firstAckAt ?? baseRecord.lastAckAt ?? Date.now(),
+          lastError: null,
+          messageId: event.id,
+        });
+        msg.status = "confirmed";
+        this.recordMutation();
+        void this.persistMessage(msg);
+        emitDmCounter("dm_outbox_delivered", {
+          localId: meta.localId,
+          attempt: attemptNumber,
+          ackCount,
+        });
+        notifySuccess("DM sent");
+        void this.confirmMessageDelivery(meta.eventId || msg.id, event.id);
+        return;
+      }
+
+      const reason = publishResult.lastError
+        ? publishResult.lastError
+        : ackCount > 0
+          ? "Awaiting relay quorum"
+          : "Failed to send DM";
+      const nonRetryable =
+        (publishResult.nonRetryableHttpAck && ackCount === 0) || attemptNumber >= OUTBOX_MAX_ATTEMPTS;
+      await scheduleRetry(reason, { nonRetryable });
+    },
+    async outboxPump(): Promise<void> {
+      if (!this.outboxEnabled) return;
+      if (this.outboxPumpActive) {
+        this.outboxPumpRequested = true;
+        return;
+      }
+      this.outboxPumpActive = true;
+      this.outboxPumpRequested = false;
+      try {
+        let safety = 0;
+        while (this.outboxEnabled) {
+          const owner = this.getOwnerKey();
+          const due = await getDueOutboxItems(owner, Date.now());
+          if (!due.length) break;
+          emitDmCounter("dm_outbox_pump", { owner, size: due.length });
+          for (const item of due) {
+            await this.deliverOutboxItem(item);
+          }
+          safety += 1;
+          if (safety > 50) {
+            console.warn("[messenger.outboxPump] breaking after 50 batches");
+            break;
+          }
+        }
+      } catch (err) {
+        console.error("[messenger.outboxPump] failed", err);
+      } finally {
+        this.outboxPumpActive = false;
+        if (this.outboxPumpRequested) {
+          this.outboxPumpRequested = false;
+          void this.outboxPump();
+        }
+      }
+    },
     async sendToken(
       recipient: string,
       amount: number,
@@ -1855,19 +2360,15 @@ export const useMessengerStore = defineStore("messenger", {
               referenceId: uuidv4(),
             };
 
-        const { success, event } = await this.sendDm(
+        const { success, event, localId } = await this.sendDm(
           recipient,
           JSON.stringify(payload),
           undefined,
           undefined,
           { token: tokenStr, amount: sendAmount, memo },
         );
-        if (success && event) {
+        if (success) {
           if (subscription) {
-            const msg = this.conversations[recipient]?.find(
-              (m) => m.id === event.id,
-            );
-            const logMsg = this.eventLog.find((m) => m.id === event.id);
             const payment: SubscriptionPayment & { htlc_hash?: string } = {
               token: tokenStr,
               subscription_id: subscription.subscription_id,
@@ -1876,7 +2377,12 @@ export const useMessengerStore = defineStore("messenger", {
               total_months: subscription.total_months,
               amount: sendAmount,
             };
-            if (msg) msg.subscriptionPayment = payment;
+            const target = localId ? this.findMessageByLocalId(localId) : null;
+            const fallbackId = event?.id;
+            const logMsg = fallbackId
+              ? this.eventLog.find((m) => m.id === fallbackId) || target
+              : target;
+            if (target) target.subscriptionPayment = payment;
             if (logMsg) logMsg.subscriptionPayment = payment;
           }
           tokens.addPendingToken({
@@ -1936,7 +2442,7 @@ export const useMessengerStore = defineStore("messenger", {
           memo: memo || undefined,
         };
 
-        const { success, event } = await this.sendDm(
+        const { success } = await this.sendDm(
           recipient,
           JSON.stringify(payload),
           undefined,
@@ -1944,7 +2450,7 @@ export const useMessengerStore = defineStore("messenger", {
           { token: tokenStr, amount: sendAmount, memo },
         );
 
-        if (success && event) {
+        if (success) {
           tokens.addPendingToken({
             amount: -sendAmount,
             tokenStr: tokenStr,
@@ -1973,7 +2479,6 @@ export const useMessengerStore = defineStore("messenger", {
         attachment: msg.attachment,
         tokenPayload: msg.tokenPayload,
       };
-      meta.attempt += 1;
       meta.status = "pending";
       meta.error = null;
       meta.updatedAt = Date.now();
@@ -1982,16 +2487,76 @@ export const useMessengerStore = defineStore("messenger", {
       msg.status = "pending";
       msg.relayResults = {};
       this.scheduleLocalEcho(meta, msg);
-      emitDmCounter("dm_retry", { localId: meta.localId, attempt: meta.attempt });
-      return await this.executeSendWithMeta({
-        msg,
-        meta,
-        recipient: msg.pubkey,
-        safeMessage: payload.content,
-        attachment: payload.attachment,
-        tokenPayload: payload.tokenPayload,
-        relayTargets: meta.relays,
-      });
+      if (!this.outboxEnabled) {
+        meta.attempt += 1;
+        emitDmCounter("dm_retry", { localId: meta.localId, attempt: meta.attempt });
+        return await this.executeSendWithMeta({
+          msg,
+          meta,
+          recipient: msg.pubkey,
+          safeMessage: payload.content,
+          attachment: payload.attachment,
+          tokenPayload: payload.tokenPayload,
+          relayTargets: meta.relays,
+        });
+      }
+
+      try {
+        const now = Date.now();
+        const existing = await messengerDb.outbox.get(localId);
+        const basePayload = {
+          content: payload.content,
+          attachment: payload.attachment,
+          tokenPayload: payload.tokenPayload,
+          created_at: msg.created_at,
+        };
+        const nextRecord: MessengerOutboxRecord = existing
+          ? {
+              ...existing,
+              status: "queued",
+              payload: { ...existing.payload, ...basePayload },
+              relays: Array.isArray(meta.relays) ? meta.relays.slice() : existing.relays,
+              nextAttemptAt: now,
+              lastError: null,
+              relayResults: {},
+              updatedAt: now,
+            }
+          : {
+              id: localId,
+              owner: this.getOwnerKey(),
+              messageId: msg.id,
+              localId,
+              recipient: msg.pubkey,
+              status: "queued",
+              nextAttemptAt: now,
+              attemptCount: 0,
+              payload: { ...basePayload },
+              relays: Array.isArray(meta.relays) ? meta.relays.slice() : undefined,
+              lastError: null,
+              relayResults: {},
+              ackCount: 0,
+              firstAckAt: null,
+              lastAckAt: null,
+              createdAt: now,
+              updatedAt: now,
+            };
+        await upsertOutbox(nextRecord);
+        meta.attempt = (nextRecord.attemptCount ?? 0) + 1;
+        emitDmCounter("dm_retry", { localId: meta.localId, attempt: meta.attempt });
+        void this.outboxPump();
+        return {
+          success: true,
+          event: null,
+          confirmationPending: true,
+          localId: meta.localId,
+          eventId: nextRecord.messageId ?? null,
+        };
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        this.markLocalEchoFailed(msg, meta, reason);
+        notifyError(`Failed to queue DM retry: ${reason}`);
+        return { success: false, event: null };
+      }
     },
     addOutgoingMessage(
       pubkey: string,
@@ -2472,6 +3037,9 @@ export const useMessengerStore = defineStore("messenger", {
       if (this.started) return;
       this.normalizeStoredConversations();
       this.setupTransportWatcher();
+      if (this.outboxEnabled) {
+        void this.outboxPump();
+      }
       const nostr = useNostrStore();
       const since = this.eventLog[this.eventLog.length - 1]?.created_at || 0;
       let httpFallbackNeeded = false;

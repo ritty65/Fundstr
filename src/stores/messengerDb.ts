@@ -9,7 +9,12 @@ export type ConversationMetaKey =
 
 export type ConversationMetaValue = number | boolean | string | string[] | null;
 
-export type MessengerOutboxStatus = "pending" | "sending" | "sent" | "failed";
+export type MessengerOutboxStatus =
+  | "queued"
+  | "delivering"
+  | "retry_scheduled"
+  | "delivered"
+  | "failed_perm";
 
 export interface MessengerEventRecord {
   key: string;
@@ -28,12 +33,18 @@ export interface MessengerOutboxRecord {
   id: string;
   owner: string;
   messageId?: string;
+  localId?: string;
+  recipient?: string;
   status: MessengerOutboxStatus;
   nextAttemptAt: number;
   attemptCount: number;
   payload: any;
   relays?: string[];
   lastError?: string | null;
+  relayResults?: Record<string, any>;
+  ackCount?: number;
+  firstAckAt?: number | null;
+  lastAckAt?: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -301,7 +312,7 @@ export async function getDueOutboxItems(
     .equals(owner)
     .and((row) =>
       row.nextAttemptAt <= nowTime &&
-      (row.status === "pending" || row.status === "failed"),
+      (row.status === "queued" || row.status === "retry_scheduled"),
     )
     .sortBy("nextAttemptAt");
   return rows;
