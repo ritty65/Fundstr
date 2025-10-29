@@ -529,9 +529,36 @@ export const useMessengerStore = defineStore("messenger", {
         return { success: false, event: null };
       }
 
+      const previousId = msg.id;
+      msg.id = event.id;
+      msg.created_at = event.created_at ?? msg.created_at;
+      if (event.kind) {
+        msg.protocol = event.kind === 1059 ? "nip17" : "nip04";
+      }
+      if (previousId !== event.id) {
+        const convo = this.conversations[recipient];
+        if (Array.isArray(convo)) {
+          const dupes = convo.filter((m) => m !== msg && m.id === event.id);
+          for (const duplicate of dupes) {
+            const idx = convo.indexOf(duplicate);
+            if (idx >= 0) {
+              convo.splice(idx, 1);
+            }
+          }
+        }
+        const dupes = this.eventLog.filter((m) => m !== msg && m.id === event.id);
+        for (const duplicate of dupes) {
+          const idx = this.eventLog.indexOf(duplicate);
+          if (idx >= 0) {
+            this.eventLog.splice(idx, 1);
+          }
+        }
+      }
+
       let relayResults: Record<string, RelayAck> = {};
       let delivered = false;
       let sentVia: DmTransportMode | null = null;
+      let httpRejected = false;
 
       const relayTargets = Array.from(new Set(relays?.length ? relays : DM_RELAYS));
 
@@ -578,6 +605,8 @@ export const useMessengerStore = defineStore("messenger", {
           if (ack.accepted) {
             delivered = true;
             sentVia = "http";
+          } else {
+            httpRejected = true;
           }
         } catch (httpErr) {
           const reason =
@@ -590,8 +619,6 @@ export const useMessengerStore = defineStore("messenger", {
       msg.relayResults = relayResults;
 
       if (delivered) {
-        msg.id = event.id;
-        msg.created_at = event.created_at ?? msg.created_at;
         msg.status = "sent";
         this.pushOwnMessage(event);
         if (sentVia === "ws") {
@@ -604,6 +631,11 @@ export const useMessengerStore = defineStore("messenger", {
         return { success: true, event };
       }
 
+      if (httpRejected) {
+        msg.status = "pending";
+        return { success: false, event };
+      }
+
       msg.status = "failed";
       if (!this.eventLog.some((m) => m.id === msg.id)) {
         this.eventLog.push(msg);
@@ -613,7 +645,7 @@ export const useMessengerStore = defineStore("messenger", {
         .map(([url, ack]) => (ack?.reason ? `${url}: ${ack.reason}` : url))
         .join(", ");
       notifyError(summary ? `Failed to send DM: ${summary}` : "Failed to send DM");
-      return { success: false, event: null };
+      return { success: false, event };
     },
     async sendToken(
       recipient: string,
@@ -859,10 +891,28 @@ export const useMessengerStore = defineStore("messenger", {
     },
 
     pushOwnMessage(event: NostrEvent) {
+      if (!Array.isArray(this.eventLog)) this.eventLog = [];
       const msg = this.eventLog.find((m) => m.id === event.id);
       if (!msg) return;
       if (event.kind) {
         msg.protocol = event.kind === 1059 ? "nip17" : "nip04";
+      }
+      msg.created_at = event.created_at ?? msg.created_at;
+      if (msg.outgoing) {
+        if (msg.status === "failed") {
+          msg.status = "sent";
+        }
+        if (msg.status === "pending" || msg.status === "sent" || !msg.status) {
+          msg.status = "delivered";
+        }
+        const existingResults = msg.relayResults ? { ...msg.relayResults } : {};
+        if (!existingResults.subscription || !existingResults.subscription.ok) {
+          existingResults.subscription = {
+            ok: true,
+            reason: "Received via relay subscription",
+          };
+        }
+        msg.relayResults = existingResults;
       }
       try {
         const payload = JSON.parse(msg.content);
@@ -1084,7 +1134,7 @@ export const useMessengerStore = defineStore("messenger", {
       }
       const existing = this.eventLog.find((m) => m.id === event.id);
       if (existing) {
-        if (existing.outgoing) existing.status = "delivered";
+        if (existing.outgoing) this.pushOwnMessage(event);
         return;
       }
       const sanitized = sanitizeMessage(decrypted);

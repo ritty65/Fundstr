@@ -262,7 +262,7 @@ describe("messenger store", () => {
 
     expect(publishEventViaHttpMock).toHaveBeenCalled();
     const convo = messenger.conversations.npub1alice;
-    expect(convo?.[0].status).toBe("sent");
+    expect(convo?.[0].status).toBe("delivered");
     const httpKey = FUNDSTR_EVT_URL || "http";
     expect(convo?.[0].relayResults?.["wss://a"]).toEqual({ ok: false, reason: "down" });
     expect(convo?.[0].relayResults?.[httpKey]).toEqual({ ok: true });
@@ -288,6 +288,36 @@ describe("messenger store", () => {
     expect(convo?.[0].status).toBe("failed");
     const httpKey = FUNDSTR_EVT_URL || "http";
     expect(convo?.[0].relayResults?.[httpKey]?.ok).toBe(false);
+  });
+
+  it("marks HTTP fallback rejections as pending", async () => {
+    const messenger = useMessengerStore();
+    (globalThis as any).nostr = {
+      nip04: { encrypt: vi.fn(async () => "enc"), decrypt: vi.fn() },
+      signEvent: vi.fn(async (e) => ({ ...e, id: "id", sig: "sig" })),
+    };
+    messenger.relays = ["wss://a"] as any;
+    publishWithAcksMock.mockResolvedValue({ "wss://a": { ok: false, reason: "down" } });
+    publishEventViaHttpMock.mockResolvedValue({
+      id: "http",
+      accepted: false,
+      message: "Relay rejected event",
+      via: "http",
+    });
+
+    const result = await messenger.sendDm("npub1dave", "hello");
+
+    expect(result.success).toBe(false);
+    expect(result.event?.id).toBe("id");
+    const convo = messenger.conversations.npub1dave;
+    expect(convo?.[0].status).toBe("pending");
+    expect(convo?.[0].id).toBe("id");
+    const httpKey = FUNDSTR_EVT_URL || "http";
+    expect(convo?.[0].relayResults?.[httpKey]).toEqual({
+      ok: false,
+      reason: "Relay rejected event",
+    });
+    expect(notifyErrorSpy).not.toHaveBeenCalled();
   });
 
   it("hydrates messages via HTTP fallback when no relays connect", async () => {
