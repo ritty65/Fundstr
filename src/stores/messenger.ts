@@ -119,7 +119,7 @@ export type MessengerMessage = {
   content: string;
   created_at: number;
   outgoing: boolean;
-  status?: "pending" | "sent" | "delivered" | "failed";
+  status?: "pending" | "sent_unconfirmed" | "confirmed" | "failed";
   protocol?: "nip17" | "nip04";
   attachment?: MessageAttachment;
   subscriptionPayment?: SubscriptionPayment;
@@ -663,7 +663,7 @@ export const useMessengerStore = defineStore("messenger", {
       msg.relayResults = relayResults;
 
       if (delivered) {
-        msg.status = "sent";
+        msg.status = "sent_unconfirmed";
         this.pushOwnMessage(event);
         if (sentVia === "ws") {
           this.transportMode = "ws";
@@ -887,7 +887,7 @@ export const useMessengerStore = defineStore("messenger", {
         if (sent) {
           msg.id = signed.id;
           msg.created_at = signed.created_at ?? msg.created_at;
-          msg.status = "sent";
+          msg.status = "sent_unconfirmed";
           notifySuccess("Message retried and sent successfully");
         } else {
           notifyError("Retry failed – message not sent");
@@ -909,7 +909,7 @@ export const useMessengerStore = defineStore("messenger", {
       created_at?: number,
       id?: string,
       attachment?: MessageAttachment,
-      status: "pending" | "sent" | "delivered" | "failed" = "pending",
+      status: "pending" | "sent_unconfirmed" | "confirmed" | "failed" = "pending",
       tokenPayload?: any,
     ): MessengerMessage {
       pubkey = this.normalizeKey(pubkey);
@@ -944,10 +944,14 @@ export const useMessengerStore = defineStore("messenger", {
       msg.created_at = event.created_at ?? msg.created_at;
       if (msg.outgoing) {
         if (msg.status === "failed") {
-          msg.status = "sent";
+          msg.status = "sent_unconfirmed";
         }
-        if (msg.status === "pending" || msg.status === "sent" || !msg.status) {
-          msg.status = "delivered";
+        if (
+          msg.status === "pending" ||
+          msg.status === "sent_unconfirmed" ||
+          !msg.status
+        ) {
+          msg.status = "confirmed";
         }
         const existingResults = msg.relayResults ? { ...msg.relayResults } : {};
         if (!existingResults.subscription || !existingResults.subscription.ok) {
