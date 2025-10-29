@@ -103,6 +103,7 @@ vi.mock("../../../src/js/notify", () => {
 });
 
 import { useMessengerStore } from "../../../src/stores/messenger";
+import { useNostrStore } from "../../../src/stores/nostr";
 
 beforeEach(() => {
   setActivePinia(createPinia());
@@ -111,6 +112,8 @@ beforeEach(() => {
   const m = useMessengerStore();
   (m as any).eventLog = [];
   (m as any).conversations = {};
+  const nostr = useNostrStore() as any;
+  nostr.initSignerIfNotSet.mockClear();
   publishWithAcksMock.mockClear();
   publishEventViaHttpMock.mockClear();
   requestEventsViaHttpMock.mockClear();
@@ -160,6 +163,34 @@ describe("messenger store", () => {
       created_at: 1,
     } as any);
     expect(decryptDm).toHaveBeenCalledWith(undefined, "s", "c?iv=1");
+  });
+
+  it("caches failed signer initialization for incoming messages", async () => {
+    const messenger = useMessengerStore();
+    const nostr = useNostrStore() as any;
+    nostr.signer = undefined;
+    nostr.initSignerIfNotSet.mockResolvedValue(undefined);
+
+    await messenger.start();
+    expect(nostr.initSignerIfNotSet).toHaveBeenCalledTimes(1);
+
+    await messenger.addIncomingMessage({
+      id: "msg-1",
+      pubkey: "sender",
+      content: "cipher",
+      created_at: 1,
+    } as any);
+
+    expect(nostr.initSignerIfNotSet).toHaveBeenCalledTimes(1);
+
+    await messenger.addIncomingMessage({
+      id: "msg-2",
+      pubkey: "sender",
+      content: "cipher2",
+      created_at: 2,
+    } as any);
+
+    expect(nostr.initSignerIfNotSet).toHaveBeenCalledTimes(1);
   });
 
   it("subscribes to kind 4 on start", async () => {
