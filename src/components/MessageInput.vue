@@ -52,6 +52,7 @@
 
 <script lang="ts" setup>
 import { ref, computed } from "vue";
+import { useQuasar } from "quasar";
 import { Nut as NutIcon } from "lucide-vue-next";
 
 const emit = defineEmits(["send", "sendToken"]);
@@ -61,6 +62,10 @@ const attachmentName = ref<string>("");
 const attachmentType = ref<string>("");
 const isImage = computed(() => attachment.value?.startsWith("data:image"));
 const fileInput = ref<HTMLInputElement>();
+const $q = useQuasar();
+
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const ALLOWED_MIME_PREFIXES = ["image/", "application/pdf"]; // extend as formats are supported
 
 const send = () => {
   const m = text.value.trim();
@@ -89,15 +94,42 @@ const selectFile = () => {
 };
 
 const handleFile = (e: Event) => {
-  const files = (e.target as HTMLInputElement).files;
+  const input = e.target as HTMLInputElement;
+  const files = input.files;
   if (!files || !files[0]) return;
+
+  const file = files[0];
+
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    $q.notify({
+      type: "negative",
+      message: "File is too large. Please select a file under 5 MB.",
+    });
+    input.value = "";
+    return;
+  }
+
+  const isAllowedType = ALLOWED_MIME_PREFIXES.some((prefix) =>
+    file.type.startsWith(prefix)
+  );
+
+  if (!isAllowedType) {
+    $q.notify({
+      type: "negative",
+      message: "Unsupported file type.",
+    });
+    input.value = "";
+    return;
+  }
+
   const reader = new FileReader();
   reader.onload = () => {
     attachment.value = reader.result as string;
-    attachmentName.value = files[0].name;
-    attachmentType.value = files[0].type;
+    attachmentName.value = file.name;
+    attachmentType.value = file.type;
+    input.value = "";
   };
-  reader.readAsDataURL(files[0]);
+  reader.readAsDataURL(file);
 };
 </script>
 
