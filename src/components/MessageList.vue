@@ -13,6 +13,7 @@
       {{ formatDay(msg.created_at) }}
     </div>
     <ChatMessageBubble
+      :key="msg.id"
       :message="msg"
       :prev-message="messages[idx - 1]"
     />
