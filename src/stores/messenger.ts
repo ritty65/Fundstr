@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
-import { watch, computed, ref } from "vue";
+import { watch, computed, ref, isRef } from "vue";
+import type { Ref } from "vue";
 import { Event as NostrEvent } from "nostr-tools";
 import { SignerType, useNostrStore, type RelayAck } from "./nostr";
 import { v4 as uuidv4 } from "uuid";
@@ -93,6 +94,24 @@ function insertUniqueMessage(
   if (!exists) {
     list.push(message);
   }
+}
+
+function unwrapRef<T>(value: T | Ref<T>): T {
+  return isRef(value) ? value.value : value;
+}
+
+function pushToRefArray<T>(
+  source: T[] | Ref<T[]>,
+  item: T,
+): void {
+  if (isRef(source)) {
+    if (!Array.isArray(source.value)) {
+      source.value = [] as T[];
+    }
+    source.value.push(item);
+    return;
+  }
+  source.push(item);
 }
 
 export function mergeMessengerEvent(params: DedupMergeParams): DedupMergeResult {
@@ -1322,8 +1341,6 @@ export const useMessengerStore = defineStore("messenger", {
         return { success: false, event: null };
       }
 
-      const previousId = msg.id;
-      msg.id = event.id;
       msg.created_at = event.created_at ?? msg.created_at;
       meta.eventId = event.id;
       meta.payload = {
@@ -1337,26 +1354,7 @@ export const useMessengerStore = defineStore("messenger", {
       if (event.kind) {
         msg.protocol = event.kind === 1059 ? "nip17" : "nip04";
       }
-      if (previousId !== event.id) {
-        const convo = this.conversations[recipient];
-        if (Array.isArray(convo)) {
-          const dupes = convo.filter((m) => m !== msg && m.id === event.id);
-          for (const duplicate of dupes) {
-            const idx = convo.indexOf(duplicate);
-            if (idx >= 0) {
-              convo.splice(idx, 1);
-            }
-          }
-        }
-        const dupes = this.eventLog.filter((m) => m !== msg && m.id === event.id);
-        for (const duplicate of dupes) {
-          const idx = this.eventLog.indexOf(duplicate);
-          if (idx >= 0) {
-            this.eventLog.splice(idx, 1);
-          }
-        }
-      }
-      this.registerMessage(msg, [previousId, meta.eventId, event.id]);
+      this.registerMessage(msg, [meta.eventId, event.id]);
 
       let relayResults: Record<string, RelayAck> = {};
       let delivered = false;
@@ -1614,10 +1612,7 @@ export const useMessengerStore = defineStore("messenger", {
         );
         if (success && event) {
           if (subscription) {
-            const msg = this.conversations[recipient]?.find(
-              (m) => m.id === event.id,
-            );
-            const logMsg = this.eventLog.find((m) => m.id === event.id);
+            const msg = this.eventMap[event.id];
             const payment: SubscriptionPayment & { htlc_hash?: string } = {
               token: tokenStr,
               subscription_id: subscription.subscription_id,
@@ -1627,7 +1622,6 @@ export const useMessengerStore = defineStore("messenger", {
               amount: sendAmount,
             };
             if (msg) msg.subscriptionPayment = payment;
-            if (logMsg) logMsg.subscriptionPayment = payment;
           }
           tokens.addPendingToken({
             amount: -sendAmount,
@@ -1755,9 +1749,20 @@ export const useMessengerStore = defineStore("messenger", {
     ): MessengerMessage {
       pubkey = this.normalizeKey(pubkey);
       if (!pubkey) throw new Error("Invalid pubkey");
-      const messageId = id || uuidv4();
-      if (this.eventLog.some((m) => m.id === messageId))
-        return this.eventLog.find((m) => m.id === messageId)!;
+      const messageId = localEcho?.localId || id || uuidv4();
+      const eventLogRef = this.eventLog as unknown as Ref<MessengerMessage[]> | MessengerMessage[];
+      let eventLog = unwrapRef(eventLogRef);
+      if (!Array.isArray(eventLog)) {
+        if (isRef(eventLogRef)) {
+          eventLogRef.value = [];
+          eventLog = eventLogRef.value;
+        } else {
+          eventLog = [];
+          (this as any).eventLog = eventLog;
+        }
+      }
+      const existing = eventLog.find((m) => m.id === messageId);
+      if (existing) return existing;
       const msg: MessengerMessage = {
         id: messageId,
         pubkey,
@@ -1772,11 +1777,23 @@ export const useMessengerStore = defineStore("messenger", {
         msg.localEcho = localEcho;
         msg.status = localEcho.status;
       }
-      const existingConversation = this.conversations[pubkey] || [];
-      if (!existingConversation.some((m) => m.id === messageId)) {
-        this.conversations[pubkey] = [...existingConversation, msg];
+      const conversationsRef = this.conversations as unknown as Ref<
+        Record<string, MessengerMessage[]>
+      > | Record<string, MessengerMessage[]>;
+      let conversationMap = unwrapRef(conversationsRef);
+      if (!conversationMap || typeof conversationMap !== "object") {
+        conversationMap = {} as Record<string, MessengerMessage[]>;
+        if (isRef(conversationsRef)) {
+          conversationsRef.value = conversationMap;
+        } else {
+          (this as any).conversations = conversationMap;
+        }
       }
-      this.eventLog = [...this.eventLog, msg];
+      const conversation = conversationMap[pubkey] ?? (conversationMap[pubkey] = []);
+      if (!conversation.some((m) => m.id === messageId)) {
+        conversation.push(msg);
+      }
+      pushToRefArray(eventLogRef, msg);
       this.registerMessage(msg);
       return msg;
     },
@@ -1798,17 +1815,31 @@ export const useMessengerStore = defineStore("messenger", {
         if (timeoutHandle) clearTimeout(timeoutHandle);
         if (!ndkEvent) return;
 
+        const eventLogRef = this.eventLog as unknown as Ref<MessengerMessage[]> | MessengerMessage[];
+        let eventLogList = unwrapRef(eventLogRef);
+        if (!Array.isArray(eventLogList)) {
+          if (isRef(eventLogRef)) {
+            eventLogRef.value = [];
+            eventLogList = eventLogRef.value;
+          } else {
+            eventLogList = [];
+            (this as any).eventLog = eventLogList;
+          }
+        }
         let msg =
-          this.eventLog.find((m) => m.id === messageId) ||
-          this.eventLog.find((m) => m.id === targetId);
+          eventLogList.find((m) => m.id === messageId) ||
+          (targetId ? this.eventMap[targetId] : undefined);
+        if (!msg && targetId) {
+          msg = eventLogList.find((m) => m.localEcho?.eventId === targetId);
+        }
         if (!msg) {
           msg = Object.values(this.localEchoIndex).find((entry) => {
             const metaId = entry.localEcho?.eventId;
             return entry.id === targetId || metaId === targetId || entry.id === messageId;
           });
           if (msg) {
-            if (!this.eventLog.some((existing) => existing === msg)) {
-              this.eventLog = [...this.eventLog, msg];
+            if (!eventLogList.some((existing) => existing === msg)) {
+              pushToRefArray(eventLogRef, msg);
             }
             if (msg.localEcho?.localId) {
               this.localEchoIndex[msg.localEcho.localId] = msg;
@@ -1854,21 +1885,31 @@ export const useMessengerStore = defineStore("messenger", {
       }
     },
     pushOwnMessage(event: NostrEvent) {
-      if (!Array.isArray(this.eventLog)) this.eventLog = [];
+      const eventLogRef = this.eventLog as unknown as Ref<MessengerMessage[]> | MessengerMessage[];
+      let eventLogList = unwrapRef(eventLogRef);
+      if (!Array.isArray(eventLogList)) {
+        if (isRef(eventLogRef)) {
+          eventLogRef.value = [];
+          eventLogList = eventLogRef.value;
+        } else {
+          eventLogList = [];
+          (this as any).eventLog = eventLogList;
+        }
+      }
       const eventId = event.id;
       let msg = (eventId ? this.eventMap[eventId] : undefined) as
         | MessengerMessage
         | undefined;
       if (!msg) {
-        msg = this.eventLog.find((m) => m.id === eventId);
+        msg = eventLogList.find((m) => m.id === eventId);
       }
       if (!msg) {
         msg = Object.values(this.localEchoIndex).find(
           (entry) => entry.localEcho?.eventId === eventId,
         );
         if (msg) {
-          if (!this.eventLog.some((existing) => existing === msg)) {
-            this.eventLog = [...this.eventLog, msg];
+          if (!eventLogList.some((existing) => existing === msg)) {
+            pushToRefArray(eventLogRef, msg);
           }
           if (msg.localEcho?.localId) {
             this.localEchoIndex[msg.localEcho.localId] = msg;
@@ -1876,11 +1917,23 @@ export const useMessengerStore = defineStore("messenger", {
         }
       }
       if (!msg) return;
-      if (!this.conversations[msg.pubkey]) {
-        this.conversations[msg.pubkey] = [];
+      const conversationRef = this.conversations as unknown as Ref<
+        Record<string, MessengerMessage[]>
+      > | Record<string, MessengerMessage[]>;
+      let conversationMap = unwrapRef(conversationRef);
+      if (!conversationMap || typeof conversationMap !== "object") {
+        conversationMap = {};
+        if (isRef(conversationRef)) {
+          conversationRef.value = conversationMap;
+        } else {
+          (this as any).conversations = conversationMap;
+        }
       }
-      insertUniqueMessage(this.conversations[msg.pubkey], msg);
-      insertUniqueMessage(this.eventLog, msg);
+      if (!conversationMap[msg.pubkey]) {
+        conversationMap[msg.pubkey] = [];
+      }
+      insertUniqueMessage(conversationMap[msg.pubkey], msg);
+      insertUniqueMessage(eventLogList, msg);
       this.registerMessage(msg, [eventId]);
       if (event.kind) {
         msg.protocol = event.kind === 1059 ? "nip17" : "nip04";
