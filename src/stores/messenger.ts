@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
-import { watch, computed } from "vue";
+import { watch, computed, ref } from "vue";
 import { Event as NostrEvent } from "nostr-tools";
 import { SignerType, useNostrStore, type RelayAck } from "./nostr";
 import { v4 as uuidv4 } from "uuid";
@@ -61,6 +61,13 @@ function ensureMap(ref: { value: any }) {
 }
 
 let lastDecryptError = 0;
+
+const SIGNER_INIT_RETRY_WINDOW_MS = 30_000;
+
+interface SignerInitOutcome {
+  timestamp: number;
+  success: boolean;
+}
 
 function parseSubscriptionPaymentPayload(obj: any):
   | {
@@ -169,6 +176,7 @@ export const useMessengerStore = defineStore("messenger", {
       storageKey("drawerMini"),
       false,
     );
+    const signerInitCache = ref<SignerInitOutcome | null>(null);
 
     watch(
       () => nostrStore.pubkey,
@@ -178,6 +186,7 @@ export const useMessengerStore = defineStore("messenger", {
         pinned.value = {} as any;
         aliases.value = {} as any;
         eventLog.value = [] as any;
+        signerInitCache.value = null;
       },
     );
 
@@ -198,6 +207,7 @@ export const useMessengerStore = defineStore("messenger", {
       httpFallbackEnabled: true,
       httpPollTimer: null as ReturnType<typeof setInterval> | null,
       httpFallbackActive: false,
+      signerInitCache,
       relayStatusStop: null as null | (() => void),
       lastHttpSyncAt: 0,
       httpSyncInFlight: false,
@@ -428,12 +438,29 @@ export const useMessengerStore = defineStore("messenger", {
     async loadIdentity(options: { refresh?: boolean } = {}) {
       const { refresh = false } = options;
       const nostr = useNostrStore();
+      if (refresh) {
+        this.signerInitCache = null;
+      }
+      const now = Date.now();
       const shouldInitSigner = refresh || !this.started || !nostr.signer;
       if (shouldInitSigner) {
-        try {
-          await nostr.initSignerIfNotSet();
-        } catch (e) {
-          console.warn("[messenger] signer unavailable, continuing read-only", e);
+        const lastAttempt = this.signerInitCache;
+        const recentFailedAttempt =
+          !refresh &&
+          !nostr.signer &&
+          !!lastAttempt &&
+          !lastAttempt.success &&
+          now - lastAttempt.timestamp < SIGNER_INIT_RETRY_WINDOW_MS;
+        if (!recentFailedAttempt) {
+          try {
+            await nostr.initSignerIfNotSet();
+          } catch (e) {
+            console.warn("[messenger] signer unavailable, continuing read-only", e);
+          }
+          this.signerInitCache = {
+            timestamp: Date.now(),
+            success: Boolean(nostr.signer),
+          };
         }
       }
       await this.refreshSignerMode();
@@ -964,7 +991,18 @@ export const useMessengerStore = defineStore("messenger", {
         if (existing.outgoing) this.pushOwnMessage(event);
         return;
       }
-      await this.loadIdentity({ refresh: false });
+      const lastSignerAttempt = this.signerInitCache;
+      const shouldSkipIdentityLoad =
+        !nostr.signer &&
+        !!lastSignerAttempt &&
+        !lastSignerAttempt.success &&
+        Date.now() - lastSignerAttempt.timestamp < SIGNER_INIT_RETRY_WINDOW_MS &&
+        this.signerMode === "none";
+      if (shouldSkipIdentityLoad) {
+        await this.refreshSignerMode();
+      } else {
+        await this.loadIdentity({ refresh: false });
+      }
       let privKey: string | undefined = undefined;
       if (nostr.signerType !== SignerType.NIP07) {
         privKey = nostr.privKeyHex;
