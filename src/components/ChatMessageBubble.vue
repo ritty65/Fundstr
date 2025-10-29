@@ -222,7 +222,11 @@ const canRetry = computed(() => {
 const retrySend = async () => {
   const localId = props.message.localEcho?.localId;
   if (!localId) return;
-  await messenger.retrySend(localId);
+  if (messenger.outboxEnabled) {
+    await messenger.retryOutboxItem(localId);
+  } else {
+    await messenger.retrySend(localId);
+  }
 };
 
 const isDataUrl = computed(() => props.message.content.startsWith("data:"));

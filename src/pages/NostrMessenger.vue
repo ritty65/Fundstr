@@ -84,13 +84,9 @@
             />
           </div>
         </q-banner>
-        <q-banner
-          v-if="(messenger.sendQueue || []).length"
-          dense
-          class="bg-orange-2 q-mb-sm"
-        >
+        <q-banner v-if="failedOutboxCount" dense class="bg-orange-2 q-mb-sm">
           <div class="row items-center no-wrap">
-            <span>{{ (messenger.sendQueue || []).length }} message(s) failed</span>
+            <span>{{ failedOutboxCount }} message(s) failed</span>
             <q-space />
             <q-btn flat dense label="Retry" @click="retryFailedQueue" />
           </div>
@@ -332,6 +328,17 @@ export default defineComponent({
       },
     );
 
+    const failedOutboxCount = computed(() => {
+      if (messenger.outboxEnabled) {
+        const count = messenger.failedOutboxCount;
+        return typeof count === "number" ? count : 0;
+      }
+      const queue = Array.isArray(messenger.sendQueue)
+        ? messenger.sendQueue.length
+        : 0;
+      return queue;
+    });
+
     const sendMessage = (
       payload:
         | string
@@ -356,6 +363,10 @@ export default defineComponent({
     };
 
     const retryFailedQueue = async () => {
+      if (messenger.outboxEnabled) {
+        await messenger.outboxRetryAll();
+        return;
+      }
       const queue = Array.isArray(messenger.sendQueue)
         ? messenger.sendQueue.slice()
         : [];
@@ -417,6 +428,7 @@ export default defineComponent({
       sendMessage,
       openSendTokenDialog,
       retryFailedQueue,
+      failedOutboxCount,
       reconnectAll,
       connectedCount,
       totalRelays,
