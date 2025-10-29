@@ -226,6 +226,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRoute, useRouter } from 'vue-router';
+import { useQuasar } from 'quasar';
 import CreatorProfileModal from 'components/CreatorProfileModal.vue';
 import CreatorCard from 'components/CreatorCard.vue';
 import DonateDialog from 'components/DonateDialog.vue';
@@ -234,6 +235,7 @@ import { useSendTokensStore } from 'stores/sendTokensStore';
 import { useDonationPresetsStore } from 'stores/donationPresets';
 import { useNostrStore } from 'stores/nostr';
 import { useCreatorsStore } from 'stores/creators';
+import { useMessengerStore } from 'stores/messenger';
 
 const creatorsStore = useCreatorsStore();
 const {
@@ -353,9 +355,11 @@ watch(searchWarnings, (warnings) => {
 
 const router = useRouter();
 const route = useRoute();
+const $q = useQuasar();
 const sendTokensStore = useSendTokensStore();
 const nostr = useNostrStore();
 const donationStore = useDonationPresetsStore();
+const messenger = useMessengerStore();
 const showDonateDialog = ref(false);
 const selectedPubkey = ref('');
 const showProfileModal = ref(false);
@@ -368,8 +372,11 @@ function viewProfile(pubkey: string) {
 
 function startChat(pubkey: string) {
   const resolvedPubkey = nostr.resolvePubkey(pubkey);
-  const url = router.resolve({ path: '/nostr-messenger', query: { pubkey: resolvedPubkey } }).href;
-  window.open(url, '_blank');
+  messenger.startChat(resolvedPubkey);
+  if ($q.screen.lt.md) {
+    messenger.setDrawer(true);
+  }
+  void router.push({ path: '/nostr-messenger', query: { pubkey: resolvedPubkey } });
 }
 
 function donate(pubkey: string) {

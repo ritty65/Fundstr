@@ -103,16 +103,20 @@ import { createFundstrDiscoveryClient } from 'src/api/fundstrDiscovery';
 import type { Creator } from 'src/lib/fundstrApi';
 import { SUPPORTERS } from 'src/data/supporters';
 import { useRouter } from 'vue-router';
+import { useQuasar } from 'quasar';
 import { useSendTokensStore } from 'stores/sendTokensStore';
 import { useDonationPresetsStore } from 'stores/donationPresets';
 import { useNostrStore } from 'stores/nostr';
+import { useMessengerStore } from 'stores/messenger';
 import { useDonationPrompt } from '@/composables/useDonationPrompt';
 
 const discoveryClient = createFundstrDiscoveryClient();
 const router = useRouter();
+const $q = useQuasar();
 const sendTokensStore = useSendTokensStore();
 const donationStore = useDonationPresetsStore();
 const nostr = useNostrStore();
+const messenger = useMessengerStore();
 const { open: openDonationPrompt, hasPaymentRails } = useDonationPrompt();
 const canShowSupportCta = hasPaymentRails;
 
@@ -233,8 +237,11 @@ function viewProfile(pubkey: string) {
 
 function startChat(pubkey: string) {
   const resolvedPubkey = nostr.resolvePubkey(pubkey);
-  const url = router.resolve({ path: '/nostr-messenger', query: { pubkey: resolvedPubkey } }).href;
-  window.open(url, '_blank');
+  messenger.startChat(resolvedPubkey);
+  if ($q.screen.lt.md) {
+    messenger.setDrawer(true);
+  }
+  void router.push({ path: '/nostr-messenger', query: { pubkey: resolvedPubkey } });
 }
 
 function donate(pubkey: string) {
