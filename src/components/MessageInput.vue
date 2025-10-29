@@ -155,6 +155,7 @@ import {
   defaultUploadAdapter,
   type UploadAdapter,
 } from "src/services/uploadAdapter";
+import type { FileMeta } from "src/utils/messengerFiles";
 
 const props = defineProps<{
   uploadEndpoint?: string;
@@ -163,7 +164,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: "send", payload: { text: string; files: any[] }): void;
+  (e: "send", payload: { text: string; files?: FileMeta[] }): void;
   (e: "sendToken"): void;
 }>();
 
@@ -525,22 +526,24 @@ function sendToken() {
 
 async function send() {
   if (!canSend.value) return;
-  const payload = {
-    text: text.value.trim(),
-    files: completedFiles.value.map((file) => ({
-      t: "file" as const,
-      v: 1,
-      url: file.url,
-      name: file.name,
-      mime: file.mime,
-      bytes: file.bytes,
-      key: file.key,
-      iv: file.iv,
-      sha256: file.sha256,
-      thumb: file.thumb,
-    })),
-  };
-  if (!payload.text && payload.files.length === 0) return;
+  const trimmed = text.value.trim();
+  const files = completedFiles.value.map((file) => ({
+    t: "file" as const,
+    v: 1,
+    url: file.url,
+    name: file.name,
+    mime: file.mime,
+    bytes: file.bytes,
+    key: file.key,
+    iv: file.iv,
+    sha256: file.sha256,
+    thumb: file.thumb,
+  }));
+  if (!trimmed && files.length === 0) return;
+  const payload: { text: string; files?: FileMeta[] } = { text: trimmed };
+  if (files.length) {
+    payload.files = files;
+  }
   emit("send", payload);
   text.value = "";
   for (const file of completedFiles.value) {

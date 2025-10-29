@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import type { FileMeta } from "src/utils/messengerFiles";
 
 export class E2EApi {
   constructor(private readonly page: Page) {}
@@ -75,6 +76,7 @@ export class E2EApi {
     pubkey: string;
     content?: string;
     relays?: string[];
+    filesPayload?: FileMeta[];
     attachment?: { name: string; type: string } | null;
     eventId?: string;
     createdAt?: number;
