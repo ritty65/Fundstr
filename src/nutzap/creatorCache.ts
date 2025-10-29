@@ -12,6 +12,7 @@ import { Notify } from "quasar";
 class CreatorCacheService {
   private creatorsStore = useCreatorsStore();
   private isUpdating = false;
+  private hasStartedSuccessfully = false;
 
   constructor() {
     // Ensure this is a singleton.
@@ -37,6 +38,10 @@ class CreatorCacheService {
   }
 
   public async start(): Promise<void> {
+    if (this.hasStartedSuccessfully) {
+      console.log("[CreatorCache] Cache already warmed. Skipping start.");
+      return;
+    }
     if (this.isUpdating) {
       console.log("[CreatorCache] Update already in progress.");
       return;
@@ -49,6 +54,7 @@ class CreatorCacheService {
       for (const npub of FEATURED_CREATORS) {
         await this.updateCreator(npub);
       }
+      this.hasStartedSuccessfully = true;
       Notify.create({
         message: "Creator cache has been updated.",
         color: "positive",
