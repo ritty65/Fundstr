@@ -126,6 +126,24 @@ describe("creatorCacheService", () => {
     );
   });
 
+  it("no-ops subsequent start calls after a successful warm", async () => {
+    FEATURED_CREATORS.push("npubOnly");
+    const service = await loadService();
+    const updateSpy = vi
+      .spyOn(service, "updateCreator")
+      .mockImplementation(async () => {});
+
+    await service.start();
+
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(notifyCreate).toHaveBeenCalledTimes(1);
+
+    await service.start();
+
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(notifyCreate).toHaveBeenCalledTimes(1);
+  });
+
   it("guards against concurrent start calls while an update is in progress", async () => {
     FEATURED_CREATORS.push("npubX");
     const service = await loadService();
