@@ -35,6 +35,16 @@
               label="Add Relay"
               @keyup.enter="addRelay"
             />
+            <q-banner
+              v-if="relayError"
+              class="q-mt-sm"
+              dense
+              rounded
+              color="negative"
+              text-color="white"
+            >
+              {{ relayError }}
+            </q-banner>
             <q-list bordered class="q-mt-sm" v-if="relays.length">
               <q-item v-for="(r, idx) in relays" :key="idx">
                 <q-item-section>{{ r }}</q-item-section>
@@ -45,7 +55,12 @@
             </q-list>
             <div class="row justify-between q-gutter-sm q-mt-md">
               <q-btn flat label="Back" @click="step = 1" />
-              <q-btn color="primary" label="Next" @click="nextFromRelays" />
+              <q-btn
+                color="primary"
+                label="Next"
+                :disable="relays.length === 0"
+                @click="nextFromRelays"
+              />
             </div>
           </q-step>
           <q-step :name="3" title="Connect">
@@ -95,10 +110,48 @@ const model = computed({
   set: (v: boolean) => emit("update:modelValue", v),
 });
 
+function normalizeRelayUrl(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  let withProtocol = trimmed;
+  if (/^https?:\/\//i.test(withProtocol)) {
+    withProtocol = withProtocol.replace(/^http/i, "ws");
+  } else if (!/^wss?:\/\//i.test(withProtocol)) {
+    withProtocol = `wss://${withProtocol}`;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(withProtocol);
+  } catch (e) {
+    return null;
+  }
+
+  if (url.protocol !== "ws:" && url.protocol !== "wss:") {
+    return null;
+  }
+
+  url.hostname = url.hostname.toLowerCase();
+
+  return url.toString().replace(/\/$/, "");
+}
+
 const step = ref(1);
 const privKey = ref(nostr.activePrivateKeyNsec || "");
 const relayInput = ref("");
-const relays = ref<string[]>([...messenger.relays]);
+const relayError = ref("");
+const initialRelays = Array.from(
+  new Set(
+    messenger.relays
+      .map((relay) => normalizeRelayUrl(relay) || "")
+      .filter((relay): relay is string => Boolean(relay)),
+  ),
+);
+const relays = ref<string[]>(initialRelays);
+if (initialRelays.length !== messenger.relays.length) {
+  messenger.relays = [...initialRelays];
+}
 const connecting = ref(false);
 const connected = ref(false);
 const connectError = ref("");
@@ -110,14 +163,25 @@ const loginOptions = [
 const extError = ref("");
 
 function addRelay() {
-  const val = relayInput.value.trim();
-  if (val) {
-    relays.value.push(val);
-    relayInput.value = "";
+  relayError.value = "";
+  const normalized = normalizeRelayUrl(relayInput.value);
+  if (!normalized) {
+    relayError.value = "Please enter a valid relay URL.";
+    return;
   }
+
+  if (relays.value.includes(normalized)) {
+    relayError.value = "Relay already added.";
+    return;
+  }
+
+  relays.value.push(normalized);
+  messenger.relays = [...relays.value];
+  relayInput.value = "";
 }
 function removeRelay(idx: number) {
   relays.value.splice(idx, 1);
+  messenger.relays = [...relays.value];
 }
 
 async function nextFromKey() {
