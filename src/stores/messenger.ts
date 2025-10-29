@@ -412,12 +412,16 @@ export const useMessengerStore = defineStore("messenger", {
         return true;
       });
     },
-    async loadIdentity() {
+    async loadIdentity(options: { refresh?: boolean } = {}) {
+      const { refresh = false } = options;
       const nostr = useNostrStore();
-      try {
-        await nostr.initSignerIfNotSet();
-      } catch (e) {
-        console.warn("[messenger] signer unavailable, continuing read-only", e);
+      const shouldInitSigner = refresh || !this.started || !nostr.signer;
+      if (shouldInitSigner) {
+        try {
+          await nostr.initSignerIfNotSet();
+        } catch (e) {
+          console.warn("[messenger] signer unavailable, continuing read-only", e);
+        }
       }
       await this.refreshSignerMode();
     },
@@ -495,7 +499,7 @@ export const useMessengerStore = defineStore("messenger", {
     ) {
       recipient = this.normalizeKey(recipient);
       if (!recipient) return { success: false, event: null };
-      await this.loadIdentity();
+      await this.loadIdentity({ refresh: false });
       await this.refreshSignerMode();
       const signerInfo = await getActiveDmSigner();
       if (!signerInfo) {
@@ -947,7 +951,7 @@ export const useMessengerStore = defineStore("messenger", {
         if (existing.outgoing) this.pushOwnMessage(event);
         return;
       }
-      await this.loadIdentity();
+      await this.loadIdentity({ refresh: false });
       let privKey: string | undefined = undefined;
       if (nostr.signerType !== SignerType.NIP07) {
         privKey = nostr.privKeyHex;
@@ -1182,7 +1186,7 @@ export const useMessengerStore = defineStore("messenger", {
       let outgoingSub: any = null;
       try {
         this.dmUnsub?.();
-        await this.loadIdentity();
+        await this.loadIdentity({ refresh: true });
         const ndk = await useNdk();
         httpFallbackNeeded = this.countConnectedRelays(ndk) === 0;
         const sinceFilter = since > 0 ? { since } : {};
