@@ -25,10 +25,9 @@
       dense
       outlined
       class="bg-slate-800"
-      :options="[
-        { label: 'Name', value: 'name' },
-        { label: 'Balance', value: 'balance' },
-      ]"
+      emit-value
+      map-options
+      :options="sortOptions"
     />
     <q-space />
     <q-btn color="primary" label="Move Tokens" @click="emit('move-tokens')" />
@@ -43,6 +42,13 @@ const props = defineProps<{
   viewMode: string;
   sort: string;
 }>();
+
+const sortOptions = [
+  { label: "Name ↑", value: "name-asc" },
+  { label: "Name ↓", value: "name-desc" },
+  { label: "Balance ↑", value: "balance-asc" },
+  { label: "Balance ↓", value: "balance-desc" },
+];
 
 const emit = defineEmits<{
   "update:search": [string];
