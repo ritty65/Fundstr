@@ -202,12 +202,7 @@ export default defineComponent({
             });
         });
         loading.value = false;
-        const qp = route.query.pubkey as string | undefined;
-        if (qp) {
-          const hex = bech32ToHex(qp);
-          messenger.startChat(hex);
-          messenger.setCurrentConversation(hex);
-        }
+        handleRoutePubkeyChange(route.query.pubkey);
       } catch (e) {
         console.error(e);
         const message = e instanceof Error ? e.message : String(e);
@@ -236,6 +231,40 @@ export default defineComponent({
     });
 
     const route = useRoute();
+    const lastRoutePubkey = ref<string | null>(null);
+
+    const handleRoutePubkeyChange = (pubkey: unknown) => {
+      if (typeof pubkey !== "string" || !pubkey) {
+        lastRoutePubkey.value = null;
+        return;
+      }
+
+      const normalized = bech32ToHex(pubkey);
+
+      if (
+        !normalized ||
+        normalized === lastRoutePubkey.value ||
+        normalized === messenger.currentConversation
+      ) {
+        lastRoutePubkey.value = normalized;
+        return;
+      }
+
+      lastRoutePubkey.value = normalized;
+      messenger.startChat(normalized);
+      messenger.setCurrentConversation(normalized);
+
+      if ($q.screen.lt.md) {
+        messenger.setDrawer(false);
+      }
+    };
+
+    watch(
+      () => route.query.pubkey,
+      (pubkey) => {
+        handleRoutePubkeyChange(pubkey);
+      },
+    );
 
     const openDrawer = () => {
       if ($q.screen.lt.md) {
