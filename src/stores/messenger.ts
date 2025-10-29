@@ -228,9 +228,12 @@ export const useMessengerStore = defineStore("messenger", {
     },
     setHttpFallbackEnabled(enabled: boolean) {
       this.httpFallbackEnabled = enabled;
+      const statusRef = useFundstrRelayStatus();
       if (!enabled) {
         this.stopHttpPolling();
-      } else {
+        return;
+      }
+      if (statusRef.value === "disconnected") {
         this.startHttpPolling();
       }
     },
@@ -250,22 +253,26 @@ export const useMessengerStore = defineStore("messenger", {
         () => statusRef.value,
         (status) => {
           if (status === "connected") {
-            this.transportMode = "ws";
             this.stopHttpPolling();
-          } else if (status === "disconnected") {
+            this.transportMode = "ws";
+            return;
+          }
+
+          if (status === "disconnected") {
             if (this.httpFallbackEnabled) {
               this.startHttpPolling();
               this.transportMode = this.httpFallbackActive ? "http" : "offline";
             } else {
+              this.stopHttpPolling();
               this.transportMode = "offline";
             }
+            return;
+          }
+
+          if (this.httpFallbackActive) {
+            this.transportMode = "http";
           } else {
-            if (this.httpFallbackEnabled && !this.httpFallbackActive) {
-              this.startHttpPolling();
-            }
-            if (this.httpFallbackActive) {
-              this.transportMode = "http";
-            }
+            this.transportMode = "offline";
           }
         },
         { immediate: true },
@@ -273,9 +280,15 @@ export const useMessengerStore = defineStore("messenger", {
     },
     startHttpPolling() {
       if (!this.httpFallbackEnabled) return;
+      const statusRef = useFundstrRelayStatus();
+      if (statusRef.value !== "disconnected") return;
       if (this.httpPollTimer) return;
       const interval = Math.max(5000, DM_POLL_INTERVAL_MS);
       const tick = async () => {
+        if (statusRef.value !== "disconnected") {
+          this.stopHttpPolling();
+          return;
+        }
         if (this.httpSyncInFlight) return;
         this.httpSyncInFlight = true;
         try {
