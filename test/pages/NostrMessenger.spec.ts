@@ -186,6 +186,59 @@ describe("NostrMessenger", () => {
     expect(wrapper.text()).not.toContain("Connecting...");
   });
 
+  it("hides the spinner and keeps retry interactive when start fails", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const pinia = createPinia();
+      setActivePinia(pinia);
+      const messenger = useMessengerStore();
+      const nostr = useNostrStore();
+      messenger.loadIdentity = vi.fn(async () => undefined);
+      nostr.initSignerIfNotSet = vi.fn(async () => undefined);
+
+      const startMock = vi
+        .fn<() => Promise<void>>()
+        .mockRejectedValueOnce(new Error("boom"))
+        .mockResolvedValueOnce(undefined);
+      messenger.start = startMock;
+
+      vi.mocked(useNdk).mockResolvedValue(createNdk());
+
+      const router = createRouter({
+        history: createMemoryHistory(),
+        routes: [{ path: "/", component: (await import("src/pages/NostrMessenger.vue")).default }],
+      });
+      await router.push("/");
+      await router.isReady();
+      const module = await import("src/pages/NostrMessenger.vue");
+      const component = module.default;
+      const wrapper = mount(component, {
+        global: {
+          plugins: [pinia, router],
+          stubs,
+          mocks: { $t: (key: string) => key, $q: { dark: { isActive: false }, screen: { gt: { xs: true }, lt: { md: false } } } },
+        },
+      });
+
+      await flushPromises();
+      await nextTick();
+
+      expect(wrapper.find(".QSpinner-stub").exists()).toBe(false);
+      expect(wrapper.text()).toContain("boom");
+
+      const buttons = wrapper.findAll("button.q-btn-stub");
+      const retryButton = buttons.find((btn) => btn.text() === "Retry");
+      expect(retryButton).toBeDefined();
+
+      await retryButton!.trigger("click");
+      await flushPromises();
+
+      expect(startMock).toHaveBeenCalledTimes(2);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("renders relay disconnect and failure banners when offline", async () => {
     vi.mocked(useNdk).mockResolvedValue(
       createNdk([

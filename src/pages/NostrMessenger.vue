@@ -206,6 +206,7 @@ export default defineComponent({
       } catch (e) {
         console.error(e);
         const message = e instanceof Error ? e.message : String(e);
+        loading.value = false;
         initError.value = message;
       } finally {
         connecting.value = false;
