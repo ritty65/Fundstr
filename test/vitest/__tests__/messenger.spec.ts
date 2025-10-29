@@ -22,6 +22,17 @@ const lsStore: Record<string, string> = {};
   },
 };
 
+if (!(globalThis as any).CustomEvent) {
+  (globalThis as any).CustomEvent = class {
+    type: string;
+    detail: any;
+    constructor(type: string, init?: { detail?: any }) {
+      this.type = type;
+      this.detail = init?.detail;
+    }
+  } as any;
+}
+
 var decryptDm: any;
 var subscribeMock: any;
 var resolvePubkey: any;
@@ -155,8 +166,15 @@ beforeEach(() => {
   const nostr = useNostrStore() as any;
   nostr.initSignerIfNotSet.mockClear();
   publishWithAcksMock.mockClear();
-  publishEventViaHttpMock.mockClear();
-  requestEventsViaHttpMock.mockClear();
+  publishEventViaHttpMock.mockReset();
+  publishEventViaHttpMock.mockImplementation(async () => ({
+    id: "http",
+    accepted: true,
+    message: undefined,
+    via: "http",
+  }));
+  requestEventsViaHttpMock.mockReset();
+  requestEventsViaHttpMock.mockImplementation(async () => []);
   subscribeMock.mockClear();
   useNdkMock.mockClear();
   notifySpy.mockClear();
@@ -176,6 +194,10 @@ beforeEach(() => {
   });
   requestEventsViaHttpMock.mockResolvedValue([]);
   ndkInstance.pool.relays = new Map([["wss://relay", { url: "wss://relay", connected: true }]]);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("messenger store", () => {
@@ -379,52 +401,6 @@ describe("messenger store", () => {
     warn.mockRestore();
   });
 
-  it("notifies when retrying without browser signer", async () => {
-    const messenger = useMessengerStore();
-    (globalThis as any).nostr = undefined;
-    await messenger.retryMessage({
-      id: "1",
-      pubkey: "alice",
-      content: "hi",
-      created_at: 1,
-      outgoing: true,
-      status: "failed",
-    } as any);
-    expect(notifyErrorSpy).toHaveBeenCalledWith(
-      "Cannot retry – no Nostr extension",
-    );
-  });
-
-  it("retries each failed message in the queue", async () => {
-    const messenger = useMessengerStore();
-    const retrySpy = vi
-      .spyOn(messenger, "retryMessage")
-      .mockResolvedValueOnce(undefined as any);
-    messenger.eventLog.push(
-      {
-        id: "1",
-        pubkey: "bob",
-        content: "pending",
-        created_at: 1,
-        outgoing: true,
-        status: "failed",
-      } as any,
-      {
-        id: "2",
-        pubkey: "carol",
-        content: "pending",
-        created_at: 2,
-        outgoing: true,
-        status: "failed",
-      } as any,
-    );
-
-    await messenger.retryFailedMessages();
-
-    expect(retrySpy).toHaveBeenCalledTimes(2);
-    retrySpy.mockRestore();
-  });
-
   it("falls back to HTTP when all relays fail to publish", async () => {
     const messenger = useMessengerStore();
     (globalThis as any).nostr = {
@@ -442,7 +418,7 @@ describe("messenger store", () => {
     const httpKey = FUNDSTR_EVT_URL || "http";
     expect(addSpy).toHaveBeenCalled();
     const added = addSpy.mock.results[0]?.value as any;
-    expect(added?.status).toBe("sent_unconfirmed");
+    expect(added?.status).toBe("sent");
     expect(added?.relayResults?.["wss://a"]).toEqual({ ok: false, reason: "down" });
     expect(added?.relayResults?.[httpKey]).toEqual({ ok: true });
     addSpy.mockRestore();
@@ -472,6 +448,165 @@ describe("messenger store", () => {
     expect(added?.status).toBe("failed");
     expect(added?.relayResults?.[httpKey]?.ok).toBe(false);
     addSpy.mockRestore();
+  });
+
+  it("marks local echo failed after timeout", async () => {
+    vi.useFakeTimers();
+    const messenger = useMessengerStore();
+    const addSpy = vi.spyOn(messenger, "addOutgoingMessage");
+    (globalThis as any).nostr = {
+      nip04: { encrypt: vi.fn(async () => "enc"), decrypt: vi.fn() },
+      signEvent: vi.fn(async (e) => ({ ...e, id: "id", sig: "sig" })),
+      getPublicKey: vi.fn(async () => "f".repeat(64)),
+    };
+    publishWithAcksMock.mockResolvedValue({});
+    publishEventViaHttpMock.mockResolvedValue({
+      id: "http",
+      accepted: false,
+      message: "Pending",
+      via: "http",
+    });
+    const signerSpy = vi
+      .spyOn(dmSigner, "getActiveDmSigner")
+      .mockResolvedValue({
+        mode: "extension",
+        signer: {
+          getPubkeyHex: vi.fn(async () => "f".repeat(64)),
+          nip04Encrypt: vi.fn(async () => "enc"),
+          nip04Decrypt: vi.fn(async () => "dec"),
+          signEvent: vi.fn(async (event) => ({
+            ...event,
+            id: event.id ?? "id",
+            sig: "sig",
+          })),
+        },
+      } as any);
+
+    const result = await messenger.sendDm("npub1eve", "hello");
+    await nextTick();
+    const msg = addSpy.mock.results[0]?.value as any;
+    expect(result.confirmationPending).toBe(true);
+    expect(msg?.localEcho?.status).toBe("pending");
+
+    await vi.runOnlyPendingTimersAsync();
+    await nextTick();
+
+    expect(msg?.localEcho?.status).toBe("failed");
+    expect(notifyErrorSpy).toHaveBeenCalledWith("Direct message delivery timed out");
+
+    signerSpy.mockRestore();
+    addSpy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it("promotes pending messages to sent when an echo arrives", async () => {
+    vi.useFakeTimers();
+    const messenger = useMessengerStore();
+    const addSpy = vi.spyOn(messenger, "addOutgoingMessage");
+    (globalThis as any).nostr = {
+      nip04: { encrypt: vi.fn(async () => "enc"), decrypt: vi.fn() },
+      signEvent: vi.fn(async (e) => ({ ...e, id: "id", sig: "sig" })),
+      getPublicKey: vi.fn(async () => "f".repeat(64)),
+    };
+    publishWithAcksMock.mockResolvedValue({});
+    publishEventViaHttpMock.mockResolvedValue({
+      id: "http",
+      accepted: false,
+      message: "Awaiting",
+      via: "http",
+    });
+    const signerSpy = vi
+      .spyOn(dmSigner, "getActiveDmSigner")
+      .mockResolvedValue({
+        mode: "extension",
+        signer: {
+          getPubkeyHex: vi.fn(async () => "f".repeat(64)),
+          nip04Encrypt: vi.fn(async () => "enc"),
+          nip04Decrypt: vi.fn(async () => "dec"),
+          signEvent: vi.fn(async (event) => ({
+            ...event,
+            id: event.id ?? "echo", 
+            sig: "sig",
+          })),
+        },
+      } as any);
+
+    const result = await messenger.sendDm("npub1frank", "hello");
+    await nextTick();
+    const msg = addSpy.mock.results[0]?.value as any;
+    expect(result.event?.id).toBeTruthy();
+    expect(msg.localEcho?.status).toBe("pending");
+
+    messenger.pushOwnMessage({
+      id: result.event?.id ?? "echo",
+      pubkey: useNostrStore().pubkey!,
+      content: "enc",
+      created_at: Math.floor(Date.now() / 1000),
+      kind: 4,
+      tags: [["p", "npub1frank"]],
+    } as any);
+
+    expect(msg.localEcho?.status).toBe("sent");
+
+    signerSpy.mockRestore();
+    addSpy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it("retries pending messages using stored payload", async () => {
+    vi.useFakeTimers();
+    const messenger = useMessengerStore();
+    const addSpy = vi.spyOn(messenger, "addOutgoingMessage");
+    (globalThis as any).nostr = {
+      nip04: { encrypt: vi.fn(async () => "enc"), decrypt: vi.fn() },
+      signEvent: vi.fn(async (e) => ({ ...e, id: "id", sig: "sig" })),
+      getPublicKey: vi.fn(async () => "f".repeat(64)),
+    };
+    publishWithAcksMock.mockResolvedValue({});
+    publishEventViaHttpMock
+      .mockResolvedValueOnce({
+        id: "http",
+        accepted: false,
+        message: "Awaiting",
+        via: "http",
+      })
+      .mockResolvedValueOnce({
+        id: "http",
+        accepted: true,
+        message: "ok",
+        via: "http",
+      });
+    const signerSpy = vi
+      .spyOn(dmSigner, "getActiveDmSigner")
+      .mockResolvedValue({
+        mode: "extension",
+        signer: {
+          getPubkeyHex: vi.fn(async () => "f".repeat(64)),
+          nip04Encrypt: vi.fn(async () => "enc"),
+          nip04Decrypt: vi.fn(async () => "dec"),
+          signEvent: vi.fn(async (event) => ({
+            ...event,
+            id: event.id ?? `retry-${Date.now()}`,
+            sig: "sig",
+          })),
+        },
+      } as any);
+
+    await messenger.sendDm("npub1grace", "hello");
+    await nextTick();
+    const msg = addSpy.mock.results[0]?.value as any;
+    const localId = msg.localEcho?.localId;
+    await vi.runOnlyPendingTimersAsync();
+    await nextTick();
+    expect(msg.localEcho?.status).toBe("failed");
+
+    const retryResult = await messenger.retrySend(localId!);
+    expect(retryResult?.success).toBe(true);
+    expect(msg.localEcho?.status).toBe("sent");
+
+    signerSpy.mockRestore();
+    addSpy.mockRestore();
+    vi.useRealTimers();
   });
 
   it("keeps HTTP fallback rejections awaiting confirmation", async () => {
@@ -535,7 +670,7 @@ describe("messenger store", () => {
     expect(addSpy).toHaveBeenCalled();
     const added = addSpy.mock.results[0]?.value as any;
     expect(added).toBeTruthy();
-    expect(added.status).toBe("sent_unconfirmed");
+    expect(added.status).toBe("pending");
     expect(added.id).toBe("id");
     expect(added.relayResults?.[httpKey]).toEqual({
       ok: false,

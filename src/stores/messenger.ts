@@ -34,7 +34,6 @@ import {
   DM_RELAYS,
   DM_HTTP_EVENT_URL,
   DM_HTTP_REQ_URL,
-  DM_WS_ACK_TIMEOUT_MS,
   DM_HTTP_ACK_TIMEOUT_MS,
   DM_POLL_INTERVAL_MS,
   DM_REQUIRE_AUTH,
@@ -117,19 +116,43 @@ export interface MessageAttachment {
   name: string;
 }
 
+export type LocalEchoStatus = "pending" | "sent" | "failed";
+
+export interface LocalEchoMeta {
+  localId: string;
+  eventId?: string | null;
+  status: LocalEchoStatus;
+  relayResults: Record<string, RelayAck>;
+  createdAt: number;
+  updatedAt: number;
+  lastAckAt?: number | null;
+  timerStartedAt?: number | null;
+  error?: string | null;
+  relays?: string[];
+  attempt: number;
+  payload: {
+    content: string;
+    attachment?: MessageAttachment;
+    tokenPayload?: any;
+  };
+}
+
+export type MessengerMessageStatus = LocalEchoStatus | "confirmed";
+
 export type MessengerMessage = {
   id: string;
   pubkey: string;
   content: string;
   created_at: number;
   outgoing: boolean;
-  status?: "pending" | "sent_unconfirmed" | "confirmed" | "failed";
+  status?: MessengerMessageStatus;
   protocol?: "nip17" | "nip04";
   attachment?: MessageAttachment;
   subscriptionPayment?: SubscriptionPayment;
   tokenPayload?: any;
   autoRedeem?: boolean;
   relayResults?: Record<string, RelayAck>;
+  localEcho?: LocalEchoMeta;
 };
 
 type SendDmResult = {
@@ -150,9 +173,26 @@ const NON_RETRYABLE_ACK_PATTERNS = [
   /signature/i,
 ];
 
+const LOCAL_ECHO_TIMEOUT_MS = 5_000;
+
 function isNonRetryableHttpAck(ack: HttpPublishAck | null | undefined): boolean {
   if (!ack?.message) return false;
   return NON_RETRYABLE_ACK_PATTERNS.some((pattern) => pattern.test(ack.message!));
+}
+
+function emitDmCounter(
+  name: string,
+  detail: Record<string, unknown> = {},
+): void {
+  const payload = { name, timestamp: Date.now(), ...detail };
+  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    try {
+      window.dispatchEvent(new CustomEvent("fundstr:dm-counter", { detail: payload }));
+    } catch (err) {
+      console.debug("[messenger.telemetry] dispatch failed", err);
+    }
+  }
+  console.info(`[messenger.telemetry] ${name}`, payload);
 }
 
 export const useMessengerStore = defineStore("messenger", {
@@ -198,6 +238,8 @@ export const useMessengerStore = defineStore("messenger", {
       [] as MessengerMessage[],
     );
     if (!Array.isArray(eventLog.value)) eventLog.value = [];
+    const localEchoTimeouts: Record<string, ReturnType<typeof setTimeout> | null> = {};
+    const localEchoIndex: Record<string, MessengerMessage> = {};
     const drawerOpen = useLocalStorage<boolean>(storageKey("drawerOpen"), true);
     const drawerMini = useLocalStorage<boolean>(
       storageKey("drawerMini"),
@@ -213,6 +255,15 @@ export const useMessengerStore = defineStore("messenger", {
         pinned.value = {} as any;
         aliases.value = {} as any;
         eventLog.value = [] as any;
+        Object.values(localEchoTimeouts).forEach((timer) => {
+          if (timer) clearTimeout(timer);
+        });
+        for (const key of Object.keys(localEchoTimeouts)) {
+          delete localEchoTimeouts[key];
+        }
+        for (const key of Object.keys(localEchoIndex)) {
+          delete localEchoIndex[key];
+        }
         signerInitCache.value = null;
       },
     );
@@ -239,6 +290,8 @@ export const useMessengerStore = defineStore("messenger", {
       lastHttpSyncAt: 0,
       httpSyncInFlight: false,
       dmRequireAuth: DM_REQUIRE_AUTH,
+      localEchoTimeouts,
+      localEchoIndex,
     };
   },
   getters: {
@@ -248,12 +301,169 @@ export const useMessengerStore = defineStore("messenger", {
     },
     sendQueue(): MessengerMessage[] {
       if (!Array.isArray(this.eventLog)) this.eventLog = [];
-      return this.eventLog.filter(
-        (m) => m.outgoing && m.status === "failed",
-      );
+      return this.eventLog.filter((m) => {
+        if (!m.outgoing) return false;
+        if (m.localEcho) {
+          return m.localEcho.status === "failed";
+        }
+        return m.status === "failed";
+      });
     },
   },
   actions: {
+    findMessageByLocalId(localId: string): MessengerMessage | undefined {
+      if (!localId) return undefined;
+      const indexed = this.localEchoIndex?.[localId];
+      if (indexed) return indexed;
+      if (!Array.isArray(this.eventLog)) this.eventLog = [];
+      const found = this.eventLog.find((entry) => entry.localEcho?.localId === localId);
+      if (found) {
+        this.localEchoIndex[localId] = found;
+      }
+      return found;
+    },
+    clearLocalEchoTimer(localId: string) {
+      const handle = this.localEchoTimeouts[localId];
+      if (handle) {
+        clearTimeout(handle);
+      }
+      delete this.localEchoTimeouts[localId];
+    },
+    scheduleLocalEcho(meta: LocalEchoMeta, msg: MessengerMessage) {
+      this.clearLocalEchoTimer(meta.localId);
+      meta.timerStartedAt = Date.now();
+      meta.updatedAt = meta.timerStartedAt;
+      if (!meta.createdAt) {
+        meta.createdAt = meta.timerStartedAt;
+      }
+      meta.status = "pending";
+      msg.localEcho = meta;
+      msg.status = "pending";
+      this.localEchoIndex[meta.localId] = msg;
+      this.localEchoTimeouts[meta.localId] = setTimeout(() => {
+        void this.handleLocalEchoTimeout(meta.localId);
+      }, LOCAL_ECHO_TIMEOUT_MS);
+    },
+    mergeRelayAckResults(
+      msg: MessengerMessage,
+      meta: LocalEchoMeta,
+      updates: Record<string, RelayAck> | undefined,
+    ) {
+      if (!updates || !Object.keys(updates).length) return;
+      const next = { ...(msg.relayResults ?? {}) } as Record<string, RelayAck>;
+      const metaNext = { ...(meta.relayResults ?? {}) } as Record<string, RelayAck>;
+      for (const [relay, ack] of Object.entries(updates)) {
+        next[relay] = ack;
+        metaNext[relay] = ack;
+      }
+      msg.relayResults = next;
+      meta.relayResults = metaNext;
+    },
+    markLocalEchoSent(
+      msg: MessengerMessage,
+      meta: LocalEchoMeta,
+      relayResults?: Record<string, RelayAck>,
+      source: string = "unknown",
+    ) {
+      if (meta.status === "sent") {
+        this.mergeRelayAckResults(msg, meta, relayResults);
+        return;
+      }
+      this.clearLocalEchoTimer(meta.localId);
+      meta.status = "sent";
+      meta.updatedAt = Date.now();
+      meta.lastAckAt = meta.updatedAt;
+      msg.status = "sent";
+      this.mergeRelayAckResults(msg, meta, relayResults);
+      const latency =
+        typeof meta.timerStartedAt === "number"
+          ? meta.updatedAt - meta.timerStartedAt
+          : undefined;
+      delete this.localEchoIndex[meta.localId];
+      emitDmCounter("dm_sent", {
+        localId: meta.localId,
+        attempt: meta.attempt,
+        source,
+      });
+      if (typeof latency === "number") {
+        emitDmCounter("dm_ack_first_ms", {
+          localId: meta.localId,
+          latency,
+        });
+      }
+    },
+    markLocalEchoFailed(
+      msg: MessengerMessage,
+      meta: LocalEchoMeta,
+      reason: string,
+      relayResults?: Record<string, RelayAck>,
+    ) {
+      if (meta.status === "failed") {
+        this.mergeRelayAckResults(msg, meta, relayResults);
+        return;
+      }
+      this.clearLocalEchoTimer(meta.localId);
+      meta.status = "failed";
+      meta.updatedAt = Date.now();
+      meta.error = reason;
+      msg.status = "failed";
+      this.mergeRelayAckResults(msg, meta, relayResults);
+    },
+    async handleLocalEchoTimeout(localId: string) {
+      const msg = this.findMessageByLocalId(localId);
+      if (!msg || !msg.localEcho) return;
+      const meta = msg.localEcho;
+      if (meta.status !== "pending") return;
+      this.markLocalEchoFailed(
+        msg,
+        meta,
+        "Timed out waiting for relay acknowledgement",
+      );
+      emitDmCounter("dm_failed_timeout", {
+        localId: meta.localId,
+        attempt: meta.attempt,
+      });
+      notifyError("Direct message delivery timed out");
+      if (!meta.eventId) {
+        return;
+      }
+      const recovered = await this.recoverLocalEchoFromRelays(
+        meta.localId,
+        meta.eventId,
+      );
+      if (recovered) {
+        emitDmCounter("dm_dedup_hits", {
+          localId: meta.localId,
+          source: "timeout-recovery",
+        });
+      }
+    },
+    async recoverLocalEchoFromRelays(
+      localId: string,
+      eventId: string,
+    ): Promise<boolean> {
+      try {
+        const ndk = await useNdk({ requireSigner: false });
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+        const timeoutPromise = new Promise<null>((resolve) => {
+          timeoutHandle = setTimeout(() => resolve(null), 4000);
+        });
+        const ndkEvent = (await Promise.race([
+          ndk.fetchEvent({ ids: [eventId] }, { closeOnEose: true, groupable: false }),
+          timeoutPromise,
+        ])) as NDKEvent | null | undefined;
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        if (!ndkEvent) {
+          return false;
+        }
+        const nostrEvent = await ndkEvent.toNostrEvent();
+        this.pushOwnMessage(nostrEvent as NostrEvent);
+        return true;
+      } catch (err) {
+        console.warn("[messenger.recoverLocalEchoFromRelays]", err);
+        return false;
+      }
+    },
     setSignerMode(mode: DmSignerMode) {
       this.signerMode = mode;
     },
@@ -566,16 +776,29 @@ export const useMessengerStore = defineStore("messenger", {
     ): Promise<SendDmResult> {
       recipient = this.normalizeKey(recipient);
       if (!recipient) return { success: false, event: null };
-      await this.loadIdentity({ refresh: false });
-      await this.refreshSignerMode();
-      const signerInfo = await getActiveDmSigner();
-      if (!signerInfo) {
-        notifyError("No signer available for direct messages");
-        return { success: false, event: null };
-      }
-      this.signerMode = signerInfo.mode;
 
       const { content: safeMessage } = generateContentTags(message);
+      const relayTargets = relays ? Array.from(new Set(relays)) : undefined;
+      const now = Date.now();
+      const meta: LocalEchoMeta = {
+        localId: uuidv4(),
+        eventId: null,
+        status: "pending",
+        relayResults: {},
+        createdAt: now,
+        updatedAt: now,
+        lastAckAt: null,
+        timerStartedAt: null,
+        error: null,
+        relays: relayTargets,
+        attempt: 1,
+        payload: {
+          content: safeMessage,
+          attachment,
+          tokenPayload,
+        },
+      };
+
       const msg = this.addOutgoingMessage(
         recipient,
         safeMessage,
@@ -584,18 +807,62 @@ export const useMessengerStore = defineStore("messenger", {
         attachment,
         "pending",
         tokenPayload,
+        meta,
       );
+      msg.relayResults = {};
+      this.scheduleLocalEcho(meta, msg);
+
+      return await this.executeSendWithMeta({
+        msg,
+        meta,
+        recipient,
+        safeMessage,
+        attachment,
+        tokenPayload,
+        relayTargets,
+      });
+    },
+    async executeSendWithMeta(options: {
+      msg: MessengerMessage;
+      meta: LocalEchoMeta;
+      recipient: string;
+      safeMessage: string;
+      attachment?: MessageAttachment;
+      tokenPayload?: any;
+      relayTargets?: string[];
+    }): Promise<SendDmResult> {
+      const { msg, meta, recipient, safeMessage, attachment, tokenPayload } = options;
+      const relayTargets = options.relayTargets;
+
+      try {
+        await this.loadIdentity({ refresh: false });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        this.markLocalEchoFailed(msg, meta, reason, {
+          identity: { ok: false, reason },
+        });
+        notifyError(`Failed to prepare DM signer: ${reason}`);
+        return { success: false, event: null };
+      }
+
+      await this.refreshSignerMode();
+      const signerInfo = await getActiveDmSigner();
+      if (!signerInfo) {
+        this.markLocalEchoFailed(msg, meta, "No signer available for direct messages", {
+          signer: { ok: false, reason: "No signer available" },
+        });
+        notifyError("No signer available for direct messages");
+        return { success: false, event: null };
+      }
+      this.signerMode = signerInfo.mode;
 
       let event: NostrEvent;
       try {
         event = await buildKind4Event(signerInfo.signer, recipient, safeMessage);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err ?? "error");
-        msg.status = "failed";
-        msg.relayResults = { encryption: { ok: false, reason } };
-        if (!this.eventLog.some((m) => m.id === msg.id)) {
-          this.eventLog.push(msg);
-        }
+        const relayResults = { encryption: { ok: false, reason } } as Record<string, RelayAck>;
+        this.markLocalEchoFailed(msg, meta, reason, relayResults);
         notifyError(`Failed to encrypt DM: ${reason}`);
         return { success: false, event: null };
       }
@@ -603,6 +870,15 @@ export const useMessengerStore = defineStore("messenger", {
       const previousId = msg.id;
       msg.id = event.id;
       msg.created_at = event.created_at ?? msg.created_at;
+      meta.eventId = event.id;
+      meta.payload = {
+        content: safeMessage,
+        attachment,
+        tokenPayload,
+      };
+      if (relayTargets?.length) {
+        meta.relays = relayTargets;
+      }
       if (event.kind) {
         msg.protocol = event.kind === 1059 ? "nip17" : "nip04";
       }
@@ -634,64 +910,66 @@ export const useMessengerStore = defineStore("messenger", {
       let httpAck: HttpPublishAck | null = null;
       let httpAckNonRetryable = false;
 
-      const triggerConfirmation = () => {
+      const ensureConfirmation = () => {
         if (confirmationTriggered) return;
         confirmationTriggered = true;
-        msg.status = "sent_unconfirmed";
         void this.confirmMessageDelivery(msg.id, event.id);
       };
 
-      const relayTargets = Array.from(
-        new Set(
-          relays?.length
-            ? relays
-            : Array.isArray(this.relays) && this.relays.length
-              ? this.relays
-              : DM_RELAYS,
-        ),
-      );
-
       try {
-        for (const relayUrl of relayTargets) {
-          if (!relayUrl) continue;
-          let client: Awaited<ReturnType<typeof ensureFundstrRelayClient>> | null = null;
-          try {
-            client = await ensureFundstrRelayClient(relayUrl);
-          } catch (err) {
-            const reason = err instanceof Error ? err.message : String(err ?? "error");
-            relayResults[relayUrl] = { ok: false, reason };
-            lastFailureReason = reason;
-            continue;
-          }
+        const nostr = useNostrStore();
+        const useFundstrRelay = nostr.connected;
 
-          const authOptions: FundstrRelayAuthOptions = this.dmRequireAuth
-            ? {
-                enabled: true,
-                cacheMs: DM_AUTH_CACHE_MS,
-                handler: async (challenge, url) =>
-                  await buildAuthEvent(signerInfo.signer, challenge, url),
-              }
-            : { enabled: false };
-          client.setAuthOptions(authOptions);
-
-          try {
-            const result = await client.publishSigned(event);
-            triggerConfirmation();
-            const ack = result.ack;
-            relayResults[relayUrl] = {
-              ok: ack.accepted,
-              reason: ack.message,
-            };
-            if (ack.accepted) {
-              delivered = true;
-              sentVia = "ws";
-              break;
+        if (useFundstrRelay) {
+          const fundstrRelays = relayTargets?.length
+            ? relayTargets
+            : Array.isArray(this.relays)
+              ? this.relays
+              : Array.from(new Set([...DM_RELAYS]));
+          for (const relayUrl of fundstrRelays) {
+            if (!relayUrl) continue;
+            let client: Awaited<ReturnType<typeof ensureFundstrRelayClient>> | null = null;
+            try {
+              client = await ensureFundstrRelayClient(relayUrl);
+            } catch (err) {
+              const reason = err instanceof Error ? err.message : String(err ?? "error");
+              relayResults[relayUrl] = { ok: false, reason };
+              lastFailureReason = reason;
+              continue;
             }
-          } catch (err) {
-            const reason = err instanceof Error ? err.message : String(err ?? "error");
-            relayResults[relayUrl] = { ok: false, reason };
-            lastFailureReason = reason;
-            continue;
+
+            const authOptions: FundstrRelayAuthOptions = this.dmRequireAuth
+              ? {
+                  enabled: true,
+                  cacheMs: DM_AUTH_CACHE_MS,
+                  handler: async (challenge, url) =>
+                    await buildAuthEvent(signerInfo.signer, challenge, url),
+                }
+              : { enabled: false };
+            client.setAuthOptions(authOptions);
+
+            try {
+              const result = await client.publishSigned(event);
+              const ack = result.ack;
+              const ackRecord: RelayAck = {
+                ok: ack.accepted,
+                reason: ack.message,
+              };
+              relayResults[relayUrl] = ackRecord;
+              if (ack.accepted) {
+                delivered = true;
+                sentVia = "ws";
+                this.markLocalEchoSent(msg, meta, { [relayUrl]: ackRecord }, "ws");
+                ensureConfirmation();
+                break;
+              }
+              lastFailureReason = ack.message ?? lastFailureReason;
+            } catch (err) {
+              const reason = err instanceof Error ? err.message : String(err ?? "error");
+              relayResults[relayUrl] = { ok: false, reason };
+              lastFailureReason = reason;
+              continue;
+            }
           }
         }
 
@@ -701,24 +979,34 @@ export const useMessengerStore = defineStore("messenger", {
               url: DM_HTTP_EVENT_URL,
               timeoutMs: DM_HTTP_ACK_TIMEOUT_MS,
             });
-            triggerConfirmation();
-            relayResults[DM_HTTP_EVENT_URL] = {
+            const ackRecord: RelayAck = {
               ok: ack.accepted,
               reason: ack.message,
             };
+            relayResults[DM_HTTP_EVENT_URL] = ackRecord;
             if (ack.accepted) {
               delivered = true;
               sentVia = "http";
+              this.markLocalEchoSent(
+                msg,
+                meta,
+                { [DM_HTTP_EVENT_URL]: ackRecord },
+                "http",
+              );
+              ensureConfirmation();
             } else {
               httpAck = ack;
               httpAckNonRetryable = isNonRetryableHttpAck(ack);
               lastFailureReason = ack.message ?? lastFailureReason;
+              this.mergeRelayAckResults(msg, meta, {
+                [DM_HTTP_EVENT_URL]: ackRecord,
+              });
             }
           } catch (httpErr) {
             const reason =
               httpErr instanceof Error ? httpErr.message : String(httpErr ?? "error");
             relayResults[DM_HTTP_EVENT_URL] = { ok: false, reason };
-            console.error("[messenger.sendDm] HTTP fallback failed", httpErr);
+            console.error("[messenger.executeSendWithMeta] HTTP fallback failed", httpErr);
             lastFailureReason = reason;
           }
         }
@@ -736,12 +1024,8 @@ export const useMessengerStore = defineStore("messenger", {
           );
         }
       } catch (err) {
-        msg.status = "failed";
-        msg.relayResults = relayResults;
-        if (!this.eventLog.some((m) => m.id === msg.id)) {
-          this.eventLog.push(msg);
-        }
         const reason = err instanceof Error ? err.message : String(err ?? "error");
+        this.markLocalEchoFailed(msg, meta, reason, relayResults);
         notifyError(
           reason && reason.startsWith("Failed to send DM")
             ? reason
@@ -750,7 +1034,7 @@ export const useMessengerStore = defineStore("messenger", {
         return { success: false, event };
       }
 
-      msg.relayResults = relayResults;
+      this.mergeRelayAckResults(msg, meta, relayResults);
 
       if (delivered) {
         if (sentVia === "ws") {
@@ -765,8 +1049,15 @@ export const useMessengerStore = defineStore("messenger", {
 
       if (httpAck) {
         const ackMessage = httpAck.message?.trim();
+        ensureConfirmation();
         if (httpAckNonRetryable) {
           const reason = ackMessage || lastFailureReason;
+          this.markLocalEchoFailed(
+            msg,
+            meta,
+            reason || "Failed to send DM",
+            relayResults,
+          );
           notifyError(
             reason && reason.startsWith("Failed to send DM")
               ? reason
@@ -964,49 +1255,37 @@ export const useMessengerStore = defineStore("messenger", {
         return false;
       }
     },
-    async retryMessage(msg: MessengerMessage) {
-      const nostr = useNostrStore();
-      const ext: any = (window as any).nostr;
-      if (!ext?.nip04?.encrypt || !ext?.signEvent || !nostr.pubkey) {
-        notifyError("Cannot retry – no Nostr extension");
+    async retrySend(localId: string): Promise<SendDmResult | void> {
+      const msg = this.findMessageByLocalId(localId);
+      if (!msg || !msg.localEcho) {
+        notifyError("Retry failed – message not found");
         return;
       }
-      try {
-        const cipher = await ext.nip04.encrypt(msg.pubkey, msg.content);
-        const evt: NostrEvent = {
-          kind: 4,
-          pubkey: nostr.pubkey!,
-          content: cipher,
-          tags: [["p", msg.pubkey]],
-          created_at: Math.floor(Date.now() / 1000),
-        } as any;
-        const signed = await ext.signEvent(evt);
-        const pool = new SimplePool();
-        let sent = false;
-        for (const r of this.relays as any) {
-          try {
-            await pool.publish([r], signed);
-            sent = true;
-          } catch {}
-        }
-        if (sent) {
-          msg.id = signed.id;
-          msg.created_at = signed.created_at ?? msg.created_at;
-          msg.status = "sent_unconfirmed";
-          notifySuccess("Message retried and sent successfully");
-        } else {
-          notifyError("Retry failed – message not sent");
-        }
-      } catch (e) {
-        console.error(e);
-        notifyError("Could not resend message: " + (e as Error).message);
-      }
-    },
-    async retryFailedMessages() {
-      if (!Array.isArray(this.eventLog)) this.eventLog = [];
-      for (const msg of this.sendQueue) {
-        await this.retryMessage(msg);
-      }
+      const meta = msg.localEcho;
+      const payload = meta.payload ?? {
+        content: msg.content,
+        attachment: msg.attachment,
+        tokenPayload: msg.tokenPayload,
+      };
+      meta.attempt += 1;
+      meta.status = "pending";
+      meta.error = null;
+      meta.updatedAt = Date.now();
+      meta.timerStartedAt = null;
+      meta.relayResults = {};
+      msg.status = "pending";
+      msg.relayResults = {};
+      this.scheduleLocalEcho(meta, msg);
+      emitDmCounter("dm_retry", { localId: meta.localId, attempt: meta.attempt });
+      return await this.executeSendWithMeta({
+        msg,
+        meta,
+        recipient: msg.pubkey,
+        safeMessage: payload.content,
+        attachment: payload.attachment,
+        tokenPayload: payload.tokenPayload,
+        relayTargets: meta.relays,
+      });
     },
     addOutgoingMessage(
       pubkey: string,
@@ -1014,8 +1293,9 @@ export const useMessengerStore = defineStore("messenger", {
       created_at?: number,
       id?: string,
       attachment?: MessageAttachment,
-      status: "pending" | "sent_unconfirmed" | "confirmed" | "failed" = "pending",
+      status: MessengerMessageStatus = "pending",
       tokenPayload?: any,
+      localEcho?: LocalEchoMeta,
     ): MessengerMessage {
       pubkey = this.normalizeKey(pubkey);
       if (!pubkey) throw new Error("Invalid pubkey");
@@ -1029,13 +1309,18 @@ export const useMessengerStore = defineStore("messenger", {
         created_at: created_at ?? Math.floor(Date.now() / 1000),
         outgoing: true,
         attachment,
-        status,
+        status: localEcho ? localEcho.status : status,
         tokenPayload,
       };
-      if (!this.conversations[pubkey]) this.conversations[pubkey] = [];
-      if (!this.conversations[pubkey].some((m) => m.id === messageId))
-        this.conversations[pubkey].push(msg);
-      this.eventLog.push(msg);
+      if (localEcho) {
+        msg.localEcho = localEcho;
+        msg.status = localEcho.status;
+      }
+      const existingConversation = this.conversations[pubkey] || [];
+      if (!existingConversation.some((m) => m.id === messageId)) {
+        this.conversations[pubkey] = [...existingConversation, msg];
+      }
+      this.eventLog = [...this.eventLog, msg];
       return msg;
     },
 
@@ -1056,9 +1341,23 @@ export const useMessengerStore = defineStore("messenger", {
         if (timeoutHandle) clearTimeout(timeoutHandle);
         if (!ndkEvent) return;
 
-        const msg =
+        let msg =
           this.eventLog.find((m) => m.id === messageId) ||
           this.eventLog.find((m) => m.id === targetId);
+        if (!msg) {
+          msg = Object.values(this.localEchoIndex).find((entry) => {
+            const metaId = entry.localEcho?.eventId;
+            return entry.id === targetId || metaId === targetId || entry.id === messageId;
+          });
+          if (msg) {
+            if (!this.eventLog.some((existing) => existing === msg)) {
+              this.eventLog = [...this.eventLog, msg];
+            }
+            if (msg.localEcho?.localId) {
+              this.localEchoIndex[msg.localEcho.localId] = msg;
+            }
+          }
+        }
         if (!msg) return;
 
         try {
@@ -1071,8 +1370,27 @@ export const useMessengerStore = defineStore("messenger", {
           );
         }
 
-        if (msg.status === "sent_unconfirmed" || msg.status === "pending") {
-          msg.status = "confirmed";
+        if (msg.outgoing) {
+          const meta = msg.localEcho;
+          const relayUpdate: Record<string, RelayAck> = {
+            ndk: {
+              ok: true,
+              reason: "Fetched via relay confirmation",
+            },
+          };
+          if (meta) {
+            this.markLocalEchoSent(msg, meta, relayUpdate, "ndk-confirmation");
+            emitDmCounter("dm_dedup_hits", {
+              localId: meta.localId,
+              source: "ndk-confirmation",
+            });
+          } else if (msg.status !== "sent") {
+            msg.status = "sent";
+            msg.relayResults = {
+              ...(msg.relayResults ?? {}),
+              ...relayUpdate,
+            };
+          }
         }
       } catch (err) {
         console.error("[messenger.confirmMessageDelivery] failed", err);
@@ -1080,31 +1398,43 @@ export const useMessengerStore = defineStore("messenger", {
     },
     pushOwnMessage(event: NostrEvent) {
       if (!Array.isArray(this.eventLog)) this.eventLog = [];
-      const msg = this.eventLog.find((m) => m.id === event.id);
+      let msg = this.eventLog.find((m) => m.id === event.id);
+      if (!msg) {
+        msg = Object.values(this.localEchoIndex).find(
+          (entry) => entry.localEcho?.eventId === event.id,
+        );
+        if (msg) {
+          if (!this.eventLog.some((existing) => existing === msg)) {
+            this.eventLog = [...this.eventLog, msg];
+          }
+          if (msg.localEcho?.localId) {
+            this.localEchoIndex[msg.localEcho.localId] = msg;
+          }
+        }
+      }
       if (!msg) return;
       if (event.kind) {
         msg.protocol = event.kind === 1059 ? "nip17" : "nip04";
       }
       msg.created_at = event.created_at ?? msg.created_at;
       if (msg.outgoing) {
-        if (msg.status === "failed") {
-          msg.status = "sent_unconfirmed";
-        }
-        if (
-          msg.status === "pending" ||
-          msg.status === "sent_unconfirmed" ||
-          !msg.status
-        ) {
-          msg.status = "confirmed";
-        }
-        const existingResults = msg.relayResults ? { ...msg.relayResults } : {};
-        if (!existingResults.subscription || !existingResults.subscription.ok) {
-          existingResults.subscription = {
+        const meta = msg.localEcho;
+        const relayUpdate: Record<string, RelayAck> = {
+          subscription: {
             ok: true,
             reason: "Received via relay subscription",
-          };
+          },
+        };
+        if (meta) {
+          this.markLocalEchoSent(msg, meta, relayUpdate, "subscription");
+          emitDmCounter("dm_dedup_hits", {
+            localId: meta.localId,
+            source: "subscription",
+          });
+        } else {
+          msg.status = "sent";
+          msg.relayResults = { ...(msg.relayResults ?? {}), ...relayUpdate };
         }
-        msg.relayResults = existingResults;
       }
       try {
         const payload = JSON.parse(msg.content);

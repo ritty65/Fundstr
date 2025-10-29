@@ -12,7 +12,7 @@ import { useSubscriptionsStore } from "src/stores/subscriptions";
 import { useMessengerStore } from "src/stores/messenger";
 import { useTokensStore } from "src/stores/tokens";
 import { useInvoiceHistoryStore } from "src/stores/invoiceHistory";
-import type { MessengerMessage } from "src/stores/messenger";
+import type { LocalEchoMeta, MessengerMessage } from "src/stores/messenger";
 import type { Proof } from "@cashu/cashu-ts";
 import type { WalletProof } from "src/types/proofs";
 import { MintQuoteState, MeltQuoteState } from "@cashu/cashu-ts";
@@ -353,6 +353,21 @@ export default boot(() => {
   settings.useWebsockets = false;
   ui.globalMutexLock = false;
 
+  const messenger = useMessengerStore();
+  const originalExecuteSendWithMeta = messenger.executeSendWithMeta.bind(messenger);
+  type ExecuteOptions = Parameters<typeof messenger.executeSendWithMeta>[0];
+  type ExecuteResult = Awaited<ReturnType<typeof originalExecuteSendWithMeta>>;
+  let messengerSendMock: null | ((options: ExecuteOptions) => Promise<ExecuteResult>) = null;
+
+  messenger.executeSendWithMeta = async function (
+    options: ExecuteOptions,
+  ): Promise<ExecuteResult> {
+    if (messengerSendMock) {
+      return messengerSendMock(options);
+    }
+    return originalExecuteSendWithMeta(options);
+  };
+
   const api = {
     async reset() {
       localStorage.clear();
@@ -379,6 +394,21 @@ export default boot(() => {
       mints.activeProofs = [];
       await nextTick();
       walletMock.reset();
+      messengerSendMock = null;
+      messenger.currentConversation = "";
+      messenger.started = false;
+      messenger.conversations = {} as any;
+      messenger.eventLog = [] as any;
+      messenger.unreadCounts = {} as any;
+      messenger.aliases = {} as any;
+      messenger.pinned = {} as any;
+      for (const key of Object.keys(messenger.localEchoTimeouts)) {
+        const handle = messenger.localEchoTimeouts[key];
+        if (handle) {
+          clearTimeout(handle);
+        }
+        delete messenger.localEchoTimeouts[key];
+      }
     },
     async bootstrap() {
       const mnemonic = useMnemonicStore();
@@ -527,6 +557,92 @@ export default boot(() => {
       const key = messenger.normalizeKey(pubkey);
       messenger.conversations[key] = messages;
       messenger.currentConversation = key;
+    },
+    messengerCreateLocalEcho(config: {
+      pubkey: string;
+      content?: string;
+      relays?: string[];
+      attachment?: { name: string; type: string } | null;
+    }) {
+      const key = messenger.normalizeKey(config.pubkey);
+      const now = Date.now();
+      const content = config.content ?? "E2E pending message";
+      const attachment = config.attachment
+        ? { type: config.attachment.type, name: config.attachment.name }
+        : undefined;
+      const localId =
+        typeof crypto?.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `local-${Math.random().toString(36).slice(2)}`;
+      const meta: LocalEchoMeta = {
+        localId,
+        eventId: null,
+        status: "pending",
+        relayResults: {},
+        createdAt: now,
+        updatedAt: now,
+        lastAckAt: null,
+        timerStartedAt: null,
+        error: null,
+        relays: config.relays,
+        attempt: 1,
+        payload: {
+          content,
+          attachment,
+          tokenPayload: undefined,
+        },
+      };
+      const message = messenger.addOutgoingMessage(
+        key,
+        content,
+        Math.floor(now / 1000),
+        undefined,
+        attachment,
+        "pending",
+        undefined,
+        meta,
+      );
+      messenger.started = true;
+      messenger.currentConversation = key;
+      messenger.scheduleLocalEcho(meta, message);
+      return { localId: meta.localId, messageId: message.id };
+    },
+    messengerMarkLocalEchoSent(localId: string) {
+      const message = messenger.findMessageByLocalId(localId);
+      if (!message || !message.localEcho) {
+        return false;
+      }
+      messenger.markLocalEchoSent(
+        message,
+        message.localEcho,
+        { "e2e-mock": { ok: true, reason: "Mock acknowledgement" } },
+        "e2e",
+      );
+      return true;
+    },
+    messengerSetSendMock(config: { mode: "success" | "failure"; reason?: string }) {
+      messengerSendMock = async ({ msg, meta }) => {
+        if (config.mode === "success") {
+          messenger.markLocalEchoSent(
+            msg,
+            meta,
+            { "e2e-mock": { ok: true, reason: "Mock acknowledgement" } },
+            "e2e",
+          );
+          return { success: true, event: null } as ExecuteResult;
+        }
+        const reason = config.reason ?? "Mock failure";
+        messenger.markLocalEchoFailed(
+          msg,
+          meta,
+          reason,
+          { "e2e-mock": { ok: false, reason } },
+        );
+        return { success: false, event: null } as ExecuteResult;
+      };
+    },
+    messengerClearSendMock() {
+      messengerSendMock = null;
     },
     getSnapshot() {
       const mints = useMintsStore();

@@ -413,7 +413,7 @@ vi.mock("src/stores/messenger", async () => {
       actions: {
         loadIdentity: vi.fn(),
         start: vi.fn(async () => undefined),
-        retryFailedMessages: vi.fn(),
+        retrySend: vi.fn(),
         startChat: vi.fn(),
         setCurrentConversation: vi.fn(),
         setDrawer: vi.fn(function (this: any, value: boolean) {
