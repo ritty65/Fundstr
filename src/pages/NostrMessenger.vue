@@ -30,6 +30,39 @@
           <q-btn flat dense label="Reconnect All" @click="reconnectAll" />
         </div>
         </q-banner>
+        <q-banner
+          v-if="initError || startTimedOut"
+          dense
+          class="bg-red-2 q-mb-sm"
+        >
+          <div class="row items-center no-wrap q-gutter-sm">
+            <div class="column">
+              <span v-if="startTimedOut">Messenger startup timed out.</span>
+              <span
+                v-if="
+                  initError &&
+                  (!startTimedOut || initError !== 'Messenger startup timed out')
+                "
+              >
+                {{ initError }}
+              </span>
+            </div>
+            <q-space />
+            <q-btn
+              flat
+              dense
+              label="Retry"
+              :loading="connecting"
+              @click="init"
+            />
+            <q-btn
+              flat
+              dense
+              label="Open Setup Wizard"
+              @click="openSetupWizardFromError"
+            />
+          </div>
+        </q-banner>
         <NostrRelayErrorBanner />
         <q-banner
           v-if="failedRelays.length"
@@ -124,6 +157,8 @@ export default defineComponent({
   setup() {
     const loading = ref(true);
     const connecting = ref(false);
+    const initError = ref<string | null>(null);
+    const startTimedOut = ref(false);
     const messenger = useMessengerStore();
     const nostr = useNostrStore();
     const showSetupWizard = ref(false);
@@ -143,21 +178,29 @@ export default defineComponent({
       }
     }
 
-    function timeout(ms: number) {
-      return new Promise<void>((resolve) => setTimeout(resolve, ms));
-    }
-
     async function init() {
       connecting.value = true;
+      loading.value = true;
+      initError.value = null;
+      startTimedOut.value = false;
       try {
         await nostr.initSignerIfNotSet();
         await messenger.loadIdentity();
         ndkRef.value = await useNdk();
-        await Promise.race([messenger.start(), timeout(10000)]);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        connecting.value = false;
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            startTimedOut.value = true;
+            reject(new Error("Messenger startup timed out"));
+          }, 10000);
+
+          messenger
+            .start()
+            .then(resolve)
+            .catch(reject)
+            .finally(() => {
+              clearTimeout(timer);
+            });
+        });
         loading.value = false;
         const qp = route.query.pubkey as string | undefined;
         if (qp) {
@@ -165,6 +208,12 @@ export default defineComponent({
           messenger.startChat(hex);
           messenger.setCurrentConversation(hex);
         }
+      } catch (e) {
+        console.error(e);
+        const message = e instanceof Error ? e.message : String(e);
+        initError.value = message;
+      } finally {
+        connecting.value = false;
       }
     }
 
@@ -285,8 +334,17 @@ export default defineComponent({
       (chatSendTokenDialogRef.value as any)?.show();
     }
 
+    const openSetupWizardFromError = () => {
+      initError.value = null;
+      startTimedOut.value = false;
+      loading.value = false;
+      showSetupWizard.value = true;
+    };
+
     const reconnectAll = async () => {
       connecting.value = true;
+      initError.value = null;
+      startTimedOut.value = false;
       try {
         messenger.disconnect();
         messenger.started = false;
@@ -301,17 +359,23 @@ export default defineComponent({
     const setupComplete = async () => {
       showSetupWizard.value = false;
       loading.value = true;
+      initError.value = null;
+      startTimedOut.value = false;
       await init();
     };
 
     return {
       loading,
       connecting,
+      initError,
+      startTimedOut,
       messenger,
       selected,
       chatSendTokenDialogRef,
       messages,
       showSetupWizard,
+      init,
+      openSetupWizardFromError,
       sendMessage,
       openSendTokenDialog,
       reconnectAll,
