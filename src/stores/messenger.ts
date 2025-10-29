@@ -603,6 +603,7 @@ export const useMessengerStore = defineStore("messenger", {
       let delivered = false;
       let sentVia: DmTransportMode | null = null;
       let httpRejected = false;
+      let lastFailureReason: string | undefined;
       let confirmationTriggered = false;
 
       const triggerConfirmation = () => {
@@ -623,6 +624,7 @@ export const useMessengerStore = defineStore("messenger", {
           } catch (err) {
             const reason = err instanceof Error ? err.message : String(err ?? "error");
             relayResults[relayUrl] = { ok: false, reason };
+            lastFailureReason = reason;
             continue;
           }
 
@@ -652,7 +654,8 @@ export const useMessengerStore = defineStore("messenger", {
           } catch (err) {
             const reason = err instanceof Error ? err.message : String(err ?? "error");
             relayResults[relayUrl] = { ok: false, reason };
-            throw err;
+            lastFailureReason = reason;
+            continue;
           }
         }
 
@@ -672,12 +675,14 @@ export const useMessengerStore = defineStore("messenger", {
               sentVia = "http";
             } else {
               httpRejected = true;
+              lastFailureReason = ack.message ?? lastFailureReason;
             }
           } catch (httpErr) {
             const reason =
               httpErr instanceof Error ? httpErr.message : String(httpErr ?? "error");
             relayResults[DM_HTTP_EVENT_URL] = { ok: false, reason };
             console.error("[messenger.sendDm] HTTP fallback failed", httpErr);
+            lastFailureReason = reason;
           }
         }
 
@@ -688,7 +693,10 @@ export const useMessengerStore = defineStore("messenger", {
           const summary = failedRelays
             .map(([url, ack]) => (ack?.reason ? `${url}: ${ack.reason}` : url))
             .join(", ");
-          throw new Error(summary ? `Failed to send DM: ${summary}` : "Failed to send DM");
+          const reason = summary || lastFailureReason;
+          throw new Error(
+            reason ? `Failed to send DM: ${reason}` : "Failed to send DM",
+          );
         }
       } catch (err) {
         msg.status = "failed";
