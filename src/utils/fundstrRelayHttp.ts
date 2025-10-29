@@ -128,11 +128,6 @@ export async function publishEventViaHttp(
     via: "http",
   };
 
-  if (!ack.accepted) {
-    const reason = ack.message || "Relay rejected event";
-    throw new Error(reason);
-  }
-
   return ack;
 }
 

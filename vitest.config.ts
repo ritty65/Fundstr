@@ -27,6 +27,7 @@ export default defineConfig({
       "test/vitest/__tests__/CreatorStudioPage.publish.spec.ts",
       "test/vitest/__tests__/creatorCard.discovery.spec.ts",
       "test/vitest/__tests__/donationPrompt.spec.ts",
+      "test/vitest/__tests__/messenger.spec.ts",
       "test/vitest/__tests__/nutzapRelayClient.spec.ts",
       "test/vitest/__tests__/TierSummaryCard.spec.ts",
       "test/vitest/__tests__/cashu.stores.spec.ts",

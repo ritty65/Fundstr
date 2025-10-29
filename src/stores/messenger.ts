@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import { useSettingsStore } from "./settings";
 import { DEFAULT_RELAYS } from "src/config/relays";
 import { sanitizeMessage } from "src/js/message-utils";
-import { notifySuccess, notifyError } from "src/js/notify";
+import { notifySuccess, notifyError, notifyWarning } from "src/js/notify";
 import { useWalletStore } from "./wallet";
 import { useMintsStore } from "./mints";
 import { useProofsStore } from "./proofs";
@@ -25,7 +25,11 @@ import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useNdk } from "src/composables/useNdk";
 import { NDKEvent } from "@nostr-dev-kit/ndk";
-import { publishEventViaHttp, requestEventsViaHttp } from "@/utils/fundstrRelayHttp";
+import {
+  publishEventViaHttp,
+  requestEventsViaHttp,
+  type HttpPublishAck,
+} from "@/utils/fundstrRelayHttp";
 import {
   DM_RELAYS,
   DM_HTTP_EVENT_URL,
@@ -127,6 +131,29 @@ export type MessengerMessage = {
   autoRedeem?: boolean;
   relayResults?: Record<string, RelayAck>;
 };
+
+type SendDmResult = {
+  success: boolean;
+  event: NostrEvent | null;
+  confirmationPending?: boolean;
+  httpAck?: HttpPublishAck | null;
+};
+
+const NON_RETRYABLE_ACK_PATTERNS = [
+  /malformed/i,
+  /invalid/i,
+  /unauthori[sz]ed/i,
+  /forbidden/i,
+  /denied/i,
+  /duplicate/i,
+  /policy/i,
+  /signature/i,
+];
+
+function isNonRetryableHttpAck(ack: HttpPublishAck | null | undefined): boolean {
+  if (!ack?.message) return false;
+  return NON_RETRYABLE_ACK_PATTERNS.some((pattern) => pattern.test(ack.message!));
+}
 
 export const useMessengerStore = defineStore("messenger", {
   state: () => {
@@ -536,7 +563,7 @@ export const useMessengerStore = defineStore("messenger", {
       relays?: string[],
       attachment?: MessageAttachment,
       tokenPayload?: any,
-    ) {
+    ): Promise<SendDmResult> {
       recipient = this.normalizeKey(recipient);
       if (!recipient) return { success: false, event: null };
       await this.loadIdentity({ refresh: false });
@@ -602,9 +629,10 @@ export const useMessengerStore = defineStore("messenger", {
       let relayResults: Record<string, RelayAck> = {};
       let delivered = false;
       let sentVia: DmTransportMode | null = null;
-      let httpRejected = false;
       let lastFailureReason: string | undefined;
       let confirmationTriggered = false;
+      let httpAck: HttpPublishAck | null = null;
+      let httpAckNonRetryable = false;
 
       const triggerConfirmation = () => {
         if (confirmationTriggered) return;
@@ -613,7 +641,15 @@ export const useMessengerStore = defineStore("messenger", {
         void this.confirmMessageDelivery(msg.id, event.id);
       };
 
-      const relayTargets = Array.from(new Set(relays?.length ? relays : DM_RELAYS));
+      const relayTargets = Array.from(
+        new Set(
+          relays?.length
+            ? relays
+            : Array.isArray(this.relays) && this.relays.length
+              ? this.relays
+              : DM_RELAYS,
+        ),
+      );
 
       try {
         for (const relayUrl of relayTargets) {
@@ -674,7 +710,8 @@ export const useMessengerStore = defineStore("messenger", {
               delivered = true;
               sentVia = "http";
             } else {
-              httpRejected = true;
+              httpAck = ack;
+              httpAckNonRetryable = isNonRetryableHttpAck(ack);
               lastFailureReason = ack.message ?? lastFailureReason;
             }
           } catch (httpErr) {
@@ -686,7 +723,7 @@ export const useMessengerStore = defineStore("messenger", {
           }
         }
 
-        if (!delivered && !httpRejected) {
+        if (!delivered && !httpAck) {
           const failedRelays = Object.entries(relayResults).filter(
             ([, ack]) => !ack?.ok,
           );
@@ -726,10 +763,38 @@ export const useMessengerStore = defineStore("messenger", {
         return { success: true, event };
       }
 
-      if (httpRejected) {
-        msg.status = "pending";
-        return { success: false, event };
+      if (httpAck) {
+        const ackMessage = httpAck.message?.trim();
+        if (httpAckNonRetryable) {
+          const reason = ackMessage || lastFailureReason;
+          notifyError(
+            reason && reason.startsWith("Failed to send DM")
+              ? reason
+              : reason
+              ? `Failed to send DM: ${reason}`
+              : "Failed to send DM",
+          );
+          return {
+            success: false,
+            event,
+            confirmationPending: false,
+            httpAck,
+          };
+        }
+
+        const caption =
+          ackMessage || lastFailureReason || "The relay has not confirmed receipt yet.";
+        notifyWarning("DM delivery pending confirmation", caption, 7000);
+
+        return {
+          success: false,
+          event,
+          confirmationPending: true,
+          httpAck,
+        };
       }
+
+      return { success: false, event };
     },
     async sendToken(
       recipient: string,

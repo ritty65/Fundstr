@@ -435,7 +435,7 @@ import { nip19 } from "nostr-tools";
 import { formatDistanceToNow } from "date-fns";
 import { shortenString } from "src/js/string-utils";
 import { useI18n } from "vue-i18n";
-import { notifyError } from "src/js/notify";
+import { notifyError, notifySuccess, notifyWarning } from "src/js/notify";
 import { showToast } from "src/js/toast";
 import type { Proof } from "@cashu/cashu-ts";
 import { useProofsStore } from "stores/proofs";
@@ -672,13 +672,18 @@ async function confirmMessage() {
   const recipient = messageRecipient.value;
   showMessageDialog.value = false;
   if (!text || !recipient) return;
-  const { success } = await messenger.sendDm(recipient, text);
+  const { success, confirmationPending } = await messenger.sendDm(
+    recipient,
+    text,
+  );
   if (success) {
     notifySuccess(t("wallet.notifications.nostr_dm_sent"));
     messenger.createConversation(recipient);
     messenger.setCurrentConversation(recipient);
     messenger.markRead(recipient);
     router.push("/nostr-messenger");
+  } else if (confirmationPending) {
+    notifyWarning("DM delivery pending confirmation");
   } else {
     notifyError(t("wallet.notifications.nostr_dm_failed"));
   }
