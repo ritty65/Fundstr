@@ -128,6 +128,8 @@ body,
   --accent-600: color-mix(in srgb, var(--q-primary) 85%, black);
   --accent-200: color-mix(in srgb, var(--q-primary) 25%, white);
   --bubble-outgoing-text: var(--text-inverse);
+  --bubble-incoming-bg: #e9efff;
+  --bubble-incoming-border: #cdd9ff;
   --tab-active: var(--q-primary);
   --tab-inactive: #6b7280;
   --disabled-text: #9ca3af;
@@ -160,6 +162,8 @@ body.body--dark {
   --accent-600: color-mix(in srgb, var(--q-primary) 80%, white);
   --accent-200: color-mix(in srgb, var(--q-primary) 25%, black);
   --bubble-outgoing-text: var(--text-1);
+  --bubble-incoming-bg: #1a2332;
+  --bubble-incoming-border: #28334a;
   --tab-active: var(--q-primary);
   --tab-inactive: var(--muted-dark);
   --disabled-text: var(--q-color-grey-6);
@@ -192,6 +196,8 @@ body.body--light {
   --accent-500: var(--q-primary);
   --accent-600: color-mix(in srgb, var(--q-primary) 85%, black);
   --accent-200: color-mix(in srgb, var(--q-primary) 25%, white);
+  --bubble-incoming-bg: #e9efff;
+  --bubble-incoming-border: #cdd9ff;
   --tab-active: var(--q-primary);
   --tab-inactive: var(--muted-light);
   --disabled-text: var(--q-color-grey-5);
