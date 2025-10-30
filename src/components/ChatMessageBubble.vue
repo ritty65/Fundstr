@@ -234,6 +234,12 @@
           {{ time }}
           <q-tooltip>{{ isoTime }}</q-tooltip>
         </span>
+        <span
+          v-if="!message.outgoing && message.pendingDecrypt"
+          class="q-ml-sm text-italic"
+        >
+          · Pending decryption
+        </span>
         <template v-if="message.outgoing">
           <q-spinner
             v-if="statusState === 'pending'"
@@ -453,6 +459,7 @@ const statusState = computed<"pending" | "sent" | "failed" | null>(() => {
   const localStatus = props.message.localEcho?.status;
   if (localStatus) return localStatus;
   const status = props.message.status;
+  if (status === "pending-decrypt") return null;
   if (status === "confirmed" || status === "sent_unconfirmed") return "sent";
   if (status === "pending" || status === "sent") return status as "pending" | "sent";
   if (status === "failed") return "failed";

@@ -1,4 +1,5 @@
 import Dexie, { Table } from "dexie";
+import type { Event as NostrEvent } from "nostr-tools";
 import type { MessengerMessage } from "./messenger";
 
 export type ConversationMetaKey =
@@ -58,6 +59,25 @@ export interface RelayHealthRecord {
   score: number;
 }
 
+export interface PendingDmDecryptRecord {
+  id: string;
+  owner: string;
+  senderPubkey: string;
+  recipientPubkey: string;
+  ciphertext: string;
+  event: NostrEvent;
+  eventCreatedAt: number;
+  eventKind: number;
+  relayHints?: string[] | null;
+  attemptCount: number;
+  nextAttemptAt: number;
+  lastAttemptAt?: number | null;
+  lastError?: string | null;
+  receivedAt: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 const MIGRATION_STORAGE_KEY = "cashu.messenger.migrationVersion";
 
 function structuredCloneSafe<T>(value: T): T {
@@ -99,6 +119,7 @@ export class MessengerDexie extends Dexie {
   outbox!: Table<MessengerOutboxRecord, string>;
   events!: Table<MessengerEventRecord, string>;
   relayHealth!: Table<RelayHealthRecord, string>;
+  pendingDmDecrypts!: Table<PendingDmDecryptRecord, string>;
   migrationVersion: number;
 
   constructor() {
@@ -109,6 +130,15 @@ export class MessengerDexie extends Dexie {
       events:
         "&key, owner, kind, messageId, conversationId, metaKey, createdAt, [owner+conversationId+createdAt], [owner+messageId]",
       relayHealth: "&relayUrl, score, lastSuccessAt, lastFailureAt",
+    });
+    this.version(2).stores({
+      outbox:
+        "&id, owner, status, nextAttemptAt, updatedAt, [owner+status], [owner+nextAttemptAt]",
+      events:
+        "&key, owner, kind, messageId, conversationId, metaKey, createdAt, [owner+conversationId+createdAt], [owner+messageId]",
+      relayHealth: "&relayUrl, score, lastSuccessAt, lastFailureAt",
+      pendingDmDecrypts:
+        "&id, owner, senderPubkey, recipientPubkey, nextAttemptAt, updatedAt, [owner+nextAttemptAt]",
     });
     const stored = Number(localStorage.getItem(MIGRATION_STORAGE_KEY) || "0");
     this.migrationVersion = Number.isFinite(stored) ? stored : 0;
@@ -167,6 +197,50 @@ export async function saveMessengerMessage(
     message: cloned,
   };
   await messengerDb.events.put(row);
+}
+
+export async function savePendingDmDecrypt(
+  record: PendingDmDecryptRecord,
+): Promise<void> {
+  if (!record?.id) return;
+  const now = nowMs();
+  const existing = await messengerDb.pendingDmDecrypts.get(record.id);
+  const data: PendingDmDecryptRecord = {
+    ...structuredCloneSafe(existing ?? {}),
+    ...structuredCloneSafe(record),
+    createdAt: existing?.createdAt ?? record.createdAt ?? now,
+    updatedAt: now,
+  } as PendingDmDecryptRecord;
+  if (!data.event) {
+    data.event = structuredCloneSafe(record.event);
+  }
+  await messengerDb.pendingDmDecrypts.put(data);
+}
+
+export async function loadPendingDmDecrypts(
+  owner: string,
+): Promise<PendingDmDecryptRecord[]> {
+  if (!owner) return [];
+  const rows = await messengerDb.pendingDmDecrypts
+    .where("owner")
+    .equals(owner)
+    .sortBy("createdAt");
+  return rows.map((row) => structuredCloneSafe(row));
+}
+
+export async function deletePendingDmDecrypt(id: string): Promise<void> {
+  if (!id) return;
+  await messengerDb.pendingDmDecrypts.delete(id);
+}
+
+export async function updatePendingDmDecrypt(
+  id: string,
+  patch: Partial<PendingDmDecryptRecord>,
+): Promise<void> {
+  if (!id || !patch) return;
+  const data = structuredCloneSafe(patch);
+  data.updatedAt = nowMs();
+  await messengerDb.pendingDmDecrypts.update(id, data as any);
 }
 
 export async function loadMessengerMessages(

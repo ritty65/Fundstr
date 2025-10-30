@@ -91,6 +91,27 @@
             <q-btn flat dense label="Retry" @click="retryFailedQueue" />
           </div>
         </q-banner>
+        <q-banner
+          v-if="pendingDecryptCount"
+          dense
+          class="bg-grey-2 q-mb-sm"
+        >
+          <div class="row items-center no-wrap">
+            <span>
+              {{ pendingDecryptCount }} encrypted message
+              <span v-if="pendingDecryptCount > 1">s</span>
+              awaiting decryption
+            </span>
+            <q-space />
+            <q-btn
+              flat
+              dense
+              label="Retry decryption"
+              :loading="retryingDecrypts"
+              @click="retryPendingDecrypts"
+            />
+          </div>
+        </q-banner>
         <q-spinner v-if="loading" size="lg" color="primary" />
         <ActiveChatHeader :pubkey="selected" :relays="relayInfos" />
       <MessageList :messages="messages" class="col" />
@@ -160,6 +181,9 @@ export default defineComponent({
     const ndkRef = ref<NDK | null>(null);
     const now = ref(Date.now());
     let timer: ReturnType<typeof setInterval> | undefined;
+    const retryingDecrypts = ref(false);
+    const pendingDecryptCount = computed(() => messenger.pendingDecryptCount);
+    let decryptRetryTimer: ReturnType<typeof setInterval> | null = null;
 
     function bech32ToHex(pubkey: string): string {
       try {
@@ -167,6 +191,51 @@ export default defineComponent({
         return typeof decoded.data === "string" ? decoded.data : pubkey;
       } catch {
         return pubkey;
+      }
+    }
+
+    function startDecryptRetryTimer() {
+      if (decryptRetryTimer) return;
+      decryptRetryTimer = setInterval(() => {
+        if (
+          typeof document === "undefined" ||
+          document.visibilityState === "visible"
+        ) {
+          void runPendingDecryptRetry("timer");
+        }
+      }, 15000);
+    }
+
+    function stopDecryptRetryTimer() {
+      if (!decryptRetryTimer) return;
+      clearInterval(decryptRetryTimer);
+      decryptRetryTimer = null;
+    }
+
+    async function runPendingDecryptRetry(
+      _reason: string,
+      opts: { force?: boolean } = {},
+    ) {
+      if (!pendingDecryptCount.value) return;
+      if (retryingDecrypts.value) return;
+      try {
+        retryingDecrypts.value = true;
+        await messenger.retryAllPendingDecrypts(opts);
+      } catch (err) {
+        console.warn("[nostrMessenger.retryDecrypt]", err);
+      } finally {
+        retryingDecrypts.value = false;
+      }
+    }
+
+    async function retryPendingDecrypts() {
+      await runPendingDecryptRetry("manual", { force: true });
+    }
+
+    function handleDecryptVisibility() {
+      if (typeof document === "undefined") return;
+      if (document.visibilityState === "visible") {
+        void runPendingDecryptRetry("visibility");
       }
     }
 
@@ -217,10 +286,17 @@ export default defineComponent({
     onMounted(() => {
       checkAndInit();
       timer = setInterval(() => (now.value = Date.now()), 1000);
+      if (typeof document !== "undefined") {
+        document.addEventListener("visibilitychange", handleDecryptVisibility);
+      }
     });
 
     onUnmounted(() => {
       if (timer) clearInterval(timer);
+      stopDecryptRetryTimer();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleDecryptVisibility);
+      }
     });
 
     const route = useRoute();
@@ -258,6 +334,39 @@ export default defineComponent({
       (pubkey) => {
         handleRoutePubkeyChange(pubkey);
       },
+    );
+
+    watch(
+      () => messenger.connected,
+      (connected) => {
+        if (connected) {
+          void runPendingDecryptRetry("reconnect");
+        }
+      },
+    );
+
+    watch(
+      () => nostr.signer,
+      (signer, previous) => {
+        if (signer && signer !== previous) {
+          void runPendingDecryptRetry("signer-change");
+        }
+      },
+    );
+
+    watch(
+      pendingDecryptCount,
+      (count, previous) => {
+        if (count > 0) {
+          startDecryptRetryTimer();
+          if (!previous || previous === 0) {
+            void runPendingDecryptRetry("pending-change", { force: true });
+          }
+        } else {
+          stopDecryptRetryTimer();
+        }
+      },
+      { immediate: true },
     );
 
     const openDrawer = () => {
@@ -428,6 +537,9 @@ export default defineComponent({
       openSendTokenDialog,
       retryFailedQueue,
       failedOutboxCount,
+      pendingDecryptCount,
+      retryPendingDecrypts,
+      retryingDecrypts,
       reconnectAll,
       connectedCount,
       totalRelays,

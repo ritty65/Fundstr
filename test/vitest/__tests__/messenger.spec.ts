@@ -143,14 +143,20 @@ vi.mock("../../../src/js/notify", () => {
 });
 
 import { useMessengerStore } from "../../../src/stores/messenger";
+import { messengerDb } from "../../../src/stores/messengerDb";
 import { useNostrStore } from "../../../src/stores/nostr";
 import { useTokensStore } from "../../../src/stores/tokens";
 import * as dmSigner from "../../../src/nostr/dmSigner";
+import tokenUtil from "../../../src/js/token";
+import { useReceiveTokensStore } from "../../../src/stores/receiveTokensStore";
 
-beforeEach(() => {
+beforeEach(async () => {
   setActivePinia(createPinia());
   for (const k in lsStore) delete lsStore[k];
   relayStatusRef.value = "connecting";
+  await messengerDb.pendingDmDecrypts.clear();
+  decryptDm.mockReset();
+  decryptDm.mockResolvedValue("msg");
   const m = useMessengerStore();
   const eventLogTarget = (m as any).eventLog?.value ?? (m as any).eventLog;
   if (Array.isArray(eventLogTarget)) {
@@ -902,5 +908,76 @@ describe("messenger store", () => {
       messenger.stopHttpPolling();
       messenger.relayStatusStop?.();
     }
+  });
+
+  it("persists pending decrypts and retries once decrypt succeeds", async () => {
+    const messenger = useMessengerStore();
+    const signerSpy = vi
+      .spyOn(dmSigner, "getActiveDmSigner")
+      .mockResolvedValue(null as any);
+    decryptDm.mockRejectedValueOnce(new Error("locked"));
+    await messenger.addIncomingMessage({
+      id: "evt1",
+      pubkey: "alice",
+      content: "cipher",
+      created_at: 123,
+      kind: 4,
+      tags: [["relay", "wss://relay.example"]],
+    } as any);
+    expect(messenger.pendingDecrypts["evt1"]).toBeTruthy();
+    const stored = await messengerDb.pendingDmDecrypts.get("evt1");
+    expect(stored?.ciphertext).toBe("cipher");
+    expect(stored?.relayHints).toContain("wss://relay.example");
+    const placeholder = messenger.eventMap["evt1"];
+    expect(placeholder?.status).toBe("pending-decrypt");
+    decryptDm.mockResolvedValueOnce("hello there");
+    const retried = await messenger.retryAllPendingDecrypts({ force: true });
+    expect(retried).toBeGreaterThanOrEqual(1);
+    expect(messenger.pendingDecrypts["evt1"]).toBeUndefined();
+    const cleared = await messengerDb.pendingDmDecrypts.get("evt1");
+    expect(cleared).toBeUndefined();
+    const convo = messenger.conversations["alice"] || [];
+    const final = convo.find((m) => m.id === "evt1");
+    expect(final?.content).toContain("hello there");
+    expect(final?.status).not.toBe("pending-decrypt");
+    signerSpy.mockRestore();
+  });
+
+  it("processes token payloads only once after pending decrypt resolves", async () => {
+    const messenger = useMessengerStore();
+    const signerSpy = vi
+      .spyOn(dmSigner, "getActiveDmSigner")
+      .mockResolvedValue(null as any);
+    decryptDm.mockRejectedValueOnce(new Error("locked"));
+    const tokensStore = useTokensStore();
+    const decodeSpy = vi
+      .spyOn(tokensStore, "decodeToken")
+      .mockReturnValue({ token: "abc" } as any);
+    const proofsSpy = vi
+      .spyOn(tokenUtil, "getProofs")
+      .mockReturnValue([{ amount: 5, secret: "abc" }] as any);
+    const receiveStore = useReceiveTokensStore();
+    const enqueueSpy = vi
+      .spyOn(receiveStore, "enqueue")
+      .mockImplementation(async () => undefined);
+    await messenger.addIncomingMessage({
+      id: "evt-token",
+      pubkey: "bob",
+      content: "cipher",
+      created_at: 111,
+      kind: 4,
+      tags: [],
+    } as any);
+    expect(enqueueSpy).not.toHaveBeenCalled();
+    decryptDm.mockResolvedValueOnce('{"token":"abc"}');
+    await messenger.retryAllPendingDecrypts({ force: true });
+    expect(enqueueSpy).toHaveBeenCalledTimes(1);
+    const convo = messenger.conversations["bob"] || [];
+    const final = convo.find((m) => m.id === "evt-token");
+    expect(final?.tokenPayload?.token).toBe("abc");
+    enqueueSpy.mockRestore();
+    decodeSpy.mockRestore();
+    proofsSpy.mockRestore();
+    signerSpy.mockRestore();
   });
 });
