@@ -21,13 +21,17 @@ import { FEATURED_CREATORS as CONFIG_FEATURED_CREATORS } from "src/config/featur
 
 export { FEATURED_CREATORS } from "src/config/featured-creators";
 
-export type CreatorProfile = FundstrCreator;
+export interface CreatorProfile extends FundstrCreator {
+  tierSecurityBlocked?: boolean | null;
+}
 export type CreatorRow = CreatorProfile;
 
 const FRESH_RETRY_BASE_MS = 1500;
 const FRESH_RETRY_MAX_MS = 30000;
 const FRESH_FALLBACK_LOG_DEBOUNCE_MS = 60000;
 const TIER_SECURITY_COOLDOWN_MS = 5 * 60 * 1000;
+const FIREFOX_TIER_SECURITY_WARNING =
+  "Firefox may block tier lookups. Disable Enhanced Tracking Protection for staging.fundstr.me to load fresh donation tiers. We're showing cached tier data until then.";
 
 let nextProfileFreshAttemptAt = 0;
 let profileFreshFailureCount = 0;
@@ -86,15 +90,35 @@ function collectRelayHintsFromProfile(
   return Array.from(hints);
 }
 
+function isDomException(error: unknown): boolean {
+  if (typeof DOMException !== "undefined" && error instanceof DOMException) {
+    return true;
+  }
+  const name = (error as { name?: unknown }).name;
+  return typeof name === "string" && name === "DOMException";
+}
+
 function isTierSecurityError(error: unknown): boolean {
   if (typeof error !== "object" || error === null) {
     return false;
   }
-  if (typeof DOMException !== "undefined" && error instanceof DOMException) {
-    return error.name === "SecurityError" || error.code === DOMException.SECURITY_ERR;
+  if (isDomException(error)) {
+    const domError = error as DOMException;
+    const securityErrCode =
+      typeof DOMException !== "undefined" && typeof DOMException.SECURITY_ERR === "number"
+        ? DOMException.SECURITY_ERR
+        : 18;
+    return (
+      domError.name === "SecurityError" ||
+      (typeof domError.code === "number" && domError.code === securityErrCode)
+    );
   }
   const name = (error as { name?: unknown }).name;
   return typeof name === "string" && name === "SecurityError";
+}
+
+function isTierSecurityBlockedError(error: unknown): boolean {
+  return isTierSecurityError(error) || isDomException(error);
 }
 
 function logTierSecurityError(
@@ -263,6 +287,7 @@ export interface FundstrProfileBundle {
   relayHints: string[];
   fetchedFromFallback: boolean;
   tierDataFresh: boolean;
+  tierSecurityBlocked: boolean;
   tiers: Tier[] | null;
 }
 
@@ -439,7 +464,7 @@ export async function fetchFundstrProfileBundle(
       }
     } catch (error) {
       lastError = error;
-      if (isTierSecurityError(error)) {
+      if (isTierSecurityBlockedError(error)) {
         logTierSecurityError(id, "cached", error);
         securityBlocked = true;
       } else {
@@ -476,7 +501,7 @@ export async function fetchFundstrProfileBundle(
         freshError = error;
         fresh = null;
         lastError = error;
-        if (isTierSecurityError(error)) {
+        if (isTierSecurityBlockedError(error)) {
           logTierSecurityError(id, "fresh", error);
           securityBlocked = true;
           if (!forceRefresh) {
@@ -596,6 +621,7 @@ export async function fetchFundstrProfileBundle(
   return {
     ...baseBundle,
     tierDataFresh,
+    tierSecurityBlocked,
     tiers: normalizedTiers && normalizedTiers.length ? normalizedTiers : null,
     fetchedFromFallback: usedCachedProfileFallback || usedCachedTierFallback,
   };
@@ -638,6 +664,7 @@ function buildBundleFromDiscoveryCreator(
     relayHints,
     fetchedFromFallback: false,
     tierDataFresh: true,
+    tierSecurityBlocked: false,
     tiers: tiers.length ? tiers : null,
   };
 }
@@ -654,6 +681,7 @@ export interface CreatorWarmCache {
   tierEventId?: string | null;
   tierUpdatedAt?: number | null;
   tierDataFresh?: boolean | null;
+  tierSecurityBlocked?: boolean | null;
   tierRelayFailures?: Record<string, number>;
   lastFundstrRelayFailureAt?: number | null;
   lastFundstrRelayFailureNotifiedAt?: number | null;
@@ -823,6 +851,10 @@ function createCreatorFromBundle(
     metrics,
     tiers,
     tierDataFresh: overrides.tierDataFresh ?? (bundle.tierDataFresh !== false),
+    tierSecurityBlocked:
+      overrides.tierSecurityBlocked !== undefined
+        ? overrides.tierSecurityBlocked
+        : bundle.tierSecurityBlocked,
     cacheHit: overrides.cacheHit,
     featured: overrides.featured,
   };
@@ -962,6 +994,7 @@ export const useCreatorsStore = defineStore("creators", {
         joined: entry.profileUpdatedAt ?? null,
         cacheHit: true,
         tierDataFresh: entry.tierDataFresh ?? null,
+        tierSecurityBlocked: entry.tierSecurityBlocked ?? null,
       };
     },
 
@@ -986,7 +1019,12 @@ export const useCreatorsStore = defineStore("creators", {
       pubkeyHex: string,
       tiers: Tier[] | null,
       event: RelayEvent | null,
-      meta: { eventId?: string | null; updatedAt?: number | null; fresh?: boolean | null } = {},
+      meta: {
+        eventId?: string | null;
+        updatedAt?: number | null;
+        fresh?: boolean | null;
+        securityBlocked?: boolean | null;
+      } = {},
     ) {
       const entry: CreatorWarmCache = {
         ...(this.warmCache[pubkeyHex] ?? {}),
@@ -1001,6 +1039,9 @@ export const useCreatorsStore = defineStore("creators", {
       entry.tierUpdatedAt = meta.updatedAt ?? event?.created_at ?? null;
       if (meta.fresh !== undefined) {
         entry.tierDataFresh = meta.fresh;
+      }
+      if (meta.securityBlocked !== undefined) {
+        entry.tierSecurityBlocked = meta.securityBlocked;
       }
       this.warmCache[pubkeyHex] = entry;
       this.tiersMap[pubkeyHex] = normalized;
@@ -1049,6 +1090,7 @@ export const useCreatorsStore = defineStore("creators", {
         eventId: event?.id ?? null,
         updatedAt,
         fresh: true,
+        securityBlocked: false,
       });
       try {
         if (event) {
@@ -1204,6 +1246,9 @@ export const useCreatorsStore = defineStore("creators", {
           const creatorProfile = await this.fetchCreator(resolvedHex, fresh);
           if (creatorProfile) {
             this.searchResults = [cloneCreatorProfile(creatorProfile)];
+            this.searchWarnings = creatorProfile.tierSecurityBlocked
+              ? [FIREFOX_TIER_SECURITY_WARNING]
+              : [];
           } else {
             handleFailure("Failed to fetch profile.");
           }
@@ -1272,6 +1317,7 @@ export const useCreatorsStore = defineStore("creators", {
         this.updateTierCacheState(pubkey, bundle.tiers ?? null, null, {
           updatedAt: bundle.joined ?? null,
           fresh: bundle.tierDataFresh !== false,
+          securityBlocked: bundle.tierSecurityBlocked,
         });
       } catch (tierCacheError) {
         console.error("[creators] Failed to update warm tier cache", {
@@ -1424,7 +1470,12 @@ export const useCreatorsStore = defineStore("creators", {
           .filter((profile): profile is CreatorProfile => Boolean(profile));
         if (orderedCached.length) {
           this.featuredCreators = orderedCached;
-          if (orderedCached.some((profile) => profile.tierDataFresh === false)) {
+          const cachedSecurityBlocked = orderedCached.some(
+            (profile) => profile.tierSecurityBlocked === true,
+          );
+          if (cachedSecurityBlocked) {
+            this.featuredStatusMessage = FIREFOX_TIER_SECURITY_WARNING;
+          } else if (orderedCached.some((profile) => profile.tierDataFresh === false)) {
             this.featuredStatusMessage = staleTierWarning;
           }
         }
@@ -1488,7 +1539,12 @@ export const useCreatorsStore = defineStore("creators", {
           .filter((profile): profile is CreatorProfile => Boolean(profile));
 
         this.featuredCreators = combined;
-        if (combined.some((profile) => profile.tierDataFresh === false)) {
+        const combinedSecurityBlocked = combined.some(
+          (profile) => profile.tierSecurityBlocked === true,
+        );
+        if (combinedSecurityBlocked) {
+          this.featuredStatusMessage = FIREFOX_TIER_SECURITY_WARNING;
+        } else if (combined.some((profile) => profile.tierDataFresh === false)) {
           this.featuredStatusMessage = staleTierWarning;
         } else if (!this.featuredError) {
           this.featuredStatusMessage = "";
