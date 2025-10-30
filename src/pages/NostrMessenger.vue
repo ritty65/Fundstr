@@ -395,8 +395,7 @@ export default defineComponent({
       initError.value = null;
       startTimedOut.value = false;
       try {
-        messenger.disconnect();
-        messenger.started = false;
+        await messenger.disconnect();
         await messenger.start();
       } catch (e) {
         console.error(e);

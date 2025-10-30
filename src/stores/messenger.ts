@@ -3408,9 +3408,9 @@ export const useMessengerStore = defineStore("messenger", {
       nostr.connect(this.relays as any);
     },
 
-    disconnect() {
+    async disconnect() {
       const nostr = useNostrStore();
-      nostr.disconnect();
+      await nostr.disconnect();
       this.stopHttpPolling();
       if (this.relayStatusStop) {
         this.relayStatusStop();
@@ -3421,6 +3421,7 @@ export const useMessengerStore = defineStore("messenger", {
       conversationWatchStop = null;
       conversationRelayOff?.();
       conversationRelayOff = null;
+      this.started = false;
     },
 
 
