@@ -11,7 +11,9 @@ vi.mock("nostr-tools", async (orig) => {
 var walletSend: any;
 var walletMintWallet: any;
 var serializeProofs: any;
+var addProofs: any;
 var addPending: any;
+var deleteToken: any;
 const lsStore: Record<string, string> = {};
 (globalThis as any).localStorage = {
   getItem: (k: string) => (k in lsStore ? lsStore[k] : null),
@@ -45,7 +47,9 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
 
 vi.mock("../../../src/stores/wallet", () => {
   walletSend = vi.fn(async () => ({
-    sendProofs: [{ secret: "s1", amount: 1 }],
+    sendProofs: [
+      { secret: "s1", amount: 1, id: "id1", C: "C1" },
+    ],
   }));
   walletMintWallet = vi.fn(() => ({}));
   return {
@@ -64,7 +68,8 @@ vi.mock("../../../src/stores/mints", () => ({
 
 vi.mock("../../../src/stores/proofs", () => {
   serializeProofs = vi.fn(() => "TOKEN");
-  return { useProofsStore: () => ({ serializeProofs }) };
+  addProofs = vi.fn();
+  return { useProofsStore: () => ({ serializeProofs, addProofs }) };
 });
 
 vi.mock("../../../src/stores/settings", () => ({
@@ -73,7 +78,8 @@ vi.mock("../../../src/stores/settings", () => ({
 
 vi.mock("../../../src/stores/tokens", () => {
   addPending = vi.fn();
-  return { useTokensStore: () => ({ addPendingToken: addPending }) };
+  deleteToken = vi.fn();
+  return { useTokensStore: () => ({ addPendingToken: addPending, deleteToken }) };
 });
 
 vi.mock("../../../src/js/message-utils", () => ({
@@ -94,20 +100,41 @@ beforeEach(() => {
   (m as any).eventLog = [];
   (m as any).conversations = {};
   publishMock.mockClear();
+  walletSend.mockClear();
+  walletMintWallet.mockClear();
+  serializeProofs.mockClear();
+  addProofs.mockClear();
+  addPending.mockClear();
+  deleteToken.mockClear();
 });
 
 describe("messenger.sendToken", () => {
   it("sends token DM and logs message", async () => {
     const store = useMessengerStore();
-    (globalThis as any).nostr = {
-      nip04: { encrypt: vi.fn(async () => "enc"), decrypt: vi.fn() },
-      signEvent: vi.fn(async (e) => ({ ...e, id: "id", sig: "sig" })),
-    };
+    const sendDmMock = vi.fn(async () => ({
+      success: true,
+      event: null,
+      localId: "local",
+    }));
+    (store as any).sendDm = sendDmMock;
     const success = await store.sendToken("receiver", 1, "b", "note");
     expect(success).toBe(true);
     expect(walletMintWallet).toHaveBeenCalledWith("mint", "sat");
     expect(walletSend).toHaveBeenCalled();
-    expect(publishMock).toHaveBeenCalled();
+    expect(sendDmMock).toHaveBeenCalled();
+    const [, , , , tokenPayload] = sendDmMock.mock.calls[0];
+    expect(tokenPayload).toMatchObject({
+      token: "TOKEN",
+      amount: 1,
+      memo: "note",
+      bucketId: "b",
+      recovery: {
+        bucketId: "b",
+        encodedProofs: "TOKEN",
+        proofs: [expect.objectContaining({ secret: "s1", amount: 1, id: "id1" })],
+        restored: false,
+      },
+    });
     expect(addPending).toHaveBeenCalledWith({
       amount: -1,
       tokenStr: "TOKEN",
@@ -116,6 +143,29 @@ describe("messenger.sendToken", () => {
       description: "note",
       bucketId: "b",
     });
-    expect(store.conversations.receiver.length).toBe(1);
+  });
+
+  it("restores proofs and bucket balance when DM send fails", async () => {
+    const store = useMessengerStore();
+    (store as any).sendDm = vi.fn(async () => ({
+      success: false,
+      event: null,
+      confirmationPending: false,
+    }));
+
+    const success = await store.sendToken("receiver", 1, "b", "note");
+
+    expect(success).toBe(false);
+    expect(addProofs).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ secret: "s1", amount: 1, id: "id1" }),
+      ]),
+      undefined,
+      "b",
+      "",
+      "note",
+    );
+    expect(deleteToken).toHaveBeenCalledWith("TOKEN");
+    expect(addPending).not.toHaveBeenCalled();
   });
 });

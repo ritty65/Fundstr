@@ -14,6 +14,7 @@ import { useMintsStore } from "./mints";
 import { useProofsStore } from "./proofs";
 import { useTokensStore } from "./tokens";
 import type { WalletProof } from "src/types/proofs";
+import type { Proof } from "@cashu/cashu-ts";
 import { useReceiveTokensStore } from "./receiveTokensStore";
 import { useBucketsStore } from "./buckets";
 import { useLockedTokensStore } from "./lockedTokens";
@@ -307,6 +308,25 @@ export type MessengerMessage = {
   localEcho?: LocalEchoMeta;
 };
 
+export interface TokenSendRecoveryData {
+  bucketId: string;
+  encodedProofs: string;
+  proofs?: Proof[];
+  memo?: string;
+  restored?: boolean;
+}
+
+export interface MessengerTokenPayload {
+  token: string;
+  amount: number;
+  unlockTime: number | null;
+  referenceId?: string;
+  memo?: string;
+  bucketId?: string;
+  recovery?: TokenSendRecoveryData;
+  [key: string]: any;
+}
+
 type SendDmResult = {
   success: boolean;
   event: NostrEvent | null;
@@ -356,6 +376,25 @@ function emitDmCounter(
     }
   }
   console.info(`[messenger.telemetry] ${name}`, payload);
+}
+
+function extractProofsFromTokenString(encoded?: string | null): Proof[] | undefined {
+  if (!encoded) return undefined;
+  try {
+    const decoded = tokenUtil.decode(encoded);
+    if (!decoded) return undefined;
+    if (Array.isArray((decoded as any).proofs)) {
+      return ((decoded as any).proofs as Proof[]).map((proof) => ({ ...proof }));
+    }
+    if (Array.isArray((decoded as any).token)) {
+      return ((decoded as any).token as any[])
+        .flatMap((entry) => (Array.isArray(entry?.proofs) ? entry.proofs : []))
+        .map((proof: Proof) => ({ ...proof }));
+    }
+  } catch (err) {
+    console.warn("[messenger.extractProofsFromTokenString]", err);
+  }
+  return undefined;
 }
 
 export const useMessengerStore = defineStore("messenger", {
@@ -2126,7 +2165,15 @@ export const useMessengerStore = defineStore("messenger", {
         ? (this.eventMap?.[record.messageId] as MessengerMessage | undefined)
         : undefined;
       const msg = existingByLocal || existingByMessage;
+      const recordTokenPayload = (): MessengerTokenPayload | undefined => {
+        const raw = record?.payload;
+        if (raw && typeof raw === "object" && (raw as any).tokenPayload) {
+          return (raw as any).tokenPayload as MessengerTokenPayload;
+        }
+        return undefined;
+      };
       if (!msg) {
+        await this.restoreFailedTokenPayload(recordTokenPayload());
         await updateOutboxStatus(record.id, "failed_perm", {
           lastError: "Message no longer available",
         });
@@ -2134,6 +2181,7 @@ export const useMessengerStore = defineStore("messenger", {
       }
       const meta = msg.localEcho;
       if (!meta) {
+        await this.restoreFailedTokenPayload(recordTokenPayload());
         await updateOutboxStatus(record.id, "failed_perm", {
           lastError: "Message metadata missing",
         });
@@ -2182,6 +2230,17 @@ export const useMessengerStore = defineStore("messenger", {
         filesPayload: normalizedFiles,
       };
 
+      const resolveTokenPayload = (): MessengerTokenPayload | undefined => {
+        const sourceToken =
+          (payloadSource as any)?.tokenPayload as MessengerTokenPayload | undefined;
+        const payloadToken =
+          payload.tokenPayload as MessengerTokenPayload | undefined;
+        const metaToken =
+          meta.payload?.tokenPayload as MessengerTokenPayload | undefined;
+        const msgToken = msg.tokenPayload as MessengerTokenPayload | undefined;
+        return sourceToken ?? payloadToken ?? metaToken ?? msgToken ?? recordTokenPayload();
+      };
+
       const recipientKey = this.normalizeKey(
         record.recipient ||
           (typeof payloadSource.recipient === "string"
@@ -2193,6 +2252,7 @@ export const useMessengerStore = defineStore("messenger", {
           lastError: "Invalid recipient",
         });
         this.markLocalEchoFailed(msg, meta, "Invalid recipient", ackMapAll);
+        await this.restoreFailedTokenPayload(resolveTokenPayload());
         return;
       }
 
@@ -2217,6 +2277,10 @@ export const useMessengerStore = defineStore("messenger", {
         notifyError(
           reason.startsWith("Failed to send DM") ? reason : `Failed to send DM: ${reason}`,
         );
+        const tokenPayload = resolveTokenPayload();
+        if (tokenPayload) {
+          await this.restoreFailedTokenPayload(tokenPayload);
+        }
       };
 
       const scheduleRetry = async (
@@ -2452,6 +2516,47 @@ export const useMessengerStore = defineStore("messenger", {
         }
       }
     },
+    async restoreFailedTokenPayload(
+      tokenPayload?: MessengerTokenPayload | null,
+    ): Promise<void> {
+      if (!tokenPayload) return;
+      const recovery = tokenPayload.recovery;
+      if (!recovery || recovery.restored) return;
+      const encoded = recovery.encodedProofs || tokenPayload.token;
+      if (!encoded) return;
+      const bucketId = recovery.bucketId || tokenPayload.bucketId || DEFAULT_BUCKET_ID;
+      const proofsStore = useProofsStore();
+      const tokensStore = useTokensStore();
+      try {
+        let proofs: Proof[] | undefined;
+        if (Array.isArray(recovery.proofs) && recovery.proofs.length) {
+          proofs = recovery.proofs.map((proof) => ({ ...proof }));
+        } else {
+          proofs = extractProofsFromTokenString(encoded);
+        }
+        if (!proofs?.length) {
+          console.warn(
+            "[messenger.restoreFailedTokenPayload] Unable to recover proofs for failed token send",
+          );
+          return;
+        }
+        await proofsStore.addProofs(
+          proofs,
+          undefined,
+          bucketId,
+          "",
+          tokenPayload.memo ?? "",
+        );
+        if (tokenPayload.token) {
+          tokensStore.deleteToken(tokenPayload.token);
+        } else {
+          tokensStore.deleteToken(encoded);
+        }
+        recovery.restored = true;
+      } catch (err) {
+        console.error("[messenger.restoreFailedTokenPayload] failed", err);
+      }
+    },
     async sendToken(
       recipient: string,
       amount: number,
@@ -2464,6 +2569,7 @@ export const useMessengerStore = defineStore("messenger", {
         total_months: number;
       },
     ) {
+      let tokenPayloadMeta: MessengerTokenPayload | undefined;
       try {
         recipient = this.normalizeKey(recipient);
         if (!recipient) return false;
@@ -2499,32 +2605,51 @@ export const useMessengerStore = defineStore("messenger", {
           bucketId,
         );
 
-        const tokenStr = proofsStore.serializeProofs(sendProofs);
+        const serializedSendProofs = proofsStore.serializeProofs(sendProofs);
+        const recovery: TokenSendRecoveryData = {
+          bucketId,
+          encodedProofs: serializedSendProofs,
+          proofs: sendProofs.map((proof) => ({ ...proof })),
+          memo: memo || undefined,
+          restored: false,
+        };
+        tokenPayloadMeta = {
+          token: serializedSendProofs,
+          amount: sendAmount,
+          unlockTime: null,
+          referenceId: uuidv4(),
+          memo: memo || undefined,
+          bucketId,
+          recovery,
+        };
         const payload = subscription
-          ? subscriptionPayload(tokenStr, null, {
+          ? subscriptionPayload(serializedSendProofs, null, {
               subscription_id: subscription.subscription_id,
               tier_id: subscription.tier_id,
               month_index: subscription.month_index,
               total_months: subscription.total_months,
             })
           : {
-              token: tokenStr,
+              token: serializedSendProofs,
               amount: sendAmount,
               unlockTime: null,
               referenceId: uuidv4(),
             };
 
-        const { success, event, localId } = await this.sendDm(
+        const { success, event, localId, confirmationPending } = await this.sendDm(
           recipient,
           JSON.stringify(payload),
           undefined,
           undefined,
-          { token: tokenStr, amount: sendAmount, memo },
+          tokenPayloadMeta,
         );
+        if (!success && !confirmationPending) {
+          await this.restoreFailedTokenPayload(tokenPayloadMeta);
+        }
         if (success) {
           if (subscription) {
             const payment: SubscriptionPayment & { htlc_hash?: string } = {
-              token: tokenStr,
+              token: serializedSendProofs,
               subscription_id: subscription.subscription_id,
               tier_id: subscription.tier_id,
               month_index: subscription.month_index,
@@ -2541,7 +2666,7 @@ export const useMessengerStore = defineStore("messenger", {
           }
           tokens.addPendingToken({
             amount: -sendAmount,
-            tokenStr: tokenStr,
+            tokenStr: serializedSendProofs,
             unit: mints.activeUnit,
             mint: mints.activeMintUrl,
             description: memo ?? "",
@@ -2551,6 +2676,9 @@ export const useMessengerStore = defineStore("messenger", {
         return success;
       } catch (e) {
         console.error(e);
+        if (tokenPayloadMeta) {
+          await this.restoreFailedTokenPayload(tokenPayloadMeta);
+        }
         notifyError("Failed to send token");
         return false;
       }
@@ -2562,6 +2690,7 @@ export const useMessengerStore = defineStore("messenger", {
       bucketId: string,
       memo?: string,
     ) {
+      let tokenPayloadMeta: MessengerTokenPayload | undefined;
       try {
         recipient = this.normalizeKey(recipient);
         if (!recipient) return false;
@@ -2587,27 +2716,47 @@ export const useMessengerStore = defineStore("messenger", {
           bucketId,
         );
 
-        const tokenStr = proofsStore.serializeProofs(sendProofs);
-        const payload = {
-          token: tokenStr,
+        const serializedSendProofs = proofsStore.serializeProofs(sendProofs);
+        const recovery: TokenSendRecoveryData = {
+          bucketId,
+          encodedProofs: serializedSendProofs,
+          proofs: sendProofs.map((proof) => ({ ...proof })),
+          memo: memo || undefined,
+          restored: false,
+        };
+        tokenPayloadMeta = {
+          token: serializedSendProofs,
           amount: sendAmount,
           unlockTime: null,
           referenceId: uuidv4(),
           memo: memo || undefined,
+          bucketId,
+          recovery,
+        };
+        const payload = {
+          token: serializedSendProofs,
+          amount: sendAmount,
+          unlockTime: null,
+          referenceId: tokenPayloadMeta.referenceId,
+          memo: memo || undefined,
         };
 
-        const { success } = await this.sendDm(
+        const { success, confirmationPending } = await this.sendDm(
           recipient,
           JSON.stringify(payload),
           undefined,
           undefined,
-          { token: tokenStr, amount: sendAmount, memo },
+          tokenPayloadMeta,
         );
+
+        if (!success && !confirmationPending) {
+          await this.restoreFailedTokenPayload(tokenPayloadMeta);
+        }
 
         if (success) {
           tokens.addPendingToken({
             amount: -sendAmount,
-            tokenStr: tokenStr,
+            tokenStr: serializedSendProofs,
             unit: mints.activeUnit,
             mint: mints.activeMintUrl,
             description: memo ?? "",
@@ -2617,6 +2766,9 @@ export const useMessengerStore = defineStore("messenger", {
         return success;
       } catch (e) {
         console.error(e);
+        if (tokenPayloadMeta) {
+          await this.restoreFailedTokenPayload(tokenPayloadMeta);
+        }
         notifyError("Failed to send token");
         return false;
       }
