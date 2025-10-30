@@ -250,6 +250,13 @@ import { useDonationPresetsStore } from 'stores/donationPresets';
 import { useNostrStore } from 'stores/nostr';
 import { useCreatorsStore } from 'stores/creators';
 import { useMessengerStore } from 'stores/messenger';
+import { useMintsStore } from 'stores/mints';
+import { notifyError } from 'src/js/notify';
+import {
+  mintSupportsSplit,
+  resolveSupportedNuts,
+  SPLIT_SUPPORT_REQUIRED_MESSAGE,
+} from 'src/utils/nuts';
 
 const creatorsStore = useCreatorsStore();
 const {
@@ -382,10 +389,16 @@ const sendTokensStore = useSendTokensStore();
 const nostr = useNostrStore();
 const donationStore = useDonationPresetsStore();
 const messenger = useMessengerStore();
+const mintsStore = useMintsStore();
 const showDonateDialog = ref(false);
 const selectedPubkey = ref('');
 const showProfileModal = ref(false);
 const selectedProfilePubkey = ref('');
+const activeMintInfo = computed(() => mintsStore.activeInfo);
+const supportedNuts = computed(() => resolveSupportedNuts(activeMintInfo.value));
+const activeMintSupportsSplit = computed(() =>
+  mintSupportsSplit(activeMintInfo.value, supportedNuts.value),
+);
 
 function viewProfile(pubkey: string) {
   selectedProfilePubkey.value = pubkey;
@@ -402,6 +415,10 @@ function startChat(pubkey: string) {
 }
 
 function donate(pubkey: string) {
+  if (!activeMintSupportsSplit.value) {
+    notifyError(SPLIT_SUPPORT_REQUIRED_MESSAGE);
+    return;
+  }
   selectedPubkey.value = pubkey;
   showDonateDialog.value = true;
 }

@@ -677,6 +677,11 @@ import {
 import { Dialog } from "quasar";
 import { useDmChatsStore } from "src/stores/dmChats";
 import VueQrcode from "@chenfengyuan/vue-qrcode";
+import {
+  mintSupportsSplit,
+  resolveSupportedNuts,
+  SPLIT_SUPPORT_REQUIRED_MESSAGE,
+} from "src/utils/nuts";
 export default defineComponent({
   name: "SendTokenDialog",
   mixins: [windowMixin],
@@ -1437,14 +1442,31 @@ export default defineComponent({
         return;
       }
 
+      let sendAmount = Math.floor(
+        this.sendData.amount * this.activeUnitCurrencyMultiplyer,
+      );
+      const rail: DonationRail = this.sendData.paymentRequest
+        ? "lightning"
+        : "cashu";
+      const mintWallet = this.mintWallet(this.activeMintUrl, this.activeUnit);
+
       try {
-        let sendAmount = Math.floor(
-          this.sendData.amount * this.activeUnitCurrencyMultiplyer,
-        );
-        const rail: DonationRail = this.sendData.paymentRequest
-          ? "lightning"
-          : "cashu";
-        const mintWallet = this.mintWallet(this.activeMintUrl, this.activeUnit);
+        const mintsStore = useMintsStore();
+        let mintInfo: any = mintsStore.activeInfo;
+        if (!mintInfo || Object.keys(mintInfo).length === 0) {
+          try {
+            mintInfo = await mintWallet.mint.getInfo();
+          } catch (infoError) {
+            console.warn("Failed to refresh mint info", infoError);
+          }
+        }
+
+        const supportedNuts = resolveSupportedNuts(mintInfo);
+        if (!mintSupportsSplit(mintInfo, supportedNuts)) {
+          notifyError(SPLIT_SUPPORT_REQUIRED_MESSAGE);
+          return;
+        }
+
         const bucketId = this.sendData.bucketId;
         let { _, sendProofs } = await this.send(
           this.activeProofs,
