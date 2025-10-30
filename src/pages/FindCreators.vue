@@ -258,6 +258,8 @@ import {
   resolveSupportedNuts,
   SPLIT_SUPPORT_REQUIRED_MESSAGE,
 } from 'src/utils/nuts';
+import { useDonationPrompt } from '@/composables/useDonationPrompt';
+import { useI18n } from 'vue-i18n';
 
 const creatorsStore = useCreatorsStore();
 const {
@@ -392,6 +394,8 @@ const donationStore = useDonationPresetsStore();
 const messenger = useMessengerStore();
 const mintsStore = useMintsStore();
 const uiStore = useUiStore();
+const { open: openDonationPrompt } = useDonationPrompt();
+const { t } = useI18n();
 const showDonateDialog = ref(false);
 const selectedPubkey = ref('');
 const showProfileModal = ref(false);
@@ -401,6 +405,31 @@ const supportedNuts = computed(() => resolveSupportedNuts(activeMintInfo.value))
 const activeMintSupportsSplit = computed(() =>
   mintSupportsSplit(activeMintInfo.value, supportedNuts.value),
 );
+
+const ensureWalletReadyForDonation = () => {
+  const hasActiveMint =
+    typeof mintsStore.activeMintUrl === 'string' && mintsStore.activeMintUrl.trim().length > 0;
+  const hasPositiveBalance = mintsStore.activeBalance > 0;
+
+  if (hasActiveMint && hasPositiveBalance) {
+    return true;
+  }
+
+  const title = t('DonationPrompt.cashu.ctas.setupTitle');
+  const description = t('DonationPrompt.cashu.ctas.setupDescription');
+
+  notifyWarning(title, description);
+  showDonateDialog.value = false;
+  showProfileModal.value = false;
+  selectedPubkey.value = '';
+
+  if (!hasActiveMint) {
+    void openDonationPrompt({ bypassGate: true, defaultTab: 'cashu' });
+  }
+
+  void router.push('/wallet');
+  return false;
+};
 
 function viewProfile(pubkey: string) {
   selectedProfilePubkey.value = pubkey;
@@ -419,6 +448,9 @@ function startChat(pubkey: string) {
 async function donate(pubkey: string) {
   if (!activeMintSupportsSplit.value) {
     notifyError(SPLIT_SUPPORT_REQUIRED_MESSAGE);
+    return;
+  }
+  if (!ensureWalletReadyForDonation()) {
     return;
   }
   if (!nostr.hasIdentity) {
