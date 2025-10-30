@@ -406,31 +406,6 @@ const activeMintSupportsSplit = computed(() =>
   mintSupportsSplit(activeMintInfo.value, supportedNuts.value),
 );
 
-const ensureWalletReadyForDonation = () => {
-  const hasActiveMint =
-    typeof mintsStore.activeMintUrl === 'string' && mintsStore.activeMintUrl.trim().length > 0;
-  const hasPositiveBalance = mintsStore.activeBalance > 0;
-
-  if (hasActiveMint && hasPositiveBalance) {
-    return true;
-  }
-
-  const title = t('DonationPrompt.cashu.ctas.setupTitle');
-  const description = t('DonationPrompt.cashu.ctas.setupDescription');
-
-  notifyWarning(title, description);
-  showDonateDialog.value = false;
-  showProfileModal.value = false;
-  selectedPubkey.value = '';
-
-  if (!hasActiveMint) {
-    void openDonationPrompt({ bypassGate: true, defaultTab: 'cashu' });
-  }
-
-  void router.push('/wallet');
-  return false;
-};
-
 function viewProfile(pubkey: string) {
   selectedProfilePubkey.value = pubkey;
   showProfileModal.value = true;
@@ -450,7 +425,24 @@ async function donate(pubkey: string) {
     notifyError(SPLIT_SUPPORT_REQUIRED_MESSAGE);
     return;
   }
-  if (!ensureWalletReadyForDonation()) {
+  const hasActiveMint =
+    typeof mintsStore.activeMintUrl === 'string' && mintsStore.activeMintUrl.trim().length > 0;
+  const hasPositiveBalance = mintsStore.activeBalance > 0;
+
+  if (!hasActiveMint || !hasPositiveBalance) {
+    const title = t('DonationPrompt.cashu.ctas.setupTitle');
+    const description = t('DonationPrompt.cashu.ctas.setupDescription');
+
+    notifyWarning(title, description);
+    showDonateDialog.value = false;
+    showProfileModal.value = false;
+    selectedPubkey.value = '';
+
+    if (!hasActiveMint) {
+      void openDonationPrompt({ bypassGate: true, defaultTab: 'cashu' });
+    }
+
+    void router.push('/wallet');
     return;
   }
   if (!nostr.hasIdentity) {
