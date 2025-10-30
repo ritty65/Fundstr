@@ -7,12 +7,6 @@
       @message="startChat"
       @donate="donate"
     />
-    <DonateDialog
-      v-model="showDonateDialog"
-      :creator-pubkey="selectedPubkey"
-      @confirm="handleDonate"
-    />
-    <SendTokenDialog />
 
     <div class="find-creators-content">
       <section class="page-hero stack-12">
@@ -243,10 +237,6 @@ import { useRoute, useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import CreatorProfileModal from 'components/CreatorProfileModal.vue';
 import CreatorCard from 'components/CreatorCard.vue';
-import DonateDialog from 'components/DonateDialog.vue';
-import SendTokenDialog from 'components/SendTokenDialog.vue';
-import { useSendTokensStore } from 'stores/sendTokensStore';
-import { useDonationPresetsStore } from 'stores/donationPresets';
 import { useNostrStore } from 'stores/nostr';
 import { useCreatorsStore } from 'stores/creators';
 import { useMessengerStore } from 'stores/messenger';
@@ -388,16 +378,12 @@ watch(searchWarnings, (warnings) => {
 const router = useRouter();
 const route = useRoute();
 const $q = useQuasar();
-const sendTokensStore = useSendTokensStore();
 const nostr = useNostrStore();
-const donationStore = useDonationPresetsStore();
 const messenger = useMessengerStore();
 const mintsStore = useMintsStore();
 const uiStore = useUiStore();
 const { open: openDonationPrompt } = useDonationPrompt();
 const { t } = useI18n();
-const showDonateDialog = ref(false);
-const selectedPubkey = ref('');
 const showProfileModal = ref(false);
 const selectedProfilePubkey = ref('');
 const activeMintInfo = computed(() => mintsStore.activeInfo);
@@ -434,9 +420,7 @@ async function donate(pubkey: string) {
     const description = t('DonationPrompt.cashu.ctas.setupDescription');
 
     notifyWarning(title, description);
-    showDonateDialog.value = false;
     showProfileModal.value = false;
-    selectedPubkey.value = '';
 
     if (!hasActiveMint) {
       void openDonationPrompt({ bypassGate: true, defaultTab: 'cashu' });
@@ -464,41 +448,14 @@ async function donate(pubkey: string) {
     notifyError('Your Nostr identity is not ready yet. Please try again.');
     return;
   }
-  selectedPubkey.value = pubkey;
-  showDonateDialog.value = true;
+  const resolvedPubkey = nostr.resolvePubkey(pubkey);
+  messenger.startChat(resolvedPubkey);
+  showProfileModal.value = false;
+  void router.push({
+    path: '/nostr-messenger',
+    query: { pubkey: resolvedPubkey, intent: 'donate' },
+  });
 }
-
-function handleDonate({
-  bucketId,
-  locked,
-  type,
-  amount,
-  periods,
-  message,
-}: any) {
-  if (!selectedPubkey.value) return;
-  if (type === 'one-time') {
-    sendTokensStore.clearSendData();
-    sendTokensStore.recipientPubkey = selectedPubkey.value;
-    sendTokensStore.sendViaNostr = true;
-    sendTokensStore.sendData.bucketId = bucketId;
-    sendTokensStore.sendData.amount = amount;
-    sendTokensStore.sendData.memo = message;
-    sendTokensStore.sendData.p2pkPubkey = locked ? selectedPubkey.value : '';
-    sendTokensStore.showLockInput = locked;
-    sendTokensStore.showSendTokens = true;
-  } else {
-    donationStore.createDonationPreset(periods, amount, selectedPubkey.value, bucketId);
-  }
-
-  showDonateDialog.value = false;
-}
-
-watch(showDonateDialog, (isOpen) => {
-  if (!isOpen) {
-    selectedPubkey.value = '';
-  }
-});
 
 const resolveBannerIcon = (message: string | null | undefined) => {
   if (!message) {
