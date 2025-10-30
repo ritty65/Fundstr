@@ -1517,13 +1517,13 @@ export default defineComponent({
       /*
       calls send, displays token and kicks off the spendableWorker
       */
-      this.showNumericKeyboard = false;
-
       if (!this.activeMintUrl) {
         notifyError("Select a mint in Wallet before sending.");
         this.showSendTokens = false;
         return;
       }
+
+      this.showNumericKeyboard = false;
       const p2pkInput = this.sendData.p2pkPubkey;
       let nostrDm = false;
       if (
