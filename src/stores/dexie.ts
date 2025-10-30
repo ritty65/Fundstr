@@ -666,19 +666,26 @@ export const useDexieStore = defineStore("dexie", {
         return;
       }
       // start migration
-      await useStorageStore().exportWalletState();
-      parsedProofs.forEach((proof) => {
-        cashuDb.proofs.add(proof);
-      });
+      const storageStore = useStorageStore();
+      await storageStore.exportWalletState();
+      try {
+        await cashuDb.proofs.bulkAdd(parsedProofs);
+      } catch (error) {
+        debug("Failed to migrate proofs to Dexie", error);
+        notifyError(
+          "Failed to migrate proofs to new storage. We'll keep your existing data for now.",
+        );
+        return;
+      }
+      const proofsCount = await cashuDb.proofs.count();
+      const migratedProofs = await proofsStore.getProofs();
       debug(
-        `Migrated ${cashuDb.proofs.count()} proofs. Before: ${
-          parsedProofs.length
-        } proofs, After: ${(await proofsStore.getProofs()).length} proofs`,
+        `Migrated ${proofsCount} proofs. Before: ${parsedProofs.length} proofs, After: ${migratedProofs.length} proofs`,
       );
       debug(
         `Proofs sum before: ${proofsStore.sumProofs(
           parsedProofs,
-        )}, after: ${proofsStore.sumProofs(await proofsStore.getProofs())}`,
+        )}, after: ${proofsStore.sumProofs(migratedProofs)}`,
       );
       this.migratedToDexie = true;
       // remove proofs from localstorage
