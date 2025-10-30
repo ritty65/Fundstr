@@ -190,7 +190,11 @@ export const useUiStore = defineStore("ui", {
     ndefSupported(): boolean {
       //debug(`window.Capacitor.getPlatform() = ${window.Capacitor.getPlatform()}`)
       // @ts-ignore
-      if (window.Capacitor.getPlatform() !== "web") {
+      const capacitor = window?.Capacitor;
+      if (!capacitor || typeof capacitor.getPlatform !== "function") {
+        return false;
+      }
+      if (capacitor.getPlatform() !== "web") {
         return false;
       }
       return "NDEFReader" in globalThis;
