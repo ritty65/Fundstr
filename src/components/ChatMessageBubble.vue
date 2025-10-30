@@ -812,10 +812,13 @@ async function updateAutoRedeem(val: boolean) {
 }
 
 .bubble-incoming {
-  background-color: color-mix(in srgb, var(--surface-2, #f7f7f7), white 15%);
-  color: var(--text-1, #111);
+  background-color: var(--bubble-incoming-bg, color-mix(in srgb, var(--surface-2, #f7f7f7), white 15%));
+  color: var(--text-1) !important;
   border-radius: 0 12px 12px 12px;
-  border: 1px solid var(--surface-contrast-border, rgba(0, 0, 0, 0.08));
+  border: 1px solid var(
+      --bubble-incoming-border,
+      var(--surface-contrast-border, rgba(0, 0, 0, 0.08))
+    );
 }
 
 .token-wrapper {
