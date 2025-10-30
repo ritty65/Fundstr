@@ -28,6 +28,8 @@
             :label="t('SendBucketDmDialog.inputs.amount.label')"
             outlined
             dense
+            :error="!!amountError"
+            :error-message="amountError"
           />
         </div>
         <div v-else style="max-height: 200px; overflow: auto">
@@ -116,11 +118,12 @@ const bucketProofs = computed<WalletProof[]>(() =>
   ),
 );
 
+const bucketBalance = computed(
+  () => bucketBalances.value[props.bucketId] ?? 0,
+);
+
 const formattedBalance = computed(() =>
-  uiStore.formatCurrency(
-    bucketBalances.value[props.bucketId] ?? 0,
-    activeUnit.value,
-  ),
+  uiStore.formatCurrency(bucketBalance.value, activeUnit.value),
 );
 
 const isValidRecipient = computed(() =>
@@ -140,9 +143,26 @@ function toggleProof(secret: string, val: boolean) {
   }
 }
 
+const amountError = computed<string | undefined>(() => {
+  if (mode.value !== "amount") return undefined;
+  if (amount.value == null) return undefined;
+  if (amount.value <= 0) return "Enter an amount greater than zero.";
+  if (amount.value > bucketBalance.value)
+    return "Amount exceeds the available balance.";
+  return undefined;
+});
+
+const isAmountValid = computed(
+  () =>
+    amount.value != null &&
+    amount.value > 0 &&
+    amount.value <= bucketBalance.value &&
+    !amountError.value,
+);
+
 const sendDisabled = computed(() => {
   if (!isValidRecipient.value) return true;
-  if (mode.value === "amount") return !(amount.value && amount.value > 0);
+  if (mode.value === "amount") return !isAmountValid.value;
   return selectedSecrets.value.length === 0;
 });
 
@@ -176,8 +196,7 @@ async function confirm() {
     return;
   }
   if (mode.value === "amount") {
-    if (!amount.value) {
-      hideDialog();
+    if (!isAmountValid.value || amount.value == null) {
       return;
     }
     await messenger.sendToken(

@@ -4,7 +4,7 @@
       <q-card-section class="text-h6">Send Tokens</q-card-section>
       <q-card-section>
         <div class="text-caption q-mb-sm">
-          Balance: {{ formattedTotalBalance }}
+          Balance: {{ formattedSelectedBalance }}
         </div>
         <q-select
           v-model="bucketId"
@@ -27,6 +27,8 @@
           dense
           class="q-mt-md"
           :disable="!hasBuckets"
+          :error="!!amountError"
+          :error-message="amountError"
         />
         <q-input v-model="memo" label="Memo" outlined dense class="q-mt-md" />
       </q-card-section>
@@ -35,7 +37,7 @@
         <q-btn
           flat
           color="primary"
-          :disable="!amount || !hasBuckets"
+          :disable="isSendDisabled"
           @click="confirm"
           >Send</q-btn
         >
@@ -80,12 +82,29 @@ const bucketOptions = computed(() =>
 
 const hasBuckets = computed(() => bucketOptions.value.length > 0);
 
-const totalBalance = computed(() =>
-  Object.values(bucketBalances.value).reduce((sum, v) => sum + v, 0),
+const selectedBucketBalance = computed(() =>
+  bucketId.value ? bucketBalances.value[bucketId.value] ?? 0 : 0,
 );
 
-const formattedTotalBalance = computed(() =>
-  uiStore.formatCurrency(totalBalance.value, activeUnit.value),
+const formattedSelectedBalance = computed(() =>
+  uiStore.formatCurrency(selectedBucketBalance.value, activeUnit.value),
+);
+
+const amountError = computed<string | undefined>(() => {
+  if (!hasBuckets.value) return undefined;
+  if (amount.value == null) return undefined;
+  if (amount.value <= 0) return "Enter an amount greater than zero.";
+  if (amount.value > selectedBucketBalance.value)
+    return "Amount exceeds the available balance.";
+  return undefined;
+});
+
+const isAmountValid = computed(() =>
+  amount.value != null && amount.value > 0 && amount.value <= selectedBucketBalance.value,
+);
+
+const isSendDisabled = computed(
+  () => !hasBuckets.value || !isAmountValid.value,
 );
 
 function reset() {
@@ -125,12 +144,15 @@ function cancel() {
 }
 
 async function confirm() {
-  if (!props.recipient || !amount.value) {
+  if (!props.recipient) {
     hideDialog();
     return;
   }
   if (!bucketId.value) {
     notifyWarning("Select a bucket before sending tokens.");
+    return;
+  }
+  if (amount.value == null || !isAmountValid.value) {
     return;
   }
   const success = await messenger.sendToken(
