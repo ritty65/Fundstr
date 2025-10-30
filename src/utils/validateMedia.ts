@@ -16,7 +16,7 @@ export function normalizeYouTube(url: string): string {
   const idMatch = url
     .replace("https://", "")
     .match(
-      /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))(\w{11})/i,
+      /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([A-Za-z0-9_-]{11})/i,
     );
   if (idMatch) {
     return `https://www.youtube.com/embed/${idMatch[1]}`;

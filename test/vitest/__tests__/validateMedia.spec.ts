@@ -22,9 +22,9 @@ describe("validateMedia", () => {
   });
 
   it("normalizes youtube links", () => {
-    const url = "https://youtu.be/abcd1234efg";
+    const url = "https://youtu.be/ab_cd-12345";
     expect(normalizeYouTube(url)).toBe(
-      "https://www.youtube.com/embed/abcd1234efg",
+      "https://www.youtube.com/embed/ab_cd-12345",
     );
   });
 
