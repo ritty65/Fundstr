@@ -1565,6 +1565,8 @@ export const useMessengerStore = defineStore("messenger", {
     ): Promise<SendDmResult> {
       recipient = this.normalizeKey(recipient);
       if (!recipient) return { success: false, event: null };
+
+      const relayTargets = relays ? Array.from(new Set(relays)) : undefined;
       const baseMessage = typeof message === "string" ? message : "";
       const textContent = sanitizeMessage(baseMessage);
       const normalizedFiles = Array.isArray(filesPayload)
@@ -1572,111 +1574,167 @@ export const useMessengerStore = defineStore("messenger", {
             .map((file) => normalizeFileMeta(file))
             .filter((file): file is FileMeta => !!file)
         : [];
-      const eventContent = buildEventContent(textContent, normalizedFiles);
-      if (!eventContent && !attachment && !tokenPayload) {
-        return { success: false, event: null };
-      }
-      const relayTargets = relays ? Array.from(new Set(relays)) : undefined;
-      const now = Date.now();
-      const meta: LocalEchoMeta = {
-        localId: uuidv4(),
-        eventId: null,
-        status: "pending",
-        relayResults: {},
-        createdAt: now,
-        updatedAt: now,
-        lastAckAt: null,
-        timerStartedAt: null,
-        error: null,
-        relays: relayTargets,
-        attempt: 1,
-        payload: {
+
+      const sendSingle = async (options: {
+        text: string;
+        contentOverride?: string;
+        attachment?: MessageAttachment;
+        tokenPayload?: any;
+        files?: FileMeta[];
+      }): Promise<SendDmResult> => {
+        const { text, contentOverride, attachment: attach, tokenPayload: token, files } = options;
+        const normalized = Array.isArray(files)
+          ? files
+              .map((file) => normalizeFileMeta(file))
+              .filter((file): file is FileMeta => !!file)
+          : [];
+        const eventContent =
+          typeof contentOverride === "string"
+            ? contentOverride
+            : buildEventContent(text, normalized);
+
+        if (!eventContent && !attach && !token) {
+          return { success: false, event: null };
+        }
+
+        const now = Date.now();
+        const meta: LocalEchoMeta = {
+          localId: uuidv4(),
+          eventId: null,
+          status: "pending",
+          relayResults: {},
+          createdAt: now,
+          updatedAt: now,
+          lastAckAt: null,
+          timerStartedAt: null,
+          error: null,
+          relays: relayTargets,
+          attempt: 1,
+          payload: {
+            content: eventContent,
+            text,
+            attachment: attach,
+            tokenPayload: token,
+            filesPayload: normalized.length ? normalized : undefined,
+          },
+        };
+
+        const msg = this.addOutgoingMessage(
+          recipient,
+          text,
+          undefined,
+          undefined,
+          attach,
+          "pending",
+          token,
+          meta,
+        );
+        msg.relayResults = {};
+        msg.content = text;
+        msg.tokenPayload = token;
+        msg.filesPayload = normalized.length ? normalized : undefined;
+        this.scheduleLocalEcho(meta, msg);
+
+        if (!this.outboxEnabled) {
+          return await this.executeSendWithMeta({
+            msg,
+            meta,
+            recipient,
+            contentToSend: eventContent,
+            textContent: text,
+            attachment: attach,
+            tokenPayload: token,
+            filesPayload: normalized,
+            relayTargets,
+          });
+        }
+
+        const outboxPayload = {
+          recipient,
           content: eventContent,
+          text,
+          attachment: attach,
+          tokenPayload: token,
+          filesPayload: normalized.length ? normalized : undefined,
+          created_at: msg.created_at,
+        };
+
+        const record: MessengerOutboxRecord = {
+          id: meta.localId,
+          owner: this.getOwnerKey(),
+          messageId: msg.id,
+          localId: meta.localId,
+          recipient,
+          status: "queued",
+          nextAttemptAt: now,
+          attemptCount: 0,
+          payload: outboxPayload,
+          relays: relayTargets,
+          lastError: null,
+          relayResults: {},
+          ackCount: 0,
+          firstAckAt: null,
+          lastAckAt: null,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        try {
+          await upsertOutbox(record);
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err ?? "error");
+          this.markLocalEchoFailed(msg, meta, reason);
+          notifyError(`Failed to queue DM: ${reason}`);
+          return { success: false, event: null };
+        }
+
+        emitDmCounter("dm_outbox_queued", { localId: meta.localId });
+        void this.outboxPump();
+
+        return {
+          success: true,
+          event: null,
+          confirmationPending: true,
+          localId: meta.localId,
+          eventId: null,
+        };
+      };
+
+      let lastResult: SendDmResult = { success: false, event: null };
+
+      for (const file of normalizedFiles) {
+        const fileJson = JSON.stringify(file);
+        const result = await sendSingle({
+          text: fileJson,
+          contentOverride: fileJson,
+          attachment: { type: file.mime, name: file.name },
+          tokenPayload: undefined,
+          files: [file],
+        });
+        lastResult = result;
+        if (!result.success) {
+          return result;
+        }
+      }
+
+      const shouldSendText =
+        textContent.length > 0 ||
+        !!attachment ||
+        !!tokenPayload ||
+        normalizedFiles.length === 0;
+
+      if (shouldSendText) {
+        const textResult = await sendSingle({
           text: textContent,
           attachment,
           tokenPayload,
-          filesPayload: normalizedFiles.length ? normalizedFiles : undefined,
-        },
-      };
-
-      const msg = this.addOutgoingMessage(
-        recipient,
-        textContent,
-        undefined,
-        undefined,
-        attachment,
-        "pending",
-        tokenPayload,
-        meta,
-      );
-      msg.relayResults = {};
-      msg.tokenPayload = tokenPayload;
-      msg.filesPayload = normalizedFiles.length ? normalizedFiles : undefined;
-      this.scheduleLocalEcho(meta, msg);
-
-      if (!this.outboxEnabled) {
-        return await this.executeSendWithMeta({
-          msg,
-          meta,
-          recipient,
-          contentToSend: eventContent,
-          textContent,
-          attachment,
-          tokenPayload,
-          filesPayload: normalizedFiles,
-          relayTargets,
+          files: normalizedFiles.length ? [] : undefined,
         });
+        lastResult = textResult;
+        return textResult;
       }
 
-      const outboxPayload = {
-        recipient,
-        content: eventContent,
-        text: textContent,
-        attachment,
-        tokenPayload,
-        filesPayload: normalizedFiles.length ? normalizedFiles : undefined,
-        created_at: msg.created_at,
-      };
-
-      const record: MessengerOutboxRecord = {
-        id: meta.localId,
-        owner: this.getOwnerKey(),
-        messageId: msg.id,
-        localId: meta.localId,
-        recipient,
-        status: "queued",
-        nextAttemptAt: now,
-        attemptCount: 0,
-        payload: outboxPayload,
-        relays: relayTargets,
-        lastError: null,
-        relayResults: {},
-        ackCount: 0,
-        firstAckAt: null,
-        lastAckAt: null,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      try {
-        await upsertOutbox(record);
-      } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err ?? "error");
-        this.markLocalEchoFailed(msg, meta, reason);
-        notifyError(`Failed to queue DM: ${reason}`);
-        return { success: false, event: null };
-      }
-
-      emitDmCounter("dm_outbox_queued", { localId: meta.localId });
-      void this.outboxPump();
-
-      return {
-        success: true,
-        event: null,
-        confirmationPending: true,
-        localId: meta.localId,
-        eventId: null,
-      };
+      return lastResult;
     },
     async executeSendWithMeta(options: {
       msg: MessengerMessage;
@@ -3147,7 +3205,10 @@ export const useMessengerStore = defineStore("messenger", {
           }
         }
       }
-      const sanitized = sanitizeMessage(decrypted);
+      const primaryFile = filePayloads[0];
+      const sanitized = primaryFile
+        ? sanitizeMessage(decrypted, Math.max(1000, decrypted.length))
+        : sanitizeMessage(decrypted);
       const baseMessage: MessengerMessage = {
         id: event.id,
         pubkey: event.pubkey,
@@ -3156,6 +3217,9 @@ export const useMessengerStore = defineStore("messenger", {
         outgoing: false,
         protocol: event.kind === 1059 ? "nip17" : "nip04",
         filesPayload: filePayloads.length ? filePayloads : undefined,
+        attachment: primaryFile
+          ? { type: primaryFile.mime, name: primaryFile.name }
+          : undefined,
       };
       if (!this.conversations[event.pubkey]) {
         this.conversations[event.pubkey] = [];
@@ -3176,7 +3240,9 @@ export const useMessengerStore = defineStore("messenger", {
       target.outgoing = false;
       target.protocol = event.kind === 1059 ? "nip17" : "nip04";
       target.filesPayload = filePayloads.length ? filePayloads : undefined;
-      if (/^data:[^;]+;base64,/.test(sanitized)) {
+      if (primaryFile) {
+        target.attachment = { type: primaryFile.mime, name: primaryFile.name };
+      } else if (/^data:[^;]+;base64,/.test(sanitized)) {
         const type = sanitized.substring(5, sanitized.indexOf(";"));
         target.attachment = { type, name: "" };
       }
@@ -3191,7 +3257,16 @@ export const useMessengerStore = defineStore("messenger", {
         this.unreadCounts[event.pubkey] =
           (this.unreadCounts[event.pubkey] || 0) + 1;
         if (this.currentConversation !== event.pubkey) {
-          const snippet = target.content.slice(0, 40);
+          let snippet = "New message";
+          if (primaryFile) {
+            const name = primaryFile.name?.trim();
+            snippet = name ? `Received file: ${name}` : "Received file";
+          } else {
+            const cleaned = stripFileMetaLines(target.content ?? "").slice(0, 40);
+            if (cleaned) {
+              snippet = cleaned;
+            }
+          }
           notifySuccess(snippet);
         }
         void this.persistConversationMeta(event.pubkey, "unread");

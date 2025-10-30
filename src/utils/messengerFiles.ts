@@ -26,6 +26,13 @@ export function normalizeFileMeta(input: unknown): FileMeta | null {
   if (!input || typeof input !== "object") return null;
   const candidate = input as Record<string, unknown>;
 
+  const type = normalizeString(candidate.t);
+  if (type !== "file") return null;
+
+  const versionRaw = Number(candidate.v);
+  const version = Number.isFinite(versionRaw) && versionRaw > 0 ? Math.floor(versionRaw) : 1;
+  if (version !== 1) return null;
+
   const url = normalizeString(candidate.url);
   if (!url) return null;
 
@@ -33,12 +40,10 @@ export function normalizeFileMeta(input: unknown): FileMeta | null {
   const name = normalizeString(candidate.name) ?? "";
   const bytesRaw = Number(candidate.bytes);
   const bytes = Number.isFinite(bytesRaw) && bytesRaw >= 0 ? Math.round(bytesRaw) : 0;
-  const versionRaw = Number(candidate.v);
-  const v = Number.isFinite(versionRaw) && versionRaw > 0 ? Math.floor(versionRaw) : 1;
 
   const file: FileMeta = {
     t: "file",
-    v,
+    v: version,
     url,
     name,
     mime,
