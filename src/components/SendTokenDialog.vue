@@ -669,6 +669,7 @@ import {
   Nfc as NfcIcon,
 } from "lucide-vue-next";
 import {
+  notifyApiError,
   notifyError,
   notifySuccess,
   notify,
@@ -938,6 +939,113 @@ export default defineComponent({
     ...mapActions(useP2PKStore, ["isValidPubkey", "sendToLock"]),
     ...mapActions(useCameraStore, ["closeCamera", "showCamera"]),
     ...mapActions(useMintsStore, ["toggleUnit"]),
+    extractErrorDetails(error: unknown): {
+      message: string;
+      status?: number;
+      code?: string | number;
+    } {
+      const toNumber = (value: unknown): number | undefined => {
+        if (typeof value === "number") {
+          return value;
+        }
+        if (typeof value === "string") {
+          const parsed = parseInt(value, 10);
+          return Number.isNaN(parsed) ? undefined : parsed;
+        }
+        return undefined;
+      };
+
+      if (!error) {
+        return { message: "" };
+      }
+
+      if (typeof error === "string") {
+        return { message: error };
+      }
+
+      if (error instanceof Error) {
+        const errAny = error as any;
+        const status =
+          toNumber(errAny?.status) ??
+          toNumber(errAny?.response?.status) ??
+          toNumber(errAny?.cause?.status);
+        const code =
+          errAny?.code ??
+          errAny?.response?.data?.code ??
+          errAny?.cause?.code ??
+          status;
+        return {
+          message: error.message ?? "",
+          status,
+          code,
+        };
+      }
+
+      if (typeof error === "object") {
+        const errObj = error as Record<string, any>;
+        const status =
+          toNumber(errObj?.status) ??
+          toNumber(errObj?.response?.status) ??
+          toNumber(errObj?.cause?.status);
+        const code =
+          errObj?.code ??
+          errObj?.response?.data?.code ??
+          errObj?.cause?.code ??
+          status;
+        const messageCandidate =
+          errObj?.message ??
+          errObj?.response?.data?.message ??
+          errObj?.response?.data?.detail ??
+          errObj?.response?.data?.error ??
+          errObj?.detail ??
+          errObj?.error ??
+          "";
+        return {
+          message:
+            typeof messageCandidate === "string" ? messageCandidate : "",
+          status,
+          code,
+        };
+      }
+
+      return { message: "" };
+    },
+    handleSendFailure(
+      context: "lock" | "send",
+      error: unknown,
+    ) {
+      const { message, status, code } = this.extractErrorDetails(error);
+      const defaultMessage =
+        context === "lock"
+          ? "Failed to lock tokens."
+          : "Failed to send tokens.";
+      const trimmedMessage =
+        typeof message === "string" ? message.trim() : "";
+      const shouldSuggestMintChange =
+        typeof status === "number" && status >= 500;
+      const guidance =
+        "Try switching to a mint that supports splitting.";
+      const displayMessage = `${
+        trimmedMessage || defaultMessage
+      }${shouldSuggestMintChange ? ` ${guidance}` : ""}`;
+      const mintUrl = this.activeMintUrl ?? "unknown";
+      const statusParts = [
+        typeof status === "number" ? `status ${status}` : null,
+        code && code !== status ? `code ${code}` : null,
+      ].filter(Boolean);
+      const suffix = statusParts.length ? ` (${statusParts.join(", ")})` : "";
+      console.error(
+        `[SendTokenDialog] ${context}Tokens failed for mint ${mintUrl}${suffix}`,
+        error,
+      );
+
+      if (error instanceof Error && trimmedMessage && !shouldSuggestMintChange) {
+        notifyApiError(error);
+        return;
+      }
+
+      notifyApiError(new Error(displayMessage));
+    },
     resolveRecipientPubkey(pubkey?: string | null) {
       if (!pubkey) {
         return null;
@@ -1397,8 +1505,7 @@ export default defineComponent({
           this.onTokenPaid(historyToken);
         }
       } catch (error) {
-        console.error(error);
-        notifyError("Failed to send tokens");
+        this.handleSendFailure("lock", error);
       }
     },
     sendTokens: async function () {
@@ -1562,8 +1669,7 @@ export default defineComponent({
           this.onTokenPaid(historyToken);
         }
       } catch (error) {
-        console.error(error);
-        notifyError("Failed to send tokens");
+        this.handleSendFailure("send", error);
       }
     },
     pasteToP2PKField: async function () {
