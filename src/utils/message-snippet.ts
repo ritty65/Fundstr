@@ -1,6 +1,15 @@
+export interface FileSnippetHint {
+  type: "file";
+  mime?: string;
+  name?: string;
+}
+
+export type SnippetHint = FileSnippetHint;
+
 export interface SnippetInfo {
   text: string;
   icon?: string;
+  hint?: SnippetHint;
 }
 
 const PAYLOAD_MAP: Record<string, SnippetInfo> = {
@@ -18,7 +27,17 @@ export function parseMessageSnippet(content: string): SnippetInfo {
     const obj = JSON.parse(content);
     if (obj && typeof obj === "object" && obj.t === "file" && obj.v === 1) {
       const name = typeof obj.name === "string" ? obj.name.trim() : "";
-      return { text: name || "File attachment", icon: "mdi-paperclip" };
+      const mime =
+        typeof obj.mime === "string" ? obj.mime.trim().toLowerCase() : undefined;
+      return {
+        text: name || "File attachment",
+        icon: "mdi-paperclip",
+        hint: {
+          type: "file",
+          mime,
+          name,
+        },
+      };
     }
     const mapped = PAYLOAD_MAP[obj.type];
     if (mapped) return mapped;
