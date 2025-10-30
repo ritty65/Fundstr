@@ -1416,61 +1416,58 @@ export default defineComponent({
           anonymous: this.sendData.anonymous ?? false,
         };
         if (this.sendViaNostr && this.recipientPubkey) {
-          try {
-            let recipient = this.recipientPubkey;
-            if (
-              recipient.startsWith("npub") ||
-              recipient.startsWith("nprofile")
-            ) {
-              try {
-                const decoded = nip19.decode(recipient);
-                recipient =
-                  decoded.type === "npub"
-                    ? (decoded.data as string)
-                    : (decoded.data as ProfilePointer).pubkey;
-              } catch (e) {
-                console.error(e);
+          const initialRecipient = this.recipientPubkey;
+          const dmPayload = {
+            token: this.sendData.tokensBase64,
+            amount: this.sendData.amount * this.activeUnitCurrencyMultiplyer,
+            unlockTime: this.sendData.locktime || null,
+            bucketId: this.sendData.bucketId,
+            referenceId: this.sendData.historyToken?.id || "",
+          };
+          void (async () => {
+            try {
+              let recipient = initialRecipient;
+              if (
+                recipient.startsWith("npub") ||
+                recipient.startsWith("nprofile")
+              ) {
+                try {
+                  const decoded = nip19.decode(recipient);
+                  recipient =
+                    decoded.type === "npub"
+                      ? (decoded.data as string)
+                      : (decoded.data as ProfilePointer).pubkey;
+                } catch (decodeError) {
+                  console.error(decodeError);
+                }
               }
+              const dmContent = JSON.stringify(dmPayload);
+              const { success, event } =
+                await useNostrStore().sendDirectMessageUnified(
+                  recipient,
+                  dmContent,
+                );
+              if (success && event) {
+                useDmChatsStore().addOutgoing(event);
+                Dialog.create({
+                  message: this.$t(
+                    "wallet.notifications.nostr_dm_sent",
+                  ) as string,
+                });
+              } else {
+                console.warn("Silent DM Notification Fail: send failed", {
+                  recipient,
+                  success,
+                });
+              }
+            } catch (error) {
+              console.error("Silent DM Notification Fail:", error);
+            } finally {
+              this.recipientPubkey = "";
+              this.sendViaNostr = false;
+              this.sendData.memo = "";
             }
-            const payload = {
-              token: this.sendData.tokensBase64,
-              amount: this.sendData.amount * this.activeUnitCurrencyMultiplyer,
-              unlockTime: this.sendData.locktime || null,
-              bucketId: this.sendData.bucketId,
-              referenceId: this.sendData.historyToken?.id || "",
-            };
-            const dmContent = JSON.stringify(payload);
-            const { success, event } =
-              await useNostrStore().sendDirectMessageUnified(
-                recipient,
-                dmContent,
-              );
-            if (success && event) {
-              useDmChatsStore().addOutgoing(event);
-              Dialog.create({
-                message: this.$t(
-                  "wallet.notifications.nostr_dm_sent",
-                ) as string,
-              });
-            } else {
-              Dialog.create({
-                message: this.$t(
-                  "wallet.notifications.nostr_dm_failed",
-                ) as string,
-              });
-            }
-          } catch (e) {
-            console.error(e);
-            Dialog.create({
-              message: this.$t(
-                "wallet.notifications.nostr_dm_failed",
-              ) as string,
-            });
-          } finally {
-            this.recipientPubkey = "";
-            this.sendViaNostr = false;
-            this.sendData.memo = "";
-          }
+          })();
         }
         useLockedTokensStore().addLockedToken({
           amount: sendAmount,
@@ -1602,61 +1599,58 @@ export default defineComponent({
           anonymous: this.sendData.anonymous ?? false,
         };
         if (this.sendViaNostr && this.recipientPubkey) {
-          try {
-            let recipient = this.recipientPubkey;
-            if (
-              recipient.startsWith("npub") ||
-              recipient.startsWith("nprofile")
-            ) {
-              try {
-                const decoded = nip19.decode(recipient);
-                recipient =
-                  decoded.type === "npub"
-                    ? (decoded.data as string)
-                    : (decoded.data as ProfilePointer).pubkey;
-              } catch (e) {
-                console.error(e);
+          const initialRecipient = this.recipientPubkey;
+          const dmPayload = {
+            token: this.sendData.tokensBase64,
+            amount: this.sendData.amount * this.activeUnitCurrencyMultiplyer,
+            unlockTime: this.sendData.locktime || null,
+            bucketId: this.sendData.bucketId,
+            referenceId: this.sendData.historyToken?.id || "",
+          };
+          void (async () => {
+            try {
+              let recipient = initialRecipient;
+              if (
+                recipient.startsWith("npub") ||
+                recipient.startsWith("nprofile")
+              ) {
+                try {
+                  const decoded = nip19.decode(recipient);
+                  recipient =
+                    decoded.type === "npub"
+                      ? (decoded.data as string)
+                      : (decoded.data as ProfilePointer).pubkey;
+                } catch (decodeError) {
+                  console.error(decodeError);
+                }
               }
+              const dmContent = JSON.stringify(dmPayload);
+              const { success, event } =
+                await useNostrStore().sendDirectMessageUnified(
+                  recipient,
+                  dmContent,
+                );
+              if (success && event) {
+                useDmChatsStore().addOutgoing(event);
+                Dialog.create({
+                  message: this.$t(
+                    "wallet.notifications.nostr_dm_sent",
+                  ) as string,
+                });
+              } else {
+                console.warn("Silent DM Notification Fail: send failed", {
+                  recipient,
+                  success,
+                });
+              }
+            } catch (error) {
+              console.error("Silent DM Notification Fail:", error);
+            } finally {
+              this.recipientPubkey = "";
+              this.sendViaNostr = false;
+              this.sendData.memo = "";
             }
-            const payload2 = {
-              token: this.sendData.tokensBase64,
-              amount: this.sendData.amount * this.activeUnitCurrencyMultiplyer,
-              unlockTime: this.sendData.locktime || null,
-              bucketId: this.sendData.bucketId,
-              referenceId: this.sendData.historyToken?.id || "",
-            };
-            const dmContent2 = JSON.stringify(payload2);
-            const { success, event } =
-              await useNostrStore().sendDirectMessageUnified(
-                recipient,
-                dmContent2,
-              );
-            if (success && event) {
-              useDmChatsStore().addOutgoing(event);
-              Dialog.create({
-                message: this.$t(
-                  "wallet.notifications.nostr_dm_sent",
-                ) as string,
-              });
-            } else {
-              Dialog.create({
-                message: this.$t(
-                  "wallet.notifications.nostr_dm_failed",
-                ) as string,
-              });
-            }
-          } catch (e) {
-            console.error(e);
-            Dialog.create({
-              message: this.$t(
-                "wallet.notifications.nostr_dm_failed",
-              ) as string,
-            });
-          } finally {
-            this.recipientPubkey = "";
-            this.sendViaNostr = false;
-            this.sendData.memo = "";
-          }
+          })();
         }
         this.sendData.historyAmount =
           -this.sendData.amount * this.activeUnitCurrencyMultiplyer;
