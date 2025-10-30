@@ -53,6 +53,7 @@ export interface Creator {
   tiers?: CreatorTier[];
   cacheHit?: boolean;
   featured?: boolean;
+  tierDataFresh?: boolean | null;
 }
 
 export function withPrefix(path = ""): string {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { nip19 } from "nostr-tools";
 import type { Creator as DiscoveryCreator, CreatorTier as DiscoveryCreatorTier } from "src/lib/fundstrApi";
 
@@ -101,7 +101,12 @@ async function loadCreatorsModule(discoveryMock: DiscoveryMock) {
 
 describe("fetchFundstrProfileBundle", () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("returns a normalized bundle when fresh creator and tier fetches succeed", async () => {
@@ -126,6 +131,7 @@ describe("fetchFundstrProfileBundle", () => {
     expect(discoveryMock.getCreators).toHaveBeenCalledTimes(2);
     expect(discoveryMock.getCreatorTiers).toHaveBeenCalledTimes(2);
     expect(bundle.fetchedFromFallback).toBe(false);
+    expect(bundle.tierDataFresh).toBe(true);
     expect(bundle.profile).toEqual(baseProfile);
     expect(bundle.followers).toBe(42);
     expect(bundle.following).toBe(8);
@@ -179,6 +185,7 @@ describe("fetchFundstrProfileBundle", () => {
       expect.objectContaining({ q: NPUB, fresh: true }),
     ]);
     expect(bundle.fetchedFromFallback).toBe(true);
+    expect(bundle.tierDataFresh).toBe(true);
     expect(bundle.profile).toEqual(baseProfile);
     expect(bundle.followers).toBe(100);
     expect(bundle.following).toBe(5);
@@ -224,6 +231,7 @@ describe("fetchFundstrProfileBundle", () => {
       expect.objectContaining({ id: NPUB, fresh: false }),
     ]);
     expect(bundle.fetchedFromFallback).toBe(true);
+    expect(bundle.tierDataFresh).toBe(false);
     expect(bundle.tiers).toEqual([
       {
         id: "tier-basic",
@@ -260,5 +268,69 @@ describe("fetchFundstrProfileBundle", () => {
         expect(error).toBeInstanceOf(FundstrProfileFetchError);
         expect(error).toMatchObject({ fallbackAttempted: false });
       });
+  });
+
+  it("falls back gracefully when tier lookups are blocked by browser security", async () => {
+    const securityError = typeof DOMException !== "undefined"
+      ? new DOMException("The operation is insecure.", "SecurityError")
+      : Object.assign(new Error("security"), { name: "SecurityError" });
+
+    const discoveryMock = createDiscoveryMock({
+      creators: {
+        [PUBKEY_HEX]: {
+          cached: { results: [] },
+          fresh: { results: [makeCreator()] },
+        },
+        [NPUB]: {
+          cached: { results: [] },
+          fresh: { results: [] },
+        },
+      },
+      tiers: {
+        [PUBKEY_HEX]: {
+          cached: () => {
+            throw securityError;
+          },
+          fresh: () => {
+            throw securityError;
+          },
+        },
+        [NPUB]: {
+          cached: { tiers: [baseTier] },
+        },
+      },
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(discoveryMock);
+
+    const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX);
+
+    expect(bundle.tierDataFresh).toBe(false);
+    expect(bundle.fetchedFromFallback).toBe(true);
+    expect(bundle.tiers).toEqual([
+      {
+        id: "tier-basic",
+        name: "Basic",
+        price_sats: 2500,
+        description: "Access to basic content",
+        media: [],
+      },
+    ]);
+
+    await fetchFundstrProfileBundle(PUBKEY_HEX);
+
+    const freshTierCalls = discoveryMock.getCreatorTiers.mock.calls.filter(
+      ([request]) => request?.fresh === true,
+    );
+    expect(freshTierCalls).toHaveLength(0);
+
+    expect(errorSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("fetchFundstrProfileBundle discovery tier lookup failed"),
+      expect.anything(),
+    );
+    expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 });

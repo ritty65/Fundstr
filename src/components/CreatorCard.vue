@@ -147,7 +147,12 @@ const tierSummaryText = computed(() => {
 
 const followers = computed(() => props.profile.followers ?? null);
 
+const tierDataFresh = computed(() => props.profile?.tierDataFresh !== false);
+
 const hasLightning = computed(() => {
+  if (!tierDataFresh.value) {
+    return false;
+  }
   const profileRecord = (props.profile?.profile ?? {}) as Record<string, unknown>;
   const metaRecord = meta.value as Record<string, unknown>;
 
