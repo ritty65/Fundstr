@@ -27,6 +27,7 @@ export type CreatorRow = CreatorProfile;
 const FRESH_RETRY_BASE_MS = 1500;
 const FRESH_RETRY_MAX_MS = 30000;
 const FRESH_FALLBACK_LOG_DEBOUNCE_MS = 60000;
+const TIER_SECURITY_COOLDOWN_MS = 5 * 60 * 1000;
 
 let nextProfileFreshAttemptAt = 0;
 let profileFreshFailureCount = 0;
@@ -35,6 +36,8 @@ let lastProfileFallbackLogAt = 0;
 let nextTiersFreshAttemptAt = 0;
 let tiersFreshFailureCount = 0;
 let lastTierFallbackLogAt = 0;
+let tierSecurityCooldownUntil = 0;
+let lastTierSecurityLogAt = 0;
 
 export class FundstrProfileFetchError extends Error {
   fallbackAttempted: boolean;
@@ -81,6 +84,34 @@ function collectRelayHintsFromProfile(
     }
   }
   return Array.from(hints);
+}
+
+function isTierSecurityError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  if (typeof DOMException !== "undefined" && error instanceof DOMException) {
+    return error.name === "SecurityError" || error.code === DOMException.SECURITY_ERR;
+  }
+  const name = (error as { name?: unknown }).name;
+  return typeof name === "string" && name === "SecurityError";
+}
+
+function logTierSecurityError(
+  id: string,
+  phase: "cached" | "fresh",
+  error: unknown,
+): void {
+  tierSecurityCooldownUntil = Date.now() + TIER_SECURITY_COOLDOWN_MS;
+  const nowWarn = Date.now();
+  if (nowWarn - lastTierSecurityLogAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
+    console.warn("fetchFundstrProfileBundle tier lookup blocked by browser security policy", {
+      id,
+      phase,
+      error,
+    });
+    lastTierSecurityLogAt = nowWarn;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, any> {
@@ -231,6 +262,7 @@ export interface FundstrProfileBundle {
   profileDetails: NutzapProfileDetails | null;
   relayHints: string[];
   fetchedFromFallback: boolean;
+  tierDataFresh: boolean;
   tiers: Tier[] | null;
 }
 
@@ -394,10 +426,12 @@ export async function fetchFundstrProfileBundle(
     cached: DiscoveryCreatorTier[];
     fresh: DiscoveryCreatorTier[] | null;
     freshError: unknown | null;
+    securityBlocked: boolean;
   }
 
   const fetchTiersForId = async (id: string): Promise<TierQueryResult> => {
     const cached: DiscoveryCreatorTier[] = [];
+    let securityBlocked = false;
     try {
       const response = await discovery.getCreatorTiers({ id, fresh: false });
       if (Array.isArray(response.tiers)) {
@@ -405,16 +439,22 @@ export async function fetchFundstrProfileBundle(
       }
     } catch (error) {
       lastError = error;
-      console.warn("fetchFundstrProfileBundle cached tier lookup failed", {
-        id,
-        error,
-      });
+      if (isTierSecurityError(error)) {
+        logTierSecurityError(id, "cached", error);
+        securityBlocked = true;
+      } else {
+        console.warn("fetchFundstrProfileBundle cached tier lookup failed", {
+          id,
+          error,
+        });
+      }
     }
 
     let fresh: DiscoveryCreatorTier[] | null = null;
     let freshError: unknown | null = null;
     const now = Date.now();
-    const allowFresh = forceRefresh || now >= nextTiersFreshAttemptAt;
+    const allowFresh =
+      forceRefresh || (now >= nextTiersFreshAttemptAt && now >= tierSecurityCooldownUntil);
     const shouldFetchFresh = (forceRefresh || cached.length === 0) && allowFresh;
     if (shouldFetchFresh) {
       try {
@@ -431,26 +471,38 @@ export async function fetchFundstrProfileBundle(
         }
         tiersFreshFailureCount = 0;
         nextTiersFreshAttemptAt = 0;
+        tierSecurityCooldownUntil = 0;
       } catch (error) {
         freshError = error;
         fresh = null;
         lastError = error;
-        if (!forceRefresh) {
-          tiersFreshFailureCount = Math.min(tiersFreshFailureCount + 1, 6);
-          const delay = Math.min(
-            FRESH_RETRY_BASE_MS * 2 ** Math.max(tiersFreshFailureCount - 1, 0),
-            FRESH_RETRY_MAX_MS,
-          );
-          nextTiersFreshAttemptAt = Date.now() + delay;
+        if (isTierSecurityError(error)) {
+          logTierSecurityError(id, "fresh", error);
+          securityBlocked = true;
+          if (!forceRefresh) {
+            nextTiersFreshAttemptAt = Math.max(
+              nextTiersFreshAttemptAt,
+              tierSecurityCooldownUntil,
+            );
+          }
+        } else {
+          if (!forceRefresh) {
+            tiersFreshFailureCount = Math.min(tiersFreshFailureCount + 1, 6);
+            const delay = Math.min(
+              FRESH_RETRY_BASE_MS * 2 ** Math.max(tiersFreshFailureCount - 1, 0),
+              FRESH_RETRY_MAX_MS,
+            );
+            nextTiersFreshAttemptAt = Date.now() + delay;
+          }
+          console.error("fetchFundstrProfileBundle discovery tier lookup failed", {
+            id,
+            error,
+          });
         }
-        console.error("fetchFundstrProfileBundle discovery tier lookup failed", {
-          id,
-          error,
-        });
       }
     }
 
-    return { id, cached, fresh, freshError };
+    return { id, cached, fresh, freshError, securityBlocked };
   };
 
   const tierResults: TierQueryResult[] = [];
@@ -462,6 +514,7 @@ export async function fetchFundstrProfileBundle(
     }
   }
 
+  const tierSecurityBlocked = tierResults.some((result) => result.securityBlocked);
   const tierFreshMatch = tierResults.find((result) => result.fresh !== null);
   const tierFallbackSource = tierResults.find((result) => result.cached.length > 0);
   const finalTierCandidates = tierFreshMatch
@@ -538,8 +591,11 @@ export async function fetchFundstrProfileBundle(
     ? baseBundle.tiers.map((tier) => normalizeTier(tier))
     : null;
 
+  const tierDataFresh = !usedCachedTierFallback && !tierSecurityBlocked;
+
   return {
     ...baseBundle,
+    tierDataFresh,
     tiers: normalizedTiers && normalizedTiers.length ? normalizedTiers : null,
     fetchedFromFallback: usedCachedProfileFallback || usedCachedTierFallback,
   };
@@ -581,6 +637,7 @@ function buildBundleFromDiscoveryCreator(
     profileDetails,
     relayHints,
     fetchedFromFallback: false,
+    tierDataFresh: true,
     tiers: tiers.length ? tiers : null,
   };
 }
@@ -596,6 +653,7 @@ export interface CreatorWarmCache {
   tierEvent?: RelayEvent | null;
   tierEventId?: string | null;
   tierUpdatedAt?: number | null;
+  tierDataFresh?: boolean | null;
   tierRelayFailures?: Record<string, number>;
   lastFundstrRelayFailureAt?: number | null;
   lastFundstrRelayFailureNotifiedAt?: number | null;
@@ -764,6 +822,7 @@ function createCreatorFromBundle(
     tierSummary,
     metrics,
     tiers,
+    tierDataFresh: overrides.tierDataFresh ?? (bundle.tierDataFresh !== false),
     cacheHit: overrides.cacheHit,
     featured: overrides.featured,
   };
@@ -785,6 +844,7 @@ export const useCreatorsStore = defineStore("creators", {
       error: "",
       searchWarnings: [] as string[],
       featuredError: "",
+      featuredStatusMessage: "",
       tiersMap: {} as Record<string, Tier[]>,
       tierFetchError: false,
       currentUserNpub: "",
@@ -901,6 +961,7 @@ export const useCreatorsStore = defineStore("creators", {
         following: null,
         joined: entry.profileUpdatedAt ?? null,
         cacheHit: true,
+        tierDataFresh: entry.tierDataFresh ?? null,
       };
     },
 
@@ -925,7 +986,7 @@ export const useCreatorsStore = defineStore("creators", {
       pubkeyHex: string,
       tiers: Tier[] | null,
       event: RelayEvent | null,
-      meta: { eventId?: string | null; updatedAt?: number | null } = {},
+      meta: { eventId?: string | null; updatedAt?: number | null; fresh?: boolean | null } = {},
     ) {
       const entry: CreatorWarmCache = {
         ...(this.warmCache[pubkeyHex] ?? {}),
@@ -938,6 +999,9 @@ export const useCreatorsStore = defineStore("creators", {
       entry.tierEvent = event ? cloneRelayEvent(event) : null;
       entry.tierEventId = meta.eventId ?? event?.id ?? null;
       entry.tierUpdatedAt = meta.updatedAt ?? event?.created_at ?? null;
+      if (meta.fresh !== undefined) {
+        entry.tierDataFresh = meta.fresh;
+      }
       this.warmCache[pubkeyHex] = entry;
       this.tiersMap[pubkeyHex] = normalized;
       this.tierFetchError = false;
@@ -984,6 +1048,7 @@ export const useCreatorsStore = defineStore("creators", {
       this.updateTierCacheState(pubkeyHex, Array.isArray(tiers) ? normalized : [], event, {
         eventId: event?.id ?? null,
         updatedAt,
+        fresh: true,
       });
       try {
         if (event) {
@@ -1206,6 +1271,7 @@ export const useCreatorsStore = defineStore("creators", {
       try {
         this.updateTierCacheState(pubkey, bundle.tiers ?? null, null, {
           updatedAt: bundle.joined ?? null,
+          fresh: bundle.tierDataFresh !== false,
         });
       } catch (tierCacheError) {
         console.error("[creators] Failed to update warm tier cache", {
@@ -1297,9 +1363,12 @@ export const useCreatorsStore = defineStore("creators", {
     async loadFeatured(npubs: string[], opts: { fresh?: boolean } = {}) {
       this.featuredError = "";
       this.loadingFeatured = true;
+      this.featuredStatusMessage = "";
 
       const discovery = useDiscovery();
       const fresh = Boolean(opts.fresh);
+      const staleTierWarning =
+        "Showing cached tier data. Some donation options may be temporarily unavailable.";
 
       if (fresh) {
         this.featuredCreators = [];
@@ -1355,6 +1424,9 @@ export const useCreatorsStore = defineStore("creators", {
           .filter((profile): profile is CreatorProfile => Boolean(profile));
         if (orderedCached.length) {
           this.featuredCreators = orderedCached;
+          if (orderedCached.some((profile) => profile.tierDataFresh === false)) {
+            this.featuredStatusMessage = staleTierWarning;
+          }
         }
       }
 
@@ -1416,6 +1488,11 @@ export const useCreatorsStore = defineStore("creators", {
           .filter((profile): profile is CreatorProfile => Boolean(profile));
 
         this.featuredCreators = combined;
+        if (combined.some((profile) => profile.tierDataFresh === false)) {
+          this.featuredStatusMessage = staleTierWarning;
+        } else if (!this.featuredError) {
+          this.featuredStatusMessage = "";
+        }
 
         if (!combined.length) {
           this.featuredError = "Failed to load featured creators.";

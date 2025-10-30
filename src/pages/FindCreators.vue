@@ -174,16 +174,30 @@
                 </div>
               </div>
 
-              <div v-else-if="featuredCreators.length" class="featured-grid">
-                <CreatorCard
-                  v-for="profile in featuredCreators"
-                  :key="profile.pubkey"
-                  :profile="profile"
-                  featured
-                  @view-tiers="viewProfile"
-                  @message="startChat"
-                  @donate="donate"
-                />
+              <div v-else-if="featuredCreators.length" class="column q-gutter-md">
+                <q-banner
+                  v-if="featuredWarningMessage"
+                  rounded
+                  dense
+                  class="status-banner text-1"
+                  aria-live="polite"
+                >
+                  <template #avatar>
+                    <q-icon :name="resolveBannerIcon(featuredWarningMessage)" size="20px" />
+                  </template>
+                  <span class="status-banner__text">{{ featuredWarningMessage }}</span>
+                </q-banner>
+                <div class="featured-grid">
+                  <CreatorCard
+                    v-for="profile in featuredCreators"
+                    :key="profile.pubkey"
+                    :profile="profile"
+                    featured
+                    @view-tiers="viewProfile"
+                    @message="startChat"
+                    @donate="donate"
+                  />
+                </div>
               </div>
 
               <q-banner
@@ -246,6 +260,7 @@ const {
   featuredCreators,
   loadingFeatured: storeLoadingFeatured,
   featuredError: storeFeaturedError,
+  featuredStatusMessage: storeFeaturedStatusMessage,
 } = storeToRefs(creatorsStore);
 
 const searchQuery = ref('');
@@ -330,6 +345,9 @@ const featuredStatusMessage = computed(() => {
   if (featuredError.value) {
     return featuredError.value;
   }
+  if (storeFeaturedStatusMessage.value && !featuredCreators.value.length) {
+    return storeFeaturedStatusMessage.value;
+  }
   if (loadingFeatured.value && !featuredCreators.value.length) {
     return 'Loading creators...';
   }
@@ -338,6 +356,10 @@ const featuredStatusMessage = computed(() => {
   }
   return '';
 });
+
+const featuredWarningMessage = computed(
+  () => storeFeaturedStatusMessage.value || '',
+);
 
 const showFeaturedEmptyState = computed(
   () => !loadingFeatured.value && !featuredCreators.value.length && !featuredError.value,
