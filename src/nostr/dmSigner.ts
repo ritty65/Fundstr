@@ -3,6 +3,7 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import type { DmSignerMode } from "@/config/dm";
 import { useSignerStore } from "@/stores/signer";
 import { useNostrStore } from "@/stores/nostr";
+import { NDKEvent, NDKUser, type NDKSigner } from "@nostr-dev-kit/ndk";
 
 type UnsignedEvent = Omit<NostrEvent, "id" | "sig"> & { id?: string; sig?: string };
 
@@ -73,6 +74,113 @@ export class SoftwareSigner implements DmSigner {
 
   async nip04Decrypt(peerHex: string, ciphertext: string): Promise<string> {
     return await nip04.decrypt(this.secretHex, peerHex, ciphertext);
+  }
+}
+
+class NdkSignerAdapter implements DmSigner {
+  private readonly signer: NDKSigner;
+  private readonly localSecret?: SoftwareSigner;
+  private cachedPubkey?: string;
+
+  constructor(options: { signer: NDKSigner; localSecret?: string | null | undefined }) {
+    this.signer = options.signer;
+    const secret = options.localSecret?.trim();
+    if (secret) {
+      try {
+        this.localSecret = new SoftwareSigner(secret);
+      } catch (err) {
+        console.warn("[NdkSignerAdapter] Failed to initialize local secret", err);
+      }
+    }
+  }
+
+  private getNdkEncryptor(): ((recipient: NDKUser, value: string) => Promise<string>) | null {
+    const maybe = (this.signer as unknown as { encrypt?: NDKSigner["encrypt"] }).encrypt;
+    if (typeof maybe !== "function") {
+      return null;
+    }
+    return (recipient: NDKUser, value: string) => maybe.call(this.signer, recipient, value, "nip04");
+  }
+
+  private getNdkDecryptor(): ((sender: NDKUser, value: string) => Promise<string>) | null {
+    const maybe = (this.signer as unknown as { decrypt?: NDKSigner["decrypt"] }).decrypt;
+    if (typeof maybe !== "function") {
+      return null;
+    }
+    return (sender: NDKUser, value: string) => maybe.call(this.signer, sender, value, "nip04");
+  }
+
+  private async resolvePubkey(): Promise<string> {
+    if (this.cachedPubkey) return this.cachedPubkey;
+    if (this.localSecret) {
+      const pub = await this.localSecret.getPubkeyHex();
+      this.cachedPubkey = pub;
+      return pub;
+    }
+
+    try {
+      const user = await this.signer.user();
+      if (user?.hexpubkey) {
+        this.cachedPubkey = user.hexpubkey.toLowerCase();
+        return this.cachedPubkey;
+      }
+    } catch (err) {
+      console.warn("[NdkSignerAdapter] Failed to resolve pubkey via signer.user()", err);
+    }
+
+    const pubkey = (this.signer as unknown as { pubkey?: string }).pubkey;
+    if (typeof pubkey === "string" && pubkey) {
+      const normalized = pubkey.toLowerCase();
+      this.cachedPubkey = normalized;
+      return normalized;
+    }
+
+    throw new Error("NDK signer failed to provide pubkey");
+  }
+
+  async getPubkeyHex(): Promise<string> {
+    return await this.resolvePubkey();
+  }
+
+  async signEvent<T extends UnsignedEvent>(event: T): Promise<NostrEvent> {
+    const pubkey = await this.resolvePubkey();
+    const payload: UnsignedEvent = {
+      ...event,
+      pubkey,
+      created_at: event.created_at ?? Math.floor(Date.now() / 1000),
+    };
+    delete (payload as any).id;
+    delete (payload as any).sig;
+
+    const ndkEvent = new NDKEvent(undefined, payload as NostrEvent);
+    await ndkEvent.sign(this.signer);
+    return ndkEvent.rawEvent();
+  }
+
+  async nip04Encrypt(recipientHex: string, plaintext: string): Promise<string> {
+    if (this.localSecret) {
+      return await this.localSecret.nip04Encrypt(recipientHex, plaintext);
+    }
+
+    const encrypt = this.getNdkEncryptor();
+    if (!encrypt) {
+      throw new Error("NDK signer missing encryption support");
+    }
+    const recipient = new NDKUser({ hexpubkey: recipientHex });
+    return await encrypt(recipient, plaintext);
+  }
+
+  async nip04Decrypt(peerHex: string, ciphertext: string): Promise<string> {
+    if (this.localSecret) {
+      return await this.localSecret.nip04Decrypt(peerHex, ciphertext);
+    }
+
+    const decrypt = this.getNdkDecryptor();
+    if (!decrypt) {
+      throw new Error("NDK signer missing decryption support");
+    }
+    const peer = new NDKUser({ hexpubkey: peerHex });
+    return await decrypt(peer, ciphertext);
   }
 }
 
@@ -162,6 +270,16 @@ export async function getActiveDmSigner(): Promise<ActiveDmSigner | null> {
   }
 
   const nostrStore = useNostrStore();
+  if (nostrStore?.signer) {
+    try {
+      const signer = new NdkSignerAdapter({ signer: nostrStore.signer, localSecret: nostrStore.privKeyHex });
+      await signer.getPubkeyHex();
+      return { mode: "software", signer };
+    } catch (err) {
+      console.warn("[dmSigner] Failed to initialize NDK signer adapter", err);
+    }
+  }
+
   const privKeyHex = nostrStore?.privKeyHex;
   if (typeof privKeyHex === "string" && privKeyHex.trim()) {
     try {
