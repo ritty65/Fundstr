@@ -251,7 +251,8 @@ import { useNostrStore } from 'stores/nostr';
 import { useCreatorsStore } from 'stores/creators';
 import { useMessengerStore } from 'stores/messenger';
 import { useMintsStore } from 'stores/mints';
-import { notifyError } from 'src/js/notify';
+import { useUiStore } from 'stores/ui';
+import { notifyError, notifyWarning } from 'src/js/notify';
 import {
   mintSupportsSplit,
   resolveSupportedNuts,
@@ -390,6 +391,7 @@ const nostr = useNostrStore();
 const donationStore = useDonationPresetsStore();
 const messenger = useMessengerStore();
 const mintsStore = useMintsStore();
+const uiStore = useUiStore();
 const showDonateDialog = ref(false);
 const selectedPubkey = ref('');
 const showProfileModal = ref(false);
@@ -414,9 +416,28 @@ function startChat(pubkey: string) {
   void router.push({ path: '/nostr-messenger', query: { pubkey: resolvedPubkey } });
 }
 
-function donate(pubkey: string) {
+async function donate(pubkey: string) {
   if (!activeMintSupportsSplit.value) {
     notifyError(SPLIT_SUPPORT_REQUIRED_MESSAGE);
+    return;
+  }
+  if (!nostr.hasIdentity) {
+    uiStore.showMissingSignerModal = true;
+    notifyWarning(
+      'You\'ll need a Nostr identity before we can deliver the Cashu token.',
+    );
+    return;
+  }
+
+  try {
+    await nostr.initSignerIfNotSet();
+  } catch (error) {
+    notifyError('We couldn\'t connect to your Nostr signer. Please try again.');
+    return;
+  }
+
+  if (!nostr.signer || !nostr.pubkey) {
+    notifyError('Your Nostr identity is not ready yet. Please try again.');
     return;
   }
   selectedPubkey.value = pubkey;
