@@ -7,23 +7,59 @@ import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
 import { DEFAULT_COLOR } from "src/js/constants";
 import { createHistoryToken, createProof } from "../utils/factories";
 
-const hoisted = vi.hoisted(() => ({
-  proofsStore: {
-    updateProofLabels: vi.fn(),
-    updateProofDescriptions: vi.fn(),
-  },
-  tokenModule: {
-    decode: vi.fn(),
-    getProofs: vi.fn(),
-  },
-  dateModule: {
-    formatDate: vi.fn(() => "2024-01-01 12:00:00"),
-  },
-}));
+const hoisted = vi.hoisted(() => {
+  const historyTokensTable = {
+    put: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    where: vi.fn(),
+    toArray: vi.fn().mockResolvedValue([]),
+    count: vi.fn().mockResolvedValue(0),
+    bulkPut: vi.fn(),
+  };
+
+  const liveQuery = vi.fn(() => ({
+    subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+  }));
+
+  const dexieTransaction = vi.fn(async (_mode, _table, fn) => {
+    return await fn();
+  });
+
+  return {
+    proofsStore: {
+      updateProofLabels: vi.fn(),
+      updateProofDescriptions: vi.fn(),
+    },
+    tokenModule: {
+      decode: vi.fn(),
+      getProofs: vi.fn(),
+    },
+    dateModule: {
+      formatDate: vi.fn(() => "2024-01-01 12:00:00"),
+    },
+    historyTokensTable,
+    liveQuery,
+    dexieTransaction,
+  };
+});
 
 vi.mock("src/js/token", () => ({
   __esModule: true,
   default: hoisted.tokenModule,
+}));
+
+vi.mock("dexie", () => ({
+  __esModule: true,
+  liveQuery: hoisted.liveQuery,
+}));
+
+vi.mock("@/stores/dexie", () => ({
+  __esModule: true,
+  cashuDb: {
+    historyTokens: hoisted.historyTokensTable,
+    transaction: hoisted.dexieTransaction,
+  },
 }));
 
 vi.mock("@vueuse/core", () => ({
@@ -41,7 +77,7 @@ vi.mock("stores/proofs", () => ({
   useProofsStore: () => hoisted.proofsStore,
 }));
 
-const { proofsStore, tokenModule, dateModule } = hoisted;
+const { proofsStore, tokenModule, dateModule, historyTokensTable, liveQuery, dexieTransaction } = hoisted;
 
 let store: ReturnType<typeof useTokensStore>;
 let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
@@ -51,6 +87,25 @@ const sampleTokenJson = { proofs: [createProof({ secret: "secret-1" })] } as unk
 
 describe("tokens store", () => {
   beforeEach(() => {
+    historyTokensTable.put.mockReset();
+    historyTokensTable.update.mockReset();
+    historyTokensTable.delete.mockReset();
+    historyTokensTable.bulkPut.mockReset();
+    historyTokensTable.toArray.mockResolvedValue([]);
+    historyTokensTable.count.mockResolvedValue(0);
+    historyTokensTable.where.mockImplementation(() => ({
+      equals: vi.fn(() => ({
+        delete: vi.fn(),
+        modify: vi.fn(),
+      })),
+    }));
+    liveQuery.mockReturnValue({
+      subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+    });
+    dexieTransaction.mockImplementation(async (_mode, _table, fn) => {
+      return await fn();
+    });
+
     setActivePinia(createPinia());
     store = useTokensStore();
 
@@ -279,6 +334,41 @@ describe("tokens store", () => {
 
     expect(store.tokenAlreadyInHistory("cashuADupe")).toStrictEqual(token);
     expect(store.tokenAlreadyInHistory("cashuAOther")).toBeUndefined();
+  });
+
+  it("archives the oldest paid tokens beyond the limit", async () => {
+    const first = createHistoryToken({
+      token: "cashuAOne",
+      date: "2024-01-01 00:00:00",
+      createdAt: 1,
+    });
+    const second = createHistoryToken({
+      token: "cashuATwo",
+      date: "2024-01-02 00:00:00",
+      createdAt: 2,
+    });
+    const third = createHistoryToken({
+      token: "cashuAThree",
+      date: "2024-01-03 00:00:00",
+      createdAt: 3,
+    });
+
+    store.historyTokens.push(first, second, third);
+
+    const archived = await store.archiveOldPaidTokens(1);
+
+    expect(archived).toBe(2);
+    expect(first.archived).toBe(true);
+    expect(second.archived).toBe(true);
+    expect(third.archived).toBe(false);
+    expect(historyTokensTable.update).toHaveBeenCalledWith(
+      first.id,
+      expect.objectContaining({ archived: true, archivedAt: expect.any(String) }),
+    );
+    expect(historyTokensTable.update).toHaveBeenCalledWith(
+      second.id,
+      expect.objectContaining({ archived: true, archivedAt: expect.any(String) }),
+    );
   });
 
   describe("decodeToken", () => {

@@ -10,8 +10,25 @@ const hoisted = vi.hoisted(() => {
   const invoiceHistoryStoreMock: { invoiceHistory: any[] } = {
     invoiceHistory: [],
   };
-  const tokensStoreMock: { historyTokens: any[] } = {
+  const tokensStoreMock: { historyTokens: any[]; archiveOldPaidTokens: ReturnType<typeof vi.fn> } = {
     historyTokens: [],
+    archiveOldPaidTokens: vi.fn(async (limit: number) => {
+      const paid = tokensStoreMock.historyTokens
+        .filter((t) => t.status === "paid" && !t.archived)
+        .sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+        );
+      if (paid.length <= limit) {
+        return 0;
+      }
+      const toArchive = paid.slice(0, paid.length - limit);
+      const archivedAt = new Date().toISOString();
+      toArchive.forEach((token) => {
+        token.archived = true;
+        token.archivedAt = archivedAt;
+      });
+      return toArchive.length;
+    }),
   };
   const walletStoreMock = {};
   const currentDateStr = vi.fn(() => "2024-05-01");
@@ -21,6 +38,11 @@ const hoisted = vi.hoisted(() => {
     clear: vi.fn(),
   };
   const subscriptionsTableMock = {
+    toArray: vi.fn(),
+    bulkPut: vi.fn(),
+    clear: vi.fn(),
+  };
+  const historyTokensTableMock = {
     toArray: vi.fn(),
     bulkPut: vi.fn(),
     clear: vi.fn(),
@@ -37,6 +59,7 @@ const hoisted = vi.hoisted(() => {
     currentDateStr,
     lockedTokensTableMock,
     subscriptionsTableMock,
+    historyTokensTableMock,
   };
 });
 
@@ -76,10 +99,12 @@ vi.mock("src/stores/dexie", () => ({
   cashuDb: {
     lockedTokens: hoisted.lockedTokensTableMock,
     subscriptions: hoisted.subscriptionsTableMock,
+    historyTokens: hoisted.historyTokensTableMock,
   },
   db: {
     lockedTokens: hoisted.lockedTokensTableMock,
     subscriptions: hoisted.subscriptionsTableMock,
+    historyTokens: hoisted.historyTokensTableMock,
   },
 }));
 
@@ -95,6 +120,7 @@ const {
   tokensStoreMock,
   lockedTokensTableMock,
   subscriptionsTableMock,
+  historyTokensTableMock,
 } = hoisted;
 
 const originalLocation = window.location;
@@ -184,18 +210,25 @@ describe("storage store", () => {
     bucketsStoreMock.buckets = [];
     invoiceHistoryStoreMock.invoiceHistory = [];
     tokensStoreMock.historyTokens = [];
+    tokensStoreMock.archiveOldPaidTokens.mockClear();
     lockedTokensTableMock.toArray.mockReset();
     lockedTokensTableMock.bulkPut.mockReset();
     lockedTokensTableMock.clear.mockReset();
     subscriptionsTableMock.toArray.mockReset();
     subscriptionsTableMock.bulkPut.mockReset();
     subscriptionsTableMock.clear.mockReset();
+    historyTokensTableMock.toArray.mockReset();
+    historyTokensTableMock.bulkPut.mockReset();
+    historyTokensTableMock.clear.mockReset();
     lockedTokensTableMock.toArray.mockResolvedValue([]);
     lockedTokensTableMock.bulkPut.mockResolvedValue(undefined);
     lockedTokensTableMock.clear.mockResolvedValue(undefined);
     subscriptionsTableMock.toArray.mockResolvedValue([]);
     subscriptionsTableMock.bulkPut.mockResolvedValue(undefined);
     subscriptionsTableMock.clear.mockResolvedValue(undefined);
+    historyTokensTableMock.toArray.mockResolvedValue([]);
+    historyTokensTableMock.bulkPut.mockResolvedValue(undefined);
+    historyTokensTableMock.clear.mockResolvedValue(undefined);
     locationReloadSpy = vi.fn();
     const locationStub = {
       href: originalLocation.href,
@@ -226,10 +259,12 @@ describe("storage store", () => {
     const buckets = [{ id: "b1", name: "Primary" }];
     const lockedTokens = [{ id: "lt1" }];
     const subscriptions = [{ id: "sub1" }];
+    const historyTokens = [{ id: "ht1" }];
     const backup = {
       "cashu.dexie.db.proofs": JSON.stringify(proofs),
       "cashu.dexie.db.lockedTokens": JSON.stringify(lockedTokens),
       "cashu.dexie.db.subscriptions": JSON.stringify(subscriptions),
+      "cashu.dexie.db.historyTokens": JSON.stringify(historyTokens),
       "cashu.buckets": JSON.stringify(buckets),
       "cashu.settings": "{\"foo\":true}",
     };
@@ -244,6 +279,8 @@ describe("storage store", () => {
     expect(subscriptionsTableMock.bulkPut).toHaveBeenCalledWith(
       subscriptions,
     );
+    expect(historyTokensTableMock.clear).toHaveBeenCalled();
+    expect(historyTokensTableMock.bulkPut).toHaveBeenCalledWith(historyTokens);
     expect(bucketsStoreMock.buckets).toEqual(buckets);
     expect(localStorage.getItem("cashu.settings")).toBe("{\"foo\":true}");
     expect(notifySuccess).toHaveBeenCalledWith("Backup restored");
@@ -287,8 +324,22 @@ describe("storage store", () => {
     getProofsMock.mockResolvedValue([{ id: "proof-1" }]);
     const lockedTokens = [{ id: "lt1" }];
     const subscriptions = [{ id: "sub1" }];
+    const historyTokens = [
+      {
+        id: "ht1",
+        token: "token-string",
+        status: "paid",
+        archived: false,
+        bucketId: "unassigned",
+        referenceId: null,
+        createdAt: 1,
+        date: "2024-01-01T00:00:00.000Z",
+        mint: "https://mint",
+      },
+    ];
     lockedTokensTableMock.toArray.mockResolvedValue(lockedTokens);
     subscriptionsTableMock.toArray.mockResolvedValue(subscriptions);
+    historyTokensTableMock.toArray.mockResolvedValue(historyTokens);
 
     const downloadMocks = setupDownloadMocks();
     const { downloadLink, createObjectURLMock } = downloadMocks;
@@ -318,16 +369,33 @@ describe("storage store", () => {
     expect(serialized["cashu.dexie.db.subscriptions"]).toBe(
       JSON.stringify(subscriptions),
     );
+    expect(serialized["cashu.dexie.db.historyTokens"]).toBe(
+      JSON.stringify(historyTokens),
+    );
 
     downloadMocks.restore();
   });
 
-  it("round-trips locked tokens and subscriptions through export/import", async () => {
+  it("round-trips locked tokens, history tokens, and subscriptions through export/import", async () => {
     const lockedTokens = [{ id: "lt1", tokenString: "abc" }];
     const subscriptions = [{ id: "sub1", intervals: [] }];
+    const historyTokens = [
+      {
+        id: "ht1",
+        token: "token-string",
+        status: "paid",
+        archived: false,
+        bucketId: "unassigned",
+        referenceId: null,
+        createdAt: 1,
+        date: "2024-01-01T00:00:00.000Z",
+        mint: "https://mint",
+      },
+    ];
     getProofsMock.mockResolvedValue([]);
     lockedTokensTableMock.toArray.mockResolvedValue(lockedTokens);
     subscriptionsTableMock.toArray.mockResolvedValue(subscriptions);
+    historyTokensTableMock.toArray.mockResolvedValue(historyTokens);
 
     const downloadMocks = setupDownloadMocks();
     const store = useStorageStore();
@@ -342,10 +410,14 @@ describe("storage store", () => {
     lockedTokensTableMock.bulkPut.mockReset();
     subscriptionsTableMock.clear.mockReset();
     subscriptionsTableMock.bulkPut.mockReset();
+    historyTokensTableMock.clear.mockReset();
+    historyTokensTableMock.bulkPut.mockReset();
     lockedTokensTableMock.clear.mockResolvedValue(undefined);
     lockedTokensTableMock.bulkPut.mockResolvedValue(undefined);
     subscriptionsTableMock.clear.mockResolvedValue(undefined);
     subscriptionsTableMock.bulkPut.mockResolvedValue(undefined);
+    historyTokensTableMock.clear.mockResolvedValue(undefined);
+    historyTokensTableMock.bulkPut.mockResolvedValue(undefined);
 
     await store.restoreFromBackup(serialized);
 
@@ -353,6 +425,7 @@ describe("storage store", () => {
     expect(subscriptionsTableMock.bulkPut).toHaveBeenCalledWith(
       subscriptions,
     );
+    expect(historyTokensTableMock.bulkPut).toHaveBeenCalledWith(historyTokens);
   });
 
   it("handles local storage quota overflow and cleans up history", async () => {
@@ -387,7 +460,9 @@ describe("storage store", () => {
       id: `token-${i}`,
       status: "paid",
       date: new Date(2020, 0, i + 1).toISOString(),
-      token: { secret: `token-${i}` },
+      token: `token-${i}`,
+      archived: false,
+      archivedAt: null,
     }));
 
     const beforeCleanupDate = extractDateValue(store.lastLocalStorageCleanUp);
@@ -403,12 +478,18 @@ describe("storage store", () => {
       invoiceHistoryStoreMock.invoiceHistory.some((inv) => inv.id === "invoice-204"),
     ).toBe(true);
 
-    const clearedTokens = tokensStoreMock.historyTokens.slice(0, 5);
-    expect(clearedTokens.every((token) => token.token === undefined)).toBe(true);
+    expect(tokensStoreMock.archiveOldPaidTokens).toHaveBeenCalledWith(200);
+    const archivedTokens = tokensStoreMock.historyTokens
+      .filter((token) => token.archived)
+      .slice(0, 5);
+    expect(archivedTokens).toHaveLength(5);
+    expect(archivedTokens.every((token) => typeof token.token === "string")).toBe(
+      true,
+    );
     expect(
       tokensStoreMock.historyTokens
         .slice(5)
-        .every((token) => token.token && token.token.secret),
+        .every((token) => token.archived === false),
     ).toBe(true);
 
     const afterCleanupDate = extractDateValue(store.lastLocalStorageCleanUp);
