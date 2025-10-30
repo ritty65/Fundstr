@@ -108,6 +108,7 @@ function mountSendTokenDialog(options?: {
   amount?: number | null;
   showLockInput?: boolean;
   p2pkPubkey?: string;
+  activeMintUrl?: string;
 }) {
   const pinia = createTestingPinia({
     createSpy: vi.fn,
@@ -138,7 +139,7 @@ function mountSendTokenDialog(options?: {
         activeUnit: "sat",
         activeUnitLabel: "Sats",
         activeUnitCurrencyMultiplyer: 1,
-        activeMintUrl: "https://mint",
+        activeMintUrl: options?.activeMintUrl ?? "https://mint",
         activeBalance: options?.activeBalance ?? 100,
       },
       ui: {
@@ -271,6 +272,38 @@ describe("SendTokenDialog interactions", () => {
   beforeEach(() => {
     notifyWarning.mockClear();
     notifyError.mockClear();
+  });
+
+  it("warns when trying to send without selecting a mint", async () => {
+    const { wrapper, walletStore } = mountSendTokenDialog({
+      activeMintUrl: "",
+      amount: 5,
+    });
+
+    await nextTick();
+    await (wrapper.vm as unknown as { sendTokens: () => Promise<void> }).sendTokens();
+
+    expect(notifyError).toHaveBeenCalledWith(
+      "Select a mint in Wallet before sending.",
+    );
+    expect(walletStore.mintWallet).not.toHaveBeenCalled();
+    expect(useSendTokensStore().showSendTokens).toBe(false);
+  });
+
+  it("warns when trying to lock without selecting a mint", async () => {
+    const { wrapper, walletStore } = mountSendTokenDialog({
+      activeMintUrl: "",
+      amount: 5,
+    });
+
+    await nextTick();
+    await (wrapper.vm as unknown as { lockTokens: () => Promise<void> }).lockTokens();
+
+    expect(notifyError).toHaveBeenCalledWith(
+      "Select a mint in Wallet before sending.",
+    );
+    expect(walletStore.mintWallet).not.toHaveBeenCalled();
+    expect(useSendTokensStore().showSendTokens).toBe(false);
   });
 
   it("shows a disabled warning button when the amount exceeds the balance", async () => {
