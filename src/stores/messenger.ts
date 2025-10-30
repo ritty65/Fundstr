@@ -64,6 +64,8 @@ import {
   getActiveDmSigner,
   buildKind4Event,
   buildAuthEvent,
+  type ActiveDmSigner,
+  type DmSigner,
 } from "@/nostr/dmSigner";
 import { ensureFundstrRelayClient } from "@/nutzap/relayPublishing";
 import {
@@ -89,6 +91,44 @@ export interface DedupMergeResult {
   created: boolean;
   deduped: boolean;
   reason?: DedupMergeReason;
+}
+
+type UnsignedDmEvent = Parameters<DmSigner["signEvent"]>[0];
+
+type EncryptionResult = { content: string; signerInfo: ActiveDmSigner };
+
+async function ensureActiveDmSigner(): Promise<ActiveDmSigner> {
+  const signerInfo = await getActiveDmSigner();
+  if (!signerInfo) {
+    throw new Error("No signer available for direct messages");
+  }
+  return signerInfo;
+}
+
+export async function encryptDmContent({
+  recipientHex,
+  plaintext,
+  preferredSigner,
+}: {
+  recipientHex: string;
+  plaintext: string;
+  preferredSigner?: ActiveDmSigner | null;
+}): Promise<EncryptionResult> {
+  const signerInfo = preferredSigner ?? (await ensureActiveDmSigner());
+  const content = await signerInfo.signer.nip04Encrypt(recipientHex, plaintext);
+  return { content, signerInfo };
+}
+
+export async function signNostrEvent<T extends UnsignedDmEvent>({
+  event,
+  preferredSigner,
+}: {
+  event: T;
+  preferredSigner?: ActiveDmSigner | null;
+}): Promise<{ event: NostrEvent; signerInfo: ActiveDmSigner }> {
+  const signerInfo = preferredSigner ?? (await ensureActiveDmSigner());
+  const signed = await signerInfo.signer.signEvent(event);
+  return { event: signed, signerInfo };
 }
 
 export interface DedupMergeParams {
@@ -1884,24 +1924,51 @@ export const useMessengerStore = defineStore("messenger", {
       }
 
       await this.refreshSignerMode();
-      const signerInfo = await getActiveDmSigner();
-      if (!signerInfo) {
-        this.markLocalEchoFailed(msg, meta, "No signer available for direct messages", {
-          signer: { ok: false, reason: "No signer available" },
-        });
-        notifyError("No signer available for direct messages");
-        return { success: false, event: null };
-      }
-      this.signerMode = signerInfo.mode;
 
+      let activeSigner: ActiveDmSigner | null = null;
       let event: NostrEvent;
       try {
-        event = await buildKind4Event(signerInfo.signer, recipient, contentToSend);
+        const { content: encryptedContent, signerInfo } = await encryptDmContent({
+          recipientHex: recipient,
+          plaintext: contentToSend,
+        });
+        activeSigner = signerInfo;
+        this.signerMode = signerInfo.mode;
+        const pubkey = await signerInfo.signer.getPubkeyHex();
+        const unsignedEvent: UnsignedDmEvent = {
+          kind: 4,
+          pubkey,
+          content: encryptedContent,
+          tags: [["p", recipient]],
+          created_at: Math.floor(Date.now() / 1000),
+        };
+        const signed = await signNostrEvent({
+          event: unsignedEvent,
+          preferredSigner: signerInfo,
+        });
+        event = signed.event;
+        activeSigner = signed.signerInfo;
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err ?? "error");
+        if (reason === "No signer available for direct messages") {
+          this.markLocalEchoFailed(msg, meta, reason, {
+            signer: { ok: false, reason: "No signer available" },
+          });
+          notifyError(reason);
+          return { success: false, event: null };
+        }
         const relayResults = { encryption: { ok: false, reason } } as Record<string, RelayAck>;
         this.markLocalEchoFailed(msg, meta, reason, relayResults);
         notifyError(`Failed to encrypt DM: ${reason}`);
+        return { success: false, event: null };
+      }
+
+      const signerInfo = activeSigner;
+      if (!signerInfo) {
+        this.markLocalEchoFailed(msg, meta, "Failed to prepare DM signer", {
+          signer: { ok: false, reason: "Missing signer instance" },
+        });
+        notifyError("Failed to prepare DM signer: Missing signer instance");
         return { success: false, event: null };
       }
 

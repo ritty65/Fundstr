@@ -29,6 +29,7 @@ export default defineConfig({
       "test/vitest/__tests__/donationPrompt.spec.ts",
       "test/vitest/__tests__/messenger-send-token.spec.ts",
       "test/vitest/__tests__/messenger.spec.ts",
+      "test/messenger-send.spec.ts",
       "test/vitest/__tests__/message-snippet.spec.ts",
       "test/vitest/__tests__/message-utils.spec.ts",
       "test/vitest/__tests__/nutzapRelayClient.spec.ts",
