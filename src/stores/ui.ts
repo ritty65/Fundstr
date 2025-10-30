@@ -152,8 +152,14 @@ export const useUiStore = defineStore("ui", {
       };
     },
     disableDebugConsole() {
-      // @ts-ignore
-      document.querySelector("#eruda").remove();
+      try {
+        const erudaElement = document.querySelector("#eruda");
+        if (erudaElement) {
+          erudaElement.remove();
+        }
+      } catch (error) {
+        debug("Failed to disable debug console", error);
+      }
     },
     pasteFromClipboard: async function () {
       let text = "";
