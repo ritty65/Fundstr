@@ -346,6 +346,33 @@ describe("proofs store", () => {
         ]),
       );
     });
+
+    it("preserves wallet proof metadata when importing existing records", async () => {
+      const store = useProofsStore();
+      const imported: WalletProof = createWalletProof({
+        secret: "secret-import",
+        id: "keyset-import",
+        reserved: true,
+        bucketId: "bucket-import",
+        label: "Imported",
+        description: "From backup",
+      });
+
+      await store.addProofs([imported]);
+
+      expect(bucketsStore.autoBucketFor).not.toHaveBeenCalled();
+      expect(records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            secret: "secret-import",
+            reserved: true,
+            bucketId: "bucket-import",
+            label: "Imported",
+            description: "From backup",
+          }),
+        ]),
+      );
+    });
   });
 
   describe("removeProofs", () => {

@@ -10,6 +10,7 @@ import { useProofsStore } from "./proofs";
 import { useBucketsStore } from "./buckets";
 import { useInvoiceHistoryStore } from "./invoiceHistory";
 import { cashuDb } from "./dexie";
+import type { WalletProof } from "src/types/proofs";
 
 export const useStorageStore = defineStore("storage", {
   state: () => ({
@@ -29,7 +30,7 @@ export const useStorageStore = defineStore("storage", {
         for (const key of keys) {
           // we treat some keys differently *magic*
           if (key === "cashu.dexie.db.proofs") {
-            const proofs = JSON.parse(backup[key]);
+            const proofs = JSON.parse(backup[key]) as WalletProof[];
             await proofsStore.addProofs(proofs);
           } else if (key === "cashu.dexie.db.lockedTokens") {
             const parsed = JSON.parse(backup[key] ?? "[]");

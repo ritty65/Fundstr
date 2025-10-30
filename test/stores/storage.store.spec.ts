@@ -251,6 +251,28 @@ describe("storage store", () => {
     expect(notifyError).not.toHaveBeenCalled();
   });
 
+  it("preserves proof metadata when restoring from backup", async () => {
+    const proofs = [
+      {
+        id: "keyset-1",
+        secret: "secret-keep",
+        amount: 10,
+        reserved: true,
+        bucketId: "bucket-keep",
+        label: "Keep",
+        description: "Do not touch",
+      },
+    ];
+    const backup = {
+      "cashu.dexie.db.proofs": JSON.stringify(proofs),
+    };
+
+    const store = useStorageStore();
+    await store.restoreFromBackup(backup);
+
+    expect(addProofsMock).toHaveBeenCalledWith(proofs);
+  });
+
   it("notifies error when backup payload is missing", async () => {
     const store = useStorageStore();
     await store.restoreFromBackup(null);
