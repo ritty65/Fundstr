@@ -54,7 +54,116 @@
             </div>
           </template>
           <template v-else>
-            <div v-if="hasFileAttachments" class="column q-gutter-sm q-mb-sm">
+            <div
+              v-if="fileMessageMeta"
+              class="chat-file-message column q-gutter-sm q-mb-sm"
+            >
+              <div v-if="fileHasInlinePreview" class="chat-file-message__media">
+                <q-img
+                  v-if="fileIsImage"
+                  :src="fileDecryptedUrl"
+                  class="chat-file-message__image"
+                  style="max-width: 320px"
+                />
+                <video
+                  v-else
+                  :src="fileDecryptedUrl || undefined"
+                  controls
+                  playsinline
+                  class="chat-file-message__video"
+                />
+              </div>
+              <div
+                v-else-if="fileThumbSrc"
+                class="chat-file-message__media chat-file-message__media--thumb"
+              >
+                <q-img
+                  :src="fileThumbSrc"
+                  :ratio="1"
+                  class="chat-file-message__thumb"
+                />
+              </div>
+              <div class="chat-file-message__info">
+                <div class="chat-file-message__name">
+                  {{ fileMessageMeta.name || "attachment" }}
+                </div>
+                <div class="chat-file-message__details text-caption">
+                  <span>{{ fileMessageMeta.mime }}</span>
+                  <span v-if="fileMessageMeta.bytes" class="q-ml-xs">
+                    • {{ formatBytes(fileMessageMeta.bytes) }}
+                  </span>
+                </div>
+              </div>
+              <div
+                v-if="fileDownloadStatus === 'downloading'"
+                class="chat-file-message__status text-caption"
+              >
+                <div>
+                  Downloading
+                  <template v-if="fileDownloadPercent !== null">
+                    {{ fileDownloadPercent }}%
+                  </template>
+                </div>
+                <q-linear-progress
+                  class="chat-file-message__progress q-mt-xs"
+                  color="primary"
+                  :value="fileDownloadRatio"
+                  :indeterminate="!fileDownloadTotal || fileDownloadTotal <= 0"
+                  rounded
+                />
+                <div
+                  v-if="fileDownloadTotal && fileDownloadTotal > 0"
+                  class="chat-file-message__bytes"
+                >
+                  {{ formatBytes(fileDownloadLoaded) }} /
+                  {{ formatBytes(fileDownloadTotal) }}
+                </div>
+              </div>
+              <div
+                v-else-if="fileDownloadStatus === 'decrypting'"
+                class="chat-file-message__status text-caption"
+              >
+                Decrypting…
+              </div>
+              <div
+                v-else-if="fileDownloadStatus === 'error'"
+                class="chat-file-message__status text-caption text-negative"
+              >
+                Failed to open file
+                <span v-if="fileDownloadError">: {{ fileDownloadError }}</span>
+              </div>
+              <div class="chat-file-message__actions row items-center q-gutter-sm">
+                <q-btn
+                  size="sm"
+                  color="primary"
+                  unelevated
+                  :loading="['downloading', 'decrypting'].includes(fileDownloadStatus)"
+                  :disable="fileDownloadStatus !== 'ready'"
+                  @click="downloadDecryptedFile"
+                >
+                  Download
+                </q-btn>
+                <q-btn
+                  v-if="fileDownloadStatus === 'error'"
+                  size="sm"
+                  flat
+                  color="primary"
+                  @click="retryFileDownload"
+                >
+                  Retry
+                </q-btn>
+                <a
+                  v-if="fileDownloadStatus === 'error'"
+                  :href="fileMessageMeta.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="chat-file-message__fallback text-caption"
+                >
+                  Download raw ciphertext
+                </a>
+              </div>
+            </div>
+            <div v-else-if="hasFileAttachments" class="column q-gutter-sm q-mb-sm">
               <div
                 v-for="file in fileAttachments"
                 :key="file.url || file.name"
@@ -178,7 +287,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, ref, onMounted, onUnmounted } from "vue";
+import { computed, ref, onMounted, onUnmounted, watch } from "vue";
 import { formatDistanceToNow } from "date-fns";
 
 import type { MessengerMessage } from "src/stores/messenger";
@@ -192,8 +301,17 @@ import { useP2PKStore } from "src/stores/p2pk";
 import { useNostrStore } from "src/stores/nostr";
 import { useMessengerStore } from "src/stores/messenger";
 import { nip19 } from "nostr-tools";
-import { stripFileMetaLines } from "src/utils/messengerFiles";
+import {
+  stripFileMetaLines,
+  normalizeFileMeta,
+} from "src/utils/messengerFiles";
 import type { FileMeta } from "src/utils/messengerFiles";
+import {
+  base64UrlDecode,
+  importAesGcmKey,
+  decryptAesGcm,
+  sha256 as computeSha256,
+} from "src/services/cryptoMedia";
 
 const props = defineProps<{
   message: MessengerMessage;
@@ -221,6 +339,84 @@ const fileAttachments = computed<FileMeta[]>(
   () => props.message.filesPayload ?? [],
 );
 const hasFileAttachments = computed(() => fileAttachments.value.length > 0);
+const fileMessageMeta = computed<FileMeta | null>(() => {
+  const content = props.message.content;
+  if (typeof content !== "string" || !content.trim()) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(content);
+    return normalizeFileMeta(parsed);
+  } catch {
+    return null;
+  }
+});
+const fileMessageKey = computed(() => {
+  const meta = fileMessageMeta.value;
+  if (!meta) return "";
+  return [
+    meta.url,
+    meta.sha256 ?? "",
+    meta.key ?? "",
+    meta.iv ?? "",
+    meta.bytes ?? 0,
+  ].join("|");
+});
+const fileDownloadStatus = ref<
+  "idle" | "downloading" | "decrypting" | "ready" | "error"
+>("idle");
+const fileDownloadProgress = ref(0);
+const fileDownloadLoaded = ref(0);
+const fileDownloadTotal = ref<number | null>(null);
+const fileDownloadError = ref<string | null>(null);
+const fileDecryptedUrl = ref<string | null>(null);
+const fileDownloadAbort = ref<AbortController | null>(null);
+
+const fileIsImage = computed(
+  () => fileMessageMeta.value?.mime?.toLowerCase().startsWith("image/") ?? false,
+);
+const fileIsVideo = computed(
+  () => fileMessageMeta.value?.mime?.toLowerCase().startsWith("video/") ?? false,
+);
+const fileHasInlinePreview = computed(
+  () => fileDownloadStatus.value === "ready" && (fileIsImage.value || fileIsVideo.value),
+);
+const fileThumbSrc = computed(() => fileMessageMeta.value?.thumb ?? null);
+const fileDownloadPercent = computed(() => {
+  const total = fileDownloadTotal.value ?? 0;
+  if (total > 0) {
+    return Math.min(
+      100,
+      Math.round((fileDownloadLoaded.value / total) * 100),
+    );
+  }
+  return fileDownloadProgress.value > 0
+    ? Math.min(100, Math.round(fileDownloadProgress.value * 100))
+    : null;
+});
+const fileDownloadRatio = computed(() => {
+  const total = fileDownloadTotal.value ?? 0;
+  if (total > 0) {
+    return Math.min(1, fileDownloadLoaded.value / total);
+  }
+  return Math.min(1, fileDownloadProgress.value);
+});
+
+watch(
+  fileMessageKey,
+  (key) => {
+    resetFileDownloadState();
+    if (key) {
+      void startFileDownload();
+    }
+  },
+  { immediate: true },
+);
+
+onUnmounted(() => {
+  resetFileDownloadState();
+});
+
 const textContent = computed(() => {
   const cleaned = stripFileMetaLines(props.message.content || "");
   if (cleaned) return cleaned;
@@ -319,6 +515,167 @@ function formatBytes(bytes: number): string {
   }
   const rounded = size % 1 === 0 ? size : Number(size.toFixed(1));
   return `${rounded} ${units[unitIndex]}`;
+}
+
+async function startFileDownload(): Promise<void> {
+  const meta = fileMessageMeta.value;
+  if (!meta) return;
+  resetFileDownloadState();
+  fileDownloadStatus.value = "downloading";
+  fileDownloadProgress.value = 0;
+  fileDownloadLoaded.value = 0;
+  fileDownloadTotal.value = Number.isFinite(meta.bytes) && meta.bytes > 0
+    ? meta.bytes
+    : null;
+  fileDownloadError.value = null;
+
+  const controller = new AbortController();
+  fileDownloadAbort.value = controller;
+
+  try {
+    const response = await fetch(meta.url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`Download failed (${response.status})`);
+    }
+
+    const headerLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(headerLength) && headerLength > 0) {
+      fileDownloadTotal.value = headerLength;
+    }
+
+    const chunks: Uint8Array[] = [];
+    if (response.body && typeof response.body.getReader === "function") {
+      const reader = response.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          fileDownloadLoaded.value += value.length;
+          const total = fileDownloadTotal.value ?? meta.bytes ?? 0;
+          if (total > 0) {
+            fileDownloadProgress.value = Math.min(
+              1,
+              fileDownloadLoaded.value / total,
+            );
+          }
+        }
+      }
+    } else {
+      const arrayBuffer = await response.arrayBuffer();
+      const chunk = new Uint8Array(arrayBuffer);
+      chunks.push(chunk);
+      fileDownloadLoaded.value = chunk.length;
+      const total = fileDownloadTotal.value ?? meta.bytes ?? chunk.length;
+      if (total > 0) {
+        fileDownloadProgress.value = Math.min(
+          1,
+          fileDownloadLoaded.value / total,
+        );
+      }
+    }
+
+    if (!chunks.length) {
+      throw new Error("Downloaded file was empty");
+    }
+
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const ciphertext = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      ciphertext.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    fileDownloadStatus.value = "decrypting";
+
+    let plaintextBuffer: ArrayBuffer;
+    if (meta.key && meta.iv) {
+      const keyBytes = base64UrlDecode(meta.key);
+      const ivBytes = base64UrlDecode(meta.iv);
+      const cryptoKey = await importAesGcmKey(keyBytes, ["decrypt"]);
+      plaintextBuffer = await decryptAesGcm(ciphertext.buffer, cryptoKey, ivBytes);
+    } else {
+      plaintextBuffer = ciphertext.buffer.slice(0);
+    }
+
+    if (meta.sha256) {
+      const { hashB64 } = await computeSha256(plaintextBuffer);
+      if (hashB64 !== meta.sha256) {
+        throw new Error("Integrity check failed");
+      }
+    }
+
+    const blob = new Blob([plaintextBuffer], {
+      type: meta.mime || "application/octet-stream",
+    });
+    fileDownloadLoaded.value = blob.size;
+    if (fileDownloadTotal.value && fileDownloadTotal.value > 0) {
+      fileDownloadProgress.value = Math.min(
+        1,
+        fileDownloadLoaded.value / fileDownloadTotal.value,
+      );
+    } else {
+      fileDownloadProgress.value = 1;
+    }
+
+    fileDecryptedUrl.value = URL.createObjectURL(blob);
+    fileDownloadStatus.value = "ready";
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    if (error.name === "AbortError") {
+      fileDownloadStatus.value = "idle";
+    } else {
+      console.error("File download failed", error);
+      fileDownloadStatus.value = "error";
+      fileDownloadError.value = error.message;
+    }
+  } finally {
+    if (fileDownloadAbort.value === controller) {
+      fileDownloadAbort.value = null;
+    }
+  }
+}
+
+function resetFileDownloadState(abort = true): void {
+  if (abort && fileDownloadAbort.value) {
+    try {
+      fileDownloadAbort.value.abort();
+    } catch {
+      /* noop */
+    }
+  }
+  fileDownloadAbort.value = null;
+  if (fileDecryptedUrl.value) {
+    URL.revokeObjectURL(fileDecryptedUrl.value);
+    fileDecryptedUrl.value = null;
+  }
+  fileDownloadStatus.value = "idle";
+  fileDownloadProgress.value = 0;
+  fileDownloadLoaded.value = 0;
+  fileDownloadTotal.value = null;
+  fileDownloadError.value = null;
+}
+
+function retryFileDownload(): void {
+  resetFileDownloadState();
+  if (fileMessageKey.value) {
+    void startFileDownload();
+  }
+}
+
+function downloadDecryptedFile(): void {
+  if (fileDownloadStatus.value !== "ready" || !fileDecryptedUrl.value) return;
+  const meta = fileMessageMeta.value;
+  if (!meta) return;
+  const link = document.createElement("a");
+  link.href = fileDecryptedUrl.value;
+  link.download = meta.name || "download";
+  link.target = "_blank";
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 const receiveStore = useReceiveTokensStore();
@@ -498,5 +855,63 @@ async function updateAutoRedeem(val: boolean) {
 .chat-text {
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.chat-file-message {
+  max-width: 320px;
+}
+
+.chat-file-message__media {
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface-2, #f7f7f7);
+}
+
+.chat-file-message__media--thumb {
+  max-width: 200px;
+}
+
+.chat-file-message__image :deep(img),
+.chat-file-message__thumb :deep(img) {
+  object-fit: cover;
+}
+
+.chat-file-message__video {
+  display: block;
+  max-width: 320px;
+  border-radius: 8px;
+}
+
+.chat-file-message__info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat-file-message__name {
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.chat-file-message__details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  color: var(--text-2, #555);
+}
+
+.chat-file-message__status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat-file-message__actions {
+  flex-wrap: wrap;
+}
+
+.chat-file-message__fallback {
+  color: inherit;
+  text-decoration: underline;
 }
 </style>

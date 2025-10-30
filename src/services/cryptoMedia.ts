@@ -50,6 +50,14 @@ export async function generateAesGcmKey(length: 128 | 192 | 256 = 256) {
   } as const;
 }
 
+export async function importAesGcmKey(
+  raw: ArrayBuffer | Uint8Array,
+  usages: KeyUsage[] = ["encrypt", "decrypt"],
+) {
+  const data = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
+  return subtle.importKey("raw", data, { name: "AES-GCM" }, false, usages);
+}
+
 export function generateIv(bytes = 12) {
   const iv = cryptoApi.getRandomValues(new Uint8Array(bytes));
   return {
@@ -64,6 +72,21 @@ export async function encryptAesGcm(
   iv: Uint8Array,
 ): Promise<ArrayBuffer> {
   return subtle.encrypt(
+    {
+      name: "AES-GCM",
+      iv,
+    },
+    key,
+    data,
+  );
+}
+
+export async function decryptAesGcm(
+  data: ArrayBuffer,
+  key: CryptoKey,
+  iv: Uint8Array,
+): Promise<ArrayBuffer> {
+  return subtle.decrypt(
     {
       name: "AES-GCM",
       iv,
