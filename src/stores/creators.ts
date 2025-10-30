@@ -467,6 +467,10 @@ export async function fetchFundstrProfileBundle(
       if (isTierSecurityBlockedError(error)) {
         logTierSecurityError(id, "cached", error);
         securityBlocked = true;
+        nextTiersFreshAttemptAt = Math.max(
+          nextTiersFreshAttemptAt,
+          tierSecurityCooldownUntil,
+        );
       } else {
         console.warn("fetchFundstrProfileBundle cached tier lookup failed", {
           id,
@@ -478,8 +482,9 @@ export async function fetchFundstrProfileBundle(
     let fresh: DiscoveryCreatorTier[] | null = null;
     let freshError: unknown | null = null;
     const now = Date.now();
-    const allowFresh =
+    const allowFreshBase =
       forceRefresh || (now >= nextTiersFreshAttemptAt && now >= tierSecurityCooldownUntil);
+    const allowFresh = securityBlocked ? false : allowFreshBase;
     const shouldFetchFresh = (forceRefresh || cached.length === 0) && allowFresh;
     if (shouldFetchFresh) {
       try {
@@ -504,12 +509,10 @@ export async function fetchFundstrProfileBundle(
         if (isTierSecurityBlockedError(error)) {
           logTierSecurityError(id, "fresh", error);
           securityBlocked = true;
-          if (!forceRefresh) {
-            nextTiersFreshAttemptAt = Math.max(
-              nextTiersFreshAttemptAt,
-              tierSecurityCooldownUntil,
-            );
-          }
+          nextTiersFreshAttemptAt = Math.max(
+            nextTiersFreshAttemptAt,
+            tierSecurityCooldownUntil,
+          );
         } else {
           if (!forceRefresh) {
             tiersFreshFailureCount = Math.min(tiersFreshFailureCount + 1, 6);
@@ -1274,9 +1277,18 @@ export const useCreatorsStore = defineStore("creators", {
           return;
         }
         this.searchResults = response.results.map((creator) => cloneCreatorProfile(creator));
-        this.searchWarnings = Array.isArray(response.warnings)
-          ? response.warnings.slice()
+        const warnings = Array.isArray(response.warnings)
+          ? response.warnings.filter(
+              (warning): warning is string =>
+                typeof warning === "string" && warning.trim().length > 0,
+            )
           : [];
+        if (this.searchResults.some((profile) => profile.tierSecurityBlocked === true)) {
+          if (!warnings.includes(FIREFOX_TIER_SECURITY_WARNING)) {
+            warnings.push(FIREFOX_TIER_SECURITY_WARNING);
+          }
+        }
+        this.searchWarnings = warnings;
       } catch (error) {
         if (controller.signal.aborted) {
           return;

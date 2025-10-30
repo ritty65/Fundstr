@@ -247,6 +247,61 @@ describe("fetchFundstrProfileBundle", () => {
     expect(bundle.relayHints).toEqual(["wss://relay.example"]);
   });
 
+  it("treats DOMExceptions from cached tier lookups as security blocked", async () => {
+    const domException = typeof DOMException !== "undefined"
+      ? new DOMException("Blocked by tracking protection", "NetworkError")
+      : Object.assign(new Error("dom exception"), { name: "DOMException" });
+
+    const discoveryMock = createDiscoveryMock({
+      creators: {
+        [PUBKEY_HEX]: {
+          cached: { results: [] },
+          fresh: { results: [makeCreator()] },
+        },
+      },
+      tiers: {
+        [PUBKEY_HEX]: {
+          cached: () => {
+            throw domException;
+          },
+          fresh: () => {
+            throw new Error("should not fetch fresh tiers after DOMException");
+          },
+        },
+        [NPUB]: {
+          cached: { tiers: [baseTier] },
+        },
+      },
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(discoveryMock);
+
+    const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX);
+
+    const tierCalls = discoveryMock.getCreatorTiers.mock.calls.map(([request]) => request);
+    expect(tierCalls).toEqual([
+      expect.objectContaining({ id: PUBKEY_HEX, fresh: false }),
+      expect.objectContaining({ id: NPUB, fresh: false }),
+    ]);
+
+    expect(bundle.tierSecurityBlocked).toBe(true);
+    expect(bundle.tierDataFresh).toBe(false);
+    expect(bundle.fetchedFromFallback).toBe(true);
+    expect(bundle.tiers).toEqual([
+      {
+        id: "tier-basic",
+        name: "Basic",
+        price_sats: 2500,
+        description: "Access to basic content",
+        media: [],
+      },
+    ]);
+
+    warnSpy.mockRestore();
+  });
+
   it("marks the bundle as tierSecurityBlocked when discovery throws a DOMException", async () => {
     const domException = typeof DOMException !== "undefined"
       ? new DOMException("Blocked by tracking protection", "NetworkError")
