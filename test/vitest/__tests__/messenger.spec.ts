@@ -144,6 +144,7 @@ vi.mock("../../../src/js/notify", () => {
 
 import { useMessengerStore } from "../../../src/stores/messenger";
 import { useNostrStore } from "../../../src/stores/nostr";
+import { useTokensStore } from "../../../src/stores/tokens";
 import * as dmSigner from "../../../src/nostr/dmSigner";
 
 beforeEach(() => {
@@ -163,6 +164,8 @@ beforeEach(() => {
   } else {
     (m as any).conversations = {};
   }
+  const tokensStore = useTokensStore();
+  tokensStore.historyTokens = [];
   const nostr = useNostrStore() as any;
   nostr.initSignerIfNotSet.mockClear();
   publishWithAcksMock.mockClear();
@@ -551,6 +554,113 @@ describe("messenger store", () => {
     signerSpy.mockRestore();
     addSpy.mockRestore();
     vi.useRealTimers();
+  });
+
+  it("marks pending token history entries as paid on acknowledgement", () => {
+    const messenger = useMessengerStore();
+    const tokensStore = useTokensStore();
+    tokensStore.historyTokens = [];
+    tokensStore.addPendingToken({
+      amount: -500,
+      tokenStr: "TOKEN-A",
+      mint: "mint",
+      unit: "sat",
+      bucketId: "b",
+      referenceId: "ref-ack",
+    });
+    const now = Date.now();
+    const tokenPayload = {
+      token: "TOKEN-A",
+      amount: 500,
+      referenceId: "ref-ack",
+      bucketId: "b",
+    };
+    const meta: any = {
+      localId: "local-ack",
+      eventId: null,
+      status: "pending",
+      relayResults: {},
+      createdAt: now,
+      updatedAt: now,
+      lastAckAt: null,
+      timerStartedAt: null,
+      error: null,
+      relays: [],
+      attempt: 1,
+      payload: { content: "", text: "", tokenPayload },
+    };
+    const msg: any = {
+      id: "msg-ack",
+      pubkey: "pub",
+      content: "",
+      created_at: Math.floor(now / 1000),
+      outgoing: true,
+      status: "pending",
+      relayResults: {},
+      tokenPayload,
+      localEcho: meta,
+    };
+
+    messenger.markLocalEchoSent(msg, meta);
+
+    const entry = tokensStore.historyTokens.find((t) => t.referenceId === "ref-ack");
+    expect(entry?.status).toBe("paid");
+    expect(entry?.amount).toBe(-500);
+    expect(meta.status).toBe("sent");
+    expect(msg.status).toBe("sent");
+  });
+
+  it("removes pending token history entries when delivery fails", () => {
+    const messenger = useMessengerStore();
+    const tokensStore = useTokensStore();
+    tokensStore.historyTokens = [];
+    tokensStore.addPendingToken({
+      amount: -250,
+      tokenStr: "TOKEN-B",
+      mint: "mint",
+      unit: "sat",
+      bucketId: "b",
+      referenceId: "ref-fail",
+    });
+    const now = Date.now();
+    const tokenPayload = {
+      token: "TOKEN-B",
+      amount: 250,
+      referenceId: "ref-fail",
+      bucketId: "b",
+    };
+    const meta: any = {
+      localId: "local-fail",
+      eventId: null,
+      status: "pending",
+      relayResults: {},
+      createdAt: now,
+      updatedAt: now,
+      lastAckAt: null,
+      timerStartedAt: null,
+      error: null,
+      relays: [],
+      attempt: 1,
+      payload: { content: "", text: "", tokenPayload },
+    };
+    const msg: any = {
+      id: "msg-fail",
+      pubkey: "pub",
+      content: "",
+      created_at: Math.floor(now / 1000),
+      outgoing: true,
+      status: "pending",
+      relayResults: {},
+      tokenPayload,
+      localEcho: meta,
+    };
+
+    messenger.markLocalEchoFailed(msg, meta, "network error");
+
+    const entry = tokensStore.historyTokens.find((t) => t.referenceId === "ref-fail");
+    expect(entry).toBeUndefined();
+    expect(meta.status).toBe("failed");
+    expect(msg.status).toBe("failed");
   });
 
   it("retries pending messages using stored payload", async () => {
