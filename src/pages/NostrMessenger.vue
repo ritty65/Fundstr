@@ -283,7 +283,6 @@ export default defineComponent({
       initError.value = null;
       startTimedOut.value = false;
       cleanupStartRecoveryWatcher();
-      let timeoutTriggered = false;
       let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
       try {
         await nostr.initSignerIfNotSet();
@@ -291,14 +290,15 @@ export default defineComponent({
         ndkRef.value = await useNdk();
         const start = messenger.start();
         startPromise = start;
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timeoutHandle = setTimeout(() => {
-            timeoutTriggered = true;
-            reject(new Error("Messenger startup timed out"));
-          }, 10000);
-        });
 
-        await Promise.race([start, timeoutPromise]);
+        timeoutHandle = setTimeout(() => {
+          if (runId !== startRunId) return;
+          startTimedOut.value = true;
+          console.warn("Messenger startup taking longer than expected");
+          registerStartRecoveryWatcher(runId);
+        }, 10000);
+
+        await start;
 
         if (runId !== startRunId) return;
 
@@ -309,13 +309,8 @@ export default defineComponent({
         const message = e instanceof Error ? e.message : String(e);
         loading.value = false;
         initError.value = message;
-        if (message === "Messenger startup timed out") {
-          startTimedOut.value = true;
-          timeoutTriggered = true;
-          registerStartRecoveryWatcher(runId);
-        } else {
-          startPromise = null;
-        }
+        startPromise = null;
+        cleanupStartRecoveryWatcher();
       } finally {
         if (timeoutHandle) {
           clearTimeout(timeoutHandle);
@@ -323,21 +318,6 @@ export default defineComponent({
         if (runId === startRunId) {
           connecting.value = false;
         }
-      }
-
-      if (timeoutTriggered && startPromise) {
-        startPromise
-          .then(() => {
-            if (runId !== startRunId) return;
-            finalizeStartSuccess(runId);
-          })
-          .catch((err) => {
-            if (runId !== startRunId) return;
-            console.error(err);
-            loading.value = false;
-            initError.value = err instanceof Error ? err.message : String(err);
-            startPromise = null;
-          });
       }
     }
 
