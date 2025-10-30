@@ -691,7 +691,9 @@ export default defineComponent({
   },
   setup() {
     const { copy } = useClipboard();
-    return { copy };
+    const uiStore = useUiStore();
+
+    return { copy, uiStore };
   },
   props: {},
   data: function () {
@@ -911,7 +913,13 @@ export default defineComponent({
     },
   },
   methods: {
-    ...mapActions(useUiStore, ["formatCurrency"]),
+    formatCurrency(
+      value: number,
+      currency: string,
+      showBalance = false,
+    ) {
+      return this.uiStore.formatCurrency(value, currency, showBalance);
+    },
     ...mapActions(useWorkersStore, ["clearAllWorkers"]),
     ...mapActions(useWalletStore, [
       "send",
