@@ -111,8 +111,12 @@ export const useStorageStore = defineStore("storage", {
       downloadLink.download = fileName;
       downloadLink.textContent = "Download File";
       downloadLink.href = textToSaveAsURL;
-      downloadLink.onclick = function () {
-        document.body.removeChild(event.target as Node);
+      downloadLink.onclick = (evt) => {
+        const target = evt.currentTarget as HTMLAnchorElement | null;
+        if (target?.parentNode) {
+          target.parentNode.removeChild(target);
+        }
+        window.URL.revokeObjectURL(textToSaveAsURL);
       };
       downloadLink.style.display = "none";
       document.body.appendChild(downloadLink);
