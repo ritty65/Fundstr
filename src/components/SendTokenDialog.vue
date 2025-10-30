@@ -1367,6 +1367,11 @@ export default defineComponent({
       this.scanningCard = false;
     },
     lockTokens: async function () {
+      if (!this.activeMintUrl) {
+        notifyError("Select a mint in Wallet before sending.");
+        this.showSendTokens = false;
+        return;
+      }
       let sendAmount = Math.floor(
         this.sendData.amount * this.activeUnitCurrencyMultiplyer,
       );
@@ -1513,6 +1518,12 @@ export default defineComponent({
       calls send, displays token and kicks off the spendableWorker
       */
       this.showNumericKeyboard = false;
+
+      if (!this.activeMintUrl) {
+        notifyError("Select a mint in Wallet before sending.");
+        this.showSendTokens = false;
+        return;
+      }
       const p2pkInput = this.sendData.p2pkPubkey;
       let nostrDm = false;
       if (
