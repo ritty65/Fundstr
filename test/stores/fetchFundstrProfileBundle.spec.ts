@@ -132,6 +132,7 @@ describe("fetchFundstrProfileBundle", () => {
     expect(discoveryMock.getCreatorTiers).toHaveBeenCalledTimes(2);
     expect(bundle.fetchedFromFallback).toBe(false);
     expect(bundle.tierDataFresh).toBe(true);
+    expect(bundle.tierSecurityBlocked).toBe(false);
     expect(bundle.profile).toEqual(baseProfile);
     expect(bundle.followers).toBe(42);
     expect(bundle.following).toBe(8);
@@ -186,6 +187,7 @@ describe("fetchFundstrProfileBundle", () => {
     ]);
     expect(bundle.fetchedFromFallback).toBe(true);
     expect(bundle.tierDataFresh).toBe(true);
+    expect(bundle.tierSecurityBlocked).toBe(false);
     expect(bundle.profile).toEqual(baseProfile);
     expect(bundle.followers).toBe(100);
     expect(bundle.following).toBe(5);
@@ -232,6 +234,7 @@ describe("fetchFundstrProfileBundle", () => {
     ]);
     expect(bundle.fetchedFromFallback).toBe(true);
     expect(bundle.tierDataFresh).toBe(false);
+    expect(bundle.tierSecurityBlocked).toBe(false);
     expect(bundle.tiers).toEqual([
       {
         id: "tier-basic",
@@ -242,6 +245,54 @@ describe("fetchFundstrProfileBundle", () => {
       },
     ]);
     expect(bundle.relayHints).toEqual(["wss://relay.example"]);
+  });
+
+  it("marks the bundle as tierSecurityBlocked when discovery throws a DOMException", async () => {
+    const domException = typeof DOMException !== "undefined"
+      ? new DOMException("Blocked by tracking protection", "NetworkError")
+      : Object.assign(new Error("dom exception"), { name: "DOMException" });
+
+    const discoveryMock = createDiscoveryMock({
+      creators: {
+        [PUBKEY_HEX]: {
+          cached: { results: [] },
+          fresh: { results: [makeCreator()] },
+        },
+      },
+      tiers: {
+        [PUBKEY_HEX]: {
+          cached: { tiers: [] },
+          fresh: () => {
+            throw domException;
+          },
+        },
+        [NPUB]: {
+          cached: { tiers: [baseTier] },
+          fresh: { tiers: [] },
+        },
+      },
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(discoveryMock);
+
+    const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX);
+
+    expect(bundle.tierSecurityBlocked).toBe(true);
+    expect(bundle.tierDataFresh).toBe(false);
+    expect(bundle.fetchedFromFallback).toBe(true);
+    expect(bundle.tiers).toEqual([
+      {
+        id: "tier-basic",
+        name: "Basic",
+        price_sats: 2500,
+        description: "Access to basic content",
+        media: [],
+      },
+    ]);
+
+    warnSpy.mockRestore();
   });
 
   it("throws a FundstrProfileFetchError when discovery returns no profile records", async () => {
@@ -310,6 +361,7 @@ describe("fetchFundstrProfileBundle", () => {
 
     expect(bundle.tierDataFresh).toBe(false);
     expect(bundle.fetchedFromFallback).toBe(true);
+    expect(bundle.tierSecurityBlocked).toBe(true);
     expect(bundle.tiers).toEqual([
       {
         id: "tier-basic",
