@@ -139,6 +139,7 @@ import {
   onMounted,
   onUnmounted,
   watch,
+  type WatchStopHandle,
 } from "vue";
 import { useRoute } from "vue-router";
 import { useMessengerStore } from "src/stores/messenger";
@@ -177,6 +178,7 @@ export default defineComponent({
     const showSetupWizard = ref(false);
     const $q = useQuasar();
     const ui = useUiStore();
+    const route = useRoute();
 
     const ndkRef = ref<NDK | null>(null);
     const now = ref(Date.now());
@@ -184,6 +186,41 @@ export default defineComponent({
     const retryingDecrypts = ref(false);
     const pendingDecryptCount = computed(() => messenger.pendingDecryptCount);
     let decryptRetryTimer: ReturnType<typeof setInterval> | null = null;
+    let startPromise: Promise<void> | null = null;
+    let startRunId = 0;
+    let lastCompletedStartRunId = 0;
+    let startRecoveryStop: WatchStopHandle | null = null;
+
+    const cleanupStartRecoveryWatcher = () => {
+      if (startRecoveryStop) {
+        startRecoveryStop();
+        startRecoveryStop = null;
+      }
+    };
+
+    const finalizeStartSuccess = (runId: number) => {
+      if (runId !== startRunId) return;
+      if (lastCompletedStartRunId === runId) return;
+      lastCompletedStartRunId = runId;
+      loading.value = false;
+      initError.value = null;
+      startTimedOut.value = false;
+      startPromise = null;
+      cleanupStartRecoveryWatcher();
+      handleRoutePubkeyChange(route.query.pubkey);
+    };
+
+    const registerStartRecoveryWatcher = (runId: number) => {
+      cleanupStartRecoveryWatcher();
+      startRecoveryStop = watch(
+        [() => messenger.started, () => messenger.connected],
+        ([started, connected]) => {
+          if (runId !== startRunId) return;
+          if (!started && !connected) return;
+          finalizeStartSuccess(runId);
+        },
+      );
+    };
 
     function bech32ToHex(pubkey: string): string {
       try {
@@ -240,37 +277,67 @@ export default defineComponent({
     }
 
     async function init() {
+      const runId = ++startRunId;
       connecting.value = true;
       loading.value = true;
       initError.value = null;
       startTimedOut.value = false;
+      cleanupStartRecoveryWatcher();
+      let timeoutTriggered = false;
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
       try {
         await nostr.initSignerIfNotSet();
         await messenger.loadIdentity();
         ndkRef.value = await useNdk();
-        await new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(() => {
-            startTimedOut.value = true;
+        const start = messenger.start();
+        startPromise = start;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(() => {
+            timeoutTriggered = true;
             reject(new Error("Messenger startup timed out"));
           }, 10000);
-
-          messenger
-            .start()
-            .then(resolve)
-            .catch(reject)
-            .finally(() => {
-              clearTimeout(timer);
-            });
         });
-        loading.value = false;
-        handleRoutePubkeyChange(route.query.pubkey);
+
+        await Promise.race([start, timeoutPromise]);
+
+        if (runId !== startRunId) return;
+
+        finalizeStartSuccess(runId);
       } catch (e) {
+        if (runId !== startRunId) return;
         console.error(e);
         const message = e instanceof Error ? e.message : String(e);
         loading.value = false;
         initError.value = message;
+        if (message === "Messenger startup timed out") {
+          startTimedOut.value = true;
+          timeoutTriggered = true;
+          registerStartRecoveryWatcher(runId);
+        } else {
+          startPromise = null;
+        }
       } finally {
-        connecting.value = false;
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+        if (runId === startRunId) {
+          connecting.value = false;
+        }
+      }
+
+      if (timeoutTriggered && startPromise) {
+        startPromise
+          .then(() => {
+            if (runId !== startRunId) return;
+            finalizeStartSuccess(runId);
+          })
+          .catch((err) => {
+            if (runId !== startRunId) return;
+            console.error(err);
+            loading.value = false;
+            initError.value = err instanceof Error ? err.message : String(err);
+            startPromise = null;
+          });
       }
     }
 
@@ -297,9 +364,9 @@ export default defineComponent({
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", handleDecryptVisibility);
       }
+      cleanupStartRecoveryWatcher();
     });
 
-    const route = useRoute();
     const lastRoutePubkey = ref<string | null>(null);
 
     const handleRoutePubkeyChange = (pubkey: unknown) => {
