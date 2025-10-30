@@ -164,7 +164,6 @@ import { useMessengerStore } from "src/stores/messenger";
 import { useNdk } from "src/composables/useNdk";
 import { useNostrStore } from "src/stores/nostr";
 import { useUiStore } from "src/stores/ui";
-import { nip19 } from "nostr-tools";
 import type NDK from "@nostr-dev-kit/ndk";
 import ActiveChatHeader from "components/ActiveChatHeader.vue";
 import MessageList from "components/MessageList.vue";
@@ -253,13 +252,9 @@ export default defineComponent({
       );
     };
 
-    function bech32ToHex(pubkey: string): string {
-      try {
-        const decoded = nip19.decode(pubkey);
-        return typeof decoded.data === "string" ? decoded.data : pubkey;
-      } catch {
-        return pubkey;
-      }
+    function bech32ToHex(pubkey: string): string | null {
+      const resolved = nostr.resolvePubkey(pubkey);
+      return resolved ?? null;
     }
 
     function startDecryptRetryTimer() {
@@ -388,8 +383,12 @@ export default defineComponent({
 
       const normalized = bech32ToHex(pubkey);
 
+      if (!normalized) {
+        lastRoutePubkey.value = null;
+        return;
+      }
+
       if (
-        !normalized ||
         normalized === lastRoutePubkey.value ||
         normalized === messenger.currentConversation
       ) {
