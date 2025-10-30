@@ -65,6 +65,23 @@
         </q-banner>
         <NostrRelayErrorBanner />
         <q-banner
+          v-if="sendTokenWarning"
+          dense
+          class="bg-orange-2 q-mb-sm"
+        >
+          <div class="row items-center no-wrap q-gutter-sm">
+            <span>{{ sendTokenWarning.message }}</span>
+            <q-space />
+            <q-btn
+              flat
+              dense
+              color="primary"
+              label="Go to wallet"
+              @click="handleSendTokenWarningAction"
+            />
+          </div>
+        </q-banner>
+        <q-banner
           v-if="failedRelays.length"
           dense
           class="bg-red-2 q-mb-sm"
@@ -139,9 +156,10 @@ import {
   onMounted,
   onUnmounted,
   watch,
+  nextTick,
   type WatchStopHandle,
 } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useMessengerStore } from "src/stores/messenger";
 import { useNdk } from "src/composables/useNdk";
 import { useNostrStore } from "src/stores/nostr";
@@ -156,6 +174,14 @@ import ChatSendTokenDialog from "components/ChatSendTokenDialog.vue";
 import NostrSetupWizard from "components/NostrSetupWizard.vue";
 import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 import { useQuasar, TouchSwipe } from "quasar";
+import { useMintsStore } from "src/stores/mints";
+import { useBucketsStore } from "src/stores/buckets";
+import { storeToRefs } from "pinia";
+
+type SendTokenWarning = {
+  message: string;
+  tab?: string;
+};
 
 export default defineComponent({
   name: "NostrMessenger",
@@ -179,6 +205,11 @@ export default defineComponent({
     const $q = useQuasar();
     const ui = useUiStore();
     const route = useRoute();
+    const router = useRouter();
+    const mintsStore = useMintsStore();
+    const bucketsStore = useBucketsStore();
+    const { mints, activeMintUrl } = storeToRefs(mintsStore);
+    const { activeBuckets } = storeToRefs(bucketsStore);
 
     const ndkRef = ref<NDK | null>(null);
     const now = ref(Date.now());
@@ -376,11 +407,90 @@ export default defineComponent({
       }
     };
 
+    const pendingTokenModal = ref(false);
+    const sendTokenWarning = ref<SendTokenWarning | null>(null);
+
+    const routeConversation = computed(() => {
+      const pubkey = route.query.pubkey;
+      if (Array.isArray(pubkey)) {
+        return pubkey.length ? bech32ToHex(pubkey[0]) : null;
+      }
+      return typeof pubkey === "string" && pubkey
+        ? bech32ToHex(pubkey)
+        : null;
+    });
+
+    const hasActiveMint = computed(
+      () => Boolean(activeMintUrl.value && mints.value.length),
+    );
+    const hasActiveBucket = computed(() => activeBuckets.value.length > 0);
+
+    const clearDonationIntent = async () => {
+      if (route.query.intent === undefined) return;
+      const query = { ...route.query };
+      delete query.intent;
+      try {
+        await router.replace({ query });
+      } catch (err) {
+        console.warn("Failed to clear donation intent", err);
+      }
+    };
+
+    const ensureSendTokenPrerequisites = () => {
+      sendTokenWarning.value = null;
+      if (!hasActiveMint.value) {
+        sendTokenWarning.value = {
+          message: "Add an active mint in your wallet before sending tokens.",
+          tab: "mints",
+        };
+        return false;
+      }
+      if (!hasActiveBucket.value) {
+        sendTokenWarning.value = {
+          message: "Create a bucket in your wallet before sending tokens.",
+          tab: "buckets",
+        };
+        return false;
+      }
+      return true;
+    };
+
+    const handleSendTokenWarningAction = () => {
+      if (!sendTokenWarning.value) return;
+      if (sendTokenWarning.value.tab) {
+        ui.setTab(sendTokenWarning.value.tab);
+      }
+      sendTokenWarning.value = null;
+      pendingTokenModal.value = false;
+      void router.push({ path: "/wallet" });
+    };
+
     watch(
       () => route.query.pubkey,
-      (pubkey) => {
+      (pubkey, previous) => {
         handleRoutePubkeyChange(pubkey);
+        if (pubkey !== previous) {
+          pendingTokenModal.value =
+            (Array.isArray(route.query.intent)
+              ? route.query.intent.includes("donate")
+              : route.query.intent === "donate") &&
+            !!routeConversation.value;
+        }
       },
+    );
+
+    watch(
+      () => route.query.intent,
+      (intent) => {
+        const isDonate = Array.isArray(intent)
+          ? intent.includes("donate")
+          : intent === "donate";
+        pendingTokenModal.value = isDonate && !!routeConversation.value;
+        if (!isDonate) {
+          sendTokenWarning.value = null;
+        }
+      },
+      { immediate: true },
     );
 
     watch(
@@ -534,9 +644,17 @@ export default defineComponent({
       }
     };
 
-    function openSendTokenDialog() {
+    const showSendTokenDialog = () => {
       if (!selected.value) return;
       (chatSendTokenDialogRef.value as any)?.show();
+    };
+
+    function openSendTokenDialog() {
+      if (!ensureSendTokenPrerequisites()) {
+        void clearDonationIntent();
+        return;
+      }
+      showSendTokenDialog();
     }
 
     const openSetupWizardFromError = () => {
@@ -568,6 +686,34 @@ export default defineComponent({
       await init();
     };
 
+    watch(
+      [pendingTokenModal, selected, loading, () => messenger.started],
+      async ([shouldOpen, currentSelected, isLoading, started]) => {
+        if (!shouldOpen || isLoading || !started) return;
+        if (!routeConversation.value || currentSelected !== routeConversation.value) {
+          return;
+        }
+        if (!ensureSendTokenPrerequisites()) {
+          pendingTokenModal.value = false;
+          await clearDonationIntent();
+          return;
+        }
+        await nextTick();
+        showSendTokenDialog();
+        pendingTokenModal.value = false;
+        await clearDonationIntent();
+      },
+    );
+
+    watch(
+      () => route.fullPath,
+      () => {
+        if (!routeConversation.value) {
+          pendingTokenModal.value = false;
+        }
+      },
+    );
+
     return {
       loading,
       connecting,
@@ -578,6 +724,8 @@ export default defineComponent({
       chatSendTokenDialogRef,
       messages,
       showSetupWizard,
+      sendTokenWarning,
+      handleSendTokenWarningAction,
       init,
       openSetupWizardFromError,
       sendMessage,
