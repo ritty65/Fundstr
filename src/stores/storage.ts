@@ -9,6 +9,7 @@ import { currentDateStr } from "src/js/utils";
 import { useProofsStore } from "./proofs";
 import { useBucketsStore } from "./buckets";
 import { useInvoiceHistoryStore } from "./invoiceHistory";
+import { cashuDb } from "./dexie";
 
 export const useStorageStore = defineStore("storage", {
   state: () => ({
@@ -30,6 +31,20 @@ export const useStorageStore = defineStore("storage", {
           if (key === "cashu.dexie.db.proofs") {
             const proofs = JSON.parse(backup[key]);
             await proofsStore.addProofs(proofs);
+          } else if (key === "cashu.dexie.db.lockedTokens") {
+            const parsed = JSON.parse(backup[key] ?? "[]");
+            const lockedTokens = Array.isArray(parsed) ? parsed : [];
+            await cashuDb.lockedTokens.clear();
+            if (lockedTokens.length) {
+              await cashuDb.lockedTokens.bulkPut(lockedTokens as any);
+            }
+          } else if (key === "cashu.dexie.db.subscriptions") {
+            const parsed = JSON.parse(backup[key] ?? "[]");
+            const subscriptions = Array.isArray(parsed) ? parsed : [];
+            await cashuDb.subscriptions.clear();
+            if (subscriptions.length) {
+              await cashuDb.subscriptions.bulkPut(subscriptions as any);
+            }
           } else if (key === "cashu.buckets") {
             bucketsStore.buckets = JSON.parse(backup[key]);
           } else {
@@ -51,8 +66,17 @@ export const useStorageStore = defineStore("storage", {
         jsonToSave[k] = v;
       }
       // proofs table *magic*
-      const proofs = await useProofsStore().getProofs();
+      const proofsStore = useProofsStore();
+      const [proofs, lockedTokens, subscriptions] = await Promise.all([
+        proofsStore.getProofs(),
+        cashuDb.lockedTokens.toArray(),
+        cashuDb.subscriptions.toArray(),
+      ]);
       jsonToSave["cashu.dexie.db.proofs"] = JSON.stringify(proofs);
+      jsonToSave["cashu.dexie.db.lockedTokens"] = JSON.stringify(lockedTokens);
+      jsonToSave["cashu.dexie.db.subscriptions"] = JSON.stringify(
+        subscriptions,
+      );
 
       var textToSave = JSON.stringify(jsonToSave);
       var textToSaveAsBlob = new Blob([textToSave], {

@@ -15,6 +15,16 @@ const hoisted = vi.hoisted(() => {
   };
   const walletStoreMock = {};
   const currentDateStr = vi.fn(() => "2024-05-01");
+  const lockedTokensTableMock = {
+    toArray: vi.fn(),
+    bulkPut: vi.fn(),
+    clear: vi.fn(),
+  };
+  const subscriptionsTableMock = {
+    toArray: vi.fn(),
+    bulkPut: vi.fn(),
+    clear: vi.fn(),
+  };
   return {
     notifySuccess,
     notifyError,
@@ -25,6 +35,8 @@ const hoisted = vi.hoisted(() => {
     tokensStoreMock,
     walletStoreMock,
     currentDateStr,
+    lockedTokensTableMock,
+    subscriptionsTableMock,
   };
 });
 
@@ -60,6 +72,17 @@ vi.mock("src/stores/wallet", () => ({
   useWalletStore: vi.fn(() => hoisted.walletStoreMock),
 }));
 
+vi.mock("src/stores/dexie", () => ({
+  cashuDb: {
+    lockedTokens: hoisted.lockedTokensTableMock,
+    subscriptions: hoisted.subscriptionsTableMock,
+  },
+  db: {
+    lockedTokens: hoisted.lockedTokensTableMock,
+    subscriptions: hoisted.subscriptionsTableMock,
+  },
+}));
+
 import { useStorageStore } from "stores/storage";
 
 const {
@@ -70,6 +93,8 @@ const {
   bucketsStoreMock,
   invoiceHistoryStoreMock,
   tokensStoreMock,
+  lockedTokensTableMock,
+  subscriptionsTableMock,
 } = hoisted;
 
 const originalLocation = window.location;
@@ -85,6 +110,69 @@ const extractDateValue = (value: any): Date => {
   return raw instanceof Date ? raw : new Date(raw);
 };
 
+const setupDownloadMocks = () => {
+  const downloadLink: any = {
+    download: "",
+    textContent: "",
+    href: "",
+    style: {},
+    click: vi.fn(),
+  };
+  const createElementSpy = vi
+    .spyOn(document, "createElement")
+    .mockReturnValue(downloadLink);
+  const appendChildSpy = vi
+    .spyOn(document.body, "appendChild")
+    .mockImplementation(() => downloadLink as unknown as Node);
+  const removeChildSpy = vi
+    .spyOn(document.body, "removeChild")
+    .mockImplementation(() => downloadLink as unknown as Node);
+  const originalCreateObjectURL = window.URL.createObjectURL;
+  const createObjectURLMock = vi.fn(() => "blob:url");
+  Object.defineProperty(window.URL, "createObjectURL", {
+    configurable: true,
+    writable: true,
+    value: createObjectURLMock,
+  });
+  const originalBlob = globalThis.Blob;
+  class MockBlob {
+    parts: any[];
+    options?: BlobPropertyBag;
+    constructor(parts: any[], options?: BlobPropertyBag) {
+      this.parts = parts;
+      this.options = options;
+    }
+  }
+  Object.defineProperty(globalThis, "Blob", {
+    configurable: true,
+    writable: true,
+    value: MockBlob as unknown as typeof Blob,
+  });
+
+  return {
+    downloadLink,
+    createElementSpy,
+    appendChildSpy,
+    removeChildSpy,
+    createObjectURLMock,
+    restore: () => {
+      createElementSpy.mockRestore();
+      appendChildSpy.mockRestore();
+      removeChildSpy.mockRestore();
+      Object.defineProperty(window.URL, "createObjectURL", {
+        configurable: true,
+        writable: true,
+        value: originalCreateObjectURL,
+      });
+      Object.defineProperty(globalThis, "Blob", {
+        configurable: true,
+        writable: true,
+        value: originalBlob,
+      });
+    },
+  };
+};
+
 describe("storage store", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -96,6 +184,18 @@ describe("storage store", () => {
     bucketsStoreMock.buckets = [];
     invoiceHistoryStoreMock.invoiceHistory = [];
     tokensStoreMock.historyTokens = [];
+    lockedTokensTableMock.toArray.mockReset();
+    lockedTokensTableMock.bulkPut.mockReset();
+    lockedTokensTableMock.clear.mockReset();
+    subscriptionsTableMock.toArray.mockReset();
+    subscriptionsTableMock.bulkPut.mockReset();
+    subscriptionsTableMock.clear.mockReset();
+    lockedTokensTableMock.toArray.mockResolvedValue([]);
+    lockedTokensTableMock.bulkPut.mockResolvedValue(undefined);
+    lockedTokensTableMock.clear.mockResolvedValue(undefined);
+    subscriptionsTableMock.toArray.mockResolvedValue([]);
+    subscriptionsTableMock.bulkPut.mockResolvedValue(undefined);
+    subscriptionsTableMock.clear.mockResolvedValue(undefined);
     locationReloadSpy = vi.fn();
     const locationStub = {
       href: originalLocation.href,
@@ -124,8 +224,12 @@ describe("storage store", () => {
   it("restores backup data into stores and reloads", async () => {
     const proofs = [{ id: "p1", amount: 1 }];
     const buckets = [{ id: "b1", name: "Primary" }];
+    const lockedTokens = [{ id: "lt1" }];
+    const subscriptions = [{ id: "sub1" }];
     const backup = {
       "cashu.dexie.db.proofs": JSON.stringify(proofs),
+      "cashu.dexie.db.lockedTokens": JSON.stringify(lockedTokens),
+      "cashu.dexie.db.subscriptions": JSON.stringify(subscriptions),
       "cashu.buckets": JSON.stringify(buckets),
       "cashu.settings": "{\"foo\":true}",
     };
@@ -134,6 +238,12 @@ describe("storage store", () => {
     await store.restoreFromBackup(backup);
 
     expect(addProofsMock).toHaveBeenCalledWith(proofs);
+    expect(lockedTokensTableMock.clear).toHaveBeenCalled();
+    expect(subscriptionsTableMock.clear).toHaveBeenCalled();
+    expect(lockedTokensTableMock.bulkPut).toHaveBeenCalledWith(lockedTokens);
+    expect(subscriptionsTableMock.bulkPut).toHaveBeenCalledWith(
+      subscriptions,
+    );
     expect(bucketsStoreMock.buckets).toEqual(buckets);
     expect(localStorage.getItem("cashu.settings")).toBe("{\"foo\":true}");
     expect(notifySuccess).toHaveBeenCalledWith("Backup restored");
@@ -153,52 +263,22 @@ describe("storage store", () => {
   it("exports wallet state with seeded local storage and proofs", async () => {
     localStorage.setItem("cashu.settings.theme", "dark");
     getProofsMock.mockResolvedValue([{ id: "proof-1" }]);
+    const lockedTokens = [{ id: "lt1" }];
+    const subscriptions = [{ id: "sub1" }];
+    lockedTokensTableMock.toArray.mockResolvedValue(lockedTokens);
+    subscriptionsTableMock.toArray.mockResolvedValue(subscriptions);
 
-    const downloadLink: any = {
-      download: "",
-      textContent: "",
-      href: "",
-      style: {},
-      click: vi.fn(),
-    };
-
-    const createElementSpy = vi
-      .spyOn(document, "createElement")
-      .mockReturnValue(downloadLink);
-    const appendChildSpy = vi
-      .spyOn(document.body, "appendChild")
-      .mockImplementation(() => downloadLink as unknown as Node);
-    const removeChildSpy = vi
-      .spyOn(document.body, "removeChild")
-      .mockImplementation(() => downloadLink as unknown as Node);
-    const originalCreateObjectURL = window.URL.createObjectURL;
-    const createObjectURLMock = vi.fn(() => "blob:url");
-    Object.defineProperty(window.URL, "createObjectURL", {
-      configurable: true,
-      writable: true,
-      value: createObjectURLMock,
-    });
-    const originalBlob = globalThis.Blob;
-    class MockBlob {
-      parts: any[];
-      options?: BlobPropertyBag;
-      constructor(parts: any[], options?: BlobPropertyBag) {
-        this.parts = parts;
-        this.options = options;
-      }
-    }
-    Object.defineProperty(globalThis, "Blob", {
-      configurable: true,
-      writable: true,
-      value: MockBlob as unknown as typeof Blob,
-    });
+    const downloadMocks = setupDownloadMocks();
+    const { downloadLink, createObjectURLMock } = downloadMocks;
 
     const store = useStorageStore();
     await store.exportWalletState();
 
     expect(getProofsMock).toHaveBeenCalled();
-    expect(createElementSpy).toHaveBeenCalledWith("a");
-    expect(appendChildSpy).toHaveBeenCalledWith(downloadLink);
+    expect(lockedTokensTableMock.toArray).toHaveBeenCalled();
+    expect(subscriptionsTableMock.toArray).toHaveBeenCalled();
+    expect(downloadMocks.createElementSpy).toHaveBeenCalledWith("a");
+    expect(downloadMocks.appendChildSpy).toHaveBeenCalledWith(downloadLink);
     expect(downloadLink.download).toBe("cashu_me_backup_2024-05-01.json");
     expect(downloadLink.href).toBe("blob:url");
     expect(downloadLink.click).toHaveBeenCalled();
@@ -210,20 +290,47 @@ describe("storage store", () => {
     expect(serialized["cashu.dexie.db.proofs"]).toBe(
       JSON.stringify([{ id: "proof-1" }]),
     );
+    expect(serialized["cashu.dexie.db.lockedTokens"]).toBe(
+      JSON.stringify(lockedTokens),
+    );
+    expect(serialized["cashu.dexie.db.subscriptions"]).toBe(
+      JSON.stringify(subscriptions),
+    );
 
-    createElementSpy.mockRestore();
-    appendChildSpy.mockRestore();
-    removeChildSpy.mockRestore();
-    Object.defineProperty(window.URL, "createObjectURL", {
-      configurable: true,
-      writable: true,
-      value: originalCreateObjectURL,
-    });
-    Object.defineProperty(globalThis, "Blob", {
-      configurable: true,
-      writable: true,
-      value: originalBlob,
-    });
+    downloadMocks.restore();
+  });
+
+  it("round-trips locked tokens and subscriptions through export/import", async () => {
+    const lockedTokens = [{ id: "lt1", tokenString: "abc" }];
+    const subscriptions = [{ id: "sub1", intervals: [] }];
+    getProofsMock.mockResolvedValue([]);
+    lockedTokensTableMock.toArray.mockResolvedValue(lockedTokens);
+    subscriptionsTableMock.toArray.mockResolvedValue(subscriptions);
+
+    const downloadMocks = setupDownloadMocks();
+    const store = useStorageStore();
+
+    await store.exportWalletState();
+    const blobArg = downloadMocks.createObjectURLMock.mock.calls[0][0] as any;
+    const serialized = JSON.parse(blobArg.parts.join(""));
+
+    downloadMocks.restore();
+
+    lockedTokensTableMock.clear.mockReset();
+    lockedTokensTableMock.bulkPut.mockReset();
+    subscriptionsTableMock.clear.mockReset();
+    subscriptionsTableMock.bulkPut.mockReset();
+    lockedTokensTableMock.clear.mockResolvedValue(undefined);
+    lockedTokensTableMock.bulkPut.mockResolvedValue(undefined);
+    subscriptionsTableMock.clear.mockResolvedValue(undefined);
+    subscriptionsTableMock.bulkPut.mockResolvedValue(undefined);
+
+    await store.restoreFromBackup(serialized);
+
+    expect(lockedTokensTableMock.bulkPut).toHaveBeenCalledWith(lockedTokens);
+    expect(subscriptionsTableMock.bulkPut).toHaveBeenCalledWith(
+      subscriptions,
+    );
   });
 
   it("handles local storage quota overflow and cleans up history", async () => {
