@@ -151,9 +151,9 @@ export const useProofsStore = defineStore("proofs", {
         reserved,
       );
       await cashuDb.transaction("rw", cashuDb.proofs, async () => {
-        walletProofs.forEach(async (p) => {
+        for (const p of walletProofs) {
           await cashuDb.proofs.add(p);
-        });
+        }
       });
     },
     async removeProofs(proofs: Proof[], bucketId: string = "unassigned") {
@@ -163,9 +163,9 @@ export const useProofsStore = defineStore("proofs", {
         bucketId,
       );
       await cashuDb.transaction("rw", cashuDb.proofs, async () => {
-        walletProofs.forEach(async (p) => {
+        for (const p of walletProofs) {
           await cashuDb.proofs.delete(p.secret);
-        });
+        }
       });
     },
     async getProofsForQuote(quote: string): Promise<WalletProof[]> {

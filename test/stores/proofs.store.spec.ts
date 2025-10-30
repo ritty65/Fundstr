@@ -50,14 +50,17 @@ const hoisted = vi.hoisted(() => {
   const proofsTable = {
     toArray: vi.fn(async () => records.map(clone)),
     add: vi.fn(async (proof: WalletProof) => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
       records.push(clone(proof));
     }),
     delete: vi.fn(async (secret: string) => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
       const index = records.findIndex((record) => record.secret === secret);
       if (index >= 0) {
         records.splice(index, 1);
       }
     }),
+    count: vi.fn(async () => records.length),
     where: vi.fn((field: keyof WalletProof) => createWhere(field)),
   };
 
@@ -169,6 +172,7 @@ describe("proofs store", () => {
     proofsTable.add.mockClear();
     proofsTable.delete.mockClear();
     proofsTable.where.mockClear();
+    proofsTable.count.mockClear();
     cashuDb.transaction.mockClear();
     consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mintsStore.mints = [];
@@ -373,6 +377,18 @@ describe("proofs store", () => {
         ]),
       );
     });
+
+    it("waits for proof inserts to finish before resolving", async () => {
+      const store = useProofsStore();
+      const newProofs: Proof[] = [
+        sampleProofs({ secret: "secret-1", id: "keyset-1" }),
+        sampleProofs({ secret: "secret-2", id: "keyset-2" }),
+      ];
+
+      await store.addProofs(newProofs);
+
+      await expect(cashuDb.proofs.count()).resolves.toBe(2);
+    });
   });
 
   describe("removeProofs", () => {
@@ -390,6 +406,20 @@ describe("proofs store", () => {
       expect(records).toEqual([
         expect.objectContaining({ secret: "secret-2" }),
       ]);
+    });
+
+    it("waits for proof deletions to finish before resolving", async () => {
+      const store = useProofsStore();
+      records.push(
+        createWalletProof({ secret: "secret-1", id: "keyset-1", reserved: false, amount: 10 }),
+        createWalletProof({ secret: "secret-2", id: "keyset-2", reserved: false, amount: 20 }),
+      );
+
+      await store.removeProofs([
+        sampleProofs({ secret: "secret-1", id: "keyset-1" }),
+      ]);
+
+      await expect(cashuDb.proofs.count()).resolves.toBe(1);
     });
   });
 
