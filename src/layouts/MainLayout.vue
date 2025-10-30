@@ -121,6 +121,7 @@ import { useMessengerStore } from "src/stores/messenger";
 import { useUiStore } from "src/stores/ui";
 import { NAV_DRAWER_WIDTH, NAV_DRAWER_GUTTER } from "src/constants/layout";
 import { fundstrRelayClient, useFundstrRelayStatus } from "src/nutzap/relayClient";
+import { WS_FIRST_TIMEOUT_MS } from "src/nutzap/relayEndpoints";
 import { creatorCacheService } from "src/nutzap/creatorCache";
 
 export default defineComponent({
@@ -187,7 +188,35 @@ export default defineComponent({
     );
 
     const relayStatus = useFundstrRelayStatus();
-    const showRelayBanner = computed(() => relayStatus.value !== "connected");
+    const CONNECTING_BANNER_DELAY_MS = Math.max(WS_FIRST_TIMEOUT_MS || 0, 5000);
+    const connectingTimeoutElapsed = ref(false);
+    let connectingBannerTimer = null;
+
+    const clearConnectingTimeout = () => {
+      if (connectingBannerTimer) {
+        clearTimeout(connectingBannerTimer);
+        connectingBannerTimer = null;
+      }
+      connectingTimeoutElapsed.value = false;
+    };
+
+    const scheduleConnectingTimeout = () => {
+      clearConnectingTimeout();
+      if (CONNECTING_BANNER_DELAY_MS <= 0) {
+        return;
+      }
+      connectingBannerTimer = window.setTimeout(() => {
+        connectingTimeoutElapsed.value = true;
+        connectingBannerTimer = null;
+      }, CONNECTING_BANNER_DELAY_MS);
+    };
+
+    const showRelayBanner = computed(() => {
+      if (relayStatus.value === "reconnecting" || relayStatus.value === "disconnected") {
+        return true;
+      }
+      return connectingTimeoutElapsed.value && relayStatus.value !== "connected";
+    });
     const isRelayDisconnected = computed(() => relayStatus.value === "disconnected");
     const relayBannerClass = computed(() =>
       relayStatus.value === "disconnected" ? "bg-negative text-inverse" : "bg-warning text-1",
@@ -199,7 +228,10 @@ export default defineComponent({
         case "reconnecting":
           return "Reconnecting to Nutzap relay…";
         default:
-          return "Connecting to Nutzap relay…";
+          if (connectingTimeoutElapsed.value && relayStatus.value !== "connected") {
+            return "Still trying to reach the Nutzap relay…";
+          }
+          return "";
       }
     });
 
@@ -263,6 +295,7 @@ export default defineComponent({
     onBeforeUnmount(() => {
       window.removeEventListener("focus", onWindowFocus);
       stopHeartbeat();
+      clearConnectingTimeout();
     });
 
     const ensureNutzapListener = () => {
@@ -279,6 +312,7 @@ export default defineComponent({
       relayStatus,
       (status, previous) => {
         if (status === "connected") {
+          clearConnectingTimeout();
           startHeartbeat();
           if (!previous || previous !== "connected") {
             ensureNutzapListener();
@@ -287,6 +321,11 @@ export default defineComponent({
             refreshCachedNutzapProfiles();
           }
         } else {
+          if (status === "connecting") {
+            scheduleConnectingTimeout();
+          } else {
+            clearConnectingTimeout();
+          }
           stopHeartbeat();
         }
       },
