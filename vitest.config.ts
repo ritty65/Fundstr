@@ -33,6 +33,7 @@ export default defineConfig({
       "test/vitest/__tests__/message-snippet.spec.ts",
       "test/vitest/__tests__/message-utils.spec.ts",
       "test/vitest/__tests__/nutzapRelayClient.spec.ts",
+      "test/vitest/__tests__/storage-backup.spec.ts",
       "test/vitest/__tests__/TierSummaryCard.spec.ts",
       "test/vitest/__tests__/cashu.stores.spec.ts",
       "test/vitest/__tests__/welcome.interaction.spec.ts",

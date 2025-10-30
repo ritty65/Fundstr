@@ -30,8 +30,19 @@ export const useStorageStore = defineStore("storage", {
         for (const key of keys) {
           // we treat some keys differently *magic*
           if (key === "cashu.dexie.db.proofs") {
-            const proofs = JSON.parse(backup[key]) as WalletProof[];
-            await proofsStore.addProofs(proofs);
+            const parsed = JSON.parse(backup[key] ?? "[]");
+            const proofs = Array.isArray(parsed)
+              ? (parsed as WalletProof[])
+              : [];
+            await cashuDb.transaction("rw", cashuDb.proofs, async () => {
+              await cashuDb.proofs.clear();
+              if (proofs.length) {
+                await cashuDb.proofs.bulkPut(proofs);
+              }
+            });
+            if (proofsStore.updateActiveProofs) {
+              await proofsStore.updateActiveProofs();
+            }
           } else if (key === "cashu.dexie.db.lockedTokens") {
             const parsed = JSON.parse(backup[key] ?? "[]");
             const lockedTokens = Array.isArray(parsed) ? parsed : [];

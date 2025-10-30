@@ -32,6 +32,16 @@ const hoisted = vi.hoisted(() => {
   };
   const walletStoreMock = {};
   const currentDateStr = vi.fn(() => "2024-05-01");
+  const proofsTableMock = {
+    clear: vi.fn(),
+    bulkPut: vi.fn(),
+  };
+  const transactionMock = vi.fn(async (...args: any[]) => {
+    const scope = args.pop();
+    if (typeof scope === "function") {
+      await scope();
+    }
+  });
   const lockedTokensTableMock = {
     toArray: vi.fn(),
     bulkPut: vi.fn(),
@@ -57,6 +67,8 @@ const hoisted = vi.hoisted(() => {
     tokensStoreMock,
     walletStoreMock,
     currentDateStr,
+    proofsTableMock,
+    transactionMock,
     lockedTokensTableMock,
     subscriptionsTableMock,
     historyTokensTableMock,
@@ -76,6 +88,7 @@ vi.mock("src/stores/proofs", () => ({
   useProofsStore: vi.fn(() => ({
     addProofs: hoisted.addProofsMock,
     getProofs: hoisted.getProofsMock,
+    updateActiveProofs: vi.fn(),
   })),
 }));
 
@@ -97,11 +110,14 @@ vi.mock("src/stores/wallet", () => ({
 
 vi.mock("src/stores/dexie", () => ({
   cashuDb: {
+    proofs: hoisted.proofsTableMock,
     lockedTokens: hoisted.lockedTokensTableMock,
     subscriptions: hoisted.subscriptionsTableMock,
     historyTokens: hoisted.historyTokensTableMock,
+    transaction: hoisted.transactionMock,
   },
   db: {
+    proofs: hoisted.proofsTableMock,
     lockedTokens: hoisted.lockedTokensTableMock,
     subscriptions: hoisted.subscriptionsTableMock,
     historyTokens: hoisted.historyTokensTableMock,
@@ -118,6 +134,8 @@ const {
   bucketsStoreMock,
   invoiceHistoryStoreMock,
   tokensStoreMock,
+  proofsTableMock,
+  transactionMock,
   lockedTokensTableMock,
   subscriptionsTableMock,
   historyTokensTableMock,
@@ -211,6 +229,9 @@ describe("storage store", () => {
     invoiceHistoryStoreMock.invoiceHistory = [];
     tokensStoreMock.historyTokens = [];
     tokensStoreMock.archiveOldPaidTokens.mockClear();
+    proofsTableMock.clear.mockReset();
+    proofsTableMock.bulkPut.mockReset();
+    transactionMock.mockClear();
     lockedTokensTableMock.toArray.mockReset();
     lockedTokensTableMock.bulkPut.mockReset();
     lockedTokensTableMock.clear.mockReset();
@@ -272,7 +293,9 @@ describe("storage store", () => {
     const store = useStorageStore();
     await store.restoreFromBackup(backup);
 
-    expect(addProofsMock).toHaveBeenCalledWith(proofs);
+    expect(transactionMock).toHaveBeenCalled();
+    expect(proofsTableMock.clear).toHaveBeenCalled();
+    expect(proofsTableMock.bulkPut).toHaveBeenCalledWith(proofs);
     expect(lockedTokensTableMock.clear).toHaveBeenCalled();
     expect(subscriptionsTableMock.clear).toHaveBeenCalled();
     expect(lockedTokensTableMock.bulkPut).toHaveBeenCalledWith(lockedTokens);
@@ -307,7 +330,8 @@ describe("storage store", () => {
     const store = useStorageStore();
     await store.restoreFromBackup(backup);
 
-    expect(addProofsMock).toHaveBeenCalledWith(proofs);
+    expect(transactionMock).toHaveBeenCalled();
+    expect(proofsTableMock.bulkPut).toHaveBeenCalledWith(proofs);
   });
 
   it("notifies error when backup payload is missing", async () => {
