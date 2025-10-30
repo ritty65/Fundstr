@@ -189,6 +189,10 @@ function humanizeSnippet(raw: unknown): string {
       const obj = JSON.parse(t);
       if (obj && typeof obj === "object") {
         const o: any = obj;
+        if (o.t === "file" && o.v === 1) {
+          const name = typeof o.name === "string" ? o.name.trim() : "";
+          return name ? `File: ${name}` : "File attachment";
+        }
         if (o.cashu || o.token || o.proofs || o.mint)
           return "Sent a Cashu token";
         if (o.cashu_subscription || o.subscription || o.recurrence)
@@ -202,6 +206,7 @@ function humanizeSnippet(raw: unknown): string {
   if (/"token"\s*:/.test(t) || /\bcashu\b/i.test(t))
     return "Sent a Cashu token";
   if (/\bsubscription\b/i.test(t)) return "Subscription payment";
+  if (/\"t\"\s*:\s*\"file\"/.test(t)) return "File attachment";
   if (/https?:\/\/\S{40,}/i.test(t)) return "Link";
   return t;
 }
