@@ -984,9 +984,6 @@ export default defineComponent({
       }
 
       const browserId = getOrCreateBrowserId();
-      if (!browserId) {
-        return;
-      }
 
       const recipient = this.resolveRecipientPubkey(recipientPubkey);
       if (!recipient) {

@@ -51,6 +51,7 @@ export default defineConfig({
       "test/utils/core-helpers.spec.ts",
       "test/utils/app-helpers.spec.ts",
       "test/utils/wallet-helpers.spec.ts",
+      "test/utils/browserId.spec.ts",
       "src/js/__tests__/nutzapProfile.test.ts",
       "test/mints.store.spec.ts",
       "test/stores/mints.balance.spec.ts",
