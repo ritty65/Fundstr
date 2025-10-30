@@ -24,6 +24,7 @@ export type HistoryToken = {
   paymentRequest?: PaymentRequest;
   fee?: number;
   bucketId: string;
+  referenceId?: string;
 };
 
 export const useTokensStore = defineStore("tokens", {
@@ -45,6 +46,7 @@ export const useTokensStore = defineStore("tokens", {
       description,
       color,
       bucketId = DEFAULT_BUCKET_ID,
+      referenceId,
     }: {
       amount: number;
       token: string;
@@ -56,6 +58,7 @@ export const useTokensStore = defineStore("tokens", {
       description?: string;
       color?: string;
       bucketId?: string;
+      referenceId?: string;
     }) {
       this.historyTokens.push({
         status: "paid",
@@ -70,6 +73,7 @@ export const useTokensStore = defineStore("tokens", {
         fee,
         paymentRequest,
         bucketId,
+        referenceId,
       } as HistoryToken);
     },
     addPendingToken({
@@ -83,6 +87,7 @@ export const useTokensStore = defineStore("tokens", {
       description,
       color,
       bucketId = DEFAULT_BUCKET_ID,
+      referenceId,
     }: {
       amount: number;
       tokenStr: string;
@@ -94,6 +99,7 @@ export const useTokensStore = defineStore("tokens", {
       description?: string;
       color?: string;
       bucketId?: string;
+      referenceId?: string;
     }) {
       this.historyTokens.push({
         status: "pending",
@@ -108,6 +114,7 @@ export const useTokensStore = defineStore("tokens", {
         fee,
         paymentRequest,
         bucketId,
+        referenceId,
       });
     },
     editHistoryToken(

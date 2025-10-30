@@ -122,7 +122,7 @@ describe("messenger.sendToken", () => {
     expect(walletMintWallet).toHaveBeenCalledWith("mint", "sat");
     expect(walletSend).toHaveBeenCalled();
     expect(sendDmMock).toHaveBeenCalled();
-    const [, , , , tokenPayload] = sendDmMock.mock.calls[0];
+    const [_, messageRaw, , , tokenPayload] = sendDmMock.mock.calls[0];
     expect(tokenPayload).toMatchObject({
       token: "TOKEN",
       amount: 1,
@@ -134,15 +134,21 @@ describe("messenger.sendToken", () => {
         proofs: [expect.objectContaining({ secret: "s1", amount: 1, id: "id1" })],
         restored: false,
       },
+      referenceId: expect.any(String),
     });
-    expect(addPending).toHaveBeenCalledWith({
-      amount: -1,
-      tokenStr: "TOKEN",
-      unit: "sat",
-      mint: "mint",
-      description: "note",
-      bucketId: "b",
-    });
+    const parsedMessage = JSON.parse(messageRaw);
+    expect(parsedMessage.referenceId).toBe(tokenPayload.referenceId);
+    expect(addPending).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: -1,
+        tokenStr: "TOKEN",
+        unit: "sat",
+        mint: "mint",
+        description: "note",
+        bucketId: "b",
+        referenceId: tokenPayload.referenceId,
+      }),
+    );
   });
 
   it("restores proofs and bucket balance when DM send fails", async () => {

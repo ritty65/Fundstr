@@ -12,7 +12,7 @@ import { notifySuccess, notifyError, notifyWarning } from "src/js/notify";
 import { useWalletStore } from "./wallet";
 import { useMintsStore } from "./mints";
 import { useProofsStore } from "./proofs";
-import { useTokensStore } from "./tokens";
+import { useTokensStore, type HistoryToken } from "./tokens";
 import type { WalletProof } from "src/types/proofs";
 import type { Proof } from "@cashu/cashu-ts";
 import { useReceiveTokensStore } from "./receiveTokensStore";
@@ -393,6 +393,38 @@ function extractProofsFromTokenString(encoded?: string | null): Proof[] | undefi
     }
   } catch (err) {
     console.warn("[messenger.extractProofsFromTokenString]", err);
+  }
+  return undefined;
+}
+
+function resolveTokenPayload(
+  msg: MessengerMessage,
+  meta?: LocalEchoMeta | null,
+): MessengerTokenPayload | undefined {
+  const direct = msg?.tokenPayload as MessengerTokenPayload | undefined;
+  if (direct) return direct;
+  const fromMeta = meta?.payload?.tokenPayload as
+    | MessengerTokenPayload
+    | undefined;
+  return fromMeta ?? undefined;
+}
+
+function locateHistoryToken(
+  tokensStore: ReturnType<typeof useTokensStore>,
+  payload: MessengerTokenPayload | undefined,
+): HistoryToken | undefined {
+  if (!payload) return undefined;
+  const { referenceId, token } = payload;
+  if (referenceId) {
+    const byReference = tokensStore.historyTokens.find(
+      (entry) => entry.referenceId === referenceId,
+    );
+    if (byReference) {
+      return byReference;
+    }
+  }
+  if (token) {
+    return tokensStore.historyTokens.find((entry) => entry.token === token);
   }
   return undefined;
 }
@@ -1187,6 +1219,22 @@ export const useMessengerStore = defineStore("messenger", {
       relayResults?: Record<string, RelayAck>,
       source: string = "unknown",
     ) {
+      const tokenPayload = resolveTokenPayload(msg, meta);
+      if (tokenPayload) {
+        const tokensStore = useTokensStore();
+        const historyToken = locateHistoryToken(tokensStore, tokenPayload);
+        if (historyToken && historyToken.status === "pending") {
+          const amount =
+            typeof tokenPayload.amount === "number" &&
+            !Number.isNaN(tokenPayload.amount)
+              ? Math.abs(Math.round(tokenPayload.amount))
+              : Math.abs(historyToken.amount);
+          tokensStore.editHistoryToken(historyToken.token, {
+            newStatus: "paid",
+            newAmount: amount,
+          });
+        }
+      }
       if (meta.status === "sent") {
         this.mergeRelayAckResults(msg, meta, relayResults);
         return;
@@ -1222,6 +1270,14 @@ export const useMessengerStore = defineStore("messenger", {
       reason: string,
       relayResults?: Record<string, RelayAck>,
     ) {
+      const tokenPayload = resolveTokenPayload(msg, meta);
+      if (tokenPayload) {
+        const tokensStore = useTokensStore();
+        const historyToken = locateHistoryToken(tokensStore, tokenPayload);
+        if (historyToken && historyToken.status === "pending") {
+          tokensStore.deleteToken(historyToken.token);
+        }
+      }
       if (meta.status === "failed") {
         this.mergeRelayAckResults(msg, meta, relayResults);
         return;
@@ -1606,6 +1662,7 @@ export const useMessengerStore = defineStore("messenger", {
       if (!recipient) return { success: false, event: null };
 
       const relayTargets = relays ? Array.from(new Set(relays)) : undefined;
+      const rawMessage = message;
       const baseMessage = typeof message === "string" ? message : "";
       const textContent = sanitizeMessage(baseMessage);
       const normalizedFiles = Array.isArray(filesPayload)
@@ -1763,8 +1820,25 @@ export const useMessengerStore = defineStore("messenger", {
         normalizedFiles.length === 0;
 
       if (shouldSendText) {
+        const fallbackContent =
+          textContent.length === 0 && typeof rawMessage !== "string"
+            ? (() => {
+                try {
+                  if (rawMessage && typeof rawMessage === "object") {
+                    return JSON.stringify(rawMessage);
+                  }
+                } catch {
+                  // ignore stringify errors
+                }
+                return String(rawMessage ?? "");
+              })()
+            : undefined;
         const textResult = await sendSingle({
           text: textContent,
+          contentOverride:
+            fallbackContent && fallbackContent.length > 0
+              ? fallbackContent
+              : undefined,
           attachment,
           tokenPayload,
           files: normalizedFiles.length ? [] : undefined,
@@ -2613,11 +2687,12 @@ export const useMessengerStore = defineStore("messenger", {
           memo: memo || undefined,
           restored: false,
         };
+        const referenceId = uuidv4();
         tokenPayloadMeta = {
           token: serializedSendProofs,
           amount: sendAmount,
           unlockTime: null,
-          referenceId: uuidv4(),
+          referenceId,
           memo: memo || undefined,
           bucketId,
           recovery,
@@ -2633,8 +2708,15 @@ export const useMessengerStore = defineStore("messenger", {
               token: serializedSendProofs,
               amount: sendAmount,
               unlockTime: null,
-              referenceId: uuidv4(),
+              referenceId,
+              ...(memo ? { memo } : {}),
             };
+        if (subscription) {
+          (payload as any).referenceId = referenceId;
+          if (memo) {
+            (payload as any).memo = memo;
+          }
+        }
 
         const { success, event, localId, confirmationPending } = await this.sendDm(
           recipient,
@@ -2671,6 +2753,7 @@ export const useMessengerStore = defineStore("messenger", {
             mint: mints.activeMintUrl,
             description: memo ?? "",
             bucketId,
+            referenceId,
           });
         }
         return success;
@@ -2724,11 +2807,12 @@ export const useMessengerStore = defineStore("messenger", {
           memo: memo || undefined,
           restored: false,
         };
+        const referenceId = uuidv4();
         tokenPayloadMeta = {
           token: serializedSendProofs,
           amount: sendAmount,
           unlockTime: null,
-          referenceId: uuidv4(),
+          referenceId,
           memo: memo || undefined,
           bucketId,
           recovery,
@@ -2737,8 +2821,8 @@ export const useMessengerStore = defineStore("messenger", {
           token: serializedSendProofs,
           amount: sendAmount,
           unlockTime: null,
-          referenceId: tokenPayloadMeta.referenceId,
-          memo: memo || undefined,
+          referenceId,
+          ...(memo ? { memo } : {}),
         };
 
         const { success, confirmationPending } = await this.sendDm(
@@ -2761,6 +2845,7 @@ export const useMessengerStore = defineStore("messenger", {
             mint: mints.activeMintUrl,
             description: memo ?? "",
             bucketId,
+            referenceId,
           });
         }
         return success;
