@@ -21,6 +21,7 @@ const notifyMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("src/js/notify", () => notifyMocks);
+vi.mock("src/js/notify.ts", () => notifyMocks);
 
 vi.mock("quasar", async (importOriginal) => {
   const actual = await importOriginal();
