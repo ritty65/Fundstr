@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
-import { watch, computed, ref, type Ref } from "vue";
+import { watch, computed, reactive, ref, type Ref } from "vue";
 import { liveQuery } from "dexie";
 import { Event as NostrEvent } from "nostr-tools";
 import { SignerType, useNostrStore, type RelayAck } from "./nostr";
@@ -23,16 +23,21 @@ import { cashuDb, type LockedToken } from "./dexie";
 import {
   loadConversationState,
   loadMessengerMessages,
+  loadPendingDmDecrypts,
   messengerDb,
   removeConversationState,
   saveMessengerMessage,
   saveMessengerMessages,
+  savePendingDmDecrypt,
+  deletePendingDmDecrypt,
+  updatePendingDmDecrypt,
   getDueOutboxItems,
   rankRelays,
   recordRelayResult,
   upsertOutbox,
   updateOutboxStatus,
   type MessengerOutboxRecord,
+  type PendingDmDecryptRecord,
   writeConversationMeta,
   type ConversationMetaKey,
   type ConversationMetaValue,
@@ -329,7 +334,16 @@ export interface LocalEchoMeta {
   };
 }
 
-export type MessengerMessageStatus = LocalEchoStatus | "confirmed";
+export type MessengerMessageStatus =
+  | LocalEchoStatus
+  | "confirmed"
+  | "pending-decrypt";
+
+export interface PendingDecryptMeta {
+  lastError?: string | null;
+  attemptCount?: number;
+  nextAttemptAt?: number | null;
+}
 
 export type MessengerMessage = {
   id: string;
@@ -346,6 +360,7 @@ export type MessengerMessage = {
   autoRedeem?: boolean;
   relayResults?: Record<string, RelayAck>;
   localEcho?: LocalEchoMeta;
+  pendingDecrypt?: PendingDecryptMeta;
 };
 
 export interface TokenSendRecoveryData {
@@ -398,6 +413,12 @@ const OUTBOX_MAX_ATTEMPTS = 6;
 const IS_TEST_ENV =
   typeof process !== "undefined" && process?.env?.VITEST === "true";
 
+const PENDING_DECRYPT_PLACEHOLDER = "Encrypted message (decryption pending)";
+const PENDING_DECRYPT_BASE_DELAY_MS = 5_000;
+const PENDING_DECRYPT_MAX_DELAY_MS = 60_000;
+const DM_DECRYPT_ERROR_MESSAGE =
+  "Failed to decrypt message – ensure your Nostr extension is unlocked";
+
 function isNonRetryableHttpAck(ack: HttpPublishAck | null | undefined): boolean {
   if (!ack?.message) return false;
   return NON_RETRYABLE_ACK_PATTERNS.some((pattern) => pattern.test(ack.message!));
@@ -416,6 +437,43 @@ function emitDmCounter(
     }
   }
   console.info(`[messenger.telemetry] ${name}`, payload);
+}
+
+function computePendingDecryptDelay(attempt: number): number {
+  const normalized = Number.isFinite(attempt) ? Math.max(0, Math.floor(attempt)) : 0;
+  const base = PENDING_DECRYPT_BASE_DELAY_MS * Math.pow(2, normalized);
+  return Math.min(PENDING_DECRYPT_MAX_DELAY_MS, base || PENDING_DECRYPT_BASE_DELAY_MS);
+}
+
+function extractRelayHintsFromEvent(event: NostrEvent | undefined): string[] {
+  if (!event?.tags) return [];
+  const hints = new Set<string>();
+  for (const tag of event.tags) {
+    if (!Array.isArray(tag) || tag.length < 2) continue;
+    const [marker, ...rest] = tag;
+    if (marker === "relay" || marker === "relays") {
+      for (const value of rest) {
+        if (typeof value === "string" && value) {
+          hints.add(value);
+        }
+      }
+    }
+  }
+  return Array.from(hints);
+}
+
+function cloneNostrEvent(event: NostrEvent): NostrEvent {
+  if (!event) return event;
+  if (typeof structuredClone === "function") {
+    try {
+      return structuredClone(event);
+    } catch {}
+  }
+  try {
+    return JSON.parse(JSON.stringify(event));
+  } catch {
+    return { ...event };
+  }
 }
 
 function extractProofsFromTokenString(encoded?: string | null): Proof[] | undefined {
@@ -493,6 +551,8 @@ export const useMessengerStore = defineStore("messenger", {
     const aliases = ref<Record<string, string>>({});
     const eventLog = ref<MessengerMessage[]>([]);
     const eventMap: Record<string, MessengerMessage> = {};
+    const pendingDecrypts = reactive<Record<string, PendingDmDecryptRecord>>({});
+    const pendingDecryptRetryInFlight = ref(false);
     const localEchoTimeouts: Record<string, ReturnType<typeof setTimeout> | null> = {};
     const localEchoIndex: Record<string, MessengerMessage> = {};
     const conversationSubscriptionRef = ref<ConversationSubscriptionHandle | null>(null);
@@ -700,9 +760,10 @@ export const useMessengerStore = defineStore("messenger", {
         const loadToken = ++loadGenerationCounter;
         const mutationToken = mutationGenerationCounter;
         await migrateLegacyStorage();
-        const [messages, meta] = await Promise.all([
+        const [messages, meta, pendingRecords] = await Promise.all([
           loadMessengerMessages(owner),
           loadConversationState(owner),
+          loadPendingDmDecrypts(owner),
         ]);
         if (loadToken !== loadGenerationCounter) {
           return;
@@ -720,6 +781,43 @@ export const useMessengerStore = defineStore("messenger", {
           }
           byId.set(msg.id, msg);
         }
+        for (const key of Object.keys(pendingDecrypts)) {
+          delete pendingDecrypts[key];
+        }
+        for (const record of pendingRecords) {
+          if (!record?.id) continue;
+          pendingDecrypts[record.id] = record;
+          let existing = byId.get(record.id);
+          if (!existing) {
+            existing = {
+              id: record.id,
+              pubkey: record.senderPubkey,
+              content: PENDING_DECRYPT_PLACEHOLDER,
+              created_at: record.eventCreatedAt,
+              outgoing: false,
+              status: "pending-decrypt",
+              protocol: record.eventKind === 1059 ? "nip17" : "nip04",
+              pendingDecrypt: {
+                lastError: record.lastError ?? null,
+                attemptCount: record.attemptCount,
+                nextAttemptAt: record.nextAttemptAt,
+              },
+            } as MessengerMessage;
+            messages.push(existing);
+            byId.set(record.id, existing);
+          } else {
+            existing.status = "pending-decrypt";
+            existing.pendingDecrypt = {
+              lastError: record.lastError ?? null,
+              attemptCount: record.attemptCount,
+              nextAttemptAt: record.nextAttemptAt,
+            };
+            if (!existing.content) {
+              existing.content = PENDING_DECRYPT_PLACEHOLDER;
+            }
+          }
+        }
+        messages.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
         for (const [pubkey, ids] of Object.entries(meta.conversations)) {
           const arr: MessengerMessage[] = [];
           for (const id of ids) {
@@ -811,6 +909,8 @@ export const useMessengerStore = defineStore("messenger", {
       rebuildIndexes,
       loadOwnerState,
       recordMutation,
+      pendingDecrypts,
+      pendingDecryptRetryInFlight,
     };
   },
   getters: {
@@ -827,6 +927,10 @@ export const useMessengerStore = defineStore("messenger", {
         }
         return m.status === "failed";
       });
+    },
+    pendingDecryptCount(): number {
+      const map = this.pendingDecrypts || {};
+      return Object.keys(map).length;
     },
   },
   actions: {
@@ -958,6 +1062,243 @@ export const useMessengerStore = defineStore("messenger", {
       this.recordMutation();
       void this.persistMessage(msg);
       void this.persistConversationSnapshot(msg.pubkey);
+    },
+    applyPendingDecryptMeta(
+      msg: MessengerMessage | undefined,
+      record: PendingDmDecryptRecord,
+    ) {
+      if (!msg) return;
+      msg.outgoing = false;
+      msg.status = "pending-decrypt";
+      msg.pendingDecrypt = {
+        lastError: record.lastError ?? null,
+        attemptCount: record.attemptCount,
+        nextAttemptAt: record.nextAttemptAt,
+      };
+      if (!msg.content) {
+        msg.content = PENDING_DECRYPT_PLACEHOLDER;
+      }
+      msg.protocol = record.eventKind === 1059 ? "nip17" : "nip04";
+      if (!msg.created_at) {
+        msg.created_at = record.eventCreatedAt;
+      }
+    },
+    ensurePendingDecryptPlaceholder(
+      record: PendingDmDecryptRecord,
+    ): MessengerMessage | undefined {
+      if (!record?.id) return undefined;
+      if (!Array.isArray(this.eventLog)) this.eventLog = [];
+      let message = this.eventMap[record.id];
+      if (!message) {
+        message = this.eventLog.find((entry) => entry.id === record.id);
+      }
+      if (!message) {
+        const conversationId = record.senderPubkey;
+        if (!this.conversations[conversationId]) {
+          this.conversations[conversationId] = [];
+        }
+        const conversation = this.conversations[conversationId]!;
+        const mergeResult = mergeMessengerEvent({
+          eventId: record.id,
+          eventMap: this.eventMap,
+          eventLog: this.eventLog,
+          conversation,
+          localEchoIndex: this.localEchoIndex,
+          createMessage: () => ({
+            id: record.id,
+            pubkey: record.senderPubkey,
+            content: PENDING_DECRYPT_PLACEHOLDER,
+            created_at: record.eventCreatedAt,
+            outgoing: false,
+            status: "pending-decrypt",
+            protocol: record.eventKind === 1059 ? "nip17" : "nip04",
+            pendingDecrypt: {
+              lastError: record.lastError ?? null,
+              attemptCount: record.attemptCount,
+              nextAttemptAt: record.nextAttemptAt,
+            },
+          }),
+          onRegister: (msg) => this.registerMessage(msg, [record.id]),
+        });
+        message = mergeResult.message;
+      }
+      this.applyPendingDecryptMeta(message, record);
+      message.pubkey = record.senderPubkey;
+      message.content = PENDING_DECRYPT_PLACEHOLDER;
+      message.created_at = record.eventCreatedAt || message.created_at;
+      this.eventMap[record.id] = message;
+      this.recordMutation();
+      void this.persistMessage(message);
+      return message;
+    },
+    commitPendingDecryptRecord(record: PendingDmDecryptRecord) {
+      if (!record?.id) return;
+      this.pendingDecrypts[record.id] = record;
+      this.ensurePendingDecryptPlaceholder(record);
+    },
+    async clearPendingDecrypt(eventId: string) {
+      if (!eventId) return;
+      try {
+        delete this.pendingDecrypts[eventId];
+        await deletePendingDmDecrypt(eventId);
+      } catch (err) {
+        console.warn("[messenger.pendingDecrypt] failed to delete record", err);
+      }
+      const message = this.eventMap[eventId];
+      if (message) {
+        if (message.pendingDecrypt) {
+          delete message.pendingDecrypt;
+        }
+        if (message.status === "pending-decrypt") {
+          delete message.status;
+        }
+        if (message.content === PENDING_DECRYPT_PLACEHOLDER) {
+          message.content = "";
+        }
+        void this.persistMessage(message);
+      }
+    },
+    async persistPendingDecrypt(
+      event: NostrEvent,
+      opts: {
+        errorMessage?: string | null;
+        nextAttemptAt?: number;
+        existing?: PendingDmDecryptRecord | null;
+      } = {},
+    ) {
+      const owner = this.getOwnerKey();
+      if (!owner || !event?.id) return;
+      const now = Date.now();
+      const existing = opts.existing ?? this.pendingDecrypts[event.id];
+      const hints = extractRelayHintsFromEvent(event);
+      const attemptCount = existing?.attemptCount ?? 0;
+      const baseRecord: PendingDmDecryptRecord = {
+        id: event.id,
+        owner,
+        senderPubkey: event.pubkey,
+        recipientPubkey: owner,
+        ciphertext: event.content,
+        event: cloneNostrEvent(event),
+        eventCreatedAt:
+          event.created_at ?? existing?.eventCreatedAt ?? Math.floor(now / 1000),
+        eventKind: event.kind ?? existing?.eventKind ?? 4,
+        relayHints: hints.length ? hints : existing?.relayHints ?? null,
+        attemptCount,
+        nextAttemptAt:
+          opts.nextAttemptAt ??
+          existing?.nextAttemptAt ??
+          now + computePendingDecryptDelay(attemptCount),
+        lastAttemptAt: existing?.lastAttemptAt ?? null,
+        lastError: opts.errorMessage ?? existing?.lastError ?? null,
+        receivedAt: existing?.receivedAt ?? now,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      };
+      await savePendingDmDecrypt(baseRecord);
+      this.commitPendingDecryptRecord(baseRecord);
+    },
+    async handlePendingDecryptFailure(
+      event: NostrEvent,
+      failure: { errorMessage: string; notify: boolean },
+      existing?: PendingDmDecryptRecord | null,
+    ) {
+      const message = failure.errorMessage || DM_DECRYPT_ERROR_MESSAGE;
+      const now = Date.now();
+      if (failure.notify) {
+        if (now - lastDecryptError > 30000) {
+          notifyError(message);
+          lastDecryptError = now;
+        } else {
+          console.warn("[messenger]", message);
+        }
+      } else {
+        console.warn("[messenger]", message);
+      }
+      await this.persistPendingDecrypt(event, {
+        errorMessage: message,
+        existing: existing ?? null,
+      });
+    },
+    async prepareDecryptContext() {
+      const nostr = useNostrStore();
+      const lastSignerAttempt = this.signerInitCache;
+      const shouldSkipIdentityLoad =
+        !nostr.signer &&
+        !!lastSignerAttempt &&
+        !lastSignerAttempt.success &&
+        Date.now() - lastSignerAttempt.timestamp < SIGNER_INIT_RETRY_WINDOW_MS &&
+        this.signerMode === "none";
+      if (shouldSkipIdentityLoad) {
+        await this.refreshSignerMode();
+      } else {
+        await this.loadIdentity({ refresh: false });
+      }
+      let privKey: string | undefined = undefined;
+      if (nostr.signerType !== SignerType.NIP07) {
+        privKey = nostr.privKeyHex;
+      }
+      let signerInfo: ActiveDmSigner | null = null;
+      try {
+        signerInfo = await getActiveDmSigner();
+        if (signerInfo) {
+          this.signerMode = signerInfo.mode;
+        }
+      } catch (err) {
+        console.warn("[messenger] failed to resolve DM signer", err);
+      }
+      return { nostr, privKey, signerInfo };
+    },
+    async tryDecryptIncomingContent(
+      event: NostrEvent,
+      context: {
+        nostr: ReturnType<typeof useNostrStore>;
+        privKey?: string;
+        signerInfo: ActiveDmSigner | null;
+      },
+      opts: { plaintext?: string; quiet?: boolean } = {},
+    ): Promise<
+      | { ok: true; plaintext: string }
+      | { ok: false; errorMessage: string; reason: string; notify: boolean }
+    > {
+      if (typeof opts.plaintext === "string") {
+        return { ok: true, plaintext: opts.plaintext };
+      }
+      const { nostr, privKey, signerInfo } = context;
+      if (!event?.content) {
+        return {
+          ok: false,
+          errorMessage: "Missing ciphertext",
+          reason: "missing-content",
+          notify: !opts.quiet,
+        };
+      }
+      if (signerInfo?.signer?.nip04Decrypt) {
+        try {
+          const decrypted = await signerInfo.signer.nip04Decrypt(
+            event.pubkey,
+            event.content,
+          );
+          return { ok: true, plaintext: decrypted };
+        } catch (err) {
+          console.warn("[messenger] signer decrypt failed, attempting fallback", err);
+        }
+      }
+      try {
+        const decrypted = await context.nostr.decryptDmContent(
+          privKey,
+          event.pubkey,
+          event.content,
+        );
+        return { ok: true, plaintext: decrypted };
+      } catch (err) {
+        console.warn("[messenger] fallback decrypt failed", err);
+      }
+      return {
+        ok: false,
+        errorMessage: DM_DECRYPT_ERROR_MESSAGE,
+        reason: "decrypt-error",
+        notify: !opts.quiet,
+      };
     },
     async createConversationSubscription(
       pubkey: string,
@@ -3303,82 +3644,43 @@ export const useMessengerStore = defineStore("messenger", {
       if (event.pubkey === nostr.pubkey) {
         return;
       }
-      const lastSignerAttempt = this.signerInitCache;
-      const shouldSkipIdentityLoad =
-        !nostr.signer &&
-        !!lastSignerAttempt &&
-        !lastSignerAttempt.success &&
-        Date.now() - lastSignerAttempt.timestamp < SIGNER_INIT_RETRY_WINDOW_MS &&
-        this.signerMode === "none";
-      if (shouldSkipIdentityLoad) {
-        await this.refreshSignerMode();
-      } else {
-        await this.loadIdentity({ refresh: false });
+      const context = await this.prepareDecryptContext();
+      if (
+        !plaintext &&
+        !context.signerInfo &&
+        nostr.signerType !== SignerType.NIP07 &&
+        !context.privKey
+      ) {
+        await this.handlePendingDecryptFailure(
+          event,
+          { errorMessage: DM_DECRYPT_ERROR_MESSAGE, notify: true },
+          this.pendingDecrypts[event.id],
+        );
+        return;
       }
-      let privKey: string | undefined = undefined;
-      if (nostr.signerType !== SignerType.NIP07) {
-        privKey = nostr.privKeyHex;
-        if (!privKey) return;
+      const decryptResult = await this.tryDecryptIncomingContent(event, context, {
+        plaintext,
+        quiet: Boolean(plaintext),
+      });
+      if (!decryptResult.ok) {
+        await this.handlePendingDecryptFailure(
+          event,
+          {
+            errorMessage: decryptResult.errorMessage,
+            notify: decryptResult.notify,
+          },
+          this.pendingDecrypts[event.id],
+        );
+        return;
       }
-      const signerInfo = await getActiveDmSigner();
-      if (signerInfo) {
-        this.signerMode = signerInfo.mode;
-      }
-      let decrypted: string;
-      try {
-        if (plaintext) {
-          decrypted = plaintext;
-        } else if (signerInfo) {
-          decrypted = await signerInfo.signer.nip04Decrypt(
-            event.pubkey,
-            event.content,
-          );
-        } else {
-          decrypted = await nostr.decryptDmContent(
-            privKey,
-            event.pubkey,
-            event.content,
-          );
-        }
-      } catch (e) {
-        if (!plaintext && signerInfo) {
-          try {
-            decrypted = await nostr.decryptDmContent(
-              privKey,
-              event.pubkey,
-              event.content,
-            );
-          } catch (fallbackErr) {
-            const now = Date.now();
-            if (now - lastDecryptError > 30000) {
-              notifyError(
-                "Failed to decrypt message – ensure your Nostr extension is unlocked",
-              );
-              lastDecryptError = now;
-            } else {
-              console.warn(
-                "Failed to decrypt message – ensure your Nostr extension is unlocked",
-                fallbackErr,
-              );
-            }
-            return;
-          }
-        } else {
-          const now = Date.now();
-          if (now - lastDecryptError > 30000) {
-            notifyError(
-              "Failed to decrypt message – ensure your Nostr extension is unlocked",
-            );
-            lastDecryptError = now;
-          } else {
-            console.warn(
-              "Failed to decrypt message – ensure your Nostr extension is unlocked",
-              e,
-            );
-          }
-          return;
-        }
-      }
+      await this.processDecryptedIncomingMessage(event, decryptResult.plaintext);
+    },
+    async processDecryptedIncomingMessage(
+      event: NostrEvent,
+      decrypted: string,
+    ) {
+      if (!event?.id) return;
+      await this.clearPendingDecrypt(event.id);
       let subscriptionInfo: SubscriptionPayment | undefined;
       let tokenPayload: any | undefined;
       const filePayloads: FileMeta[] = [];
@@ -3392,7 +3694,7 @@ export const useMessengerStore = defineStore("messenger", {
         try {
           payload = JSON.parse(trimmed);
         } catch (parseErr) {
-          console.debug("[messenger.addIncomingMessage] invalid JSON", parseErr);
+          console.debug("[messenger.processIncoming] invalid JSON", parseErr);
           continue;
         }
         const fileMeta = normalizeFileMeta(payload);
@@ -3457,7 +3759,9 @@ export const useMessengerStore = defineStore("messenger", {
           await receiveStore.enqueue(() =>
             receiveStore.receiveToken(sub.token, DEFAULT_BUCKET_ID),
           );
-        } else if (payload && payload.type === "cashu_subscription_claimed") {
+          continue;
+        }
+        if (payload && payload.type === "cashu_subscription_claimed") {
           const sub = await cashuDb.subscriptions.get(payload.subscription_id);
           const idx = sub?.intervals.findIndex(
             (i) => i.monthIndex === payload.month_index,
@@ -3469,7 +3773,9 @@ export const useMessengerStore = defineStore("messenger", {
             });
             notifySuccess("Subscription payment claimed");
           }
-        } else if (payload && payload.token) {
+          continue;
+        }
+        if (payload && payload.token) {
           const tokensStore = useTokensStore();
           tokenPayload = payload;
           const decoded = tokensStore.decodeToken(payload.token);
@@ -3497,15 +3803,14 @@ export const useMessengerStore = defineStore("messenger", {
                   bucketId: bucket.id,
                 });
               }
-              // don't auto-receive locked tokens
-            } else {
-              const receiveStore = useReceiveTokensStore();
-              receiveStore.receiveData.tokensBase64 = payload.token;
-              receiveStore.receiveData.bucketId = DEFAULT_BUCKET_ID;
-              await receiveStore.enqueue(() =>
-                receiveStore.receiveToken(payload.token, DEFAULT_BUCKET_ID),
-              );
+              continue;
             }
+            const receiveStore = useReceiveTokensStore();
+            receiveStore.receiveData.tokensBase64 = payload.token;
+            receiveStore.receiveData.bucketId = DEFAULT_BUCKET_ID;
+            await receiveStore.enqueue(() =>
+              receiveStore.receiveToken(payload.token, DEFAULT_BUCKET_ID),
+            );
           }
         }
       }
@@ -3550,6 +3855,12 @@ export const useMessengerStore = defineStore("messenger", {
         const type = sanitized.substring(5, sanitized.indexOf(";"));
         target.attachment = { type, name: "" };
       }
+      if (target.pendingDecrypt) {
+        delete target.pendingDecrypt;
+      }
+      if (target.status === "pending-decrypt") {
+        delete target.status;
+      }
       if (subscriptionInfo) {
         target.subscriptionPayment = subscriptionInfo;
         target.autoRedeem = true;
@@ -3585,6 +3896,94 @@ export const useMessengerStore = defineStore("messenger", {
       void this.persistConversationSnapshot(event.pubkey);
       void this.persistMessage(target);
       this.recordMutation();
+    },
+    async retryDecryptMessage(
+      eventId: string,
+      options: { force?: boolean } = {},
+    ): Promise<boolean> {
+      if (!eventId) return false;
+      const record = this.pendingDecrypts[eventId];
+      if (!record) return false;
+      const now = Date.now();
+      if (!options.force && record.nextAttemptAt && record.nextAttemptAt > now) {
+        return false;
+      }
+      const updated: PendingDmDecryptRecord = {
+        ...record,
+        attemptCount: (record.attemptCount ?? 0) + 1,
+        lastAttemptAt: now,
+        nextAttemptAt: now + computePendingDecryptDelay((record.attemptCount ?? 0) + 1),
+        lastError: null,
+      };
+      try {
+        await updatePendingDmDecrypt(record.id, {
+          attemptCount: updated.attemptCount,
+          lastAttemptAt: updated.lastAttemptAt,
+          nextAttemptAt: updated.nextAttemptAt,
+          lastError: null,
+        });
+      } catch (err) {
+        console.warn("[messenger.pendingDecrypt] failed to update record", err);
+      }
+      this.pendingDecrypts[record.id] = updated;
+      this.ensurePendingDecryptPlaceholder(updated);
+      const eventClone = cloneNostrEvent(updated.event || ({} as NostrEvent));
+      eventClone.id = updated.id;
+      eventClone.pubkey = updated.senderPubkey;
+      eventClone.content = updated.ciphertext;
+      eventClone.created_at = updated.eventCreatedAt;
+      eventClone.kind = updated.eventKind;
+      const context = await this.prepareDecryptContext();
+      if (
+        !options.force &&
+        !context.signerInfo &&
+        context.nostr.signerType !== SignerType.NIP07 &&
+        !context.privKey
+      ) {
+        await this.handlePendingDecryptFailure(
+          eventClone,
+          { errorMessage: DM_DECRYPT_ERROR_MESSAGE, notify: false },
+          updated,
+        );
+        return false;
+      }
+      const decryptResult = await this.tryDecryptIncomingContent(eventClone, context, {
+        quiet: true,
+      });
+      if (!decryptResult.ok) {
+        await this.handlePendingDecryptFailure(
+          eventClone,
+          { errorMessage: decryptResult.errorMessage, notify: false },
+          updated,
+        );
+        return false;
+      }
+      await this.processDecryptedIncomingMessage(eventClone, decryptResult.plaintext);
+      return true;
+    },
+    async retryAllPendingDecrypts(
+      options: { force?: boolean } = {},
+    ): Promise<number> {
+      if (this.pendingDecryptRetryInFlight) {
+        return 0;
+      }
+      this.pendingDecryptRetryInFlight = true;
+      try {
+        const now = Date.now();
+        const records = Object.values(this.pendingDecrypts || {});
+        let success = 0;
+        for (const record of records) {
+          if (!record?.id) continue;
+          if (!options.force && record.nextAttemptAt && record.nextAttemptAt > now) {
+            continue;
+          }
+          const result = await this.retryDecryptMessage(record.id, options);
+          if (result) success += 1;
+        }
+        return success;
+      } finally {
+        this.pendingDecryptRetryInFlight = false;
+      }
     },
 
     async start() {
