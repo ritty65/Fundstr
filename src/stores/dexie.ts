@@ -9,6 +9,7 @@ import { notifyError, notifySuccess } from "../js/notify";
 import type { NostrEvent } from "@nostr-dev-kit/ndk";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import type { NutzapProfileDetails } from "@/nutzap/profileCache";
+import type { HistoryToken } from "@/types/historyToken";
 
 export interface CachedProfileDexie {
   pubkey: string;
@@ -112,6 +113,8 @@ export interface SubscriberViewPref {
   activeViewId: string | null;
 }
 
+export type HistoryTokenRow = HistoryToken & Required<Pick<HistoryToken, "id">>;
+
 // export interface Proof {
 //   id: string
 //   C: string
@@ -130,6 +133,7 @@ export class CashuDexie extends Dexie {
   lockedTokens!: Table<LockedToken, string>;
   subscriberViews!: Table<SubscriberView, string>;
   subscriberViewPrefs!: Table<SubscriberViewPref, string>;
+  historyTokens!: Table<HistoryTokenRow, string>;
 
   constructor() {
     super("cashuDatabase");
@@ -613,6 +617,22 @@ export class CashuDexie extends Dexie {
       subscriberViews: "&name",
       subscriberViewPrefs: "&id",
       nutzapProfiles: "&pubkey, updatedAt, eventId",
+    });
+
+    this.version(25).stores({
+      proofs:
+        "secret, id, C, amount, reserved, quote, bucketId, label, description",
+      profiles: "pubkey",
+      creatorsTierDefinitions: "&creatorNpub, eventId, updatedAt",
+      subscriptions:
+        "&id, creatorNpub, tierId, status, createdAt, updatedAt, frequency, intervalDays",
+      lockedTokens:
+        "&id, tokenString, owner, tierId, intervalKey, unlockTs, status, subscriptionEventId, subscriptionId, monthIndex, totalPeriods, autoRedeem, frequency, intervalDays",
+      subscriberViews: "&name",
+      subscriberViewPrefs: "&id",
+      nutzapProfiles: "&pubkey, updatedAt, eventId",
+      historyTokens:
+        "&id, token, status, archived, bucketId, referenceId, createdAt, date, mint",
     });
   }
 }

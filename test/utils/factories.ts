@@ -23,9 +23,12 @@ export const createWalletProof = (
   ...overrides,
 });
 
+let historyTokenCounter = 0;
+
 export const createHistoryToken = (
   overrides: Partial<HistoryToken> = {},
 ): HistoryToken => ({
+  id: overrides.id ?? `history-token-${++historyTokenCounter}`,
   status: "paid",
   amount: 42,
   date: "2024-01-01 00:00:00",
@@ -36,5 +39,8 @@ export const createHistoryToken = (
   description: undefined,
   color: "#7E22CE",
   bucketId: "unassigned",
+  archived: false,
+  archivedAt: null,
+  createdAt: Date.now(),
   ...overrides,
 });

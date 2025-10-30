@@ -46,6 +46,13 @@ export const useStorageStore = defineStore("storage", {
             if (subscriptions.length) {
               await cashuDb.subscriptions.bulkPut(subscriptions as any);
             }
+          } else if (key === "cashu.dexie.db.historyTokens") {
+            const parsed = JSON.parse(backup[key] ?? "[]");
+            const historyTokens = Array.isArray(parsed) ? parsed : [];
+            await cashuDb.historyTokens.clear();
+            if (historyTokens.length) {
+              await cashuDb.historyTokens.bulkPut(historyTokens as any);
+            }
           } else if (key === "cashu.buckets") {
             bucketsStore.buckets = JSON.parse(backup[key]);
           } else {
@@ -68,16 +75,19 @@ export const useStorageStore = defineStore("storage", {
       }
       // proofs table *magic*
       const proofsStore = useProofsStore();
-      const [proofs, lockedTokens, subscriptions] = await Promise.all([
-        proofsStore.getProofs(),
-        cashuDb.lockedTokens.toArray(),
-        cashuDb.subscriptions.toArray(),
-      ]);
+      const [proofs, lockedTokens, subscriptions, historyTokens] =
+        await Promise.all([
+          proofsStore.getProofs(),
+          cashuDb.lockedTokens.toArray(),
+          cashuDb.subscriptions.toArray(),
+          cashuDb.historyTokens.toArray(),
+        ]);
       jsonToSave["cashu.dexie.db.proofs"] = JSON.stringify(proofs);
       jsonToSave["cashu.dexie.db.lockedTokens"] = JSON.stringify(lockedTokens);
       jsonToSave["cashu.dexie.db.subscriptions"] = JSON.stringify(
         subscriptions,
       );
+      jsonToSave["cashu.dexie.db.historyTokens"] = JSON.stringify(historyTokens);
 
       var textToSave = JSON.stringify(jsonToSave);
       var textToSaveAsBlob = new Blob([textToSave], {
@@ -101,7 +111,7 @@ export const useStorageStore = defineStore("storage", {
     checkLocalStorage: async function () {
       const needsCleanup = this.checkLocalStorageQuota();
       if (needsCleanup) {
-        this.cleanUpLocalStorage(true);
+        await this.cleanUpLocalStorage(true);
       } else {
         this.cleanUpLocalStorageScheduler();
       }
@@ -133,10 +143,10 @@ export const useStorageStore = defineStore("storage", {
         new Date().getTime() - new Date(lastCleanUp).getTime() > cleanUpInterval
       ) {
         debug(`Last clean up: ${lastCleanUp}, cleaning up local storage`);
-        this.cleanUpLocalStorage();
+        void this.cleanUpLocalStorage();
       }
     },
-    cleanUpLocalStorage: function (verbose = false) {
+    cleanUpLocalStorage: async function (verbose = false) {
       const walletStore = useWalletStore();
       const tokenStore = useTokensStore();
       const localStorageSizeBefore = JSON.stringify(localStorage).length;
@@ -164,22 +174,9 @@ export const useStorageStore = defineStore("storage", {
         );
       }
 
-      // walk through the oldest paid tokenStore.historyTokens and delete the token
-      let paidTokens = tokenStore.historyTokens.filter(
-        (t) => t.status == "paid",
-      );
-
-      if (paidTokens.length > max_history) {
-        let sortedTokens = paidTokens.sort((a, b) => {
-          return new Date(a.date).getTime() - new Date(b.date).getTime();
-        });
-        const deleteTokens = sortedTokens.slice(
-          0,
-          sortedTokens.length - max_history,
-        );
-        for (var i = 0; i < deleteTokens.length; i++) {
-          deleteTokens[i].token = undefined;
-        }
+      const archivedCount = await tokenStore.archiveOldPaidTokens(max_history);
+      if (archivedCount > 0) {
+        debug(`Archived ${archivedCount} history tokens`);
       }
 
       const localStorageSizeAfter = JSON.stringify(localStorage).length;
