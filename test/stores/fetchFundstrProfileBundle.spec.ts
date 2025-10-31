@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { nip19 } from "nostr-tools";
-import type { Creator as DiscoveryCreator, CreatorTier as DiscoveryCreatorTier } from "src/lib/fundstrApi";
+import type {
+  Creator as DiscoveryCreator,
+  CreatorTier as DiscoveryCreatorTier,
+} from "src/lib/fundstrApi";
+import type { NostrEvent } from "@/nostr/relayClient";
 
 const PUBKEY_HEX = "a".repeat(64);
 const NPUB = nip19.npubEncode(PUBKEY_HEX);
@@ -27,6 +31,10 @@ interface DiscoveryMock {
   getCreators: ReturnType<typeof vi.fn>;
   getCreatorTiers: ReturnType<typeof vi.fn>;
 }
+
+const queryNutzapTiersMock = vi.fn<
+  (input: string) => Promise<NostrEvent | null>
+>();
 
 const baseProfile = {
   name: "Sample Creator",
@@ -92,7 +100,21 @@ function createDiscoveryMock(plan: DiscoveryMockPlan): DiscoveryMock {
   return mock;
 }
 
-async function loadCreatorsModule(discoveryMock: DiscoveryMock) {
+async function loadCreatorsModule(
+  discoveryMock: DiscoveryMock,
+  options: { nutzapTierEvent?: NostrEvent | null } = {},
+) {
+  queryNutzapTiersMock.mockReset();
+  queryNutzapTiersMock.mockResolvedValue(
+    options.nutzapTierEvent === undefined ? null : options.nutzapTierEvent,
+  );
+  vi.doMock("@/nostr/relayClient", async () => {
+    const actual = await vi.importActual<Record<string, any>>("@/nostr/relayClient");
+    return {
+      ...actual,
+      queryNutzapTiers: queryNutzapTiersMock,
+    };
+  });
   vi.doMock("src/api/fundstrDiscovery", () => ({
     useDiscovery: () => discoveryMock,
   }));
@@ -245,6 +267,79 @@ describe("fetchFundstrProfileBundle", () => {
       },
     ]);
     expect(bundle.relayHints).toEqual(["wss://relay.example"]);
+  });
+
+  it("recovers tiers via nutzap fallback when discovery tier lookups abort", async () => {
+    const abortError = Object.assign(new Error("tier aborted"), { name: "AbortError" });
+
+    const discoveryMock = createDiscoveryMock({
+      creators: {
+        [PUBKEY_HEX]: {
+          cached: { results: [] },
+          fresh: { results: [makeCreator()] },
+        },
+        [NPUB]: {
+          cached: { results: [] },
+          fresh: { results: [] },
+        },
+      },
+      tiers: {
+        [PUBKEY_HEX]: {
+          cached: { tiers: [] },
+          fresh: () => {
+            throw abortError;
+          },
+        },
+        [NPUB]: {
+          cached: { tiers: [] },
+          fresh: () => {
+            throw abortError;
+          },
+        },
+      },
+    });
+
+    const nutzapTierEvent: NostrEvent = {
+      id: "event-123",
+      pubkey: PUBKEY_HEX,
+      created_at: 1,
+      kind: 30019,
+      content: JSON.stringify({
+        tiers: [
+          {
+            id: "fallback-tier",
+            title: "Fallback Tier",
+            price: 5000,
+            frequency: "monthly",
+            description: "Recovered via nutzap",
+            media: [],
+          },
+        ],
+      }),
+      tags: [["d", "tiers"]],
+      sig: "sig",
+    };
+
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(discoveryMock, {
+      nutzapTierEvent,
+    });
+
+    const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX);
+
+    expect(queryNutzapTiersMock).toHaveBeenCalledTimes(1);
+    expect(queryNutzapTiersMock).toHaveBeenCalledWith(PUBKEY_HEX);
+    expect(bundle.fetchedFromFallback).toBe(true);
+    expect(bundle.tierDataFresh).toBe(false);
+    expect(bundle.tierSecurityBlocked).toBe(false);
+    expect(bundle.tiers).toEqual([
+      {
+        id: "fallback-tier",
+        name: "Fallback Tier",
+        price_sats: 5000,
+        description: "Recovered via nutzap",
+        media: [],
+      },
+    ]);
   });
 
   it("treats security DOMExceptions from cached tier lookups as blocked", async () => {
