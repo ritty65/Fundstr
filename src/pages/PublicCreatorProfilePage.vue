@@ -723,6 +723,7 @@ export default defineComponent({
         resetRefreshState();
         fallbackActive.value = true;
         fallbackFailed.value = true;
+        clearAutoRefreshTimer();
       }
     });
 

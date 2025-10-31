@@ -54,7 +54,12 @@ async function hydrateCreator(
       });
 
     const tiers = Array.isArray(bundle.tiers) ? bundle.tiers : [];
-    creators.updateTierCacheState(hex, tiers, null, { updatedAt });
+    creators.updateTierCacheState(hex, tiers, null, {
+      updatedAt,
+      fresh: bundle.tierDataFresh !== false,
+      securityBlocked: bundle.tierSecurityBlocked,
+      fetchFailed: bundle.tierFetchFailed === true,
+    });
   } catch (error) {
     console.warn(`[fundstr-preload] discovery fetch failed for ${hex}`, error);
   }

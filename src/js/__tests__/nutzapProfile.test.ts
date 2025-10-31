@@ -136,6 +136,7 @@ const resetComponentDeps = () => {
   fetchFundstrProfileBundleMock.mockReset();
   fetchFundstrProfileBundleMock.mockResolvedValue({
     profile: { display_name: "Cached", about: "" },
+    profileEvent: null,
     profileDetails: {
       trustedMints: ["https://cached"],
       relays: ["wss://cached"],
@@ -145,7 +146,12 @@ const resetComponentDeps = () => {
     tiers: [],
     followers: 0,
     following: 0,
+    joined: null,
     relayHints: [],
+    fetchedFromFallback: false,
+    tierDataFresh: true,
+    tierSecurityBlocked: false,
+    tierFetchFailed: false,
   });
 };
 
