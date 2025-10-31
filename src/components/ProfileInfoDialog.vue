@@ -81,17 +81,89 @@ async function load() {
   } catch (error) {
     console.warn("[ProfileInfoDialog] Unable to normalize pubkey", error);
   }
-  profile.value = await nostr.getProfile(props.pubkey);
-  followers.value = await nostr.fetchFollowerCount(props.pubkey);
-  following.value = await nostr.fetchFollowingCount(props.pubkey);
-  joined.value = await nostr.fetchJoinDate(props.pubkey);
-  recentPost.value = await nostr.fetchMostRecentPost(props.pubkey);
+
+  let discoveryCreator: any = null;
   try {
-    await creators.fetchCreator(pubkeyHex, true);
+    discoveryCreator = await creators.fetchCreator(pubkeyHex, true);
   } catch (error) {
-    console.error("[ProfileInfoDialog] Failed to refresh tier data", error);
+    console.warn("[ProfileInfoDialog] Discovery lookup failed", error);
   }
-  tiers.value = creators.tiersMap[pubkeyHex] || [];
+
+  let needsProfileFallback = true;
+  if (discoveryCreator) {
+    const baseProfile =
+      discoveryCreator.profile && typeof discoveryCreator.profile === "object"
+        ? { ...(discoveryCreator.profile as Record<string, any>) }
+        : {};
+    if (discoveryCreator.displayName && !baseProfile.display_name) {
+      baseProfile.display_name = discoveryCreator.displayName;
+    }
+    if (discoveryCreator.name && !baseProfile.name) {
+      baseProfile.name = discoveryCreator.name;
+    }
+    if (discoveryCreator.about && !baseProfile.about) {
+      baseProfile.about = discoveryCreator.about;
+    }
+    if (discoveryCreator.picture && !baseProfile.picture) {
+      baseProfile.picture = discoveryCreator.picture;
+    }
+    if (Object.keys(baseProfile).length > 0) {
+      profile.value = baseProfile;
+      needsProfileFallback = false;
+    }
+    followers.value =
+      typeof discoveryCreator.followers === "number" ? discoveryCreator.followers : null;
+    following.value =
+      typeof discoveryCreator.following === "number" ? discoveryCreator.following : null;
+    joined.value =
+      typeof discoveryCreator.joined === "number" ? discoveryCreator.joined : null;
+    if (Array.isArray(discoveryCreator.tiers)) {
+      tiers.value = discoveryCreator.tiers;
+    }
+  }
+
+  tiers.value = creators.tiersMap[pubkeyHex] || tiers.value;
+
+  if (needsProfileFallback) {
+    try {
+      profile.value = await nostr.getProfile(props.pubkey);
+    } catch (error) {
+      console.warn("[ProfileInfoDialog] Fallback profile fetch failed", error);
+      profile.value = null;
+    }
+  }
+
+  if (followers.value === null) {
+    try {
+      followers.value = await nostr.fetchFollowerCount(props.pubkey);
+    } catch (error) {
+      console.warn("[ProfileInfoDialog] Follower count fallback failed", error);
+      followers.value = null;
+    }
+  }
+  if (following.value === null) {
+    try {
+      following.value = await nostr.fetchFollowingCount(props.pubkey);
+    } catch (error) {
+      console.warn("[ProfileInfoDialog] Following count fallback failed", error);
+      following.value = null;
+    }
+  }
+  if (joined.value === null) {
+    try {
+      joined.value = await nostr.fetchJoinDate(props.pubkey);
+    } catch (error) {
+      console.warn("[ProfileInfoDialog] Join date fallback failed", error);
+      joined.value = null;
+    }
+  }
+
+  try {
+    recentPost.value = await nostr.fetchMostRecentPost(props.pubkey);
+  } catch (error) {
+    console.warn("[ProfileInfoDialog] Recent post lookup failed", error);
+    recentPost.value = null;
+  }
 }
 
 watch(

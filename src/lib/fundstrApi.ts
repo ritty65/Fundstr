@@ -131,6 +131,31 @@ export async function fetchCreator(identifier: string, signal?: AbortSignal): Pr
   return creator;
 }
 
+export async function updateCreatorCache(bundle: {
+  profileEvent?: any;
+  tiersEvent?: any;
+}) {
+  const url = import.meta.env.VITE_CACHE_UPDATE_URL!;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(bundle),
+  });
+  if (!response.ok) {
+    let message = "cache_update_failed";
+    try {
+      const json = await response.json();
+      if (json && typeof json.error === "string" && json.error.trim()) {
+        message = json.error;
+      }
+    } catch (error) {
+      // ignore parse failure and use default message
+    }
+    throw new Error(message);
+  }
+  return response.json();
+}
+
 export function formatMsatToSats(
   value: number | string | null | undefined,
   options: Intl.NumberFormatOptions = {},

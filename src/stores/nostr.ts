@@ -82,6 +82,7 @@ import { getNutzapNdk } from "src/nutzap/ndkInstance";
 import { publishNostrEvent } from "src/nutzap/relayPublishing";
 import { useFundstrRelayStatus } from "src/nutzap/relayClient";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
+import { updateCreatorCache } from "@/lib/fundstrApi";
 
 // --- Relay connectivity helpers ---
 export type WriteConnectivity = {
@@ -1165,6 +1166,18 @@ export async function publishNutzapProfile(opts: {
       content: JSON.stringify({ v: 1, ...body }),
       created_at: createdAt,
     });
+    if (result?.event) {
+      try {
+        await updateCreatorCache({ profileEvent: result.event });
+      } catch (error: any) {
+        const message =
+          error?.message === "rate_limited"
+            ? "Cache throttled (10m). Your Nostr events are live; discovery will refresh soon."
+            : "Cache update deferred. Your Nostr events are live.";
+        console.warn("[cache-update]", message, error);
+        notify(message);
+      }
+    }
     return result.event.id;
   } catch (e: any) {
     notifyError(e?.message ?? String(e));
@@ -1267,11 +1280,29 @@ export async function publishDiscoveryProfile(opts: {
   }
 
   const byRelay = Array.from(aggregate.values());
+  const anySuccess = byRelay.some((r) => r.ok);
+
+  if (anySuccess) {
+    try {
+      const nostrProfileEvent = await kind10019Event.toNostrEvent();
+      if (nostrProfileEvent) {
+        await updateCreatorCache({ profileEvent: nostrProfileEvent });
+      }
+    } catch (error: any) {
+      const message =
+        error?.message === "rate_limited"
+          ? "Cache throttled (10m). Your Nostr events are live; discovery will refresh soon."
+          : "Cache update deferred. Your Nostr events are live.";
+      console.warn("[cache-update]", message, error);
+      notify(message);
+    }
+  }
+
   return {
     ids: eventsToPublish.map((e) => e.id),
     relaysTried: targets.length,
     byRelay,
-    anySuccess: byRelay.some((r) => r.ok),
+    anySuccess,
     usedFallback,
   };
 }

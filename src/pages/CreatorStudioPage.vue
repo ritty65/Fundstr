@@ -704,7 +704,7 @@ import StepTemplate from './creator-studio/StepTemplate.vue';
 import CreatorStudioPreviewCard from './creator-studio/CreatorStudioPreviewCard.vue';
 import TierComposer from './creator-studio/TierComposer.vue';
 import NutzapExplorerPanel from 'src/nutzap/onepage/NutzapExplorerPanel.vue';
-import { notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
+import { notify, notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
 import type { Tier } from 'src/nutzap/types';
 import { nip19 } from 'nostr-tools';
 import { useClipboard } from 'src/composables/useClipboard';
@@ -747,6 +747,7 @@ import { useCreatorHub } from 'src/composables/useCreatorHub';
 import { useP2pkDiagnostics } from 'src/composables/useP2pkDiagnostics';
 import { seedProfileIdentityFromMetadata } from './creator-studio/identitySeed';
 import { attachNip07SignerIfAvailable, connectNdk, ndkWrite } from 'src/nostr/ndk';
+import { updateCreatorCache } from '@/lib/fundstrApi';
 
 const NIP07_HELP_URL =
   'https://guides.getalby.com/alby-browser-extension/nostr/how-to-sign-with-nostr-browser-extension';
@@ -4471,6 +4472,26 @@ async function publishAll() {
       `Publish succeeded (profile ${profileEventId}, canonical ${canonicalEventId}, legacy ${legacyEventId})`,
       successContext,
     );
+
+    const cacheBundle = {
+      profileEvent: profileResult.event,
+      tiersEvent:
+        canonicalResult.event?.kind === CANONICAL_TIER_KIND
+          ? canonicalResult.event
+          : undefined,
+    };
+    if (cacheBundle.profileEvent || cacheBundle.tiersEvent) {
+      try {
+        await updateCreatorCache(cacheBundle);
+      } catch (error: any) {
+        const message =
+          error?.message === 'rate_limited'
+            ? 'Cache throttled (10m). Your Nostr events are live; discovery will refresh soon.'
+            : 'Cache update deferred. Your Nostr events are live.';
+        console.warn('[cache-update]', message, error);
+        notify(message);
+      }
+    }
 
     if (compensationApplied) {
       const detail =
