@@ -18,7 +18,10 @@ import type {
   Creator as DiscoveryCreator,
   CreatorTier as DiscoveryCreatorTier,
 } from "src/lib/fundstrApi";
-import type { Creator as FundstrCreator } from "src/lib/fundstrApi";
+import {
+  fetchCreators as fetchLegacyCreators,
+  type Creator as FundstrCreator,
+} from "src/lib/fundstrApi";
 import { useNdk } from "src/composables/useNdk";
 import { shortenNpub } from "src/utils/profile";
 import { FEATURED_CREATORS as CONFIG_FEATURED_CREATORS } from "src/config/featured-creators";
@@ -1021,6 +1024,7 @@ export const useCreatorsStore = defineStore("creators", {
       warmCache: {} as Record<string, CreatorWarmCache>,
       inFlightCreatorRequests: {} as Record<string, Promise<CreatorProfile | null>>,
       searchAbortController: null as AbortController | null,
+      nostrSearchRequests: new Map<string, Promise<FundstrCreator[]>>(),
     };
   },
   getters: {
@@ -1411,44 +1415,245 @@ export const useCreatorsStore = defineStore("creators", {
       const controller = new AbortController();
       this.searchAbortController = controller;
 
-      try {
-        const response = await discovery.getCreators({
-          q: normalizedQuery,
-          fresh,
-          signal: controller.signal,
-        });
-        if (controller.signal.aborted) {
+      const filterWarnings = (warnings: unknown): string[] => {
+        if (!Array.isArray(warnings)) {
+          return [];
+        }
+        const seen = new Set<string>();
+        const filtered: string[] = [];
+        for (const warning of warnings) {
+          if (typeof warning !== "string") continue;
+          const trimmed = warning.trim();
+          if (!trimmed || seen.has(trimmed)) continue;
+          seen.add(trimmed);
+          filtered.push(trimmed);
+        }
+        return filtered;
+      };
+
+      const fallbackDelayMs = 650;
+      const fallbackQueryKey = normalizedQuery.toLowerCase();
+      const fallbackMap = this.nostrSearchRequests;
+
+      let resolvedSource: "discovery" | "nostr" | null = null;
+      let fallbackTriggered = false;
+      let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+      let fallbackTimerFired = false;
+      let discoveryState: "pending" | "fulfilled" | "rejected" = "pending";
+      let discoveryResponse: Awaited<ReturnType<typeof discovery.getCreators>> | null = null;
+      let discoveryError: unknown = null;
+
+      let finalResolve: (() => void) | null = null;
+      const finalPromise = new Promise<void>((resolve) => {
+        finalResolve = resolve;
+      });
+
+      const resolveFinal = () => {
+        if (finalResolve) {
+          finalResolve();
+          finalResolve = null;
+        }
+      };
+
+      const clearFallbackTimer = () => {
+        if (fallbackTimer !== null) {
+          clearTimeout(fallbackTimer);
+          fallbackTimer = null;
+        }
+      };
+
+      const finishWithDiscovery = (
+        response: Awaited<ReturnType<typeof discovery.getCreators>>,
+      ) => {
+        if (controller.signal.aborted || resolvedSource) {
           return;
         }
-        this.searchResults = response.results.map((creator) => cloneCreatorProfile(creator));
-        const warnings = Array.isArray(response.warnings)
-          ? response.warnings.filter(
-              (warning): warning is string =>
-                typeof warning === "string" && warning.trim().length > 0,
-            )
-          : [];
-        if (this.searchResults.some((profile) => profile.tierSecurityBlocked === true)) {
-          if (!warnings.includes(FIREFOX_TIER_SECURITY_WARNING)) {
-            warnings.push(FIREFOX_TIER_SECURITY_WARNING);
-          }
+        resolvedSource = "discovery";
+        clearFallbackTimer();
+
+        const profiles = response.results.map((creator) => cloneCreatorProfile(creator));
+        const warnings = filterWarnings(response.warnings);
+        if (
+          profiles.some((profile) => profile.tierSecurityBlocked === true) &&
+          !warnings.includes(FIREFOX_TIER_SECURITY_WARNING)
+        ) {
+          warnings.push(FIREFOX_TIER_SECURITY_WARNING);
         }
+
+        this.error = "";
+        this.searchResults = profiles;
         this.searchWarnings = warnings;
-      } catch (error) {
-        if (controller.signal.aborted) {
+        console.info("discovery:hit", {
+          query: normalizedQuery,
+          count: profiles.length,
+        });
+        this.searching = false;
+        this.searchAbortController = null;
+        resolveFinal();
+      };
+
+      const finishWithFallback = (results: FundstrCreator[]) => {
+        if (controller.signal.aborted || resolvedSource) {
           return;
         }
-        console.error("[creators] Discovery search failed", error);
-        handleFailure(
-          error instanceof Error
-            ? error.message
-            : "Unable to load creators. Please try again.",
-        );
-      } finally {
-        if (!controller.signal.aborted) {
-          this.searching = false;
-          this.searchAbortController = null;
+        resolvedSource = "nostr";
+        clearFallbackTimer();
+
+        const profiles = results.map((creator) => cloneCreatorProfile(creator));
+        const warnings: string[] = [];
+        if (
+          profiles.some((profile) => profile.tierSecurityBlocked === true) &&
+          !warnings.includes(FIREFOX_TIER_SECURITY_WARNING)
+        ) {
+          warnings.push(FIREFOX_TIER_SECURITY_WARNING);
         }
-      }
+
+        this.error = "";
+        this.searchResults = profiles;
+        this.searchWarnings = warnings;
+        console.info("nostr:fallback-hit", {
+          query: normalizedQuery,
+          count: profiles.length,
+        });
+        this.searching = false;
+        this.searchAbortController = null;
+        resolveFinal();
+      };
+
+      const createFallbackPromise = (): Promise<FundstrCreator[]> => {
+        const fetchPromise = fetchLegacyCreators(
+          normalizedQuery,
+          24,
+          0,
+          controller.signal,
+        );
+        const managedPromise = fetchPromise.finally(() => {
+          if (fallbackMap.get(fallbackQueryKey) === managedPromise) {
+            fallbackMap.delete(fallbackQueryKey);
+          }
+        });
+        fallbackMap.set(fallbackQueryKey, managedPromise);
+        return managedPromise;
+      };
+
+      const getOrCreateFallbackPromise = (): Promise<FundstrCreator[]> => {
+        const existing = fallbackMap.get(fallbackQueryKey);
+        if (existing) {
+          return existing;
+        }
+        return createFallbackPromise();
+      };
+
+      const attachFallbackHandlers = (promise: Promise<FundstrCreator[]>) => {
+        promise
+          .then((results) => {
+            if (controller.signal.aborted || resolvedSource) {
+              return;
+            }
+            finishWithFallback(results);
+          })
+          .catch((fallbackError) => {
+            if (controller.signal.aborted || resolvedSource) {
+              return;
+            }
+            if (isAbortError(fallbackError)) {
+              if (fallbackMap.get(fallbackQueryKey) === promise) {
+                fallbackMap.delete(fallbackQueryKey);
+              }
+              if (controller.signal.aborted) {
+                return;
+              }
+              const nextPromise = createFallbackPromise();
+              if (nextPromise !== promise) {
+                attachFallbackHandlers(nextPromise);
+              }
+              return;
+            }
+            console.error("[creators] Nostr fallback search failed", fallbackError);
+            const message =
+              (fallbackError instanceof Error && fallbackError.message) ||
+              (discoveryError instanceof Error && discoveryError.message) ||
+              "Unable to load creators. Please try again.";
+            handleFailure(message);
+            this.searching = false;
+            this.searchAbortController = null;
+            resolveFinal();
+          });
+      };
+
+      const maybeStartFallback = (reason: "timeout" | "empty" | "error") => {
+        if (fallbackTriggered || controller.signal.aborted) {
+          return;
+        }
+        fallbackTriggered = true;
+        clearFallbackTimer();
+
+        console.info("discovery:timeout→nostr", {
+          query: normalizedQuery,
+          reason,
+        });
+
+        const fallbackPromise = getOrCreateFallbackPromise();
+        attachFallbackHandlers(fallbackPromise);
+      };
+
+      const discoveryPromise = discovery.getCreators({
+        q: normalizedQuery,
+        fresh,
+        signal: controller.signal,
+      });
+
+      fallbackTimer = setTimeout(() => {
+        fallbackTimerFired = true;
+        if (controller.signal.aborted || resolvedSource) {
+          return;
+        }
+        if (discoveryState === "fulfilled") {
+          if (!discoveryResponse || discoveryResponse.results.length === 0) {
+            maybeStartFallback("empty");
+          }
+        } else if (discoveryState === "rejected") {
+          maybeStartFallback("error");
+        } else {
+          maybeStartFallback("timeout");
+        }
+      }, fallbackDelayMs);
+
+      controller.signal.addEventListener(
+        "abort",
+        () => {
+          clearFallbackTimer();
+          resolveFinal();
+        },
+        { once: true },
+      );
+
+      discoveryPromise
+        .then((response) => {
+          discoveryState = "fulfilled";
+          discoveryResponse = response;
+          if (controller.signal.aborted) {
+            return;
+          }
+          if (response.results.length > 0) {
+            finishWithDiscovery(response);
+          } else if (fallbackTimerFired) {
+            maybeStartFallback("empty");
+          }
+        })
+        .catch((error) => {
+          discoveryState = "rejected";
+          discoveryError = error;
+          if (controller.signal.aborted) {
+            return;
+          }
+          console.error("[creators] Discovery search failed", error);
+          if (fallbackTimerFired) {
+            maybeStartFallback("error");
+          }
+        });
+
+      await finalPromise;
     },
 
     async applyBundleToCache(
