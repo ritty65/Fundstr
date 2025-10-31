@@ -29,6 +29,7 @@ export { FEATURED_CREATORS } from "src/config/featured-creators";
 
 export interface CreatorProfile extends FundstrCreator {
   tierSecurityBlocked?: boolean | null;
+  tierFetchFailed?: boolean | null;
 }
 export type CreatorRow = CreatorProfile;
 
@@ -340,6 +341,7 @@ export interface FundstrProfileBundle {
   fetchedFromFallback: boolean;
   tierDataFresh: boolean;
   tierSecurityBlocked: boolean;
+  tierFetchFailed: boolean;
   tiers: Tier[] | null;
 }
 
@@ -606,6 +608,15 @@ export async function fetchFundstrProfileBundle(
     }
   }
 
+  const tierLookupFailed =
+    tierResults.length > 0 &&
+    tierResults.every(
+      (result) =>
+        result.fresh === null &&
+        result.cached.length === 0 &&
+        Boolean(result.freshError),
+    );
+
   const tierSecurityBlocked = tierResults.some((result) => result.securityBlocked);
   const tierFreshMatch = tierResults.find((result) => result.fresh !== null);
   const tierFallbackSource = tierResults.find((result) => result.cached.length > 0);
@@ -614,6 +625,7 @@ export async function fetchFundstrProfileBundle(
     : tierFallbackSource?.cached
       ? [...tierFallbackSource.cached]
       : [];
+  let tierFetchFailed = tierLookupFailed;
   let initialTierCandidates = tierFallbackSource?.cached?.length
     ? [...tierFallbackSource.cached]
     : tierFreshMatch?.fresh
@@ -670,6 +682,7 @@ export async function fetchFundstrProfileBundle(
         finalTierCandidates = [...recoveredTiers];
         initialTierCandidates = [...recoveredTiers];
         usedNutzapTierFallback = true;
+        tierFetchFailed = false;
         const nowWarn = Date.now();
         if (nowWarn - lastTierFallbackLogAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
           console.debug("fetchFundstrProfileBundle recovered tiers via nutzap fallback", {
@@ -729,10 +742,15 @@ export async function fetchFundstrProfileBundle(
   const tierDataFresh =
     !usedCachedTierFallback && !tierSecurityBlocked && !usedNutzapTierFallback;
 
+  if (finalTierCandidates.length > 0) {
+    tierFetchFailed = false;
+  }
+
   return {
     ...baseBundle,
     tierDataFresh,
     tierSecurityBlocked,
+    tierFetchFailed,
     tiers: normalizedTiers && normalizedTiers.length ? normalizedTiers : null,
     fetchedFromFallback:
       usedCachedProfileFallback || usedCachedTierFallback || usedNutzapTierFallback,
@@ -777,6 +795,7 @@ function buildBundleFromDiscoveryCreator(
     fetchedFromFallback: false,
     tierDataFresh: true,
     tierSecurityBlocked: false,
+    tierFetchFailed: false,
     tiers: tiers.length ? tiers : null,
   };
 }
@@ -794,6 +813,7 @@ export interface CreatorWarmCache {
   tierUpdatedAt?: number | null;
   tierDataFresh?: boolean | null;
   tierSecurityBlocked?: boolean | null;
+  tierFetchFailed?: boolean | null;
   tierRelayFailures?: Record<string, number>;
   lastFundstrRelayFailureAt?: number | null;
   lastFundstrRelayFailureNotifiedAt?: number | null;
@@ -967,6 +987,10 @@ function createCreatorFromBundle(
       overrides.tierSecurityBlocked !== undefined
         ? overrides.tierSecurityBlocked
         : bundle.tierSecurityBlocked,
+    tierFetchFailed:
+      overrides.tierFetchFailed !== undefined
+        ? overrides.tierFetchFailed
+        : bundle.tierFetchFailed,
     cacheHit: overrides.cacheHit,
     featured: overrides.featured,
   };
@@ -1103,12 +1127,13 @@ export const useCreatorsStore = defineStore("creators", {
         profile: parseCachedProfileContent(entry),
         followers: null,
         following: null,
-        joined: entry.profileUpdatedAt ?? null,
-        cacheHit: true,
-        tierDataFresh: entry.tierDataFresh ?? null,
-        tierSecurityBlocked: entry.tierSecurityBlocked ?? null,
-      };
-    },
+      joined: entry.profileUpdatedAt ?? null,
+      cacheHit: true,
+      tierDataFresh: entry.tierDataFresh ?? null,
+      tierSecurityBlocked: entry.tierSecurityBlocked ?? null,
+      tierFetchFailed: entry.tierFetchFailed ?? null,
+    };
+  },
 
     updateProfileCacheState(
       pubkeyHex: string,
@@ -1136,6 +1161,7 @@ export const useCreatorsStore = defineStore("creators", {
         updatedAt?: number | null;
         fresh?: boolean | null;
         securityBlocked?: boolean | null;
+        fetchFailed?: boolean | null;
       } = {},
     ) {
       const entry: CreatorWarmCache = {
@@ -1155,9 +1181,16 @@ export const useCreatorsStore = defineStore("creators", {
       if (meta.securityBlocked !== undefined) {
         entry.tierSecurityBlocked = meta.securityBlocked;
       }
+      if (meta.fetchFailed !== undefined) {
+        entry.tierFetchFailed = meta.fetchFailed ?? null;
+        if (meta.fetchFailed === true) {
+          this.tierFetchError = true;
+        } else if (meta.fetchFailed === false) {
+          this.tierFetchError = false;
+        }
+      }
       this.warmCache[pubkeyHex] = entry;
       this.tiersMap[pubkeyHex] = normalized;
-      this.tierFetchError = false;
     },
 
     async saveProfileCache(
@@ -1203,6 +1236,7 @@ export const useCreatorsStore = defineStore("creators", {
         updatedAt,
         fresh: true,
         securityBlocked: false,
+        fetchFailed: false,
       });
       try {
         if (event) {
@@ -1255,6 +1289,7 @@ export const useCreatorsStore = defineStore("creators", {
         this.updateTierCacheState(pubkeyHex, normalized, event, {
           eventId: tierRow.eventId,
           updatedAt: tierRow.updatedAt,
+          fetchFailed: false,
         });
       }
       return this.warmCache[pubkeyHex];
@@ -1439,6 +1474,7 @@ export const useCreatorsStore = defineStore("creators", {
           updatedAt: bundle.joined ?? null,
           fresh: bundle.tierDataFresh !== false,
           securityBlocked: bundle.tierSecurityBlocked,
+          fetchFailed: bundle.tierFetchFailed === true,
         });
       } catch (tierCacheError) {
         console.error("[creators] Failed to update warm tier cache", {
