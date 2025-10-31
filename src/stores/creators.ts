@@ -98,27 +98,42 @@ function isDomException(error: unknown): boolean {
   return typeof name === "string" && name === "DOMException";
 }
 
-function isTierSecurityError(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) {
+function isSecurityDomException(error: unknown): boolean {
+  if (!isDomException(error)) {
     return false;
   }
-  if (isDomException(error)) {
-    const domError = error as DOMException;
-    const securityErrCode =
-      typeof DOMException !== "undefined" && typeof DOMException.SECURITY_ERR === "number"
-        ? DOMException.SECURITY_ERR
-        : 18;
-    return (
-      domError.name === "SecurityError" ||
-      (typeof domError.code === "number" && domError.code === securityErrCode)
-    );
+  const domError = error as DOMException & { code?: unknown };
+  const securityErrCode =
+    typeof DOMException !== "undefined" && typeof DOMException.SECURITY_ERR === "number"
+      ? DOMException.SECURITY_ERR
+      : 18;
+  if (domError.name === "SecurityError") {
+    return true;
   }
-  const name = (error as { name?: unknown }).name;
-  return typeof name === "string" && name === "SecurityError";
+  if (typeof domError.code === "number" && domError.code === securityErrCode) {
+    return true;
+  }
+  return false;
 }
 
 function isTierSecurityBlockedError(error: unknown): boolean {
-  return isTierSecurityError(error) || isDomException(error);
+  return isSecurityDomException(error);
+}
+
+function isAbortError(error: unknown): boolean {
+  const name = (error as { name?: unknown })?.name;
+  if (name === "AbortError") {
+    return true;
+  }
+  if (!isDomException(error)) {
+    return false;
+  }
+  const domError = error as DOMException & { code?: unknown };
+  const abortErrCode =
+    typeof DOMException !== "undefined" && typeof DOMException.ABORT_ERR === "number"
+      ? DOMException.ABORT_ERR
+      : 20;
+  return typeof domError.code === "number" && domError.code === abortErrCode;
 }
 
 function logTierSecurityError(
@@ -472,9 +487,14 @@ export async function fetchFundstrProfileBundle(
           tierSecurityCooldownUntil,
         );
       } else {
-        console.warn("fetchFundstrProfileBundle cached tier lookup failed", {
+        const aborted = isAbortError(error);
+        const logMessage = aborted
+          ? "fetchFundstrProfileBundle cached tier lookup aborted"
+          : "fetchFundstrProfileBundle cached tier lookup failed";
+        console.warn(logMessage, {
           id,
           error,
+          retryable: aborted,
         });
       }
     }
@@ -522,9 +542,16 @@ export async function fetchFundstrProfileBundle(
             );
             nextTiersFreshAttemptAt = Date.now() + delay;
           }
-          console.error("fetchFundstrProfileBundle discovery tier lookup failed", {
+          const aborted = isAbortError(error);
+          const logFn = aborted ? console.warn : console.error;
+          const logMessage = aborted
+            ? "fetchFundstrProfileBundle discovery tier lookup aborted"
+            : "fetchFundstrProfileBundle discovery tier lookup failed";
+          logFn(logMessage, {
             id,
             error,
+            retryable: aborted || !forceRefresh,
+            nextRetryAt: aborted || !forceRefresh ? nextTiersFreshAttemptAt : undefined,
           });
         }
       }
