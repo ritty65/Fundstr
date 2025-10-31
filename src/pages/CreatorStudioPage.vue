@@ -2318,6 +2318,8 @@ function tryAttachNip07Signer(): boolean {
   nip07SignerDetected.value = attached;
   if (attached) {
     setAuthoringSignerActive(true);
+  } else if (!signer.value) {
+    setAuthoringSignerActive(false);
   }
   return attached;
 }

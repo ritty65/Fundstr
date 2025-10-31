@@ -116,6 +116,7 @@ export default defineConfig({
       "test/pages/TierComposer.interaction.spec.ts",
       "test/nostr/builders.spec.ts",
       "test/nostr/crypto.decryptDM.spec.ts",
+      "test/nostr/ndk.spec.ts",
       "test/nostr/signer.spec.ts",
       "test/nostr/readBackAndFallback.spec.ts",
       "test/nostr/publishNostrEvent.spec.ts",

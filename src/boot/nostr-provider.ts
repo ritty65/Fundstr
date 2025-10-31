@@ -1,7 +1,6 @@
 import { boot } from 'quasar/wrappers';
 
 export default boot(() => {
-  if (typeof window !== 'undefined' && !(window as any).nostr) {
-    (window as any).nostr = {};
-  }
+  // no-op boot file that preserves historic entry-point while avoiding
+  // mutating `window.nostr` when a browser extension is not installed.
 });
