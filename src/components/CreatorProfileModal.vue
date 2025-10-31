@@ -199,13 +199,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { nip19 } from 'nostr-tools';
 import { useQuasar } from 'quasar';
 import TierDetailsPanel from 'components/TierDetailsPanel.vue';
-import { formatMsatToSats, type Creator } from 'src/lib/fundstrApi';
-import { useFundstrDiscovery } from 'src/api/fundstrDiscovery';
+import { formatMsatToSats } from 'src/lib/fundstrApi';
 import {
   displayNameFromProfile,
   normalizeMeta,
@@ -213,8 +211,9 @@ import {
   type ProfileMeta,
 } from 'src/utils/profile';
 import { filterValidMedia } from 'src/utils/validateMedia';
-import type { TierMedia as TierMediaItem } from 'stores/types';
-import { toHex } from 'src/nostr/relayClient';
+import type { Tier, TierMedia as TierMediaItem } from 'stores/types';
+import { useCreatorsStore } from 'stores/creators';
+import type { CreatorProfile } from 'stores/creators';
 
 const props = defineProps<{
   show: boolean;
@@ -238,7 +237,7 @@ const router = useRouter();
 const $q = useQuasar();
 
 const loading = ref(false);
-const creator = ref<Creator | null>(null);
+const creator = ref<CreatorProfile | null>(null);
 const tiers = ref<TierDetails[]>([]);
 const showLocal = ref(false);
 const isMobileViewport = computed(() => $q.screen.lt.sm);
@@ -253,11 +252,9 @@ const dialogClasses = computed(() => ({
 const activeTierIndex = ref(0);
 const isBioExpanded = ref(false);
 const carouselViewportRef = ref<HTMLElement | null>(null);
-
-const discoveryClient = useFundstrDiscovery();
+const creatorsStore = useCreatorsStore();
 
 let currentRequestId = 0;
-let activeController: AbortController | null = null;
 
 const activeTierAnnouncement = computed(() => {
   const total = tiers.value.length;
@@ -298,6 +295,107 @@ function goToNextTier() {
     return;
   }
   setActiveTier(activeTierIndex.value + 1);
+}
+
+function formatTierPeriod(tier: Tier): string | null {
+  if (typeof tier.frequency === 'string' && tier.frequency.trim()) {
+    return tier.frequency.trim();
+  }
+  const intervalDays = Number.isFinite(tier.intervalDays) ? Number(tier.intervalDays) : null;
+  if (intervalDays && intervalDays > 0) {
+    if (intervalDays === 1) {
+      return 'Daily';
+    }
+    if (intervalDays === 7) {
+      return 'Weekly';
+    }
+    if (intervalDays === 30) {
+      return 'Monthly';
+    }
+    return `${intervalDays} days`;
+  }
+  return null;
+}
+
+function mapTierToDetails(tier: Tier): TierDetails {
+  const description = typeof tier.description === 'string' ? tier.description.trim() : '';
+  const benefits = Array.isArray(tier.benefits)
+    ? tier.benefits
+        .filter((benefit): benefit is string => typeof benefit === 'string')
+        .map((benefit) => benefit.trim())
+        .filter((benefit) => benefit.length > 0)
+    : [];
+  const media = filterValidMedia(
+    Array.isArray(tier.media)
+      ? tier.media
+          .map((item) => {
+            if (!item || typeof item !== 'object') {
+              return null;
+            }
+            const normalized = item as TierMediaItem;
+            const url = typeof normalized.url === 'string' ? normalized.url.trim() : '';
+            if (!url) {
+              return null;
+            }
+            return {
+              ...normalized,
+              url,
+            };
+          })
+          .filter((item): item is TierMediaItem => Boolean(item))
+      : [],
+  );
+  const priceMsat =
+    typeof tier.price_sats === 'number' && Number.isFinite(tier.price_sats)
+      ? Math.max(0, tier.price_sats) * 1000
+      : null;
+  const welcomeMessage =
+    typeof tier.welcomeMessage === 'string' && tier.welcomeMessage.trim()
+      ? tier.welcomeMessage
+      : null;
+
+  return {
+    id: tier.id,
+    name: tier.name || 'Subscription tier',
+    description: description.length ? description : null,
+    priceMsat,
+    benefits,
+    media,
+    welcomeMessage,
+    periodLabel: formatTierPeriod(tier),
+  };
+}
+
+function mapTiersForDisplay(source: Tier[] | null | undefined): TierDetails[] {
+  if (!Array.isArray(source)) {
+    return [];
+  }
+  return source.map((tier) => mapTierToDetails(tier));
+}
+
+function syncStateFromStore(pubkey: string | null | undefined, fallback?: CreatorProfile | null) {
+  if (!pubkey) {
+    creator.value = fallback ?? null;
+    tiers.value = [];
+    activeTierIndex.value = 0;
+    return;
+  }
+
+  const storeProfile = creatorsStore.buildCreatorProfileFromCache(pubkey);
+  const resolvedProfile = storeProfile ?? fallback ?? null;
+  creator.value = resolvedProfile;
+
+  const storeTiers = creatorsStore.getCreatorTiers(pubkey);
+  const tierSource =
+    storeTiers ??
+    (resolvedProfile?.tiers as Tier[] | undefined) ??
+    (fallback?.tiers as Tier[] | undefined) ??
+    null;
+  tiers.value = mapTiersForDisplay(tierSource);
+
+  if (!tiers.value.length) {
+    activeTierIndex.value = 0;
+  }
 }
 
 function onCarouselKeydown(event: KeyboardEvent) {
@@ -365,6 +463,33 @@ watch(aboutText, () => {
   isBioExpanded.value = false;
 });
 
+watch(
+  () => props.pubkey,
+  (pubkey) => {
+    if (!showLocal.value) {
+      return;
+    }
+    if (!pubkey) {
+      resetState();
+      return;
+    }
+    syncStateFromStore(pubkey);
+  },
+  { immediate: true },
+);
+
+watch(
+  () => (showLocal.value && props.pubkey ? creatorsStore.warmCache[props.pubkey] : null),
+  () => {
+    if (!showLocal.value || !props.pubkey) {
+      return;
+    }
+    syncStateFromStore(props.pubkey);
+    activeTierIndex.value = 0;
+  },
+  { immediate: true, deep: true },
+);
+
 function onAvatarError(event: Event) {
   (event.target as HTMLImageElement).src = safeImageSrc(null, displayName.value, 200);
 }
@@ -403,7 +528,7 @@ watch(
   (visible) => {
     showLocal.value = visible;
     if (visible && props.pubkey) {
-      void fetchCreatorData(props.pubkey);
+      void loadCreatorProfile(props.pubkey);
     }
     if (!visible) {
       cancelActiveRequest();
@@ -426,73 +551,41 @@ watch(
   () => props.pubkey,
   (newPubkey, oldPubkey) => {
     if (props.show && newPubkey && newPubkey !== oldPubkey) {
-      void fetchCreatorData(newPubkey);
+      void loadCreatorProfile(newPubkey);
     }
   },
 );
 
-async function fetchCreatorData(pubkey: string) {
+async function loadCreatorProfile(pubkey: string) {
   if (!pubkey) {
+    creator.value = null;
+    tiers.value = [];
     return;
   }
 
-  cancelActiveRequest();
-
   const requestId = ++currentRequestId;
-  const controller = new AbortController();
-  activeController = controller;
   loading.value = true;
 
+  syncStateFromStore(pubkey);
+
   try {
-    const response = await discoveryClient.getCreators({
-      q: pubkey,
-      signal: controller.signal,
-      fresh: true,
-    });
+    const profile = await creatorsStore.fetchCreator(pubkey);
     if (requestId !== currentRequestId) {
       return;
     }
 
-    if (response.warnings?.length) {
-      console.warn('Discovery warnings while loading creator', {
-        pubkey,
-        warnings: response.warnings,
-      });
-    }
-
-    const fetchedCreator = response.results?.[0] ?? null;
-    creator.value = fetchedCreator ?? null;
-
-    const fetchedTiers = Array.isArray(fetchedCreator?.tiers)
-      ? [...fetchedCreator.tiers]
-      : [];
-
-    let tierDetails: unknown[] = [];
-    try {
-      tierDetails = await fetchTierDetails(fetchedCreator, pubkey, controller.signal);
-    } catch (tierError) {
-      if ((tierError as any)?.name === 'AbortError') {
-        return;
-      }
-      console.error('Failed to load creator tiers', tierError);
-    }
-
-    if (requestId !== currentRequestId) {
+    if (!profile) {
+      creator.value = null;
+      tiers.value = [];
       return;
     }
 
-    const combinedTiers = mergeTierSources(fetchedTiers, tierDetails);
-    const mappedTiers = combinedTiers
-      .map((tier) => normalizeTierDetails(tier))
-      .filter((tier): tier is TierDetails => tier !== null);
-
-    tiers.value = mappedTiers;
+    syncStateFromStore(pubkey, profile);
+    activeTierIndex.value = 0;
+    isBioExpanded.value = false;
   } catch (error) {
-    if ((error as any)?.name === 'AbortError') {
-      return;
-    }
-    console.error('Failed to load creator profile', error);
     if (requestId === currentRequestId) {
+      console.error('[CreatorProfileModal] Failed to load creator profile', error);
       creator.value = null;
       tiers.value = [];
     }
@@ -500,243 +593,7 @@ async function fetchCreatorData(pubkey: string) {
     if (requestId === currentRequestId) {
       loading.value = false;
     }
-    if (activeController === controller) {
-      activeController = null;
-    }
   }
-}
-
-async function fetchTierDetails(
-  fetchedCreator: Creator | null,
-  inputPubkey: string,
-  signal: AbortSignal,
-): Promise<unknown[]> {
-  const candidates = collectPubkeyCandidates(fetchedCreator, inputPubkey);
-  if (!candidates.hex.length && !candidates.npub.length) {
-    return [];
-  }
-
-  let bestResult: unknown[] | null = null;
-  let lastError: unknown = null;
-
-  const tryFetch = async (id: string): Promise<unknown[] | null> => {
-    try {
-      const response = await discoveryClient.getCreatorTiers({
-        id,
-        fresh: true,
-        signal,
-      });
-      const tiers = Array.isArray(response?.tiers) ? response.tiers : [];
-      bestResult = tiers;
-      return tiers;
-    } catch (error) {
-      if ((error as any)?.name === 'AbortError') {
-        throw error;
-      }
-      lastError = error;
-      return null;
-    }
-  };
-
-  for (const hex of candidates.hex) {
-    const result = await tryFetch(hex);
-    if (result && result.length > 0) {
-      return result;
-    }
-  }
-
-  if (!bestResult || bestResult.length === 0) {
-    for (const npub of candidates.npub) {
-      const result = await tryFetch(npub);
-      if (result && result.length > 0) {
-        return result;
-      }
-    }
-  }
-
-  if (bestResult !== null) {
-    return bestResult;
-  }
-
-  if (lastError) {
-    throw lastError;
-  }
-
-  return [];
-}
-
-function collectPubkeyCandidates(
-  fetchedCreator: Creator | null,
-  inputPubkey: string,
-): { hex: string[]; npub: string[] } {
-  const hexCandidates = new Set<string>();
-  const npubCandidates = new Set<string>();
-
-  const addHexCandidate = (value: unknown) => {
-    if (typeof value !== 'string') {
-      return;
-    }
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return;
-    }
-    try {
-      const hex = toHex(trimmed);
-      hexCandidates.add(hex);
-    } catch {
-      /* ignore invalid values */
-    }
-  };
-
-  const addNpubCandidate = (value: unknown) => {
-    if (typeof value !== 'string') {
-      return;
-    }
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return;
-    }
-    if (trimmed.toLowerCase().startsWith('npub')) {
-      npubCandidates.add(trimmed);
-    }
-  };
-
-  addHexCandidate(fetchedCreator?.pubkey ?? null);
-  addHexCandidate(inputPubkey);
-  addNpubCandidate((fetchedCreator as any)?.npub ?? null);
-  addNpubCandidate(inputPubkey);
-
-  for (const hex of Array.from(hexCandidates)) {
-    try {
-      npubCandidates.add(nip19.npubEncode(hex));
-    } catch {
-      /* ignore encoding issues */
-    }
-  }
-
-  return {
-    hex: Array.from(hexCandidates),
-    npub: Array.from(npubCandidates),
-  };
-}
-
-function mergeTierSources(primary: unknown[], secondary: unknown[]): unknown[] {
-  const tierOrder: string[] = [];
-  const tierMap = new Map<string, Record<string, unknown>>();
-
-  const processList = (list: unknown[]) => {
-    for (const entry of list) {
-      if (!entry || typeof entry !== 'object') {
-        continue;
-      }
-      const id = resolveTierId(entry);
-      if (!id) {
-        continue;
-      }
-      const record = { ...(entry as Record<string, unknown>) };
-      if (!tierMap.has(id)) {
-        tierMap.set(id, record);
-        tierOrder.push(id);
-      } else {
-        const merged = mergeTierRecords(tierMap.get(id)!, record);
-        tierMap.set(id, merged);
-      }
-    }
-  };
-
-  processList(primary);
-  processList(secondary);
-
-  return tierOrder
-    .map((id) => tierMap.get(id))
-    .filter((tier): tier is Record<string, unknown> => Boolean(tier));
-}
-
-function mergeTierRecords(
-  base: Record<string, unknown>,
-  incoming: Record<string, unknown>,
-): Record<string, unknown> {
-  const benefits = selectPreferredArray(base.benefits, incoming.benefits);
-  const media = selectPreferredArray(base.media, incoming.media);
-  const welcomeMessage = selectPreferredWelcomeMessage(base.welcomeMessage, incoming.welcomeMessage);
-
-  const merged: Record<string, unknown> = {
-    ...base,
-    ...incoming,
-  };
-
-  if (benefits !== undefined) {
-    merged.benefits = benefits;
-  } else {
-    delete merged.benefits;
-  }
-
-  if (media !== undefined) {
-    merged.media = media;
-  } else {
-    delete merged.media;
-  }
-
-  if (welcomeMessage !== undefined) {
-    merged.welcomeMessage = welcomeMessage;
-  } else {
-    delete merged.welcomeMessage;
-  }
-
-  return merged;
-}
-
-function selectPreferredArray(
-  baseValue: unknown,
-  incomingValue: unknown,
-): unknown[] | undefined {
-  const baseArray = Array.isArray(baseValue) ? baseValue : undefined;
-  const incomingArray = Array.isArray(incomingValue) ? incomingValue : undefined;
-
-  if (incomingArray && baseArray) {
-    if (incomingArray.length > baseArray.length) {
-      return incomingArray;
-    }
-    if (incomingArray.length === baseArray.length && incomingArray.length > 0) {
-      return incomingArray;
-    }
-    return baseArray.length > 0 ? baseArray : undefined;
-  }
-
-  if (incomingArray) {
-    return incomingArray.length > 0 ? incomingArray : undefined;
-  }
-
-  if (baseArray) {
-    return baseArray.length > 0 ? baseArray : undefined;
-  }
-
-  return undefined;
-}
-
-function selectPreferredWelcomeMessage(
-  baseValue: unknown,
-  incomingValue: unknown,
-): string | null | undefined {
-  const incomingText = typeof incomingValue === 'string' ? incomingValue.trim() : '';
-  if (incomingText) {
-    return incomingText;
-  }
-
-  const baseText = typeof baseValue === 'string' ? baseValue.trim() : '';
-  if (baseText) {
-    return baseText;
-  }
-
-  if (incomingValue === null || incomingValue === undefined) {
-    return incomingValue as null | undefined;
-  }
-
-  if (baseValue === null || baseValue === undefined) {
-    return baseValue as null | undefined;
-  }
-
-  return null;
 }
 
 function close() {
@@ -783,6 +640,9 @@ function tierFrequencyLabel(tier: TierDetails): string | null {
 }
 
 function formatTierPrice(tier: TierDetails): string {
+  if (typeof tier.priceMsat !== 'number' || !Number.isFinite(tier.priceMsat)) {
+    return formatMsatToSats(0);
+  }
   return formatMsatToSats(tier.priceMsat);
 }
 
@@ -829,10 +689,6 @@ function tierDescription(tier: TierDetails): string {
 }
 
 function cancelActiveRequest() {
-  if (activeController) {
-    activeController.abort();
-    activeController = null;
-  }
   currentRequestId += 1;
   loading.value = false;
 }
@@ -841,130 +697,8 @@ function resetState() {
   creator.value = null;
   tiers.value = [];
   activeTierIndex.value = 0;
+  isBioExpanded.value = false;
 }
-
-function resolveTierId(rawTier: unknown): string | null {
-  if (!rawTier || typeof rawTier !== 'object') return null;
-  const t = rawTier as Record<string, unknown>;
-
-  const candidates = [t.id, t.tier_id, t.d];
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string') {
-      const trimmed = candidate.trim();
-      if (trimmed) {
-        return trimmed;
-      }
-    }
-  }
-
-  return null;
-}
-
-function normalizeTierDetails(rawTier: unknown): TierDetails | null {
-  if (!rawTier || typeof rawTier !== 'object') return null;
-  const t = rawTier as Record<string, unknown>;
-
-  const id = resolveTierId(t);
-  if (!id) return null;
-
-  const name =
-    (typeof t.name === 'string' && t.name.trim()) ||
-    (typeof t.title === 'string' && t.title.trim()) ||
-    'Subscription tier';
-
-  const rawDescription = typeof t.description === 'string' ? t.description.trim() : null;
-  const description = rawDescription && rawDescription.length > 0 ? rawDescription : null;
-  let priceMsat = extractNumericValue(t.price_msat ?? t.priceMsat ?? t.amount_msat ?? t.amountMsat ?? null);
-  if (priceMsat === null) {
-    const priceSat = extractNumericValue(t.price ?? null);
-    if (priceSat !== null) {
-      priceMsat = priceSat * 1000;
-    }
-  }
-  const periodLabel =
-    (typeof t.period === 'string' && t.period) ||
-    (typeof t.cadence === 'string' && t.cadence) ||
-    (typeof t.interval === 'string' && t.interval) || null;
-
-  const benefits =
-    Array.isArray(t.benefits)
-      ? (t.benefits as unknown[])
-          .filter((x): x is string => typeof x === 'string')
-          .map((value) => value.trim())
-          .filter((value) => value.length > 0)
-      : parsePerks(t.perks);
-
-  const rawMedia = Array.isArray(t.media)
-    ? (t.media as unknown[]).map(normalizeMediaItem).filter((m): m is TierMediaItem => m !== null)
-    : [];
-  const media = filterValidMedia(rawMedia);
-
-  const welcomeMessage =
-    (typeof t.welcome_message === 'string' && t.welcome_message) ||
-    (typeof t.welcomeMessage === 'string' && t.welcomeMessage) || null;
-
-  return { id, name, description, priceMsat, benefits, media, welcomeMessage, periodLabel };
-}
-
-function truncateText(text: string, maxLength = 140): string {
-  const clean = text.trim();
-  if (clean.length <= maxLength) {
-    return clean;
-  }
-  return `${clean.slice(0, maxLength - 1).trimEnd()}…`;
-}
-
-function parsePerks(value: unknown): string[] {
-  if (typeof value !== 'string' || !value.trim()) return [];
-  try {
-    const parsed = JSON.parse(value);
-    if (Array.isArray(parsed)) {
-      return parsed.filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
-    }
-  } catch {}
-  return value.split(/\r?\n|,|;/).map(s => s.trim()).filter(Boolean);
-}
-
-function extractNumericValue(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-function normalizeMediaItem(entry: unknown): TierMediaItem | null {
-  if (!entry) {
-    return null;
-  }
-  if (typeof entry === 'string') {
-    const url = entry.trim();
-    return url ? { url } : null;
-  }
-  if (typeof entry !== 'object') {
-    return null;
-  }
-  const media = entry as Record<string, unknown>;
-  const url = typeof media.url === 'string' ? media.url.trim() : '';
-  if (!url) {
-    return null;
-  }
-  const titleRaw = typeof media.title === 'string' ? media.title.trim() : '';
-  const title = titleRaw.length > 0 ? titleRaw : undefined;
-  const rawType = typeof media.type === 'string' ? media.type.trim().toLowerCase() : '';
-  const allowedTypes: TierMediaItem['type'][] = ['image', 'video', 'audio', 'link'];
-  const type = allowedTypes.includes(rawType as TierMediaItem['type'])
-    ? (rawType as TierMediaItem['type'])
-    : undefined;
-  return { url, title, type };
-}
-
-onBeforeUnmount(() => {
-  cancelActiveRequest();
-});
 </script>
 
 <style scoped>

@@ -43,6 +43,11 @@ const TIER_SECURITY_COOLDOWN_MS = 5 * 60 * 1000;
 const FIREFOX_TIER_SECURITY_WARNING =
   "Firefox may block tier lookups. Disable Enhanced Tracking Protection for staging.fundstr.me to load fresh donation tiers. We're showing cached tier data until then.";
 
+const BUNDLE_CACHE_EXPIRY_MS = 3 * 60 * 60 * 1000;
+const BUNDLE_FALLBACK_DELAY_MS = 650;
+
+const inFlightBundleRequests = new Map<string, Promise<FundstrProfileBundle>>();
+
 let nextProfileFreshAttemptAt = 0;
 let profileFreshFailureCount = 0;
 let lastProfileFallbackLogAt = 0;
@@ -346,13 +351,14 @@ export interface FundstrProfileBundle {
   tierSecurityBlocked: boolean;
   tierFetchFailed: boolean;
   tiers: Tier[] | null;
+  cacheHit?: boolean;
 }
 
 export interface FetchFundstrProfileBundleOptions {
   forceRefresh?: boolean;
 }
 
-export async function fetchFundstrProfileBundle(
+async function fetchFundstrProfileBundleFromDiscovery(
   pubkeyInput: string,
   options: FetchFundstrProfileBundleOptions = {},
 ): Promise<FundstrProfileBundle> {
@@ -760,6 +766,337 @@ export async function fetchFundstrProfileBundle(
   };
 }
 
+function buildBundleFromCachedCreatorProfile(
+  creator: CreatorProfile,
+  details: NutzapProfileDetails | null,
+): FundstrProfileBundle {
+  const profile = creator.profile ? JSON.parse(JSON.stringify(creator.profile)) : null;
+  const profileDetails = details ?? extractProfileDetailsFromDiscovery(profile);
+  const relayHints = collectRelayHintsFromProfile(profile, null, profileDetails);
+
+  const followers =
+    typeof creator.followers === "number" && Number.isFinite(creator.followers)
+      ? creator.followers
+      : null;
+  const following =
+    typeof creator.following === "number" && Number.isFinite(creator.following)
+      ? creator.following
+      : null;
+  const joined =
+    typeof creator.joined === "number" && Number.isFinite(creator.joined)
+      ? creator.joined
+      : null;
+
+  const tiers = Array.isArray(creator.tiers)
+    ? creator.tiers.map((tier) => normalizeTier(tier))
+    : null;
+
+  return {
+    profile,
+    profileEvent: null,
+    followers,
+    following,
+    joined,
+    profileDetails,
+    relayHints,
+    fetchedFromFallback: Boolean((creator as any).fetchedFromFallback),
+    tierDataFresh: creator.tierDataFresh !== false,
+    tierSecurityBlocked: creator.tierSecurityBlocked === true,
+    tierFetchFailed: creator.tierFetchFailed === true,
+    tiers,
+    cacheHit: true,
+  };
+}
+
+function buildBundleFromLegacyCreator(creator: FundstrCreator): FundstrProfileBundle {
+  const profile = creator.profile ? JSON.parse(JSON.stringify(creator.profile)) : null;
+  const profileDetails = extractProfileDetailsFromDiscovery(profile);
+  const relayHints = collectRelayHintsFromProfile(profile, null, profileDetails);
+
+  const followers =
+    typeof creator.followers === "number" && Number.isFinite(creator.followers)
+      ? creator.followers
+      : null;
+  const following =
+    typeof creator.following === "number" && Number.isFinite(creator.following)
+      ? creator.following
+      : null;
+  const joined =
+    typeof creator.joined === "number" && Number.isFinite(creator.joined)
+      ? creator.joined
+      : null;
+
+  const tiers = Array.isArray(creator.tiers)
+    ? creator.tiers
+        .map((tier) => convertDiscoveryTier(tier as unknown as DiscoveryCreatorTier))
+        .filter((tier): tier is Tier => tier !== null)
+    : null;
+
+  const tierSecurityBlocked = (creator as any).tierSecurityBlocked === true;
+  const tierFetchFailed = (creator as any).tierFetchFailed === true;
+  const tierDataFresh = (creator as any).tierDataFresh === false ? false : true;
+
+  return {
+    profile,
+    profileEvent: null,
+    followers,
+    following,
+    joined,
+    profileDetails,
+    relayHints,
+    fetchedFromFallback: true,
+    tierDataFresh,
+    tierSecurityBlocked,
+    tierFetchFailed,
+    tiers: tiers && tiers.length ? tiers : null,
+  };
+}
+
+async function loadBundleFromCache(
+  pubkeyHex: string,
+  forceRefresh: boolean,
+): Promise<FundstrProfileBundle | null> {
+  if (forceRefresh) {
+    return null;
+  }
+
+  try {
+    const cached = await db.profiles.get(pubkeyHex);
+    if (!cached) {
+      return null;
+    }
+    if (Date.now() - cached.fetchedAt > BUNDLE_CACHE_EXPIRY_MS) {
+      return null;
+    }
+
+    const creator = cached.profile as CreatorProfile | null;
+    if (!creator) {
+      return null;
+    }
+
+    let details: NutzapProfileDetails | null = null;
+    try {
+      const detailsRow = await db.nutzapProfiles.get(pubkeyHex);
+      details = detailsRow?.profile ?? null;
+    } catch (error) {
+      console.warn("fetchFundstrProfileBundle failed to load cached profile details", {
+        pubkey: pubkeyHex,
+        error,
+      });
+    }
+
+    return buildBundleFromCachedCreatorProfile(creator, details);
+  } catch (error) {
+    console.warn("fetchFundstrProfileBundle failed to load Dexie cache", {
+      pubkey: pubkeyHex,
+      error,
+    });
+    return null;
+  }
+}
+
+async function fetchBundleFromLegacy(pubkeyHex: string): Promise<FundstrProfileBundle> {
+  const normalizedPubkey = pubkeyHex.toLowerCase();
+  const tried = new Set<string>();
+  const queries: string[] = [];
+  if (pubkeyHex) {
+    queries.push(pubkeyHex);
+  }
+  try {
+    const npub = nip19.npubEncode(pubkeyHex);
+    if (npub) {
+      queries.push(npub);
+    }
+  } catch (error) {
+    console.warn("Failed to encode pubkey to npub for nostr fallback", { pubkey: pubkeyHex, error });
+  }
+
+  let lastError: unknown = null;
+
+  for (const query of queries) {
+    const trimmed = typeof query === "string" ? query.trim() : "";
+    if (!trimmed || tried.has(trimmed)) {
+      continue;
+    }
+    tried.add(trimmed);
+
+    try {
+      const results = await fetchLegacyCreators(trimmed, 8, 0);
+      const match = results.find((entry) => {
+        if (!entry || typeof entry.pubkey !== "string") {
+          return false;
+        }
+        return entry.pubkey.trim().toLowerCase() === normalizedPubkey;
+      });
+      if (match) {
+        return buildBundleFromLegacyCreator(match);
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new FundstrProfileFetchError("No profile records returned from nostr fallback", {
+    fallbackAttempted: true,
+    cause: lastError ?? undefined,
+  });
+}
+
+async function fetchFundstrProfileBundleNetwork(
+  pubkeyHex: string,
+  forceRefresh: boolean,
+): Promise<FundstrProfileBundle> {
+  const normalizedPubkey = pubkeyHex.toLowerCase();
+  let fallbackStarted = false;
+  let fallbackPromise: Promise<FundstrProfileBundle> | null = null;
+  let fallbackError: unknown = null;
+  let discoveryError: unknown = null;
+
+  return await new Promise<FundstrProfileBundle>((resolve, reject) => {
+    let settled = false;
+    let discoverySettled = false;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const cleanupTimer = () => {
+      if (fallbackTimer !== null) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+    };
+
+    const finalizeFailure = (cause: unknown) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanupTimer();
+      if (cause instanceof FundstrProfileFetchError) {
+        reject(cause);
+        return;
+      }
+      reject(
+        new FundstrProfileFetchError(
+          "No profile records returned from discovery or fallback",
+          {
+            fallbackAttempted: true,
+            cause,
+          },
+        ),
+      );
+    };
+
+    const startFallback = (reason: "timeout" | "error") => {
+      if (fallbackStarted) {
+        return;
+      }
+      fallbackStarted = true;
+      console.info("discovery:timeout→nostr", {
+        pubkey: normalizedPubkey,
+        reason,
+      });
+
+      const promise = fetchBundleFromLegacy(pubkeyHex);
+      fallbackPromise = promise;
+      promise
+        .then((bundle) => {
+          if (settled) {
+            return bundle;
+          }
+          settled = true;
+          cleanupTimer();
+          console.info("nostr:fallback-hit", { pubkey: normalizedPubkey });
+          resolve(bundle);
+          return bundle;
+        })
+        .catch((error) => {
+          fallbackError = error;
+          if (discoverySettled && !settled) {
+            finalizeFailure(error ?? discoveryError);
+          }
+        });
+    };
+
+    fallbackTimer = setTimeout(() => startFallback("timeout"), BUNDLE_FALLBACK_DELAY_MS);
+
+    fetchFundstrProfileBundleFromDiscovery(pubkeyHex, { forceRefresh })
+      .then((bundle) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        discoverySettled = true;
+        cleanupTimer();
+        console.info("discovery:hit", {
+          pubkey: normalizedPubkey,
+          fetchedFromFallback: bundle.fetchedFromFallback,
+          tierDataFresh: bundle.tierDataFresh,
+        });
+        resolve(bundle);
+      })
+      .catch((error) => {
+        discoveryError = error;
+        discoverySettled = true;
+        if (!fallbackStarted) {
+          startFallback("error");
+        }
+        if (!fallbackStarted) {
+          finalizeFailure(error);
+          return;
+        }
+        if (fallbackPromise) {
+          fallbackPromise.catch(() => {
+            if (!settled) {
+              finalizeFailure(fallbackError ?? discoveryError);
+            }
+          });
+        }
+      });
+  });
+}
+
+export async function fetchFundstrProfileBundle(
+  pubkeyInput: string,
+  options: FetchFundstrProfileBundleOptions = {},
+): Promise<FundstrProfileBundle> {
+  const forceRefresh = Boolean(options?.forceRefresh);
+  const pubkeyHex = toHex(pubkeyInput);
+  const cacheKey = pubkeyHex.toLowerCase();
+
+  const startNetworkFetch = (refresh: boolean): Promise<FundstrProfileBundle> => {
+    const fetchPromise = (async () => {
+      try {
+        return await fetchFundstrProfileBundleNetwork(pubkeyHex, refresh);
+      } finally {
+        if (inFlightBundleRequests.get(cacheKey) === fetchPromise) {
+          inFlightBundleRequests.delete(cacheKey);
+        }
+      }
+    })();
+
+    inFlightBundleRequests.set(cacheKey, fetchPromise);
+    return fetchPromise;
+  };
+
+  if (!forceRefresh) {
+    const cached = await loadBundleFromCache(cacheKey, forceRefresh);
+    if (cached) {
+      const existing = inFlightBundleRequests.get(cacheKey);
+      if (!existing) {
+        const refreshPromise = startNetworkFetch(true);
+        refreshPromise.catch(() => {});
+      }
+      return { ...cached, cacheHit: true };
+    }
+  }
+
+  const existing = inFlightBundleRequests.get(cacheKey);
+  if (existing) {
+    return existing;
+  }
+
+  return await startNetworkFetch(forceRefresh);
+}
+
 function buildBundleFromDiscoveryCreator(
   creator: DiscoveryCreator,
 ): FundstrProfileBundle {
@@ -1065,6 +1402,19 @@ export const useCreatorsStore = defineStore("creators", {
     },
     getCreatorCache(state) {
       return (hex: string) => state.warmCache[hex];
+    },
+    getCreatorTiers(state) {
+      return (hex: string): Tier[] | null => {
+        const cacheEntry = state.warmCache[hex];
+        if (cacheEntry?.tiersLoaded && Array.isArray(cacheEntry.tiers)) {
+          return cacheEntry.tiers.map((tier) => normalizeTier(tier));
+        }
+        const mapped = state.tiersMap[hex];
+        if (Array.isArray(mapped)) {
+          return mapped.map((tier) => normalizeTier(tier));
+        }
+        return null;
+      };
     },
     prefillCacheEntries(): PrefillCreatorCacheEntry[] {
       const results: PrefillCreatorCacheEntry[] = [];
@@ -1705,7 +2055,7 @@ export const useCreatorsStore = defineStore("creators", {
       const now = Date.now();
       const cacheExpiry = 3 * 60 * 60 * 1000; // 3 hours
 
-      const triggerNetworkFetch = () => {
+      const triggerNetworkFetch = (refresh = forceRefresh) => {
         const existing = this.inFlightCreatorRequests[pubkey];
         if (existing) {
           return existing;
@@ -1714,9 +2064,41 @@ export const useCreatorsStore = defineStore("creators", {
         const fetchPromise = (async (): Promise<CreatorProfile | null> => {
           try {
             const bundle = await fetchFundstrProfileBundle(pubkey, {
-              forceRefresh,
+              forceRefresh: refresh,
             });
-            return await this.applyBundleToCache(pubkey, bundle, { cacheHit: false });
+            const result = await this.applyBundleToCache(pubkey, bundle, {
+              cacheHit: bundle.cacheHit === true,
+            });
+
+            if (!refresh && bundle.cacheHit === true) {
+              try {
+                const cacheKey = toHex(pubkey).toLowerCase();
+                const background = inFlightBundleRequests.get(cacheKey);
+                if (background) {
+                  background
+                    .then(async (freshBundle) => {
+                      if (freshBundle && freshBundle.cacheHit !== true) {
+                        await this.applyBundleToCache(pubkey, freshBundle, {
+                          cacheHit: false,
+                        });
+                      }
+                    })
+                    .catch((error) => {
+                      console.warn("[creators] Background creator refresh failed", {
+                        pubkey,
+                        error,
+                      });
+                    });
+                }
+              } catch (hexError) {
+                console.warn("[creators] Failed to watch background refresh", {
+                  pubkey,
+                  error: hexError,
+                });
+              }
+            }
+
+            return result;
           } catch (error) {
             console.error("[creators] Discovery profile fetch failed", {
               pubkey,
@@ -1749,13 +2131,13 @@ export const useCreatorsStore = defineStore("creators", {
 
         const warmCached = this.buildCreatorProfileFromCache(pubkey);
         if (warmCached) {
-          triggerNetworkFetch().catch(() => {});
+          triggerNetworkFetch(false).catch(() => {});
           return { ...warmCached, cacheHit: true };
         }
 
         const cached = await db.profiles.get(pubkey);
         if (cached && now - cached.fetchedAt < cacheExpiry) {
-          triggerNetworkFetch().catch(() => {});
+          triggerNetworkFetch(false).catch(() => {});
           return { ...cached.profile, cacheHit: true } as CreatorProfile;
         }
 
@@ -1765,7 +2147,7 @@ export const useCreatorsStore = defineStore("creators", {
         }
       }
 
-      return await triggerNetworkFetch();
+      return await triggerNetworkFetch(forceRefresh);
     },
 
     async loadFeatured(npubs: string[], opts: { fresh?: boolean } = {}) {
