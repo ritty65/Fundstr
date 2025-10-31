@@ -43,6 +43,21 @@ class AttachmentsDexie extends Dexie {
     this.version(1).stores({
       files: "&id, status, updatedAt",
     });
+
+    this.version(2)
+      .stores({
+        files: "&id, status, updatedAt, createdAt",
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table<AttachmentRecord>("files")
+          .toCollection()
+          .modify((file) => {
+            if (file.createdAt == null) {
+              file.createdAt = file.updatedAt ?? Date.now();
+            }
+          });
+      });
   }
 }
 
