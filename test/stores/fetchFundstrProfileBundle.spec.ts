@@ -247,10 +247,10 @@ describe("fetchFundstrProfileBundle", () => {
     expect(bundle.relayHints).toEqual(["wss://relay.example"]);
   });
 
-  it("treats DOMExceptions from cached tier lookups as security blocked", async () => {
+  it("treats security DOMExceptions from cached tier lookups as blocked", async () => {
     const domException = typeof DOMException !== "undefined"
-      ? new DOMException("Blocked by tracking protection", "NetworkError")
-      : Object.assign(new Error("dom exception"), { name: "DOMException" });
+      ? new DOMException("Blocked by tracking protection", "SecurityError")
+      : Object.assign(new Error("dom exception"), { name: "DOMException", code: 18 });
 
     const discoveryMock = createDiscoveryMock({
       creators: {
@@ -302,10 +302,10 @@ describe("fetchFundstrProfileBundle", () => {
     warnSpy.mockRestore();
   });
 
-  it("marks the bundle as tierSecurityBlocked when discovery throws a DOMException", async () => {
+  it("marks the bundle as tierSecurityBlocked when discovery throws a security DOMException", async () => {
     const domException = typeof DOMException !== "undefined"
-      ? new DOMException("Blocked by tracking protection", "NetworkError")
-      : Object.assign(new Error("dom exception"), { name: "DOMException" });
+      ? new DOMException("Blocked by tracking protection", "SecurityError")
+      : Object.assign(new Error("dom exception"), { name: "DOMException", code: 18 });
 
     const discoveryMock = createDiscoveryMock({
       creators: {
@@ -348,6 +348,70 @@ describe("fetchFundstrProfileBundle", () => {
     ]);
 
     warnSpy.mockRestore();
+  });
+
+  it("treats AbortError DOMExceptions as retryable tier lookup failures", async () => {
+    const abortError = typeof DOMException !== "undefined"
+      ? new DOMException("The operation was aborted.", "AbortError")
+      : Object.assign(new Error("aborted"), { name: "AbortError" });
+
+    const discoveryMock = createDiscoveryMock({
+      creators: {
+        [PUBKEY_HEX]: {
+          cached: { results: [] },
+          fresh: { results: [makeCreator()] },
+        },
+      },
+      tiers: {
+        [PUBKEY_HEX]: {
+          cached: { tiers: [] },
+          fresh: () => {
+            throw abortError;
+          },
+        },
+        [NPUB]: {
+          cached: { tiers: [baseTier] },
+        },
+      },
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(discoveryMock);
+
+    const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX);
+
+    expect(bundle.tierSecurityBlocked).toBe(false);
+    expect(bundle.tierDataFresh).toBe(false);
+    expect(bundle.fetchedFromFallback).toBe(true);
+    expect(bundle.tiers).toEqual([
+      {
+        id: "tier-basic",
+        name: "Basic",
+        price_sats: 2500,
+        description: "Access to basic content",
+        media: [],
+      },
+    ]);
+
+    expect(
+      warnSpy.mock.calls.some(
+        ([message]) =>
+          typeof message === "string" &&
+          message.includes("fetchFundstrProfileBundle discovery tier lookup aborted"),
+      ),
+    ).toBe(true);
+    expect(
+      errorSpy.mock.calls.some(
+        ([message]) =>
+          typeof message === "string" &&
+          message.includes("fetchFundstrProfileBundle discovery tier lookup failed"),
+      ),
+    ).toBe(false);
+
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 
   it("throws a FundstrProfileFetchError when discovery returns no profile records", async () => {
