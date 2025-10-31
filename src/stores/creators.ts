@@ -5,7 +5,11 @@ import { getEventHash, signEvent, publishEvent } from "./nostr";
 import { nip19 } from "nostr-tools";
 import { Event as NostrEvent } from "nostr-tools";
 import type { Tier } from "./types";
-import { toHex, type NostrEvent as RelayEvent } from "@/nostr/relayClient";
+import {
+  queryNutzapTiers,
+  toHex,
+  type NostrEvent as RelayEvent,
+} from "@/nostr/relayClient";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import { normalizeTierMediaItems } from "src/utils/validateMedia";
 import { type NutzapProfileDetails } from "@/nutzap/profileCache";
@@ -18,6 +22,8 @@ import type { Creator as FundstrCreator } from "src/lib/fundstrApi";
 import { useNdk } from "src/composables/useNdk";
 import { shortenNpub } from "src/utils/profile";
 import { FEATURED_CREATORS as CONFIG_FEATURED_CREATORS } from "src/config/featured-creators";
+import { parseTiersContent as parseNutzapTiersContent } from "@/nutzap/profileShared";
+import type { Tier as NutzapTier } from "@/nutzap/types";
 
 export { FEATURED_CREATORS } from "src/config/featured-creators";
 
@@ -287,6 +293,37 @@ function convertDiscoveryTier(tier: DiscoveryCreatorTier): Tier | null {
     id,
     name,
     price_sats,
+    description,
+    media,
+  };
+}
+
+function convertNutzapTierToDiscoveryTier(
+  tier: NutzapTier,
+): DiscoveryCreatorTier | null {
+  if (!tier || typeof tier.id !== "string") {
+    return null;
+  }
+  const id = tier.id.trim();
+  if (!id) {
+    return null;
+  }
+
+  const name = typeof tier.title === "string" ? tier.title : "";
+  const price = Number.isFinite(tier.price) ? Number(tier.price) : null;
+  const amountMsat = price !== null ? Math.max(0, Math.round(price * 1000)) : null;
+  const cadence = typeof tier.frequency === "string" ? tier.frequency : null;
+  const description =
+    typeof tier.description === "string" && tier.description.length
+      ? tier.description
+      : null;
+  const media = normalizeTierMediaItems(tier.media);
+
+  return {
+    id,
+    name,
+    amountMsat,
+    cadence,
     description,
     media,
   };
@@ -572,18 +609,19 @@ export async function fetchFundstrProfileBundle(
   const tierSecurityBlocked = tierResults.some((result) => result.securityBlocked);
   const tierFreshMatch = tierResults.find((result) => result.fresh !== null);
   const tierFallbackSource = tierResults.find((result) => result.cached.length > 0);
-  const finalTierCandidates = tierFreshMatch
+  let finalTierCandidates = tierFreshMatch
     ? [...(tierFreshMatch.fresh ?? [])]
     : tierFallbackSource?.cached
       ? [...tierFallbackSource.cached]
       : [];
-  const initialTierCandidates = tierFallbackSource?.cached?.length
+  let initialTierCandidates = tierFallbackSource?.cached?.length
     ? [...tierFallbackSource.cached]
     : tierFreshMatch?.fresh
       ? [...tierFreshMatch.fresh]
       : [];
 
   let usedCachedTierFallback = false;
+  let usedNutzapTierFallback = false;
   if (!tierFreshMatch && tierFallbackSource?.cached?.length) {
     usedCachedTierFallback = true;
     if (tierFallbackSource.freshError) {
@@ -604,6 +642,48 @@ export async function fetchFundstrProfileBundle(
         });
         lastTierFallbackLogAt = nowWarn;
       }
+    }
+  }
+
+  const shouldAttemptNutzapFallback =
+    tierResults.length > 0 &&
+    tierResults.every((result) => result.fresh === null) &&
+    tierResults.every((result) => result.cached.length === 0) &&
+    tierResults.some((result) => !!result.freshError);
+
+  if (shouldAttemptNutzapFallback) {
+    const nutzapQueryInput =
+      typeof finalCreator?.pubkey === "string" && finalCreator.pubkey.trim()
+        ? finalCreator.pubkey
+        : typeof npubQuery === "string" && npubQuery
+          ? npubQuery
+          : tierResults[0]?.id ?? pubkey;
+    try {
+      const nutzapEvent = await queryNutzapTiers(nutzapQueryInput);
+      const recoveredTiers =
+        nutzapEvent?.content
+          ? parseNutzapTiersContent(nutzapEvent.content)
+              .map((tier) => convertNutzapTierToDiscoveryTier(tier))
+              .filter((tier): tier is DiscoveryCreatorTier => tier !== null)
+          : [];
+      if (recoveredTiers.length > 0) {
+        finalTierCandidates = [...recoveredTiers];
+        initialTierCandidates = [...recoveredTiers];
+        usedNutzapTierFallback = true;
+        const nowWarn = Date.now();
+        if (nowWarn - lastTierFallbackLogAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
+          console.debug("fetchFundstrProfileBundle recovered tiers via nutzap fallback", {
+            id: nutzapQueryInput,
+          });
+          lastTierFallbackLogAt = nowWarn;
+        }
+      }
+    } catch (error) {
+      lastError = lastError ?? error;
+      console.warn("fetchFundstrProfileBundle nutzap tier fallback failed", {
+        id: nutzapQueryInput,
+        error,
+      });
     }
   }
 
@@ -646,14 +726,16 @@ export async function fetchFundstrProfileBundle(
     ? baseBundle.tiers.map((tier) => normalizeTier(tier))
     : null;
 
-  const tierDataFresh = !usedCachedTierFallback && !tierSecurityBlocked;
+  const tierDataFresh =
+    !usedCachedTierFallback && !tierSecurityBlocked && !usedNutzapTierFallback;
 
   return {
     ...baseBundle,
     tierDataFresh,
     tierSecurityBlocked,
     tiers: normalizedTiers && normalizedTiers.length ? normalizedTiers : null,
-    fetchedFromFallback: usedCachedProfileFallback || usedCachedTierFallback,
+    fetchedFromFallback:
+      usedCachedProfileFallback || usedCachedTierFallback || usedNutzapTierFallback,
   };
 }
 
