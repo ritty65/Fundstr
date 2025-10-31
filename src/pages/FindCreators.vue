@@ -241,6 +241,7 @@ import { useNostrStore } from 'stores/nostr';
 import { useCreatorsStore } from 'stores/creators';
 import { useMessengerStore } from 'stores/messenger';
 import { useMintsStore } from 'stores/mints';
+import { useBucketsStore } from 'stores/buckets';
 import { useUiStore } from 'stores/ui';
 import { notifyError, notifyWarning } from 'src/js/notify';
 import {
@@ -381,6 +382,7 @@ const $q = useQuasar();
 const nostr = useNostrStore();
 const messenger = useMessengerStore();
 const mintsStore = useMintsStore();
+const bucketsStore = useBucketsStore();
 const uiStore = useUiStore();
 const { open: openDonationPrompt } = useDonationPrompt();
 const { t } = useI18n();
@@ -390,6 +392,11 @@ const activeMintInfo = computed(() => mintsStore.activeInfo);
 const supportedNuts = computed(() => resolveSupportedNuts(activeMintInfo.value));
 const activeMintSupportsSplit = computed(() =>
   mintSupportsSplit(activeMintInfo.value, supportedNuts.value),
+);
+const { activeBuckets } = storeToRefs(bucketsStore);
+const bucketBalances = computed(() => bucketsStore.bucketBalances);
+const hasFundedBucket = computed(() =>
+  activeBuckets.value.some((bucket) => (bucketBalances.value[bucket.id] ?? 0) > 0),
 );
 
 function viewProfile(pubkey: string) {
@@ -414,8 +421,9 @@ async function donate(pubkey: string) {
   const hasActiveMint =
     typeof mintsStore.activeMintUrl === 'string' && mintsStore.activeMintUrl.trim().length > 0;
   const hasPositiveBalance = mintsStore.activeBalance > 0;
+  const hasActiveBucketWithFunds = hasFundedBucket.value;
 
-  if (!hasActiveMint || !hasPositiveBalance) {
+  if (!hasActiveMint || !hasPositiveBalance || !hasActiveBucketWithFunds) {
     const title = t('DonationPrompt.cashu.ctas.setupTitle');
     const description = t('DonationPrompt.cashu.ctas.setupDescription');
 
