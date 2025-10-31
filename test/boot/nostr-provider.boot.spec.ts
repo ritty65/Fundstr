@@ -8,7 +8,7 @@ describe("boot/nostr-provider", () => {
     vi.clearAllMocks();
   });
 
-  it("polyfills window.nostr when missing", async () => {
+  it("leaves window.nostr undefined when no provider is installed", async () => {
     vi.doMock("quasar/wrappers", () => ({ boot: bootStub }));
 
     const module = await import("src/boot/nostr-provider.ts");
@@ -16,7 +16,7 @@ describe("boot/nostr-provider", () => {
     delete (window as any).nostr;
     await module.default();
 
-    expect((window as any).nostr).toEqual({});
+    expect((window as any).nostr).toBeUndefined();
   });
 
   it("preserves existing nostr provider", async () => {

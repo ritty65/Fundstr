@@ -28,6 +28,21 @@ export function attachNip07SignerIfAvailable(): boolean {
     return false;
   }
 
+  const nip04 = nostr?.nip04;
+  const hasRequiredApis =
+    typeof nostr.enable === 'function' &&
+    typeof nostr.getPublicKey === 'function' &&
+    typeof nostr.signEvent === 'function' &&
+    typeof nip04?.encrypt === 'function' &&
+    typeof nip04?.decrypt === 'function';
+
+  if (!hasRequiredApis) {
+    if (ndkWrite.signer instanceof NDKNip07Signer) {
+      ndkWrite.signer = undefined;
+    }
+    return false;
+  }
+
   const alreadyAttached = ndkWrite.signer instanceof NDKNip07Signer;
   if (!alreadyAttached) {
     ndkWrite.signer = new NDKNip07Signer();
