@@ -68,6 +68,17 @@ vi.mock("../../../src/utils/fundstrRelayHttp", () => {
     buildRequestUrl: (base: string, filters: any[]) =>
       `${base}?filters=${encodeURIComponent(JSON.stringify(filters))}`,
     DEFAULT_HTTP_ACCEPT: "application/json",
+    HttpFallbackThrottledError: class HttpFallbackThrottledError extends Error {
+      url: string;
+      retryAt: number;
+
+      constructor(url: string, retryAt = Date.now()) {
+        super(`HTTP fallback suppressed after repeated failures (url: ${url})`);
+        this.name = "HttpFallbackThrottledError";
+        this.url = url;
+        this.retryAt = retryAt;
+      }
+    },
   };
 });
 vi.mock("../../../src/nutzap/relayPublishing", () => {

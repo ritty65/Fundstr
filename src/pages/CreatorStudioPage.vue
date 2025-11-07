@@ -748,6 +748,7 @@ import { useP2pkDiagnostics } from 'src/composables/useP2pkDiagnostics';
 import { seedProfileIdentityFromMetadata } from './creator-studio/identitySeed';
 import { attachNip07SignerIfAvailable, connectNdk, ndkWrite } from 'src/nostr/ndk';
 import { updateCreatorCache } from '@/lib/fundstrApi';
+import { NUTZAP_HTTP_AUTH_HEADER } from '@/nutzap/relayConfig';
 
 const NIP07_HELP_URL =
   'https://guides.getalby.com/alby-browser-extension/nostr/how-to-sign-with-nostr-browser-extension';
@@ -760,6 +761,10 @@ const P2PK_VERIFICATION_STALE_MS = 1000 * 60 * 60 * 24 * 7;
 const CREATOR_STUDIO_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
 const HTTP_DEFAULT_ACCEPT =
   'application/nostr+json, application/json;q=0.9, */*;q=0.1';
+
+const CREATOR_STUDIO_HTTP_AUTH_HEADERS = NUTZAP_HTTP_AUTH_HEADER
+  ? { [NUTZAP_HTTP_AUTH_HEADER.name]: NUTZAP_HTTP_AUTH_HEADER.value }
+  : null;
 
 const CREATOR_STUDIO_RELAY_WS_URL = 'wss://relay.fundstr.me';
 const CREATOR_STUDIO_RELAY_HTTP_URL = 'https://relay.fundstr.me/req';
@@ -1522,7 +1527,12 @@ function createHttpFallbackRequest(filters: NostrFilter[]) {
     try {
       response = await fetch(requestUrl, {
         method: 'GET',
-        headers: { Accept: HTTP_DEFAULT_ACCEPT },
+        headers: {
+          Accept: HTTP_DEFAULT_ACCEPT,
+          ...(CREATOR_STUDIO_HTTP_AUTH_HEADERS
+            ? CREATOR_STUDIO_HTTP_AUTH_HEADERS
+            : {}),
+        },
         cache: 'no-store',
         signal: controller?.signal ?? undefined,
       });
