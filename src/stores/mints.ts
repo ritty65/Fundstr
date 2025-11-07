@@ -10,6 +10,8 @@ import {
 } from "src/js/notify";
 import {
   CashuMint,
+  CashuAuthMint,
+  CashuAuthWallet,
   MintKeys,
   MintAllKeysets,
   MintActiveKeys,
@@ -17,6 +19,7 @@ import {
   SerializedBlindedSignature,
   MintKeyset,
   GetInfoResponse,
+  getEncodedAuthToken,
 } from "@cashu/cashu-ts";
 import { useUiStore } from "./ui";
 import { cashuDb } from "src/stores/dexie";
@@ -40,13 +43,46 @@ export type Mint = {
   // initialize api: new CashuMint(url) on activation
 };
 
+type MintAuthState = {
+  tokens: string[];
+  clearAuthToken?: string;
+  keysets?: MintKeyset[];
+  keys?: MintKeys[];
+};
+
+const mintAuthWalletCache = new Map<string, CashuAuthWallet>();
+const mintAuthWalletPromises = new Map<string, Promise<CashuAuthWallet>>();
+const pendingBlindAuthFetches = new Map<string, Promise<string[]>>();
+const lastIssuedBlindAuthTokens = new Map<string, string>();
+
+export class BlindAuthError extends Error {
+  code: "missing-clear-token" | "mint-error";
+  mintUrl: string;
+  constructor(
+    mintUrl: string,
+    message: string,
+    code: "missing-clear-token" | "mint-error",
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "BlindAuthError";
+    this.code = code;
+    this.mintUrl = mintUrl;
+  }
+}
+
 export class MintClass {
   mint: Mint;
   constructor(mint: Mint) {
     this.mint = mint;
   }
   get api() {
-    return new CashuMint(this.mint.url);
+    const mintsStore = useMintsStore();
+    const needsBlindAuth = mintsStore.mintHasProtectedEndpoints(this.mint);
+    const authTokenGetter = needsBlindAuth
+      ? () => mintsStore.getBlindAuthToken(this.mint.url)
+      : undefined;
+    return new CashuMint(this.mint.url, undefined, authTokenGetter);
   }
   get proofs() {
     const proofsStore = useProofsStore();
@@ -120,6 +156,10 @@ export const useMintsStore = defineStore("mints", {
     const showMintInfoDialog = ref(false);
     const showMintInfoData = ref({} as Mint);
     const showEditMintDialog = ref(false);
+    const mintAuth = useLocalStorage<Record<string, MintAuthState>>(
+      "cashu.mints.auth",
+      {},
+    );
 
     const uiStoreGlobal: any = useUiStore();
 
@@ -167,6 +207,7 @@ export const useMintsStore = defineStore("mints", {
       showMintInfoData,
       showEditMintDialog,
       uiStoreGlobal,
+      mintAuth,
     };
   },
   getters: {
@@ -439,6 +480,7 @@ export const useMintsStore = defineStore("mints", {
         const newMintInfo = await this.fetchMintInfo(mint);
         this.triggerMintInfoMotdChanged(newMintInfo, mint);
         mint.info = newMintInfo;
+        await this.initializeBlindAuth(mint);
         debug("### activateMint: Mint info: ", mint.info);
         mint = await this.fetchMintKeys(mint);
         this.toggleActiveUnitForMint(mint);
@@ -565,6 +607,11 @@ export const useMintsStore = defineStore("mints", {
       const profileStore = useCreatorProfileStore();
       profileStore.mints = profileStore.mints.filter((m) => m !== url);
       notifySuccess(this.t("wallet.mint.notifications.removed"));
+      delete this.mintAuth[url];
+      mintAuthWalletCache.delete(url);
+      mintAuthWalletPromises.delete(url);
+      pendingBlindAuthFetches.delete(url);
+      lastIssuedBlindAuthTokens.delete(url);
     },
     assertMintError: function (response: { error?: any }, verbose = true) {
       if (response.error != null) {
@@ -582,6 +629,214 @@ export const useMintsStore = defineStore("mints", {
       if (mintIndex !== -1) {
         this.mints[mintIndex].motd_viewed = true;
       }
+    },
+    ensureMintAuthState(mintUrl: string): MintAuthState {
+      const existing = this.mintAuth[mintUrl];
+      if (existing && Array.isArray(existing.tokens)) {
+        return existing;
+      }
+      const next: MintAuthState = { tokens: [] };
+      this.mintAuth[mintUrl] = next;
+      return next;
+    },
+    updateMintAuthState(
+      mintUrl: string,
+      updater: (state: MintAuthState) => MintAuthState,
+    ) {
+      const current = this.ensureMintAuthState(mintUrl);
+      const cloned: MintAuthState = {
+        tokens: [...(current.tokens ?? [])],
+        clearAuthToken: current.clearAuthToken,
+        keysets: current.keysets ? [...current.keysets] : undefined,
+        keys: current.keys ? [...current.keys] : undefined,
+      };
+      this.mintAuth[mintUrl] = updater(cloned);
+    },
+    setMintClearAuthToken(mintUrl: string, token: string | null) {
+      this.updateMintAuthState(mintUrl, (state) => ({
+        ...state,
+        clearAuthToken: token ?? undefined,
+      }));
+    },
+    mintHasProtectedEndpoints(mint: Mint | string): boolean {
+      const target =
+        typeof mint === "string"
+          ? this.mints.find((m) => m.url === mint)
+          : mint;
+      const endpoints = (target?.info as any)?.nuts?.[22]?.protected_endpoints;
+      return Array.isArray(endpoints) && endpoints.length > 0;
+    },
+    mintRequiresBlindAuth(mint: Mint, path: string): boolean {
+      const endpoints = (mint.info as any)?.nuts?.[22]?.protected_endpoints;
+      if (!Array.isArray(endpoints) || endpoints.length === 0) {
+        return false;
+      }
+      return endpoints.some((endpoint: any) => {
+        if (typeof endpoint?.path !== "string") {
+          return false;
+        }
+        try {
+          return new RegExp(endpoint.path).test(path);
+        } catch (error) {
+          console.warn("Failed to evaluate blind auth endpoint regex", {
+            error,
+            endpoint,
+          });
+          return endpoint.path === path;
+        }
+      });
+    },
+    async initializeBlindAuth(mint: Mint) {
+      if (!this.mintHasProtectedEndpoints(mint)) {
+        return;
+      }
+      try {
+        await this.getAuthWallet(mint);
+      } catch (error) {
+        console.warn("Failed to initialize blind auth wallet", error);
+      }
+    },
+    async getAuthWallet(mint: Mint): Promise<CashuAuthWallet> {
+      const existing = mintAuthWalletCache.get(mint.url);
+      if (existing) {
+        return existing;
+      }
+      const pending = mintAuthWalletPromises.get(mint.url);
+      if (pending) {
+        return pending;
+      }
+      const loader = (async () => {
+        const state = this.ensureMintAuthState(mint.url);
+        const options: {
+          keys?: MintKeys[] | MintKeys;
+          keysets?: MintKeyset[];
+        } = {};
+        if (state.keys && state.keys.length) {
+          options.keys = state.keys;
+        }
+        if (state.keysets && state.keysets.length) {
+          options.keysets = state.keysets;
+        }
+        const wallet = new CashuAuthWallet(new CashuAuthMint(mint.url), options);
+        if (!state.keys?.length || !state.keysets?.length) {
+          await wallet.loadMint();
+          this.updateMintAuthState(mint.url, (current) => ({
+            ...current,
+            keysets: wallet.keysets,
+            keys: Array.from(wallet.keys.values()),
+          }));
+        }
+        mintAuthWalletCache.set(mint.url, wallet);
+        return wallet;
+      })();
+      mintAuthWalletPromises.set(mint.url, loader);
+      try {
+        return await loader;
+      } finally {
+        mintAuthWalletPromises.delete(mint.url);
+      }
+    },
+    async fetchBlindAuthTokens(mint: Mint, amount = 1): Promise<string[]> {
+      if (!this.mintHasProtectedEndpoints(mint)) {
+        return [];
+      }
+      const existing = pendingBlindAuthFetches.get(mint.url);
+      if (existing) {
+        return existing;
+      }
+      const request = (async () => {
+        const state = this.ensureMintAuthState(mint.url);
+        if (!state.clearAuthToken) {
+          throw new BlindAuthError(
+            mint.url,
+            "Mint requires a clear auth token to mint blind-auth tokens.",
+            "missing-clear-token",
+          );
+        }
+        const wallet = await this.getAuthWallet(mint);
+        const maxBatch = Number(
+          (mint.info as any)?.nuts?.[22]?.bat_max_mint ?? amount,
+        );
+        const batchSize = Math.max(
+          1,
+          Math.min(Number.isFinite(maxBatch) ? maxBatch : 1, amount),
+        );
+        try {
+          const proofs = await wallet.mintProofs(batchSize, state.clearAuthToken);
+          const tokens = proofs.map((p) => getEncodedAuthToken(p));
+          this.updateMintAuthState(mint.url, (current) => ({
+            ...current,
+            tokens: [...current.tokens, ...tokens],
+            keysets: wallet.keysets,
+            keys: Array.from(wallet.keys.values()),
+          }));
+          return tokens;
+        } catch (error) {
+          throw new BlindAuthError(
+            mint.url,
+            "Failed to mint blind-auth tokens from mint.",
+            "mint-error",
+            { cause: error },
+          );
+        }
+      })();
+      pendingBlindAuthFetches.set(mint.url, request);
+      try {
+        return await request;
+      } finally {
+        pendingBlindAuthFetches.delete(mint.url);
+      }
+    },
+    async ensureBlindAuthPrepared(mint: Mint, path: string): Promise<boolean> {
+      if (!this.mintRequiresBlindAuth(mint, path)) {
+        return false;
+      }
+      await this.getAuthWallet(mint);
+      const state = this.ensureMintAuthState(mint.url);
+      if (!state.tokens.length) {
+        const maxBatch = Number((mint.info as any)?.nuts?.[22]?.bat_max_mint ?? 1);
+        const batch = Math.max(1, Math.min(5, Number.isFinite(maxBatch) ? maxBatch : 1));
+        await this.fetchBlindAuthTokens(mint, batch);
+      }
+      return true;
+    },
+    async getBlindAuthToken(mintUrl: string): Promise<string> {
+      const mint = this.mints.find((m) => m.url === mintUrl);
+      if (!mint) {
+        throw new Error(`Mint not found: ${mintUrl}`);
+      }
+      const state = this.ensureMintAuthState(mintUrl);
+      if (!state.tokens.length) {
+        await this.fetchBlindAuthTokens(mint, 1);
+      }
+      const refreshed = this.ensureMintAuthState(mintUrl);
+      const [token, ...rest] = refreshed.tokens ?? [];
+      if (!token) {
+        throw new BlindAuthError(
+          mint.url,
+          "Mint did not provide a blind-auth token.",
+          "mint-error",
+        );
+      }
+      this.updateMintAuthState(mintUrl, (current) => ({
+        ...current,
+        tokens: rest,
+      }));
+      lastIssuedBlindAuthTokens.set(mintUrl, token);
+      return token;
+    },
+    finalizeBlindAuthToken(mintUrl: string, success: boolean) {
+      const token = lastIssuedBlindAuthTokens.get(mintUrl);
+      if (!token) {
+        return;
+      }
+      if (!success) {
+        this.updateMintAuthState(mintUrl, (current) => ({
+          ...current,
+          tokens: [token, ...current.tokens],
+        }));
+      }
+      lastIssuedBlindAuthTokens.delete(mintUrl);
     },
   },
 });

@@ -1,7 +1,7 @@
 import { debug } from "src/js/logger";
 import { defineStore } from "pinia";
 import { currentDateStr } from "src/js/utils";
-import { useMintsStore, MintClass, Mint } from "./mints";
+import { useMintsStore, MintClass, Mint, BlindAuthError } from "./mints";
 import { WalletProof } from "src/types/proofs";
 import { useLocalStorage } from "@vueuse/core";
 import { useProofsStore } from "./proofs";
@@ -30,7 +30,6 @@ import {
   notify,
 } from "src/js/notify";
 import {
-  CashuMint,
   CashuWallet,
   Proof,
   MintQuotePayload,
@@ -160,7 +159,15 @@ export const useWalletStore = defineStore("wallet", {
   getters: {
     wallet() {
       const mints = useMintsStore();
-      const mint = new CashuMint(mints.activeMintUrl);
+      const storedMint = mints.mints.find((m) => m.url === mints.activeMintUrl);
+      const mintClass = storedMint
+        ? new MintClass(storedMint)
+        : new MintClass({
+            url: mints.activeMintUrl,
+            keys: [],
+            keysets: [],
+          } as Mint);
+      const mint = mintClass.api;
       const mnemonicStore = useMnemonicStore();
       if (mnemonicStore.mnemonic == "") {
         mnemonicStore.mnemonic = generateMnemonic(wordlist);
@@ -273,8 +280,9 @@ export const useWalletStore = defineStore("wallet", {
       if (!storedMint) {
         throw new Error("mint not found");
       }
-      const unitKeysets = mints.mintUnitKeysets(storedMint, unit);
-      const mint = new CashuMint(url);
+      const mintClass = new MintClass(storedMint);
+      const unitKeysets = mintClass.unitKeysets(unit);
+      const mint = mintClass.api;
       const mnemonicStore = useMnemonicStore();
       if (mnemonicStore.mnemonic == "") {
         mnemonicStore.mnemonic = generateMnemonic(wordlist);
@@ -742,13 +750,20 @@ export const useWalletStore = defineStore("wallet", {
 
         debug("redeem: sending proofs", proofs);
 
-        let receivedProofs: Proof[];
+        let receivedProofs: Proof[] = [];
+        let blindAuthPrepared = false;
+        let blindAuthSucceeded = false;
+        blindAuthPrepared = await mintStore.ensureBlindAuthPrepared(
+          mint,
+          "/v1/swap",
+        );
         try {
           receivedProofs = await mintWallet.receive(tokenToRedeem, {
             counter,
             privkey: privkey || mintWallet.privkey,
             proofsWeHave: mintStore.mintUnitProofs(mint, historyToken.unit),
           });
+          blindAuthSucceeded = true;
           await proofsStore.addProofs(
             receivedProofs,
             undefined,
@@ -761,6 +776,10 @@ export const useWalletStore = defineStore("wallet", {
           console.error(error);
           this.handleOutputsHaveAlreadyBeenSignedError(keysetId, error);
           throw new Error("Error receiving tokens: " + error);
+        } finally {
+          if (blindAuthPrepared) {
+            mintStore.finalizeBlindAuthToken(mint.url, blindAuthSucceeded);
+          }
         }
 
         p2pkStore.setPrivateKeyUsed(privkey);
@@ -804,7 +823,11 @@ export const useWalletStore = defineStore("wallet", {
         return true;
       } catch (error: any) {
         console.error(error);
-        notifyApiError(error);
+        if (error instanceof BlindAuthError) {
+          notifyWarning(error.message);
+        } else {
+          notifyApiError(error);
+        }
         throw error;
       } finally {
         uIStore.unlockMutex();
