@@ -8,6 +8,7 @@ import {
   publishEventViaHttp,
   requestEventsViaHttp,
   buildRequestUrl,
+  HttpFallbackThrottledError,
 } from '@/utils/fundstrRelayHttp';
 
 export type FundstrRelayStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
@@ -972,7 +973,12 @@ export class FundstrRelayClient {
     try {
       return await requestEventsViaHttp(filters, fallback);
     } catch (err) {
-      if (err instanceof Error) {
+      if (err instanceof HttpFallbackThrottledError) {
+        this.pushLog('warn', 'HTTP fallback throttled', {
+          url: fallback.url,
+          retryAt: err.retryAt,
+        });
+      } else if (err instanceof Error) {
         this.pushLog('error', 'HTTP fallback request failed', err);
       }
       throw err;

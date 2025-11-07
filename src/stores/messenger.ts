@@ -52,6 +52,7 @@ import { NDKEvent } from "@nostr-dev-kit/ndk";
 import {
   publishEventViaHttp,
   requestEventsViaHttp,
+  HttpFallbackThrottledError,
   type HttpPublishAck,
 } from "@/utils/fundstrRelayHttp";
 import {
@@ -62,6 +63,7 @@ import {
   DM_POLL_INTERVAL_MS,
   DM_REQUIRE_AUTH,
   DM_AUTH_CACHE_MS,
+  DM_HTTP_AUTH_HEADER_RECORD,
   type DmSignerMode,
   type DmTransportMode,
 } from "@/config/dm";
@@ -418,6 +420,13 @@ const PENDING_DECRYPT_BASE_DELAY_MS = 5_000;
 const PENDING_DECRYPT_MAX_DELAY_MS = 60_000;
 const DM_DECRYPT_ERROR_MESSAGE =
   "Failed to decrypt message – ensure your Nostr extension is unlocked";
+
+function buildDmHttpHeaders(): Record<string, string> | undefined {
+  if (!DM_HTTP_AUTH_HEADER_RECORD) {
+    return undefined;
+  }
+  return { ...DM_HTTP_AUTH_HEADER_RECORD };
+}
 
 function isNonRetryableHttpAck(ack: HttpPublishAck | null | undefined): boolean {
   if (!ack?.message) return false;
@@ -2003,9 +2012,11 @@ export const useMessengerStore = defineStore("messenger", {
         { kinds: [4], authors: [pubkey], ...sinceFilter },
       ];
       try {
+        const dmHeaders = buildDmHttpHeaders();
         const events = await requestEventsViaHttp(filters, {
           url: DM_HTTP_REQ_URL,
           timeoutMs: DM_HTTP_ACK_TIMEOUT_MS,
+          ...(dmHeaders ? { headers: dmHeaders } : {}),
         });
         if (!Array.isArray(events) || events.length === 0) {
           return;
@@ -2025,6 +2036,10 @@ export const useMessengerStore = defineStore("messenger", {
           }
         }
       } catch (err) {
+        if (err instanceof HttpFallbackThrottledError) {
+          console.warn("[messenger.syncDmViaHttp] HTTP fallback throttled", err);
+          throw err;
+        }
         const message = err instanceof Error ? err.message : String(err ?? "error");
         console.error("[messenger.syncDmViaHttp]", err);
         notifyError(`Failed to sync DMs via HTTP fallback: ${message}`);
@@ -2410,9 +2425,11 @@ export const useMessengerStore = defineStore("messenger", {
 
         if (!delivered) {
           try {
+            const dmHeaders = buildDmHttpHeaders();
             const ack = await publishEventViaHttp(event, {
               url: DM_HTTP_EVENT_URL,
               timeoutMs: DM_HTTP_ACK_TIMEOUT_MS,
+              ...(dmHeaders ? { headers: dmHeaders } : {}),
             });
             const ackRecord: RelayAck = {
               ok: ack.accepted,
@@ -2441,7 +2458,17 @@ export const useMessengerStore = defineStore("messenger", {
             const reason =
               httpErr instanceof Error ? httpErr.message : String(httpErr ?? "error");
             relayResults[DM_HTTP_EVENT_URL] = { ok: false, reason };
-            console.error("[messenger.executeSendWithMeta] HTTP fallback failed", httpErr);
+            if (httpErr instanceof HttpFallbackThrottledError) {
+              console.warn(
+                "[messenger.executeSendWithMeta] HTTP fallback throttled",
+                httpErr,
+              );
+            } else {
+              console.error(
+                "[messenger.executeSendWithMeta] HTTP fallback failed",
+                httpErr,
+              );
+            }
             lastFailureReason = reason;
           }
         }
@@ -2604,9 +2631,11 @@ export const useMessengerStore = defineStore("messenger", {
 
       if (allowHttpFallback) {
         try {
+          const dmHeaders = buildDmHttpHeaders();
           const ack = await publishEventViaHttp(event, {
             url: DM_HTTP_EVENT_URL,
             timeoutMs: DM_HTTP_ACK_TIMEOUT_MS,
+            ...(dmHeaders ? { headers: dmHeaders } : {}),
           });
           const ackRecord: RelayAck = {
             ok: ack.accepted,
@@ -4069,7 +4098,11 @@ export const useMessengerStore = defineStore("messenger", {
           try {
             await this.syncDmViaHttp(nostr.pubkey, since);
           } catch (err) {
-            console.error("[messenger.start] HTTP fallback failed", err);
+            if (err instanceof HttpFallbackThrottledError) {
+              console.warn("[messenger.start] HTTP fallback throttled", err);
+            } else {
+              console.error("[messenger.start] HTTP fallback failed", err);
+            }
           }
         }
         try {

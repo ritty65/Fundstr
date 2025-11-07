@@ -1,4 +1,5 @@
 import { FUNDSTR_EVT_URL, FUNDSTR_WS_URL } from "@/nutzap/relayEndpoints";
+import { authHeaderRecord, parseAuthHeader } from "@/utils/httpAuthHeader";
 
 function parseList(raw: unknown): string[] {
   if (Array.isArray(raw)) {
@@ -45,6 +46,10 @@ const envFallbackBase =
   typeof metaEnv.VITE_DM_FALLBACK_BASE === "string"
     ? metaEnv.VITE_DM_FALLBACK_BASE.trim()
     : "";
+
+const envDmAuthHeader = parseAuthHeader(metaEnv.VITE_DM_HTTP_AUTH_HEADER);
+export const DM_HTTP_AUTH_HEADER = envDmAuthHeader;
+export const DM_HTTP_AUTH_HEADER_RECORD = authHeaderRecord(envDmAuthHeader);
 
 export const DM_RELAYS = envRelays.length > 0 ? envRelays : [FUNDSTR_WS_URL];
 
