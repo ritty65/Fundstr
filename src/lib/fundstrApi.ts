@@ -15,6 +15,27 @@ const rawApiBase =
 
 const API_BASE = rawApiBase.replace(/\/+$/, "");
 
+const rawCacheUpdateUrl =
+  (typeof metaEnv.VITE_CACHE_UPDATE_URL === "string" && metaEnv.VITE_CACHE_UPDATE_URL.trim()) ||
+  (typeof processEnv.VITE_CACHE_UPDATE_URL === "string" && processEnv.VITE_CACHE_UPDATE_URL.trim()) ||
+  (typeof processEnv.CACHE_UPDATE_URL === "string" && processEnv.CACHE_UPDATE_URL.trim()) ||
+  "";
+
+const CACHE_UPDATE_URL = rawCacheUpdateUrl || undefined;
+
+const rawCacheUpdateAuth =
+  (typeof metaEnv.VITE_CACHE_UPDATE_AUTH === "string" && metaEnv.VITE_CACHE_UPDATE_AUTH.trim()) ||
+  (typeof processEnv.VITE_CACHE_UPDATE_AUTH === "string" && processEnv.VITE_CACHE_UPDATE_AUTH.trim()) ||
+  (typeof processEnv.CACHE_UPDATE_AUTH === "string" && processEnv.CACHE_UPDATE_AUTH.trim()) ||
+  "";
+
+const CACHE_UPDATE_AUTH_HEADER = parseCacheUpdateAuth(rawCacheUpdateAuth);
+
+let cacheUpdateAuthBlocked = false;
+let cacheUpdateAuthLogged = false;
+let cacheUpdateAuthNotified = false;
+let cacheUpdateUrlMissingLogged = false;
+
 export interface CreatorMetrics {
   supporters: number | null;
   totalSupportMsat: number | null;
@@ -135,21 +156,37 @@ export async function updateCreatorCache(bundle: {
   profileEvent?: any;
   tiersEvent?: any;
 }) {
-  const url = import.meta.env.VITE_CACHE_UPDATE_URL!;
-  const response = await fetch(url, {
+  if (cacheUpdateAuthBlocked) {
+    return;
+  }
+  if (!CACHE_UPDATE_URL) {
+    if (!cacheUpdateUrlMissingLogged) {
+      console.warn("[cache-update] Skipping cache refresh; VITE_CACHE_UPDATE_URL is not configured.");
+      cacheUpdateUrlMissingLogged = true;
+    }
+    return;
+  }
+  const response = await fetch(CACHE_UPDATE_URL, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: buildCacheUpdateHeaders(),
     body: JSON.stringify(bundle),
   });
   if (!response.ok) {
-    let message = "cache_update_failed";
-    try {
-      const json = await response.json();
-      if (json && typeof json.error === "string" && json.error.trim()) {
-        message = json.error;
+    const message = await extractCacheUpdateError(response);
+    if (response.status === 401 || response.status === 403) {
+      cacheUpdateAuthBlocked = true;
+      if (!cacheUpdateAuthLogged) {
+        console.warn(
+          `[cache-update] Authorization failed (status ${response.status}). Skipping future cache refresh attempts until reload.`,
+        );
+        cacheUpdateAuthLogged = true;
       }
-    } catch (error) {
-      // ignore parse failure and use default message
+      const shouldNotify = !cacheUpdateAuthNotified;
+      cacheUpdateAuthNotified = true;
+      if (shouldNotify) {
+        throw new Error(message);
+      }
+      return;
     }
     throw new Error(message);
   }
@@ -196,6 +233,61 @@ async function parseJson(response: Response): Promise<unknown> {
   } catch (error) {
     throw new Error("Invalid JSON response");
   }
+}
+
+function buildCacheUpdateHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (CACHE_UPDATE_AUTH_HEADER) {
+    headers[CACHE_UPDATE_AUTH_HEADER.name] = CACHE_UPDATE_AUTH_HEADER.value;
+  }
+  return headers;
+}
+
+function parseCacheUpdateAuth(raw: unknown): { name: string; value: string } | null {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const separatorIndex = trimmed.search(/[:=]/);
+  if (separatorIndex > -1) {
+    const name = trimmed.slice(0, separatorIndex).trim();
+    const value = trimmed.slice(separatorIndex + 1).trim();
+    if (!value) {
+      return null;
+    }
+    return { name: name || "Authorization", value };
+  }
+  return { name: "Authorization", value: trimmed };
+}
+
+async function extractCacheUpdateError(response: Response): Promise<string> {
+  const fallback = "cache_update_failed";
+  try {
+    const text = await response.text();
+    if (!text) {
+      return fallback;
+    }
+    try {
+      const json = JSON.parse(text);
+      if (json && typeof (json as any).error === "string" && (json as any).error.trim()) {
+        return (json as any).error.trim();
+      }
+      if (json && typeof (json as any).message === "string" && (json as any).message.trim()) {
+        return (json as any).message.trim();
+      }
+    } catch (parseError) {
+      const trimmed = text.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+  } catch (error) {
+    // ignore body parsing errors and use fallback
+  }
+  return fallback;
 }
 
 function extractCreatorsArray(payload: unknown): unknown[] {
