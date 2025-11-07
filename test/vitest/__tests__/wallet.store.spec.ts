@@ -33,8 +33,14 @@ vi.mock("../../../src/stores/mints", () => ({
     constructor(mint: any) {
       this.mint = mint;
     }
+    get api() {
+      return { mintUrl: this.mint.url };
+    }
     unitBalance(unit: string) {
       return this.mint.balances?.[unit] ?? 0;
+    }
+    unitKeysets(unit: string) {
+      return (this.mint.keysets ?? []).filter((k: any) => k.unit === unit);
     }
   },
   Mint: class {},
@@ -81,6 +87,10 @@ beforeEach(() => {
     activeKeys: [],
     activeKeysets: [],
     activeInfo: null,
+    mintHasProtectedEndpoints: vi.fn(() => false),
+    ensureBlindAuthPrepared: vi.fn(() => false),
+    finalizeBlindAuthToken: vi.fn(),
+    getBlindAuthToken: vi.fn(),
   };
   validatePubkey = vi.fn(() => true);
   storedKeys = [];

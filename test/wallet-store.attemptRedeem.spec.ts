@@ -51,6 +51,11 @@ const mintWalletMock = {
   receive: mintWalletReceiveMock,
 };
 
+const ensureBlindAuthPreparedMock = vi.fn(async () => false);
+const finalizeBlindAuthTokenMock = vi.fn();
+const mintHasProtectedEndpointsMock = vi.fn(() => false);
+const getBlindAuthTokenMock = vi.fn(async () => undefined);
+
 const mintsStoreMock = reactive({
   mints: [
     {
@@ -59,6 +64,14 @@ const mintsStoreMock = reactive({
     },
   ],
   mintUnitProofs: vi.fn(() => []),
+  ensureBlindAuthPrepared: (...args: any[]) =>
+    ensureBlindAuthPreparedMock(...args),
+  finalizeBlindAuthToken: (...args: any[]) =>
+    finalizeBlindAuthTokenMock(...args),
+  mintHasProtectedEndpoints: (...args: any[]) =>
+    mintHasProtectedEndpointsMock(...args),
+  getBlindAuthToken: (...args: any[]) => getBlindAuthTokenMock(...args),
+  mintAuth: {} as Record<string, any>,
 });
 
 const tokensStoreMock = reactive({
@@ -113,9 +126,20 @@ vi.mock("stores/p2pk", () => ({
   useP2PKStore: () => p2pkStoreMock,
 }));
 
-vi.mock("stores/mints", () => ({
-  useMintsStore: () => mintsStoreMock,
-}));
+vi.mock("stores/mints", async () => {
+  const actual = await vi.importActual<any>("stores/mints");
+  class MockBlindAuthError extends Error {
+    constructor(message?: string) {
+      super(message);
+      this.name = "BlindAuthError";
+    }
+  }
+  return {
+    ...actual,
+    useMintsStore: () => mintsStoreMock,
+    BlindAuthError: MockBlindAuthError,
+  };
+});
 
 vi.mock("stores/tokens", () => ({
   useTokensStore: () => tokensStoreMock,
@@ -151,6 +175,10 @@ describe("wallet store attemptRedeem", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     signerStoreMock.method = null;
+    ensureBlindAuthPreparedMock.mockImplementation(async () => false);
+    finalizeBlindAuthTokenMock.mockImplementation(() => undefined);
+    mintHasProtectedEndpointsMock.mockImplementation(() => false);
+    getBlindAuthTokenMock.mockImplementation(async () => undefined);
     mintWalletReceiveMock.mockReset();
     signWithRemoteMock.mockReset();
     addProofsMock.mockReset();
