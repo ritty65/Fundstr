@@ -7,11 +7,10 @@
           <NoMintWarnBanner v-if="mints.length == 0" />
           <BalanceView v-else :set-tab="setTab" />
           <div
-            class="row items-center justify-center no-wrap q-mb-none q-mx-none q-px-none q-pt-lg q-pb-md position-relative"
+            class="row items-center justify-center quick-actions-row q-mb-none q-mx-none q-px-none q-pt-lg q-pb-md position-relative"
           >
             <div
-              class="col-6 q-mb-md flex justify-center items-center"
-              style="margin-right: 10%"
+              class="col-12 col-sm-5 col-md-4 q-mb-md flex justify-center items-center"
             >
               <q-btn
                 rounded
@@ -42,7 +41,7 @@
             </transition>
 
             <!-- button to showSendDialog -->
-            <div class="col-6 q-mb-md flex justify-center items-center">
+            <div class="col-12 col-sm-5 col-md-4 q-mb-md flex justify-center items-center">
               <q-btn
                 rounded
                 dense
@@ -338,10 +337,32 @@ body.body--dark .wallet-action-btn:active {
   justify-content: space-between;
 }
 
+.quick-actions-row {
+  flex-wrap: wrap;
+  gap: 1rem 2.5rem;
+}
+
 .scan-button-container {
   position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 1;
   padding-bottom: 15px;
+}
+
+@media (max-width: 500px) {
+  .quick-actions-row {
+    gap: 1rem;
+  }
+
+  .scan-button-container {
+    position: static;
+    transform: none;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    padding-bottom: 0;
+  }
 }
 
 .cashu-info-card {
