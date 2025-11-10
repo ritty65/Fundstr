@@ -1575,8 +1575,7 @@ export default defineComponent({
 
 .profile-tier-list {
   display: grid;
-  /* Increased minmax to 320px to make cards bigger */
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 1.5rem;
   align-items: stretch;
 }
@@ -1801,6 +1800,12 @@ export default defineComponent({
 @media (min-width: 1200px) {
   .profile-page__inner {
     max-width: 130rem;
+  }
+}
+
+@media (max-width: 359px) {
+  .profile-page__inner {
+    padding-inline: clamp(1rem, 5vw, 1.25rem);
   }
 }
 
