@@ -371,11 +371,24 @@ function normalizeCreatorsResponse(payload: any, fallbackQuery = '*'): {
       ? payload.creators
       : [];
 
-  const results = rawResults.map((entry) => normalizeCreator(entry as CreatorRow));
+  const results: LegacyCreator[] = [];
+  const localWarnings: string[] = [];
+
+  for (const entry of rawResults) {
+    try {
+      results.push(normalizeCreator(entry as CreatorRow));
+    } catch (err: any) {
+      localWarnings.push(`Skipping invalid creator record: ${err.message || 'Unknown error'}`);
+    }
+  }
 
   const warnings = Array.isArray(payload?.warnings)
     ? payload.warnings.map((warning: unknown) => String(warning))
     : [];
+
+  if (localWarnings.length > 0) {
+    warnings.push(...localWarnings);
+  }
 
   const count = Number.isFinite(payload?.count)
     ? Number(payload.count)

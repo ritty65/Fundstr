@@ -253,4 +253,39 @@ describe('fundstrDiscovery client', () => {
       'Invalid Nutzap bundle response from discovery service',
     );
   });
+
+  it('skips malformed creator records instead of failing completely', async () => {
+    const validPubkey = 'a'.repeat(64);
+    const bundleResponse = {
+      results: [
+        {
+          pubkey: validPubkey,
+          meta: { displayName: 'Valid One' },
+        },
+        {
+          pubkey: 'invalid-pubkey', // This should cause a crash currently
+          meta: { displayName: 'Invalid One' },
+        },
+      ],
+      count: 2,
+    };
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(bundleResponse), { status: 200 }));
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createFundstrDiscoveryClient();
+
+    // This should now resolve, filtering out the bad one
+    const response = await client.getCreators({ q: 'test' });
+
+    expect(response.results).toHaveLength(1);
+    expect(response.results[0].pubkey).toBe(validPubkey);
+
+    // Check that we got a warning about the skipped record
+    expect(response.warnings.length).toBeGreaterThan(0);
+    expect(response.warnings[0]).toContain('Skipping invalid creator record');
+  });
 });
