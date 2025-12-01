@@ -3,11 +3,18 @@ import { nip19 } from "nostr-tools";
 export function isValidNpub(input: string): boolean {
   const trimmed = input.trim();
   if (!trimmed) return false;
-  const decoded = nip19.decode(trimmed);
-  if (decoded.type !== "npub") {
-    throw new Error("Invalid npub prefix");
+  try {
+    const decoded = nip19.decode(trimmed);
+    if (decoded.type !== "npub") {
+      throw new Error("Invalid npub prefix");
+    }
+    return true;
+  } catch (e) {
+    if (e instanceof Error && e.message === "Invalid npub prefix") {
+      throw e;
+    }
+    return false;
   }
-  return true;
 }
 
 export function isValidMintUrl(input: string): boolean {
