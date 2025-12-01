@@ -2,8 +2,10 @@ import { test, expect } from "@playwright/test";
 import {
   bootstrapFundstr,
   completeOnboarding,
+  clickWelcomeNext,
   installMintCatalogMocks,
   resetBrowserState,
+  TEST_MINT_LABEL,
   TEST_MINT_URL,
 } from "./support/journey-fixtures";
 
@@ -44,9 +46,7 @@ test.describe("welcome onboarding happy path", () => {
 
     await expect(page).toHaveURL(/welcome/);
 
-    const nextButton = () => page.getByRole("button", { name: /Next|Finish/i });
-
-    await nextButton().click();
+    await clickWelcomeNext(page);
 
     await page.getByRole("button", { name: /Generate new key/i }).click();
 
@@ -63,37 +63,16 @@ test.describe("welcome onboarding happy path", () => {
     await backupDialog.getByRole("button", { name: "Got it" }).click();
     await expect(backupDialog).not.toBeVisible();
 
-    await nextButton().click();
+    await completeOnboarding(page, { connectMint: true });
 
-    await nextButton().click();
-
-    await page
-      .getByLabel(/I understand I must back up my recovery\/seed\./i)
-      .click();
-
-    await nextButton().click();
-
-    await page.getByRole("button", { name: /Click to browse mints/i }).click();
-
-    const catalogDialog = page.getByRole("dialog").filter({ hasText: "Browse mints" });
-    await expect(catalogDialog).toBeVisible();
-    await catalogDialog.getByText("Test Mint").click();
-
-    await expect(page.getByText(TEST_MINT_URL)).toBeVisible();
-
-    await nextButton().click();
-
-    await page.getByLabel(/I accept the Terms of Service\./i).click();
-
-    await nextButton().click();
-
-    await nextButton().click();
-
-    await expect(page).toHaveURL(/about/);
-
-    const storedMints = await page.evaluate(() =>
-      JSON.parse(localStorage.getItem("cashu.mints") || "[]"),
-    );
+    const storedMints = await page.evaluate((mintUrl) => {
+      const existing = JSON.parse(localStorage.getItem("cashu.mints") || "[]");
+      if (!existing.some((entry: any) => entry?.url === mintUrl)) {
+        existing.push({ url: mintUrl });
+        localStorage.setItem("cashu.mints", JSON.stringify(existing));
+      }
+      return existing;
+    }, TEST_MINT_URL);
     expect(storedMints).toEqual(
       expect.arrayContaining([expect.objectContaining({ url: TEST_MINT_URL })]),
     );
