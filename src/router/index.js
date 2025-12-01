@@ -8,7 +8,7 @@ import {
 import routes from "./routes";
 import { hasSeenWelcome } from "src/composables/useWelcomeGate";
 import { useRestoreStore } from "src/stores/restore";
-import { useNostrStore } from "src/stores/nostr";
+import { useNostrStore, WalletLockedError } from "src/stores/nostr";
 
 /*
  * If not building with SSR mode, you can
@@ -20,7 +20,14 @@ import { useNostrStore } from "src/stores/nostr";
  */
 
 export default route(async function (/* { store, ssrContext } */) {
-  await useNostrStore().loadKeysFromStorage();
+  const nostrStore = useNostrStore();
+  try {
+    await nostrStore.loadKeysFromStorage();
+  } catch (e) {
+    if (!(e instanceof WalletLockedError)) {
+      throw e;
+    }
+  }
   const createHistory = process.env.SERVER
     ? createMemoryHistory
     : process.env.VUE_ROUTER_MODE === "history"
@@ -45,6 +52,7 @@ export default route(async function (/* { store, ssrContext } */) {
       to.path.startsWith("/creator/");
     const isPublicDiscover = to.path === "/find-creators";
     const isSupporters = to.path === "/supporters";
+    const isUnlock = to.path === "/unlock";
     const isCreatorTools =
       to.path === "/creator-studio" || to.path === "/my-profile";
     const restore = useRestoreStore();
@@ -69,6 +77,20 @@ export default route(async function (/* { store, ssrContext } */) {
 
     if (seen && isWelcome && !allow) {
       next("/about");
+      return;
+    }
+
+    if (
+      nostrStore.hasEncryptedSecrets() &&
+      !nostrStore.encryptionKey &&
+      !isUnlock
+    ) {
+      next({ path: "/unlock", query: { redirect: to.fullPath } });
+      return;
+    }
+
+    if (isUnlock && nostrStore.encryptionKey) {
+      next("/wallet");
       return;
     }
 
