@@ -3,6 +3,7 @@
 import { configure } from 'quasar/wrappers'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -11,6 +12,7 @@ const __dirname = path.dirname(__filename)
 export default configure((ctx) => ({
   // 1. 'node-globals' boot file is removed. This is correct.
   boot: [
+    'sentry',
     'fundstr-preload',
     'welcomeGate',
     'cashu',
@@ -46,7 +48,7 @@ export default configure((ctx) => ({
           'src/lib/cashu-ts/src/index.ts'
         ),
       }
-      viteConf.plugins = (viteConf.plugins || []).concat([
+      const plugins = (viteConf.plugins || []).concat([
         // 3. This is the correct, complete configuration for the polyfill plugin.
         // It makes Buffer and process available to modules that import them
         // without dangerously injecting them into the global 'window' object.
@@ -63,6 +65,31 @@ export default configure((ctx) => ({
           protocolImports: true,
         })
       ])
+
+      const enableSentrySourcemaps = Boolean(
+        process.env.SENTRY_AUTH_TOKEN &&
+        process.env.SENTRY_ORG &&
+        process.env.SENTRY_PROJECT &&
+        ctx.prod
+      )
+
+      if (enableSentrySourcemaps) {
+        plugins.push(
+          sentryVitePlugin({
+            org: process.env.SENTRY_ORG,
+            project: process.env.SENTRY_PROJECT,
+            authToken: process.env.SENTRY_AUTH_TOKEN,
+            release: process.env.SENTRY_RELEASE || process.env.GITHUB_SHA,
+            sourcemaps: {
+              assets: ['dist/pwa/**/*'],
+              ignore: ['**/*.map.gz'],
+            },
+            telemetry: false,
+          })
+        )
+      }
+
+      viteConf.plugins = plugins
     }
   },
   framework: {

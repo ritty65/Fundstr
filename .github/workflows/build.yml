@@ -5,6 +5,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Derive release metadata
+        run: |
+          echo "SENTRY_RELEASE=${GITHUB_SHA}" >> $GITHUB_ENV
+          echo "VITE_SENTRY_RELEASE=${GITHUB_SHA}" >> $GITHUB_ENV
+          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            echo "VITE_SENTRY_ENVIRONMENT=production" >> $GITHUB_ENV
+          else
+            echo "VITE_SENTRY_ENVIRONMENT=staging" >> $GITHUB_ENV
+          fi
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -17,4 +26,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_RELEASE: ${{ env.SENTRY_RELEASE }}
+          VITE_SENTRY_ENVIRONMENT: ${{ env.VITE_SENTRY_ENVIRONMENT }}
+          VITE_SENTRY_RELEASE: ${{ env.VITE_SENTRY_RELEASE }}
         run: pnpm run build
