@@ -55,6 +55,7 @@ export default defineConfig({
       "test/utils/browserId.spec.ts",
       "src/js/__tests__/nutzapProfile.test.ts",
       "test/mints.store.spec.ts",
+      "test/mints.store.sadpath.spec.ts",
       "test/stores/mints.balance.spec.ts",
       "test/stores/migrations.store.spec.ts",
       "test/stores/proofs.store.spec.ts",
