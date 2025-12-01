@@ -85,7 +85,7 @@ export default route(async function (/* { store, ssrContext } */) {
       !nostrStore.encryptionKey &&
       !isUnlock
     ) {
-      next({ path: "/unlock", query: { redirect: to.fullPath } });
+      next({ path: "/unlock", query: { redirect: to.fullPath }, replace: true });
       return;
     }
 
