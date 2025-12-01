@@ -1763,19 +1763,24 @@ export const useWalletStore = defineStore("wallet", {
     lnurlPayFirst: async function (address: string) {
       var host;
       var data;
-      if (address.split("@").length == 2) {
-        let [user, lnaddresshost] = address.split("@");
-        host = `https://${lnaddresshost}/.well-known/lnurlp/${user}`;
-        const resp = await axios.get(host); // Moved it here: we don't want 2 potential calls
-        data = resp.data;
-      } else if (address.toLowerCase().slice(0, 6) === "lnurl1") {
-        let decoded = bech32.decode(address, 20000);
-        const words = bech32.fromWords(decoded.words);
-        const uint8Array = new Uint8Array(words);
-        host = new TextDecoder().decode(uint8Array);
+      try {
+        if (address.split("@").length == 2) {
+          let [user, lnaddresshost] = address.split("@");
+          host = `https://${lnaddresshost}/.well-known/lnurlp/${user}`;
+          const resp = await axios.get(host); // Moved it here: we don't want 2 potential calls
+          data = resp.data;
+        } else if (address.toLowerCase().slice(0, 6) === "lnurl1") {
+          let decoded = bech32.decode(address, 20000);
+          const words = bech32.fromWords(decoded.words);
+          const uint8Array = new Uint8Array(words);
+          host = new TextDecoder().decode(uint8Array);
 
-        const resp = await axios.get(host);
-        data = resp.data;
+          const resp = await axios.get(host);
+          data = resp.data;
+        }
+      } catch (error) {
+        notifyApiError(error, this.t("wallet.notifications.lnurl_error"));
+        return;
       }
       if (host == undefined) {
         notifyError(
@@ -1841,9 +1846,16 @@ export const useWalletStore = defineStore("wallet", {
           const usdAmount = amount;
           amount = Math.floor(usdAmount * satPrice);
         }
-        var { data } = await axios.get(
-          `${this.payInvoiceData.lnurlpay.callback}?amount=${amount * 1000}`,
-        );
+        let data;
+        try {
+          const response = await axios.get(
+            `${this.payInvoiceData.lnurlpay.callback}?amount=${amount * 1000}`,
+          );
+          data = response.data;
+        } catch (error) {
+          notifyApiError(error, this.t("wallet.notifications.lnurl_error"));
+          return;
+        }
         // check http error
         if (data.status == "ERROR") {
           notifyError(data.reason, this.t("wallet.notifications.lnurl_error"));

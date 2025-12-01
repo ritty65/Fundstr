@@ -21,6 +21,11 @@ vi.mock("bech32", () => ({
   },
 }));
 
+const bolt11DecodeMock = vi.fn();
+vi.mock("light-bolt11-decoder", () => ({
+  decode: (...args: any[]) => bolt11DecodeMock(...args),
+}));
+
 const proofsStoreMock: any = {};
 const uiStoreMock: any = {};
 const receiveStoreMock: any = {};
@@ -85,6 +90,7 @@ beforeEach(() => {
   axiosGetMock.mockReset();
   bech32DecodeMock.mockReset();
   bech32FromWordsMock.mockReset();
+  bolt11DecodeMock.mockReset();
   notifyApiErrorMock.mockReset();
   notifyErrorMock.mockReset();
   notifyWarningMock.mockReset();
@@ -300,6 +306,22 @@ describe("wallet store", () => {
       expect(walletStore.payInvoiceData.show).toBe(true);
     });
 
+    it("notifies when the lnurl request times out", async () => {
+      const walletStore = useWalletStore();
+      walletStore.t = (key: string) => key;
+
+      const timeoutError = new Error("timeout");
+      axiosGetMock.mockRejectedValueOnce(timeoutError);
+
+      await walletStore.lnurlPayFirst("alice@example.com");
+
+      expect(notifyApiErrorMock).toHaveBeenCalledWith(
+        timeoutError,
+        "wallet.notifications.lnurl_error",
+      );
+      expect(walletStore.payInvoiceData.show).toBe(false);
+    });
+
     it("decodes a bech32 LNURL and populates lnurlpay data", async () => {
       const walletStore = useWalletStore();
       walletStore.t = (key: string) => key;
@@ -459,6 +481,26 @@ describe("wallet store", () => {
         "https://lnurl.example/cb?amount=2000",
       );
       expect(walletStore.decodeRequest).toHaveBeenCalledWith("lnbc1invoice");
+    });
+  });
+
+  describe("handleBolt11Invoice", () => {
+    it("notifies and hides modal when invoice cannot be decoded", async () => {
+      const walletStore = useWalletStore();
+      walletStore.t = (key: string) => key;
+      walletStore.payInvoiceData.input.request = "invalid-invoice";
+      bolt11DecodeMock.mockImplementationOnce(() => {
+        throw new Error("decode failed");
+      });
+
+      await expect(walletStore.handleBolt11Invoice()).rejects.toThrow("decode failed");
+
+      expect(notifyWarningMock).toHaveBeenCalledWith(
+        "wallet.notifications.failed_to_decode_invoice",
+        undefined,
+        3000,
+      );
+      expect(walletStore.payInvoiceData.show).toBe(false);
     });
   });
 });

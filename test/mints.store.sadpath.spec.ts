@@ -85,4 +85,31 @@ describe("mints store sad path", () => {
     await expect(store.fetchMintKeys(mint)).rejects.toThrow('Keys Failed');
     expect(notifyApiError).toHaveBeenCalledWith(expect.any(Error), "wallet.mint.notifications.could_not_get_keys");
   });
+
+  it("fetchMintKeysets rejects malformed keyset payloads", async () => {
+    hoisted.getKeySetsMock.mockResolvedValueOnce({ keysets: null });
+    const store = useMintsStore();
+    const mint = { url: "https://bad.mint", keys: [], keysets: [] } as any;
+
+    await expect(store.fetchMintKeysets(mint)).rejects.toThrow(
+      "Mint returned malformed keysets response",
+    );
+    expect(notifyApiError).toHaveBeenCalledWith(
+      expect.any(Error),
+      "wallet.mint.notifications.could_not_get_keysets",
+    );
+  });
+
+  it("reports network timeouts when fetching mint info", async () => {
+    const timeoutError = Object.assign(new Error("timeout"), { code: "ETIMEDOUT" });
+    hoisted.getInfoMock.mockRejectedValueOnce(timeoutError);
+    const store = useMintsStore();
+    const mint = { url: "https://timeout.mint", keys: [], keysets: [] } as any;
+
+    await expect(store.fetchMintInfo(mint)).rejects.toThrow("timeout");
+    expect(notifyApiError).toHaveBeenCalledWith(
+      timeoutError,
+      "wallet.mint.notifications.could_not_get_info",
+    );
+  });
 });
