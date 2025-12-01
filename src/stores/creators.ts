@@ -27,6 +27,10 @@ import { shortenNpub } from "src/utils/profile";
 import { FEATURED_CREATORS as CONFIG_FEATURED_CREATORS } from "src/config/featured-creators";
 import { parseTiersContent as parseNutzapTiersContent } from "@/nutzap/profileShared";
 import type { Tier as NutzapTier } from "@/nutzap/types";
+import {
+  addTelemetryBreadcrumb,
+  captureTelemetryWarning,
+} from "src/utils/telemetry/sentry";
 
 export { FEATURED_CREATORS } from "src/config/featured-creators";
 
@@ -2247,6 +2251,23 @@ export const useCreatorsStore = defineStore("creators", {
               console.warn("[creators] Skipping featured creator with invalid pubkey", {
                 pubkey: creator.pubkey,
               });
+              captureTelemetryWarning(
+                "[creators] Skipping featured creator with invalid pubkey",
+                {
+                  reason: "invalid_pubkey",
+                  source: "featured_creators",
+                  valueLength:
+                    typeof creator.pubkey === "string" ? creator.pubkey.length : null,
+                },
+              );
+              addTelemetryBreadcrumb(
+                "Featured creator skipped",
+                {
+                  reason: "invalid_pubkey",
+                  source: "featured_creators",
+                },
+                "warning",
+              );
               return null;
             }
 
@@ -2302,6 +2323,18 @@ export const useCreatorsStore = defineStore("creators", {
             console.warn("[creators] Featured creators missing from response", {
               pubkeys: Array.from(missingPubkeys),
             });
+            captureTelemetryWarning(
+              "[creators] Featured creators missing from response",
+              {
+                missingCount: missingPubkeys.size,
+                source: "featured_creators",
+              },
+            );
+            addTelemetryBreadcrumb(
+              "Featured creators missing from response",
+              { missingCount: missingPubkeys.size },
+              "warning",
+            );
           }
         }
       } catch (error) {

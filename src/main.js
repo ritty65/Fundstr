@@ -18,6 +18,7 @@ import "./css/app.scss";
 import "./css/base.scss";
 import "./css/buckets.scss";
 
+import bootSentry from "./boot/sentry";
 import bootFundstrPreload from "./boot/fundstr-preload";
 import bootWelcomeGate from "./boot/welcomeGate";
 import bootCashu from "./boot/cashu";
@@ -70,6 +71,7 @@ async function bootstrap() {
   }
 
   const bootFiles = [
+    bootSentry,
     bootFundstrPreload,
     bootWelcomeGate,
     bootCashu,
