@@ -67,6 +67,7 @@ import { i18n } from "src/boot/i18n";
 import { useNostrStore } from "./nostr";
 import { useSignerStore } from "./signer";
 import { watch } from "vue";
+import { CashuNetworkError } from "src/types/errors";
 // HACK: this is a workaround so that the catch block in the melt function does not throw an error when the user exits the app
 // before the payment is completed. This is necessary because the catch block in the melt function would otherwise remove all
 // quotes from the invoiceHistory and the user would not be able to pay the invoice again after reopening the app.
@@ -1359,6 +1360,15 @@ export const useWalletStore = defineStore("wallet", {
         //   notify("Invoice still pending");
         // }
         debug("Invoice still pending", invoice.quote);
+        if (typeof (error as any)?.message === "string") {
+          const message = (error as any).message as string;
+          if (message.toLowerCase().includes("fetch") || message.toLowerCase().includes("network")) {
+            throw new CashuNetworkError(
+              "Unable to reach the mint to confirm your invoice. We'll retry when connectivity returns.",
+              error,
+            );
+          }
+        }
         throw error;
       }
     },

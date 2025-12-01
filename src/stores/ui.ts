@@ -46,6 +46,12 @@ export const useUiStore = defineStore("ui", {
     globalMutexLock: false,
     showDebugConsole: useLocalStorage("cashu.ui.showDebugConsole", false),
     lastBalanceCached: useLocalStorage("cashu.ui.lastBalanceCached", 0),
+    degradedNotices: [] as {
+      id: string;
+      message: string;
+      level: "warning" | "negative";
+      retryable?: boolean;
+    }[],
   }),
   actions: {
     initNetworkWatcher() {
@@ -100,6 +106,30 @@ export const useUiStore = defineStore("ui", {
     },
     setTab(tab: string) {
       this.tab = tab;
+    },
+    addDegradedNotice(notice: {
+      id: string;
+      message: string;
+      level?: "warning" | "negative";
+      retryable?: boolean;
+    }) {
+      const existingIdx = this.degradedNotices.findIndex((n) => n.id === notice.id);
+      const payload = {
+        level: "warning" as const,
+        retryable: false,
+        ...notice,
+      };
+      if (existingIdx === -1) {
+        this.degradedNotices.push(payload);
+      } else {
+        this.degradedNotices.splice(existingIdx, 1, payload);
+      }
+    },
+    clearDegradedNotice(id: string) {
+      this.degradedNotices = this.degradedNotices.filter((n) => n.id !== id);
+    },
+    clearDegradedNotices() {
+      this.degradedNotices = [];
     },
     formatSat: function (value: number) {
       // convert value to integer
