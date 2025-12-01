@@ -8,7 +8,7 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-export default configure(() => ({
+export default configure((ctx) => ({
   // 1. 'node-globals' boot file is removed. This is correct.
   boot: [
     'fundstr-preload',
@@ -30,6 +30,12 @@ export default configure(() => ({
     publicPath: './',
     vueRouterMode: 'history',
     extendViteConf (viteConf) {
+      if (ctx.prod) {
+        viteConf.esbuild = {
+          drop: ['console', 'debugger']
+        }
+      }
+
       viteConf.resolve = viteConf.resolve || {}
       viteConf.resolve.alias = {
         ...(viteConf.resolve.alias || {}),

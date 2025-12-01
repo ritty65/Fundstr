@@ -536,7 +536,7 @@ export const useMintsStore = defineStore("mints", {
       } catch (error: any) {
         console.error(error);
         try {
-          // notifyApiError(error, this.t("wallet.mint.notifications.could_not_get_info"));
+          notifyApiError(error, this.t("wallet.mint.notifications.could_not_get_info"));
         } catch {}
         throw error;
       }
@@ -576,7 +576,7 @@ export const useMintsStore = defineStore("mints", {
       } catch (error: any) {
         console.error(error);
         try {
-          // notifyApiError(error, this.t("wallet.mint.notifications.could_not_get_keys"));
+          notifyApiError(error, this.t("wallet.mint.notifications.could_not_get_keys"));
         } catch {}
         throw error;
       }
@@ -590,7 +590,7 @@ export const useMintsStore = defineStore("mints", {
       } catch (error: any) {
         console.error(error);
         try {
-          // notifyApiError(error, this.t("wallet.mint.notifications.could_not_get_keysets"));
+          notifyApiError(error, this.t("wallet.mint.notifications.could_not_get_keysets"));
         } catch {}
         throw error;
       }
