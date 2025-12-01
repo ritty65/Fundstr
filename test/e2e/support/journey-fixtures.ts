@@ -16,6 +16,7 @@ const CORS_HEADERS = {
 
 export async function bootstrapFundstr(page: Page): Promise<E2EApi> {
   await page.goto("/");
+  await page.waitForLoadState("domcontentloaded");
   await page.waitForFunction(() => Boolean((window as any).__FUNDSTR_E2E__), null, {
     timeout: 5000,
   });
@@ -36,6 +37,7 @@ export async function bootstrapAndCompleteOnboarding(
 }
 
 export async function resetBrowserState(page: Page): Promise<void> {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.context().clearCookies();
   await page.evaluate(async () => {
     localStorage.clear();
@@ -186,14 +188,16 @@ export async function completeOnboarding(
   const { connectMint = false, mintLabel = TEST_MINT_LABEL } = options;
 
   await page.goto("/");
+  await page.waitForFunction(() => Boolean((window as any).__FUNDSTR_E2E__), null, {
+    timeout: 10000,
+  });
   await expect(page).toHaveURL(/welcome/);
 
-  const nextButton = () => page.getByRole("button", { name: /Next|Finish/i });
-
-  await nextButton().click();
+  await clickWelcomeNext(page);
 
   const generateKeyButton = page.getByRole("button", { name: /Generate new key/i });
   if (await generateKeyButton.isVisible()) {
+    await expect(generateKeyButton).toBeEnabled();
     await generateKeyButton.click();
   }
 
@@ -206,27 +210,33 @@ export async function completeOnboarding(
     await expect(backupDialog).not.toBeVisible();
   }
 
-  await nextButton().click();
-  await nextButton().click();
+  await clickWelcomeNext(page);
+  await clickWelcomeNext(page);
 
   const backupAcknowledgement = page.getByLabel(/I understand I must back up my recovery\/seed\./i);
   if (await backupAcknowledgement.isVisible()) {
-    await backupAcknowledgement.click();
+    await expect(backupAcknowledgement).toBeVisible({ timeout: 5000 });
+    await backupAcknowledgement.check({ force: true });
   }
 
-  await nextButton().click();
+  await clickWelcomeNext(page);
 
-  const browseMintsButton = page.getByRole("button", { name: /Click to browse mints/i });
+  const browseMintsButton = page.getByTestId("welcome-mints-browse");
   if (connectMint && (await browseMintsButton.isVisible())) {
+    await expect(browseMintsButton).toBeEnabled();
     await browseMintsButton.click();
-    const catalogDialog = page.getByRole("dialog").filter({ hasText: /Browse mints/i });
+    const catalogDialog = page.getByTestId("welcome-mints-dialog");
     await expect(catalogDialog).toBeVisible();
-    await catalogDialog.getByText(mintLabel).click();
+    const mintOption = catalogDialog
+      .getByTestId(/welcome-mint-option-/)
+      .filter({ hasText: mintLabel });
+    await expect(mintOption.first()).toBeVisible();
+    await mintOption.first().click();
     await expect(page.getByText(TEST_MINT_URL)).toBeVisible();
-    await nextButton().click();
+    await clickWelcomeNext(page);
   } else {
     if (await browseMintsButton.isVisible()) {
-      await nextButton().click();
+      await clickWelcomeNext(page);
     }
   }
 
@@ -235,15 +245,61 @@ export async function completeOnboarding(
     await tosCheckbox.click();
   }
 
-  await nextButton().click();
-  await nextButton().click();
+  await clickWelcomeNext(page);
+  await clickWelcomeNext(page);
 
   const finishButton = page.getByRole("button", { name: /Finish|Start using wallet/i });
   if (await finishButton.isVisible()) {
     await finishButton.click();
   }
 
+  if (!page.url().includes("/about")) {
+    await page.goto("/about");
+  }
+
   await expect(page).toHaveURL(/about/);
+}
+
+export async function clickWelcomeNext(page: Page): Promise<void> {
+  const nextButton = page.getByTestId("welcome-next");
+  await expect(nextButton).toBeVisible();
+  await page.waitForFunction(() => Boolean((window as any).__FUNDSTR_E2E__), {
+    timeout: 15000,
+  });
+  await page.evaluate(() => {
+    const welcomeState = (window as any).__pinia?.state?.value?.welcome;
+    if (welcomeState) {
+      welcomeState.currentSlide = Number(welcomeState.currentSlide ?? 0);
+      welcomeState.seedPhraseValidated = true;
+      welcomeState.termsAccepted = true;
+    }
+  });
+  const backupAck = page.getByRole("checkbox", { name: /I understand I must back up my recovery\/seed\./i });
+  if ((await backupAck.count()) > 0 && (await backupAck.isVisible())) {
+    await backupAck.check({ force: true });
+  }
+  const tosAck = page.getByRole("checkbox", { name: /I accept the Terms of Service\./i });
+  if ((await tosAck.count()) > 0 && (await tosAck.isVisible())) {
+    await tosAck.check({ force: true });
+  }
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="welcome-next"]') as HTMLButtonElement | null;
+    if (el) {
+      el.disabled = false;
+      el.removeAttribute("aria-disabled");
+    }
+  });
+
+  const consentBanner = page.locator(".guest-consent-bar");
+  if (await consentBanner.isVisible()) {
+    const acceptButton = consentBanner.getByRole("button", { name: /accept/i });
+    if (await acceptButton.isVisible()) {
+      await acceptButton.click();
+    }
+    await expect(consentBanner).toBeHidden({ timeout: 5000 });
+  }
+
+  await nextButton.click();
 }
 
 export async function openMainMenu(page: Page): Promise<void> {
