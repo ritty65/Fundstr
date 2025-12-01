@@ -12,6 +12,33 @@
             />
             <div v-if="loginMethod === 'private'">
               <q-input v-model="privKey" label="nsec or hex private key" />
+              <q-input
+                v-model="pin"
+                :type="showPin ? 'text' : 'password'"
+                label="Create Unlock PIN / Password"
+                class="q-mt-sm"
+                outlined
+                dense
+                :error="Boolean(errorMessage)"
+                :error-message="errorMessage"
+              >
+                <template #append>
+                  <q-icon
+                    :name="showPin ? 'visibility_off' : 'visibility'"
+                    class="cursor-pointer"
+                    @click="showPin = !showPin"
+                  />
+                </template>
+              </q-input>
+              <q-input
+                v-model="pinConfirm"
+                :type="showPin ? 'text' : 'password'"
+                label="Confirm PIN"
+                class="q-mt-sm"
+                outlined
+                dense
+                :error="Boolean(errorMessage)"
+              />
               <div class="row justify-end q-mt-md">
                 <q-btn color="primary" label="Next" @click="nextFromKey" />
               </div>
@@ -20,6 +47,31 @@
               <div v-if="extError" class="text-negative q-mb-sm">
                 {{ extError }}
               </div>
+              <q-input
+                v-model="pin"
+                :type="showPin ? 'text' : 'password'"
+                label="Create Unlock PIN / Password"
+                outlined
+                dense
+                :error="Boolean(errorMessage)"
+                :error-message="errorMessage"
+              >
+                <template #append>
+                  <q-icon
+                    :name="showPin ? 'visibility_off' : 'visibility'"
+                    class="cursor-pointer"
+                    @click="showPin = !showPin"
+                  />
+                </template>
+              </q-input>
+              <q-input
+                v-model="pinConfirm"
+                :type="showPin ? 'text' : 'password'"
+                label="Confirm PIN"
+                class="q-mt-sm"
+                outlined
+                dense
+              />
               <div class="row justify-end q-mt-md">
                 <q-btn
                   color="primary"
@@ -98,6 +150,8 @@
 import { ref, computed } from "vue";
 import { useNostrStore } from "src/stores/nostr";
 import { useMessengerStore } from "src/stores/messenger";
+import { nip19, getPublicKey } from "nostr-tools";
+import { isValidNpub } from "src/utils/validators";
 
 const props = defineProps<{ modelValue: boolean }>();
 const emit = defineEmits(["update:modelValue", "complete"]);
@@ -141,6 +195,10 @@ const step = ref(1);
 const privKey = ref(nostr.activePrivateKeyNsec || "");
 const relayInput = ref("");
 const relayError = ref("");
+const pin = ref("");
+const pinConfirm = ref("");
+const errorMessage = ref("");
+const showPin = ref(false);
 const initialRelays = Array.from(
   new Set(
     messenger.relays
@@ -186,19 +244,35 @@ function removeRelay(idx: number) {
 
 async function nextFromKey() {
   if (!privKey.value.trim()) return;
-  await nostr.initPrivateKeySigner(privKey.value.trim());
-  step.value = 2;
+  if (!(await ensurePinValid())) return;
+  try {
+    const decoded = nip19.decode(privKey.value.trim());
+    const pub = nip19.npubEncode(getPublicKey(decoded.data as Uint8Array));
+    if (!isValidNpub(pub)) {
+      throw new Error("Invalid Nostr Public Key");
+    }
+    await nostr.setEncryptionKeyFromPin(pin.value.trim());
+    await nostr.initPrivateKeySigner(privKey.value.trim());
+    step.value = 2;
+  } catch (e: any) {
+    errorMessage.value = e?.message || "Invalid Nostr Public Key";
+  }
 }
 
 async function connectExtension() {
   extError.value = "";
+  if (!(await ensurePinValid())) return;
   const available = await nostr.checkNip07Signer(true);
   if (!available) {
     extError.value = "No NIP-07 extension detected";
     return;
   }
   try {
+    await nostr.setEncryptionKeyFromPin(pin.value.trim());
     await nostr.connectBrowserSigner();
+    if (!isValidNpub(nostr.npub)) {
+      throw new Error("Invalid Nostr Public Key");
+    }
     step.value = 2;
   } catch (e: any) {
     extError.value = e?.message || "Failed to connect";
@@ -227,5 +301,18 @@ async function connect() {
 function finish() {
   emit("complete");
   emit("update:modelValue", false);
+}
+
+async function ensurePinValid(): Promise<boolean> {
+  errorMessage.value = "";
+  if (!pin.value.trim() || !pinConfirm.value.trim()) {
+    errorMessage.value = "PIN required";
+    return false;
+  }
+  if (pin.value.trim() !== pinConfirm.value.trim()) {
+    errorMessage.value = "PINs do not match";
+    return false;
+  }
+  return true;
 }
 </script>
