@@ -93,6 +93,7 @@
           </div>
         </q-banner>
       </transition>
+      <DegradedSnackbar />
       <div :class="isMessengerRoute ? 'w-full' : 'max-w-7xl mx-auto'">
         <router-view />
       </div>
@@ -115,6 +116,7 @@ import AppNavDrawer from "components/AppNavDrawer.vue";
 import ConversationList from "components/ConversationList.vue";
 import UserInfo from "components/UserInfo.vue";
 import NewChatDialog from "components/NewChatDialog.vue";
+import DegradedSnackbar from "components/DegradedSnackbar.vue";
 import { useNostrStore, refreshCachedNutzapProfiles } from "src/stores/nostr";
 import { useCashuStore } from "src/stores/cashu";
 import { useMessengerStore } from "src/stores/messenger";
@@ -133,6 +135,7 @@ export default defineComponent({
     ConversationList,
     UserInfo,
     NewChatDialog,
+    DegradedSnackbar,
   },
   setup() {
     const messenger = useMessengerStore();

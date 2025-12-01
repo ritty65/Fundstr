@@ -12,6 +12,7 @@ import { useNostrStore, SignerType } from "./nostr";
 import { useSignerStore } from "./signer";
 import { schnorr } from "@noble/curves/secp256k1";
 import { nip19 } from "nostr-tools";
+import { isRetryableError } from "src/types/errors";
 export const useWorkersStore = defineStore("workers", {
   state: () => {
     return {
@@ -37,6 +38,7 @@ export const useWorkersStore = defineStore("workers", {
     },
     invoiceCheckWorker: async function (quote: string) {
       const walletStore = useWalletStore();
+      const uiStore = useUiStore();
       let nInterval = 0;
       this.clearAllWorkers();
       this.invoiceCheckListener = setInterval(async () => {
@@ -57,8 +59,19 @@ export const useWorkersStore = defineStore("workers", {
           // only without error (invoice paid) will we reach here
           debug("### stopping invoice check worker");
           this.clearAllWorkers();
+          uiStore.clearDegradedNotice("invoice-worker");
         } catch (error) {
-          debug("invoiceCheckWorker: not paid yet");
+          const retryable = isRetryableError(error);
+          const message = retryable
+            ? "We couldn't reach the mint to confirm your invoice. We'll retry shortly."
+            : "Invoice check halted. Please reopen the request.";
+          uiStore.addDegradedNotice({
+            id: "invoice-worker",
+            message,
+            retryable,
+            level: retryable ? "warning" : "negative",
+          });
+          debug("invoiceCheckWorker: not paid yet", error);
         }
       }, this.checkInterval);
     },
@@ -117,6 +130,7 @@ export const useWorkersStore = defineStore("workers", {
       this.tokenWorkerRunning = true;
       const walletStore = useWalletStore();
       const sendTokensStore = useSendTokensStore();
+      const uiStore = useUiStore();
       let nInterval = 0;
       this.clearAllWorkers();
       this.tokensCheckSpendableListener = setInterval(async () => {
@@ -132,6 +146,7 @@ export const useWorkersStore = defineStore("workers", {
           if (paid) {
             debug("### stopping token check worker");
             this.clearAllWorkers();
+            uiStore.clearDegradedNotice("token-worker");
             sendTokensStore.showSendTokens = false;
           }
         } catch (error: any) {
@@ -139,8 +154,20 @@ export const useWorkersStore = defineStore("workers", {
             debug("checkTokenSpendableWorker: mutex locked, retrying later");
             return;
           }
+          const retryable = isRetryableError(error);
+          const message = retryable
+            ? "We lost connection while checking your token. We'll retry soon."
+            : "We hit an error checking your token status. Please reopen the app.";
+          uiStore.addDegradedNotice({
+            id: "token-worker",
+            message,
+            retryable,
+            level: retryable ? "warning" : "negative",
+          });
           debug("checkTokenSpendableWorker: some error", error);
-          this.clearAllWorkers();
+          if (!retryable) {
+            this.clearAllWorkers();
+          }
         }
       }, this.checkInterval);
     },
