@@ -2,6 +2,13 @@ import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 
+const realDexie = await vi.importActual<typeof import("dexie")>("dexie");
+const liveQueryMock = vi.fn(realDexie.liveQuery);
+vi.mock("dexie", () => ({
+  ...realDexie,
+  liveQuery: (...args: any[]) => liveQueryMock(...args),
+}));
+
 import { useSubscriptionsStore } from "@/stores/subscriptions";
 import { cashuDb, type Subscription } from "@/stores/dexie";
 import type { SubscriptionFrequency } from "@/constants/subscriptionFrequency";
@@ -42,6 +49,7 @@ const interval = (overrides: Partial<Subscription["intervals"][number]> = {}) =>
 
 beforeEach(async () => {
   setActivePinia(createPinia());
+  liveQueryMock.mockImplementation((...args) => realDexie.liveQuery(...args));
   await cashuDb.close();
   await cashuDb.delete();
   await cashuDb.open();
@@ -177,5 +185,34 @@ describe("subscriptions store", () => {
     const persisted = await cashuDb.subscriptions.get("sub-delete");
     expect(persisted).toBeUndefined();
     expect(store.subscriptions.some((row) => row.id === "sub-delete")).toBe(false);
+  });
+
+  it("logs liveQuery errors when subscription updates fail", async () => {
+    liveQueryMock.mockImplementationOnce((_fn) => ({
+      subscribe: ({ error }: any) => {
+        error?.(new Error("network down"));
+        return { unsubscribe: vi.fn() } as any;
+      },
+    }));
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const store = useSubscriptionsStore();
+
+    expect(consoleSpy).toHaveBeenCalledWith(expect.any(Error));
+    expect(store.subscriptions).toEqual([]);
+    consoleSpy.mockRestore();
+  });
+
+  it("tolerates malformed subscription rows without throwing", () => {
+    liveQueryMock.mockImplementationOnce((_fn) => ({
+      subscribe: ({ next }: any) => {
+        next?.([{ id: "bad", intervals: null } as any]);
+        return { unsubscribe: vi.fn() } as any;
+      },
+    }));
+
+    expect(() => useSubscriptionsStore()).not.toThrow();
+    const store = useSubscriptionsStore();
+    expect(store.subscriptions[0]).toMatchObject({ id: "bad" });
   });
 });

@@ -586,6 +586,9 @@ export const useMintsStore = defineStore("mints", {
       try {
         const mintClass = new MintClass(mint);
         const data = await mintClass.api.getKeySets();
+        if (!data || !Array.isArray((data as any).keysets)) {
+          throw new Error("Mint returned malformed keysets response");
+        }
         return data.keysets;
       } catch (error: any) {
         console.error(error);
