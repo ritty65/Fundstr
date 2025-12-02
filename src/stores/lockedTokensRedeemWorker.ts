@@ -7,7 +7,7 @@ import { useMintsStore } from "./mints";
 import { useMessengerStore } from "./messenger";
 import { useP2PKStore } from "./p2pk";
 import { notifySuccess } from "src/js/notify";
-import token from "src/js/token";
+import token, { hash as hashLock } from "src/js/token";
 import { ensureCompressed } from "src/utils/ecash";
 import { debug } from "src/js/logger";
 
@@ -89,6 +89,22 @@ export const useLockedTokensRedeemWorker = defineStore(
             continue;
           }
           try {
+            if (entry.htlcHash) {
+              if (!entry.htlcSecret) {
+                postMessage({
+                  type: "locked-token-missing-preimage",
+                  tokenId: entry.id,
+                });
+                continue;
+              }
+              const receiver = entry.creatorP2PK || entry.creatorNpub || "";
+              const computedHash = hashLock(entry.htlcSecret, receiver);
+              if (computedHash !== entry.htlcHash) {
+                console.error("HTLC preimage does not match hash for token", entry.id);
+                await cashuDb.lockedTokens.update(entry.id, { status: "expired" as any });
+                continue;
+              }
+            }
             const decoded = token.decode(entry.tokenString);
             if (!decoded) {
               console.error("Invalid token stored", entry.id);

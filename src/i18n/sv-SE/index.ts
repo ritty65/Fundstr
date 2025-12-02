@@ -1595,7 +1595,7 @@ export const messages = {
     export_csv: "Export CSV",
     cancel: "Cancel",
     cancel_confirm_title: "Cancel subscription",
-    cancel_confirm_text: "Delete all future locked tokens?",
+    cancel_confirm_text: "Cancel subscription? Only HTLC-protected future payments with a shared preimage can be reclaimed.",
     extend_dialog_title: "Extend subscription",
     extend_dialog_text: "Number of additional months",
     soon_unlock: "{ count } subscriptions unlocking within 7 days",
