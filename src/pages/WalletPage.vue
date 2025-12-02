@@ -439,6 +439,13 @@ import BucketManager from "components/BucketManager.vue";
 import { watch } from "vue";
 import { useNdk } from "src/composables/useNdk";
 
+const scheduleIdle = (task) => {
+  if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+    return (window as any).requestIdleCallback(task, { timeout: 1000 });
+  }
+  return setTimeout(task, 120);
+};
+
 // pinia stores
 import { mapActions, mapState, mapWritableState } from "pinia";
 import { useMintsStore } from "src/stores/mints";
@@ -530,6 +537,7 @@ export default {
       baseURL: location.protocol + "//" + location.host + location.pathname,
       credit: 0,
       newName: "",
+      startupMarkId: "",
     };
   },
   computed: {
@@ -644,6 +652,74 @@ export default {
     //
     shortenString: function (s) {
       return shortenString(s, 20, 10);
+    },
+    profileStartupDevice() {
+      const cores = (typeof navigator !== "undefined" && navigator.hardwareConcurrency) ||
+        "unknown";
+      const memory = (navigator as any)?.deviceMemory ?? "unknown";
+      debug(`[perf] Wallet device profile cores=${cores} memory=${memory}GB`);
+    },
+    markStartupStart(label = "init") {
+      if (typeof performance === "undefined" || !performance.mark) return;
+      this.startupMarkId = `wallet:${label}:${Date.now()}`;
+      performance.mark(this.startupMarkId);
+      this.profileStartupDevice();
+    },
+    measureStartup(label) {
+      if (!this.startupMarkId || typeof performance === "undefined" || !performance.mark) {
+        return;
+      }
+      const endMark = `${this.startupMarkId}:${label}`;
+      performance.mark(endMark);
+      const measure = performance.measure(
+        `wallet-startup:${label}`,
+        this.startupMarkId,
+        endMark,
+      );
+      debug(`[perf] wallet-startup:${label}=${measure.duration.toFixed(1)}ms`);
+    },
+    runWhenIdle(task, label) {
+      scheduleIdle(() => {
+        Promise.resolve(task())
+          .then(() => {
+            if (label) this.measureStartup(label);
+          })
+          .catch((error) => debug(`idle task ${label || ""} failed`, error));
+      });
+    },
+    queueBackgroundWorkers() {
+      this.runWhenIdle(() => {
+        if (this.nwcEnabled) {
+          this.listenToNWCCommands();
+        }
+        return this.ensureDmListeners({ suppressWarnings: true });
+      }, "idle:listeners");
+
+      this.runWhenIdle(() => {
+        if (useInvoicesWorkerStore().quotes.length > 0) {
+          this.startInvoiceCheckerWorker();
+        }
+        return this.checkPendingInvoices();
+      }, "idle:invoices");
+
+      this.runWhenIdle(async () => {
+        const lockedWorker = useLockedTokensRedeemWorker();
+        if (lockedWorker.hasRedeemableTokens) {
+          const shouldStart = await lockedWorker.hasRedeemableTokens();
+          if (shouldStart) lockedWorker.startLockedTokensRedeemWorker();
+        }
+
+        const sendWorker = useCashuSendWorker();
+        if (sendWorker.shouldStart && sendWorker.shouldStart()) {
+          this.start();
+        }
+
+        const subscriptionWorker = useSubscriptionRedeemWorker();
+        if (subscriptionWorker.hasPendingIntervals) {
+          const needs = await subscriptionWorker.hasPendingIntervals();
+          if (needs) this.startSubscriptionRedeemWorker();
+        }
+      }, "idle:workers");
     },
     getTokenList: function () {
       const amounts = this.activeProofs.map((t) => t.amount);
@@ -834,10 +910,12 @@ export default {
       }
     },
     async initPage() {
+      this.markStartupStart();
       // Initialize and run migrations
       const migrationsStore = useMigrationsStore();
       migrationsStore.initMigrations();
       await migrationsStore.runMigrations();
+      this.measureStartup("migrations");
 
       // check if another tab is open
       this.registerBroadcastChannel();
@@ -904,18 +982,10 @@ export default {
           );
         }
       }
-
+      this.measureStartup("signer-ready");
       this.showWelcomePage();
-
-      if (this.nwcEnabled) {
-        this.listenToNWCCommands();
-      }
-      this.ensureDmListeners({ suppressWarnings: true });
-      this.startInvoiceCheckerWorker();
-      this.startLockedTokensRedeemWorker();
-      this.start();
-      this.startSubscriptionRedeemWorker();
-      this.checkPendingInvoices();
+      this.queueBackgroundWorkers();
+      this.measureStartup("init-complete");
     },
   },
   watch: {},

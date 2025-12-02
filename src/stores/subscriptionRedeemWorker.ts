@@ -19,6 +19,24 @@ export const useSubscriptionRedeemWorker = defineStore(
       chain: Promise.resolve() as Promise<void>,
     }),
     actions: {
+      async hasPendingIntervals() {
+        const now = Math.floor(Date.now() / 1000);
+        const pending = await cashuDb.subscriptions
+          .filter(
+            (sub) =>
+              Array.isArray((sub as any).intervals) &&
+              (sub as any).intervals.some(
+                (interval: any) =>
+                  interval &&
+                  !interval.redeemed &&
+                  interval.status === "unlockable" &&
+                  typeof interval.unlockTs === "number" &&
+                  interval.unlockTs <= now,
+              ),
+          )
+          .count();
+        return pending > 0;
+      },
       start() {
         if (this.worker) return;
         this.worker = setInterval(() => this.process(), this.checkInterval);
