@@ -1,8 +1,16 @@
 <template>
   <div class="q-pa-xs" style="max-width: 500px; margin: 0 auto">
-    <q-list>
+    <q-virtual-scroll
+      v-if="visibleTokens.length"
+      ref="historyScroller"
+      class="history-virtual-scroll"
+      :items="visibleTokens"
+      :virtual-scroll-item-size="104"
+      :virtual-scroll-slice-size="18"
+      separator
+      v-slot="{ item: token }"
+    >
       <q-item
-        v-for="token in paginatedTokens"
         :key="token.id"
         clickable
         v-ripple
@@ -104,7 +112,7 @@
           </q-btn>
         </q-item-section>
       </q-item>
-    </q-list>
+    </q-virtual-scroll>
     <div class="text-center q-mt-lg">
       <q-btn
         rounded
@@ -123,22 +131,10 @@
         size="sm"
       />
     </div>
-    <div v-if="paginatedTokens.length === 0" class="text-center q-mt-lg">
+    <div v-if="visibleTokens.length === 0" class="text-center q-mt-lg">
       <q-item-label caption class="text-primary">{{
         $t("HistoryTable.empty_text")
       }}</q-item-label>
-    </div>
-    <div v-else-if="maxPages > 1" class="text-center q-mt-lg">
-      <div style="display: flex; justify-content: center">
-        <q-pagination
-          v-model="currentPage"
-          :max="maxPages"
-          :max-pages="5"
-          direction-links
-          boundary-links
-          @input="handlePageChange"
-        />
-      </div>
     </div>
     <q-dialog v-model="editDialog.show">
       <q-card class="q-pa-md" style="max-width: 400px">
@@ -202,8 +198,6 @@ export default defineComponent({
   },
   data: function () {
     return {
-      currentPage: 1,
-      pageSize: 5,
       filterPending: false,
       editDialog: {
         show: false,
@@ -215,11 +209,11 @@ export default defineComponent({
     };
   },
   watch: {
-    filterPending: function () {
-      this.currentPage = 1;
+    filterPending() {
+      this.resetScrollIndex();
     },
     bucketId() {
-      this.currentPage = 1;
+      this.resetScrollIndex();
     },
   },
   computed: {
@@ -239,20 +233,12 @@ export default defineComponent({
       }
       return this.historyTokens;
     },
-    maxPages() {
-      return Math.ceil(this.filteredTokens.length / this.pageSize);
-    },
-    paginatedTokens() {
-      const start = (this.currentPage - 1) * this.pageSize;
-      const end = start + this.pageSize;
+    visibleTokens() {
+      const ordered = this.filteredTokens.slice().reverse();
       if (this.filterPending) {
-        return this.filteredTokens
-          .filter((historyToken) => historyToken.status === "pending")
-          .slice()
-          .reverse()
-          .slice(start, end);
+        return ordered.filter((historyToken) => historyToken.status === "pending");
       }
-      return this.filteredTokens.slice().reverse().slice(start, end);
+      return ordered;
     },
   },
   methods: {
@@ -265,8 +251,8 @@ export default defineComponent({
     shortenString: function (s) {
       return shortenString(s, 20, 10);
     },
-    handlePageChange(page) {
-      this.currentPage = page;
+    resetScrollIndex() {
+      this.$refs.historyScroller?.reset();
     },
     receiveToken(tokenStr) {
       this.receiveData.tokensBase64 = tokenStr;

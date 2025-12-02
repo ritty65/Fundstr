@@ -8,6 +8,11 @@ export const useCashuSendWorker = defineStore("cashuSendWorker", {
     worker: null as NodeJS.Timeout | null,
   }),
   actions: {
+    shouldStart() {
+      const messenger = useMessengerStore();
+      const cashu = useCashuStore();
+      return messenger.isConnected() && cashu.sendQueue.length > 0;
+    },
     start() {
       if (this.worker) return;
       this.worker = setInterval(() => this.process(), this.interval);

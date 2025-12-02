@@ -20,6 +20,24 @@ export const useLockedTokensRedeemWorker = defineStore(
       redeemChain: Promise.resolve() as Promise<void>,
     }),
     actions: {
+      async hasRedeemableTokens() {
+        const settingsStore = useSettingsStore();
+        if (!settingsStore.autoRedeemLockedTokens) return false;
+        const now = Math.floor(Date.now() / 1000);
+        const unlockable = await cashuDb.lockedTokens
+          .where("unlockTs")
+          .belowOrEqual(now)
+          .count();
+        const legacyUnlockable = await cashuDb.lockedTokens
+          .filter(
+            (e: any) =>
+              e.unlockTs === undefined &&
+              typeof e.locktime === "number" &&
+              e.locktime <= now,
+          )
+          .count();
+        return unlockable + legacyUnlockable > 0;
+      },
       startLockedTokensRedeemWorker() {
         if (this.worker) return;
         window.addEventListener("message", this.handleMessage);

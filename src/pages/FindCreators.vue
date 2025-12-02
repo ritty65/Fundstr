@@ -95,10 +95,10 @@
                   </div>
                 </q-banner>
 
-                <div v-if="searchResults.length" class="column q-gutter-md">
+                <div v-if="visibleSearchResults.length" class="column q-gutter-md">
                   <div class="fixed-grid">
                     <CreatorCard
-                      v-for="profile in searchResults"
+                      v-for="profile in visibleSearchResults"
                       :key="profile.pubkey"
                       :profile="profile"
                       :cache-hit="profile.cacheHit === true"
@@ -108,8 +108,14 @@
                     />
                   </div>
 
-                  <div v-if="false" class="load-more-wrapper">
-                    <!-- The new API does not support pagination. This is hidden. -->
+                  <div v-if="hasMoreSearchResults" class="load-more-wrapper">
+                    <q-btn
+                      outline
+                      color="accent"
+                      icon="expand_more"
+                      label="Load more results"
+                      @click="loadMore"
+                    />
                   </div>
                 </div>
 
@@ -168,7 +174,7 @@
                 </div>
               </div>
 
-              <div v-else-if="featuredCreators.length" class="column q-gutter-md">
+              <div v-else-if="visibleFeaturedCreators.length" class="column q-gutter-md">
                 <q-banner
                   v-if="featuredWarningMessage"
                   rounded
@@ -183,13 +189,22 @@
                 </q-banner>
                 <div class="featured-grid">
                   <CreatorCard
-                    v-for="profile in featuredCreators"
+                    v-for="profile in visibleFeaturedCreators"
                     :key="profile.pubkey"
                     :profile="profile"
                     featured
                     @view-tiers="viewProfile"
                     @message="startChat"
                     @donate="donate"
+                  />
+                </div>
+                <div v-if="hasMoreFeaturedCreators" class="load-more-wrapper">
+                  <q-btn
+                    outline
+                    color="accent"
+                    icon="expand_more"
+                    label="Show more featured"
+                    @click="loadMoreFeatured"
                   />
                 </div>
               </div>
@@ -264,8 +279,13 @@ const {
   featuredStatusMessage: storeFeaturedStatusMessage,
 } = storeToRefs(creatorsStore);
 
+const SEARCH_PAGE_SIZE = 24;
+const FEATURED_PAGE_SIZE = 12;
+
 const searchQuery = ref('');
 const initialLoadComplete = ref(false);
+const searchSliceSize = ref(SEARCH_PAGE_SIZE);
+const featuredSliceSize = ref(FEATURED_PAGE_SIZE);
 
 const searchSkeletonPlaceholders = [0, 1, 2];
 const featuredSkeletonPlaceholders = [0, 1, 2, 3, 4, 5];
@@ -275,7 +295,19 @@ const hasQuery = computed(() => trimmedQuery.value.length > 0);
 const searchLoading = computed(() => searching.value);
 const searchError = computed(() => storeError.value);
 const searchWarnings = computed(() => storeSearchWarnings?.value ?? []);
+const visibleSearchResults = computed(() =>
+  searchResults.value.slice(0, searchSliceSize.value),
+);
+const hasMoreSearchResults = computed(
+  () => searchResults.value.length > visibleSearchResults.value.length,
+);
 const loadingFeatured = computed(() => storeLoadingFeatured?.value ?? false);
+const visibleFeaturedCreators = computed(() =>
+  featuredCreators.value.slice(0, featuredSliceSize.value),
+);
+const hasMoreFeaturedCreators = computed(
+  () => featuredCreators.value.length > visibleFeaturedCreators.value.length,
+);
 const showSearchEmptyState = computed(
   () =>
     initialLoadComplete.value &&
@@ -323,9 +355,7 @@ const debouncedSearch = debounce(() => {
 }, 300);
 
 const loadMore = () => {
-  // The new discovery service does not support pagination.
-  // This function is now a no-op but is kept to prevent template errors.
-  // The "Load More" button will be hidden via `hasMoreResults`.
+  searchSliceSize.value += SEARCH_PAGE_SIZE;
 };
 
 async function runSearch({ fresh = false }: { fresh?: boolean } = {}) {
@@ -339,6 +369,10 @@ async function runSearch({ fresh = false }: { fresh?: boolean } = {}) {
 async function loadFeatured(force = false) {
   await creatorsStore.loadFeaturedCreators(force);
 }
+
+const loadMoreFeatured = () => {
+  featuredSliceSize.value += FEATURED_PAGE_SIZE;
+};
 
 const featuredError = computed(() => storeFeaturedError.value);
 
@@ -489,6 +523,14 @@ function redirectToCreatorIfPresent() {
     void router.replace({ name: 'creator-profile', params: { npub: npub.trim() } });
   }
 }
+
+watch(searchResults, () => {
+  searchSliceSize.value = SEARCH_PAGE_SIZE;
+});
+
+watch(featuredCreators, () => {
+  featuredSliceSize.value = FEATURED_PAGE_SIZE;
+});
 
 onMounted(() => {
   redirectToCreatorIfPresent();
