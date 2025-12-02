@@ -112,7 +112,7 @@ async function connectNip07() {
     }
     await (window as any).nostr.signEvent(test)
     await nostr.connectBrowserSigner()
-    nostr.setPubkey(pk)
+    await nostr.setPubkey(pk)
     nostr.signerType = SignerType.NIP07
     close()
   } catch (e) {

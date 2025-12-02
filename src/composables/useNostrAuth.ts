@@ -24,7 +24,7 @@ export function useNostrAuth() {
 
   async function logout() {
     await nostr.disconnect();
-    nostr.setPubkey("");
+    await nostr.setPubkey("");
   }
 
   return {

@@ -62,6 +62,8 @@ import { HistoryToken } from "./tokens";
 import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
 import { useDmChatsStore } from "./dmChats";
 import { cashuDb, type LockedToken } from "./dexie";
+import { attachmentsDb } from "./attachmentsDb";
+import { clearMessengerDbEncryptionMaterial, messengerDb } from "./messengerDb";
 import { v4 as uuidv4 } from "uuid";
 import { useRouter } from "vue-router";
 import { useP2PKStore } from "./p2pk";
@@ -269,10 +271,10 @@ function hasEncryptedSecrets(): boolean {
 
 export function npubToHex(s: string): string | null {
   const input = s.trim();
-  console.debug("[npubToHex] input", input);
+  debug("[npubToHex] input", input);
   try {
     const decoded = nip19.decode(input);
-    console.debug("[npubToHex] decoded", decoded);
+    debug("[npubToHex] decoded", decoded);
     const { type, data } = decoded;
     if (type !== "npub") return null;
     if (typeof data === "string") {
@@ -281,7 +283,7 @@ export function npubToHex(s: string): string | null {
       return bytesToHex(data);
     }
   } catch (err) {
-    console.error("[npubToHex] decode failed", err);
+    debug("[npubToHex] decode failed", err);
   }
   return null;
 }
@@ -1604,6 +1606,74 @@ export const useNostrStore = defineStore("nostr", {
       this.registerSecureWatchers();
       this.secureStorageLoaded = true;
     },
+    async purgeSensitiveStorage(options: { preserveEncryptionKey?: boolean } = {}) {
+      const preserveEncryptionKey = options.preserveEncryptionKey ?? false;
+      try {
+        const tables = cashuDb.tables ?? [];
+        await cashuDb.transaction("rw", tables, async () => {
+          await Promise.all(tables.map((table) => table.clear()));
+        });
+      } catch (error) {
+        debug("[nostr] Failed to clear cashu Dexie; recreating", error);
+        try {
+          await cashuDb.delete();
+          await cashuDb.open();
+        } catch (fallbackError) {
+          debug("[nostr] cashu Dexie delete failed", fallbackError);
+        }
+      }
+      try {
+        const messengerTables = messengerDb.tables ?? [];
+        await messengerDb.transaction("rw", messengerTables, async () => {
+          await Promise.all(messengerTables.map((table) => table.clear()));
+        });
+      } catch (error) {
+        debug("[nostr] Failed to clear messenger Dexie", error);
+        try {
+          await messengerDb.delete();
+          await messengerDb.open();
+        } catch (fallbackError) {
+          debug("[nostr] messenger Dexie delete failed", fallbackError);
+        }
+      }
+      try {
+        await attachmentsDb.files.clear();
+      } catch (error) {
+        debug("[nostr] Failed to clear attachments Dexie", error);
+      }
+
+      clearMessengerDbEncryptionMaterial();
+
+      const keysToClear = [...SENSITIVE_STORAGE_KEYS];
+      if (!preserveEncryptionKey) {
+        keysToClear.push(SALT_STORAGE_KEY);
+        this.encryptionKey = null;
+      }
+      for (const key of keysToClear) {
+        localStorage.removeItem(key);
+      }
+
+      this.nip46Token = "";
+      this.privateKeySignerPrivateKey = "";
+      this.seedSignerPrivateKey = "";
+      this.seedSignerPublicKey = "";
+      this.signer = undefined;
+      this.signerType = SignerType.SEED;
+    },
+    async persistCurrentIdentity() {
+      if (!this.encryptionKey) return;
+      await Promise.all([
+        this.secureSetItem("cashu.ndk.pubkey", this.pubkey),
+        this.secureSetItem("cashu.ndk.signerType", this.signerType.toString()),
+        this.secureSetItem("cashu.ndk.nip46Token", this.nip46Token),
+        this.secureSetItem(
+          "cashu.ndk.privateKeySignerPrivateKey",
+          this.privateKeySignerPrivateKey,
+        ),
+        this.secureSetItem("cashu.ndk.seedSignerPrivateKey", this.seedSignerPrivateKey),
+        this.secureSetItem("cashu.ndk.seedSignerPublicKey", this.seedSignerPublicKey),
+      ]);
+    },
     initNdkReadOnly: async function (opts: ReadOnlyInitOptions = {}) {
       try {
         await this.loadKeysFromStorage();
@@ -1683,7 +1753,7 @@ export const useNostrStore = defineStore("nostr", {
         const user = await nip07.user();
         this.signer = nip07;
         this.signerType = SignerType.NIP07;
-        this.setPubkey(user.pubkey);
+        await this.setPubkey(user.pubkey);
         useNdk({ requireSigner: true }).catch(() => {});
       } catch (e) {
         throw new Error("The signer request was rejected or blocked.");
@@ -1875,7 +1945,7 @@ export const useNostrStore = defineStore("nostr", {
       debug(`nostr event: ${eventString}`);
       return ndkEvent;
     },
-    setPubkey: function (pubkey: string) {
+    setPubkey: async function (pubkey: string) {
       debug("Setting pubkey to", pubkey);
       const prev = this.pubkey;
       this.pubkey = pubkey;
@@ -1901,10 +1971,20 @@ export const useNostrStore = defineStore("nostr", {
         console.error(e);
       }
       if (prev !== pubkey) {
-        this.onIdentityChange(prev);
+        await this.onIdentityChange(prev);
       }
     },
     async onIdentityChange(previous?: string) {
+      if (previous) {
+        await this.purgeSensitiveStorage({ preserveEncryptionKey: Boolean(this.pubkey) });
+        if (this.pubkey) {
+          try {
+            await this.persistCurrentIdentity();
+          } catch (error) {
+            debug("[nostr] Failed to persist identity after purge", error);
+          }
+        }
+      }
       if (previous) {
         delete (this.profiles as any)[previous];
       }
@@ -2035,7 +2115,7 @@ export const useNostrStore = defineStore("nostr", {
         const user = await signer.user();
         if (user?.npub) {
           this.signerType = SignerType.NIP07;
-          this.setPubkey(user.pubkey);
+          await this.setPubkey(user.pubkey);
           await this.setSigner(signer, options);
 
           let urls: string[] | null = null;
@@ -2087,7 +2167,7 @@ export const useNostrStore = defineStore("nostr", {
       // wait until the signer is ready
       const loggedinUser = await signer.blockUntilReady();
       alert("You are now logged in as " + loggedinUser.npub);
-      this.setPubkey(loggedinUser.pubkey);
+      await this.setPubkey(loggedinUser.pubkey);
     },
     resetNip46Signer: async function () {
       this.nip46Token = "";
@@ -2115,7 +2195,7 @@ export const useNostrStore = defineStore("nostr", {
       const signer = new NDKPrivateKeySigner(privateKeyHex);
       this.privateKeySignerPrivateKey = privateKeyHex;
       this.signerType = SignerType.PRIVATEKEY;
-      this.setPubkey(getPublicKey(privateKeyBytes));
+      await this.setPubkey(getPublicKey(privateKeyBytes));
       await this.setSigner(signer, options);
     },
     async updateIdentity(nsec: string, relays?: string[]) {
@@ -2146,7 +2226,7 @@ export const useNostrStore = defineStore("nostr", {
       await this.walletSeedGenerateKeyPair();
       const signer = new NDKPrivateKeySigner(this.seedSignerPrivateKey);
       this.signerType = SignerType.SEED;
-      this.setPubkey(this.seedSignerPublicKey);
+      await this.setPubkey(this.seedSignerPublicKey);
       await this.setSigner(signer, options);
     },
     fetchEventsFromUser: async function () {

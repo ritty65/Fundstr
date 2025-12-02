@@ -26,12 +26,15 @@ import {
   loadPendingDmDecrypts,
   messengerDb,
   removeConversationState,
+  setMessengerDbCryptoKey,
   saveMessengerMessage,
   saveMessengerMessages,
   savePendingDmDecrypt,
   deletePendingDmDecrypt,
   updatePendingDmDecrypt,
   getDueOutboxItems,
+  getOutboxRecord,
+  getOutboxRecordsByStatus,
   rankRelays,
   recordRelayResult,
   upsertOutbox,
@@ -572,6 +575,13 @@ export const useMessengerStore = defineStore("messenger", {
     );
     const signerInitCache = ref<SignerInitOutcome | null>(null);
     const failedOutboxCount = ref(0);
+
+    setMessengerDbCryptoKey(nostrStore.encryptionKey);
+    watch(
+      () => nostrStore.encryptionKey,
+      (key) => setMessengerDbCryptoKey(key),
+      { immediate: true },
+    );
 
     let loadGenerationCounter = 0;
     let mutationGenerationCounter = 0;
@@ -3334,7 +3344,7 @@ export const useMessengerStore = defineStore("messenger", {
 
       try {
         const now = Date.now();
-        const existing = existingRecord ?? (await messengerDb.outbox.get(localId));
+        const existing = existingRecord ?? (await getOutboxRecord(localId));
         const basePayload = {
           content: payloadSource.content,
           text: payloadSource.text,
@@ -3440,10 +3450,7 @@ export const useMessengerStore = defineStore("messenger", {
       }
 
       const owner = this.getOwnerKey();
-      const records = await messengerDb.outbox
-        .where("[owner+status]")
-        .equals([owner, "failed_perm"])
-        .toArray();
+      const records = await getOutboxRecordsByStatus(owner, "failed_perm");
       let retried = 0;
       for (const record of records) {
         const localId = record.localId || record.id;

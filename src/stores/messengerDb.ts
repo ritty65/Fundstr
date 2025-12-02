@@ -1,5 +1,6 @@
 import Dexie, { Table } from "dexie";
 import type { Event as NostrEvent } from "nostr-tools";
+import { decryptData, deriveKey, encryptData, generateSalt } from "src/utils/crypto-service";
 import type { MessengerMessage } from "./messenger";
 
 export type ConversationMetaKey =
@@ -26,8 +27,10 @@ export interface MessengerEventRecord {
   createdAt: number;
   updatedAt: number;
   message?: MessengerMessage;
+  encryptedMessage?: string;
   metaKey?: ConversationMetaKey;
   metaValue?: ConversationMetaValue;
+  encryptedMetaValue?: string;
 }
 
 export interface MessengerOutboxRecord {
@@ -39,7 +42,7 @@ export interface MessengerOutboxRecord {
   status: MessengerOutboxStatus;
   nextAttemptAt: number;
   attemptCount: number;
-  payload: any;
+  payload?: any;
   relays?: string[];
   lastError?: string | null;
   relayResults?: Record<string, any>;
@@ -48,6 +51,8 @@ export interface MessengerOutboxRecord {
   lastAckAt?: number | null;
   createdAt: number;
   updatedAt: number;
+  encryptedPayload?: string;
+  encryptedRelayResults?: string;
 }
 
 export interface RelayHealthRecord {
@@ -65,7 +70,7 @@ export interface PendingDmDecryptRecord {
   senderPubkey: string;
   recipientPubkey: string;
   ciphertext: string;
-  event: NostrEvent;
+  event?: NostrEvent;
   eventCreatedAt: number;
   eventKind: number;
   relayHints?: string[] | null;
@@ -76,9 +81,69 @@ export interface PendingDmDecryptRecord {
   receivedAt: number;
   createdAt: number;
   updatedAt: number;
+  encryptedEvent?: string;
 }
 
 const MIGRATION_STORAGE_KEY = "cashu.messenger.migrationVersion";
+const MESSENGER_KEY_STORAGE = "cashu.messenger.encKey";
+const MESSENGER_SALT_STORAGE = "cashu.messenger.encSalt";
+
+let injectedCryptoKey: CryptoKey | null = null;
+let derivedCryptoKey: CryptoKey | null = null;
+
+function randomBase64(bytes = 32): string {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return btoa(String.fromCharCode(...arr));
+}
+
+export function setMessengerDbCryptoKey(key: CryptoKey | null) {
+  injectedCryptoKey = key;
+  derivedCryptoKey = null;
+}
+
+export function clearMessengerDbEncryptionMaterial() {
+  injectedCryptoKey = null;
+  derivedCryptoKey = null;
+  localStorage.removeItem(MESSENGER_KEY_STORAGE);
+  localStorage.removeItem(MESSENGER_SALT_STORAGE);
+}
+
+async function ensureMessengerCryptoKey(): Promise<CryptoKey> {
+  if (injectedCryptoKey) return injectedCryptoKey;
+  if (derivedCryptoKey) return derivedCryptoKey;
+
+  let secret = localStorage.getItem(MESSENGER_KEY_STORAGE);
+  if (!secret) {
+    secret = randomBase64();
+    localStorage.setItem(MESSENGER_KEY_STORAGE, secret);
+  }
+  let salt = localStorage.getItem(MESSENGER_SALT_STORAGE);
+  if (!salt) {
+    salt = generateSalt();
+    localStorage.setItem(MESSENGER_SALT_STORAGE, salt);
+  }
+
+  derivedCryptoKey = await deriveKey(secret, salt);
+  return derivedCryptoKey;
+}
+
+async function encryptJson(value: unknown): Promise<string> {
+  const key = await ensureMessengerCryptoKey();
+  return encryptData(key, JSON.stringify(value ?? null));
+}
+
+async function decryptJson<T = unknown>(payload?: string): Promise<T | null> {
+  if (!payload) return null;
+  try {
+    const key = await ensureMessengerCryptoKey();
+    const decrypted = await decryptData(key, payload);
+    return JSON.parse(decrypted) as T;
+  } catch (error) {
+    console.warn("[messengerDb] Failed to decrypt payload", error);
+    return null;
+  }
+}
 
 function structuredCloneSafe<T>(value: T): T {
   if (typeof structuredClone === "function") {
@@ -159,22 +224,26 @@ export async function saveMessengerMessages(
   if (!owner) return;
   if (!Array.isArray(messages) || !messages.length) return;
   const timestamp = nowMs();
-  const rows: MessengerEventRecord[] = messages
-    .filter((message) => message && typeof message === "object")
-    .map((message) => {
-      const messageId = message.id || `${timestamp}-${Math.random()}`;
-      const cloned = structuredCloneSafe(message);
-      return {
-        key: buildMessageKey(owner, messageId),
-        owner,
-        messageId,
-        conversationId: cloned.pubkey,
-        kind: "message",
-        createdAt: cloned.created_at || 0,
-        updatedAt: timestamp,
-        message: cloned,
-      } satisfies MessengerEventRecord;
-    });
+  const rows: MessengerEventRecord[] = (
+    await Promise.all(
+      messages
+        .filter((message) => message && typeof message === "object")
+        .map(async (message) => {
+          const messageId = message.id || `${timestamp}-${Math.random()}`;
+          const cloned = structuredCloneSafe(message);
+          return {
+            key: buildMessageKey(owner, messageId),
+            owner,
+            messageId,
+            conversationId: cloned.pubkey,
+            kind: "message",
+            createdAt: cloned.created_at || 0,
+            updatedAt: timestamp,
+            encryptedMessage: await encryptJson(cloned),
+          } satisfies MessengerEventRecord;
+        }),
+    )
+  ).filter(Boolean);
   if (!rows.length) return;
   await messengerDb.events.bulkPut(rows);
 }
@@ -186,6 +255,7 @@ export async function saveMessengerMessage(
   if (!owner || !message) return;
   const messageId = message.id || `${nowMs()}-${Math.random()}`;
   const cloned = structuredCloneSafe(message);
+  const encryptedMessage = await encryptJson(cloned);
   const row: MessengerEventRecord = {
     key: buildMessageKey(owner, messageId),
     owner,
@@ -194,7 +264,7 @@ export async function saveMessengerMessage(
     kind: "message",
     createdAt: cloned.created_at || 0,
     updatedAt: nowMs(),
-    message: cloned,
+    encryptedMessage,
   };
   await messengerDb.events.put(row);
 }
@@ -211,9 +281,10 @@ export async function savePendingDmDecrypt(
     createdAt: existing?.createdAt ?? record.createdAt ?? now,
     updatedAt: now,
   } as PendingDmDecryptRecord;
-  if (!data.event) {
-    data.event = structuredCloneSafe(record.event);
-  }
+  data.encryptedEvent = data.event
+    ? await encryptJson(data.event)
+    : data.encryptedEvent;
+  delete (data as any).event;
   await messengerDb.pendingDmDecrypts.put(data);
 }
 
@@ -225,7 +296,14 @@ export async function loadPendingDmDecrypts(
     .where("owner")
     .equals(owner)
     .sortBy("createdAt");
-  return rows.map((row) => structuredCloneSafe(row));
+  return Promise.all(
+    rows.map(async (row) => {
+      const cloned = structuredCloneSafe(row);
+      cloned.event =
+        cloned.event || (await decryptJson<NostrEvent>(cloned.encryptedEvent)) || undefined;
+      return cloned;
+    }),
+  );
 }
 
 export async function deletePendingDmDecrypt(id: string): Promise<void> {
@@ -240,6 +318,10 @@ export async function updatePendingDmDecrypt(
   if (!id || !patch) return;
   const data = structuredCloneSafe(patch);
   data.updatedAt = nowMs();
+  if (data.event) {
+    data.encryptedEvent = await encryptJson(data.event);
+    delete (data as any).event;
+  }
   await messengerDb.pendingDmDecrypts.update(id, data as any);
 }
 
@@ -252,9 +334,15 @@ export async function loadMessengerMessages(
     .equals(owner)
     .and((row) => row.kind === "message")
     .sortBy("createdAt");
-  return rows
-    .map((row) => structuredCloneSafe(row.message))
-    .filter((msg): msg is MessengerMessage => !!msg);
+  const messages = await Promise.all(
+    rows.map(async (row) => {
+      const decrypted =
+        (await decryptJson<MessengerMessage>(row.encryptedMessage)) ??
+        structuredCloneSafe(row.message);
+      return decrypted;
+    }),
+  );
+  return messages.filter((msg): msg is MessengerMessage => !!msg);
 }
 
 export async function deleteConversationMessages(
@@ -290,7 +378,8 @@ export async function writeConversationMeta(
     conversationId,
     kind: "meta",
     metaKey,
-    metaValue: structuredCloneSafe(value),
+    metaValue: undefined,
+    encryptedMetaValue: await encryptJson(value),
     createdAt: nowMs(),
     updatedAt: nowMs(),
   };
@@ -322,25 +411,27 @@ export async function loadConversationState(
   const state: StoredConversationState = structuredCloneSafe(empty);
   for (const row of rows) {
     if (!row.metaKey) continue;
+    const metaValue =
+      (await decryptJson<ConversationMetaValue>(row.encryptedMetaValue)) ?? row.metaValue;
     switch (row.metaKey) {
       case "conversation":
-        if (Array.isArray(row.metaValue)) {
-          state.conversations[row.conversationId] = row.metaValue.slice();
+        if (Array.isArray(metaValue)) {
+          state.conversations[row.conversationId] = metaValue.slice();
         }
         break;
       case "unread":
-        if (typeof row.metaValue === "number") {
-          state.unread[row.conversationId] = row.metaValue;
+        if (typeof metaValue === "number") {
+          state.unread[row.conversationId] = metaValue;
         }
         break;
       case "pinned":
-        if (typeof row.metaValue === "boolean") {
-          state.pinned[row.conversationId] = row.metaValue;
+        if (typeof metaValue === "boolean") {
+          state.pinned[row.conversationId] = metaValue;
         }
         break;
       case "alias":
-        if (typeof row.metaValue === "string") {
-          state.aliases[row.conversationId] = row.metaValue;
+        if (typeof metaValue === "string") {
+          state.aliases[row.conversationId] = metaValue;
         }
         break;
     }
@@ -373,7 +464,29 @@ export async function upsertOutbox(
     updatedAt: now,
     createdAt: data.createdAt ?? now,
   };
+  record.encryptedPayload = record.payload
+    ? await encryptJson(record.payload)
+    : record.encryptedPayload;
+  record.encryptedRelayResults = record.relayResults
+    ? await encryptJson(record.relayResults)
+    : record.encryptedRelayResults;
+  delete (record as any).payload;
+  delete (record as any).relayResults;
   await messengerDb.outbox.put(record);
+}
+
+async function hydrateOutboxRecord(
+  record?: MessengerOutboxRecord | null,
+): Promise<MessengerOutboxRecord | null> {
+  if (!record) return null;
+  const hydrated = structuredCloneSafe(record);
+  hydrated.payload =
+    hydrated.payload ?? (await decryptJson<Record<string, any>>(hydrated.encryptedPayload)) ?? undefined;
+  hydrated.relayResults =
+    hydrated.relayResults ??
+    (await decryptJson<Record<string, any>>(hydrated.encryptedRelayResults)) ??
+    undefined;
+  return hydrated;
 }
 
 export async function getDueOutboxItems(
@@ -389,7 +502,8 @@ export async function getDueOutboxItems(
       (row.status === "queued" || row.status === "retry_scheduled"),
     )
     .sortBy("nextAttemptAt");
-  return rows;
+  const hydrated = await Promise.all(rows.map((row) => hydrateOutboxRecord(row)));
+  return hydrated.filter((row): row is MessengerOutboxRecord => Boolean(row));
 }
 
 export async function updateOutboxStatus(
@@ -398,11 +512,41 @@ export async function updateOutboxStatus(
   patch: Partial<MessengerOutboxRecord> = {},
 ): Promise<void> {
   if (!id) return;
-  await messengerDb.outbox.update(id, {
+  const encryptedPayload = patch.payload
+    ? await encryptJson(patch.payload)
+    : patch.encryptedPayload;
+  const encryptedRelayResults = patch.relayResults
+    ? await encryptJson(patch.relayResults)
+    : patch.encryptedRelayResults;
+  const update: Partial<MessengerOutboxRecord> = {
+    ...patch,
     status,
     updatedAt: nowMs(),
-    ...patch,
-  });
+    encryptedPayload,
+    encryptedRelayResults,
+  };
+  delete (update as any).payload;
+  delete (update as any).relayResults;
+  await messengerDb.outbox.update(id, update as any);
+}
+
+export async function getOutboxRecord(id: string): Promise<MessengerOutboxRecord | null> {
+  if (!id) return null;
+  const record = await messengerDb.outbox.get(id);
+  return hydrateOutboxRecord(record);
+}
+
+export async function getOutboxRecordsByStatus(
+  owner: string,
+  status: MessengerOutboxStatus,
+): Promise<MessengerOutboxRecord[]> {
+  if (!owner) return [];
+  const records = await messengerDb.outbox
+    .where("[owner+status]")
+    .equals([owner, status])
+    .toArray();
+  const hydrated = await Promise.all(records.map((record) => hydrateOutboxRecord(record)));
+  return hydrated.filter((record): record is MessengerOutboxRecord => Boolean(record));
 }
 
 export async function recordRelayResult(

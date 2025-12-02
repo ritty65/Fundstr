@@ -7,9 +7,37 @@ const ALLOWED_MEDIA_TYPES: NonNullable<TierMedia["type"]>[] = [
   "link",
 ];
 
-export function isTrustedUrl(url: string): boolean {
+const TRUSTED_PROTOCOLS = new Set(["https:", "ipfs:", "nostr:"]);
+
+const ALLOWED_EMBED_HOSTS = new Set([
+  "youtube.com",
+  "www.youtube.com",
+  "youtu.be",
+  "www.youtube-nocookie.com",
+  "youtube-nocookie.com",
+  "nftstorage.link",
+  "primal.net",
+  "snort.social",
+]);
+
+export function isTrustedUrl(url: string, mediaType?: string): boolean {
   const cleaned = extractIframeSrc(url);
-  return /^(https:\/\/|ipfs:\/\/|nostr:)/i.test(cleaned.trim());
+  if (!cleaned) return false;
+  const normalized = normalizeMediaUrl(cleaned);
+  const type = mediaType ?? determineMediaType(normalized);
+  try {
+    const parsed = new URL(normalized, "https://fundstr.invalid");
+    if (!TRUSTED_PROTOCOLS.has(parsed.protocol)) return false;
+    if (parsed.protocol === "nostr:") return type === "nostr";
+    if (parsed.protocol === "ipfs:") return true;
+    const host = parsed.hostname.toLowerCase();
+    if (type === "iframe" || type === "youtube" || type === "nostr") {
+      return ALLOWED_EMBED_HOSTS.has(host);
+    }
+    return parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 export function normalizeYouTube(url: string): string {
@@ -95,8 +123,12 @@ export function determineMediaType(
 
 export function filterValidMedia(media: TierMedia[] = []): TierMedia[] {
   return media
-    .map((m) => ({ ...m, url: normalizeMediaUrl(m.url) }))
-    .filter((m) => m.url && isTrustedUrl(m.url));
+    .map((m) => {
+      const normalized = normalizeMediaUrl(m.url);
+      const type = determineMediaType(normalized);
+      return { ...m, url: normalized, type };
+    })
+    .filter((m) => m.url && isTrustedUrl(m.url, m.type));
 }
 
 export function normalizeTierMediaItems(input: unknown): TierMedia[] {

@@ -6,6 +6,7 @@ const CONFIG: Config = {
   USE_PROFILES: { html: true },
   FORBID_TAGS: ["img", "svg"],
   FORBID_ATTR: ["style"],
+  ALLOWED_URI_REGEXP: /^(?:(?:https?:)|ipfs:|nostr:)/i,
 };
 
 export function renderMarkdownSafe(markdown: string): string {
