@@ -126,6 +126,9 @@ export default defineConfig({
       "test/nostr/discovery.fallback.spec.ts",
       "test/nutzap/creatorCache.service.spec.ts",
       "test/boot/**/*.spec.ts",
+      "test/vitest/__tests__/p2pk-key-management.spec.ts",
+      "test/vitest/__tests__/p2pk-locking.spec.ts",
+      "test/vitest/__tests__/p2pk-subscriptions.spec.ts",
     ],
   },
   resolve: {
