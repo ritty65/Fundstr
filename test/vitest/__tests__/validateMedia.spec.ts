@@ -10,15 +10,30 @@ import {
 } from "../../../src/utils/validateMedia";
 
 describe("validateMedia", () => {
-  it("accepts trusted schemes", () => {
-    expect(isTrustedUrl("https://example.com")).toBe(true);
+  it("accepts trusted schemes and hosts", () => {
+    expect(isTrustedUrl("https://example.com/media.png")).toBe(true);
+    expect(isTrustedUrl("https://good.com/video.mp4")).toBe(true);
     expect(isTrustedUrl("ipfs://cid")).toBe(true);
     expect(isTrustedUrl("nostr:foo")).toBe(true);
   });
 
-  it("rejects untrusted schemes", () => {
+  it("rejects untrusted schemes and hosts", () => {
     expect(isTrustedUrl("http://example.com")).toBe(false);
     expect(isTrustedUrl("ftp://example.com")).toBe(false);
+    expect(isTrustedUrl("https://evil.example")).toBe(false);
+  });
+
+  it("blocks malicious iframe sources", () => {
+    const javascriptSrc = '<iframe src="javascript:alert(1)"></iframe>';
+    const dataSrc = '<iframe src="data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg=="></iframe>';
+
+    expect(isTrustedUrl(javascriptSrc)).toBe(false);
+    expect(normalizeMediaUrl(javascriptSrc)).toBe("javascript:alert(1)");
+
+    expect(isTrustedUrl(dataSrc)).toBe(false);
+    expect(normalizeMediaUrl(dataSrc)).toBe(
+      "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
+    );
   });
 
   it("normalizes youtube links", () => {
