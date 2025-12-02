@@ -25,3 +25,5 @@ Before deploying this repository to production, the following areas require atte
 ## 6. Offline & PWA
 - **Offline UX**: Verify the app's behavior when offline. Ensure actions that require network (sending tokens, fetching creators) provide clear user feedback instead of hanging.
 - **Service Worker**: Confirm `workbox` configuration properly caches static assets and handles updates without stranding users on old versions.
+- **Manual checks**: While offline, try sending/receiving (relay.fundstr.me) and fetching creators (api.fundstr.me). Confirm the offline banners/toasts appear and cached data stays visible until connectivity returns.
+- **Automated checks**: Keep tests that simulate offline creator lookups and relay-bound flows (send/receive) up-to-date so regressions surface in CI.
