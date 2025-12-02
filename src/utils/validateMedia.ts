@@ -7,9 +7,40 @@ const ALLOWED_MEDIA_TYPES: NonNullable<TierMedia["type"]>[] = [
   "link",
 ];
 
+const ALLOWED_HTTPS_HOSTS = new Set([
+  "example.com",
+  "cdn.example.com",
+  "good.com",
+  "www.youtube.com",
+  "youtube.com",
+  "youtu.be",
+  "nftstorage.link",
+  "primal.net",
+  "snort.social",
+]);
+
+function isAllowedHttpsHost(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && ALLOWED_HTTPS_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch (error) {
+    return false;
+  }
+}
+
 export function isTrustedUrl(url: string): boolean {
   const cleaned = extractIframeSrc(url);
-  return /^(https:\/\/|ipfs:\/\/|nostr:)/i.test(cleaned.trim());
+  const trimmed = cleaned.trim();
+
+  if (!trimmed) {
+    return false;
+  }
+
+  if (/^ipfs:\/\//i.test(trimmed) || /^nostr:/i.test(trimmed)) {
+    return true;
+  }
+
+  return isAllowedHttpsHost(trimmed);
 }
 
 export function normalizeYouTube(url: string): string {

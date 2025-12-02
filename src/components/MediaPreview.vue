@@ -4,13 +4,29 @@
       <img :src="src" />
     </div>
     <div v-else-if="type === 'youtube'" :class="containerClasses" :style="containerStyle">
-      <iframe :src="src" frameborder="0" allowfullscreen></iframe>
+      <iframe
+        :src="src"
+        frameborder="0"
+        allowfullscreen
+        sandbox="allow-same-origin allow-scripts"
+        referrerpolicy="no-referrer"
+      ></iframe>
     </div>
     <div v-else-if="type === 'iframe'" :class="containerClasses" :style="containerStyle">
-      <iframe :src="src" frameborder="0"></iframe>
+      <iframe
+        :src="src"
+        frameborder="0"
+        sandbox="allow-same-origin allow-scripts"
+        referrerpolicy="no-referrer"
+      ></iframe>
     </div>
     <div v-else-if="type === 'nostr'" :class="containerClasses" :style="containerStyle">
-      <iframe :src="src" frameborder="0"></iframe>
+      <iframe
+        :src="src"
+        frameborder="0"
+        sandbox="allow-same-origin allow-scripts"
+        referrerpolicy="no-referrer"
+      ></iframe>
     </div>
     <div v-else-if="type === 'video'" :class="containerClasses" :style="containerStyle">
       <video :src="src" controls></video>
