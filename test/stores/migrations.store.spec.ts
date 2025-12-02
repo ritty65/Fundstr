@@ -1,5 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
+import Dexie from "dexie";
+import { cashuDb } from "src/stores/dexie";
+import { LEGACY_DB_NAME, LEGACY_SCHEMAS } from "../utils/dexieLegacy";
+import snapshotV6 from "../vitest/fixtures/indexeddb-snapshots/v6-stablenut.json";
+import snapshotV20 from "../vitest/fixtures/indexeddb-snapshots/v20-subscriptions.json";
+
+vi.mock("@sentry/vue", () => ({
+  init: vi.fn(),
+  browserTracingIntegration: vi.fn(() => ({})),
+  setUser: vi.fn(),
+  setTag: vi.fn(),
+  addBreadcrumb: vi.fn(),
+  withScope: (cb: any) => cb({ setContext: vi.fn(), setLevel: vi.fn() }),
+  captureMessage: vi.fn(),
+}));
 
 const hoisted = vi.hoisted(() => {
   const uiStore: any = {
@@ -25,6 +40,35 @@ const hoisted = vi.hoisted(() => {
 
   return { uiStore, mintsStore, messengerStore };
 });
+
+type IndexedDbSnapshot = {
+  version: number;
+  localStorage?: Record<string, string>;
+  tables: Record<string, unknown[]>;
+  messenger?: {
+    conversations: Record<string, unknown>;
+    unreadCounts: Record<string, number>;
+  };
+};
+
+const seedSnapshot = async (snapshot: IndexedDbSnapshot) => {
+  const schema = LEGACY_SCHEMAS[snapshot.version];
+  if (!schema) {
+    throw new Error(`No schema registered for legacy version ${snapshot.version}`);
+  }
+
+  const db = new Dexie(LEGACY_DB_NAME);
+  db.version(snapshot.version).stores(schema);
+  await db.open();
+
+  for (const [tableName, rows] of Object.entries(snapshot.tables)) {
+    if (!rows.length) continue;
+    if (!db.tables.find((table) => table.name === tableName)) continue;
+    await db.table(tableName).bulkPut(rows as any[]);
+  }
+
+  await db.close();
+};
 
 vi.mock("src/stores/ui", () => ({
   useUiStore: () => hoisted.uiStore,
@@ -224,4 +268,122 @@ describe("migrations store", () => {
     expect(migrateMintSpy).toHaveBeenCalled();
     expect(cleanupSpy).toHaveBeenCalled();
   });
+});
+
+describe("legacy snapshot migrations", () => {
+  const snapshotCases = [
+    { name: "v6-stablenut", data: snapshotV6, expectUpdatedMint: true },
+    { name: "v20-subscriptions", data: snapshotV20, expectUpdatedMint: false },
+  ];
+
+  beforeEach(async () => {
+    await cashuDb.close();
+    await Dexie.delete(LEGACY_DB_NAME);
+  });
+
+  afterEach(async () => {
+    await cashuDb.close();
+    await Dexie.delete(LEGACY_DB_NAME);
+  });
+
+  it.each(snapshotCases)(
+    "replays $name snapshot through migrations and dexie upgrades",
+    async ({ name, data, expectUpdatedMint }) => {
+      const snapshot = JSON.parse(JSON.stringify(data)) as IndexedDbSnapshot;
+      await seedSnapshot(snapshot);
+
+      for (const [key, value] of Object.entries(snapshot.localStorage ?? {})) {
+        localStorage.setItem(key, value);
+      }
+
+      mintsStore.mints = snapshot.localStorage?.["cashu.mints"]
+        ? JSON.parse(snapshot.localStorage["cashu.mints"] as string)
+        : [];
+      mintsStore.activeMintUrl = snapshot.localStorage?.["cashu.activeMintUrl"] || "";
+
+      messengerStore.conversations = snapshot.messenger?.conversations ?? {};
+      messengerStore.unreadCounts = {
+        ...(snapshot.messenger?.unreadCounts ?? {}),
+      } as Record<string, number>;
+
+      const { useMigrationsStore } = await import("src/stores/migrations");
+      const store = useMigrationsStore();
+      store.initMigrations();
+      store.currentVersion = 0 as any;
+
+      await cashuDb.open();
+      await store.runMigrations();
+
+      const expectedUnread = Object.fromEntries(
+        Object.entries(snapshot.messenger?.unreadCounts ?? {}).filter(([key]) =>
+          Object.prototype.hasOwnProperty.call(
+            snapshot.messenger?.conversations ?? {},
+            key,
+          ),
+        ),
+      );
+      expect(messengerStore.unreadCounts).toEqual(expectedUnread);
+      expect(messengerStore.normalizeStoredConversations).toHaveBeenCalled();
+
+      const legacyProofs = (snapshot.tables.proofs ?? []) as Array<Record<string, any>>;
+      const proofs = await cashuDb.proofs.toArray();
+      const sortBySecret = (list: Array<Record<string, any>>) =>
+        [...list].sort((a, b) => String(a.secret).localeCompare(String(b.secret)));
+      const normalizeProof = (proof: Record<string, any>) => ({
+        id: proof.id,
+        secret: proof.secret,
+        amount: proof.amount,
+        bucketId: proof.bucketId ?? "",
+        label: proof.label ?? "",
+      });
+      expect(sortBySecret(proofs).map(normalizeProof)).toEqual(
+        sortBySecret(legacyProofs).map(normalizeProof),
+      );
+
+      const legacyLockedTokens = (snapshot.tables.lockedTokens ?? []) as Array<
+        Record<string, any>
+      >;
+      const lockedTokens = await cashuDb.lockedTokens.toArray();
+      expect(lockedTokens).toHaveLength(legacyLockedTokens.length);
+      lockedTokens.forEach((token) => {
+        expect(
+          Object.prototype.hasOwnProperty.call(token ?? {}, "subscriptionId"),
+        ).toBe(true);
+        expect(Object.prototype.hasOwnProperty.call(token ?? {}, "redeemed")).toBe(
+          true,
+        );
+      });
+
+      const legacySubscriptions = (snapshot.tables.subscriptions ?? []) as Array<
+        Record<string, any>
+      >;
+      const subscriptions = await cashuDb.subscriptions.toArray();
+      expect(subscriptions).toHaveLength(legacySubscriptions.length);
+
+      const hadLegacyMint =
+        (snapshot.localStorage?.["cashu.mints"] || "").indexOf(
+          "stablenut.umint.cash",
+        ) >= 0;
+      if (expectUpdatedMint && hadLegacyMint) {
+        expect(
+          mintsStore.mints.some(
+            (mint: { url: string }) => mint.url === "https://stablenut.cashu.network",
+          ),
+        ).toBe(true);
+        expect(
+          mintsStore.mints.some(
+            (mint: { url: string }) => mint.url === "https://stablenut.umint.cash",
+          ),
+        ).toBe(false);
+      } else {
+        expect(
+          mintsStore.mints.some(
+            (mint: { url: string }) => mint.url === "https://stablenut.umint.cash",
+          ),
+        ).toBe(false);
+      }
+
+      expect(cashuDb.verno).toBeGreaterThanOrEqual(25);
+    },
+  );
 });
