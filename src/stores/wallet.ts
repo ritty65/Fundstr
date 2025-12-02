@@ -622,7 +622,7 @@ export const useWalletStore = defineStore("wallet", {
       }
     },
     reconcileSpentProofs: async function (proofs: Proof[]) {
-      console.log("Reconciling spent proofs from local state.");
+      debug("Reconciling spent proofs from local state.");
       const proofsStore = useProofsStore();
       await proofsStore.removeProofs(proofs);
       notifyWarning(

@@ -9,6 +9,7 @@ import { useSettingsStore } from "./settings";
 import { DEFAULT_RELAYS } from "src/config/relays";
 import { sanitizeMessage } from "src/js/message-utils";
 import { notifySuccess, notifyError, notifyWarning } from "src/js/notify";
+import { debug } from "src/js/logger";
 import { useWalletStore } from "./wallet";
 import { useMintsStore } from "./mints";
 import { useProofsStore } from "./proofs";
@@ -442,10 +443,10 @@ function emitDmCounter(
     try {
       window.dispatchEvent(new CustomEvent("fundstr:dm-counter", { detail: payload }));
     } catch (err) {
-      console.debug("[messenger.telemetry] dispatch failed", err);
+      debug("[messenger.telemetry] dispatch failed", err);
     }
   }
-  console.info(`[messenger.telemetry] ${name}`, payload);
+  debug(`[messenger.telemetry] ${name}`, payload);
 }
 
 function computePendingDecryptDelay(attempt: number): number {
@@ -1373,7 +1374,7 @@ export const useMessengerStore = defineStore("messenger", {
           pubkey: normalized,
           reason,
         });
-        console.info("[messenger.subscription] conversation start", {
+        debug("[messenger.subscription] conversation start", {
           pubkey: normalized,
           reason,
         });
@@ -1402,10 +1403,11 @@ export const useMessengerStore = defineStore("messenger", {
                   reason: fetchReason,
                   result: "not_found",
                 });
-                console.info(
-                  "[messenger.subscription] fallback fetch missing",
-                  { pubkey: normalized, eventId, reason: fetchReason },
-                );
+                debug("[messenger.subscription] fallback fetch missing", {
+                  pubkey: normalized,
+                  eventId,
+                  reason: fetchReason,
+                });
                 return false;
               }
               const nostrEvent = await ndkEvent.toNostrEvent();
@@ -1419,7 +1421,7 @@ export const useMessengerStore = defineStore("messenger", {
                 eventId,
                 reason: fetchReason,
               });
-              console.info("[messenger.subscription] fallback fetch success", {
+              debug("[messenger.subscription] fallback fetch success", {
                 pubkey: normalized,
                 eventId,
                 reason: fetchReason,
@@ -1506,7 +1508,7 @@ export const useMessengerStore = defineStore("messenger", {
             pubkey: this.currentConversation,
             relay: relay?.url ?? "unknown",
           });
-          console.info("[messenger.subscription] relay reconnect", {
+          debug("[messenger.subscription] relay reconnect", {
             pubkey: this.currentConversation,
             relay: relay?.url,
           });
@@ -3723,7 +3725,7 @@ export const useMessengerStore = defineStore("messenger", {
         try {
           payload = JSON.parse(trimmed);
         } catch (parseErr) {
-          console.debug("[messenger.processIncoming] invalid JSON", parseErr);
+          debug("[messenger.processIncoming] invalid JSON", parseErr);
           continue;
         }
         const fileMeta = normalizeFileMeta(payload);

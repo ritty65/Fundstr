@@ -15,6 +15,7 @@ import {
 import { clearRelayFailureCache } from "src/nostr/relayClient";
 import { filterHealthyRelays } from "src/utils/relayHealth";
 import { RelayWatchdog } from "src/js/nostr-runtime";
+import { debug } from "src/js/logger";
 import {
   getFreeRelayFallbackStatus,
   hasFallbackAttempt,
@@ -124,7 +125,7 @@ function scheduleDisconnectLog() {
     const summary = entries
       .map(([u, c]) => (c > 1 ? `${u} (x${c})` : u))
       .join(", ");
-    console.debug(`[NDK] relay disconnected: ${summary}`);
+    debug(`[NDK] relay disconnected: ${summary}`);
   }, 1000);
 }
 
@@ -144,7 +145,7 @@ function attachRelayErrorHandlers(ndk: NDK) {
     }
   });
   ndk.pool.on("notice", (relay: any, notice: string) => {
-    console.debug(`[NDK] notice from ${relay.url}: ${notice}`);
+    debug(`[NDK] notice from ${relay.url}: ${notice}`);
   });
   (ndk.pool as any).on?.("relay:stalled", (relay: any) => {
     if (!isRelayDebugLoggingEnabled()) {
@@ -156,7 +157,7 @@ function attachRelayErrorHandlers(ndk: NDK) {
     if (!isRelayDebugLoggingEnabled()) {
       return;
     }
-    console.debug(`[NDK] heartbeat recovered on ${relay.url}`);
+    debug(`[NDK] heartbeat recovered on ${relay.url}`);
   });
 }
 
@@ -217,7 +218,7 @@ function scheduleBootstrapFallback(ndk: NDK) {
   const context: FreeRelayFallbackContext = "bootstrap";
   const runFallback = () => {
     ensureFreeRelayFallback(ndk, context).catch((err) => {
-      console.debug("[NDK] bootstrap fallback failed", err);
+      debug("[NDK] bootstrap fallback failed", err);
     });
   };
 
@@ -284,7 +285,7 @@ export async function safeConnect(
       lastError = e as Error;
       if (attempt < retries) {
         const delay = 1000 * 2 ** (attempt - 1);
-        console.debug(
+        debug(
           `[NDK] connect attempt ${attempt} failed, retrying in ${delay}ms`,
         );
         await new Promise((r) => setTimeout(r, delay));
@@ -419,7 +420,7 @@ export async function createNdk(
   const signer = nostrStore.signer;
 
   if (!signer || options.fundstrOnly) {
-    console.info("Creating read-only NDK (no signer)");
+    debug("Creating read-only NDK (no signer)");
     return createReadOnlyNdk(options);
   }
 
@@ -505,7 +506,7 @@ export async function syncNdkRelaysWithMode(ndk?: NDK) {
         try {
           relay.disconnect?.();
         } catch (err) {
-          console.debug("[NDK] failed to disconnect relay", url, err);
+          debug("[NDK] failed to disconnect relay", url, err);
         }
         pool.relays.delete(url);
       }

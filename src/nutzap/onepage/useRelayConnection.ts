@@ -1,4 +1,5 @@
 import { computed, onBeforeUnmount, readonly, ref, shallowRef, type Ref } from 'vue';
+import { debug } from '@/js/logger';
 import {
   FUNDSTR_REQ_URL,
   FUNDSTR_WS_URL,
@@ -76,11 +77,9 @@ export function useRelayConnection() {
     const wsUrl = relayUrl.value || '(empty)';
     const httpUrl = FUNDSTR_REQ_URL || '(empty)';
     const logMessage = `[Nutzap] Relay endpoints resolved (mode=${mode}): ws=${wsUrl}, http=${httpUrl}`;
-    const logInfo = console.info ? console.info.bind(console) : console.log.bind(console);
-    const logDebug = console.debug ? console.debug.bind(console) : console.log.bind(console);
 
     if (mode === 'production') {
-      logInfo(logMessage);
+      debug(logMessage);
       const expectedHost = extractHostname(FUNDSTR_WS_URL);
       const wsHost = wsUrl === '(empty)' ? null : extractHostname(wsUrl);
       const httpHost = httpUrl === '(empty)' ? null : extractHostname(httpUrl);
@@ -97,7 +96,7 @@ export function useRelayConnection() {
         }
       }
     } else {
-      logDebug(logMessage);
+      debug(logMessage);
     }
   }
 

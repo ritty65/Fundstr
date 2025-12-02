@@ -1,4 +1,5 @@
 import type { Creator } from './fundstrApi';
+import { debug } from '@/js/logger';
 
 const DISCOVERY_API_BASE = (
   import.meta.env.VITE_DISCOVERY_BASE_URL ?? 'https://api.fundstr.me/discover'
@@ -55,7 +56,7 @@ export async function searchCreators(
     };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      console.log('Search request was aborted.');
+      debug('Search request was aborted.');
       // Re-throw or handle as a non-error upstream
       throw error;
     }

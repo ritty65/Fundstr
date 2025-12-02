@@ -13,6 +13,7 @@ import {
   recordFallbackAttempt,
   resetFallbackState as resetFreeRelayFallbackState,
 } from "src/nostr/freeRelayFallback";
+import { debug } from "src/js/logger";
 
 export class RelayWatchdog {
   private ndk: NDK;
@@ -98,7 +99,7 @@ export class RelayWatchdog {
             try {
               await this.ndk.connect();
             } catch (err) {
-              console.debug("[RelayWatchdog] connect retry failed", err);
+              debug("[RelayWatchdog] connect retry failed", err);
             }
           }
           return;
@@ -108,7 +109,7 @@ export class RelayWatchdog {
         try {
           await this.ndk.connect();
         } catch (err) {
-          console.debug("[RelayWatchdog] connect retry failed", err);
+          debug("[RelayWatchdog] connect retry failed", err);
         }
       } catch (e) {
         console.error("[RelayWatchdog]", e);
@@ -141,7 +142,7 @@ export class RelayWatchdog {
       try {
         sub.stop?.();
       } catch (err) {
-        console.debug("[RelayWatchdog] failed to stop heartbeat subscription", err);
+        debug("[RelayWatchdog] failed to stop heartbeat subscription", err);
       }
     }
     this.pendingHeartbeats.clear();
@@ -168,7 +169,7 @@ export class RelayWatchdog {
       if (!url || !relay?.connected) continue;
       if (this.pendingHeartbeats.has(url)) continue;
       this.sendHeartbeat(relay).catch((err) => {
-        console.debug("[RelayWatchdog] heartbeat send failed", err);
+        debug("[RelayWatchdog] heartbeat send failed", err);
       });
     }
   }
@@ -212,12 +213,12 @@ export class RelayWatchdog {
       try {
         sub.off?.("close", onClose);
       } catch (err) {
-        console.debug("[RelayWatchdog] failed to detach close listener", err);
+        debug("[RelayWatchdog] failed to detach close listener", err);
       }
       try {
         sub.stop?.();
       } catch (err) {
-        console.debug("[RelayWatchdog] cleanup failed", err);
+        debug("[RelayWatchdog] cleanup failed", err);
       }
     };
 
@@ -272,7 +273,7 @@ export class RelayWatchdog {
     try {
       relay.disconnect?.();
     } catch (err) {
-      console.debug("[RelayWatchdog] failed to disconnect stalled relay", err);
+      debug("[RelayWatchdog] failed to disconnect stalled relay", err);
     }
 
     if (!this.reconnectTimers.has(url)) {
@@ -285,7 +286,7 @@ export class RelayWatchdog {
             void this.ndk.connect().catch(() => {});
           }
         } catch (err) {
-          console.debug("[RelayWatchdog] reconnect attempt failed", err);
+          debug("[RelayWatchdog] reconnect attempt failed", err);
         }
       }, this.options.reconnectDelayMs);
       this.reconnectTimers.set(url, timer);

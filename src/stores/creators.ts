@@ -12,6 +12,7 @@ import {
 } from "@/nostr/relayClient";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import { normalizeTierMediaItems } from "src/utils/validateMedia";
+import { debug } from "src/js/logger";
 import { type NutzapProfileDetails } from "@/nutzap/profileCache";
 import { useDiscovery } from "src/api/fundstrDiscovery";
 import type {
@@ -490,7 +491,7 @@ async function fetchFundstrProfileBundleFromDiscovery(
     if (firstAvailable.freshError) {
       const nowWarn = Date.now();
       if (nowWarn - lastProfileFallbackLogAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
-        console.debug("fetchFundstrProfileBundle using cached discovery profile", {
+        debug("fetchFundstrProfileBundle using cached discovery profile", {
           query: firstAvailable.query,
           error: firstAvailable.freshError,
         });
@@ -499,7 +500,7 @@ async function fetchFundstrProfileBundleFromDiscovery(
     } else {
       const nowWarn = Date.now();
       if (nowWarn - lastProfileFallbackLogAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
-        console.debug("fetchFundstrProfileBundle using cached discovery profile", {
+        debug("fetchFundstrProfileBundle using cached discovery profile", {
           query: firstAvailable?.query ?? pubkey,
           reason: "fresh profile result unavailable",
         });
@@ -652,7 +653,7 @@ async function fetchFundstrProfileBundleFromDiscovery(
     if (tierFallbackSource.freshError) {
       const nowWarn = Date.now();
       if (nowWarn - lastTierFallbackLogAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
-        console.debug("fetchFundstrProfileBundle using cached discovery tiers", {
+        debug("fetchFundstrProfileBundle using cached discovery tiers", {
           id: tierFallbackSource.id,
           error: tierFallbackSource.freshError,
         });
@@ -661,7 +662,7 @@ async function fetchFundstrProfileBundleFromDiscovery(
     } else {
       const nowWarn = Date.now();
       if (nowWarn - lastTierFallbackLogAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
-        console.debug("fetchFundstrProfileBundle using cached discovery tiers", {
+        debug("fetchFundstrProfileBundle using cached discovery tiers", {
           id: tierFallbackSource.id,
           reason: "fresh tier result unavailable",
         });
@@ -698,7 +699,7 @@ async function fetchFundstrProfileBundleFromDiscovery(
         tierFetchFailed = false;
         const nowWarn = Date.now();
         if (nowWarn - lastTierFallbackLogAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
-          console.debug("fetchFundstrProfileBundle recovered tiers via nutzap fallback", {
+          debug("fetchFundstrProfileBundle recovered tiers via nutzap fallback", {
             id: nutzapQueryInput,
           });
           lastTierFallbackLogAt = nowWarn;
@@ -994,7 +995,7 @@ async function fetchFundstrProfileBundleNetwork(
         return;
       }
       fallbackStarted = true;
-      console.info("discovery:timeout→nostr", {
+      debug("discovery:timeout→nostr", {
         pubkey: normalizedPubkey,
         reason,
       });
@@ -1003,15 +1004,15 @@ async function fetchFundstrProfileBundleNetwork(
       fallbackPromise = promise;
       promise
         .then((bundle) => {
-          if (settled) {
-            return bundle;
-          }
-          settled = true;
-          cleanupTimer();
-          console.info("nostr:fallback-hit", { pubkey: normalizedPubkey });
-          resolve(bundle);
+        if (settled) {
           return bundle;
-        })
+        }
+        settled = true;
+        cleanupTimer();
+        debug("nostr:fallback-hit", { pubkey: normalizedPubkey });
+        resolve(bundle);
+        return bundle;
+      })
         .catch((error) => {
           fallbackError = error;
           if (discoverySettled && !settled) {
@@ -1030,7 +1031,7 @@ async function fetchFundstrProfileBundleNetwork(
         settled = true;
         discoverySettled = true;
         cleanupTimer();
-        console.info("discovery:hit", {
+        debug("discovery:hit", {
           pubkey: normalizedPubkey,
           fetchedFromFallback: bundle.fetchedFromFallback,
           tierDataFresh: bundle.tierDataFresh,
@@ -1837,7 +1838,7 @@ export const useCreatorsStore = defineStore("creators", {
         this.error = "";
         this.searchResults = profiles;
         this.searchWarnings = warnings;
-        console.info("discovery:hit", {
+        debug("discovery:hit", {
           query: normalizedQuery,
           count: profiles.length,
         });
@@ -1865,7 +1866,7 @@ export const useCreatorsStore = defineStore("creators", {
         this.error = "";
         this.searchResults = profiles;
         this.searchWarnings = warnings;
-        console.info("nostr:fallback-hit", {
+        debug("nostr:fallback-hit", {
           query: normalizedQuery,
           count: profiles.length,
         });
@@ -1942,7 +1943,7 @@ export const useCreatorsStore = defineStore("creators", {
         fallbackTriggered = true;
         clearFallbackTimer();
 
-        console.info("discovery:timeout→nostr", {
+        debug("discovery:timeout→nostr", {
           query: normalizedQuery,
           reason,
         });

@@ -269,10 +269,10 @@ function hasEncryptedSecrets(): boolean {
 
 export function npubToHex(s: string): string | null {
   const input = s.trim();
-  console.debug("[npubToHex] input", input);
+  debug("[npubToHex] input", input);
   try {
     const decoded = nip19.decode(input);
-    console.debug("[npubToHex] decoded", decoded);
+    debug("[npubToHex] decoded", decoded);
     const { type, data } = decoded;
     if (type !== "npub") return null;
     if (typeof data === "string") {

@@ -8,6 +8,7 @@ import { useProofsStore } from "src/stores/proofs";
 import { useUiStore } from "src/stores/ui";
 import { useSettingsStore } from "src/stores/settings";
 import { useCreatorProfileStore } from "src/stores/creatorProfile";
+/* eslint-disable @typescript-eslint/no-this-alias */
 import { useSubscriptionsStore } from "src/stores/subscriptions";
 import { useMessengerStore } from "src/stores/messenger";
 import { useTokensStore } from "src/stores/tokens";
