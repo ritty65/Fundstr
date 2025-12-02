@@ -481,7 +481,12 @@ export const useP2PKStore = defineStore("p2pk", {
         bucketId,
       });
     },
-    async sendToLock(amount: number, receiverPubkey: string, locktime: number) {
+    async sendToLock(
+      amount: number,
+      receiverPubkey: string,
+      locktime: number,
+      opts?: { htlcHash?: string },
+    ) {
       const mintStore = useMintsStore();
       const walletStore = useWalletStore();
       const wallet = walletStore.wallet;
@@ -511,12 +516,22 @@ export const useP2PKStore = defineStore("p2pk", {
       let sendProofs: any[] = [];
       const proofsStore = useProofsStore();
       try {
+        const supporterPubkey = this.firstKey?.publicKey
+          ? ensureCompressed(this.firstKey.publicKey)
+          : undefined;
         ({ keep: keepProofs, send: sendProofs } = await wallet.send(
           amount,
           proofsToSend,
           {
             keysetId,
-            p2pk: { pubkey: ensureCompressed(receiverPubkey), locktime },
+            p2pk: {
+              pubkey: ensureCompressed(receiverPubkey),
+              locktime,
+              ...(opts?.htlcHash ? { hashlock: opts.htlcHash } : {}),
+              ...(supporterPubkey
+                ? { cosigners: [supporterPubkey, ensureCompressed(receiverPubkey)], minSigners: 1 }
+                : {}),
+            },
           },
         ));
         await proofsStore.removeProofs(proofsToSend);

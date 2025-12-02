@@ -63,6 +63,8 @@ export interface CashuQueuedSend {
   token: string;
   unlockTime: number;
   createdAt: number;
+  htlcHash?: string | null;
+  htlcSecret?: string | null;
 }
 
 export const useCashuStore = defineStore("cashu", {
@@ -90,12 +92,18 @@ export const useCashuStore = defineStore("cashu", {
 
     async resendQueued(item: CashuQueuedSend) {
       const messenger = useMessengerStore();
-      const payload = subscriptionPayload(item.token, item.unlockTime, {
-        subscription_id: "",
-        tier_id: "",
-        month_index: 0,
-        total_months: 0,
-      });
+      const payload = subscriptionPayload(
+        item.token,
+        item.unlockTime,
+        {
+          subscription_id: "",
+          tier_id: "",
+          month_index: 0,
+          total_months: 0,
+        },
+        item.htlcHash || undefined,
+        item.htlcSecret || undefined,
+      );
       const { success } = await messenger.sendDm(
         item.npub,
         JSON.stringify(payload),
@@ -250,15 +258,16 @@ export const useCashuStore = defineStore("cashu", {
               ? "No balance on creator-trusted mints. Move or swap funds to a trusted mint, or ask the creator to accept your mint."
               : "Insufficient balance",
           );
+        const htlcData = htlc
+          ? createP2PKHTLC(price, creator.cashuP2pk, periods, startDate)
+          : null;
+
         const { sendProofs, locked } = await useP2PKStore().sendToLock(
           price,
           creator.cashuP2pk,
           unlockDate,
+          { htlcHash: htlcData?.hash },
         );
-
-        const htlcData = htlc
-          ? createP2PKHTLC(price, creator.cashuP2pk, periods, startDate)
-          : null;
 
         const tokenStr = proofsStore.serializeProofs(sendProofs);
         try {
@@ -275,6 +284,7 @@ export const useCashuStore = defineStore("cashu", {
                   total_months: periods,
                 },
                 htlcData?.hash,
+                htlcData?.token,
               ),
             ),
             relayList,
@@ -285,6 +295,8 @@ export const useCashuStore = defineStore("cashu", {
               token: tokenStr,
               unlockTime: unlockDate,
               createdAt: Math.floor(Date.now() / 1000),
+              htlcHash: htlcData?.hash ?? null,
+              htlcSecret: htlcData?.token ?? null,
             });
           }
         } catch (err) {
@@ -296,6 +308,8 @@ export const useCashuStore = defineStore("cashu", {
             token: tokenStr,
             unlockTime: unlockDate,
             createdAt: Math.floor(Date.now() / 1000),
+            htlcHash: htlcData?.hash ?? null,
+            htlcSecret: htlcData?.token ?? null,
           });
         }
 
@@ -305,6 +319,7 @@ export const useCashuStore = defineStore("cashu", {
           amount: price,
           owner: "subscriber",
           creatorNpub: creator.nostrPubkey,
+          creatorP2PK: creator.cashuP2pk,
           autoRedeem: false,
           tierId,
           ...(tierName ? { tierName } : {}),
@@ -460,6 +475,7 @@ export const useCashuStore = defineStore("cashu", {
             amount,
             owner: "subscriber",
             creatorNpub: npub,
+            creatorP2PK: creatorP2pk,
             autoRedeem: false,
             tierId: "nutzap",
             intervalKey: String(i + 1),
