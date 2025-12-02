@@ -36,6 +36,7 @@ import { useNostrAuth } from "src/composables/useNostrAuth";
 import { useNostrStore } from "src/stores/nostr";
 import { nip19, getPublicKey } from "nostr-tools";
 import { isValidNpub } from "src/utils/validators";
+import { useVaultStore } from "src/stores/vault";
 
 const { loginWithExtension, loginWithSecret } = useNostrAuth();
 const nsec = ref("");
@@ -43,6 +44,7 @@ const pin = ref("");
 const showPin = ref(false);
 const errorMessage = ref("");
 const nostr = useNostrStore();
+const vault = useVaultStore();
 
 async function ensureEncryptionReady() {
   errorMessage.value = "";
@@ -50,11 +52,21 @@ async function ensureEncryptionReady() {
     errorMessage.value = "PIN required";
     throw new Error("PIN required");
   }
-  if (nostr.encryptionKey) return;
-  if (nostr.hasEncryptedSecrets()) {
-    await nostr.unlockWithPin(pin.value.trim());
+  const pinValue = pin.value.trim();
+  if (!nostr.encryptionKey) {
+    if (nostr.hasEncryptedSecrets()) {
+      await nostr.unlockWithPin(pinValue);
+    } else {
+      await nostr.setEncryptionKeyFromPin(pinValue);
+    }
+  }
+  if (vault.isUnlocked) {
+    return;
+  }
+  if (vault.hasEncryptedVault) {
+    await vault.unlockWithPin(pinValue);
   } else {
-    await nostr.setEncryptionKeyFromPin(pin.value.trim());
+    await vault.setEncryptionKeyFromPin(pinValue);
   }
 }
 

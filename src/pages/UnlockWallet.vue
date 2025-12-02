@@ -34,6 +34,7 @@
 import { ref } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useNostrStore } from "src/stores/nostr";
+import { useVaultStore } from "src/stores/vault";
 
 const pin = ref("");
 const showPin = ref(false);
@@ -42,6 +43,7 @@ const unlocking = ref(false);
 const router = useRouter();
 const route = useRoute();
 const nostr = useNostrStore();
+const vault = useVaultStore();
 
 async function unlock() {
   errorMessage.value = "";
@@ -51,7 +53,11 @@ async function unlock() {
   }
   unlocking.value = true;
   try {
-    await nostr.unlockWithPin(pin.value.trim());
+    const pinValue = pin.value.trim();
+    await nostr.unlockWithPin(pinValue);
+    if (vault.hasEncryptedVault) {
+      await vault.unlockWithPin(pinValue);
+    }
     const redirect = (route.query.redirect as string) || "/wallet";
     router.replace(redirect);
   } catch (e: any) {
