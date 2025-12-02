@@ -27,6 +27,7 @@ import { shortenNpub } from "src/utils/profile";
 import { FEATURED_CREATORS as CONFIG_FEATURED_CREATORS } from "src/config/featured-creators";
 import { parseTiersContent as parseNutzapTiersContent } from "@/nutzap/profileShared";
 import type { Tier as NutzapTier } from "@/nutzap/types";
+import { captureWarning } from "src/utils/telemetry";
 
 export { FEATURED_CREATORS } from "src/config/featured-creators";
 
@@ -2183,6 +2184,10 @@ export const useCreatorsStore = defineStore("creators", {
               npub,
               error,
             });
+            captureWarning("[creators] Invalid featured creator npub", {
+              npub: redactPublicIdentifier(npub),
+              reason: "invalid_npub",
+            });
             return null;
           }
         })
@@ -2199,6 +2204,10 @@ export const useCreatorsStore = defineStore("creators", {
             console.warn("[creators] Failed to hydrate featured creator cache", {
               pubkey,
               error,
+            });
+            captureWarning("[creators] Failed to hydrate featured creator cache", {
+              pubkey: redactPublicIdentifier(pubkey),
+              reason: "hydrate_cache_failure",
             });
           }
           const cached = this.buildCreatorProfileFromCache(pubkey);
@@ -2246,6 +2255,10 @@ export const useCreatorsStore = defineStore("creators", {
             if (!/^[0-9a-fA-F]{64}$/.test(resolvedHex)) {
               console.warn("[creators] Skipping featured creator with invalid pubkey", {
                 pubkey: creator.pubkey,
+              });
+              captureWarning("[creators] Skipping featured creator with invalid pubkey", {
+                pubkey: redactPublicIdentifier(creator.pubkey),
+                reason: "invalid_pubkey",
               });
               return null;
             }
@@ -2302,6 +2315,12 @@ export const useCreatorsStore = defineStore("creators", {
             console.warn("[creators] Featured creators missing from response", {
               pubkeys: Array.from(missingPubkeys),
             });
+            captureWarning("[creators] Featured creators missing from response", {
+              missingPubkeys: Array.from(missingPubkeys).map((pubkey) =>
+                redactPublicIdentifier(pubkey),
+              ),
+              reason: "featured_creators_missing",
+            });
           }
         }
       } catch (error) {
@@ -2352,6 +2371,17 @@ export const useCreatorsStore = defineStore("creators", {
     },
   },
 });
+
+function redactPublicIdentifier(value: unknown): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim();
+  if (trimmed.length <= 12) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, 6)}…${trimmed.slice(-4)}`;
+}
 
 function shortPubkey(pubkey: string): string {
   if (!pubkey) {

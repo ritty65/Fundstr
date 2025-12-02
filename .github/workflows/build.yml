@@ -3,6 +3,14 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+      SENTRY_RELEASE: ${{ github.sha }}
+      SENTRY_ENVIRONMENT: ${{ github.ref_name }}
+      VITE_SENTRY_RELEASE: ${{ github.sha }}
+      VITE_COMMIT_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js

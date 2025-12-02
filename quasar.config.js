@@ -4,6 +4,7 @@ import { configure } from 'quasar/wrappers'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -11,6 +12,7 @@ const __dirname = path.dirname(__filename)
 export default configure((ctx) => ({
   // 1. 'node-globals' boot file is removed. This is correct.
   boot: [
+    'sentry',
     'fundstr-preload',
     'welcomeGate',
     'cashu',
@@ -61,6 +63,27 @@ export default configure((ctx) => ({
           },
           // Whether to polyfill `node:` protocol imports.
           protocolImports: true,
+        }),
+        sentryVitePlugin({
+          org: process.env.SENTRY_ORG,
+          project: process.env.SENTRY_PROJECT,
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+          release:
+            process.env.SENTRY_RELEASE ||
+            process.env.VITE_SENTRY_RELEASE ||
+            process.env.GITHUB_SHA,
+          deploy: (process.env.SENTRY_ENVIRONMENT || process.env.VITE_APP_ENV)
+            ? { env: process.env.SENTRY_ENVIRONMENT || process.env.VITE_APP_ENV }
+            : undefined,
+          sourcemaps: {
+            assets: './dist/pwa/assets/**'
+          },
+          telemetry: false,
+          disable: !(
+            process.env.SENTRY_AUTH_TOKEN &&
+            process.env.SENTRY_ORG &&
+            process.env.SENTRY_PROJECT
+          )
         })
       ])
     }
