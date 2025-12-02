@@ -81,12 +81,12 @@ type KeysetCounter = {
   counter: number;
 };
 
-type ActiveP2pk = {
+export type ActiveP2pk = {
   publicKey: string;
   privateKey: string;
 };
 
-function defaultActiveP2pk(): ActiveP2pk {
+export function defaultActiveP2pk(): ActiveP2pk {
   return { publicKey: "", privateKey: "" };
 }
 
@@ -151,10 +151,7 @@ export const useWalletStore = defineStore("wallet", {
       invoiceData: {} as InvoiceHistory,
       activeWebsocketConnections: 0,
       payInvoiceData: createDefaultPayInvoiceData(),
-      activeP2pk: useLocalStorage<ActiveP2pk>(
-        LOCAL_STORAGE_KEYS.CASHU_ACTIVE_P2PK,
-        defaultActiveP2pk(),
-      ),
+      activeP2pk: defaultActiveP2pk(),
     };
   },
   getters: {

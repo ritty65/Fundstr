@@ -152,12 +152,14 @@ import { useNostrStore } from "src/stores/nostr";
 import { useMessengerStore } from "src/stores/messenger";
 import { nip19, getPublicKey } from "nostr-tools";
 import { isValidNpub } from "src/utils/validators";
+import { useVaultStore } from "src/stores/vault";
 
 const props = defineProps<{ modelValue: boolean }>();
 const emit = defineEmits(["update:modelValue", "complete"]);
 
 const nostr = useNostrStore();
 const messenger = useMessengerStore();
+const vault = useVaultStore();
 
 const model = computed({
   get: () => props.modelValue,
@@ -251,6 +253,7 @@ async function nextFromKey() {
     if (!isValidNpub(pub)) {
       throw new Error("Invalid Nostr Public Key");
     }
+    await vault.ensureUnlocked(pin.value.trim());
     await nostr.setEncryptionKeyFromPin(pin.value.trim());
     await nostr.initPrivateKeySigner(privKey.value.trim());
     step.value = 2;
@@ -268,6 +271,7 @@ async function connectExtension() {
     return;
   }
   try {
+    await vault.ensureUnlocked(pin.value.trim());
     await nostr.setEncryptionKeyFromPin(pin.value.trim());
     await nostr.connectBrowserSigner();
     if (!isValidNpub(nostr.npub)) {

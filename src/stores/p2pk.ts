@@ -29,7 +29,7 @@ export function generateP2pkKeyPair(): { pub: string; priv: string } {
   return { pub: pubHex, priv: privHex };
 }
 
-type P2PKKey = {
+export type P2PKKey = {
   publicKey: string;
   privateKey: string;
   used: boolean;
@@ -94,7 +94,7 @@ export async function buildTimedOutputs(
 
 export const useP2PKStore = defineStore("p2pk", {
   state: () => ({
-    p2pkKeys: useLocalStorage<P2PKKey[]>(LOCAL_STORAGE_KEYS.CASHU_P2PKKEYS, []),
+    p2pkKeys: [] as P2PKKey[],
     showP2PkButtonInDrawer: useLocalStorage<boolean>(
       LOCAL_STORAGE_KEYS.CASHU_P2PK_SHOWP2PKBUTTONINDRAWER,
       false,

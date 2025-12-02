@@ -101,12 +101,14 @@ import { useMessengerStore } from "src/stores/messenger";
 import { useSettingsStore } from "src/stores/settings";
 import { nip19, getPublicKey } from "nostr-tools";
 import { isValidNpub } from "src/utils/validators";
+import { useVaultStore } from "src/stores/vault";
 
 const nostr = useNostrStore();
 const settings = useSettingsStore();
 const { nip07SignerAvailable } = storeToRefs(nostr);
 const { checkNip07Signer, connectBrowserSigner } = nostr;
 const hasNip07 = ref(false);
+const vault = useVaultStore();
 onMounted(() => {
   checkNip07Signer(true);
   const check = () => {
@@ -196,11 +198,21 @@ const ensureEncryptionReady = async () => {
     errorMessage.value = "PIN required";
     throw new Error("PIN required");
   }
-  if (nostr.encryptionKey) return;
-  if (nostr.hasEncryptedSecrets()) {
-    await nostr.unlockWithPin(pin.value.trim());
+  const pinValue = pin.value.trim();
+  if (!nostr.encryptionKey) {
+    if (nostr.hasEncryptedSecrets()) {
+      await nostr.unlockWithPin(pinValue);
+    } else {
+      await nostr.setEncryptionKeyFromPin(pinValue);
+    }
+  }
+  if (vault.isUnlocked) {
+    return;
+  }
+  if (vault.hasEncryptedVault) {
+    await vault.unlockWithPin(pinValue);
   } else {
-    await nostr.setEncryptionKeyFromPin(pin.value.trim());
+    await vault.setEncryptionKeyFromPin(pinValue);
   }
 };
 </script>
