@@ -263,6 +263,7 @@ export async function completeOnboarding(
 export async function clickWelcomeNext(page: Page): Promise<void> {
   const nextButton = page.getByTestId("welcome-next");
   await expect(nextButton).toBeVisible();
+  await nextButton.scrollIntoViewIfNeeded();
   await page.waitForFunction(() => Boolean((window as any).__FUNDSTR_E2E__), {
     timeout: 15000,
   });
@@ -289,6 +290,8 @@ export async function clickWelcomeNext(page: Page): Promise<void> {
       el.removeAttribute("aria-disabled");
     }
   });
+
+  await expect(nextButton).toBeEnabled({ timeout: 5000 });
 
   const consentBanner = page.locator(".guest-consent-bar");
   if (await consentBanner.isVisible()) {

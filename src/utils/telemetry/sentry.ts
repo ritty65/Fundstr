@@ -5,6 +5,10 @@ import * as Sentry from "@sentry/vue";
 const TELEMETRY_SESSION_KEY = "cashu.telemetry.session";
 let sentryReady = false;
 
+export function isTelemetryReady() {
+  return sentryReady;
+}
+
 function doNotTrackEnabled(): boolean {
   if (typeof navigator === "undefined") {
     return false;

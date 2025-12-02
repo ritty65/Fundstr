@@ -29,6 +29,7 @@ import {
   startOfDay,
 } from "date-fns";
 import { notifyError, notifyWarning } from "src/js/notify";
+import { captureTelemetryWarning } from "src/utils/telemetry/sentry";
 import { subscriptionPayload } from "src/utils/receipt-utils";
 import {
   frequencyToDays,
@@ -139,7 +140,14 @@ export const useCashuStore = defineStore("cashu", {
     async _onZap(ev: NostrEvent) {
       if (this.incoming.some((e) => e.id === ev.id)) return;
 
-      const tokenString = ev.content.trim();
+      const tokenString = typeof ev?.content === "string" ? ev.content.trim() : "";
+      if (!tokenString) {
+        captureTelemetryWarning("cashu.zap.skipped", {
+          reason: "missing_content",
+          eventId: ev.id,
+        });
+        return;
+      }
 
       const exists = await cashuDb.lockedTokens
         .where("tokenString")
@@ -151,9 +159,16 @@ export const useCashuStore = defineStore("cashu", {
 
       try {
         const decoded = token.decode(tokenString);
-        const amount = decoded
-          ? token.getProofs(decoded).reduce((s, p) => (s += p.amount), 0)
-          : 0;
+        if (!decoded) {
+          captureTelemetryWarning("cashu.zap.decode_failed", { eventId: ev.id });
+          return;
+        }
+        const proofs = token.getProofs(decoded).filter((p) => Number.isFinite(p.amount));
+        if (!proofs.length) {
+          captureTelemetryWarning("cashu.zap.no_proofs", { eventId: ev.id });
+          return;
+        }
+        const amount = proofs.reduce((s, p) => s + p.amount, 0);
         const unlockTs = useP2PKStore().getTokenLocktime(tokenString) || 0;
         const creator = useNostrStore();
         const entry = {
