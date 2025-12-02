@@ -1141,17 +1141,30 @@ export const useWalletStore = defineStore("wallet", {
           throw error;
         }
         // get quote and check state
-        const mintQuote = await mintWallet.mint.checkMeltQuote(quote.quote);
-        if (
-          mintQuote.state == MeltQuoteState.PAID ||
-          mintQuote.state == MeltQuoteState.PENDING
-        ) {
-          debug(
-            "### melt: error, but quote is paid or pending. not rolling back.",
+        try {
+          const mintQuote = await mintWallet.mint.checkMeltQuote(quote.quote);
+          if (
+            mintQuote.state == MeltQuoteState.PAID ||
+            mintQuote.state == MeltQuoteState.PENDING
+          ) {
+            debug(
+              "### melt: error, but quote is paid or pending. not rolling back.",
+            );
+            this.payInvoiceData.show = false;
+            notify(this.t("wallet.notifications.payment_pending_refresh"));
+            throw error;
+          }
+        } catch (checkError) {
+          // If checking the quote fails (e.g. network error), we can't be sure.
+          // However, we proceed to rollback so the user doesn't lose access to their funds in the UI.
+          // If the payment actually succeeded, the next spend attempt will fail and trigger `reconcileSpentProofs`.
+          console.warn(
+            "Could not verify melt quote status, rolling back reserved proofs.",
+            checkError,
           );
-          this.payInvoiceData.show = false;
-          notify(this.t("wallet.notifications.payment_pending_refresh"));
-          throw error;
+          if (checkError === error) {
+             throw error; // If it's the re-thrown error from above, bubble it up.
+          }
         }
         // roll back proof management and keyset counter
         await proofsStore.setReserved(sendProofs, false);

@@ -112,8 +112,8 @@ describe("P2PK Subscriptions", () => {
         id: "sub1",
         creatorNpub: pubkey,
         intervals: [
-          { lockedTokenId: "tok1", unlockTs: 100 }, // Past
-          { lockedTokenId: "tok2", unlockTs: 9999999999 } // Future
+          { lockedTokenId: "tok1", unlockTs: 100, htlcHash: "hash1" }, // Past
+          { lockedTokenId: "tok2", unlockTs: 9999999999, htlcHash: "hash2" } // Future
         ]
       };
 

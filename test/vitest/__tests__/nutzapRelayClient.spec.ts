@@ -15,6 +15,7 @@ vi.mock("../../../src/nutzap/ndkInstance", () => ({
 vi.mock("../../../src/nutzap/relayConfig", () => ({
   NUTZAP_ALLOW_WSS_WRITES: true,
   NUTZAP_RELAY_WSS: "wss://relay.fundstr.network",
+  NUTZAP_HTTP_AUTH_HEADER: null,
 }));
 
 vi.mock("../../../src/nutzap/relayEndpoints", () => ({
