@@ -109,6 +109,7 @@ import { useDonationPresetsStore } from 'stores/donationPresets';
 import { useNostrStore } from 'stores/nostr';
 import { useMessengerStore } from 'stores/messenger';
 import { useDonationPrompt } from '@/composables/useDonationPrompt';
+import { debug } from '@/js/logger';
 
 const discoveryClient = createFundstrDiscoveryClient();
 const router = useRouter();
@@ -251,7 +252,7 @@ function donate(pubkey: string) {
 
 function supportFundstr() {
   const opened = openDonationPrompt({ bypassGate: true, defaultTab: 'cashu' });
-  console.info('[supporters] Want to support CTA clicked', { opened });
+  debug('[supporters] Want to support CTA clicked', { opened });
 }
 
 function handleDonate({

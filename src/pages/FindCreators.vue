@@ -244,6 +244,7 @@ import { useMintsStore } from 'stores/mints';
 import { useBucketsStore } from 'stores/buckets';
 import { useUiStore } from 'stores/ui';
 import { notifyError, notifyWarning } from 'src/js/notify';
+import { debug } from '@/js/logger';
 import {
   mintSupportsSplit,
   resolveSupportedNuts,
@@ -372,7 +373,7 @@ const refreshFeatured = async () => {
 
 watch(searchWarnings, (warnings) => {
   if (Array.isArray(warnings) && warnings.length > 0) {
-    console.debug('Search warnings:', warnings);
+    debug('Search warnings:', warnings);
   }
 });
 

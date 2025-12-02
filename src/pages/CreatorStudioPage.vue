@@ -728,6 +728,7 @@ import {
   parseTiersContent,
 } from 'src/nutzap/profileShared';
 import { hasTierErrors, tierFrequencies, type TierFieldErrors } from './creator-studio/tierComposerUtils';
+import { debug } from '@/js/logger';
 import {
   RelayPublishError,
   type FundstrRelayClient,
@@ -2318,7 +2319,7 @@ const activeIdentitySummary = computed(() => connectedIdentitySummary.value);
 
 function setAuthoringSignerActive(active: boolean) {
   if (active && !loggedAuthoringSignerAttach) {
-    console.log('Authoring NDK signer attached');
+    debug('Authoring NDK signer attached');
     loggedAuthoringSignerAttach = true;
   }
   authoringSignerAttached.value = active;
@@ -4379,7 +4380,7 @@ async function publishAll() {
   let tierSummary = '';
 
   const publishStart = performance.now();
-  console.log('[CreatorStudio] publish:start', {
+  debug('[CreatorStudio] publish:start', {
     author: authorHex,
     tiers: tiers.value.length,
   });
@@ -4517,13 +4518,13 @@ async function publishAll() {
     }
 
     profilePublished.value = true;
-    console.log('[CreatorStudio] publish:success', {
+    debug('[CreatorStudio] publish:success', {
       durationMs: Math.round(performance.now() - publishStart),
     });
     try {
       const verificationStart = performance.now();
       await Promise.all([loadTiers(reloadKey), loadProfile(reloadKey)]);
-      console.log('[CreatorStudio] publish:verify:success', {
+      debug('[CreatorStudio] publish:verify:success', {
         durationMs: Math.round(performance.now() - verificationStart),
       });
     } catch (verificationError) {
@@ -4534,7 +4535,7 @@ async function publishAll() {
   } catch (err) {
     resetRelayVerificationTracking({ preserveObserved: true });
     console.error('[nutzap] publish profile workflow failed', err);
-    console.log('[CreatorStudio] publish:fail', err);
+    debug('[CreatorStudio] publish:fail', err);
     if (err instanceof PublishWorkflowError) {
       const original = err.original;
       const tierDetails = buildTierSummary(err.outcomes);

@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import { register } from "register-service-worker";
 import { Notify } from "quasar";
 import { notifyNetworkRequired } from "../src/pwa/networkMessaging";

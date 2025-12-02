@@ -1,4 +1,5 @@
 import NDK, { NDKNip07Signer } from '@nostr-dev-kit/ndk';
+import { debug } from '@/js/logger';
 
 const RELAYS = (import.meta.env.VITE_NOSTR_RELAYS ?? 'wss://relay.fundstr.me')
   .split(',')
@@ -48,7 +49,7 @@ export function attachNip07SignerIfAvailable(): boolean {
     ndkWrite.signer = new NDKNip07Signer();
     if (!hasLoggedSignerAttachment) {
       hasLoggedSignerAttachment = true;
-      console.log('[CreatorStudio] signerAttached=%s relayCount=%d', true, RELAYS.length);
+      debug('[CreatorStudio] signerAttached=%s relayCount=%d', true, RELAYS.length);
     }
   }
   return true;

@@ -8,6 +8,7 @@ import {
 } from "stores/creators";
 import { toHex } from "@/nostr/relayClient";
 import { Notify } from "quasar";
+import { debug } from "@/js/logger";
 
 class CreatorCacheService {
   private creatorsStore = useCreatorsStore();
@@ -23,7 +24,7 @@ class CreatorCacheService {
   }
 
   public async updateCreator(pubkeyInput: string): Promise<void> {
-    console.log(`[CreatorCache] Updating cache for ${pubkeyInput}...`);
+    debug(`[CreatorCache] Updating cache for ${pubkeyInput}...`);
     try {
       const pubkeyHex = toHex(pubkeyInput);
       const bundle = await fetchFundstrProfileBundle(pubkeyHex);
@@ -31,7 +32,7 @@ class CreatorCacheService {
         cacheHit: false,
         featured: false,
       });
-      console.log(`[CreatorCache] Cache updated for ${pubkeyInput}.`);
+      debug(`[CreatorCache] Cache updated for ${pubkeyInput}.`);
     } catch (error) {
       console.error(`[CreatorCache] Failed to update cache for ${pubkeyInput}:`, error);
     }
@@ -39,15 +40,15 @@ class CreatorCacheService {
 
   public async start(): Promise<void> {
     if (this.hasStartedSuccessfully) {
-      console.log("[CreatorCache] Cache already warmed. Skipping start.");
+      debug("[CreatorCache] Cache already warmed. Skipping start.");
       return;
     }
     if (this.isUpdating) {
-      console.log("[CreatorCache] Update already in progress.");
+      debug("[CreatorCache] Update already in progress.");
       return;
     }
 
-    console.log("[CreatorCache] Starting cache update process...");
+    debug("[CreatorCache] Starting cache update process...");
     this.isUpdating = true;
 
     try {
@@ -71,7 +72,7 @@ class CreatorCacheService {
       });
     } finally {
       this.isUpdating = false;
-      console.log("[CreatorCache] Cache update process finished.");
+      debug("[CreatorCache] Cache update process finished.");
     }
   }
 }

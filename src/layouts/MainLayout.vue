@@ -125,6 +125,7 @@ import { NAV_DRAWER_WIDTH, NAV_DRAWER_GUTTER } from "src/constants/layout";
 import { fundstrRelayClient, useFundstrRelayStatus } from "src/nutzap/relayClient";
 import { WS_FIRST_TIMEOUT_MS } from "src/nutzap/relayEndpoints";
 import { creatorCacheService } from "src/nutzap/creatorCache";
+import { debug } from "src/js/logger";
 
 export default defineComponent({
   name: "MainLayout",
@@ -257,7 +258,7 @@ export default defineComponent({
         await client.requestOnce(heartbeatFilters, { timeoutMs: 2000 });
       } catch (err) {
         if (import.meta?.env?.DEV) {
-          console.debug("[fundstr-relay] heartbeat failed", err);
+          debug("[fundstr-relay] heartbeat failed", err);
         }
       } finally {
         heartbeatInFlight = false;

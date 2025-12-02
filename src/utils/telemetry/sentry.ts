@@ -1,6 +1,7 @@
 import type { App } from "vue";
 import type { Router } from "vue-router";
 import * as Sentry from "@sentry/vue";
+import { debug } from "@/js/logger";
 
 const TELEMETRY_SESSION_KEY = "cashu.telemetry.session";
 let sentryReady = false;
@@ -41,7 +42,7 @@ function getTelemetrySessionId(): string | null {
   try {
     window.localStorage.setItem(TELEMETRY_SESSION_KEY, generated);
   } catch (error) {
-    console.debug("[telemetry] Failed to persist session identifier", error);
+    debug("[telemetry] Failed to persist session identifier", error);
   }
 
   return generated;
@@ -67,7 +68,7 @@ function sanitizeContext(context?: Record<string, unknown>) {
       }),
     );
   } catch (error) {
-    console.debug("[telemetry] Failed to sanitize context payload", error);
+    debug("[telemetry] Failed to sanitize context payload", error);
     return undefined;
   }
 }

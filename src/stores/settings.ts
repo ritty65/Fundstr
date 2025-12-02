@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
 import { DEFAULT_RELAYS } from "src/config/relays";
 import { sanitizeRelayUrls } from "src/utils/relay";
+import { debug } from "src/js/logger";
 
 type RelayBootstrapMode = "default" | "fundstr-only";
 
@@ -64,10 +65,7 @@ export const useSettingsStore = defineStore("settings", {
     defaultNostrRelays.value = next;
 
     if (changed && removed.length) {
-      console.info(
-        "[settings] Removed blocked Nostr relays from defaults",
-        removed,
-      );
+      debug("[settings] Removed blocked Nostr relays from defaults", removed);
     }
 
     return {
