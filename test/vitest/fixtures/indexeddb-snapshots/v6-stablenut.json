@@ -1,0 +1,87 @@
+{
+  "version": 6,
+  "localStorage": {
+    "cashu.mints": "[{\"url\":\"https://stablenut.umint.cash\",\"keys\":[],\"keysets\":[],\"nickname\":\"Legacy Mint\"}]",
+    "cashu.activeMintUrl": "https://stablenut.umint.cash",
+    "cashu.activeUnit": "sat"
+  },
+  "tables": {
+    "proofs": [
+      {
+        "id": "legacy-keyset-1",
+        "secret": "legacy-secret-1",
+        "C": "C-legacy-1",
+        "amount": 2,
+        "reserved": false,
+        "bucketId": "unassigned",
+        "label": ""
+      },
+      {
+        "id": "legacy-keyset-2",
+        "secret": "legacy-secret-2",
+        "C": "C-legacy-2",
+        "amount": 4,
+        "reserved": false,
+        "bucketId": "incoming",
+        "label": "" 
+      }
+    ],
+    "lockedTokens": [
+      {
+        "id": "locked-token-legacy-1",
+        "tokenString": "token-string-legacy",
+        "amount": 2100,
+        "owner": "subscriber",
+        "tierId": "tier-legacy-1",
+        "intervalKey": "interval-legacy-1",
+        "unlockTs": 1700000000,
+        "status": "pending",
+        "subscriptionEventId": "event-legacy-1",
+        "totalMonths": 12,
+        "redeemed": false
+      }
+    ],
+    "subscriptions": [
+      {
+        "id": "subscription-legacy-1",
+        "creatorNpub": "npub-legacy-1",
+        "tierId": "tier-legacy-1",
+        "creatorP2PK": "p2pk-legacy",
+        "mintUrl": "https://mint.example",
+        "amountPerInterval": 2100,
+        "startDate": 1700000000,
+        "commitmentLength": 12,
+        "intervals": [
+          {
+            "intervalKey": "interval-legacy-1",
+            "lockedTokenId": "locked-token-legacy-1",
+            "unlockTs": 1700000000,
+            "status": "pending",
+            "tokenString": "token-string-legacy",
+            "monthIndex": 0,
+            "totalMonths": 12
+          }
+        ],
+        "status": "active",
+        "createdAt": 1700000000,
+        "updatedAt": 1700000000,
+        "totalMonths": 12,
+        "receivedMonths": 1
+      }
+    ]
+  },
+  "messenger": {
+    "conversations": {
+      "legacy-contact": [
+        {
+          "id": "legacy-message-1",
+          "content": "hello from the past"
+        }
+      ]
+    },
+    "unreadCounts": {
+      "legacy-contact": 2,
+      "orphaned": 5
+    }
+  }
+}

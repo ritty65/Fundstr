@@ -179,6 +179,8 @@ const buildSchemaByVersion = () => {
 
 const SCHEMA_BY_VERSION = buildSchemaByVersion();
 
+export const LEGACY_SCHEMAS = SCHEMA_BY_VERSION;
+
 const buildLockedTokenForVersion = (version: number) => {
   const token: Record<string, any> = {
     id: LEGACY_LOCKED_TOKEN_ID,
