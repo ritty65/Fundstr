@@ -2084,6 +2084,7 @@ export const messages = {
       errorMissingExtension: "No NIP-07 extension detected. Install one to continue.",
       errorEnableTimeout: "Your NIP-07 extension didn't respond. Unlock or approve it, then retry.",
       errorUserDenied: "The NIP-07 request was denied. Approve the connection to continue.",
+      waitingExtension: "Waiting for your NIP-07 extension to load...",
       installHint: "Install a NIP-07 browser extension",
       installBrowser: "Choose an extension for {browser}",
       lockedHint: "NIP-07 detected. Click connect to unlock it.",

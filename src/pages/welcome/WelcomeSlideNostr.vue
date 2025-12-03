@@ -13,7 +13,10 @@
           :loading="connecting"
           :icon="connected ? 'check' : undefined"
         />
-        <div v-if="!nip07Detected" class="text-caption">
+        <div v-if="waitingForNip07" class="text-caption">
+          {{ t('Welcome.nostr.waitingExtension') }}
+        </div>
+        <div v-else-if="!nip07Detected" class="text-caption">
           <div>{{ t('Welcome.nostr.installHint') }}</div>
           <div>{{ t('Welcome.nostr.installBrowser', { browser: browserLabel }) }}</div>
           <ul class="q-mt-xs">
@@ -66,9 +69,12 @@ const connecting = ref(false)
 const connected = ref(false)
 const nip07Detected = ref(false)
 const nip07Available = ref(false)
+const waitingForNip07 = ref(true)
 let refreshPromise: Promise<void> | null = null
 let checkInterval: ReturnType<typeof setInterval> | null = null
 let checkTimeout: ReturnType<typeof setTimeout> | null = null
+const maxWaitForNip07Ms = 15000
+let nip07WaitStartedAt = 0
 
 const refreshNip07Status = async (force = false) => {
   if (refreshPromise) return refreshPromise
@@ -76,6 +82,10 @@ const refreshNip07Status = async (force = false) => {
   refreshPromise = (async () => {
     try {
       nip07Detected.value = typeof window !== 'undefined' && Boolean((window as any).nostr)
+
+      if (nip07Detected.value) {
+        waitingForNip07.value = false
+      }
 
       if (!nip07Detected.value) {
         nip07Available.value = false
@@ -93,14 +103,29 @@ const refreshNip07Status = async (force = false) => {
 }
 
 onMounted(() => {
+  nip07WaitStartedAt = Date.now()
   refreshNip07Status()
-  checkInterval = window.setInterval(() => refreshNip07Status(), 500)
+  checkInterval = window.setInterval(async () => {
+    const elapsed = Date.now() - nip07WaitStartedAt
+    waitingForNip07.value = !nip07Detected.value && elapsed < maxWaitForNip07Ms
+
+    await refreshNip07Status()
+
+    if (nip07Detected.value || elapsed >= maxWaitForNip07Ms) {
+      waitingForNip07.value = false
+      if (checkInterval) {
+        clearInterval(checkInterval)
+        checkInterval = null
+      }
+    }
+  }, 500)
   checkTimeout = window.setTimeout(() => {
+    waitingForNip07.value = false
     if (checkInterval) {
       clearInterval(checkInterval)
       checkInterval = null
     }
-  }, 5000)
+  }, maxWaitForNip07Ms)
 })
 
 onBeforeUnmount(() => {

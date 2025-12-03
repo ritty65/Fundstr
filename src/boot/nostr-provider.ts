@@ -6,6 +6,7 @@ export default boot(() => {
 
   const nostrStore = useNostrStore();
   const startedAt = Date.now();
+  const maxWaitMs = 15000;
 
   const checkForNostr = () => {
     const nostrAvailable = Boolean((window as any).nostr);
@@ -17,7 +18,7 @@ export default boot(() => {
       return;
     }
 
-    if (elapsed >= 3000) {
+    if (elapsed >= maxWaitMs) {
       clearInterval(intervalId);
     }
   };

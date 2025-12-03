@@ -1722,7 +1722,7 @@ export const useNostrStore = defineStore("nostr", {
       const startedAt = Date.now();
 
       return new Promise((resolve) => {
-        const interval = window.setInterval(() => {
+        const check = () => {
           const available = Boolean((window as any).nostr);
           const elapsed = Date.now() - startedAt;
 
@@ -1730,20 +1730,23 @@ export const useNostrStore = defineStore("nostr", {
             clearInterval(interval);
             resolve(available);
           }
-        }, 100);
+        };
+
+        const interval = window.setInterval(check, 100);
+        check();
       });
     },
     async connectBrowserSigner() {
-      const nostrAvailable = await this.waitForNostrGlobals(2000);
+      const nostrAvailable = await this.waitForNostrGlobals(12000);
       const ext: any = (window as any).nostr;
 
       if (!nostrAvailable || !ext) {
         throw new NostrSignerError(
           "extension-unavailable",
-          "Nostr browser extension not installed or enabled.",
+          "Nostr browser extension not installed or enabled. If you're using Brave, keep this tab open while the extension loads.",
           {
             remediation:
-              "Install or enable a NIP-07 signer extension (e.g. nos2x/Alby) and allow access.",
+              "Install or enable a NIP-07 signer extension (e.g. nos2x/Alby) and allow access. Some browsers delay injection; wait a few seconds and retry.",
           },
         );
       }
