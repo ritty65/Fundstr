@@ -343,8 +343,7 @@
         <q-item
           :active="signerType === 'NIP07'"
           active-class="text-weight-bold text-primary"
-          :clickable="nip07SignerAvailable"
-          :disable="!nip07SignerAvailable"
+          clickable
         >
           <q-item-section avatar>
             <q-icon
@@ -2237,6 +2236,17 @@ export default defineComponent({
       await this.generateNPCConnection();
     },
     handleExtensionClick: async function () {
+      this.identityError = "";
+      const available = await this.checkNip07Signer(true);
+      this.nip07SignerAvailable = available;
+
+      if (!available) {
+        this.identityError = this.$t(
+          "Settings.nostr_keys.manage_identity_extension_missing",
+        ) as string;
+        return;
+      }
+
       await this.initNip07Signer();
       await this.generateNPCConnection();
     },
@@ -2328,12 +2338,19 @@ export default defineComponent({
       //   window.location.reload();
       // }, 300);
     },
-    openIdentityDialog() {
+    async openIdentityDialog() {
       this.identityError = "";
       this.identityStatus = "";
       this.identityFlowMode = "";
       this.identityKeyInput = this.activePrivateKeyNsec || "";
       this.showIdentityDialog = true;
+
+      this.nip07SignerAvailable = await this.checkNip07Signer(true);
+      if (!this.nip07SignerAvailable) {
+        this.identityError = this.$t(
+          "Settings.nostr_keys.manage_identity_extension_missing",
+        ) as string;
+      }
     },
     normalizeIdentityKey(input: string) {
       const trimmed = input.trim();
