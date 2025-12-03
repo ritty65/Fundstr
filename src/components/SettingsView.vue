@@ -343,8 +343,8 @@
         <q-item
           :active="signerType === 'NIP07'"
           active-class="text-weight-bold text-primary"
-          clickable
-          v-if="nip07SignerAvailable"
+          :clickable="nip07SignerAvailable"
+          :disable="!nip07SignerAvailable"
         >
           <q-item-section avatar>
             <q-icon
@@ -363,9 +363,24 @@
             class="cursor-pointer"
             style="word-break: break-word"
           >
-            <q-item-label title>{{
-              $t("Settings.nostr_keys.signing_extension.title")
-            }}</q-item-label>
+            <div class="row items-center justify-between no-wrap">
+              <div class="col">
+                <q-item-label title>{{
+                  $t("Settings.nostr_keys.signing_extension.title")
+                }}</q-item-label>
+              </div>
+              <q-btn
+                dense
+                outline
+                size="sm"
+                round
+                icon="refresh"
+                :loading="nip07Rescanning"
+                @click.stop="refreshNip07Availability"
+                :aria-label="$t('Settings.nostr_keys.signing_extension.title')"
+                :title="$t('Settings.nostr_keys.signing_extension.title')"
+              />
+            </div>
             <q-item-label caption v-if="nip07SignerAvailable"
               >{{ $t("Settings.nostr_keys.signing_extension.description") }}
             </q-item-label>
@@ -374,6 +389,14 @@
             </q-item-label>
           </q-item-section>
         </q-item>
+        <q-banner
+          v-if="!nip07SignerAvailable"
+          dense
+          class="bg-amber-1 text-1 q-mt-sm"
+          icon="report_problem"
+        >
+          {{ $t("Settings.nostr_keys.signing_extension.not_found") }}
+        </q-banner>
         <q-item class="q-px-md q-pt-md">
           <q-item-section>
             <AdvancedSignerKeyManager />
@@ -1968,6 +1991,7 @@ export default defineComponent({
       identityError: "",
       identityLoading: false,
       identityFlowMode: "" as "nsec" | "nip07" | "generate" | "",
+      nip07Rescanning: false,
     };
   },
   computed: {
@@ -2388,6 +2412,20 @@ export default defineComponent({
           }),
         { handlesBootstrap: true },
       );
+    },
+    async refreshNip07Availability() {
+      this.identityError = "";
+      this.identityStatus = "Checking for NIP-07 extension...";
+      this.nip07Rescanning = true;
+      this.nip07SignerAvailable = await this.checkNip07Signer(true);
+      if (!this.nip07SignerAvailable) {
+        this.identityError =
+          this.$t("Settings.nostr_keys.manage_identity_extension_missing") as string;
+      }
+      this.identityStatus = this.nip07SignerAvailable
+        ? "NIP-07 extension detected."
+        : "No NIP-07 extension detected.";
+      this.nip07Rescanning = false;
     },
     async submitGeneratedIdentity() {
       this.identityFlowMode = "generate";
