@@ -49,7 +49,8 @@ const FIREFOX_TIER_SECURITY_WARNING =
   "Firefox may block tier lookups. Disable Enhanced Tracking Protection for staging.fundstr.me to load fresh donation tiers. We're showing cached tier data until then.";
 
 const BUNDLE_CACHE_EXPIRY_MS = 3 * 60 * 60 * 1000;
-const BUNDLE_FALLBACK_DELAY_MS = 650;
+const BUNDLE_FALLBACK_DELAY_MS = 1400;
+const DISCOVERY_TIER_TIMEOUT_MS = 5000;
 
 const inFlightBundleRequests = new Map<string, Promise<FundstrProfileBundle>>();
 
@@ -62,6 +63,7 @@ let tiersFreshFailureCount = 0;
 let lastTierFallbackLogAt = 0;
 let tierSecurityCooldownUntil = 0;
 let lastTierSecurityLogAt = 0;
+let lastTierTimeoutWarnAt = 0;
 
 export class FundstrProfileFetchError extends Error {
   fallbackAttempted: boolean;
@@ -520,13 +522,20 @@ async function fetchFundstrProfileBundleFromDiscovery(
     fresh: DiscoveryCreatorTier[] | null;
     freshError: unknown | null;
     securityBlocked: boolean;
+    aborted: boolean;
+    nextRetryAt: number | null;
   }
 
   const fetchTiersForId = async (id: string): Promise<TierQueryResult> => {
     const cached: DiscoveryCreatorTier[] = [];
+    let nextRetryAt: number | null = null;
     let securityBlocked = false;
     try {
-      const response = await discovery.getCreatorTiers({ id, fresh: false });
+      const response = await discovery.getCreatorTiers({
+        id,
+        fresh: false,
+        timeoutMs: DISCOVERY_TIER_TIMEOUT_MS,
+      });
       if (Array.isArray(response.tiers)) {
         cached.push(...(response.tiers as DiscoveryCreatorTier[]));
       }
@@ -551,9 +560,9 @@ async function fetchFundstrProfileBundleFromDiscovery(
         });
       }
     }
-
     let fresh: DiscoveryCreatorTier[] | null = null;
     let freshError: unknown | null = null;
+    let aborted = false;
     const now = Date.now();
     const allowFreshBase =
       forceRefresh || (now >= nextTiersFreshAttemptAt && now >= tierSecurityCooldownUntil);
@@ -564,8 +573,8 @@ async function fetchFundstrProfileBundleFromDiscovery(
         const request: { id: string; fresh?: boolean; timeoutMs?: number } = {
           id,
           fresh: true,
+          timeoutMs: DISCOVERY_TIER_TIMEOUT_MS,
         };
-        request.timeoutMs = undefined;
         const response = await discovery.getCreatorTiers(request);
         if (Array.isArray(response.tiers)) {
           fresh = response.tiers as DiscoveryCreatorTier[];
@@ -587,6 +596,7 @@ async function fetchFundstrProfileBundleFromDiscovery(
             tierSecurityCooldownUntil,
           );
         } else {
+          aborted = isAbortError(error);
           if (!forceRefresh) {
             tiersFreshFailureCount = Math.min(tiersFreshFailureCount + 1, 6);
             const delay = Math.min(
@@ -594,30 +604,48 @@ async function fetchFundstrProfileBundleFromDiscovery(
               FRESH_RETRY_MAX_MS,
             );
             nextTiersFreshAttemptAt = Date.now() + delay;
+            nextRetryAt = nextTiersFreshAttemptAt;
           }
-          const aborted = isAbortError(error);
-          const logFn = aborted ? console.warn : console.error;
-          const logMessage = aborted
-            ? "fetchFundstrProfileBundle discovery tier lookup aborted"
-            : "fetchFundstrProfileBundle discovery tier lookup failed";
-          logFn(logMessage, {
+
+          const logContext = {
             id,
             error,
+            cachedCount: cached.length,
             retryable: aborted || !forceRefresh,
             nextRetryAt: aborted || !forceRefresh ? nextTiersFreshAttemptAt : undefined,
-          });
+            timeoutMs: DISCOVERY_TIER_TIMEOUT_MS,
+          };
+
+          if (aborted) {
+            const nowWarn = Date.now();
+            if (nowWarn - lastTierTimeoutWarnAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
+              console.warn(
+                "fetchFundstrProfileBundle discovery tier lookup timed out; using cached tiers",
+                logContext,
+              );
+              lastTierTimeoutWarnAt = nowWarn;
+            }
+            addTelemetryBreadcrumb("discovery tier lookup timed out", logContext, "warning");
+            captureTelemetryWarning("discovery tier lookup timed out", logContext);
+          } else {
+            console.error("fetchFundstrProfileBundle discovery tier lookup failed", logContext);
+            addTelemetryBreadcrumb("discovery tier lookup failed", logContext, "error");
+          }
         }
       }
     }
 
-    return { id, cached, fresh, freshError, securityBlocked };
+    return { id, cached, fresh, freshError, securityBlocked, aborted, nextRetryAt };
   };
 
   const tierResults: TierQueryResult[] = [];
   for (const id of tierIdentifiers) {
     tierResults.push(await fetchTiersForId(id));
     const lastTierResult = tierResults[tierResults.length - 1];
-    if (lastTierResult.fresh !== null) {
+    if (
+      lastTierResult.fresh !== null ||
+      (lastTierResult.aborted && lastTierResult.cached.length > 0)
+    ) {
       break;
     }
   }
@@ -631,15 +659,21 @@ async function fetchFundstrProfileBundleFromDiscovery(
         Boolean(result.freshError),
     );
 
+  const tierLookupAborted = tierResults.some((result) => result.aborted);
+
   const tierSecurityBlocked = tierResults.some((result) => result.securityBlocked);
   const tierFreshMatch = tierResults.find((result) => result.fresh !== null);
   const tierFallbackSource = tierResults.find((result) => result.cached.length > 0);
+  const tierRetryPlan = tierResults
+    .filter((result) => result.nextRetryAt)
+    .map((result) => ({ id: result.id, nextRetryAt: result.nextRetryAt }))
+    .sort((a, b) => (a.nextRetryAt ?? 0) - (b.nextRetryAt ?? 0));
   let finalTierCandidates = tierFreshMatch
     ? [...(tierFreshMatch.fresh ?? [])]
     : tierFallbackSource?.cached
       ? [...tierFallbackSource.cached]
       : [];
-  let tierFetchFailed = tierLookupFailed;
+  let tierFetchFailed = tierLookupFailed || (tierLookupAborted && !tierFallbackSource);
   let initialTierCandidates = tierFallbackSource?.cached?.length
     ? [...tierFallbackSource.cached]
     : tierFreshMatch?.fresh
@@ -669,6 +703,18 @@ async function fetchFundstrProfileBundleFromDiscovery(
         lastTierFallbackLogAt = nowWarn;
       }
     }
+  }
+
+  if (tierLookupAborted && tierFallbackSource?.cached?.length) {
+    addTelemetryBreadcrumb(
+      "discovery tiers served from cache after timeout",
+      {
+        id: tierFallbackSource.id,
+        cachedCount: tierFallbackSource.cached.length,
+        retryPlan: tierRetryPlan,
+      },
+      "warning",
+    );
   }
 
   const shouldAttemptNutzapFallback =
