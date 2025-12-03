@@ -1413,6 +1413,7 @@ export const useNostrStore = defineStore("nostr", {
       nip07CheckPromise: null as Promise<boolean> | null,
       nip07RetryAttempts: 0,
       nip07RetryInterval: null as ReturnType<typeof setInterval> | null,
+      nip07LastError: null as string | null,
       mintRecommendations: useLocalStorage<MintRecommendation[]>(
         "cashu.ndk.mintRecommendations",
         [],
@@ -1996,6 +1997,9 @@ export const useNostrStore = defineStore("nostr", {
       const maxRetries = 3;
       const enableTimeoutMs = 4000;
       const userTimeoutMs = 3000;
+      const globalTimeoutMs = 25000;
+      const baseDelayMs = 750;
+      const maxDelayMs = 4000;
       const flag = localStorage.getItem("nip07.enabled");
 
       const withTimeout = async <T>(promise: Promise<T> | undefined, ms: number, msg: string) => {
@@ -2010,52 +2014,91 @@ export const useNostrStore = defineStore("nostr", {
 
       const runCheck = async () => {
         if (this.nip07Checked && this.nip07SignerAvailable && !force) return true;
-        if (!force && this.nip07RetryAttempts >= maxRetries) return false;
 
-        try {
-          if (!flag || force || !this.nip07SignerAvailable) {
-            await withTimeout(
-              (window as any).nostr?.enable?.(),
-              enableTimeoutMs,
-              "NIP-07 enable timed out",
-            );
-          }
-          const signer = new NDKNip07Signer();
-          await withTimeout(signer.user(), userTimeoutMs, "NIP-07 user() timed out");
-          this.nip07SignerAvailable = true;
-          this.nip07Checked = true;
-          this.nip07RetryAttempts = 0;
-          localStorage.setItem("nip07.enabled", "1");
-          if (this.nip07RetryInterval) {
-            clearInterval(this.nip07RetryInterval);
-            this.nip07RetryInterval = null;
-          }
-          return true;
-        } catch (e) {
-          this.nip07SignerAvailable = false;
-          this.nip07Checked = false;
-          this.nip07RetryAttempts += 1;
+        const startedAt = Date.now();
+        let delayMs = baseDelayMs;
+        let attempts = 0;
+        let lastFailureCause: "extension-missing" | "enable-failed" | "user-failed" | "unknown" | null =
+          null;
 
-          if (this.signerType === SignerType.NIP07 && !this.nip07RetryInterval) {
-            this.nip07RetryInterval = window.setInterval(async () => {
-              if (this.nip07RetryAttempts >= maxRetries) {
-                clearInterval(this.nip07RetryInterval!);
-                this.nip07RetryInterval = null;
-                return;
+        while (Date.now() - startedAt < globalTimeoutMs) {
+          const nostrAvailable = Boolean((window as any).nostr);
+
+          if (!nostrAvailable) {
+            this.nip07SignerAvailable = false;
+            this.nip07Checked = false;
+            this.nip07RetryAttempts = attempts;
+            this.nip07LastError = "NIP-07 extension not detected";
+            lastFailureCause = "extension-missing";
+          } else {
+            try {
+              attempts += 1;
+              this.nip07RetryAttempts = attempts;
+              if (!flag || force || !this.nip07SignerAvailable) {
+                await withTimeout(
+                  (window as any).nostr?.enable?.(),
+                  enableTimeoutMs,
+                  "NIP-07 enable timed out",
+                );
               }
-              const available = await this.checkNip07Signer(true);
-              if (available) {
-                clearInterval(this.nip07RetryInterval!);
+              const signer = new NDKNip07Signer();
+              await withTimeout(signer.user(), userTimeoutMs, "NIP-07 user() timed out");
+              this.nip07SignerAvailable = true;
+              this.nip07Checked = true;
+              this.nip07RetryAttempts = 0;
+              this.nip07LastError = null;
+              localStorage.setItem("nip07.enabled", "1");
+              if (this.nip07RetryInterval) {
+                clearInterval(this.nip07RetryInterval);
                 this.nip07RetryInterval = null;
-                await this.initSignerIfNotSet();
               }
-            }, 3000);
-          } else if (this.nip07RetryInterval && this.nip07RetryAttempts >= maxRetries) {
-            clearInterval(this.nip07RetryInterval);
-            this.nip07RetryInterval = null;
+              return true;
+            } catch (e) {
+              this.nip07SignerAvailable = false;
+              this.nip07Checked = false;
+              this.nip07RetryAttempts = attempts;
+              this.nip07LastError =
+                e instanceof Error ? e.message : typeof e === "string" ? e : "Unknown NIP-07 error";
+
+              if (this.nip07LastError?.includes("enable")) {
+                lastFailureCause = "enable-failed";
+              } else if (this.nip07LastError?.includes("user")) {
+                lastFailureCause = "user-failed";
+              } else {
+                lastFailureCause = "unknown";
+              }
+            }
           }
-          return false;
+
+          const hitRetryLimit =
+            attempts >= maxRetries && lastFailureCause !== "extension-missing" && !force;
+          if (hitRetryLimit) break;
+
+          const remainingMs = globalTimeoutMs - (Date.now() - startedAt);
+          if (remainingMs <= 0) break;
+
+          await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, remainingMs)));
+          delayMs = Math.min(delayMs * 2, maxDelayMs);
         }
+
+        if (this.signerType === SignerType.NIP07 && !this.nip07RetryInterval) {
+          const intervalStartedAt = Date.now();
+          this.nip07RetryInterval = window.setInterval(async () => {
+            if (Date.now() - intervalStartedAt > globalTimeoutMs) {
+              clearInterval(this.nip07RetryInterval!);
+              this.nip07RetryInterval = null;
+              return;
+            }
+            const available = await this.checkNip07Signer(true);
+            if (available) {
+              clearInterval(this.nip07RetryInterval!);
+              this.nip07RetryInterval = null;
+              await this.initSignerIfNotSet();
+            }
+          }, Math.min(delayMs, maxDelayMs));
+        }
+
+        return false;
       };
 
       this.nip07CheckPromise = runCheck();
