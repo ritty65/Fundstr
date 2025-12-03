@@ -1727,6 +1727,10 @@ export const useNostrStore = defineStore("nostr", {
       const userTimeoutMs = 4000;
       const readyTimeoutMs = 6000;
 
+      const updateSignerCaps = (caps: SignerCaps) => {
+        this.signerCaps = caps;
+      };
+
       const withTimeout = async <T>(
         promise: Promise<T> | undefined,
         ms: number,
@@ -1815,26 +1819,32 @@ export const useNostrStore = defineStore("nostr", {
           nip04Decrypt: typeof ext?.nip04?.decrypt === "function",
           nip44Encrypt: typeof ext?.nip44?.encrypt === "function",
           nip44Decrypt: typeof ext?.nip44?.decrypt === "function",
+          getSharedSecret: typeof ext?.getSharedSecret === "function",
         };
 
-        const missingCaps = [] as string[];
-        if (!caps.nip04Encrypt || !caps.nip04Decrypt) {
-          missingCaps.push("NIP-04 encryption/decryption");
-        }
-        if (caps.nip44Encrypt !== caps.nip44Decrypt) {
-          missingCaps.push("NIP-44 encryption/decryption");
-        }
+        updateSignerCaps(caps);
 
-        if (missingCaps.length) {
+        const nip04Supported = caps.nip04Encrypt && caps.nip04Decrypt;
+        const nip44Supported = caps.nip44Encrypt && caps.nip44Decrypt;
+
+        if (!nip04Supported) {
           throw new NostrSignerError(
             "capability-missing",
-            `Signer missing required capabilities: ${missingCaps.join(", ")}`,
+            "Signer missing required NIP-04 encryption/decryption capabilities.",
             {
               remediation:
                 "Grant encryption permissions in your extension settings, then retry.",
               details: { caps },
             },
           );
+        }
+
+        if (!nip44Supported) {
+          notifyWarning(
+            "Signer missing NIP-44 support; continuing with NIP-04 only.",
+            "Some newer DM features may be limited until NIP-44 is enabled.",
+          );
+          updateSignerCaps({ ...caps, nip44Encrypt: false, nip44Decrypt: false });
         }
 
         const resolvedUser = readyUser ?? user;
