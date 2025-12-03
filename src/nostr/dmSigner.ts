@@ -1,4 +1,11 @@
-import { nip19, nip04, finalizeEvent, getPublicKey, type Event as NostrEvent } from "nostr-tools";
+import {
+  nip19,
+  nip04,
+  nip44,
+  finalizeEvent,
+  getPublicKey,
+  type Event as NostrEvent,
+} from "nostr-tools";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import type { DmSignerMode } from "@/config/dm";
 import { useSignerStore } from "@/stores/signer";
@@ -12,6 +19,8 @@ export interface DmSigner {
   signEvent<T extends UnsignedEvent>(event: T): Promise<NostrEvent>;
   nip04Encrypt(recipientHex: string, plaintext: string): Promise<string>;
   nip04Decrypt(peerHex: string, ciphertext: string): Promise<string>;
+  nip44Encrypt(recipientHex: string, plaintext: string): Promise<string>;
+  nip44Decrypt(peerHex: string, ciphertext: string): Promise<string>;
 }
 
 function isBech32Nsec(value: string): boolean {
@@ -74,6 +83,16 @@ export class SoftwareSigner implements DmSigner {
 
   async nip04Decrypt(peerHex: string, ciphertext: string): Promise<string> {
     return await nip04.decrypt(this.secretHex, peerHex, ciphertext);
+  }
+
+  async nip44Encrypt(recipientHex: string, plaintext: string): Promise<string> {
+    const conversationKey = nip44.getConversationKey(this.secretHex, recipientHex);
+    return nip44.encrypt(plaintext, conversationKey);
+  }
+
+  async nip44Decrypt(peerHex: string, ciphertext: string): Promise<string> {
+    const conversationKey = nip44.getConversationKey(this.secretHex, peerHex);
+    return nip44.decrypt(ciphertext, conversationKey);
   }
 }
 
@@ -182,6 +201,48 @@ class NdkSignerAdapter implements DmSigner {
     const peer = new NDKUser({ hexpubkey: peerHex });
     return await decrypt(peer, ciphertext);
   }
+
+  async nip44Encrypt(recipientHex: string, plaintext: string): Promise<string> {
+    if (this.localSecret) {
+      return await this.localSecret.nip44Encrypt(recipientHex, plaintext);
+    }
+
+    const signerAny = this.signer as unknown as {
+      nip44Encrypt?: (recipientHex: string, plaintext: string) => Promise<string>;
+      nip44?: { encrypt?: (recipientHex: string, plaintext: string) => Promise<string> };
+    };
+
+    if (typeof signerAny.nip44Encrypt === "function") {
+      return await signerAny.nip44Encrypt(recipientHex, plaintext);
+    }
+
+    if (typeof signerAny.nip44?.encrypt === "function") {
+      return await signerAny.nip44.encrypt(recipientHex, plaintext);
+    }
+
+    throw new Error("NDK signer missing NIP-44 encryption support");
+  }
+
+  async nip44Decrypt(peerHex: string, ciphertext: string): Promise<string> {
+    if (this.localSecret) {
+      return await this.localSecret.nip44Decrypt(peerHex, ciphertext);
+    }
+
+    const signerAny = this.signer as unknown as {
+      nip44Decrypt?: (peerHex: string, ciphertext: string) => Promise<string>;
+      nip44?: { decrypt?: (peerHex: string, ciphertext: string) => Promise<string> };
+    };
+
+    if (typeof signerAny.nip44Decrypt === "function") {
+      return await signerAny.nip44Decrypt(peerHex, ciphertext);
+    }
+
+    if (typeof signerAny.nip44?.decrypt === "function") {
+      return await signerAny.nip44.decrypt(peerHex, ciphertext);
+    }
+
+    throw new Error("NDK signer missing NIP-44 decryption support");
+  }
 }
 
 export class Nip07Signer implements DmSigner {
@@ -229,6 +290,22 @@ export class Nip07Signer implements DmSigner {
       throw new Error("NIP-07 signer missing nip04.decrypt");
     }
     return await this.signer.nip04.decrypt(peerHex, ciphertext);
+  }
+
+  async nip44Encrypt(recipientHex: string, plaintext: string): Promise<string> {
+    this.assertSigner();
+    if (typeof this.signer.nip44?.encrypt !== "function") {
+      throw new Error("NIP-07 signer missing nip44.encrypt");
+    }
+    return await this.signer.nip44.encrypt(recipientHex, plaintext);
+  }
+
+  async nip44Decrypt(peerHex: string, ciphertext: string): Promise<string> {
+    this.assertSigner();
+    if (typeof this.signer.nip44?.decrypt !== "function") {
+      throw new Error("NIP-07 signer missing nip44.decrypt");
+    }
+    return await this.signer.nip44.decrypt(peerHex, ciphertext);
   }
 }
 
@@ -300,7 +377,13 @@ export async function buildKind4Event(
   plaintext: string,
 ): Promise<NostrEvent> {
   const pubkey = await signer.getPubkeyHex();
-  const content = await signer.nip04Encrypt(recipientHex, plaintext);
+  let content: string;
+  try {
+    content = await signer.nip44Encrypt(recipientHex, plaintext);
+  } catch (err) {
+    console.warn("[dmSigner] nip44 encrypt failed, falling back to nip04", err);
+    content = await signer.nip04Encrypt(recipientHex, plaintext);
+  }
   const event: UnsignedEvent = {
     kind: 4,
     pubkey,

@@ -69,7 +69,7 @@ import { watch, type Ref } from "vue";
 import { useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useMessengerStore } from "./messenger";
-import { decryptDM } from "../nostr/crypto";
+import { decryptDM, encryptDM } from "../nostr/crypto";
 import { useCreatorProfileStore } from "./creatorProfile";
 import { buildKind10019NutzapProfile } from "src/nostr/builders";
 import { NutzapProfileSchema, type NutzapProfilePayload } from "src/nostr/nutzapProfile";
@@ -2299,9 +2299,10 @@ export const useNostrStore = defineStore("nostr", {
       recipient: string,
       message: string,
     ): Promise<string> {
-      return await encryptNip04(recipient, message, {
-        privKey: typeof privKey === 'string' ? privKey : undefined,
-      });
+      const key =
+        typeof privKey === "string" || privKey instanceof Uint8Array ? privKey : undefined;
+      const { content } = await encryptDM(recipient, message, key);
+      return content;
     },
 
     decryptDmContent: async function (
@@ -2309,11 +2310,7 @@ export const useNostrStore = defineStore("nostr", {
       sender: string,
       content: string,
     ): Promise<string> {
-      const plaintext = await decryptDM(
-        sender,
-        content,
-        typeof privKey === 'string' ? privKey : undefined,
-      );
+      const plaintext = await decryptDM(sender, content, privKey);
       if (plaintext == null) {
         throw new Error('Unable to decrypt message');
       }
