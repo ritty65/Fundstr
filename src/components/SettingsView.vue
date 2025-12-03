@@ -189,6 +189,23 @@
               }}</q-item-label>
             </q-item-section>
           </q-item>
+          <q-item class="q-px-md q-pb-none">
+            <q-item-section>
+              <q-btn
+                color="primary"
+                class="full-width"
+                outline
+                icon="vpn_key"
+                :loading="identityLoading"
+                @click="openIdentityDialog"
+              >
+                {{ $t("Settings.nostr_keys.manage_identity_cta") }}
+              </q-btn>
+              <q-item-label caption class="q-mt-sm">
+                {{ $t("Settings.nostr_keys.manage_identity_caption") }}
+              </q-item-label>
+            </q-item-section>
+          </q-item>
           <!-- initWalletSeedPrivateKeySigner -->
           <q-item
             :active="signerType === 'SEED'"
@@ -1763,6 +1780,104 @@
 
   <!-- NWC DIALOG -->
   <NWCDialog v-model="showNWCDialog" />
+
+  <!-- Nostr identity dialog -->
+  <q-dialog v-model="showIdentityDialog" persistent>
+    <q-card style="max-width: 520px; width: 100%">
+      <q-card-section class="text-h6">
+        {{ $t("Settings.nostr_keys.manage_identity_title") }}
+      </q-card-section>
+      <q-separator inset />
+      <q-card-section class="q-gutter-md">
+        <div class="column q-gutter-sm">
+          <div class="text-subtitle2">
+            {{ $t("Settings.nostr_keys.manage_identity_nsec_label") }}
+          </div>
+          <q-input
+            outlined
+            dense
+            v-model="identityKeyInput"
+            :label="$t('Settings.nostr_keys.manage_identity_nsec_placeholder')"
+            :disable="identityLoading"
+            autocapitalize="off"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <q-btn
+            color="primary"
+            :disable="!identityKeyInput"
+            :loading="identityLoading"
+            @click="submitNsecIdentity"
+          >
+            {{ $t("Settings.nostr_keys.manage_identity_use_nsec") }}
+          </q-btn>
+        </div>
+
+        <q-separator />
+
+        <div class="row q-col-gutter-sm">
+          <div class="col-12 col-md-6">
+            <q-btn
+              color="primary"
+              class="full-width"
+              outline
+              :disable="identityLoading || !nip07SignerAvailable"
+              :loading="identityLoading && identityFlowMode === 'nip07'"
+              @click="submitNip07Identity"
+            >
+              {{ $t("Settings.nostr_keys.manage_identity_use_extension") }}
+            </q-btn>
+            <q-item-label caption class="q-mt-xs">
+              {{ $t("Settings.nostr_keys.manage_identity_use_extension_caption") }}
+            </q-item-label>
+          </div>
+          <div class="col-12 col-md-6">
+            <q-btn
+              color="primary"
+              class="full-width"
+              outline
+              :loading="identityLoading && identityFlowMode === 'generate'"
+              :disable="identityLoading"
+              @click="submitGeneratedIdentity"
+            >
+              {{ $t("Settings.nostr_keys.manage_identity_generate") }}
+            </q-btn>
+            <q-item-label caption class="q-mt-xs">
+              {{ $t("Settings.nostr_keys.manage_identity_generate_caption") }}
+            </q-item-label>
+          </div>
+        </div>
+
+        <q-banner
+          v-if="identityStatus"
+          dense
+          class="bg-grey-2 text-1 q-mt-md"
+        >
+          <div class="row items-center no-wrap">
+            <q-spinner-dots size="18px" class="q-mr-sm" v-if="identityLoading" />
+            <div class="text-body2">{{ identityStatus }}</div>
+          </div>
+        </q-banner>
+
+        <q-banner
+          v-if="identityError"
+          dense
+          class="bg-red-1 text-negative q-mt-sm"
+          icon="warning"
+        >
+          {{ identityError }}
+        </q-banner>
+      </q-card-section>
+      <q-card-actions align="right">
+        <q-btn
+          flat
+          :disable="identityLoading"
+          :label="$t('global.actions.close.label')"
+          v-close-popup
+        />
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
 </template>
 <script lang="ts">import windowMixin from 'src/mixins/windowMixin'
 import { debug } from "src/js/logger";
@@ -1793,7 +1908,8 @@ import { useRestoreStore } from "src/stores/restore";
 import { useDexieStore } from "../stores/dexie";
 import { useReceiveTokensStore } from "../stores/receiveTokensStore";
 import { useStorageStore } from "src/stores/storage";
-import { useI18n } from "vue-i18n";
+import { nip19, generateSecretKey } from "nostr-tools";
+import { hexToBytes } from "@noble/hashes/utils";
 
 export default defineComponent({
   name: "SettingsView",
@@ -1846,6 +1962,12 @@ export default defineComponent({
       nip07SignerAvailable: false,
       newRelay: "",
       newNostrRelay: "",
+      showIdentityDialog: false,
+      identityKeyInput: "",
+      identityStatus: "",
+      identityError: "",
+      identityLoading: false,
+      identityFlowMode: "" as "nsec" | "nip07" | "generate" | "",
     };
   },
   computed: {
@@ -1880,6 +2002,8 @@ export default defineComponent({
       "mintRecommendations",
       "signerType",
       "seedSignerPrivateKeyNsecComputed",
+      "hasIdentity",
+      "activePrivateKeyNsec",
     ]),
     ...mapState(useMnemonicStore, ["mnemonic"]),
     ...mapState(useUiStore, ["ndefSupported"]),
@@ -1956,6 +2080,9 @@ export default defineComponent({
       "resetPrivateKeySigner",
       "resetNip46Signer",
       "initSigner",
+      "bootstrapIdentity",
+      "updateIdentity",
+      "connectBrowserSigner",
     ]),
     ...mapActions(useNWCStore, [
       "generateNWCConnection",
@@ -2176,6 +2303,79 @@ export default defineComponent({
       // setTimeout(() => {
       //   window.location.reload();
       // }, 300);
+    },
+    openIdentityDialog() {
+      this.identityError = "";
+      this.identityStatus = "";
+      this.identityFlowMode = "";
+      this.identityKeyInput = this.activePrivateKeyNsec || "";
+      this.showIdentityDialog = true;
+    },
+    normalizeIdentityKey(input: string) {
+      const trimmed = input.trim();
+      if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+        return nip19.nsecEncode(hexToBytes(trimmed));
+      }
+      return trimmed;
+    },
+    async runIdentityFlow(fn: () => Promise<void>) {
+      this.identityError = "";
+      this.identityStatus = this.$t(
+        "Settings.nostr_keys.manage_identity_progress_start",
+      ) as string;
+      this.identityLoading = true;
+      try {
+        await fn();
+        if (!this.hasIdentity) {
+          throw new Error(
+            this.$t("Settings.nostr_keys.manage_identity_missing") as string,
+          );
+        }
+        await this.bootstrapIdentity((msg) => {
+          this.identityStatus = msg;
+        });
+        this.identityStatus = this.$t(
+          "Settings.nostr_keys.manage_identity_redirecting",
+        ) as string;
+        await this.$router.replace("/wallet");
+        this.showIdentityDialog = false;
+      } catch (e: any) {
+        this.identityError =
+          e?.message ||
+          (this.$t("Settings.nostr_keys.manage_identity_failed") as string);
+      } finally {
+        this.identityLoading = false;
+        this.identityFlowMode = "";
+      }
+    },
+    async submitNsecIdentity() {
+      this.identityFlowMode = "nsec";
+      const normalized = this.normalizeIdentityKey(this.identityKeyInput);
+      if (!normalized) {
+        this.identityError =
+          this.$t("Settings.nostr_keys.manage_identity_invalid") as string;
+        return;
+      }
+      await this.runIdentityFlow(() => this.updateIdentity(normalized));
+    },
+    async submitNip07Identity() {
+      this.identityFlowMode = "nip07";
+      const available = await this.checkNip07Signer(true);
+      if (!available) {
+        this.identityError =
+          this.$t("Settings.nostr_keys.manage_identity_extension_missing") as string;
+        this.identityFlowMode = "";
+        return;
+      }
+      await this.runIdentityFlow(async () => {
+        await this.connectBrowserSigner();
+      });
+    },
+    async submitGeneratedIdentity() {
+      this.identityFlowMode = "generate";
+      const sk = generateSecretKey();
+      const nsec = nip19.nsecEncode(sk);
+      await this.runIdentityFlow(() => this.updateIdentity(nsec));
     },
   },
   created: async function () {
