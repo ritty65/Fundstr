@@ -124,9 +124,12 @@ export async function encryptDmContent({
   preferredSigner?: ActiveDmSigner | null;
 }): Promise<EncryptionResult> {
   const signerInfo = preferredSigner ?? (await ensureActiveDmSigner());
+  const nostrStore = useNostrStore();
+  const nip44Available =
+    nostrStore.signerCaps.nip44Encrypt && nostrStore.signerCaps.nip44Decrypt;
   let protocol: DmProtocol = "nip04";
   try {
-    if (typeof signerInfo.signer.nip44Encrypt === "function") {
+    if (nip44Available && typeof signerInfo.signer.nip44Encrypt === "function") {
       const content = await signerInfo.signer.nip44Encrypt(recipientHex, plaintext);
       protocol = "nip44";
       return { content, signerInfo, protocol };
@@ -1306,8 +1309,12 @@ export const useMessengerStore = defineStore("messenger", {
         };
       }
       const protocolHint = resolveDmProtocol(event.kind, event.content) ?? "nip44";
+      const nip44Available =
+        nostr.signerCaps.nip44Encrypt && nostr.signerCaps.nip44Decrypt;
       const signerDecryptOrder: Array<"nip44Decrypt" | "nip04Decrypt"> =
-        protocolHint === "nip04" ? ["nip04Decrypt", "nip44Decrypt"] : ["nip44Decrypt", "nip04Decrypt"];
+        protocolHint === "nip04" || !nip44Available
+          ? ["nip04Decrypt", "nip44Decrypt"]
+          : ["nip44Decrypt", "nip04Decrypt"];
 
       for (const method of signerDecryptOrder) {
         const decrypt = signerInfo?.signer?.[method];
