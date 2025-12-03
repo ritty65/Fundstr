@@ -80,6 +80,7 @@ import {
   useFundstrRelayStatus,
   type FundstrRelayAuthOptions,
 } from "@/nutzap/relayClient";
+import { inferCiphertextProtocol, type DmProtocol } from "@/nostr/crypto";
 import {
   buildEventContent,
   extractFilesFromContent,
@@ -103,7 +104,7 @@ export interface DedupMergeResult {
 
 type UnsignedDmEvent = Parameters<DmSigner["signEvent"]>[0];
 
-type EncryptionResult = { content: string; signerInfo: ActiveDmSigner };
+type EncryptionResult = { content: string; signerInfo: ActiveDmSigner; protocol: DmProtocol };
 
 async function ensureActiveDmSigner(): Promise<ActiveDmSigner> {
   const signerInfo = await getActiveDmSigner();
@@ -123,8 +124,19 @@ export async function encryptDmContent({
   preferredSigner?: ActiveDmSigner | null;
 }): Promise<EncryptionResult> {
   const signerInfo = preferredSigner ?? (await ensureActiveDmSigner());
+  let protocol: DmProtocol = "nip04";
+  try {
+    if (typeof signerInfo.signer.nip44Encrypt === "function") {
+      const content = await signerInfo.signer.nip44Encrypt(recipientHex, plaintext);
+      protocol = "nip44";
+      return { content, signerInfo, protocol };
+    }
+  } catch (err) {
+    console.warn("[messenger] nip44 encrypt failed, falling back to nip04", err);
+  }
+
   const content = await signerInfo.signer.nip04Encrypt(recipientHex, plaintext);
-  return { content, signerInfo };
+  return { content, signerInfo, protocol };
 }
 
 export async function signNostrEvent<T extends UnsignedDmEvent>({
@@ -167,6 +179,17 @@ function insertUniqueMessage(
   if (!exists) {
     list.push(message);
   }
+}
+
+function resolveDmProtocol(
+  eventKind?: number | null,
+  content?: string,
+): MessengerMessage["protocol"] {
+  if (eventKind === 1059) return "nip17";
+  if (typeof content === "string") {
+    return inferCiphertextProtocol(content);
+  }
+  return undefined;
 }
 
 export function mergeMessengerEvent(params: DedupMergeParams): DedupMergeResult {
@@ -355,7 +378,7 @@ export type MessengerMessage = {
   created_at: number;
   outgoing: boolean;
   status?: MessengerMessageStatus;
-  protocol?: "nip17" | "nip04";
+  protocol?: "nip17" | "nip04" | "nip44";
   attachment?: MessageAttachment;
   subscriptionPayment?: SubscriptionPayment;
   tokenPayload?: any;
@@ -806,7 +829,7 @@ export const useMessengerStore = defineStore("messenger", {
               created_at: record.eventCreatedAt,
               outgoing: false,
               status: "pending-decrypt",
-              protocol: record.eventKind === 1059 ? "nip17" : "nip04",
+              protocol: resolveDmProtocol(record.eventKind, record.ciphertext),
               pendingDecrypt: {
                 lastError: record.lastError ?? null,
                 attemptCount: record.attemptCount,
@@ -1088,7 +1111,7 @@ export const useMessengerStore = defineStore("messenger", {
       if (!msg.content) {
         msg.content = PENDING_DECRYPT_PLACEHOLDER;
       }
-      msg.protocol = record.eventKind === 1059 ? "nip17" : "nip04";
+      msg.protocol = resolveDmProtocol(record.eventKind, record.ciphertext);
       if (!msg.created_at) {
         msg.created_at = record.eventCreatedAt;
       }
@@ -1121,7 +1144,7 @@ export const useMessengerStore = defineStore("messenger", {
             created_at: record.eventCreatedAt,
             outgoing: false,
             status: "pending-decrypt",
-            protocol: record.eventKind === 1059 ? "nip17" : "nip04",
+            protocol: resolveDmProtocol(record.eventKind, record.ciphertext),
             pendingDecrypt: {
               lastError: record.lastError ?? null,
               attemptCount: record.attemptCount,
@@ -1282,9 +1305,16 @@ export const useMessengerStore = defineStore("messenger", {
           notify: !opts.quiet,
         };
       }
-      if (signerInfo?.signer?.nip04Decrypt) {
+      const protocolHint = resolveDmProtocol(event.kind, event.content) ?? "nip44";
+      const signerDecryptOrder: Array<"nip44Decrypt" | "nip04Decrypt"> =
+        protocolHint === "nip04" ? ["nip04Decrypt", "nip44Decrypt"] : ["nip44Decrypt", "nip04Decrypt"];
+
+      for (const method of signerDecryptOrder) {
+        const decrypt = signerInfo?.signer?.[method];
+        if (typeof decrypt !== "function") continue;
         try {
-          const decrypted = await signerInfo.signer.nip04Decrypt(
+          const decrypted = await decrypt.call(
+            signerInfo.signer,
             event.pubkey,
             event.content,
           );
@@ -2284,12 +2314,14 @@ export const useMessengerStore = defineStore("messenger", {
       await this.refreshSignerMode();
 
       let activeSigner: ActiveDmSigner | null = null;
+      let encryptedProtocol: DmProtocol = "nip04";
       let event: NostrEvent;
       try {
-        const { content: encryptedContent, signerInfo } = await encryptDmContent({
+        const { content: encryptedContent, signerInfo, protocol } = await encryptDmContent({
           recipientHex: recipient,
           plaintext: contentToSend,
         });
+        encryptedProtocol = protocol;
         activeSigner = signerInfo;
         this.signerMode = signerInfo.mode;
         const pubkey = await signerInfo.signer.getPubkeyHex();
@@ -2343,7 +2375,7 @@ export const useMessengerStore = defineStore("messenger", {
         meta.relays = relayTargets;
       }
       if (event.kind) {
-        msg.protocol = event.kind === 1059 ? "nip17" : "nip04";
+        msg.protocol = event.kind === 1059 ? "nip17" : encryptedProtocol;
       }
       const previousId = msg.id;
       if (event.id) {
@@ -2880,7 +2912,7 @@ export const useMessengerStore = defineStore("messenger", {
         : undefined;
       msg.created_at = event.created_at ?? msg.created_at ?? Math.floor(now / 1000);
       if (event.kind) {
-        msg.protocol = event.kind === 1059 ? "nip17" : "nip04";
+        msg.protocol = resolveDmProtocol(event.kind, event.content);
       }
       meta.eventId = event.id;
       const previousId = msg.id;
@@ -3622,7 +3654,7 @@ export const useMessengerStore = defineStore("messenger", {
       insertUniqueMessage(this.eventLog, msg);
       this.registerMessage(msg, [eventId]);
       if (event.kind) {
-        msg.protocol = event.kind === 1059 ? "nip17" : "nip04";
+        msg.protocol = resolveDmProtocol(event.kind, event.content);
       }
       msg.created_at = event.created_at ?? msg.created_at;
       if (msg.outgoing) {
@@ -3855,7 +3887,7 @@ export const useMessengerStore = defineStore("messenger", {
         content: sanitized,
         created_at: event.created_at,
         outgoing: false,
-        protocol: event.kind === 1059 ? "nip17" : "nip04",
+        protocol: resolveDmProtocol(event.kind, event.content),
         filesPayload: filePayloads.length ? filePayloads : undefined,
         attachment: primaryFile
           ? { type: primaryFile.mime, name: primaryFile.name }
@@ -3878,7 +3910,7 @@ export const useMessengerStore = defineStore("messenger", {
       target.content = sanitized;
       target.created_at = event.created_at ?? target.created_at;
       target.outgoing = false;
-      target.protocol = event.kind === 1059 ? "nip17" : "nip04";
+      target.protocol = resolveDmProtocol(event.kind, event.content);
       target.filesPayload = filePayloads.length ? filePayloads : undefined;
       if (primaryFile) {
         target.attachment = { type: primaryFile.mime, name: primaryFile.name };
