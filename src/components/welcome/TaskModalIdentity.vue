@@ -94,15 +94,22 @@ const connectError = ref('')
 
 const hasNip07 = ref(false)
 onMounted(() => {
+  const maxWaitMs = 15000
+  const startedAt = Date.now()
+
   const check = () => {
     if (typeof window !== 'undefined' && (window as any).nostr?.getPublicKey) {
       hasNip07.value = true
       clearInterval(interval)
       clearTimeout(timeout)
     }
+
+    if (Date.now() - startedAt >= maxWaitMs) {
+      clearInterval(interval)
+    }
   }
   const interval = setInterval(check, 500)
-  const timeout = setTimeout(() => clearInterval(interval), 5000)
+  const timeout = setTimeout(() => clearInterval(interval), maxWaitMs)
   check()
 })
 
