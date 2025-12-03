@@ -2210,7 +2210,10 @@ export const useNostrStore = defineStore("nostr", {
       if (Array.isArray(relays) && relays.length) {
         this.relays = relays as any;
       }
+
+      progress("Connecting to relays");
       await this.ensureNdkConnected(this.relays as any);
+      this.ensureDmListeners({ suppressWarnings: true });
 
       progress("Syncing messages");
       const dmChatsStore = useDmChatsStore();
@@ -2218,7 +2221,6 @@ export const useNostrStore = defineStore("nostr", {
       const messengerStore = useMessengerStore();
       await messengerStore.loadIdentity({ refresh: true });
       await messengerStore.start();
-      this.ensureDmListeners({ suppressWarnings: true });
 
       progress("Updating creator data");
       const creatorsStore = useCreatorsStore();
@@ -2254,10 +2256,6 @@ export const useNostrStore = defineStore("nostr", {
         });
         creatorProfileStore.markClean();
       }
-
-      progress("Resuming relay listeners");
-      await this.ensureNdkConnected(this.relays as any);
-      this.ensureDmListeners({ suppressWarnings: true });
     },
     resetPrivateKeySigner: async function () {
       this.privateKeySignerPrivateKey = "";
