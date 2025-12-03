@@ -2083,6 +2083,7 @@ export const messages = {
       errorConnect: "Extension connection failed. Make sure a NIP-07 extension is installed and try again.",
       installHint: "Install a NIP-07 browser extension",
       installBrowser: "Choose an extension for {browser}",
+      lockedHint: "NIP-07 detected. Click connect to unlock it.",
       unknownBrowser: "your browser",
       backupTitle: "Backup your Nostr secret",
       backupWarning: "Anyone with this can act as you. Store it privately. We cannot recover it.",
