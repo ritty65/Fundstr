@@ -1880,6 +1880,12 @@ export const useNostrStore = defineStore("nostr", {
       const prev = this.pubkey;
       this.pubkey = pubkey;
       try {
+        useDmChatsStore().setActivePubkey(pubkey);
+        useDmChatsStore().loadChats(pubkey);
+      } catch (e) {
+        console.error(e);
+      }
+      try {
         const privKey = this.privKeyHex;
         if (privKey && privKey.length) {
           const p2pkStore = useP2PKStore();
@@ -2145,7 +2151,7 @@ export const useNostrStore = defineStore("nostr", {
 
       progress("Syncing messages");
       const dmChatsStore = useDmChatsStore();
-      dmChatsStore.loadChats();
+      dmChatsStore.loadChats(this.pubkey);
       const messengerStore = useMessengerStore();
       await messengerStore.loadIdentity({ refresh: true });
       await messengerStore.start();

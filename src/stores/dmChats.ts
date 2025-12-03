@@ -11,33 +11,47 @@ export type DMMessage = {
   outgoing: boolean;
 };
 
+type ChatBuckets = Record<string, Record<string, DMMessage[]>>;
+type UnreadBuckets = Record<string, Record<string, number>>;
+
+const CHAT_STORAGE_KEY = "cashu.dmChats";
+const UNREAD_STORAGE_KEY = "cashu.dmChats.unread";
+
 export const useDmChatsStore = defineStore("dmChats", {
   state: () => ({
-    chats: useLocalStorage<Record<string, DMMessage[]>>(
-      "cashu.dmChats",
-      {} as Record<string, DMMessage[]>,
-    ),
-    unreadCounts: useLocalStorage<Record<string, number>>(
-      "cashu.dmChats.unread",
-      {} as Record<string, number>,
+    activePubkey: "",
+    chatsByUser: useLocalStorage<ChatBuckets>(CHAT_STORAGE_KEY, {}),
+    unreadCountsByUser: useLocalStorage<UnreadBuckets>(
+      UNREAD_STORAGE_KEY,
+      {},
     ),
   }),
+  getters: {
+    chats(state): Record<string, DMMessage[]> {
+      return state.chatsByUser[state.activePubkey] || {};
+    },
+    unreadCounts(state): Record<string, number> {
+      return state.unreadCountsByUser[state.activePubkey] || {};
+    },
+  },
   actions: {
-    loadChats() {
-      const stored = localStorage.getItem("cashu.dmChats");
-      if (stored) {
-        try {
-          this.chats = JSON.parse(stored);
-        } catch {}
+    setActivePubkey(pubkey: string) {
+      if (this.activePubkey === pubkey) return;
+      this.activePubkey = pubkey;
+      this.ensureActiveBuckets();
+    },
+    loadChats(pubkey?: string) {
+      if (pubkey) {
+        this.activePubkey = pubkey;
       }
-      const storedUnread = localStorage.getItem("cashu.dmChats.unread");
-      if (storedUnread) {
-        try {
-          this.unreadCounts = JSON.parse(storedUnread);
-        } catch {}
-      }
+
+      this.migrateChats();
+      this.migrateUnreadCounts();
+      this.ensureActiveBuckets();
     },
     addIncoming(event: NDKEvent) {
+      if (!this.ensureActiveBuckets()) return;
+
       const msg: DMMessage = {
         id: event.id,
         pubkey: event.pubkey,
@@ -45,14 +59,18 @@ export const useDmChatsStore = defineStore("dmChats", {
         created_at: event.created_at,
         outgoing: false,
       };
-      if (!this.chats[event.pubkey]) {
-        this.chats[event.pubkey] = [];
+      const chats = this.chatsByUser[this.activePubkey];
+      const unreadCounts = this.unreadCountsByUser[this.activePubkey];
+
+      if (!chats[event.pubkey]) {
+        chats[event.pubkey] = [];
       }
-      this.chats[event.pubkey].push(msg);
-      this.unreadCounts[event.pubkey] =
-        (this.unreadCounts[event.pubkey] || 0) + 1;
+      chats[event.pubkey].push(msg);
+      unreadCounts[event.pubkey] = (unreadCounts[event.pubkey] || 0) + 1;
     },
     addOutgoing(event: NDKEvent) {
+      if (!this.ensureActiveBuckets()) return;
+
       const recipientTag = event.tags?.find((t) => t[0] === "p");
       const recipient = recipientTag ? (recipientTag[1] as string) : "";
       const msg: DMMessage = {
@@ -62,13 +80,66 @@ export const useDmChatsStore = defineStore("dmChats", {
         created_at: event.created_at,
         outgoing: true,
       };
-      if (!this.chats[recipient]) {
-        this.chats[recipient] = [];
+
+      const chats = this.chatsByUser[this.activePubkey];
+      if (!chats[recipient]) {
+        chats[recipient] = [];
       }
-      this.chats[recipient].push(msg);
+      chats[recipient].push(msg);
     },
     markChatRead(pubkey: string) {
-      this.unreadCounts[pubkey] = 0;
+      if (!this.ensureActiveBuckets()) return;
+      this.unreadCountsByUser[this.activePubkey][pubkey] = 0;
+    },
+    ensureActiveBuckets(): boolean {
+      if (!this.activePubkey) return false;
+      if (!this.chatsByUser[this.activePubkey]) {
+        this.chatsByUser[this.activePubkey] = {};
+      }
+      if (!this.unreadCountsByUser[this.activePubkey]) {
+        this.unreadCountsByUser[this.activePubkey] = {};
+      }
+      return true;
+    },
+    migrateChats() {
+      const stored = localStorage.getItem(CHAT_STORAGE_KEY);
+      if (!stored) return;
+      try {
+        const parsed = JSON.parse(stored);
+        if (this.isLegacyChats(parsed)) {
+          if (this.activePubkey) {
+            this.chatsByUser[this.activePubkey] = parsed;
+          }
+        } else if (typeof parsed === "object" && parsed) {
+          this.chatsByUser = parsed;
+        }
+      } catch {}
+    },
+    migrateUnreadCounts() {
+      const stored = localStorage.getItem(UNREAD_STORAGE_KEY);
+      if (!stored) return;
+      try {
+        const parsed = JSON.parse(stored);
+        if (this.isLegacyUnreadCounts(parsed)) {
+          if (this.activePubkey) {
+            this.unreadCountsByUser[this.activePubkey] = parsed;
+          }
+        } else if (typeof parsed === "object" && parsed) {
+          this.unreadCountsByUser = parsed;
+        }
+      } catch {}
+    },
+    isLegacyChats(value: unknown): value is Record<string, DMMessage[]> {
+      if (!value || typeof value !== "object") return false;
+      return Object.values(value as Record<string, unknown>).some((entry) =>
+        Array.isArray(entry),
+      );
+    },
+    isLegacyUnreadCounts(value: unknown): value is Record<string, number> {
+      if (!value || typeof value !== "object") return false;
+      return Object.values(value as Record<string, unknown>).some(
+        (entry) => typeof entry === "number",
+      );
     },
   },
 });
