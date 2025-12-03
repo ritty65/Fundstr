@@ -95,14 +95,21 @@ export default defineComponent({
       }
     };
 
-    const bootstrapAndRedirect = async () => {
+    const completeLogin = async (
+      fn: () => Promise<void>,
+      { handlesBootstrap = false }: { handlesBootstrap?: boolean } = {},
+    ) => {
       statusError.value = null;
       statusMessage.value = "Starting identity bootstrap";
       isBootstrapping.value = true;
       try {
-        await nostr.bootstrapIdentity((msg) => {
-          statusMessage.value = msg;
-        });
+        await fn();
+        if (!nostr.hasIdentity) return;
+        if (!handlesBootstrap) {
+          await nostr.bootstrapIdentity((msg) => {
+            statusMessage.value = msg;
+          });
+        }
         handleRedirect();
       } catch (err) {
         console.error(err);
@@ -113,24 +120,30 @@ export default defineComponent({
       }
     };
 
-    const completeLogin = async (fn: () => Promise<void>) => {
-      statusError.value = null;
-      await fn();
-      if (!nostr.hasIdentity) return;
-      await bootstrapAndRedirect();
-    };
-
     const submitKey = async () => {
       if (!key.value.trim()) return;
       await completeLogin(() =>
-        nostr.updateIdentity(normalizeKey(key.value)),
+        nostr.updateIdentity(normalizeKey(key.value), undefined, {
+          onProgress: (msg) => {
+            statusMessage.value = msg;
+          },
+        }),
+        { handlesBootstrap: true },
       );
     };
 
     const createIdentity = async () => {
       const sk = generateSecretKey();
       const nsec = nip19.nsecEncode(sk);
-      await completeLogin(() => nostr.updateIdentity(nsec));
+      await completeLogin(
+        () =>
+          nostr.updateIdentity(nsec, undefined, {
+            onProgress: (msg) => {
+              statusMessage.value = msg;
+            },
+          }),
+        { handlesBootstrap: true },
+      );
     };
 
     const useNip07 = async () => {
