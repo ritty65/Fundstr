@@ -373,6 +373,34 @@ describe("useNostrStore signer initialisation", () => {
     expect(window.open).toHaveBeenCalledWith("https://auth.example", "auth", "width=600,height=600");
   });
 
+  it("connects when enable() is missing but core NIP-07 methods exist", async () => {
+    (window as any).nostr = {
+      getPublicKey: vi.fn().mockResolvedValue("pubkey-core"),
+      signEvent: vi.fn(),
+      nip04: { encrypt: vi.fn(), decrypt: vi.fn() },
+      nip44: { encrypt: vi.fn(), decrypt: vi.fn() },
+      getSharedSecret: vi.fn(),
+    };
+
+    queueNip07Instance({
+      user: vi.fn().mockResolvedValue({ npub: "npub-core", pubkey: "pubkey-core" }),
+    });
+
+    await expect(currentStore.connectBrowserSigner()).resolves.not.toThrow();
+
+    expect(currentStore.signerType).toBe(SignerType.NIP07);
+    expect(currentStore.pubkey).toBe("pubkey-core");
+  });
+
+  it("reports gracefully when enable() and core methods are missing", async () => {
+    (window as any).nostr = {};
+
+    const available = await currentStore.checkNip07Signer(true);
+
+    expect(available).toBe(false);
+    expect(currentStore.nip07LastFailureCause).toBe("core-methods-missing");
+  });
+
   it("teardown helpers reset signers and restore seed signer", async () => {
     const relay = { disconnect: vi.fn(), url: "wss://relay" };
     const mockNdk = {
