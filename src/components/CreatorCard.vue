@@ -15,14 +15,23 @@
         <div class="meta text-body1">
           <div class="meta-line text-2">
             <span class="meta-label">Npub:</span>
-            <span class="meta-value">{{ npubShort }}</span>
+            <span class="meta-value" :title="npubFull">
+              {{ npubShort }}
+              <q-tooltip v-if="npubFull" class="tooltip">{{ npubFull }}</q-tooltip>
+            </span>
           </div>
           <div v-if="nip05" class="meta-line text-2">
             <span class="meta-label">NIP-05:</span>
-            <span class="nip05">{{ nip05 }}</span>
+            <span class="nip05" :title="nip05">
+              {{ nip05 }}
+              <q-tooltip class="tooltip">{{ nip05 }}</q-tooltip>
+            </span>
           </div>
           <div v-if="aboutSnippet" class="meta-line text-2 about">
-            {{ aboutSnippet }}
+            <span class="about-text" :title="aboutFull">
+              {{ aboutSnippet }}
+              <q-tooltip v-if="aboutFull" class="tooltip">{{ aboutFull }}</q-tooltip>
+            </span>
           </div>
           <div v-if="tierSummaryText" class="meta-line text-2">
             <span class="meta-label">Tiers:</span>
@@ -119,6 +128,8 @@ const npub = computed(() => {
 
 const npubShort = computed(() => shortenNpub(npub.value || props.profile?.pubkey || ''));
 
+const npubFull = computed(() => npub.value || props.profile?.pubkey || '');
+
 const displayName = computed(() => displayNameFromProfile(meta.value, npub.value));
 
 const avatarSrc = computed(() => safeImageSrc(meta.value?.picture, displayName.value, 96));
@@ -134,6 +145,8 @@ const aboutSnippet = computed(() => {
   if (!about) return '';
   return about.length > 120 ? `${about.substring(0, 120)}…` : about;
 });
+
+const aboutFull = computed(() => (typeof meta.value.about === 'string' ? meta.value.about.trim() : ''));
 
 const tierSummaryText = computed(() => {
   const s = props.profile.tierSummary;
@@ -300,19 +313,25 @@ const isFeatured = computed(() => {
   display: grid;
   gap: 0.35rem;
   flex-grow: 1;
+  max-height: 10.5rem;
+  overflow: hidden;
 }
 
 .meta-line {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: auto 1fr;
   gap: 0.35rem;
   align-items: center;
-  word-break: break-word;
+}
+
+.meta-line.about {
+  grid-template-columns: 1fr;
 }
 
 .meta-label {
   font-weight: 600;
   color: var(--text-1);
+  align-self: start;
 }
 
 .meta-value {
@@ -324,8 +343,26 @@ const isFeatured = computed(() => {
   font-weight: 500;
 }
 
+.meta-value,
+.nip05,
+.about-text {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+}
+
 .about {
   font-style: italic;
+}
+
+.tooltip {
+  background: var(--surface-2);
+  color: var(--text-1);
+  border: 1px solid var(--surface-contrast-border);
 }
 
 .creator-actions {
