@@ -160,7 +160,25 @@ const suggestedExtensions = computed(() => {
   return list.length ? list : extensions
 })
 
-async function connectNip07() {
+type Nip07ErrorResolution = { message: string; retryable?: boolean }
+
+function resolveNip07Error(): Nip07ErrorResolution {
+  const cause = nostr.nip07LastFailureCause
+  if (!nip07Detected.value || cause === 'extension-missing') {
+    return { message: t('Welcome.nostr.errorMissingExtension') }
+  }
+  if (cause === 'enable-failed') {
+    return { message: t('Welcome.nostr.errorEnableTimeout'), retryable: true }
+  }
+  if (cause === 'user-failed') {
+    return { message: t('Welcome.nostr.errorUserDenied') }
+  }
+
+  return { message: t('Welcome.nostr.errorConnect'), retryable: true }
+}
+
+async function connectNip07(options: { allowRetry?: boolean } = {}) {
+  const { allowRetry = true } = options
   error.value = ''
   connecting.value = true
   try {
@@ -177,9 +195,15 @@ async function connectNip07() {
     nip07Available.value = true
     $q.notify({ type: 'positive', message: t('Welcome.nostr.connected') })
   } catch (e) {
-    const msg = t('Welcome.nostr.errorConnect')
-    error.value = msg
-    $q.notify({ type: 'negative', message: msg })
+    const { message, retryable } = resolveNip07Error()
+    if (retryable && allowRetry) {
+      const delayMs = Math.min(750 * Math.max(1, nostr.nip07RetryAttempts || 1), 4000)
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+      return connectNip07({ allowRetry: false })
+    }
+
+    error.value = message
+    $q.notify({ type: 'negative', message })
   } finally {
     connecting.value = false
   }

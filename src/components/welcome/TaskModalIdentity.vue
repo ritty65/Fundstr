@@ -12,6 +12,7 @@
           label="Use NIP-07"
           @click="connectNip07"
         />
+        <div v-if="connectError" class="text-negative text-caption">{{ connectError }}</div>
         <q-btn
           unelevated
           color="primary"
@@ -46,6 +47,7 @@
           label="Use NIP-07"
           @click="connectNip07"
         />
+        <div v-if="connectError" class="text-negative text-caption">{{ connectError }}</div>
         <q-btn
           unelevated
           color="primary"
@@ -70,8 +72,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
-import { useNostrStore, SignerType } from 'src/stores/nostr'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useQuasar } from 'quasar'
+import { useI18n } from 'vue-i18n'
+import { SignerType, useNostrStore } from 'src/stores/nostr'
 
 const props = defineProps<{ modelValue?: boolean; inline?: boolean }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'done'): void }>()
@@ -82,8 +86,11 @@ watch(model, v => emit('update:modelValue', v))
 
 const inline = computed(() => !!props.inline)
 
+const { t } = useI18n()
+const $q = useQuasar()
 const nostr = useNostrStore()
 const nsec = ref('')
+const connectError = ref('')
 
 const hasNip07 = ref(false)
 onMounted(() => {
@@ -99,7 +106,26 @@ onMounted(() => {
   check()
 })
 
-async function connectNip07() {
+type Nip07ErrorResolution = { message: string; retryable?: boolean }
+
+function resolveNip07Error(): Nip07ErrorResolution {
+  const cause = nostr.nip07LastFailureCause
+  if (cause === 'extension-missing') {
+    return { message: t('Welcome.nostr.errorMissingExtension') }
+  }
+  if (cause === 'enable-failed') {
+    return { message: t('Welcome.nostr.errorEnableTimeout'), retryable: true }
+  }
+  if (cause === 'user-failed') {
+    return { message: t('Welcome.nostr.errorUserDenied') }
+  }
+
+  return { message: t('Welcome.nostr.errorConnect'), retryable: true }
+}
+
+async function connectNip07(options: { allowRetry?: boolean } = {}) {
+  const { allowRetry = true } = options
+  connectError.value = ''
   try {
     const available = await nostr.checkNip07Signer(true)
     if (!available) throw new Error('NIP-07 unavailable')
@@ -116,6 +142,15 @@ async function connectNip07() {
     nostr.signerType = SignerType.NIP07
     close()
   } catch (e) {
+    const { message, retryable } = resolveNip07Error()
+    if (retryable && allowRetry) {
+      const delayMs = Math.min(750 * Math.max(1, nostr.nip07RetryAttempts || 1), 4000)
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+      return connectNip07({ allowRetry: false })
+    }
+
+    connectError.value = message
+    $q.notify({ type: 'negative', message })
     console.error(e)
   }
 }
@@ -135,6 +170,7 @@ async function importKey() {
 }
 
 function close() {
+  connectError.value = ''
   emit('done')
   if (!inline.value) model.value = false
 }

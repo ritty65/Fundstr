@@ -1374,6 +1374,8 @@ interface SignerCaps {
   getSharedSecret: boolean;
 }
 
+type Nip07FailureCause = "extension-missing" | "enable-failed" | "user-failed" | "unknown";
+
 export enum SignerType {
   NIP07 = "NIP07",
   NIP46 = "NIP46",
@@ -1443,6 +1445,7 @@ export const useNostrStore = defineStore("nostr", {
       nip07RetryAttempts: 0,
       nip07RetryInterval: null as ReturnType<typeof setInterval> | null,
       nip07LastError: null as string | null,
+      nip07LastFailureCause: null as Nip07FailureCause | null,
       mintRecommendations: useLocalStorage<MintRecommendation[]>(
         "cashu.ndk.mintRecommendations",
         [],
@@ -2190,8 +2193,7 @@ export const useNostrStore = defineStore("nostr", {
         const startedAt = Date.now();
         let delayMs = baseDelayMs;
         let attempts = 0;
-        let lastFailureCause: "extension-missing" | "enable-failed" | "user-failed" | "unknown" | null =
-          null;
+        let lastFailureCause: Nip07FailureCause | null = null;
 
         while (Date.now() - startedAt < globalTimeoutMs) {
           const nostrAvailable = Boolean((window as any).nostr);
@@ -2202,6 +2204,7 @@ export const useNostrStore = defineStore("nostr", {
             this.nip07RetryAttempts = attempts;
             this.nip07LastError = "NIP-07 extension not detected";
             lastFailureCause = "extension-missing";
+            this.nip07LastFailureCause = lastFailureCause;
           } else {
             try {
               attempts += 1;
@@ -2219,6 +2222,7 @@ export const useNostrStore = defineStore("nostr", {
               this.nip07Checked = true;
               this.nip07RetryAttempts = 0;
               this.nip07LastError = null;
+              this.nip07LastFailureCause = null;
               localStorage.setItem("nip07.enabled", "1");
               if (this.nip07RetryInterval) {
                 clearInterval(this.nip07RetryInterval);
@@ -2239,6 +2243,8 @@ export const useNostrStore = defineStore("nostr", {
               } else {
                 lastFailureCause = "unknown";
               }
+
+              this.nip07LastFailureCause = lastFailureCause;
             }
           }
 
@@ -2270,6 +2276,7 @@ export const useNostrStore = defineStore("nostr", {
           }, Math.min(delayMs, maxDelayMs));
         }
 
+        this.nip07LastFailureCause = lastFailureCause;
         return false;
       };
 
