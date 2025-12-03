@@ -339,6 +339,25 @@ export const messages = {
     nostr_keys: {
       title: "Your nostr keys",
       description: "Set the nostr keys for your Lightning address.",
+      manage_identity_cta: "Switch Nostr identity",
+      manage_identity_caption:
+        "Choose how to sign in, then refresh your chats and creator data.",
+      manage_identity_title: "Switch Nostr identity",
+      manage_identity_nsec_label: "Paste an nsec to use a specific key",
+      manage_identity_nsec_placeholder: "nsec1... or hex private key",
+      manage_identity_use_nsec: "Use this nsec",
+      manage_identity_use_extension: "Use NIP-07 extension",
+      manage_identity_use_extension_caption:
+        "Connect with your browser signing extension.",
+      manage_identity_generate: "Generate new key",
+      manage_identity_generate_caption: "Create and use a brand new key.",
+      manage_identity_progress_start: "Configuring your Nostr identity...",
+      manage_identity_missing: "No Nostr identity was configured.",
+      manage_identity_redirecting: "Identity refreshed. Returning to dashboard...",
+      manage_identity_failed: "Unable to finish setting up your identity.",
+      manage_identity_invalid: "Enter a valid nsec or private key.",
+      manage_identity_extension_missing:
+        "No NIP-07 extension is available in this browser.",
       wallet_seed: {
         title: "Wallet seed phrase",
         description: "Generate nostr key pair from wallet seed",
