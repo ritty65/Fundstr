@@ -1711,10 +1711,28 @@ export const useNostrStore = defineStore("nostr", {
       this.connected = false;
       this.connectedRelays.clear();
     },
+    waitForNostrGlobals: async function (timeoutMs: number): Promise<boolean> {
+      if ((window as any).nostr) return true;
+
+      const startedAt = Date.now();
+
+      return new Promise((resolve) => {
+        const interval = window.setInterval(() => {
+          const available = Boolean((window as any).nostr);
+          const elapsed = Date.now() - startedAt;
+
+          if (available || elapsed >= timeoutMs) {
+            clearInterval(interval);
+            resolve(available);
+          }
+        }, 100);
+      });
+    },
     async connectBrowserSigner() {
+      const nostrAvailable = await this.waitForNostrGlobals(2000);
       const ext: any = (window as any).nostr;
 
-      if (!ext) {
+      if (!nostrAvailable || !ext) {
         throw new NostrSignerError(
           "extension-unavailable",
           "Nostr browser extension not installed or enabled.",
@@ -2194,6 +2212,7 @@ export const useNostrStore = defineStore("nostr", {
         let delayMs = baseDelayMs;
         let attempts = 0;
         let lastFailureCause: Nip07FailureCause | null = null;
+        let nip07Signer: NDKNip07Signer | null = null;
 
         while (Date.now() - startedAt < globalTimeoutMs) {
           const nostrAvailable = Boolean((window as any).nostr);
@@ -2216,7 +2235,10 @@ export const useNostrStore = defineStore("nostr", {
                   "NIP-07 enable timed out",
                 );
               }
-              const signer = new NDKNip07Signer();
+              if (!nip07Signer) {
+                nip07Signer = new NDKNip07Signer();
+              }
+              const signer = nip07Signer;
               await withTimeout(signer.user(), userTimeoutMs, "NIP-07 user() timed out");
               this.nip07SignerAvailable = true;
               this.nip07Checked = true;

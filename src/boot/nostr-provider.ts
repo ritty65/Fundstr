@@ -1,6 +1,27 @@
-import { boot } from 'quasar/wrappers';
+import { boot } from "quasar/wrappers";
+import { useNostrStore } from "src/stores/nostr";
 
 export default boot(() => {
-  // no-op boot file that preserves historic entry-point while avoiding
-  // mutating `window.nostr` when a browser extension is not installed.
+  if (typeof window === "undefined") return;
+
+  const nostrStore = useNostrStore();
+  const startedAt = Date.now();
+
+  const checkForNostr = () => {
+    const nostrAvailable = Boolean((window as any).nostr);
+    const elapsed = Date.now() - startedAt;
+
+    if (nostrAvailable) {
+      clearInterval(intervalId);
+      void nostrStore.checkNip07Signer();
+      return;
+    }
+
+    if (elapsed >= 3000) {
+      clearInterval(intervalId);
+    }
+  };
+
+  const intervalId = window.setInterval(checkForNostr, 100);
+  checkForNostr();
 });
