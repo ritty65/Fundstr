@@ -252,6 +252,35 @@ export class WalletLockedError extends Error {
   }
 }
 
+export type NostrSignerErrorCode =
+  | "extension-unavailable"
+  | "enable-missing"
+  | "enable-timeout"
+  | "enable-denied"
+  | "user-timeout"
+  | "user-error"
+  | "ready-timeout"
+  | "capability-missing";
+
+export class NostrSignerError extends Error {
+  code: NostrSignerErrorCode;
+  remediation?: string;
+  details?: Record<string, unknown>;
+
+  constructor(
+    code: NostrSignerErrorCode,
+    message: string,
+    options: { remediation?: string; details?: Record<string, unknown>; cause?: unknown } = {},
+  ) {
+    super(message);
+    this.name = "NostrSignerError";
+    this.code = code;
+    this.remediation = options.remediation;
+    this.details = options.details;
+    if (options.cause) (this as any).cause = options.cause;
+  }
+}
+
 const ENCRYPTION_CHECK_KEY = "cashu.ndk.encryptionCheck";
 const SENSITIVE_STORAGE_KEYS = [
   "cashu.ndk.pubkey",
@@ -1680,16 +1709,149 @@ export const useNostrStore = defineStore("nostr", {
       this.connectedRelays.clear();
     },
     async connectBrowserSigner() {
+      const ext: any = (window as any).nostr;
+
+      if (!ext) {
+        throw new NostrSignerError(
+          "extension-unavailable",
+          "Nostr browser extension not installed or enabled.",
+          {
+            remediation:
+              "Install or enable a NIP-07 signer extension (e.g. nos2x/Alby) and allow access.",
+          },
+        );
+      }
+
       const nip07 = new NDKNip07Signer();
+      const enableTimeoutMs = 6000;
+      const userTimeoutMs = 4000;
+      const readyTimeoutMs = 6000;
+
+      const withTimeout = async <T>(
+        promise: Promise<T> | undefined,
+        ms: number,
+        onTimeout: () => NostrSignerError,
+      ) => {
+        if (!promise) {
+          throw new NostrSignerError(
+            "enable-missing",
+            "NIP-07 permission request missing.",
+          );
+        }
+        return Promise.race([
+          promise,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(onTimeout()), ms),
+          ),
+        ]);
+      };
+
+      const enablePromise = ext.enable?.();
+      if (!enablePromise || typeof ext.enable !== "function") {
+        throw new NostrSignerError(
+          "enable-missing",
+          "Nostr extension did not expose enable().",
+          {
+            remediation: "Update the extension or allow the site to request permissions.",
+          },
+        );
+      }
+
       try {
-        await (window as any).nostr?.enable?.();
-        const user = await nip07.user();
+        await withTimeout(enablePromise, enableTimeoutMs, () =>
+          new NostrSignerError(
+            "enable-timeout",
+            "Signer approval timed out.",
+            {
+              remediation:
+                "Confirm the browser did not block the extension prompt and approve access.",
+            },
+          ),
+        );
+      } catch (error) {
+        if (error instanceof NostrSignerError) throw error;
+        throw new NostrSignerError(
+          "enable-denied",
+          "The signer request was denied or blocked.",
+          {
+            remediation: "Approve the extension's access request to continue.",
+            cause: error,
+          },
+        );
+      }
+
+      let user;
+      try {
+        user = await withTimeout(nip07.user(), userTimeoutMs, () =>
+          new NostrSignerError(
+            "user-timeout",
+            "Timed out waiting for the signer user.",
+            {
+              remediation: "Ensure the extension is unlocked and retry.",
+            },
+          ),
+        );
+      } catch (error) {
+        if (error instanceof NostrSignerError) throw error;
+        throw new NostrSignerError("user-error", "Failed to fetch signer user.", {
+          remediation: "Unlock your NIP-07 extension and try again.",
+          cause: error,
+        });
+      }
+
+      try {
+        const readyUser = await withTimeout(nip07.blockUntilReady(), readyTimeoutMs, () =>
+          new NostrSignerError(
+            "ready-timeout",
+            "Signer initialization timed out.",
+            {
+              remediation: "Keep the extension unlocked and retry the connection.",
+            },
+          ),
+        );
+
+        const caps = {
+          nip04Encrypt: typeof ext?.nip04?.encrypt === "function",
+          nip04Decrypt: typeof ext?.nip04?.decrypt === "function",
+          nip44Encrypt: typeof ext?.nip44?.encrypt === "function",
+          nip44Decrypt: typeof ext?.nip44?.decrypt === "function",
+        };
+
+        const missingCaps = [] as string[];
+        if (!caps.nip04Encrypt || !caps.nip04Decrypt) {
+          missingCaps.push("NIP-04 encryption/decryption");
+        }
+        if (caps.nip44Encrypt !== caps.nip44Decrypt) {
+          missingCaps.push("NIP-44 encryption/decryption");
+        }
+
+        if (missingCaps.length) {
+          throw new NostrSignerError(
+            "capability-missing",
+            `Signer missing required capabilities: ${missingCaps.join(", ")}`,
+            {
+              remediation:
+                "Grant encryption permissions in your extension settings, then retry.",
+              details: { caps },
+            },
+          );
+        }
+
+        const resolvedUser = readyUser ?? user;
+        if (!resolvedUser?.pubkey) {
+          throw new NostrSignerError("user-error", "Signer did not return a pubkey.");
+        }
+
         this.signer = nip07;
         this.signerType = SignerType.NIP07;
-        this.setPubkey(user.pubkey);
+        this.probeSignerCaps();
+        this.setPubkey(resolvedUser.pubkey);
         useNdk({ requireSigner: true }).catch(() => {});
-      } catch (e) {
-        throw new Error("The signer request was rejected or blocked.");
+      } catch (error) {
+        if (error instanceof NostrSignerError) throw error;
+        throw new NostrSignerError("user-error", "Failed to finalize signer connection.", {
+          cause: error,
+        });
       }
     },
     connect: async function (relays?: string[]) {
