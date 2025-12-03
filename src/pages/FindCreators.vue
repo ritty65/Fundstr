@@ -181,16 +181,18 @@
                   </template>
                   <span class="status-banner__text">{{ featuredWarningMessage }}</span>
                 </q-banner>
-                <div class="featured-grid">
-                  <CreatorCard
-                    v-for="profile in featuredCreators"
-                    :key="profile.pubkey"
-                    :profile="profile"
-                    featured
-                    @view-tiers="viewProfile"
-                    @message="startChat"
-                    @donate="donate"
-                  />
+                <div class="featured-grid-container">
+                  <div class="featured-grid">
+                    <CreatorCard
+                      v-for="profile in featuredCreators"
+                      :key="profile.pubkey"
+                      :profile="profile"
+                      featured
+                      @view-tiers="viewProfile"
+                      @message="startChat"
+                      @donate="donate"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -526,31 +528,14 @@ onMounted(() => {
 .featured-grid {
   display: grid;
   gap: clamp(20px, 2vw, 32px);
-  grid-template-columns: repeat(1, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
-@media (min-width: 600px) {
-  .featured-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 960px) {
-  .featured-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1180px) {
-  .featured-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1360px) {
-  .featured-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
+.featured-grid-container {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding-inline: clamp(0px, 3vw, 16px);
 }
 
 h1 {
