@@ -66,27 +66,30 @@ const connecting = ref(false)
 const connected = ref(false)
 const nip07Detected = ref(false)
 const nip07Available = ref(false)
-const checkingNip07 = ref(false)
+let refreshPromise: Promise<void> | null = null
 let checkInterval: ReturnType<typeof setInterval> | null = null
 let checkTimeout: ReturnType<typeof setTimeout> | null = null
 
 const refreshNip07Status = async (force = false) => {
-  if (checkingNip07.value) return
-  checkingNip07.value = true
-  try {
-    nip07Detected.value = typeof window !== 'undefined' && Boolean((window as any).nostr)
+  if (refreshPromise) return refreshPromise
 
-    if (!nip07Detected.value) {
+  refreshPromise = (async () => {
+    try {
+      nip07Detected.value = typeof window !== 'undefined' && Boolean((window as any).nostr)
+
+      if (!nip07Detected.value) {
+        nip07Available.value = false
+        return
+      }
+
+      nip07Available.value = await nostr.checkNip07Signer(force)
+    } catch (e) {
       nip07Available.value = false
-      return
+    } finally {
+      refreshPromise = null
     }
-
-    nip07Available.value = await nostr.checkNip07Signer(force)
-  } catch (e) {
-    nip07Available.value = false
-  } finally {
-    checkingNip07.value = false
-  }
+  })()
+  return refreshPromise
 }
 
 onMounted(() => {
