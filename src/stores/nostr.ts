@@ -66,7 +66,7 @@ import { v4 as uuidv4 } from "uuid";
 import { useRouter } from "vue-router";
 import { useP2PKStore } from "./p2pk";
 import { watch, type Ref } from "vue";
-import { useCreatorsStore } from "./creators";
+import { fetchFundstrProfileBundle, useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useMessengerStore } from "./messenger";
 import { decryptDM, encryptDM } from "../nostr/crypto";
@@ -2126,6 +2126,69 @@ export const useNostrStore = defineStore("nostr", {
       } else {
         await this.initPrivateKeySigner(nsec);
       }
+    },
+    async bootstrapIdentity(update?: (step: string) => void) {
+      const progress = (msg: string) => update?.(msg);
+      if (!this.hasIdentity) {
+        throw new Error("No Nostr identity configured");
+      }
+
+      progress("Loading profile");
+      await this.getProfile(this.pubkey);
+
+      progress("Refreshing relay list");
+      const relays = await this.fetchUserRelays(this.pubkey);
+      if (Array.isArray(relays) && relays.length) {
+        this.relays = relays as any;
+      }
+      await this.ensureNdkConnected(this.relays as any);
+
+      progress("Syncing messages");
+      const dmChatsStore = useDmChatsStore();
+      dmChatsStore.loadChats();
+      const messengerStore = useMessengerStore();
+      await messengerStore.loadIdentity({ refresh: true });
+      await messengerStore.start();
+      this.ensureDmListeners({ suppressWarnings: true });
+
+      progress("Updating creator data");
+      const creatorsStore = useCreatorsStore();
+      const creatorProfileStore = useCreatorProfileStore();
+      const bundle = await fetchFundstrProfileBundle(this.pubkey, {
+        forceRefresh: true,
+      });
+      creatorsStore.updateProfileCacheState(
+        this.pubkey,
+        bundle.profileDetails,
+        bundle.profileEvent,
+        {
+          eventId: bundle.profileEvent?.id,
+          updatedAt: bundle.joined,
+        },
+      );
+      creatorsStore.updateTierCacheState(
+        this.pubkey,
+        bundle.tiers,
+        bundle.profileEvent,
+        {
+          fresh: bundle.tierDataFresh,
+          securityBlocked: bundle.tierSecurityBlocked,
+          fetchFailed: bundle.tierFetchFailed,
+        },
+      );
+      if (bundle.profileDetails) {
+        creatorProfileStore.setProfile({
+          ...bundle.profileDetails,
+          pubkey: this.pubkey,
+          mints: bundle.profileDetails.mints ?? [],
+          relays: bundle.profileDetails.relays ?? (this.relays as any),
+        });
+        creatorProfileStore.markClean();
+      }
+
+      progress("Resuming relay listeners");
+      await this.ensureNdkConnected(this.relays as any);
+      this.ensureDmListeners({ suppressWarnings: true });
     },
     resetPrivateKeySigner: async function () {
       this.privateKeySignerPrivateKey = "";
