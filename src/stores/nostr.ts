@@ -2124,13 +2124,33 @@ export const useNostrStore = defineStore("nostr", {
       this.setPubkey(getPublicKey(privateKeyBytes));
       await this.setSigner(signer, options);
     },
-    async updateIdentity(nsec: string, relays?: string[]) {
-      if (relays) this.relays = relays as any;
-      await this.checkNip07Signer(true);
-      if (this.signerType === SignerType.NIP07 && this.nip07SignerAvailable) {
-        await this.initNip07Signer();
-      } else {
-        await this.initPrivateKeySigner(nsec);
+    async updateIdentity(
+      nsec?: string,
+      relays?: string[],
+      opts: { onProgress?: (step: string) => void; preferNip07?: boolean } = {},
+    ) {
+      const { onProgress, preferNip07 = false } = opts;
+      try {
+        if (relays) this.relays = relays as any;
+        const nip07Available = await this.checkNip07Signer(true);
+
+        if ((preferNip07 || this.signerType === SignerType.NIP07) && nip07Available) {
+          await this.initNip07Signer();
+        } else {
+          if (!nsec) {
+            throw new Error("A private key is required to update your Nostr identity.");
+          }
+          await this.initPrivateKeySigner(nsec);
+        }
+
+        await this.bootstrapIdentity(onProgress);
+      } catch (e) {
+        console.error("Failed to update identity", e);
+        notifyError(
+          "Failed to bootstrap Nostr identity",
+          (e as Error)?.message ?? String(e),
+        );
+        throw e;
       }
     },
     async bootstrapIdentity(update?: (step: string) => void) {

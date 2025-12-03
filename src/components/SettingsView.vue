@@ -2318,7 +2318,8 @@ export default defineComponent({
       }
       return trimmed;
     },
-    async runIdentityFlow(fn: () => Promise<void>) {
+    async runIdentityFlow(fn: () => Promise<void>, opts: { handlesBootstrap?: boolean } = {}) {
+      const { handlesBootstrap = false } = opts;
       this.identityError = "";
       this.identityStatus = this.$t(
         "Settings.nostr_keys.manage_identity_progress_start",
@@ -2331,9 +2332,11 @@ export default defineComponent({
             this.$t("Settings.nostr_keys.manage_identity_missing") as string,
           );
         }
-        await this.bootstrapIdentity((msg) => {
-          this.identityStatus = msg;
-        });
+        if (!handlesBootstrap) {
+          await this.bootstrapIdentity((msg) => {
+            this.identityStatus = msg;
+          });
+        }
         this.identityStatus = this.$t(
           "Settings.nostr_keys.manage_identity_redirecting",
         ) as string;
@@ -2356,7 +2359,15 @@ export default defineComponent({
           this.$t("Settings.nostr_keys.manage_identity_invalid") as string;
         return;
       }
-      await this.runIdentityFlow(() => this.updateIdentity(normalized));
+      await this.runIdentityFlow(
+        () =>
+          this.updateIdentity(normalized, undefined, {
+            onProgress: (msg) => {
+              this.identityStatus = msg;
+            },
+          }),
+        { handlesBootstrap: true },
+      );
     },
     async submitNip07Identity() {
       this.identityFlowMode = "nip07";
@@ -2367,15 +2378,30 @@ export default defineComponent({
         this.identityFlowMode = "";
         return;
       }
-      await this.runIdentityFlow(async () => {
-        await this.connectBrowserSigner();
-      });
+      await this.runIdentityFlow(
+        () =>
+          this.updateIdentity(undefined, undefined, {
+            preferNip07: true,
+            onProgress: (msg) => {
+              this.identityStatus = msg;
+            },
+          }),
+        { handlesBootstrap: true },
+      );
     },
     async submitGeneratedIdentity() {
       this.identityFlowMode = "generate";
       const sk = generateSecretKey();
       const nsec = nip19.nsecEncode(sk);
-      await this.runIdentityFlow(() => this.updateIdentity(nsec));
+      await this.runIdentityFlow(
+        () =>
+          this.updateIdentity(nsec, undefined, {
+            onProgress: (msg) => {
+              this.identityStatus = msg;
+            },
+          }),
+        { handlesBootstrap: true },
+      );
     },
   },
   created: async function () {
