@@ -1737,24 +1737,24 @@ export const useNostrStore = defineStore("nostr", {
       });
     },
     async connectBrowserSigner() {
-      const nostrAvailable = await this.waitForNostrGlobals(12000);
+      const nostrAvailable = await this.waitForNostrGlobals(18000);
       const ext: any = (window as any).nostr;
 
       if (!nostrAvailable || !ext) {
         throw new NostrSignerError(
           "extension-unavailable",
-          "Nostr browser extension not installed or enabled. If you're using Brave, keep this tab open while the extension loads.",
+          "Nostr browser extension not installed or enabled. If your signer omits enable(), we'll still try once core methods appear (Brave may inject slowly).",
           {
             remediation:
-              "Install or enable a NIP-07 signer extension (e.g. nos2x/Alby) and allow access. Some browsers delay injection; wait a few seconds and retry.",
+              "Install or enable a NIP-07 signer extension (e.g. nos2x/Alby) and allow access. Some browsers delay injection; wait a few more seconds and retry.",
           },
         );
       }
 
       const nip07 = new NDKNip07Signer();
-      const enableTimeoutMs = 6000;
-      const userTimeoutMs = 4000;
-      const readyTimeoutMs = 6000;
+      const enableTimeoutMs = 9000;
+      const userTimeoutMs = 7000;
+      const readyTimeoutMs = 9000;
 
       const hasEnable = typeof ext?.enable === "function";
       const hasCoreMethods =
@@ -1814,34 +1814,38 @@ export const useNostrStore = defineStore("nostr", {
       }
 
       let user;
-      try {
-        user = await withTimeout(nip07.user(), userTimeoutMs, () =>
-          new NostrSignerError(
-            "user-timeout",
-            "Timed out waiting for the signer user.",
-            {
-              remediation: "Ensure the extension is unlocked and retry.",
-            },
-          ),
-        );
-      } catch (error) {
-        if (error instanceof NostrSignerError) throw error;
-        throw new NostrSignerError("user-error", "Failed to fetch signer user.", {
-          remediation: "Unlock your NIP-07 extension and try again.",
-          cause: error,
-        });
+      if (hasEnable) {
+        try {
+          user = await withTimeout(nip07.user(), userTimeoutMs, () =>
+            new NostrSignerError(
+              "user-timeout",
+              "Timed out waiting for the signer user.",
+              {
+                remediation: "Ensure the extension is unlocked and retry.",
+              },
+            ),
+          );
+        } catch (error) {
+          if (error instanceof NostrSignerError) throw error;
+          throw new NostrSignerError("user-error", "Failed to fetch signer user.", {
+            remediation: "Unlock your NIP-07 extension and try again.",
+            cause: error,
+          });
+        }
       }
 
       try {
-        const readyUser = await withTimeout(nip07.blockUntilReady(), readyTimeoutMs, () =>
-          new NostrSignerError(
-            "ready-timeout",
-            "Signer initialization timed out.",
-            {
-              remediation: "Keep the extension unlocked and retry the connection.",
-            },
-          ),
-        );
+        const readyUser = hasEnable
+          ? await withTimeout(nip07.blockUntilReady(), readyTimeoutMs, () =>
+              new NostrSignerError(
+                "ready-timeout",
+                "Signer initialization timed out.",
+                {
+                  remediation: "Keep the extension unlocked and retry the connection.",
+                },
+              ),
+            )
+          : null;
 
         const caps = {
           nip04Encrypt: typeof ext?.nip04?.encrypt === "function",
@@ -1879,7 +1883,19 @@ export const useNostrStore = defineStore("nostr", {
         let resolvedUser = readyUser ?? user;
 
         if (!resolvedUser?.pubkey && hasCoreMethods) {
-          const pubkey = await ext.getPublicKey();
+          const pubkey = await withTimeout(
+            Promise.resolve(ext.getPublicKey()),
+            userTimeoutMs,
+            () =>
+              new NostrSignerError(
+                "pubkey-timeout",
+                "Timed out waiting for the signer public key.",
+                {
+                  remediation:
+                    "If your browser delays extension injection (e.g., Brave), keep this tab open a bit longer and retry.",
+                },
+              ),
+          );
           if (pubkey) {
             resolvedUser = { pubkey } as typeof user;
           }
@@ -2204,9 +2220,9 @@ export const useNostrStore = defineStore("nostr", {
       if (this.nip07CheckPromise) return this.nip07CheckPromise;
 
       const maxRetries = 3;
-      const enableTimeoutMs = 4000;
-      const userTimeoutMs = 3000;
-      const globalTimeoutMs = 25000;
+      const enableTimeoutMs = 7000;
+      const userTimeoutMs = 6000;
+      const globalTimeoutMs = 32000;
       const baseDelayMs = 750;
       const maxDelayMs = 4000;
       const flag = localStorage.getItem("nip07.enabled");
@@ -2263,18 +2279,14 @@ export const useNostrStore = defineStore("nostr", {
                 nip07Signer = new NDKNip07Signer();
               }
               const signer = nip07Signer;
-              try {
+              if (hasEnable) {
                 await withTimeout(signer.user(), userTimeoutMs, "NIP-07 user() timed out");
-              } catch (err) {
-                if (!hasEnable && hasCoreMethods) {
-                  await withTimeout(
-                    Promise.resolve(nostr.getPublicKey()),
-                    userTimeoutMs,
-                    "NIP-07 getPublicKey() timed out",
-                  );
-                } else {
-                  throw err;
-                }
+              } else if (hasCoreMethods) {
+                await withTimeout(
+                  Promise.resolve(nostr.getPublicKey()),
+                  userTimeoutMs,
+                  "NIP-07 getPublicKey() timed out",
+                );
               }
               this.nip07SignerAvailable = true;
               this.nip07Checked = true;
@@ -2321,13 +2333,7 @@ export const useNostrStore = defineStore("nostr", {
         }
 
         if (this.signerType === SignerType.NIP07 && !this.nip07RetryInterval) {
-          const intervalStartedAt = Date.now();
           this.nip07RetryInterval = window.setInterval(async () => {
-            if (Date.now() - intervalStartedAt > globalTimeoutMs) {
-              clearInterval(this.nip07RetryInterval!);
-              this.nip07RetryInterval = null;
-              return;
-            }
             const available = await this.checkNip07Signer(true);
             if (available) {
               clearInterval(this.nip07RetryInterval!);
