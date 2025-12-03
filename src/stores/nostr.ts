@@ -1374,7 +1374,12 @@ interface SignerCaps {
   getSharedSecret: boolean;
 }
 
-type Nip07FailureCause = "extension-missing" | "enable-failed" | "user-failed" | "unknown";
+type Nip07FailureCause =
+  | "extension-missing"
+  | "enable-failed"
+  | "user-failed"
+  | "core-methods-missing"
+  | "unknown";
 
 export enum SignerType {
   NIP07 = "NIP07",
@@ -1748,61 +1753,61 @@ export const useNostrStore = defineStore("nostr", {
       const userTimeoutMs = 4000;
       const readyTimeoutMs = 6000;
 
+      const hasEnable = typeof ext?.enable === "function";
+      const hasCoreMethods =
+        typeof ext?.getPublicKey === "function" && typeof ext?.signEvent === "function";
+      const enablePromise = hasEnable ? ext.enable() : undefined;
+
+      if (!hasEnable && !hasCoreMethods) {
+        throw new NostrSignerError(
+          "capability-missing",
+          "NIP-07 signer missing enable() and core methods (getPublicKey/signEvent).",
+          {
+            remediation:
+              "Update or reinstall your NIP-07 extension so it exposes getPublicKey/signEvent.",
+          },
+        );
+      }
+
       const updateSignerCaps = (caps: SignerCaps) => {
         this.signerCaps = caps;
       };
 
       const withTimeout = async <T>(
-        promise: Promise<T> | undefined,
+        promise: Promise<T>,
         ms: number,
         onTimeout: () => NostrSignerError,
-      ) => {
-        if (!promise) {
-          throw new NostrSignerError(
-            "enable-missing",
-            "NIP-07 permission request missing.",
-          );
-        }
-        return Promise.race([
+      ) =>
+        Promise.race([
           promise,
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(onTimeout()), ms),
           ),
         ]);
-      };
 
-      const enablePromise = ext.enable?.();
-      if (!enablePromise || typeof ext.enable !== "function") {
-        throw new NostrSignerError(
-          "enable-missing",
-          "Nostr extension did not expose enable().",
-          {
-            remediation: "Update the extension or allow the site to request permissions.",
-          },
-        );
-      }
-
-      try {
-        await withTimeout(enablePromise, enableTimeoutMs, () =>
-          new NostrSignerError(
-            "enable-timeout",
-            "Signer approval timed out.",
+      if (enablePromise) {
+        try {
+          await withTimeout(enablePromise, enableTimeoutMs, () =>
+            new NostrSignerError(
+              "enable-timeout",
+              "Signer approval timed out.",
+              {
+                remediation:
+                  "Confirm the browser did not block the extension prompt and approve access.",
+              },
+            ),
+          );
+        } catch (error) {
+          if (error instanceof NostrSignerError) throw error;
+          throw new NostrSignerError(
+            "enable-denied",
+            "The signer request was denied or blocked.",
             {
-              remediation:
-                "Confirm the browser did not block the extension prompt and approve access.",
+              remediation: "Approve the extension's access request to continue.",
+              cause: error,
             },
-          ),
-        );
-      } catch (error) {
-        if (error instanceof NostrSignerError) throw error;
-        throw new NostrSignerError(
-          "enable-denied",
-          "The signer request was denied or blocked.",
-          {
-            remediation: "Approve the extension's access request to continue.",
-            cause: error,
-          },
-        );
+          );
+        }
       }
 
       let user;
@@ -1868,7 +1873,15 @@ export const useNostrStore = defineStore("nostr", {
           updateSignerCaps({ ...caps, nip44Encrypt: false, nip44Decrypt: false });
         }
 
-        const resolvedUser = readyUser ?? user;
+        let resolvedUser = readyUser ?? user;
+
+        if (!resolvedUser?.pubkey && hasCoreMethods) {
+          const pubkey = await ext.getPublicKey();
+          if (pubkey) {
+            resolvedUser = { pubkey } as typeof user;
+          }
+        }
+
         if (!resolvedUser?.pubkey) {
           throw new NostrSignerError("user-error", "Signer did not return a pubkey.");
         }
@@ -2215,7 +2228,11 @@ export const useNostrStore = defineStore("nostr", {
         let nip07Signer: NDKNip07Signer | null = null;
 
         while (Date.now() - startedAt < globalTimeoutMs) {
-          const nostrAvailable = Boolean((window as any).nostr);
+          const nostr = (window as any).nostr;
+          const nostrAvailable = Boolean(nostr);
+          const hasEnable = typeof nostr?.enable === "function";
+          const hasCoreMethods =
+            typeof nostr?.getPublicKey === "function" && typeof nostr?.signEvent === "function";
 
           if (!nostrAvailable) {
             this.nip07SignerAvailable = false;
@@ -2224,22 +2241,38 @@ export const useNostrStore = defineStore("nostr", {
             this.nip07LastError = "NIP-07 extension not detected";
             lastFailureCause = "extension-missing";
             this.nip07LastFailureCause = lastFailureCause;
+          } else if (!hasEnable && !hasCoreMethods) {
+            this.nip07SignerAvailable = false;
+            this.nip07Checked = false;
+            this.nip07RetryAttempts = attempts;
+            this.nip07LastError = "NIP-07 extension missing enable() and core methods";
+            lastFailureCause = "core-methods-missing";
+            this.nip07LastFailureCause = lastFailureCause;
+            break;
           } else {
             try {
               attempts += 1;
               this.nip07RetryAttempts = attempts;
-              if (!flag || force || !this.nip07SignerAvailable) {
-                await withTimeout(
-                  (window as any).nostr?.enable?.(),
-                  enableTimeoutMs,
-                  "NIP-07 enable timed out",
-                );
+              if (hasEnable && (!flag || force || !this.nip07SignerAvailable)) {
+                await withTimeout(nostr.enable(), enableTimeoutMs, "NIP-07 enable timed out");
               }
               if (!nip07Signer) {
                 nip07Signer = new NDKNip07Signer();
               }
               const signer = nip07Signer;
-              await withTimeout(signer.user(), userTimeoutMs, "NIP-07 user() timed out");
+              try {
+                await withTimeout(signer.user(), userTimeoutMs, "NIP-07 user() timed out");
+              } catch (err) {
+                if (!hasEnable && hasCoreMethods) {
+                  await withTimeout(
+                    Promise.resolve(nostr.getPublicKey()),
+                    userTimeoutMs,
+                    "NIP-07 getPublicKey() timed out",
+                  );
+                } else {
+                  throw err;
+                }
+              }
               this.nip07SignerAvailable = true;
               this.nip07Checked = true;
               this.nip07RetryAttempts = 0;
@@ -2260,7 +2293,10 @@ export const useNostrStore = defineStore("nostr", {
 
               if (this.nip07LastError?.includes("enable")) {
                 lastFailureCause = "enable-failed";
-              } else if (this.nip07LastError?.includes("user")) {
+              } else if (
+                this.nip07LastError?.includes("user") ||
+                this.nip07LastError?.includes("getPublicKey")
+              ) {
                 lastFailureCause = "user-failed";
               } else {
                 lastFailureCause = "unknown";
