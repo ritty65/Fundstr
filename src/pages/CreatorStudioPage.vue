@@ -52,7 +52,7 @@
             dense
             icon="arrow_back"
             label="Back"
-            :disable="!canGoBack || loading"
+            :disable="!canGoBack || stageLoading"
             @click="goToPreviousStep"
           />
           <div class="studio-stage__details">
@@ -75,13 +75,13 @@
             dense
             icon-right="arrow_forward"
             label="Next"
-            :disable="!canGoNext || loading"
+            :disable="!canGoNext || stageLoading"
             @click="goToNextStep"
           />
         </div>
 
         <div class="studio-stage__body" style="position: relative">
-          <q-inner-loading :showing="loading" color="primary" />
+          <q-inner-loading :showing="stageLoading" color="primary" />
           <template v-if="activeStep === 'setup'">
             <SetupStep
               v-model:relay-url-input="relayUrlInput"
@@ -154,7 +154,7 @@
                   v-model="tierPreviewKind"
                   dense
                   toggle-color="primary"
-                  :disable="loading"
+                  :disable="stageLoading"
                   :options="tierPreviewOptions"
                 />
                 <q-chip dense :color="tiersReady ? 'positive' : 'warning'" text-color="white">
@@ -176,7 +176,7 @@
                   :tiers="tiers"
                   :frequency-options="tierFrequencyOptions"
                   :show-errors="showTierValidation"
-                  :disabled="loading"
+                  :disabled="stageLoading"
                   @update:tiers="handleTiersUpdate"
                   @validation-changed="handleTierValidation"
                   @request-refresh-from-relay="handleTierRefreshRequest"
@@ -414,7 +414,7 @@
               <div class="publish-readiness__title text-subtitle2 text-weight-medium text-1">
                 Readiness checklist
               </div>
-              <div class="publish-readiness__groups" v-if="!loading">
+              <div class="publish-readiness__groups" v-if="!stageLoading">
                 <div
                   v-for="group in readinessChecklist"
                   :key="group.id"
@@ -569,7 +569,7 @@
 
       <aside class="studio-sidebar">
         <q-card flat bordered class="studio-preview" :data-active-step="activeStep" style="position: relative">
-          <q-inner-loading :showing="loading" color="primary" />
+          <q-inner-loading :showing="stageLoading" color="primary" />
           <div class="studio-preview__header">
             <div>
               <div class="text-subtitle1 text-weight-medium text-1">Preview &amp; payload</div>
@@ -594,7 +594,7 @@
           </q-tabs>
           <q-tab-panels v-model="previewTab" animated class="studio-preview__panels">
             <q-tab-panel name="preview">
-              <div v-if="loading" class="preview-skeleton">
+              <div v-if="stageLoading" class="preview-skeleton">
                 <div class="preview-skeleton__hero">
                   <q-skeleton type="QAvatar" size="68px" />
                   <div class="column q-gutter-xs">
@@ -708,6 +708,7 @@ import { notify, notifyError, notifySuccess, notifyWarning } from 'src/js/notify
 import type { Tier } from 'src/nutzap/types';
 import { nip19 } from 'nostr-tools';
 import { useClipboard } from 'src/composables/useClipboard';
+import { useCreatorProfileHydration } from 'src/composables/useCreatorProfileHydration';
 import { buildProfileUrl } from 'src/utils/profileUrl';
 import {
   WS_FIRST_TIMEOUT_MS,
@@ -857,6 +858,8 @@ const handleTiersUpdate = (value: Tier[] | unknown) => {
 };
 const tierPreviewKind = ref<TierKind>(CANONICAL_TIER_KIND);
 const loading = ref(false);
+const { hydrating: hydratingProfile } = useCreatorProfileHydration();
+const stageLoading = computed(() => loading.value || hydratingProfile.value);
 const publishingAll = ref(false);
 const nip07SignerDetected = ref(false);
 const authoringSignerAttached = ref(false);
