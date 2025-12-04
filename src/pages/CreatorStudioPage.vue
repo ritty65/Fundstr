@@ -2,619 +2,54 @@
   <q-page class="creator-studio-page bg-surface-1 q-pa-lg">
     <header class="studio-header">
       <h1 class="studio-header__title text-1 text-weight-semibold">Creator Dashboard</h1>
+      <div class="studio-header__actions">
+        <q-btn
+          v-if="isViewMode"
+          color="primary"
+          unelevated
+          icon="edit"
+          label="Edit Fundstr Profile"
+          @click="enterEditMode"
+        />
+        <q-btn
+          v-else
+          outline
+          color="primary"
+          icon="visibility"
+          label="View summary"
+          @click="returnToViewMode"
+        />
+      </div>
     </header>
 
-    <div class="studio-layout">
-      <nav class="studio-navigation" aria-label="Creator studio progress">
-        <ol class="studio-stepper" role="list">
-          <li v-for="step in steps" :key="step.name" class="studio-stepper__item">
-            <button
-              class="studio-stepper__button"
-              type="button"
-              :class="[
-                { 'is-active': activeStep === step.name, 'is-complete': step.status === 'ready' },
-                `is-${step.status}`
-              ]"
-              @click="goToStep(step.name)"
-              :aria-current="activeStep === step.name ? 'step' : undefined"
-              :aria-describedby="`step-${step.name}-description step-${step.name}-status`"
-              :aria-label="`${step.label} – ${step.statusLabel}`"
-            >
-              <span class="studio-stepper__indicator" aria-hidden="true">
-                {{ step.indicator }}
-              </span>
-              <span class="studio-stepper__copy">
-                <span class="studio-stepper__label text-body1 text-weight-medium text-1">
-                  {{ step.label }}
-                </span>
-                <span class="studio-stepper__status text-caption text-2" :id="`step-${step.name}-status`">
-                  {{ step.statusLabel }}
-                </span>
-              </span>
-            </button>
-            <p class="studio-stepper__description text-caption text-2" :id="`step-${step.name}-description`">
-              {{ step.description }}
+
+    <div class="studio-layout" :class="{ 'is-view-mode': isViewMode }">
+      <template v-if="isViewMode">
+        <nav class="studio-navigation" aria-label="Creator studio overview">
+          <div class="studio-navigation__cta">
+            <q-btn color="primary" unelevated icon="edit" label="Edit Fundstr Profile" @click="enterEditMode" />
+            <p class="text-caption text-2 q-mt-sm">
+              Switch to edit mode to manage your profile, relays, mints, and tiers.
             </p>
-          </li>
-        </ol>
-      </nav>
-
-      <main
-        class="studio-stage"
-        role="region"
-        aria-live="polite"
-        aria-labelledby="active-step-title"
-      >
-        <div class="studio-stage__header">
-          <q-btn
-            class="studio-stage__nav"
-            flat
-            dense
-            icon="arrow_back"
-            label="Back"
-            :disable="!canGoBack || stageLoading"
-            @click="goToPreviousStep"
-          />
-          <div class="studio-stage__details">
-            <div class="studio-stage__meta text-caption text-2">
-              Step {{ currentStepNumber }} of {{ steps.length }}
-            </div>
-            <div
-              class="studio-stage__title text-h6 text-weight-semibold text-1"
-              id="active-step-title"
-            >
-              {{ currentStep.label }}
-            </div>
-            <div class="studio-stage__subtitle text-caption text-2">
-              {{ currentStep.description }}
-            </div>
           </div>
-          <q-btn
-            class="studio-stage__nav"
-            flat
-            dense
-            icon-right="arrow_forward"
-            label="Next"
-            :disable="!canGoNext || stageLoading"
-            @click="goToNextStep"
-          />
-        </div>
-
-        <div class="studio-stage__body" style="position: relative">
-          <q-inner-loading :showing="stageLoading" color="primary" />
-          <template v-if="activeStep === 'setup'">
-            <SetupStep
-              v-model:relay-url-input="relayUrlInput"
-              v-model:relay-auto-reconnect="relayAutoReconnect"
-              v-model:author-input="authorInput"
-              :relay-url-input-state="relayUrlInputState"
-              :relay-url-input-message="relayUrlInputMessage"
-              :relay-url-input-valid="relayUrlInputValid"
-              :relay-connection-status="relayConnectionStatus"
-              :relay-is-connected="relayIsConnected"
-              :relay-needs-attention="relayNeedsAttention"
-              :active-relay-activity="activeRelayActivity"
-              :active-relay-activity-time-label="activeRelayActivityTimeLabel"
-              :active-relay-alert-label="activeRelayAlertLabel"
-              :signer-status-message="signerStatusMessage"
-              :using-store-identity="usingStoreIdentity"
-              :active-identity-summary="activeIdentitySummary"
-              :author-key-ready="authorKeyReady"
-              :author-input-locked="authorInputLocked"
-              :author-input-lock-hint="authorInputLockHint"
-              :setup-ready="setupStepReady"
-              :handle-relay-connect="handleRelayConnect"
-              :handle-relay-disconnect="handleRelayDisconnect"
-              :request-explorer-open="requestExplorerOpen"
-              :open-shared-signer-modal="openSharedSignerModal"
-              :signer-attached="authoringSignerAttached"
-              :signer-help-url="NIP07_HELP_URL"
-              :request-signer-attach="requestSignerAttachment"
-            />
-          </template>
-          <template v-else-if="activeStep === 'profile'">
-            <ProfileStep
-              v-model:display-name="displayName"
-              v-model:picture-url="pictureUrl"
-              v-model:composer-mints="composerMints"
-              v-model:composer-relays="composerRelays"
-              v-model:p2pk-priv="p2pkPriv"
-              :p2pk-pub="p2pkPub"
-              :p2pk-pub-error="p2pkPubError"
-              :p2pk-select-options="p2pkSelectOptions"
-              :selected-p2pk-pub="selectedP2pkPub"
-              :adding-new-p2pk-key="addingNewP2pkKey"
-              :p2pk-pointer-ready="p2pkPointerReady"
-              :verifying-p2pk-pointer="verifyingP2pkPointer"
-              :p2pk-verification-helper="p2pkVerificationHelper"
-              :p2pk-verification-needs-refresh="p2pkVerificationNeedsRefresh"
-              :optional-metadata-complete="optionalMetadataComplete"
-              :advanced-encryption-complete="advancedEncryptionComplete"
-              :signer-status-message="signerStatusMessage"
-              :using-store-identity="usingStoreIdentity"
-              :active-identity-summary="activeIdentitySummary"
-              :primary-relay-url="CREATOR_STUDIO_RELAY_WS_URL"
-              :handle-p2pk-selection="handleP2pkSelection"
-              :start-adding-new-p2pk-key="startAddingNewP2pkKey"
-              :cancel-adding-new-p2pk-key="cancelAddingNewP2pkKey"
-              :derive-p2pk-public-key="deriveP2pkPublicKey"
-              :generate-p2pk-keypair="generateP2pkKeypair"
-              :handle-verify-p2pk-pointer="handleVerifyP2pkPointer"
-              :open-shared-signer-modal="openSharedSignerModal"
-            />
-          </template>
-          <template v-else-if="activeStep === 'tiers'">
-            <StepTemplate
-              class="studio-tier-step"
-              title="Tiers &amp; strategy"
-              subtitle="Compose your supporter offerings and preview tier formats."
-            >
-              <template #toolbar>
-                <q-btn-toggle
-                  v-model="tierPreviewKind"
-                  dense
-                  toggle-color="primary"
-                  :disable="stageLoading"
-                  :options="tierPreviewOptions"
-                />
-                <q-chip dense :color="tiersReady ? 'positive' : 'warning'" text-color="white">
-                  {{ tiersReady ? 'Tiers valid' : 'Needs review' }}
-                </q-chip>
-              </template>
-
-              <q-banner
-                v-if="tierStepGuidance"
-                class="studio-tier-step__guidance"
-                dense
-              >
-                <q-icon name="info" size="16px" class="q-mr-sm" />
-                <div>{{ tierStepGuidance }}</div>
-              </q-banner>
-
-              <div class="studio-tier-step__composer">
-                <TierComposer
-                  :tiers="tiers"
-                  :frequency-options="tierFrequencyOptions"
-                  :show-errors="showTierValidation"
-                  :disabled="stageLoading"
-                  @update:tiers="handleTiersUpdate"
-                  @validation-changed="handleTierValidation"
-                  @request-refresh-from-relay="handleTierRefreshRequest"
-                />
+        </nav>
+        <main class="studio-stage studio-stage--view" role="region" aria-live="polite">
+          <div class="studio-overview">
+            <div class="studio-overview__header">
+              <div>
+                <div class="text-h6 text-weight-semibold text-1">Fundstr profile summary</div>
+                <div class="text-caption text-2">Review your saved details before editing.</div>
               </div>
-            </StepTemplate>
-          </template>
-          <template v-else>
-            <StepTemplate
-              class="studio-publish-step"
-              title="Review &amp; publish"
-              subtitle="Review readiness and publish to relay.fundstr.me."
-            >
-              <template #toolbar>
-                <q-btn
-                  flat
-                  dense
-                  icon="travel_explore"
-                  label="Open data explorer"
-                  @click="requestExplorerOpen('banner')"
-                />
-              </template>
-
-              <div class="publish-step__form">
-                <q-input
-                  v-model="authorInput"
-                  label="Creator author (npub or hex)"
-                  dense
-                  filled
-                  :readonly="authorInputLocked"
-                  :disable="authorInputLocked"
-                  :hide-hint="!authorInputLocked"
-                >
-                  <template v-if="authorInputLocked" #hint>
-                    {{ authorInputLockHint }}
-                  </template>
-                </q-input>
-              </div>
-
-              <section
-                class="publish-share-panel"
-                role="region"
-                aria-labelledby="publish-share-heading"
-              >
-                <div class="publish-share-panel__icon" aria-hidden="true">
-                  <q-icon name="campaign" size="28px" />
-                </div>
-                <div class="publish-share-panel__content">
-                  <div
-                    id="publish-share-heading"
-                    class="publish-share-panel__title text-subtitle1 text-weight-medium text-1"
-                  >
-                    Share your creator page
-                  </div>
-                  <p
-                    id="publish-share-helper"
-                    class="publish-share-panel__message text-body2 text-2"
-                  >
-                    {{ shareHelperMessage }}
-                  </p>
-                  <div
-                    id="publish-share-status"
-                    class="publish-share-panel__status text-caption"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    <span class="publish-share-panel__status-label">
-                      {{ shareStatusLabel }}
-                    </span>
-                  </div>
-                  <div class="publish-share-panel__actions">
-                    <q-btn
-                      class="publish-share-panel__copy"
-                      color="primary"
-                      outline
-                      icon="content_copy"
-                      label="Copy public link"
-                      type="button"
-                      :aria-disabled="!shareLinkReady"
-                      :class="{ 'is-disabled': !shareLinkReady }"
-                      :tabindex="0"
-                      :aria-describedby="'publish-share-helper publish-share-status'"
-                      @click="shareLinkReady && copy(publicProfileUrl)"
-                    >
-                      <q-tooltip v-if="shareLinkReady" class="bg-surface-2 text-1">
-                        Share this link so supporters can view your profile and tiers.
-                      </q-tooltip>
-                    </q-btn>
-                  </div>
-                </div>
-              </section>
-
-              <q-expansion-item
-                v-model="summaryExpanded"
-                class="publish-summary"
-                expand-icon="expand_more"
-                switch-toggle-side
-                dense
-                expand-separator
-                label="Creator setup summary"
-                :caption="summaryCaption"
-                toggle-aria-label="Toggle creator setup summary section"
-              >
-                <div class="publish-summary__content">
-                  <div class="publish-summary-grid">
-                    <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'profile' }">
-                      <div class="publish-summary-tile__label text-caption text-uppercase text-2">Display name</div>
-                      <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
-                        {{ summaryDisplayName }}
-                      </div>
-                      <div v-if="summaryAuthorKey" class="publish-summary-tile__meta text-caption text-2">
-                        Signer: {{ summaryAuthorKey }}
-                      </div>
-                      <div class="publish-summary-tile__meta text-caption text-2">
-                        Share: {{ shareStatusLabel }}
-                      </div>
-                      <div class="publish-summary-tile__meta text-caption text-2">
-                        {{ shareHelperMessage }}
-                      </div>
-                      <div v-if="lastPublishInfo" class="publish-summary-tile__meta text-caption text-2">
-                        {{ lastPublishInfo }}
-                      </div>
-                      <div class="publish-summary-tile__cta">
-                        <q-btn
-                          flat
-                          dense
-                          color="primary"
-                          icon="edit"
-                          label="Edit profile"
-                          :disable="activeStep === 'profile'"
-                          @click="goToStep('profile')"
-                        />
-                      </div>
-                    </div>
-                    <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'tiers' }">
-                      <div class="publish-summary-tile__label text-caption text-uppercase text-2">Tier address</div>
-                      <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
-                        {{ tierAddressPreview }}
-                      </div>
-                      <div class="publish-summary-tile__meta text-caption text-2">
-                        Publishing as {{ tierPublishSummaryLabel }}
-                      </div>
-                      <div class="publish-summary-tile__cta">
-                        <q-btn
-                          flat
-                          dense
-                          color="primary"
-                          icon="tune"
-                          label="Edit tiers"
-                          :disable="activeStep === 'tiers'"
-                          @click="goToStep('tiers')"
-                        />
-                      </div>
-                    </div>
-                    <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'profile' }">
-                      <div class="publish-summary-tile__label text-caption text-uppercase text-2">Trusted mints</div>
-                      <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
-                        {{ mintList.length }} configured
-                      </div>
-                      <div class="publish-summary-tile__stack" v-if="mintList.length">
-                        <q-chip
-                          v-for="mint in mintList"
-                          :key="mint"
-                          dense
-                          outline
-                          color="primary"
-                          text-color="primary"
-                        >
-                          {{ mint }}
-                        </q-chip>
-                      </div>
-                      <div v-else class="publish-summary-tile__meta text-caption text-2">No mints configured.</div>
-                      <div class="publish-summary-tile__cta">
-                        <q-btn
-                          flat
-                          dense
-                          color="primary"
-                          icon="inventory_2"
-                          label="Manage mints"
-                          :disable="activeStep === 'profile'"
-                          @click="goToStep('profile')"
-                        />
-                      </div>
-                    </div>
-                    <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'setup' }">
-                      <div class="publish-summary-tile__label text-caption text-uppercase text-2">Preferred relays</div>
-                      <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
-                        {{ relayList.length }} selected
-                      </div>
-                      <div class="publish-summary-tile__stack" v-if="relayList.length">
-                        <q-chip v-for="relay in relayList" :key="relay" dense outline>{{ relay }}</q-chip>
-                      </div>
-                      <div v-else class="publish-summary-tile__meta text-caption text-2">Relay selection pending.</div>
-                      <div class="publish-summary-tile__cta">
-                        <q-btn
-                          flat
-                          dense
-                          color="primary"
-                          icon="lan"
-                          label="Edit relay setup"
-                          :disable="activeStep === 'setup'"
-                          @click="goToStep('setup')"
-                        />
-                      </div>
-                    </div>
-                    <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'tiers' }">
-                      <div class="publish-summary-tile__label text-caption text-uppercase text-2">Supporter tiers</div>
-                      <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
-                        {{ tiers.length }} total
-                      </div>
-                      <ul v-if="tiers.length" class="publish-summary-tile__list text-caption text-2">
-                        <li v-for="(tier, index) in tiers.slice(0, 4)" :key="tier.id || tier.title || `tier-${index}`">
-                          {{ tier.title || 'Untitled tier' }}
-                        </li>
-                        <li v-if="tiers.length > 4">+ {{ tiers.length - 4 }} more</li>
-                      </ul>
-                      <div v-else class="publish-summary-tile__meta text-caption text-2">No tiers configured yet.</div>
-                      <div class="publish-summary-tile__cta">
-                        <q-btn
-                          flat
-                          dense
-                          color="primary"
-                          icon="workspace_premium"
-                          label="Edit tiers"
-                          :disable="activeStep === 'tiers'"
-                          @click="goToStep('tiers')"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </q-expansion-item>
-
-              <div class="publish-readiness">
-              <div class="publish-readiness__title text-subtitle2 text-weight-medium text-1">
-                Readiness checklist
-              </div>
-              <div class="publish-readiness__groups" v-if="!stageLoading">
-                <div
-                  v-for="group in readinessChecklist"
-                  :key="group.id"
-                  class="publish-readiness__group"
-                >
-                  <div class="publish-readiness__group-label text-caption text-uppercase text-2">
-                    {{ group.label }}
-                  </div>
-                  <div class="publish-readiness__entries">
-                    <button
-                      v-for="item in group.items"
-                      :key="item.key"
-                      type="button"
-                      class="publish-readiness__entry"
-                      :class="[`is-${item.state}`, { 'is-clickable': !!item.step } ]"
-                      @click="handleReadinessNavigation(item)"
-                    >
-                      <div class="publish-readiness__entry-icon">
-                        <q-icon :name="item.icon" size="18px" />
-                      </div>
-                      <div class="publish-readiness__entry-content">
-                        <div class="publish-readiness__entry-label text-body2 text-1">
-                          {{ item.label }}
-                        </div>
-                        <div
-                          v-if="item.stepLabel"
-                          class="publish-readiness__entry-meta text-caption text-2"
-                        >
-                          {{ item.stepLabel }} step
-                        </div>
-                      </div>
-                      <div class="publish-readiness__entry-state text-caption">
-                        {{ item.stateLabel }}
-                      </div>
-                      <q-tooltip v-if="item.tooltip" class="bg-surface-2 text-1">
-                        {{ item.tooltip }}
-                      </q-tooltip>
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div class="publish-readiness__groups" v-else>
-                <div v-for="index in 2" :key="`readiness-skeleton-${index}`" class="publish-readiness__group">
-                  <div class="publish-readiness__group-label text-caption text-uppercase text-2">
-                    <q-skeleton type="text" width="120px" />
-                  </div>
-                  <div class="publish-readiness__entries">
-                    <div
-                      v-for="entryIndex in 3"
-                      :key="`readiness-skeleton-${index}-${entryIndex}`"
-                      class="publish-readiness__entry is-loading"
-                    >
-                      <div class="publish-readiness__entry-icon">
-                        <q-skeleton type="QAvatar" size="24px" />
-                      </div>
-                      <div class="publish-readiness__entry-content">
-                        <q-skeleton type="text" width="160px" class="q-mb-xs" />
-                        <q-skeleton type="text" width="100px" />
-                      </div>
-                      <div class="publish-readiness__entry-state text-caption">
-                        <q-skeleton type="text" width="60px" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <q-btn
+                color="primary"
+                unelevated
+                icon="edit"
+                label="Edit Fundstr Profile"
+                @click="enterEditMode"
+              />
             </div>
-
-              <div class="publish-step__actions">
-                <div class="publish-step__cta">
-                  <q-btn
-                    class="publish-button"
-                    color="primary"
-                    unelevated
-                    :disable="publishDisabled"
-                    :loading="publishingAll"
-                    label="Publish profile &amp; tiers"
-                    icon="send"
-                    @click="publishAll"
-                  >
-                    <q-tooltip v-if="publishHasGuidance" class="bg-surface-2 text-1">
-                      <div
-                        v-if="publishGuidanceHeading"
-                        class="text-caption text-weight-medium q-mb-xs"
-                      >
-                        {{ publishGuidanceHeading }}:
-                      </div>
-                      <ul class="publish-blockers__tooltip-list">
-                        <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
-                      </ul>
-                    </q-tooltip>
-                  </q-btn>
-                </div>
-                <div v-if="publishHasGuidance" class="publish-blockers text-caption text-2">
-                  <q-icon name="info" size="16px" class="q-mr-xs" />
-                  <div>
-                    <span class="text-weight-medium" v-if="publishGuidanceHeading">
-                      {{ publishGuidanceHeading }}:
-                    </span>
-                    <ul class="publish-blockers__list">
-                      <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              <q-banner
-                v-if="activeDiagnostics"
-                class="studio-banner"
-                :class="`is-${activeDiagnostics?.level}`"
-              >
-                <div class="studio-banner__title">{{ activeDiagnostics?.title }}</div>
-                <div class="studio-banner__detail">{{ activeDiagnostics?.detail }}</div>
-                <div class="row q-gutter-sm q-mt-sm">
-                  <q-btn flat dense color="primary" label="Inspect" @click="handleDiagnosticsAlertCta" />
-                  <q-btn flat dense color="primary" label="Dismiss" @click="dismissDiagnosticsAttention" />
-                </div>
-              </q-banner>
-              <div v-if="relayTimelinePreview.length" class="studio-timeline">
-                <div class="studio-timeline__header text-caption text-2">Recent relay activity</div>
-                <ul class="studio-timeline__list">
-                  <li
-                    v-for="entry in relayTimelinePreview"
-                    :key="entry.id"
-                    class="studio-timeline__item"
-                    :class="`is-${entry.level}`"
-                  >
-                    <div class="studio-timeline__message text-body2 text-1">{{ entry.message }}</div>
-                    <div class="studio-timeline__meta text-caption text-2">
-                      {{ formatActivityTime(entry.timestamp) }} · {{ entry.level }}
-                    </div>
-                    <div v-if="entry.context" class="studio-timeline__context text-caption text-2">
-                      {{ entry.context }}
-                    </div>
-                  </li>
-                </ul>
-              </div>
-            </StepTemplate>
-          </template>
-        </div>
-
-      </main>
-
-      <div
-        v-if="workspaceDirty"
-        class="studio-card__footer-blurb text-caption"
-        :class="publishBlockReason ? 'text-warning' : 'text-2'"
-      >
-        <span v-if="publishBlockReason">{{ publishBlockReason }}</span>
-        <span v-else>Publish to sync your latest updates with the relay.</span>
-      </div>
-
-      <aside class="studio-sidebar">
-        <q-card flat bordered class="studio-preview" :data-active-step="activeStep" style="position: relative">
-          <q-inner-loading :showing="stageLoading" color="primary" />
-          <div class="studio-preview__header">
-            <div>
-              <div class="text-subtitle1 text-weight-medium text-1">Preview &amp; payload</div>
-              <div class="text-caption text-2">Live preview updates as you edit.</div>
-            </div>
-            <q-btn color="primary" dense icon="download" label="Download bundle" @click="downloadBundle" />
-          </div>
-          <q-tabs v-model="previewTab" dense class="studio-preview__tabs" indicator-color="primary" active-color="primary">
-            <q-tab name="preview" label="Preview" />
-            <q-tab name="profile">
-              <template #default>
-                <span>10019 JSON</span>
-                <span v-if="profileDirty" class="modified-dot" aria-hidden="true"></span>
-              </template>
-            </q-tab>
-            <q-tab name="tiers">
-              <template #default>
-                <span>{{ tierPreviewLabel }} JSON</span>
-                <span v-if="tiersDirty" class="modified-dot" aria-hidden="true"></span>
-              </template>
-            </q-tab>
-          </q-tabs>
-          <q-tab-panels v-model="previewTab" animated class="studio-preview__panels">
-            <q-tab-panel name="preview">
-              <div v-if="stageLoading" class="preview-skeleton">
-                <div class="preview-skeleton__hero">
-                  <q-skeleton type="QAvatar" size="68px" />
-                  <div class="column q-gutter-xs">
-                    <q-skeleton type="text" width="160px" />
-                    <q-skeleton type="text" width="120px" />
-                  </div>
-                </div>
-                <div class="preview-skeleton__chips row q-gutter-xs">
-                  <q-skeleton
-                    v-for="chipIndex in 3"
-                    :key="`preview-chip-${chipIndex}`"
-                    type="QChip"
-                    width="110px"
-                  />
-                </div>
-                <q-skeleton type="rect" height="96px" class="preview-skeleton__section" />
-                <q-skeleton type="rect" height="180px" class="preview-skeleton__section" />
-                <q-skeleton type="rect" height="140px" class="preview-skeleton__section" />
-              </div>
-              <template v-else>
+            <div class="studio-overview__grid">
+              <q-card flat bordered class="studio-overview__card">
                 <CreatorStudioPreviewCard
                   :display-name="displayName"
                   :author-input="authorInput"
@@ -623,37 +58,711 @@
                   :tiers="tiers"
                   :active-step="activeStep"
                 />
-                <q-banner class="preview-banner" dense>
-                  Publish pushes both events to relay.fundstr.me. Copy JSON if your publisher requires manual input.
+              </q-card>
+              <q-card flat bordered class="studio-overview__card studio-overview__card--details">
+                <div class="studio-overview__card-header">
+                  <div class="text-subtitle1 text-weight-medium text-1">Profile</div>
+                  <q-chip color="primary" text-color="white" dense outline>{{ summaryDisplayName }}</q-chip>
+                </div>
+                <div class="studio-overview__list text-body2">
+                  <div class="studio-overview__list-row">
+                    <span class="text-2">Author</span>
+                    <span class="text-1 text-weight-medium">{{ summaryAuthorKey || 'Not set' }}</span>
+                  </div>
+                  <div class="studio-overview__list-row">
+                    <span class="text-2">Relays</span>
+                    <span class="text-1 text-weight-medium">{{ relayList.length || '0' }}</span>
+                  </div>
+                  <div class="studio-overview__list-row">
+                    <span class="text-2">Mints</span>
+                    <span class="text-1 text-weight-medium">{{ mintList.length || '0' }}</span>
+                  </div>
+                  <div class="studio-overview__list-row">
+                    <span class="text-2">Tiers</span>
+                    <span class="text-1 text-weight-medium">{{ tiers.length || '0' }}</span>
+                  </div>
+                </div>
+              </q-card>
+              <q-card flat bordered class="studio-overview__card">
+                <div class="studio-overview__card-header">
+                  <div class="text-subtitle1 text-weight-medium text-1">Relays</div>
+                  <q-badge color="primary" align="top" outline>{{ relayList.length }} selected</q-badge>
+                </div>
+                <div class="studio-overview__chips" v-if="relayList.length">
+                  <q-chip v-for="relay in relayList" :key="relay" dense outline>{{ relay }}</q-chip>
+                </div>
+                <div v-else class="text-caption text-2">Relay selection pending.</div>
+              </q-card>
+              <q-card flat bordered class="studio-overview__card">
+                <div class="studio-overview__card-header">
+                  <div class="text-subtitle1 text-weight-medium text-1">Trusted mints</div>
+                  <q-badge color="primary" align="top" outline>{{ mintList.length }} configured</q-badge>
+                </div>
+                <div class="studio-overview__chips" v-if="mintList.length">
+                  <q-chip
+                    v-for="mint in mintList"
+                    :key="mint"
+                    dense
+                    outline
+                    color="primary"
+                    text-color="primary"
+                  >
+                    {{ mint }}
+                  </q-chip>
+                </div>
+                <div v-else class="text-caption text-2">No mints configured.</div>
+              </q-card>
+              <q-card flat bordered class="studio-overview__card">
+                <div class="studio-overview__card-header">
+                  <div class="text-subtitle1 text-weight-medium text-1">Supporter tiers</div>
+                  <q-badge color="primary" align="top" outline>{{ tiers.length }} total</q-badge>
+                </div>
+                <div v-if="tiers.length" class="studio-overview__tiers">
+                  <div
+                    v-for="(tier, index) in tierSummaryList.slice(0, 4)"
+                    :key="tier.id || `tier-${index}`"
+                    class="studio-overview__tier"
+                  >
+                    <div class="studio-overview__tier-header">
+                      <span class="text-weight-medium text-1">{{ tier.title }}</span>
+                      <span class="text-caption text-2">{{ tier.frequencyLabel }}</span>
+                    </div>
+                    <div class="text-caption text-2">{{ tier.priceLabel }}</div>
+                    <div v-if="tier.description" class="text-caption text-2">{{ tier.description }}</div>
+                  </div>
+                  <div v-if="tiers.length > 4" class="text-caption text-2">
+                    + {{ tiers.length - 4 }} more
+                  </div>
+                </div>
+                <div v-else class="text-caption text-2">No tiers configured yet.</div>
+              </q-card>
+            </div>
+          </div>
+        </main>
+      </template>
+      <template v-else>
+        <nav class="studio-navigation" aria-label="Creator studio progress">
+          <div class="studio-navigation__cta">
+            <q-btn color="primary" unelevated icon="edit" label="Edit Fundstr Profile" @click="enterEditMode" />
+          </div>
+          <ol class="studio-stepper" role="list">
+            <li v-for="step in steps" :key="step.name" class="studio-stepper__item">
+              <button
+                class="studio-stepper__button"
+                type="button"
+                :class="[
+                  { 'is-active': activeStep === step.name, 'is-complete': step.status === 'ready' },
+                  `is-${step.status}`
+                ]"
+                @click="goToStep(step.name)"
+                :aria-current="activeStep === step.name ? 'step' : undefined"
+                :aria-describedby="`step-${step.name}-description step-${step.name}-status`"
+                :aria-label="`${step.label} – ${step.statusLabel}`"
+              >
+                <span class="studio-stepper__indicator" aria-hidden="true">
+                  {{ step.indicator }}
+                </span>
+                <span class="studio-stepper__copy">
+                  <span class="studio-stepper__label text-body1 text-weight-medium text-1">
+                    {{ step.label }}
+                  </span>
+                  <span class="studio-stepper__status text-caption text-2" :id="`step-${step.name}-status`">
+                    {{ step.statusLabel }}
+                  </span>
+                </span>
+              </button>
+              <p class="studio-stepper__description text-caption text-2" :id="`step-${step.name}-description`">
+                {{ step.description }}
+              </p>
+            </li>
+          </ol>
+        </nav>
+
+        <main
+          class="studio-stage"
+          role="region"
+          aria-live="polite"
+          aria-labelledby="active-step-title"
+        >
+          <div class="studio-stage__header">
+            <q-btn
+              class="studio-stage__nav"
+              flat
+              dense
+              icon="arrow_back"
+              label="Back"
+              :disable="!canGoBack || stageLoading"
+              @click="goToPreviousStep"
+            />
+            <div class="studio-stage__details">
+              <div class="studio-stage__meta text-caption text-2">
+                Step {{ currentStepNumber }} of {{ steps.length }}
+              </div>
+              <div
+                class="studio-stage__title text-h6 text-weight-semibold text-1"
+                id="active-step-title"
+              >
+                {{ currentStep.label }}
+              </div>
+              <div class="studio-stage__subtitle text-caption text-2">
+                {{ currentStep.description }}
+              </div>
+            </div>
+            <q-btn
+              class="studio-stage__nav"
+              flat
+              dense
+              icon-right="arrow_forward"
+              label="Next"
+              :disable="!canGoNext || stageLoading"
+              @click="goToNextStep"
+            />
+          </div>
+
+          <div class="studio-stage__body" style="position: relative">
+            <q-inner-loading :showing="stageLoading" color="primary" />
+            <template v-if="activeStep === 'setup'">
+              <SetupStep
+                v-model:relay-url-input="relayUrlInput"
+                v-model:relay-auto-reconnect="relayAutoReconnect"
+                v-model:author-input="authorInput"
+                :relay-url-input-state="relayUrlInputState"
+                :relay-url-input-message="relayUrlInputMessage"
+                :relay-url-input-valid="relayUrlInputValid"
+                :relay-connection-status="relayConnectionStatus"
+                :relay-is-connected="relayIsConnected"
+                :relay-needs-attention="relayNeedsAttention"
+                :active-relay-activity="activeRelayActivity"
+                :active-relay-activity-time-label="activeRelayActivityTimeLabel"
+                :active-relay-alert-label="activeRelayAlertLabel"
+                :signer-status-message="signerStatusMessage"
+                :using-store-identity="usingStoreIdentity"
+                :active-identity-summary="activeIdentitySummary"
+                :author-key-ready="authorKeyReady"
+                :author-input-locked="authorInputLocked"
+                :author-input-lock-hint="authorInputLockHint"
+                :setup-ready="setupStepReady"
+                :handle-relay-connect="handleRelayConnect"
+                :handle-relay-disconnect="handleRelayDisconnect"
+                :request-explorer-open="requestExplorerOpen"
+                :open-shared-signer-modal="openSharedSignerModal"
+                :signer-attached="authoringSignerAttached"
+                :signer-help-url="NIP07_HELP_URL"
+                :request-signer-attach="requestSignerAttachment"
+              />
+            </template>
+            <template v-else-if="activeStep === 'profile'">
+              <ProfileStep
+                v-model:display-name="displayName"
+                v-model:picture-url="pictureUrl"
+                v-model:composer-mints="composerMints"
+                v-model:composer-relays="composerRelays"
+                v-model:p2pk-priv="p2pkPriv"
+                :p2pk-pub="p2pkPub"
+                :p2pk-pub-error="p2pkPubError"
+                :p2pk-select-options="p2pkSelectOptions"
+                :selected-p2pk-pub="selectedP2pkPub"
+                :adding-new-p2pk-key="addingNewP2pkKey"
+                :p2pk-pointer-ready="p2pkPointerReady"
+                :verifying-p2pk-pointer="verifyingP2pkPointer"
+                :p2pk-verification-helper="p2pkVerificationHelper"
+                :p2pk-verification-needs-refresh="p2pkVerificationNeedsRefresh"
+                :optional-metadata-complete="optionalMetadataComplete"
+                :advanced-encryption-complete="advancedEncryptionComplete"
+                :signer-status-message="signerStatusMessage"
+                :using-store-identity="usingStoreIdentity"
+                :active-identity-summary="activeIdentitySummary"
+                :primary-relay-url="CREATOR_STUDIO_RELAY_WS_URL"
+                :handle-p2pk-selection="handleP2pkSelection"
+                :start-adding-new-p2pk-key="startAddingNewP2pkKey"
+                :cancel-adding-new-p2pk-key="cancelAddingNewP2pkKey"
+                :derive-p2pk-public-key="deriveP2pkPublicKey"
+                :generate-p2pk-keypair="generateP2pkKeypair"
+                :handle-verify-p2pk-pointer="handleVerifyP2pkPointer"
+                :open-shared-signer-modal="openSharedSignerModal"
+              />
+            </template>
+            <template v-else-if="activeStep === 'tiers'">
+              <StepTemplate
+                class="studio-tier-step"
+                title="Tiers &amp; strategy"
+                subtitle="Compose your supporter offerings and preview tier formats."
+              >
+                <template #toolbar>
+                  <q-btn-toggle
+                    v-model="tierPreviewKind"
+                    dense
+                    toggle-color="primary"
+                    :disable="stageLoading"
+                    :options="tierPreviewOptions"
+                  />
+                  <q-chip dense :color="tiersReady ? 'positive' : 'warning'" text-color="white">
+                    {{ tiersReady ? 'Tiers valid' : 'Needs review' }}
+                  </q-chip>
+                </template>
+
+                <q-banner
+                  v-if="tierStepGuidance"
+                  class="studio-tier-step__guidance"
+                  dense
+                >
+                  <q-icon name="info" size="16px" class="q-mr-sm" />
+                  <div>{{ tierStepGuidance }}</div>
                 </q-banner>
-              </template>
-            </q-tab-panel>
-            <q-tab-panel name="profile">
-              <q-input :model-value="profileJsonPreview" type="textarea" rows="16" readonly filled />
-              <q-btn
-                class="q-mt-sm"
-                outline
-                color="primary"
-                label="Copy 10019 JSON"
-                icon="content_copy"
-                @click="copy(profileJsonPreview)"
-              />
-            </q-tab-panel>
-            <q-tab-panel name="tiers">
-              <q-input :model-value="tiersJsonPreview" type="textarea" rows="16" readonly filled />
-              <q-btn
-                class="q-mt-sm"
-                outline
-                color="primary"
-                :label="`Copy ${tierPreviewLabel} JSON`"
-                icon="content_copy"
-                @click="copy(tiersJsonPreview)"
-              />
-            </q-tab-panel>
-          </q-tab-panels>
-        </q-card>
-      </aside>
+
+                <div class="studio-tier-step__composer">
+                  <TierComposer
+                    :tiers="tiers"
+                    :frequency-options="tierFrequencyOptions"
+                    :show-errors="showTierValidation"
+                    :disabled="stageLoading"
+                    @update:tiers="handleTiersUpdate"
+                    @validation-changed="handleTierValidation"
+                    @request-refresh-from-relay="handleTierRefreshRequest"
+                  />
+                </div>
+              </StepTemplate>
+            </template>
+            <template v-else>
+              <StepTemplate
+                class="studio-publish-step"
+                title="Review &amp; publish"
+                subtitle="Review readiness and publish to relay.fundstr.me."
+              >
+                <template #toolbar>
+                  <q-btn
+                    flat
+                    dense
+                    icon="travel_explore"
+                    label="Open data explorer"
+                    @click="requestExplorerOpen('banner')"
+                  />
+                </template>
+
+                <div class="publish-step__form">
+                  <q-input
+                    v-model="authorInput"
+                    label="Creator author (npub or hex)"
+                    dense
+                    filled
+                    :readonly="authorInputLocked"
+                    :disable="authorInputLocked"
+                    :hide-hint="!authorInputLocked"
+                  >
+                    <template v-if="authorInputLocked" #hint>
+                      {{ authorInputLockHint }}
+                    </template>
+                  </q-input>
+                </div>
+
+                <section
+                  class="publish-share-panel"
+                  role="region"
+                  aria-labelledby="publish-share-heading"
+                >
+                  <div class="publish-share-panel__icon" aria-hidden="true">
+                    <q-icon name="campaign" size="28px" />
+                  </div>
+                  <div class="publish-share-panel__content">
+                    <div
+                      id="publish-share-heading"
+                      class="publish-share-panel__title text-subtitle1 text-weight-medium text-1"
+                    >
+                      Share your creator page
+                    </div>
+                    <p
+                      id="publish-share-helper"
+                      class="publish-share-panel__message text-body2 text-2"
+                    >
+                      {{ shareHelperMessage }}
+                    </p>
+                    <div
+                      id="publish-share-status"
+                      class="publish-share-panel__status text-caption"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <span class="publish-share-panel__status-label">
+                        {{ shareStatusLabel }}
+                      </span>
+                    </div>
+                    <div class="publish-share-panel__actions">
+                      <q-btn
+                        class="publish-share-panel__copy"
+                        color="primary"
+                        outline
+                        icon="content_copy"
+                        label="Copy public link"
+                        type="button"
+                        :aria-disabled="!shareLinkReady"
+                        :class="{ 'is-disabled': !shareLinkReady }"
+                        :tabindex="0"
+                        :aria-describedby="'publish-share-helper publish-share-status'"
+                        @click="shareLinkReady && copy(publicProfileUrl)"
+                      >
+                        <q-tooltip v-if="shareLinkReady" class="bg-surface-2 text-1">
+                          Share this link so supporters can view your profile and tiers.
+                        </q-tooltip>
+                      </q-btn>
+                    </div>
+                  </div>
+                </section>
+
+                <q-expansion-item
+                  v-model="summaryExpanded"
+                  class="publish-summary"
+                  expand-icon="expand_more"
+                  switch-toggle-side
+                  dense
+                  expand-separator
+                  label="Creator setup summary"
+                  :caption="summaryCaption"
+                  toggle-aria-label="Toggle creator setup summary section"
+                >
+                  <div class="publish-summary__content">
+                    <div class="publish-summary-grid">
+                      <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'profile' }">
+                        <div class="publish-summary-tile__label text-caption text-uppercase text-2">Display name</div>
+                        <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                          {{ summaryDisplayName }}
+                        </div>
+                        <div v-if="summaryAuthorKey" class="publish-summary-tile__meta text-caption text-2">
+                          Signer: {{ summaryAuthorKey }}
+                        </div>
+                        <div class="publish-summary-tile__meta text-caption text-2">
+                          Share: {{ shareStatusLabel }}
+                        </div>
+                        <div class="publish-summary-tile__meta text-caption text-2">
+                          {{ shareHelperMessage }}
+                        </div>
+                        <div v-if="lastPublishInfo" class="publish-summary-tile__meta text-caption text-2">
+                          {{ lastPublishInfo }}
+                        </div>
+                        <div class="publish-summary-tile__cta">
+                          <q-btn
+                            flat
+                            dense
+                            color="primary"
+                            icon="edit"
+                            label="Edit profile"
+                            :disable="activeStep === 'profile'"
+                            @click="goToStep('profile')"
+                          />
+                        </div>
+                      </div>
+                      <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'tiers' }">
+                        <div class="publish-summary-tile__label text-caption text-uppercase text-2">Tier address</div>
+                        <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                          {{ tierAddressPreview }}
+                        </div>
+                        <div class="publish-summary-tile__meta text-caption text-2">
+                          Publishing as {{ tierPublishSummaryLabel }}
+                        </div>
+                        <div class="publish-summary-tile__cta">
+                          <q-btn
+                            flat
+                            dense
+                            color="primary"
+                            icon="tune"
+                            label="Edit tiers"
+                            :disable="activeStep === 'tiers'"
+                            @click="goToStep('tiers')"
+                          />
+                        </div>
+                      </div>
+                      <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'profile' }">
+                        <div class="publish-summary-tile__label text-caption text-uppercase text-2">Trusted mints</div>
+                        <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                          {{ mintList.length }} configured
+                        </div>
+                        <div class="publish-summary-tile__stack" v-if="mintList.length">
+                          <q-chip
+                            v-for="mint in mintList"
+                            :key="mint"
+                            dense
+                            outline
+                            color="primary"
+                            text-color="primary"
+                          >
+                            {{ mint }}
+                          </q-chip>
+                        </div>
+                        <div v-else class="publish-summary-tile__meta text-caption text-2">No mints configured.</div>
+                        <div class="publish-summary-tile__cta">
+                          <q-btn
+                            flat
+                            dense
+                            color="primary"
+                            icon="inventory_2"
+                            label="Manage mints"
+                            :disable="activeStep === 'profile'"
+                            @click="goToStep('profile')"
+                          />
+                        </div>
+                      </div>
+                      <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'setup' }">
+                        <div class="publish-summary-tile__label text-caption text-uppercase text-2">Preferred relays</div>
+                        <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                          {{ relayList.length }} selected
+                        </div>
+                        <div class="publish-summary-tile__stack" v-if="relayList.length">
+                          <q-chip v-for="relay in relayList" :key="relay" dense outline>{{ relay }}</q-chip>
+                        </div>
+                        <div v-else class="publish-summary-tile__meta text-caption text-2">Relay selection pending.</div>
+                        <div class="publish-summary-tile__cta">
+                          <q-btn
+                            flat
+                            dense
+                            color="primary"
+                            icon="lan"
+                            label="Edit relay setup"
+                            :disable="activeStep === 'setup'"
+                            @click="goToStep('setup')"
+                          />
+                        </div>
+                      </div>
+                      <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'tiers' }">
+                        <div class="publish-summary-tile__label text-caption text-uppercase text-2">Supporter tiers</div>
+                        <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                          {{ tiers.length }} total
+                        </div>
+                        <ul v-if="tiers.length" class="publish-summary-tile__list text-caption text-2">
+                          <li v-for="(tier, index) in tiers.slice(0, 4)" :key="tier.id || tier.title || `tier-${index}`">
+                            {{ tier.title || 'Untitled tier' }}
+                          </li>
+                          <li v-if="tiers.length > 4">+ {{ tiers.length - 4 }} more</li>
+                        </ul>
+                        <div v-else class="publish-summary-tile__meta text-caption text-2">No tiers configured yet.</div>
+                        <div class="publish-summary-tile__cta">
+                          <q-btn
+                            flat
+                            dense
+                            color="primary"
+                            icon="workspace_premium"
+                            label="Edit tiers"
+                            :disable="activeStep === 'tiers'"
+                            @click="goToStep('tiers')"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </q-expansion-item>
+
+                <div class="publish-readiness">
+                <div class="publish-readiness__title text-subtitle2 text-weight-medium text-1">
+                  Readiness checklist
+                </div>
+                <div class="publish-readiness__groups" v-if="!stageLoading">
+                  <div
+                    v-for="group in readinessChecklist"
+                    :key="group.id"
+                    class="publish-readiness__group"
+                  >
+                    <div class="publish-readiness__group-label text-caption text-uppercase text-2">
+                      {{ group.label }}
+                    </div>
+                    <div class="publish-readiness__entries">
+                      <button
+                        v-for="item in group.items"
+                        :key="item.key"
+                        type="button"
+                        class="publish-readiness__entry"
+                        :class="[`is-${item.state}`, { 'is-clickable': !!item.step } ]"
+                        @click="handleReadinessNavigation(item)"
+                      >
+                        <div class="publish-readiness__entry-icon">
+                          <q-icon :name="item.icon" size="18px" />
+                        </div>
+                        <div class="publish-readiness__entry-content">
+                          <div class="publish-readiness__entry-label text-body2 text-1">
+                            {{ item.label }}
+                          </div>
+                          <div
+                            v-if="item.stepLabel"
+                            class="publish-readiness__entry-meta text-caption text-2"
+                          >
+                            {{ item.stepLabel }} step
+                          </div>
+                        </div>
+                        <div class="publish-readiness__entry-state text-caption">
+                          {{ item.stateLabel }}
+                        </div>
+                        <q-tooltip v-if="item.tooltip" class="bg-surface-2 text-1">
+                          {{ item.tooltip }}
+                        </q-tooltip>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="publish-readiness__groups" v-else>
+                  <div v-for="index in 2" :key="`readiness-skeleton-${index}`" class="publish-readiness__group">
+                    <div class="publish-readiness__group-label text-caption text-uppercase text-2">
+                      <q-skeleton type="text" width="120px" />
+                    </div>
+                    <div class="publish-readiness__entries">
+                      <div
+                        v-for="entryIndex in 3"
+                        :key="`readiness-skeleton-${index}-${entryIndex}`"
+                        class="publish-readiness__entry is-loading"
+                      >
+                        <div class="publish-readiness__entry-icon">
+                          <q-skeleton type="QAvatar" size="24px" />
+                        </div>
+                        <div class="publish-readiness__entry-content">
+                          <q-skeleton type="text" width="160px" class="q-mb-xs" />
+                          <q-skeleton type="text" width="100px" />
+                        </div>
+                        <div class="publish-readiness__entry-state text-caption">
+                          <q-skeleton type="text" width="60px" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+                <div class="publish-step__actions">
+                  <div class="publish-step__cta">
+                    <q-btn
+                      class="publish-button"
+                      color="primary"
+                      unelevated
+                      :disable="publishDisabled"
+                      :loading="publishingAll"
+                      label="Publish profile &amp; tiers"
+                      icon="send"
+                      @click="publishAll"
+                    >
+                      <q-tooltip v-if="publishHasGuidance" class="bg-surface-2 text-1">
+                        <div
+                          v-if="publishGuidanceHeading"
+                          class="text-caption text-weight-medium q-mb-xs"
+                        >
+                          {{ publishGuidanceHeading }}:
+                        </div>
+                        <ul class="publish-blockers__tooltip-list">
+                          <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
+                        </ul>
+                      </q-tooltip>
+                    </q-btn>
+                  </div>
+                  <div v-if="publishHasGuidance" class="publish-blockers text-caption text-2">
+                    <q-icon name="info" size="16px" class="q-mr-xs" />
+                    <div>
+                      <span class="text-weight-medium" v-if="publishGuidanceHeading">
+                        {{ publishGuidanceHeading }}:
+                      </span>
+                      <ul class="publish-blockers__list">
+                        <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </StepTemplate>
+            </template>
+          </div>
+
+        </main>
+
+        <div
+          v-if="workspaceDirty"
+          class="studio-card__footer-blurb text-caption"
+          :class="publishBlockReason ? 'text-warning' : 'text-2'"
+        >
+          <span v-if="publishBlockReason">{{ publishBlockReason }}</span>
+          <span v-else>Publish to sync your latest updates with the relay.</span>
+        </div>
+
+        <aside class="studio-sidebar">
+          <q-card flat bordered class="studio-preview" :data-active-step="activeStep" style="position: relative">
+            <q-inner-loading :showing="stageLoading" color="primary" />
+            <div class="studio-preview__header">
+              <div>
+                <div class="text-subtitle1 text-weight-medium text-1">Preview &amp; payload</div>
+                <div class="text-caption text-2">Live preview updates as you edit.</div>
+              </div>
+              <q-btn color="primary" dense icon="download" label="Download bundle" @click="downloadBundle" />
+            </div>
+            <q-tabs v-model="previewTab" dense class="studio-preview__tabs" indicator-color="primary" active-color="primary">
+              <q-tab name="preview" label="Preview" />
+              <q-tab name="profile">
+                <template #default>
+                  <span>10019 JSON</span>
+                  <span v-if="profileDirty" class="modified-dot" aria-hidden="true"></span>
+                </template>
+              </q-tab>
+              <q-tab name="tiers">
+                <template #default>
+                  <span>{{ tierPreviewLabel }} JSON</span>
+                  <span v-if="tiersDirty" class="modified-dot" aria-hidden="true"></span>
+                </template>
+              </q-tab>
+            </q-tabs>
+            <q-tab-panels v-model="previewTab" animated class="studio-preview__panels">
+              <q-tab-panel name="preview">
+                <div v-if="stageLoading" class="preview-skeleton">
+                  <div class="preview-skeleton__hero">
+                    <q-skeleton type="QAvatar" size="68px" />
+                    <div class="column q-gutter-xs">
+                      <q-skeleton type="text" width="160px" />
+                      <q-skeleton type="text" width="120px" />
+                    </div>
+                  </div>
+                  <div class="preview-skeleton__chips row q-gutter-xs">
+                    <q-skeleton
+                      v-for="chipIndex in 3"
+                      :key="`preview-chip-${chipIndex}`"
+                      type="QChip"
+                      width="110px"
+                    />
+                  </div>
+                  <q-skeleton type="rect" height="96px" class="preview-skeleton__section" />
+                  <q-skeleton type="rect" height="180px" class="preview-skeleton__section" />
+                  <q-skeleton type="rect" height="140px" class="preview-skeleton__section" />
+                </div>
+                <template v-else>
+                  <CreatorStudioPreviewCard
+                    :display-name="displayName"
+                    :author-input="authorInput"
+                    :mint-list="mintList"
+                    :relay-list="relayList"
+                    :tiers="tiers"
+                    :active-step="activeStep"
+                  />
+                  <q-banner class="preview-banner" dense>
+                    Publish pushes both events to relay.fundstr.me. Copy JSON if your publisher requires manual input.
+                  </q-banner>
+                </template>
+              </q-tab-panel>
+              <q-tab-panel name="profile">
+                <q-input :model-value="profileJsonPreview" type="textarea" rows="16" readonly filled />
+                <q-btn
+                  class="q-mt-sm"
+                  outline
+                  color="primary"
+                  label="Copy 10019 JSON"
+                  icon="content_copy"
+                  @click="copy(profileJsonPreview)"
+                />
+              </q-tab-panel>
+              <q-tab-panel name="tiers">
+                <q-input :model-value="tiersJsonPreview" type="textarea" rows="16" readonly filled />
+                <q-btn
+                  class="q-mt-sm"
+                  outline
+                  color="primary"
+                  :label="`Copy ${tierPreviewLabel} JSON`"
+                  icon="content_copy"
+                  @click="copy(tiersJsonPreview)"
+                />
+              </q-tab-panel>
+            </q-tab-panels>
+          </q-card>
+        </aside>
+      </template>
     </div>
+
 
     <q-dialog
       v-model="dataExplorerDialogOpen"
@@ -1355,6 +1464,19 @@ const stepDefinitions: StepDefinition[] = [
     indicator: '4',
   },
 ];
+
+const studioMode = useLocalStorage<'view' | 'edit'>('creatorStudio.mode', 'view');
+const isViewMode = computed(() => studioMode.value === 'view');
+
+watch(
+  () => studioMode.value,
+  value => {
+    if (value !== 'view' && value !== 'edit') {
+      studioMode.value = 'view';
+    }
+  },
+  { immediate: true }
+);
 
 const activeStep = ref<CreatorStudioStep>('setup');
 
@@ -3228,6 +3350,14 @@ const canGoNext = computed(() => {
   return true;
 });
 
+function enterEditMode() {
+  studioMode.value = 'edit';
+}
+
+function returnToViewMode() {
+  studioMode.value = 'view';
+}
+
 function goToStep(step: CreatorStudioStep) {
   if (step === activeStep.value) {
     return;
@@ -4704,10 +4834,20 @@ onBeforeUnmount(() => {
 .studio-header {
   padding-bottom: 12px;
   border-bottom: 1px solid var(--surface-contrast-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .studio-header__title {
   margin: 0;
+}
+
+.studio-header__actions {
+  display: flex;
+  gap: 8px;
 }
 
 .studio-layout {
@@ -4720,12 +4860,23 @@ onBeforeUnmount(() => {
     'sidebar';
 }
 
+.studio-layout.is-view-mode {
+  grid-template-areas:
+    'nav'
+    'stage';
+}
+
 @media (min-width: 768px) {
   .studio-layout {
     grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
     grid-template-areas:
       'nav nav'
       'stage sidebar';
+  }
+
+  .studio-layout.is-view-mode {
+    grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+    grid-template-areas: 'nav stage';
   }
 }
 
@@ -4735,11 +4886,23 @@ onBeforeUnmount(() => {
     grid-template-areas: 'nav stage sidebar';
     align-items: flex-start;
   }
+
+  .studio-layout.is-view-mode {
+    grid-template-columns: minmax(220px, 260px) minmax(0, 2fr);
+    grid-template-areas: 'nav stage';
+  }
 }
 
 .studio-navigation {
   grid-area: nav;
   position: relative;
+}
+
+.studio-navigation__cta {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--surface-2);
 }
 
 .studio-stepper {
@@ -4922,6 +5085,10 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
+.studio-stage--view {
+  grid-area: stage;
+}
+
 .studio-stage__header {
   display: flex;
   align-items: center;
@@ -4954,6 +5121,77 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+.studio-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.studio-overview__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.studio-overview__grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.studio-overview__card {
+  height: 100%;
+}
+
+.studio-overview__card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.studio-overview__list {
+  display: grid;
+  gap: 8px;
+}
+
+.studio-overview__list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.studio-overview__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.studio-overview__tiers {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.studio-overview__tier {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--surface-2);
+}
+
+.studio-overview__tier-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 
 .studio-card {
