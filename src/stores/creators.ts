@@ -19,6 +19,7 @@ import type {
   Creator as DiscoveryCreator,
   CreatorTier as DiscoveryCreatorTier,
 } from "src/lib/fundstrApi";
+import { isValidTier, normalizeTierFrequency } from "src/utils/tiers";
 import {
   fetchCreators as fetchLegacyCreators,
   type Creator as FundstrCreator,
@@ -328,23 +329,28 @@ function convertDiscoveryTier(tier: DiscoveryCreatorTier): Tier | null {
   if (!id) {
     return null;
   }
-  const name = typeof tier.name === "string" ? tier.name : "";
+  const title = typeof tier.name === "string" ? tier.name : "";
   const amountMsat =
     typeof tier.amountMsat === "number" && Number.isFinite(tier.amountMsat)
       ? tier.amountMsat
       : null;
-  const price_sats = amountMsat !== null ? Math.max(0, Math.round(amountMsat / 1000)) : 0;
+  const price_sats =
+    amountMsat !== null ? Math.max(0, Math.round(amountMsat / 1000)) : 0;
   const description = typeof tier.description === "string" ? tier.description : "";
 
-  const media = normalizeTierMediaItems(tier.media);
+  const media = Array.isArray(tier.media) ? [...tier.media] : undefined;
+  const frequency = normalizeTierFrequency(tier.cadence ?? (tier as any).frequency);
 
-  return {
+  const converted: Tier = {
     id,
-    name,
+    name: title,
     price_sats,
     description,
     media,
+    frequency,
   };
+
+  return isValidTier(converted) ? converted : null;
 }
 
 function convertNutzapTierToDiscoveryTier(
@@ -913,7 +919,7 @@ function buildBundleFromLegacyCreator(creator: FundstrCreator): FundstrProfileBu
   const tiers = Array.isArray(creator.tiers)
     ? creator.tiers
         .map((tier) => convertDiscoveryTier(tier as unknown as DiscoveryCreatorTier))
-        .filter((tier): tier is Tier => tier !== null)
+        .filter((tier): tier is Tier => tier !== null && isValidTier(tier))
     : null;
 
   const tierSecurityBlocked = (creator as any).tierSecurityBlocked === true;
@@ -1206,7 +1212,7 @@ function buildBundleFromDiscoveryCreator(
     : [];
   const tiers = tierCandidates
     .map((tier) => convertDiscoveryTier(tier))
-    .filter((tier): tier is Tier => tier !== null);
+    .filter((tier): tier is Tier => tier !== null && isValidTier(tier));
 
   return {
     profile,
@@ -1610,10 +1616,10 @@ export const useCreatorsStore = defineStore("creators", {
         ...(this.warmCache[pubkeyHex] ?? {}),
       };
       const normalized = Array.isArray(tiers)
-        ? tiers.map((tier) => normalizeTier(tier))
+        ? tiers.filter(isValidTier).map((tier) => normalizeTier(tier))
         : [];
       entry.tiersLoaded = true;
-      entry.tiers = Array.isArray(tiers) ? normalized : [];
+      entry.tiers = normalized;
       entry.tierEvent = event ? cloneRelayEvent(event) : null;
       entry.tierEventId = meta.eventId ?? event?.id ?? null;
       entry.tierUpdatedAt = meta.updatedAt ?? event?.created_at ?? null;
@@ -1669,7 +1675,7 @@ export const useCreatorsStore = defineStore("creators", {
       meta: { updatedAt?: number | null } = {},
     ) {
       const normalized = Array.isArray(tiers)
-        ? tiers.map((tier) => normalizeTier(tier))
+        ? tiers.filter(isValidTier).map((tier) => normalizeTier(tier))
         : [];
       const updatedAt =
         meta.updatedAt ?? event?.created_at ?? (event ? event.created_at : null);
@@ -1725,9 +1731,9 @@ export const useCreatorsStore = defineStore("creators", {
             console.error("Failed to parse cached tier event", e);
           }
         }
-        const normalized = (tierRow.tiers ?? []).map((tier: any) =>
-          normalizeTier(tier),
-        );
+        const normalized = (tierRow.tiers ?? [])
+          .filter((tier: any) => isValidTier(tier))
+          .map((tier: any) => normalizeTier(tier));
         this.updateTierCacheState(pubkeyHex, normalized, event, {
           eventId: tierRow.eventId,
           updatedAt: tierRow.updatedAt,

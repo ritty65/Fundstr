@@ -5,6 +5,7 @@ import {
 } from "src/stores/creators";
 import { useNostrStore } from "src/stores/nostr";
 import { applyFundstrProfileBundle } from "src/utils/creatorProfileHydration";
+import { isValidTier } from "src/utils/tiers";
 import { useCreatorHub } from "./useCreatorHub";
 
 type HydrationStatus = "idle" | "pending" | "ready" | "error";
@@ -83,8 +84,11 @@ export function useCreatorProfileHydration() {
       applyFundstrProfileBundle(pubkey, bundle, {
         fallbackRelays: nostrStore.relays as string[],
       });
-      if (Array.isArray(bundle.tiers)) {
-        creatorHub.replaceTierDrafts(bundle.tiers);
+      const validTiers = Array.isArray(bundle.tiers)
+        ? bundle.tiers.filter((tier) => isValidTier(tier))
+        : [];
+      if (validTiers.length) {
+        creatorHub.replaceTierDrafts(validTiers);
         creatorHub.markTierDraftsClean();
       }
       hydrationStatus.value = "ready";
