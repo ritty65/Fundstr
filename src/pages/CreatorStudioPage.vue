@@ -323,6 +323,11 @@
                 :author-key-ready="authorKeyReady"
                 :author-input-locked="authorInputLocked"
                 :author-input-lock-hint="authorInputLockHint"
+                :identity-locked="authorIdentityLocked"
+                :lock-identity="lockAuthorIdentity"
+                :unlock-identity="unlockAuthorIdentity"
+                :using-fallback-identity="usingFallbackIdentity"
+                :fallback-identity-label="fallbackIdentityLabel"
                 :setup-ready="setupStepReady"
                 :handle-relay-connect="handleRelayConnect"
                 :handle-relay-disconnect="handleRelayDisconnect"
@@ -1083,9 +1088,10 @@ const CREATOR_STUDIO_HTTP_FALLBACK_URL = IS_BROWSER
   : CREATOR_STUDIO_RELAY_HTTP_URL;
 
 const authorInput = ref('');
-type AuthorLockSource = 'signer' | 'store' | 'profile';
+type AuthorLockSource = 'signer' | 'store' | 'profile' | 'user';
 const authorLockSources = ref<AuthorLockSource[]>([]);
 const loadedProfileAuthorHex = ref<string | null>(null);
+const userIdentityLocked = ref(false);
 
 function addAuthorLock(source: AuthorLockSource) {
   if (!authorLockSources.value.includes(source)) {
@@ -1099,8 +1105,24 @@ function removeAuthorLock(source: AuthorLockSource) {
   }
 }
 
+watch(
+  userIdentityLocked,
+  locked => {
+    if (locked) {
+      addAuthorLock('user');
+    } else {
+      removeAuthorLock('user');
+    }
+  },
+  { immediate: true }
+);
+
 const authorInputLocked = computed(() => authorLockSources.value.length > 0);
+const authorIdentityLocked = computed(() => authorLockSources.value.includes('user'));
 const authorInputLockHint = computed(() => {
+  if (authorLockSources.value.includes('user')) {
+    return 'Author locked. Unlock to let the app sync identities from signers or stored profiles.';
+  }
   if (authorLockSources.value.includes('signer')) {
     return 'Author comes from the connected Fundstr signer. Disconnect to change it.';
   }
@@ -2700,8 +2722,12 @@ const {
   pubkey,
   signer,
   usingStoreIdentity,
+  usingFallbackIdentity,
+  fallbackIdentitySource,
   connectedIdentitySummary,
   ensureSharedSignerInitialized,
+  authorInputLockedByUser,
+  resetAuthorInputSync,
 } = useNutzapSignerWorkspace(authorInput, {
   onSignerActivated: () => {
     if (!hasAutoLoaded.value) {
@@ -2710,9 +2736,32 @@ const {
     }
   },
   fundstrOnlySigner: true,
+  authorInputLock: authorIdentityLocked,
 });
 
 const activeIdentitySummary = computed(() => connectedIdentitySummary.value);
+const fallbackIdentityLabel = computed(() => {
+  if (!usingFallbackIdentity.value) {
+    return '';
+  }
+  if (fallbackIdentitySource.value === 'pending') {
+    return 'Using cached identity until the wallet is unlocked.';
+  }
+  return 'Using fallback identity (unencrypted mirror).';
+});
+
+function lockAuthorIdentity() {
+  if (!authorInput.value.trim()) {
+    notifyWarning('Enter an author before locking the identity.');
+    return;
+  }
+  userIdentityLocked.value = true;
+}
+
+function unlockAuthorIdentity(resync = false) {
+  userIdentityLocked.value = false;
+  resetAuthorInputSync(resync);
+}
 
 function setAuthoringSignerActive(active: boolean) {
   if (active && !loggedAuthoringSignerAttach) {

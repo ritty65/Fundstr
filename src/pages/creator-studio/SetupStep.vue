@@ -148,6 +148,47 @@
             {{ authorInputLockHint }}
           </template>
         </q-input>
+        <div class="row items-center justify-between q-mt-xs q-gutter-sm">
+          <div class="row items-center q-gutter-xs text-caption text-2">
+            <q-icon :name="identityLocked ? 'lock' : 'lock_open'" size="16px" />
+            <span>
+              {{
+                identityLocked
+                  ? 'Identity locked. Background updates are paused until you unlock.'
+                  : 'Identity updates will sync from connected signers and stored profiles.'
+              }}
+            </span>
+            <q-chip
+              v-if="usingFallbackIdentity"
+              dense
+              color="warning"
+              text-color="black"
+              icon="key"
+              class="q-ml-xs"
+            >
+              {{ fallbackIdentityLabel }}
+            </q-chip>
+          </div>
+          <div class="row q-gutter-xs">
+            <q-btn
+              v-if="identityLocked"
+              dense
+              outline
+              color="primary"
+              label="Unlock identity"
+              @click="unlockIdentity(true)"
+            />
+            <q-btn
+              v-else
+              dense
+              outline
+              color="primary"
+              label="Lock identity"
+              :disable="!authorInput"
+              @click="lockIdentity()"
+            />
+          </div>
+        </div>
         <div class="studio-alert" v-if="!authorKeyReady">
           <q-icon name="info" size="16px" />
           <span>Enter the npub or hex author to unlock the next step.</span>
@@ -202,6 +243,11 @@ type SetupStepProps = {
   authorInputLocked: boolean;
   authorInputLockHint: string;
   authorKeyReady: boolean;
+  identityLocked: boolean;
+  lockIdentity: () => void;
+  unlockIdentity: () => void;
+  usingFallbackIdentity: boolean;
+  fallbackIdentityLabel: string;
   setupReady: boolean;
   handleRelayConnect: () => void;
   handleRelayDisconnect: () => void;
@@ -269,11 +315,17 @@ const {
   authorKeyReady,
   authorInputLocked,
   authorInputLockHint,
+  identityLocked,
+  lockIdentity,
+  unlockIdentity,
+  usingFallbackIdentity,
+  fallbackIdentityLabel,
   setupReady,
   handleRelayConnect,
   handleRelayDisconnect,
   requestExplorerOpen,
   openSharedSignerModal,
+  authorInput,
   relayIsConnected,
   relayUrlInputState,
   relayUrlInputMessage,
