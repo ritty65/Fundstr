@@ -9,6 +9,8 @@ import {
   ensureVaultSalt,
   hasEncryptedVault,
 } from "src/services/vault";
+import { assertValidPin } from "src/utils/pin-policy";
+import { normalizeSaltValue } from "src/utils/crypto-service";
 import { useP2PKStore, type P2PKKey } from "./p2pk";
 import {
   defaultActiveP2pk,
@@ -48,15 +50,40 @@ export const useVaultStore = defineStore("vault", {
     unlocked: false,
     payload: defaultVaultPayload(),
     watchersRegistered: false,
+    failedUnlockAttempts: 0,
+    unlockCooldownUntil: 0,
   }),
   getters: {
     hasEncryptedVault: () => hasEncryptedVault(),
     isUnlocked: (state) => state.unlocked && Boolean(state.encryptionKey),
   },
   actions: {
+    normalizePin(pin: string) {
+      return assertValidPin(pin);
+    },
+    enforceUnlockCooldown() {
+      const now = Date.now();
+      if (this.unlockCooldownUntil > now) {
+        const seconds = Math.ceil((this.unlockCooldownUntil - now) / 1000);
+        throw new Error(`Too many failed attempts. Try again in ${seconds}s.`);
+      }
+    },
+    recordUnlockFailure() {
+      this.failedUnlockAttempts += 1;
+      const backoffMs = Math.min(
+        30_000,
+        1000 * 2 ** (this.failedUnlockAttempts - 1),
+      );
+      this.unlockCooldownUntil = Date.now() + backoffMs;
+    },
+    resetUnlockFailures() {
+      this.failedUnlockAttempts = 0;
+      this.unlockCooldownUntil = 0;
+    },
     async setEncryptionKeyFromPin(pin: string) {
+      const normalizedPin = this.normalizePin(pin);
       const salt = ensureVaultSalt();
-      this.encryptionKey = await deriveVaultKey(pin, salt);
+      this.encryptionKey = await deriveVaultKey(normalizedPin, salt);
       this.unlocked = true;
       this.payload = defaultVaultPayload();
       await this.persistPayload();
@@ -64,14 +91,24 @@ export const useVaultStore = defineStore("vault", {
       this.registerWatchers();
     },
     async unlockWithPin(pin: string) {
+      const normalizedPin = this.normalizePin(pin);
+      this.enforceUnlockCooldown();
       const salt = localStorage.getItem(VAULT_SALT_STORAGE_KEY);
       if (!salt) {
         throw new Error("No vault configured. Set your PIN first.");
       }
-      this.encryptionKey = await deriveVaultKey(pin, salt);
-      await this.loadPayload();
-      this.unlocked = true;
-      this.registerWatchers();
+      const normalizedSalt = normalizeSaltValue(salt);
+      localStorage.setItem(VAULT_SALT_STORAGE_KEY, normalizedSalt.serialized);
+      try {
+        this.encryptionKey = await deriveVaultKey(normalizedPin, normalizedSalt);
+        await this.loadPayload();
+        this.unlocked = true;
+        this.registerWatchers();
+        this.resetUnlockFailures();
+      } catch (error) {
+        this.recordUnlockFailure();
+        throw error;
+      }
     },
     async ensureUnlocked(pin: string) {
       if (this.isUnlocked) {

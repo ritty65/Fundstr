@@ -7,7 +7,7 @@
 
 ## Key material
 - Wallet and Nostr secrets are kept out of Dexie. Instead, the Nostr store derives an AES-GCM key from the user PIN (`deriveKey`) and uses it to encrypt values before writing them into `localStorage`; decryption requires loading that key back into memory and calling `secureGetItem`/`secureSetItem` (`src/stores/nostr.ts`).
-- The key-derivation and encrypt/decrypt helpers live in `src/utils/crypto-service.ts` and include a random salt persisted under `cashu.salt`, PBKDF2 with 100k iterations, and 256-bit AES-GCM.
+- The key-derivation and encrypt/decrypt helpers live in `src/utils/crypto-service.ts` and include a random salt persisted under `cashu.salt`, PBKDF2-SHA256 with versioned metadata (current default: 310k iterations), and 256-bit AES-GCM. Legacy salts are normalized to the new metadata format for backward compatibility.
 - Because the encryption key only exists in memory after unlock, the encrypted `localStorage` blobs for `cashu.ndk.*` keys remain unreadable to the app until the user provides the PIN.
 
 ## Logging and builds
