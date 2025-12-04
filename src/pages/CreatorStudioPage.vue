@@ -4166,8 +4166,10 @@ function applyProfileEvent(latest: any | null) {
       }
     }
 
+    let parsed: any = null;
+
     try {
-      const parsed = profileContent ? JSON.parse(profileContent) : {};
+      parsed = profileContent ? JSON.parse(profileContent) : {};
 
       if (typeof parsed.p2pk === 'string') {
         const candidate = parsed.p2pk.trim();
@@ -4219,6 +4221,7 @@ function applyProfileEvent(latest: any | null) {
       }
     } catch (err) {
       console.warn('[nutzap] failed to parse profile content', err);
+      notifyWarning('Unable to parse Nutzap profile JSON. Using relay metadata where available.');
     }
 
     const tags = Array.isArray(latest.tags) ? latest.tags : [];
