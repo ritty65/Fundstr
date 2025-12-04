@@ -1421,9 +1421,11 @@ export const useNostrStore = defineStore("nostr", {
     if (lastNip17EventTimestamp.value > now) {
       lastNip17EventTimestamp.value = now;
     }
+    const pendingPubkey = localStorage.getItem("cashu.ndk.pubkey.pending");
+
     return {
       connected: false,
-      pubkey: "",
+      pubkey: pendingPubkey ?? "",
       relays: useSettingsStore().defaultNostrRelays ?? ([] as string[]),
       encryptionKey: null as CryptoKey | null,
       signerType: SignerType.SEED,
@@ -1474,6 +1476,7 @@ export const useNostrStore = defineStore("nostr", {
         "cashu.ndk.nip17EventIdsWeHaveSeen",
         [],
       ),
+      pendingSecureWrites: {} as Record<string, string>,
       profiles: useLocalStorage<
         Record<string, { profile: any; fetchedAt: number }>
       >("cashu.ndk.profiles", {}),
@@ -1552,6 +1555,7 @@ export const useNostrStore = defineStore("nostr", {
       this.encryptionKey = await deriveKey(pin, salt);
       await this.secureSetItem(ENCRYPTION_CHECK_KEY, "ready");
       this.registerSecureWatchers();
+      await this.flushPendingSecureWrites();
       this.secureStorageLoaded = true;
     },
     async unlockWithPin(pin: string) {
@@ -1562,13 +1566,34 @@ export const useNostrStore = defineStore("nostr", {
       this.encryptionKey = await deriveKey(pin, salt);
       this.secureStorageLoaded = false;
       await this.loadKeysFromStorage();
+      await this.flushPendingSecureWrites();
     },
-    async secureSetItem(key: string, value: string) {
+    async secureSetItem(
+      key: string,
+      value: string,
+      options: { bufferIfLocked?: boolean; persistPubkeyWhenLocked?: boolean } = {},
+    ) {
+      const { bufferIfLocked = false, persistPubkeyWhenLocked = false } = options;
+
       if (!this.encryptionKey) {
-        throw new WalletLockedError();
+        if (!bufferIfLocked) {
+          throw new WalletLockedError();
+        }
+
+        this.pendingSecureWrites[key] = value;
+
+        if (persistPubkeyWhenLocked && key === "cashu.ndk.pubkey") {
+          localStorage.setItem("cashu.ndk.pubkey.pending", value);
+        }
+
+        return;
       }
       const enc = await encryptData(this.encryptionKey, value);
       localStorage.setItem(key, enc);
+
+      if (key === "cashu.ndk.pubkey") {
+        localStorage.removeItem("cashu.ndk.pubkey.pending");
+      }
     },
     async secureGetItem(key: string): Promise<string | null> {
       if (!this.encryptionKey) {
@@ -1578,42 +1603,67 @@ export const useNostrStore = defineStore("nostr", {
       if (!val) return null;
       return await decryptData(this.encryptionKey, val);
     },
+    async flushPendingSecureWrites() {
+      if (!this.encryptionKey) return;
+
+      const entries = Object.entries(this.pendingSecureWrites);
+
+      for (const [key, value] of entries) {
+        await this.secureSetItem(key, value);
+      }
+
+      this.pendingSecureWrites = {};
+      localStorage.removeItem("cashu.ndk.pubkey.pending");
+    },
     registerSecureWatchers() {
       if (this.secureWatchersRegistered) return;
       watch(
         () => this.pubkey,
         async (v) => {
-          await this.secureSetItem("cashu.ndk.pubkey", v);
+          await this.secureSetItem("cashu.ndk.pubkey", v, {
+            bufferIfLocked: true,
+            persistPubkeyWhenLocked: true,
+          });
         },
       );
       watch(
         () => this.signerType,
         async (v) => {
-          await this.secureSetItem("cashu.ndk.signerType", v.toString());
+          await this.secureSetItem("cashu.ndk.signerType", v.toString(), {
+            bufferIfLocked: true,
+          });
         },
       );
       watch(
         () => this.nip46Token,
         async (v) => {
-          await this.secureSetItem("cashu.ndk.nip46Token", v);
+          await this.secureSetItem("cashu.ndk.nip46Token", v, {
+            bufferIfLocked: true,
+          });
         },
       );
       watch(
         () => this.privateKeySignerPrivateKey,
         async (v) => {
-          await this.secureSetItem("cashu.ndk.privateKeySignerPrivateKey", v);
+          await this.secureSetItem("cashu.ndk.privateKeySignerPrivateKey", v, {
+            bufferIfLocked: true,
+          });
         },
       );
       watch(
         () => this.seedSignerPrivateKey,
         async (v) => {
-          await this.secureSetItem("cashu.ndk.seedSignerPrivateKey", v);
+          await this.secureSetItem("cashu.ndk.seedSignerPrivateKey", v, {
+            bufferIfLocked: true,
+          });
         },
       );
       watch(
         () => this.seedSignerPublicKey,
         async (v) => {
-          await this.secureSetItem("cashu.ndk.seedSignerPublicKey", v);
+          await this.secureSetItem("cashu.ndk.seedSignerPublicKey", v, {
+            bufferIfLocked: true,
+          });
         },
       );
       this.secureWatchersRegistered = true;
@@ -1911,6 +1961,9 @@ export const useNostrStore = defineStore("nostr", {
         this.probeSignerCaps();
         this.setPubkey(resolvedUser.pubkey);
         useNdk({ requireSigner: true }).catch(() => {});
+        if (!this.encryptionKey) {
+          this.secureStorageLoaded = true;
+        }
       } catch (error) {
         if (error instanceof NostrSignerError) throw error;
         throw new NostrSignerError("user-error", "Failed to finalize signer connection.", {
@@ -2105,6 +2158,7 @@ export const useNostrStore = defineStore("nostr", {
       return ndkEvent;
     },
     setPubkey: function (pubkey: string) {
+      this.registerSecureWatchers();
       debug("Setting pubkey to", pubkey);
       const prev = this.pubkey;
       this.pubkey = pubkey;
@@ -2137,6 +2191,9 @@ export const useNostrStore = defineStore("nostr", {
       }
       if (prev !== pubkey) {
         this.onIdentityChange(prev);
+      }
+      if (!this.encryptionKey) {
+        localStorage.setItem("cashu.ndk.pubkey.pending", pubkey);
       }
     },
     async onIdentityChange(previous?: string) {
@@ -2477,6 +2534,10 @@ export const useNostrStore = defineStore("nostr", {
         }
 
         await this.bootstrapIdentity(onProgress);
+
+        if (!this.encryptionKey) {
+          this.secureStorageLoaded = true;
+        }
       } catch (e) {
         console.error("Failed to update identity", e);
         notifyError(
