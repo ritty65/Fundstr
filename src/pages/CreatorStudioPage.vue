@@ -735,7 +735,13 @@
               </div>
               <q-btn color="primary" dense icon="download" label="Download bundle" @click="downloadBundle" />
             </div>
-            <q-tabs v-model="previewTab" dense class="studio-preview__tabs" indicator-color="primary" active-color="primary">
+            <q-tabs
+              v-model="previewTab"
+              dense
+              class="studio-preview__tabs"
+              indicator-color="primary"
+              active-color="primary"
+            >
               <q-tab name="preview" label="Preview" />
               <q-tab name="profile">
                 <template #default>
@@ -787,26 +793,124 @@
                 </template>
               </q-tab-panel>
               <q-tab-panel name="profile">
-                <q-input :model-value="profileJsonPreview" type="textarea" rows="16" readonly filled />
-                <q-btn
-                  class="q-mt-sm"
-                  outline
-                  color="primary"
-                  label="Copy 10019 JSON"
-                  icon="content_copy"
-                  @click="copy(profileJsonPreview)"
-                />
+                <div class="json-panel">
+                  <div class="json-toolbar">
+                    <div class="json-toolbar__meta">
+                      <q-badge
+                        dense
+                        rounded
+                        :color="profileJsonMeta.valid ? 'positive' : 'warning'"
+                        :text-color="profileJsonMeta.valid ? 'white' : 'black'"
+                      >
+                        {{ profileJsonMeta.valid ? 'Valid JSON' : 'Check JSON' }}
+                      </q-badge>
+                      <span class="json-toolbar__stat">{{ profileJsonStats.lines }} lines</span>
+                      <span class="json-toolbar__stat">{{ profileJsonStats.chars }} chars</span>
+                    </div>
+                    <div class="json-toolbar__actions">
+                      <q-btn-toggle
+                        v-model="jsonViewMode.profile"
+                        size="sm"
+                        rounded
+                        unelevated
+                        color="primary"
+                        text-color="white"
+                        toggle-color="primary"
+                        :options="jsonViewModeOptions"
+                      />
+                      <q-btn
+                        outline
+                        dense
+                        color="primary"
+                        icon="content_copy"
+                        label="Copy"
+                        class="json-toolbar__action"
+                        @click="handleCopyJson('profile')"
+                      />
+                      <q-btn
+                        outline
+                        dense
+                        color="primary"
+                        icon="download"
+                        label="Download"
+                        class="json-toolbar__action"
+                        @click="handleDownloadJson('profile')"
+                      />
+                      <q-btn
+                        outline
+                        dense
+                        color="primary"
+                        icon="travel_explore"
+                        label="Open in explorer"
+                        class="json-toolbar__action"
+                        @click="requestExplorerOpen('toolbar')"
+                      />
+                    </div>
+                  </div>
+                  <q-card flat bordered class="json-viewer">
+                    <pre class="json-viewer__code"><code>{{ profileJsonDisplay }}</code></pre>
+                  </q-card>
+                </div>
               </q-tab-panel>
               <q-tab-panel name="tiers">
-                <q-input :model-value="tiersJsonPreview" type="textarea" rows="16" readonly filled />
-                <q-btn
-                  class="q-mt-sm"
-                  outline
-                  color="primary"
-                  :label="`Copy ${tierPreviewLabel} JSON`"
-                  icon="content_copy"
-                  @click="copy(tiersJsonPreview)"
-                />
+                <div class="json-panel">
+                  <div class="json-toolbar">
+                    <div class="json-toolbar__meta">
+                      <q-badge
+                        dense
+                        rounded
+                        :color="tiersJsonMeta.valid ? 'positive' : 'warning'"
+                        :text-color="tiersJsonMeta.valid ? 'white' : 'black'"
+                      >
+                        {{ tiersJsonMeta.valid ? 'Valid JSON' : 'Check JSON' }}
+                      </q-badge>
+                      <span class="json-toolbar__stat">{{ tiersJsonStats.lines }} lines</span>
+                      <span class="json-toolbar__stat">{{ tiersJsonStats.chars }} chars</span>
+                    </div>
+                    <div class="json-toolbar__actions">
+                      <q-btn-toggle
+                        v-model="jsonViewMode.tiers"
+                        size="sm"
+                        rounded
+                        unelevated
+                        color="primary"
+                        text-color="white"
+                        toggle-color="primary"
+                        :options="jsonViewModeOptions"
+                      />
+                      <q-btn
+                        outline
+                        dense
+                        color="primary"
+                        icon="content_copy"
+                        label="Copy"
+                        class="json-toolbar__action"
+                        @click="handleCopyJson('tiers')"
+                      />
+                      <q-btn
+                        outline
+                        dense
+                        color="primary"
+                        icon="download"
+                        label="Download"
+                        class="json-toolbar__action"
+                        @click="handleDownloadJson('tiers')"
+                      />
+                      <q-btn
+                        outline
+                        dense
+                        color="primary"
+                        icon="travel_explore"
+                        label="Open in explorer"
+                        class="json-toolbar__action"
+                        @click="requestExplorerOpen('toolbar')"
+                      />
+                    </div>
+                  </div>
+                  <q-card flat bordered class="json-viewer">
+                    <pre class="json-viewer__code"><code>{{ tiersJsonDisplay }}</code></pre>
+                  </q-card>
+                </div>
               </q-tab-panel>
             </q-tab-panels>
           </q-card>
@@ -850,7 +954,17 @@ export function normalizeMintUrl(value: string | null | undefined) {
 </script>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch, type Ref } from 'vue';
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  shallowRef,
+  watch,
+  type ComputedRef,
+  type Ref,
+} from 'vue';
 import { useEventBus, useLocalStorage, useNow } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
 import { sha256 } from '@noble/hashes/sha256';
@@ -1372,6 +1486,12 @@ watch(
 const route = useRoute();
 const router = useRouter();
 const { copy } = useClipboard();
+type JsonViewMode = 'pretty' | 'minified';
+const jsonViewMode = reactive({ profile: 'pretty' as JsonViewMode, tiers: 'pretty' as JsonViewMode });
+const jsonViewModeOptions: { label: string; value: JsonViewMode }[] = [
+  { label: 'Pretty', value: 'pretty' },
+  { label: 'Minified', value: 'minified' },
+];
 
 function isValidHttpUrl(url: string) {
   try {
@@ -3640,6 +3760,50 @@ const tiersJsonPreview = computed(() =>
     ? canonicalTiersJsonPreview.value
     : legacyTiersJsonPreview.value
 );
+type JsonMeta = { pretty: string; minified: string; valid: boolean };
+
+function buildJsonMeta(source: Ref<string> | ComputedRef<string>): ComputedRef<JsonMeta> {
+  return computed(() => {
+    const original = (source.value || '').trim();
+    let pretty = original;
+    let minified = original;
+    let valid = false;
+
+    if (original) {
+      try {
+        const parsed = JSON.parse(original);
+        pretty = JSON.stringify(parsed, null, 2);
+        minified = JSON.stringify(parsed);
+        valid = true;
+      } catch {
+        valid = false;
+      }
+    }
+
+    return { pretty, minified, valid };
+  });
+}
+
+const profileJsonMeta = buildJsonMeta(profileJsonPreview);
+const tiersJsonMeta = buildJsonMeta(tiersJsonPreview);
+
+const profileJsonDisplay = computed(() =>
+  jsonViewMode.profile === 'minified' ? profileJsonMeta.value.minified : profileJsonMeta.value.pretty,
+);
+const tiersJsonDisplay = computed(() =>
+  jsonViewMode.tiers === 'minified' ? tiersJsonMeta.value.minified : tiersJsonMeta.value.pretty,
+);
+
+function jsonStats(text: string) {
+  const normalized = text || '';
+  return {
+    chars: normalized.length,
+    lines: normalized ? normalized.split(/\r?\n/u).length : 0,
+  };
+}
+
+const profileJsonStats = computed(() => jsonStats(profileJsonDisplay.value));
+const tiersJsonStats = computed(() => jsonStats(tiersJsonDisplay.value));
 
 watch(relayProfileSnapshot, snapshot => {
   if (!snapshot) {
@@ -3693,6 +3857,24 @@ function downloadBundle() {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   notifySuccess('Exported Nutzap profile bundle.');
+}
+
+function handleCopyJson(target: 'profile' | 'tiers') {
+  const label = target === 'profile' ? '10019 JSON copied' : `${tierPreviewLabel.value} JSON copied`;
+  const payload = target === 'profile' ? profileJsonDisplay.value : tiersJsonDisplay.value;
+  copy(payload, label);
+}
+
+function handleDownloadJson(target: 'profile' | 'tiers') {
+  const filename = target === 'profile' ? 'profile-10019.json' : `tiers-${tierPreviewKind.value}.json`;
+  const payload = target === 'profile' ? profileJsonDisplay.value : tiersJsonDisplay.value;
+  const blob = new Blob([payload], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function handleTierValidation(results: TierFieldErrors[]) {
@@ -5916,23 +6098,42 @@ onBeforeUnmount(() => {
 .studio-sidebar {
   grid-area: sidebar;
   position: relative;
+  min-height: 0;
 }
 
 .studio-preview {
   background: var(--surface-2);
   border-radius: 16px;
   padding: 20px;
-  position: sticky;
-  top: 24px;
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 0;
 }
 
-@media (max-width: 1279.98px) {
+@media (min-width: 1280px) {
+  .studio-sidebar {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    padding-right: 6px;
+  }
+}
+
+@media (max-width: 767.98px) {
   .studio-preview {
-    position: static;
-    top: auto;
+    padding: 16px;
+  }
+
+  .studio-preview__panels {
+    order: 2;
+  }
+
+  .studio-preview__tabs {
+    order: 3;
+    margin-top: 8px;
   }
 }
 
@@ -5946,10 +6147,34 @@ onBeforeUnmount(() => {
 .studio-preview__tabs {
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface-2) 85%, transparent);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .studio-preview__panels {
   background: transparent;
+}
+
+.studio-preview__panels .q-tab-panel {
+  padding: 0;
+}
+
+.studio-preview__tabs .q-tab {
+  color: var(--tab-inactive);
+  transition: color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.studio-preview__tabs .q-tab:hover {
+  color: var(--accent-600);
+  background: color-mix(in srgb, var(--accent-200) 18%, transparent);
+}
+
+.studio-preview__tabs .q-tab.q-tab--active {
+  color: var(--tab-active);
+}
+
+.studio-preview__tabs .q-tab:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-200) 55%, transparent);
+  border-radius: 12px;
 }
 
 .preview-skeleton {
@@ -5981,6 +6206,82 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--accent-200) 25%, transparent);
   color: var(--accent-600);
   border-radius: 12px;
+}
+
+.json-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.json-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
+  border: 1px solid var(--surface-contrast-border);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+}
+
+.json-toolbar__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.json-toolbar__stat {
+  color: var(--text-2);
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+
+.json-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.json-toolbar__action.q-btn--outline {
+  border-color: var(--surface-contrast-border);
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.json-toolbar__action.q-btn--outline:hover {
+  background: color-mix(in srgb, var(--accent-200) 18%, transparent);
+  color: var(--accent-600);
+  border-color: color-mix(in srgb, var(--accent-200) 55%, transparent);
+}
+
+.json-toolbar__action.q-btn--outline:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-200) 55%, transparent);
+  border-color: color-mix(in srgb, var(--accent-200) 65%, transparent);
+}
+
+.json-viewer {
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.json-viewer__code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  color: var(--text-1);
+  line-height: 1.45;
 }
 
 .studio-banner {
