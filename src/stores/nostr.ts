@@ -293,8 +293,14 @@ const SENSITIVE_STORAGE_KEYS = [
   ENCRYPTION_CHECK_KEY,
 ];
 
+const PENDING_PUBKEY_KEY = "cashu.ndk.pubkey.pending";
+const PENDING_SIGNER_TYPE_KEY = "cashu.ndk.signerType.pending";
+const PENDING_SIGNER_PUBLIC_KEY = "cashu.ndk.signerPubkey.pending";
+
 function hasEncryptedSecrets(): boolean {
-  return SENSITIVE_STORAGE_KEYS.some((k) => Boolean(localStorage.getItem(k)));
+  const storage = typeof localStorage === "undefined" ? null : localStorage;
+  if (!storage) return false;
+  return SENSITIVE_STORAGE_KEYS.some((k) => Boolean(storage.getItem(k)));
 }
 
 export const WALLET_LOCKED_MESSAGE = "Unlock to restore your Nostr identity.";
@@ -1391,6 +1397,11 @@ export enum SignerType {
   SEED = "SEED",
 }
 
+function getPendingSignerType(): SignerType | null {
+  const pending = localStorage.getItem(PENDING_SIGNER_TYPE_KEY) as SignerType | null;
+  return Object.values(SignerType).includes(pending as SignerType) ? pending : null;
+}
+
 type InitSignerBehaviorOptions = {
   skipRelayConnect?: boolean;
 };
@@ -1423,14 +1434,16 @@ export const useNostrStore = defineStore("nostr", {
     if (lastNip17EventTimestamp.value > now) {
       lastNip17EventTimestamp.value = now;
     }
-    const pendingPubkey = localStorage.getItem("cashu.ndk.pubkey.pending");
+    const pendingPubkey = localStorage.getItem(PENDING_PUBKEY_KEY);
+    const pendingSignerType = getPendingSignerType();
+    const pendingSignerPubkey = localStorage.getItem(PENDING_SIGNER_PUBLIC_KEY);
 
     return {
       connected: false,
-      pubkey: pendingPubkey ?? "",
+      pubkey: pendingPubkey ?? pendingSignerPubkey ?? "",
       relays: useSettingsStore().defaultNostrRelays ?? ([] as string[]),
       encryptionKey: null as CryptoKey | null,
-      signerType: SignerType.SEED,
+      signerType: pendingSignerType ?? SignerType.SEED,
       nip07signer: {} as NDKNip07Signer,
       nip46Token: "",
       nip46signer: {} as NDKNip46Signer,
@@ -1573,9 +1586,9 @@ export const useNostrStore = defineStore("nostr", {
     async secureSetItem(
       key: string,
       value: string,
-      options: { bufferIfLocked?: boolean; persistPubkeyWhenLocked?: boolean } = {},
+      options: { bufferIfLocked?: boolean; pendingKeys?: string[] } = {},
     ) {
-      const { bufferIfLocked = false, persistPubkeyWhenLocked = false } = options;
+      const { bufferIfLocked = false, pendingKeys = [] } = options;
 
       if (!this.encryptionKey) {
         if (!bufferIfLocked) {
@@ -1584,8 +1597,8 @@ export const useNostrStore = defineStore("nostr", {
 
         this.pendingSecureWrites[key] = value;
 
-        if (persistPubkeyWhenLocked && key === "cashu.ndk.pubkey") {
-          localStorage.setItem("cashu.ndk.pubkey.pending", value);
+        for (const pendingKey of pendingKeys) {
+          localStorage.setItem(pendingKey, value);
         }
 
         return;
@@ -1593,8 +1606,8 @@ export const useNostrStore = defineStore("nostr", {
       const enc = await encryptData(this.encryptionKey, value);
       localStorage.setItem(key, enc);
 
-      if (key === "cashu.ndk.pubkey") {
-        localStorage.removeItem("cashu.ndk.pubkey.pending");
+      for (const pendingKey of pendingKeys) {
+        localStorage.removeItem(pendingKey);
       }
     },
     async secureGetItem(key: string): Promise<string | null> {
@@ -1608,14 +1621,39 @@ export const useNostrStore = defineStore("nostr", {
     async flushPendingSecureWrites() {
       if (!this.encryptionKey) return;
 
-      const entries = Object.entries(this.pendingSecureWrites);
+      const pendingEntries = new Map<string, string>(
+        Object.entries(this.pendingSecureWrites),
+      );
 
-      for (const [key, value] of entries) {
-        await this.secureSetItem(key, value);
+      const bufferedPubkey =
+        localStorage.getItem(PENDING_PUBKEY_KEY) ||
+        localStorage.getItem(PENDING_SIGNER_PUBLIC_KEY);
+      if (bufferedPubkey) {
+        pendingEntries.set("cashu.ndk.pubkey", bufferedPubkey);
+      }
+
+      const bufferedSignerType = getPendingSignerType();
+      if (bufferedSignerType) {
+        pendingEntries.set("cashu.ndk.signerType", bufferedSignerType);
+      }
+
+      for (const [key, value] of pendingEntries.entries()) {
+        const pendingKeys =
+          key === "cashu.ndk.pubkey"
+            ? [PENDING_PUBKEY_KEY, PENDING_SIGNER_PUBLIC_KEY]
+            : key === "cashu.ndk.signerType"
+              ? [PENDING_SIGNER_TYPE_KEY]
+              : [];
+        await this.secureSetItem(key, value, { pendingKeys });
       }
 
       this.pendingSecureWrites = {};
-      localStorage.removeItem("cashu.ndk.pubkey.pending");
+      this.clearPendingIdentityMirror();
+    },
+    clearPendingIdentityMirror() {
+      localStorage.removeItem(PENDING_PUBKEY_KEY);
+      localStorage.removeItem(PENDING_SIGNER_TYPE_KEY);
+      localStorage.removeItem(PENDING_SIGNER_PUBLIC_KEY);
     },
     registerSecureWatchers() {
       if (this.secureWatchersRegistered) return;
@@ -1624,7 +1662,7 @@ export const useNostrStore = defineStore("nostr", {
         async (v) => {
           await this.secureSetItem("cashu.ndk.pubkey", v, {
             bufferIfLocked: true,
-            persistPubkeyWhenLocked: true,
+            pendingKeys: [PENDING_PUBKEY_KEY, PENDING_SIGNER_PUBLIC_KEY],
           });
         },
       );
@@ -1633,6 +1671,7 @@ export const useNostrStore = defineStore("nostr", {
         async (v) => {
           await this.secureSetItem("cashu.ndk.signerType", v.toString(), {
             bufferIfLocked: true,
+            pendingKeys: [PENDING_SIGNER_TYPE_KEY],
           });
         },
       );
@@ -2124,6 +2163,11 @@ export const useNostrStore = defineStore("nostr", {
 
       this.lastError = null;
 
+      const bufferedSignerType = getPendingSignerType();
+      if (this.signerType === SignerType.SEED && bufferedSignerType) {
+        this.signerType = bufferedSignerType;
+      }
+
       if (this.signerType === SignerType.NIP07) {
         await this.initNip07Signer(options);
       } else if (this.signerType === SignerType.PRIVATEKEY) {
@@ -2205,7 +2249,8 @@ export const useNostrStore = defineStore("nostr", {
         this.onIdentityChange(prev);
       }
       if (!this.encryptionKey) {
-        localStorage.setItem("cashu.ndk.pubkey.pending", pubkey);
+        localStorage.setItem(PENDING_PUBKEY_KEY, pubkey);
+        localStorage.setItem(PENDING_SIGNER_PUBLIC_KEY, pubkey);
       }
     },
     async onIdentityChange(previous?: string) {

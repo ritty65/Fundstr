@@ -64,6 +64,13 @@ vi.mock("src/stores/messenger", () => {
   };
 });
 
+vi.mock("src/nutzap/relayClient", async () => {
+  const { ref } = await vi.importActual<typeof import("vue")>("vue");
+  return {
+    useFundstrRelayStatus: () => ref("disconnected"),
+  };
+});
+
 vi.mock("src/stores/p2pk", () => {
   const store = {
     p2pkKeys: [] as Array<{ publicKey: string; privateKey: string; used: boolean; usedCount: number }>,
@@ -104,6 +111,7 @@ vi.mock("src/composables/useNdk", () => {
   let current = {
     pool: makePool(),
     connect: vi.fn(),
+    getUser: vi.fn(() => ({ fetchProfile: vi.fn(), profile: null })),
     addExplicitRelay: vi.fn(),
   };
   return {
@@ -116,6 +124,7 @@ vi.mock("src/composables/useNdk", () => {
       current = {
         pool: makePool(),
         connect: vi.fn(),
+        getUser: vi.fn(() => ({ fetchProfile: vi.fn(), profile: null })),
         addExplicitRelay: vi.fn(),
       };
     },
@@ -231,6 +240,14 @@ import { __resetP2PKStore } from "src/stores/p2pk";
 import { __resetUseLocalStorage } from "@vueuse/core";
 import { notifyWarning } from "src/js/notify";
 import { __setMockNdkInstance, __resetMockNdkInstance } from "src/composables/useNdk";
+
+if (!(globalThis as any).localStorage) {
+  (globalThis as any).localStorage = {
+    getItem: () => null,
+    setItem: () => undefined,
+    removeItem: () => undefined,
+  } as any;
+}
 
 const seedSecret = () => __mockWalletStore.seed.slice(0, 32);
 
@@ -458,4 +475,48 @@ describe("useNostrStore signer initialisation", () => {
     expect(currentStore.seedSignerPrivateKey).toBe(seedHex);
     expect(currentStore.signer).toBeInstanceOf(NDKPrivateKeySigner);
   });
+
+  it.each([
+    { signerType: SignerType.NIP07, initMethod: "initNip07Signer" as const },
+    {
+      signerType: SignerType.PRIVATEKEY,
+      initMethod: "initPrivateKeySigner" as const,
+    },
+  ])(
+    "reload keeps pending %s identity without falling back to seed",
+    async ({ signerType, initMethod }) => {
+      const pendingPubkey = `${signerType}-pending`.padEnd(64, "0");
+
+      localStorage.setItem("cashu.ndk.pubkey.pending", pendingPubkey);
+      localStorage.setItem("cashu.ndk.signerType.pending", signerType);
+      localStorage.setItem("cashu.ndk.signerPubkey.pending", pendingPubkey);
+
+      setActivePinia(createPinia());
+      const reloadedStore = useNostrStore();
+
+      const initSpy = vi
+        .spyOn(reloadedStore, initMethod)
+        .mockImplementation(async () => {
+          reloadedStore.signerType = signerType;
+          reloadedStore.pubkey = pendingPubkey;
+        });
+      const seedSpy = vi
+        .spyOn(reloadedStore, "initWalletSeedPrivateKeySigner")
+        .mockResolvedValue();
+
+      vi.spyOn(reloadedStore, "onIdentityChange").mockResolvedValue();
+      vi.spyOn(reloadedStore, "getProfile").mockResolvedValue(null);
+
+      if (signerType === SignerType.NIP07) {
+        vi.spyOn(reloadedStore, "checkNip07Signer").mockResolvedValue(true);
+      }
+
+      await reloadedStore.initSignerIfNotSet({ skipRelayConnect: true });
+
+      expect(reloadedStore.signerType).toBe(signerType);
+      expect(reloadedStore.pubkey).toBe(pendingPubkey);
+      expect(initSpy).toHaveBeenCalled();
+      expect(seedSpy).not.toHaveBeenCalled();
+    },
+  );
 });
