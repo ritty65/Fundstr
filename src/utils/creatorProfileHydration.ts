@@ -27,14 +27,29 @@ export function applyFundstrProfileBundle(
 
   if (bundle.profileDetails) {
     const relays =
-      bundle.profileDetails.relays ??
-      options.fallbackRelays ??
-      [];
+      (bundle.profileDetails.relays?.length
+        ? bundle.profileDetails.relays
+        : null) ?? options.fallbackRelays ?? [];
+
+    const displayName =
+      bundle.profileDetails.display_name ??
+      bundle.profileDetails.name ??
+      creatorProfileStore.display_name ??
+      "";
+
+    const about =
+      bundle.profileDetails.about ?? creatorProfileStore.about ?? "";
+
+    const picture =
+      bundle.profileDetails.picture ?? creatorProfileStore.picture ?? "";
 
     creatorProfileStore.setProfile({
       ...bundle.profileDetails,
+      display_name: displayName,
+      about,
+      picture,
       pubkey: pubkeyHex,
-      mints: bundle.profileDetails.mints ?? [],
+      mints: bundle.profileDetails.trustedMints ?? [],
       relays,
     });
     creatorProfileStore.markClean();
