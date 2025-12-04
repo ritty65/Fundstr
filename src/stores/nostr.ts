@@ -88,9 +88,10 @@ import {
   decryptData,
   deriveKey,
   encryptData,
-  generateSalt,
+  normalizeSaltValue,
   SALT_STORAGE_KEY,
 } from "src/utils/crypto-service";
+import { assertValidPin } from "src/utils/pin-policy";
 
 // --- Relay connectivity helpers ---
 export type WriteConnectivity = {
@@ -1487,6 +1488,8 @@ export const useNostrStore = defineStore("nostr", {
       initialized: false,
       secureStorageLoaded: false,
       secureWatchersRegistered: false,
+      failedUnlockAttempts: 0,
+      unlockCooldownUntil: 0,
       lastError: "" as string | null,
       connectionFailed: false,
       reconnectBackoffUntil: 0,
@@ -1568,31 +1571,65 @@ export const useNostrStore = defineStore("nostr", {
     hasEncryptedSecrets() {
       return hasEncryptedSecrets();
     },
-    ensureEncryptionSalt() {
-      let salt = localStorage.getItem(SALT_STORAGE_KEY);
-      if (!salt) {
-        salt = generateSalt();
-        localStorage.setItem(SALT_STORAGE_KEY, salt);
+    normalizePin(pin: string) {
+      return assertValidPin(pin);
+    },
+    enforceUnlockCooldown() {
+      const now = Date.now();
+      if (this.unlockCooldownUntil > now) {
+        const seconds = Math.ceil((this.unlockCooldownUntil - now) / 1000);
+        throw new Error(`Too many failed attempts. Try again in ${seconds}s.`);
       }
-      return salt;
+    },
+    recordUnlockFailure() {
+      this.failedUnlockAttempts += 1;
+      const backoffMs = Math.min(
+        30_000,
+        1000 * 2 ** (this.failedUnlockAttempts - 1),
+      );
+      this.unlockCooldownUntil = Date.now() + backoffMs;
+    },
+    resetUnlockFailures() {
+      this.failedUnlockAttempts = 0;
+      this.unlockCooldownUntil = 0;
+    },
+    ensureEncryptionSalt() {
+      const existingSalt = localStorage.getItem(SALT_STORAGE_KEY);
+      const normalizedSalt = normalizeSaltValue(existingSalt);
+      if (!existingSalt || normalizedSalt.isLegacy) {
+        localStorage.setItem(SALT_STORAGE_KEY, normalizedSalt.serialized);
+      }
+      return normalizedSalt.serialized;
     },
     async setEncryptionKeyFromPin(pin: string) {
+      const normalizedPin = this.normalizePin(pin);
       const salt = this.ensureEncryptionSalt();
-      this.encryptionKey = await deriveKey(pin, salt);
+      this.encryptionKey = await deriveKey(normalizedPin, salt);
       await this.secureSetItem(ENCRYPTION_CHECK_KEY, "ready");
       this.registerSecureWatchers();
       await this.flushPendingSecureWrites();
       this.secureStorageLoaded = true;
+      this.resetUnlockFailures();
     },
     async unlockWithPin(pin: string) {
+      const normalizedPin = this.normalizePin(pin);
+      this.enforceUnlockCooldown();
       const salt = localStorage.getItem(SALT_STORAGE_KEY);
       if (!salt) {
         throw new Error("No wallet salt found. Set up your wallet first.");
       }
-      this.encryptionKey = await deriveKey(pin, salt);
-      this.secureStorageLoaded = false;
-      await this.loadKeysFromStorage();
-      await this.flushPendingSecureWrites();
+      const normalizedSalt = normalizeSaltValue(salt);
+      localStorage.setItem(SALT_STORAGE_KEY, normalizedSalt.serialized);
+      try {
+        this.encryptionKey = await deriveKey(normalizedPin, normalizedSalt);
+        this.secureStorageLoaded = false;
+        await this.loadKeysFromStorage();
+        await this.flushPendingSecureWrites();
+        this.resetUnlockFailures();
+      } catch (error) {
+        this.recordUnlockFailure();
+        throw error;
+      }
     },
     async secureSetItem(
       key: string,

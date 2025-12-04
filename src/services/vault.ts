@@ -2,7 +2,7 @@ import {
   decryptData,
   deriveKey,
   encryptData,
-  generateSalt,
+  normalizeSaltValue,
 } from "src/utils/crypto-service";
 
 export const VAULT_STORAGE_KEY = "cashu.vault.data";
@@ -10,18 +10,18 @@ export const VAULT_SALT_STORAGE_KEY = "cashu.vault.salt";
 
 export async function deriveVaultKey(
   pin: string,
-  salt: string,
+  salt: string | ReturnType<typeof normalizeSaltValue>,
 ): Promise<CryptoKey> {
   return deriveKey(pin, salt);
 }
 
 export function ensureVaultSalt(): string {
-  let salt = localStorage.getItem(VAULT_SALT_STORAGE_KEY);
-  if (!salt) {
-    salt = generateSalt();
-    localStorage.setItem(VAULT_SALT_STORAGE_KEY, salt);
+  const existingSalt = localStorage.getItem(VAULT_SALT_STORAGE_KEY);
+  const normalizedSalt = normalizeSaltValue(existingSalt);
+  if (!existingSalt || normalizedSalt.isLegacy) {
+    localStorage.setItem(VAULT_SALT_STORAGE_KEY, normalizedSalt.serialized);
   }
-  return salt;
+  return normalizedSalt.serialized;
 }
 
 export function hasEncryptedVault(): boolean {

@@ -1,5 +1,22 @@
 const SALT_LENGTH_BYTES = 16;
 const IV_LENGTH_BYTES = 12;
+const PBKDF2_ITERATIONS_LEGACY = 100_000;
+const PBKDF2_ITERATIONS_STRONG = 310_000;
+const CURRENT_KDF_VERSION = 2;
+
+type Pbkdf2SaltRecord = {
+  version: number;
+  kdf: "pbkdf2";
+  hash: "SHA-256";
+  iterations: number;
+  salt: string;
+};
+
+export type NormalizedSalt = {
+  record: Pbkdf2SaltRecord;
+  serialized: string;
+  isLegacy: boolean;
+};
 
 function getSubtle(): SubtleCrypto {
   const globalCrypto: Crypto | undefined =
@@ -12,16 +29,81 @@ function getSubtle(): SubtleCrypto {
   return subtle;
 }
 
-export function generateSalt(): string {
+function generateSaltBytes(): string {
   const salt = new Uint8Array(SALT_LENGTH_BYTES);
   getSubtle();
   crypto.getRandomValues(salt);
   return btoa(String.fromCharCode(...salt));
 }
 
-export async function deriveKey(pin: string, salt: string): Promise<CryptoKey> {
+function isSaltRecord(candidate: any): candidate is Pbkdf2SaltRecord {
+  return (
+    candidate &&
+    typeof candidate === "object" &&
+    candidate.kdf === "pbkdf2" &&
+    candidate.hash === "SHA-256" &&
+    typeof candidate.salt === "string" &&
+    typeof candidate.iterations === "number"
+  );
+}
+
+export function generateSalt(): NormalizedSalt {
+  const record: Pbkdf2SaltRecord = {
+    version: CURRENT_KDF_VERSION,
+    kdf: "pbkdf2",
+    hash: "SHA-256",
+    iterations: PBKDF2_ITERATIONS_STRONG,
+    salt: generateSaltBytes(),
+  };
+  const serialized = JSON.stringify(record);
+  return {
+    record,
+    serialized,
+    isLegacy: false,
+  };
+}
+
+export function normalizeSaltValue(rawSalt: string | null): NormalizedSalt {
+  if (rawSalt) {
+    try {
+      const parsed = JSON.parse(rawSalt);
+      if (isSaltRecord(parsed)) {
+        return {
+          record: parsed,
+          serialized: rawSalt,
+          isLegacy: false,
+        };
+      }
+    } catch {
+      // Fall through to legacy handling
+    }
+
+    const legacyRecord: Pbkdf2SaltRecord = {
+      version: 1,
+      kdf: "pbkdf2",
+      hash: "SHA-256",
+      iterations: PBKDF2_ITERATIONS_LEGACY,
+      salt: rawSalt,
+    };
+
+    return {
+      record: legacyRecord,
+      serialized: JSON.stringify(legacyRecord),
+      isLegacy: true,
+    };
+  }
+
+  return generateSalt();
+}
+
+export async function deriveKey(
+  pin: string,
+  salt: string | NormalizedSalt,
+): Promise<CryptoKey> {
   const subtle = getSubtle();
   const encoder = new TextEncoder();
+  const normalizedSalt =
+    typeof salt === "string" ? normalizeSaltValue(salt) : salt;
   const keyMaterial = await subtle.importKey(
     "raw",
     encoder.encode(pin),
@@ -33,9 +115,13 @@ export async function deriveKey(pin: string, salt: string): Promise<CryptoKey> {
   const derivedKey = await subtle.deriveKey(
     {
       name: "PBKDF2",
-      salt: Uint8Array.from(atob(salt), (c) => c.charCodeAt(0)),
-      iterations: 100000,
-      hash: "SHA-256",
+      salt: Uint8Array.from(
+        atob(normalizedSalt.record.salt),
+        (c) => c.charCodeAt(0),
+      ),
+      iterations:
+        normalizedSalt.record.iterations ?? PBKDF2_ITERATIONS_STRONG,
+      hash: normalizedSalt.record.hash,
     },
     keyMaterial,
     { name: "AES-GCM", length: 256 },
