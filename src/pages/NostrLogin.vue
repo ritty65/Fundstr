@@ -55,7 +55,7 @@
 <script lang="ts">
 import { defineComponent, ref, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { useNostrStore } from "stores/nostr";
+import { WALLET_LOCKED_MESSAGE, WalletLockedError, useNostrStore } from "stores/nostr";
 import { generateSecretKey, nip19 } from "nostr-tools";
 import { hexToBytes } from "@noble/hashes/utils";
 import { useNostrAuth } from "src/composables/useNostrAuth";
@@ -65,13 +65,21 @@ export default defineComponent({
   setup() {
     const nostr = useNostrStore();
     const { loginWithExtension } = useNostrAuth();
-    const key = ref(nostr.activePrivateKeyNsec || nostr.privKeyHex || "");
-    const hasExistingKey = computed(() => !!key.value);
+    const walletLocked = computed(
+      () => nostr.hasEncryptedSecrets() && !nostr.encryptionKey,
+    );
+    const key = ref(
+      walletLocked.value ? "" : nostr.activePrivateKeyNsec || nostr.privKeyHex || "",
+    );
+    const hasExistingKey = computed(() => !walletLocked.value && !!key.value);
     const router = useRouter();
     const route = useRoute();
     const isBootstrapping = ref(false);
     const statusMessage = ref("" as string | null);
     const statusError = ref("" as string | null);
+    if (walletLocked.value) {
+      statusError.value = WALLET_LOCKED_MESSAGE;
+    }
     const redirect =
       typeof route.query.redirect === "string"
         ? decodeURIComponent(route.query.redirect)
@@ -113,8 +121,12 @@ export default defineComponent({
         handleRedirect();
       } catch (err) {
         console.error(err);
-        statusError.value =
-          (err as Error)?.message ?? "Failed to finish setting up your identity.";
+        if (err instanceof WalletLockedError) {
+          statusError.value = WALLET_LOCKED_MESSAGE;
+        } else {
+          statusError.value =
+            (err as Error)?.message ?? "Failed to finish setting up your identity.";
+        }
       } finally {
         isBootstrapping.value = false;
       }
