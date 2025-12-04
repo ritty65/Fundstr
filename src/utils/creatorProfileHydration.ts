@@ -38,5 +38,18 @@ export function applyFundstrProfileBundle(
       relays,
     });
     creatorProfileStore.markClean();
+  } else if (
+    creatorProfileStore.pubkey === pubkeyHex ||
+    !creatorProfileStore.pubkey
+  ) {
+    creatorProfileStore.setProfile({
+      display_name: "",
+      picture: "",
+      about: "",
+      pubkey: pubkeyHex,
+      mints: [],
+      relays: [],
+    });
+    creatorProfileStore.markClean();
   }
 }
