@@ -296,6 +296,7 @@ const SENSITIVE_STORAGE_KEYS = [
 const PENDING_PUBKEY_KEY = "cashu.ndk.pubkey.pending";
 const PENDING_SIGNER_TYPE_KEY = "cashu.ndk.signerType.pending";
 const PENDING_SIGNER_PUBLIC_KEY = "cashu.ndk.signerPubkey.pending";
+const UNENCRYPTED_PUBKEY_KEY = "cashu.ndk.pubkey.fallback";
 
 function hasEncryptedSecrets(): boolean {
   const storage = typeof localStorage === "undefined" ? null : localStorage;
@@ -1437,10 +1438,20 @@ export const useNostrStore = defineStore("nostr", {
     const pendingPubkey = localStorage.getItem(PENDING_PUBKEY_KEY);
     const pendingSignerType = getPendingSignerType();
     const pendingSignerPubkey = localStorage.getItem(PENDING_SIGNER_PUBLIC_KEY);
+    const fallbackPubkey = localStorage.getItem(UNENCRYPTED_PUBKEY_KEY);
+    const fallbackIdentitySource = pendingPubkey
+      ? "pending"
+      : pendingSignerPubkey
+        ? "pending"
+        : fallbackPubkey
+          ? "unencrypted"
+          : null;
 
     return {
       connected: false,
-      pubkey: pendingPubkey ?? pendingSignerPubkey ?? "",
+      pubkey: pendingPubkey ?? pendingSignerPubkey ?? fallbackPubkey ?? "",
+      usingFallbackIdentity: !!fallbackIdentitySource,
+      fallbackIdentitySource,
       relays: useSettingsStore().defaultNostrRelays ?? ([] as string[]),
       encryptionKey: null as CryptoKey | null,
       signerType: pendingSignerType ?? SignerType.SEED,
@@ -1650,6 +1661,20 @@ export const useNostrStore = defineStore("nostr", {
       this.pendingSecureWrites = {};
       this.clearPendingIdentityMirror();
     },
+    persistPubkeyFallback(pubkey: string) {
+      if (!pubkey) {
+        localStorage.removeItem(UNENCRYPTED_PUBKEY_KEY);
+        this.usingFallbackIdentity = false;
+        this.fallbackIdentitySource = null;
+        return;
+      }
+
+      localStorage.setItem(UNENCRYPTED_PUBKEY_KEY, pubkey);
+      if (!this.encryptionKey) {
+        this.usingFallbackIdentity = true;
+        this.fallbackIdentitySource = "unencrypted";
+      }
+    },
     clearPendingIdentityMirror() {
       localStorage.removeItem(PENDING_PUBKEY_KEY);
       localStorage.removeItem(PENDING_SIGNER_TYPE_KEY);
@@ -1734,6 +1759,8 @@ export const useNostrStore = defineStore("nostr", {
       if (seedSk) this.seedSignerPrivateKey = seedSk;
       const seedPk = await this.secureGetItem("cashu.ndk.seedSignerPublicKey");
       if (seedPk) this.seedSignerPublicKey = seedPk;
+      this.usingFallbackIdentity = false;
+      this.fallbackIdentitySource = null;
       this.registerSecureWatchers();
       this.secureStorageLoaded = true;
     },
@@ -2218,6 +2245,7 @@ export const useNostrStore = defineStore("nostr", {
       debug("Setting pubkey to", pubkey);
       const prev = this.pubkey;
       this.pubkey = pubkey;
+      this.persistPubkeyFallback(pubkey);
       try {
         useDmChatsStore().setActivePubkey(pubkey);
         useDmChatsStore().loadChats(pubkey);
