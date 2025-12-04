@@ -16,6 +16,9 @@ type ProfileUpdateListener = (payload: {
 const hydrationStatus = ref<HydrationStatus>("idle");
 const hydrationError = ref<Error | null>(null);
 const lastHydratedPubkey = ref<string | null>(null);
+const lastHydratedAt = ref<number | null>(null);
+
+const HYDRATION_CACHE_MS = 60 * 1000; // 1 minute
 
 const profileUpdateListeners = new Set<ProfileUpdateListener>();
 
@@ -55,10 +58,18 @@ export function useCreatorProfileHydration() {
     if (!nostrStore.hasIdentity || !pubkey) {
       hydrationStatus.value = "idle";
       lastHydratedPubkey.value = null;
+      lastHydratedAt.value = null;
       return null;
     }
 
-    if (!forceRefresh && hydrationStatus.value === "ready" && lastHydratedPubkey.value === pubkey) {
+    const now = Date.now();
+    if (
+      !forceRefresh &&
+      hydrationStatus.value === "ready" &&
+      lastHydratedPubkey.value === pubkey &&
+      lastHydratedAt.value &&
+      now - lastHydratedAt.value < HYDRATION_CACHE_MS
+    ) {
       return null;
     }
 
@@ -78,6 +89,7 @@ export function useCreatorProfileHydration() {
       }
       hydrationStatus.value = "ready";
       lastHydratedPubkey.value = pubkey;
+      lastHydratedAt.value = now;
       emitProfileUpdate(pubkey, bundle);
       return bundle;
     } catch (error) {
@@ -99,6 +111,7 @@ export function useCreatorProfileHydration() {
       if (!pubkey) {
         hydrationStatus.value = "idle";
         lastHydratedPubkey.value = null;
+        lastHydratedAt.value = null;
         return;
       }
       void hydrate();
