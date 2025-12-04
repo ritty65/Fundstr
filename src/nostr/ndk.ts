@@ -1,7 +1,7 @@
 import NDK, { NDKNip07Signer } from '@nostr-dev-kit/ndk';
 import { debug } from '@/js/logger';
 
-const RELAYS = (import.meta.env.VITE_NOSTR_RELAYS ?? 'wss://relay.fundstr.me')
+const RELAYS = (import.meta.env.VITE_NOSTR_RELAYS ?? 'wss://relay.nostr.band')
   .split(',')
   .map(entry => entry.trim())
   .filter(Boolean);

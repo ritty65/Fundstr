@@ -1,6 +1,6 @@
 export const REQUIRED_DM_RELAYS = [
   'wss://relay.damus.io',
-  'wss://relay.fundstr.me',
+  'wss://relay.nostr.band',
 ] as const;
 
 export const DM_BLOCKLIST = new Set<string>([
@@ -8,8 +8,6 @@ export const DM_BLOCKLIST = new Set<string>([
   'wss://purplepag.es/',
   'wss://relayable.org',
   'wss://relayable.org/',
-  'wss://relay.nostr.band',
-  'wss://relay.nostr.band/',
 ]);
 
 export function normalizeUrl(u: string) {

@@ -66,7 +66,7 @@ describe('NutzapExplorerPanel relay handling', () => {
 
     const vm = wrapper.vm as NutzapExplorerPanelVm;
 
-    vm.relayInput = `wss://relay.fundstr.me\n${manualRelay}`;
+    vm.relayInput = `wss://relay.nostr.band\n${manualRelay}`;
     vm.query = encodedProfile;
 
     await vm.runSearch();
@@ -74,11 +74,11 @@ describe('NutzapExplorerPanel relay handling', () => {
 
     expect(multiRelaySearchMock).toHaveBeenCalledTimes(1);
     const options = multiRelaySearchMock.mock.calls[0][0];
-    expect(options.relays).toEqual(['wss://relay.fundstr.me', manualRelay]);
+    expect(options.relays).toEqual(['wss://relay.nostr.band', manualRelay]);
     expect(options.additionalRelays).toEqual(pointerRelays);
 
     expect(vm.activeRelays).toEqual([
-      'wss://relay.fundstr.me',
+      'wss://relay.nostr.band',
       manualRelay,
       ...pointerRelays,
     ]);

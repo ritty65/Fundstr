@@ -96,7 +96,7 @@
                 />
               </div>
               <div class="text-caption text-2">
-                relay.fundstr.me is required and automatically stays in your list.
+                relay.nostr.band is required and automatically stays in your list.
               </div>
             </div>
           </div>

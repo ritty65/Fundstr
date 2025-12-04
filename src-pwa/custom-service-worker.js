@@ -41,7 +41,7 @@ if (process.env.MODE !== "ssr" || process.env.PROD) {
 }
 
 const relayMatcher = ({ url }) =>
-  url.origin === "https://relay.fundstr.me" &&
+  url.origin === "https://relay.nostr.band" &&
   (url.pathname.startsWith("/req") || url.pathname.startsWith("/event"));
 
 const discoveryBase =
