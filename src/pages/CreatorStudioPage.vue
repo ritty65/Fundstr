@@ -2,17 +2,8 @@
   <q-page class="creator-studio-page bg-surface-1 q-pa-lg">
     <header class="studio-header">
       <h1 class="studio-header__title text-1 text-weight-semibold">Creator Dashboard</h1>
-      <div class="studio-header__actions">
+      <div class="studio-header__actions" v-if="!isViewMode">
         <q-btn
-          v-if="isViewMode"
-          color="primary"
-          unelevated
-          icon="edit"
-          label="Edit Fundstr Profile"
-          @click="enterEditMode"
-        />
-        <q-btn
-          v-else
           outline
           color="primary"
           icon="visibility"
@@ -25,117 +16,177 @@
 
     <div class="studio-layout" :class="{ 'is-view-mode': isViewMode }">
       <template v-if="isViewMode">
-        <nav class="studio-navigation" aria-label="Creator studio overview">
-          <div class="studio-navigation__cta">
-            <q-btn color="primary" unelevated icon="edit" label="Edit Fundstr Profile" @click="enterEditMode" />
-            <p class="text-caption text-2 q-mt-sm">
-              Switch to edit mode to manage your profile, relays, mints, and tiers.
-            </p>
-          </div>
-        </nav>
         <main class="studio-stage studio-stage--view" role="region" aria-live="polite">
           <div class="studio-overview">
-            <div class="studio-overview__header">
-              <div>
-                <div class="text-h6 text-weight-semibold text-1">Fundstr profile summary</div>
-                <div class="text-caption text-2">Review your saved details before editing.</div>
-              </div>
-              <q-btn
-                color="primary"
-                unelevated
-                icon="edit"
-                label="Edit Fundstr Profile"
-                @click="enterEditMode"
-              />
-            </div>
-            <div class="studio-overview__grid">
-              <q-card flat bordered class="studio-overview__card">
-                <CreatorStudioPreviewCard
-                  :display-name="displayName"
-                  :author-input="authorInput"
-                  :mint-list="mintList"
-                  :relay-list="relayList"
-                  :tiers="tiers"
-                  :active-step="activeStep"
-                />
-              </q-card>
-              <q-card flat bordered class="studio-overview__card studio-overview__card--details">
-                <div class="studio-overview__card-header">
-                  <div class="text-subtitle1 text-weight-medium text-1">Profile</div>
-                  <q-chip color="primary" text-color="white" dense outline>{{ summaryDisplayName }}</q-chip>
-                </div>
-                <div class="studio-overview__list text-body2">
-                  <div class="studio-overview__list-row">
-                    <span class="text-2">Author</span>
-                    <span class="text-1 text-weight-medium">{{ summaryAuthorKey || 'Not set' }}</span>
-                  </div>
-                  <div class="studio-overview__list-row">
-                    <span class="text-2">Relays</span>
-                    <span class="text-1 text-weight-medium">{{ relayList.length || '0' }}</span>
-                  </div>
-                  <div class="studio-overview__list-row">
-                    <span class="text-2">Mints</span>
-                    <span class="text-1 text-weight-medium">{{ mintList.length || '0' }}</span>
-                  </div>
-                  <div class="studio-overview__list-row">
-                    <span class="text-2">Tiers</span>
-                    <span class="text-1 text-weight-medium">{{ tiers.length || '0' }}</span>
-                  </div>
-                </div>
-              </q-card>
-              <q-card flat bordered class="studio-overview__card">
-                <div class="studio-overview__card-header">
-                  <div class="text-subtitle1 text-weight-medium text-1">Relays</div>
-                  <q-badge color="primary" align="top" outline>{{ relayList.length }} selected</q-badge>
-                </div>
-                <div class="studio-overview__chips" v-if="relayList.length">
-                  <q-chip v-for="relay in relayList" :key="relay" dense outline>{{ relay }}</q-chip>
-                </div>
-                <div v-else class="text-caption text-2">Relay selection pending.</div>
-              </q-card>
-              <q-card flat bordered class="studio-overview__card">
-                <div class="studio-overview__card-header">
-                  <div class="text-subtitle1 text-weight-medium text-1">Trusted mints</div>
-                  <q-badge color="primary" align="top" outline>{{ mintList.length }} configured</q-badge>
-                </div>
-                <div class="studio-overview__chips" v-if="mintList.length">
-                  <q-chip
-                    v-for="mint in mintList"
-                    :key="mint"
-                    dense
-                    outline
-                    color="primary"
-                    text-color="primary"
-                  >
-                    {{ mint }}
-                  </q-chip>
-                </div>
-                <div v-else class="text-caption text-2">No mints configured.</div>
-              </q-card>
-              <q-card flat bordered class="studio-overview__card">
-                <div class="studio-overview__card-header">
-                  <div class="text-subtitle1 text-weight-medium text-1">Supporter tiers</div>
-                  <q-badge color="primary" align="top" outline>{{ tiers.length }} total</q-badge>
-                </div>
-                <div v-if="tiers.length" class="studio-overview__tiers">
-                  <div
-                    v-for="(tier, index) in tierSummaryList.slice(0, 4)"
-                    :key="tier.id || `tier-${index}`"
-                    class="studio-overview__tier"
-                  >
-                    <div class="studio-overview__tier-header">
-                      <span class="text-weight-medium text-1">{{ tier.title }}</span>
-                      <span class="text-caption text-2">{{ tier.frequencyLabel }}</span>
+            <q-card flat bordered class="studio-overview__card studio-overview__hero-card">
+              <div class="studio-overview__hero">
+                <div class="studio-overview__hero-meta">
+                  <q-avatar size="64px" color="primary" text-color="white">
+                    <img v-if="pictureUrl" :src="pictureUrl" :alt="summaryDisplayName" />
+                    <span v-else class="text-subtitle1">{{ displayNameInitials }}</span>
+                  </q-avatar>
+                  <div class="studio-overview__hero-copy">
+                    <div class="text-h6 text-weight-semibold text-1">{{ summaryDisplayName }}</div>
+                    <div class="text-caption text-2">Author: {{ authorNpubForShare || summaryAuthorKey || 'Not set' }}</div>
+                    <div class="studio-overview__chip-row">
+                      <q-badge :color="publishStatusChip.color" text-color="white" rounded>
+                        <q-icon :name="publishStatusChip.icon" size="16px" class="q-mr-xs" />
+                        {{ publishStatusChip.label }}
+                      </q-badge>
+                      <span class="text-caption text-2">{{ lastUpdatedLabel }}</span>
                     </div>
-                    <div class="text-caption text-2">{{ tier.priceLabel }}</div>
-                    <div v-if="tier.description" class="text-caption text-2">{{ tier.description }}</div>
-                  </div>
-                  <div v-if="tiers.length > 4" class="text-caption text-2">
-                    + {{ tiers.length - 4 }} more
                   </div>
                 </div>
-                <div v-else class="text-caption text-2">No tiers configured yet.</div>
+                <div class="studio-overview__hero-actions">
+                  <div class="studio-overview__metrics">
+                    <div v-for="metric in heroMetrics" :key="metric.label" class="studio-overview__metric">
+                      <q-icon :name="metric.icon" size="18px" color="primary" aria-hidden="true" />
+                      <div>
+                        <div class="text-subtitle2 text-1 text-weight-semibold">{{ metric.value }}</div>
+                        <div class="text-caption text-2">{{ metric.label }}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <q-btn
+                    color="primary"
+                    unelevated
+                    icon="edit"
+                    label="Edit Fundstr Profile"
+                    @click="startEditingStep('profile')"
+                  />
+                </div>
+              </div>
+            </q-card>
+
+            <div class="studio-overview__layout">
+              <q-card flat bordered class="studio-overview__card studio-overview__card--status">
+                <div class="studio-overview__card-header">
+                  <div class="studio-overview__card-title">
+                    <q-icon name="task_alt" color="primary" size="20px" aria-hidden="true" />
+                    <div>
+                      <div class="text-subtitle1 text-weight-medium text-1">Readiness status</div>
+                      <div class="text-caption text-2">Profile, relays, mints, and tiers at a glance.</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="studio-overview__status-grid">
+                  <div
+                    v-for="item in statusSummaryItems"
+                    :key="item.id"
+                    class="studio-overview__status-tile"
+                  >
+                    <div class="studio-overview__status-icon" :class="`is-${item.state}`">
+                      <q-icon :name="item.icon" size="20px" aria-hidden="true" />
+                    </div>
+                    <div class="studio-overview__status-content">
+                      <div class="studio-overview__status-title text-body1 text-weight-medium text-1">
+                        {{ item.label }}
+                        <q-chip size="sm" :color="item.chipColor" text-color="white" dense>{{ item.stateLabel }}</q-chip>
+                      </div>
+                      <div class="text-caption text-2">{{ item.helper }}</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="studio-overview__card-footer">
+                  <q-btn
+                    flat
+                    color="primary"
+                    icon="tune"
+                    label="Adjust readiness"
+                    @click="startEditingStep(itemToReviewStep)"
+                  />
+                </div>
               </q-card>
+
+              <div class="studio-overview__secondary-grid">
+                <q-card flat bordered class="studio-overview__card">
+                  <div class="studio-overview__card-header">
+                    <div class="studio-overview__card-title">
+                      <q-icon name="podcasts" color="primary" size="20px" aria-hidden="true" />
+                      <div>
+                        <div class="text-subtitle1 text-weight-medium text-1">Relays</div>
+                        <div class="text-caption text-2">{{ relayList.length }} selected</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-if="relayList.length" class="studio-overview__summary-list">
+                    <div v-for="relay in relayList" :key="relay" class="studio-overview__summary-item">
+                      <q-icon name="wifi" size="18px" color="primary" aria-hidden="true" />
+                      <div>
+                        <div class="text-body2 text-1 text-weight-medium">{{ relay }}</div>
+                        <div class="text-caption text-2">Preferred relay</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="studio-overview__empty">
+                    <q-icon name="hub" size="48px" color="primary" aria-hidden="true" />
+                    <p class="text-body2 text-2">Relay selection pending.</p>
+                  </div>
+                  <div class="studio-overview__card-footer">
+                    <q-btn flat color="primary" icon="edit" label="Set up now" @click="startEditingStep('setup')" />
+                  </div>
+                </q-card>
+
+                <q-card flat bordered class="studio-overview__card">
+                  <div class="studio-overview__card-header">
+                    <div class="studio-overview__card-title">
+                      <q-icon name="payments" color="primary" size="20px" aria-hidden="true" />
+                      <div>
+                        <div class="text-subtitle1 text-weight-medium text-1">Trusted mints</div>
+                        <div class="text-caption text-2">{{ mintList.length }} configured</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-if="mintList.length" class="studio-overview__summary-list">
+                    <div v-for="mint in mintList" :key="mint" class="studio-overview__summary-item">
+                      <q-icon name="account_balance_wallet" size="18px" color="primary" aria-hidden="true" />
+                      <div>
+                        <div class="text-body2 text-1 text-weight-medium">{{ mint }}</div>
+                        <div class="text-caption text-2">Active mint</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="studio-overview__empty">
+                    <q-icon name="account_balance_wallet" size="48px" color="primary" aria-hidden="true" />
+                    <p class="text-body2 text-2">No mints configured.</p>
+                  </div>
+                  <div class="studio-overview__card-footer">
+                    <q-btn flat color="primary" icon="edit" label="Set up now" @click="startEditingStep('profile')" />
+                  </div>
+                </q-card>
+
+                <q-card flat bordered class="studio-overview__card">
+                  <div class="studio-overview__card-header">
+                    <div class="studio-overview__card-title">
+                      <q-icon name="workspace_premium" color="primary" size="20px" aria-hidden="true" />
+                      <div>
+                        <div class="text-subtitle1 text-weight-medium text-1">Supporter tiers</div>
+                        <div class="text-caption text-2">{{ tiers.length }} total</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-if="tiers.length" class="studio-overview__tiers studio-overview__summary-list">
+                    <div
+                      v-for="(tier, index) in tierSummaryList.slice(0, 3)"
+                      :key="tier.id || `tier-${index}`"
+                      class="studio-overview__summary-item"
+                    >
+                      <q-icon name="star" size="18px" color="primary" aria-hidden="true" />
+                      <div>
+                        <div class="text-body2 text-1 text-weight-medium">{{ tier.title }}</div>
+                        <div class="text-caption text-2">{{ tier.frequencyLabel }} • {{ tier.priceLabel }}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="studio-overview__empty">
+                    <q-icon name="workspace_premium" size="48px" color="primary" aria-hidden="true" />
+                    <p class="text-body2 text-2">No tiers configured yet.</p>
+                  </div>
+                  <div class="studio-overview__card-footer">
+                    <q-btn flat color="primary" icon="edit" label="Set up now" @click="startEditingStep('tiers')" />
+                  </div>
+                </q-card>
+              </div>
             </div>
           </div>
         </main>
@@ -810,7 +861,6 @@ import { useQuasar } from 'quasar';
 import SetupStep from './creator-studio/SetupStep.vue';
 import ProfileStep from './creator-studio/ProfileStep.vue';
 import StepTemplate from './creator-studio/StepTemplate.vue';
-import CreatorStudioPreviewCard from './creator-studio/CreatorStudioPreviewCard.vue';
 import TierComposer from './creator-studio/TierComposer.vue';
 import NutzapExplorerPanel from 'src/nutzap/onepage/NutzapExplorerPanel.vue';
 import { notify, notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
@@ -967,7 +1017,7 @@ const handleTiersUpdate = (value: Tier[] | unknown) => {
 };
 const tierPreviewKind = ref<TierKind>(CANONICAL_TIER_KIND);
 const loading = ref(false);
-const { hydrating: hydratingProfile } = useCreatorProfileHydration();
+const { hydrating: hydratingProfile, lastHydratedAt } = useCreatorProfileHydration();
 const stageLoading = computed(() => loading.value || hydratingProfile.value);
 const publishingAll = ref(false);
 const nip07SignerDetected = ref(false);
@@ -1042,6 +1092,7 @@ const previewTab = ref<'preview' | 'profile' | 'tiers'>('preview');
 const now = useNow({ interval: 60_000 });
 const lastExportProfile = ref('');
 const lastExportTiers = ref({ canonical: '', legacy: '' });
+const lastUpdatedAt = ref<number | null>(null);
 
 const identityMetadataSeedingBlocked = ref(false);
 const identityMetadataSeededPubkey = ref<string | null>(null);
@@ -1250,6 +1301,16 @@ if (!Array.isArray(relays.value) || relays.value.length === 0) {
   const { sanitized } = buildRelayList([]);
   creatorProfileStore.setProfile({ relays: sanitized });
 }
+
+watch(
+  () => lastHydratedAt.value,
+  value => {
+    if (typeof value === 'number') {
+      lastUpdatedAt.value = value;
+    }
+  },
+  { immediate: true }
+);
 
 const storeMintUrls = computed(() => {
   const urls: string[] = [];
@@ -2789,6 +2850,20 @@ const summaryDisplayName = computed(() => {
   return 'Author not loaded';
 });
 
+const displayNameInitials = computed(() => {
+  const parts = summaryDisplayName.value
+    .split(' ')
+    .map(chunk => chunk.trim())
+    .filter(Boolean);
+  if (parts.length === 0) {
+    return 'F';
+  }
+  return parts
+    .slice(0, 2)
+    .map(part => part.slice(0, 1).toUpperCase())
+    .join('');
+});
+
 const summaryAuthorKey = computed(() => {
   if (connectedIdentitySummary.value) {
     return connectedIdentitySummary.value;
@@ -2825,6 +2900,12 @@ const tierSummaryList = computed(() =>
   })
 );
 
+const heroMetrics = computed(() => [
+  { label: 'Relays', value: relayList.value.length, icon: 'podcasts' },
+  { label: 'Mints', value: mintList.value.length, icon: 'payments' },
+  { label: 'Tiers', value: tiers.value.length, icon: 'workspace_premium' },
+]);
+
 const tierPreviewOptions = [
   { label: 'Preview 30019 JSON', value: CANONICAL_TIER_KIND },
   { label: 'Preview 30000 JSON', value: LEGACY_TIER_KIND },
@@ -2853,6 +2934,26 @@ const shouldPromptPublishUpdates = computed(
     relayVerificationState.value !== 'pending' &&
     relayVerificationState.value !== 'mismatch'
 );
+
+const publishStatusChip = computed(() => {
+  if (publishBlockers.value.length) {
+    return { label: 'Action required', color: 'negative', icon: 'error' } as const;
+  }
+  if (shouldPromptPublishUpdates.value) {
+    return { label: 'Updates pending', color: 'warning', icon: 'pending_actions' } as const;
+  }
+  if (profilePublished.value) {
+    return { label: 'Published', color: 'positive', icon: 'check_circle' } as const;
+  }
+  return { label: 'Draft', color: 'primary', icon: 'hourglass_empty' } as const;
+});
+
+const lastUpdatedLabel = computed(() => {
+  if (!lastUpdatedAt.value) {
+    return 'Not published yet';
+  }
+  return `Updated ${formatRelativeTimestamp(lastUpdatedAt.value)}`;
+});
 
 const tierStepGuidance = computed(() => {
   if (tiersReady.value) {
@@ -2906,6 +3007,27 @@ function safeEncodeNpub(pubHex: string) {
   } catch {
     return '';
   }
+}
+
+function formatRelativeTimestamp(timestamp: number | null) {
+  if (!timestamp) {
+    return '';
+  }
+
+  const diffMinutes = Math.max(0, Math.round((now.value.getTime() - timestamp) / 60000));
+
+  if (diffMinutes < 1) {
+    return 'just now';
+  }
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m ago`;
+  }
+  const hours = Math.round(diffMinutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
 }
 
 const publishValidationBlockers = computed<string[]>(() => {
@@ -3132,6 +3254,75 @@ const readinessStepMap = computed(() => {
   return map;
 });
 
+const statusSummaryItems = computed(() => {
+  const readinessMap = new Map(readinessChips.value.map(chip => [chip.key, chip] as const));
+
+  const definitions: {
+    id: string;
+    label: string;
+    keys: ReadinessChipKey[];
+    helper: string;
+    step: CreatorStudioStep;
+    fallbackIcon: string;
+  }[] = [
+    {
+      id: 'profile',
+      label: 'Profile',
+      keys: ['identity', 'authorKey'],
+      helper: 'Confirm your display name, avatar, and signer.',
+      step: 'profile',
+      fallbackIcon: 'badge',
+    },
+    {
+      id: 'relays',
+      label: 'Relays',
+      keys: ['relay'],
+      helper: 'Connect a healthy relay for publishing.',
+      step: 'setup',
+      fallbackIcon: 'podcasts',
+    },
+    {
+      id: 'mints',
+      label: 'Mints',
+      keys: ['mint'],
+      helper: 'Add at least one mint to receive payments.',
+      step: 'profile',
+      fallbackIcon: 'payments',
+    },
+    {
+      id: 'tiers',
+      label: 'Tiers',
+      keys: ['tiers'],
+      helper: 'Draft supporter tiers with pricing.',
+      step: 'tiers',
+      fallbackIcon: 'workspace_premium',
+    },
+  ];
+
+  return definitions.map(definition => {
+    const chip = definition.keys.map(key => readinessMap.get(key)).find(Boolean);
+    const state = chip?.state ?? ('todo' as ReadinessChipState);
+    const chipColor =
+      state === 'ready' ? 'positive' : state === 'warning' ? 'warning' : state === 'optional' ? 'secondary' : 'primary';
+
+    return {
+      id: definition.id,
+      label: definition.label,
+      icon: chip?.icon ?? definition.fallbackIcon,
+      state,
+      stateLabel: readinessStateLabels[state],
+      helper: chip?.tooltip || chip?.label || definition.helper,
+      chipColor,
+      step: definition.step,
+    };
+  });
+});
+
+const itemToReviewStep = computed<CreatorStudioStep>(() => {
+  const next = statusSummaryItems.value.find(item => item.state !== 'ready');
+  return (next?.step as CreatorStudioStep) ?? 'publish';
+});
+
 const readinessChecklist = computed(() => {
   const groups: { id: 'required' | 'optional'; label: string; items: ReadinessChecklistItem[] }[] = [
     { id: 'required', label: 'Required to publish', items: [] },
@@ -3352,6 +3543,11 @@ const canGoNext = computed(() => {
 
 function enterEditMode() {
   studioMode.value = 'edit';
+}
+
+function startEditingStep(step: CreatorStudioStep) {
+  enterEditMode();
+  goToStep(step);
 }
 
 function returnToViewMode() {
@@ -4657,6 +4853,7 @@ async function publishAll() {
     }
 
     profilePublished.value = true;
+    lastUpdatedAt.value = Date.now();
     debug('[CreatorStudio] publish:success', {
       durationMs: Math.round(performance.now() - publishStart),
     });
@@ -5126,51 +5323,174 @@ onBeforeUnmount(() => {
 .studio-overview {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
-.studio-overview__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.studio-overview__grid {
+.studio-overview__layout {
   display: grid;
+  grid-template-columns: 1.15fr 1fr;
   gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-items: start;
 }
 
 .studio-overview__card {
   height: 100%;
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.studio-overview__hero-card {
+  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 .studio-overview__card-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
-.studio-overview__list {
-  display: grid;
-  gap: 8px;
+.studio-overview__card-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
 }
 
-.studio-overview__list-row {
+.studio-overview__hero {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.studio-overview__hero-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.studio-overview__hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.studio-overview__chip-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.studio-overview__hero-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.studio-overview__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
   gap: 12px;
 }
 
-.studio-overview__chips {
+.studio-overview__metric {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 80%, transparent);
+  border: 1px solid var(--surface-contrast-border);
+}
+
+.studio-overview__status-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.studio-overview__status-tile {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+  border: 1px solid var(--surface-contrast-border);
+}
+
+.studio-overview__status-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  color: var(--accent-600);
+}
+
+.studio-overview__status-icon.is-ready {
+  color: #15803d;
+  background: color-mix(in srgb, rgba(34, 197, 94, 0.25) 50%, transparent);
+}
+
+.studio-overview__status-icon.is-warning {
+  color: #b45309;
+  background: color-mix(in srgb, rgba(250, 204, 21, 0.35) 60%, transparent);
+}
+
+.studio-overview__status-icon.is-todo {
+  color: var(--text-1);
+}
+
+.studio-overview__status-icon.is-optional {
+  color: var(--text-2);
+}
+
+.studio-overview__status-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.studio-overview__status-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.studio-overview__secondary-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.studio-overview__summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.studio-overview__summary-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
+}
+
+.studio-overview__summary-item:last-child {
+  border-bottom: none;
 }
 
 .studio-overview__tiers {
@@ -5179,19 +5499,54 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
-.studio-overview__tier {
-  border: 1px solid var(--surface-contrast-border);
+.studio-overview__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  border: 1px dashed var(--surface-contrast-border);
   border-radius: 12px;
-  padding: 12px;
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
 }
 
-.studio-overview__tier-header {
+.studio-overview__card-footer {
+  margin-top: 12px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 1023.98px) {
+  .studio-overview__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-overview__card--status {
+    order: -1;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .studio-overview__hero {
+    align-items: flex-start;
+  }
+
+  .studio-overview__hero-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-left: 0;
+  }
+
+  .studio-overview__metrics {
+    width: 100%;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
+  .studio-overview__card {
+    padding: 16px;
+  }
 }
 
 .studio-card {
