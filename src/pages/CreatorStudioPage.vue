@@ -202,29 +202,44 @@
                 class="studio-stepper__button"
                 type="button"
                 :class="[
-                  { 'is-active': activeStep === step.name, 'is-complete': step.status === 'ready' },
-                  `is-${step.status}`
+                  {
+                    'is-active': activeStep === step.name,
+                    'is-complete': isStepComplete(step),
+                    'is-locked': isStepLocked(step.name),
+                  },
+                  `is-${step.status}`,
                 ]"
                 @click="goToStep(step.name)"
                 :aria-current="activeStep === step.name ? 'step' : undefined"
-                :aria-describedby="`step-${step.name}-description step-${step.name}-status`"
+                :aria-describedby="`step-${step.name}-description step-${step.name}-status step-${step.name}-helper`"
                 :aria-label="`${step.label} – ${step.statusLabel}`"
+                :aria-disabled="isStepLocked(step.name)"
               >
                 <span class="studio-stepper__indicator" aria-hidden="true">
-                  {{ step.indicator }}
+                  <q-icon v-if="isStepComplete(step)" name="check" size="16px" />
+                  <span v-else>{{ step.indicator }}</span>
                 </span>
                 <span class="studio-stepper__copy">
                   <span class="studio-stepper__label text-body1 text-weight-medium text-1">
                     {{ step.label }}
                   </span>
+                  <span class="studio-stepper__sublabel text-caption text-2">
+                    {{ step.sublabel }}
+                  </span>
                   <span class="studio-stepper__status text-caption text-2" :id="`step-${step.name}-status`">
                     {{ step.statusLabel }}
                   </span>
+                  <p class="studio-stepper__description text-caption text-2" :id="`step-${step.name}-description`">
+                    {{ step.description }}
+                  </p>
+                  <p class="studio-stepper__helper text-caption text-2" :id="`step-${step.name}-helper`">
+                    {{ step.helper }}
+                  </p>
                 </span>
               </button>
-              <p class="studio-stepper__description text-caption text-2" :id="`step-${step.name}-description`">
-                {{ step.description }}
-              </p>
+              <q-tooltip v-if="isStepLocked(step.name)" class="bg-surface-2 text-1">
+                {{ stepLockReason(step.name) }}
+              </q-tooltip>
             </li>
           </ol>
         </nav>
@@ -236,19 +251,44 @@
           aria-labelledby="active-step-title"
         >
           <div class="studio-stage__header">
-            <q-btn
-              class="studio-stage__nav"
-              flat
-              dense
-              icon="arrow_back"
-              label="Back"
-              :disable="!canGoBack || stageLoading"
-              @click="goToPreviousStep"
-            />
-            <div class="studio-stage__details">
-              <div class="studio-stage__meta text-caption text-2">
-                Step {{ currentStepNumber }} of {{ steps.length }}
+            <div class="studio-stage__header-bar">
+              <q-btn
+                class="studio-stage__nav studio-stage__nav--back"
+                flat
+                dense
+                icon="arrow_back"
+                label="Back"
+                :disable="!canGoBack || stageLoading"
+                @click="goToPreviousStep"
+              />
+              <div class="studio-stage__progress-meta">
+                <div class="studio-stage__meta text-caption text-2">
+                  Step {{ currentStepNumber }} of {{ steps.length }}
+                </div>
+                <div
+                  class="studio-stage__progress"
+                  role="progressbar"
+                  :aria-valuemin="1"
+                  :aria-valuemax="steps.length"
+                  :aria-valuenow="currentStepNumber"
+                >
+                  <div class="studio-stage__progress-track">
+                    <div class="studio-stage__progress-fill" :style="{ width: `${stageProgress}%` }"></div>
+                  </div>
+                </div>
               </div>
+              <q-btn
+                class="studio-stage__nav studio-stage__nav--primary"
+                unelevated
+                color="primary"
+                :icon-right="primaryCtaIcon"
+                :label="primaryCtaLabel"
+                :disable="primaryCtaDisabled"
+                :loading="primaryCtaLoading"
+                @click="handlePrimaryCta"
+              />
+            </div>
+            <div class="studio-stage__details">
               <div
                 class="studio-stage__title text-h6 text-weight-semibold text-1"
                 id="active-step-title"
@@ -259,15 +299,6 @@
                 {{ currentStep.description }}
               </div>
             </div>
-            <q-btn
-              class="studio-stage__nav"
-              flat
-              dense
-              icon-right="arrow_forward"
-              label="Next"
-              :disable="!canGoNext || stageLoading"
-              @click="goToNextStep"
-            />
           </div>
 
           <div class="studio-stage__body" style="position: relative">
@@ -1486,6 +1517,8 @@ type StepDefinition = {
   name: CreatorStudioStep;
   label: string;
   description: string;
+  sublabel: string;
+  helper: string;
   readinessKeys: ReadinessChipKey[];
   indicator: string;
 };
@@ -1500,6 +1533,8 @@ const stepDefinitions: StepDefinition[] = [
     name: 'setup',
     label: 'Relay & signer',
     description: 'Connect to the relay, confirm your signer, and enter your author npub.',
+    sublabel: 'Relay status',
+    helper: 'Connect and verify your relay + signer.',
     readinessKeys: ['relay', 'authorKey'],
     indicator: '1',
   },
@@ -1507,6 +1542,8 @@ const stepDefinitions: StepDefinition[] = [
     name: 'profile',
     label: 'Profile basics',
     description: 'Establish your creator identity and payout details.',
+    sublabel: 'Profile details',
+    helper: 'Name, avatar, and payout relays.',
     readinessKeys: ['identity', 'mint', 'p2pk'],
     indicator: '2',
   },
@@ -1514,6 +1551,8 @@ const stepDefinitions: StepDefinition[] = [
     name: 'tiers',
     label: 'Supporter tiers',
     description: 'Compose your supporter offerings and pricing tiers.',
+    sublabel: 'Offerings',
+    helper: 'Create at least one tier for supporters.',
     readinessKeys: ['tiers'],
     indicator: '3',
   },
@@ -1521,6 +1560,8 @@ const stepDefinitions: StepDefinition[] = [
     name: 'publish',
     label: 'Review & publish',
     description: 'Review readiness and publish to relay.fundstr.me.',
+    sublabel: 'Publish review',
+    helper: 'Resolve blockers, then publish updates.',
     readinessKeys: ['relay', 'authorKey', 'mint', 'p2pk', 'tiers', 'verification'],
     indicator: '4',
   },
@@ -3541,6 +3582,18 @@ const canGoNext = computed(() => {
   return true;
 });
 
+const stageProgress = computed(() => Math.min((currentStepNumber.value / steps.value.length) * 100, 100));
+const primaryCtaLabel = computed(() => (activeStep.value === 'publish' ? 'Publish' : 'Next'));
+const primaryCtaIcon = computed(() => (activeStep.value === 'publish' ? 'send' : 'arrow_forward'));
+const primaryCtaDisabled = computed(() =>
+  activeStep.value === 'publish'
+    ? publishDisabled.value || stageLoading.value
+    : !canGoNext.value || stageLoading.value
+);
+const primaryCtaLoading = computed(
+  () => stageLoading.value || (activeStep.value === 'publish' && publishingAll.value)
+);
+
 function enterEditMode() {
   studioMode.value = 'edit';
 }
@@ -3554,8 +3607,60 @@ function returnToViewMode() {
   studioMode.value = 'view';
 }
 
+function canAdvanceFromStepName(step: CreatorStudioStep) {
+  if (step === 'setup') {
+    return setupStepReady.value;
+  }
+
+  if (step === 'tiers') {
+    return tiersReady.value;
+  }
+
+  return true;
+}
+
+const stepLockReasons = computed<Record<CreatorStudioStep, string | null>>(() => {
+  const reasons: Partial<Record<CreatorStudioStep, string | null>> = {};
+
+  stepOrder.forEach((step, index) => {
+    if (index === 0) {
+      reasons[step] = null;
+      return;
+    }
+
+    const blockingStep = stepOrder.slice(0, index).find(name => !canAdvanceFromStepName(name));
+    reasons[step] = blockingStep
+      ? `Complete ${stepDefinitions.find(def => def.name === blockingStep)?.label ?? 'previous step'} to unlock`
+      : null;
+  });
+
+  return reasons as Record<CreatorStudioStep, string | null>;
+});
+
+function isStepLocked(step: CreatorStudioStep) {
+  const targetIndex = stepOrder.indexOf(step);
+  if (targetIndex === -1) {
+    return true;
+  }
+
+  if (targetIndex <= stepIndex.value) {
+    return false;
+  }
+
+  return Boolean(stepLockReasons.value[step]);
+}
+
+function stepLockReason(step: CreatorStudioStep) {
+  return stepLockReasons.value[step] ?? '';
+}
+
+function isStepComplete(step: StepEntry) {
+  const index = stepOrder.indexOf(step.name);
+  return step.status === 'ready' && index < stepIndex.value;
+}
+
 function goToStep(step: CreatorStudioStep) {
-  if (step === activeStep.value) {
+  if (step === activeStep.value || isStepLocked(step)) {
     return;
   }
 
@@ -3603,6 +3708,15 @@ function goToNextStep() {
     return;
   }
   activeStep.value = stepOrder[stepIndex.value + 1];
+}
+
+function handlePrimaryCta() {
+  if (activeStep.value === 'publish') {
+    void publishAll();
+    return;
+  }
+
+  goToNextStep();
 }
 
 const profileJsonPreview = computed(() => {
@@ -5108,50 +5222,57 @@ onBeforeUnmount(() => {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .studio-stepper__item {
   position: relative;
+  padding-left: 8px;
+}
+
+.studio-stepper__item::after {
+  content: '';
+  position: absolute;
+  left: 22px;
+  top: 46px;
+  bottom: -12px;
+  width: 2px;
+  background: color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
+}
+
+.studio-stepper__item:last-child::after {
+  display: none;
 }
 
 .studio-stepper__button {
   width: 100%;
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: flex-start;
   gap: 12px;
-  padding: 12px 16px 12px 20px;
-  border-radius: 12px;
-  border: 1px solid transparent;
-  background: transparent;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--surface-contrast-border);
+  background: var(--surface-2);
   cursor: pointer;
   text-align: left;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
   position: relative;
 }
 
 .studio-stepper__button:focus-visible {
-  outline: 2px solid var(--accent-500);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-200) 60%, transparent);
+  border-color: color-mix(in srgb, var(--accent-200) 45%, transparent);
 }
 
 .studio-stepper__button:hover {
-  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
-}
-
-.studio-stepper__item:not(:last-child) .studio-stepper__button::after {
-  content: '';
-  position: absolute;
-  left: 36px;
-  top: 44px;
-  bottom: -24px;
-  width: 2px;
-  background: var(--surface-contrast-border);
+  border-color: color-mix(in srgb, var(--surface-contrast-border) 60%, transparent);
 }
 
 .studio-stepper__indicator {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 999px;
   border: 2px solid var(--surface-contrast-border);
   background: color-mix(in srgb, var(--surface-2) 70%, transparent);
@@ -5164,12 +5285,13 @@ onBeforeUnmount(() => {
   color: var(--text-2);
   transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
   flex: 0 0 auto;
+  position: relative;
 }
 
 .studio-stepper__copy {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -5181,9 +5303,18 @@ onBeforeUnmount(() => {
   color: var(--text-2);
 }
 
+.studio-stepper__sublabel {
+  color: var(--text-2);
+}
+
 .studio-stepper__description {
-  margin: 6px 0 0 52px;
-  max-width: 260px;
+  margin: 0;
+  max-width: 320px;
+}
+
+.studio-stepper__helper {
+  margin: 0;
+  color: var(--text-2);
 }
 
 @media (max-width: 1279.98px) {
@@ -5196,36 +5327,13 @@ onBeforeUnmount(() => {
   }
 
   .studio-stepper {
-    flex-direction: row;
-    gap: 12px;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    margin: 0 -8px;
-    padding-left: 8px;
-    padding-right: 8px;
-  }
-
-  .studio-stepper__item {
-    flex: 0 0 auto;
-    min-width: 200px;
-  }
-
-  .studio-stepper__button {
-    padding: 12px 16px;
-  }
-
-  .studio-stepper__item:not(:last-child) .studio-stepper__button::after {
-    display: none;
-  }
-
-  .studio-stepper__description {
-    display: none;
+    padding: 0;
   }
 }
 
 .studio-stepper__button.is-active {
   border-color: color-mix(in srgb, var(--accent-200) 60%, transparent);
-  background: color-mix(in srgb, var(--accent-200) 22%, transparent);
+  background: color-mix(in srgb, var(--accent-200) 20%, transparent);
 }
 
 .studio-stepper__button.is-active .studio-stepper__indicator {
@@ -5235,13 +5343,19 @@ onBeforeUnmount(() => {
 }
 
 .studio-stepper__button.is-ready .studio-stepper__indicator {
-  border-color: var(--accent-500);
-  background: color-mix(in srgb, var(--accent-500) 12%, transparent);
-  color: var(--accent-600);
+  border-color: color-mix(in srgb, var(--q-positive, #22c55e) 85%, transparent);
+  background: color-mix(in srgb, var(--q-positive, #22c55e) 14%, transparent);
+  color: color-mix(in srgb, var(--q-positive, #22c55e) 90%, transparent);
 }
 
 .studio-stepper__button.is-ready .studio-stepper__status {
-  color: var(--accent-600);
+  color: color-mix(in srgb, var(--q-positive, #22c55e) 90%, transparent);
+}
+
+.studio-stepper__button.is-locked {
+  color: var(--text-2);
+  border-color: color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+  cursor: not-allowed;
 }
 
 .studio-stepper__button.is-attention {
@@ -5287,11 +5401,51 @@ onBeforeUnmount(() => {
 }
 
 .studio-stage__header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--surface-1);
+  padding: 8px 0 12px;
+  border-bottom: 1px solid var(--surface-contrast-border);
+}
+
+.studio-stage__header-bar {
   display: flex;
   align-items: center;
+  gap: 12px;
   justify-content: space-between;
-  gap: 16px;
   flex-wrap: wrap;
+}
+
+.studio-stage__progress-meta {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+}
+
+.studio-stage__progress {
+  width: 100%;
+}
+
+.studio-stage__progress-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+  overflow: hidden;
+}
+
+.studio-stage__progress-fill {
+  height: 100%;
+  background: var(--accent-500);
+  transition: width 0.2s ease;
 }
 
 .studio-stage__details {
@@ -5309,6 +5463,20 @@ onBeforeUnmount(() => {
 
 .studio-stage__nav {
   min-width: 0;
+  outline: none;
+}
+
+.studio-stage__nav:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-200) 65%, transparent);
+}
+
+.studio-stage__nav--back {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.studio-stage__nav--primary:disabled {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-200) 45%, transparent);
 }
 
 .studio-stage__body {
