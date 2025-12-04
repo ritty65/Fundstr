@@ -708,7 +708,7 @@ import { notify, notifyError, notifySuccess, notifyWarning } from 'src/js/notify
 import type { Tier } from 'src/nutzap/types';
 import { nip19 } from 'nostr-tools';
 import { useClipboard } from 'src/composables/useClipboard';
-import { useCreatorProfileHydration } from 'src/composables/useCreatorProfileHydration';
+import { announceCreatorProfileUpdate, useCreatorProfileHydration } from 'src/composables/useCreatorProfileHydration';
 import { buildProfileUrl } from 'src/utils/profileUrl';
 import {
   WS_FIRST_TIMEOUT_MS,
@@ -3474,6 +3474,9 @@ function applyTiersEvent(event: any | null, overrideKind?: TierKind | null) {
   tiers.value = parsed;
   creatorHub.markTierDraftsClean();
   evaluateRelayVerificationState();
+  if (activeAuthorHex) {
+    announceCreatorProfileUpdate(activeAuthorHex);
+  }
 }
 
 function buildRelayList(rawRelays: string[]) {
@@ -3648,6 +3651,9 @@ function applyProfileEvent(latest: any | null) {
       relays: nextRelays,
     });
     creatorProfileStore.markClean();
+    if (loadedProfileAuthorHex.value) {
+      announceCreatorProfileUpdate(loadedProfileAuthorHex.value);
+    }
     seedMintsFromStoreIfEmpty();
     profilePublished.value = true;
     identityMetadataSeedingBlocked.value = true;
