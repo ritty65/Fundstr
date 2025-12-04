@@ -6,6 +6,10 @@ export interface NutzapProfileDetails {
   trustedMints: string[];
   relays: string[];
   tierAddr?: string;
+  display_name?: string;
+  name?: string;
+  about?: string;
+  picture?: string;
 }
 
 export function parseNutzapProfileEvent(
@@ -78,5 +82,9 @@ export function parseNutzapProfileEvent(
     trustedMints: uniqueMints,
     relays: uniqueRelays,
     tierAddr,
+    display_name: undefined,
+    name: undefined,
+    about: undefined,
+    picture: undefined,
   };
 }

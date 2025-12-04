@@ -204,6 +204,10 @@ function extractProfileDetailsFromDiscovery(
   const relays = new Set<string>();
   let p2pk = "";
   let tierAddr: string | undefined;
+  let displayName: string | undefined;
+  let name: string | undefined;
+  let about: string | undefined;
+  let picture: string | undefined;
 
   const appendMint = (value: unknown) => {
     if (!Array.isArray(value)) {
@@ -246,6 +250,24 @@ function extractProfileDetailsFromDiscovery(
     if (!isRecord(candidate)) {
       return;
     }
+    if (
+      typeof candidate.display_name === "string" &&
+      candidate.display_name.trim()
+    ) {
+      displayName ??= candidate.display_name.trim();
+    }
+    if (typeof candidate.displayName === "string" && candidate.displayName.trim()) {
+      displayName ??= candidate.displayName.trim();
+    }
+    if (typeof candidate.name === "string" && candidate.name.trim()) {
+      name ??= candidate.name.trim();
+    }
+    if (typeof candidate.about === "string" && candidate.about.trim()) {
+      about ??= candidate.about.trim();
+    }
+    if (typeof candidate.picture === "string" && candidate.picture.trim()) {
+      picture ??= candidate.picture.trim();
+    }
     if (typeof candidate.p2pk === "string" && candidate.p2pk.trim()) {
       p2pk = candidate.p2pk.trim();
     }
@@ -275,7 +297,14 @@ function extractProfileDetailsFromDiscovery(
   const mintList = Array.from(trustedMints);
   const relayList = Array.from(relays);
 
-  if (!p2pk && mintList.length === 0 && relayList.length === 0 && !tierAddr) {
+  const hasMetadata = Boolean(
+    (displayName && displayName.length) ||
+      (name && name.length) ||
+      (about && about.length) ||
+      (picture && picture.length),
+  );
+
+  if (!p2pk && mintList.length === 0 && relayList.length === 0 && !tierAddr && !hasMetadata) {
     return null;
   }
 
@@ -284,6 +313,10 @@ function extractProfileDetailsFromDiscovery(
     trustedMints: mintList,
     relays: relayList,
     tierAddr,
+    display_name: displayName,
+    name,
+    about,
+    picture,
   };
 }
 
@@ -1254,6 +1287,10 @@ function cloneProfileDetails(
     trustedMints: Array.from(details.trustedMints ?? []),
     relays: Array.from(details.relays ?? []),
     tierAddr: details.tierAddr,
+    display_name: details.display_name,
+    name: details.name,
+    about: details.about,
+    picture: details.picture,
   };
 }
 
