@@ -1074,6 +1074,13 @@ const CREATOR_STUDIO_HTTP_AUTH_HEADERS = NUTZAP_HTTP_AUTH_HEADER
 
 const CREATOR_STUDIO_RELAY_WS_URL = 'wss://relay.nostr.band';
 const CREATOR_STUDIO_RELAY_HTTP_URL = 'https://relay.nostr.band/req';
+const PROXY_BASE_HTTP = (import.meta.env.VITE_PROXY_BASE_HTTP || '').trim();
+const IS_BROWSER = typeof window !== 'undefined';
+const CREATOR_STUDIO_HTTP_FALLBACK_URL = IS_BROWSER
+  ? PROXY_BASE_HTTP
+    ? `${PROXY_BASE_HTTP.replace(/\/$/, '')}/req`
+    : null
+  : CREATOR_STUDIO_RELAY_HTTP_URL;
 
 const authorInput = ref('');
 type AuthorLockSource = 'signer' | 'store' | 'profile';
@@ -1857,8 +1864,21 @@ function isAbortError(err: unknown): boolean {
   return (err as { name?: unknown }).name === 'AbortError';
 }
 
+const noopCancel = () => {};
+
 function createHttpFallbackRequest(filters: NostrFilter[]) {
-  const requestUrl = buildHttpRequestUrl(CREATOR_STUDIO_RELAY_HTTP_URL, filters);
+  if (!CREATOR_STUDIO_HTTP_FALLBACK_URL) {
+    return {
+      promise: Promise.reject(
+        new Error(
+          'HTTP relay fallback is disabled in the browser. Configure VITE_PROXY_BASE_HTTP to enable proxied requests.',
+        ),
+      ),
+      cancel: noopCancel,
+    };
+  }
+
+  const requestUrl = buildHttpRequestUrl(CREATOR_STUDIO_HTTP_FALLBACK_URL, filters);
   const controller =
     typeof AbortController !== 'undefined' ? new AbortController() : null;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1975,15 +1995,45 @@ function settleQueryPromise(
     .catch(error => ({ source, status: 'rejected', error }) as const);
 }
 
+let relayQueryErrorNotified = false;
+
+function notifyRelayQueryError(detail: string) {
+  if (relayQueryErrorNotified) {
+    return;
+  }
+  relayQueryErrorNotified = true;
+  notifyError(detail);
+  flagDiagnosticsAttention('relay', detail, 'error');
+}
+
 async function requestCreatorStudioEvents(filters: NostrFilter[]): Promise<any[]> {
   const relaySocket = await getRelayClient();
-  const httpHandle = createHttpFallbackRequest(filters);
   const wsSettled = settleQueryPromise(
     'ws',
     relaySocket.requestOnce(filters, {
       timeoutMs: CREATOR_STUDIO_WS_TIMEOUT_MS,
     })
   );
+
+  if (!CREATOR_STUDIO_HTTP_FALLBACK_URL) {
+    const wsOnlyResult = await wsSettled;
+    if (wsOnlyResult.status === 'fulfilled') {
+      return wsOnlyResult.events;
+    }
+
+    notifyRelayQueryError(
+      [
+        'Unable to query the relay over WebSocket, and HTTP fallback is disabled in the browser.',
+        'Configure a same-origin proxy (VITE_PROXY_BASE_HTTP) or retry once your connection recovers.',
+      ].join(' '),
+    );
+
+    throw wsOnlyResult.error instanceof Error
+      ? wsOnlyResult.error
+      : new Error(String(wsOnlyResult.error));
+  }
+
+  const httpHandle = createHttpFallbackRequest(filters);
   const httpSettled = settleQueryPromise('http', httpHandle.promise);
 
   try {
@@ -4356,7 +4406,7 @@ async function loadTiers(authorHex: string) {
     console.error('[nutzap] failed to load tiers', err);
     maybeFlagHttpFallbackTimeout(err);
     const message = err instanceof Error ? err.message : String(err);
-    notifyError(message);
+    notifyRelayQueryError(message);
     throw err instanceof Error ? err : new Error(message);
   }
 }
@@ -4374,7 +4424,7 @@ async function loadProfile(authorHex: string) {
     console.error('[nutzap] failed to load profile', err);
     maybeFlagHttpFallbackTimeout(err);
     const message = err instanceof Error ? err.message : String(err);
-    notifyError(message);
+    notifyRelayQueryError(message);
     throw err instanceof Error ? err : new Error(message);
   }
 }
