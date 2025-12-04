@@ -167,7 +167,7 @@
                   </div>
                   <div v-if="tiers.length" class="studio-overview__tiers studio-overview__summary-list">
                     <div
-                      v-for="(tier, index) in tierSummaryList.slice(0, 3)"
+                      v-for="(tier, index) in tierSummaryList"
                       :key="tier.id || `tier-${index}`"
                       class="studio-overview__summary-item"
                     >
