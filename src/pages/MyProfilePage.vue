@@ -1,6 +1,6 @@
 <template>
   <q-page class="my-profile-page bg-surface-1 q-pa-md q-pa-lg-xl">
-    <div class="profile-grid q-gutter-md">
+  <div v-if="profileHydrationReady" class="profile-grid q-gutter-md">
       <div class="profile-primary column q-gutter-md">
         <q-card class="profile-hero bg-surface-2">
           <q-banner
@@ -313,8 +313,25 @@
           </q-card-section>
         </q-card>
       </aside>
+  </div>
+
+  <div v-else class="profile-hydration-state column items-center justify-center q-gutter-md">
+    <q-spinner-dots v-if="hydratingProfile" color="primary" size="32px" />
+    <q-icon v-else name="cloud_off" color="grey" size="32px" />
+    <div class="text-body1 text-1">{{ hydrationHeadline }}</div>
+    <div class="text-body2 text-2 hydration-helper">
+      {{ hydrationHelper }}
     </div>
-  </q-page>
+    <q-btn
+      v-if="hydrationError"
+      color="primary"
+      unelevated
+      icon="refresh"
+      label="Retry loading"
+      @click="retryHydration"
+    />
+  </div>
+</q-page>
 </template>
 
 <script setup lang="ts">
@@ -325,12 +342,32 @@ import { useQuasar } from "quasar";
 import { useCreatorProfileStore } from "src/stores/creatorProfile";
 import { deriveCreatorKeys } from "src/utils/nostrKeys";
 import { useClipboard } from "src/composables/useClipboard";
+import { useCreatorProfileHydration } from "src/composables/useCreatorProfileHydration";
 
 const creatorProfile = useCreatorProfileStore();
 const router = useRouter();
 const { t } = useI18n();
 const $q = useQuasar();
 const { copy } = useClipboard();
+const {
+  hydrating: hydratingProfile,
+  hydrationReady: profileHydrationReady,
+  hydrationError,
+  hydrate: hydrateCreatorProfile,
+} = useCreatorProfileHydration();
+
+const hydrationHeadline = computed(() =>
+  hydratingProfile.value
+    ? "Loading your latest profile"
+    : "We couldn't refresh your profile",
+);
+
+const hydrationHelper = computed(() => {
+  if (hydratingProfile.value) {
+    return "Fetching your Fundstr creator profile from Nostr...";
+  }
+  return hydrationError.value?.message ?? "Check your Nostr connection and try again.";
+});
 
 const heroName = computed(() =>
   creatorProfile.display_name?.trim() || t("MainHeader.menu.myProfile.title"),
@@ -454,6 +491,10 @@ const chipStyle = computed(() => ({
   borderColor: "var(--accent-200)",
 }));
 
+function retryHydration() {
+  void hydrateCreatorProfile(true);
+}
+
 function handleCopy(value: string, type: "npub" | "pubkey") {
   if (!value) return;
   const message =
@@ -500,6 +541,20 @@ function goToCreatorStudioStep(step: CreatorStudioStep) {
 <style scoped lang="scss">
 .my-profile-page {
   min-height: 100%;
+}
+
+.profile-hydration-state {
+  min-height: 60vh;
+  text-align: center;
+}
+
+.profile-hydration-state .q-btn {
+  min-width: 180px;
+}
+
+.hydration-helper {
+  max-width: 520px;
+  text-align: center;
 }
 
 .profile-grid {

@@ -71,6 +71,7 @@ import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useMessengerStore } from "./messenger";
 import { decryptDM, encryptDM } from "../nostr/crypto";
 import { useCreatorProfileStore } from "./creatorProfile";
+import { applyFundstrProfileBundle } from "src/utils/creatorProfileHydration";
 import { buildKind10019NutzapProfile } from "src/nostr/builders";
 import { NutzapProfileSchema, type NutzapProfilePayload } from "src/nostr/nutzapProfile";
 import {
@@ -2512,39 +2513,12 @@ export const useNostrStore = defineStore("nostr", {
       await messengerStore.start();
 
       progress("Updating creator data");
-      const creatorsStore = useCreatorsStore();
-      const creatorProfileStore = useCreatorProfileStore();
       const bundle = await fetchFundstrProfileBundle(this.pubkey, {
         forceRefresh: true,
       });
-      creatorsStore.updateProfileCacheState(
-        this.pubkey,
-        bundle.profileDetails,
-        bundle.profileEvent,
-        {
-          eventId: bundle.profileEvent?.id,
-          updatedAt: bundle.joined,
-        },
-      );
-      creatorsStore.updateTierCacheState(
-        this.pubkey,
-        bundle.tiers,
-        bundle.profileEvent,
-        {
-          fresh: bundle.tierDataFresh,
-          securityBlocked: bundle.tierSecurityBlocked,
-          fetchFailed: bundle.tierFetchFailed,
-        },
-      );
-      if (bundle.profileDetails) {
-        creatorProfileStore.setProfile({
-          ...bundle.profileDetails,
-          pubkey: this.pubkey,
-          mints: bundle.profileDetails.mints ?? [],
-          relays: bundle.profileDetails.relays ?? (this.relays as any),
-        });
-        creatorProfileStore.markClean();
-      }
+      applyFundstrProfileBundle(this.pubkey, bundle, {
+        fallbackRelays: this.relays as any,
+      });
     },
     resetPrivateKeySigner: async function () {
       this.privateKeySignerPrivateKey = "";
