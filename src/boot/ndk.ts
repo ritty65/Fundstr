@@ -1,7 +1,7 @@
 import { boot } from "quasar/wrappers";
 import { useBootErrorStore } from "stores/bootError";
 import NDK, { NDKSigner } from "@nostr-dev-kit/ndk";
-import { useNostrStore } from "stores/nostr";
+import { useNostrStore, WALLET_LOCKED_MESSAGE, WalletLockedError } from "stores/nostr";
 import { NDKEvent, type NDKFilter } from "@nostr-dev-kit/ndk";
 import {
   useSettingsStore,
@@ -35,6 +35,7 @@ import { mustConnectRequiredRelays } from "../nostr/relays";
 export type NdkBootErrorReason =
   | "no-signer"
   | "connect-failed"
+  | "wallet-locked"
   | "nip07-locked"
   | "unknown";
 
@@ -416,7 +417,14 @@ export async function createNdk(
   options: CreateReadOnlyOptions = {},
 ): Promise<NDK> {
   const nostrStore = useNostrStore();
-  await nostrStore.initSignerIfNotSet();
+  try {
+    await nostrStore.initSignerIfNotSet();
+  } catch (e) {
+    if (e instanceof WalletLockedError) {
+      throw new NdkBootError("wallet-locked", WALLET_LOCKED_MESSAGE);
+    }
+    throw e;
+  }
   const signer = nostrStore.signer;
 
   if (!signer || options.fundstrOnly) {
@@ -581,7 +589,17 @@ export async function ndkSend(
 
 export default boot(async ({ app }) => {
   const nostrStore = useNostrStore();
-  await nostrStore.loadKeysFromStorage();
+  try {
+    await nostrStore.loadKeysFromStorage();
+  } catch (e) {
+    if (e instanceof WalletLockedError) {
+      useBootErrorStore().set(
+        new NdkBootError("wallet-locked", e.message || WALLET_LOCKED_MESSAGE),
+      );
+      return;
+    }
+    throw e;
+  }
   ndkPromise = getNdk();
   app.provide("$ndkPromise", ndkPromise);
   ndkPromise.catch((e) => useBootErrorStore().set(e as NdkBootError));

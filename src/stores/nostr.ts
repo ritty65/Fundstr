@@ -297,7 +297,7 @@ function hasEncryptedSecrets(): boolean {
   return SENSITIVE_STORAGE_KEYS.some((k) => Boolean(localStorage.getItem(k)));
 }
 
-const WALLET_LOCKED_MESSAGE = "wallet locked—unlock to use your Nostr account";
+export const WALLET_LOCKED_MESSAGE = "Unlock to restore your Nostr identity.";
 
 export function npubToHex(s: string): string | null {
   const input = s.trim();
@@ -1674,7 +1674,8 @@ export const useNostrStore = defineStore("nostr", {
       if (this.secureStorageLoaded) return;
       if (!this.encryptionKey) {
         if (hasEncryptedSecrets()) {
-          throw new WalletLockedError();
+          this.lastError = WALLET_LOCKED_MESSAGE;
+          throw new WalletLockedError(WALLET_LOCKED_MESSAGE);
         }
         return;
       }
@@ -1698,14 +1699,7 @@ export const useNostrStore = defineStore("nostr", {
       this.secureStorageLoaded = true;
     },
     initNdkReadOnly: async function (opts: ReadOnlyInitOptions = {}) {
-      try {
-        await this.loadKeysFromStorage();
-      } catch (e) {
-        if (e instanceof WalletLockedError) {
-          return;
-        }
-        throw e;
-      }
+      await this.loadKeysFromStorage();
       const { fundstrOnly, suppressWarnings } = opts;
       const requestedMode =
         fundstrOnly === true
@@ -2097,7 +2091,6 @@ export const useNostrStore = defineStore("nostr", {
       } catch (e) {
         if (e instanceof WalletLockedError) {
           this.lastError = WALLET_LOCKED_MESSAGE;
-          return;
         }
         throw e;
       }
@@ -2126,7 +2119,7 @@ export const useNostrStore = defineStore("nostr", {
 
       if (secretsLocked) {
         this.lastError = WALLET_LOCKED_MESSAGE;
-        return;
+        throw new WalletLockedError(WALLET_LOCKED_MESSAGE);
       }
 
       this.lastError = null;
