@@ -12,12 +12,12 @@ function pickRelayEnv(value: unknown, fallback: string): string {
 
 export const NUTZAP_RELAY_WSS = pickRelayEnv(
   import.meta.env.VITE_NUTZAP_PRIMARY_RELAY_WSS,
-  'wss://relay.fundstr.me',
+  'wss://relay.nostr.band',
 );
 
 export const NUTZAP_RELAY_HTTP = pickRelayEnv(
   import.meta.env.VITE_NUTZAP_PRIMARY_RELAY_HTTP,
-  'https://relay.fundstr.me',
+  'https://relay.nostr.band',
 );
 
 export const NUTZAP_ALLOW_WSS_WRITES =

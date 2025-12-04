@@ -1,19 +1,19 @@
-export const FUNDSTR_PRIMARY_RELAY = 'wss://relay.fundstr.me';
-export const FUNDSTR_PRIMARY_RELAY_HTTP = 'https://relay.fundstr.me';
+export const FUNDSTR_PRIMARY_RELAY = 'wss://relay.nostr.band';
+export const FUNDSTR_PRIMARY_RELAY_HTTP = 'https://relay.nostr.band';
 export const PRIMARY_RELAY = FUNDSTR_PRIMARY_RELAY;
 
 export const FALLBACK_RELAYS: string[] = [
-  'wss://relay.nostr.band',
   'wss://purplepag.es',
   'wss://nostr.wine',
+  'wss://relay.damus.io',
 ]; // keep small and easy to rotate
 
 // Curated default read relays – these are added at boot for read operations only.
 export const DEFAULT_RELAYS = [
   FUNDSTR_PRIMARY_RELAY,
-  "wss://relay.nostr.band",
-  "wss://purplepag.es",
   "wss://relay.damus.io",
+  "wss://purplepag.es",
+  "wss://nostr.wine",
 ];
 
 // Small set of known-open relays used as fallback for write operations.

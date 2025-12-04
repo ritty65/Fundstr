@@ -4,7 +4,7 @@
       <div>
         <div class="text-subtitle1 text-weight-medium text-1">Relay &amp; author setup</div>
         <div class="text-caption text-2">
-          Connect to relay.fundstr.me, confirm your signer, and enter the author you'll publish with before moving on.
+          Connect to relay.nostr.band, confirm your signer, and enter the author you'll publish with before moving on.
         </div>
       </div>
       <q-btn

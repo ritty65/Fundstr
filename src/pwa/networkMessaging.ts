@@ -12,7 +12,7 @@ export interface NetworkRequiredPayload {
 const targetCopy: Record<NetworkTarget, { message: string; caption?: string }> = {
   relay: {
     message:
-      "You're offline. Sending, receiving, and chats need relay.fundstr.me to reconnect before they continue.",
+      "You're offline. Sending, receiving, and chats need relay.nostr.band to reconnect before they continue.",
     caption: "We'll retry automatically when connectivity returns.",
   },
   discovery: {

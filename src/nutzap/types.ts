@@ -19,6 +19,6 @@ export type NutzapProfileContent = {
   v: number;
   p2pk: string; // hex P2PK pubkey
   mints: string[]; // URLs
-  relays: string[]; // e.g. ["wss://relay.fundstr.me"]
+  relays: string[]; // e.g. ["wss://relay.nostr.band"]
   tierAddr?: string; // e.g. "30000:<pubkey>:tiers" or naddr form
 };

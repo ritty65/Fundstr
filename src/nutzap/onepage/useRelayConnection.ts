@@ -57,8 +57,12 @@ function extractHostname(url: string | null | undefined): string | null {
 }
 
 let hasLoggedRelayEndpoints = false;
+let hasLoggedRelaySummaryActivity = false;
+let lastSocketWarningMessage: string | null = null;
 
 export function useRelayConnection() {
+  hasLoggedRelaySummaryActivity = false;
+  lastSocketWarningMessage = null;
   const relayUrl = ref(FUNDSTR_WS_URL);
   const status = ref<RelayConnectionStatus>(wsImpl ? 'idle' : 'disconnected');
   const autoReconnect = ref(true);
@@ -116,6 +120,40 @@ export function useRelayConnection() {
     status.value = next;
   };
 
+  const logRelaySummary = () => {
+    if (hasLoggedRelaySummaryActivity) {
+      return;
+    }
+    hasLoggedRelaySummaryActivity = true;
+    appendActivity(
+      'info',
+      `Relay endpoints resolved: ws=${relayUrl.value || '(empty)'} http=${
+        FUNDSTR_REQ_URL || '(empty)'
+      }`,
+    );
+  };
+
+  const warnSocketOnce = (
+    message: string,
+    context?: string,
+    level: RelayActivityLevel = 'warning',
+  ) => {
+    if (lastSocketWarningMessage === message) {
+      return;
+    }
+    lastSocketWarningMessage = message;
+    appendActivity(level, message, context);
+  };
+
+  const resetSocketWarnings = () => {
+    lastSocketWarningMessage = null;
+  };
+
+  const relayUnavailableMessage = () =>
+    `Relay socket unavailable for ${relayUrl.value || '(empty)'} — retrying with backoff`;
+
+  logRelaySummary();
+
   const clearReconnectTimer = () => {
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
@@ -167,9 +205,10 @@ export function useRelayConnection() {
     socketWaiters.clear();
   };
 
-const handleOpen = () => {
+  const handleOpen = () => {
     setStatus('connected');
     reconnectAttempts.value = 0;
+    resetSocketWarnings();
     appendActivity('success', 'Relay connection established');
     const current = socket.value;
     if (current) {
@@ -184,7 +223,7 @@ const handleOpen = () => {
     const attempt = reconnectAttempts.value + 1;
     reconnectAttempts.value = attempt;
     const delay = Math.min(MAX_RECONNECT_DELAY, BASE_RECONNECT_DELAY * Math.pow(2, attempt - 1));
-    appendActivity('warning', `Relay disconnected — retrying in ${Math.round(delay)}ms`);
+    warnSocketOnce(relayUnavailableMessage(), `Next attempt in ${Math.round(delay)}ms`);
     clearReconnectTimer();
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
@@ -194,7 +233,7 @@ const handleOpen = () => {
 
   const handleClose = (event: CloseEvent) => {
     const reason = event.reason ? ` (${event.reason})` : '';
-    appendActivity('warning', `Relay connection closed${reason}`);
+    warnSocketOnce(relayUnavailableMessage(), reason || undefined);
     setStatus('disconnected');
     const err = new Error('Relay connection closed');
     cleanupPendingAcks('Relay connection closed before ACK');
@@ -206,7 +245,7 @@ const handleOpen = () => {
   };
 
   const handleError = () => {
-    appendActivity('error', 'Relay socket error');
+    warnSocketOnce(relayUnavailableMessage());
   };
 
   const handleNotice = (payload: unknown[]) => {
@@ -349,7 +388,9 @@ const handleOpen = () => {
     clearReconnectTimer();
     const reconnecting = reconnectAttempts.value > 0;
     setStatus(reconnecting ? 'reconnecting' : 'connecting');
-    appendActivity('info', reconnecting ? 'Reconnecting to relay' : 'Connecting to relay');
+    if (!lastSocketWarningMessage || !reconnecting) {
+      appendActivity('info', reconnecting ? 'Reconnecting to relay' : 'Connecting to relay');
+    }
 
     try {
       const instance = new wsImpl(url);
@@ -357,10 +398,10 @@ const handleOpen = () => {
       attachSocketHandlers(instance);
     } catch (err) {
       setStatus('disconnected');
-      appendActivity(
+      warnSocketOnce(
+        relayUnavailableMessage(),
+        err instanceof Error ? err.message : undefined,
         'error',
-        'Failed to open relay socket',
-        err instanceof Error ? err.message : undefined
       );
       scheduleReconnect();
     }
@@ -371,6 +412,7 @@ const handleOpen = () => {
     clearReconnectTimer();
     appendActivity('info', 'Disconnecting from relay');
     setStatus('disconnected');
+    resetSocketWarnings();
     teardownSocket();
     cleanupPendingAcks('Relay disconnected before ACK');
     rejectSocketWaiters(new Error('Relay disconnected'));

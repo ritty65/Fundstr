@@ -260,10 +260,10 @@ URLs. If not defined, the search falls back to a short curated list defined in
 [`src/config/relays.ts`](src/config/relays.ts):
 
 ```
+wss://relay.nostr.band/
 wss://relay.damus.io/
-wss://nos.lol/
-wss://relay.fundstr.me/
-wss://relay.snort.social/
+wss://purplepag.es/
+wss://nostr.wine/
 ```
 
 You can edit that file to customise or extend the defaults for your own
@@ -287,8 +287,8 @@ isolated relay flow:
 1. **Build & Typecheck** – `pnpm install` then `pnpm build` (or the equivalent npm commands).
 2. **Relay Smoke Tests** – ensure the dedicated relay is reachable:
    ```bash
-   curl -sH 'Accept: application/nostr+json' https://relay.fundstr.me/ | jq .
-   curl -s 'https://relay.fundstr.me/req?filters=%5B%5D'
+   curl -sH 'Accept: application/nostr+json' https://relay.nostr.band/ | jq .
+   curl -s 'https://relay.nostr.band/req?filters=%5B%5D'
    ```
 3. **Page Behaviour** – load `/creator-studio`, publish tiers and profile, and verify the
    publish acknowledgements (`via=ws` or `via=http`). Block WebSockets to confirm the HTTP
