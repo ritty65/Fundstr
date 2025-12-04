@@ -297,6 +297,8 @@ function hasEncryptedSecrets(): boolean {
   return SENSITIVE_STORAGE_KEYS.some((k) => Boolean(localStorage.getItem(k)));
 }
 
+const WALLET_LOCKED_MESSAGE = "wallet locked—unlock to use your Nostr account";
+
 export function npubToHex(s: string): string | null {
   const input = s.trim();
   debug("[npubToHex] input", input);
@@ -2091,8 +2093,10 @@ export const useNostrStore = defineStore("nostr", {
     initSignerIfNotSet: async function (options: InitSignerBehaviorOptions = {}) {
       try {
         await this.loadKeysFromStorage();
+        this.lastError = null;
       } catch (e) {
         if (e instanceof WalletLockedError) {
+          this.lastError = WALLET_LOCKED_MESSAGE;
           return;
         }
         throw e;
@@ -2118,12 +2122,27 @@ export const useNostrStore = defineStore("nostr", {
       }
     },
     initSigner: async function (options: InitSignerBehaviorOptions = {}) {
+      const secretsLocked = hasEncryptedSecrets() && !this.encryptionKey;
+
+      if (secretsLocked) {
+        this.lastError = WALLET_LOCKED_MESSAGE;
+        return;
+      }
+
+      this.lastError = null;
+
       if (this.signerType === SignerType.NIP07) {
         await this.initNip07Signer(options);
       } else if (this.signerType === SignerType.PRIVATEKEY) {
         await this.initPrivateKeySigner(undefined, options);
-      } else {
+      } else if (
+        this.signerType === SignerType.SEED ||
+        (!hasEncryptedSecrets() && !this.pubkey)
+      ) {
         await this.initWalletSeedPrivateKeySigner(options);
+      } else {
+        this.lastError = WALLET_LOCKED_MESSAGE;
+        return;
       }
       this.initialized = true;
     },
