@@ -4223,9 +4223,22 @@ function applyProfileEvent(latest: any | null) {
 
     const tags = Array.isArray(latest.tags) ? latest.tags : [];
     const nameTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'name' && t[1]);
-    const nextDisplayName = nameTag ? nameTag[1] : displayName.value;
+    const displayNameTagValue =
+      typeof nameTag?.[1] === 'string' ? nameTag[1].trim() : '';
+    const parsedDisplayName =
+      typeof parsed?.display_name === 'string' ? parsed.display_name.trim() : '';
+    const parsedName = typeof parsed?.name === 'string' ? parsed.name.trim() : '';
+    const nextDisplayName =
+      parsedDisplayName ||
+      parsedName ||
+      displayNameTagValue ||
+      (typeof displayName.value === 'string' ? displayName.value.trim() : '');
     const pictureTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'picture' && t[1]);
-    const nextPictureUrl = pictureTag ? pictureTag[1] : pictureUrl.value;
+    const parsedPicture = typeof parsed?.picture === 'string' ? parsed.picture.trim() : '';
+    const pictureTagValue =
+      typeof pictureTag?.[1] === 'string' ? pictureTag[1].trim() : '';
+    const nextPictureUrl =
+      parsedPicture || pictureTagValue || (typeof pictureUrl.value === 'string' ? pictureUrl.value.trim() : '');
     const mintTags = tags.filter((t: any) => Array.isArray(t) && t[0] === 'mint' && t[1]);
     let nextMints = parsedMints ? [...parsedMints] : Array.isArray(mints.value) ? [...mints.value] : [];
     if (!nextMints.length && Array.isArray(mintTags) && mintTags.length) {
