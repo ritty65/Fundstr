@@ -335,7 +335,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onBeforeUnmount } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
@@ -354,6 +354,7 @@ const {
   hydrationReady: profileHydrationReady,
   hydrationError,
   hydrate: hydrateCreatorProfile,
+  onProfileUpdated,
 } = useCreatorProfileHydration();
 
 const hydrationHeadline = computed(() =>
@@ -367,6 +368,24 @@ const hydrationHelper = computed(() => {
     return "Fetching your Fundstr creator profile from Nostr...";
   }
   return hydrationError.value?.message ?? "Check your Nostr connection and try again.";
+});
+
+let profileRefreshInFlight = false;
+
+const stopProfileListener = onProfileUpdated(({ pubkey }) => {
+  if (!pubkey || profileRefreshInFlight) return;
+  const targetPubkey = creatorProfile.pubkey?.toLowerCase?.() ?? "";
+  if (targetPubkey && pubkey.toLowerCase() !== targetPubkey) {
+    return;
+  }
+  profileRefreshInFlight = true;
+  void hydrateCreatorProfile(true).finally(() => {
+    profileRefreshInFlight = false;
+  });
+});
+
+onBeforeUnmount(() => {
+  stopProfileListener();
 });
 
 const heroName = computed(() =>
