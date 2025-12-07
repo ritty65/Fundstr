@@ -15,6 +15,7 @@ import { normalizeTierMediaItems } from "src/utils/validateMedia";
 import { debug } from "src/js/logger";
 import { type NutzapProfileDetails } from "@/nutzap/profileCache";
 import { useDiscovery } from "src/api/fundstrDiscovery";
+import { findProfiles, toNpub, type PhonebookProfile } from "src/api/phonebook";
 import type {
   Creator as DiscoveryCreator,
   CreatorTier as DiscoveryCreatorTier,
@@ -1358,6 +1359,59 @@ function computeTierSummary(tiers: Tier[] | null | undefined) {
   };
 }
 
+function applyPhonebookOverrides(
+  creator: CreatorProfile,
+  phonebook: PhonebookProfile,
+): CreatorProfile {
+  const displayName =
+    creator.displayName ??
+    toNullableString(phonebook.display_name) ??
+    toNullableString(phonebook.name) ??
+    creator.displayName ??
+    null;
+  const name = creator.name ?? toNullableString(phonebook.name) ?? creator.name ?? null;
+  const about = creator.about ?? toNullableString(phonebook.about) ?? creator.about ?? null;
+  const picture =
+    creator.picture ?? toNullableString(phonebook.picture) ?? creator.picture ?? null;
+  const nip05 = creator.nip05 ?? toNullableString(phonebook.nip05) ?? creator.nip05 ?? null;
+
+  return {
+    ...creator,
+    displayName,
+    name,
+    about,
+    picture,
+    nip05,
+  };
+}
+
+function createCreatorFromPhonebook(profile: PhonebookProfile): CreatorProfile {
+  const displayName =
+    toNullableString(profile.display_name) ?? toNullableString(profile.name) ?? null;
+  const name = toNullableString(profile.name);
+  const about = toNullableString(profile.about);
+  const picture = toNullableString(profile.picture);
+  const nip05 = toNullableString(profile.nip05);
+
+  return {
+    pubkey: profile.pubkey.toLowerCase(),
+    profile: null,
+    followers: null,
+    following: null,
+    joined: null,
+    displayName,
+    name,
+    about,
+    nip05,
+    picture,
+    banner: null,
+    tierSummary: null,
+    metrics: null,
+    tiers: [],
+    tierDataFresh: null,
+  };
+}
+
 function createCreatorFromBundle(
   pubkey: string,
   bundle: FundstrProfileBundle,
@@ -1751,6 +1805,102 @@ export const useCreatorsStore = defineStore("creators", {
       return this.loadCreatorCacheFromDexie(pubkeyHex);
     },
 
+    async applyPhonebookResults(
+      results: PhonebookProfile[],
+      signal?: AbortSignal,
+    ): Promise<boolean> {
+      const discovery = useDiscovery();
+      const profiles = Array.isArray(results)
+        ? results
+            .map((profile) => ({
+              ...profile,
+              pubkey: (profile.pubkey || "").trim().toLowerCase(),
+            }))
+            .filter((profile) => /^[0-9a-fA-F]{64}$/.test(profile.pubkey))
+        : [];
+
+      if (!profiles.length) {
+        return false;
+      }
+
+      let discoveryResults: CreatorProfile[] = [];
+
+      try {
+        const response = await discovery.getCreatorsByPubkeys({
+          npubs: profiles.map((profile) => toNpub(profile.pubkey)),
+          signal,
+        });
+        discoveryResults = response.results.map((creator) => cloneCreatorProfile(creator));
+      } catch (error) {
+        if (signal?.aborted) {
+          throw error;
+        }
+        console.warn("[creators] Phonebook enrichment failed", error);
+      }
+
+      if (signal?.aborted) {
+        return false;
+      }
+
+      const discoveryMap = new Map<string, CreatorProfile>();
+      for (const creator of discoveryResults) {
+        const key = creator.pubkey?.toLowerCase();
+        if (key) {
+          discoveryMap.set(key, creator);
+        }
+      }
+
+      const merged: CreatorProfile[] = [];
+
+      for (const profile of profiles) {
+        if (signal?.aborted) {
+          return false;
+        }
+
+        const enriched = discoveryMap.get(profile.pubkey);
+        if (enriched) {
+          merged.push(applyPhonebookOverrides(enriched, profile));
+          continue;
+        }
+
+        try {
+          const fetched = await this.fetchCreator(profile.pubkey, false);
+          if (fetched) {
+            merged.push(applyPhonebookOverrides(cloneCreatorProfile(fetched), profile));
+            continue;
+          }
+        } catch (error) {
+          if (signal?.aborted) {
+            throw error;
+          }
+          console.warn("[creators] Phonebook creator fetch failed", {
+            pubkey: profile.pubkey,
+            error,
+          });
+        }
+
+        merged.push(createCreatorFromPhonebook(profile));
+      }
+
+      if (!merged.length) {
+        return false;
+      }
+
+      const warnings: string[] = [];
+      if (
+        merged.some((profile) => profile.tierSecurityBlocked === true) &&
+        !warnings.includes(FIREFOX_TIER_SECURITY_WARNING)
+      ) {
+        warnings.push(FIREFOX_TIER_SECURITY_WARNING);
+      }
+
+      this.error = "";
+      this.searchResults = merged;
+      this.searchWarnings = warnings;
+
+      return true;
+    },
+
     async searchCreators(
       query: string,
       { fresh = false }: { fresh?: boolean } = {},
@@ -1812,6 +1962,44 @@ export const useCreatorsStore = defineStore("creators", {
         }
       }
 
+      const controller = new AbortController();
+      this.searchAbortController = controller;
+
+      let phonebookResults: PhonebookProfile[] | null = null;
+
+      try {
+        const phonebookResponse = await findProfiles(resolvedHex ?? normalizedQuery, controller.signal);
+        phonebookResults = phonebookResponse.results ?? [];
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.warn("[creators] Phonebook search failed", error);
+        }
+      }
+
+      if (!controller.signal.aborted && phonebookResults && phonebookResults.length) {
+        try {
+          const applied = await this.applyPhonebookResults(phonebookResults, controller.signal);
+          if (applied) {
+            this.searching = false;
+            this.searchAbortController = null;
+            return;
+          }
+        } catch (error) {
+          if (controller.signal.aborted) {
+            this.searching = false;
+            this.searchAbortController = null;
+            return;
+          }
+          console.warn("[creators] Failed to hydrate phonebook results", error);
+        }
+      }
+
+      if (controller.signal.aborted) {
+        this.searching = false;
+        this.searchAbortController = null;
+        return;
+      }
+
       if (!resolvedHex && normalizedQuery.includes("@")) {
         try {
           const ndk = await useNdk({ requireSigner: false });
@@ -1821,12 +2009,14 @@ export const useCreatorsStore = defineStore("creators", {
           } else {
             handleFailure("NIP-05 not found");
             this.searching = false;
+            this.searchAbortController = null;
             return;
           }
         } catch (error) {
           console.error("[creators] NIP-05 lookup failed", error);
           handleFailure("Invalid identifier");
           this.searching = false;
+          this.searchAbortController = null;
           return;
         }
       }
@@ -1835,6 +2025,7 @@ export const useCreatorsStore = defineStore("creators", {
         if (!/^[0-9a-fA-F]{64}$/.test(resolvedHex)) {
           handleFailure("Invalid pubkey");
           this.searching = false;
+          this.searchAbortController = null;
           return;
         }
         try {
@@ -1852,12 +2043,10 @@ export const useCreatorsStore = defineStore("creators", {
           handleFailure("Failed to fetch profile.");
         } finally {
           this.searching = false;
+          this.searchAbortController = null;
         }
         return;
       }
-
-      const controller = new AbortController();
-      this.searchAbortController = controller;
 
       const filterWarnings = (warnings: unknown): string[] => {
         if (!Array.isArray(warnings)) {
