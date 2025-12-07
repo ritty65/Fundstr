@@ -1,5 +1,7 @@
 import { nip19 } from "nostr-tools";
 
+import { debug } from "src/js/logger";
+
 const DEFAULT_FIND_PROFILES_URL = "https://fundstr.me/find_profiles.php";
 
 const metaEnv = (typeof import.meta !== "undefined" && (import.meta as any)?.env) || {};
@@ -75,6 +77,7 @@ export async function findProfiles(
 
     const text = await response.text();
     if (!text) {
+      debug("[phonebook] empty → discovery", { query: trimmedQuery });
       return { query: trimmedQuery, results: [], count: 0 };
     }
 
@@ -84,10 +87,18 @@ export async function findProfiles(
       .map((entry) => normalizeProfile(entry))
       .filter((entry): entry is PhonebookProfile => Boolean(entry));
 
+    const count = Number.isFinite(payload?.count) ? Number(payload.count) : normalized.length;
+
+    if (count > 0) {
+      debug("[phonebook] hit", { query: trimmedQuery, count });
+    } else {
+      debug("[phonebook] empty → discovery", { query: trimmedQuery });
+    }
+
     return {
       query: typeof payload?.query === "string" ? payload.query : trimmedQuery,
       results: normalized,
-      count: Number.isFinite(payload?.count) ? Number(payload.count) : normalized.length,
+      count,
     };
   } catch (error) {
     if (signal?.aborted) {

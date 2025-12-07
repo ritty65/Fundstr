@@ -1958,6 +1958,7 @@ export const useCreatorsStore = defineStore("creators", {
         if (!resolvedHex) {
           handleFailure("Invalid identifier");
           this.searching = false;
+          this.searchAbortController = null;
           return;
         }
       }
