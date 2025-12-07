@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   isTrustedUrl,
   normalizeYouTube,
@@ -11,8 +11,8 @@ import {
 
 describe("validateMedia", () => {
   it("accepts trusted schemes and hosts", () => {
-    expect(isTrustedUrl("https://example.com/media.png")).toBe(true);
-    expect(isTrustedUrl("https://good.com/video.mp4")).toBe(true);
+    expect(isTrustedUrl("https://fundstr.me/media.png")).toBe(true);
+    expect(isTrustedUrl("https://cdn.fundstr.me/video.mp4")).toBe(true);
     expect(isTrustedUrl("ipfs://cid")).toBe(true);
     expect(isTrustedUrl("nostr:foo")).toBe(true);
   });
@@ -85,8 +85,36 @@ describe("validateMedia", () => {
     const media = filterValidMedia([
       { url: "" },
       { url: "http://bad.com" },
-      { url: "https://good.com/ok.png" },
+      { url: "https://cdn.fundstr.me/ok.png" },
     ]);
-    expect(media).toEqual([{ url: "https://good.com/ok.png" }]);
+    expect(media).toEqual([{ url: "https://cdn.fundstr.me/ok.png" }]);
+  });
+
+  it("honors env-configured trusted hosts", async () => {
+    vi.stubEnv("VITE_TRUSTED_MEDIA_HOSTS", "media.customcdn.com, images.partner.net");
+    vi.resetModules();
+    const module = await import("../../../src/utils/validateMedia");
+
+    expect(module.isTrustedUrl("https://media.customcdn.com/image.png")).toBe(true);
+    expect(module.isTrustedUrl("https://images.partner.net/photo.webp")).toBe(true);
+    expect(module.isTrustedUrl("https://untrusted.cdn.net/photo.webp")).toBe(false);
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("accepts and rejects media hosts by type", () => {
+    expect(isTrustedUrl("https://assets.fundstr.me/photo.jpeg")).toBe(true);
+    expect(determineMediaType("https://assets.fundstr.me/photo.jpeg")).toBe("image");
+
+    expect(isTrustedUrl("https://media.fundstr.me/clip.mp4")).toBe(true);
+    expect(determineMediaType("https://media.fundstr.me/clip.mp4")).toBe("video");
+
+    expect(isTrustedUrl("https://cdn.fundstr.me/song.mp3")).toBe(true);
+    expect(determineMediaType("https://cdn.fundstr.me/song.mp3")).toBe("audio");
+
+    expect(isTrustedUrl("https://staging.fundstr.me/embed/page")).toBe(true);
+    expect(determineMediaType("https://staging.fundstr.me/embed/page")).toBe("iframe");
+
+    expect(isTrustedUrl("https://malicious.example.com/evil.mp4")).toBe(false);
   });
 });

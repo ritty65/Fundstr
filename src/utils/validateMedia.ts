@@ -7,17 +7,39 @@ const ALLOWED_MEDIA_TYPES: NonNullable<TierMedia["type"]>[] = [
   "link",
 ];
 
-const ALLOWED_HTTPS_HOSTS = new Set([
-  "example.com",
-  "cdn.example.com",
-  "good.com",
+const DEFAULT_TRUSTED_HTTPS_HOSTS = [
+  "fundstr.me",
+  "staging.fundstr.me",
+  "assets.fundstr.me",
+  "cdn.fundstr.me",
+  "media.fundstr.me",
   "www.youtube.com",
   "youtube.com",
   "youtu.be",
   "nftstorage.link",
   "primal.net",
   "snort.social",
-]);
+];
+
+const metaEnv = (typeof import.meta !== "undefined" && (import.meta as any)?.env) || {};
+const processEnv = (typeof process !== "undefined" && (process as any)?.env) || {};
+
+function parseTrustedHosts(): Set<string> {
+  const raw =
+    (typeof metaEnv.VITE_TRUSTED_MEDIA_HOSTS === "string" && metaEnv.VITE_TRUSTED_MEDIA_HOSTS) ||
+    (typeof processEnv.VITE_TRUSTED_MEDIA_HOSTS === "string" && processEnv.VITE_TRUSTED_MEDIA_HOSTS) ||
+    (typeof processEnv.TRUSTED_MEDIA_HOSTS === "string" && processEnv.TRUSTED_MEDIA_HOSTS) ||
+    "";
+
+  const envHosts = String(raw)
+    .split(/[\s,]+/)
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+
+  return new Set([...DEFAULT_TRUSTED_HTTPS_HOSTS, ...envHosts]);
+}
+
+const ALLOWED_HTTPS_HOSTS = parseTrustedHosts();
 
 function isAllowedHttpsHost(url: string): boolean {
   try {
