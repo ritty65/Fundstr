@@ -23,6 +23,8 @@ export default defineConfig({
     setupFiles: ["./test/vitest/setup-file.js"],
     include: [
       "test/vitest/__tests__/buckets.spec.ts",
+      "test/vitest/__tests__/creators.spec.ts",
+      "test/vitest/__tests__/phonebook.spec.ts",
       "test/vitest/__tests__/creators-tiers.spec.ts",
       "test/vitest/__tests__/CreatorStudioPage.publish.spec.ts",
       "test/vitest/__tests__/creatorCard.discovery.spec.ts",
@@ -143,6 +145,7 @@ export default defineConfig({
       assets: path.resolve(__dirname, "src/assets"),
       boot: path.resolve(__dirname, "src/boot"),
       stores: path.resolve(__dirname, "src/stores"),
+      "@sentry/vue": path.resolve(__dirname, "test/mocks/sentry-vue.ts"),
       "@cashu/cashu-ts": path.resolve(
         __dirname,
         "src/lib/cashu-ts/src/index.ts",
