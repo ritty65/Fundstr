@@ -38,6 +38,7 @@ export default defineConfig({
       "test/vitest/__tests__/TierSummaryCard.spec.ts",
       "test/vitest/__tests__/cashu.stores.spec.ts",
       "test/vitest/__tests__/welcome.interaction.spec.ts",
+      "test/vitest/__tests__/validateMedia.spec.ts",
       "test/creatorStudio/tierComposerUtils.spec.ts",
       "test/creatorStudio/TierComposer.interaction.spec.ts",
       "test/cashu-sendQueue.spec.ts",
