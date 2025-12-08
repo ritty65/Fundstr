@@ -1421,6 +1421,10 @@ function createCreatorFromPhonebook(profile: PhonebookProfile): CreatorProfile {
 }
 
 function creatorHasTiers(profile: CreatorProfile): boolean {
+  if (profile.hasTiers !== undefined && profile.hasTiers !== null) {
+    return Boolean(profile.hasTiers);
+  }
+
   if (profile.tierSummary && typeof profile.tierSummary.count === "number") {
     if (profile.tierSummary.count > 0) {
       return true;
@@ -1435,6 +1439,10 @@ function creatorHasTiers(profile: CreatorProfile): boolean {
 }
 
 function creatorHasLightning(profile: CreatorProfile): boolean {
+  if (profile.hasLightning !== undefined && profile.hasLightning !== null) {
+    return Boolean(profile.hasLightning);
+  }
+
   if (profile?.tierDataFresh === false) {
     return false;
   }
@@ -1591,6 +1599,10 @@ function createCreatorFromBundle(
         : bundle.tierFetchFailed,
     cacheHit: overrides.cacheHit,
     featured: overrides.featured,
+    hasLightning: overrides.hasLightning ?? null,
+    hasTiers: overrides.hasTiers ?? null,
+    isCreator: overrides.isCreator ?? null,
+    isPersonal: overrides.isPersonal ?? null,
   };
 
   return creator;

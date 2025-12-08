@@ -71,6 +71,11 @@
             :key="profile.pubkey"
             :profile="profile"
             featured
+            :has-lightning="profile.hasLightning ?? undefined"
+            :has-tiers="profile.hasTiers ?? undefined"
+            :is-creator="profile.isCreator ?? undefined"
+            :is-personal="profile.isPersonal ?? undefined"
+            :nip05="profile.nip05 ?? undefined"
             @view-tiers="viewProfile"
             @message="startChat"
             @donate="donate"
