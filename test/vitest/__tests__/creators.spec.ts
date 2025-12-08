@@ -26,6 +26,8 @@ const findProfilesMock = vi.hoisted(() =>
   }),
 );
 
+const getUserFromNip05Mock = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+
 const getCreatorsMock = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ results: [], warnings: [] }),
 );
@@ -37,6 +39,12 @@ const fetchLegacyCreatorsMock = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 vi.mock("../../../src/api/phonebook", () => ({
   findProfiles: findProfilesMock,
   toNpub: (pubkey: string) => `npub${pubkey}`,
+}));
+
+vi.mock("../../../src/composables/useNdk", () => ({
+  useNdk: vi.fn(async () => ({
+    getUserFromNip05: getUserFromNip05Mock,
+  })),
 }));
 
 vi.mock("../../../src/api/fundstrDiscovery", () => ({
@@ -103,6 +111,7 @@ beforeEach(() => {
   findProfilesMock.mockResolvedValue({ query: "", results: [], count: 0 });
   getCreatorsMock.mockResolvedValue({ results: [], warnings: [] });
   getCreatorsByPubkeysMock.mockResolvedValue({ results: [], warnings: [] });
+  getUserFromNip05Mock.mockResolvedValue(null);
 });
 
 describe("Creators store", () => {
@@ -175,6 +184,25 @@ describe("Creators store", () => {
     expect(findProfilesMock).toHaveBeenCalledWith("npubbad", expect.any(AbortSignal));
     expect(creators.searchResults.length).toBe(1);
     expect(creators.searchResults[0].pubkey).toBe(pubkey);
+    expect(creators.error).toBe("");
+  });
+
+  it("falls back to discovery when npub decoding fails and phonebook is empty", async () => {
+    (nip19.decode as any).mockImplementation(() => {
+      throw new Error("bad npub");
+    });
+
+    findProfilesMock.mockResolvedValueOnce({ query: "npubbad", results: [], count: 0 });
+
+    const discoveryCreator = makeCreator("d".repeat(64), { name: "fallback" });
+    getCreatorsMock.mockResolvedValueOnce({ results: [discoveryCreator], warnings: [] });
+
+    const creators = useCreatorsStore();
+    await creators.searchCreators("npubbad");
+
+    expect(findProfilesMock).toHaveBeenCalledWith("npubbad", expect.any(AbortSignal));
+    expect(getCreatorsMock).toHaveBeenCalled();
+    expect(creators.searchResults).toHaveLength(1);
     expect(creators.error).toBe("");
   });
 
@@ -305,6 +333,7 @@ describe("Creators store", () => {
     });
     expect(creators.searchResults).toHaveLength(1);
     expect(creators.searchResults[0].pubkey).toBe("b".repeat(64));
+    expect(creators.error).toBe("");
     expect(creators.searchAbortController).toBeNull();
     expect(creators.searching).toBe(false);
   });
@@ -322,7 +351,37 @@ describe("Creators store", () => {
     expect(getCreatorsMock).toHaveBeenCalled();
     expect(creators.searchResults).toHaveLength(1);
     expect(creators.searchResults[0].name).toBe("fallback");
+    expect(creators.error).toBe("");
     expect(creators.searchAbortController).toBeNull();
     expect(creators.searching).toBe(false);
+  });
+
+  it("treats failed NIP-05 lookups as plain discovery queries", async () => {
+    findProfilesMock.mockResolvedValueOnce({
+      query: "user@example.com",
+      results: [],
+      count: 0,
+    });
+
+    getUserFromNip05Mock.mockRejectedValueOnce(new Error("nip05 failed"));
+
+    const discoveryCreator = makeCreator("e".repeat(64), { name: "nip05" });
+    getCreatorsMock.mockResolvedValueOnce({ results: [discoveryCreator], warnings: [] });
+
+    const creators = useCreatorsStore();
+    await creators.searchCreators("user@example.com");
+
+    expect(findProfilesMock).toHaveBeenCalledWith(
+      "user@example.com",
+      expect.any(AbortSignal),
+    );
+    expect(getUserFromNip05Mock).toHaveBeenCalledWith("user@example.com");
+    expect(getCreatorsMock).toHaveBeenCalledWith({
+      q: "user@example.com",
+      fresh: false,
+      signal: expect.any(AbortSignal),
+    });
+    expect(creators.searchResults).toHaveLength(1);
+    expect(creators.error).toBe("");
   });
 });

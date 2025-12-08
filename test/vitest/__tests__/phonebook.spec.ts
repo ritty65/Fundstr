@@ -49,6 +49,32 @@ describe("findProfiles", () => {
     expect(response.query).toBe("jack");
   });
 
+  it("falls back to the default URL when misconfigured", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    setEnvUrl("https://api.fundstr.me/find_profiles");
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({ query: "jack", results: [], count: 0 }),
+        ),
+    } as any);
+
+    const { findProfiles } = await loadPhonebook();
+
+    await findProfiles("jack");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://fundstr.me/find_profiles.php?q=jack",
+      expect.any(Object),
+    );
+    expect(warnSpy).toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+
   it("normalizes valid payloads", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
@@ -89,11 +115,15 @@ describe("findProfiles", () => {
     expect(profile.about).toBe("no state is the best state");
   });
 
-  it("handles malformed or empty payloads gracefully", async () => {
+  it("handles non-OK responses and malformed payloads gracefully", async () => {
     mockFetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        text: () => Promise.resolve('{"error":"Not Found"}'),
+      } as any)
       .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve("") } as any)
-      .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve("{}") } as any)
-      .mockResolvedValueOnce({ ok: false, status: 500 } as any);
+      .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve("{") } as any);
 
     const { findProfiles } = await loadPhonebook();
 
@@ -114,7 +144,7 @@ describe("findProfiles", () => {
     });
   });
 
-  it("propagates aborts without returning fake results", async () => {
+  it("treats aborts as empty responses", async () => {
     const controller = new AbortController();
     mockFetch.mockImplementation(() =>
       new Promise((_resolve, reject) => {
@@ -129,6 +159,6 @@ describe("findProfiles", () => {
     const promise = findProfiles("abc", controller.signal);
     controller.abort();
 
-    await expect(promise).rejects.toBeInstanceOf(DOMException);
+    await expect(promise).resolves.toEqual({ query: "abc", results: [], count: 0 });
   });
 });
