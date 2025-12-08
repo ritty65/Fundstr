@@ -118,6 +118,18 @@
                         {{ filter.label }}
                       </q-chip>
                     </div>
+                    <q-btn-toggle
+                      v-model="viewMode"
+                      dense
+                      unelevated
+                      rounded
+                      toggle-color="accent"
+                      color="accent-200"
+                      text-color="text-1"
+                      :options="viewModeOptions"
+                      class="view-mode-toggle"
+                      aria-label="Toggle between grid and grouped views"
+                    />
                     <q-select
                       v-model="sortOption"
                       dense
@@ -134,23 +146,55 @@
                 </div>
 
                 <div v-if="searchResults.length" class="column q-gutter-md">
-                  <div class="fixed-grid">
-                    <CreatorCard
-                      v-for="profile in searchResults"
-                      :key="profile.pubkey"
-                      :profile="profile"
-                      :cache-hit="profile.cacheHit === true"
-                      :has-lightning="profile.hasLightning ?? undefined"
-                      :has-tiers="profile.hasTiers ?? undefined"
-                      :is-creator="profile.isCreator ?? undefined"
-                      :is-personal="profile.isPersonal ?? undefined"
-                      :nip05="profile.nip05 ?? undefined"
-                      @view-tiers="viewProfile"
-                      @view-profile="viewProfile"
-                      @message="startChat"
-                      @donate="donate"
-                    />
-                  </div>
+                  <template v-if="viewMode === 'grid'">
+                    <div class="fixed-grid">
+                      <CreatorCard
+                        v-for="profile in searchResults"
+                        :key="profile.pubkey"
+                        :profile="profile"
+                        :cache-hit="profile.cacheHit === true"
+                        :has-lightning="profile.hasLightning ?? undefined"
+                        :has-tiers="profile.hasTiers ?? undefined"
+                        :is-creator="profile.isCreator ?? undefined"
+                        :is-personal="profile.isPersonal ?? undefined"
+                        :nip05="profile.nip05 ?? undefined"
+                        @view-tiers="viewProfile"
+                        @view-profile="viewProfile"
+                        @message="startChat"
+                        @donate="donate"
+                      />
+                    </div>
+                  </template>
+
+                  <template v-else>
+                    <div class="column q-gutter-lg grouped-results">
+                      <section
+                        v-for="group in groupedResults"
+                        :key="group.key"
+                        class="grouped-section"
+                        aria-live="polite"
+                      >
+                        <h2 class="grouped-heading text-subtitle1 text-bold">{{ group.title }}</h2>
+                        <div class="fixed-grid">
+                          <CreatorCard
+                            v-for="profile in group.profiles"
+                            :key="profile.pubkey"
+                            :profile="profile"
+                            :cache-hit="profile.cacheHit === true"
+                            :has-lightning="profile.hasLightning ?? undefined"
+                            :has-tiers="profile.hasTiers ?? undefined"
+                            :is-creator="profile.isCreator ?? undefined"
+                            :is-personal="profile.isPersonal ?? undefined"
+                            :nip05="profile.nip05 ?? undefined"
+                            @view-tiers="viewProfile"
+                            @view-profile="viewProfile"
+                            @message="startChat"
+                            @donate="donate"
+                          />
+                        </div>
+                      </section>
+                    </div>
+                  </template>
 
                   <div v-if="false" class="load-more-wrapper">
                     <!-- The new API does not support pagination. This is hidden. -->
@@ -342,7 +386,7 @@ import { useQuasar } from 'quasar';
 import CreatorProfileModal from 'components/CreatorProfileModal.vue';
 import CreatorCard from 'components/CreatorCard.vue';
 import { useNostrStore } from 'stores/nostr';
-import { useCreatorsStore } from 'stores/creators';
+import { useCreatorsStore, type CreatorProfile } from 'stores/creators';
 import { useMessengerStore } from 'stores/messenger';
 import { useMintsStore } from 'stores/mints';
 import { useBucketsStore } from 'stores/buckets';
@@ -365,6 +409,7 @@ type FilterKey =
   | 'fundstrCreator'
   | 'signalOnly';
 type SortOption = 'relevance' | 'followers';
+type ViewMode = 'grid' | 'grouped';
 
 const creatorsStore = useCreatorsStore();
 const {
@@ -413,7 +458,14 @@ const activeFilters = ref<Record<FilterKey, boolean>>({
   signalOnly: false,
 });
 
+const viewMode = ref<ViewMode>('grid');
+
 const sortOption = ref<SortOption>('relevance');
+
+const viewModeOptions = [
+  { label: 'Grid', icon: 'grid_view', value: 'grid' },
+  { label: 'Grouped', icon: 'view_agenda', value: 'grouped' },
+];
 
 const trimmedQuery = computed(() => (searchQuery.value || '').trim());
 const hasQuery = computed(() => trimmedQuery.value.length > 0);
@@ -439,6 +491,93 @@ const resultSummary = computed(() => {
   return `${count} ${noun} found`;
 });
 const loadingFeatured = computed(() => storeLoadingFeatured?.value ?? false);
+
+const toNullableString = (value: unknown) =>
+  typeof value === 'string' && value.trim().length > 0 ? value : null;
+
+const isTruthyFlag = (value: unknown) =>
+  value === true || value === 'true' || value === 1 || value === '1';
+
+const creatorIsFundstrCreator = (profile: CreatorProfile) => {
+  if (profile.isCreator !== undefined && profile.isCreator !== null) {
+    return Boolean(profile.isCreator);
+  }
+
+  const profileRecord = (profile?.profile ?? {}) as Record<string, unknown>;
+  const metaRecord = (profile?.meta ?? {}) as Record<string, unknown>;
+
+  return [
+    (profile as Record<string, unknown> | null | undefined)?.['fundstrCreator'],
+    profileRecord['fundstr_creator'],
+    profileRecord['fundstrCreator'],
+    metaRecord['fundstr_creator'],
+    metaRecord['fundstrCreator'],
+  ].some(isTruthyFlag);
+};
+
+const creatorHasVerifiedNip05 = (profile: CreatorProfile) => {
+  if (profile.nip05Verified !== undefined && profile.nip05Verified !== null) {
+    return Boolean(profile.nip05Verified);
+  }
+
+  const profileRecord = (profile?.profile ?? {}) as Record<string, unknown>;
+  const metaRecord = (profile?.meta ?? {}) as Record<string, unknown>;
+
+  const nip05Value =
+    toNullableString(profile.nip05) ??
+    toNullableString(profileRecord['nip05']) ??
+    toNullableString(metaRecord['nip05']);
+
+  const verifiedHandle = toNullableString(metaRecord['nip05_verified_value']);
+
+  return Boolean(
+    nip05Value &&
+      verifiedHandle &&
+      nip05Value.trim().toLowerCase() === verifiedHandle.trim().toLowerCase(),
+  );
+};
+
+const isPersonalProfile = (profile: CreatorProfile) => profile.isPersonal === true;
+
+const isCreatorProfile = (profile: CreatorProfile) => {
+  if (profile.isCreator !== undefined && profile.isCreator !== null) {
+    return Boolean(profile.isCreator);
+  }
+
+  return Boolean(profile.featured || profile.hasTiers || profile.hasLightning);
+};
+
+const groupedResults = computed(() => {
+  const groups = [
+    { key: 'fundstr', title: 'Fundstr creators', predicate: creatorIsFundstrCreator },
+    { key: 'verified', title: 'NIP-05 verified', predicate: creatorHasVerifiedNip05 },
+    { key: 'creators', title: 'Creators', predicate: isCreatorProfile },
+    { key: 'personal', title: 'Personal profiles', predicate: isPersonalProfile },
+  ];
+
+  const buckets = groups.map((group) => ({ ...group, profiles: [] as CreatorProfile[] }));
+  const ungrouped: CreatorProfile[] = [];
+
+  for (const profile of searchResults.value) {
+    const bucket = buckets.find((group) => group.predicate(profile));
+    if (bucket) {
+      bucket.profiles.push(profile);
+    } else {
+      ungrouped.push(profile);
+    }
+  }
+
+  if (ungrouped.length) {
+    buckets.push({
+      key: 'other',
+      title: 'Other profiles',
+      predicate: () => true,
+      profiles: ungrouped,
+    });
+  }
+
+  return buckets.filter((group) => group.profiles.length > 0);
+});
 const showSearchEmptyState = computed(
   () =>
     initialLoadComplete.value &&
@@ -969,6 +1108,24 @@ h1 {
 
 .sort-select {
   min-width: 160px;
+}
+
+.view-mode-toggle {
+  min-width: 164px;
+}
+
+.grouped-results {
+  width: 100%;
+}
+
+.grouped-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.grouped-heading {
+  margin: 0;
 }
 
 
