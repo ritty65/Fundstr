@@ -95,6 +95,44 @@
                   </div>
                 </q-banner>
 
+                <div
+                  v-if="resultSummary"
+                  class="search-results-toolbar row items-center justify-between q-col-gutter-md"
+                >
+                  <div class="text-body2 text-2">{{ resultSummary }}</div>
+                  <div class="row items-center q-gutter-sm toolbar-controls">
+                    <div class="row items-center q-gutter-xs filters-group">
+                      <q-chip
+                        v-for="filter in filterChips"
+                        :key="filter.key"
+                        clickable
+                        dense
+                        outline
+                        square
+                        class="filter-chip"
+                        :color="activeFilters[filter.key] ? 'accent' : 'grey-6'"
+                        :text-color="activeFilters[filter.key] ? 'white' : 'text-2'"
+                        :selected="activeFilters[filter.key]"
+                        @click="toggleFilter(filter.key)"
+                      >
+                        {{ filter.label }}
+                      </q-chip>
+                    </div>
+                    <q-select
+                      v-model="sortOption"
+                      dense
+                      outlined
+                      emit-value
+                      map-options
+                      dropdown-icon="expand_more"
+                      options-dense
+                      class="sort-select"
+                      :options="sortOptions"
+                      label="Sort by"
+                    />
+                  </div>
+                </div>
+
                 <div v-if="searchResults.length" class="column q-gutter-md">
                   <div class="fixed-grid">
                     <CreatorCard
@@ -257,6 +295,9 @@ import {
 import { useDonationPrompt } from '@/composables/useDonationPrompt';
 import { useI18n } from 'vue-i18n';
 
+type FilterKey = 'hasTiers' | 'hasLightning' | 'featured';
+type SortOption = 'relevance' | 'followers';
+
 const creatorsStore = useCreatorsStore();
 const {
   searchResults,
@@ -275,11 +316,48 @@ const initialLoadComplete = ref(false);
 const searchSkeletonPlaceholders = [0, 1, 2];
 const featuredSkeletonPlaceholders = [0, 1, 2, 3, 4, 5];
 
+const filterChips: { key: FilterKey; label: string }[] = [
+  { key: 'hasTiers', label: 'Has tiers' },
+  { key: 'hasLightning', label: 'Has lightning' },
+  { key: 'featured', label: 'Featured' },
+];
+
+const sortOptions = [
+  { label: 'Relevance', value: 'relevance' },
+  { label: 'Followers', value: 'followers' },
+];
+
+const activeFilters = ref<Record<FilterKey, boolean>>({
+  hasTiers: false,
+  hasLightning: false,
+  featured: false,
+});
+
+const sortOption = ref<SortOption>('relevance');
+
 const trimmedQuery = computed(() => (searchQuery.value || '').trim());
 const hasQuery = computed(() => trimmedQuery.value.length > 0);
 const searchLoading = computed(() => searching.value);
 const searchError = computed(() => storeError.value);
 const searchWarnings = computed(() => storeSearchWarnings?.value ?? []);
+const searchFilters = computed(() => ({ ...activeFilters.value }));
+const resultSummary = computed(() => {
+  if (!initialLoadComplete.value) {
+    return '';
+  }
+
+  if (!hasQuery.value && !searchResults.value.length && !searchLoading.value) {
+    return '';
+  }
+
+  if (searchLoading.value) {
+    return 'Searching creators...';
+  }
+
+  const count = searchResults.value.length;
+  const noun = count === 1 ? 'creator' : 'creators';
+  return `${count} ${noun} found`;
+});
 const loadingFeatured = computed(() => storeLoadingFeatured?.value ?? false);
 const showSearchEmptyState = computed(
   () =>
@@ -327,6 +405,22 @@ const debouncedSearch = debounce(() => {
   void runSearch();
 }, 300);
 
+const applyClientFilters = () => {
+  creatorsStore.applySearchFilters(searchFilters.value, sortOption.value);
+};
+
+watch(
+  () => ({ ...activeFilters.value }),
+  () => {
+    applyClientFilters();
+  },
+  { deep: true },
+);
+
+watch(sortOption, () => {
+  applyClientFilters();
+});
+
 const loadMore = () => {
   // The new discovery service does not support pagination.
   // This function is now a no-op but is kept to prevent template errors.
@@ -335,7 +429,11 @@ const loadMore = () => {
 
 async function runSearch({ fresh = false }: { fresh?: boolean } = {}) {
   try {
-    await creatorsStore.searchCreators(trimmedQuery.value, { fresh });
+    await creatorsStore.searchCreators(trimmedQuery.value, {
+      fresh,
+      filters: searchFilters.value,
+      sort: sortOption.value,
+    });
   } finally {
     initialLoadComplete.value = true;
   }
@@ -495,6 +593,13 @@ function redirectToCreatorIfPresent() {
   }
 }
 
+function toggleFilter(filterKey: FilterKey) {
+  activeFilters.value = {
+    ...activeFilters.value,
+    [filterKey]: !activeFilters.value[filterKey],
+  };
+}
+
 onMounted(() => {
   redirectToCreatorIfPresent();
   if (hasQuery.value) {
@@ -639,6 +744,30 @@ h1 {
 .status-banner__text {
   font-size: 0.95rem;
   line-height: 1.4;
+}
+
+.search-results-toolbar {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--surface-contrast-border);
+  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
+  gap: 10px;
+}
+
+.toolbar-controls {
+  flex-wrap: wrap;
+}
+
+.filters-group {
+  flex-wrap: wrap;
+}
+
+.filter-chip {
+  border: 1px solid var(--surface-contrast-border);
+}
+
+.sort-select {
+  min-width: 160px;
 }
 
 
