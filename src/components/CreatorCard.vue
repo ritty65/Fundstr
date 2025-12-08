@@ -7,10 +7,23 @@
       <div class="info">
         <div class="name-row">
           <h3 class="text-h6 text-weight-medium q-mb-xs">{{ displayName }}</h3>
-          <div v-if="isFeatured || isCached" class="badge-row">
-            <q-badge v-if="isFeatured" color="accent" class="badge badge-featured">Featured</q-badge>
-            <q-badge v-if="isCached" color="accent" outline class="badge badge-cache">Cached</q-badge>
+          <div v-if="isFeatured" class="badge-row">
+            <q-badge color="accent" class="badge badge-featured">Featured</q-badge>
           </div>
+        </div>
+        <div v-if="statusChips.length" class="status-chip-row" role="list">
+          <span
+            v-for="chip in statusChips"
+            :key="chip.key"
+            class="status-chip"
+            :class="chip.variant"
+            role="listitem"
+            tabindex="0"
+            :aria-label="chip.ariaLabel"
+          >
+            <q-icon v-if="chip.icon" :name="chip.icon" size="14px" />
+            <span>{{ chip.label }}</span>
+          </span>
         </div>
         <div class="meta text-body1">
           <div class="meta-line text-2">
@@ -120,15 +133,33 @@ import {
   type ProfileMeta,
 } from 'src/utils/profile';
 
+interface StatusChip {
+  key: string;
+  label: string;
+  icon?: string;
+  variant?: 'accent' | 'muted' | 'neutral';
+  ariaLabel: string;
+}
+
 const props = withDefaults(
   defineProps<{
     profile: Creator;
     cacheHit?: boolean;
     featured?: boolean;
+    hasLightning?: boolean;
+    hasTiers?: boolean;
+    isCreator?: boolean;
+    isPersonal?: boolean;
+    nip05?: string | null;
   }>(),
   {
     cacheHit: undefined,
     featured: undefined,
+    hasLightning: undefined,
+    hasTiers: undefined,
+    isCreator: undefined,
+    isPersonal: undefined,
+    nip05: undefined,
   },
 );
 
@@ -146,6 +177,8 @@ const meta = computed<ProfileMeta>(() => {
   const extraMeta = normalizeMeta((props.profile as any)?.meta ?? {});
   return { ...profileMeta, ...extraMeta, ...directMeta };
 });
+
+const profileRecord = computed(() => (props.profile?.profile ?? {}) as Record<string, unknown>);
 
 const npub = computed(() => {
   const pubkey = props.profile?.pubkey ?? '';
@@ -169,7 +202,7 @@ function onAvatarError(event: Event) {
   (event.target as HTMLImageElement).src = safeImageSrc(null, displayName.value, 96);
 }
 
-const nip05 = computed(() => meta.value.nip05 ?? '');
+const nip05 = computed(() => props.nip05 ?? meta.value.nip05 ?? '');
 
 const aboutPreview = computed(() => (typeof meta.value.about === 'string' ? meta.value.about.trim() : ''));
 
@@ -189,42 +222,9 @@ const followers = computed(() => props.profile.followers ?? null);
 
 const tierDataFresh = computed(() => props.profile?.tierDataFresh !== false);
 
-const hasLightning = computed(() => {
-  if (!tierDataFresh.value) {
-    return false;
-  }
-  const profileRecord = (props.profile?.profile ?? {}) as Record<string, unknown>;
-  const metaRecord = meta.value as Record<string, unknown>;
-
-  const hasExplicitLightning = [
-    metaRecord['lud16'],
-    metaRecord['lud06'],
-    profileRecord['lud16'],
-    profileRecord['lud06'],
-  ].some((value) => typeof value === 'string' && value.trim().length > 0);
-  if (hasExplicitLightning) {
-    return true;
-  }
-
-  const isTruthy = (value: unknown) => {
-    if (value === true) return true;
-    if (typeof value === 'string') {
-      const normalized = value.trim().toLowerCase();
-      return normalized === 'true' || normalized === '1' || normalized === 'yes';
-    }
-    if (typeof value === 'number') {
-      return value === 1;
-    }
-    return false;
-  };
-
-  const hasNutzapSignal = [
-    profileRecord['has_nutzap'],
-    metaRecord['has_nutzap'],
-    (props.profile as Record<string, unknown> | null | undefined)?.['has_nutzap'],
-  ].some(isTruthy);
-  if (hasNutzapSignal) {
-    return true;
+const inferredHasTiers = computed(() => {
+  if (props.profile.hasTiers !== undefined && props.profile.hasTiers !== null) {
+    return Boolean(props.profile.hasTiers);
   }
 
   const tierSummary = props.profile?.tierSummary;
@@ -232,7 +232,61 @@ const hasLightning = computed(() => {
     return true;
   }
 
-  if (Array.isArray(props.profile?.tiers) && props.profile.tiers.length > 0) {
+  return Array.isArray(props.profile?.tiers) && props.profile.tiers.length > 0;
+});
+
+const hasTiers = computed(() => {
+  if (typeof props.hasTiers === 'boolean') {
+    return props.hasTiers;
+  }
+  return inferredHasTiers.value;
+});
+
+const inferredHasLightning = computed(() => {
+  if (props.profile.hasLightning !== undefined && props.profile.hasLightning !== null) {
+    return Boolean(props.profile.hasLightning);
+  }
+
+  if (!tierDataFresh.value) {
+    return false;
+  }
+  const metaRecord = meta.value as Record<string, unknown>;
+
+  const hasExplicitLightning = [
+    metaRecord['lud16'],
+    metaRecord['lud06'],
+    profileRecord.value['lud16'],
+    profileRecord.value['lud06'],
+  ].some((value) => typeof value === 'string' && value.trim().length > 0);
+  if (hasExplicitLightning) {
+    return true;
+  }
+
+  const normalizeBoolean = (value: unknown) => {
+    if (value === true) return true;
+    if (value === false) return false;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+      return normalized === 'true' || normalized === '1' || normalized === 'yes';
+    }
+    if (typeof value === 'number') {
+      if (value === 0) return false;
+      return value === 1;
+    }
+    return false;
+  };
+
+  const hasNutzapSignal = [
+    profileRecord.value['has_nutzap'],
+    metaRecord['has_nutzap'],
+    (props.profile as Record<string, unknown> | null | undefined)?.['has_nutzap'],
+  ].some((value) => normalizeBoolean(value));
+  if (hasNutzapSignal) {
+    return true;
+  }
+
+  if (hasTiers.value) {
     return true;
   }
 
@@ -242,6 +296,13 @@ const hasLightning = computed(() => {
   ].filter(Boolean);
 
   return normalizedCandidates.some((candidate) => DONATION_FALLBACK_LOOKUP.has(candidate));
+});
+
+const hasLightning = computed(() => {
+  if (typeof props.hasLightning === 'boolean') {
+    return props.hasLightning;
+  }
+  return inferredHasLightning.value;
 });
 
 const isCached = computed(() => {
@@ -256,6 +317,121 @@ const isFeatured = computed(() => {
     return props.featured;
   }
   return Boolean(props.profile.featured);
+});
+
+const normalizeBooleanFlag = (value: unknown): boolean | null => {
+  if (value === true) return true;
+  if (value === false) return false;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'creator', 'personal'].includes(normalized)) return true;
+    if (['false', '0', 'no'].includes(normalized)) return false;
+  }
+  if (typeof value === 'number') {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  return null;
+};
+
+const isCreator = computed(() => {
+  const fromProp = normalizeBooleanFlag(props.isCreator);
+  if (fromProp !== null) return fromProp;
+
+  const candidates = [
+    (props.profile as Record<string, unknown> | null | undefined)?.['isCreator'],
+    (props.profile as Record<string, unknown> | null | undefined)?.['is_creator'],
+    profileRecord.value['isCreator'],
+    profileRecord.value['is_creator'],
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeBooleanFlag(candidate);
+    if (normalized !== null) return normalized;
+  }
+
+  return false;
+});
+
+const isPersonal = computed(() => {
+  const fromProp = normalizeBooleanFlag(props.isPersonal);
+  if (fromProp !== null) return fromProp;
+
+  const candidates = [
+    (props.profile as Record<string, unknown> | null | undefined)?.['isPersonal'],
+    (props.profile as Record<string, unknown> | null | undefined)?.['is_personal'],
+    profileRecord.value['isPersonal'],
+    profileRecord.value['is_personal'],
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeBooleanFlag(candidate);
+    if (normalized !== null) return normalized;
+  }
+
+  return false;
+});
+
+const accountTypeLabel = computed(() => {
+  if (isCreator.value) return 'Creator';
+  if (isPersonal.value) return 'Personal';
+  return '';
+});
+
+const statusChips = computed<StatusChip[]>(() => {
+  const chips: StatusChip[] = [];
+
+  if (accountTypeLabel.value) {
+    chips.push({
+      key: 'account-type',
+      label: accountTypeLabel.value,
+      icon: 'verified_user',
+      variant: 'accent',
+      ariaLabel: `Account type: ${accountTypeLabel.value}`,
+    });
+  }
+
+  if (hasLightning.value) {
+    chips.push({
+      key: 'lightning',
+      label: 'Lightning',
+      icon: 'bolt',
+      variant: 'accent',
+      ariaLabel: 'Lightning ready profile',
+    });
+  }
+
+  if (hasTiers.value) {
+    chips.push({
+      key: 'tiers',
+      label: 'Has tiers',
+      icon: 'sell',
+      variant: 'accent',
+      ariaLabel: 'Subscription tiers available',
+    });
+  }
+
+  if (nip05.value) {
+    chips.push({
+      key: 'nip05',
+      label: nip05.value,
+      icon: 'alternate_email',
+      variant: 'muted',
+      ariaLabel: `NIP-05 identifier ${nip05.value}`,
+    });
+  }
+
+  if (isCached.value) {
+    chips.push({
+      key: 'cache',
+      label: 'Cache hit',
+      icon: 'data_thresholding',
+      variant: 'neutral',
+      ariaLabel: 'Cached profile result',
+    });
+  }
+
+  return chips;
 });
 
 function openProfileModal() {
@@ -338,6 +514,50 @@ function openProfileModal() {
 .badge-featured {
   background: var(--accent-200);
   color: var(--text-1);
+}
+
+.status-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.15rem 0 0.45rem;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  line-height: 1;
+  background: var(--chip-bg);
+  color: var(--text-2);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 55%, transparent);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.status-chip.accent {
+  color: var(--accent-500);
+  background: color-mix(in srgb, var(--accent-200) 45%, transparent);
+  border-color: color-mix(in srgb, var(--accent-500) 40%, transparent);
+}
+
+.status-chip.muted {
+  background: color-mix(in srgb, var(--chip-bg) 80%, transparent);
+  color: var(--text-2);
+}
+
+.status-chip.neutral {
+  background: color-mix(in srgb, var(--chip-bg) 60%, transparent);
+  border-color: color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+}
+
+.status-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-200);
+  transform: translateY(-1px);
 }
 
 .meta {

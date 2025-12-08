@@ -75,6 +75,10 @@ export interface Creator {
   cacheHit?: boolean;
   featured?: boolean;
   tierDataFresh?: boolean | null;
+  hasLightning?: boolean | null;
+  hasTiers?: boolean | null;
+  isCreator?: boolean | null;
+  isPersonal?: boolean | null;
 }
 
 export function withPrefix(path = ""): string {
