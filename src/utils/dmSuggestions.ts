@@ -50,6 +50,7 @@ export async function searchDmSuggestions(
     const response = await findProfiles(trimmed, signal);
     return response.results.map((profile) => {
       const npub = toNpub(profile.pubkey);
+      // Label precedence: display_name -> name -> nip05 -> shortened npub
       const label =
         profile.display_name?.trim() ||
         profile.name?.trim() ||

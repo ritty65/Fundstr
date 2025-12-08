@@ -75,8 +75,14 @@ const clearSuggestions = () => {
   dmSuggestions.value = [];
 };
 
+const resetSuggestionState = () => {
+  suggestionsAbortController = null;
+  loadingSuggestions.value = false;
+};
+
 const fetchSuggestions = async (query: string) => {
   suggestionsAbortController?.abort();
+  resetSuggestionState();
   clearSuggestions();
   if (!query || isValidDmPubkeyInput(query)) return;
 
@@ -92,8 +98,8 @@ const fetchSuggestions = async (query: string) => {
     if (controller.signal.aborted) return;
     console.warn("[dm-suggestions] lookup failed", error);
   } finally {
-    if (!controller.signal.aborted) {
-      loadingSuggestions.value = false;
+    if (!controller.signal.aborted && suggestionsAbortController === controller) {
+      resetSuggestionState();
     }
   }
 };
@@ -104,7 +110,7 @@ watch(
     const trimmed = value.trim();
     if (!trimmed) {
       suggestionsAbortController?.abort();
-      loadingSuggestions.value = false;
+      resetSuggestionState();
       clearSuggestions();
       return;
     }
@@ -115,6 +121,7 @@ watch(
 
 onBeforeUnmount(() => {
   suggestionsAbortController?.abort();
+  resetSuggestionState();
 });
 
 const start = () => {
@@ -125,6 +132,7 @@ const start = () => {
   emit("start", resolved);
   pubkey.value = "";
   suggestionsAbortController?.abort();
+  resetSuggestionState();
   clearSuggestions();
 };
 
@@ -135,6 +143,7 @@ const selectSuggestion = (suggestion: DmSuggestion) => {
   emit("start", resolved);
   pubkey.value = "";
   suggestionsAbortController?.abort();
+  resetSuggestionState();
   clearSuggestions();
 };
 </script>
