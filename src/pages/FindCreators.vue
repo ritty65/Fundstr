@@ -156,21 +156,73 @@
                   v-else-if="showSearchEmptyState || showInitialEmptyState"
                   class="empty-state column items-center text-center q-pt-xl q-pb-xl q-px-md text-2"
                 >
-                  <q-icon
-                    name="travel_explore"
-                    size="4rem"
-                    class="q-mb-md text-accent-500"
-                    aria-hidden="true"
-                  />
+                  <div class="empty-illustration q-mb-md" aria-hidden="true">
+                    <div class="empty-illustration__halo">
+                      <q-icon name="travel_explore" size="3.5rem" class="text-accent-500" />
+                    </div>
+                    <div class="empty-badges">
+                      <span class="badge-pill">
+                        <q-icon name="bolt" size="18px" />
+                        Lightning builders
+                      </span>
+                      <span class="badge-pill badge-pill--muted">
+                        <q-icon name="verified" size="18px" />
+                        NIP-05 ready
+                      </span>
+                    </div>
+                  </div>
                   <div class="text-h6 text-1">{{ emptyStateTitle }}</div>
                   <p class="text-body1 q-mt-sm q-mb-none">{{ emptyStateMessage }}</p>
+
+                  <div class="empty-actions column q-gutter-md q-mt-md">
+                    <div class="row justify-center q-col-gutter-sm sample-queries">
+                      <q-btn
+                        v-for="sample in sampleQueries"
+                        :key="sample.value"
+                        outline
+                        color="accent"
+                        no-caps
+                        size="sm"
+                        padding="10px 14px"
+                        :label="sample.label"
+                        @click="applySampleQuery(sample.value)"
+                      />
+                    </div>
+                    <div class="row justify-center q-col-gutter-sm empty-ctas">
+                      <q-btn
+                        outline
+                        icon="content_paste"
+                        color="accent"
+                        no-caps
+                        label="Paste npub"
+                        @click="pasteNpubFromClipboard"
+                      />
+                      <q-btn
+                        flat
+                        icon="auto_awesome"
+                        color="accent"
+                        no-caps
+                        label="Go to Featured Creators"
+                        @click="jumpToFeatured"
+                      />
+                    </div>
+                    <div class="text-body2 text-2 helper-text">
+                      Quick start with a suggested search, paste an npub, or jump to our curated list.
+                    </div>
+                  </div>
                 </div>
               </template>
             </section>
           </q-card-section>
         </q-card>
 
-        <q-card class="find-creators-panel bg-surface-2 text-1" flat bordered>
+        <q-card
+          id="featured-creators"
+          ref="featuredSectionRef"
+          class="find-creators-panel bg-surface-2 text-1"
+          flat
+          bordered
+        >
           <q-card-section class="panel-section q-px-xl q-py-lg">
             <div class="row items-start justify-between q-col-gutter-md">
               <div class="col">
@@ -273,7 +325,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch, type ComponentPublicInstance } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
@@ -315,6 +367,12 @@ const initialLoadComplete = ref(false);
 
 const searchSkeletonPlaceholders = [0, 1, 2];
 const featuredSkeletonPlaceholders = [0, 1, 2, 3, 4, 5];
+
+const sampleQueries = [
+  { label: 'Lightning devs', value: 'lightning' },
+  { label: 'NIP-05 creators', value: 'nip-05' },
+  { label: 'Zaps & tipping', value: 'zap me' },
+];
 
 const filterChips: { key: FilterKey; label: string }[] = [
   { key: 'hasTiers', label: 'Has tiers' },
@@ -491,6 +549,7 @@ const { open: openDonationPrompt } = useDonationPrompt();
 const { t } = useI18n();
 const showProfileModal = ref(false);
 const selectedProfilePubkey = ref('');
+const featuredSectionRef = ref<HTMLElement | ComponentPublicInstance | null>(null);
 const activeMintInfo = computed(() => mintsStore.activeInfo);
 const supportedNuts = computed(() => resolveSupportedNuts(activeMintInfo.value));
 const activeMintSupportsSplit = computed(() =>
@@ -599,6 +658,57 @@ function toggleFilter(filterKey: FilterKey) {
     [filterKey]: !activeFilters.value[filterKey],
   };
 }
+
+const applySampleQuery = (query: string) => {
+  searchQuery.value = query;
+  triggerImmediateSearch();
+};
+
+const pasteNpubFromClipboard = async () => {
+  if (!navigator?.clipboard?.readText) {
+    notifyWarning('Clipboard access is unavailable. Paste manually instead.');
+    return;
+  }
+
+  try {
+    const npub = (await navigator.clipboard.readText()).trim();
+    if (!npub) {
+      notifyWarning('Your clipboard is empty. Copy an npub and try again.');
+      return;
+    }
+    searchQuery.value = npub;
+    triggerImmediateSearch();
+  } catch (error) {
+    debug('Failed to paste npub from clipboard', error);
+    notifyError('Unable to read from your clipboard. Please paste manually.');
+  }
+};
+
+const resolveElement = (target: HTMLElement | ComponentPublicInstance | null) => {
+  if (!target) {
+    return undefined;
+  }
+
+  if (target instanceof HTMLElement) {
+    return target;
+  }
+
+  if ('$el' in target && target.$el instanceof HTMLElement) {
+    return target.$el;
+  }
+
+  return undefined;
+};
+
+const jumpToFeatured = () => {
+  const el = resolveElement(featuredSectionRef.value);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+
+  void router.push({ hash: '#featured-creators' });
+};
 
 onMounted(() => {
   redirectToCreatorIfPresent();
@@ -724,6 +834,75 @@ h1 {
 
 .empty-state p {
   max-width: 320px;
+}
+
+.empty-illustration {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.empty-illustration__halo {
+  width: 108px;
+  height: 108px;
+  display: grid;
+  place-items: center;
+  border-radius: 26px;
+  background: color-mix(in srgb, var(--accent-200) 24%, transparent);
+  border: 1px solid var(--surface-contrast-border);
+  box-shadow:
+    0 10px 30px rgba(15, 23, 42, 0.06),
+    0 18px 46px rgba(15, 23, 42, 0.08);
+}
+
+.empty-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-200) 22%, transparent);
+  color: var(--text-1);
+  border: 1px solid color-mix(in srgb, var(--accent-200) 50%, transparent);
+  font-weight: 600;
+}
+
+.badge-pill--muted {
+  background: color-mix(in srgb, var(--surface-2) 90%, var(--chip-bg));
+  color: var(--text-2);
+  border-color: var(--surface-contrast-border);
+}
+
+.empty-actions {
+  width: 100%;
+  max-width: 640px;
+}
+
+.sample-queries .q-btn {
+  width: 100%;
+}
+
+@media (min-width: 600px) {
+  .sample-queries .q-btn {
+    width: auto;
+  }
+}
+
+.empty-ctas .q-btn {
+  min-width: 180px;
+}
+
+.helper-text {
+  max-width: 540px;
+  margin: 0 auto;
 }
 
 .status-banner {
