@@ -12,6 +12,15 @@ type Env = {
 
 const FALLBACK_ALLOW_HEADERS = 'content-type,accept,cache-control';
 
+const CORS_HEADER_KEYS = [
+  'Access-Control-Allow-Origin',
+  'Access-Control-Allow-Headers',
+  'Access-Control-Allow-Methods',
+  'Access-Control-Allow-Credentials',
+  'Access-Control-Expose-Headers',
+  'Access-Control-Max-Age',
+];
+
 function buildCorsHeaders(req?: Request): Record<string, string> {
   const requested = req?.headers.get('Access-Control-Request-Headers');
   const allowHeaders = requested && requested.trim().length ? requested : FALLBACK_ALLOW_HEADERS;
@@ -110,7 +119,7 @@ async function handle(req: Request, env: Env, _ctx: unknown): Promise<Response> 
 }
 
 async function handleFindProfiles(url: URL, env: Env): Promise<Response> {
-  const upstreamBase = (env.FIND_PROFILES_TARGET || 'https://fundstr.me/find_profiles.php').trim();
+  const upstreamBase = (env.FIND_PROFILES_TARGET || 'https://api.fundstr.me/find_profiles').trim();
 
   let upstream: URL;
   try {
@@ -127,17 +136,27 @@ async function handleFindProfiles(url: URL, env: Env): Promise<Response> {
   try {
     const resp = await fetch(upstream.toString(), { headers: { Accept: 'application/json' } });
     const text = await resp.text();
-    const headers = new Headers({
-      ...DEFAULT_CORS_HEADERS,
-      'Cache-Control': 'no-store',
-      'Content-Type': resp.headers.get('Content-Type') ?? 'application/json',
-    });
+
+    const headers = mergeCorsHeaders(resp.headers);
+    headers.set('Cache-Control', 'no-store');
+    headers.set('Content-Type', resp.headers.get('Content-Type') ?? 'application/json');
 
     return new Response(text, { status: resp.status, headers });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'upstream-failed';
     return jsonResponse({ ok: false, message }, 502);
   }
+}
+
+function mergeCorsHeaders(upstream: Headers): Headers {
+  const headers = new Headers(DEFAULT_CORS_HEADERS);
+  for (const key of CORS_HEADER_KEYS) {
+    const value = upstream.get(key);
+    if (value) {
+      headers.set(key, value);
+    }
+  }
+  return headers;
 }
 
 async function handleReq(url: URL, env: Env): Promise<Response> {

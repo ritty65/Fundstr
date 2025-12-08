@@ -2,7 +2,7 @@ import { nip19 } from "nostr-tools";
 
 import { debug } from "src/js/logger";
 
-const DEFAULT_FIND_PROFILES_URL = "https://fundstr.me/find_profiles.php";
+const DEFAULT_FIND_PROFILES_URL = "https://api.fundstr.me/find_profiles";
 
 const metaEnv = (typeof import.meta !== "undefined" && (import.meta as any)?.env) || {};
 const processEnv = (typeof process !== "undefined" && (process as any)?.env) || {};
