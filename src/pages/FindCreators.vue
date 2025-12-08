@@ -103,6 +103,7 @@
                       :profile="profile"
                       :cache-hit="profile.cacheHit === true"
                       @view-tiers="viewProfile"
+                      @view-profile="viewProfile"
                       @message="startChat"
                       @donate="donate"
                     />
@@ -189,6 +190,7 @@
                       :profile="profile"
                       featured
                       @view-tiers="viewProfile"
+                      @view-profile="viewProfile"
                       @message="startChat"
                       @donate="donate"
                     />

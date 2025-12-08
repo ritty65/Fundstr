@@ -55,6 +55,14 @@
         @click.stop="$emit('view-tiers', profile.pubkey)"
       />
       <q-btn
+        flat
+        color="accent"
+        class="action-btn tertiary-btn"
+        label="View profile"
+        no-caps
+        @click.stop="$emit('view-profile', profile.pubkey)"
+      />
+      <q-btn
         color="accent"
         outline
         class="action-btn"
@@ -101,7 +109,7 @@ const props = withDefaults(
   },
 );
 
-defineEmits(['view-tiers', 'message', 'donate']);
+defineEmits(['view-tiers', 'view-profile', 'message', 'donate']);
 
 const meta = computed<ProfileMeta>(() => {
   const profileMeta = normalizeMeta((props.profile?.profile as any) ?? {});
@@ -409,6 +417,22 @@ const isFeatured = computed(() => {
   color: var(--accent-600);
   background: var(--accent-200);
   background: color-mix(in srgb, var(--accent-200) 35%, transparent);
+}
+
+.tertiary-btn {
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.75rem 0;
+  color: var(--text-2);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
+  background: transparent;
+}
+
+.tertiary-btn:hover,
+.tertiary-btn:focus-visible {
+  color: var(--accent-600);
+  border-color: var(--surface-contrast-border);
+  background: color-mix(in srgb, var(--accent-200) 28%, transparent);
 }
 
 .action-btn:focus-visible {
