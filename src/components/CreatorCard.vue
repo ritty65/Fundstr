@@ -14,32 +14,55 @@
         </div>
         <div class="meta text-body1">
           <div class="meta-line text-2">
-            <span class="meta-label">Npub:</span>
-            <span class="meta-value" :title="npubFull">
-              {{ npubShort }}
-              <q-tooltip v-if="npubFull" class="tooltip">{{ npubFull }}</q-tooltip>
-            </span>
+            <q-icon name="key" size="16px" class="meta-icon" />
+            <div class="meta-content">
+              <span class="meta-label">Npub</span>
+              <span class="meta-value" :title="npubFull">
+                {{ npubShort }}
+                <q-tooltip v-if="npubFull" class="tooltip">{{ npubFull }}</q-tooltip>
+              </span>
+            </div>
           </div>
           <div v-if="nip05" class="meta-line text-2">
-            <span class="meta-label">NIP-05:</span>
-            <span class="nip05" :title="nip05">
-              {{ nip05 }}
-              <q-tooltip class="tooltip">{{ nip05 }}</q-tooltip>
+            <q-icon name="alternate_email" size="16px" class="meta-icon" />
+            <div class="meta-content">
+              <span class="meta-label">NIP-05</span>
+              <span class="nip05" :title="nip05">
+                {{ nip05 }}
+                <q-tooltip class="tooltip">{{ nip05 }}</q-tooltip>
+              </span>
+            </div>
+          </div>
+          <div v-if="aboutPreview" class="meta-line text-2 about">
+            <q-icon name="description" size="16px" class="meta-icon" />
+            <div class="meta-content about-content">
+              <div class="meta-label">About</div>
+              <div class="about-preview">
+                <span class="about-text" :title="aboutFull">
+                  {{ aboutPreview }}
+                  <q-tooltip v-if="aboutFull" class="tooltip">{{ aboutFull }}</q-tooltip>
+                </span>
+                <q-btn
+                  flat
+                  dense
+                  no-caps
+                  size="sm"
+                  class="about-more"
+                  label="More"
+                  @click.stop="openProfileModal"
+                />
+              </div>
+            </div>
+          </div>
+          <div v-if="tierSummaryText || followers !== null" class="meta-chip-row text-2">
+            <span v-if="tierSummaryText" class="meta-chip">
+              <q-icon name="sell" size="14px" class="meta-chip-icon" />
+              {{ tierSummaryText }}
             </span>
-          </div>
-          <div v-if="aboutSnippet" class="meta-line text-2 about">
-            <span class="about-text" :title="aboutFull">
-              {{ aboutSnippet }}
-              <q-tooltip v-if="aboutFull" class="tooltip">{{ aboutFull }}</q-tooltip>
+            <span v-if="followers !== null" class="meta-chip">
+              <q-icon name="group" size="14px" class="meta-chip-icon" />
+              {{ followers }} followers
             </span>
-          </div>
-          <div v-if="tierSummaryText" class="meta-line text-2">
-            <span class="meta-label">Tiers:</span>
-            <span>{{ tierSummaryText }}</span>
-          </div>
-          <div v-if="followers !== null" class="meta-line text-2">
-            <span class="meta-label">Followers:</span>
-            <span>{{ followers }}</span>
           </div>
         </div>
       </div>
@@ -109,7 +132,7 @@ const props = withDefaults(
   },
 );
 
-defineEmits(['view-tiers', 'view-profile', 'message', 'donate']);
+const emit = defineEmits(['view-tiers', 'view-profile', 'message', 'donate']);
 
 const meta = computed<ProfileMeta>(() => {
   const profileMeta = normalizeMeta((props.profile?.profile as any) ?? {});
@@ -148,13 +171,9 @@ function onAvatarError(event: Event) {
 
 const nip05 = computed(() => meta.value.nip05 ?? '');
 
-const aboutSnippet = computed(() => {
-  const about = typeof meta.value.about === 'string' ? meta.value.about.trim() : '';
-  if (!about) return '';
-  return about.length > 120 ? `${about.substring(0, 120)}…` : about;
-});
+const aboutPreview = computed(() => (typeof meta.value.about === 'string' ? meta.value.about.trim() : ''));
 
-const aboutFull = computed(() => (typeof meta.value.about === 'string' ? meta.value.about.trim() : ''));
+const aboutFull = computed(() => aboutPreview.value);
 
 const tierSummaryText = computed(() => {
   const s = props.profile.tierSummary;
@@ -238,6 +257,10 @@ const isFeatured = computed(() => {
   }
   return Boolean(props.profile.featured);
 });
+
+function openProfileModal() {
+  emit('view-profile', props.profile.pubkey);
+}
 </script>
 
 <style scoped>
@@ -247,7 +270,7 @@ const isFeatured = computed(() => {
   border-radius: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 1.5rem;
   transition: box-shadow 0.25s ease, transform 0.25s ease;
   box-shadow: 0 12px 30px -18px rgba(15, 23, 42, 0.45);
   height: 100%;
@@ -261,7 +284,7 @@ const isFeatured = computed(() => {
 .profile-header {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1rem;
   width: 100%;
 }
 
@@ -318,22 +341,19 @@ const isFeatured = computed(() => {
 }
 
 .meta {
-  display: grid;
-  gap: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
   flex-grow: 1;
-  max-height: 10.5rem;
+  max-height: 8.5rem;
   overflow: hidden;
 }
 
 .meta-line {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.35rem;
+  gap: 0.5rem;
   align-items: center;
-}
-
-.meta-line.about {
-  grid-template-columns: 1fr;
 }
 
 .meta-label {
@@ -346,14 +366,20 @@ const isFeatured = computed(() => {
   font-family: var(--font-mono, 'Fira Code', monospace);
 }
 
+.meta-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
 .nip05 {
   color: var(--accent-500);
   font-weight: 500;
 }
 
 .meta-value,
-.nip05,
-.about-text {
+.nip05 {
   min-width: 0;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -361,10 +387,7 @@ const isFeatured = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   word-break: break-word;
-}
-
-.about {
-  font-style: italic;
+  word-break: break-word;
 }
 
 .tooltip {
@@ -378,6 +401,61 @@ const isFeatured = computed(() => {
   flex-direction: column;
   gap: 0.75rem;
   margin-top: auto;
+}
+
+.meta-icon {
+  color: var(--text-2);
+}
+
+.about-content {
+  gap: 0.35rem;
+}
+
+.about-preview {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.about-text {
+  position: relative;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  color: var(--text-2);
+}
+
+.about-more {
+  padding: 0.1rem 0.35rem;
+  color: var(--accent-600);
+  font-weight: 600;
+}
+
+.meta-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.meta-chip-icon {
+  color: var(--text-2);
 }
 
 .action-btn {
