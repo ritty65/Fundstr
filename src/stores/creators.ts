@@ -43,6 +43,14 @@ export interface CreatorProfile extends FundstrCreator {
 }
 export type CreatorRow = CreatorProfile;
 
+export type CreatorSearchFilters = {
+  hasTiers?: boolean;
+  hasLightning?: boolean;
+  featured?: boolean;
+};
+
+export type CreatorSearchSort = "relevance" | "followers";
+
 const FRESH_RETRY_BASE_MS = 1500;
 const FRESH_RETRY_MAX_MS = 30000;
 const FRESH_FALLBACK_LOG_DEBOUNCE_MS = 60000;
@@ -1412,6 +1420,108 @@ function createCreatorFromPhonebook(profile: PhonebookProfile): CreatorProfile {
   };
 }
 
+function creatorHasTiers(profile: CreatorProfile): boolean {
+  if (profile.tierSummary && typeof profile.tierSummary.count === "number") {
+    if (profile.tierSummary.count > 0) {
+      return true;
+    }
+  }
+
+  if (Array.isArray(profile.tiers) && profile.tiers.length > 0) {
+    return true;
+  }
+
+  return false;
+}
+
+function creatorHasLightning(profile: CreatorProfile): boolean {
+  if (profile?.tierDataFresh === false) {
+    return false;
+  }
+
+  const profileRecord = (profile?.profile ?? {}) as Record<string, unknown>;
+  const metaRecord = (profile?.meta ?? {}) as Record<string, unknown>;
+
+  const hasExplicitLightning = [
+    metaRecord["lud16"],
+    metaRecord["lud06"],
+    profileRecord["lud16"],
+    profileRecord["lud06"],
+  ].some((value) => typeof value === "string" && value.trim().length > 0);
+
+  if (hasExplicitLightning) {
+    return true;
+  }
+
+  const isTruthy = (value: unknown) => {
+    if (value === true) return true;
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      return normalized === "true" || normalized === "1" || normalized === "yes";
+    }
+    if (typeof value === "number") {
+      return value === 1;
+    }
+    return false;
+  };
+
+  const hasNutzapSignal = [
+    profileRecord["has_nutzap"],
+    metaRecord["has_nutzap"],
+    (profile as Record<string, unknown> | null | undefined)?.["has_nutzap"],
+  ].some(isTruthy);
+
+  if (hasNutzapSignal) {
+    return true;
+  }
+
+  if (creatorHasTiers(profile)) {
+    return true;
+  }
+
+  const normalizedCandidates = [
+    profileRecord["lightning"],
+    metaRecord["lightning"],
+    profileRecord["lightning_address"],
+    metaRecord["lightning_address"],
+  ].map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""));
+
+  return normalizedCandidates.some((candidate) => candidate.includes("lnbc"));
+}
+
+function applyCreatorFilters(
+  profiles: CreatorProfile[],
+  filters: CreatorSearchFilters = {},
+  sort: CreatorSearchSort = "relevance",
+): CreatorProfile[] {
+  const filtered = profiles.filter((profile) => {
+    if (filters.hasTiers && !creatorHasTiers(profile)) {
+      return false;
+    }
+
+    if (filters.hasLightning && !creatorHasLightning(profile)) {
+      return false;
+    }
+
+    if (filters.featured && !profile.featured) {
+      return false;
+    }
+
+    return true;
+  });
+
+  if (sort === "followers") {
+    return filtered
+      .slice()
+      .sort(
+        (a, b) =>
+          (b.followers ?? Number.NEGATIVE_INFINITY) - (a.followers ?? Number.NEGATIVE_INFINITY),
+      );
+  }
+
+  return filtered.slice();
+}
+
 function createCreatorFromBundle(
   pubkey: string,
   bundle: FundstrProfileBundle,
@@ -1510,6 +1620,7 @@ export const useCreatorsStore = defineStore("creators", {
       inFlightCreatorRequests: {} as Record<string, Promise<CreatorProfile | null>>,
       searchAbortController: null as AbortController | null,
       nostrSearchRequests: new Map<string, Promise<FundstrCreator[]>>(),
+      unfilteredSearchResults: [] as CreatorProfile[],
     };
   },
   getters: {
@@ -1808,6 +1919,7 @@ export const useCreatorsStore = defineStore("creators", {
     async applyPhonebookResults(
       results: PhonebookProfile[],
       signal?: AbortSignal,
+      options: { filters?: CreatorSearchFilters; sort?: CreatorSearchSort } = {},
     ): Promise<boolean> {
       const discovery = useDiscovery();
       const profiles = Array.isArray(results)
@@ -1895,25 +2007,44 @@ export const useCreatorsStore = defineStore("creators", {
       }
 
       this.error = "";
-      this.searchResults = merged;
+      this.unfilteredSearchResults = merged;
+      this.searchResults = applyCreatorFilters(merged, options.filters, options.sort);
       this.searchWarnings = warnings;
 
       return true;
     },
 
+    applySearchFilters(
+      filters: CreatorSearchFilters = {},
+      sort: CreatorSearchSort = "relevance",
+    ) {
+      this.searchResults = applyCreatorFilters(this.unfilteredSearchResults, filters, sort);
+    },
+
     async searchCreators(
       query: string,
-      { fresh = false }: { fresh?: boolean } = {},
+      options: { fresh?: boolean; filters?: CreatorSearchFilters; sort?: CreatorSearchSort } = {},
     ) {
+      const { fresh = false, filters = {}, sort = "relevance" } = options;
       const discovery = useDiscovery();
       const rawQuery = typeof query === "string" ? query.trim() : "";
+
+      const applyResults = (profiles: CreatorProfile[]) => {
+        this.unfilteredSearchResults = profiles;
+        this.searchResults = applyCreatorFilters(profiles, filters, sort);
+      };
+
+      const clearResults = () => {
+        this.unfilteredSearchResults = [];
+        this.searchResults = [];
+      };
 
       if (!rawQuery) {
         if (this.searchAbortController) {
           this.searchAbortController.abort();
           this.searchAbortController = null;
         }
-        this.searchResults = [];
+        clearResults();
         this.error = "";
         this.searchWarnings = [];
         this.searching = false;
@@ -1925,14 +2056,14 @@ export const useCreatorsStore = defineStore("creators", {
         this.searchAbortController = null;
       }
 
-      this.searchResults = [];
+      clearResults();
       this.error = "";
       this.searchWarnings = [];
       this.searching = true;
 
       const handleFailure = (message: string) => {
         this.error = message;
-        this.searchResults = [];
+        clearResults();
       };
 
       const resolveNip19 = (value: string): string | null => {
@@ -1973,7 +2104,10 @@ export const useCreatorsStore = defineStore("creators", {
 
       if (!controller.signal.aborted && phonebookResponse?.count && phonebookResults.length) {
         try {
-          const applied = await this.applyPhonebookResults(phonebookResults, controller.signal);
+          const applied = await this.applyPhonebookResults(phonebookResults, controller.signal, {
+            filters,
+            sort,
+          });
           if (applied) {
             this.searching = false;
             this.searchAbortController = null;
@@ -2018,7 +2152,7 @@ export const useCreatorsStore = defineStore("creators", {
         try {
           const creatorProfile = await this.fetchCreator(resolvedHex, fresh);
           if (creatorProfile) {
-            this.searchResults = [cloneCreatorProfile(creatorProfile)];
+            applyResults([cloneCreatorProfile(creatorProfile)]);
             this.searchWarnings = creatorProfile.tierSecurityBlocked
               ? [FIREFOX_TIER_SECURITY_WARNING]
               : [];
@@ -2101,7 +2235,7 @@ export const useCreatorsStore = defineStore("creators", {
         }
 
         this.error = "";
-        this.searchResults = profiles;
+        applyResults(profiles);
         this.searchWarnings = warnings;
         debug("discovery:hit", {
           query: normalizedQuery,
@@ -2129,7 +2263,7 @@ export const useCreatorsStore = defineStore("creators", {
         }
 
         this.error = "";
-        this.searchResults = profiles;
+        applyResults(profiles);
         this.searchWarnings = warnings;
         debug("nostr:fallback-hit", {
           query: normalizedQuery,
