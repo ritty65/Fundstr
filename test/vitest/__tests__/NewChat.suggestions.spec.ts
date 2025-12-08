@@ -141,4 +141,34 @@ describe("NewChat suggestions", () => {
     expect(emitted?.[0]?.[0]).toBe(`resolved-${hex}`);
     expect(searchDmSuggestions).not.toHaveBeenCalled();
   });
+
+  it("shows a no matches banner for empty phonebook results but not for direct keys", async () => {
+    searchDmSuggestions.mockResolvedValue([]);
+
+    const wrapper = mountComponent();
+    const input = wrapper.find("input");
+
+    await input.setValue("something");
+    await flushPromises();
+
+    expect(searchDmSuggestions).toHaveBeenCalledWith("something", expect.any(AbortSignal));
+    const banner = wrapper.findComponent({ name: "q-banner" });
+    expect(banner.exists()).toBe(true);
+    expect(banner.text()).toContain("No matches found");
+
+    const hex = "c".repeat(64);
+    searchDmSuggestions.mockClear();
+    await input.setValue(hex);
+    await flushPromises();
+
+    expect(searchDmSuggestions).not.toHaveBeenCalled();
+    expect(wrapper.findComponent({ name: "q-banner" }).exists()).toBe(false);
+
+    const npub = nip19.npubEncode(hex);
+    await input.setValue(npub);
+    await flushPromises();
+
+    expect(searchDmSuggestions).not.toHaveBeenCalled();
+    expect(wrapper.findComponent({ name: "q-banner" }).exists()).toBe(false);
+  });
 });
