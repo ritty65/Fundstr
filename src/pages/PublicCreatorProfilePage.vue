@@ -421,6 +421,7 @@ import {
   type ProfileMeta,
 } from "src/utils/profile";
 import { useClipboard } from "src/composables/useClipboard";
+import { usePhonebookEnrichment } from "src/utils/phonebookEnrichment";
 import { useWelcomeStore } from "stores/welcome";
 import {
   daysToFrequency,
@@ -478,6 +479,11 @@ export default defineComponent({
     const bitcoinPrice = computed(() => priceStore.bitcoinPrice);
     const profile = ref<any>({});
     const profileMeta = computed<ProfileMeta>(() => normalizeMeta(profile.value ?? {}));
+    const { mergeInto: mergePhonebookMeta, loadPhonebookProfile } =
+      usePhonebookEnrichment(creatorHex);
+    const enrichedProfileMeta = computed<ProfileMeta>(() =>
+      mergePhonebookMeta(profileMeta.value),
+    );
     const profileRelayHints = ref<string[]>([]);
     const hasLoadedRelayProfile = ref(false);
     const fallbackActive = ref(false);
@@ -950,6 +956,16 @@ export default defineComponent({
     // initialization handled in onMounted
 
     watch(
+      creatorHex,
+      (next, prev) => {
+        if (next && next !== prev) {
+          void loadPhonebookProfile();
+        }
+      },
+      { immediate: true },
+    );
+
+    watch(
       () => (route.params.npubOrHex ?? route.params.npub) as string | undefined,
       async (nextParam) => {
         const normalized = typeof nextParam === "string" ? nextParam : "";
@@ -1091,18 +1107,21 @@ export default defineComponent({
     const profileUrl = computed(() => buildProfileUrl(creatorNpub.value, router));
 
     const profileDisplayName = computed(() =>
-      displayNameFromProfile(profileMeta.value, creatorNpub.value),
+      displayNameFromProfile(enrichedProfileMeta.value, creatorNpub.value),
     );
 
     const profileHandle = computed(() => {
-      const name = typeof profileMeta.value.name === "string" ? profileMeta.value.name.trim() : "";
+      const name = typeof enrichedProfileMeta.value.name === "string" ? enrichedProfileMeta.value.name.trim() : "";
       if (name) return name;
-      const nip05 = typeof profileMeta.value.nip05 === "string" ? profileMeta.value.nip05.trim() : "";
+      const nip05 =
+        typeof enrichedProfileMeta.value.nip05 === "string"
+          ? enrichedProfileMeta.value.nip05.trim()
+          : "";
       return nip05.includes("@") ? nip05.split("@")[0] || "" : nip05;
     });
 
     const profileAvatar = computed(() =>
-      safeImageSrc(profileMeta.value.picture, profileDisplayName.value, 160),
+      safeImageSrc(enrichedProfileMeta.value.picture, profileDisplayName.value, 160),
     );
 
     const heroBannerUrl = computed(() => {
@@ -1124,7 +1143,10 @@ export default defineComponent({
     const profileInitials = computed(() => initialFromName(profileDisplayName.value));
 
     const aboutText = computed(() => {
-      const about = typeof profileMeta.value.about === "string" ? profileMeta.value.about.trim() : "";
+      const about =
+        typeof enrichedProfileMeta.value.about === "string"
+          ? enrichedProfileMeta.value.about.trim()
+          : "";
       return about;
     });
 
@@ -1152,14 +1174,14 @@ export default defineComponent({
 
     const sanitizedWebsite = computed(() =>
       normalizeUrl(
-        (profileMeta.value.website as string | null | undefined) ??
+        (enrichedProfileMeta.value.website as string | null | undefined) ??
           (profile.value?.website as string | null | undefined) ??
           null,
       ),
     );
 
     const nip05Chip = computed(() => {
-      const nip05 = profileMeta.value.nip05;
+      const nip05 = enrichedProfileMeta.value.nip05;
       if (!nip05 || typeof nip05 !== "string") return null;
       const [, domain] = nip05.split("@");
       const link = domain ? normalizeUrl(domain) : null;

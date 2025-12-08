@@ -335,7 +335,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount } from "vue";
+import { computed, onBeforeUnmount, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
@@ -343,6 +343,8 @@ import { useCreatorProfileStore } from "src/stores/creatorProfile";
 import { deriveCreatorKeys } from "src/utils/nostrKeys";
 import { useClipboard } from "src/composables/useClipboard";
 import { useCreatorProfileHydration } from "src/composables/useCreatorProfileHydration";
+import { usePhonebookEnrichment } from "src/utils/phonebookEnrichment";
+import type { ProfileMeta } from "src/utils/profile";
 
 const creatorProfile = useCreatorProfileStore();
 const router = useRouter();
@@ -356,6 +358,20 @@ const {
   hydrate: hydrateCreatorProfile,
   onProfileUpdated,
 } = useCreatorProfileHydration();
+const { mergeInto: mergePhonebookMeta, loadPhonebookProfile } =
+  usePhonebookEnrichment(computed(() => creatorProfile.pubkey));
+
+const baseProfileMeta = computed<ProfileMeta>(() => ({
+  display_name: creatorProfile.display_name ?? null,
+  name: null,
+  about: creatorProfile.about ?? null,
+  picture: creatorProfile.picture ?? null,
+  nip05: null,
+}));
+
+const enrichedProfileMeta = computed<ProfileMeta>(() =>
+  mergePhonebookMeta(baseProfileMeta.value),
+);
 
 const hydrationHeadline = computed(() =>
   hydratingProfile.value
@@ -389,11 +405,13 @@ onBeforeUnmount(() => {
 });
 
 const heroName = computed(() =>
-  creatorProfile.display_name?.trim() || t("MainHeader.menu.myProfile.title"),
+  enrichedProfileMeta.value.display_name?.trim() ||
+  enrichedProfileMeta.value.name?.trim() ||
+  t("MainHeader.menu.myProfile.title"),
 );
 
-const picture = computed(() => creatorProfile.picture || "");
-const about = computed(() => creatorProfile.about?.trim() || "");
+const picture = computed(() => enrichedProfileMeta.value.picture || "");
+const about = computed(() => enrichedProfileMeta.value.about?.trim() || "");
 const pubkey = computed(() => creatorProfile.pubkey?.trim() || "");
 
 const derivedKeys = computed(() => {
@@ -513,6 +531,18 @@ const chipStyle = computed(() => ({
 function retryHydration() {
   void hydrateCreatorProfile(true);
 }
+
+watch(
+  () => ({
+    ready: profileHydrationReady.value,
+    pubkey: pubkey.value,
+  }),
+  async ({ ready, pubkey: nextPubkey }) => {
+    if (!ready || !nextPubkey) return;
+    await loadPhonebookProfile();
+  },
+  { immediate: true },
+);
 
 function handleCopy(value: string, type: "npub" | "pubkey") {
   if (!value) return;
