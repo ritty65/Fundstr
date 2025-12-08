@@ -1961,18 +1961,17 @@ export const useCreatorsStore = defineStore("creators", {
       const controller = new AbortController();
       this.searchAbortController = controller;
 
-      let phonebookResults: PhonebookProfile[] | null = null;
+      let phonebookResponse: { results: PhonebookProfile[]; count: number } | null = null;
 
       try {
-        const phonebookResponse = await findProfiles(resolvedHex ?? normalizedQuery, controller.signal);
-        phonebookResults = phonebookResponse.results ?? [];
+        phonebookResponse = await findProfiles(resolvedHex ?? normalizedQuery, controller.signal);
       } catch (error) {
-        if (!controller.signal.aborted) {
-          console.warn("[creators] Phonebook search failed", error);
-        }
+        phonebookResponse = { query: normalizedQuery, results: [], count: 0 };
       }
 
-      if (!controller.signal.aborted && phonebookResults && phonebookResults.length) {
+      const phonebookResults = phonebookResponse?.results ?? [];
+
+      if (!controller.signal.aborted && phonebookResponse?.count && phonebookResults.length) {
         try {
           const applied = await this.applyPhonebookResults(phonebookResults, controller.signal);
           if (applied) {
@@ -2003,27 +2002,19 @@ export const useCreatorsStore = defineStore("creators", {
           if (user?.pubkey) {
             resolvedHex = user.pubkey;
           } else {
-            handleFailure("NIP-05 not found");
-            this.searching = false;
-            this.searchAbortController = null;
-            return;
+            resolvedHex = null;
           }
         } catch (error) {
           console.error("[creators] NIP-05 lookup failed", error);
-          handleFailure("Invalid identifier");
-          this.searching = false;
-          this.searchAbortController = null;
-          return;
+          resolvedHex = null;
         }
       }
 
+      if (resolvedHex && !/^[0-9a-fA-F]{64}$/.test(resolvedHex)) {
+        resolvedHex = null;
+      }
+
       if (resolvedHex) {
-        if (!/^[0-9a-fA-F]{64}$/.test(resolvedHex)) {
-          handleFailure("Invalid pubkey");
-          this.searching = false;
-          this.searchAbortController = null;
-          return;
-        }
         try {
           const creatorProfile = await this.fetchCreator(resolvedHex, fresh);
           if (creatorProfile) {

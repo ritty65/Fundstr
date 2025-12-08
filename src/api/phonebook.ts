@@ -2,17 +2,34 @@ import { nip19 } from "nostr-tools";
 
 import { debug } from "src/js/logger";
 
-const DEFAULT_FIND_PROFILES_URL = "https://api.fundstr.me/find_profiles";
+const DEFAULT_FIND_PROFILES_URL = "https://fundstr.me/find_profiles.php";
 
-const metaEnv = (typeof import.meta !== "undefined" && (import.meta as any)?.env) || {};
-const processEnv = (typeof process !== "undefined" && (process as any)?.env) || {};
+function resolveFindProfilesUrl(): string {
+  const metaEnv = (typeof import.meta !== "undefined" && (import.meta as any)?.env) || {};
+  const processEnv = (typeof process !== "undefined" && (process as any)?.env) || {};
 
-const rawBaseUrl =
-  (typeof metaEnv.VITE_FIND_PROFILES_URL === "string" && metaEnv.VITE_FIND_PROFILES_URL.trim()) ||
-  (typeof processEnv.VITE_FIND_PROFILES_URL === "string" && processEnv.VITE_FIND_PROFILES_URL.trim()) ||
-  DEFAULT_FIND_PROFILES_URL;
+  const raw =
+    (typeof metaEnv.VITE_FIND_PROFILES_URL === "string" && metaEnv.VITE_FIND_PROFILES_URL.trim()) ||
+    (typeof processEnv.VITE_FIND_PROFILES_URL === "string" && processEnv.VITE_FIND_PROFILES_URL.trim()) ||
+    DEFAULT_FIND_PROFILES_URL;
 
-const FIND_PROFILES_URL = rawBaseUrl.replace(/\/+$/, "");
+  const lower = raw.toLowerCase();
+
+  if (lower.includes("api.fundstr.me/find_profiles")) {
+    if (typeof console !== "undefined") {
+      console.warn(
+        "[phonebook] VITE_FIND_PROFILES_URL points at api.fundstr.me/find_profiles, " +
+          "which does not host the phonebook. Falling back to",
+        DEFAULT_FIND_PROFILES_URL,
+      );
+    }
+    return DEFAULT_FIND_PROFILES_URL;
+  }
+
+  return raw;
+}
+
+const FIND_PROFILES_URL = resolveFindProfilesUrl();
 
 export interface PhonebookProfile {
   pubkey: string;
@@ -72,7 +89,23 @@ export async function findProfiles(
     });
 
     if (!response.ok) {
-      throw new Error(`Phonebook lookup failed (${response.status})`);
+      try {
+        const errorText = await response.text();
+        if (errorText) {
+          try {
+            const payload = JSON.parse(errorText) as any;
+            if (payload?.error) {
+              console.warn("[phonebook] lookup responded with error", payload.error);
+            }
+          } catch {
+            // ignore malformed error payloads
+          }
+        }
+      } catch {
+        // ignore secondary failures
+      }
+
+      return { query: trimmedQuery, results: [], count: 0 };
     }
 
     const text = await response.text();
@@ -81,8 +114,20 @@ export async function findProfiles(
       return { query: trimmedQuery, results: [], count: 0 };
     }
 
-    const payload = JSON.parse(text) as any;
+    let payload: any;
+    try {
+      payload = JSON.parse(text) as any;
+    } catch (parseError) {
+      console.warn("[phonebook] Unexpected response payload; treating as empty", parseError);
+      return { query: trimmedQuery, results: [], count: 0 };
+    }
+
     const rawResults = Array.isArray(payload?.results) ? payload.results : [];
+    if (!Array.isArray(payload?.results)) {
+      console.warn("[phonebook] Unexpected phonebook payload, treating as empty", payload);
+      return { query: trimmedQuery, results: [], count: 0 };
+    }
+
     const normalized = rawResults
       .map((entry) => normalizeProfile(entry))
       .filter((entry): entry is PhonebookProfile => Boolean(entry));
@@ -101,10 +146,11 @@ export async function findProfiles(
       count,
     };
   } catch (error) {
-    if (signal?.aborted) {
-      throw error;
+    const name = (error as { name?: unknown })?.name;
+    if (signal?.aborted || name === "AbortError") {
+      return { query: trimmedQuery, results: [], count: 0 };
     }
-    console.warn("[phonebook] findProfiles failed; falling back to discovery", error);
+    console.warn("[phonebook] findProfiles failed; falling back to discovery", trimmedQuery, error);
     return { query: trimmedQuery, results: [], count: 0 };
   }
 }
