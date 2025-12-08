@@ -209,15 +209,25 @@
                     <div class="empty-illustration__halo">
                       <q-icon name="travel_explore" size="3.5rem" class="text-accent-500" />
                     </div>
-                    <div class="empty-badges">
-                      <span class="badge-pill">
-                        <q-icon name="bolt" size="18px" />
-                        Lightning builders
-                      </span>
-                      <span class="badge-pill badge-pill--muted">
-                        <q-icon name="verified" size="18px" />
-                        NIP-05 ready
-                      </span>
+                    <div class="empty-badges" role="group" aria-label="Quick filter toggles">
+                      <div
+                        v-for="action in emptyStateFilterActions"
+                        :key="action.key"
+                        class="badge-toggle"
+                      >
+                        <q-btn
+                          outline
+                          color="accent"
+                          no-caps
+                          size="sm"
+                          padding="10px 14px"
+                          :icon="action.icon"
+                          :label="action.label"
+                          :aria-label="action.ariaLabel || action.label"
+                          @click="applyFilterSampleAction(action)"
+                        />
+                        <div class="text-caption text-2 badge-toggle__helper">{{ action.helper }}</div>
+                      </div>
                     </div>
                   </div>
                   <div class="text-h6 text-1">{{ emptyStateTitle }}</div>
@@ -256,7 +266,7 @@
                       />
                     </div>
                     <div class="text-body2 text-2 helper-text">
-                      Quick start with a suggested search, paste an npub, or jump to our curated list.
+                      Run a filtered sample search with the toggles above, try a suggested search, paste an npub, or jump to our curated list.
                     </div>
                   </div>
                 </div>
@@ -518,10 +528,38 @@ const initialLoadComplete = ref(false);
 const searchSkeletonPlaceholders = [0, 1, 2];
 const featuredSkeletonPlaceholders = [0, 1, 2, 3, 4, 5];
 
+type EmptyStateFilterAction = {
+  key: FilterKey;
+  label: string;
+  icon: string;
+  helper: string;
+  sampleQuery: string;
+  ariaLabel?: string;
+};
+
 const sampleQueries = [
   { label: 'Lightning devs', value: 'lightning' },
   { label: 'NIP-05 creators', value: 'nip-05' },
   { label: 'Zaps & tipping', value: 'zap me' },
+];
+
+const emptyStateFilterActions: EmptyStateFilterAction[] = [
+  {
+    key: 'hasLightning',
+    label: 'Lightning builders',
+    icon: 'bolt',
+    helper: 'Filters to creators ready for lightning zaps.',
+    sampleQuery: 'lightning',
+    ariaLabel: 'Search lightning-ready creators and enable the lightning filter',
+  },
+  {
+    key: 'nip05Verified',
+    label: 'NIP-05 ready',
+    icon: 'verified',
+    helper: 'Shows creators with verified NIP-05 handles.',
+    sampleQuery: 'nip-05',
+    ariaLabel: 'Search verified NIP-05 creators and enable the verification filter',
+  },
 ];
 
 const filterChips: { key: FilterKey; label: string }[] = [
@@ -925,6 +963,15 @@ const applySampleQuery = (query: string) => {
   triggerImmediateSearch();
 };
 
+const applyFilterSampleAction = (action: EmptyStateFilterAction) => {
+  activeFilters.value = {
+    ...activeFilters.value,
+    [action.key]: true,
+  };
+
+  applySampleQuery(action.sampleQuery);
+};
+
 const pasteNpubFromClipboard = async () => {
   if (!navigator?.clipboard?.readText) {
     notifyWarning('Clipboard access is unavailable. Paste manually instead.');
@@ -1228,25 +1275,20 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 8px;
+  gap: 12px;
 }
 
-.badge-pill {
-  display: inline-flex;
-  align-items: center;
+.badge-toggle {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent-200) 22%, transparent);
-  color: var(--text-1);
-  border: 1px solid color-mix(in srgb, var(--accent-200) 50%, transparent);
-  font-weight: 600;
+  align-items: stretch;
+  width: 100%;
+  min-width: 180px;
 }
 
-.badge-pill--muted {
-  background: color-mix(in srgb, var(--surface-2) 90%, var(--chip-bg));
-  color: var(--text-2);
-  border-color: var(--surface-contrast-border);
+.badge-toggle__helper {
+  line-height: 1.35;
 }
 
 .empty-actions {
@@ -1260,6 +1302,10 @@ h1 {
 
 @media (min-width: 600px) {
   .sample-queries .q-btn {
+    width: auto;
+  }
+
+  .badge-toggle {
     width: auto;
   }
 }
