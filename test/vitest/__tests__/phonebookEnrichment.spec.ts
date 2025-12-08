@@ -29,6 +29,24 @@ describe("mergeProfileMetaFromPhonebook", () => {
     expect(merged.nip05).toBe("user@example.com");
   });
 
+  it("treats whitespace-only fields as missing", () => {
+    const existing = {
+      display_name: "   ",
+      name: "nostrname", // name already present, should not be overridden
+      about: "   \t ",
+      picture: "  \n  ",
+      nip05: " ",
+    };
+
+    const merged = mergeProfileMetaFromPhonebook(existing, phonebookProfile);
+
+    expect(merged.display_name).toBe("Display Name");
+    expect(merged.name).toBe("nostrname");
+    expect(merged.about).toBe("About from phonebook");
+    expect(merged.picture).toBe("https://example.com/pic.png");
+    expect(merged.nip05).toBe("user@example.com");
+  });
+
   it("does not override existing profile data", () => {
     const existing = {
       display_name: "Existing name",

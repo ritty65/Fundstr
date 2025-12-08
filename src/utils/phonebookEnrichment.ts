@@ -9,7 +9,8 @@ function normalizeField(value?: string | null): string | null {
 }
 
 function isMissing(value: string | null | undefined): boolean {
-  return value === undefined || value === null || value === "";
+  if (value === undefined || value === null) return true;
+  return normalizeField(value) === null;
 }
 
 export function mergeProfileMetaFromPhonebook(
