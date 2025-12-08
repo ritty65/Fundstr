@@ -144,15 +144,38 @@ describe("Creators store", () => {
     expect(creators.searchResults[0].pubkey).toBe(pubkey);
   });
 
-  it("handles invalid npub", async () => {
+  it("treats invalid npub as plain query and searches phonebook", async () => {
+    const pubkey = "b".repeat(64);
     (nip19.decode as any).mockImplementation(() => {
       throw new Error("bad");
     });
+    findProfilesMock.mockResolvedValueOnce({
+      query: "npubbad",
+      results: [
+        {
+          pubkey,
+          name: "bad npub",
+          display_name: "Bad npub",
+          about: "Invalid npub should still search",
+          picture: "https://example.com/avatar.png",
+          nip05: null,
+        },
+      ],
+      count: 1,
+    });
+    getCreatorsByPubkeysMock.mockResolvedValueOnce({
+      results: [makeCreator(pubkey)],
+      warnings: [],
+    });
     const creators = useCreatorsStore();
+    creators.fetchCreator = vi.fn().mockResolvedValue(null) as any;
+
     await creators.searchCreators("npubbad");
 
-    expect(creators.searchResults.length).toBe(0);
-    expect(creators.error).toBe("Invalid identifier");
+    expect(findProfilesMock).toHaveBeenCalledWith("npubbad", expect.any(AbortSignal));
+    expect(creators.searchResults.length).toBe(1);
+    expect(creators.searchResults[0].pubkey).toBe(pubkey);
+    expect(creators.error).toBe("");
   });
 
   it("handles invalid hex", async () => {
