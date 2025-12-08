@@ -1955,12 +1955,7 @@ export const useCreatorsStore = defineStore("creators", {
 
       if (normalizedQuery.startsWith("npub") || normalizedQuery.startsWith("nprofile")) {
         resolvedHex = resolveNip19(normalizedQuery);
-        if (!resolvedHex) {
-          handleFailure("Invalid identifier");
-          this.searching = false;
-          this.searchAbortController = null;
-          return;
-        }
+        resolvedHex ??= null;
       }
 
       const controller = new AbortController();
