@@ -322,6 +322,95 @@
                   <span class="status-banner__text">{{ featuredWarningMessage }}</span>
                 </q-banner>
                 <div class="featured-grid-container">
+                  <div class="featured-legend" aria-label="Legend for featured badges">
+                    <div class="legend-header" :class="{ 'legend-header--mobile': isMobileScreen }">
+                      <div class="legend-title text-subtitle1 text-1">Badge legend</div>
+                      <q-btn
+                        v-if="isMobileScreen"
+                        dense
+                        flat
+                        no-caps
+                        color="accent"
+                        class="legend-toggle"
+                        :icon="legendExpanded ? 'expand_less' : 'expand_more'"
+                        :label="legendExpanded ? 'Hide' : 'Show'"
+                        @click="toggleLegend"
+                      />
+                    </div>
+
+                    <div
+                      v-show="!isMobileScreen || legendExpanded"
+                      class="legend-content"
+                      role="list"
+                    >
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <q-badge color="accent" class="badge badge-featured">Featured</q-badge>
+                        </div>
+                        <div class="legend-text text-2">Fundstr-curated pick</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip accent">
+                            <q-icon name="verified_user" size="14px" />
+                            <span>Creator</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Creator account</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip accent">
+                            <q-icon name="verified_user" size="14px" />
+                            <span>Personal</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Personal supporter profile</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip accent">
+                            <q-icon name="bolt" size="14px" />
+                            <span>Lightning</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Lightning-ready for zaps</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip accent">
+                            <q-icon name="sell" size="14px" />
+                            <span>Has tiers</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Subscription tiers available</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip muted">
+                            <q-icon name="alternate_email" size="14px" />
+                            <span>NIP-05</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Verified NIP-05 handle</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip neutral">
+                            <q-icon name="data_thresholding" size="14px" />
+                            <span>Cache hit</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Data pulled from cache</div>
+                      </div>
+                    </div>
+                  </div>
                   <div class="featured-grid">
                     <CreatorCard
                       v-for="profile in featuredCreators"
@@ -692,6 +781,17 @@ const refreshFeatured = async () => {
   await loadFeatured(true);
 };
 
+const isMobileScreen = computed(() => $q.screen.lt.md);
+const legendExpanded = ref(!$q.screen.lt.md);
+
+watch(isMobileScreen, (isMobile) => {
+  legendExpanded.value = !isMobile;
+});
+
+const toggleLegend = () => {
+  legendExpanded.value = !legendExpanded.value;
+};
+
 watch(searchWarnings, (warnings) => {
   if (Array.isArray(warnings) && warnings.length > 0) {
     debug('Search warnings:', warnings);
@@ -914,6 +1014,113 @@ onMounted(() => {
   max-width: 1400px;
   margin: 0 auto;
   padding-inline: clamp(0px, 3vw, 16px);
+}
+
+.featured-legend {
+  background: var(--surface-1);
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.legend-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.legend-header--mobile {
+  margin-bottom: 0;
+}
+
+.legend-title {
+  font-weight: 700;
+}
+
+.legend-toggle {
+  padding: 4px 8px;
+}
+
+.legend-content {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  padding-top: 0.25rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.25rem 0;
+}
+
+.legend-chip {
+  flex-shrink: 0;
+}
+
+.legend-text {
+  line-height: 1.3;
+}
+
+.badge {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.badge-featured {
+  background: var(--accent-200);
+  color: var(--text-1);
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  line-height: 1;
+  background: var(--chip-bg);
+  color: var(--text-2);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 55%, transparent);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.status-chip.accent {
+  color: var(--accent-500);
+  background: color-mix(in srgb, var(--accent-200) 45%, transparent);
+  border-color: color-mix(in srgb, var(--accent-500) 40%, transparent);
+}
+
+.status-chip.muted {
+  background: color-mix(in srgb, var(--chip-bg) 80%, transparent);
+  color: var(--text-2);
+}
+
+.status-chip.neutral {
+  background: color-mix(in srgb, var(--chip-bg) 60%, transparent);
+  border-color: color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+}
+
+.status-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-200);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 767px) {
+  .legend-content {
+    grid-template-columns: 1fr;
+  }
+
+  .featured-legend {
+    margin-bottom: 0.5rem;
+  }
 }
 
 h1 {
