@@ -107,10 +107,10 @@
                         :key="filter.key"
                         clickable
                         dense
-                        outline
                         square
                         class="filter-chip"
-                        :color="activeFilters[filter.key] ? 'accent' : 'grey-6'"
+                        :color="activeFilters[filter.key] ? 'accent' : 'accent-200'"
+                        :outline="!activeFilters[filter.key]"
                         :text-color="activeFilters[filter.key] ? 'white' : 'text-2'"
                         :selected="activeFilters[filter.key]"
                         @click="toggleFilter(filter.key)"
@@ -357,7 +357,13 @@ import {
 import { useDonationPrompt } from '@/composables/useDonationPrompt';
 import { useI18n } from 'vue-i18n';
 
-type FilterKey = 'hasTiers' | 'hasLightning' | 'featured';
+type FilterKey =
+  | 'hasTiers'
+  | 'hasLightning'
+  | 'featured'
+  | 'nip05Verified'
+  | 'fundstrCreator'
+  | 'signalOnly';
 type SortOption = 'relevance' | 'followers';
 
 const creatorsStore = useCreatorsStore();
@@ -388,6 +394,9 @@ const filterChips: { key: FilterKey; label: string }[] = [
   { key: 'hasTiers', label: 'Has tiers' },
   { key: 'hasLightning', label: 'Has lightning' },
   { key: 'featured', label: 'Featured' },
+  { key: 'nip05Verified', label: 'NIP-05 verified' },
+  { key: 'fundstrCreator', label: 'Fundstr creator' },
+  { key: 'signalOnly', label: 'Signal only' },
 ];
 
 const sortOptions = [
@@ -399,6 +408,9 @@ const activeFilters = ref<Record<FilterKey, boolean>>({
   hasTiers: false,
   hasLightning: false,
   featured: false,
+  nip05Verified: false,
+  fundstrCreator: false,
+  signalOnly: false,
 });
 
 const sortOption = ref<SortOption>('relevance');

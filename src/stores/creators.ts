@@ -47,6 +47,9 @@ export type CreatorSearchFilters = {
   hasTiers?: boolean;
   hasLightning?: boolean;
   featured?: boolean;
+  nip05Verified?: boolean;
+  fundstrCreator?: boolean;
+  signalOnly?: boolean;
 };
 
 export type CreatorSearchSort = "relevance" | "followers";
@@ -1349,6 +1352,18 @@ function toNullableString(value: unknown): string | null {
   return trimmed.length ? trimmed : null;
 }
 
+function isTruthyFlag(value: unknown): boolean {
+  if (value === true) return true;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return ["true", "1", "yes"].includes(normalized);
+  }
+  if (typeof value === "number") {
+    return value === 1;
+  }
+  return false;
+}
+
 function computeTierSummary(tiers: Tier[] | null | undefined) {
   if (!Array.isArray(tiers) || tiers.length === 0) {
     return null;
@@ -1461,23 +1476,11 @@ function creatorHasLightning(profile: CreatorProfile): boolean {
     return true;
   }
 
-  const isTruthy = (value: unknown) => {
-    if (value === true) return true;
-    if (typeof value === "string") {
-      const normalized = value.trim().toLowerCase();
-      return normalized === "true" || normalized === "1" || normalized === "yes";
-    }
-    if (typeof value === "number") {
-      return value === 1;
-    }
-    return false;
-  };
-
   const hasNutzapSignal = [
     profileRecord["has_nutzap"],
     metaRecord["has_nutzap"],
     (profile as Record<string, unknown> | null | undefined)?.["has_nutzap"],
-  ].some(isTruthy);
+  ].some(isTruthyFlag);
 
   if (hasNutzapSignal) {
     return true;
@@ -1497,6 +1500,72 @@ function creatorHasLightning(profile: CreatorProfile): boolean {
   return normalizedCandidates.some((candidate) => candidate.includes("lnbc"));
 }
 
+function creatorHasVerifiedNip05(profile: CreatorProfile): boolean {
+  const profileRecord = (profile?.profile ?? {}) as Record<string, unknown>;
+  const metaRecord = (profile?.meta ?? {}) as Record<string, unknown>;
+
+  const verificationFlags = [
+    (profile as Record<string, unknown> | null | undefined)?.["nip05_verified"],
+    profileRecord["nip05_verified"],
+    profileRecord["nip05Verified"],
+    profileRecord["nip05_valid"],
+    metaRecord["nip05_verified"],
+    metaRecord["nip05Verified"],
+    metaRecord["nip05_valid"],
+    metaRecord["verified_nip05"],
+  ];
+
+  if (verificationFlags.some(isTruthyFlag)) {
+    return true;
+  }
+
+  const nip05Value =
+    toNullableString(profile.nip05) ??
+    toNullableString(profileRecord["nip05"]) ??
+    toNullableString(metaRecord["nip05"]);
+
+  const verifiedHandle = toNullableString(metaRecord["nip05_verified_value"]);
+
+  return Boolean(
+    nip05Value &&
+      verifiedHandle &&
+      nip05Value.trim().toLowerCase() === verifiedHandle.trim().toLowerCase(),
+  );
+}
+
+function creatorIsFundstrCreator(profile: CreatorProfile): boolean {
+  if (profile.isCreator !== undefined && profile.isCreator !== null) {
+    return Boolean(profile.isCreator);
+  }
+
+  const profileRecord = (profile?.profile ?? {}) as Record<string, unknown>;
+  const metaRecord = (profile?.meta ?? {}) as Record<string, unknown>;
+
+  return [
+    (profile as Record<string, unknown> | null | undefined)?.["fundstrCreator"],
+    profileRecord["fundstr_creator"],
+    profileRecord["fundstrCreator"],
+    metaRecord["fundstr_creator"],
+    metaRecord["fundstrCreator"],
+  ].some(isTruthyFlag);
+}
+
+function creatorIsSignalOnly(profile: CreatorProfile): boolean {
+  const profileRecord = (profile?.profile ?? {}) as Record<string, unknown>;
+  const metaRecord = (profile?.meta ?? {}) as Record<string, unknown>;
+
+  const candidates = [
+    (profile as Record<string, unknown> | null | undefined)?.["signalOnly"],
+    profileRecord["signal_only"],
+    profileRecord["signalOnly"],
+    metaRecord["signal_only"],
+    metaRecord["signalOnly"],
+    profile.metrics?.signal_only,
+  ];
+
+  return candidates.some(isTruthyFlag);
+}
+
 function applyCreatorFilters(
   profiles: CreatorProfile[],
   filters: CreatorSearchFilters = {},
@@ -1512,6 +1581,18 @@ function applyCreatorFilters(
     }
 
     if (filters.featured && !profile.featured) {
+      return false;
+    }
+
+    if (filters.nip05Verified && !creatorHasVerifiedNip05(profile)) {
+      return false;
+    }
+
+    if (filters.fundstrCreator && !creatorIsFundstrCreator(profile)) {
+      return false;
+    }
+
+    if (filters.signalOnly && !creatorIsSignalOnly(profile)) {
       return false;
     }
 
