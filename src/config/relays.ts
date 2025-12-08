@@ -1,5 +1,20 @@
-export const FUNDSTR_PRIMARY_RELAY = 'wss://relay.nostr.band';
-export const FUNDSTR_PRIMARY_RELAY_HTTP = 'https://relay.nostr.band';
+const metaEnv = (typeof import.meta !== 'undefined' && (import.meta as any)?.env) || {};
+const processEnv = (typeof process !== 'undefined' && (process as any)?.env) || {};
+
+function pickRelayUrl(key: string, fallback: string): string {
+  const metaValue = typeof metaEnv[key] === 'string' ? metaEnv[key].trim() : '';
+  const processValue = typeof processEnv[key] === 'string' ? processEnv[key].trim() : '';
+
+  if (metaValue) return metaValue;
+  if (processValue) return processValue;
+  return fallback;
+}
+
+export const FUNDSTR_PRIMARY_RELAY = pickRelayUrl('VITE_FUNDSTR_PRIMARY_RELAY_WSS', 'wss://relay.nostr.band');
+export const FUNDSTR_PRIMARY_RELAY_HTTP = pickRelayUrl(
+  'VITE_FUNDSTR_PRIMARY_RELAY_HTTP',
+  'https://relay.nostr.band',
+);
 export const PRIMARY_RELAY = FUNDSTR_PRIMARY_RELAY;
 
 export const FALLBACK_RELAYS: string[] = [
