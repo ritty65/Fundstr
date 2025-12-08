@@ -25,6 +25,8 @@ export default defineConfig({
       "test/vitest/__tests__/buckets.spec.ts",
       "test/vitest/__tests__/creators.spec.ts",
       "test/vitest/__tests__/phonebook.spec.ts",
+      "test/vitest/__tests__/dmSuggestions.spec.ts",
+      "test/vitest/__tests__/NewChat.suggestions.spec.ts",
       "test/vitest/__tests__/creators-tiers.spec.ts",
       "test/vitest/__tests__/CreatorStudioPage.publish.spec.ts",
       "test/vitest/__tests__/creatorCard.discovery.spec.ts",
