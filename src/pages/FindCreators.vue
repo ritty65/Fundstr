@@ -522,6 +522,17 @@ const {
   featuredStatusMessage: storeFeaturedStatusMessage,
 } = storeToRefs(creatorsStore);
 
+const router = useRouter();
+const route = useRoute();
+const $q = useQuasar();
+const nostr = useNostrStore();
+const messenger = useMessengerStore();
+const mintsStore = useMintsStore();
+const bucketsStore = useBucketsStore();
+const uiStore = useUiStore();
+const { open: openDonationPrompt } = useDonationPrompt();
+const { t } = useI18n();
+
 const searchQuery = ref('');
 const initialLoadComplete = ref(false);
 
@@ -836,16 +847,6 @@ watch(searchWarnings, (warnings) => {
   }
 });
 
-const router = useRouter();
-const route = useRoute();
-const $q = useQuasar();
-const nostr = useNostrStore();
-const messenger = useMessengerStore();
-const mintsStore = useMintsStore();
-const bucketsStore = useBucketsStore();
-const uiStore = useUiStore();
-const { open: openDonationPrompt } = useDonationPrompt();
-const { t } = useI18n();
 const showProfileModal = ref(false);
 const selectedProfilePubkey = ref('');
 const featuredSectionRef = ref<HTMLElement | ComponentPublicInstance | null>(null);
