@@ -323,6 +323,7 @@ function normalizeCreator(row: CreatorRow): LegacyCreator {
   const metaRecord = toRecord(row.meta) ?? {};
   const profile: Record<string, unknown> = { ...metaRecord };
   const tiers = Array.isArray(row.tiers) ? row.tiers.map(normalizeTier).filter(Boolean) : [];
+  const metricsRecord = toRecord((row as Record<string, unknown> | null | undefined)?.['metrics']) ?? null;
 
   const lightning = normalizeLightning(profile);
   if (lightning) {
@@ -354,6 +355,29 @@ function normalizeCreator(row: CreatorRow): LegacyCreator {
     profile.nip05_verified_value = nip05VerifiedValue;
   }
 
+  const followerCandidates = [
+    metricsRecord?.followers,
+    (metricsRecord as Record<string, unknown> | null | undefined)?.['followers_count'],
+    (metricsRecord as Record<string, unknown> | null | undefined)?.['followersCount'],
+    (row as Record<string, unknown> | null | undefined)?.['followers'],
+  ];
+
+  const followers = followerCandidates.reduce<number | null>((acc, candidate) => {
+    if (acc !== null) {
+      return acc;
+    }
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+      return Number(candidate);
+    }
+    if (typeof candidate === 'string') {
+      const parsed = Number(candidate);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return null;
+  }, null);
+
   const nip05VerificationFlags = [
     (row as Record<string, unknown> | null | undefined)?.['nip05_verified'],
     (row as Record<string, unknown> | null | undefined)?.['nip05Verified'],
@@ -381,7 +405,7 @@ function normalizeCreator(row: CreatorRow): LegacyCreator {
   return {
     pubkey,
     profile,
-    followers: null,
+    followers,
     following: null,
     joined: null,
     displayName,
