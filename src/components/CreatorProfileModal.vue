@@ -230,6 +230,7 @@ import type { CreatorProfile } from 'stores/creators';
 const props = defineProps<{
   show: boolean;
   pubkey: string;
+  initialProfile?: CreatorProfile | null;
 }>();
 
 const emit = defineEmits(['close', 'message', 'donate']);
@@ -268,6 +269,17 @@ const carouselViewportRef = ref<HTMLElement | null>(null);
 const creatorsStore = useCreatorsStore();
 
 let currentRequestId = 0;
+
+function getInitialProfileFallback(pubkey: string | null | undefined): CreatorProfile | null {
+  if (!pubkey) {
+    return null;
+  }
+  const initialProfile = props.initialProfile;
+  if (initialProfile && initialProfile.pubkey === pubkey) {
+    return initialProfile;
+  }
+  return null;
+}
 
 const activeTierAnnouncement = computed(() => {
   const total = tiers.value.length;
@@ -486,7 +498,7 @@ watch(
       resetState();
       return;
     }
-    syncStateFromStore(pubkey);
+    syncStateFromStore(pubkey, getInitialProfileFallback(pubkey));
   },
   { immediate: true },
 );
@@ -497,10 +509,24 @@ watch(
     if (!showLocal.value || !props.pubkey) {
       return;
     }
-    syncStateFromStore(props.pubkey);
+    syncStateFromStore(props.pubkey, getInitialProfileFallback(props.pubkey));
     activeTierIndex.value = 0;
   },
   { immediate: true, deep: true },
+);
+
+watch(
+  () => props.initialProfile,
+  (initialProfile) => {
+    if (!showLocal.value || !props.pubkey || !initialProfile) {
+      return;
+    }
+
+    if (initialProfile.pubkey === props.pubkey) {
+      syncStateFromStore(props.pubkey, initialProfile);
+    }
+  },
+  { deep: true },
 );
 
 function onAvatarError(event: Event) {
@@ -541,6 +567,7 @@ watch(
   (visible) => {
     showLocal.value = visible;
     if (visible && props.pubkey) {
+      syncStateFromStore(props.pubkey, getInitialProfileFallback(props.pubkey));
       void loadCreatorProfile(props.pubkey);
     }
     if (!visible) {
@@ -576,11 +603,12 @@ async function loadCreatorProfile(pubkey: string) {
     return;
   }
 
+  const fallbackProfile = getInitialProfileFallback(pubkey);
   const requestId = ++currentRequestId;
   loading.value = true;
   loadError.value = null;
 
-  syncStateFromStore(pubkey);
+  syncStateFromStore(pubkey, fallbackProfile);
 
   try {
     const profile = await creatorsStore.fetchCreator(pubkey);
