@@ -1058,11 +1058,35 @@ onMounted(() => {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
+@media (min-width: 1200px) {
+  .featured-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+}
+
+@media (min-width: 1600px) {
+  .featured-grid {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  }
+}
+
 .featured-grid-container {
   width: 100%;
-  max-width: 1400px;
+  max-width: min(100%, 160rem);
   margin: 0 auto;
   padding-inline: clamp(0px, 3vw, 16px);
+}
+
+@media (min-width: 1600px) {
+  .featured-grid-container {
+    max-width: min(100%, 180rem);
+  }
+}
+
+@media (min-width: 1920px) {
+  .featured-grid-container {
+    max-width: min(100%, 200rem);
+  }
 }
 
 .featured-legend {
