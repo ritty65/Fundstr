@@ -617,8 +617,7 @@ async function loadCreatorProfile(pubkey: string) {
     }
 
     if (!profile) {
-      creator.value = null;
-      tiers.value = [];
+      loadError.value = "We couldn't refresh this creator right now. Showing saved details.";
       return;
     }
 
@@ -628,9 +627,10 @@ async function loadCreatorProfile(pubkey: string) {
   } catch (error) {
     if (requestId === currentRequestId) {
       console.error('[CreatorProfileModal] Failed to load creator profile', error);
-      creator.value = null;
-      tiers.value = [];
-      const message = error instanceof Error && error.message ? error.message : 'Unable to load creator profile.';
+      const message =
+        error instanceof Error && error.message
+          ? `${error.message} Showing saved details.`
+          : "We couldn't refresh this creator right now. Showing saved details.";
       loadError.value = message;
     }
   } finally {
