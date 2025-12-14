@@ -661,12 +661,31 @@ const creatorHasVerifiedNip05 = (profile: CreatorProfile) => {
   const profileRecord = (profile?.profile ?? {}) as Record<string, unknown>;
   const metaRecord = (profile?.meta ?? {}) as Record<string, unknown>;
 
+  const verificationFlags = [
+    (profile as Record<string, unknown> | null | undefined)?.['nip05_verified'],
+    profileRecord['nip05_verified'],
+    profileRecord['nip05Verified'],
+    profileRecord['nip05_valid'],
+    metaRecord['nip05_verified'],
+    metaRecord['nip05Verified'],
+    metaRecord['nip05_valid'],
+    metaRecord['verified_nip05'],
+    metaRecord['nip05_verified_value'],
+  ];
+
+  if (verificationFlags.some(isTruthyFlag)) {
+    return true;
+  }
+
   const nip05Value =
     toNullableString(profile.nip05) ??
     toNullableString(profileRecord['nip05']) ??
     toNullableString(metaRecord['nip05']);
 
-  const verifiedHandle = toNullableString(metaRecord['nip05_verified_value']);
+  const verifiedHandle =
+    toNullableString(metaRecord['nip05_verified_value']) ??
+    toNullableString(profileRecord['nip05_verified_value']) ??
+    toNullableString((profile as Record<string, unknown> | null | undefined)?.['nip05_verified_value']);
 
   return Boolean(
     nip05Value &&

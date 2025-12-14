@@ -178,7 +178,23 @@ const meta = computed<ProfileMeta>(() => {
   return { ...profileMeta, ...extraMeta, ...directMeta };
 });
 
+const toNullableString = (value: unknown) =>
+  typeof value === 'string' && value.trim().length > 0 ? value : null;
+
+const isTruthyFlag = (value: unknown) => {
+  if (value === true) return true;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'true' || normalized === '1' || normalized === 'yes';
+  }
+  if (typeof value === 'number') {
+    return value === 1;
+  }
+  return false;
+};
+
 const profileRecord = computed(() => (props.profile?.profile ?? {}) as Record<string, unknown>);
+const metaRecord = computed(() => (meta.value ?? {}) as Record<string, unknown>);
 
 const npub = computed(() => {
   const pubkey = props.profile?.pubkey ?? '';
@@ -203,6 +219,44 @@ function onAvatarError(event: Event) {
 }
 
 const nip05 = computed(() => props.nip05 ?? meta.value.nip05 ?? '');
+
+const nip05VerifiedValue = computed(() =>
+  toNullableString(
+    metaRecord.value['nip05_verified_value'] ??
+      profileRecord.value['nip05_verified_value'] ??
+      (props.profile as Record<string, unknown> | null | undefined)?.['nip05_verified_value'],
+  ),
+);
+
+const nip05Verified = computed(() => {
+  if (props.profile.nip05Verified !== undefined && props.profile.nip05Verified !== null) {
+    return Boolean(props.profile.nip05Verified);
+  }
+
+  const verificationFlags = [
+    (props.profile as Record<string, unknown> | null | undefined)?.['nip05_verified'],
+    profileRecord.value['nip05_verified'],
+    profileRecord.value['nip05Verified'],
+    profileRecord.value['nip05_valid'],
+    metaRecord.value['nip05_verified'],
+    metaRecord.value['nip05Verified'],
+    metaRecord.value['nip05_valid'],
+    metaRecord.value['verified_nip05'],
+  ];
+
+  if (verificationFlags.some(isTruthyFlag)) {
+    return true;
+  }
+
+  const nip05Value = toNullableString(nip05.value);
+  const verifiedHandle = nip05VerifiedValue.value;
+
+  return Boolean(
+    nip05Value &&
+      verifiedHandle &&
+      nip05Value.trim().toLowerCase() === verifiedHandle.trim().toLowerCase(),
+  );
+});
 
 const aboutPreview = computed(() => (typeof meta.value.about === 'string' ? meta.value.about.trim() : ''));
 
@@ -411,13 +465,13 @@ const statusChips = computed<StatusChip[]>(() => {
     });
   }
 
-  if (nip05.value) {
+  if (nip05Verified.value) {
     chips.push({
-      key: 'nip05',
-      label: nip05.value,
-      icon: 'alternate_email',
-      variant: 'muted',
-      ariaLabel: `NIP-05 identifier ${nip05.value}`,
+      key: 'nip05-verified',
+      label: 'NIP-05 verified',
+      icon: 'task_alt',
+      variant: 'accent',
+      ariaLabel: 'NIP-05 handle verified',
     });
   }
 
