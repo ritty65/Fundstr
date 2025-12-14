@@ -52,6 +52,7 @@ export default defineConfig({
       "test/cashu-sendQueue.spec.ts",
       "test/encryptNip04.spec.ts",
       "test/dexie-migrations.spec.ts",
+      "test/findCreators.redirect.spec.ts",
       "test/MediaPreview.sanitize.spec.ts",
       "test/lib/fundstrApi.spec.ts",
       "test/lib/discoveryApi.spec.ts",

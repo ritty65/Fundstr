@@ -520,6 +520,7 @@ import {
   SPLIT_SUPPORT_REQUIRED_MESSAGE,
 } from 'src/utils/nuts';
 import { useDonationPrompt } from '@/composables/useDonationPrompt';
+import { captureTelemetryWarning } from 'src/utils/telemetry/sentry';
 import { useI18n } from 'vue-i18n';
 import {
   creatorHasVerifiedNip05,
@@ -865,6 +866,15 @@ const hasFundedBucket = computed(() =>
 );
 
 function viewProfile(profile: CreatorProfile) {
+  if (!profile?.pubkey) {
+    notifyError('We could not open this profile because its public key is missing.');
+    captureTelemetryWarning('findCreators.missingPubkey', {
+      profileId: profile?.id ?? profile?.nip05 ?? profile?.name ?? 'unknown',
+      profile,
+    });
+    return;
+  }
+
   selectedProfilePubkey.value = profile.pubkey;
   selectedProfile.value = profile;
   showProfileModal.value = true;
