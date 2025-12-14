@@ -231,8 +231,6 @@ const tierSummaryText = computed(() => {
 
 const followers = computed(() => props.profile.followers ?? null);
 
-const tierDataFresh = computed(() => props.profile?.tierDataFresh !== false);
-
 const inferredHasTiers = computed(() => {
   if (props.profile.hasTiers !== undefined && props.profile.hasTiers !== null) {
     return Boolean(props.profile.hasTiers);
@@ -256,10 +254,6 @@ const hasTiers = computed(() => {
 const inferredHasLightning = computed(() => {
   if (props.profile.hasLightning !== undefined && props.profile.hasLightning !== null) {
     return Boolean(props.profile.hasLightning);
-  }
-
-  if (!tierDataFresh.value) {
-    return false;
   }
   const metaRecord = meta.value as Record<string, unknown>;
 
