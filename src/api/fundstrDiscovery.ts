@@ -9,6 +9,18 @@ const DEFAULT_TIMEOUT_MS = 12_000;
 
 type Nullable<T> = T | null | undefined;
 
+export class RecoverableDiscoveryError extends Error {
+  recoverable = true;
+
+  constructor(message: string, options: { cause?: unknown } = {}) {
+    super(message);
+    this.name = 'RecoverableDiscoveryError';
+    if (options.cause !== undefined) {
+      (this as any).cause = options.cause;
+    }
+  }
+}
+
 type FetchOptions = {
   signal?: AbortSignal;
   timeoutMs?: number;
@@ -99,7 +111,11 @@ async function fetchJson<T>(path: string, options: FetchOptions = {}): Promise<T
       return {} as T;
     }
 
-    return JSON.parse(text) as T;
+    try {
+      return JSON.parse(text) as T;
+    } catch (error) {
+      throw new RecoverableDiscoveryError('Failed to parse discovery response', { cause: error });
+    }
   } finally {
     cleanup();
   }

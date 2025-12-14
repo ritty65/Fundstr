@@ -14,7 +14,7 @@ import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import { normalizeTierMediaItems } from "src/utils/validateMedia";
 import { debug } from "src/js/logger";
 import { type NutzapProfileDetails } from "@/nutzap/profileCache";
-import { useDiscovery } from "src/api/fundstrDiscovery";
+import { RecoverableDiscoveryError, useDiscovery } from "src/api/fundstrDiscovery";
 import { findProfiles, toNpub, type PhonebookProfile } from "src/api/phonebook";
 import type {
   Creator as DiscoveryCreator,
@@ -2498,12 +2498,17 @@ export const useCreatorsStore = defineStore("creators", {
         })
         .catch((error) => {
           discoveryState = "rejected";
-          discoveryError = error;
+          const isRecoverableDiscoveryError = error instanceof RecoverableDiscoveryError;
+          discoveryError = isRecoverableDiscoveryError
+            ? new Error("Unable to load creators from discovery. Please try again.")
+            : error;
           if (controller.signal.aborted) {
             return;
           }
           console.error("[creators] Discovery search failed", error);
-          if (fallbackTimerFired) {
+          if (isRecoverableDiscoveryError) {
+            maybeStartFallback("error");
+          } else if (fallbackTimerFired) {
             maybeStartFallback("error");
           }
         });
