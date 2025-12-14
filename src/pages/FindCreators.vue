@@ -139,7 +139,8 @@
                       dropdown-icon="expand_more"
                       options-dense
                       class="sort-select"
-                      :options="sortOptions"
+                      :options="availableSortOptions"
+                      :disable="availableSortOptions.length <= 1"
                       label="Sort by"
                     />
                   </div>
@@ -582,7 +583,7 @@ const filterChips: { key: FilterKey; label: string }[] = [
   { key: 'signalOnly', label: 'Signal only' },
 ];
 
-const sortOptions = [
+const sortOptions: { label: string; value: SortOption }[] = [
   { label: 'Relevance', value: 'relevance' },
   { label: 'Followers', value: 'followers' },
 ];
@@ -599,6 +600,16 @@ const activeFilters = ref<Record<FilterKey, boolean>>({
 const viewMode = ref<ViewMode>('grid');
 
 const sortOption = ref<SortOption>('relevance');
+const hasFollowerMetrics = computed(() =>
+  creatorsStore.unfilteredSearchResults.some(
+    (profile) => typeof profile.followers === 'number' && Number.isFinite(profile.followers),
+  ),
+);
+const availableSortOptions = computed(() =>
+  hasFollowerMetrics.value
+    ? sortOptions
+    : sortOptions.filter((option) => option.value === 'relevance'),
+);
 
 const viewModeOptions = [
   { label: 'Grid', icon: 'grid_view', value: 'grid' },
@@ -796,6 +807,15 @@ watch(
 watch(sortOption, () => {
   applyClientFilters();
 });
+
+watch(
+  hasFollowerMetrics,
+  (hasFollowers) => {
+    if (!hasFollowers && sortOption.value === 'followers') {
+      sortOption.value = 'relevance';
+    }
+  },
+);
 
 const loadMore = () => {
   // The new discovery service does not support pagination.
