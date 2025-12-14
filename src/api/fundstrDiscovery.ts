@@ -151,6 +151,18 @@ function toRecord(value: unknown): Record<string, unknown> | null {
   return null;
 }
 
+function isTruthyFlag(value: unknown): boolean {
+  if (value === true) return true;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'true' || normalized === '1' || normalized === 'yes';
+  }
+  if (typeof value === 'number') {
+    return value === 1;
+  }
+  return false;
+}
+
 function normalizeLightning(meta: Record<string, unknown>): string | null {
   return (
     toNullableString(meta.lud16) ||
@@ -334,6 +346,38 @@ function normalizeCreator(row: CreatorRow): LegacyCreator {
   const banner = toNullableString(profile.banner ?? (profile as any).cover);
   const nip05 = toNullableString(profile.nip05);
 
+  const nip05VerifiedValue =
+    toNullableString((profile as any).nip05_verified_value ?? (profile as any).nip05VerifiedValue) ??
+    toNullableString((metaRecord as any).nip05_verified_value ?? (metaRecord as any).nip05VerifiedValue);
+
+  if (nip05VerifiedValue) {
+    profile.nip05_verified_value = nip05VerifiedValue;
+  }
+
+  const nip05VerificationFlags = [
+    (row as Record<string, unknown> | null | undefined)?.['nip05_verified'],
+    (row as Record<string, unknown> | null | undefined)?.['nip05Verified'],
+    (profile as Record<string, unknown> | null | undefined)?.['nip05_verified'],
+    (profile as Record<string, unknown> | null | undefined)?.['nip05Verified'],
+    (profile as Record<string, unknown> | null | undefined)?.['nip05_valid'],
+    (metaRecord as Record<string, unknown> | null | undefined)?.['nip05_verified'],
+    (metaRecord as Record<string, unknown> | null | undefined)?.['nip05Verified'],
+    (metaRecord as Record<string, unknown> | null | undefined)?.['nip05_valid'],
+  ];
+
+  const nip05Verified =
+    nip05VerificationFlags.some(isTruthyFlag) ||
+    Boolean(
+      nip05 &&
+        nip05VerifiedValue &&
+        nip05.trim().toLowerCase() === nip05VerifiedValue.trim().toLowerCase(),
+    );
+
+  if (nip05Verified) {
+    profile.nip05Verified = true;
+    profile.nip05_verified = true;
+  }
+
   return {
     pubkey,
     profile,
@@ -344,6 +388,7 @@ function normalizeCreator(row: CreatorRow): LegacyCreator {
     name,
     about,
     nip05,
+    nip05Verified,
     picture,
     banner,
     metrics: undefined,

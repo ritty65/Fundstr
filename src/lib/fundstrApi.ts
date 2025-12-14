@@ -67,6 +67,7 @@ export interface Creator {
   name?: string | null;
   about?: string | null;
   nip05?: string | null;
+  nip05Verified?: boolean | null;
   picture?: string | null;
   banner?: string | null;
   tierSummary?: CreatorTierSummary | null;

@@ -1501,6 +1501,10 @@ function creatorHasLightning(profile: CreatorProfile): boolean {
 }
 
 function creatorHasVerifiedNip05(profile: CreatorProfile): boolean {
+  if (profile.nip05Verified !== undefined && profile.nip05Verified !== null) {
+    return Boolean(profile.nip05Verified);
+  }
+
   const profileRecord = (profile?.profile ?? {}) as Record<string, unknown>;
   const metaRecord = (profile?.meta ?? {}) as Record<string, unknown>;
 
@@ -1513,6 +1517,7 @@ function creatorHasVerifiedNip05(profile: CreatorProfile): boolean {
     metaRecord["nip05Verified"],
     metaRecord["nip05_valid"],
     metaRecord["verified_nip05"],
+    metaRecord["nip05_verified_value"],
   ];
 
   if (verificationFlags.some(isTruthyFlag)) {
@@ -1524,7 +1529,10 @@ function creatorHasVerifiedNip05(profile: CreatorProfile): boolean {
     toNullableString(profileRecord["nip05"]) ??
     toNullableString(metaRecord["nip05"]);
 
-  const verifiedHandle = toNullableString(metaRecord["nip05_verified_value"]);
+  const verifiedHandle =
+    toNullableString(metaRecord["nip05_verified_value"]) ??
+    toNullableString(profileRecord["nip05_verified_value"]) ??
+    toNullableString((profile as Record<string, unknown> | null | undefined)?.["nip05_verified_value"]);
 
   return Boolean(
     nip05Value &&
