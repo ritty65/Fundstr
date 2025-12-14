@@ -364,6 +364,16 @@
                       <div class="legend-item" role="listitem">
                         <div class="legend-chip">
                           <span class="status-chip accent">
+                            <q-icon name="workspace_premium" size="14px" />
+                            <span>Fundstr creator</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Official Fundstr creator profile</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip accent">
                             <q-icon name="verified_user" size="14px" />
                             <span>Creator</span>
                           </span>
@@ -403,12 +413,22 @@
 
                       <div class="legend-item" role="listitem">
                         <div class="legend-chip">
-                          <span class="status-chip muted">
-                            <q-icon name="alternate_email" size="14px" />
-                            <span>NIP-05</span>
+                          <span class="status-chip success">
+                            <q-icon name="verified" size="14px" />
+                            <span>NIP-05 verified</span>
                           </span>
                         </div>
                         <div class="legend-text text-2">Verified NIP-05 handle</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip warning">
+                            <q-icon name="sensors" size="14px" />
+                            <span>Signal only</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Profile shows signal metrics only</div>
                       </div>
 
                       <div class="legend-item" role="listitem">
@@ -500,6 +520,11 @@ import {
 } from 'src/utils/nuts';
 import { useDonationPrompt } from '@/composables/useDonationPrompt';
 import { useI18n } from 'vue-i18n';
+import {
+  creatorHasVerifiedNip05,
+  creatorIsFundstrCreator,
+  creatorIsSignalOnly,
+} from 'stores/creators';
 
 type FilterKey =
   | 'hasTiers'
@@ -641,70 +666,6 @@ const resultSummary = computed(() => {
 });
 const loadingFeatured = computed(() => storeLoadingFeatured?.value ?? false);
 
-const toNullableString = (value: unknown) =>
-  typeof value === 'string' && value.trim().length > 0 ? value : null;
-
-const isTruthyFlag = (value: unknown) =>
-  value === true || value === 'true' || value === 1 || value === '1';
-
-const creatorIsFundstrCreator = (profile: CreatorProfile) => {
-  if (profile.isCreator !== undefined && profile.isCreator !== null) {
-    return Boolean(profile.isCreator);
-  }
-
-  const profileRecord = (profile?.profile ?? {}) as Record<string, unknown>;
-  const metaRecord = (profile?.meta ?? {}) as Record<string, unknown>;
-
-  return [
-    (profile as Record<string, unknown> | null | undefined)?.['fundstrCreator'],
-    profileRecord['fundstr_creator'],
-    profileRecord['fundstrCreator'],
-    metaRecord['fundstr_creator'],
-    metaRecord['fundstrCreator'],
-  ].some(isTruthyFlag);
-};
-
-const creatorHasVerifiedNip05 = (profile: CreatorProfile) => {
-  if (profile.nip05Verified !== undefined && profile.nip05Verified !== null) {
-    return Boolean(profile.nip05Verified);
-  }
-
-  const profileRecord = (profile?.profile ?? {}) as Record<string, unknown>;
-  const metaRecord = (profile?.meta ?? {}) as Record<string, unknown>;
-
-  const verificationFlags = [
-    (profile as Record<string, unknown> | null | undefined)?.['nip05_verified'],
-    profileRecord['nip05_verified'],
-    profileRecord['nip05Verified'],
-    profileRecord['nip05_valid'],
-    metaRecord['nip05_verified'],
-    metaRecord['nip05Verified'],
-    metaRecord['nip05_valid'],
-    metaRecord['verified_nip05'],
-    metaRecord['nip05_verified_value'],
-  ];
-
-  if (verificationFlags.some(isTruthyFlag)) {
-    return true;
-  }
-
-  const nip05Value =
-    toNullableString(profile.nip05) ??
-    toNullableString(profileRecord['nip05']) ??
-    toNullableString(metaRecord['nip05']);
-
-  const verifiedHandle =
-    toNullableString(metaRecord['nip05_verified_value']) ??
-    toNullableString(profileRecord['nip05_verified_value']) ??
-    toNullableString((profile as Record<string, unknown> | null | undefined)?.['nip05_verified_value']);
-
-  return Boolean(
-    nip05Value &&
-      verifiedHandle &&
-      nip05Value.trim().toLowerCase() === verifiedHandle.trim().toLowerCase(),
-  );
-};
-
 const isPersonalProfile = (profile: CreatorProfile) => profile.isPersonal === true;
 
 const isCreatorProfile = (profile: CreatorProfile) => {
@@ -718,6 +679,7 @@ const isCreatorProfile = (profile: CreatorProfile) => {
 const groupedResults = computed(() => {
   const groups = [
     { key: 'fundstr', title: 'Fundstr creators', predicate: creatorIsFundstrCreator },
+    { key: 'signal-only', title: 'Signal only', predicate: creatorIsSignalOnly },
     { key: 'verified', title: 'NIP-05 verified', predicate: creatorHasVerifiedNip05 },
     { key: 'creators', title: 'Creators', predicate: isCreatorProfile },
     { key: 'personal', title: 'Personal profiles', predicate: isPersonalProfile },

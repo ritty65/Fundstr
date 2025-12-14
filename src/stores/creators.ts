@@ -1500,7 +1500,7 @@ function creatorHasLightning(profile: CreatorProfile): boolean {
   return normalizedCandidates.some((candidate) => candidate.includes("lnbc"));
 }
 
-function creatorHasVerifiedNip05(profile: CreatorProfile): boolean {
+export function creatorHasVerifiedNip05(profile: CreatorProfile): boolean {
   if (profile.nip05Verified !== undefined && profile.nip05Verified !== null) {
     return Boolean(profile.nip05Verified);
   }
@@ -1541,7 +1541,7 @@ function creatorHasVerifiedNip05(profile: CreatorProfile): boolean {
   );
 }
 
-function creatorIsFundstrCreator(profile: CreatorProfile): boolean {
+export function creatorIsFundstrCreator(profile: CreatorProfile): boolean {
   if (profile.isCreator !== undefined && profile.isCreator !== null) {
     return Boolean(profile.isCreator);
   }
@@ -1558,7 +1558,7 @@ function creatorIsFundstrCreator(profile: CreatorProfile): boolean {
   ].some(isTruthyFlag);
 }
 
-function creatorIsSignalOnly(profile: CreatorProfile): boolean {
+export function creatorIsSignalOnly(profile: CreatorProfile): boolean {
   const profileRecord = (profile?.profile ?? {}) as Record<string, unknown>;
   const metaRecord = (profile?.meta ?? {}) as Record<string, unknown>;
 
