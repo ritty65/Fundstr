@@ -2130,9 +2130,195 @@ export const useCreatorsStore = defineStore("creators", {
       const discovery = useDiscovery();
       const rawQuery = typeof query === "string" ? query.trim() : "";
 
-      const applyResults = (profiles: CreatorProfile[]) => {
-        this.unfilteredSearchResults = profiles;
-        this.searchResults = applyCreatorFilters(profiles, filters, sort);
+      const applyTierWarnings = (
+        profiles: CreatorProfile[],
+        warnings: string[] = [],
+      ): string[] => {
+        const filtered = warnings.slice();
+        if (
+          profiles.some((profile) => profile.tierSecurityBlocked === true) &&
+          !filtered.includes(FIREFOX_TIER_SECURITY_WARNING)
+        ) {
+          filtered.push(FIREFOX_TIER_SECURITY_WARNING);
+        }
+        return filtered;
+      };
+
+      const mergeFeaturedResults = async (
+        profiles: CreatorProfile[],
+        signal: AbortSignal,
+      ): Promise<CreatorProfile[]> => {
+        const featuredNpubs = CONFIG_FEATURED_CREATORS.filter(
+          (npub) => typeof npub === "string" && npub.trim(),
+        );
+
+        if (!featuredNpubs.length) {
+          return profiles;
+        }
+
+        const normalizedQueryLower = normalizedQuery.toLowerCase();
+        const matchesQuery = (value: unknown): boolean => {
+          if (typeof value !== "string") {
+            return false;
+          }
+          return value.trim().toLowerCase() === normalizedQueryLower;
+        };
+
+        const existingPubkeys = new Set(
+          profiles
+            .map((profile) => profile.pubkey?.toLowerCase())
+            .filter(Boolean) as string[],
+        );
+
+        const cachedFeaturedProfiles = new Map<string, CreatorProfile>();
+        for (const profile of this.featuredCreators) {
+          if (profile?.pubkey) {
+            cachedFeaturedProfiles.set(profile.pubkey.toLowerCase(), profile);
+          }
+        }
+
+        const featuredEntries = featuredNpubs
+          .map((npub) => {
+            try {
+              return { npub, pubkey: toHex(npub).toLowerCase() };
+            } catch {
+              return null;
+            }
+          })
+          .filter((entry): entry is { npub: string; pubkey: string } => Boolean(entry));
+
+        if (!featuredEntries.length) {
+          return profiles;
+        }
+
+        const ensureCachedProfile = async (pubkey: string): Promise<CreatorProfile | null> => {
+          const cached = cachedFeaturedProfiles.get(pubkey);
+          if (cached) {
+            return cached;
+          }
+
+          try {
+            await this.ensureCreatorCacheFromDexie(pubkey);
+          } catch (error) {
+            console.warn("[creators] Failed to hydrate featured creator cache during search", {
+              pubkey,
+              error,
+            });
+          }
+
+          const hydrated = this.buildCreatorProfileFromCache(pubkey);
+          if (hydrated) {
+            cachedFeaturedProfiles.set(pubkey, hydrated);
+          }
+
+          return hydrated ?? null;
+        };
+
+        const matchedPubkeys: string[] = [];
+
+        for (const entry of featuredEntries) {
+          if (matchesQuery(entry.npub) || matchesQuery(entry.pubkey)) {
+            matchedPubkeys.push(entry.pubkey);
+            continue;
+          }
+
+          if (signal.aborted) {
+            return profiles;
+          }
+
+          const cached = await ensureCachedProfile(entry.pubkey);
+          const candidateNames = [
+            fallbackName(cached),
+            toNullableString((cached as any)?.displayName),
+            toNullableString((cached as any)?.name),
+            toNullableString((cached?.profile as any)?.display_name),
+            toNullableString((cached?.profile as any)?.name),
+          ];
+
+          if (candidateNames.some(matchesQuery)) {
+            matchedPubkeys.push(entry.pubkey);
+          }
+        }
+
+        const uniqueMatches = matchedPubkeys.filter((pubkey, index, arr) => {
+          return pubkey && arr.indexOf(pubkey) === index && !existingPubkeys.has(pubkey);
+        });
+
+        if (!uniqueMatches.length) {
+          return profiles;
+        }
+
+        const discovery = useDiscovery();
+        const fetchedProfiles = new Map<string, CreatorProfile>();
+
+        try {
+          const response = await discovery.getCreatorsByPubkeys({
+            npubs: uniqueMatches.map((pubkey) => {
+              try {
+                return nip19.npubEncode(pubkey);
+              } catch {
+                return pubkey;
+              }
+            }),
+            signal,
+          });
+
+          for (const creator of response.results ?? []) {
+            if (!creator?.pubkey) continue;
+            const key = creator.pubkey.toLowerCase();
+            fetchedProfiles.set(key, { ...cloneCreatorProfile(creator), featured: true });
+          }
+        } catch (error) {
+          if (!signal.aborted) {
+            console.warn("[creators] Featured creator hydration failed", error);
+          }
+        }
+
+        for (const pubkey of uniqueMatches) {
+          if (fetchedProfiles.has(pubkey)) continue;
+
+          const cached = await ensureCachedProfile(pubkey);
+          if (cached) {
+            fetchedProfiles.set(pubkey, { ...cached, featured: true });
+            continue;
+          }
+
+          if (signal.aborted) {
+            break;
+          }
+
+          try {
+            const fetched = await this.fetchCreator(pubkey, fresh);
+            if (fetched) {
+              fetchedProfiles.set(pubkey, { ...fetched, featured: true });
+            }
+          } catch (error) {
+            if (!signal.aborted) {
+              console.warn("[creators] Featured creator fetch failed", { pubkey, error });
+            }
+          }
+        }
+
+        if (!fetchedProfiles.size) {
+          return profiles;
+        }
+
+        const orderedMatches = featuredEntries
+          .map((entry) => entry.pubkey)
+          .filter((pubkey) => fetchedProfiles.has(pubkey))
+          .map((pubkey) => fetchedProfiles.get(pubkey) as CreatorProfile);
+
+        return profiles.concat(orderedMatches);
+      };
+
+      const applyResults = async (
+        profiles: CreatorProfile[],
+        warnings: string[] = [],
+      ) => {
+        const mergedProfiles = await mergeFeaturedResults(profiles, controller.signal);
+        this.unfilteredSearchResults = mergedProfiles;
+        this.searchResults = applyCreatorFilters(mergedProfiles, filters, sort);
+        this.searchWarnings = applyTierWarnings(mergedProfiles, warnings);
       };
 
       const clearResults = () => {
@@ -2210,6 +2396,7 @@ export const useCreatorsStore = defineStore("creators", {
             sort,
           });
           if (applied) {
+            await applyResults(this.unfilteredSearchResults, this.searchWarnings ?? []);
             this.searching = false;
             this.searchAbortController = null;
             return;
@@ -2253,10 +2440,10 @@ export const useCreatorsStore = defineStore("creators", {
         try {
           const creatorProfile = await this.fetchCreator(resolvedHex, fresh);
           if (creatorProfile) {
-            applyResults([cloneCreatorProfile(creatorProfile)]);
-            this.searchWarnings = creatorProfile.tierSecurityBlocked
+            const warnings = creatorProfile.tierSecurityBlocked
               ? [FIREFOX_TIER_SECURITY_WARNING]
               : [];
+            await applyResults([cloneCreatorProfile(creatorProfile)], warnings);
           } else {
             handleFailure("Failed to fetch profile.");
           }
@@ -2317,7 +2504,7 @@ export const useCreatorsStore = defineStore("creators", {
         }
       };
 
-      const finishWithDiscovery = (
+      const finishWithDiscovery = async (
         response: Awaited<ReturnType<typeof discovery.getCreators>>,
       ) => {
         if (controller.signal.aborted || resolvedSource) {
@@ -2328,16 +2515,9 @@ export const useCreatorsStore = defineStore("creators", {
 
         const profiles = response.results.map((creator) => cloneCreatorProfile(creator));
         const warnings = filterWarnings(response.warnings);
-        if (
-          profiles.some((profile) => profile.tierSecurityBlocked === true) &&
-          !warnings.includes(FIREFOX_TIER_SECURITY_WARNING)
-        ) {
-          warnings.push(FIREFOX_TIER_SECURITY_WARNING);
-        }
 
         this.error = "";
-        applyResults(profiles);
-        this.searchWarnings = warnings;
+        await applyResults(profiles, warnings);
         debug("discovery:hit", {
           query: normalizedQuery,
           count: profiles.length,
@@ -2347,7 +2527,7 @@ export const useCreatorsStore = defineStore("creators", {
         resolveFinal();
       };
 
-      const finishWithFallback = (results: FundstrCreator[]) => {
+      const finishWithFallback = async (results: FundstrCreator[]) => {
         if (controller.signal.aborted || resolvedSource) {
           return;
         }
@@ -2356,16 +2536,9 @@ export const useCreatorsStore = defineStore("creators", {
 
         const profiles = results.map((creator) => cloneCreatorProfile(creator));
         const warnings: string[] = [];
-        if (
-          profiles.some((profile) => profile.tierSecurityBlocked === true) &&
-          !warnings.includes(FIREFOX_TIER_SECURITY_WARNING)
-        ) {
-          warnings.push(FIREFOX_TIER_SECURITY_WARNING);
-        }
 
         this.error = "";
-        applyResults(profiles);
-        this.searchWarnings = warnings;
+        await applyResults(profiles, warnings);
         debug("nostr:fallback-hit", {
           query: normalizedQuery,
           count: profiles.length,
@@ -2401,11 +2574,11 @@ export const useCreatorsStore = defineStore("creators", {
 
       const attachFallbackHandlers = (promise: Promise<FundstrCreator[]>) => {
         promise
-          .then((results) => {
+          .then(async (results) => {
             if (controller.signal.aborted || resolvedSource) {
               return;
             }
-            finishWithFallback(results);
+            await finishWithFallback(results);
           })
           .catch((fallbackError) => {
             if (controller.signal.aborted || resolvedSource) {
@@ -2484,14 +2657,14 @@ export const useCreatorsStore = defineStore("creators", {
       );
 
       discoveryPromise
-        .then((response) => {
+        .then(async (response) => {
           discoveryState = "fulfilled";
           discoveryResponse = response;
           if (controller.signal.aborted) {
             return;
           }
           if (response.results.length > 0) {
-            finishWithDiscovery(response);
+            await finishWithDiscovery(response);
           } else if (fallbackTimerFired) {
             maybeStartFallback("empty");
           }
