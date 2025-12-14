@@ -126,6 +126,11 @@ import type { Creator } from 'src/lib/fundstrApi';
 import { formatMsatToSats } from 'src/lib/fundstrApi';
 import { DONATION_FALLBACK_LOOKUP } from 'src/config/donation-eligibility';
 import {
+  creatorHasVerifiedNip05,
+  creatorIsFundstrCreator,
+  creatorIsSignalOnly,
+} from 'stores/creators';
+import {
   displayNameFromProfile,
   normalizeMeta,
   safeImageSrc,
@@ -137,7 +142,7 @@ interface StatusChip {
   key: string;
   label: string;
   icon?: string;
-  variant?: 'accent' | 'muted' | 'neutral';
+  variant?: 'accent' | 'muted' | 'neutral' | 'success' | 'warning';
   ariaLabel: string;
 }
 
@@ -178,21 +183,6 @@ const meta = computed<ProfileMeta>(() => {
   return { ...profileMeta, ...extraMeta, ...directMeta };
 });
 
-const toNullableString = (value: unknown) =>
-  typeof value === 'string' && value.trim().length > 0 ? value : null;
-
-const isTruthyFlag = (value: unknown) => {
-  if (value === true) return true;
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    return normalized === 'true' || normalized === '1' || normalized === 'yes';
-  }
-  if (typeof value === 'number') {
-    return value === 1;
-  }
-  return false;
-};
-
 const profileRecord = computed(() => (props.profile?.profile ?? {}) as Record<string, unknown>);
 const metaRecord = computed(() => (meta.value ?? {}) as Record<string, unknown>);
 
@@ -219,44 +209,11 @@ function onAvatarError(event: Event) {
 }
 
 const nip05 = computed(() => props.nip05 ?? meta.value.nip05 ?? '');
+const nip05Verified = computed(() => creatorHasVerifiedNip05(props.profile as any));
 
-const nip05VerifiedValue = computed(() =>
-  toNullableString(
-    metaRecord.value['nip05_verified_value'] ??
-      profileRecord.value['nip05_verified_value'] ??
-      (props.profile as Record<string, unknown> | null | undefined)?.['nip05_verified_value'],
-  ),
-);
+const isFundstrCreator = computed(() => creatorIsFundstrCreator(props.profile as any));
 
-const nip05Verified = computed(() => {
-  if (props.profile.nip05Verified !== undefined && props.profile.nip05Verified !== null) {
-    return Boolean(props.profile.nip05Verified);
-  }
-
-  const verificationFlags = [
-    (props.profile as Record<string, unknown> | null | undefined)?.['nip05_verified'],
-    profileRecord.value['nip05_verified'],
-    profileRecord.value['nip05Verified'],
-    profileRecord.value['nip05_valid'],
-    metaRecord.value['nip05_verified'],
-    metaRecord.value['nip05Verified'],
-    metaRecord.value['nip05_valid'],
-    metaRecord.value['verified_nip05'],
-  ];
-
-  if (verificationFlags.some(isTruthyFlag)) {
-    return true;
-  }
-
-  const nip05Value = toNullableString(nip05.value);
-  const verifiedHandle = nip05VerifiedValue.value;
-
-  return Boolean(
-    nip05Value &&
-      verifiedHandle &&
-      nip05Value.trim().toLowerCase() === verifiedHandle.trim().toLowerCase(),
-  );
-});
+const isSignalOnlyProfile = computed(() => creatorIsSignalOnly(props.profile as any));
 
 const aboutPreview = computed(() => (typeof meta.value.about === 'string' ? meta.value.about.trim() : ''));
 
@@ -445,6 +402,26 @@ const statusChips = computed<StatusChip[]>(() => {
     });
   }
 
+  if (isFundstrCreator.value) {
+    chips.push({
+      key: 'fundstr-creator',
+      label: 'Fundstr creator',
+      icon: 'workspace_premium',
+      variant: 'accent',
+      ariaLabel: 'Fundstr creator profile',
+    });
+  }
+
+  if (isSignalOnlyProfile.value) {
+    chips.push({
+      key: 'signal-only',
+      label: 'Signal only',
+      icon: 'sensors',
+      variant: 'warning',
+      ariaLabel: 'Signal-only profile',
+    });
+  }
+
   if (hasLightning.value) {
     chips.push({
       key: 'lightning',
@@ -469,8 +446,8 @@ const statusChips = computed<StatusChip[]>(() => {
     chips.push({
       key: 'nip05-verified',
       label: 'NIP-05 verified',
-      icon: 'task_alt',
-      variant: 'accent',
+      icon: 'verified',
+      variant: 'success',
       ariaLabel: 'NIP-05 handle verified',
     });
   }
@@ -606,6 +583,18 @@ function openProfileModal() {
 .status-chip.neutral {
   background: color-mix(in srgb, var(--chip-bg) 60%, transparent);
   border-color: color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+}
+
+.status-chip.success {
+  color: #0f7a4f;
+  background: color-mix(in srgb, #0f7a4f 16%, var(--chip-bg));
+  border-color: color-mix(in srgb, #0f7a4f 30%, transparent);
+}
+
+.status-chip.warning {
+  color: #b16900;
+  background: color-mix(in srgb, #b16900 14%, var(--chip-bg));
+  border-color: color-mix(in srgb, #b16900 28%, transparent);
 }
 
 .status-chip:focus-visible {
