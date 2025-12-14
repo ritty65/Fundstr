@@ -4,6 +4,7 @@ import {
   useCreatorsStore,
   FEATURED_CREATORS,
 } from "../../../src/stores/creators";
+import { toHex } from "@/nostr/relayClient";
 
 vi.mock(
   "@sentry/vue",
@@ -112,6 +113,9 @@ beforeEach(() => {
   getCreatorsMock.mockResolvedValue({ results: [], warnings: [] });
   getCreatorsByPubkeysMock.mockResolvedValue({ results: [], warnings: [] });
   getUserFromNip05Mock.mockResolvedValue(null);
+  (nip19.decode as any).mockImplementation((value: string) => ({
+    data: value.startsWith("npub") ? "f".repeat(64) : value,
+  }));
 });
 
 describe("Creators store", () => {
@@ -354,6 +358,55 @@ describe("Creators store", () => {
     expect(creators.error).toBe("");
     expect(creators.searchAbortController).toBeNull();
     expect(creators.searching).toBe(false);
+  });
+
+  it("merges featured creator matches by display name when discovery is empty", async () => {
+    const featuredNpub = FEATURED_CREATORS[0];
+    const featuredPubkey = toHex(featuredNpub);
+    const featuredCreator = makeCreator(featuredPubkey, {
+      displayName: "Featured Hero",
+      featured: true,
+    });
+
+    findProfilesMock.mockResolvedValueOnce({ query: "Featured Hero", results: [], count: 0 });
+    getCreatorsMock.mockResolvedValueOnce({ results: [], warnings: [] });
+    getCreatorsByPubkeysMock.mockResolvedValueOnce({ results: [], warnings: [] });
+
+    const creators = useCreatorsStore();
+    creators.featuredCreators = [featuredCreator];
+    creators.fetchCreator = vi.fn().mockResolvedValue(featuredCreator) as any;
+
+    await creators.searchCreators("Featured Hero");
+
+    expect(creators.searchResults).toHaveLength(1);
+    expect(creators.searchResults[0].pubkey).toBe(featuredPubkey);
+    expect(creators.searchResults[0].featured).toBe(true);
+  });
+
+  it("surfaces featured npub queries even without discovery hits", async () => {
+    const featuredNpub = FEATURED_CREATORS[1];
+    const featuredPubkey = "e".repeat(64);
+    const featuredCreator = makeCreator(featuredPubkey, { featured: true });
+
+    (nip19.decode as any)
+      .mockImplementationOnce(() => {
+        throw new Error("decode fail");
+      })
+      .mockImplementation(() => ({ data: featuredPubkey }));
+
+    findProfilesMock.mockResolvedValueOnce({ query: featuredNpub, results: [], count: 0 });
+    getCreatorsMock.mockResolvedValueOnce({ results: [], warnings: [] });
+    getCreatorsByPubkeysMock.mockResolvedValueOnce({ results: [], warnings: [] });
+    fetchLegacyCreatorsMock.mockResolvedValueOnce([]);
+
+    const creators = useCreatorsStore();
+    creators.fetchCreator = vi.fn().mockResolvedValue(featuredCreator) as any;
+
+    await creators.searchCreators(featuredNpub);
+
+    expect(creators.searchResults).toHaveLength(1);
+    expect(creators.searchResults[0].pubkey).toBe(featuredPubkey);
+    expect(creators.searchResults[0].featured).toBe(true);
   });
 
   it("treats failed NIP-05 lookups as plain discovery queries", async () => {
