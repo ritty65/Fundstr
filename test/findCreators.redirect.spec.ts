@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import FindCreators from "src/pages/FindCreators.vue";
@@ -12,6 +12,8 @@ function createStub(name: string, slotTemplate = '<slot />') {
 
 var routeMock: any;
 var routerMock: any;
+const notifyError = vi.hoisted(() => vi.fn());
+const captureTelemetryWarning = vi.hoisted(() => vi.fn());
 vi.mock('vue-router', () => {
   routerMock = {
     replace: vi.fn(),
@@ -30,6 +32,8 @@ vi.mock('quasar', () => ({
   },
   useQuasar: () => ({
     notify: vi.fn(),
+    screen: { lt: { md: false, sm: false }, gt: { sm: false }, width: 1440 },
+    lang: { label: { search: "Search" } },
   }),
   QPage: createStub('QPage'),
   QCard: createStub('QCard'),
@@ -53,6 +57,7 @@ const creatorsStoreMock = {
   searchCreators: vi.fn().mockResolvedValue(undefined),
   loadFeaturedCreators: vi.fn().mockResolvedValue(undefined),
   searchResults: [],
+  unfilteredSearchResults: [],
   featuredCreators: [],
   searching: false,
   loadingFeatured: false,
@@ -80,8 +85,17 @@ vi.mock("stores/nostr", () => ({
   fetchNutzapProfile: vi.fn(),
   RelayConnectionError: class RelayConnectionError extends Error {},
 }));
-vi.mock("src/js/notify", () => ({ notifyWarning: vi.fn() }));
-vi.mock("vue-i18n", () => ({ useI18n: () => ({ t: (k: string) => k }) }));
+vi.mock("src/js/notify", () => ({ notifyWarning: vi.fn(), notifyError }));
+vi.mock("vue-i18n", () => ({
+  useI18n: () => ({ t: (k: string) => k }),
+  createI18n: vi.fn(() => ({ global: { t: (key: string) => key, locale: { value: "en-US" } } })),
+}));
+vi.mock("src/utils/telemetry/sentry", () => ({ captureTelemetryWarning }));
+
+afterEach(() => {
+  vi.clearAllMocks();
+  routeMock.query = {};
+});
 
 describe("FindCreators redirection", () => {
   it("redirects to creator route when npub query is present", async () => {
@@ -107,6 +121,40 @@ describe("FindCreators redirection", () => {
       name: 'creator-profile',
       params: { npub: 'testnpub' },
     });
+  });
+});
+
+describe("FindCreators profile view guard", () => {
+  it("does not open the profile modal when pubkey is missing", () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const wrapper = mount(FindCreators, {
+      global: {
+        plugins: [pinia],
+        stubs: [
+          "QDialog",
+          "QCard",
+          "QCardSection",
+          "QCardActions",
+          "QBtn",
+          "QSeparator",
+        ],
+      },
+    });
+
+    const vm = wrapper.vm as unknown as {
+      viewProfile: (profile: any) => void;
+      showProfileModal: boolean;
+    };
+
+    vm.viewProfile({ pubkey: "", name: "Missing Key" });
+
+    expect(vm.showProfileModal).toBe(false);
+    expect(notifyError).toHaveBeenCalled();
+    expect(captureTelemetryWarning).toHaveBeenCalledWith(
+      "findCreators.missingPubkey",
+      expect.objectContaining({ profileId: expect.any(String) }),
+    );
   });
 });
 
