@@ -3,6 +3,7 @@
     <CreatorProfileModal
       :show="showProfileModal"
       :pubkey="selectedProfilePubkey"
+      :initial-profile="selectedProfile"
       @close="showProfileModal = false"
       @message="startChat"
       @donate="donate"
@@ -159,8 +160,8 @@
                         :is-creator="profile.isCreator ?? undefined"
                         :is-personal="profile.isPersonal ?? undefined"
                         :nip05="profile.nip05 ?? undefined"
-                        @view-tiers="viewProfile"
-                        @view-profile="viewProfile"
+                        @view-tiers="() => viewProfile(profile)"
+                        @view-profile="() => viewProfile(profile)"
                         @message="startChat"
                         @donate="donate"
                       />
@@ -187,8 +188,8 @@
                             :is-creator="profile.isCreator ?? undefined"
                             :is-personal="profile.isPersonal ?? undefined"
                             :nip05="profile.nip05 ?? undefined"
-                            @view-tiers="viewProfile"
-                            @view-profile="viewProfile"
+                            @view-tiers="() => viewProfile(profile)"
+                            @view-profile="() => viewProfile(profile)"
                             @message="startChat"
                             @donate="donate"
                           />
@@ -453,8 +454,8 @@
                       :is-creator="profile.isCreator ?? undefined"
                       :is-personal="profile.isPersonal ?? undefined"
                       :nip05="profile.nip05 ?? undefined"
-                      @view-tiers="viewProfile"
-                      @view-profile="viewProfile"
+                      @view-tiers="() => viewProfile(profile)"
+                      @view-profile="() => viewProfile(profile)"
                       @message="startChat"
                       @donate="donate"
                     />
@@ -850,6 +851,7 @@ watch(searchWarnings, (warnings) => {
 
 const showProfileModal = ref(false);
 const selectedProfilePubkey = ref('');
+const selectedProfile = ref<CreatorProfile | null>(null);
 const featuredSectionRef = ref<HTMLElement | ComponentPublicInstance | null>(null);
 const activeMintInfo = computed(() => mintsStore.activeInfo);
 const supportedNuts = computed(() => resolveSupportedNuts(activeMintInfo.value));
@@ -862,8 +864,9 @@ const hasFundedBucket = computed(() =>
   activeBuckets.value.some((bucket) => (bucketBalances.value[bucket.id] ?? 0) > 0),
 );
 
-function viewProfile(pubkey: string) {
-  selectedProfilePubkey.value = pubkey;
+function viewProfile(profile: CreatorProfile) {
+  selectedProfilePubkey.value = profile.pubkey;
+  selectedProfile.value = profile;
   showProfileModal.value = true;
 }
 
