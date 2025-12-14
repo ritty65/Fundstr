@@ -96,6 +96,18 @@
             </q-card-section>
 
             <template v-else>
+              <q-card-section v-if="loadError" class="status-banner" role="status" aria-live="polite">
+                <div class="status-banner__message">{{ loadError }}</div>
+                <q-btn
+                  dense
+                  no-caps
+                  color="accent"
+                  label="Retry"
+                  class="status-banner__action"
+                  @click="loadCreatorProfile(pubkey)"
+                />
+              </q-card-section>
+
               <q-card-section v-if="creator" class="tiers-section">
                 <div class="section-heading">Subscription tiers</div>
                 <div
@@ -173,7 +185,7 @@
                     </div>
                   </div>
                 </div>
-                <div v-else class="empty-state">No subscription tiers found for this creator.</div>
+                <div v-else-if="!loadError" class="empty-state">No subscription tiers found for this creator.</div>
               </q-card-section>
 
               <q-card-section v-else class="empty-state">
@@ -237,6 +249,7 @@ const router = useRouter();
 const $q = useQuasar();
 
 const loading = ref(false);
+const loadError = ref<string | null>(null);
 const creator = ref<CreatorProfile | null>(null);
 const tiers = ref<TierDetails[]>([]);
 const showLocal = ref(false);
@@ -565,6 +578,7 @@ async function loadCreatorProfile(pubkey: string) {
 
   const requestId = ++currentRequestId;
   loading.value = true;
+  loadError.value = null;
 
   syncStateFromStore(pubkey);
 
@@ -588,6 +602,8 @@ async function loadCreatorProfile(pubkey: string) {
       console.error('[CreatorProfileModal] Failed to load creator profile', error);
       creator.value = null;
       tiers.value = [];
+      const message = error instanceof Error && error.message ? error.message : 'Unable to load creator profile.';
+      loadError.value = message;
     }
   } finally {
     if (requestId === currentRequestId) {
@@ -698,6 +714,7 @@ function resetState() {
   tiers.value = [];
   activeTierIndex.value = 0;
   isBioExpanded.value = false;
+  loadError.value = null;
 }
 </script>
 
@@ -1031,6 +1048,29 @@ function resetState() {
   justify-content: center;
   align-items: center;
   padding: 48px 28px;
+}
+
+.status-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  margin: 0 clamp(14px, 4.6vw, 24px);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-2) 84%, var(--surface-1) 16%);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 82%, transparent);
+  color: var(--text-1);
+}
+
+.status-banner__message {
+  flex: 1 1 auto;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.status-banner__action {
+  flex-shrink: 0;
 }
 
 .section-divider {
