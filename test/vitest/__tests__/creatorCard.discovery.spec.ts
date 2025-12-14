@@ -64,6 +64,8 @@ const stubs = {
     props: ['label'],
     template: '<button class="q-btn" :data-label="label"><slot /></button>',
   },
+  'q-icon': { template: '<span class="q-icon"><slot /></span>' },
+  'q-tooltip': { template: '<span class="q-tooltip"><slot /></span>' },
 };
 
 describe('CreatorCard featured metadata', () => {
@@ -180,5 +182,26 @@ describe('CreatorCard donation eligibility signals', () => {
   it('hides donate button when no donation signals exist', () => {
     const wrapper = mountCard();
     expect(hasDonateButton(wrapper)).toBe(false);
+  });
+
+  it('renders cached lightning and tier badges even when tier data is stale', () => {
+    const wrapper = mountCard({
+      tierDataFresh: false,
+      cacheHit: true,
+      hasLightning: true,
+      hasTiers: true,
+    });
+
+    const chipTexts = wrapper
+      .findAll('.status-chip')
+      .map((chip) => chip.text().replace(/\s+/g, ' ').trim());
+
+    expect(chipTexts).toMatchInlineSnapshot(`
+      [
+        "Lightning",
+        "Has tiers",
+        "Cache hit",
+      ]
+    `);
   });
 });
