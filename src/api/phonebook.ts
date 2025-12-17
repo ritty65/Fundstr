@@ -1,5 +1,6 @@
 import { nip19 } from "nostr-tools";
 
+import { DISCOVERY_WARNING, safeFetchJson } from "./fundstrDiscovery";
 import { debug } from "src/js/logger";
 
 const DEFAULT_FIND_PROFILES_URL = "https://fundstr.me/find_profiles.php";
@@ -82,45 +83,21 @@ export async function findProfiles(
   endpoint.searchParams.set("q", trimmedQuery);
 
   try {
-    const response = await fetch(endpoint.toString(), {
+    const result = await safeFetchJson<FindProfilesResponse>(endpoint.toString(), {
       method: "GET",
       headers: { Accept: "application/json" },
       signal,
+      warning: DISCOVERY_WARNING,
     });
 
-    if (!response.ok) {
-      try {
-        const errorText = await response.text();
-        if (errorText) {
-          try {
-            const payload = JSON.parse(errorText) as any;
-            if (payload?.error) {
-              console.warn("[phonebook] lookup responded with error", payload.error);
-            }
-          } catch {
-            // ignore malformed error payloads
-          }
-        }
-      } catch {
-        // ignore secondary failures
+    if (!result.ok) {
+      if (result.snippet) {
+        console.debug("[phonebook] response snippet", result.snippet);
       }
-
       return { query: trimmedQuery, results: [], count: 0 };
     }
 
-    const text = await response.text();
-    if (!text) {
-      debug("[phonebook] empty → discovery", { query: trimmedQuery });
-      return { query: trimmedQuery, results: [], count: 0 };
-    }
-
-    let payload: any;
-    try {
-      payload = JSON.parse(text) as any;
-    } catch (parseError) {
-      console.warn("[phonebook] Unexpected response payload; treating as empty", parseError);
-      return { query: trimmedQuery, results: [], count: 0 };
-    }
+    const payload: any = result.data;
 
     const rawResults = Array.isArray(payload?.results) ? payload.results : [];
     if (!Array.isArray(payload?.results)) {

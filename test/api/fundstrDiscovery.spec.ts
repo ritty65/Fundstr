@@ -65,7 +65,7 @@ describe('fundstrDiscovery client', () => {
       .fn()
       .mockResolvedValueOnce(new Response('fail', { status: 500 }))
       .mockResolvedValueOnce(new Response('still bad', { status: 502 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify(payload), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } }));
 
     vi.stubGlobal('fetch', fetchMock);
 
@@ -73,7 +73,7 @@ describe('fundstrDiscovery client', () => {
 
     await vi.runAllTimersAsync();
 
-    await expect(promise).resolves.toEqual(payload);
+    await expect(promise).resolves.toEqual({ ok: true, data: payload });
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -86,12 +86,27 @@ describe('fundstrDiscovery client', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const promise = fetchJsonWithRetry('/resource', { timeoutMs: 50 }, 3, 10);
-    const expectation = expect(promise).rejects.toThrow('Discovery request failed (503): nope');
+    const expectation = expect(promise).resolves.toMatchObject({ ok: false, warning: 'Limited results (discovery unavailable)' });
 
     await vi.runAllTimersAsync();
 
     await expectation;
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('warns instead of throwing on non-JSON responses', async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(new Response('<html>nope</html>', { status: 200, headers: { 'content-type': 'text/html' } })),
+    );
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createFundstrDiscoveryClient();
+    const creators = await client.getCreators({ q: 'alice' });
+
+    expect(creators.results).toEqual([]);
+    expect(creators.count).toBe(0);
+    expect(creators.warnings).toContain('Limited results (discovery unavailable)');
   });
 
   it('normalizes discovery creator payloads', async () => {
@@ -105,8 +120,8 @@ describe('fundstrDiscovery client', () => {
             displayName: 'Alice ',
             username: ' alice ',
             bio: ' Hello ',
-            picture: 'https://cdn.example/avatar.png ',
-            cover: 'https://cdn.example/banner.png ',
+            picture: 'https://cdn.fundstr.me/avatar.png ',
+            cover: 'https://cdn.fundstr.me/banner.png ',
             lightning_address: 'alice@ln.example',
             website: ' https://fundstr.example ',
           },
@@ -117,7 +132,7 @@ describe('fundstrDiscovery client', () => {
               id: 'tier-1',
               name: 'Supporter',
               price_sats: 10,
-              media: ['https://media.example/image.png'],
+              media: ['https://cdn.fundstr.me/image.png'],
             },
             {
               identifier: 'tier-2',
@@ -137,8 +152,15 @@ describe('fundstrDiscovery client', () => {
 
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify(bundleResponse), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ results: [] }), { status: 200 }));
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(bundleResponse), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ results: [] }), { status: 200, headers: { 'content-type': 'application/json' } }),
+      );
 
     vi.stubGlobal('fetch', fetchMock);
 
@@ -156,8 +178,8 @@ describe('fundstrDiscovery client', () => {
     expect(creator.displayName).toBe('Alice');
     expect(creator.name).toBe('alice');
     expect(creator.about).toBe('Hello');
-    expect(creator.picture).toBe('https://cdn.example/avatar.png');
-    expect(creator.banner).toBe('https://cdn.example/banner.png');
+    expect(creator.picture).toBe('https://cdn.fundstr.me/avatar.png');
+    expect(creator.banner).toBe('https://cdn.fundstr.me/banner.png');
     expect(creator.profile?.lud16).toBe('alice@ln.example');
     expect(creator.profile?.website).toBe('https://fundstr.example');
     expect(creator.profile?.has_nutzap).toBe(true);
@@ -169,7 +191,7 @@ describe('fundstrDiscovery client', () => {
         amountMsat: 10_000,
         cadence: null,
         description: null,
-        media: [{ url: 'https://media.example/image.png' }],
+        media: [{ url: 'https://cdn.fundstr.me/image.png' }],
       },
       {
         id: 'tier-2',
@@ -201,12 +223,12 @@ describe('fundstrDiscovery client', () => {
           id: 'gold',
           name: 'Supporter',
           price_sats: 50,
-          media: ['https://cdn.example/video.mp4'],
+          media: ['https://cdn.fundstr.me/video.mp4'],
         },
         {
           identifier: 'silver',
           price: 25,
-          media: [{ url: 'https://cdn.example/audio.mp3', type: 'audio/mp3', title: 'Song' }],
+          media: [{ url: 'https://cdn.fundstr.me/audio.mp3', type: 'audio/mp3', title: 'Song' }],
         },
       ],
       stale: false,
@@ -214,7 +236,7 @@ describe('fundstrDiscovery client', () => {
 
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(new Response(JSON.stringify(bundle), { status: 200 }));
+      .mockResolvedValue(new Response(JSON.stringify(bundle), { status: 200, headers: { 'content-type': 'application/json' } }));
 
     vi.stubGlobal('fetch', fetchMock);
 
@@ -230,7 +252,7 @@ describe('fundstrDiscovery client', () => {
         amountMsat: 50_000,
         cadence: null,
         description: null,
-        media: [{ url: 'https://cdn.example/video.mp4' }],
+        media: [{ url: 'https://cdn.fundstr.me/video.mp4' }],
       },
       {
         id: 'silver',
@@ -238,13 +260,15 @@ describe('fundstrDiscovery client', () => {
         amountMsat: 25_000,
         cadence: null,
         description: null,
-        media: [{ url: 'https://cdn.example/audio.mp3', title: 'Song' }],
+        media: [{ url: 'https://cdn.fundstr.me/audio.mp3', title: 'Song' }],
       },
     ]);
   });
 
   it('throws when the discovery bundle is malformed', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
     const client = createFundstrDiscoveryClient();
@@ -272,7 +296,9 @@ describe('fundstrDiscovery client', () => {
 
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(new Response(JSON.stringify(bundleResponse), { status: 200 }));
+      .mockResolvedValue(
+        new Response(JSON.stringify(bundleResponse), { status: 200, headers: { 'content-type': 'application/json' } }),
+      );
 
     vi.stubGlobal('fetch', fetchMock);
 

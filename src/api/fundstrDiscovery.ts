@@ -6,6 +6,13 @@ import { normalizeTierMediaItems } from 'src/utils/validateMedia';
 
 const DEFAULT_BASE_URL = 'https://api.fundstr.me';
 const DEFAULT_TIMEOUT_MS = 12_000;
+const DEFAULT_WARNING = 'Limited results (discovery unavailable)';
+
+export const DISCOVERY_WARNING = DEFAULT_WARNING;
+
+export type SafeJsonResult<T> =
+  | { ok: true; data: T; snippet?: string }
+  | { ok: false; warning: string; snippet?: string };
 
 type Nullable<T> = T | null | undefined;
 
@@ -85,37 +92,72 @@ function createTimeoutSignal(signal?: AbortSignal, timeoutMs?: number) {
   };
 }
 
-async function fetchJson<T>(path: string, options: FetchOptions = {}): Promise<T> {
+function extractSnippet(text: string, limit = 300): string {
+  if (!text) return '';
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}…`;
+}
+
+export async function safeJsonFromResponse<T>(
+  response: Response,
+  warning = DEFAULT_WARNING,
+): Promise<SafeJsonResult<T>> {
+  const rawText = await response.text();
+  const snippet = extractSnippet(rawText);
+  const contentType = response.headers.get('content-type') || '';
+
+  if (!response.ok) {
+    console.debug('[json] non-2xx response', { status: response.status, snippet });
+    return { ok: false, warning, snippet };
+  }
+
+  if (!rawText) {
+    return { ok: true, data: {} as T };
+  }
+
+  if (!/json/i.test(contentType)) {
+    console.debug('[json] unexpected content-type', { contentType, snippet });
+    return { ok: false, warning, snippet };
+  }
+
+  try {
+    return { ok: true, data: JSON.parse(rawText) as T };
+  } catch (error) {
+    console.debug('[json] failed to parse response', { error, snippet });
+    return { ok: false, warning, snippet };
+  }
+}
+
+export async function safeFetchJson<T>(
+  input: RequestInfo | URL,
+  init: RequestInit & { warning?: string; snippetLimit?: number } = {},
+): Promise<SafeJsonResult<T>> {
+  try {
+    const response = await fetch(input, init);
+    return safeJsonFromResponse<T>(response, init.warning ?? DEFAULT_WARNING);
+  } catch (error) {
+    if ((error as any)?.name === 'AbortError') {
+      throw error;
+    }
+    console.debug('[json] fetch failed', error);
+    return { ok: false, warning: init.warning ?? DEFAULT_WARNING };
+  }
+}
+
+async function fetchJson<T>(path: string, options: FetchOptions = {}): Promise<SafeJsonResult<T>> {
   const { timeoutMs = DEFAULT_TIMEOUT_MS, signal } = options;
   const url = path.startsWith('http') ? path : `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
 
   const { signal: mergedSignal, cleanup } = createTimeoutSignal(signal, timeoutMs);
 
   try {
-    const response = await fetch(url, {
+    return await safeFetchJson<T>(url, {
       method: 'GET',
       headers: {
         Accept: 'application/json',
       },
       signal: mergedSignal,
     });
-
-    if (!response.ok) {
-      const body = await response.text();
-      const suffix = body ? `: ${body}` : '';
-      throw new Error(`Discovery request failed (${response.status})${suffix}`);
-    }
-
-    const text = await response.text();
-    if (!text) {
-      return {} as T;
-    }
-
-    try {
-      return JSON.parse(text) as T;
-    } catch (error) {
-      throw new RecoverableDiscoveryError('Failed to parse discovery response', { cause: error });
-    }
   } finally {
     cleanup();
   }
@@ -126,19 +168,31 @@ async function fetchJsonWithRetry<T>(
   options: FetchOptions = {},
   retries = 3,
   backoff = 300,
-): Promise<T> {
-  let lastError: unknown = null;
+): Promise<SafeJsonResult<T>> {
+  let lastResult: SafeJsonResult<T> | null = null;
   for (let i = 0; i < retries; i++) {
     try {
-      return await fetchJson<T>(path, options);
-    } catch (error) {
-      lastError = error;
-      if (i < retries - 1) {
-        await new Promise((resolve) => setTimeout(resolve, backoff * (i + 1)));
+      const result = await fetchJson<T>(path, options);
+      if (result.ok) {
+        return result;
       }
+
+      lastResult = result;
+      if (i >= retries - 1) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, backoff * (i + 1)));
+      continue;
+    } catch (error) {
+      lastResult = { ok: false, warning: (error as Error)?.message || DEFAULT_WARNING };
+      if (i >= retries - 1) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, backoff * (i + 1)));
     }
   }
-  throw lastError;
+
+  return lastResult ?? { ok: false, warning: DEFAULT_WARNING };
 }
 
 function appendParams(url: string, params: Record<string, Nullable<string | number | boolean>>): string {
@@ -543,8 +597,12 @@ async function fetchCreators(options: { q:string; fresh?: boolean } & FetchOptio
     swr: '1',
   });
 
-  const payload = await fetchJsonWithRetry<any>(endpoint, { signal, timeoutMs });
-  return normalizeCreatorsResponse(payload, q);
+  const result = await fetchJsonWithRetry<any>(endpoint, { signal, timeoutMs });
+  if (!result.ok) {
+    return normalizeCreatorsResponse({ results: [], warnings: [result.warning] }, q);
+  }
+
+  return normalizeCreatorsResponse(result.data, q);
 }
 
 async function fetchCreatorsByPubkeys(options: CreatorLookupOptions) {
@@ -559,12 +617,16 @@ async function fetchCreatorsByPubkeys(options: CreatorLookupOptions) {
     swr: options.swr === false ? undefined : '1',
   });
 
-  const payload = await fetchJsonWithRetry<any>(endpoint, {
+  const result = await fetchJsonWithRetry<any>(endpoint, {
     signal: options.signal,
     timeoutMs: options.timeoutMs,
   });
 
-  return normalizeCreatorsResponse(payload, 'by-pubkeys');
+  if (!result.ok) {
+    return normalizeCreatorsResponse({ results: [], warnings: [result.warning] }, 'by-pubkeys');
+  }
+
+  return normalizeCreatorsResponse(result.data, 'by-pubkeys');
 }
 
 async function fetchNutzapBundle(
@@ -577,10 +639,16 @@ async function fetchNutzapBundle(
     fresh: options.fresh ? '1' : undefined,
   });
 
-  const bundle = await fetchJsonWithRetry<NutzapBundle>(endpoint, {
+  const bundleResult = await fetchJsonWithRetry<NutzapBundle>(endpoint, {
     signal: options.signal,
     timeoutMs: options.timeoutMs,
   });
+
+  if (!bundleResult.ok) {
+    throw new RecoverableDiscoveryError(bundleResult.warning);
+  }
+
+  const bundle = bundleResult.data;
 
   if (!bundle || typeof bundle.pubkey !== 'string') {
     throw new Error('Invalid Nutzap bundle response from discovery service');
