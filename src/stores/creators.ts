@@ -64,6 +64,8 @@ const FIREFOX_TIER_SECURITY_WARNING =
 const BUNDLE_CACHE_EXPIRY_MS = 3 * 60 * 60 * 1000;
 const BUNDLE_FALLBACK_DELAY_MS = 1400;
 const DISCOVERY_TIER_TIMEOUT_MS = 5000;
+const DISCOVERY_ENRICHMENT_WARNING =
+  "Discovery enrichment failed. Showing phonebook details without discovery extras.";
 
 const inFlightBundleRequests = new Map<string, Promise<FundstrProfileBundle>>();
 
@@ -1382,30 +1384,130 @@ function computeTierSummary(tiers: Tier[] | null | undefined) {
   };
 }
 
+function mergeDiscoveryIntoPhonebook(
+  phonebookCreator: CreatorProfile,
+  discoveryCreator: CreatorProfile,
+): CreatorProfile {
+  const merged: CreatorProfile = { ...phonebookCreator };
+
+  const applyString = (value: unknown, setter: (value: string) => void) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    setter(trimmed);
+  };
+
+  const applyRecord = (value: unknown, setter: (value: Record<string, any>) => void) => {
+    if (!isRecord(value) || Object.keys(value).length === 0) return;
+    setter(value);
+  };
+
+  const applyArray = <T>(value: unknown, setter: (value: T[]) => void) => {
+    if (!Array.isArray(value) || value.length === 0) return;
+    setter(value as T[]);
+  };
+
+  const applyNumber = (value: unknown, setter: (value: number) => void) => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      setter(value);
+    }
+  };
+
+  const applyBoolean = (value: unknown, setter: (value: boolean) => void) => {
+    if (value === true || value === false) {
+      setter(value);
+    }
+  };
+
+  applyString(discoveryCreator.displayName, (value) => {
+    if (!merged.displayName) {
+      merged.displayName = value;
+    }
+  });
+  applyString(discoveryCreator.name, (value) => {
+    if (!merged.name) {
+      merged.name = value;
+    }
+  });
+  applyString(discoveryCreator.about, (value) => {
+    if (!merged.about) {
+      merged.about = value;
+    }
+  });
+  applyString(discoveryCreator.picture, (value) => {
+    if (!merged.picture) {
+      merged.picture = value;
+    }
+  });
+  applyString(discoveryCreator.nip05, (value) => {
+    if (!merged.nip05) {
+      merged.nip05 = value;
+    }
+  });
+  applyString(discoveryCreator.banner, (value) => {
+    if (!merged.banner) {
+      merged.banner = value;
+    }
+  });
+
+  applyRecord(discoveryCreator.profile, (value) => {
+    merged.profile = value;
+  });
+  applyRecord(discoveryCreator.metrics, (value) => {
+    merged.metrics = value as any;
+  });
+  applyRecord(discoveryCreator.tierSummary, (value) => {
+    merged.tierSummary = value as any;
+  });
+
+  applyArray(discoveryCreator.tiers, (value) => {
+    merged.tiers = value as any;
+  });
+
+  applyNumber(discoveryCreator.followers, (value) => {
+    merged.followers = value;
+  });
+  applyNumber(discoveryCreator.following, (value) => {
+    merged.following = value;
+  });
+  applyNumber(discoveryCreator.joined, (value) => {
+    merged.joined = value;
+  });
+
+  applyBoolean(discoveryCreator.tierDataFresh, (value) => {
+    merged.tierDataFresh = value;
+  });
+  applyBoolean(discoveryCreator.tierSecurityBlocked, (value) => {
+    merged.tierSecurityBlocked = value;
+  });
+  applyBoolean(discoveryCreator.tierFetchFailed, (value) => {
+    merged.tierFetchFailed = value;
+  });
+  applyBoolean(discoveryCreator.featured, (value) => {
+    merged.featured = value;
+  });
+  applyBoolean(discoveryCreator.hasLightning, (value) => {
+    merged.hasLightning = value;
+  });
+  applyBoolean(discoveryCreator.hasTiers, (value) => {
+    merged.hasTiers = value;
+  });
+  applyBoolean(discoveryCreator.isCreator, (value) => {
+    merged.isCreator = value;
+  });
+  applyBoolean(discoveryCreator.isPersonal, (value) => {
+    merged.isPersonal = value;
+  });
+
+  return merged;
+}
+
 function applyPhonebookOverrides(
   creator: CreatorProfile,
   phonebook: PhonebookProfile,
 ): CreatorProfile {
-  const displayName =
-    creator.displayName ??
-    toNullableString(phonebook.display_name) ??
-    toNullableString(phonebook.name) ??
-    creator.displayName ??
-    null;
-  const name = creator.name ?? toNullableString(phonebook.name) ?? creator.name ?? null;
-  const about = creator.about ?? toNullableString(phonebook.about) ?? creator.about ?? null;
-  const picture =
-    creator.picture ?? toNullableString(phonebook.picture) ?? creator.picture ?? null;
-  const nip05 = creator.nip05 ?? toNullableString(phonebook.nip05) ?? creator.nip05 ?? null;
-
-  return {
-    ...creator,
-    displayName,
-    name,
-    about,
-    picture,
-    nip05,
-  };
+  const base = createCreatorFromPhonebook(phonebook);
+  return mergeDiscoveryIntoPhonebook(base, creator);
 }
 
 function createCreatorFromPhonebook(profile: PhonebookProfile): CreatorProfile {
@@ -1720,7 +1822,6 @@ export const useCreatorsStore = defineStore("creators", {
       warmCache: {} as Record<string, CreatorWarmCache>,
       inFlightCreatorRequests: {} as Record<string, Promise<CreatorProfile | null>>,
       searchAbortController: null as AbortController | null,
-      nostrSearchRequests: new Map<string, Promise<FundstrCreator[]>>(),
       unfilteredSearchResults: [] as CreatorProfile[],
     };
   },
@@ -2036,6 +2137,7 @@ export const useCreatorsStore = defineStore("creators", {
         return false;
       }
 
+      const warnings: string[] = [];
       let discoveryResults: CreatorProfile[] = [];
 
       try {
@@ -2044,10 +2146,18 @@ export const useCreatorsStore = defineStore("creators", {
           signal,
         });
         discoveryResults = response.results.map((creator) => cloneCreatorProfile(creator));
+        const discoveryWarnings = Array.isArray(response.warnings)
+          ? response.warnings
+              .filter((warning): warning is string => typeof warning === "string")
+              .map((warning) => warning.trim())
+              .filter(Boolean)
+          : [];
+        warnings.push(...discoveryWarnings);
       } catch (error) {
         if (signal?.aborted) {
           throw error;
         }
+        warnings.push(DISCOVERY_ENRICHMENT_WARNING);
         console.warn("[creators] Phonebook enrichment failed", error);
       }
 
@@ -2070,16 +2180,20 @@ export const useCreatorsStore = defineStore("creators", {
           return false;
         }
 
+        const phonebookCreator = createCreatorFromPhonebook(profile);
+
         const enriched = discoveryMap.get(profile.pubkey);
         if (enriched) {
-          merged.push(applyPhonebookOverrides(enriched, profile));
+          merged.push(mergeDiscoveryIntoPhonebook(phonebookCreator, enriched));
           continue;
         }
 
         try {
           const fetched = await this.fetchCreator(profile.pubkey, false);
           if (fetched) {
-            merged.push(applyPhonebookOverrides(cloneCreatorProfile(fetched), profile));
+            merged.push(
+              mergeDiscoveryIntoPhonebook(phonebookCreator, cloneCreatorProfile(fetched)),
+            );
             continue;
           }
         } catch (error) {
@@ -2092,14 +2206,13 @@ export const useCreatorsStore = defineStore("creators", {
           });
         }
 
-        merged.push(createCreatorFromPhonebook(profile));
+        merged.push(phonebookCreator);
       }
 
       if (!merged.length) {
         return false;
       }
 
-      const warnings: string[] = [];
       if (
         merged.some((profile) => profile.tierSecurityBlocked === true) &&
         !warnings.includes(FIREFOX_TIER_SECURITY_WARNING)
@@ -2107,10 +2220,12 @@ export const useCreatorsStore = defineStore("creators", {
         warnings.push(FIREFOX_TIER_SECURITY_WARNING);
       }
 
+      const uniqueWarnings = Array.from(new Set(warnings));
+
       this.error = "";
       this.unfilteredSearchResults = merged;
       this.searchResults = applyCreatorFilters(merged, options.filters, options.sort);
-      this.searchWarnings = warnings;
+      this.searchWarnings = uniqueWarnings;
 
       return true;
     },
@@ -2376,13 +2491,30 @@ export const useCreatorsStore = defineStore("creators", {
         resolvedHex ??= null;
       }
 
+      if (!resolvedHex && normalizedQuery.includes("@")) {
+        try {
+          const ndk = await useNdk({ requireSigner: false });
+          const user = await ndk.getUserFromNip05(normalizedQuery);
+          resolvedHex = user?.pubkey ?? null;
+        } catch (error) {
+          console.error("[creators] NIP-05 lookup failed", error);
+          resolvedHex = null;
+        }
+      }
+
+      if (resolvedHex && /^[0-9a-fA-F]{64}$/.test(resolvedHex)) {
+        normalizedQuery = resolvedHex.toLowerCase();
+      } else {
+        resolvedHex = null;
+      }
+
       const controller = new AbortController();
       this.searchAbortController = controller;
 
       let phonebookResponse: { results: PhonebookProfile[]; count: number } | null = null;
 
       try {
-        phonebookResponse = await findProfiles(resolvedHex ?? normalizedQuery, controller.signal);
+        phonebookResponse = await findProfiles(normalizedQuery, controller.signal);
       } catch (error) {
         phonebookResponse = { query: normalizedQuery, results: [], count: 0 };
       }
@@ -2415,25 +2547,6 @@ export const useCreatorsStore = defineStore("creators", {
         this.searching = false;
         this.searchAbortController = null;
         return;
-      }
-
-      if (!resolvedHex && normalizedQuery.includes("@")) {
-        try {
-          const ndk = await useNdk({ requireSigner: false });
-          const user = await ndk.getUserFromNip05(normalizedQuery);
-          if (user?.pubkey) {
-            resolvedHex = user.pubkey;
-          } else {
-            resolvedHex = null;
-          }
-        } catch (error) {
-          console.error("[creators] NIP-05 lookup failed", error);
-          resolvedHex = null;
-        }
-      }
-
-      if (resolvedHex && !/^[0-9a-fA-F]{64}$/.test(resolvedHex)) {
-        resolvedHex = null;
       }
 
       if (resolvedHex) {
@@ -2473,46 +2586,12 @@ export const useCreatorsStore = defineStore("creators", {
         return filtered;
       };
 
-      const fallbackDelayMs = 650;
-      const fallbackQueryKey = normalizedQuery.toLowerCase();
-      const fallbackMap = this.nostrSearchRequests;
-
-      let resolvedSource: "discovery" | "nostr" | null = null;
-      let fallbackTriggered = false;
-      let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-      let fallbackTimerFired = false;
-      let discoveryState: "pending" | "fulfilled" | "rejected" = "pending";
-      let discoveryResponse: Awaited<ReturnType<typeof discovery.getCreators>> | null = null;
-      let discoveryError: unknown = null;
-
-      let finalResolve: (() => void) | null = null;
-      const finalPromise = new Promise<void>((resolve) => {
-        finalResolve = resolve;
-      });
-
-      const resolveFinal = () => {
-        if (finalResolve) {
-          finalResolve();
-          finalResolve = null;
-        }
-      };
-
-      const clearFallbackTimer = () => {
-        if (fallbackTimer !== null) {
-          clearTimeout(fallbackTimer);
-          fallbackTimer = null;
-        }
-      };
-
-      const finishWithDiscovery = async (
-        response: Awaited<ReturnType<typeof discovery.getCreators>>,
-      ) => {
-        if (controller.signal.aborted || resolvedSource) {
-          return;
-        }
-        resolvedSource = "discovery";
-        clearFallbackTimer();
-
+      try {
+        const response = await discovery.getCreators({
+          q: normalizedQuery,
+          fresh: false,
+          signal: controller.signal,
+        });
         const profiles = response.results.map((creator) => cloneCreatorProfile(creator));
         const warnings = filterWarnings(response.warnings);
 
@@ -2522,171 +2601,18 @@ export const useCreatorsStore = defineStore("creators", {
           query: normalizedQuery,
           count: profiles.length,
         });
-        this.searching = false;
-        this.searchAbortController = null;
-        resolveFinal();
-      };
-
-      const finishWithFallback = async (results: FundstrCreator[]) => {
-        if (controller.signal.aborted || resolvedSource) {
+      } catch (error) {
+        if (controller.signal.aborted) {
+          this.searching = false;
+          this.searchAbortController = null;
           return;
         }
-        resolvedSource = "nostr";
-        clearFallbackTimer();
+        handleFailure("Failed to fetch profiles.");
+        console.warn("[creators] discovery search failed", error);
+      }
 
-        const profiles = results.map((creator) => cloneCreatorProfile(creator));
-        const warnings: string[] = [];
-
-        this.error = "";
-        await applyResults(profiles, warnings);
-        debug("nostr:fallback-hit", {
-          query: normalizedQuery,
-          count: profiles.length,
-        });
-        this.searching = false;
-        this.searchAbortController = null;
-        resolveFinal();
-      };
-
-      const createFallbackPromise = (): Promise<FundstrCreator[]> => {
-        const fetchPromise = fetchLegacyCreators(
-          normalizedQuery,
-          24,
-          0,
-          controller.signal,
-        );
-        const managedPromise = fetchPromise.finally(() => {
-          if (fallbackMap.get(fallbackQueryKey) === managedPromise) {
-            fallbackMap.delete(fallbackQueryKey);
-          }
-        });
-        fallbackMap.set(fallbackQueryKey, managedPromise);
-        return managedPromise;
-      };
-
-      const getOrCreateFallbackPromise = (): Promise<FundstrCreator[]> => {
-        const existing = fallbackMap.get(fallbackQueryKey);
-        if (existing) {
-          return existing;
-        }
-        return createFallbackPromise();
-      };
-
-      const attachFallbackHandlers = (promise: Promise<FundstrCreator[]>) => {
-        promise
-          .then(async (results) => {
-            if (controller.signal.aborted || resolvedSource) {
-              return;
-            }
-            await finishWithFallback(results);
-          })
-          .catch((fallbackError) => {
-            if (controller.signal.aborted || resolvedSource) {
-              return;
-            }
-            if (isAbortError(fallbackError)) {
-              if (fallbackMap.get(fallbackQueryKey) === promise) {
-                fallbackMap.delete(fallbackQueryKey);
-              }
-              if (controller.signal.aborted) {
-                return;
-              }
-              const nextPromise = createFallbackPromise();
-              if (nextPromise !== promise) {
-                attachFallbackHandlers(nextPromise);
-              }
-              return;
-            }
-            console.error("[creators] Nostr fallback search failed", fallbackError);
-            const message =
-              (fallbackError instanceof Error && fallbackError.message) ||
-              (discoveryError instanceof Error && discoveryError.message) ||
-              "Unable to load creators. Please try again.";
-            handleFailure(message);
-            this.searching = false;
-            this.searchAbortController = null;
-            resolveFinal();
-          });
-      };
-
-      const maybeStartFallback = (reason: "timeout" | "empty" | "error") => {
-        if (fallbackTriggered || controller.signal.aborted) {
-          return;
-        }
-        fallbackTriggered = true;
-        clearFallbackTimer();
-
-        debug("discovery:timeout→nostr", {
-          query: normalizedQuery,
-          reason,
-        });
-
-        const fallbackPromise = getOrCreateFallbackPromise();
-        attachFallbackHandlers(fallbackPromise);
-      };
-
-      const discoveryPromise = discovery.getCreators({
-        q: normalizedQuery,
-        fresh,
-        signal: controller.signal,
-      });
-
-      fallbackTimer = setTimeout(() => {
-        fallbackTimerFired = true;
-        if (controller.signal.aborted || resolvedSource) {
-          return;
-        }
-        if (discoveryState === "fulfilled") {
-          if (!discoveryResponse || discoveryResponse.results.length === 0) {
-            maybeStartFallback("empty");
-          }
-        } else if (discoveryState === "rejected") {
-          maybeStartFallback("error");
-        } else {
-          maybeStartFallback("timeout");
-        }
-      }, fallbackDelayMs);
-
-      controller.signal.addEventListener(
-        "abort",
-        () => {
-          clearFallbackTimer();
-          resolveFinal();
-        },
-        { once: true },
-      );
-
-      discoveryPromise
-        .then(async (response) => {
-          discoveryState = "fulfilled";
-          discoveryResponse = response;
-          if (controller.signal.aborted) {
-            return;
-          }
-          if (response.results.length > 0) {
-            await finishWithDiscovery(response);
-          } else if (fallbackTimerFired) {
-            maybeStartFallback("empty");
-          }
-        })
-        .catch((error) => {
-          discoveryState = "rejected";
-          const isRecoverableDiscoveryError = error instanceof RecoverableDiscoveryError;
-          discoveryError = isRecoverableDiscoveryError
-            ? new Error("Unable to load creators from discovery. Please try again.")
-            : error;
-          if (controller.signal.aborted) {
-            return;
-          }
-          console.error("[creators] Discovery search failed", error);
-          if (isRecoverableDiscoveryError) {
-            maybeStartFallback("error");
-          } else if (fallbackTimerFired) {
-            maybeStartFallback("error");
-          }
-        });
-
-      await finalPromise;
+      this.searching = false;
+      this.searchAbortController = null;
     },
 
     async applyBundleToCache(
