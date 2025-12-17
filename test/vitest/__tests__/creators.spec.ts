@@ -240,6 +240,38 @@ describe("Creators store", () => {
     });
   });
 
+  it("falls back to phonebook when featured discovery fails", async () => {
+    const npub = "npubfeatured";
+    const pubkey = "b".repeat(64);
+
+    (nip19.decode as any).mockReturnValue({ data: pubkey });
+    getCreatorsByPubkeysMock.mockRejectedValueOnce(new Error("discovery down"));
+    findProfilesMock.mockResolvedValueOnce({
+      query: npub,
+      results: [
+        {
+          pubkey,
+          name: "phonebook", 
+          display_name: "Phonebook Name",
+          about: "Phonebook bio",
+          picture: "https://example.com/avatar.png",
+          nip05: "pb@example.com",
+        },
+      ],
+      count: 1,
+    });
+
+    const creators = useCreatorsStore();
+
+    await creators.loadFeatured([npub]);
+
+    expect(getCreatorsByPubkeysMock).toHaveBeenCalled();
+    expect(findProfilesMock).toHaveBeenCalledWith(`npub${pubkey}`);
+    expect(creators.featuredCreators).toHaveLength(1);
+    expect(creators.featuredCreators[0].displayName).toBe("Phonebook Name");
+    expect(creators.featuredCreators[0].name).toBe("phonebook");
+  });
+
   it("uses phonebook results before discovery search", async () => {
     const pubkey = "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2";
     findProfilesMock.mockResolvedValueOnce({

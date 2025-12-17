@@ -2834,6 +2834,20 @@ export const useCreatorsStore = defineStore("creators", {
         }
       }
 
+      const needsPhonebookEnrichment = (profile?: CreatorProfile | null) => {
+        if (!profile) {
+          return true;
+        }
+        const missingName = !profile.displayName && !profile.name;
+        return (
+          missingName ||
+          typeof profile.about !== "string" ||
+          !profile.about?.trim() ||
+          typeof profile.picture !== "string" ||
+          !profile.picture?.trim()
+        );
+      };
+
       try {
         const response = await discovery.getCreatorsByPubkeys({
           npubs: normalizedNpubs,
@@ -2947,9 +2961,64 @@ export const useCreatorsStore = defineStore("creators", {
         if (!this.featuredCreators.length) {
           this.featuredError = "Failed to load featured creators.";
         }
-      } finally {
-        this.loadingFeatured = false;
       }
+
+      const currentCombined = Array.isArray(this.featuredCreators)
+        ? this.featuredCreators.filter(Boolean)
+        : [];
+      const combinedMap = new Map<string, CreatorProfile>();
+      for (const profile of currentCombined) {
+        if (profile?.pubkey) {
+          combinedMap.set(profile.pubkey, profile);
+        }
+      }
+
+      const phonebookTargets = pubkeys.filter((pubkey) =>
+        needsPhonebookEnrichment(combinedMap.get(pubkey)),
+      );
+
+      if (phonebookTargets.length) {
+        const phonebookResults = await Promise.all(
+          phonebookTargets.map(async (pubkey) => {
+            try {
+              const response = await findProfiles(toNpub(pubkey));
+              const match = response.results.find((result) => result.pubkey === pubkey);
+              if (!match) {
+                return null;
+              }
+
+              const phonebookCreator = createCreatorFromPhonebook(match);
+              const existing = combinedMap.get(pubkey);
+              const merged = existing
+                ? mergeDiscoveryIntoPhonebook(cloneCreatorProfile(existing), phonebookCreator)
+                : phonebookCreator;
+
+              merged.featured = merged.featured ?? true;
+
+              return { pubkey, profile: merged };
+            } catch (error) {
+              console.warn("[creators] Phonebook fallback failed for featured creator", {
+                pubkey,
+                error,
+              });
+              return null;
+            }
+          }),
+        );
+
+        for (const entry of phonebookResults) {
+          if (!entry) {
+            continue;
+          }
+          combinedMap.set(entry.pubkey, entry.profile);
+        }
+
+        this.featuredCreators = pubkeys
+          .map((pubkey) => combinedMap.get(pubkey))
+          .filter((profile): profile is CreatorProfile => Boolean(profile));
+      }
+
+      this.loadingFeatured = false;
     },
 
     async loadFeaturedCreators(forceRefresh = false) {
