@@ -1,5 +1,6 @@
 import { nip19 } from "nostr-tools";
 import { normalizeTierMediaItems } from "../utils/validateMedia";
+import { DISCOVERY_WARNING, safeJsonFromResponse } from "../api/fundstrDiscovery";
 import type { TierMedia } from "../stores/types";
 
 const DEFAULT_API_BASE = "/api/v1";
@@ -229,15 +230,15 @@ export function formatMsatToSats(
 }
 
 async function parseJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) {
-    return null;
+  const result = await safeJsonFromResponse<unknown>(response, DISCOVERY_WARNING);
+  if (!result.ok) {
+    if (result.snippet) {
+      console.debug("[fundstr-api] response snippet", result.snippet);
+    }
+    throw new Error(result.warning);
   }
-  try {
-    return JSON.parse(text);
-  } catch (error) {
-    throw new Error("Invalid JSON response");
-  }
+
+  return result.data;
 }
 
 function buildCacheUpdateHeaders(): Record<string, string> {
