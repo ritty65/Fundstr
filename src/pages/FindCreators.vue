@@ -527,6 +527,7 @@ import {
   creatorIsFundstrCreator,
   creatorIsSignalOnly,
 } from 'stores/creators';
+import { findProfiles, toNpub } from 'src/api/phonebook';
 
 type FilterKey =
   | 'hasTiers'
@@ -853,6 +854,7 @@ watch(searchWarnings, (warnings) => {
 const showProfileModal = ref(false);
 const selectedProfilePubkey = ref('');
 const selectedProfile = ref<CreatorProfile | null>(null);
+const selectedProfileEnrichmentRequestId = ref(0);
 const featuredSectionRef = ref<HTMLElement | ComponentPublicInstance | null>(null);
 const activeMintInfo = computed(() => mintsStore.activeInfo);
 const supportedNuts = computed(() => resolveSupportedNuts(activeMintInfo.value));
@@ -864,6 +866,108 @@ const bucketBalances = computed(() => bucketsStore.bucketBalances);
 const hasFundedBucket = computed(() =>
   activeBuckets.value.some((bucket) => (bucketBalances.value[bucket.id] ?? 0) > 0),
 );
+
+function isProfileMetadataMissing(profile: CreatorProfile | null) {
+  if (!profile) {
+    return false;
+  }
+  const hasDisplayName = Boolean(profile.displayName?.trim());
+  const hasName = Boolean(profile.name?.trim());
+  const hasAbout = Boolean(profile.about?.trim());
+  const hasPicture = Boolean(profile.picture?.trim());
+  return !hasDisplayName && !hasName ? true : !hasAbout || !hasPicture;
+}
+
+function mergeProfileMetadata(
+  base: CreatorProfile,
+  updates: Partial<CreatorProfile>,
+): CreatorProfile {
+  const merged: CreatorProfile = { ...base };
+
+  const applyString = (value: unknown, setter: (value: string) => void) => {
+    if (typeof value !== 'string') return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    setter(trimmed);
+  };
+
+  applyString(updates.displayName, (value) => {
+    if (!merged.displayName) {
+      merged.displayName = value;
+    }
+  });
+  applyString(updates.name, (value) => {
+    if (!merged.name) {
+      merged.name = value;
+    }
+  });
+  applyString(updates.about, (value) => {
+    if (!merged.about) {
+      merged.about = value;
+    }
+  });
+  applyString(updates.picture, (value) => {
+    if (!merged.picture) {
+      merged.picture = value;
+    }
+  });
+  applyString(updates.banner, (value) => {
+    if (!merged.banner) {
+      merged.banner = value;
+    }
+  });
+  applyString(updates.nip05, (value) => {
+    if (!merged.nip05) {
+      merged.nip05 = value;
+    }
+  });
+
+  return merged;
+}
+
+async function enrichSelectedProfile(profile: CreatorProfile) {
+  if (!isProfileMetadataMissing(profile)) {
+    return;
+  }
+
+  const targetPubkey = profile.pubkey?.trim?.();
+  if (!targetPubkey) {
+    return;
+  }
+
+  const requestId = ++selectedProfileEnrichmentRequestId.value;
+  let mergedProfile = { ...profile } as CreatorProfile;
+
+  try {
+    const cached = creatorsStore.buildCreatorProfileFromCache(targetPubkey);
+    if (cached) {
+      mergedProfile = mergeProfileMetadata(mergedProfile, cached);
+    }
+  } catch (error) {
+    debug('Failed to apply cached discovery to selected profile', error);
+  }
+
+  try {
+    const response = await findProfiles(toNpub(targetPubkey));
+    const match = response.results.find((result) => result.pubkey === targetPubkey);
+    if (match) {
+      mergedProfile = mergeProfileMetadata(mergedProfile, {
+        displayName: match.display_name ?? undefined,
+        name: match.name ?? undefined,
+        about: match.about ?? undefined,
+        picture: match.picture ?? undefined,
+        nip05: match.nip05 ?? undefined,
+      });
+    }
+  } catch (error) {
+    debug('Phonebook enrichment failed for selected profile', error);
+  }
+
+  if (requestId === selectedProfileEnrichmentRequestId.value &&
+    selectedProfile.value?.pubkey === targetPubkey) {
+    selectedProfile.value = mergedProfile;
+  }
+}
 
 function viewProfile(profile: CreatorProfile) {
   if (!profile?.pubkey) {
@@ -878,6 +982,7 @@ function viewProfile(profile: CreatorProfile) {
   selectedProfilePubkey.value = profile.pubkey;
   selectedProfile.value = profile;
   showProfileModal.value = true;
+  void enrichSelectedProfile(profile);
 }
 
 function startChat(pubkey: string) {

@@ -33,6 +33,12 @@ vi.mock("components/SendTokenDialog.vue", () => ({
   default: { name: "SendTokenDialog", template: "<div />" },
 }));
 
+const findProfilesMock = vi.fn().mockResolvedValue({ query: "", results: [], count: 0 });
+vi.mock("src/api/phonebook", () => ({
+  findProfiles: findProfilesMock,
+  toNpub: (value: string) => value,
+}));
+
 const sendTokensStore = { clearSendData: vi.fn(), sendData: {}, showSendTokens: false };
 vi.mock("stores/sendTokensStore", () => ({
   useSendTokensStore: () => sendTokensStore,
@@ -77,6 +83,8 @@ describe("FindCreators.vue", () => {
       cached: false,
       tookMs: 0,
     });
+    findProfilesMock.mockReset();
+    findProfilesMock.mockResolvedValue({ query: "", results: [], count: 0 });
     creatorsStore = reactive({
       searchResults: [],
       featuredCreators: [],
@@ -91,6 +99,7 @@ describe("FindCreators.vue", () => {
       saveProfileCache: vi.fn().mockResolvedValue(undefined),
       loadFeaturedCreators: vi.fn().mockResolvedValue(undefined),
       searchCreators: vi.fn().mockResolvedValue(undefined),
+      buildCreatorProfileFromCache: vi.fn().mockReturnValue(null),
     });
   });
 
@@ -171,5 +180,65 @@ describe("FindCreators.vue", () => {
       .find((node) => node.text() === "Could not load featured");
 
     expect(bannerText).toBeTruthy();
+  });
+
+  it("passes enriched selected profile into the modal without waiting for discovery", async () => {
+    const wrapper = mountComponent();
+    await flushPromises();
+
+    const baseProfile = {
+      pubkey: "f".repeat(64),
+      displayName: "",
+      name: "",
+      about: "",
+      picture: "",
+      banner: null,
+      nip05: null,
+      followers: null,
+      following: null,
+      joined: null,
+      profile: null,
+      tierSummary: null,
+      metrics: null,
+      tiers: [],
+    } as any;
+
+    const discoveryProfile = {
+      ...baseProfile,
+      displayName: "Discovery Display",
+      about: "Discovery about",
+    };
+
+    creatorsStore.buildCreatorProfileFromCache = vi.fn().mockReturnValue(discoveryProfile);
+    findProfilesMock.mockResolvedValue({
+      query: baseProfile.pubkey,
+      count: 1,
+      results: [
+        {
+          pubkey: baseProfile.pubkey,
+          display_name: "Phonebook Name",
+          name: "",
+          about: "Phonebook about",
+          picture: "https://example.com/img.png",
+          nip05: null,
+        },
+      ],
+    });
+
+    (wrapper.vm as any).viewProfile(baseProfile);
+
+    await nextTick();
+
+    const modal = wrapper.findComponent({ name: "CreatorProfileModal" });
+    expect(modal.props("show")).toBe(true);
+    expect((modal.props("initialProfile") as any).pubkey).toBe(baseProfile.pubkey);
+
+    await flushPromises();
+
+    const enrichedProfile = modal.props("initialProfile") as any;
+    expect(enrichedProfile.displayName).toBe("Discovery Display");
+    expect(enrichedProfile.about).toBe("Discovery about");
+    expect(enrichedProfile.picture).toBe("https://example.com/img.png");
+    expect(enrichedProfile.name).toBe("Phonebook Name");
   });
 });
