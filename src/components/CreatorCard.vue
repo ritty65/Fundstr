@@ -88,7 +88,7 @@
         class="action-btn"
         label="View subscription tiers"
         no-caps
-        @click.stop="$emit('view-tiers', profile.pubkey)"
+        @click.stop="$emit('view-tiers', { pubkey: profile.pubkey, initialTab: 'tiers' })"
       />
       <q-btn
         flat
@@ -96,7 +96,7 @@
         class="action-btn tertiary-btn"
         label="View profile"
         no-caps
-        @click.stop="$emit('view-profile', profile.pubkey)"
+        @click.stop="$emit('view-profile', { pubkey: profile.pubkey, initialTab: 'profile' })"
       />
       <q-btn
         color="accent"
@@ -460,7 +460,7 @@ const statusChips = computed<StatusChip[]>(() => {
 });
 
 function openProfileModal() {
-  emit('view-profile', props.profile.pubkey);
+  emit('view-profile', { pubkey: props.profile.pubkey, initialTab: 'profile' });
 }
 </script>
 
