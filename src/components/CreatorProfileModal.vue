@@ -31,6 +31,54 @@
                   <div class="hero-meta">
                     <div class="hero-name">{{ displayName }}</div>
                     <div v-if="nip05" class="hero-handle">{{ nip05 }}</div>
+                    <div v-if="creatorPubkey" class="hero-identity">
+                      <div class="hero-identity__row">
+                        <span class="hero-identity__label text-2">npub</span>
+                        <span class="hero-identity__value">{{ creatorNpub }}</span>
+                        <q-btn
+                          flat
+                          dense
+                          round
+                          icon="content_copy"
+                          class="hero-identity__copy"
+                          aria-label="Copy creator npub to clipboard"
+                          @click="copyIdentity(creatorNpub, 'npub')"
+                        >
+                          <q-tooltip v-model="copiedState.npub" anchor="top middle" self="bottom middle">
+                            Copied
+                          </q-tooltip>
+                        </q-btn>
+                      </div>
+                      <div class="hero-identity__row">
+                        <span class="hero-identity__label text-2">pubkey</span>
+                        <span class="hero-identity__value">{{ creatorPubkey }}</span>
+                        <q-btn
+                          flat
+                          dense
+                          round
+                          icon="content_copy"
+                          class="hero-identity__copy"
+                          aria-label="Copy creator pubkey to clipboard"
+                          @click="copyIdentity(creatorPubkey, 'pubkey')"
+                        >
+                          <q-tooltip v-model="copiedState.pubkey" anchor="top middle" self="bottom middle">
+                            Copied
+                          </q-tooltip>
+                        </q-btn>
+                      </div>
+                      <div v-if="identityLinks.length" class="hero-identity__links">
+                        <a
+                          v-for="link in identityLinks"
+                          :key="link.label"
+                          class="hero-identity__link"
+                          :href="link.url"
+                          target="_blank"
+                          rel="noopener"
+                        >
+                          {{ link.label }}
+                        </a>
+                      </div>
+                    </div>
                     <div
                       v-if="aboutText"
                       class="hero-about text-body2"
@@ -224,6 +272,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
+import { nip19 } from 'nostr-tools';
 import TierDetailsPanel from 'components/TierDetailsPanel.vue';
 import { formatMsatToSats } from 'src/lib/fundstrApi';
 import { NETWORK_CHANGE_WARNING } from 'src/api/fundstrDiscovery';
@@ -232,6 +281,7 @@ import {
   onFreeRelayFallbackStatusChange,
 } from 'src/boot/ndk';
 import { useNetworkStatus, waitForOnline } from 'src/composables/useNetworkStatus';
+import { notifyError } from 'src/js/notify';
 import {
   displayNameFromProfile,
   normalizeMeta,
@@ -500,6 +550,8 @@ const creatorNpub = computed(() => {
   }
 });
 
+const creatorPubkey = computed(() => creator.value?.pubkey ?? props.pubkey ?? '');
+
 const displayName = computed(() => displayNameFromProfile(creatorMeta.value, creatorNpub.value));
 
 const creatorAvatar = computed(() => safeImageSrc(creatorMeta.value.picture, displayName.value, 200));
@@ -594,6 +646,42 @@ const showStickyFooter = computed(() => hasTiers.value && $q.screen.lt.md);
 const isHeroActionsInline = computed(() => $q.screen.gt.sm);
 
 const primaryTierId = computed(() => tiers.value[0]?.id ?? '');
+
+const identityLinks = computed(() => {
+  const npub = creatorNpub.value;
+  if (!npub) {
+    return [];
+  }
+  return [
+    { label: 'Open in client', url: `https://njump.me/${npub}` },
+    { label: 'View in explorer', url: `https://nostr.band/${npub}` },
+  ];
+});
+
+const copiedState = ref({ npub: false, pubkey: false });
+const copyTimeouts: Partial<Record<'npub' | 'pubkey', number>> = {};
+
+async function copyIdentity(value: string, key: 'npub' | 'pubkey') {
+  if (!value) {
+    return;
+  }
+  try {
+    if (!navigator?.clipboard?.writeText) {
+      throw new Error('Clipboard unavailable');
+    }
+    await navigator.clipboard.writeText(value);
+    copiedState.value[key] = true;
+    if (copyTimeouts[key]) {
+      window.clearTimeout(copyTimeouts[key]);
+    }
+    copyTimeouts[key] = window.setTimeout(() => {
+      copiedState.value[key] = false;
+    }, 1400);
+  } catch (error) {
+    console.error('[CreatorProfileModal] Failed to copy identity', error);
+    notifyError('Unable to copy to clipboard.');
+  }
+}
 
 watch(
   tiers,
@@ -1063,6 +1151,59 @@ function resetState() {
   color: color-mix(in srgb, var(--text-1) 92%, var(--text-2) 8%);
   letter-spacing: 0.045em;
   overflow-wrap: anywhere;
+}
+
+.hero-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-2) 80%, var(--surface-1) 20%);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+}
+
+.hero-identity__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.hero-identity__label {
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.hero-identity__value {
+  font-size: 0.95rem;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+
+.hero-identity__copy {
+  color: var(--text-2);
+}
+
+.hero-identity__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-left: 2px;
+}
+
+.hero-identity__link {
+  font-size: 0.9rem;
+  color: var(--accent-500);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.hero-identity__link:hover,
+.hero-identity__link:focus-visible {
+  text-decoration: underline;
 }
 
 .hero-about {
