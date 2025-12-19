@@ -4,6 +4,7 @@
       :show="showProfileModal"
       :pubkey="selectedProfilePubkey"
       :initial-profile="selectedProfile"
+      :initial-tab="selectedProfileInitialTab"
       @close="showProfileModal = false"
       @message="startChat"
       @donate="donate"
@@ -217,8 +218,8 @@
                         :is-creator="profile.isCreator ?? undefined"
                         :is-personal="profile.isPersonal ?? undefined"
                         :nip05="profile.nip05 ?? undefined"
-                        @view-tiers="() => viewProfile(profile)"
-                        @view-profile="() => viewProfile(profile)"
+                        @view-tiers="(payload) => viewProfile(profile, payload?.initialTab)"
+                        @view-profile="(payload) => viewProfile(profile, payload?.initialTab)"
                         @message="startChat"
                         @donate="donate"
                       />
@@ -245,8 +246,8 @@
                             :is-creator="profile.isCreator ?? undefined"
                             :is-personal="profile.isPersonal ?? undefined"
                             :nip05="profile.nip05 ?? undefined"
-                            @view-tiers="() => viewProfile(profile)"
-                            @view-profile="() => viewProfile(profile)"
+                            @view-tiers="(payload) => viewProfile(profile, payload?.initialTab)"
+                            @view-profile="(payload) => viewProfile(profile, payload?.initialTab)"
                             @message="startChat"
                             @donate="donate"
                           />
@@ -518,8 +519,8 @@
                       :is-creator="profile.isCreator ?? undefined"
                       :is-personal="profile.isPersonal ?? undefined"
                       :nip05="profile.nip05 ?? undefined"
-                      @view-tiers="() => viewProfile(profile)"
-                      @view-profile="() => viewProfile(profile)"
+                      @view-tiers="(payload) => viewProfile(profile, payload?.initialTab)"
+                      @view-profile="(payload) => viewProfile(profile, payload?.initialTab)"
                       @message="startChat"
                       @donate="donate"
                     />
@@ -616,6 +617,7 @@ type FilterKey =
   | 'signalOnly';
 type SortOption = 'relevance' | 'followers';
 type ViewMode = 'grid' | 'grouped';
+type ProfileTab = 'profile' | 'tiers';
 
 const creatorsStore = useCreatorsStore();
 const {
@@ -1122,6 +1124,7 @@ watch(searchWarnings, (warnings) => {
 const showProfileModal = ref(false);
 const selectedProfilePubkey = ref('');
 const selectedProfile = ref<CreatorProfile | null>(null);
+const selectedProfileInitialTab = ref<ProfileTab>('profile');
 const featuredSectionRef = ref<HTMLElement | ComponentPublicInstance | null>(null);
 const activeMintInfo = computed(() => mintsStore.activeInfo);
 const supportedNuts = computed(() => resolveSupportedNuts(activeMintInfo.value));
@@ -1134,7 +1137,7 @@ const hasFundedBucket = computed(() =>
   activeBuckets.value.some((bucket) => (bucketBalances.value[bucket.id] ?? 0) > 0),
 );
 
-function viewProfile(profile: CreatorProfile) {
+function viewProfile(profile: CreatorProfile, initialTab: ProfileTab = 'profile') {
   if (!profile?.pubkey) {
     notifyError('We could not open this profile because its public key is missing.');
     captureTelemetryWarning('findCreators.missingPubkey', {
@@ -1146,6 +1149,7 @@ function viewProfile(profile: CreatorProfile) {
 
   selectedProfilePubkey.value = profile.pubkey;
   selectedProfile.value = profile;
+  selectedProfileInitialTab.value = initialTab;
   showProfileModal.value = true;
 }
 

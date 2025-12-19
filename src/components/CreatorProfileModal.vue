@@ -161,145 +161,166 @@
                 <div class="refresh-banner__message">Refreshing…</div>
               </q-card-section>
 
-              <q-card-section v-if="creator" class="highlights-section">
-                <div class="section-heading">Profile highlights</div>
-                <div v-if="hasHighlights" class="highlights-grid">
-                  <div v-if="followersDisplay" class="highlight-item">
-                    <div class="highlight-label text-2">Followers</div>
-                    <div class="highlight-value">{{ followersDisplay }}</div>
-                  </div>
-                  <div v-if="lightningAddress" class="highlight-item highlight-item--full">
-                    <div class="highlight-label text-2">Lightning address</div>
-                    <div class="highlight-value highlight-value--mono">
-                      <span>{{ lightningAddress }}</span>
-                      <q-btn
-                        flat
-                        dense
-                        round
-                        icon="content_copy"
-                        class="highlight-copy"
-                        aria-label="Copy lightning address"
-                        @click="copyIdentity(lightningAddress, 'lightning')"
-                      >
-                        <q-tooltip v-model="copiedState.lightning" anchor="top middle" self="bottom middle">
-                          Copied
-                        </q-tooltip>
-                      </q-btn>
-                    </div>
-                  </div>
-                  <div v-if="websiteUrl" class="highlight-item highlight-item--full">
-                    <div class="highlight-label text-2">Website</div>
-                    <a class="highlight-link" :href="websiteUrl" target="_blank" rel="noopener">
-                      {{ websiteLabel }}
-                    </a>
-                  </div>
-                  <div v-if="highlightStatusChips.length" class="highlight-item highlight-item--full">
-                    <div class="highlight-label text-2">Status</div>
-                    <div class="highlight-chips" role="list">
-                      <span
-                        v-for="chip in highlightStatusChips"
-                        :key="chip.key"
-                        class="status-chip"
-                        :class="chip.variant"
-                        role="listitem"
-                        tabindex="0"
-                        :aria-label="chip.ariaLabel"
-                      >
-                        <q-icon v-if="chip.icon" :name="chip.icon" size="14px" />
-                        <span>{{ chip.label }}</span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div v-else class="empty-state">
-                  No highlights available yet
-                </div>
+              <q-card-section v-if="creator" class="profile-tabs-section">
+                <q-tabs
+                  v-model="activeTab"
+                  class="profile-tabs"
+                  dense
+                  align="left"
+                  no-caps
+                  indicator-color="accent"
+                  active-color="accent"
+                  active-bg-color="transparent"
+                >
+                  <q-tab name="profile" label="Profile" />
+                  <q-tab name="tiers" label="Tiers" />
+                </q-tabs>
               </q-card-section>
 
-              <q-card-section v-if="creator" class="tiers-section">
-                <div class="section-heading">Subscription tiers</div>
-                <div
-                  v-if="hasTiers"
-                  class="tiers-carousel"
-                  role="region"
-                  aria-roledescription="carousel"
-                  aria-label="Creator subscription tiers"
-                >
-                  <div
-                    class="tiers-carousel__viewport"
-                    ref="carouselViewportRef"
-                    tabindex="0"
-                    role="group"
-                    :aria-label="activeTierAnnouncement"
-                    aria-live="polite"
-                    @keydown="onCarouselKeydown"
-                  >
-                    <TierDetailsPanel
-                      v-for="(tier, index) in tiers"
-                      :key="tier.id"
-                      class="tiers-carousel__slide"
-                      :is-active="index === activeTierIndex"
-                      :tier-name="tier.name"
-                      :tier-id="tier.id"
-                      :price-label="`${formatTierPrice(tier)} sats`"
-                      :frequency-label="tierFrequencyLabel(tier)"
-                      :summary="tierSummary(tier)"
-                      :description="hasTierDescription(tier) ? tierDescription(tier) : null"
-                      :benefits="tierBenefits(tier)"
-                      :welcome-message="tier.welcomeMessage"
-                      :media-items="tierMediaItems(tier)"
-                      :total="tiers.length"
-                      :index="index"
-                      @subscribe="handleSubscribe"
-                    />
+              <q-tab-panels v-if="creator" v-model="activeTab" animated class="profile-tab-panels">
+                <q-tab-panel name="profile" class="profile-tab-panel">
+                  <div class="highlights-section">
+                    <div class="section-heading">Profile highlights</div>
+                    <div v-if="hasHighlights" class="highlights-grid">
+                      <div v-if="followersDisplay" class="highlight-item">
+                        <div class="highlight-label text-2">Followers</div>
+                        <div class="highlight-value">{{ followersDisplay }}</div>
+                      </div>
+                      <div v-if="lightningAddress" class="highlight-item highlight-item--full">
+                        <div class="highlight-label text-2">Lightning address</div>
+                        <div class="highlight-value highlight-value--mono">
+                          <span>{{ lightningAddress }}</span>
+                          <q-btn
+                            flat
+                            dense
+                            round
+                            icon="content_copy"
+                            class="highlight-copy"
+                            aria-label="Copy lightning address"
+                            @click="copyIdentity(lightningAddress, 'lightning')"
+                          >
+                            <q-tooltip v-model="copiedState.lightning" anchor="top middle" self="bottom middle">
+                              Copied
+                            </q-tooltip>
+                          </q-btn>
+                        </div>
+                      </div>
+                      <div v-if="websiteUrl" class="highlight-item highlight-item--full">
+                        <div class="highlight-label text-2">Website</div>
+                        <a class="highlight-link" :href="websiteUrl" target="_blank" rel="noopener">
+                          {{ websiteLabel }}
+                        </a>
+                      </div>
+                      <div v-if="highlightStatusChips.length" class="highlight-item highlight-item--full">
+                        <div class="highlight-label text-2">Status</div>
+                        <div class="highlight-chips" role="list">
+                          <span
+                            v-for="chip in highlightStatusChips"
+                            :key="chip.key"
+                            class="status-chip"
+                            :class="chip.variant"
+                            role="listitem"
+                            tabindex="0"
+                            :aria-label="chip.ariaLabel"
+                          >
+                            <q-icon v-if="chip.icon" :name="chip.icon" size="14px" />
+                            <span>{{ chip.label }}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div v-else class="empty-state">
+                      No highlights available yet
+                    </div>
                   </div>
-
-                  <div class="tiers-carousel__controls" role="group" aria-label="Tier navigation controls">
-                    <div class="tiers-carousel__controls-inner">
-                      <q-btn
-                        flat
-                        round
-                        icon="chevron_left"
-                        class="tiers-carousel__control"
-                        :disable="!canGoPrevious"
-                        aria-label="View previous tier"
-                        @click="goToPreviousTier"
-                      />
-                      <div class="tiers-carousel__dots" role="tablist" aria-label="Select tier">
-                        <button
+                </q-tab-panel>
+                <q-tab-panel name="tiers" class="profile-tab-panel">
+                  <div class="tiers-section">
+                    <div class="section-heading">Subscription tiers</div>
+                    <div
+                      v-if="hasTiers"
+                      class="tiers-carousel"
+                      role="region"
+                      aria-roledescription="carousel"
+                      aria-label="Creator subscription tiers"
+                    >
+                      <div
+                        class="tiers-carousel__viewport"
+                        ref="carouselViewportRef"
+                        tabindex="0"
+                        role="group"
+                        :aria-label="activeTierAnnouncement"
+                        aria-live="polite"
+                        @keydown="onCarouselKeydown"
+                      >
+                        <TierDetailsPanel
                           v-for="(tier, index) in tiers"
-                          :key="`dot-${tier.id}`"
-                          class="tiers-carousel__dot"
-                          :class="{ 'tiers-carousel__dot--active': index === activeTierIndex }"
-                          role="tab"
-                          type="button"
-                          :aria-selected="index === activeTierIndex"
-                          :tabindex="index === activeTierIndex ? 0 : -1"
-                          :aria-label="`Show tier ${index + 1} of ${tiers.length}: ${tier.name}`"
-                          @click="setActiveTier(index)"
-                          @keydown.enter.prevent="setActiveTier(index)"
-                          @keydown.space.prevent="setActiveTier(index)"
+                          :key="tier.id"
+                          class="tiers-carousel__slide"
+                          :is-active="index === activeTierIndex"
+                          :tier-name="tier.name"
+                          :tier-id="tier.id"
+                          :price-label="`${formatTierPrice(tier)} sats`"
+                          :frequency-label="tierFrequencyLabel(tier)"
+                          :summary="tierSummary(tier)"
+                          :description="hasTierDescription(tier) ? tierDescription(tier) : null"
+                          :benefits="tierBenefits(tier)"
+                          :welcome-message="tier.welcomeMessage"
+                          :media-items="tierMediaItems(tier)"
+                          :total="tiers.length"
+                          :index="index"
+                          @subscribe="handleSubscribe"
                         />
                       </div>
-                      <q-btn
-                        flat
-                        round
-                        icon="chevron_right"
-                        class="tiers-carousel__control"
-                        :disable="!canGoNext"
-                        aria-label="View next tier"
-                        @click="goToNextTier"
-                      />
+
+                      <div class="tiers-carousel__controls" role="group" aria-label="Tier navigation controls">
+                        <div class="tiers-carousel__controls-inner">
+                          <q-btn
+                            flat
+                            round
+                            icon="chevron_left"
+                            class="tiers-carousel__control"
+                            :disable="!canGoPrevious"
+                            aria-label="View previous tier"
+                            @click="goToPreviousTier"
+                          />
+                          <div class="tiers-carousel__dots" role="tablist" aria-label="Select tier">
+                            <button
+                              v-for="(tier, index) in tiers"
+                              :key="`dot-${tier.id}`"
+                              class="tiers-carousel__dot"
+                              :class="{ 'tiers-carousel__dot--active': index === activeTierIndex }"
+                              role="tab"
+                              type="button"
+                              :aria-selected="index === activeTierIndex"
+                              :tabindex="index === activeTierIndex ? 0 : -1"
+                              :aria-label="`Show tier ${index + 1} of ${tiers.length}: ${tier.name}`"
+                              @click="setActiveTier(index)"
+                              @keydown.enter.prevent="setActiveTier(index)"
+                              @keydown.space.prevent="setActiveTier(index)"
+                            />
+                          </div>
+                          <q-btn
+                            flat
+                            round
+                            icon="chevron_right"
+                            class="tiers-carousel__control"
+                            :disable="!canGoNext"
+                            aria-label="View next tier"
+                            @click="goToNextTier"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div v-else-if="!loadError" class="empty-state">
+                      <div>No subscription tiers found for this creator.</div>
+                      <div v-if="tierFetchFailed" class="empty-state__subtext text-2">
+                        We couldn&#39;t load tiers right now. Please try again.
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div v-else-if="!loadError" class="empty-state">
-                  <div>No subscription tiers found for this creator.</div>
-                  <div v-if="tierFetchFailed" class="empty-state__subtext text-2">
-                    We couldn&#39;t load tiers right now. Please try again.
-                  </div>
-                </div>
-              </q-card-section>
+                </q-tab-panel>
+              </q-tab-panels>
 
               <q-card-section v-else class="empty-state">
                 We couldn't load this creator's profile. Please try again later.
@@ -358,6 +379,7 @@ const props = defineProps<{
   show: boolean;
   pubkey: string;
   initialProfile?: CreatorProfile | null;
+  initialTab?: 'profile' | 'tiers';
 }>();
 
 const emit = defineEmits(['close', 'message', 'donate']);
@@ -394,12 +416,17 @@ const dialogClasses = computed(() => ({
 }));
 const activeTierIndex = ref(0);
 const isBioExpanded = ref(false);
+const activeTab = ref<'profile' | 'tiers'>('profile');
 const carouselViewportRef = ref<HTMLElement | null>(null);
 const creatorsStore = useCreatorsStore();
 const { isOnline, wasOfflineRecently } = useNetworkStatus();
 
 let currentRequestId = 0;
 let retryRequestId = 0;
+
+function resolveInitialTab(tab?: string | null): 'profile' | 'tiers' {
+  return tab === 'tiers' ? 'tiers' : 'profile';
+}
 
 function getInitialProfileFallback(pubkey: string | null | undefined): CreatorProfile | null {
   if (!pubkey) {
@@ -699,7 +726,9 @@ function toggleBio() {
 const hasTiers = computed(() => tiers.value.length > 0);
 const tierFetchFailed = computed(() => creator.value?.tierFetchFailed === true);
 
-const showStickyFooter = computed(() => hasTiers.value && $q.screen.lt.md);
+const showStickyFooter = computed(
+  () => hasTiers.value && $q.screen.lt.md && activeTab.value === 'tiers',
+);
 const isHeroActionsInline = computed(() => $q.screen.gt.sm);
 
 const primaryTierId = computed(() => tiers.value[0]?.id ?? '');
@@ -854,6 +883,7 @@ watch(
   (visible) => {
     showLocal.value = visible;
     if (visible && props.pubkey) {
+      activeTab.value = resolveInitialTab(props.initialTab);
       syncStateFromStore(props.pubkey, getInitialProfileFallback(props.pubkey));
       void loadCreatorProfile(props.pubkey);
     }
@@ -863,6 +893,16 @@ watch(
     }
   },
   { immediate: true },
+);
+
+watch(
+  () => props.initialTab,
+  (nextTab) => {
+    if (!showLocal.value) {
+      return;
+    }
+    activeTab.value = resolveInitialTab(nextTab);
+  },
 );
 
 watch(
@@ -1044,6 +1084,7 @@ function resetState() {
   creator.value = null;
   tiers.value = [];
   activeTierIndex.value = 0;
+  activeTab.value = 'profile';
   isBioExpanded.value = false;
   loadError.value = null;
 }
@@ -1469,6 +1510,27 @@ function resetState() {
 
 .refresh-banner__message {
   line-height: 1.4;
+}
+
+.profile-tabs-section {
+  padding: 0 clamp(14px, 4.6vw, 24px);
+}
+
+.profile-tabs {
+  color: var(--tab-inactive);
+}
+
+.profile-tabs :deep(.q-tab--active) {
+  color: var(--tab-active);
+}
+
+.profile-tab-panels {
+  padding: 0;
+  background: transparent;
+}
+
+.profile-tab-panel {
+  padding: 0;
 }
 
 .section-divider {
