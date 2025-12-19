@@ -2847,6 +2847,27 @@ export const useNostrStore = defineStore("nostr", {
       return latest ? (latest.content as string) : null;
     },
 
+    fetchRecentNotes: async function (
+      pubkey: string,
+      limit = 3,
+    ): Promise<Array<{ content: string; created_at: number; id: string }>> {
+      const resolved = this.resolvePubkey(pubkey);
+      if (!resolved) return [];
+      pubkey = resolved;
+      await this.initNdkReadOnly();
+      const filter: NDKFilter = { kinds: [1], authors: [pubkey], limit };
+      const ndk = await useNdk();
+      const events = await ndk.fetchEvents(filter);
+      const sorted = Array.from(events).sort(
+        (a, b) => (b.created_at || 0) - (a.created_at || 0),
+      );
+      return sorted.slice(0, limit).map((ev) => ({
+        content: ev.content as string,
+        created_at: ev.created_at,
+        id: ev.id,
+      }));
+    },
+
     fetchDmRelayUris: async function (
       pubkey: string,
     ): Promise<string[] | null> {
