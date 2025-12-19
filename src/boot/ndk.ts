@@ -11,6 +11,8 @@ import {
   DEFAULT_RELAYS,
   FREE_RELAYS,
   FUNDSTR_PRIMARY_RELAY,
+  RELAY_CONNECT_RETRY,
+  computeRelayBackoffMs,
 } from "src/config/relays";
 import { clearRelayFailureCache } from "src/nostr/relayClient";
 import { filterHealthyRelays } from "src/utils/relayHealth";
@@ -275,17 +277,17 @@ function startRelayWatchdog(ndk: NDK) {
 
 export async function safeConnect(
   ndk: NDK,
-  retries = 3,
+  retries = RELAY_CONNECT_RETRY.maxAttempts,
 ): Promise<Error | null> {
   let lastError: Error | null = null;
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      await ndk.connect(10_000);
+      await ndk.connect(RELAY_CONNECT_RETRY.timeoutMs);
       return null;
     } catch (e: any) {
       lastError = e as Error;
       if (attempt < retries) {
-        const delay = 1000 * 2 ** (attempt - 1);
+        const delay = computeRelayBackoffMs(attempt);
         debug(
           `[NDK] connect attempt ${attempt} failed, retrying in ${delay}ms`,
         );

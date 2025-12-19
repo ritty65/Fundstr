@@ -1,6 +1,8 @@
 export const REQUIRED_DM_RELAYS = [
   'wss://relay.damus.io',
   'wss://relay.nostr.band',
+  'wss://relay.snort.social',
+  'wss://relay.primal.net',
 ] as const;
 
 export const DM_BLOCKLIST = new Set<string>([
@@ -11,7 +13,7 @@ export const DM_BLOCKLIST = new Set<string>([
 ]);
 
 export function normalizeUrl(u: string) {
-  return u.replace(/\/+$/, '');
+  return u.trim().replace(/\/+$/, '');
 }
 
 export function buildDmPublishSet(allRelays: string[]): string[] {
