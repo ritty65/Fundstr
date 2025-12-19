@@ -208,7 +208,7 @@
                   <template v-if="viewMode === 'grid'">
                     <div class="fixed-grid">
                       <CreatorCard
-                        v-for="profile in searchResults"
+                        v-for="profile in pagedSearchResults"
                         :key="profile.pubkey"
                         :profile="profile"
                         :cache-hit="profile.cacheHit === true"
@@ -255,8 +255,15 @@
                     </div>
                   </template>
 
-                  <div v-if="false" class="load-more-wrapper">
-                    <!-- The new API does not support pagination. This is hidden. -->
+                  <div v-if="canLoadMore" class="load-more-wrapper">
+                    <q-btn
+                      outline
+                      no-caps
+                      color="accent"
+                      class="load-more-button"
+                      label="Load more"
+                      @click="loadMoreResults"
+                    />
                   </div>
                 </div>
 
@@ -638,6 +645,7 @@ const { t } = useI18n();
 const searchQuery = ref('');
 const initialLoadComplete = ref(false);
 const MIN_SEARCH_LENGTH = 2;
+const PAGE_SIZE = 24;
 
 const searchSkeletonPlaceholders = [0, 1, 2];
 const featuredSkeletonPlaceholders = [0, 1, 2, 3, 4, 5];
@@ -702,6 +710,7 @@ const activeFilters = ref<Record<FilterKey, boolean>>({
 const viewMode = ref<ViewMode>('grid');
 
 const sortOption = ref<SortOption>('relevance');
+const visibleCount = ref(PAGE_SIZE);
 const hasFollowerMetrics = computed(() =>
   creatorsStore.unfilteredSearchResults.some(
     (profile) => typeof profile.followers === 'number' && Number.isFinite(profile.followers),
@@ -793,6 +802,10 @@ const resultSummary = computed(() => {
   const noun = count === 1 ? 'creator' : 'creators';
   return `${count} ${noun} found`;
 });
+const pagedSearchResults = computed(() =>
+  searchResults.value.slice(0, Math.max(visibleCount.value, PAGE_SIZE)),
+);
+const canLoadMore = computed(() => searchResults.value.length > visibleCount.value);
 const activeFilterCount = computed(
   () => Object.values(activeFilters.value).filter(Boolean).length,
 );
@@ -826,7 +839,7 @@ const groupedResults = computed(() => {
   const buckets = groups.map((group) => ({ ...group, profiles: [] as CreatorProfile[] }));
   const ungrouped: CreatorProfile[] = [];
 
-  for (const profile of searchResults.value) {
+  for (const profile of pagedSearchResults.value) {
     const bucket = buckets.find((group) => group.predicate(profile));
     if (bucket) {
       bucket.profiles.push(profile);
@@ -856,6 +869,14 @@ const showSearchEmptyState = computed(
     hasQuery.value &&
     !isQueryTooShort.value,
 );
+
+const resetVisibleCount = () => {
+  visibleCount.value = Math.min(PAGE_SIZE, searchResults.value.length || PAGE_SIZE);
+};
+
+const loadMoreResults = () => {
+  visibleCount.value = Math.min(visibleCount.value + PAGE_SIZE, searchResults.value.length);
+};
 const showInitialEmptyState = computed(
   () =>
     initialLoadComplete.value &&
@@ -907,6 +928,14 @@ watch(
 
 watch(sortOption, () => {
   applyClientFilters();
+});
+
+watch(searchResults, () => {
+  resetVisibleCount();
+});
+
+watch(viewMode, () => {
+  resetVisibleCount();
 });
 
 const parseFiltersFromQuery = (value: unknown): FilterKey[] => {
