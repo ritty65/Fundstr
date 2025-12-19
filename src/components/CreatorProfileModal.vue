@@ -233,6 +233,50 @@
                       No highlights available yet
                     </div>
                   </div>
+                  <div class="notes-section">
+                    <div class="section-heading">Latest notes</div>
+                    <div class="notes-list" role="list">
+                      <template v-if="notesLoading">
+                        <div v-for="index in 3" :key="`note-skeleton-${index}`" class="note-card note-card--skeleton">
+                          <q-skeleton type="text" width="85%" />
+                          <q-skeleton type="text" width="72%" />
+                          <q-skeleton type="text" width="58%" />
+                          <div class="note-meta">
+                            <q-skeleton type="text" width="120px" />
+                          </div>
+                        </div>
+                      </template>
+                      <template v-else>
+                        <div
+                          v-for="note in recentNotes"
+                          :key="note.id"
+                          class="note-card"
+                          role="listitem"
+                        >
+                          <div class="note-content text-1">
+                            {{ note.content }}
+                          </div>
+                          <div class="note-meta">
+                            <span class="note-timestamp text-2">{{ formatNoteTimestamp(note.created_at) }}</span>
+                            <a
+                              class="note-link"
+                              :href="`https://njump.me/${note.id}`"
+                              target="_blank"
+                              rel="noopener"
+                            >
+                              View on Nostr
+                            </a>
+                          </div>
+                        </div>
+                        <div v-if="!recentNotes.length" class="notes-empty text-2">
+                          No recent notes yet
+                          <div v-if="notesError" class="notes-empty__error">
+                            {{ notesError }}
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
                 </q-tab-panel>
                 <q-tab-panel name="tiers" class="profile-tab-panel">
                   <div class="tiers-section">
@@ -358,6 +402,7 @@ import {
 } from 'src/boot/ndk';
 import { useNetworkStatus, waitForOnline } from 'src/composables/useNetworkStatus';
 import { notifyError } from 'src/js/notify';
+import { useNostrStore } from 'src/stores/nostr';
 import {
   displayNameFromProfile,
   isTrustedUrl,
@@ -419,10 +464,16 @@ const isBioExpanded = ref(false);
 const activeTab = ref<'profile' | 'tiers'>('profile');
 const carouselViewportRef = ref<HTMLElement | null>(null);
 const creatorsStore = useCreatorsStore();
+const nostrStore = useNostrStore();
 const { isOnline, wasOfflineRecently } = useNetworkStatus();
 
 let currentRequestId = 0;
 let retryRequestId = 0;
+let notesRequestId = 0;
+
+const recentNotes = ref<Array<{ content: string; created_at: number; id: string }>>([]);
+const notesLoading = ref(false);
+const notesError = ref<string | null>(null);
 
 function resolveInitialTab(tab?: string | null): 'profile' | 'tiers' {
   return tab === 'tiers' ? 'tiers' : 'profile';
@@ -886,9 +937,11 @@ watch(
       activeTab.value = resolveInitialTab(props.initialTab);
       syncStateFromStore(props.pubkey, getInitialProfileFallback(props.pubkey));
       void loadCreatorProfile(props.pubkey);
+      void loadRecentNotes(props.pubkey);
     }
     if (!visible) {
       cancelActiveRequest();
+      cancelRecentNotesRequest();
       resetState();
     }
   },
@@ -919,6 +972,7 @@ watch(
   (newPubkey, oldPubkey) => {
     if (props.show && newPubkey && newPubkey !== oldPubkey) {
       void loadCreatorProfile(newPubkey);
+      void loadRecentNotes(newPubkey);
     }
   },
 );
@@ -1080,6 +1134,69 @@ function cancelActiveRequest() {
   loading.value = false;
 }
 
+function cancelRecentNotesRequest() {
+  notesRequestId += 1;
+  notesLoading.value = false;
+}
+
+async function loadRecentNotes(pubkey: string) {
+  if (!pubkey) {
+    recentNotes.value = [];
+    notesLoading.value = false;
+    notesError.value = null;
+    return;
+  }
+
+  const requestId = ++notesRequestId;
+  notesLoading.value = true;
+  notesError.value = null;
+
+  try {
+    const notes = await nostrStore.fetchRecentNotes(pubkey, 3);
+    if (requestId !== notesRequestId) {
+      return;
+    }
+    recentNotes.value = notes;
+  } catch (error) {
+    if (requestId === notesRequestId) {
+      console.error('[CreatorProfileModal] Failed to load recent notes', error);
+      notesError.value = 'Unable to load recent notes right now.';
+      recentNotes.value = [];
+    }
+  } finally {
+    if (requestId === notesRequestId) {
+      notesLoading.value = false;
+    }
+  }
+}
+
+function formatNoteTimestamp(createdAt?: number | null) {
+  if (!createdAt) {
+    return '';
+  }
+  const date = new Date(createdAt * 1000);
+  const diffSeconds = Math.round((Date.now() - date.getTime()) / 1000);
+  if (!Number.isFinite(diffSeconds)) {
+    return date.toLocaleString();
+  }
+  if (diffSeconds < 60) {
+    return 'Just now';
+  }
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m ago`;
+  }
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours}h ago`;
+  }
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) {
+    return `${diffDays}d ago`;
+  }
+  return date.toLocaleDateString();
+}
+
 function resetState() {
   creator.value = null;
   tiers.value = [];
@@ -1087,6 +1204,9 @@ function resetState() {
   activeTab.value = 'profile';
   isBioExpanded.value = false;
   loadError.value = null;
+  recentNotes.value = [];
+  notesLoading.value = false;
+  notesError.value = null;
 }
 </script>
 
@@ -1557,6 +1677,69 @@ function resetState() {
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.notes-section {
+  padding: clamp(10px, 2vh, 16px) clamp(14px, 4.6vw, 24px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.note-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-2) 85%, var(--surface-1) 15%);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
+}
+
+.note-card--skeleton {
+  gap: 8px;
+}
+
+.note-content {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.5;
+}
+
+.note-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.note-link {
+  color: var(--accent-500);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.note-link:hover,
+.note-link:focus-visible {
+  text-decoration: underline;
+}
+
+.notes-empty {
+  padding: 10px 2px;
+}
+
+.notes-empty__error {
+  margin-top: 6px;
+  color: var(--text-2);
 }
 
 .highlight-item {
