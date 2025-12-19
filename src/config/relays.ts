@@ -50,7 +50,6 @@ export const DEFAULT_RELAYS = [
   'wss://purplepag.es',
   'wss://nos.lol',
   'wss://nostr.mom',
-  'wss://relay.nostr.bg',
   'wss://nostr.bitcoiner.social',
 ];
 
