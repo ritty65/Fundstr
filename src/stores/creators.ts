@@ -14,8 +14,14 @@ import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import { normalizeTierMediaItems } from "src/utils/validateMedia";
 import { debug } from "src/js/logger";
 import { type NutzapProfileDetails } from "@/nutzap/profileCache";
-import { RecoverableDiscoveryError, useDiscovery } from "src/api/fundstrDiscovery";
+import {
+  NETWORK_CHANGE_WARNING,
+  RecoverableDiscoveryError,
+  isNetworkChangeWarning,
+  useDiscovery,
+} from "src/api/fundstrDiscovery";
 import { findProfiles, toNpub, type PhonebookProfile } from "src/api/phonebook";
+import { waitForOnline } from "src/composables/useNetworkStatus";
 import type {
   Creator as DiscoveryCreator,
   CreatorTier as DiscoveryCreatorTier,
@@ -79,6 +85,7 @@ let lastTierFallbackLogAt = 0;
 let tierSecurityCooldownUntil = 0;
 let lastTierSecurityLogAt = 0;
 let lastTierTimeoutWarnAt = 0;
+let searchRequestCounter = 0;
 
 export class FundstrProfileFetchError extends Error {
   fallbackAttempted: boolean;
@@ -171,6 +178,10 @@ function isAbortError(error: unknown): boolean {
       ? DOMException.ABORT_ERR
       : 20;
   return typeof domError.code === "number" && domError.code === abortErrCode;
+}
+
+function hasNetworkChangeWarning(warnings: string[]): boolean {
+  return warnings.some((warning) => isNetworkChangeWarning(warning));
 }
 
 function logTierSecurityError(
@@ -1890,6 +1901,7 @@ export const useCreatorsStore = defineStore("creators", {
       searching: false,
       loadingFeatured: false,
       error: "",
+      searchStatusMessage: "",
       searchWarnings: [] as string[],
       featuredError: "",
       featuredStatusMessage: "",
@@ -2201,7 +2213,7 @@ export const useCreatorsStore = defineStore("creators", {
       results: PhonebookProfile[],
       signal?: AbortSignal,
       options: { filters?: CreatorSearchFilters; sort?: CreatorSearchSort } = {},
-    ): Promise<boolean> {
+    ): Promise<{ applied: boolean; networkWarning: boolean }> {
       const discovery = useDiscovery();
       const profiles = Array.isArray(results)
         ? results
@@ -2213,7 +2225,7 @@ export const useCreatorsStore = defineStore("creators", {
         : [];
 
       if (!profiles.length) {
-        return false;
+        return { applied: false, networkWarning: false };
       }
 
       const warnings: string[] = [];
@@ -2241,7 +2253,11 @@ export const useCreatorsStore = defineStore("creators", {
       }
 
       if (signal?.aborted) {
-        return false;
+        return { applied: false, networkWarning: false };
+      }
+
+      if (hasNetworkChangeWarning(warnings)) {
+        return { applied: false, networkWarning: true };
       }
 
       const discoveryMap = new Map<string, CreatorProfile>();
@@ -2256,7 +2272,7 @@ export const useCreatorsStore = defineStore("creators", {
 
       for (const profile of profiles) {
         if (signal?.aborted) {
-          return false;
+          return { applied: false, networkWarning: false };
         }
 
         const phonebookCreator = createCreatorFromPhonebook(profile);
@@ -2289,7 +2305,7 @@ export const useCreatorsStore = defineStore("creators", {
       }
 
       if (!merged.length) {
-        return false;
+        return { applied: false, networkWarning: false };
       }
 
       if (
@@ -2302,11 +2318,12 @@ export const useCreatorsStore = defineStore("creators", {
       const uniqueWarnings = Array.from(new Set(warnings));
 
       this.error = "";
+      this.searchStatusMessage = "";
       this.unfilteredSearchResults = merged;
       this.searchResults = applyCreatorFilters(merged, options.filters, options.sort);
       this.searchWarnings = uniqueWarnings;
 
-      return true;
+      return { applied: true, networkWarning: false };
     },
 
     applySearchFilters(
@@ -2513,6 +2530,7 @@ export const useCreatorsStore = defineStore("creators", {
         this.unfilteredSearchResults = mergedProfiles;
         this.searchResults = applyCreatorFilters(mergedProfiles, filters, sort);
         this.searchWarnings = applyTierWarnings(mergedProfiles, warnings);
+        this.searchStatusMessage = "";
       };
 
       const clearResults = () => {
@@ -2527,6 +2545,7 @@ export const useCreatorsStore = defineStore("creators", {
         }
         clearResults();
         this.error = "";
+        this.searchStatusMessage = "";
         this.searchWarnings = [];
         this.searching = false;
         return;
@@ -2537,14 +2556,42 @@ export const useCreatorsStore = defineStore("creators", {
         this.searchAbortController = null;
       }
 
+      const previousResults = this.searchResults.slice();
+      const previousUnfiltered = this.unfilteredSearchResults.slice();
+      const previousWarnings = this.searchWarnings.slice();
+
       clearResults();
       this.error = "";
+      this.searchStatusMessage = "";
       this.searchWarnings = [];
       this.searching = true;
+      const searchRequestId = (searchRequestCounter += 1);
 
       const handleFailure = (message: string) => {
         this.error = message;
         clearResults();
+      };
+
+      const restorePreviousResults = () => {
+        this.unfilteredSearchResults = previousUnfiltered;
+        this.searchResults = previousResults;
+        this.searchWarnings = previousWarnings;
+        this.error = "";
+      };
+
+      const handleNetworkWarning = async () => {
+        restorePreviousResults();
+        this.searchStatusMessage = NETWORK_CHANGE_WARNING;
+        this.searching = false;
+        this.searchAbortController = null;
+        await waitForOnline();
+        if (searchRequestId !== searchRequestCounter) {
+          return;
+        }
+        if (this.searchAbortController?.signal.aborted) {
+          return;
+        }
+        void this.searchCreators(rawQuery, { fresh: true, filters, sort });
       };
 
       const resolveNip19 = (value: string): string | null => {
@@ -2590,7 +2637,9 @@ export const useCreatorsStore = defineStore("creators", {
       const controller = new AbortController();
       this.searchAbortController = controller;
 
-      let phonebookResponse: { results: PhonebookProfile[]; count: number } | null = null;
+      let phonebookResponse:
+        | { results: PhonebookProfile[]; count: number; warning?: string }
+        | null = null;
 
       try {
         phonebookResponse = await findProfiles(normalizedQuery, controller.signal);
@@ -2599,14 +2648,26 @@ export const useCreatorsStore = defineStore("creators", {
       }
 
       const phonebookResults = phonebookResponse?.results ?? [];
+      if (isNetworkChangeWarning(phonebookResponse?.warning ?? "")) {
+        void handleNetworkWarning();
+        return;
+      }
 
       if (!controller.signal.aborted && phonebookResponse?.count && phonebookResults.length) {
         try {
-          const applied = await this.applyPhonebookResults(phonebookResults, controller.signal, {
-            filters,
-            sort,
-          });
-          if (applied) {
+          const appliedResult = await this.applyPhonebookResults(
+            phonebookResults,
+            controller.signal,
+            {
+              filters,
+              sort,
+            },
+          );
+          if (appliedResult.networkWarning) {
+            void handleNetworkWarning();
+            return;
+          }
+          if (appliedResult.applied) {
             await applyResults(this.unfilteredSearchResults, this.searchWarnings ?? []);
             this.searching = false;
             this.searchAbortController = null;
@@ -2673,8 +2734,13 @@ export const useCreatorsStore = defineStore("creators", {
         });
         const profiles = response.results.map((creator) => cloneCreatorProfile(creator));
         const warnings = filterWarnings(response.warnings);
+        if (hasNetworkChangeWarning(warnings)) {
+          void handleNetworkWarning();
+          return;
+        }
 
         this.error = "";
+        this.searchStatusMessage = "";
         await applyResults(profiles, warnings);
         debug("discovery:hit", {
           query: normalizedQuery,

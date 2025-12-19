@@ -1,6 +1,6 @@
 import { nip19 } from "nostr-tools";
 
-import { DISCOVERY_WARNING, safeFetchJson } from "./fundstrDiscovery";
+import { DISCOVERY_WARNING, NETWORK_CHANGE_WARNING, safeFetchJson } from "./fundstrDiscovery";
 import { debug } from "src/js/logger";
 
 const DEFAULT_FIND_PROFILES_URL = "https://fundstr.me/find_profiles.php";
@@ -45,6 +45,7 @@ export interface FindProfilesResponse {
   query: string;
   results: PhonebookProfile[];
   count: number;
+  warning?: string;
 }
 
 function normalizeProfile(entry: any): PhonebookProfile | null {
@@ -94,7 +95,12 @@ export async function findProfiles(
       if (result.snippet) {
         console.debug("[phonebook] response snippet", result.snippet);
       }
-      return { query: trimmedQuery, results: [], count: 0 };
+      return {
+        query: trimmedQuery,
+        results: [],
+        count: 0,
+        warning: result.warning,
+      };
     }
 
     const payload: any = result.data;
@@ -102,7 +108,12 @@ export async function findProfiles(
     const rawResults = Array.isArray(payload?.results) ? payload.results : [];
     if (!Array.isArray(payload?.results)) {
       console.warn("[phonebook] Unexpected phonebook payload, treating as empty", payload);
-      return { query: trimmedQuery, results: [], count: 0 };
+      return {
+        query: trimmedQuery,
+        results: [],
+        count: 0,
+        warning: result.warning,
+      };
     }
 
     const normalized = rawResults
@@ -128,7 +139,11 @@ export async function findProfiles(
       return { query: trimmedQuery, results: [], count: 0 };
     }
     console.warn("[phonebook] findProfiles failed; falling back to discovery", trimmedQuery, error);
-    return { query: trimmedQuery, results: [], count: 0 };
+    const warning =
+      typeof navigator !== "undefined" && navigator && navigator.onLine === false
+        ? NETWORK_CHANGE_WARNING
+        : undefined;
+    return { query: trimmedQuery, results: [], count: 0, warning };
   }
 }
 

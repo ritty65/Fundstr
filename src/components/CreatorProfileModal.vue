@@ -221,10 +221,12 @@ import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import TierDetailsPanel from 'components/TierDetailsPanel.vue';
 import { formatMsatToSats } from 'src/lib/fundstrApi';
+import { NETWORK_CHANGE_WARNING } from 'src/api/fundstrDiscovery';
 import {
   getFreeRelayFallbackStatus,
   onFreeRelayFallbackStatusChange,
 } from 'src/boot/ndk';
+import { useNetworkStatus, waitForOnline } from 'src/composables/useNetworkStatus';
 import {
   displayNameFromProfile,
   normalizeMeta,
@@ -282,8 +284,10 @@ const activeTierIndex = ref(0);
 const isBioExpanded = ref(false);
 const carouselViewportRef = ref<HTMLElement | null>(null);
 const creatorsStore = useCreatorsStore();
+const { isOnline, wasOfflineRecently } = useNetworkStatus();
 
 let currentRequestId = 0;
+let retryRequestId = 0;
 
 function getInitialProfileFallback(pubkey: string | null | undefined): CreatorProfile | null {
   if (!pubkey) {
@@ -664,6 +668,16 @@ async function loadCreatorProfile(pubkey: string) {
   } catch (error) {
     if (requestId === currentRequestId) {
       console.error('[CreatorProfileModal] Failed to load creator profile', error);
+      if (!isOnline.value || wasOfflineRecently.value) {
+        loadError.value = NETWORK_CHANGE_WARNING;
+        const retryId = (retryRequestId += 1);
+        void waitForOnline().then(() => {
+          if (retryId === retryRequestId && requestId === currentRequestId && showLocal.value) {
+            void loadCreatorProfile(pubkey);
+          }
+        });
+        return;
+      }
       let message = "We couldn't refresh this creator right now.";
       if (error instanceof FundstrProfileFetchError && error.fallbackAttempted) {
         message = "Discovery and relay fallback couldn't load this creator right now.";

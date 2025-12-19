@@ -7,6 +7,7 @@ import { normalizeTierMediaItems } from 'src/utils/validateMedia';
 const DEFAULT_BASE_URL = 'https://api.fundstr.me';
 const DEFAULT_TIMEOUT_MS = 12_000;
 const DEFAULT_WARNING = 'Limited results (discovery unavailable)';
+export const NETWORK_CHANGE_WARNING = 'Connection changed — retrying when online.';
 
 export const DISCOVERY_WARNING = DEFAULT_WARNING;
 
@@ -51,6 +52,43 @@ const rawBaseUrl =
   DEFAULT_BASE_URL;
 
 const API_BASE_URL = rawBaseUrl.replace(/\/+$/, '');
+
+function isNavigatorOffline() {
+  return typeof navigator !== 'undefined' && navigator && navigator.onLine === false;
+}
+
+export function isNetworkChangeWarning(warning: string | null | undefined): boolean {
+  if (!warning) return false;
+  return warning.trim().toLowerCase() === NETWORK_CHANGE_WARNING.toLowerCase();
+}
+
+function isNetworkChangeError(error: unknown): boolean {
+  if (isNavigatorOffline()) {
+    return true;
+  }
+  if (!error) {
+    return false;
+  }
+  const message =
+    typeof (error as { message?: unknown }).message === 'string'
+      ? String((error as { message?: unknown }).message).toLowerCase()
+      : '';
+  const name =
+    typeof (error as { name?: unknown }).name === 'string'
+      ? String((error as { name?: unknown }).name).toLowerCase()
+      : '';
+
+  if (message.includes('err_network_changed')) {
+    return true;
+  }
+  if (message.includes('failed to fetch') || message.includes('networkerror')) {
+    return true;
+  }
+  if (message.includes('network connection') || message.includes('network') || name.includes('network')) {
+    return true;
+  }
+  return false;
+}
 
 function createTimeoutSignal(signal?: AbortSignal, timeoutMs?: number) {
   if (!timeoutMs || timeoutMs <= 0) {
@@ -132,12 +170,18 @@ export async function safeFetchJson<T>(
   input: RequestInfo | URL,
   init: RequestInit & { warning?: string; snippetLimit?: number } = {},
 ): Promise<SafeJsonResult<T>> {
+  if (isNavigatorOffline()) {
+    return { ok: false, warning: NETWORK_CHANGE_WARNING };
+  }
   try {
     const response = await fetch(input, init);
     return safeJsonFromResponse<T>(response, init.warning ?? DEFAULT_WARNING);
   } catch (error) {
     if ((error as any)?.name === 'AbortError') {
       throw error;
+    }
+    if (isNetworkChangeError(error)) {
+      return { ok: false, warning: NETWORK_CHANGE_WARNING };
     }
     console.debug('[json] fetch failed', error);
     return { ok: false, warning: init.warning ?? DEFAULT_WARNING };
@@ -178,6 +222,9 @@ async function fetchJsonWithRetry<T>(
       }
 
       lastResult = result;
+      if (isNetworkChangeWarning(result.warning)) {
+        break;
+      }
       if (i >= retries - 1) {
         break;
       }

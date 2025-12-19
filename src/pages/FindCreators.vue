@@ -67,6 +67,19 @@
 
               <template v-else>
                 <q-banner
+                  v-if="searchStatusMessage"
+                  rounded
+                  dense
+                  class="status-banner text-1"
+                  aria-live="polite"
+                >
+                  <template #avatar>
+                    <q-icon :name="resolveBannerIcon(searchStatusMessage)" size="20px" />
+                  </template>
+                  <span class="status-banner__text">{{ searchStatusMessage }}</span>
+                </q-banner>
+
+                <q-banner
                   v-if="searchError"
                   rounded
                   dense
@@ -544,6 +557,7 @@ const {
   searching,
   error: storeError,
   searchWarnings: storeSearchWarnings,
+  searchStatusMessage: storeSearchStatusMessage,
   featuredCreators,
   loadingFeatured: storeLoadingFeatured,
   featuredError: storeFeaturedError,
@@ -648,6 +662,7 @@ const hasQuery = computed(() => trimmedQuery.value.length > 0);
 const searchLoading = computed(() => searching.value);
 const searchError = computed(() => storeError.value);
 const searchWarnings = computed(() => storeSearchWarnings?.value ?? []);
+const searchStatusMessage = computed(() => storeSearchStatusMessage?.value ?? '');
 const searchFilters = computed(() => ({ ...activeFilters.value }));
 const resultSummary = computed(() => {
   if (!initialLoadComplete.value) {
