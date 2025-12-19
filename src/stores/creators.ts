@@ -1502,6 +1502,60 @@ function mergeDiscoveryIntoPhonebook(
   return merged;
 }
 
+export function mergeCreatorProfileWithFallback(
+  fallbackProfile: CreatorProfile | null | undefined,
+  incomingProfile: CreatorProfile | null | undefined,
+): CreatorProfile | null {
+  if (!fallbackProfile) {
+    return incomingProfile ?? null;
+  }
+  if (!incomingProfile) {
+    return fallbackProfile ?? null;
+  }
+
+  const merged: CreatorProfile = { ...fallbackProfile, ...incomingProfile };
+  const applyNonEmptyString = (
+    value: unknown,
+    fallback: unknown,
+    setter: (value: string) => void,
+  ) => {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed) {
+        setter(trimmed);
+        return;
+      }
+    }
+    if (typeof fallback === "string") {
+      const trimmedFallback = fallback.trim();
+      if (trimmedFallback) {
+        setter(trimmedFallback);
+      }
+    }
+  };
+
+  applyNonEmptyString(incomingProfile.displayName, fallbackProfile.displayName, (value) => {
+    merged.displayName = value;
+  });
+  applyNonEmptyString(incomingProfile.name, fallbackProfile.name, (value) => {
+    merged.name = value;
+  });
+  applyNonEmptyString(incomingProfile.about, fallbackProfile.about, (value) => {
+    merged.about = value;
+  });
+  applyNonEmptyString(incomingProfile.picture, fallbackProfile.picture, (value) => {
+    merged.picture = value;
+  });
+  applyNonEmptyString(incomingProfile.nip05, fallbackProfile.nip05, (value) => {
+    merged.nip05 = value;
+  });
+  applyNonEmptyString(incomingProfile.banner, fallbackProfile.banner, (value) => {
+    merged.banner = value;
+  });
+
+  return merged;
+}
+
 function applyPhonebookOverrides(
   creator: CreatorProfile,
   phonebook: PhonebookProfile,

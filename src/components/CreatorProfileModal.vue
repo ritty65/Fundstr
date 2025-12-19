@@ -224,7 +224,7 @@ import {
 } from 'src/utils/profile';
 import { filterValidMedia } from 'src/utils/validateMedia';
 import type { Tier, TierMedia as TierMediaItem } from 'stores/types';
-import { useCreatorsStore } from 'stores/creators';
+import { mergeCreatorProfileWithFallback, useCreatorsStore } from 'stores/creators';
 import type { CreatorProfile } from 'stores/creators';
 
 const props = defineProps<{
@@ -407,7 +407,7 @@ function syncStateFromStore(pubkey: string | null | undefined, fallback?: Creato
   }
 
   const storeProfile = creatorsStore.buildCreatorProfileFromCache(pubkey);
-  const resolvedProfile = storeProfile ?? fallback ?? null;
+  const resolvedProfile = mergeCreatorProfileWithFallback(fallback, storeProfile);
   creator.value = resolvedProfile;
 
   const storeTiers = creatorsStore.getCreatorTiers(pubkey);
