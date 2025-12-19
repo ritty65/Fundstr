@@ -185,7 +185,12 @@
                     </div>
                   </div>
                 </div>
-                <div v-else-if="!loadError" class="empty-state">No subscription tiers found for this creator.</div>
+                <div v-else-if="!loadError" class="empty-state">
+                  <div>No subscription tiers found for this creator.</div>
+                  <div v-if="tierFetchFailed" class="empty-state__subtext text-2">
+                    We couldn&#39;t load tiers right now. Please try again.
+                  </div>
+                </div>
               </q-card-section>
 
               <q-card-section v-else class="empty-state">
@@ -572,6 +577,7 @@ function toggleBio() {
 }
 
 const hasTiers = computed(() => tiers.value.length > 0);
+const tierFetchFailed = computed(() => creator.value?.tierFetchFailed === true);
 
 const showStickyFooter = computed(() => hasTiers.value && $q.screen.lt.md);
 const isHeroActionsInline = computed(() => $q.screen.gt.sm);
@@ -1273,6 +1279,17 @@ function resetState() {
 
 .tiers-carousel__dot:hover {
   background: color-mix(in srgb, var(--accent-500) 30%, transparent);
+}
+
+.empty-state {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.empty-state__subtext {
+  font-size: 0.95rem;
 }
 @media (min-width: 768px) {
   .profile-layout__body {
