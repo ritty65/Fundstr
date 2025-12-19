@@ -161,6 +161,61 @@
                 <div class="refresh-banner__message">Refreshing…</div>
               </q-card-section>
 
+              <q-card-section v-if="creator" class="highlights-section">
+                <div class="section-heading">Profile highlights</div>
+                <div v-if="hasHighlights" class="highlights-grid">
+                  <div v-if="followersDisplay" class="highlight-item">
+                    <div class="highlight-label text-2">Followers</div>
+                    <div class="highlight-value">{{ followersDisplay }}</div>
+                  </div>
+                  <div v-if="lightningAddress" class="highlight-item highlight-item--full">
+                    <div class="highlight-label text-2">Lightning address</div>
+                    <div class="highlight-value highlight-value--mono">
+                      <span>{{ lightningAddress }}</span>
+                      <q-btn
+                        flat
+                        dense
+                        round
+                        icon="content_copy"
+                        class="highlight-copy"
+                        aria-label="Copy lightning address"
+                        @click="copyIdentity(lightningAddress, 'lightning')"
+                      >
+                        <q-tooltip v-model="copiedState.lightning" anchor="top middle" self="bottom middle">
+                          Copied
+                        </q-tooltip>
+                      </q-btn>
+                    </div>
+                  </div>
+                  <div v-if="websiteUrl" class="highlight-item highlight-item--full">
+                    <div class="highlight-label text-2">Website</div>
+                    <a class="highlight-link" :href="websiteUrl" target="_blank" rel="noopener">
+                      {{ websiteLabel }}
+                    </a>
+                  </div>
+                  <div v-if="highlightStatusChips.length" class="highlight-item highlight-item--full">
+                    <div class="highlight-label text-2">Status</div>
+                    <div class="highlight-chips" role="list">
+                      <span
+                        v-for="chip in highlightStatusChips"
+                        :key="chip.key"
+                        class="status-chip"
+                        :class="chip.variant"
+                        role="listitem"
+                        tabindex="0"
+                        :aria-label="chip.ariaLabel"
+                      >
+                        <q-icon v-if="chip.icon" :name="chip.icon" size="14px" />
+                        <span>{{ chip.label }}</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div v-else class="empty-state">
+                  No highlights available yet
+                </div>
+              </q-card-section>
+
               <q-card-section v-if="creator" class="tiers-section">
                 <div class="section-heading">Subscription tiers</div>
                 <div
@@ -284,6 +339,7 @@ import { useNetworkStatus, waitForOnline } from 'src/composables/useNetworkStatu
 import { notifyError } from 'src/js/notify';
 import {
   displayNameFromProfile,
+  isTrustedUrl,
   normalizeMeta,
   safeImageSrc,
   type ProfileMeta,
@@ -292,6 +348,7 @@ import { filterValidMedia } from 'src/utils/validateMedia';
 import type { Tier, TierMedia as TierMediaItem } from 'stores/types';
 import {
   FundstrProfileFetchError,
+  creatorIsSignalOnly,
   mergeCreatorProfileWithFallback,
   useCreatorsStore,
 } from 'stores/creators';
@@ -658,10 +715,10 @@ const identityLinks = computed(() => {
   ];
 });
 
-const copiedState = ref({ npub: false, pubkey: false });
-const copyTimeouts: Partial<Record<'npub' | 'pubkey', number>> = {};
+const copiedState = ref({ npub: false, pubkey: false, lightning: false });
+const copyTimeouts: Partial<Record<'npub' | 'pubkey' | 'lightning', number>> = {};
 
-async function copyIdentity(value: string, key: 'npub' | 'pubkey') {
+async function copyIdentity(value: string, key: 'npub' | 'pubkey' | 'lightning') {
   if (!value) {
     return;
   }
@@ -682,6 +739,100 @@ async function copyIdentity(value: string, key: 'npub' | 'pubkey') {
     notifyError('Unable to copy to clipboard.');
   }
 }
+
+const followersDisplay = computed(() => {
+  const followers = creator.value?.followers;
+  if (followers === null || followers === undefined) {
+    return '';
+  }
+  if (typeof followers === 'number' && Number.isFinite(followers)) {
+    return followers.toLocaleString();
+  }
+  if (typeof followers === 'string' && followers.trim()) {
+    return followers.trim();
+  }
+  return '';
+});
+
+const lightningAddress = computed(() => {
+  const metaRecord = creatorMeta.value as Record<string, unknown>;
+  const profileRecord = (creator.value?.profile ?? {}) as Record<string, unknown>;
+  const extraRecord = (creator.value as Record<string, unknown> | null | undefined) ?? {};
+  const candidates = [
+    metaRecord.lud16,
+    metaRecord.lud06,
+    profileRecord.lud16,
+    profileRecord.lud06,
+    extraRecord.lud16,
+    extraRecord.lud06,
+  ];
+  const value = candidates.find((candidate) => typeof candidate === 'string' && candidate.trim());
+  return typeof value === 'string' ? value.trim() : '';
+});
+
+const websiteUrl = computed(() => {
+  const raw = typeof creatorMeta.value.website === 'string' ? creatorMeta.value.website.trim() : '';
+  if (!raw) {
+    return '';
+  }
+  if (isTrustedUrl(raw)) {
+    return raw;
+  }
+  const withScheme = `https://${raw}`;
+  return isTrustedUrl(withScheme) ? withScheme : '';
+});
+
+const websiteLabel = computed(() => {
+  if (!websiteUrl.value) {
+    return '';
+  }
+  return websiteUrl.value.replace(/^https?:\/\//, '');
+});
+
+const highlightStatusChips = computed(() => {
+  const chips: Array<{ key: string; label: string; icon?: string; variant?: string; ariaLabel: string }> = [];
+
+  if (creator.value?.featured) {
+    chips.push({
+      key: 'featured',
+      label: 'Featured',
+      icon: 'workspace_premium',
+      variant: 'accent',
+      ariaLabel: 'Featured creator',
+    });
+  }
+
+  if (creator.value && creatorIsSignalOnly(creator.value as any)) {
+    chips.push({
+      key: 'signal-only',
+      label: 'Signal only',
+      icon: 'sensors',
+      variant: 'warning',
+      ariaLabel: 'Signal-only profile',
+    });
+  }
+
+  if (creator.value?.cacheHit) {
+    chips.push({
+      key: 'cache-hit',
+      label: 'Cache hit',
+      icon: 'data_thresholding',
+      variant: 'neutral',
+      ariaLabel: 'Cached profile result',
+    });
+  }
+
+  return chips;
+});
+
+const hasHighlights = computed(() =>
+  Boolean(
+    followersDisplay.value ||
+      lightningAddress.value ||
+      websiteUrl.value ||
+      highlightStatusChips.value.length,
+  ),
+);
 
 watch(
   tiers,
@@ -1331,6 +1482,115 @@ function resetState() {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.highlights-section {
+  padding: clamp(10px, 2vh, 16px) clamp(14px, 4.6vw, 24px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.highlights-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.highlight-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface-1) 96%, var(--surface-2) 4%);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+}
+
+.highlight-item--full {
+  grid-column: 1 / -1;
+}
+
+.highlight-label {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+
+.highlight-value {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-1);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  overflow-wrap: anywhere;
+}
+
+.highlight-value--mono {
+  font-family: var(--font-mono, 'Fira Code', monospace);
+  font-size: 1rem;
+}
+
+.highlight-copy {
+  color: var(--text-2);
+}
+
+.highlight-link {
+  color: var(--accent-500);
+  font-weight: 600;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.highlight-link:hover,
+.highlight-link:focus-visible {
+  text-decoration: underline;
+}
+
+.highlight-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  line-height: 1;
+  background: var(--chip-bg);
+  color: var(--text-2);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 55%, transparent);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.status-chip.accent {
+  color: var(--accent-500);
+  background: color-mix(in srgb, var(--accent-200) 45%, transparent);
+  border-color: color-mix(in srgb, var(--accent-500) 40%, transparent);
+}
+
+.status-chip.neutral {
+  background: color-mix(in srgb, var(--chip-bg) 60%, transparent);
+  border-color: color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+}
+
+.status-chip.warning {
+  color: #b16900;
+  background: color-mix(in srgb, #b16900 14%, var(--chip-bg));
+  border-color: color-mix(in srgb, #b16900 28%, transparent);
+}
+
+.status-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-200);
+  transform: translateY(-1px);
 }
 
 .section-heading {
