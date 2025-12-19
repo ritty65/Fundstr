@@ -576,6 +576,7 @@ async function fetchFundstrProfileBundleFromDiscovery(
     freshError: unknown | null;
     securityBlocked: boolean;
     aborted: boolean;
+    backoffBlocked: boolean;
     nextRetryAt: number | null;
   }
 
@@ -620,6 +621,12 @@ async function fetchFundstrProfileBundleFromDiscovery(
     const allowFreshBase =
       forceRefresh || (now >= nextTiersFreshAttemptAt && now >= tierSecurityCooldownUntil);
     const allowFresh = securityBlocked ? false : allowFreshBase;
+    const backoffBlocked =
+      !forceRefresh &&
+      !securityBlocked &&
+      cached.length === 0 &&
+      !allowFreshBase &&
+      now < nextTiersFreshAttemptAt;
     const shouldFetchFresh = (forceRefresh || cached.length === 0) && allowFresh;
     if (shouldFetchFresh) {
       try {
@@ -688,7 +695,16 @@ async function fetchFundstrProfileBundleFromDiscovery(
       }
     }
 
-    return { id, cached, fresh, freshError, securityBlocked, aborted, nextRetryAt };
+    return {
+      id,
+      cached,
+      fresh,
+      freshError,
+      securityBlocked,
+      aborted,
+      backoffBlocked,
+      nextRetryAt,
+    };
   };
 
   const tierResults: TierQueryResult[] = [];
@@ -713,6 +729,12 @@ async function fetchFundstrProfileBundleFromDiscovery(
     );
 
   const tierLookupAborted = tierResults.some((result) => result.aborted);
+  const tierLookupBackoff =
+    tierResults.length > 0 &&
+    tierResults.every(
+      (result) => result.fresh === null && result.cached.length === 0,
+    ) &&
+    tierResults.some((result) => result.backoffBlocked);
 
   const tierSecurityBlocked = tierResults.some((result) => result.securityBlocked);
   const tierFreshMatch = tierResults.find((result) => result.fresh !== null);
@@ -726,7 +748,10 @@ async function fetchFundstrProfileBundleFromDiscovery(
     : tierFallbackSource?.cached
       ? [...tierFallbackSource.cached]
       : [];
-  let tierFetchFailed = tierLookupFailed || (tierLookupAborted && !tierFallbackSource);
+  let tierFetchFailed =
+    tierLookupFailed ||
+    tierLookupBackoff ||
+    (tierLookupAborted && !tierFallbackSource);
   let initialTierCandidates = tierFallbackSource?.cached?.length
     ? [...tierFallbackSource.cached]
     : tierFreshMatch?.fresh
