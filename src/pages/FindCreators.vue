@@ -41,6 +41,9 @@
                 @update:model-value="debouncedSearch"
                 @keyup.enter="triggerImmediateSearch"
               >
+                <template #hint>
+                  <span v-if="searchHint" class="text-2">{{ searchHint }}</span>
+                </template>
                 <template #append>
                   <q-btn
                     flat
@@ -530,6 +533,7 @@ import { computed, onMounted, ref, watch, type ComponentPublicInstance } from 'v
 import { storeToRefs } from 'pinia';
 import { useRoute, useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
+import { nip19 } from 'nostr-tools';
 import CreatorProfileModal from 'components/CreatorProfileModal.vue';
 import CreatorCard from 'components/CreatorCard.vue';
 import { useNostrStore } from 'stores/nostr';
@@ -591,6 +595,7 @@ const { t } = useI18n();
 
 const searchQuery = ref('');
 const initialLoadComplete = ref(false);
+const MIN_SEARCH_LENGTH = 2;
 
 const searchSkeletonPlaceholders = [0, 1, 2];
 const featuredSkeletonPlaceholders = [0, 1, 2, 3, 4, 5];
@@ -673,6 +678,44 @@ const viewModeOptions = [
 
 const trimmedQuery = computed(() => (searchQuery.value || '').trim());
 const hasQuery = computed(() => trimmedQuery.value.length > 0);
+const isValidNip19Query = (value: string): boolean => {
+  if (!value || (!value.startsWith('npub') && !value.startsWith('nprofile'))) {
+    return false;
+  }
+
+  try {
+    const decoded = nip19.decode(value);
+    return decoded.type === 'npub' || decoded.type === 'nprofile';
+  } catch {
+    return false;
+  }
+};
+
+const isValidNip05Query = (value: string): boolean => {
+  const trimmed = value.trim();
+  if (!trimmed.includes('@')) {
+    return false;
+  }
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+};
+
+const isQueryTooShort = computed(() => {
+  if (!hasQuery.value) {
+    return false;
+  }
+  if (trimmedQuery.value.length >= MIN_SEARCH_LENGTH) {
+    return false;
+  }
+  return !(isValidNip19Query(trimmedQuery.value) || isValidNip05Query(trimmedQuery.value));
+});
+
+const searchHint = computed(() => {
+  if (!isQueryTooShort.value) {
+    return '';
+  }
+  return `Type at least ${MIN_SEARCH_LENGTH} characters or paste an npub/NIP-05.`;
+});
 const searchLoading = computed(() => searching.value);
 const isRefreshing = computed(() => storeIsRefreshing.value);
 const searchError = computed(() => storeError.value);
@@ -681,6 +724,10 @@ const searchStatusMessage = computed(() => storeSearchStatusMessage?.value ?? ''
 const searchFilters = computed(() => ({ ...activeFilters.value }));
 const resultSummary = computed(() => {
   if (!initialLoadComplete.value) {
+    return '';
+  }
+
+  if (isQueryTooShort.value) {
     return '';
   }
 
@@ -747,7 +794,8 @@ const showSearchEmptyState = computed(
     !searchError.value &&
     searchWarnings.value.length === 0 &&
     !searchResults.value.length &&
-    hasQuery.value,
+    hasQuery.value &&
+    !isQueryTooShort.value,
 );
 const showInitialEmptyState = computed(
   () =>
@@ -818,6 +866,11 @@ const loadMore = () => {
 };
 
 async function runSearch({ fresh = false }: { fresh?: boolean } = {}) {
+  if (isQueryTooShort.value) {
+    await creatorsStore.searchCreators('');
+    initialLoadComplete.value = true;
+    return;
+  }
   try {
     await creatorsStore.searchCreators(trimmedQuery.value, {
       fresh,
