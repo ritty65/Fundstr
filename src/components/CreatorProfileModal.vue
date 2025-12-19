@@ -108,6 +108,10 @@
                 />
               </q-card-section>
 
+              <q-card-section v-if="refreshNotice" class="refresh-banner" role="status" aria-live="polite">
+                <div class="refresh-banner__message">Updated with fresh data.</div>
+              </q-card-section>
+
               <q-card-section v-if="creator" class="tiers-section">
                 <div class="section-heading">Subscription tiers</div>
                 <div
@@ -512,6 +516,8 @@ const shouldClampBio = computed(() => {
   if (about.length > 240) return true;
   return about.split(/\r?\n/).length > 3;
 });
+
+const refreshNotice = computed(() => creator.value?.refreshedInBackground === true);
 
 watch(aboutText, () => {
   isBioExpanded.value = false;
@@ -1156,6 +1162,20 @@ function resetState() {
 
 .status-banner__action {
   flex-shrink: 0;
+}
+
+.refresh-banner {
+  margin: 0 clamp(14px, 4.6vw, 24px);
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent-200) 22%, var(--surface-1) 78%);
+  border: 1px solid color-mix(in srgb, var(--accent-200) 65%, transparent);
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.refresh-banner__message {
+  line-height: 1.4;
 }
 
 .section-divider {

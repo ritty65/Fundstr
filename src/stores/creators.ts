@@ -46,6 +46,7 @@ export { FEATURED_CREATORS } from "src/config/featured-creators";
 export interface CreatorProfile extends FundstrCreator {
   tierSecurityBlocked?: boolean | null;
   tierFetchFailed?: boolean | null;
+  refreshedInBackground?: boolean | null;
 }
 export type CreatorRow = CreatorProfile;
 
@@ -86,6 +87,34 @@ let tierSecurityCooldownUntil = 0;
 let lastTierSecurityLogAt = 0;
 let lastTierTimeoutWarnAt = 0;
 let searchRequestCounter = 0;
+
+function getBundleFallbackDelayMs(): number {
+  let delay = BUNDLE_FALLBACK_DELAY_MS;
+  if (typeof navigator === "undefined") {
+    return delay;
+  }
+  const connection = (navigator as any)?.connection;
+  if (!connection) {
+    return delay;
+  }
+  if (connection.saveData) {
+    delay = Math.max(delay, 2400);
+  }
+  const effectiveType = typeof connection.effectiveType === "string" ? connection.effectiveType : "";
+  if (effectiveType === "2g") {
+    delay = Math.max(delay, 3400);
+  } else if (effectiveType === "3g") {
+    delay = Math.max(delay, 2600);
+  }
+  if (typeof connection.rtt === "number" && Number.isFinite(connection.rtt)) {
+    if (connection.rtt >= 600) {
+      delay = Math.max(delay, 3200);
+    } else if (connection.rtt >= 350) {
+      delay = Math.max(delay, 2200);
+    }
+  }
+  return delay;
+}
 
 export class FundstrProfileFetchError extends Error {
   fallbackAttempted: boolean;
@@ -423,6 +452,7 @@ export interface FundstrProfileBundle {
   tierFetchFailed: boolean;
   tiers: Tier[] | null;
   cacheHit?: boolean;
+  refreshedInBackground?: boolean;
 }
 
 export interface FetchFundstrProfileBundleOptions {
@@ -1156,15 +1186,38 @@ async function fetchFundstrProfileBundleNetwork(
         });
     };
 
-    fallbackTimer = setTimeout(() => startFallback("timeout"), BUNDLE_FALLBACK_DELAY_MS);
+    fallbackTimer = setTimeout(() => startFallback("timeout"), getBundleFallbackDelayMs());
 
     fetchFundstrProfileBundleFromDiscovery(pubkeyHex, { forceRefresh })
-      .then((bundle) => {
+      .then(async (bundle) => {
+        discoverySettled = true;
         if (settled) {
+          if (!fallbackStarted) {
+            return;
+          }
+          const creatorsStore = useCreatorsStore();
+          const refreshedBundle = {
+            ...bundle,
+            refreshedInBackground: true,
+          };
+          try {
+            await creatorsStore.applyBundleToCache(normalizedPubkey, refreshedBundle, {
+              cacheHit: false,
+              refreshedInBackground: true,
+            });
+            debug("discovery:background-refresh", {
+              pubkey: normalizedPubkey,
+              tierDataFresh: bundle.tierDataFresh,
+            });
+          } catch (error) {
+            console.warn("[creators] Failed to apply background discovery refresh", {
+              pubkey: normalizedPubkey,
+              error,
+            });
+          }
           return;
         }
         settled = true;
-        discoverySettled = true;
         cleanupTimer();
         debug("discovery:hit", {
           pubkey: normalizedPubkey,
@@ -1297,6 +1350,7 @@ export interface CreatorWarmCache {
   tierRelayFailures?: Record<string, number>;
   lastFundstrRelayFailureAt?: number | null;
   lastFundstrRelayFailureNotifiedAt?: number | null;
+  refreshedInBackground?: boolean | null;
 }
 
 function parseCachedProfileContent(
@@ -1878,6 +1932,10 @@ function createCreatorFromBundle(
       overrides.tierFetchFailed !== undefined
         ? overrides.tierFetchFailed
         : bundle.tierFetchFailed,
+    refreshedInBackground:
+      overrides.refreshedInBackground !== undefined
+        ? overrides.refreshedInBackground
+        : bundle.refreshedInBackground === true,
     cacheHit: overrides.cacheHit,
     featured: overrides.featured,
     hasLightning: overrides.hasLightning ?? null,
@@ -2033,13 +2091,14 @@ export const useCreatorsStore = defineStore("creators", {
         profile: parseCachedProfileContent(entry),
         followers: null,
         following: null,
-      joined: entry.profileUpdatedAt ?? null,
-      cacheHit: true,
-      tierDataFresh: entry.tierDataFresh ?? null,
-      tierSecurityBlocked: entry.tierSecurityBlocked ?? null,
-      tierFetchFailed: entry.tierFetchFailed ?? null,
-    };
-  },
+        joined: entry.profileUpdatedAt ?? null,
+        cacheHit: true,
+        tierDataFresh: entry.tierDataFresh ?? null,
+        tierSecurityBlocked: entry.tierSecurityBlocked ?? null,
+        tierFetchFailed: entry.tierFetchFailed ?? null,
+        refreshedInBackground: entry.refreshedInBackground ?? null,
+      };
+    },
 
     updateProfileCacheState(
       pubkeyHex: string,
@@ -2789,6 +2848,19 @@ export const useCreatorsStore = defineStore("creators", {
         console.error("[creators] Failed to update warm tier cache", {
           pubkey,
           error: tierCacheError,
+        });
+      }
+
+      try {
+        const entry: CreatorWarmCache = {
+          ...(this.warmCache[pubkey] ?? {}),
+        };
+        entry.refreshedInBackground = bundle.refreshedInBackground === true;
+        this.warmCache[pubkey] = entry;
+      } catch (refreshError) {
+        console.error("[creators] Failed to update refresh flag", {
+          pubkey,
+          error: refreshError,
         });
       }
 
