@@ -109,6 +109,19 @@
                   </div>
                 </q-banner>
 
+                <q-banner
+                  v-if="isRefreshing && searchResults.length"
+                  rounded
+                  dense
+                  class="status-banner status-banner--loading text-1"
+                  aria-live="polite"
+                >
+                  <template #avatar>
+                    <q-spinner size="20px" />
+                  </template>
+                  <span class="status-banner__text">Refreshing results…</span>
+                </q-banner>
+
                 <div
                   v-if="resultSummary"
                   class="search-results-toolbar row items-center justify-between q-col-gutter-md"
@@ -555,6 +568,7 @@ const creatorsStore = useCreatorsStore();
 const {
   searchResults,
   searching,
+  isRefreshing: storeIsRefreshing,
   error: storeError,
   searchWarnings: storeSearchWarnings,
   searchStatusMessage: storeSearchStatusMessage,
@@ -660,6 +674,7 @@ const viewModeOptions = [
 const trimmedQuery = computed(() => (searchQuery.value || '').trim());
 const hasQuery = computed(() => trimmedQuery.value.length > 0);
 const searchLoading = computed(() => searching.value);
+const isRefreshing = computed(() => storeIsRefreshing.value);
 const searchError = computed(() => storeError.value);
 const searchWarnings = computed(() => storeSearchWarnings?.value ?? []);
 const searchStatusMessage = computed(() => storeSearchStatusMessage?.value ?? '');

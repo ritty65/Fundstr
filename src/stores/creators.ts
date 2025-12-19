@@ -1957,6 +1957,7 @@ export const useCreatorsStore = defineStore("creators", {
       searchResults: [] as CreatorProfile[],
       featuredCreators: [] as CreatorProfile[],
       searching: false,
+      isRefreshing: false,
       loadingFeatured: false,
       error: "",
       searchStatusMessage: "",
@@ -2607,6 +2608,7 @@ export const useCreatorsStore = defineStore("creators", {
         this.searchStatusMessage = "";
         this.searchWarnings = [];
         this.searching = false;
+        this.isRefreshing = false;
         return;
       }
 
@@ -2618,17 +2620,20 @@ export const useCreatorsStore = defineStore("creators", {
       const previousResults = this.searchResults.slice();
       const previousUnfiltered = this.unfilteredSearchResults.slice();
       const previousWarnings = this.searchWarnings.slice();
+      const hasPreviousResults = previousResults.length > 0;
 
-      clearResults();
       this.error = "";
       this.searchStatusMessage = "";
-      this.searchWarnings = [];
+      this.searchWarnings = hasPreviousResults ? previousWarnings : [];
       this.searching = true;
+      this.isRefreshing = hasPreviousResults;
       const searchRequestId = (searchRequestCounter += 1);
 
       const handleFailure = (message: string) => {
         this.error = message;
         clearResults();
+        this.searchWarnings = [];
+        this.isRefreshing = false;
       };
 
       const restorePreviousResults = () => {
@@ -2636,12 +2641,14 @@ export const useCreatorsStore = defineStore("creators", {
         this.searchResults = previousResults;
         this.searchWarnings = previousWarnings;
         this.error = "";
+        this.isRefreshing = false;
       };
 
       const handleNetworkWarning = async () => {
         restorePreviousResults();
         this.searchStatusMessage = NETWORK_CHANGE_WARNING;
         this.searching = false;
+        this.isRefreshing = false;
         this.searchAbortController = null;
         await waitForOnline();
         if (searchRequestId !== searchRequestCounter) {
@@ -2729,12 +2736,14 @@ export const useCreatorsStore = defineStore("creators", {
           if (appliedResult.applied) {
             await applyResults(this.unfilteredSearchResults, this.searchWarnings ?? []);
             this.searching = false;
+            this.isRefreshing = false;
             this.searchAbortController = null;
             return;
           }
         } catch (error) {
           if (controller.signal.aborted) {
             this.searching = false;
+            this.isRefreshing = false;
             this.searchAbortController = null;
             return;
           }
@@ -2744,6 +2753,7 @@ export const useCreatorsStore = defineStore("creators", {
 
       if (controller.signal.aborted) {
         this.searching = false;
+        this.isRefreshing = false;
         this.searchAbortController = null;
         return;
       }
@@ -2764,6 +2774,7 @@ export const useCreatorsStore = defineStore("creators", {
           handleFailure("Failed to fetch profile.");
         } finally {
           this.searching = false;
+          this.isRefreshing = false;
           this.searchAbortController = null;
         }
         return;
@@ -2808,6 +2819,7 @@ export const useCreatorsStore = defineStore("creators", {
       } catch (error) {
         if (controller.signal.aborted) {
           this.searching = false;
+          this.isRefreshing = false;
           this.searchAbortController = null;
           return;
         }
@@ -2816,6 +2828,7 @@ export const useCreatorsStore = defineStore("creators", {
       }
 
       this.searching = false;
+      this.isRefreshing = false;
       this.searchAbortController = null;
     },
 
