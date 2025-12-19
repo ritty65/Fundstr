@@ -96,8 +96,8 @@
             </q-card-section>
 
             <template v-else>
-              <q-card-section v-if="loadError" class="status-banner" role="status" aria-live="polite">
-                <div class="status-banner__message">{{ loadError }}</div>
+              <q-card-section v-if="statusBannerMessage" class="status-banner" role="status" aria-live="polite">
+                <div class="status-banner__message">{{ statusBannerMessage }}</div>
                 <q-btn
                   dense
                   no-caps
@@ -211,11 +211,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import TierDetailsPanel from 'components/TierDetailsPanel.vue';
 import { formatMsatToSats } from 'src/lib/fundstrApi';
+import {
+  getFreeRelayFallbackStatus,
+  onFreeRelayFallbackStatusChange,
+} from 'src/boot/ndk';
 import {
   displayNameFromProfile,
   normalizeMeta,
@@ -224,7 +228,11 @@ import {
 } from 'src/utils/profile';
 import { filterValidMedia } from 'src/utils/validateMedia';
 import type { Tier, TierMedia as TierMediaItem } from 'stores/types';
-import { mergeCreatorProfileWithFallback, useCreatorsStore } from 'stores/creators';
+import {
+  FundstrProfileFetchError,
+  mergeCreatorProfileWithFallback,
+  useCreatorsStore,
+} from 'stores/creators';
 import type { CreatorProfile } from 'stores/creators';
 
 const props = defineProps<{
@@ -258,6 +266,8 @@ const isMobileViewport = computed(() => $q.screen.lt.sm);
 const isDesktopViewport = computed(() => $q.screen.gt.sm);
 const isTwoColumnViewport = computed(() => $q.screen.width >= 1280);
 const isDialogMaximized = computed(() => isMobileViewport.value || isDesktopViewport.value);
+const relayFallbackStatus = ref(getFreeRelayFallbackStatus());
+let relayFallbackUnsubscribe: (() => void) | null = null;
 const dialogClasses = computed(() => ({
   'profile-dialog--maximized': isDialogMaximized.value,
   'profile-dialog--mobile': isMobileViewport.value,
@@ -293,6 +303,16 @@ const activeTierAnnouncement = computed(() => {
   }
   return `Viewing tier ${index + 1} of ${total}: ${tier.name}`;
 });
+const relayFallbackNotice = computed(() => {
+  if (!relayFallbackStatus.value.unreachable) {
+    return '';
+  }
+  if (creator.value) {
+    return '';
+  }
+  return "We're having trouble reaching relays right now. Discovery fallback didn't respond.";
+});
+const statusBannerMessage = computed(() => loadError.value ?? relayFallbackNotice.value);
 
 const canGoPrevious = computed(() => activeTierIndex.value > 0);
 const canGoNext = computed(() => activeTierIndex.value < tiers.value.length - 1);
@@ -503,6 +523,17 @@ watch(
   { immediate: true },
 );
 
+onMounted(() => {
+  relayFallbackUnsubscribe = onFreeRelayFallbackStatusChange((status) => {
+    relayFallbackStatus.value = status;
+  });
+});
+
+onUnmounted(() => {
+  relayFallbackUnsubscribe?.();
+  relayFallbackUnsubscribe = null;
+});
+
 watch(
   () => (showLocal.value && props.pubkey ? creatorsStore.warmCache[props.pubkey] : null),
   () => {
@@ -627,10 +658,16 @@ async function loadCreatorProfile(pubkey: string) {
   } catch (error) {
     if (requestId === currentRequestId) {
       console.error('[CreatorProfileModal] Failed to load creator profile', error);
-      const message =
-        error instanceof Error && error.message
-          ? `${error.message} Showing saved details.`
-          : "We couldn't refresh this creator right now. Showing saved details.";
+      let message = "We couldn't refresh this creator right now.";
+      if (error instanceof FundstrProfileFetchError && error.fallbackAttempted) {
+        message = "Discovery and relay fallback couldn't load this creator right now.";
+      } else if (error instanceof Error && error.message) {
+        message = error.message;
+      }
+      const hasFallbackData = Boolean(creator.value);
+      if (hasFallbackData) {
+        message = `${message} Showing saved details.`;
+      }
       loadError.value = message;
     }
   } finally {
