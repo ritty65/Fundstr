@@ -42,7 +42,12 @@ import {
 } from "@cashu/cashu-ts";
 import { useTokensStore } from "./tokens";
 import { filterHealthyRelays } from "src/utils/relayHealth";
-import { DEFAULT_RELAYS, FREE_RELAYS, VETTED_OPEN_WRITE_RELAYS } from "src/config/relays";
+import {
+  DEFAULT_RELAYS,
+  FALLBACK_RELAYS,
+  FREE_RELAYS,
+  VETTED_OPEN_WRITE_RELAYS,
+} from "src/config/relays";
 import { publishToRelaysWithAcks, selectPublishRelays, PublishReport, RelayResult } from "src/nostr/publish";
 import { sanitizeRelayUrls } from "src/utils/relay";
 import { getNdk } from "src/boot/ndk";
@@ -753,6 +758,29 @@ export function normalizeWsUrls(urls: string[]): string[] {
         .filter((u) => u.startsWith("ws")),
     ),
   );
+}
+
+const MIN_DEFAULT_RELAYS = 2;
+
+function isUsingDefaultRelays(relays: string[]): boolean {
+  const normalized = normalizeWsUrls(relays);
+  if (normalized.length === 0) return true;
+  const defaultSet = new Set(normalizeWsUrls(DEFAULT_RELAYS));
+  return normalized.every((url) => defaultSet.has(url));
+}
+
+async function resolveHealthyDefaultRelays(): Promise<string[]> {
+  let healthy: string[] = [];
+  try {
+    healthy = await filterHealthyRelays(DEFAULT_RELAYS);
+  } catch {
+    healthy = [];
+  }
+  const normalizedHealthy = normalizeWsUrls(healthy);
+  if (normalizedHealthy.length < MIN_DEFAULT_RELAYS) {
+    return normalizeWsUrls([...normalizedHealthy, ...FALLBACK_RELAYS]);
+  }
+  return normalizedHealthy;
 }
 
 /**
@@ -2082,7 +2110,13 @@ export const useNostrStore = defineStore("nostr", {
       this.connectionFailed = false;
 
       // 1. remember desired relay set
-      if (relays) this.relays = relays as any;
+      let targetRelays = relays ?? this.relays;
+      if (isUsingDefaultRelays(targetRelays)) {
+        targetRelays = await resolveHealthyDefaultRelays();
+      }
+      if (relays || this.relays.length === 0 || isUsingDefaultRelays(this.relays)) {
+        this.relays = targetRelays as any;
+      }
 
       // 2. build a *new* NDK whose pool contains only those relays
       const ndk = await rebuildNdk(this.relays, this.signer, true);
@@ -2171,7 +2205,10 @@ export const useNostrStore = defineStore("nostr", {
         }
       }
       if (relays?.length) {
-        const added = await urlsToRelaySet(relays);
+        const targetRelays = isUsingDefaultRelays(relays)
+          ? await resolveHealthyDefaultRelays()
+          : relays;
+        const added = await urlsToRelaySet(targetRelays);
         if (added) {
           try {
             await ndk.connect();
