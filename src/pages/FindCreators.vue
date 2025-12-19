@@ -142,7 +142,12 @@
                   v-if="resultSummary"
                   class="search-results-toolbar row items-center justify-between q-col-gutter-md"
                 >
-                  <div class="text-body2 text-2">{{ resultSummary }}</div>
+                  <div class="row items-center q-gutter-sm">
+                    <div class="text-body2 text-2">{{ resultSummary }}</div>
+                    <div v-if="activeFilterCount" class="text-body2 text-2">
+                      {{ activeFilterLabel }}
+                    </div>
+                  </div>
                   <div class="row items-center q-gutter-sm toolbar-controls">
                     <div class="row items-center q-gutter-xs filters-group">
                       <q-chip
@@ -161,6 +166,16 @@
                         {{ filter.label }}
                       </q-chip>
                     </div>
+                    <q-btn
+                      v-if="activeFilterCount"
+                      flat
+                      dense
+                      no-caps
+                      size="sm"
+                      color="accent"
+                      label="Clear filters"
+                      @click="clearFilters"
+                    />
                     <q-btn-toggle
                       v-model="viewMode"
                       dense
@@ -778,6 +793,15 @@ const resultSummary = computed(() => {
   const noun = count === 1 ? 'creator' : 'creators';
   return `${count} ${noun} found`;
 });
+const activeFilterCount = computed(
+  () => Object.values(activeFilters.value).filter(Boolean).length,
+);
+const activeFilterLabel = computed(() => {
+  if (!activeFilterCount.value) {
+    return '';
+  }
+  return `${activeFilterCount.value} filter${activeFilterCount.value === 1 ? '' : 's'}`;
+});
 const loadingFeatured = computed(() => storeLoadingFeatured?.value ?? false);
 
 const isPersonalProfile = (profile: CreatorProfile) => profile.isPersonal === true;
@@ -1188,6 +1212,13 @@ function toggleFilter(filterKey: FilterKey) {
     [filterKey]: !activeFilters.value[filterKey],
   };
 }
+
+const clearFilters = () => {
+  activeFilters.value = Object.fromEntries(
+    Object.keys(activeFilters.value).map((key) => [key, false]),
+  ) as Record<FilterKey, boolean>;
+  sortOption.value = 'relevance';
+};
 
 const applySampleQuery = (query: string) => {
   searchQuery.value = query;
