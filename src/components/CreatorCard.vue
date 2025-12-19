@@ -82,22 +82,30 @@
     </div>
 
     <div class="creator-actions">
-      <q-btn
-        color="accent"
-        unelevated
-        class="action-btn"
-        label="View subscription tiers"
-        no-caps
-        @click.stop="$emit('view-tiers', { pubkey: profile.pubkey, initialTab: 'tiers' })"
-      />
-      <q-btn
-        flat
-        color="accent"
-        class="action-btn tertiary-btn"
-        label="View profile"
-        no-caps
-        @click.stop="$emit('view-profile', { pubkey: profile.pubkey, initialTab: 'profile' })"
-      />
+      <div class="action-group">
+        <q-btn
+          color="accent"
+          unelevated
+          class="action-btn"
+          label="View subscription tiers"
+          no-caps
+          :disable="!canViewProfile"
+          @click.stop="$emit('view-tiers', { pubkey: profile.pubkey, initialTab: 'tiers' })"
+        />
+        <div v-if="!canViewProfile" class="action-helper text-2">Profile key unavailable</div>
+      </div>
+      <div class="action-group">
+        <q-btn
+          flat
+          color="accent"
+          class="action-btn tertiary-btn"
+          label="View profile"
+          no-caps
+          :disable="!canViewProfile"
+          @click.stop="$emit('view-profile', { pubkey: profile.pubkey, initialTab: 'profile' })"
+        />
+        <div v-if="!canViewProfile" class="action-helper text-2">Profile key unavailable</div>
+      </div>
       <q-btn
         color="accent"
         outline
@@ -203,6 +211,11 @@ const npubFull = computed(() => npub.value || props.profile?.pubkey || '');
 const displayName = computed(() => displayNameFromProfile(meta.value, npub.value));
 
 const avatarSrc = computed(() => safeImageSrc(meta.value?.picture, displayName.value, 96));
+
+const canViewProfile = computed(() => {
+  if (typeof props.profile?.pubkey !== 'string') return false;
+  return props.profile.pubkey.trim().length > 0;
+});
 
 function onAvatarError(event: Event) {
   (event.target as HTMLImageElement).src = safeImageSrc(null, displayName.value, 96);
@@ -658,6 +671,17 @@ function openProfileModal() {
   flex-direction: column;
   gap: 0.75rem;
   margin-top: auto;
+}
+
+.action-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.action-helper {
+  font-size: 0.85rem;
+  font-weight: 500;
 }
 
 .meta-icon {
