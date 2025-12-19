@@ -117,13 +117,17 @@ describe('fundstrDiscovery client', () => {
         {
           pubkey: uppercasePubkey,
           meta: {
-            displayName: 'Alice ',
+            displayName: 'Alice Meta ',
             username: ' alice ',
-            bio: ' Hello ',
             picture: 'https://cdn.fundstr.me/avatar.png ',
-            cover: 'https://cdn.fundstr.me/banner.png ',
             lightning_address: 'alice@ln.example',
             website: ' https://fundstr.example ',
+          },
+          profile: {
+            display_name: 'Alice Profile ',
+            bio: ' Hello ',
+            cover: 'https://cdn.fundstr.me/banner.png ',
+            nip05: ' alice@nostr.example ',
           },
           has_nutzap: true,
           nutzapProfile: { trusted_mints: ['mint'] },
@@ -175,11 +179,12 @@ describe('fundstrDiscovery client', () => {
 
     const [creator] = creators.results;
     expect(creator.pubkey).toBe(uppercasePubkey.toLowerCase());
-    expect(creator.displayName).toBe('Alice');
+    expect(creator.displayName).toBe('Alice Profile');
     expect(creator.name).toBe('alice');
     expect(creator.about).toBe('Hello');
     expect(creator.picture).toBe('https://cdn.fundstr.me/avatar.png');
     expect(creator.banner).toBe('https://cdn.fundstr.me/banner.png');
+    expect(creator.nip05).toBe('alice@nostr.example');
     expect(creator.profile?.lud16).toBe('alice@ln.example');
     expect(creator.profile?.website).toBe('https://fundstr.example');
     expect(creator.profile?.has_nutzap).toBe(true);
