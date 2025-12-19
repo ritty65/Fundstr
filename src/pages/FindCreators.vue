@@ -722,6 +722,14 @@ const searchError = computed(() => storeError.value);
 const searchWarnings = computed(() => storeSearchWarnings?.value ?? []);
 const searchStatusMessage = computed(() => storeSearchStatusMessage?.value ?? '');
 const searchFilters = computed(() => ({ ...activeFilters.value }));
+const normalizedFilterKeys = new Set<FilterKey>([
+  'hasTiers',
+  'hasLightning',
+  'featured',
+  'nip05Verified',
+  'fundstrCreator',
+  'signalOnly',
+]);
 const resultSummary = computed(() => {
   if (!initialLoadComplete.value) {
     return '';
@@ -849,6 +857,104 @@ watch(
 watch(sortOption, () => {
   applyClientFilters();
 });
+
+const parseFiltersFromQuery = (value: unknown): FilterKey[] => {
+  if (typeof value === 'string') {
+    return value.split(',').map((filter) => filter.trim() as FilterKey);
+  }
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((entry) => (typeof entry === 'string' ? entry.split(',') : []))
+      .map((filter) => filter.trim() as FilterKey);
+  }
+  return [];
+};
+
+const applyQueryState = () => {
+  const query = route.query;
+  if (typeof query.q === 'string') {
+    searchQuery.value = query.q;
+  }
+
+  const requestedFilters = parseFiltersFromQuery(query.filters).filter((filter) =>
+    normalizedFilterKeys.has(filter),
+  );
+
+  if (requestedFilters.length) {
+    activeFilters.value = Object.fromEntries(
+      Object.keys(activeFilters.value).map((key) => [
+        key,
+        requestedFilters.includes(key as FilterKey),
+      ]),
+    ) as Record<FilterKey, boolean>;
+  }
+
+  if (typeof query.sort === 'string' && sortOptions.some((option) => option.value === query.sort)) {
+    sortOption.value = query.sort as SortOption;
+  }
+
+  if (
+    typeof query.view === 'string' &&
+    viewModeOptions.some((option) => option.value === query.view)
+  ) {
+    viewMode.value = query.view as ViewMode;
+  }
+};
+
+const buildViewQuery = () => {
+  const query: Record<string, string | string[]> = { ...route.query } as Record<
+    string,
+    string | string[]
+  >;
+
+  const trimmed = searchQuery.value.trim();
+  if (trimmed) {
+    query.q = trimmed;
+  } else {
+    delete query.q;
+  }
+
+  const activeFilterKeys = Object.entries(activeFilters.value)
+    .filter(([, enabled]) => enabled)
+    .map(([key]) => key);
+  if (activeFilterKeys.length) {
+    query.filters = activeFilterKeys.join(',');
+  } else {
+    delete query.filters;
+  }
+
+  if (sortOption.value !== 'relevance') {
+    query.sort = sortOption.value;
+  } else {
+    delete query.sort;
+  }
+
+  if (viewMode.value !== 'grid') {
+    query.view = viewMode.value;
+  } else {
+    delete query.view;
+  }
+
+  return query;
+};
+
+const normalizeQuery = (query: Record<string, unknown>) => {
+  const entries = Object.entries(query)
+    .filter(([, value]) => value !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify(entries);
+};
+
+watch(
+  [searchQuery, activeFilters, sortOption, viewMode],
+  () => {
+    const nextQuery = buildViewQuery();
+    if (normalizeQuery(nextQuery) !== normalizeQuery(route.query)) {
+      void router.replace({ query: nextQuery });
+    }
+  },
+  { deep: true },
+);
 
 watch(
   hasFollowerMetrics,
@@ -1118,6 +1224,7 @@ const jumpToFeatured = () => {
 
 onMounted(() => {
   redirectToCreatorIfPresent();
+  applyQueryState();
   if (hasQuery.value) {
     void runSearch();
   } else {
