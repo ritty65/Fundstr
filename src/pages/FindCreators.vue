@@ -93,6 +93,19 @@
                     <q-icon :name="resolveBannerIcon(searchError)" size="20px" />
                   </template>
                   <span class="status-banner__text">{{ searchError }}</span>
+                  <template #action>
+                    <q-btn
+                      flat
+                      dense
+                      no-caps
+                      size="sm"
+                      color="accent"
+                      icon="refresh"
+                      label="Retry"
+                      class="status-banner__action"
+                      @click="triggerImmediateSearch"
+                    />
+                  </template>
                 </q-banner>
 
                 <q-banner
@@ -503,6 +516,20 @@
                   <q-icon :name="resolveBannerIcon(featuredStatusMessage)" size="20px" />
                 </template>
                 <span class="status-banner__text">{{ featuredStatusMessage }}</span>
+                <template #action>
+                  <q-btn
+                    v-if="featuredError"
+                    flat
+                    dense
+                    no-caps
+                    size="sm"
+                    color="accent"
+                    icon="refresh"
+                    label="Retry"
+                    class="status-banner__action"
+                    @click="refreshFeatured"
+                  />
+                </template>
               </q-banner>
 
               <div
@@ -1566,6 +1593,10 @@ h1 {
 .status-banner__text {
   font-size: 0.95rem;
   line-height: 1.4;
+}
+
+.status-banner__action {
+  margin-left: 8px;
 }
 
 .search-results-toolbar {
