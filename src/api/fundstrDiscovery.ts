@@ -263,6 +263,7 @@ export interface CreatorMeta {
 export interface CreatorRow {
   pubkey: string;
   meta?: CreatorMeta | null;
+  profile?: CreatorMeta | null;
   has_nutzap?: boolean | null;
   [key: string]: unknown;
 }
@@ -391,7 +392,8 @@ function normalizeCreator(row: CreatorRow): LegacyCreator {
   }
 
   const metaRecord = toRecord(row.meta) ?? {};
-  const profile: Record<string, unknown> = { ...metaRecord };
+  const profileRecord = toRecord(row.profile) ?? {};
+  const profile: Record<string, unknown> = { ...metaRecord, ...profileRecord };
   const tiers = Array.isArray(row.tiers) ? row.tiers.map(normalizeTier).filter(Boolean) : [];
   const metricsRecord = toRecord((row as Record<string, unknown> | null | undefined)?.['metrics']) ?? null;
 
