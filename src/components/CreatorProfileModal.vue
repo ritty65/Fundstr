@@ -99,17 +99,18 @@
               <q-card-section v-if="statusBannerMessage" class="status-banner" role="status" aria-live="polite">
                 <div class="status-banner__message">{{ statusBannerMessage }}</div>
                 <q-btn
+                  v-if="loadError"
                   dense
                   no-caps
                   color="accent"
                   label="Retry"
                   class="status-banner__action"
-                  @click="loadCreatorProfile(pubkey)"
+                  @click="loadCreatorProfile(pubkey, true)"
                 />
               </q-card-section>
 
               <q-card-section v-if="refreshNotice" class="refresh-banner" role="status" aria-live="polite">
-                <div class="refresh-banner__message">Updated with fresh data.</div>
+                <div class="refresh-banner__message">Refreshing…</div>
               </q-card-section>
 
               <q-card-section v-if="creator" class="tiers-section">
@@ -643,7 +644,7 @@ watch(
   },
 );
 
-async function loadCreatorProfile(pubkey: string) {
+async function loadCreatorProfile(pubkey: string, forceRefresh = false) {
   if (!pubkey) {
     creator.value = null;
     tiers.value = [];
@@ -658,7 +659,7 @@ async function loadCreatorProfile(pubkey: string) {
   syncStateFromStore(pubkey, fallbackProfile);
 
   try {
-    const profile = await creatorsStore.fetchCreator(pubkey);
+    const profile = await creatorsStore.fetchCreator(pubkey, forceRefresh);
     if (requestId !== currentRequestId) {
       return;
     }
