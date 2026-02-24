@@ -14,13 +14,20 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Enable pnpm via Corepack
         run: |
           corepack enable
-          corepack prepare pnpm@10.16.1 --activate
+          corepack prepare pnpm@8.15.7 --activate
           pnpm --version
+
+      - name: Validate production deploy target
+        run: |
+          if [ -z "${{ secrets.SSH_TARGET_PRODUCTION }}" ]; then
+            echo "::error::Missing required secret SSH_TARGET_PRODUCTION"
+            exit 1
+          fi
 
       - name: Use production env
         run: cp .env.production .env
@@ -46,4 +53,4 @@ jobs:
           rsync -avz --delete \
             -e "ssh -p ${{ secrets.SSH_PORT }}" \
             dist/pwa/ \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_PRODUCTION }}/"

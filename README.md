@@ -85,6 +85,10 @@ The app includes a built-in Nostr messenger for private chat.
 
 Fundstr is currently in Alpha/Beta.
 
+## Production hardening tracker
+
+- Active execution checklist: [`docs/production-readiness-gameplan.md`](docs/production-readiness-gameplan.md)
+
 ## Welcome onboarding
 
 - The `/welcome` page now includes an actionable checklist for setting up a Nostr identity and selecting a mint, with state stored in `useWelcomeStore`.
