@@ -55,7 +55,7 @@ Even good code is unsafe if bad builds can ship or if production points at the w
 ### Implementation checklist
 
 - [x] FR-101: Make test workflow blocking (remove tolerant install/test behavior in `.github/workflows/test.yaml`).
-- [ ] FR-102: Expand CI test scope to include meaningful unit/integration suites (not only narrow sanitizer tests in `package.json`).
+- [x] FR-102: Expand CI test scope to include meaningful unit/integration suites (not only narrow sanitizer tests in `package.json`).
 - [x] FR-103: Align staging branch strategy between docs and workflow (`AGENTS.md` and `.github/workflows/deploy-staging.yml`).
 - [x] FR-104: Pin pnpm consistently to `pnpm@8.15.7` in all workflows to match `package.json`.
 - [x] FR-105: Fix production deploy destination to use production target secret/path, not staging target.
