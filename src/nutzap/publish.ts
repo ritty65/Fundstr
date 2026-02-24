@@ -1,14 +1,15 @@
-import { NDKEvent } from '@nostr-dev-kit/ndk';
-import { NUTZAP_PROFILE_KIND, NUTZAP_TIERS_KIND } from './relayConfig';
-import { getNutzapNdk } from './ndkInstance';
-import type { Tier, NutzapProfileContent } from './types';
-import { publishNostr } from '@/nostr/relayClient';
-import { toPlainNostrEvent } from '@/nostr/eventUtils';
+import { NDKEvent } from "@nostr-dev-kit/ndk";
+import { NUTZAP_PROFILE_KIND, NUTZAP_TIERS_KIND } from "./relayConfig";
+import { getNutzapNdk } from "./ndkInstance";
+import type { Tier, NutzapProfileContent } from "./types";
+import { publishNostr } from "@/nostr/relayClient";
+import { toPlainNostrEvent } from "@/nostr/eventUtils";
+import { serializeTierContentForKind } from "@/nostr/tierContract";
 
 /** Publish kind:10019 Nutzap profile; WS first (if allowed), else HTTP. */
 export async function publishNutzapProfile(
   content: NutzapProfileContent,
-  tags: string[][]
+  tags: string[][],
 ) {
   const ndk = getNutzapNdk();
   const ev = new NDKEvent(ndk);
@@ -21,28 +22,29 @@ export async function publishNutzapProfile(
   if (!ack.accepted) {
     throw new Error(ack.message || "Relay rejected Nutzap profile");
   }
-  return { ...ack, via: 'http' as const };
+  return { ...ack, via: "http" as const };
 }
 
 /** Publish tiers as parameterized replaceable event ("d":"tiers"). */
 export async function publishTierDefinitions(
   tiers: Tier[],
-  opts?: { kind?: number }
+  opts?: { kind?: number },
 ) {
   const ndk = getNutzapNdk();
   const ev = new NDKEvent(ndk);
-  const tierKind = typeof opts?.kind === 'number' ? opts.kind : NUTZAP_TIERS_KIND;
+  const tierKind =
+    typeof opts?.kind === "number" ? opts.kind : NUTZAP_TIERS_KIND;
   ev.kind = tierKind; // defaults to env-configured kind
   ev.tags = [
-    ['d', 'tiers'],
-    ['t', 'nutzap-tiers'],
+    ["d", "tiers"],
+    ["t", "nutzap-tiers"],
   ];
-  ev.content = JSON.stringify(tiers);
+  ev.content = serializeTierContentForKind(tiers, tierKind);
   await ev.sign();
   const nostrEvent = await toPlainNostrEvent(ev);
   const ack = await publishNostr(nostrEvent);
   if (!ack.accepted) {
     throw new Error(ack.message || "Relay rejected tier definitions");
   }
-  return { ...ack, via: 'http' as const };
+  return { ...ack, via: "http" as const };
 }

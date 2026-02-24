@@ -1,19 +1,23 @@
 import { defineStore } from "pinia";
 import { db } from "./dexie";
-import {
-  useNostrStore,
-  getEventHash,
-  signEvent,
-  publishEvent,
-} from "./nostr";
+import { useNostrStore, getEventHash, signEvent, publishEvent } from "./nostr";
 import { useNdk } from "src/composables/useNdk";
 import { nip19 } from "nostr-tools";
 import { Event as NostrEvent } from "nostr-tools";
 import { notifyWarning } from "src/js/notify";
 import type { Tier } from "./types";
-import { queryNutzapTiers, toHex, type NostrEvent as RelayEvent } from "@/nostr/relayClient";
+import {
+  queryNutzapTiers,
+  toHex,
+  type NostrEvent as RelayEvent,
+} from "@/nostr/relayClient";
 import { fallbackDiscoverRelays } from "@/nostr/discovery";
 import { parseTierDefinitionEvent } from "src/nostr/tiers";
+import {
+  CANONICAL_TIER_KIND,
+  TIER_D_TAG,
+  serializeCanonicalTierContent,
+} from "src/nostr/tierContract";
 
 export const FEATURED_CREATORS = [
   "npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m",
@@ -192,9 +196,7 @@ export const useCreatorsStore = defineStore("creators", {
       }
 
       const relayHints = new Set(
-        (opts.relayHints ?? [])
-          .map((url) => url.trim())
-          .filter((url) => !!url),
+        (opts.relayHints ?? []).map((url) => url.trim()).filter((url) => !!url),
       );
 
       let event: RelayEvent | null = null;
@@ -272,15 +274,15 @@ export const useCreatorsStore = defineStore("creators", {
     async publishTierDefinitions(tiersArray: Tier[]) {
       const creatorNpub = this.currentUserNpub;
       const created_at = Math.floor(Date.now() / 1000);
-      const content = JSON.stringify(
+      const content = serializeCanonicalTierContent(
         tiersArray.map((t) => ({ ...t, price: t.price_sats })),
       );
 
       const event: Partial<NostrEvent> = {
         pubkey: creatorNpub,
         created_at,
-        kind: 30019,
-        tags: [["d", "tiers"]],
+        kind: CANONICAL_TIER_KIND,
+        tags: [["d", TIER_D_TAG]],
         content,
       };
       event.id = getEventHash(event as any);

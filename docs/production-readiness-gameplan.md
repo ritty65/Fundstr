@@ -105,7 +105,7 @@ Creators can publish tiers in one flow that another flow interprets differently.
 
 ### Implementation checklist
 
-- [ ] FR-201: Introduce a single shared tier contract module (serialize/parse/validate/version).
+- [x] FR-201: Introduce a single shared tier contract module (serialize/parse/validate/version).
 - [ ] FR-202: Update all tier writers to canonical output first.
 - [ ] FR-203: Make `tierAddr` resolution authoritative in reads when available.
 - [ ] FR-204: Add migration adapter for legacy reads (`30000`, array content, historical fields).
