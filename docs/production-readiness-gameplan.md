@@ -35,7 +35,7 @@ Ship Fundstr as a fully functional, robust, and secure production app by fixing 
 | Epic                                                | Priority | Status      | Target window |
 | --------------------------------------------------- | -------- | ----------- | ------------- |
 | EPIC-1: CI/CD and release gates                     | P0       | In progress | Week 1        |
-| EPIC-2: Tier contract unification                   | P0       | Not started | Week 2-3      |
+| EPIC-2: Tier contract unification                   | P0       | In progress | Week 2-3      |
 | EPIC-3: Relay gateway unification                   | P1       | Not started | Week 3-5      |
 | EPIC-4: Discovery security hardening                | P0       | Not started | Week 2-4      |
 | EPIC-5: Financial integrity and storage convergence | P0/P1    | Not started | Week 4-8      |
