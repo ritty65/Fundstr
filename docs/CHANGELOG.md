@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Added a production hardening execution checklist at `docs/production-readiness-gameplan.md` and linked it from README.
+- Continued CI/CD hardening: staging deploy now tracks `develop` and `Develop2`, production deploy includes smoke tests, and workflows use pnpm 8.15.7 consistently.
+- Added release operations runbook at `docs/release-ops-runbook.md` for branch protection and required-check policy.
 - Buckets UI redesign – Phase9
 - Bucket detail opens in a modal from the Buckets page.
   Direct links to `/buckets/:id` still work but are only kept

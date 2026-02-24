@@ -8,11 +8,11 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
       - name: Enable pnpm via Corepack
         run: |
           corepack enable
-          corepack prepare pnpm@10.16.1 --activate
+          corepack prepare pnpm@8.15.7 --activate
           pnpm --version
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

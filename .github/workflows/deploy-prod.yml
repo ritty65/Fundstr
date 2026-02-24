@@ -54,3 +54,12 @@ jobs:
             -e "ssh -p ${{ secrets.SSH_PORT }}" \
             dist/pwa/ \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_PRODUCTION }}/"
+
+      - name: Smoke test production
+        env:
+          BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+        run: |
+          if [ -z "$BASE_URL" ]; then
+            BASE_URL="https://fundstr.me"
+          fi
+          BASE_URL="$BASE_URL" ./scripts/smoke-tests.sh

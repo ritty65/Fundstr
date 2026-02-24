@@ -56,11 +56,13 @@ Even good code is unsafe if bad builds can ship or if production points at the w
 
 - [x] FR-101: Make test workflow blocking (remove tolerant install/test behavior in `.github/workflows/test.yaml`).
 - [ ] FR-102: Expand CI test scope to include meaningful unit/integration suites (not only narrow sanitizer tests in `package.json`).
-- [ ] FR-103: Align staging branch strategy between docs and workflow (`AGENTS.md` and `.github/workflows/deploy-staging.yml`).
+- [x] FR-103: Align staging branch strategy between docs and workflow (`AGENTS.md` and `.github/workflows/deploy-staging.yml`).
 - [x] FR-104: Pin pnpm consistently to `pnpm@8.15.7` in all workflows to match `package.json`.
 - [x] FR-105: Fix production deploy destination to use production target secret/path, not staging target.
-- [ ] FR-106: Add required smoke verification after deploy (staging and production endpoints).
+- [x] FR-106: Add required smoke verification after deploy (staging and production endpoints).
 - [ ] FR-107: Add branch protection and required checks policy (documented in repo ops runbook).
+
+FR-107 note: runbook is added at `docs/release-ops-runbook.md`; repository-level protection toggles still require manual application in GitHub settings.
 
 ### Test and verification
 
@@ -69,6 +71,7 @@ Even good code is unsafe if bad builds can ship or if production points at the w
 - [ ] Staging deploy test: push to staging branch and verify only staging updates.
 - [ ] Production deploy test: manual dispatch from main and verify only production updates.
 - [ ] Version check: workflow logs show `pnpm 8.15.7` everywhere.
+- [ ] Branch protection verification: protected branches enforce required checks from the runbook.
 
 ### Future-proofing
 
@@ -285,5 +288,6 @@ Any mismatch between "claimed" and actual credited funds is a critical productio
 ## Immediate next actions (start now)
 
 - [x] Start FR-101, FR-104, FR-105 in one CI/CD hardening PR.
+- [ ] Apply branch protection settings from `docs/release-ops-runbook.md` in GitHub repo settings.
 - [ ] Open FR-201 contract module PR immediately after CI/CD hardening lands.
 - [ ] Open FR-401 message-boundary hardening PR in parallel with FR-201.

@@ -88,6 +88,7 @@ Fundstr is currently in Alpha/Beta.
 ## Production hardening tracker
 
 - Active execution checklist: [`docs/production-readiness-gameplan.md`](docs/production-readiness-gameplan.md)
+- Release operations policy: [`docs/release-ops-runbook.md`](docs/release-ops-runbook.md)
 
 ## Welcome onboarding
 
