@@ -18,6 +18,8 @@ export default configure((ctx) => ({
     'cashu',
     'i18n',
     'notify',
+    'safe-html',
+    'trusted-types',
     'nostr-provider',
     'prefetch-featured-creators',
     'fundstrRelay',
@@ -90,6 +92,31 @@ export default configure((ctx) => ({
       }
 
       viteConf.plugins = plugins
+
+      viteConf.build = viteConf.build || {}
+      viteConf.build.rollupOptions = viteConf.build.rollupOptions || {}
+      const output = (viteConf.build.rollupOptions.output =
+        viteConf.build.rollupOptions.output || {})
+
+      if (!output.manualChunks) {
+        output.manualChunks = (id) => {
+          if (!id.includes('node_modules')) {
+            return
+          }
+
+          if (id.includes('@nostr-dev-kit') || id.includes('nostr-tools')) {
+            return 'vendor-nostr'
+          }
+
+          if (id.includes('@cashu') || id.includes('@scure')) {
+            return 'vendor-cashu'
+          }
+
+          if (id.includes('vue') || id.includes('quasar') || id.includes('pinia')) {
+            return 'vendor-ui'
+          }
+        }
+      }
     }
   },
   framework: {
