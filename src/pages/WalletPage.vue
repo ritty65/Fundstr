@@ -462,6 +462,7 @@ import { useDexieStore } from "src/stores/dexie";
 import { useStorageStore } from "src/stores/storage";
 import ReceiveTokenDialog from "src/components/ReceiveTokenDialog.vue";
 import { useWelcomeStore } from "../stores/welcome";
+import { hasSeenWelcome } from "src/composables/useWelcomeGate";
 import { useInvoicesWorkerStore } from "src/stores/invoicesWorker";
 import { useLockedTokensRedeemWorker } from "src/stores/lockedTokensRedeemWorker";
 import { useSubscriptionRedeemWorker } from "src/stores/subscriptionRedeemWorker";
@@ -687,7 +688,13 @@ export default {
     },
     showWelcomePage: function () {
       const store = useWelcomeStore();
-      if (!store.welcomeCompleted) {
+      const seenWelcome = hasSeenWelcome() || store.welcomeCompleted;
+
+      if (seenWelcome && !store.welcomeCompleted) {
+        store.welcomeCompleted = true;
+      }
+
+      if (!seenWelcome) {
         const currentQuery = window.location.search;
         const currentHash = window.location.hash;
         this.$router.push("/welcome" + currentQuery + currentHash);
