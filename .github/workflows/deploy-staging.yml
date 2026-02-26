@@ -7,7 +7,7 @@ on:
 
 env:
   NODE_VERSION: 20
-  BUILD_MODE: spa   # staging: SPA (no service worker). Change to 'pwa' if you want PWA here.
+  BUILD_MODE: spa # staging: SPA (no service worker). Change to 'pwa' if you want PWA here.
 
 concurrency:
   group: deploy-staging-${{ github.ref }}
@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-          cache-dependency-path: '**/pnpm-lock.yaml'
+          cache-dependency-path: "**/pnpm-lock.yaml"
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
@@ -37,6 +37,12 @@ jobs:
 
       - name: Build app
         run: pnpm quasar build -m ${{ env.BUILD_MODE }}
+
+      - name: Verify deploy artifacts
+        env:
+          DEPLOY_DIST_DIR: dist/${{ env.BUILD_MODE }}
+          EXPECT_SW: "0"
+        run: pnpm run verify:deploy-artifacts
 
       - name: Upload dist
         uses: actions/upload-artifact@v4
@@ -49,6 +55,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download dist
         uses: actions/download-artifact@v4
         with:
@@ -76,7 +84,7 @@ jobs:
             exit 1
           fi
 
-      - name: Ensure .htaccess + version.txt
+      - name: Ensure .htaccess + deploy marker
         run: |
           DIR="${{ steps.detect.outputs.BUILD_DIR }}"
           cat > "$DIR/.htaccess" <<'HTACCESS'
@@ -102,6 +110,15 @@ jobs:
             CacheDisable public /index.html
           </IfModule>
           HTACCESS
+
+          BUILD_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          {
+            echo "env=staging"
+            echo "sha=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF_NAME}"
+            echo "built_at=$BUILD_TS"
+            echo "run_id=${GITHUB_RUN_ID}"
+          } > "$DIR/deploy.txt"
           echo "${GITHUB_SHA} $(date -u '+%F %T UTC')" > "$DIR/version.txt"
 
       - name: Generate known_hosts
@@ -129,10 +146,10 @@ jobs:
 
       - name: Prepare target dir
         env:
-          HOST:   ${{ secrets.SSH_HOST }}
-          USER:   ${{ secrets.SSH_USER_STAGING }}
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER_STAGING }}
           TARGET: ${{ secrets.SSH_TARGET_STAGING }}
-          PORT:   ${{ secrets.SSH_PORT_STAGING }}
+          PORT: ${{ secrets.SSH_PORT_STAGING }}
         run: |
           set -euxo pipefail
           case "$TARGET" in
@@ -143,10 +160,10 @@ jobs:
 
       - name: Upload to __incoming (rsync)
         env:
-          HOST:   ${{ secrets.SSH_HOST }}
-          USER:   ${{ secrets.SSH_USER_STAGING }}
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER_STAGING }}
           TARGET: ${{ secrets.SSH_TARGET_STAGING }}
-          PORT:   ${{ secrets.SSH_PORT_STAGING }}
+          PORT: ${{ secrets.SSH_PORT_STAGING }}
         run: |
           set -euxo pipefail
           rsync -az --delete -e "ssh -o StrictHostKeyChecking=yes -p ${PORT:-22}" \
@@ -155,10 +172,10 @@ jobs:
 
       - name: Atomic swap
         env:
-          HOST:   ${{ secrets.SSH_HOST }}
-          USER:   ${{ secrets.SSH_USER_STAGING }}
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER_STAGING }}
           TARGET: ${{ secrets.SSH_TARGET_STAGING }}
-          PORT:   ${{ secrets.SSH_PORT_STAGING }}
+          PORT: ${{ secrets.SSH_PORT_STAGING }}
         run: |
           set -euxo pipefail
           ssh -p "${PORT:-22}" "$USER@$HOST" "
@@ -173,47 +190,10 @@ jobs:
             ls -lah \"\$T\" | sed -n '1,40p'
           "
 
-      - name: Smoke check
-        run: |
-          set -euo pipefail
-          curl -fsSI https://staging.fundstr.me/ | sed -n '1,20p'
-          curl -fsSI https://staging.fundstr.me/find-creators | sed -n '1,20p'
-          curl -fsS  https://staging.fundstr.me/version.txt | tee /tmp/version.txt
-          curl -fsS  https://staging.fundstr.me/ | grep -i -E "Fundstr|Nostr User Search"
-
-      - name: Verify main module bundle is reachable
-        run: |
-          set -euo pipefail
-          HTML="$(curl -fsS https://staging.fundstr.me/)"
-          SRC="$(printf '%s\n' "$HTML" \
-            | sed -nE 's/.*<script[^>]*type="module"[^>]*src="([^"]+)".*/\1/p' \
-            | head -n 1)"
-          if [ -z "$SRC" ]; then
-            echo "::error:: could not locate <script type=\"module\"> in staging index.html"
-            printf '%s\n' "$HTML" | sed -n '1,120p'
-            exit 1
-          fi
-          case "$SRC" in
-            http://*|https://*)
-              URL="$SRC"
-              ;;
-            /*)
-              URL="https://staging.fundstr.me$SRC"
-              ;;
-            *)
-              URL="https://staging.fundstr.me/$SRC"
-              ;;
-          esac
-          curl -sSI "$URL" -o /tmp/module_headers
-          STATUS="$(awk 'toupper($1) ~ /^HTTP\// {print $2; exit}' /tmp/module_headers)"
-          if [ "${STATUS:-}" != "200" ]; then
-            echo "::error:: expected HTTP 200 for $URL, got ${STATUS:-unknown}"
-            cat /tmp/module_headers
-            exit 1
-          fi
-          if ! grep -qi '^content-type:.*javascript' /tmp/module_headers; then
-            echo "::error:: $URL missing javascript content-type"
-            cat /tmp/module_headers
-            exit 1
-          fi
-          cat /tmp/module_headers
+      - name: Smoke test staging
+        env:
+          BASE_URL: https://staging.fundstr.me
+          EXPECT_SW: "0"
+          DISCOVERY_ROUTE: /find-creators
+          DEPLOY_MARKER_REQUIRED: "1"
+        run: ./scripts/smoke-tests.sh
