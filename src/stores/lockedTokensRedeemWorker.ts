@@ -238,7 +238,8 @@ export const useLockedTokensRedeemWorker = defineStore(
                   console.error("failed updating subscription interval", e);
                 }
 
-                if (entry.creatorNpub) {
+                const recipientNpub = entry.subscriberNpub || entry.creatorNpub;
+                if (recipientNpub) {
                   const messenger = useMessengerStore();
                   const payload = {
                     type: "cashu_subscription_claimed",
@@ -252,12 +253,12 @@ export const useLockedTokensRedeemWorker = defineStore(
                   } as const;
                   try {
                     await messenger.sendDm(
-                      entry.creatorNpub,
+                      recipientNpub,
                       JSON.stringify(payload),
                     );
                     notifySuccess("Subscription payment claimed");
                   } catch (e) {
-                    console.error("failed to notify creator", e);
+                    console.error("failed to notify subscription peer", e);
                   }
                 }
               }

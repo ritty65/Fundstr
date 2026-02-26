@@ -3401,20 +3401,28 @@ export const useNostrStore = defineStore("nostr", {
             label: "Subscription payment",
           };
           await cashuDb.lockedTokens.put(entry as any);
-          const receiveStore = useReceiveTokensStore();
-          receiveStore.receiveData.tokensBase64 = payload.token;
-          await receiveStore.enqueue(() =>
-            receiveStore.receiveToken(payload.token, DEFAULT_BUCKET_ID),
-          );
           return;
         }
         if (payload && payload.type === "cashu_subscription_claimed") {
           const sub = await cashuDb.subscriptions.get(payload.subscription_id);
-          const idx = sub?.intervals.findIndex(
+          const senderPubkey = sender ? this.resolvePubkey(sender) : null;
+          const expectedCreatorPubkey = sub?.creatorNpub
+            ? this.resolvePubkey(sub.creatorNpub)
+            : null;
+          if (
+            !sub ||
+            !senderPubkey ||
+            !expectedCreatorPubkey ||
+            senderPubkey !== expectedCreatorPubkey
+          ) {
+            return;
+          }
+          const idx = sub.intervals.findIndex(
             (i) => i.monthIndex === payload.month_index,
           );
-          if (sub && idx !== undefined && idx >= 0) {
+          if (idx >= 0) {
             sub.intervals[idx].status = "claimed";
+            sub.intervals[idx].redeemed = true;
             await cashuDb.subscriptions.update(sub.id, {
               intervals: sub.intervals,
             });

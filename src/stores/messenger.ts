@@ -3823,21 +3823,23 @@ export const useMessengerStore = defineStore("messenger", {
             label: "Subscription payment",
           };
           await cashuDb.lockedTokens.put(entry);
-
-          const receiveStore = useReceiveTokensStore();
-          receiveStore.receiveData.tokensBase64 = sub.token;
-          await receiveStore.enqueue(() =>
-            receiveStore.receiveToken(sub.token, DEFAULT_BUCKET_ID),
-          );
           continue;
         }
         if (payload && payload.type === "cashu_subscription_claimed") {
           const sub = await cashuDb.subscriptions.get(payload.subscription_id);
-          const idx = sub?.intervals.findIndex(
+          const senderPubkey = this.normalizeKey(event.pubkey);
+          const creatorPubkey = sub?.creatorNpub
+            ? this.normalizeKey(sub.creatorNpub)
+            : "";
+          if (!sub || !senderPubkey || !creatorPubkey || senderPubkey !== creatorPubkey) {
+            continue;
+          }
+          const idx = sub.intervals.findIndex(
             (i) => i.monthIndex === payload.month_index,
           );
-          if (sub && idx !== undefined && idx >= 0) {
+          if (idx >= 0) {
             sub.intervals[idx].status = "claimed";
+            sub.intervals[idx].redeemed = true;
             await cashuDb.subscriptions.update(sub.id, {
               intervals: sub.intervals,
             });

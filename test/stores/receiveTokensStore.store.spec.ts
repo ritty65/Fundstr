@@ -276,6 +276,20 @@ describe("receiveTokensStore", () => {
     expect(mintsStore.addMint).not.toHaveBeenCalled();
   });
 
+  it("keeps locked token rows when redemption fails", async () => {
+    tokenModule.decode.mockReturnValue(sampleToken);
+    tokenModule.getProofs.mockReturnValue(sampleToken.proofs);
+    tokenModule.getMint.mockReturnValue("https://mint-a");
+    mintsStore.mints = [{ url: "https://mint-a", keysets: [{ id: "keyset-1" }] }];
+    lockedTokensRecords.push({ tokenString: "cashuAToken" });
+    walletStore.redeem.mockRejectedValueOnce(new Error("redeem failed"));
+
+    store.receiveData.tokensBase64 = "cashuAToken";
+
+    await expect(store.receiveToken("cashuAToken")).rejects.toThrow("redeem failed");
+    expect(lockedTokensRecords).toHaveLength(1);
+  });
+
   it("receives tokens only when decoding succeeds", async () => {
     const decodeSpy = vi.spyOn(store, "decodeToken").mockReturnValue(undefined);
     store.receiveData.tokensBase64 = "cashuAToken";
