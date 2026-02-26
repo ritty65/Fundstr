@@ -6,9 +6,13 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Branch to deploy (must be main)'
+        description: "Branch to deploy (must be main)"
         required: true
-        default: 'main'
+        default: "main"
+
+concurrency:
+  group: deploy-production-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -22,12 +26,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Enable pnpm via Corepack
         run: |
           corepack enable
-          corepack prepare pnpm@10.16.1 --activate
+          corepack prepare pnpm@8.15.7 --activate
+          pnpm --version
 
       - name: Install rsync + ssh-client
         run: |
@@ -42,6 +47,12 @@ jobs:
 
       - name: Build (Quasar PWA)
         run: pnpm quasar build -m pwa
+
+      - name: Verify deploy artifacts
+        env:
+          DEPLOY_DIST_DIR: dist/pwa
+          EXPECT_SW: "1"
+        run: pnpm run verify:deploy-artifacts
 
       - name: Enforce .htaccess with cache headers (in built bundle)
         run: |
@@ -94,6 +105,17 @@ jobs:
           </IfModule>
           EOF
 
+      - name: Write deploy marker
+        run: |
+          BUILD_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          {
+            echo "env=production"
+            echo "sha=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF_NAME}"
+            echo "built_at=$BUILD_TS"
+            echo "run_id=${GITHUB_RUN_ID}"
+          } > dist/pwa/deploy.txt
+
       - uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -110,39 +132,10 @@ jobs:
             dist/pwa/ \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_PROD }}/"
 
-      - name: Verify main module bundle is reachable
-        run: |
-          set -euo pipefail
-          HTML="$(curl -fsS https://fundstr.me/)"
-          SRC="$(printf '%s\n' "$HTML" \
-            | sed -nE 's/.*<script[^>]*type="module"[^>]*src="([^"]+)".*/\1/p' \
-            | head -n 1)"
-          if [ -z "$SRC" ]; then
-            echo "::error:: could not locate <script type=\"module\"> in production index.html"
-            printf '%s\n' "$HTML" | sed -n '1,120p'
-            exit 1
-          fi
-          case "$SRC" in
-            http://*|https://*)
-              URL="$SRC"
-              ;;
-            /*)
-              URL="https://fundstr.me$SRC"
-              ;;
-            *)
-              URL="https://fundstr.me/$SRC"
-              ;;
-          esac
-          curl -sSI "$URL" -o /tmp/module_headers
-          STATUS="$(awk 'toupper($1) ~ /^HTTP\// {print $2; exit}' /tmp/module_headers)"
-          if [ "${STATUS:-}" != "200" ]; then
-            echo "::error:: expected HTTP 200 for $URL, got ${STATUS:-unknown}"
-            cat /tmp/module_headers
-            exit 1
-          fi
-          if ! grep -qi '^content-type:.*javascript' /tmp/module_headers; then
-            echo "::error:: $URL missing javascript content-type"
-            cat /tmp/module_headers
-            exit 1
-          fi
-          cat /tmp/module_headers
+      - name: Smoke test production
+        env:
+          BASE_URL: https://fundstr.me
+          EXPECT_SW: "1"
+          DISCOVERY_ROUTE: /find-creators
+          DEPLOY_MARKER_REQUIRED: "1"
+        run: ./scripts/smoke-tests.sh

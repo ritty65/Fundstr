@@ -21,7 +21,8 @@
     "ci:verify": "pnpm run build",
     "lint:fix": "eslint . --fix",
     "check:i18n": "node scripts/check-i18n.js",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "verify:deploy-artifacts": "node scripts/ci/verify-deploy-artifacts.mjs"
   },
   "dependencies": {
     "@capacitor/clipboard": "^6.0.2",
