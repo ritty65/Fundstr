@@ -2,13 +2,49 @@
   Options -MultiViews
   RewriteEngine On
 
-  # Never rewrite static assets
-  RewriteRule ^assets/ - [L]
+  # Never rewrite static directories
+  RewriteRule ^(assets|icons|vendor)/ - [L,NC]
 
-  # SPA fallback only if not a real file/dir
+  # Never rewrite critical root static files
+  RewriteRule ^(manifest\.json|mints\.json|relayHealth\.js|sw\.js|workbox-[A-Za-z0-9._-]+\.js|deploy\.txt|favicon\.ico|robots\.txt|version\.txt)$ - [L,NC]
+
+  # Never rewrite requests that look like file assets.
+  # Let Apache serve the file directly (or return 404) instead of SPA shell HTML.
+  RewriteCond %{REQUEST_URI} \.(css|js|mjs|json|txt|map|png|jpe?g|gif|svg|ico|webmanifest|wasm|woff2?|ttf|eot)$ [NC]
+  RewriteRule ^ - [L]
+
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule ^ index.html [QSA,L]
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header always set Vary "Accept-Encoding"
+
+  <Files "sw.js">
+    Header always unset Cache-Control
+    Header always unset Expires
+    Header always unset Pragma
+    Header always set Cache-Control "no-cache, no-store, must-revalidate"
+    Header always set Pragma "no-cache"
+    Header always set Expires "0"
+  </Files>
+  <FilesMatch "^workbox-.*\.js$">
+    Header always unset Cache-Control
+    Header always set Cache-Control "no-cache, no-store, must-revalidate"
+  </FilesMatch>
+  <Files "manifest.json">
+    Header always unset Cache-Control
+    Header always set Cache-Control "no-cache, no-store, must-revalidate"
+  </Files>
+  <FilesMatch "\.(html)$">
+    Header always set Cache-Control "no-cache, no-store, must-revalidate"
+    Header always set Pragma "no-cache"
+    Header always set Expires "0"
+  </FilesMatch>
+  <FilesMatch "^(?!sw\.js$|workbox-.*\.js$).*\.(js|mjs|css|png|jpe?g|svg|gif|webp|ico|woff2?|ttf|map)$">
+    Header always set Cache-Control "public, max-age=31536000, immutable, no-transform"
+  </FilesMatch>
 </IfModule>
 
 <IfModule mod_mime.c>

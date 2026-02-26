@@ -2,6 +2,22 @@ import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
 import { DEFAULT_RELAYS } from "src/config/relays";
 import { sanitizeRelayUrls } from "src/utils/relay";
+import { debug } from "src/js/logger";
+
+type RelayBootstrapMode = "default" | "fundstr-only";
+
+const envRelayDebugPreference = (import.meta as any)?.env?.VITE_RELAY_DEBUG_LOGS;
+const envRelayDebugValue =
+  envRelayDebugPreference === "true" || envRelayDebugPreference === true
+    ? true
+    : envRelayDebugPreference === "false" || envRelayDebugPreference === false
+      ? false
+      : undefined;
+
+export const DEFAULT_RELAY_DEBUG_LOGS_ENABLED =
+  envRelayDebugValue ??
+  (Boolean((import.meta as any)?.env?.DEV) ||
+    (import.meta as any)?.env?.MODE === "test");
 
 const RELAY_DENYLIST = new Set(
   ["relay.nostr.bg", "nostr.zebedee.cloud", "relay.plebstr.com"].map((host) =>
@@ -49,10 +65,7 @@ export const useSettingsStore = defineStore("settings", {
     defaultNostrRelays.value = next;
 
     if (changed && removed.length) {
-      console.info(
-        "[settings] Removed blocked Nostr relays from defaults",
-        removed,
-      );
+      debug("[settings] Removed blocked Nostr relays from defaults", removed);
     }
 
     return {
@@ -129,6 +142,22 @@ export const useSettingsStore = defineStore("settings", {
         "cashu.settings.tiersIndexerUrl",
         "https://api.nostr.band/v0/profile?pubkey={pubkey}",
       ),
+      relayDebugLogsEnabled: useLocalStorage<boolean>(
+        "cashu.settings.relayDebugLogsEnabled",
+        DEFAULT_RELAY_DEBUG_LOGS_ENABLED,
+      ),
+      relayBootstrapMode: "default" as RelayBootstrapMode,
     };
+  },
+  actions: {
+    setRelayBootstrapMode(mode: RelayBootstrapMode) {
+      this.relayBootstrapMode = mode;
+    },
+    enableFundstrOnlyRelays() {
+      this.setRelayBootstrapMode("fundstr-only");
+    },
+    disableFundstrOnlyRelays() {
+      this.setRelayBootstrapMode("default");
+    },
   },
 });

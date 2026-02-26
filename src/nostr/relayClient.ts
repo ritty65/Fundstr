@@ -1,5 +1,9 @@
 import { nip19 } from "nostr-tools";
 import { bytesToHex } from "@noble/hashes/utils";
+import {
+  FUNDSTR_PRIMARY_RELAY,
+  FUNDSTR_PRIMARY_RELAY_HTTP,
+} from "src/config/relays";
 import type { NostrEvent } from "./eventUtils";
 export type { NostrEvent } from "./eventUtils";
 
@@ -18,28 +22,79 @@ export type QueryOptions = {
   fanout?: string[];
   wsTimeoutMs?: number;
   httpBase?: string;
+  fundstrWsUrl?: string;
+  /**
+   * When `preferFundstr` is true, opt into querying the fan-out pool when
+   * Fundstr returns no data or errors. Defaults to `false` so Nutzap flows stay
+   * pinned to the first-party relay unless explicitly requested.
+   */
+  allowFanoutFallback?: boolean;
 };
 
 type RequiredQueryOptions = Required<
-  Pick<QueryOptions, "wsTimeoutMs" | "httpBase"> & {
+  Pick<
+    QueryOptions,
+    "wsTimeoutMs" | "httpBase" | "allowFanoutFallback" | "fundstrWsUrl"
+  > & {
     fanout: string[];
     preferFundstr: boolean;
   }
 >;
 
 const FUNDSTR = {
-  ws: "wss://relay.fundstr.me",
-  http: "https://relay.fundstr.me",
+  ws: FUNDSTR_PRIMARY_RELAY,
+  http: FUNDSTR_PRIMARY_RELAY_HTTP,
 };
 
 const PUBLIC_POOL = [
-  "wss://relay.primal.net",
-  "wss://relay.fundstr.me",
+  FUNDSTR_PRIMARY_RELAY,
+  "wss://relay.snort.social",
   "wss://nos.lol",
   "wss://relay.damus.io",
 ];
 
 const HEX_REGEX = /^[0-9a-fA-F]{64}$/;
+
+const WS_FAILURE_TTL_MS = 60_000;
+const wsFailureCache = new Map<string, number>();
+
+function normalizeRelayUrl(url: string): string {
+  return url.replace(/\s+/g, "").replace(/\/+$/, "");
+}
+
+function cacheKey(url: string | undefined | null): string | null {
+  if (!url) return null;
+  const normalized = normalizeRelayUrl(url);
+  return normalized ? normalized : null;
+}
+
+function markWsFailure(url: string) {
+  const key = cacheKey(url);
+  if (!key) return;
+  wsFailureCache.set(key, Date.now());
+}
+
+function isWsFailureHot(url: string): boolean {
+  const key = cacheKey(url);
+  if (!key) return false;
+  const ts = wsFailureCache.get(key);
+  if (!ts) return false;
+  if (Date.now() - ts < WS_FAILURE_TTL_MS) {
+    return true;
+  }
+  wsFailureCache.delete(key);
+  return false;
+}
+
+export function clearRelayFailureCache(url?: string) {
+  if (typeof url !== "string") {
+    wsFailureCache.clear();
+    return;
+  }
+  const key = cacheKey(url);
+  if (!key) return;
+  wsFailureCache.delete(key);
+}
 
 export function toHex(pubOrNpub: string): string {
   const trimmed = pubOrNpub.trim();
@@ -266,8 +321,33 @@ async function wsQuery(
   });
 }
 
+function buildReqUrl(httpBase: string): string {
+  const trimmed = (httpBase || "").trim();
+  const normalized = trimmed.replace(/\/+$/, "");
+  if (!normalized) {
+    return "/req";
+  }
+  if (normalized.toLowerCase().endsWith("/req")) {
+    return normalized;
+  }
+  return `${normalized}/req`;
+}
+
+function buildEventUrl(httpBase: string): string {
+  const trimmed = (httpBase || "").trim();
+  const normalized = trimmed.replace(/\/+$/, "");
+  if (!normalized) {
+    return "/event";
+  }
+  if (normalized.toLowerCase().endsWith("/event")) {
+    return normalized;
+  }
+  return `${normalized}/event`;
+}
+
 async function httpReq(httpBase: string, filters: Filter[]): Promise<NostrEvent[]> {
-  const url = `${httpBase}/req?filters=${encodeURIComponent(JSON.stringify(filters))}`;
+  const reqUrl = buildReqUrl(httpBase);
+  const url = `${reqUrl}?filters=${encodeURIComponent(JSON.stringify(filters))}`;
   const res = await fetch(url, {
     method: "GET",
     headers: {
@@ -294,12 +374,16 @@ async function tryWsFirstThenHttp(
   httpBase: string,
   timeoutMs: number,
 ): Promise<NostrEvent[]> {
-  try {
-    const wsEvents = await wsQuery(wsUrl, filters, timeoutMs);
-    if (wsEvents.length) return wsEvents;
-  } catch (e) {
-    // swallow and try HTTP
-    void e;
+  const skipWs = wsUrl === FUNDSTR_PRIMARY_RELAY && isWsFailureHot(wsUrl);
+  if (!skipWs) {
+    try {
+      const wsEvents = await wsQuery(wsUrl, filters, timeoutMs);
+      if (wsEvents.length) return wsEvents;
+    } catch (e) {
+      markWsFailure(wsUrl);
+      // swallow and try HTTP
+      void e;
+    }
   }
   try {
     return await httpReq(httpBase, filters);
@@ -308,13 +392,18 @@ async function tryWsFirstThenHttp(
   }
 }
 
+type WsPoolOptions = {
+  concurrency?: number;
+  excludeUrl?: string;
+};
+
 async function queryWsPool(
   urls: string[],
   filters: Filter[],
   timeoutMs: number,
-  concurrency = 2,
+  { concurrency = 2, excludeUrl = FUNDSTR.ws }: WsPoolOptions = {},
 ): Promise<NostrEvent[]> {
-  const unique = uniqueUrls(urls).filter((url) => !!url && url !== FUNDSTR.ws);
+  const unique = uniqueUrls(urls).filter((url) => !!url && url !== excludeUrl);
   if (!unique.length) return [];
 
   const results: NostrEvent[] = [];
@@ -376,32 +465,40 @@ export async function queryNostr(
     fanout: uniqueUrls(opts.fanout ?? []),
     wsTimeoutMs: opts.wsTimeoutMs ?? 1500, // 1.5s Fundstr-first deadline
     httpBase: opts.httpBase ?? FUNDSTR.http,
+    fundstrWsUrl: opts.fundstrWsUrl ?? FUNDSTR.ws,
+    allowFanoutFallback: opts.allowFanoutFallback ?? false,
   };
 
   const collected: NostrEvent[] = [];
 
   if (options.preferFundstr) {
+    let fundstrEvents: NostrEvent[] = [];
     try {
-      const fundstrEvents = await tryWsFirstThenHttp(
+      fundstrEvents = await tryWsFirstThenHttp(
         normalizedFilters,
-        FUNDSTR.ws,
+        options.fundstrWsUrl,
         options.httpBase,
         options.wsTimeoutMs,
       );
       collected.push(...fundstrEvents);
-      if (!fundstrEvents.length) {
+      if (!fundstrEvents.length && options.allowFanoutFallback) {
         const more = await queryWsPool(
           [...options.fanout, ...PUBLIC_POOL],
           normalizedFilters,
           options.wsTimeoutMs,
+          { excludeUrl: options.fundstrWsUrl },
         );
         collected.push(...more);
       }
     } catch (e) {
+      if (!options.allowFanoutFallback) {
+        throw e instanceof Error ? e : new Error(String(e));
+      }
       const more = await queryWsPool(
         [...options.fanout, ...PUBLIC_POOL],
         normalizedFilters,
         options.wsTimeoutMs,
+        { excludeUrl: options.fundstrWsUrl },
       );
       collected.push(...more);
     }
@@ -410,6 +507,7 @@ export async function queryNostr(
       [...options.fanout, ...PUBLIC_POOL],
       normalizedFilters,
       options.wsTimeoutMs,
+      { excludeUrl: options.fundstrWsUrl },
     );
     collected.push(...pool);
   }
@@ -417,8 +515,14 @@ export async function queryNostr(
   return normalizeEvents(collected);
 }
 
+type PublishOptions = {
+  httpBase?: string;
+  fundstrWsUrl?: string;
+};
+
 export async function publishNostr(
   evt: NostrEvent,
+  opts: PublishOptions = {},
 ): Promise<{
   ok: boolean;
   id?: string;
@@ -437,7 +541,8 @@ export async function publishNostr(
   if (!valid) {
     return { ok: true, accepted: false, message: "client: bad event (missing fields)" };
   }
-  const res = await fetch(`${FUNDSTR.http}/event`, {
+  const eventUrl = buildEventUrl(opts.httpBase ?? FUNDSTR.http);
+  const res = await fetch(eventUrl, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -464,24 +569,45 @@ export async function publishNostr(
   return json;
 }
 
+type NutzapQueryOptions = {
+  fanout?: string[];
+  allowFanoutFallback?: boolean;
+  httpBase?: string;
+  fundstrWsUrl?: string;
+  wsTimeoutMs?: number;
+};
+
 export async function queryNutzapProfile(
   pubkeyInput: string,
-  opts: { fanout?: string[] } = {},
+  opts: NutzapQueryOptions = {},
 ): Promise<NostrEvent | null> {
   const pubkey = toHex(pubkeyInput);
   const filters: Filter[] = [
     { kinds: [10019], authors: [pubkey], limit: 1 },
   ];
-  const events = await queryNostr(filters, {
+  const queryOptions: QueryOptions = {
     preferFundstr: true,
     fanout: opts.fanout,
-  });
+  };
+  if (opts.httpBase) {
+    queryOptions.httpBase = opts.httpBase;
+  }
+  if (opts.fundstrWsUrl) {
+    queryOptions.fundstrWsUrl = opts.fundstrWsUrl;
+  }
+  if (typeof opts.wsTimeoutMs === "number") {
+    queryOptions.wsTimeoutMs = opts.wsTimeoutMs;
+  }
+  if (opts.allowFanoutFallback) {
+    queryOptions.allowFanoutFallback = true;
+  }
+  const events = await queryNostr(filters, queryOptions);
   return pickLatestReplaceable(events, { kind: 10019, pubkey });
 }
 
 export async function queryNutzapTiers(
   pubkeyInput: string,
-  opts: { fanout?: string[] } = {},
+  opts: NutzapQueryOptions = {},
 ): Promise<NostrEvent | null> {
   const pubkey = toHex(pubkeyInput);
   const filters: Filter[] = [
@@ -492,10 +618,23 @@ export async function queryNutzapTiers(
       limit: 2,
     },
   ];
-  const events = await queryNostr(filters, {
+  const queryOptions: QueryOptions = {
     preferFundstr: true,
     fanout: opts.fanout,
-  });
+  };
+  if (opts.httpBase) {
+    queryOptions.httpBase = opts.httpBase;
+  }
+  if (opts.fundstrWsUrl) {
+    queryOptions.fundstrWsUrl = opts.fundstrWsUrl;
+  }
+  if (typeof opts.wsTimeoutMs === "number") {
+    queryOptions.wsTimeoutMs = opts.wsTimeoutMs;
+  }
+  if (opts.allowFanoutFallback) {
+    queryOptions.allowFanoutFallback = true;
+  }
+  const events = await queryNostr(filters, queryOptions);
   return pickLatestAddrReplaceable(events, {
     kind: [30019, 30000],
     pubkey,

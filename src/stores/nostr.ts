@@ -42,7 +42,12 @@ import {
 } from "@cashu/cashu-ts";
 import { useTokensStore } from "./tokens";
 import { filterHealthyRelays } from "src/utils/relayHealth";
-import { DEFAULT_RELAYS, FREE_RELAYS, VETTED_OPEN_WRITE_RELAYS } from "src/config/relays";
+import {
+  DEFAULT_RELAYS,
+  FALLBACK_RELAYS,
+  FREE_RELAYS,
+  VETTED_OPEN_WRITE_RELAYS,
+} from "src/config/relays";
 import { publishToRelaysWithAcks, selectPublishRelays, PublishReport, RelayResult } from "src/nostr/publish";
 import { sanitizeRelayUrls } from "src/utils/relay";
 import { getNdk } from "src/boot/ndk";
@@ -65,14 +70,33 @@ import { cashuDb, type LockedToken } from "./dexie";
 import { v4 as uuidv4 } from "uuid";
 import { useRouter } from "vue-router";
 import { useP2PKStore } from "./p2pk";
-import { watch } from "vue";
-import { useCreatorsStore } from "./creators";
+import { watch, type Ref } from "vue";
+import { fetchFundstrProfileBundle, useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useMessengerStore } from "./messenger";
-import { decryptDM } from "../nostr/crypto";
-import { useCreatorHubStore } from "./creatorHub";
+import { decryptDM, encryptDM } from "../nostr/crypto";
 import { useCreatorProfileStore } from "./creatorProfile";
+import { applyFundstrProfileBundle } from "src/utils/creatorProfileHydration";
+import { buildKind10019NutzapProfile } from "src/nostr/builders";
 import { NutzapProfileSchema, type NutzapProfilePayload } from "src/nostr/nutzapProfile";
+import {
+  FUNDSTR_REQ_URL,
+  FUNDSTR_WS_URL,
+  WS_FIRST_TIMEOUT_MS,
+} from "@/nutzap/relayEndpoints";
+import { getNutzapNdk } from "src/nutzap/ndkInstance";
+import { publishNostrEvent } from "src/nutzap/relayPublishing";
+import { useFundstrRelayStatus } from "src/nutzap/relayClient";
+import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
+import { updateCreatorCache } from "@/lib/fundstrApi";
+import {
+  decryptData,
+  deriveKey,
+  encryptData,
+  normalizeSaltValue,
+  SALT_STORAGE_KEY,
+} from "src/utils/crypto-service";
+import { assertValidPin } from "src/utils/pin-policy";
 
 // --- Relay connectivity helpers ---
 export type WriteConnectivity = {
@@ -108,7 +132,9 @@ export async function ensureWriteConnectivity(
     const t = setTimeout(resolve, timeoutMs);
 
     function onConnect(relay: any) {
-      if (!connected.includes(relay.url)) connected.push(relay.url);
+      const normalized = normalizeWsUrls([relay.url])[0];
+      if (!normalized) return;
+      if (!connected.includes(normalized)) connected.push(normalized);
       if (connected.length >= Math.min(minConnected, candidates.length)) {
         pool.off("relay:connect", onConnect);
         clearTimeout(t);
@@ -118,8 +144,9 @@ export async function ensureWriteConnectivity(
     pool.on("relay:connect", onConnect);
 
     for (const r of pool.relays.values()) {
-      if (r.status === 1 /* OPEN */ && !connected.includes(r.url)) {
-        connected.push(r.url);
+      const normalized = normalizeWsUrls([r.url])[0];
+      if (r.status === 1 /* OPEN */ && normalized && !connected.includes(normalized)) {
+        connected.push(normalized);
       }
     }
     if (connected.length >= Math.min(minConnected, candidates.length)) {
@@ -131,7 +158,7 @@ export async function ensureWriteConnectivity(
 
   return {
     urlsTried: tried,
-    urlsConnected: connected,
+    urlsConnected: normalizeWsUrls(connected),
     elapsedMs: Date.now() - started,
   };
 }
@@ -148,90 +175,6 @@ export interface CreatorProfilePayload {
   p2pkPub: string;
   mints: string[];
   tierAddr?: string;
-}
-
-export interface TierPayload {
-  id: string;
-  price: number;
-  [key: string]: any;
-}
-
-export async function publishCreatorBundleBounded(opts: {
-  profile: CreatorProfilePayload;
-  tiers?: TierPayload[];
-  writeRelays: string[];
-  forceRepublish?: boolean;
-  ackTimeoutMs?: number;
-  minConnected?: number;
-}): Promise<PublishResult> {
-  const {
-    writeRelays,
-    profile,
-    tiers,
-    forceRepublish = false,
-    ackTimeoutMs = 4000,
-    minConnected = 2,
-  } = opts;
-
-  const conn = await ensureWriteConnectivity(writeRelays, {
-    minConnected,
-    timeoutMs: 6000,
-    cap: 6,
-  });
-
-  if (conn.urlsConnected.length === 0) {
-    return {
-      okOn: [],
-      failedOn: conn.urlsTried,
-      missingAcks: [],
-      elapsedMs: conn.elapsedMs,
-    };
-  }
-
-  const started = Date.now();
-  const ndk = await getNdk();
-
-  if (tiers && tiers.length) {
-    await publishTierDefinitions(tiers, {
-      ndk,
-      force: forceRepublish,
-      relays: conn.urlsConnected,
-    });
-  }
-
-  const { okOn, failedOn, missingAcks } = await publishDiscoveryProfileWithAcks(
-    ndk,
-    profile,
-    {
-      ackTimeoutMs,
-      targetRelays: conn.urlsConnected,
-    },
-  );
-
-  return {
-    okOn,
-    failedOn,
-    missingAcks,
-    elapsedMs: Date.now() - started,
-  };
-}
-
-async function publishTierDefinitions(
-  tiers: TierPayload[],
-  opts: { ndk: NDK; relays: string[]; force?: boolean },
-): Promise<void> {
-  const { ndk, relays } = opts;
-  const ev = new NDKEvent(ndk);
-  ev.kind = 30000 as NDKKind;
-  ev.tags = [["d", "tiers"]];
-  ev.created_at = Math.floor(Date.now() / 1000);
-  ev.content = JSON.stringify(tiers);
-  await ev.sign();
-
-  const relaySet = await urlsToRelaySet(relays);
-  if (relaySet) {
-    await ev.publish(relaySet);
-  }
 }
 
 async function publishDiscoveryProfileWithAcks(
@@ -306,86 +249,75 @@ async function publishDiscoveryProfileWithAcks(
   return { okOn, failedOn, missingAcks };
 }
 
-const STORAGE_SECRET = "cashu_ndk_storage_key";
-let cachedKey: CryptoKey | null = null;
 const RECONNECT_BACKOFF_MS = 15000; // 15s cooldown after failed attempts
 const MAX_RECONNECT_BACKOFF_MS = 5 * 60_000; // cap at 5 minutes
 
-async function getKey(): Promise<CryptoKey> {
-  if (cachedKey) return cachedKey;
-  const enc = new TextEncoder();
-  const material = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(STORAGE_SECRET),
-    { name: "PBKDF2" },
-    false,
-    ["deriveKey"],
-  );
-  cachedKey = await crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      salt: enc.encode("cashu_ndk_salt"),
-      iterations: 100000,
-      hash: "SHA-256",
-    },
-    material,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
-  return cachedKey;
-}
-
-async function encryptString(value: string): Promise<string> {
-  const key = await getKey();
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encoder = new TextEncoder();
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    encoder.encode(value),
-  );
-  const buff = new Uint8Array(iv.length + ciphertext.byteLength);
-  buff.set(iv, 0);
-  buff.set(new Uint8Array(ciphertext), iv.length);
-  return btoa(String.fromCharCode(...buff));
-}
-
-async function decryptString(value: string): Promise<string> {
-  const bytes = Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
-  const iv = bytes.slice(0, 12);
-  const ciphertext = bytes.slice(12);
-  const key = await getKey();
-  const decrypted = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    key,
-    ciphertext,
-  );
-  return new TextDecoder().decode(decrypted);
-}
-
-async function secureSetItem(key: string, value: string) {
-  const enc = await encryptString(value);
-  localStorage.setItem(key, enc);
-}
-
-async function secureGetItem(key: string): Promise<string | null> {
-  const val = localStorage.getItem(key);
-  if (!val) return null;
-  try {
-    return await decryptString(val);
-  } catch (e) {
-    console.error("Failed to decrypt", e);
-    return null;
+export class WalletLockedError extends Error {
+  constructor(message = "Wallet locked") {
+    super(message);
+    this.name = "WalletLockedError";
   }
 }
 
+export type NostrSignerErrorCode =
+  | "extension-unavailable"
+  | "enable-missing"
+  | "enable-timeout"
+  | "enable-denied"
+  | "user-timeout"
+  | "user-error"
+  | "ready-timeout"
+  | "capability-missing";
+
+export class NostrSignerError extends Error {
+  code: NostrSignerErrorCode;
+  remediation?: string;
+  details?: Record<string, unknown>;
+
+  constructor(
+    code: NostrSignerErrorCode,
+    message: string,
+    options: { remediation?: string; details?: Record<string, unknown>; cause?: unknown } = {},
+  ) {
+    super(message);
+    this.name = "NostrSignerError";
+    this.code = code;
+    this.remediation = options.remediation;
+    this.details = options.details;
+    if (options.cause) (this as any).cause = options.cause;
+  }
+}
+
+const ENCRYPTION_CHECK_KEY = "cashu.ndk.encryptionCheck";
+const SENSITIVE_STORAGE_KEYS = [
+  "cashu.ndk.pubkey",
+  "cashu.ndk.signerType",
+  "cashu.ndk.nip46Token",
+  "cashu.ndk.privateKeySignerPrivateKey",
+  "cashu.ndk.seedSignerPrivateKey",
+  "cashu.ndk.seedSignerPublicKey",
+  ENCRYPTION_CHECK_KEY,
+];
+
+const PENDING_PUBKEY_KEY = "cashu.ndk.pubkey.pending";
+const PENDING_SIGNER_TYPE_KEY = "cashu.ndk.signerType.pending";
+const PENDING_SIGNER_PUBLIC_KEY = "cashu.ndk.signerPubkey.pending";
+const UNENCRYPTED_PUBKEY_KEY = "cashu.ndk.pubkey.fallback";
+
+function hasEncryptedSecrets(): boolean {
+  const storage = typeof localStorage === "undefined" ? null : localStorage;
+  if (!storage) return false;
+  return SENSITIVE_STORAGE_KEYS.some((k) => Boolean(storage.getItem(k)));
+}
+
+export const WALLET_LOCKED_MESSAGE = "Unlock to restore your Nostr identity.";
+
 export function npubToHex(s: string): string | null {
   const input = s.trim();
-  console.debug("[npubToHex] input", input);
+  debug("[npubToHex] input", input);
   try {
     const decoded = nip19.decode(input);
-    console.debug("[npubToHex] decoded", decoded);
+    debug("[npubToHex] decoded", decoded);
     const { type, data } = decoded;
     if (type !== "npub") return null;
     if (typeof data === "string") {
@@ -556,7 +488,168 @@ interface NutzapProfile {
   tierAddr?: string;
 }
 
-const nutzapProfileCache = new Map<string, NutzapProfile | null>();
+interface NutzapProfileCacheRecord {
+  profile: NutzapProfile | null;
+  fetchedAt: number;
+}
+
+interface PersistedNutzapProfileCache {
+  version: number;
+  entries: Record<string, NutzapProfileCacheRecord>;
+}
+
+const NUTZAP_PROFILE_CACHE_VERSION = 1;
+const NUTZAP_PROFILE_CACHE_STORAGE_KEY = "cashu.ndk.nutzapProfileCache";
+const NUTZAP_PROFILE_CACHE_STALE_AFTER_MS = 6 * 60 * 60 * 1000; // 6 hours
+const NUTZAP_PROFILE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+const nutzapProfileCache = new Map<string, NutzapProfileCacheRecord>();
+const nutzapProfileFetches = new Map<string, Promise<NutzapProfile | null>>();
+
+let nutzapProfileCacheStorage: Ref<PersistedNutzapProfileCache> | null = null;
+let nutzapProfileCacheHydrated = false;
+
+function getNutzapProfileCacheStorage(): Ref<PersistedNutzapProfileCache> {
+  if (!nutzapProfileCacheStorage) {
+    nutzapProfileCacheStorage = safeUseLocalStorage<PersistedNutzapProfileCache>(
+      NUTZAP_PROFILE_CACHE_STORAGE_KEY,
+      {
+        version: NUTZAP_PROFILE_CACHE_VERSION,
+        entries: {},
+      },
+    );
+  }
+  return nutzapProfileCacheStorage;
+}
+
+function pruneExpiredNutzapProfiles(now = Date.now()) {
+  if (!nutzapProfileCacheHydrated) return;
+  const storage = getNutzapProfileCacheStorage();
+  const entries = { ...storage.value.entries };
+  let mutated = false;
+  for (const [hex, entry] of Object.entries(entries)) {
+    if (now - entry.fetchedAt >= NUTZAP_PROFILE_CACHE_MAX_AGE_MS) {
+      delete entries[hex];
+      nutzapProfileCache.delete(hex);
+      mutated = true;
+    }
+  }
+  if (mutated) {
+    storage.value = {
+      version: NUTZAP_PROFILE_CACHE_VERSION,
+      entries,
+    };
+  }
+}
+
+function ensureNutzapProfileCacheHydrated() {
+  if (nutzapProfileCacheHydrated) return;
+  const storage = getNutzapProfileCacheStorage();
+  if (storage.value.version !== NUTZAP_PROFILE_CACHE_VERSION) {
+    storage.value = {
+      version: NUTZAP_PROFILE_CACHE_VERSION,
+      entries: {},
+    };
+    nutzapProfileCacheHydrated = true;
+    return;
+  }
+
+  const now = Date.now();
+  const retainedEntries: Record<string, NutzapProfileCacheRecord> = {};
+  for (const [hex, entry] of Object.entries(storage.value.entries ?? {})) {
+    if (!entry) continue;
+    if (now - entry.fetchedAt >= NUTZAP_PROFILE_CACHE_MAX_AGE_MS) {
+      continue;
+    }
+    nutzapProfileCache.set(hex, entry);
+    retainedEntries[hex] = entry;
+  }
+
+  if (Object.keys(retainedEntries).length !== Object.keys(storage.value.entries ?? {}).length) {
+    storage.value = {
+      version: NUTZAP_PROFILE_CACHE_VERSION,
+      entries: retainedEntries,
+    };
+  }
+
+  nutzapProfileCacheHydrated = true;
+}
+
+function persistNutzapProfileCacheEntry(hex: string, profile: NutzapProfile | null) {
+  ensureNutzapProfileCacheHydrated();
+  const now = Date.now();
+  const storage = getNutzapProfileCacheStorage();
+  const entries = { ...storage.value.entries };
+  const record: NutzapProfileCacheRecord = { profile, fetchedAt: now };
+  entries[hex] = record;
+  nutzapProfileCache.set(hex, record);
+
+  for (const [key, entry] of Object.entries(entries)) {
+    if (now - entry.fetchedAt >= NUTZAP_PROFILE_CACHE_MAX_AGE_MS) {
+      delete entries[key];
+      if (key !== hex) nutzapProfileCache.delete(key);
+    }
+  }
+
+  storage.value = {
+    version: NUTZAP_PROFILE_CACHE_VERSION,
+    entries,
+  };
+}
+
+function removeNutzapProfileCacheEntry(hex: string) {
+  if (!nutzapProfileCacheHydrated) return;
+  const storage = getNutzapProfileCacheStorage();
+  if (!storage.value.entries?.[hex]) return;
+  const entries = { ...storage.value.entries };
+  delete entries[hex];
+  nutzapProfileCache.delete(hex);
+  storage.value = {
+    version: NUTZAP_PROFILE_CACHE_VERSION,
+    entries,
+  };
+}
+
+function getNutzapProfileCacheStatus(hex: string) {
+  const entry = nutzapProfileCache.get(hex);
+  if (!entry) return null;
+  const age = Date.now() - entry.fetchedAt;
+  return {
+    entry,
+    isStale: age >= NUTZAP_PROFILE_CACHE_STALE_AFTER_MS,
+    isExpired: age >= NUTZAP_PROFILE_CACHE_MAX_AGE_MS,
+  };
+}
+
+function scheduleNutzapProfileRefresh(
+  hex: string,
+  opts: { fundstrOnly?: boolean } = {},
+  awaitResult = false,
+): Promise<NutzapProfile | null> {
+  let promise = nutzapProfileFetches.get(hex);
+  if (!promise) {
+    promise = fetchNutzapProfileFromNetwork(hex, opts)
+      .then((profile) => {
+        persistNutzapProfileCacheEntry(hex, profile);
+        return profile;
+      })
+      .finally(() => {
+        nutzapProfileFetches.delete(hex);
+      });
+    nutzapProfileFetches.set(hex, promise);
+  }
+
+  if (!awaitResult) {
+    promise.catch((err) => {
+      console.warn(`[nostr] Failed to refresh Nutzap profile for ${hex}`, err);
+    });
+    return promise;
+  }
+  return promise;
+}
+
+
+const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
 
 export class RelayConnectionError extends Error {
   constructor(message?: string) {
@@ -571,16 +664,19 @@ export async function urlsToRelaySet(
 ): Promise<NDKRelaySet | undefined> {
   if (!urls?.length) return undefined;
 
+  const normalizedUrls = normalizeWsUrls(urls);
+  if (!normalizedUrls.length) return undefined;
+
   const ndk = await useNdk({ requireSigner: false });
   // Ensure selected relays exist in the pool
-  for (const u of urls) {
+  for (const u of normalizedUrls) {
     if (!ndk.pool.relays.has(u)) {
       ndk.addExplicitRelay(u);
     }
   }
 
   const set = new NDKRelaySet(new Set(), ndk);
-  for (const u of urls) {
+  for (const u of normalizedUrls) {
     const r = ndk.pool.getRelay(u);
     if (r) set.addRelay(r);
   }
@@ -662,6 +758,29 @@ export function normalizeWsUrls(urls: string[]): string[] {
         .filter((u) => u.startsWith("ws")),
     ),
   );
+}
+
+const MIN_DEFAULT_RELAYS = 2;
+
+function isUsingDefaultRelays(relays: string[]): boolean {
+  const normalized = normalizeWsUrls(relays);
+  if (normalized.length === 0) return true;
+  const defaultSet = new Set(normalizeWsUrls(DEFAULT_RELAYS));
+  return normalized.every((url) => defaultSet.has(url));
+}
+
+async function resolveHealthyDefaultRelays(): Promise<string[]> {
+  let healthy: string[] = [];
+  try {
+    healthy = await filterHealthyRelays(DEFAULT_RELAYS);
+  } catch {
+    healthy = [];
+  }
+  const normalizedHealthy = normalizeWsUrls(healthy);
+  if (normalizedHealthy.length < MIN_DEFAULT_RELAYS) {
+    return normalizeWsUrls([...normalizedHealthy, ...FALLBACK_RELAYS]);
+  }
+  return normalizedHealthy;
 }
 
 /**
@@ -859,33 +978,36 @@ export async function anyRelayReachable(relays: string[]): Promise<boolean> {
 /**
  * Fetches the receiver’s ‘kind:10019’ Nutzap profile.
  */
-export async function fetchNutzapProfile(
-  npubOrHex: string,
+async function fetchNutzapProfileFromNetwork(
+  hex: string,
+  opts: { fundstrOnly?: boolean } = {},
 ): Promise<NutzapProfile | null> {
-  let hex: string;
-  try {
-    hex = toHex(npubOrHex);
-  } catch (e) {
-    throw new Error("Invalid npub");
-  }
-
-  if (nutzapProfileCache.has(hex)) {
-    return nutzapProfileCache.get(hex) || null;
-  }
+  const fundstrOnly = opts.fundstrOnly === true;
   let event: RelayEvent | null = null;
   let lastError: unknown = null;
 
   try {
-    event = await queryNutzapProfile(hex);
+    event = await queryNutzapProfile(hex, {
+      httpBase: FUNDSTR_REQ_URL,
+      fundstrWsUrl: FUNDSTR_WS_URL,
+      allowFanoutFallback: false,
+      wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
+    });
   } catch (e) {
     lastError = e;
   }
 
-  if (!event) {
+  if (!event && !fundstrOnly) {
     try {
       const discovered = await fallbackDiscoverRelays(hex);
       if (discovered.length) {
-        event = await queryNutzapProfile(hex, { fanout: discovered });
+        event = await queryNutzapProfile(hex, {
+          httpBase: FUNDSTR_REQ_URL,
+          fundstrWsUrl: FUNDSTR_WS_URL,
+          fanout: discovered,
+          allowFanoutFallback: true,
+          wsTimeoutMs: CUSTOM_LINK_WS_TIMEOUT_MS,
+        });
       }
     } catch (e) {
       lastError = e;
@@ -896,7 +1018,6 @@ export async function fetchNutzapProfile(
     if (lastError instanceof Error) {
       throw new RelayConnectionError(lastError.message);
     }
-    nutzapProfileCache.set(hex, null);
     return null;
   }
 
@@ -939,7 +1060,6 @@ export async function fetchNutzapProfile(
   }
 
   if (!p2pkValue && !mintSet.size && !relaySet.size) {
-    nutzapProfileCache.set(hex, null);
     return null;
   }
 
@@ -955,15 +1075,59 @@ export async function fetchNutzapProfile(
     p2pkPubkey = "";
   }
 
-  const profile: NutzapProfile = {
+  return {
     hexPub: hex,
     p2pkPubkey,
     trustedMints: Array.from(mintSet),
     relays: relaySet.size ? Array.from(relaySet) : undefined,
     tierAddr,
   };
-  nutzapProfileCache.set(hex, profile);
+}
+
+export async function fetchNutzapProfile(
+  npubOrHex: string,
+  opts: { fundstrOnly?: boolean; forceRefresh?: boolean } = {},
+): Promise<NutzapProfile | null> {
+  let hex: string;
+  try {
+    hex = toHex(npubOrHex);
+  } catch (e) {
+    throw new Error("Invalid npub");
+  }
+
+  ensureNutzapProfileCacheHydrated();
+  pruneExpiredNutzapProfiles();
+
+  const { forceRefresh = false, fundstrOnly } = opts;
+  const fetchOpts = fundstrOnly === undefined ? {} : { fundstrOnly };
+  const status = getNutzapProfileCacheStatus(hex);
+  if (status) {
+    if (status.isExpired) {
+      removeNutzapProfileCacheEntry(hex);
+    } else {
+      if (status.isStale && !forceRefresh) {
+        scheduleNutzapProfileRefresh(hex, fetchOpts);
+      }
+      if (!forceRefresh) {
+        return status.entry.profile;
+      }
+    }
+  }
+
+  const profile = await scheduleNutzapProfileRefresh(hex, fetchOpts, true);
+
+  if (forceRefresh) {
+    persistNutzapProfileCacheEntry(hex, profile);
+  }
   return profile;
+}
+
+export function refreshCachedNutzapProfiles(): void {
+  ensureNutzapProfileCacheHydrated();
+  pruneExpiredNutzapProfiles();
+  for (const hex of nutzapProfileCache.keys()) {
+    scheduleNutzapProfileRefresh(hex);
+  }
 }
 
 /** Publishes a ‘kind:10019’ Nutzap profile event. */
@@ -979,16 +1143,31 @@ export async function publishNutzapProfile(opts: {
   }
   await nostr.connect(opts.relays ?? nostr.relays);
 
-  const tags: NDKTag[] = [
+  const compressedP2pk = ensureCompressed(opts.p2pkPub);
+  const relays = (opts.relays ?? []).filter((url) => typeof url === "string" && url.length);
+
+  const tags: string[][] = [
     ["t", "nutzap-profile"],
     ["client", "fundstr"],
+    ["pubkey", compressedP2pk],
   ];
+  relays.forEach((relay) => {
+    tags.push(["relay", relay]);
+  });
+  opts.mints.forEach((mint) => {
+    if (mint) {
+      tags.push(["mint", mint, "sat"]);
+    }
+  });
+  if (opts.tierAddr) {
+    tags.push(["a", opts.tierAddr]);
+  }
 
   const body: NutzapProfilePayload = {
-    p2pk: ensureCompressed(opts.p2pkPub),
+    p2pk: compressedP2pk,
     mints: opts.mints,
   };
-  if (opts.relays?.length) body.relays = opts.relays;
+  if (relays.length) body.relays = relays;
   if (opts.tierAddr) body.tierAddr = opts.tierAddr;
 
   const ndk = await useNdk();
@@ -997,25 +1176,39 @@ export async function publishNutzapProfile(opts: {
       "NDK not initialised \u2013 call initSignerIfNotSet() first",
     );
   }
-  const ev = new NDKEvent(ndk);
-  ev.kind = 10019;
-  ev.content = JSON.stringify({ v: 1, ...body });
-  ev.tags = tags;
-  ev.created_at = Math.floor(Date.now() / 1000);
-  await ev.sign();
-  const relaySet = await urlsToRelaySet(opts.relays);
+  const nutzapNdk = getNutzapNdk();
+  nutzapNdk.signer = (nostr.signer as any) ?? undefined;
+
   try {
     await ensureRelayConnectivity(ndk);
   } catch (e: any) {
     notifyWarning("Relay connection failed", e?.message ?? String(e));
   }
   try {
-    await publishWithTimeout(ev, relaySet);
+    const createdAt = Math.floor(Date.now() / 1000);
+    const result = await publishNostrEvent({
+      kind: 10019,
+      tags,
+      content: JSON.stringify({ v: 1, ...body }),
+      created_at: createdAt,
+    });
+    if (result?.event) {
+      try {
+        await updateCreatorCache({ profileEvent: result.event });
+      } catch (error: any) {
+        const message =
+          error?.message === "rate_limited"
+            ? "Cache throttled (10m). Your Nostr events are live; discovery will refresh soon."
+            : "Cache update deferred. Your Nostr events are live.";
+        console.warn("[cache-update]", message, error);
+        notify(message);
+      }
+    }
+    return result.event.id;
   } catch (e: any) {
     notifyError(e?.message ?? String(e));
     throw e;
   }
-  return ev.id!;
 }
 
 /**
@@ -1073,18 +1266,20 @@ export async function publishDiscoveryProfile(opts: {
 
   // --- 3. Prepare Kind 10019 (Nutzap/Payment Profile) ---
   const kind10019Event = new NDKEvent(ndk);
-  kind10019Event.kind = 10019;
-  kind10019Event.tags = [
-    ["t", "nutzap-profile"],
-    ["client", "fundstr"],
-  ];
   const npBody: NutzapProfilePayload = {
     p2pk: ensureCompressed(opts.p2pkPub),
     mints: opts.mints,
     relays: opts.relays,
   };
   if (opts.tierAddr) npBody.tierAddr = opts.tierAddr;
-  kind10019Event.content = JSON.stringify({ v: 1, ...npBody });
+  const kind10019Payload = buildKind10019NutzapProfile(
+    nostr.pubkey,
+    npBody,
+    opts.profile,
+  );
+  kind10019Event.kind = kind10019Payload.kind;
+  kind10019Event.tags = kind10019Payload.tags;
+  kind10019Event.content = kind10019Payload.content;
   kind10019Event.created_at = now;
 
   const eventsToPublish = [kind0Event, kind10002Event, kind10019Event];
@@ -1111,82 +1306,31 @@ export async function publishDiscoveryProfile(opts: {
   }
 
   const byRelay = Array.from(aggregate.values());
+  const anySuccess = byRelay.some((r) => r.ok);
+
+  if (anySuccess) {
+    try {
+      const nostrProfileEvent = await kind10019Event.toNostrEvent();
+      if (nostrProfileEvent) {
+        await updateCreatorCache({ profileEvent: nostrProfileEvent });
+      }
+    } catch (error: any) {
+      const message =
+        error?.message === "rate_limited"
+          ? "Cache throttled (10m). Your Nostr events are live; discovery will refresh soon."
+          : "Cache update deferred. Your Nostr events are live.";
+      console.warn("[cache-update]", message, error);
+      notify(message);
+    }
+  }
+
   return {
     ids: eventsToPublish.map((e) => e.id),
     relaysTried: targets.length,
     byRelay,
-    anySuccess: byRelay.some((r) => r.ok),
+    anySuccess,
     usedFallback,
   };
-}
-
-export async function publishCreatorBundle(opts: {
-  publishTiers?: "auto" | "force" | "skip";
-} = {}): Promise<{ failedRelays: string[] }> {
-  const mode = opts.publishTiers ?? "auto";
-  const hub = useCreatorHubStore();
-  const profile = useCreatorProfileStore();
-  const p2pk = useP2PKStore();
-  const nostr = useNostrStore();
-
-  await nostr.initSignerIfNotSet();
-  if (!nostr.signer) {
-    throw new Error("Signer required to publish profile");
-  }
-
-  const p2pkPub = p2pk.firstKey?.publicKey;
-  if (!p2pkPub) {
-    throw new Error("No Cashu P2PK key available");
-  }
-
-  const tiersArray = hub.getTierArray();
-  const tiersHash = bytesToHex(
-    sha256(new TextEncoder().encode(JSON.stringify(tiersArray))),
-  );
-  const tierAddr = tiersArray.length
-    ? `30000:${nostr.pubkey}:tiers`
-    : undefined;
-  const result = await publishDiscoveryProfile({
-    profile: profile.profile,
-    p2pkPub,
-    mints: profile.mints,
-    relays: profile.relays,
-    tierAddr,
-  });
-
-  const failedRelays = result.byRelay.filter((r) => !r.ok).map((r) => r.url);
-
-  let tiersPublished = false;
-  if (
-    mode === "force" ||
-    (mode === "auto" && tiersHash !== hub.lastPublishedTiersHash)
-  ) {
-    await hub.publishTierDefinitions();
-    hub.lastPublishedTiersHash = tiersHash;
-    tiersPublished = true;
-  }
-
-  if (tiersPublished) {
-    if (failedRelays.length) {
-      notifyWarning(
-        `Profile & tiers published; failed: ${failedRelays.join(", ")}`,
-      );
-    } else {
-      notifySuccess("Profile & tiers published.");
-    }
-  } else {
-    if (failedRelays.length) {
-      notifyWarning(
-        `Profile published but some relays failed: ${failedRelays.join(", ")}`,
-      );
-    } else {
-      notifySuccess(
-        "Profile published: metadata, relays, payment profile.",
-      );
-    }
-  }
-
-  return { failedRelays };
 }
 
 /** Publishes a ‘kind:9321’ Nutzap event. */
@@ -1269,6 +1413,13 @@ interface SignerCaps {
   getSharedSecret: boolean;
 }
 
+type Nip07FailureCause =
+  | "extension-missing"
+  | "enable-failed"
+  | "user-failed"
+  | "core-methods-missing"
+  | "unknown";
+
 export enum SignerType {
   NIP07 = "NIP07",
   NIP46 = "NIP46",
@@ -1276,8 +1427,28 @@ export enum SignerType {
   SEED = "SEED",
 }
 
+function getPendingSignerType(): SignerType | null {
+  const pending = localStorage.getItem(PENDING_SIGNER_TYPE_KEY) as SignerType | null;
+  return Object.values(SignerType).includes(pending as SignerType) ? pending : null;
+}
+
+type InitSignerBehaviorOptions = {
+  skipRelayConnect?: boolean;
+};
+
+type ReadOnlyInitOptions = {
+  fundstrOnly?: boolean;
+  suppressWarnings?: boolean;
+};
+
+type DmSubscriptionOptions = {
+  suppressWarnings?: boolean;
+};
+
 export const useNostrStore = defineStore("nostr", {
   state: () => {
+    ensureNutzapProfileCacheHydrated();
+    pruneExpiredNutzapProfiles();
     const lastNip04EventTimestamp = useLocalStorage<number>(
       "cashu.ndk.nip04.lastEventTimestamp",
       0,
@@ -1293,11 +1464,26 @@ export const useNostrStore = defineStore("nostr", {
     if (lastNip17EventTimestamp.value > now) {
       lastNip17EventTimestamp.value = now;
     }
+    const pendingPubkey = localStorage.getItem(PENDING_PUBKEY_KEY);
+    const pendingSignerType = getPendingSignerType();
+    const pendingSignerPubkey = localStorage.getItem(PENDING_SIGNER_PUBLIC_KEY);
+    const fallbackPubkey = localStorage.getItem(UNENCRYPTED_PUBKEY_KEY);
+    const fallbackIdentitySource = pendingPubkey
+      ? "pending"
+      : pendingSignerPubkey
+        ? "pending"
+        : fallbackPubkey
+          ? "unencrypted"
+          : null;
+
     return {
       connected: false,
-      pubkey: "",
+      pubkey: pendingPubkey ?? pendingSignerPubkey ?? fallbackPubkey ?? "",
+      usingFallbackIdentity: !!fallbackIdentitySource,
+      fallbackIdentitySource,
       relays: useSettingsStore().defaultNostrRelays ?? ([] as string[]),
-      signerType: SignerType.SEED,
+      encryptionKey: null as CryptoKey | null,
+      signerType: pendingSignerType ?? SignerType.SEED,
       nip07signer: {} as NDKNip07Signer,
       nip46Token: "",
       nip46signer: {} as NDKNip46Signer,
@@ -1318,19 +1504,27 @@ export const useNostrStore = defineStore("nostr", {
       nip07SignerAvailable: true,
       nip07Checked: false,
       nip07Warned: false,
+      nip07CheckPromise: null as Promise<boolean> | null,
+      nip07RetryAttempts: 0,
       nip07RetryInterval: null as ReturnType<typeof setInterval> | null,
+      nip07LastError: null as string | null,
+      nip07LastFailureCause: null as Nip07FailureCause | null,
       mintRecommendations: useLocalStorage<MintRecommendation[]>(
         "cashu.ndk.mintRecommendations",
         [],
       ),
       initialized: false,
       secureStorageLoaded: false,
+      secureWatchersRegistered: false,
+      failedUnlockAttempts: 0,
+      unlockCooldownUntil: 0,
       lastError: "" as string | null,
       connectionFailed: false,
       reconnectBackoffUntil: 0,
       reconnectFailures: 0,
       failedRelays: [] as string[],
       connectedRelays: new Set<string>(),
+      readOnlyMode: "default" as "default" | "fundstr-only",
       cachedNip07Relays: null as string[] | null,
       pendingGetRelays: null as Promise<Record<string, any> | null> | null,
       lastNip04EventTimestamp,
@@ -1339,9 +1533,12 @@ export const useNostrStore = defineStore("nostr", {
         "cashu.ndk.nip17EventIdsWeHaveSeen",
         [],
       ),
+      pendingSecureWrites: {} as Record<string, string>,
       profiles: useLocalStorage<
         Record<string, { profile: any; fetchedAt: number }>
       >("cashu.ndk.profiles", {}),
+      dmListenersStop: null as null | (() => void),
+      dmListenersOptions: null as { suppressWarnings?: boolean } | null,
     };
   },
   getters: {
@@ -1399,66 +1596,265 @@ export const useNostrStore = defineStore("nostr", {
     getConnectedRelayUrls() {
       return Array.from(this.connectedRelays);
     },
-    loadKeysFromStorage: async function () {
-      if (this.secureStorageLoaded) return;
-      const pk = await secureGetItem("cashu.ndk.pubkey");
-      if (pk) this.pubkey = pk;
-      const st = await secureGetItem("cashu.ndk.signerType");
-      if (st) this.signerType = st as SignerType;
-      const nip46 = await secureGetItem("cashu.ndk.nip46Token");
-      if (nip46) this.nip46Token = nip46;
-      const pks = await secureGetItem("cashu.ndk.privateKeySignerPrivateKey");
-      if (pks) this.privateKeySignerPrivateKey = pks;
-      const seedSk = await secureGetItem("cashu.ndk.seedSignerPrivateKey");
-      if (seedSk) this.seedSignerPrivateKey = seedSk;
-      const seedPk = await secureGetItem("cashu.ndk.seedSignerPublicKey");
-      if (seedPk) this.seedSignerPublicKey = seedPk;
+    hasEncryptedSecrets() {
+      return hasEncryptedSecrets();
+    },
+    normalizePin(pin: string) {
+      return assertValidPin(pin);
+    },
+    enforceUnlockCooldown() {
+      const now = Date.now();
+      if (this.unlockCooldownUntil > now) {
+        const seconds = Math.ceil((this.unlockCooldownUntil - now) / 1000);
+        throw new Error(`Too many failed attempts. Try again in ${seconds}s.`);
+      }
+    },
+    recordUnlockFailure() {
+      this.failedUnlockAttempts += 1;
+      const backoffMs = Math.min(
+        30_000,
+        1000 * 2 ** (this.failedUnlockAttempts - 1),
+      );
+      this.unlockCooldownUntil = Date.now() + backoffMs;
+    },
+    resetUnlockFailures() {
+      this.failedUnlockAttempts = 0;
+      this.unlockCooldownUntil = 0;
+    },
+    ensureEncryptionSalt() {
+      const existingSalt = localStorage.getItem(SALT_STORAGE_KEY);
+      const normalizedSalt = normalizeSaltValue(existingSalt);
+      if (!existingSalt || normalizedSalt.isLegacy) {
+        localStorage.setItem(SALT_STORAGE_KEY, normalizedSalt.serialized);
+      }
+      return normalizedSalt.serialized;
+    },
+    async setEncryptionKeyFromPin(pin: string) {
+      const normalizedPin = this.normalizePin(pin);
+      const salt = this.ensureEncryptionSalt();
+      this.encryptionKey = await deriveKey(normalizedPin, salt);
+      await this.secureSetItem(ENCRYPTION_CHECK_KEY, "ready");
+      this.registerSecureWatchers();
+      await this.flushPendingSecureWrites();
+      this.secureStorageLoaded = true;
+      this.resetUnlockFailures();
+    },
+    async unlockWithPin(pin: string) {
+      const normalizedPin = this.normalizePin(pin);
+      this.enforceUnlockCooldown();
+      const salt = localStorage.getItem(SALT_STORAGE_KEY);
+      if (!salt) {
+        throw new Error("No wallet salt found. Set up your wallet first.");
+      }
+      const normalizedSalt = normalizeSaltValue(salt);
+      localStorage.setItem(SALT_STORAGE_KEY, normalizedSalt.serialized);
+      try {
+        this.encryptionKey = await deriveKey(normalizedPin, normalizedSalt);
+        this.secureStorageLoaded = false;
+        await this.loadKeysFromStorage();
+        await this.flushPendingSecureWrites();
+        this.resetUnlockFailures();
+      } catch (error) {
+        this.recordUnlockFailure();
+        throw error;
+      }
+    },
+    async secureSetItem(
+      key: string,
+      value: string,
+      options: { bufferIfLocked?: boolean; pendingKeys?: string[] } = {},
+    ) {
+      const { bufferIfLocked = false, pendingKeys = [] } = options;
+
+      if (!this.encryptionKey) {
+        if (!bufferIfLocked) {
+          throw new WalletLockedError();
+        }
+
+        this.pendingSecureWrites[key] = value;
+
+        for (const pendingKey of pendingKeys) {
+          localStorage.setItem(pendingKey, value);
+        }
+
+        return;
+      }
+      const enc = await encryptData(this.encryptionKey, value);
+      localStorage.setItem(key, enc);
+
+      for (const pendingKey of pendingKeys) {
+        localStorage.removeItem(pendingKey);
+      }
+    },
+    async secureGetItem(key: string): Promise<string | null> {
+      if (!this.encryptionKey) {
+        throw new WalletLockedError();
+      }
+      const val = localStorage.getItem(key);
+      if (!val) return null;
+      return await decryptData(this.encryptionKey, val);
+    },
+    async flushPendingSecureWrites() {
+      if (!this.encryptionKey) return;
+
+      const pendingEntries = new Map<string, string>(
+        Object.entries(this.pendingSecureWrites),
+      );
+
+      const bufferedPubkey =
+        localStorage.getItem(PENDING_PUBKEY_KEY) ||
+        localStorage.getItem(PENDING_SIGNER_PUBLIC_KEY);
+      if (bufferedPubkey) {
+        pendingEntries.set("cashu.ndk.pubkey", bufferedPubkey);
+      }
+
+      const bufferedSignerType = getPendingSignerType();
+      if (bufferedSignerType) {
+        pendingEntries.set("cashu.ndk.signerType", bufferedSignerType);
+      }
+
+      for (const [key, value] of pendingEntries.entries()) {
+        const pendingKeys =
+          key === "cashu.ndk.pubkey"
+            ? [PENDING_PUBKEY_KEY, PENDING_SIGNER_PUBLIC_KEY]
+            : key === "cashu.ndk.signerType"
+              ? [PENDING_SIGNER_TYPE_KEY]
+              : [];
+        await this.secureSetItem(key, value, { pendingKeys });
+      }
+
+      this.pendingSecureWrites = {};
+      this.clearPendingIdentityMirror();
+    },
+    persistPubkeyFallback(pubkey: string) {
+      if (!pubkey) {
+        localStorage.removeItem(UNENCRYPTED_PUBKEY_KEY);
+        this.usingFallbackIdentity = false;
+        this.fallbackIdentitySource = null;
+        return;
+      }
+
+      localStorage.setItem(UNENCRYPTED_PUBKEY_KEY, pubkey);
+      if (!this.encryptionKey) {
+        this.usingFallbackIdentity = true;
+        this.fallbackIdentitySource = "unencrypted";
+      }
+    },
+    clearPendingIdentityMirror() {
+      localStorage.removeItem(PENDING_PUBKEY_KEY);
+      localStorage.removeItem(PENDING_SIGNER_TYPE_KEY);
+      localStorage.removeItem(PENDING_SIGNER_PUBLIC_KEY);
+    },
+    registerSecureWatchers() {
+      if (this.secureWatchersRegistered) return;
       watch(
         () => this.pubkey,
-        (v) => {
-          secureSetItem("cashu.ndk.pubkey", v);
+        async (v) => {
+          await this.secureSetItem("cashu.ndk.pubkey", v, {
+            bufferIfLocked: true,
+            pendingKeys: [PENDING_PUBKEY_KEY, PENDING_SIGNER_PUBLIC_KEY],
+          });
         },
       );
       watch(
         () => this.signerType,
-        (v) => {
-          secureSetItem("cashu.ndk.signerType", v.toString());
+        async (v) => {
+          await this.secureSetItem("cashu.ndk.signerType", v.toString(), {
+            bufferIfLocked: true,
+            pendingKeys: [PENDING_SIGNER_TYPE_KEY],
+          });
         },
       );
       watch(
         () => this.nip46Token,
-        (v) => {
-          secureSetItem("cashu.ndk.nip46Token", v);
+        async (v) => {
+          await this.secureSetItem("cashu.ndk.nip46Token", v, {
+            bufferIfLocked: true,
+          });
         },
       );
       watch(
         () => this.privateKeySignerPrivateKey,
-        (v) => {
-          secureSetItem("cashu.ndk.privateKeySignerPrivateKey", v);
+        async (v) => {
+          await this.secureSetItem("cashu.ndk.privateKeySignerPrivateKey", v, {
+            bufferIfLocked: true,
+          });
         },
       );
       watch(
         () => this.seedSignerPrivateKey,
-        (v) => {
-          secureSetItem("cashu.ndk.seedSignerPrivateKey", v);
+        async (v) => {
+          await this.secureSetItem("cashu.ndk.seedSignerPrivateKey", v, {
+            bufferIfLocked: true,
+          });
         },
       );
       watch(
         () => this.seedSignerPublicKey,
-        (v) => {
-          secureSetItem("cashu.ndk.seedSignerPublicKey", v);
+        async (v) => {
+          await this.secureSetItem("cashu.ndk.seedSignerPublicKey", v, {
+            bufferIfLocked: true,
+          });
         },
       );
+      this.secureWatchersRegistered = true;
+    },
+    loadKeysFromStorage: async function () {
+      if (this.secureStorageLoaded) return;
+      if (!this.encryptionKey) {
+        if (hasEncryptedSecrets()) {
+          this.lastError = WALLET_LOCKED_MESSAGE;
+          throw new WalletLockedError(WALLET_LOCKED_MESSAGE);
+        }
+        return;
+      }
+      const checkValue = await this.secureGetItem(ENCRYPTION_CHECK_KEY);
+      if (!checkValue) {
+        await this.secureSetItem(ENCRYPTION_CHECK_KEY, "ready");
+      }
+      const pk = await this.secureGetItem("cashu.ndk.pubkey");
+      if (pk) this.pubkey = pk;
+      const st = await this.secureGetItem("cashu.ndk.signerType");
+      if (st) this.signerType = st as SignerType;
+      const nip46 = await this.secureGetItem("cashu.ndk.nip46Token");
+      if (nip46) this.nip46Token = nip46;
+      const pks = await this.secureGetItem("cashu.ndk.privateKeySignerPrivateKey");
+      if (pks) this.privateKeySignerPrivateKey = pks;
+      const seedSk = await this.secureGetItem("cashu.ndk.seedSignerPrivateKey");
+      if (seedSk) this.seedSignerPrivateKey = seedSk;
+      const seedPk = await this.secureGetItem("cashu.ndk.seedSignerPublicKey");
+      if (seedPk) this.seedSignerPublicKey = seedPk;
+      this.usingFallbackIdentity = false;
+      this.fallbackIdentitySource = null;
+      this.registerSecureWatchers();
       this.secureStorageLoaded = true;
     },
-    initNdkReadOnly: async function () {
+    initNdkReadOnly: async function (opts: ReadOnlyInitOptions = {}) {
       await this.loadKeysFromStorage();
-      const ndk = await useNdk({ requireSigner: false });
-      if (this.connected) return;
+      const { fundstrOnly, suppressWarnings } = opts;
+      const requestedMode =
+        fundstrOnly === true
+          ? "fundstr-only"
+          : fundstrOnly === false
+            ? "default"
+            : undefined;
+      const desiredMode = requestedMode ?? this.readOnlyMode ?? "default";
+      const modeChanged = this.readOnlyMode !== desiredMode;
+      const ndk = await useNdk({
+        requireSigner: false,
+        fundstrOnly,
+      });
+      if (modeChanged) {
+        this.connected = false;
+        this.connectedRelays.clear();
+      } else if (this.connected) {
+        return;
+      }
       try {
         await ndk.connect();
         this.lastError = null;
         this.connectionFailed = false;
+        this.readOnlyMode = desiredMode;
         ndk.pool.on("relay:connect", (r: any) => {
           this.connectedRelays.add(r.url);
           this.connected = this.connectedRelays.size > 0;
@@ -1481,10 +1877,14 @@ export const useNostrStore = defineStore("nostr", {
         });
       } catch (e: any) {
         console.warn("[nostr] read-only connect failed", e);
-        notifyWarning(`Failed to connect to relays`, e?.message ?? String(e));
+        if (!suppressWarnings) {
+          notifyWarning(`Failed to connect to relays`, e?.message ?? String(e));
+        }
         this.lastError = e?.message ?? String(e);
         this.connectionFailed = true;
-        window.dispatchEvent(new Event("nostr-connect-failed"));
+        if (!suppressWarnings) {
+          window.dispatchEvent(new Event("nostr-connect-failed"));
+        }
       }
     },
     disconnect: async function () {
@@ -1494,17 +1894,208 @@ export const useNostrStore = defineStore("nostr", {
       this.connected = false;
       this.connectedRelays.clear();
     },
+    waitForNostrGlobals: async function (timeoutMs: number): Promise<boolean> {
+      if ((window as any).nostr) return true;
+
+      const startedAt = Date.now();
+
+      return new Promise((resolve) => {
+        const check = () => {
+          const available = Boolean((window as any).nostr);
+          const elapsed = Date.now() - startedAt;
+
+          if (available || elapsed >= timeoutMs) {
+            clearInterval(interval);
+            resolve(available);
+          }
+        };
+
+        const interval = window.setInterval(check, 100);
+        check();
+      });
+    },
     async connectBrowserSigner() {
+      const nostrAvailable = await this.waitForNostrGlobals(18000);
+      const ext: any = (window as any).nostr;
+
+      if (!nostrAvailable || !ext) {
+        throw new NostrSignerError(
+          "extension-unavailable",
+          "Nostr browser extension not installed or enabled. If your signer omits enable(), we'll still try once core methods appear (Brave may inject slowly).",
+          {
+            remediation:
+              "Install or enable a NIP-07 signer extension (e.g. nos2x/Alby) and allow access. Some browsers delay injection; wait a few more seconds and retry.",
+          },
+        );
+      }
+
       const nip07 = new NDKNip07Signer();
+      const enableTimeoutMs = 9000;
+      const userTimeoutMs = 7000;
+      const readyTimeoutMs = 9000;
+
+      const hasEnable = typeof ext?.enable === "function";
+      const hasCoreMethods =
+        typeof ext?.getPublicKey === "function" && typeof ext?.signEvent === "function";
+      const enablePromise = hasEnable ? ext.enable() : undefined;
+
+      if (!hasEnable && !hasCoreMethods) {
+        throw new NostrSignerError(
+          "capability-missing",
+          "NIP-07 signer missing enable() and core methods (getPublicKey/signEvent).",
+          {
+            remediation:
+              "Update or reinstall your NIP-07 extension so it exposes getPublicKey/signEvent.",
+          },
+        );
+      }
+
+      const updateSignerCaps = (caps: SignerCaps) => {
+        this.signerCaps = caps;
+      };
+
+      const withTimeout = async <T>(
+        promise: Promise<T>,
+        ms: number,
+        onTimeout: () => NostrSignerError,
+      ) =>
+        Promise.race([
+          promise,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(onTimeout()), ms),
+          ),
+        ]);
+
+      if (enablePromise) {
+        try {
+          await withTimeout(enablePromise, enableTimeoutMs, () =>
+            new NostrSignerError(
+              "enable-timeout",
+              "Signer approval timed out.",
+              {
+                remediation:
+                  "Confirm the browser did not block the extension prompt and approve access.",
+              },
+            ),
+          );
+        } catch (error) {
+          if (error instanceof NostrSignerError) throw error;
+          throw new NostrSignerError(
+            "enable-denied",
+            "The signer request was denied or blocked.",
+            {
+              remediation: "Approve the extension's access request to continue.",
+              cause: error,
+            },
+          );
+        }
+      }
+
+      let user;
+      if (hasEnable) {
+        try {
+          user = await withTimeout(nip07.user(), userTimeoutMs, () =>
+            new NostrSignerError(
+              "user-timeout",
+              "Timed out waiting for the signer user.",
+              {
+                remediation: "Ensure the extension is unlocked and retry.",
+              },
+            ),
+          );
+        } catch (error) {
+          if (error instanceof NostrSignerError) throw error;
+          throw new NostrSignerError("user-error", "Failed to fetch signer user.", {
+            remediation: "Unlock your NIP-07 extension and try again.",
+            cause: error,
+          });
+        }
+      }
+
       try {
-        await (window as any).nostr?.enable?.();
-        const user = await nip07.user();
+        const readyUser = hasEnable
+          ? await withTimeout(nip07.blockUntilReady(), readyTimeoutMs, () =>
+              new NostrSignerError(
+                "ready-timeout",
+                "Signer initialization timed out.",
+                {
+                  remediation: "Keep the extension unlocked and retry the connection.",
+                },
+              ),
+            )
+          : null;
+
+        const caps = {
+          nip04Encrypt: typeof ext?.nip04?.encrypt === "function",
+          nip04Decrypt: typeof ext?.nip04?.decrypt === "function",
+          nip44Encrypt: typeof ext?.nip44?.encrypt === "function",
+          nip44Decrypt: typeof ext?.nip44?.decrypt === "function",
+          getSharedSecret: typeof ext?.getSharedSecret === "function",
+        };
+
+        updateSignerCaps(caps);
+
+        const nip04Supported = caps.nip04Encrypt && caps.nip04Decrypt;
+        const nip44Supported = caps.nip44Encrypt && caps.nip44Decrypt;
+
+        if (!nip04Supported) {
+          throw new NostrSignerError(
+            "capability-missing",
+            "Signer missing required NIP-04 encryption/decryption capabilities.",
+            {
+              remediation:
+                "Grant encryption permissions in your extension settings, then retry.",
+              details: { caps },
+            },
+          );
+        }
+
+        if (!nip44Supported) {
+          notifyWarning(
+            "Signer missing NIP-44 support; continuing with NIP-04 only.",
+            "Some newer DM features may be limited until NIP-44 is enabled.",
+          );
+          updateSignerCaps({ ...caps, nip44Encrypt: false, nip44Decrypt: false });
+        }
+
+        let resolvedUser = readyUser ?? user;
+
+        if (!resolvedUser?.pubkey && hasCoreMethods) {
+          const pubkey = await withTimeout(
+            Promise.resolve(ext.getPublicKey()),
+            userTimeoutMs,
+            () =>
+              new NostrSignerError(
+                "pubkey-timeout",
+                "Timed out waiting for the signer public key.",
+                {
+                  remediation:
+                    "If your browser delays extension injection (e.g., Brave), keep this tab open a bit longer and retry.",
+                },
+              ),
+          );
+          if (pubkey) {
+            resolvedUser = { pubkey } as typeof user;
+          }
+        }
+
+        if (!resolvedUser?.pubkey) {
+          throw new NostrSignerError("user-error", "Signer did not return a pubkey.");
+        }
+
         this.signer = nip07;
         this.signerType = SignerType.NIP07;
-        this.setPubkey(user.pubkey);
+        this.probeSignerCaps();
+        this.setPubkey(resolvedUser.pubkey);
         useNdk({ requireSigner: true }).catch(() => {});
-      } catch (e) {
-        throw new Error("The signer request was rejected or blocked.");
+        if (!this.encryptionKey) {
+          this.secureStorageLoaded = true;
+        }
+      } catch (error) {
+        if (error instanceof NostrSignerError) throw error;
+        throw new NostrSignerError("user-error", "Failed to finalize signer connection.", {
+          cause: error,
+        });
       }
     },
     connect: async function (relays?: string[]) {
@@ -1519,7 +2110,13 @@ export const useNostrStore = defineStore("nostr", {
       this.connectionFailed = false;
 
       // 1. remember desired relay set
-      if (relays) this.relays = relays as any;
+      let targetRelays = relays ?? this.relays;
+      if (isUsingDefaultRelays(targetRelays)) {
+        targetRelays = await resolveHealthyDefaultRelays();
+      }
+      if (relays || this.relays.length === 0 || isUsingDefaultRelays(this.relays)) {
+        this.relays = targetRelays as any;
+      }
 
       // 2. build a *new* NDK whose pool contains only those relays
       const ndk = await rebuildNdk(this.relays, this.signer, true);
@@ -1608,7 +2205,10 @@ export const useNostrStore = defineStore("nostr", {
         }
       }
       if (relays?.length) {
-        const added = await urlsToRelaySet(relays);
+        const targetRelays = isUsingDefaultRelays(relays)
+          ? await resolveHealthyDefaultRelays()
+          : relays;
+        const added = await urlsToRelaySet(targetRelays);
         if (added) {
           try {
             await ndk.connect();
@@ -1624,8 +2224,16 @@ export const useNostrStore = defineStore("nostr", {
         }
       }
     },
-    initSignerIfNotSet: async function () {
-      await this.loadKeysFromStorage();
+    initSignerIfNotSet: async function (options: InitSignerBehaviorOptions = {}) {
+      try {
+        await this.loadKeysFromStorage();
+        this.lastError = null;
+      } catch (e) {
+        if (e instanceof WalletLockedError) {
+          this.lastError = WALLET_LOCKED_MESSAGE;
+        }
+        throw e;
+      }
       if (this.signerType === SignerType.NIP07) {
         const available = await this.checkNip07Signer();
         if (!available && !this.signer) {
@@ -1640,17 +2248,39 @@ export const useNostrStore = defineStore("nostr", {
         this.initialized = false; // force re-initialisation
       }
       if (!this.initialized) {
-        await this.initSigner();
-        await this.ensureNdkConnected();
+        await this.initSigner(options);
+        if (!options.skipRelayConnect) {
+          await this.ensureNdkConnected();
+        }
       }
     },
-    initSigner: async function () {
+    initSigner: async function (options: InitSignerBehaviorOptions = {}) {
+      const secretsLocked = hasEncryptedSecrets() && !this.encryptionKey;
+
+      if (secretsLocked) {
+        this.lastError = WALLET_LOCKED_MESSAGE;
+        throw new WalletLockedError(WALLET_LOCKED_MESSAGE);
+      }
+
+      this.lastError = null;
+
+      const bufferedSignerType = getPendingSignerType();
+      if (this.signerType === SignerType.SEED && bufferedSignerType) {
+        this.signerType = bufferedSignerType;
+      }
+
       if (this.signerType === SignerType.NIP07) {
-        await this.initNip07Signer();
+        await this.initNip07Signer(options);
       } else if (this.signerType === SignerType.PRIVATEKEY) {
-        await this.initPrivateKeySigner();
+        await this.initPrivateKeySigner(undefined, options);
+      } else if (
+        this.signerType === SignerType.SEED ||
+        (!hasEncryptedSecrets() && !this.pubkey)
+      ) {
+        await this.initWalletSeedPrivateKeySigner(options);
       } else {
-        await this.initWalletSeedPrivateKeySigner();
+        this.lastError = WALLET_LOCKED_MESSAGE;
+        return;
       }
       this.initialized = true;
     },
@@ -1664,10 +2294,15 @@ export const useNostrStore = defineStore("nostr", {
         getSharedSecret: typeof ext?.getSharedSecret === "function",
       };
     },
-    setSigner: async function (signer: NDKSigner) {
+    setSigner: async function (
+      signer: NDKSigner,
+      options: InitSignerBehaviorOptions = {},
+    ) {
       this.signer = signer;
       this.probeSignerCaps();
-      await this.connect();
+      if (!options.skipRelayConnect) {
+        await this.connect();
+      }
     },
     signDummyEvent: async function (): Promise<NDKEvent> {
       const ndkEvent = new NDKEvent();
@@ -1680,9 +2315,17 @@ export const useNostrStore = defineStore("nostr", {
       return ndkEvent;
     },
     setPubkey: function (pubkey: string) {
+      this.registerSecureWatchers();
       debug("Setting pubkey to", pubkey);
       const prev = this.pubkey;
       this.pubkey = pubkey;
+      this.persistPubkeyFallback(pubkey);
+      try {
+        useDmChatsStore().setActivePubkey(pubkey);
+        useDmChatsStore().loadChats(pubkey);
+      } catch (e) {
+        console.error(e);
+      }
       try {
         const privKey = this.privKeyHex;
         if (privKey && privKey.length) {
@@ -1707,6 +2350,10 @@ export const useNostrStore = defineStore("nostr", {
       if (prev !== pubkey) {
         this.onIdentityChange(prev);
       }
+      if (!this.encryptionKey) {
+        localStorage.setItem(PENDING_PUBKEY_KEY, pubkey);
+        localStorage.setItem(PENDING_SIGNER_PUBLIC_KEY, pubkey);
+      }
     },
     async onIdentityChange(previous?: string) {
       if (previous) {
@@ -1717,11 +2364,6 @@ export const useNostrStore = defineStore("nostr", {
       }
       try {
         useMessengerStore().start();
-      } catch (e) {
-        console.error(e);
-      }
-      try {
-        useCreatorHubStore().loadTiersFromNostr();
       } catch (e) {
         console.error(e);
       }
@@ -1792,40 +2434,144 @@ export const useNostrStore = defineStore("nostr", {
       }
     },
     checkNip07Signer: async function (force = false): Promise<boolean> {
-      if (this.nip07Checked && this.nip07SignerAvailable && !force) return true;
+      if (this.nip07CheckPromise) return this.nip07CheckPromise;
+
+      const maxRetries = 3;
+      const enableTimeoutMs = 7000;
+      const userTimeoutMs = 6000;
+      const globalTimeoutMs = 32000;
+      const baseDelayMs = 750;
+      const maxDelayMs = 4000;
       const flag = localStorage.getItem("nip07.enabled");
-      try {
-        if (!flag || force || !this.nip07SignerAvailable) {
-          await (window as any).nostr?.enable?.();
-        }
-        const signer = new NDKNip07Signer();
-        await signer.user();
-        this.nip07SignerAvailable = true;
-        this.nip07Checked = true;
-        localStorage.setItem("nip07.enabled", "1");
-        if (this.nip07RetryInterval) {
-          clearInterval(this.nip07RetryInterval);
-          this.nip07RetryInterval = null;
-        }
-      } catch (e) {
-        this.nip07SignerAvailable = false;
-        this.nip07Checked = false;
-        if (this.signerType === SignerType.NIP07 && !this.nip07RetryInterval) {
-          this.nip07RetryInterval = window.setInterval(async () => {
-            const available = await this.checkNip07Signer();
-            if (available) {
+
+      const withTimeout = async <T>(promise: Promise<T> | undefined, ms: number, msg: string) => {
+        if (!promise) throw new Error("NIP-07 extension unavailable");
+        return Promise.race([
+          promise,
+          new Promise<T>((_, reject) =>
+            setTimeout(() => reject(new Error(msg)), ms),
+          ),
+        ]);
+      };
+
+      const runCheck = async () => {
+        if (this.nip07Checked && this.nip07SignerAvailable && !force) return true;
+
+        const startedAt = Date.now();
+        let delayMs = baseDelayMs;
+        let attempts = 0;
+        let lastFailureCause: Nip07FailureCause | null = null;
+        let nip07Signer: NDKNip07Signer | null = null;
+
+        while (Date.now() - startedAt < globalTimeoutMs) {
+          const nostr = (window as any).nostr;
+          const nostrAvailable = Boolean(nostr);
+          const hasEnable = typeof nostr?.enable === "function";
+          const hasCoreMethods =
+            typeof nostr?.getPublicKey === "function" && typeof nostr?.signEvent === "function";
+
+          if (!nostrAvailable) {
+            this.nip07SignerAvailable = false;
+            this.nip07Checked = false;
+            this.nip07RetryAttempts = attempts;
+            this.nip07LastError = "NIP-07 extension not detected";
+            lastFailureCause = "extension-missing";
+            this.nip07LastFailureCause = lastFailureCause;
+          } else if (!hasEnable && !hasCoreMethods) {
+            this.nip07SignerAvailable = false;
+            this.nip07Checked = false;
+            this.nip07RetryAttempts = attempts;
+            this.nip07LastError = "NIP-07 extension missing enable() and core methods";
+            lastFailureCause = "core-methods-missing";
+            this.nip07LastFailureCause = lastFailureCause;
+            break;
+          } else {
+            try {
+              attempts += 1;
+              this.nip07RetryAttempts = attempts;
+              if (hasEnable && (!flag || force || !this.nip07SignerAvailable)) {
+                await withTimeout(nostr.enable(), enableTimeoutMs, "NIP-07 enable timed out");
+              }
+              if (!nip07Signer) {
+                nip07Signer = new NDKNip07Signer();
+              }
+              const signer = nip07Signer;
+              if (hasEnable) {
+                await withTimeout(signer.user(), userTimeoutMs, "NIP-07 user() timed out");
+              } else if (hasCoreMethods) {
+                await withTimeout(
+                  Promise.resolve(nostr.getPublicKey()),
+                  userTimeoutMs,
+                  "NIP-07 getPublicKey() timed out",
+                );
+              }
+              this.nip07SignerAvailable = true;
+              this.nip07Checked = true;
+              this.nip07RetryAttempts = 0;
+              this.nip07LastError = null;
+              this.nip07LastFailureCause = null;
+              localStorage.setItem("nip07.enabled", "1");
               if (this.nip07RetryInterval) {
                 clearInterval(this.nip07RetryInterval);
                 this.nip07RetryInterval = null;
               }
+              return true;
+            } catch (e) {
+              this.nip07SignerAvailable = false;
+              this.nip07Checked = false;
+              this.nip07RetryAttempts = attempts;
+              this.nip07LastError =
+                e instanceof Error ? e.message : typeof e === "string" ? e : "Unknown NIP-07 error";
+
+              if (this.nip07LastError?.includes("enable")) {
+                lastFailureCause = "enable-failed";
+              } else if (
+                this.nip07LastError?.includes("user") ||
+                this.nip07LastError?.includes("getPublicKey")
+              ) {
+                lastFailureCause = "user-failed";
+              } else {
+                lastFailureCause = "unknown";
+              }
+
+              this.nip07LastFailureCause = lastFailureCause;
+            }
+          }
+
+          const hitRetryLimit =
+            attempts >= maxRetries && lastFailureCause !== "extension-missing" && !force;
+          if (hitRetryLimit) break;
+
+          const remainingMs = globalTimeoutMs - (Date.now() - startedAt);
+          if (remainingMs <= 0) break;
+
+          await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, remainingMs)));
+          delayMs = Math.min(delayMs * 2, maxDelayMs);
+        }
+
+        if (this.signerType === SignerType.NIP07 && !this.nip07RetryInterval) {
+          this.nip07RetryInterval = window.setInterval(async () => {
+            const available = await this.checkNip07Signer(true);
+            if (available) {
+              clearInterval(this.nip07RetryInterval!);
+              this.nip07RetryInterval = null;
               await this.initSignerIfNotSet();
             }
-          }, 3000);
+          }, Math.min(delayMs, maxDelayMs));
         }
+
+        this.nip07LastFailureCause = lastFailureCause;
+        return false;
+      };
+
+      this.nip07CheckPromise = runCheck();
+      try {
+        return await this.nip07CheckPromise;
+      } finally {
+        this.nip07CheckPromise = null;
       }
-      return this.nip07SignerAvailable;
     },
-    initNip07Signer: async function () {
+    initNip07Signer: async function (options: InitSignerBehaviorOptions = {}) {
       const available = await this.checkNip07Signer();
       if (!available) {
         if (!this.nip07Warned) {
@@ -1845,7 +2591,7 @@ export const useNostrStore = defineStore("nostr", {
         if (user?.npub) {
           this.signerType = SignerType.NIP07;
           this.setPubkey(user.pubkey);
-          await this.setSigner(signer);
+          await this.setSigner(signer, options);
 
           let urls: string[] | null = null;
           if (this.cachedNip07Relays) {
@@ -1902,7 +2648,10 @@ export const useNostrStore = defineStore("nostr", {
       this.nip46Token = "";
       await this.initWalletSeedPrivateKeySigner();
     },
-    initPrivateKeySigner: async function (nsec?: string) {
+    initPrivateKeySigner: async function (
+      nsec?: string,
+      options: InitSignerBehaviorOptions = {},
+    ) {
       let privateKeyBytes: Uint8Array;
       if (!nsec && !this.privateKeySignerPrivateKey.length) {
         nsec = (await prompt("Enter your nsec")) as string;
@@ -1922,16 +2671,74 @@ export const useNostrStore = defineStore("nostr", {
       this.privateKeySignerPrivateKey = privateKeyHex;
       this.signerType = SignerType.PRIVATEKEY;
       this.setPubkey(getPublicKey(privateKeyBytes));
-      await this.setSigner(signer);
+      await this.setSigner(signer, options);
     },
-    async updateIdentity(nsec: string, relays?: string[]) {
-      if (relays) this.relays = relays as any;
-      await this.checkNip07Signer(true);
-      if (this.signerType === SignerType.NIP07 && this.nip07SignerAvailable) {
-        await this.initNip07Signer();
-      } else {
-        await this.initPrivateKeySigner(nsec);
+    async updateIdentity(
+      nsec?: string,
+      relays?: string[],
+      opts: { onProgress?: (step: string) => void; preferNip07?: boolean } = {},
+    ) {
+      const { onProgress, preferNip07 = false } = opts;
+      try {
+        if (relays) this.relays = relays as any;
+        const nip07Available = await this.checkNip07Signer(true);
+
+        if ((preferNip07 || this.signerType === SignerType.NIP07) && nip07Available) {
+          await this.initNip07Signer();
+        } else {
+          if (!nsec) {
+            throw new Error("A private key is required to update your Nostr identity.");
+          }
+          await this.initPrivateKeySigner(nsec);
+        }
+
+        await this.bootstrapIdentity(onProgress);
+
+        if (!this.encryptionKey) {
+          this.secureStorageLoaded = true;
+        }
+      } catch (e) {
+        console.error("Failed to update identity", e);
+        notifyError(
+          "Failed to bootstrap Nostr identity",
+          (e as Error)?.message ?? String(e),
+        );
+        throw e;
       }
+    },
+    async bootstrapIdentity(update?: (step: string) => void) {
+      const progress = (msg: string) => update?.(msg);
+      if (!this.hasIdentity) {
+        throw new Error("No Nostr identity configured");
+      }
+
+      progress("Loading profile");
+      await this.getProfile(this.pubkey);
+
+      progress("Refreshing relay list");
+      const relays = await this.fetchUserRelays(this.pubkey);
+      if (Array.isArray(relays) && relays.length) {
+        this.relays = relays as any;
+      }
+
+      progress("Connecting to relays");
+      await this.ensureNdkConnected(this.relays as any);
+      this.ensureDmListeners({ suppressWarnings: true });
+
+      progress("Syncing messages");
+      const dmChatsStore = useDmChatsStore();
+      dmChatsStore.loadChats(this.pubkey);
+      const messengerStore = useMessengerStore();
+      await messengerStore.loadIdentity({ refresh: true });
+      await messengerStore.start();
+
+      progress("Updating creator data");
+      const bundle = await fetchFundstrProfileBundle(this.pubkey, {
+        forceRefresh: true,
+      });
+      applyFundstrProfileBundle(this.pubkey, bundle, {
+        fallbackRelays: this.relays as any,
+      });
     },
     resetPrivateKeySigner: async function () {
       this.privateKeySignerPrivateKey = "";
@@ -1946,12 +2753,14 @@ export const useNostrStore = defineStore("nostr", {
       this.seedSignerPublicKey = walletPublicKeyHex;
       this.seedSigner = new NDKPrivateKeySigner(this.seedSignerPrivateKey);
     },
-    initWalletSeedPrivateKeySigner: async function () {
+    initWalletSeedPrivateKeySigner: async function (
+      options: InitSignerBehaviorOptions = {},
+    ) {
       await this.walletSeedGenerateKeyPair();
       const signer = new NDKPrivateKeySigner(this.seedSignerPrivateKey);
       this.signerType = SignerType.SEED;
       this.setPubkey(this.seedSignerPublicKey);
-      await this.setSigner(signer);
+      await this.setSigner(signer, options);
     },
     fetchEventsFromUser: async function () {
       const filter: NDKFilter = { kinds: [1], authors: [this.pubkey] };
@@ -2038,6 +2847,27 @@ export const useNostrStore = defineStore("nostr", {
       return latest ? (latest.content as string) : null;
     },
 
+    fetchRecentNotes: async function (
+      pubkey: string,
+      limit = 3,
+    ): Promise<Array<{ content: string; created_at: number; id: string }>> {
+      const resolved = this.resolvePubkey(pubkey);
+      if (!resolved) return [];
+      pubkey = resolved;
+      await this.initNdkReadOnly();
+      const filter: NDKFilter = { kinds: [1], authors: [pubkey], limit };
+      const ndk = await useNdk();
+      const events = await ndk.fetchEvents(filter);
+      const sorted = Array.from(events).sort(
+        (a, b) => (b.created_at || 0) - (a.created_at || 0),
+      );
+      return sorted.slice(0, limit).map((ev) => ({
+        content: ev.content as string,
+        created_at: ev.created_at,
+        id: ev.id,
+      }));
+    },
+
     fetchDmRelayUris: async function (
       pubkey: string,
     ): Promise<string[] | null> {
@@ -2103,9 +2933,10 @@ export const useNostrStore = defineStore("nostr", {
       recipient: string,
       message: string,
     ): Promise<string> {
-      return await encryptNip04(recipient, message, {
-        privKey: typeof privKey === 'string' ? privKey : undefined,
-      });
+      const key =
+        typeof privKey === "string" || privKey instanceof Uint8Array ? privKey : undefined;
+      const { content } = await encryptDM(recipient, message, key);
+      return content;
     },
 
     decryptDmContent: async function (
@@ -2113,11 +2944,7 @@ export const useNostrStore = defineStore("nostr", {
       sender: string,
       content: string,
     ): Promise<string> {
-      const plaintext = await decryptDM(
-        sender,
-        content,
-        typeof privKey === 'string' ? privKey : undefined,
-      );
+      const plaintext = await decryptDM(sender, content, privKey);
       if (plaintext == null) {
         throw new Error('Unable to decrypt message');
       }
@@ -2205,9 +3032,53 @@ export const useNostrStore = defineStore("nostr", {
       // @ts-expect-error -- dynamic invocation
       return await (this as any).sendDirectMessageUnified(...args);
     },
-    subscribeToNip04DirectMessages: async function () {
+    ensureDmListeners: function (options: DmSubscriptionOptions = {}) {
+      this.dmListenersOptions = options;
+      if (this.dmListenersStop) {
+        return;
+      }
+
+      const relayStatus = useFundstrRelayStatus();
+      const stop = watch(
+        relayStatus,
+        (status, previous) => {
+          if (status === "connected" && previous !== "connected") {
+            const opts = this.dmListenersOptions ?? {};
+            void this.subscribeToNip17DirectMessages(opts).catch((err) => {
+              if (!opts.suppressWarnings) {
+                notifyWarning(
+                  "Failed to subscribe to NIP-17 direct messages",
+                  err?.message ?? String(err),
+                );
+              } else {
+                console.warn("[nostr] Failed to subscribe to NIP-17 DMs", err);
+              }
+            });
+            void this.subscribeToNip04DirectMessages(opts).catch((err) => {
+              if (!opts.suppressWarnings) {
+                notifyWarning(
+                  "Failed to subscribe to NIP-04 direct messages",
+                  err?.message ?? String(err),
+                );
+              } else {
+                console.warn("[nostr] Failed to subscribe to NIP-04 DMs", err);
+              }
+            });
+          }
+        },
+        { immediate: true },
+      );
+
+      this.dmListenersStop = () => {
+        stop();
+        this.dmListenersStop = null;
+      };
+    },
+    subscribeToNip04DirectMessages: async function (
+      options: DmSubscriptionOptions = {},
+    ) {
       await this.initSignerIfNotSet();
-      await this.initNdkReadOnly();
+      await this.initNdkReadOnly(options);
       const privKey = this.privKeyHex;
       const pubKey = this.pubkey;
       let nip04DirectMessageEvents: Set<NDKEvent> = new Set();
@@ -2226,7 +3097,9 @@ export const useNostrStore = defineStore("nostr", {
         try {
           await ndk.connect();
         } catch (e: any) {
-          notifyWarning("Relay connection failed", e?.message ?? String(e));
+          if (!options.suppressWarnings) {
+            notifyWarning("Relay connection failed", e?.message ?? String(e));
+          }
         }
         const sub = ndk.subscribe(
           {
@@ -2373,9 +3246,11 @@ export const useNostrStore = defineStore("nostr", {
       await event.sign(this.signer);
       await ndk.publish(event);
     },
-    subscribeToNip17DirectMessages: async function () {
+    subscribeToNip17DirectMessages: async function (
+      options: DmSubscriptionOptions = {},
+    ) {
       await this.initSignerIfNotSet();
-      await this.initNdkReadOnly();
+      await this.initNdkReadOnly(options);
       const privKey = this.privKeyHex;
       const pubKey = this.pubkey;
       let nip17DirectMessageEvents: Set<NDKEvent> = new Set();
@@ -2395,7 +3270,9 @@ export const useNostrStore = defineStore("nostr", {
         try {
           await ndk.connect();
         } catch (e: any) {
-          notifyWarning("Relay connection failed", e?.message ?? String(e));
+          if (!options.suppressWarnings) {
+            notifyWarning("Relay connection failed", e?.message ?? String(e));
+          }
         }
         const sub = ndk.subscribe(
           {
@@ -2524,20 +3401,28 @@ export const useNostrStore = defineStore("nostr", {
             label: "Subscription payment",
           };
           await cashuDb.lockedTokens.put(entry as any);
-          const receiveStore = useReceiveTokensStore();
-          receiveStore.receiveData.tokensBase64 = payload.token;
-          await receiveStore.enqueue(() =>
-            receiveStore.receiveToken(payload.token, DEFAULT_BUCKET_ID),
-          );
           return;
         }
         if (payload && payload.type === "cashu_subscription_claimed") {
           const sub = await cashuDb.subscriptions.get(payload.subscription_id);
-          const idx = sub?.intervals.findIndex(
+          const senderPubkey = sender ? this.resolvePubkey(sender) : null;
+          const expectedCreatorPubkey = sub?.creatorNpub
+            ? this.resolvePubkey(sub.creatorNpub)
+            : null;
+          if (
+            !sub ||
+            !senderPubkey ||
+            !expectedCreatorPubkey ||
+            senderPubkey !== expectedCreatorPubkey
+          ) {
+            return;
+          }
+          const idx = sub.intervals.findIndex(
             (i) => i.monthIndex === payload.month_index,
           );
-          if (sub && idx !== undefined && idx >= 0) {
+          if (idx >= 0) {
             sub.intervals[idx].status = "claimed";
+            sub.intervals[idx].redeemed = true;
             await cashuDb.subscriptions.update(sub.id, {
               intervals: sub.intervals,
             });

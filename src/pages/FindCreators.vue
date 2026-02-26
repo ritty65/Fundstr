@@ -1,624 +1,1732 @@
 <template>
-  <QPage class="find-creators-wrapper">
-    <NostrRelayErrorBanner />
-    <iframe
-      ref="iframeEl"
-      src="/find-creators.html"
-      class="find-creators-frame"
-      title="Find Creators"
+  <q-page class="find-creators-page page-shell bg-surface-1 text-1 q-pt-xl q-pb-xl">
+    <CreatorProfileModal
+      :show="showProfileModal"
+      :pubkey="selectedProfilePubkey"
+      :initial-profile="selectedProfile"
+      :initial-tab="selectedProfileInitialTab"
+      @close="showProfileModal = false"
+      @message="startChat"
+      @donate="donate"
     />
-    <DonateDialog v-model="showDonateDialog" @confirm="handleDonate" />
-    <SubscribeDialog
-      v-model="showSubscribeDialog"
-      :tier="selectedTier"
-      :supporter-pubkey="nostr.pubkey"
-      :creator-pubkey="dialogNpub"
-      @confirm="confirmSubscribe"
-    />
-    <SendTokenDialog />
-    <QDialog v-model="showTierDialog">
-      <QCard class="tier-dialog">
-        <QCardSection class="row items-center justify-between">
-          <div class="text-h6">Subscription Tiers</div>
-          <QBtn dense flat icon="close" @click="showTierDialog = false" />
-        </QCardSection>
-        <QSeparator />
-        <QCardSection v-if="loadingProfile" class="row justify-center q-pa-md">
-          <q-spinner-hourglass />
-        </QCardSection>
-        <QCardSection v-else-if="nutzapProfile">
-          <div class="text-subtitle2 q-mb-xs">P2PK public key</div>
-          <div class="text-caption q-mb-sm" style="word-break: break-all">
-            {{ nutzapProfile.p2pkPubkey }}
-          </div>
-          <div class="text-subtitle2 q-mb-xs">Trusted mints</div>
-          <ul class="q-pl-md q-mb-sm text-caption">
-            <li
-              v-for="m in nutzapProfile.trustedMints"
-              :key="m"
-              style="word-break: break-all"
-            >
-              {{ m }}
-            </li>
-          </ul>
-          <div class="text-subtitle2 q-mb-xs">Relays</div>
-          <ul class="q-pl-md text-caption">
-            <li
-              v-for="r in nutzapProfile.relays"
-              :key="r"
-              style="word-break: break-all"
-            >
-              {{ r }}
-            </li>
-          </ul>
-        </QCardSection>
-        <QCardSection v-else>
-          <div class="text-center">No Nutzap profile published</div>
-        </QCardSection>
-        <QCardSection>
-          <div
-            v-if="loadingTiers"
-            class="column items-center q-gutter-sm q-pa-md text-center"
-          >
-            <q-spinner-hourglass />
-            <div class="text-caption text-2">Loading tiers…</div>
-          </div>
-          <div
-            v-else-if="tierFetchError"
-            class="column items-center q-pa-md q-gutter-md"
-          >
-            <QBanner
-              class="full-width"
-              dense
-              rounded
-              color="negative"
-              text-color="white"
-              icon="warning"
-            >
-              We couldn't load subscription tiers. Please check your connection and
-              try again.
-            </QBanner>
-            <QBtn flat color="primary" label="Retry" @click="retryFetchTiers" />
-          </div>
-          <div
-            v-else-if="!tiers.length"
-            class="column items-center q-pa-md q-gutter-sm text-center"
-          >
-            <div class="full-width">Creator has no subscription tiers</div>
-            <QBtn flat color="primary" label="Retry" @click="retryFetchTiers" />
-          </div>
-          <div v-else>
-            <QCard
-              v-for="t in tiers"
-              :key="t.id"
-              flat
-              bordered
-              class="q-mb-md tier-card"
-            >
-              <QCardSection>
-                <div class="row items-center justify-between">
-                  <div class="text-subtitle1">{{ t.name }}</div>
-                  <div class="text-subtitle2 text-primary">
-                    {{ getPrice(t) }} sats/month
+
+    <div class="find-creators-content">
+      <section class="page-hero stack-12">
+        <h1 class="text-h3 text-bold">Discover Creators on Nostr</h1>
+        <p class="text-body1 text-2 q-mb-none">
+          Search the Nostr network, explore featured voices, and support the builders shaping the ecosystem.
+        </p>
+      </section>
+
+      <div class="section-stack">
+        <q-card class="find-creators-panel bg-surface-2 text-1" flat bordered>
+          <q-card-section class="panel-section q-px-xl q-py-lg">
+            <header class="stack-12">
+              <div class="text-h5">Nostr User Search</div>
+              <p class="text-body2 text-2 q-mb-none">
+                Search by name, npub, or NIP-05 identifier (e.g., user@domain.com).
+              </p>
+            </header>
+
+            <q-form class="column q-gutter-sm" @submit.prevent="triggerImmediateSearch">
+              <q-input
+                v-model="searchQuery"
+                outlined
+                dense
+                clearable
+                autocomplete="off"
+                label="Search Nostr profiles"
+                placeholder="Name, npub, or NIP-05"
+                :loading="searchLoading"
+                input-class="text-1"
+                @update:model-value="debouncedSearch"
+                @keyup.enter="triggerImmediateSearch"
+              >
+                <template #hint>
+                  <span v-if="searchHint" class="text-2">{{ searchHint }}</span>
+                </template>
+                <template #append>
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    icon="search"
+                    :aria-label="$q.lang.label.search"
+                    @click="triggerImmediateSearch"
+                  />
+                </template>
+              </q-input>
+            </q-form>
+
+            <section class="column q-gutter-lg" role="region" aria-live="polite">
+              <div v-if="searchLoading && !searchResults.length" class="row q-col-gutter-lg" aria-label="Searching creators">
+                <div
+                  v-for="placeholder in searchSkeletonPlaceholders"
+                  :key="placeholder"
+                  class="col-12 col-sm-6 col-md-4"
+                >
+                  <q-skeleton type="rect" class="result-skeleton bg-surface-1" />
+                </div>
+              </div>
+
+              <template v-else>
+                <q-banner
+                  v-if="searchStatusMessage"
+                  rounded
+                  dense
+                  class="status-banner text-1"
+                  aria-live="polite"
+                >
+                  <template #avatar>
+                    <q-icon :name="resolveBannerIcon(searchStatusMessage)" size="20px" />
+                  </template>
+                  <span class="status-banner__text">{{ searchStatusMessage }}</span>
+                </q-banner>
+
+                <q-banner
+                  v-if="searchError"
+                  rounded
+                  dense
+                  class="status-banner text-1"
+                  aria-live="polite"
+                >
+                  <template #avatar>
+                    <q-icon :name="resolveBannerIcon(searchError)" size="20px" />
+                  </template>
+                  <span class="status-banner__text">{{ searchError }}</span>
+                  <template #action>
+                    <q-btn
+                      flat
+                      dense
+                      no-caps
+                      size="sm"
+                      color="accent"
+                      icon="refresh"
+                      label="Retry"
+                      class="status-banner__action"
+                      @click="triggerImmediateSearch"
+                    />
+                  </template>
+                </q-banner>
+
+                <q-banner
+                  v-if="searchWarnings.length > 0"
+                  rounded
+                  dense
+                  class="status-banner text-1"
+                  aria-live="polite"
+                >
+                  <template #avatar>
+                    <q-icon name="warning" size="20px" />
+                  </template>
+                  <div class="column">
+                    <span v-for="(warning, index) in searchWarnings" :key="index" class="status-banner__text">
+                      {{ warning }}
+                    </span>
+                  </div>
+                </q-banner>
+
+                <q-banner
+                  v-if="isRefreshing && searchResults.length"
+                  rounded
+                  dense
+                  class="status-banner status-banner--loading text-1"
+                  aria-live="polite"
+                >
+                  <template #avatar>
+                    <q-spinner size="20px" />
+                  </template>
+                  <span class="status-banner__text">Refreshing results…</span>
+                </q-banner>
+
+                <div
+                  v-if="resultSummary"
+                  class="search-results-toolbar row items-center justify-between q-col-gutter-md"
+                >
+                  <div class="row items-center q-gutter-sm">
+                    <div class="text-body2 text-2">{{ resultSummary }}</div>
+                    <div v-if="activeFilterCount" class="text-body2 text-2">
+                      {{ activeFilterLabel }}
+                    </div>
+                  </div>
+                  <div class="row items-center q-gutter-sm toolbar-controls">
+                    <div class="row items-center q-gutter-xs filters-group">
+                      <q-chip
+                        v-for="filter in filterChips"
+                        :key="filter.key"
+                        clickable
+                        dense
+                        square
+                        class="filter-chip"
+                        :color="activeFilters[filter.key] ? 'accent' : 'accent-200'"
+                        :outline="!activeFilters[filter.key]"
+                        :text-color="activeFilters[filter.key] ? 'white' : 'text-2'"
+                        :selected="activeFilters[filter.key]"
+                        @click="toggleFilter(filter.key)"
+                      >
+                        {{ filter.label }}
+                      </q-chip>
+                    </div>
+                    <q-btn
+                      v-if="activeFilterCount"
+                      flat
+                      dense
+                      no-caps
+                      size="sm"
+                      color="accent"
+                      label="Clear filters"
+                      @click="clearFilters"
+                    />
+                    <q-btn-toggle
+                      v-model="viewMode"
+                      dense
+                      unelevated
+                      rounded
+                      toggle-color="accent"
+                      color="accent-200"
+                      text-color="text-1"
+                      :options="viewModeOptions"
+                      class="view-mode-toggle"
+                      aria-label="Toggle between grid and grouped views"
+                    />
+                    <q-select
+                      v-model="sortOption"
+                      dense
+                      outlined
+                      emit-value
+                      map-options
+                      dropdown-icon="expand_more"
+                      options-dense
+                      class="sort-select"
+                      :options="availableSortOptions"
+                      :disable="availableSortOptions.length <= 1"
+                      label="Sort by"
+                    />
                   </div>
                 </div>
-                <div class="q-mt-sm">{{ t.description }}</div>
-                <div v-if="t.media && t.media.length">
-                  <MediaPreview
-                    v-for="(m, idx) in t.media"
-                    :key="idx"
-                    :url="m.url"
-                    class="q-mt-sm"
-                  />
+
+                <div v-if="searchResults.length" class="column q-gutter-md">
+                  <template v-if="viewMode === 'grid'">
+                    <div class="fixed-grid">
+                      <CreatorCard
+                        v-for="profile in pagedSearchResults"
+                        :key="profile.pubkey"
+                        :profile="profile"
+                        :cache-hit="profile.cacheHit === true"
+                        :has-lightning="profile.hasLightning ?? undefined"
+                        :has-tiers="profile.hasTiers ?? undefined"
+                        :is-creator="profile.isCreator ?? undefined"
+                        :is-personal="profile.isPersonal ?? undefined"
+                        :nip05="profile.nip05 ?? undefined"
+                        @view-tiers="(payload) => viewProfile(profile, payload?.initialTab)"
+                        @view-profile="(payload) => viewProfile(profile, payload?.initialTab)"
+                        @message="startChat"
+                        @donate="donate"
+                      />
+                    </div>
+                  </template>
+
+                  <template v-else>
+                    <div class="column q-gutter-lg grouped-results">
+                      <section
+                        v-for="group in groupedResults"
+                        :key="group.key"
+                        class="grouped-section"
+                        aria-live="polite"
+                      >
+                        <h2 class="grouped-heading text-subtitle1 text-bold">{{ group.title }}</h2>
+                        <div class="fixed-grid">
+                          <CreatorCard
+                            v-for="profile in group.profiles"
+                            :key="profile.pubkey"
+                            :profile="profile"
+                            :cache-hit="profile.cacheHit === true"
+                            :has-lightning="profile.hasLightning ?? undefined"
+                            :has-tiers="profile.hasTiers ?? undefined"
+                            :is-creator="profile.isCreator ?? undefined"
+                            :is-personal="profile.isPersonal ?? undefined"
+                            :nip05="profile.nip05 ?? undefined"
+                            @view-tiers="(payload) => viewProfile(profile, payload?.initialTab)"
+                            @view-profile="(payload) => viewProfile(profile, payload?.initialTab)"
+                            @message="startChat"
+                            @donate="donate"
+                          />
+                        </div>
+                      </section>
+                    </div>
+                  </template>
+
+                  <div v-if="canLoadMore" class="load-more-wrapper">
+                    <q-btn
+                      outline
+                      no-caps
+                      color="accent"
+                      class="load-more-button"
+                      label="Load more"
+                      @click="loadMoreResults"
+                    />
+                  </div>
                 </div>
-                <ul class="q-pl-md q-mt-xs text-caption">
-                  <li v-for="b in t.benefits" :key="b">{{ b }}</li>
-                </ul>
-              </QCardSection>
-              <QCardActions align="right" class="subscribe-container">
-                <QBtn
-                  label="Subscribe"
-                  color="primary"
-                  class="subscribe-btn"
-                  @click="openSubscribe(t)"
+
+                <div
+                  v-else-if="showSearchEmptyState || showInitialEmptyState"
+                  class="empty-state column items-center text-center q-pt-xl q-pb-xl q-px-md text-2"
+                >
+                  <div class="empty-illustration q-mb-md" aria-hidden="true">
+                    <div class="empty-illustration__halo">
+                      <q-icon name="travel_explore" size="3.5rem" class="text-accent-500" />
+                    </div>
+                    <div class="empty-badges" role="group" aria-label="Quick filter toggles">
+                      <div
+                        v-for="action in emptyStateFilterActions"
+                        :key="action.key"
+                        class="badge-toggle"
+                      >
+                        <q-btn
+                          outline
+                          color="accent"
+                          no-caps
+                          size="sm"
+                          padding="10px 14px"
+                          :icon="action.icon"
+                          :label="action.label"
+                          :aria-label="action.ariaLabel || action.label"
+                          @click="applyFilterSampleAction(action)"
+                        />
+                        <div class="text-caption text-2 badge-toggle__helper">{{ action.helper }}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="text-h6 text-1">{{ emptyStateTitle }}</div>
+                  <p class="text-body1 q-mt-sm q-mb-none">{{ emptyStateMessage }}</p>
+
+                  <div class="empty-actions column q-gutter-md q-mt-md">
+                    <div class="row justify-center q-col-gutter-sm sample-queries">
+                      <q-btn
+                        v-for="sample in sampleQueries"
+                        :key="sample.value"
+                        outline
+                        color="accent"
+                        no-caps
+                        size="sm"
+                        padding="10px 14px"
+                        :label="sample.label"
+                        @click="applySampleQuery(sample.value)"
+                      />
+                    </div>
+                    <div class="row justify-center q-col-gutter-sm empty-ctas">
+                      <q-btn
+                        outline
+                        icon="content_paste"
+                        color="accent"
+                        no-caps
+                        label="Paste npub"
+                        @click="pasteNpubFromClipboard"
+                      />
+                      <q-btn
+                        flat
+                        icon="auto_awesome"
+                        color="accent"
+                        no-caps
+                        label="Go to Featured Creators"
+                        @click="jumpToFeatured"
+                      />
+                    </div>
+                    <div class="text-body2 text-2 helper-text">
+                      Run a filtered sample search with the toggles above, try a suggested search, paste an npub, or jump to our curated list.
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </section>
+          </q-card-section>
+        </q-card>
+
+        <q-card
+          id="featured-creators"
+          ref="featuredSectionRef"
+          class="find-creators-panel bg-surface-2 text-1"
+          flat
+          bordered
+        >
+          <q-card-section class="panel-section q-px-xl q-py-lg">
+            <div class="row items-start justify-between q-col-gutter-md">
+              <div class="col">
+                <div class="text-h5">Featured Creators</div>
+                <p class="text-body2 text-2 q-mt-xs q-mb-none">
+                  Discover highlighted profiles curated by the Fundstr team.
+                </p>
+              </div>
+              <div class="col-auto">
+                <q-btn
+                  outline
+                  no-caps
+                  color="accent"
+                  icon="refresh"
+                  label="Refresh"
+                  :loading="loadingFeatured"
+                  :disable="loadingFeatured"
+                  @click="refreshFeatured"
                 />
-              </QCardActions>
-            </QCard>
-          </div>
-        </QCardSection>
-      </QCard>
-    </QDialog>
-  </QPage>
+              </div>
+            </div>
+
+            <div class="q-mt-md" role="region" aria-live="polite">
+              <div
+                v-if="loadingFeatured && !featuredCreators.length"
+                class="row q-col-gutter-lg"
+              >
+                <div
+                  v-for="placeholder in featuredSkeletonPlaceholders"
+                  :key="placeholder"
+                  class="col-12 col-sm-6 col-md-4"
+                >
+                  <q-skeleton type="rect" class="featured-skeleton bg-surface-1" />
+                </div>
+              </div>
+
+              <div v-else-if="featuredCreators.length" class="column q-gutter-md">
+                <q-banner
+                  v-if="featuredWarningMessage"
+                  rounded
+                  dense
+                  class="status-banner text-1"
+                  aria-live="polite"
+                >
+                  <template #avatar>
+                    <q-icon :name="resolveBannerIcon(featuredWarningMessage)" size="20px" />
+                  </template>
+                  <span class="status-banner__text">{{ featuredWarningMessage }}</span>
+                </q-banner>
+                <div class="featured-grid-container">
+                  <div class="featured-legend" aria-label="Legend for featured badges">
+                    <div class="legend-header" :class="{ 'legend-header--mobile': isMobileScreen }">
+                      <div class="legend-title text-subtitle1 text-1">Badge legend</div>
+                      <q-btn
+                        v-if="isMobileScreen"
+                        dense
+                        flat
+                        no-caps
+                        color="accent"
+                        class="legend-toggle"
+                        :icon="legendExpanded ? 'expand_less' : 'expand_more'"
+                        :label="legendExpanded ? 'Hide' : 'Show'"
+                        @click="toggleLegend"
+                      />
+                    </div>
+
+                    <div
+                      v-show="!isMobileScreen || legendExpanded"
+                      class="legend-content"
+                      role="list"
+                    >
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <q-badge color="accent" class="badge badge-featured">Featured</q-badge>
+                        </div>
+                        <div class="legend-text text-2">Fundstr-curated pick</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip accent">
+                            <q-icon name="workspace_premium" size="14px" />
+                            <span>Fundstr creator</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Official Fundstr creator profile</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip accent">
+                            <q-icon name="verified_user" size="14px" />
+                            <span>Creator</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Creator account</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip accent">
+                            <q-icon name="verified_user" size="14px" />
+                            <span>Personal</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Personal supporter profile</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip accent">
+                            <q-icon name="bolt" size="14px" />
+                            <span>Lightning</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Lightning-ready for zaps</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip accent">
+                            <q-icon name="sell" size="14px" />
+                            <span>Has tiers</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Subscription tiers available</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip success">
+                            <q-icon name="verified" size="14px" />
+                            <span>NIP-05 verified</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Verified NIP-05 handle</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip warning">
+                            <q-icon name="sensors" size="14px" />
+                            <span>Signal only</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Profile shows signal metrics only</div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
+                          <span class="status-chip neutral">
+                            <q-icon name="data_thresholding" size="14px" />
+                            <span>Cache hit</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">Data pulled from cache</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="featured-grid">
+                    <CreatorCard
+                      v-for="profile in featuredCreators"
+                      :key="profile.pubkey"
+                      :profile="profile"
+                      featured
+                      :has-lightning="profile.hasLightning ?? undefined"
+                      :has-tiers="profile.hasTiers ?? undefined"
+                      :is-creator="profile.isCreator ?? undefined"
+                      :is-personal="profile.isPersonal ?? undefined"
+                      :nip05="profile.nip05 ?? undefined"
+                      @view-tiers="(payload) => viewProfile(profile, payload?.initialTab)"
+                      @view-profile="(payload) => viewProfile(profile, payload?.initialTab)"
+                      @message="startChat"
+                      @donate="donate"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <q-banner
+                v-else-if="featuredStatusMessage"
+                rounded
+                dense
+                class="status-banner text-1"
+                aria-live="polite"
+              >
+                <template #avatar>
+                  <q-icon :name="resolveBannerIcon(featuredStatusMessage)" size="20px" />
+                </template>
+                <span class="status-banner__text">{{ featuredStatusMessage }}</span>
+                <template #action>
+                  <q-btn
+                    v-if="featuredError"
+                    flat
+                    dense
+                    no-caps
+                    size="sm"
+                    color="accent"
+                    icon="refresh"
+                    label="Retry"
+                    class="status-banner__action"
+                    @click="refreshFeatured"
+                  />
+                </template>
+              </q-banner>
+
+              <div
+                v-else-if="showFeaturedEmptyState"
+                class="empty-state column items-center text-center q-pt-xl q-pb-xl q-px-md text-2"
+              >
+                <q-icon
+                  name="auto_awesome"
+                  size="4rem"
+                  class="q-mb-md text-accent-500"
+                  aria-hidden="true"
+                />
+                <div class="text-h6 text-1">No featured creators yet</div>
+                <p class="text-body1 q-mt-sm q-mb-none">
+                  Check back soon as we highlight more voices from the Nostr community.
+                </p>
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+  </q-page>
 </template>
 
 <script setup lang="ts">
+import { computed, onMounted, ref, watch, type ComponentPublicInstance } from 'vue';
+import { storeToRefs } from 'pinia';
+import { useRoute, useRouter } from 'vue-router';
+import { useQuasar } from 'quasar';
+import { nip19 } from 'nostr-tools';
+import CreatorProfileModal from 'components/CreatorProfileModal.vue';
+import CreatorCard from 'components/CreatorCard.vue';
+import { useNostrStore } from 'stores/nostr';
+import { useCreatorsStore, type CreatorProfile } from 'stores/creators';
+import { useMessengerStore } from 'stores/messenger';
+import { useMintsStore } from 'stores/mints';
+import { useBucketsStore } from 'stores/buckets';
+import { useUiStore } from 'stores/ui';
+import { notifyError, notifyWarning } from 'src/js/notify';
+import { debug } from '@/js/logger';
 import {
-  ref,
-  computed,
-  watch,
-  onMounted,
-  onBeforeUnmount,
-  nextTick,
-} from "vue";
-import DonateDialog from "components/DonateDialog.vue";
-import SubscribeDialog from "components/SubscribeDialog.vue";
-import SendTokenDialog from "components/SendTokenDialog.vue";
-import MediaPreview from "components/MediaPreview.vue";
-import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
-
-defineOptions({ components: { MediaPreview } });
-import { useSendTokensStore } from "stores/sendTokensStore";
-import { useDonationPresetsStore } from "stores/donationPresets";
-import { useCreatorsStore } from "stores/creators";
-import { useNostrStore } from "stores/nostr";
-import { notifyWarning } from "src/js/notify";
-import { useRouter, useRoute } from "vue-router";
-import { useMessengerStore } from "stores/messenger";
-import { useI18n } from "vue-i18n";
+  mintSupportsSplit,
+  resolveSupportedNuts,
+  SPLIT_SUPPORT_REQUIRED_MESSAGE,
+} from 'src/utils/nuts';
+import { useDonationPrompt } from '@/composables/useDonationPrompt';
+import { captureTelemetryWarning } from 'src/utils/telemetry/sentry';
+import { useI18n } from 'vue-i18n';
 import {
-  QDialog,
-  QCard,
-  QCardSection,
-  QCardActions,
-  QBtn,
-  QBanner,
-  QSeparator,
-  QPage,
-  useQuasar,
-} from "quasar";
-import { nip19 } from "nostr-tools";
-import { queryNutzapProfile, toHex } from "@/nostr/relayClient";
-import type { NostrEvent } from "@/nostr/relayClient";
-import { fallbackDiscoverRelays } from "@/nostr/discovery";
-import { NutzapProfileSchema } from "@/nostr/nutzapProfile";
+  creatorHasVerifiedNip05,
+  creatorIsFundstrCreator,
+  creatorIsSignalOnly,
+} from 'stores/creators';
 
-const props = defineProps<{ npubOrHex?: string }>();
+type FilterKey =
+  | 'hasTiers'
+  | 'hasLightning'
+  | 'featured'
+  | 'nip05Verified'
+  | 'fundstrCreator'
+  | 'signalOnly';
+type SortOption = 'relevance' | 'followers';
+type ViewMode = 'grid' | 'grouped';
+type ProfileTab = 'profile' | 'tiers';
 
-const iframeEl = ref<HTMLIFrameElement | null>(null);
-const iframeLoaded = ref(false);
-const showDonateDialog = ref(false);
-const selectedPubkey = ref("");
-const showTierDialog = ref(false);
-const loadingTiers = ref(false);
-const dialogPubkey = ref(""); // always 64-char hex
-const dialogNpub = computed(() => {
-  const hex = dialogPubkey.value;
-  if (hex.length === 64 && /^[0-9a-f]{64}$/i.test(hex))
-    return nip19.npubEncode(hex);
-  return "";
-});
+const creatorsStore = useCreatorsStore();
+const {
+  searchResults,
+  searching,
+  isRefreshing: storeIsRefreshing,
+  error: storeError,
+  searchWarnings: storeSearchWarnings,
+  searchStatusMessage: storeSearchStatusMessage,
+  featuredCreators,
+  loadingFeatured: storeLoadingFeatured,
+  featuredError: storeFeaturedError,
+  featuredStatusMessage: storeFeaturedStatusMessage,
+} = storeToRefs(creatorsStore);
 
-const sendTokensStore = useSendTokensStore();
-const donationStore = useDonationPresetsStore();
-const creators = useCreatorsStore();
-const nostr = useNostrStore();
-const messenger = useMessengerStore();
 const router = useRouter();
 const route = useRoute();
-const { t } = useI18n();
 const $q = useQuasar();
-const tiers = computed(() => creators.tiersMap[dialogPubkey.value] || []);
-const tierFetchError = computed(() => creators.tierFetchError);
-const showSubscribeDialog = ref(false);
-const selectedTier = ref<any>(null);
-const nutzapProfile = ref<any | null>(null);
-const loadingProfile = ref(false);
-const lastRelayHints = ref<string[]>([]);
-let tierTimeout: ReturnType<typeof setTimeout> | null = null;
+const nostr = useNostrStore();
+const messenger = useMessengerStore();
+const mintsStore = useMintsStore();
+const bucketsStore = useBucketsStore();
+const uiStore = useUiStore();
+const { open: openDonationPrompt } = useDonationPrompt();
+const { t } = useI18n();
 
-// Deep-link: show tiers dialog immediately (spinner until data resolves)
-watch(
-  () => props.npubOrHex,
-  (value) => {
-    if (typeof value === "string" && value.trim()) {
-      showTierDialog.value = true;
-      void viewCreatorProfile(value, { openDialog: false });
-    }
-  },
-  { immediate: true },
-);
+const searchQuery = ref('');
+const initialLoadComplete = ref(false);
+const MIN_SEARCH_LENGTH = 2;
+const PAGE_SIZE = 24;
 
-function sendTheme() {
-  iframeEl.value?.contentWindow?.postMessage(
-    { type: "set-theme", dark: $q.dark.isActive },
-    "*",
-  );
-}
+const searchSkeletonPlaceholders = [0, 1, 2];
+const featuredSkeletonPlaceholders = [0, 1, 2, 3, 4, 5];
 
-function onIframeLoad() {
-  iframeLoaded.value = true;
-  sendTheme();
-}
-
-watch(
-  () => $q.dark.isActive,
-  () => {
-    if (iframeLoaded.value) sendTheme();
-  },
-);
-
-function getPrice(t: any): number {
-  return t.price_sats ?? t.price ?? 0;
-}
-
-type NutzapProfileDetails = {
-  p2pkPubkey: string;
-  trustedMints: string[];
-  relays: string[];
+type EmptyStateFilterAction = {
+  key: FilterKey;
+  label: string;
+  icon: string;
+  helper: string;
+  sampleQuery: string;
+  ariaLabel?: string;
 };
 
-function parseNutzapProfileEvent(event: NostrEvent | null): NutzapProfileDetails | null {
-  if (!event) return null;
-  const relays = new Set<string>();
-  const mints: string[] = [];
-  let p2pk = "";
+const sampleQueries = [
+  { label: 'Lightning devs', value: 'lightning' },
+  { label: 'NIP-05 creators', value: 'nip-05' },
+  { label: 'Zaps & tipping', value: 'zap me' },
+];
 
-  if (event.content) {
-    try {
-      const parsedJson = JSON.parse(event.content);
-      const safe = NutzapProfileSchema.safeParse(parsedJson);
-      if (safe.success) {
-        const data = safe.data;
-        p2pk = typeof data.p2pk === "string" ? data.p2pk : p2pk;
-        if (Array.isArray(data.mints)) {
-          for (const mint of data.mints) {
-            if (typeof mint === "string" && mint) mints.push(mint);
-          }
-        }
-        if (Array.isArray(data.relays)) {
-          for (const relay of data.relays) {
-            if (typeof relay === "string" && relay) relays.add(relay);
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("[nutzap] failed to parse profile JSON", e);
-    }
+const emptyStateFilterActions: EmptyStateFilterAction[] = [
+  {
+    key: 'hasLightning',
+    label: 'Lightning builders',
+    icon: 'bolt',
+    helper: 'Filters to creators ready for lightning zaps.',
+    sampleQuery: 'lightning',
+    ariaLabel: 'Search lightning-ready creators and enable the lightning filter',
+  },
+  {
+    key: 'nip05Verified',
+    label: 'NIP-05 ready',
+    icon: 'verified',
+    helper: 'Shows creators with verified NIP-05 handles.',
+    sampleQuery: 'nip-05',
+    ariaLabel: 'Search verified NIP-05 creators and enable the verification filter',
+  },
+];
+
+const filterChips: { key: FilterKey; label: string }[] = [
+  { key: 'hasTiers', label: 'Has tiers' },
+  { key: 'hasLightning', label: 'Has lightning' },
+  { key: 'featured', label: 'Featured' },
+  { key: 'nip05Verified', label: 'NIP-05 verified' },
+  { key: 'fundstrCreator', label: 'Fundstr creator' },
+  { key: 'signalOnly', label: 'Signal only' },
+];
+
+const sortOptions: { label: string; value: SortOption }[] = [
+  { label: 'Relevance', value: 'relevance' },
+  { label: 'Followers', value: 'followers' },
+];
+
+const activeFilters = ref<Record<FilterKey, boolean>>({
+  hasTiers: false,
+  hasLightning: false,
+  featured: false,
+  nip05Verified: false,
+  fundstrCreator: false,
+  signalOnly: false,
+});
+
+const viewMode = ref<ViewMode>('grid');
+
+const sortOption = ref<SortOption>('relevance');
+const visibleCount = ref(PAGE_SIZE);
+const hasFollowerMetrics = computed(() =>
+  creatorsStore.unfilteredSearchResults.some(
+    (profile) => typeof profile.followers === 'number' && Number.isFinite(profile.followers),
+  ),
+);
+const availableSortOptions = computed(() =>
+  hasFollowerMetrics.value
+    ? sortOptions
+    : sortOptions.filter((option) => option.value === 'relevance'),
+);
+
+const viewModeOptions = [
+  { label: 'Grid', icon: 'grid_view', value: 'grid' },
+  { label: 'Grouped', icon: 'view_agenda', value: 'grouped' },
+];
+
+const trimmedQuery = computed(() => (searchQuery.value || '').trim());
+const hasQuery = computed(() => trimmedQuery.value.length > 0);
+const isValidNip19Query = (value: string): boolean => {
+  if (!value || (!value.startsWith('npub') && !value.startsWith('nprofile'))) {
+    return false;
   }
-
-  const tags = Array.isArray(event.tags) ? event.tags : [];
-  for (const tag of tags) {
-    if (tag[0] === "mint" && typeof tag[1] === "string" && tag[1]) {
-      mints.push(tag[1]);
-    }
-    if (tag[0] === "relay" && typeof tag[1] === "string" && tag[1]) {
-      relays.add(tag[1]);
-    }
-    if (!p2pk && tag[0] === "pubkey" && typeof tag[1] === "string" && tag[1]) {
-      p2pk = tag[1];
-    }
-  }
-
-  const uniqueMints = Array.from(new Set(mints.filter((m) => !!m)));
-  const uniqueRelays = Array.from(relays);
-
-  if (!p2pk && uniqueMints.length === 0 && uniqueRelays.length === 0) {
-    return null;
-  }
-
-  return {
-    p2pkPubkey: p2pk,
-    trustedMints: uniqueMints,
-    relays: uniqueRelays,
-  };
-}
-
-async function fetchProfileWithFallback(pubkeyInput: string) {
-  let hex: string;
-  try {
-    hex = toHex(pubkeyInput);
-  } catch (err) {
-    console.error("Invalid pubkey for profile fetch", err);
-    return {
-      event: null,
-      details: null,
-      relayHints: [],
-      pubkeyHex: "",
-    };
-  }
-
-  const relayHints = new Set<string>();
-  let event: NostrEvent | null = null;
-  try {
-    event = await queryNutzapProfile(hex);
-  } catch (e) {
-    console.error("Failed to query Nutzap profile", e);
-  }
-
-  if (!event) {
-    try {
-      const discovered = await fallbackDiscoverRelays(hex);
-      for (const url of discovered) relayHints.add(url);
-      if (relayHints.size) {
-        event = await queryNutzapProfile(hex, {
-          fanout: Array.from(relayHints),
-        });
-      }
-    } catch (e) {
-      console.error("NIP-65 discovery failed", e);
-    }
-  }
-
-  if (event) {
-    for (const tag of event.tags || []) {
-      if (tag[0] === "relay" && typeof tag[1] === "string" && tag[1]) {
-        relayHints.add(tag[1]);
-      }
-    }
-  }
-
-  const details = parseNutzapProfileEvent(event);
-  if (details) {
-    for (const relay of details.relays) relayHints.add(relay);
-  }
-
-  return {
-    event,
-    details,
-    relayHints: Array.from(relayHints),
-    pubkeyHex: hex,
-  };
-}
-
-async function viewCreatorProfile(
-  pubkeyInput: string,
-  opts: { openDialog?: boolean } = {},
-) {
-  const trimmed = typeof pubkeyInput === "string" ? pubkeyInput.trim() : "";
-  if (!trimmed) return;
-
-  const { openDialog = true } = opts;
-  nutzapProfile.value = null;
-  lastRelayHints.value = [];
-  selectedTier.value = null;
-  loadingProfile.value = true;
-  loadingTiers.value = true;
-  if (tierTimeout) clearTimeout(tierTimeout);
-  tierTimeout = setTimeout(() => {
-    loadingTiers.value = false;
-  }, 5000);
-
-  let profileResult: Awaited<ReturnType<typeof fetchProfileWithFallback>>;
-  try {
-    profileResult = await fetchProfileWithFallback(trimmed);
-  } catch (e) {
-    console.error("Failed to fetch creator profile", e);
-    loadingProfile.value = false;
-    if (tierTimeout) {
-      clearTimeout(tierTimeout);
-      tierTimeout = null;
-    }
-    loadingTiers.value = false;
-    return;
-  }
-
-  const { pubkeyHex, details, relayHints } = profileResult;
-  if (!pubkeyHex) {
-    loadingProfile.value = false;
-    if (tierTimeout) {
-      clearTimeout(tierTimeout);
-      tierTimeout = null;
-    }
-    loadingTiers.value = false;
-    return;
-  }
-
-  dialogPubkey.value = pubkeyHex;
-  selectedPubkey.value = pubkeyHex;
-  lastRelayHints.value = relayHints;
-  if (details) {
-    nutzapProfile.value = details;
-  }
-  loadingProfile.value = false;
 
   try {
-    await creators.fetchTierDefinitions(pubkeyHex, {
-      relayHints: lastRelayHints.value,
+    const decoded = nip19.decode(value);
+    return decoded.type === 'npub' || decoded.type === 'nprofile';
+  } catch {
+    return false;
+  }
+};
+
+const isValidNip05Query = (value: string): boolean => {
+  const trimmed = value.trim();
+  if (!trimmed.includes('@')) {
+    return false;
+  }
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+};
+
+const isQueryTooShort = computed(() => {
+  if (!hasQuery.value) {
+    return false;
+  }
+  if (trimmedQuery.value.length >= MIN_SEARCH_LENGTH) {
+    return false;
+  }
+  return !(isValidNip19Query(trimmedQuery.value) || isValidNip05Query(trimmedQuery.value));
+});
+
+const searchHint = computed(() => {
+  if (!isQueryTooShort.value) {
+    return '';
+  }
+  return `Type at least ${MIN_SEARCH_LENGTH} characters or paste an npub/NIP-05.`;
+});
+const searchLoading = computed(() => searching.value);
+const isRefreshing = computed(() => storeIsRefreshing.value);
+const searchError = computed(() => storeError.value);
+const searchWarnings = computed(() => storeSearchWarnings?.value ?? []);
+const searchStatusMessage = computed(() => storeSearchStatusMessage?.value ?? '');
+const searchFilters = computed(() => ({ ...activeFilters.value }));
+const normalizedFilterKeys = new Set<FilterKey>([
+  'hasTiers',
+  'hasLightning',
+  'featured',
+  'nip05Verified',
+  'fundstrCreator',
+  'signalOnly',
+]);
+const resultSummary = computed(() => {
+  if (!initialLoadComplete.value) {
+    return '';
+  }
+
+  if (isQueryTooShort.value) {
+    return '';
+  }
+
+  if (!hasQuery.value && !searchResults.value.length && !searchLoading.value) {
+    return '';
+  }
+
+  if (searchLoading.value) {
+    return 'Searching creators...';
+  }
+
+  const count = searchResults.value.length;
+  const noun = count === 1 ? 'creator' : 'creators';
+  return `${count} ${noun} found`;
+});
+const pagedSearchResults = computed(() =>
+  searchResults.value.slice(0, Math.max(visibleCount.value, PAGE_SIZE)),
+);
+const canLoadMore = computed(() => searchResults.value.length > visibleCount.value);
+const activeFilterCount = computed(
+  () => Object.values(activeFilters.value).filter(Boolean).length,
+);
+const activeFilterLabel = computed(() => {
+  if (!activeFilterCount.value) {
+    return '';
+  }
+  return `${activeFilterCount.value} filter${activeFilterCount.value === 1 ? '' : 's'}`;
+});
+const loadingFeatured = computed(() => storeLoadingFeatured?.value ?? false);
+
+const isPersonalProfile = (profile: CreatorProfile) => profile.isPersonal === true;
+
+const isCreatorProfile = (profile: CreatorProfile) => {
+  if (profile.isCreator !== undefined && profile.isCreator !== null) {
+    return Boolean(profile.isCreator);
+  }
+
+  return Boolean(profile.featured || profile.hasTiers || profile.hasLightning);
+};
+
+const groupedResults = computed(() => {
+  const groups = [
+    { key: 'fundstr', title: 'Fundstr creators', predicate: creatorIsFundstrCreator },
+    { key: 'signal-only', title: 'Signal only', predicate: creatorIsSignalOnly },
+    { key: 'verified', title: 'NIP-05 verified', predicate: creatorHasVerifiedNip05 },
+    { key: 'creators', title: 'Creators', predicate: isCreatorProfile },
+    { key: 'personal', title: 'Personal profiles', predicate: isPersonalProfile },
+  ];
+
+  const buckets = groups.map((group) => ({ ...group, profiles: [] as CreatorProfile[] }));
+  const ungrouped: CreatorProfile[] = [];
+
+  for (const profile of pagedSearchResults.value) {
+    const bucket = buckets.find((group) => group.predicate(profile));
+    if (bucket) {
+      bucket.profiles.push(profile);
+    } else {
+      ungrouped.push(profile);
+    }
+  }
+
+  if (ungrouped.length) {
+    buckets.push({
+      key: 'other',
+      title: 'Other profiles',
+      predicate: () => true,
+      profiles: ungrouped,
     });
-  } catch (e) {
-    console.error("Failed to fetch tier definitions", e);
-  } finally {
-    if (tierTimeout) {
-      clearTimeout(tierTimeout);
-      tierTimeout = null;
-    }
-    loadingTiers.value = false;
   }
 
-  if (openDialog) {
-    await nextTick();
-    showTierDialog.value = true;
-  }
+  return buckets.filter((group) => group.profiles.length > 0);
+});
+const showSearchEmptyState = computed(
+  () =>
+    initialLoadComplete.value &&
+    !searchLoading.value &&
+    !searchError.value &&
+    searchWarnings.value.length === 0 &&
+    !searchResults.value.length &&
+    hasQuery.value &&
+    !isQueryTooShort.value,
+);
+
+const resetVisibleCount = () => {
+  visibleCount.value = Math.min(PAGE_SIZE, searchResults.value.length || PAGE_SIZE);
+};
+
+const loadMoreResults = () => {
+  visibleCount.value = Math.min(visibleCount.value + PAGE_SIZE, searchResults.value.length);
+};
+const showInitialEmptyState = computed(
+  () =>
+    initialLoadComplete.value &&
+    !searchLoading.value &&
+    !searchError.value &&
+    searchWarnings.value.length === 0 &&
+    !searchResults.value.length &&
+    !hasQuery.value,
+);
+
+const emptyStateTitle = computed(() =>
+  showInitialEmptyState.value ? 'Search for creators' : 'No profiles yet',
+);
+const emptyStateMessage = computed(() =>
+  showInitialEmptyState.value
+    ? 'Start typing a name, npub, or NIP-05 handle to find creators.'
+    : 'Try a different name or paste an npub to explore more creators.',
+);
+
+function debounce(func: (...args: any[]) => void, delay: number) {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  return function (this: unknown, ...args: any[]) {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => func.apply(this, args), delay);
+  };
 }
 
-function onMessage(ev: MessageEvent) {
-  if (ev.data && ev.data.type === "donate" && ev.data.pubkey) {
-    try {
-      selectedPubkey.value = toHex(ev.data.pubkey);
-    } catch {
-      selectedPubkey.value = ev.data.pubkey;
-    }
-    showDonateDialog.value = true;
-  } else if (ev.data && ev.data.type === "viewProfile" && ev.data.pubkey) {
-    // Creator iframe deep link: open dialog first, populate once data loads
-    showTierDialog.value = true;
-    void viewCreatorProfile(ev.data.pubkey, { openDialog: false });
-  } else if (ev.data && ev.data.type === "startChat" && ev.data.pubkey) {
-    const pubkey = nostr.resolvePubkey(ev.data.pubkey);
-    router.push({ path: "/nostr-messenger", query: { pubkey } });
-    const stop = watch(
-      () => messenger.started,
-      (started) => {
-        if (started) {
-          messenger.startChat(pubkey);
-          stop();
-        }
-      },
-    );
-  }
-}
+const triggerImmediateSearch = () => {
+  void runSearch({ fresh: true });
+};
 
-watch(tiers, (val) => {
-  if (val.length > 0) {
-    loadingTiers.value = false;
-    if (tierTimeout) clearTimeout(tierTimeout);
-  }
-});
+const debouncedSearch = debounce(() => {
+  void runSearch();
+}, 300);
 
-watch(tierFetchError, (val) => {
-  if (val) {
-    loadingTiers.value = false;
-    if (tierTimeout) clearTimeout(tierTimeout);
-  }
-});
+const applyClientFilters = () => {
+  creatorsStore.applySearchFilters(searchFilters.value, sortOption.value);
+};
 
 watch(
-  () => $q.dark.isActive,
+  () => ({ ...activeFilters.value }),
   () => {
-    sendTheme();
+    applyClientFilters();
+  },
+  { deep: true },
+);
+
+watch(sortOption, () => {
+  applyClientFilters();
+});
+
+watch(searchResults, () => {
+  resetVisibleCount();
+});
+
+watch(viewMode, () => {
+  resetVisibleCount();
+});
+
+const parseFiltersFromQuery = (value: unknown): FilterKey[] => {
+  if (typeof value === 'string') {
+    return value.split(',').map((filter) => filter.trim() as FilterKey);
+  }
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((entry) => (typeof entry === 'string' ? entry.split(',') : []))
+      .map((filter) => filter.trim() as FilterKey);
+  }
+  return [];
+};
+
+const applyQueryState = () => {
+  const query = route.query;
+  if (typeof query.q === 'string') {
+    searchQuery.value = query.q;
+  }
+
+  const requestedFilters = parseFiltersFromQuery(query.filters).filter((filter) =>
+    normalizedFilterKeys.has(filter),
+  );
+
+  if (requestedFilters.length) {
+    activeFilters.value = Object.fromEntries(
+      Object.keys(activeFilters.value).map((key) => [
+        key,
+        requestedFilters.includes(key as FilterKey),
+      ]),
+    ) as Record<FilterKey, boolean>;
+  }
+
+  if (typeof query.sort === 'string' && sortOptions.some((option) => option.value === query.sort)) {
+    sortOption.value = query.sort as SortOption;
+  }
+
+  if (
+    typeof query.view === 'string' &&
+    viewModeOptions.some((option) => option.value === query.view)
+  ) {
+    viewMode.value = query.view as ViewMode;
+  }
+};
+
+const buildViewQuery = () => {
+  const query: Record<string, string | string[]> = { ...route.query } as Record<
+    string,
+    string | string[]
+  >;
+
+  const trimmed = searchQuery.value.trim();
+  if (trimmed) {
+    query.q = trimmed;
+  } else {
+    delete query.q;
+  }
+
+  const activeFilterKeys = Object.entries(activeFilters.value)
+    .filter(([, enabled]) => enabled)
+    .map(([key]) => key);
+  if (activeFilterKeys.length) {
+    query.filters = activeFilterKeys.join(',');
+  } else {
+    delete query.filters;
+  }
+
+  if (sortOption.value !== 'relevance') {
+    query.sort = sortOption.value;
+  } else {
+    delete query.sort;
+  }
+
+  if (viewMode.value !== 'grid') {
+    query.view = viewMode.value;
+  } else {
+    delete query.view;
+  }
+
+  return query;
+};
+
+const normalizeQuery = (query: Record<string, unknown>) => {
+  const entries = Object.entries(query)
+    .filter(([, value]) => value !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify(entries);
+};
+
+watch(
+  [searchQuery, activeFilters, sortOption, viewMode],
+  () => {
+    const nextQuery = buildViewQuery();
+    if (normalizeQuery(nextQuery) !== normalizeQuery(route.query)) {
+      void router.replace({ query: nextQuery });
+    }
+  },
+  { deep: true },
+);
+
+watch(
+  hasFollowerMetrics,
+  (hasFollowers) => {
+    if (!hasFollowers && sortOption.value === 'followers') {
+      sortOption.value = 'relevance';
+    }
   },
 );
 
-watch(showTierDialog, (val) => {
-  if (!val) {
-    nutzapProfile.value = null;
-    loadingProfile.value = false;
-    lastRelayHints.value = [];
+const loadMore = () => {
+  // The new discovery service does not support pagination.
+  // This function is now a no-op but is kept to prevent template errors.
+  // The "Load More" button will be hidden via `hasMoreResults`.
+};
+
+async function runSearch({ fresh = false }: { fresh?: boolean } = {}) {
+  if (isQueryTooShort.value) {
+    await creatorsStore.searchCreators('');
+    initialLoadComplete.value = true;
+    return;
+  }
+  try {
+    await creatorsStore.searchCreators(trimmedQuery.value, {
+      fresh,
+      filters: searchFilters.value,
+      sort: sortOption.value,
+    });
+  } finally {
+    initialLoadComplete.value = true;
+  }
+}
+
+async function loadFeatured(force = false) {
+  await creatorsStore.loadFeaturedCreators(force);
+}
+
+const featuredError = computed(() => storeFeaturedError.value);
+
+const featuredStatusMessage = computed(() => {
+  if (featuredError.value) {
+    return featuredError.value;
+  }
+  if (storeFeaturedStatusMessage.value && !featuredCreators.value.length) {
+    return storeFeaturedStatusMessage.value;
+  }
+  if (loadingFeatured.value && !featuredCreators.value.length) {
+    return 'Loading creators...';
+  }
+  if (!loadingFeatured.value && !featuredCreators.value.length) {
+    return 'No featured creators available right now.';
+  }
+  return '';
+});
+
+const featuredWarningMessage = computed(
+  () => storeFeaturedStatusMessage.value || '',
+);
+
+const showFeaturedEmptyState = computed(
+  () => !loadingFeatured.value && !featuredCreators.value.length && !featuredError.value,
+);
+
+const refreshFeatured = async () => {
+  await loadFeatured(true);
+};
+
+const isMobileScreen = computed(() => $q.screen.lt.md);
+const legendExpanded = ref(!$q.screen.lt.md);
+
+watch(isMobileScreen, (isMobile) => {
+  legendExpanded.value = !isMobile;
+});
+
+const toggleLegend = () => {
+  legendExpanded.value = !legendExpanded.value;
+};
+
+watch(searchWarnings, (warnings) => {
+  if (Array.isArray(warnings) && warnings.length > 0) {
+    debug('Search warnings:', warnings);
   }
 });
 
-function openSubscribe(tier: any) {
-  selectedTier.value = tier;
-  showSubscribeDialog.value = true;
+const showProfileModal = ref(false);
+const selectedProfilePubkey = ref('');
+const selectedProfile = ref<CreatorProfile | null>(null);
+const selectedProfileInitialTab = ref<ProfileTab>('profile');
+const featuredSectionRef = ref<HTMLElement | ComponentPublicInstance | null>(null);
+const activeMintInfo = computed(() => mintsStore.activeInfo);
+const supportedNuts = computed(() => resolveSupportedNuts(activeMintInfo.value));
+const activeMintSupportsSplit = computed(() =>
+  mintSupportsSplit(activeMintInfo.value, supportedNuts.value),
+);
+const { activeBuckets } = storeToRefs(bucketsStore);
+const bucketBalances = computed(() => bucketsStore.bucketBalances);
+const hasFundedBucket = computed(() =>
+  activeBuckets.value.some((bucket) => (bucketBalances.value[bucket.id] ?? 0) > 0),
+);
+
+function viewProfile(profile: CreatorProfile, initialTab: ProfileTab = 'profile') {
+  if (!profile?.pubkey) {
+    notifyError('We could not open this profile because its public key is missing.');
+    captureTelemetryWarning('findCreators.missingPubkey', {
+      profileId: profile?.id ?? profile?.nip05 ?? profile?.name ?? 'unknown',
+      profile,
+    });
+    return;
+  }
+
+  selectedProfilePubkey.value = profile.pubkey;
+  selectedProfile.value = profile;
+  selectedProfileInitialTab.value = initialTab;
+  showProfileModal.value = true;
 }
 
-function retryFetchTiers() {
-  if (!dialogPubkey.value) return;
-  loadingTiers.value = true;
-  if (tierTimeout) clearTimeout(tierTimeout);
-  tierTimeout = setTimeout(() => {
-    loadingTiers.value = false;
-  }, 5000);
-  creators.fetchTierDefinitions(dialogPubkey.value, {
-    relayHints: lastRelayHints.value,
+function startChat(pubkey: string) {
+  const resolvedPubkey = nostr.resolvePubkey(pubkey);
+  messenger.startChat(resolvedPubkey);
+  if ($q.screen.lt.md) {
+    messenger.setDrawer(true);
+  }
+  void router.push({ path: '/nostr-messenger', query: { pubkey: resolvedPubkey } });
+}
+
+async function donate(pubkey: string) {
+  if (!activeMintSupportsSplit.value) {
+    notifyError(SPLIT_SUPPORT_REQUIRED_MESSAGE);
+    return;
+  }
+  const hasActiveMint =
+    typeof mintsStore.activeMintUrl === 'string' && mintsStore.activeMintUrl.trim().length > 0;
+  const hasPositiveBalance = mintsStore.activeBalance > 0;
+  const hasActiveBucketWithFunds = hasFundedBucket.value;
+
+  if (!hasActiveMint || !hasPositiveBalance || !hasActiveBucketWithFunds) {
+    const title = t('DonationPrompt.cashu.ctas.setupTitle');
+    const description = t('DonationPrompt.cashu.ctas.setupDescription');
+
+    notifyWarning(title, description);
+    showProfileModal.value = false;
+
+    if (!hasActiveMint) {
+      void openDonationPrompt({ bypassGate: true, defaultTab: 'cashu' });
+    }
+
+    void router.push('/wallet');
+    return;
+  }
+  if (!nostr.hasIdentity) {
+    uiStore.showMissingSignerModal = true;
+    notifyWarning(
+      'You\'ll need a Nostr identity before we can deliver the Cashu token.',
+    );
+    return;
+  }
+
+  try {
+    await nostr.initSignerIfNotSet();
+  } catch (error) {
+    notifyError('We couldn\'t connect to your Nostr signer. Please try again.');
+    return;
+  }
+
+  if (!nostr.signer || !nostr.pubkey) {
+    notifyError('Your Nostr identity is not ready yet. Please try again.');
+    return;
+  }
+  const resolvedPubkey = nostr.resolvePubkey(pubkey);
+  messenger.startChat(resolvedPubkey);
+  showProfileModal.value = false;
+  void router.push({
+    path: '/nostr-messenger',
+    query: { pubkey: resolvedPubkey, intent: 'donate' },
   });
 }
 
-function confirmSubscribe({ bucketId, periods, amount, startDate, total }: any) {
-  // Nutzap transaction is handled within SubscribeDialog.
-  // Close surrounding dialogs and process any additional UI updates here.
-  showSubscribeDialog.value = false;
-  showTierDialog.value = false;
-}
-
-function handleDonate({
-  bucketId,
-  locked,
-  type,
-  amount,
-  periods,
-  message,
-}: any) {
-  if (!selectedPubkey.value) return;
-  if (type === "one-time") {
-    sendTokensStore.clearSendData();
-    sendTokensStore.recipientPubkey = selectedPubkey.value;
-    sendTokensStore.sendViaNostr = true;
-    sendTokensStore.sendData.bucketId = bucketId;
-    sendTokensStore.sendData.amount = amount;
-    sendTokensStore.sendData.memo = message;
-    sendTokensStore.sendData.p2pkPubkey = locked ? selectedPubkey.value : "";
-    sendTokensStore.showLockInput = locked;
-    showDonateDialog.value = false;
-    sendTokensStore.showSendTokens = true;
-  } else {
-    donationStore.createDonationPreset(
-      periods,
-      amount,
-      selectedPubkey.value,
-      bucketId,
-    );
-    showDonateDialog.value = false;
-  }
-}
-
-onMounted(async () => {
-  window.addEventListener("message", onMessage);
-  iframeEl.value?.addEventListener("load", onIframeLoad);
-  try {
-    await nostr.initNdkReadOnly();
-  } catch (e: any) {
-    notifyWarning("Failed to connect to Nostr relays", e?.message);
+const resolveBannerIcon = (message: string | null | undefined) => {
+  if (!message) {
+    return 'info';
   }
 
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('fail') || normalized.includes('error')) {
+    return 'warning';
+  }
+
+  if (normalized.includes('refresh') || normalized.includes('loading')) {
+    return 'autorenew';
+  }
+
+  return 'info';
+};
+
+function redirectToCreatorIfPresent() {
   const npub = route.query.npub;
-  if (typeof npub === "string" && npub) {
-    try {
-      nip19.decode(npub);
-      router.replace({
-        name: "PublicCreatorProfile",
-        params: { npubOrHex: npub },
-      });
-      return;
-    } catch {
-      if (iframeEl.value) {
-        iframeEl.value.addEventListener(
-          "load",
-          () => {
-            iframeEl.value?.contentWindow?.postMessage(
-              { type: "prefillSearch", npub },
-              "*",
-            );
-          },
-          { once: true },
-        );
-      }
-    }
+  if (typeof npub === 'string' && npub.trim()) {
+    void router.replace({ name: 'creator-profile', params: { npub: npub.trim() } });
   }
-});
+}
 
-onBeforeUnmount(() => {
-  window.removeEventListener("message", onMessage);
-  iframeEl.value?.removeEventListener("load", onIframeLoad);
-  if (tierTimeout) clearTimeout(tierTimeout);
-  nutzapProfile.value = null;
-  loadingProfile.value = false;
+function toggleFilter(filterKey: FilterKey) {
+  activeFilters.value = {
+    ...activeFilters.value,
+    [filterKey]: !activeFilters.value[filterKey],
+  };
+}
+
+const clearFilters = () => {
+  activeFilters.value = Object.fromEntries(
+    Object.keys(activeFilters.value).map((key) => [key, false]),
+  ) as Record<FilterKey, boolean>;
+  sortOption.value = 'relevance';
+};
+
+const applySampleQuery = (query: string) => {
+  searchQuery.value = query;
+  triggerImmediateSearch();
+};
+
+const applyFilterSampleAction = (action: EmptyStateFilterAction) => {
+  activeFilters.value = {
+    ...activeFilters.value,
+    [action.key]: true,
+  };
+
+  applySampleQuery(action.sampleQuery);
+};
+
+const pasteNpubFromClipboard = async () => {
+  if (!navigator?.clipboard?.readText) {
+    notifyWarning('Clipboard access is unavailable. Paste manually instead.');
+    return;
+  }
+
+  try {
+    const npub = (await navigator.clipboard.readText()).trim();
+    if (!npub) {
+      notifyWarning('Your clipboard is empty. Copy an npub and try again.');
+      return;
+    }
+    searchQuery.value = npub;
+    triggerImmediateSearch();
+  } catch (error) {
+    debug('Failed to paste npub from clipboard', error);
+    notifyError('Unable to read from your clipboard. Please paste manually.');
+  }
+};
+
+const resolveElement = (target: HTMLElement | ComponentPublicInstance | null) => {
+  if (!target) {
+    return undefined;
+  }
+
+  if (target instanceof HTMLElement) {
+    return target;
+  }
+
+  if ('$el' in target && target.$el instanceof HTMLElement) {
+    return target.$el;
+  }
+
+  return undefined;
+};
+
+const jumpToFeatured = () => {
+  const el = resolveElement(featuredSectionRef.value);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+
+  void router.push({ hash: '#featured-creators' });
+};
+
+onMounted(() => {
+  redirectToCreatorIfPresent();
+  applyQueryState();
+  if (hasQuery.value) {
+    void runSearch();
+  } else {
+    initialLoadComplete.value = true;
+  }
+  void loadFeatured();
 });
 </script>
 
+
 <style scoped>
-.find-creators-wrapper {
+
+.fixed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: clamp(20px, 2vw, 32px);
+}
+
+@media (min-width: 1100px) {
+  .fixed-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1360px) {
+  .fixed-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+.featured-grid {
+  display: grid;
+  gap: clamp(20px, 2vw, 32px);
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+@media (min-width: 1200px) {
+  .featured-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  }
+}
+
+@media (min-width: 1600px) {
+  .featured-grid {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  }
+}
+
+.featured-grid-container {
+  width: 100%;
+  max-width: min(100%, 160rem);
+  margin: 0 auto;
+  padding-inline: clamp(0px, 3vw, 16px);
+}
+
+@media (min-width: 1600px) {
+  .featured-grid-container {
+    max-width: min(100%, 180rem);
+  }
+}
+
+@media (min-width: 1920px) {
+  .featured-grid-container {
+    max-width: min(100%, 200rem);
+  }
+}
+
+.featured-legend {
+  background: var(--surface-1);
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.legend-header {
   display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  padding: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.legend-header--mobile {
+  margin-bottom: 0;
+}
+
+.legend-title {
+  font-weight: 700;
+}
+
+.legend-toggle {
+  padding: 4px 8px;
+}
+
+.legend-content {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  padding-top: 0.25rem;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.25rem 0;
+}
+
+.legend-chip {
+  flex-shrink: 0;
+}
+
+.legend-text {
+  line-height: 1.3;
+}
+
+.badge {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.badge-featured {
+  background: var(--accent-200);
+  color: var(--text-1);
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  line-height: 1;
+  background: var(--chip-bg);
+  color: var(--text-2);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 55%, transparent);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.status-chip.accent {
+  color: var(--accent-500);
+  background: color-mix(in srgb, var(--accent-200) 45%, transparent);
+  border-color: color-mix(in srgb, var(--accent-500) 40%, transparent);
+}
+
+.status-chip.muted {
+  background: color-mix(in srgb, var(--chip-bg) 80%, transparent);
+  color: var(--text-2);
+}
+
+.status-chip.neutral {
+  background: color-mix(in srgb, var(--chip-bg) 60%, transparent);
+  border-color: color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+}
+
+.status-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-200);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 767px) {
+  .legend-content {
+    grid-template-columns: 1fr;
+  }
+
+  .featured-legend {
+    margin-bottom: 0.5rem;
+  }
+}
+
+h1 {
+  font-size: 2.5rem;
   margin: 0;
 }
 
-.find-creators-frame {
-  border: none;
+.find-creators-page {
+  min-height: 100vh;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-1) 96%, transparent) 0%,
+    color-mix(in srgb, var(--surface-1) 88%, rgba(15, 23, 42, 0.05)) 55%,
+    color-mix(in srgb, var(--surface-1) 82%, rgba(15, 23, 42, 0.12)) 100%
+  );
+}
+
+.page-shell {
+  padding-inline: clamp(1.5rem, 4vw, 3rem);
+}
+
+.find-creators-content {
+  width: min(100%, 160rem);
+  margin: 0 auto;
+  padding-block-end: 3rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: clamp(2.5rem, 2.25vw, 3.25rem);
+}
+
+.page-hero {
   width: 100%;
-  flex: 1 1 auto;
-  min-height: 0;
+  text-align: center;
 }
 
-.tier-dialog {
+.page-hero h1 {
+  margin: 0;
+  font-size: 2.5rem;
+}
+
+.section-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
   width: 100%;
-  max-width: 500px;
 }
 
-.tier-card .subscribe-btn {
-  display: inline-flex;
+.stack-12 {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-@media (hover: hover) {
-  .tier-card .subscribe-btn {
-    display: none;
+.find-creators-panel {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid var(--surface-contrast-border);
+  box-shadow:
+    0 12px 24px rgba(15, 23, 42, 0.04),
+    0 24px 48px rgba(15, 23, 42, 0.08);
+}
+
+.panel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+
+.load-more-wrapper {
+  display: flex;
+  justify-content: center;
+}
+
+.load-more-button {
+  min-width: 180px;
+}
+
+.empty-state p {
+  max-width: 320px;
+}
+
+.empty-illustration {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.empty-illustration__halo {
+  width: 108px;
+  height: 108px;
+  display: grid;
+  place-items: center;
+  border-radius: 26px;
+  background: color-mix(in srgb, var(--accent-200) 24%, transparent);
+  border: 1px solid var(--surface-contrast-border);
+  box-shadow:
+    0 10px 30px rgba(15, 23, 42, 0.06),
+    0 18px 46px rgba(15, 23, 42, 0.08);
+}
+
+.empty-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.badge-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+  width: 100%;
+  min-width: 180px;
+}
+
+.badge-toggle__helper {
+  line-height: 1.35;
+}
+
+.empty-actions {
+  width: 100%;
+  max-width: 640px;
+}
+
+.sample-queries .q-btn {
+  width: 100%;
+}
+
+@media (min-width: 600px) {
+  .sample-queries .q-btn {
+    width: auto;
   }
 
-  .tier-card:hover .subscribe-btn {
-    display: inline-flex;
+  .badge-toggle {
+    width: auto;
+  }
+}
+
+.empty-ctas .q-btn {
+  min-width: 180px;
+}
+
+.helper-text {
+  max-width: 540px;
+  margin: 0 auto;
+}
+
+.status-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-200) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-200) 40%, transparent);
+}
+
+.status-banner :deep(.q-banner__avatar) {
+  margin-right: 4px;
+  color: var(--accent-600);
+}
+
+.status-banner__text {
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.status-banner__action {
+  margin-left: 8px;
+}
+
+.search-results-toolbar {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--surface-contrast-border);
+  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
+  gap: 10px;
+}
+
+.toolbar-controls {
+  flex-wrap: wrap;
+}
+
+.filters-group {
+  flex-wrap: wrap;
+}
+
+.filter-chip {
+  border: 1px solid var(--surface-contrast-border);
+}
+
+.sort-select {
+  min-width: 160px;
+}
+
+.view-mode-toggle {
+  min-width: 164px;
+}
+
+.grouped-results {
+  width: 100%;
+}
+
+.grouped-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.grouped-heading {
+  margin: 0;
+}
+
+
+.result-skeleton,
+.featured-skeleton {
+  border-radius: 16px;
+  height: 240px;
+}
+
+@media (min-width: 768px) {
+  .find-creators-content {
+    padding-block-end: 3.5rem;
+  }
+}
+
+@media (min-width: 1600px) {
+  .find-creators-content {
+    width: min(100%, 180rem);
+  }
+}
+
+@media (min-width: 1920px) {
+  .find-creators-content {
+    width: min(100%, 200rem);
   }
 }
 </style>

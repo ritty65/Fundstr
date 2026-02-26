@@ -4,35 +4,119 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch to deploy (must be main)"
+        required: true
+        default: "main"
+
+concurrency:
+  group: deploy-production-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
+  deploy:
+    # Guard: only allow main (push or manual)
+    if: >
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.ref == 'main')
+
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Enable pnpm via Corepack
         run: |
           corepack enable
-          corepack prepare pnpm@10.16.1 --activate
+          corepack prepare pnpm@8.15.7 --activate
           pnpm --version
 
-      - name: Use production env
-        run: cp .env.production .env
+      - name: Install rsync + ssh-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rsync openssh-client
+
+      - name: Set build id
+        run: echo "VITE_BUILD_ID=${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
 
       - name: Install deps
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile=false
 
       - name: Build (Quasar PWA)
-        run: pnpm run build
+        run: pnpm quasar build -m pwa
 
-      - name: Add SSH key
-        uses: webfactory/ssh-agent@v0.9.0
+      - name: Verify deploy artifacts
+        env:
+          DEPLOY_DIST_DIR: dist/pwa
+          EXPECT_SW: "1"
+        run: pnpm run verify:deploy-artifacts
+
+      - name: Enforce .htaccess with cache headers (in built bundle)
+        run: |
+          cat > dist/pwa/.htaccess <<'EOF'
+          <IfModule mod_rewrite.c>
+            Options -MultiViews
+            RewriteEngine On
+            RewriteRule ^assets/ - [L]
+            RewriteCond %{REQUEST_FILENAME} !-f
+            RewriteCond %{REQUEST_FILENAME} !-d
+            RewriteRule ^ index.html [QSA,L]
+          </IfModule>
+
+          <IfModule mod_headers.c>
+            Header always set Vary "Accept-Encoding"
+
+            <Files "sw.js">
+              Header always unset Cache-Control
+              Header always unset Expires
+              Header always unset Pragma
+              Header always set Cache-Control "no-cache, no-store, must-revalidate"
+              Header always set Pragma "no-cache"
+              Header always set Expires "0"
+            </Files>
+
+            <FilesMatch "^workbox-.*\.js$">
+              Header always unset Cache-Control
+              Header always set Cache-Control "no-cache, no-store, must-revalidate"
+            </FilesMatch>
+
+            <Files "manifest.json">
+              Header always unset Cache-Control
+              Header always set Cache-Control "no-cache, no-store, must-revalidate"
+            </Files>
+
+            <FilesMatch "\.(html)$">
+              Header always set Cache-Control "no-cache, no-store, must-revalidate"
+              Header always set Pragma "no-cache"
+              Header always set Expires "0"
+            </FilesMatch>
+
+            <FilesMatch "^(?!sw\.js$|workbox-.*\.js$).*\.(js|mjs|css|png|jpe?g|svg|gif|webp|ico|woff2?|ttf|map)$">
+              Header always set Cache-Control "public, max-age=31536000, immutable, no-transform"
+            </FilesMatch>
+          </IfModule>
+
+          <IfModule mod_mime.c>
+            AddType application/javascript .js .mjs
+            AddType application/wasm .wasm
+          </IfModule>
+          EOF
+
+      - name: Write deploy marker
+        run: |
+          BUILD_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          {
+            echo "env=production"
+            echo "sha=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF_NAME}"
+            echo "built_at=$BUILD_TS"
+            echo "run_id=${GITHUB_RUN_ID}"
+          } > dist/pwa/deploy.txt
+
+      - uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
@@ -41,9 +125,17 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Deploy (rsync)
+      - name: Deploy (rsync to prod docroot)
         run: |
           rsync -avz --delete \
             -e "ssh -p ${{ secrets.SSH_PORT }}" \
             dist/pwa/ \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_PROD }}/"
+
+      - name: Smoke test production
+        env:
+          BASE_URL: https://fundstr.me
+          EXPECT_SW: "1"
+          DISCOVERY_ROUTE: /find-creators
+          DEPLOY_MARKER_REQUIRED: "1"
+        run: ./scripts/smoke-tests.sh

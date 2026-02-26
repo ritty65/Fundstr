@@ -1,55 +1,199 @@
-name: deploy-staging
+name: Deploy staging (Develop2 → Hostinger)
 
 on:
   push:
     branches: [Develop2]
   workflow_dispatch:
 
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
+env:
+  NODE_VERSION: 20
+  BUILD_MODE: spa # staging: SPA (no service worker). Change to 'pwa' if you want PWA here.
 
+concurrency:
+  group: deploy-staging-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - uses: pnpm/action-setup@v4
+        with: { run_install: false }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: "**/pnpm-lock.yaml"
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Use staging env (if present)
+        run: if [ -f .env.staging ]; then cp .env.staging .env; fi
+
+      - name: Build app
+        run: pnpm quasar build -m ${{ env.BUILD_MODE }}
+
+      - name: Verify deploy artifacts
+        env:
+          DEPLOY_DIST_DIR: dist/${{ env.BUILD_MODE }}
+          EXPECT_SW: "0"
+        run: pnpm run verify:deploy-artifacts
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          if-no-files-found: error
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Download dist
+        uses: actions/download-artifact@v4
         with:
-          node-version: '20'
+          name: dist
+          path: dist
 
-      - name: Enable pnpm via Corepack
+      - name: Detect build dir
+        id: detect
         run: |
-          corepack enable
-          corepack prepare pnpm@10.16.1 --activate
-          pnpm --version
+          set -euo pipefail
+          BUILD_DIR="$(find dist -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          test -d "$BUILD_DIR"
+          echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_OUTPUT"
+          echo "Build dir: $BUILD_DIR"
+          ls -lah "$BUILD_DIR" | sed -n '1,80p'
 
-      - name: Use staging env (optional)
-        run: cp .env.staging .env || true
+      - name: Verify build contents
+        run: |
+          set -euo pipefail
+          DIR="${{ steps.detect.outputs.BUILD_DIR }}"
+          test -s "$DIR/index.html" || { echo "::error:: index.html missing in $DIR"; exit 1; }
+          if ! find "$DIR" -type f -name "*.js" -print -quit | grep -q .; then
+            echo "::error:: no JS bundles found under $DIR"
+            find "$DIR" -maxdepth 2 -type f | sed -n '1,200p'
+            exit 1
+          fi
 
-      - name: Install deps
-        run: pnpm install --frozen-lockfile=false
+      - name: Ensure .htaccess + deploy marker
+        run: |
+          DIR="${{ steps.detect.outputs.BUILD_DIR }}"
+          cat > "$DIR/.htaccess" <<'HTACCESS'
+          <IfModule mod_rewrite.c>
+            RewriteEngine On
+            RewriteBase /
+            RewriteRule ^index\.html$ - [L]
+            RewriteCond %{REQUEST_FILENAME} !-f
+            RewriteCond %{REQUEST_FILENAME} !-d
+            RewriteRule . /index.html [L]
+          </IfModule>
+          <IfModule mod_headers.c>
+            <FilesMatch "^index\.html$">
+              Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+              Header set Pragma "no-cache"
+              Header set Expires "0"
+            </FilesMatch>
+            <FilesMatch "\.(js|css|png|jpg|svg|woff2)$">
+              Header set Cache-Control "public, max-age=31536000, immutable"
+            </FilesMatch>
+          </IfModule>
+          <IfModule LiteSpeed>
+            CacheDisable public /index.html
+          </IfModule>
+          HTACCESS
 
-      - name: Build (Quasar PWA)
-        run: pnpm quasar build -m pwa
+          BUILD_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          {
+            echo "env=staging"
+            echo "sha=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF_NAME}"
+            echo "built_at=$BUILD_TS"
+            echo "run_id=${GITHUB_RUN_ID}"
+          } > "$DIR/deploy.txt"
+          echo "${GITHUB_SHA} $(date -u '+%F %T UTC')" > "$DIR/version.txt"
 
-      - name: Add SSH key
-        uses: webfactory/ssh-agent@v0.9.0
+      - name: Generate known_hosts
+        id: kh
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          PORT: ${{ secrets.SSH_PORT_STAGING }}
+        run: |
+          set -euo pipefail
+          : "${PORT:=22}"
+          ssh-keyscan -p "$PORT" -T 15 "$HOST" 2>/dev/null > kh.txt
+          if [ ! -s kh.txt ]; then
+            echo "::error:: ssh-keyscan returned nothing for $HOST:$PORT"; exit 1
+          fi
+          echo "known_hosts<<EOF" >> "$GITHUB_OUTPUT"
+          cat kh.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
         with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: ${{ steps.kh.outputs.known_hosts }}
+          if_key_exists: replace
 
-      - name: Trust remote host
+      - name: Prepare target dir
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER_STAGING }}
+          TARGET: ${{ secrets.SSH_TARGET_STAGING }}
+          PORT: ${{ secrets.SSH_PORT_STAGING }}
         run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+          set -euxo pipefail
+          case "$TARGET" in
+            /home/*/domains/*/public_html/*) ;;
+            *) echo "::error:: suspicious TARGET path: $TARGET"; exit 1;;
+          esac
+          ssh -p "${PORT:-22}" "$USER@$HOST" "T='$TARGET'; mkdir -p \"\$T.__incoming\" \"\$T.__backup\""
 
-      - name: Deploy (rsync to subdomain docroot)
+      - name: Upload to __incoming (rsync)
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER_STAGING }}
+          TARGET: ${{ secrets.SSH_TARGET_STAGING }}
+          PORT: ${{ secrets.SSH_PORT_STAGING }}
         run: |
-          rsync -avz --delete \
-            -e "ssh -p ${{ secrets.SSH_PORT }}" \
-            dist/pwa/ \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
+          set -euxo pipefail
+          rsync -az --delete -e "ssh -o StrictHostKeyChecking=yes -p ${PORT:-22}" \
+            "${{ steps.detect.outputs.BUILD_DIR }}/" \
+            "$USER@$HOST:$TARGET.__incoming/"
+
+      - name: Atomic swap
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER_STAGING }}
+          TARGET: ${{ secrets.SSH_TARGET_STAGING }}
+          PORT: ${{ secrets.SSH_PORT_STAGING }}
+        run: |
+          set -euxo pipefail
+          ssh -p "${PORT:-22}" "$USER@$HOST" "
+            set -e
+            T='$TARGET'
+            if [ -d \"\$T\" ]; then
+              rm -rf \"\$T.__backup/prev\" || true
+              mv \"\$T\" \"\$T.__backup/prev\"
+            fi
+            test -d \"\$T.__incoming\" || { echo 'ERROR: missing '\"\$T.__incoming\"; exit 1; }
+            mv \"\$T.__incoming\" \"\$T\"
+            ls -lah \"\$T\" | sed -n '1,40p'
+          "
 
       - name: Smoke test staging
         env:
           BASE_URL: https://staging.fundstr.me
+          EXPECT_SW: "0"
+          DISCOVERY_ROUTE: /find-creators
+          DEPLOY_MARKER_REQUIRED: "1"
         run: ./scripts/smoke-tests.sh

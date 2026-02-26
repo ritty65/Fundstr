@@ -38,6 +38,7 @@ import { computed, watch } from "vue";
 import { useQuasar } from "quasar";
 import { useNostrStore } from "src/stores/nostr";
 import { shortenString } from "src/js/string-utils";
+import { notifyError } from "src/js/notify";
 
 const $q = useQuasar();
 const nostr = useNostrStore();
@@ -69,8 +70,87 @@ const truncatedNpub = computed(
   () => shortenString(nostr.npub, 12, 6) || nostr.npub,
 );
 
-function copyPubkey() {
-  navigator.clipboard.writeText(nostr.npub);
+async function copyPubkey() {
+  const value = nostr.npub;
+  if (!value) {
+    return;
+  }
+
+  const showManualCopyNotification = () => {
+    const message = "Unable to copy the public key automatically.";
+    const caption = `Press Ctrl+C (or long-press) to copy this key: ${value}`;
+
+    if (typeof notifyError === "function") {
+      notifyError(message, caption);
+    } else {
+      $q.notify({
+        type: "negative",
+        color: "red",
+        message,
+        caption,
+      });
+    }
+  };
+
+  const fallbackCopy = () => {
+    if (typeof document === "undefined" || !document.body) {
+      showManualCopyNotification();
+      return false;
+    }
+
+    const tempInput = document.createElement("input");
+    tempInput.value = value;
+    tempInput.setAttribute("readonly", "");
+    tempInput.style.position = "absolute";
+    tempInput.style.left = "-9999px";
+    document.body.appendChild(tempInput);
+    tempInput.select();
+    tempInput.setSelectionRange(0, tempInput.value.length);
+
+    let success = false;
+    try {
+      success =
+        typeof document.execCommand === "function" &&
+        document.execCommand("copy");
+    } catch (error) {
+      success = false;
+    }
+
+    setTimeout(() => {
+      tempInput.remove();
+    }, 0);
+
+    if (!success) {
+      showManualCopyNotification();
+    }
+
+    return success;
+  };
+
+  if (
+    typeof document !== "undefined" &&
+    typeof document.hasFocus === "function" &&
+    !document.hasFocus()
+  ) {
+    fallbackCopy();
+    return;
+  }
+
+  if (
+    typeof navigator !== "undefined" &&
+    navigator.clipboard &&
+    typeof navigator.clipboard.writeText === "function"
+  ) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch (error) {
+      fallbackCopy();
+      return;
+    }
+  }
+
+  fallbackCopy();
 }
 
 function toggleDark() {

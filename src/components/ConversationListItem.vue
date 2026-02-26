@@ -137,6 +137,7 @@ import { useQuasar, QBadge, QBtn } from "quasar";
 import { useMessengerStore } from "src/stores/messenger";
 import { useNostrStore } from "src/stores/nostr";
 import { parseMessageSnippet } from "src/utils/message-snippet";
+import type { SnippetInfo } from "src/utils/message-snippet";
 
 /**
  * Exact time formatter for drawer:
@@ -180,28 +181,61 @@ function formatExactTime(createdAt?: number | string | null): string {
  *  - Very long http(s) link -> "Link"
  *  - Otherwise: the original text trimmed.
  */
+function safeJsonParse(value: string): any | undefined {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+}
+
 function humanizeSnippet(raw: unknown): string {
   if (!raw) return "";
-  const t = String(raw).trim();
-  // Try JSON first (ignore errors)
-  if (t.startsWith("{") || t.startsWith("[")) {
-    try {
-      const obj = JSON.parse(t);
-      if (obj && typeof obj === "object") {
-        const o: any = obj;
-        if (o.cashu || o.token || o.proofs || o.mint)
-          return "Sent a Cashu token";
-        if (o.cashu_subscription || o.subscription || o.recurrence)
-          return "Subscription payment";
+
+  if (typeof raw === "object" && raw) {
+    const snippet = raw as Partial<SnippetInfo>;
+    const hint = snippet.hint;
+    if (hint?.type === "file") {
+      const mime =
+        typeof hint.mime === "string" ? hint.mime.toLowerCase() : "";
+      if (mime.startsWith("image/")) {
+        return "Sent an image";
       }
-    } catch {
-      // fall through
+      return "Sent a file";
+    }
+    if (typeof snippet.text === "string") {
+      return humanizeSnippet(snippet.text);
     }
   }
+
+  const t = String(raw).trim();
+  if (!t) return "";
+
+  // Try JSON first (ignore errors)
+  if (t.startsWith("{") || t.startsWith("[")) {
+    const obj = safeJsonParse(t);
+    if (obj && typeof obj === "object") {
+      const o: any = obj;
+      if (o.t === "file") {
+        const mime =
+          typeof o.mime === "string" ? o.mime.toLowerCase() : "";
+        if (mime.startsWith("image/")) return "Sent an image";
+        return "Sent a file";
+      }
+      if (o.cashu || o.token || o.proofs || o.mint) return "Sent a Cashu token";
+      if (o.cashu_subscription || o.subscription || o.recurrence)
+        return "Subscription payment";
+    }
+  }
+
   // Heuristics on plain text
   if (/"token"\s*:/.test(t) || /\bcashu\b/i.test(t))
     return "Sent a Cashu token";
   if (/\bsubscription\b/i.test(t)) return "Subscription payment";
+  if (/\"t\"\s*:\s*\"file\"/i.test(t)) {
+    if (/\"mime\"\s*:\s*\"image\//i.test(t)) return "Sent an image";
+    return "Sent a file";
+  }
   if (/https?:\/\/\S{40,}/i.test(t)) return "Link";
   return t;
 }
@@ -263,7 +297,7 @@ const snippet = computed(() =>
 );
 
 // Build display snippet (we already humanize elsewhere)
-const displaySnippet = computed(() => humanizeSnippet(snippet.value?.text));
+const displaySnippet = computed(() => humanizeSnippet(snippet.value));
 
 // Exact time for the last message
 const timeExact = computed(() => {

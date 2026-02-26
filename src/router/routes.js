@@ -41,13 +41,6 @@ const routes = [
     ],
   },
   {
-    path: "/creator-hub",
-    component: () => import("layouts/FullscreenLayout.vue"),
-    children: [
-      { path: "", component: () => import("src/pages/CreatorHubPage.vue") },
-    ],
-  },
-  {
     path: "/creator-subscribers",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
@@ -63,29 +56,19 @@ const routes = [
     children: [
       {
         path: "",
+        name: "MyProfile",
         component: () => import("src/pages/MyProfilePage.vue"),
       },
     ],
   },
   {
-    path: "/nutzap-profile",
+    path: "/creator-studio",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
       {
         path: "",
-        name: "NutzapProfile",
-        component: () => import("src/pages/NutzapProfilePage.vue"),
-      },
-    ],
-  },
-  {
-    path: "/nutzap-tools",
-    component: () => import("layouts/FullscreenLayout.vue"),
-    children: [
-      {
-        path: "",
-        name: "NutzapDiagnostics",
-        component: () => import("src/pages/NutzapDiagnosticsPage.vue"),
+        name: "CreatorStudio",
+        component: () => import("src/pages/CreatorStudioPage.vue"),
       },
     ],
   },
@@ -123,7 +106,6 @@ const routes = [
   {
     path: "/restore",
     component: () => import("layouts/FullscreenLayout.vue"),
-    meta: { hideHeader: true },
     children: [{ path: "", component: () => import("src/pages/Restore.vue") }],
   },
   {
@@ -150,6 +132,16 @@ const routes = [
     ],
   },
   {
+    path: "/supporters",
+    component: () => import("layouts/FullscreenLayout.vue"),
+    children: [
+      {
+        path: "",
+        component: () => import("src/pages/FundstrSupportersPage.vue"),
+      },
+    ],
+  },
+  {
     path: "/about",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
@@ -161,6 +153,13 @@ const routes = [
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
       { path: "", component: () => import("src/pages/NostrLogin.vue") },
+    ],
+  },
+  {
+    path: "/unlock",
+    component: () => import("layouts/FullscreenLayout.vue"),
+    children: [
+      { path: "", component: () => import("src/pages/UnlockWallet.vue") },
     ],
   },
 

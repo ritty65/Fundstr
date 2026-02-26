@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nip19 } from "nostr-tools";
 import {
+  clearRelayFailureCache,
   dedup,
   normalizeEvents,
   pickLatestAddrReplaceable,
   pickLatestReplaceable,
   queryNostr,
   queryNutzapProfile,
+  toHex,
   type NostrEvent,
 } from "@/nostr/relayClient";
 
@@ -113,6 +115,18 @@ describe("relayClient dedup & replaceable handling", () => {
   });
 });
 
+describe("relayClient pubkey coercion", () => {
+  it("accepts raw hex keys and normalizes case", () => {
+    const key = "ABCDEF".repeat(10) + "AB";
+    expect(toHex(key)).toBe(key.toLowerCase());
+  });
+
+  it("throws on malformed identifiers", () => {
+    expect(() => toHex("npub1invalid"))
+      .toThrowErrorMatchingInlineSnapshot("\"Invalid npub or hex pubkey\"");
+  });
+});
+
 describe("relayClient transport", () => {
   const originalFetch = globalThis.fetch;
   const originalWebSocket = (globalThis as any).WebSocket;
@@ -124,6 +138,7 @@ describe("relayClient transport", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     (globalThis as any).WebSocket = originalWebSocket;
+    clearRelayFailureCache();
   });
 
   it("falls back to HTTP when websocket connection fails", async () => {
@@ -154,6 +169,48 @@ describe("relayClient transport", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(events).toHaveLength(1);
     expect(events[0].id).toBe("http-event");
+  });
+
+  it("avoids repeated websocket dials for Fundstr relay after failures", async () => {
+    const pubkeyHex = "b".repeat(64);
+    const responseEvents = [
+      makeEvent({ id: "http-event-retry", kind: 10019, pubkey: pubkeyHex }),
+    ];
+
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify(responseEvents), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const ThrowingWebSocket = vi.fn(() => {
+      throw new Error("connect failed");
+    });
+
+    (globalThis as any).WebSocket = ThrowingWebSocket as any;
+
+    const filters = [{ kinds: [10019], authors: [pubkeyHex] }];
+
+    await queryNostr(filters, { preferFundstr: true, wsTimeoutMs: 10 });
+
+    expect(ThrowingWebSocket).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fetchMock.mockClear();
+
+    await queryNostr(filters, { preferFundstr: true, wsTimeoutMs: 10 });
+
+    expect(ThrowingWebSocket).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    clearRelayFailureCache("wss://relay.fundstr.network");
+
+    await queryNostr(filters, { preferFundstr: true, wsTimeoutMs: 10 });
+
+    expect(ThrowingWebSocket).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("normalises npub authors to hex when querying profiles", async () => {

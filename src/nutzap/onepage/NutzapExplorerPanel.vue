@@ -168,6 +168,7 @@
           type="textarea"
           autogrow
           label="Relay list"
+          :placeholder="DEFAULT_RELAYS.join('\n')"
           hint="Comma or newline separated"
         />
         <q-banner class="bg-surface-2 text-2">
@@ -185,15 +186,23 @@ import { nip19 } from 'nostr-tools';
 import type { Event as NostrEvent, Filter as NostrFilter } from 'nostr-tools';
 import { multiRelaySearch, mergeRelayHints } from './multiRelaySearch';
 import { sanitizeRelayUrls } from 'src/utils/relay';
+import { FUNDSTR_WS_URL } from '../relayEndpoints';
 
-const DEFAULT_RELAYS = ['wss://relay.fundstr.me', 'wss://relay.damus.io'];
+const DEFAULT_RELAYS = [FUNDSTR_WS_URL];
 
-const props = defineProps<{
-  modelValue: string;
-  loadingAuthor: boolean;
-  tierAddressPreview: string;
-  condensed?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    modelValue?: string;
+    loadingAuthor?: boolean;
+    tierAddressPreview?: string;
+    condensed?: boolean;
+  }>(),
+  {
+    modelValue: '',
+    loadingAuthor: false,
+    tierAddressPreview: '',
+  },
+);
 
 const emit = defineEmits<{
   (event: 'update:modelValue', value: string): void;
@@ -203,11 +212,12 @@ const emit = defineEmits<{
 const condensed = computed(() => Boolean(props.condensed));
 
 const authorModel = computed({
-  get: () => props.modelValue,
+  get: () => props.modelValue ?? '',
   set: value => emit('update:modelValue', value),
 });
 
 const query = ref('');
+const normalizedQuery = computed(() => (typeof query.value === 'string' ? query.value : ''));
 const mode = ref<'profiles' | 'notes' | 'address'>('profiles');
 const limit = ref<number>(20);
 const daysBack = ref<number>(7);
@@ -232,7 +242,10 @@ const HEX_64 = /^[0-9a-f]{64}$/i;
 
 const sanitizedRelayList = computed(() => sanitizeRelayUrls(relayInput.value.split(/[\s,]+/).filter(Boolean)));
 
-const canSearch = computed(() => Boolean(query.value.trim() || sanitizedRelayList.value.length));
+const canSearch = computed(() => {
+  const rawQuery = normalizedQuery.value;
+  return Boolean(rawQuery.trim() || sanitizedRelayList.value.length);
+});
 
 const currentModeLabel = computed(() => modeOptions.find(option => option.value === mode.value)?.label ?? 'Profiles');
 
@@ -324,7 +337,8 @@ async function buildFilters(): Promise<{
   pointerRelays: string[];
   forcedMode: typeof mode.value;
 }> {
-  const trimmed = query.value.trim();
+  const rawQuery = normalizedQuery.value;
+  const trimmed = rawQuery.trim();
   const since = daysBack.value > 0 ? Math.floor(Date.now() / 1000) - daysBack.value * 86400 : undefined;
   const limitValue = limit.value > 0 ? Math.min(Math.floor(limit.value), 500) : 50;
   const filters: NostrFilter[] = [];

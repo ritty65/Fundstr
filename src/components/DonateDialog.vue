@@ -57,12 +57,28 @@
           :label="$t('DonateDialog.inputs.preset')"
           hint="Number of periods"
         />
+        <q-banner
+          v-if="!canSplit"
+          rounded
+          dense
+          class="q-mt-md bg-warning text-black"
+        >
+          <template #avatar>
+            <q-icon name="info" color="black" />
+          </template>
+          {{ splitRequirementCopy }}
+        </q-banner>
       </q-card-section>
       <q-card-actions align="right">
         <q-btn flat color="primary" @click="cancel">{{
           $t("global.actions.cancel.label")
         }}</q-btn>
-        <q-btn flat color="primary" @click="confirm">{{
+        <q-btn
+          flat
+          color="primary"
+          @click="confirm"
+          :disable="!canSplit"
+        >{{
           $t("global.actions.send.label")
         }}</q-btn>
       </q-card-actions>
@@ -78,6 +94,7 @@ import { useMintsStore } from "stores/mints";
 import { useUiStore } from "stores/ui";
 import { storeToRefs } from "pinia";
 import { useDonationPresetsStore } from "stores/donationPresets";
+import { mintSupportsSplit, resolveSupportedNuts } from "src/utils/nuts";
 
 export default defineComponent({
   name: "DonateDialog",
@@ -116,6 +133,12 @@ export default defineComponent({
       })),
     );
 
+    const activeMintInfo = computed(() => mintsStore.activeInfo);
+    const supportedNuts = computed(() => resolveSupportedNuts(activeMintInfo.value));
+    const canSplit = computed(() =>
+      mintSupportsSplit(activeMintInfo.value, supportedNuts.value),
+    );
+
     const typeOptions = [
       { label: "One-time", value: "one-time" },
       { label: "Scheduled", value: "schedule" },
@@ -138,6 +161,9 @@ export default defineComponent({
     };
 
     const confirm = () => {
+      if (!canSplit.value) {
+        return;
+      }
       emit("confirm", {
         bucketId: bucketId.value,
         locked: locked.value === "locked",
@@ -161,6 +187,9 @@ export default defineComponent({
       typeOptions,
       lockOptions,
       presetOptions,
+      canSplit,
+      splitRequirementCopy:
+        "Donations require a mint that supports splitting ecash (NUT-04). Switch to a mint with split support in your wallet to continue.",
       cancel,
       confirm,
     };

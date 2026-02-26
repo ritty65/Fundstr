@@ -1,7 +1,7 @@
 <template>
   <div class="legacy-explorer column q-gutter-md">
     <div class="text-caption text-2">
-      Run a single-relay REQ against relay.fundstr.me and watch for EOSE or timeout.
+      Run a single-relay REQ against relay.nostr.band and watch for EOSE or timeout.
     </div>
 
     <q-input

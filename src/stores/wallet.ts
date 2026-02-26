@@ -1,7 +1,7 @@
 import { debug } from "src/js/logger";
 import { defineStore } from "pinia";
 import { currentDateStr } from "src/js/utils";
-import { useMintsStore, MintClass, Mint } from "./mints";
+import { useMintsStore, MintClass, Mint, BlindAuthError } from "./mints";
 import { WalletProof } from "src/types/proofs";
 import { useLocalStorage } from "@vueuse/core";
 import { useProofsStore } from "./proofs";
@@ -30,7 +30,6 @@ import {
   notify,
 } from "src/js/notify";
 import {
-  CashuMint,
   CashuWallet,
   Proof,
   MintQuotePayload,
@@ -68,6 +67,7 @@ import { i18n } from "src/boot/i18n";
 import { useNostrStore } from "./nostr";
 import { useSignerStore } from "./signer";
 import { watch } from "vue";
+import { CashuNetworkError } from "src/types/errors";
 // HACK: this is a workaround so that the catch block in the melt function does not throw an error when the user exits the app
 // before the payment is completed. This is necessary because the catch block in the melt function would otherwise remove all
 // quotes from the invoiceHistory and the user would not be able to pay the invoice again after reopening the app.
@@ -81,6 +81,63 @@ type KeysetCounter = {
   counter: number;
 };
 
+export type ActiveP2pk = {
+  publicKey: string;
+  privateKey: string;
+};
+
+export function defaultActiveP2pk(): ActiveP2pk {
+  return { publicKey: "", privateKey: "" };
+}
+
+function createDefaultPayInvoiceData(bucketId = DEFAULT_BUCKET_ID) {
+  return {
+    blocking: false,
+    bolt11: "",
+    show: false,
+    bucketId,
+    meltQuote: {
+      payload: {
+        unit: "",
+        request: "",
+      } as MeltQuotePayload,
+      response: {
+        quote: "",
+        amount: 0,
+        fee_reserve: 0,
+      } as MeltQuoteResponse,
+      error: "",
+    },
+    invoice: {
+      sat: 0,
+      memo: "",
+      bolt11: "",
+    } as { sat: number; memo: string; bolt11: string } | null,
+    lnurlpay: {
+      domain: "",
+      callback: "",
+      minSendable: 0,
+      maxSendable: 0,
+      metadata: {},
+      successAction: {},
+      routes: [],
+      tag: "",
+    },
+    lnurlauth: {},
+    input: {
+      request: "",
+      amount: null,
+      comment: "",
+      quote: "",
+    } as {
+      request: string;
+      amount: number | null;
+      comment: string;
+      quote: string;
+    },
+  };
+}
+
 export const useWalletStore = defineStore("wallet", {
   state: () => {
     const t = i18n.global.t;
@@ -93,57 +150,22 @@ export const useWalletStore = defineStore("wallet", {
       ),
       invoiceData: {} as InvoiceHistory,
       activeWebsocketConnections: 0,
-      payInvoiceData: {
-        blocking: false,
-        bolt11: "",
-        show: false,
-        bucketId: DEFAULT_BUCKET_ID,
-        meltQuote: {
-          payload: {
-            unit: "",
-            request: "",
-          } as MeltQuotePayload,
-          response: {
-            quote: "",
-            amount: 0,
-            fee_reserve: 0,
-          } as MeltQuoteResponse,
-          error: "",
-        },
-        invoice: {
-          sat: 0,
-          memo: "",
-          bolt11: "",
-        } as { sat: number; memo: string; bolt11: string } | null,
-        lnurlpay: {
-          domain: "",
-          callback: "",
-          minSendable: 0,
-          maxSendable: 0,
-          metadata: {},
-          successAction: {},
-          routes: [],
-          tag: "",
-        },
-        lnurlauth: {},
-        input: {
-          request: "",
-          amount: null,
-          comment: "",
-          quote: "",
-        } as {
-          request: string;
-          amount: number | null;
-          comment: string;
-          quote: string;
-        },
-      },
+      payInvoiceData: createDefaultPayInvoiceData(),
+      activeP2pk: defaultActiveP2pk(),
     };
   },
   getters: {
     wallet() {
       const mints = useMintsStore();
-      const mint = new CashuMint(mints.activeMintUrl);
+      const storedMint = mints.mints.find((m) => m.url === mints.activeMintUrl);
+      const mintClass = storedMint
+        ? new MintClass(storedMint)
+        : new MintClass({
+            url: mints.activeMintUrl,
+            keys: [],
+            keysets: [],
+          } as Mint);
+      const mint = mintClass.api;
       const mnemonicStore = useMnemonicStore();
       if (mnemonicStore.mnemonic == "") {
         mnemonicStore.mnemonic = generateMnemonic(wordlist);
@@ -168,6 +190,85 @@ export const useWalletStore = defineStore("wallet", {
     },
   },
   actions: {
+    resetPointerDependentRequests() {
+      const bucketId = this.payInvoiceData?.bucketId ?? DEFAULT_BUCKET_ID;
+      this.payInvoiceData = createDefaultPayInvoiceData(bucketId);
+      const prStore = usePRStore();
+      if (typeof prStore.showPRKData === "string" && prStore.showPRKData) {
+        prStore.showPRKData = "";
+      }
+    },
+    setActiveP2pk(publicKey: string, privateKey = "") {
+      const trimmedPub = typeof publicKey === "string" ? publicKey.trim() : "";
+      const trimmedPriv = typeof privateKey === "string" ? privateKey.trim() : "";
+      const receiveStore = useReceiveTokensStore();
+      const p2pkStore = useP2PKStore();
+
+      if (!trimmedPub) {
+        const hadActive =
+          (this.activeP2pk?.publicKey ?? "") !== "" ||
+          (this.activeP2pk?.privateKey ?? "") !== "";
+        if (hadActive) {
+          this.activeP2pk = defaultActiveP2pk();
+          this.resetPointerDependentRequests();
+        }
+        if (receiveStore.receiveData.p2pkPrivateKey) {
+          receiveStore.receiveData.p2pkPrivateKey = "";
+        }
+        return;
+      }
+
+      if (!p2pkStore.isValidPubkey(trimmedPub)) {
+        return;
+      }
+
+      let compressedPub: string;
+      try {
+        compressedPub = ensureCompressed(trimmedPub);
+      } catch (error) {
+        console.warn("Failed to normalize P2PK pubkey", error);
+        return;
+      }
+
+      let resolvedPriv = trimmedPriv;
+      if (!resolvedPriv) {
+        const rawEntries = (p2pkStore as any).p2pkKeys;
+        const entries = Array.isArray(rawEntries)
+          ? rawEntries
+          : Array.isArray(rawEntries?.value)
+          ? rawEntries.value
+          : [];
+        const match = entries.find((entry: any) =>
+          entry?.publicKey
+            ? entry.publicKey.trim().toLowerCase() === compressedPub.toLowerCase()
+            : false,
+        );
+        if (match?.privateKey) {
+          resolvedPriv = match.privateKey.trim();
+        } else if (
+          this.activeP2pk?.publicKey?.toLowerCase() === compressedPub.toLowerCase() &&
+          this.activeP2pk?.privateKey
+        ) {
+          resolvedPriv = this.activeP2pk.privateKey;
+        }
+      }
+
+      const normalizedPriv = resolvedPriv ? resolvedPriv.trim().toLowerCase() : "";
+      const prevPub = (this.activeP2pk?.publicKey ?? "").toLowerCase();
+      const prevPriv = (this.activeP2pk?.privateKey ?? "").toLowerCase();
+      const changed =
+        prevPub !== compressedPub.toLowerCase() || prevPriv !== normalizedPriv;
+
+      this.activeP2pk = {
+        publicKey: compressedPub,
+        privateKey: normalizedPriv,
+      };
+      receiveStore.receiveData.p2pkPrivateKey = normalizedPriv;
+
+      if (changed) {
+        this.resetPointerDependentRequests();
+      }
+    },
     mintWallet(url: string, unit: string): CashuWallet {
       // short-lived wallet for mint operations
       // note: the unit of the wallet will be activeUnit by default,
@@ -177,8 +278,9 @@ export const useWalletStore = defineStore("wallet", {
       if (!storedMint) {
         throw new Error("mint not found");
       }
-      const unitKeysets = mints.mintUnitKeysets(storedMint, unit);
-      const mint = new CashuMint(url);
+      const mintClass = new MintClass(storedMint);
+      const unitKeysets = mintClass.unitKeysets(unit);
+      const mint = mintClass.api;
       const mnemonicStore = useMnemonicStore();
       if (mnemonicStore.mnemonic == "") {
         mnemonicStore.mnemonic = generateMnemonic(wordlist);
@@ -517,7 +619,7 @@ export const useWalletStore = defineStore("wallet", {
       }
     },
     reconcileSpentProofs: async function (proofs: Proof[]) {
-      console.log("Reconciling spent proofs from local state.");
+      debug("Reconciling spent proofs from local state.");
       const proofsStore = useProofsStore();
       await proofsStore.removeProofs(proofs);
       notifyWarning(
@@ -600,12 +702,6 @@ export const useWalletStore = defineStore("wallet", {
           (p) => typeof p.secret === "string" && p.secret.startsWith('["P2PK"'),
         );
 
-        if (needsSig && !localPriv) {
-          throw new Error(
-            "You do not have the private key to unlock this token.",
-          );
-        }
-
         let privkey = localPriv || (nostrStore as any).activePrivkeyHex;
 
         let remoteSigned = false;
@@ -652,13 +748,20 @@ export const useWalletStore = defineStore("wallet", {
 
         debug("redeem: sending proofs", proofs);
 
-        let receivedProofs: Proof[];
+        let receivedProofs: Proof[] = [];
+        let blindAuthPrepared = false;
+        let blindAuthSucceeded = false;
+        blindAuthPrepared = await mintStore.ensureBlindAuthPrepared(
+          mint,
+          "/v1/swap",
+        );
         try {
           receivedProofs = await mintWallet.receive(tokenToRedeem, {
             counter,
             privkey: privkey || mintWallet.privkey,
             proofsWeHave: mintStore.mintUnitProofs(mint, historyToken.unit),
           });
+          blindAuthSucceeded = true;
           await proofsStore.addProofs(
             receivedProofs,
             undefined,
@@ -671,6 +774,10 @@ export const useWalletStore = defineStore("wallet", {
           console.error(error);
           this.handleOutputsHaveAlreadyBeenSignedError(keysetId, error);
           throw new Error("Error receiving tokens: " + error);
+        } finally {
+          if (blindAuthPrepared) {
+            mintStore.finalizeBlindAuthToken(mint.url, blindAuthSucceeded);
+          }
         }
 
         p2pkStore.setPrivateKeyUsed(privkey);
@@ -714,7 +821,11 @@ export const useWalletStore = defineStore("wallet", {
         return true;
       } catch (error: any) {
         console.error(error);
-        notifyApiError(error);
+        if (error instanceof BlindAuthError) {
+          notifyWarning(error.message);
+        } else {
+          notifyApiError(error);
+        }
         throw error;
       } finally {
         uIStore.unlockMutex();
@@ -1246,6 +1357,15 @@ export const useWalletStore = defineStore("wallet", {
         //   notify("Invoice still pending");
         // }
         debug("Invoice still pending", invoice.quote);
+        if (typeof (error as any)?.message === "string") {
+          const message = (error as any).message as string;
+          if (message.toLowerCase().includes("fetch") || message.toLowerCase().includes("network")) {
+            throw new CashuNetworkError(
+              "Unable to reach the mint to confirm your invoice. We'll retry when connectivity returns.",
+              error,
+            );
+          }
+        }
         throw error;
       }
     },
@@ -1572,6 +1692,7 @@ export const useWalletStore = defineStore("wallet", {
       await this.meltQuoteInvoiceData();
     },
     handleCashuToken: function () {
+      const receiveStore = useReceiveTokensStore();
       this.payInvoiceData.show = false;
       receiveStore.showReceiveTokens = true;
     },
@@ -1586,6 +1707,7 @@ export const useWalletStore = defineStore("wallet", {
       await prStore.decodePaymentRequest(req);
     },
     decodeRequest: async function (req: string) {
+      const receiveStore = useReceiveTokensStore();
       const p2pkStore = useP2PKStore();
       req = req.trim();
       this.payInvoiceData.input.request = req;
@@ -1638,19 +1760,24 @@ export const useWalletStore = defineStore("wallet", {
     lnurlPayFirst: async function (address: string) {
       var host;
       var data;
-      if (address.split("@").length == 2) {
-        let [user, lnaddresshost] = address.split("@");
-        host = `https://${lnaddresshost}/.well-known/lnurlp/${user}`;
-        const resp = await axios.get(host); // Moved it here: we don't want 2 potential calls
-        data = resp.data;
-      } else if (address.toLowerCase().slice(0, 6) === "lnurl1") {
-        let decoded = bech32.decode(address, 20000);
-        const words = bech32.fromWords(decoded.words);
-        const uint8Array = new Uint8Array(words);
-        host = new TextDecoder().decode(uint8Array);
+      try {
+        if (address.split("@").length == 2) {
+          let [user, lnaddresshost] = address.split("@");
+          host = `https://${lnaddresshost}/.well-known/lnurlp/${user}`;
+          const resp = await axios.get(host); // Moved it here: we don't want 2 potential calls
+          data = resp.data;
+        } else if (address.toLowerCase().slice(0, 6) === "lnurl1") {
+          let decoded = bech32.decode(address, 20000);
+          const words = bech32.fromWords(decoded.words);
+          const uint8Array = new Uint8Array(words);
+          host = new TextDecoder().decode(uint8Array);
 
-        const resp = await axios.get(host);
-        data = resp.data;
+          const resp = await axios.get(host);
+          data = resp.data;
+        }
+      } catch (error) {
+        notifyApiError(error, this.t("wallet.notifications.lnurl_error"));
+        return;
       }
       if (host == undefined) {
         notifyError(
@@ -1664,17 +1791,17 @@ export const useWalletStore = defineStore("wallet", {
         this.payInvoiceData.lnurlpay.domain = host
           .split("https://")[1]
           .split("/")[0];
+        let autofillAmount: number | null = null;
         if (
           this.payInvoiceData.lnurlpay.maxSendable ==
           this.payInvoiceData.lnurlpay.minSendable
         ) {
-          this.payInvoiceData.input.amount =
-            this.payInvoiceData.lnurlpay.maxSendable / 1000;
+          autofillAmount = this.payInvoiceData.lnurlpay.maxSendable / 1000;
         }
         this.payInvoiceData.invoice = null;
         this.payInvoiceData.input = {
           request: "",
-          amount: null,
+          amount: autofillAmount,
           comment: "",
           quote: "",
         };
@@ -1716,9 +1843,16 @@ export const useWalletStore = defineStore("wallet", {
           const usdAmount = amount;
           amount = Math.floor(usdAmount * satPrice);
         }
-        var { data } = await axios.get(
-          `${this.payInvoiceData.lnurlpay.callback}?amount=${amount * 1000}`,
-        );
+        let data;
+        try {
+          const response = await axios.get(
+            `${this.payInvoiceData.lnurlpay.callback}?amount=${amount * 1000}`,
+          );
+          data = response.data;
+        } catch (error) {
+          notifyApiError(error, this.t("wallet.notifications.lnurl_error"));
+          return;
+        }
         // check http error
         if (data.status == "ERROR") {
           notifyError(data.reason, this.t("wallet.notifications.lnurl_error"));

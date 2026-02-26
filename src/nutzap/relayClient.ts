@@ -1,8 +1,15 @@
 import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { getCurrentScope, onScopeDispose, readonly, ref, type Ref } from 'vue';
 import { getNutzapNdk } from './ndkInstance';
+import { prepareUnsignedEvent, type UnsignedEvent } from '../nostr/serializableEvent';
 import { NUTZAP_ALLOW_WSS_WRITES, NUTZAP_RELAY_WSS } from './relayConfig';
-import { FUNDSTR_EVT_URL, HTTP_FALLBACK_TIMEOUT_MS, WS_FIRST_TIMEOUT_MS } from './relayEndpoints';
+import { WS_FIRST_TIMEOUT_MS } from './relayEndpoints';
+import {
+  publishEventViaHttp,
+  requestEventsViaHttp,
+  buildRequestUrl,
+  HttpFallbackThrottledError,
+} from '@/utils/fundstrRelayHttp';
 
 export type FundstrRelayStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 
@@ -72,16 +79,24 @@ export type RequestOnceOptions = {
   httpFallback?: RequestOnceHttpFallback;
 };
 
+export type FundstrRelayAuthHandler = (
+  challenge: string,
+  relayUrl: string,
+) => Promise<NostrEvent | null>;
+
+export type FundstrRelayAuthOptions = {
+  enabled: boolean;
+  handler?: FundstrRelayAuthHandler | null;
+  cacheMs?: number;
+};
+
 function normalizeRelayUrl(url?: string): string {
   return (url ?? '').replace(/\s+/g, '').replace(/\/+$/, '').toLowerCase();
 }
 
-const MAX_LOG_ENTRIES = 200;
+export const FUNDSTR_RELAY_LOG_LIMIT = 200;
 const MAX_RECONNECT_DELAY_MS = 30000;
 const INITIAL_RECONNECT_DELAY_MS = 500;
-const DEFAULT_HTTP_ACCEPT =
-  'application/nostr+json, application/json;q=0.9, */*;q=0.1';
-
 const HEX_64_REGEX = /^[0-9a-f]{64}$/i;
 const HEX_128_REGEX = /^[0-9a-f]{128}$/i;
 
@@ -139,6 +154,12 @@ export class FundstrRelayClient {
   private readonly statusRef = ref<FundstrRelayStatus>(this.status);
   private readonly logRef = ref<FundstrRelayLogEntry[]>([]);
   private logSequence = 0;
+  private authEnabled = false;
+  private authHandler: FundstrRelayAuthHandler | null = null;
+  private authCacheMs = 5 * 60 * 1000;
+  private lastAuthAt = 0;
+  private lastAuthChallenge: string | null = null;
+  private pendingAuth: Promise<void> | null = null;
 
   constructor(private readonly relayUrl: string) {
     this.WSImpl = typeof WebSocket !== 'undefined' ? WebSocket : (globalThis as any)?.WebSocket;
@@ -260,7 +281,10 @@ export class FundstrRelayClient {
 
   async publish(eventTemplate: FundstrRelayPublishTemplate): Promise<FundstrRelayPublishResult> {
     const event = await this.signEvent(eventTemplate);
+    return await this.publishSigned(event);
+  }
 
+  async publishSigned(event: NostrEvent): Promise<FundstrRelayPublishResult> {
     if (!this.WSImpl || !this.allowWsWrites) {
       const ack = await this.publishViaHttp(event);
       return { ack, event };
@@ -271,11 +295,42 @@ export class FundstrRelayClient {
       return { ack, event };
     } catch (err) {
       if (err instanceof RelayPublishError) {
+        if (this.shouldFallbackAfterRelayError(err)) {
+          this.pushLog('warn', 'Relay publish timed out, using HTTP fallback', err.ack);
+          try {
+            const ack = await this.publishViaHttp(event);
+            return { ack, event };
+          } catch (httpErr) {
+            this.pushLog('error', 'HTTP fallback failed after relay timeout', httpErr);
+            throw err;
+          }
+        }
         throw err;
       }
       this.pushLog('warn', 'WebSocket publish failed, using HTTP fallback', err);
       const ack = await this.publishViaHttp(event);
       return { ack, event };
+    }
+  }
+
+  setAuthOptions(options: FundstrRelayAuthOptions | null): void {
+    if (!options) {
+      this.authEnabled = false;
+      this.authHandler = null;
+      this.lastAuthAt = 0;
+      this.lastAuthChallenge = null;
+      return;
+    }
+
+    this.authEnabled = options.enabled === true;
+    this.authHandler = options.handler ?? null;
+    const cache = options.cacheMs;
+    if (typeof cache === 'number' && Number.isFinite(cache) && cache > 0) {
+      this.authCacheMs = Math.floor(cache);
+    }
+    if (!this.authEnabled) {
+      this.lastAuthAt = 0;
+      this.lastAuthChallenge = null;
     }
   }
 
@@ -338,8 +393,8 @@ export class FundstrRelayClient {
     const feed = ref(this.logRef.value.slice());
     const stop = this.onLog(entry => {
       feed.value = [...feed.value, entry];
-      if (feed.value.length > MAX_LOG_ENTRIES) {
-        feed.value = feed.value.slice(-MAX_LOG_ENTRIES);
+      if (feed.value.length > FUNDSTR_RELAY_LOG_LIMIT) {
+        feed.value = feed.value.slice(-FUNDSTR_RELAY_LOG_LIMIT);
       }
     });
 
@@ -383,17 +438,17 @@ export class FundstrRelayClient {
   }
 
   private async signEvent(template: FundstrRelayPublishTemplate): Promise<NostrEvent> {
-    const created_at = template.created_at ?? Math.floor(Date.now() / 1000);
+    const unsigned: UnsignedEvent = prepareUnsignedEvent(template);
     let signed: unknown;
 
     const maybeWindow = typeof window !== 'undefined' ? (window as any) : (globalThis as any)?.window;
     const nostrSigner = maybeWindow?.nostr;
 
     if (nostrSigner?.signEvent) {
-      signed = await nostrSigner.signEvent({ ...template, created_at });
+      signed = await nostrSigner.signEvent(unsigned);
     } else {
       const ndk = getNutzapNdk();
-      const event = new NDKEvent(ndk, { ...template, created_at });
+      const event = new NDKEvent(ndk, unsigned);
       await event.sign();
       signed = await event.toNostrEvent();
     }
@@ -519,65 +574,141 @@ export class FundstrRelayClient {
   }
 
   private async publishViaHttp(event: NostrEvent): Promise<FundstrRelayPublishAck> {
-    const { controller, dispose } = this.createAbortController(HTTP_FALLBACK_TIMEOUT_MS);
-    let response: Response | undefined;
-    let bodyText = '';
+    const baseFetch = typeof fetch === 'function' ? fetch.bind(globalThis) : undefined;
+    const fetchOptions: Parameters<typeof publishEventViaHttp>[1] = baseFetch
+      ? {
+          fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+            const response = await baseFetch(input, init);
+            if (!response || !response.ok) {
+              return response;
+            }
+
+            if (typeof Response === 'undefined' || typeof response.clone !== 'function') {
+              return response;
+            }
+
+            let normalizedBody: string | null = null;
+            try {
+              const bodyText = await response.clone().text();
+              normalizedBody = this.normalizeHttpPublishAckBody(bodyText, event);
+            } catch {
+              normalizedBody = null;
+            }
+
+            if (normalizedBody === null) {
+              return response;
+            }
+
+            const headers = new Headers(response.headers);
+            return new Response(normalizedBody, {
+              status: response.status,
+              statusText: response.statusText,
+              headers,
+            });
+          }) as typeof fetch,
+        }
+      : {};
 
     try {
-      response = await fetch(FUNDSTR_EVT_URL, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          Accept: DEFAULT_HTTP_ACCEPT,
-        },
-        body: JSON.stringify(event),
-        cache: 'no-store',
-        signal: controller?.signal,
-      });
-      bodyText = await response.text();
+      const ack = (await publishEventViaHttp(event, fetchOptions)) as FundstrRelayPublishAck;
+      this.pushLog('info', `HTTP publish accepted for event ${ack.id}`);
+      return ack;
     } catch (err) {
-      dispose();
-      if (this.isAbortError(err)) {
-        throw new Error(`Publish request timed out after ${HTTP_FALLBACK_TIMEOUT_MS}ms`);
+      if (err instanceof Error) {
+        this.pushLog('error', 'HTTP publish failed', err);
       }
-      throw err instanceof Error ? err : new Error(String(err));
+      throw err;
+    }
+  }
+
+  private normalizeHttpPublishAckBody(bodyText: string, event: NostrEvent): string | null {
+    const trimmed = bodyText.trim();
+    if (!trimmed) {
+      return JSON.stringify({ id: event.id, accepted: true });
     }
 
-    dispose();
-
-    if (!response) {
-      throw new Error('Relay publish failed: no response received');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      parsed = undefined;
     }
 
-    const normalizeSnippet = (input: string) => input.replace(/\s+/g, ' ').trim().slice(0, 200) || '[empty response body]';
-
-    if (!response.ok) {
-      const snippet = normalizeSnippet(bodyText);
-      throw new Error(`Relay rejected with status ${response.status}: ${snippet}`);
+    if (Array.isArray(parsed)) {
+      const [kind, eventId, okValue, message] = parsed;
+      if (typeof kind === 'string' && kind.toUpperCase() === 'OK') {
+        const ack = {
+          id: typeof eventId === 'string' && eventId ? eventId : event.id,
+          accepted: this.isOkAccepted(okValue),
+          message:
+            typeof message === 'string' && message.trim().length > 0 ? message : undefined,
+        };
+        return JSON.stringify(ack);
+      }
+      return null;
     }
 
-    let ackRaw: any = null;
-    if (bodyText) {
-      try {
-        ackRaw = JSON.parse(bodyText);
-      } catch (err) {
-        throw new Error('Relay returned invalid JSON', { cause: err });
+    if (parsed && typeof parsed === 'object') {
+      return null;
+    }
+
+    const value = typeof parsed === 'string' ? parsed : trimmed;
+    if (/^\s*ok\b/i.test(value)) {
+      const message = value.replace(/^\s*ok\b[:\s-]*/i, '').trim();
+      const ack = {
+        id: event.id,
+        accepted: true,
+        message: message.length > 0 ? message : undefined,
+      };
+      return JSON.stringify(ack);
+    }
+
+    return null;
+  }
+
+  private isOkAccepted(value: unknown): boolean {
+    if (value === true) {
+      return true;
+    }
+    if (value === false || value === null) {
+      return false;
+    }
+    if (typeof value === 'number') {
+      return value === 1;
+    }
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true' || normalized === '1' || normalized === 'ok') {
+        return true;
+      }
+      if (normalized === 'false' || normalized === '0') {
+        return false;
       }
     }
+    return false;
+  }
 
-    const ack: FundstrRelayPublishAck = {
-      id: typeof ackRaw?.id === 'string' && ackRaw.id ? ackRaw.id : event.id,
-      accepted: ackRaw?.accepted === true,
-      message: typeof ackRaw?.message === 'string' ? ackRaw.message : undefined,
-      via: 'http',
-    };
-
-    if (!ack.accepted) {
-      throw new RelayPublishError(ack.message ?? 'Relay rejected event', { ack, event });
+  private shouldFallbackAfterRelayError(error: RelayPublishError): boolean {
+    const { ack } = error;
+    if (!ack || ack.via !== 'websocket') {
+      return false;
     }
-
-    this.pushLog('info', `HTTP publish accepted for event ${ack.id}`);
-    return ack;
+    const message = ack.message?.toLowerCase() ?? '';
+    if (!message) {
+      return false;
+    }
+    if (message.includes('timed out waiting for relay')) {
+      return true;
+    }
+    if (message.includes('timed out') || message.includes('timeout')) {
+      return true;
+    }
+    if (message.includes('notice')) {
+      if (message.includes('queued') || message.includes('pending') || message.includes('retry')) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private handlePublishOk(eventId: unknown, okValue: unknown, message: unknown) {
@@ -654,6 +785,55 @@ export class FundstrRelayClient {
     }
 
     this.pushLog('warn', 'Relay NOTICE', message);
+  }
+
+  private handleAuthRequest(challenge: unknown) {
+    if (!this.authEnabled || !this.authHandler) {
+      this.pushLog('warn', 'Relay requested AUTH but handler disabled');
+      return;
+    }
+
+    if (typeof challenge !== 'string' || !challenge.trim()) {
+      this.pushLog('warn', 'Relay sent invalid AUTH challenge', { challenge });
+      return;
+    }
+
+    const normalized = challenge.trim();
+    const now = Date.now();
+    if (
+      this.lastAuthChallenge === normalized &&
+      now - this.lastAuthAt < this.authCacheMs
+    ) {
+      this.pushLog('info', 'Skipping AUTH response due to cache window', {
+        challenge: normalized,
+      });
+      return;
+    }
+
+    if (this.pendingAuth) {
+      this.pushLog('info', 'AUTH request already pending, skipping duplicate', {
+        challenge: normalized,
+      });
+      return;
+    }
+
+    this.pendingAuth = (async () => {
+      try {
+        const event = await this.authHandler!(normalized, this.relayUrl);
+        if (!event) {
+          this.pushLog('warn', 'AUTH handler returned no event');
+          return;
+        }
+        this.send(['AUTH', event]);
+        this.lastAuthAt = Date.now();
+        this.lastAuthChallenge = normalized;
+        this.pushLog('info', 'Sent AUTH response');
+      } catch (err) {
+        this.pushLog('warn', 'Failed to produce AUTH response', err);
+      } finally {
+        this.pendingAuth = null;
+      }
+    })();
   }
 
   private resolveSocketWaiters(socket: WebSocket) {
@@ -787,117 +967,22 @@ export class FundstrRelayClient {
     filters: NostrFilter[],
     fallback: RequestOnceHttpFallback
   ): Promise<any[]> {
-    const requestUrl = this.buildRequestUrl(fallback.url, filters);
-    const timeoutMs = fallback.timeoutMs ?? 0;
-    const { controller, dispose } = this.createAbortController(timeoutMs);
-    let response: Response | undefined;
-    let bodyText = '';
+    const requestUrl = buildRequestUrl(fallback.url, filters);
+    this.pushLog('info', 'HTTP fallback request', { url: requestUrl });
 
     try {
-      response = await fetch(requestUrl, {
-        method: 'GET',
-        headers: {
-          Accept: DEFAULT_HTTP_ACCEPT,
-          ...(fallback.headers ?? {}),
-        },
-        cache: 'no-store',
-        signal: controller?.signal,
-      });
-      bodyText = await response.text();
+      return await requestEventsViaHttp(filters, fallback);
     } catch (err) {
-      dispose();
-      if (this.isAbortError(err)) {
-        throw new Error(`HTTP fallback timed out after ${timeoutMs}ms`);
+      if (err instanceof HttpFallbackThrottledError) {
+        this.pushLog('warn', 'HTTP fallback throttled', {
+          url: fallback.url,
+          retryAt: err.retryAt,
+        });
+      } else if (err instanceof Error) {
+        this.pushLog('error', 'HTTP fallback request failed', err);
       }
-      throw err instanceof Error ? err : new Error(String(err));
+      throw err;
     }
-
-    dispose();
-
-    if (!response) {
-      return [];
-    }
-
-    const normalizeSnippet = (input: string) =>
-      input
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 200);
-
-    if (!response.ok) {
-      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
-      throw new Error(
-        `HTTP query failed with status ${response.status}: ${snippet}`
-      );
-    }
-
-    const contentType = response.headers.get('content-type') || '';
-    const normalizedType = contentType.toLowerCase();
-    const isJson =
-      normalizedType.includes('application/json') ||
-      normalizedType.includes('application/nostr+json');
-
-    if (!isJson) {
-      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
-      const typeLabel = contentType || 'unknown content-type';
-      this.pushLog('warn', 'HTTP fallback returned non-JSON payload', {
-        status: response.status,
-        contentType: typeLabel,
-        snippet,
-        url: requestUrl,
-      });
-      return [];
-    }
-
-    let data: any = null;
-    try {
-      data = bodyText ? JSON.parse(bodyText) : null;
-    } catch (err) {
-      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
-      throw new Error(
-        `HTTP ${response.status} returned invalid JSON: ${snippet}`,
-        { cause: err }
-      );
-    }
-
-    if (Array.isArray(data)) {
-      return data;
-    }
-    if (data && Array.isArray((data as any).events)) {
-      return (data as any).events as any[];
-    }
-    return [];
-  }
-
-  private buildRequestUrl(base: string, filters: NostrFilter[]): string {
-    const serialized = JSON.stringify(filters);
-    try {
-      const url = new URL(base);
-      url.searchParams.set('filters', serialized);
-      return url.toString();
-    } catch {
-      const separator = base.includes('?') ? '&' : '?';
-      return `${base}${separator}filters=${encodeURIComponent(serialized)}`;
-    }
-  }
-
-  private createAbortController(timeoutMs: number): {
-    controller: AbortController | null;
-    dispose: () => void;
-  } {
-    if (typeof AbortController === 'undefined' || timeoutMs <= 0) {
-      return { controller: null, dispose: () => {} };
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      controller.abort();
-    }, timeoutMs);
-    return {
-      controller,
-      dispose: () => {
-        clearTimeout(timer);
-      },
-    };
   }
 
   private isAbortError(err: unknown): boolean {
@@ -964,6 +1049,12 @@ export class FundstrRelayClient {
         if (type === 'NOTICE') {
           const [noticeMessage] = rest;
           this.handlePublishNotice(noticeMessage);
+          return;
+        }
+
+        if (type === 'AUTH') {
+          const [challenge] = rest;
+          this.handleAuthRequest(challenge);
           return;
         }
       } catch (err) {
@@ -1163,7 +1254,7 @@ export class FundstrRelayClient {
       ...(details === undefined ? {} : { details }),
     };
     const next = [...this.logRef.value, entry];
-    this.logRef.value = next.slice(-MAX_LOG_ENTRIES);
+    this.logRef.value = next.slice(-FUNDSTR_RELAY_LOG_LIMIT);
     for (const listener of this.logListeners) {
       try {
         listener(entry);
@@ -1184,12 +1275,78 @@ export class FundstrRelayClient {
   }
 }
 
-export const fundstrRelayClient = new FundstrRelayClient(NUTZAP_RELAY_WSS);
+const DEFAULT_RELAY_URL = NUTZAP_RELAY_WSS;
+const DEFAULT_RELAY_KEY = normalizeRelayUrl(DEFAULT_RELAY_URL) || '__fundstr-default-relay__';
+
+const relayClientCache = new Map<string, FundstrRelayClient>();
+
+const statusBridge = ref<FundstrRelayStatus>('connecting');
+const logBridge = ref<FundstrRelayLogEntry[]>([]);
+
+let stopStatusBridge: (() => void) | null = null;
+let stopLogBridge: (() => void) | null = null;
+
+function attachActiveClient(client: FundstrRelayClient) {
+  if (stopStatusBridge) {
+    stopStatusBridge();
+    stopStatusBridge = null;
+  }
+  if (stopLogBridge) {
+    stopLogBridge();
+    stopLogBridge = null;
+  }
+
+  const entries: FundstrRelayLogEntry[] = [];
+  logBridge.value = [];
+
+  stopStatusBridge = client.onStatusChange(status => {
+    statusBridge.value = status;
+  });
+
+  stopLogBridge = client.onLog(entry => {
+    entries.push(entry);
+    if (entries.length > FUNDSTR_RELAY_LOG_LIMIT) {
+      entries.splice(0, entries.length - FUNDSTR_RELAY_LOG_LIMIT);
+    }
+    logBridge.value = entries.slice();
+  });
+}
+
+function resolveRelayConfig(relayUrl?: string): { key: string; url: string } {
+  const candidate = typeof relayUrl === 'string' && relayUrl.trim() ? relayUrl : DEFAULT_RELAY_URL;
+  const normalized = normalizeRelayUrl(candidate);
+  const key = normalized || DEFAULT_RELAY_KEY;
+  return { key, url: candidate };
+}
+
+function getOrCreateClient(key: string, url: string): FundstrRelayClient {
+  let client = relayClientCache.get(key);
+  if (!client) {
+    client = new FundstrRelayClient(url);
+    relayClientCache.set(key, client);
+  }
+  return client;
+}
+
+const initialRelayClient = getOrCreateClient(DEFAULT_RELAY_KEY, DEFAULT_RELAY_URL);
+attachActiveClient(initialRelayClient);
+
+export let fundstrRelayClient = initialRelayClient;
+
+export function setFundstrRelayUrl(relayUrl?: string): FundstrRelayClient {
+  const { key, url } = resolveRelayConfig(relayUrl);
+  const nextClient = getOrCreateClient(key, url);
+  if (fundstrRelayClient !== nextClient) {
+    fundstrRelayClient = nextClient;
+    attachActiveClient(nextClient);
+  }
+  return fundstrRelayClient;
+}
 
 export function useFundstrRelayStatus(): Readonly<Ref<FundstrRelayStatus>> {
-  return fundstrRelayClient.useStatus();
+  return readonly(statusBridge);
 }
 
 export function useFundstrRelayLogFeed(): Readonly<Ref<FundstrRelayLogEntry[]>> {
-  return fundstrRelayClient.useLogFeed();
+  return readonly(logBridge);
 }

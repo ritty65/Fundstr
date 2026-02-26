@@ -43,3 +43,12 @@ describe("CreatorProfileStore isDirty", () => {
     expect(store.isDirty).toBe(true);
   });
 });
+
+describe("CreatorProfileStore setProfile", () => {
+  it("falls back to name when display_name missing", () => {
+    const store = useCreatorProfileStore();
+    store.setProfile({ name: " Example " });
+
+    expect(store.display_name).toBe("Example");
+  });
+});

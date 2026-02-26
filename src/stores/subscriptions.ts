@@ -60,11 +60,11 @@ export const useSubscriptionsStore = defineStore("subscriptions", () => {
     const now = Math.floor(Date.now() / 1000);
     const subs = subscriptions.value.filter((s) => s.creatorNpub === pubkey);
     for (const sub of subs) {
-      const ids = sub.intervals
-        .filter((i) => i.unlockTs > now)
+      const cancellableIds = sub.intervals
+        .filter((i) => i.unlockTs > now && i.htlcHash)
         .map((i) => i.lockedTokenId);
-      if (ids.length) {
-        await cashuDb.lockedTokens.bulkDelete(ids);
+      if (cancellableIds.length) {
+        await cashuDb.lockedTokens.bulkDelete(cancellableIds);
       }
       await updateSubscription(sub.id, { status: "cancelled" });
     }

@@ -26,9 +26,16 @@
         v-bind="slides[welcome.currentSlide].props"
       />
       <div class="row justify-between q-mt-lg">
-        <q-btn flat :disable="welcome.currentSlide === 0" @click="prev" :label="$t('Welcome.footer.previous')" />
+        <q-btn
+          flat
+          data-testid="welcome-prev"
+          :disable="welcome.currentSlide === 0"
+          @click="prev"
+          :label="$t('Welcome.footer.previous')"
+        />
         <q-btn
           color="primary"
+          data-testid="welcome-next"
           :label="welcome.currentSlide === LAST_WELCOME_SLIDE ? $t('Welcome.footer.finish') : $t('Welcome.footer.next')"
           :disable="!welcome.canProceed(welcome.currentSlide)"
           @click="next"

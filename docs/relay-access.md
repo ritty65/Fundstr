@@ -9,23 +9,25 @@ Publishes must send a fully signed NIP-01 event to /event; the client validates 
 ## Transport flow
 
 1. The client always **prefers the isolated Fundstr relay**
-   (`wss://relay.fundstr.me`).
+   (`wss://relay.nostr.band`).
 2. Every query begins with a WebSocket REQ/EOSE round-trip. Connections are
    bounded by a ~1.5&nbsp;s timeout to keep the UI responsive.
 3. If the socket cannot be opened or returns no events, the client
    automatically performs the same query over HTTP:
-   `https://relay.fundstr.me/req?filters=…`.
-4. When Fundstr returns no data the client fans out across a vetted pool of
-   public relays (`relay.primal.net`, `relay.fundstr.me`, `nos.lol`,
-   `relay.damus.io`). This pool is also used when discovery explicitly prefers
-   public relays.
+   `https://relay.nostr.band/req?filters=…`.
+4. When Fundstr returns no data the client **can** fan out across a vetted pool
+  of public relays (`relay.nostr.band`, `relay.snort.social`, `nos.lol`,
+  `relay.damus.io`). This behaviour is opt-in via
+   `allowFanoutFallback`—Fundstr-first flows (including Creator Studio load /
+   refresh) stay pinned to the first-party relay unless callers explicitly pass
+   that flag.
 
 All fetches, including the service-worker passthrough, use
 `cache: 'no-store'` together with `cache-control: no-cache` headers so the
 responses are never cached.
 
 Publishing Nutzap events uses a direct HTTP POST to
-`https://relay.fundstr.me/event`. The relay responds with a JSON payload shaped
+`https://relay.nostr.band/event`. The relay responds with a JSON payload shaped
 like `{ ok, id, accepted, message }`. Callers must treat a publish as successful
 **only** when `accepted === true`. When `accepted` is false the provided relay
 `message` should be surfaced to the user verbatim.
@@ -58,8 +60,11 @@ The relay layer implements deduplication and NIP-01 replaceable semantics:
 
 Helpers are exposed for consumers that want the latest Nutzap profile and tier
 definitions: `queryNutzapProfile` (kind `10019`) and `queryNutzapTiers` (kind
-`30019` with `d:"tiers"`). Both helpers accept npub/hex input and will retry
-against relay hints (NIP-65 or `relay` tags) when Fundstr returns no data.
+`30019` with `d:"tiers"`). Both helpers accept npub/hex input and take an
+optional `{ fanout, allowFanoutFallback }` bag. Creator Studio calls them with
+the default Fundstr-only behaviour, while discovery-driven flows (Find
+Creators, creator store refresh) opt in to fan-out by passing relay hints and
+`allowFanoutFallback: true`.
 
 ## Discovery fallbacks
 
@@ -77,3 +82,15 @@ self-declared relays are queried before falling back to the public pool.
 `NetworkOnly` strategy. Together with the explicit `no-store` fetch options this
 guarantees that relay responses are never cached inside the service worker,
 which is required to always observe the most recent replaceable events.
+
+## QA checklist
+
+- Establish a successful websocket session and confirm the connection chip in
+  the Nutzap profile screen flips to **Connected** while a success entry lands in
+  the activity log.
+- Trigger repeated connection failures (e.g. point the workspace to an
+  unreachable relay) and confirm the inline warning beside the Connect button
+  summarizes the latest error and escalates to a “needs attention” state with
+  guidance to verify the workspace key or fall back to HTTP.
+- While “needs attention” is active, ensure publish controls are disabled and
+  the diagnostics banner nudges the operator to resolve the relay transport.

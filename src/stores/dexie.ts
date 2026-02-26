@@ -8,6 +8,8 @@ import { useProofsStore } from "./proofs";
 import { notifyError, notifySuccess } from "../js/notify";
 import type { NostrEvent } from "@nostr-dev-kit/ndk";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
+import type { NutzapProfileDetails } from "@/nutzap/profileCache";
+import type { HistoryToken } from "@/types/historyToken";
 
 export interface CachedProfileDexie {
   pubkey: string;
@@ -22,6 +24,15 @@ export interface CreatorTierDefinition {
   tiers: Tier[];
   eventId: string;
   updatedAt: number;
+  /** Raw Nostr event JSON string */
+  rawEventJson?: string;
+}
+
+export interface NutzapProfileCacheEntry {
+  pubkey: string;
+  profile: NutzapProfileDetails | null;
+  eventId?: string | null;
+  updatedAt?: number | null;
   /** Raw Nostr event JSON string */
   rawEventJson?: string;
 }
@@ -102,6 +113,8 @@ export interface SubscriberViewPref {
   activeViewId: string | null;
 }
 
+export type HistoryTokenRow = HistoryToken & Required<Pick<HistoryToken, "id">>;
+
 // export interface Proof {
 //   id: string
 //   C: string
@@ -115,10 +128,12 @@ export class CashuDexie extends Dexie {
   proofs!: Table<WalletProof>;
   profiles!: Table<CachedProfileDexie>;
   creatorsTierDefinitions!: Table<CreatorTierDefinition, string>;
+  nutzapProfiles!: Table<NutzapProfileCacheEntry, string>;
   subscriptions!: Table<Subscription, string>;
   lockedTokens!: Table<LockedToken, string>;
   subscriberViews!: Table<SubscriberView, string>;
   subscriberViewPrefs!: Table<SubscriberViewPref, string>;
+  historyTokens!: Table<HistoryTokenRow, string>;
 
   constructor() {
     super("cashuDatabase");
@@ -589,6 +604,36 @@ export class CashuDexie extends Dexie {
       subscriberViews: "&name",
       subscriberViewPrefs: "&id",
     });
+
+    this.version(24).stores({
+      proofs:
+        "secret, id, C, amount, reserved, quote, bucketId, label, description",
+      profiles: "pubkey",
+      creatorsTierDefinitions: "&creatorNpub, eventId, updatedAt",
+      subscriptions:
+        "&id, creatorNpub, tierId, status, createdAt, updatedAt, frequency, intervalDays",
+      lockedTokens:
+        "&id, tokenString, owner, tierId, intervalKey, unlockTs, status, subscriptionEventId, subscriptionId, monthIndex, totalPeriods, autoRedeem, frequency, intervalDays",
+      subscriberViews: "&name",
+      subscriberViewPrefs: "&id",
+      nutzapProfiles: "&pubkey, updatedAt, eventId",
+    });
+
+    this.version(25).stores({
+      proofs:
+        "secret, id, C, amount, reserved, quote, bucketId, label, description",
+      profiles: "pubkey",
+      creatorsTierDefinitions: "&creatorNpub, eventId, updatedAt",
+      subscriptions:
+        "&id, creatorNpub, tierId, status, createdAt, updatedAt, frequency, intervalDays",
+      lockedTokens:
+        "&id, tokenString, owner, tierId, intervalKey, unlockTs, status, subscriptionEventId, subscriptionId, monthIndex, totalPeriods, autoRedeem, frequency, intervalDays",
+      subscriberViews: "&name",
+      subscriberViewPrefs: "&id",
+      nutzapProfiles: "&pubkey, updatedAt, eventId",
+      historyTokens:
+        "&id, token, status, archived, bucketId, referenceId, createdAt, date, mint",
+    });
   }
 }
 
@@ -621,19 +666,26 @@ export const useDexieStore = defineStore("dexie", {
         return;
       }
       // start migration
-      await useStorageStore().exportWalletState();
-      parsedProofs.forEach((proof) => {
-        cashuDb.proofs.add(proof);
-      });
+      const storageStore = useStorageStore();
+      await storageStore.exportWalletState();
+      try {
+        await cashuDb.proofs.bulkAdd(parsedProofs);
+      } catch (error) {
+        debug("Failed to migrate proofs to Dexie", error);
+        notifyError(
+          "Failed to migrate proofs to new storage. We'll keep your existing data for now.",
+        );
+        return;
+      }
+      const proofsCount = await cashuDb.proofs.count();
+      const migratedProofs = await proofsStore.getProofs();
       debug(
-        `Migrated ${cashuDb.proofs.count()} proofs. Before: ${
-          parsedProofs.length
-        } proofs, After: ${(await proofsStore.getProofs()).length} proofs`,
+        `Migrated ${proofsCount} proofs. Before: ${parsedProofs.length} proofs, After: ${migratedProofs.length} proofs`,
       );
       debug(
         `Proofs sum before: ${proofsStore.sumProofs(
           parsedProofs,
-        )}, after: ${proofsStore.sumProofs(await proofsStore.getProofs())}`,
+        )}, after: ${proofsStore.sumProofs(migratedProofs)}`,
       );
       this.migratedToDexie = true;
       // remove proofs from localstorage

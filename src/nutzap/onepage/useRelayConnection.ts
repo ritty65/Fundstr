@@ -1,4 +1,5 @@
 import { computed, onBeforeUnmount, readonly, ref, shallowRef, type Ref } from 'vue';
+import { debug } from '@/js/logger';
 import {
   FUNDSTR_REQ_URL,
   FUNDSTR_WS_URL,
@@ -44,9 +45,24 @@ const ACK_TIMEOUT_MS = Math.max(WS_FIRST_TIMEOUT_MS || 0, ACK_TIMEOUT_FALLBACK_M
 const wsImpl: typeof WebSocket | undefined =
   typeof WebSocket !== 'undefined' ? WebSocket : (globalThis as any)?.WebSocket;
 
+function extractHostname(url: string | null | undefined): string | null {
+  if (!url) {
+    return null;
+  }
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
+
 let hasLoggedRelayEndpoints = false;
+let hasLoggedRelaySummaryActivity = false;
+let lastSocketWarningMessage: string | null = null;
 
 export function useRelayConnection() {
+  hasLoggedRelaySummaryActivity = false;
+  lastSocketWarningMessage = null;
   const relayUrl = ref(FUNDSTR_WS_URL);
   const status = ref<RelayConnectionStatus>(wsImpl ? 'idle' : 'disconnected');
   const autoReconnect = ref(true);
@@ -65,24 +81,26 @@ export function useRelayConnection() {
     const wsUrl = relayUrl.value || '(empty)';
     const httpUrl = FUNDSTR_REQ_URL || '(empty)';
     const logMessage = `[Nutzap] Relay endpoints resolved (mode=${mode}): ws=${wsUrl}, http=${httpUrl}`;
-    const logInfo = console.info ? console.info.bind(console) : console.log.bind(console);
-    const logDebug = console.debug ? console.debug.bind(console) : console.log.bind(console);
 
     if (mode === 'production') {
-      logInfo(logMessage);
-      const expectedHost = 'relay.fundstr.me';
-      if (wsUrl !== '(empty)' && !wsUrl.includes(expectedHost)) {
-        console.warn(
-          `[Nutzap] Unexpected production relay WebSocket URL: ${wsUrl}`,
-        );
-      }
-      if (httpUrl !== '(empty)' && !httpUrl.includes(expectedHost)) {
-        console.warn(
-          `[Nutzap] Unexpected production relay HTTP URL: ${httpUrl}`,
-        );
+      debug(logMessage);
+      const expectedHost = extractHostname(FUNDSTR_WS_URL);
+      const wsHost = wsUrl === '(empty)' ? null : extractHostname(wsUrl);
+      const httpHost = httpUrl === '(empty)' ? null : extractHostname(httpUrl);
+      if (expectedHost) {
+        if (wsHost && wsHost !== expectedHost) {
+          console.warn(
+            `[Nutzap] Unexpected production relay WebSocket URL: ${wsUrl}`,
+          );
+        }
+        if (httpHost && httpHost !== expectedHost) {
+          console.warn(
+            `[Nutzap] Unexpected production relay HTTP URL: ${httpUrl}`,
+          );
+        }
       }
     } else {
-      logDebug(logMessage);
+      debug(logMessage);
     }
   }
 
@@ -101,6 +119,40 @@ export function useRelayConnection() {
   const setStatus = (next: RelayConnectionStatus) => {
     status.value = next;
   };
+
+  const logRelaySummary = () => {
+    if (hasLoggedRelaySummaryActivity) {
+      return;
+    }
+    hasLoggedRelaySummaryActivity = true;
+    appendActivity(
+      'info',
+      `Relay endpoints resolved: ws=${relayUrl.value || '(empty)'} http=${
+        FUNDSTR_REQ_URL || '(empty)'
+      }`,
+    );
+  };
+
+  const warnSocketOnce = (
+    message: string,
+    context?: string,
+    level: RelayActivityLevel = 'warning',
+  ) => {
+    if (lastSocketWarningMessage === message) {
+      return;
+    }
+    lastSocketWarningMessage = message;
+    appendActivity(level, message, context);
+  };
+
+  const resetSocketWarnings = () => {
+    lastSocketWarningMessage = null;
+  };
+
+  const relayUnavailableMessage = () =>
+    `Relay socket unavailable for ${relayUrl.value || '(empty)'} — retrying with backoff`;
+
+  logRelaySummary();
 
   const clearReconnectTimer = () => {
     if (reconnectTimer) {
@@ -153,9 +205,10 @@ export function useRelayConnection() {
     socketWaiters.clear();
   };
 
-const handleOpen = () => {
+  const handleOpen = () => {
     setStatus('connected');
     reconnectAttempts.value = 0;
+    resetSocketWarnings();
     appendActivity('success', 'Relay connection established');
     const current = socket.value;
     if (current) {
@@ -170,7 +223,7 @@ const handleOpen = () => {
     const attempt = reconnectAttempts.value + 1;
     reconnectAttempts.value = attempt;
     const delay = Math.min(MAX_RECONNECT_DELAY, BASE_RECONNECT_DELAY * Math.pow(2, attempt - 1));
-    appendActivity('warning', `Relay disconnected — retrying in ${Math.round(delay)}ms`);
+    warnSocketOnce(relayUnavailableMessage(), `Next attempt in ${Math.round(delay)}ms`);
     clearReconnectTimer();
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
@@ -180,7 +233,7 @@ const handleOpen = () => {
 
   const handleClose = (event: CloseEvent) => {
     const reason = event.reason ? ` (${event.reason})` : '';
-    appendActivity('warning', `Relay connection closed${reason}`);
+    warnSocketOnce(relayUnavailableMessage(), reason || undefined);
     setStatus('disconnected');
     const err = new Error('Relay connection closed');
     cleanupPendingAcks('Relay connection closed before ACK');
@@ -192,7 +245,7 @@ const handleOpen = () => {
   };
 
   const handleError = () => {
-    appendActivity('error', 'Relay socket error');
+    warnSocketOnce(relayUnavailableMessage());
   };
 
   const handleNotice = (payload: unknown[]) => {
@@ -335,7 +388,9 @@ const handleOpen = () => {
     clearReconnectTimer();
     const reconnecting = reconnectAttempts.value > 0;
     setStatus(reconnecting ? 'reconnecting' : 'connecting');
-    appendActivity('info', reconnecting ? 'Reconnecting to relay' : 'Connecting to relay');
+    if (!lastSocketWarningMessage || !reconnecting) {
+      appendActivity('info', reconnecting ? 'Reconnecting to relay' : 'Connecting to relay');
+    }
 
     try {
       const instance = new wsImpl(url);
@@ -343,10 +398,10 @@ const handleOpen = () => {
       attachSocketHandlers(instance);
     } catch (err) {
       setStatus('disconnected');
-      appendActivity(
+      warnSocketOnce(
+        relayUnavailableMessage(),
+        err instanceof Error ? err.message : undefined,
         'error',
-        'Failed to open relay socket',
-        err instanceof Error ? err.message : undefined
       );
       scheduleReconnect();
     }
@@ -357,6 +412,7 @@ const handleOpen = () => {
     clearReconnectTimer();
     appendActivity('info', 'Disconnecting from relay');
     setStatus('disconnected');
+    resetSocketWarnings();
     teardownSocket();
     cleanupPendingAcks('Relay disconnected before ACK');
     rejectSocketWaiters(new Error('Relay disconnected'));
@@ -483,6 +539,7 @@ const handleOpen = () => {
     status: readonly(status) as Readonly<Ref<RelayConnectionStatus>>,
     autoReconnect,
     activityLog: readonly(activityLog) as Readonly<Ref<RelayActivityEntry[]>>,
+    reconnectAttempts: readonly(reconnectAttempts) as Readonly<Ref<number>>,
     connect,
     disconnect,
     publishEvent,

@@ -1,16 +1,14 @@
-import NDK from '@nostr-dev-kit/ndk';
-import { NUTZAP_RELAY_WSS } from './relayConfig';
+import type NDK from '@nostr-dev-kit/ndk';
+import { connectNdk, ndkWrite } from 'src/nostr/ndk';
 
-let nutzapNdk: NDK | null = null;
+let connectStarted = false;
 
-/** NDK singleton isolated to ONLY the Fundstr relay (no public relays). */
 export function getNutzapNdk(): NDK {
-  if (!nutzapNdk) {
-    nutzapNdk = new NDK({
-      explicitRelayUrls: [NUTZAP_RELAY_WSS],
+  if (!connectStarted) {
+    connectStarted = true;
+    void connectNdk().catch(err => {
+      console.warn('[nutzap] failed to connect shared NDK instances', err);
     });
-    // We do not await here; the publish/fetch helpers will apply their own deadlines.
-    void nutzapNdk.connect();
   }
-  return nutzapNdk;
+  return ndkWrite;
 }

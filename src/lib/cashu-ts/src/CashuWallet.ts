@@ -1265,7 +1265,14 @@ class CashuWallet {
 		counter?: number,
 		pubkey?: string,
 		outputAmounts?: Array<number>,
-		p2pk?: { pubkey: string; locktime?: number; refundKeys?: Array<string> },
+                p2pk?: {
+                        pubkey: string;
+                        locktime?: number;
+                        refundKeys?: Array<string>;
+                        hashlock?: string;
+                        cosigners?: Array<string>;
+                        minSigners?: number;
+                },
 		factory?: OutputDataFactory
 	): Array<OutputDataLike> {
 		let outputData: Array<OutputDataLike>;

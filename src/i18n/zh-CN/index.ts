@@ -60,6 +60,65 @@ export const messages = {
       },
     },
   },
+  DonationPrompt: {
+    title: "Support {name}",
+    tabs: { cashu: "Cashu",
+      liquid: "Liquid",
+      bitcoin: "Bitcoin",
+    },
+    labels: {
+      liquid: "Liquid",
+      bitcoin: "Bitcoin",
+    },
+    actions: {
+      copyLiquid: "Copy Liquid address",
+      copyBitcoin: "Copy Bitcoin address",
+    },
+    status: {
+      noLiquid: "No Liquid address configured.",
+      noBitcoin: "No Bitcoin address configured.",
+    },
+    buttons: {
+      never: "Never Ask Again",
+      later: "Remind Me Later",
+    },
+    cashu: {
+      tagline: "Send locked Cashu tokens directly to Fundstr.",
+      donateHeading: "Cashu donation",
+      quickPresetsLabel: "Quick amounts",
+      amountLabel: "Amount (sats)",
+      donateCta: "Send via Cashu",
+      trustedMintsHeading: "Trusted mints",
+      trustedMintsEmpty: "No trusted mints listed.",
+      ctas: {
+        signInTitle: "Sign in to send Cashu",
+        signInDescription: "Fundstr uses your Nostr identity to DM locked Cashu tokens.",
+        signInCta: "Sign in with Nostr",
+        setupTitle: "Set up your Cashu wallet",
+        setupDescription: "Connect a Cashu mint so we can send from a mint your supporter trusts.",
+        setupCta: "Open wallet setup",
+        quickLinksLabel: "Need a Cashu app?",
+        quickLinkDesktop: "Open Cashu web app",
+        quickLinkMobile: "Install Cashu mobile",
+      },
+      explainer: {
+        heading: "How Cashu DMs work",
+        body: "Fundstr locks your sats into a Cashu token and DMs it using one of the trusted mints listed above. Only the supporter can unlock it once they accept the DM.",
+      },
+      errors: {
+        profileMissing: "Fundstr has not published a Cashu profile yet.",
+        loadFailed: "Unable to load Cashu profile right now.",
+        invalidAmount: "Enter a valid donation amount.",
+      },
+      notifications: {
+        success: "Cashu tokens queued for delivery!",
+        failure: "Unable to queue the Cashu DM. Check your wallet setup and try again.",
+        dmFailure: "We couldn't deliver the Nostr DM. Confirm your relays are reachable, then retry from Wallet → Outbox.",
+      },
+      priceLabel: "{amount} sats",
+      avatarAlt: "{name} avatar",
+    },
+  },
   wallet: {
     notifications: {
       balance_too_low: "Balance is too low",
@@ -108,7 +167,13 @@ export const messages = {
     menu: {
       wallet: { title: "@:FullscreenHeader.actions.back.label" },
       nostrMessenger: { title: "@:AboutPage.siteOverview.nostrMessengerTitle" },
-      restore: { title: "@:AboutPage.siteOverview.restoreTitle" },
+      restore: {
+        title: "@:AboutPage.siteOverview.restoreTitle",
+        restore: {
+          title: "@:AboutPage.siteOverview.restoreTitle",
+          caption: "@:AboutPage.siteOverview.restore.description",
+        },
+      },
       alreadyRunning: { title: "@:AboutPage.siteOverview.alreadyRunningTitle" },
       welcome: { title: "@:AboutPage.siteOverview.welcomeTitle" },
       nostrLogin: { title: "@:AboutPage.siteOverview.nostrLoginTitle" },
@@ -126,8 +191,8 @@ export const messages = {
           caption: "Discover creators",
         },
       },
-      creatorHub: {
-        title: "Creator Hub",
+      creatorStudio: {
+        title: "Creator Studio",
         caption: "Creator tools",
       },
       myProfile: {
@@ -153,6 +218,13 @@ export const messages = {
         terms: {
           title: "Terms",
           caption: "Terms of Service",
+        },
+      },
+      supporters: {
+        title: "Supporters",
+        supporters: {
+          title: "Fundstr Supporters",
+          caption: "Highlighted donors and contributors",
         },
       },
       about: {
@@ -366,7 +438,7 @@ export const messages = {
         "Generate a key pair to receive P2PK-locked ecash. Warning - This feature is experimental. Only use with small amounts. If you lose your private keys, nobody will be able to unlock the ecash locked to it anymore.",
       generate_button: "Generate key",
       import_button: "Import nsec",
-      publish_profile_button: "Publish Nutzap profile",
+      publish_profile_button: "Publish Cashu profile",
       quick_access: {
         toggle: "Quick access to lock",
         description:
@@ -639,6 +711,11 @@ export const messages = {
       label: "Restore Mints",
       caption:
         'Select the mint to restore. You can add more mints in the main screen under "Mints" and restore them here.',
+      empty_state: {
+        message:
+          "You haven't added any mints yet. Add your historical mints before running a restore.",
+        action: "Open Wallet Mints",
+      },
     },
     actions: {
       paste: {
@@ -657,6 +734,9 @@ export const messages = {
         in_progress: "Restoring mint { index } of { length } …",
         success: "Restore finished successfully",
         error: "Error restoring mints - { error }",
+        no_mints_warning: "Add at least one mint before restoring.",
+        no_mints_caption:
+          'Open the Wallet and select the "Mints" tab to add the mints you want to restore.',
       },
     },
   },
@@ -806,6 +886,9 @@ export const messages = {
       },
       memo: {
         label: "Message",
+      },
+      anonymous_toggle: {
+        label: "Send anonymously",
       },
     },
     actions: {
@@ -1305,10 +1388,46 @@ export const messages = {
     },
     notifications: {
       donation_sent: "Donation sent",
+      donation_dm_sent: "Creator notified of your donation",
+      donation_dm_failed: "Couldn't notify the creator over DM",
       message_sent: "Message sent",
       subscription_success: "Subscription successful",
       invalid_creator_pubkey: "Invalid creator pubkey",
       subscription_failed: "Subscription failed",
+    },
+    explainers: {
+      heading: "How Cashu subscriptions work",
+      intro:
+        "Here's how Cashu keeps your support flowing with ecash you control.",
+      ctaLabel: "@:CreatorHub.profile.finishSetup",
+      ctaAria: "Finish onboarding to subscribe",
+      ctaHint:
+        "Complete onboarding to connect your wallet, choose mints, and start supporting creators.",
+      steps: {
+        subscriptions: {
+          title: "Subscriptions you control",
+          body:
+            "Choose a tier and Cashu signs zap payments from your wallet on the cadence you set—funds only move with your approval.",
+        },
+        trustedMints: {
+          title: "Trusted mints",
+          body:
+            "You fund your wallet from mints you trust. Only those mints can issue the ecash your subscriptions will spend.",
+        },
+        relays: {
+          title: "Relay delivery",
+          body:
+            "Relays carry the signed invoices and receipts between you and the creator while keeping your keys private.",
+        },
+      },
+      tooltips: {
+        p2pk:
+          "Creators publish a P2PK key so you can send ecash to them directly from your wallet.",
+        trustedMints:
+          "These are the mints the creator trusts. Connect with at least one compatible mint before subscribing.",
+        relays:
+          "Relays deliver the zap instructions and acknowledgements that power each subscription payment.",
+      },
     },
   },
   ChooseExistingTokenDialog: {
@@ -1476,7 +1595,7 @@ export const messages = {
     export_csv: "Export CSV",
     cancel: "Cancel",
     cancel_confirm_title: "Cancel subscription",
-    cancel_confirm_text: "Delete all future locked tokens?",
+    cancel_confirm_text: "Cancel subscription? Only HTLC-protected future payments with a shared preimage can be reclaimed.",
     extend_dialog_title: "Extend subscription",
     extend_dialog_text: "Number of additional months",
     soon_unlock: "{ count } subscriptions unlocking within 7 days",
@@ -1676,43 +1795,56 @@ export const messages = {
     restored_amount_success_text: "Restored { amount }",
   },
   CreatorHub: {
-    login: {
-      title: "Creator Login",
-      nip07: "Login with Nostr Extension",
-      nsec: "nsec",
-      nsec_button: "Login with nsec",
-      nsec_warning:
-        "Entering your nsec in a web app is dangerous. Use NIP-07 if possible.",
-    },
-    dashboard: {
-      title: "Creator Dashboard",
-      logout: "Logout",
-      edit_profile: "Edit Profile",
-      manage_tiers: "Manage Tiers",
-      add_tier: "Add Tier",
-      save_tier: "Save Tier",
-      delete_tier: "Delete Tier",
-      inputs: {
-        title: {
-          label: "Title",
-        },
-        price: {
-          label: "Cost / month (sats)",
-        },
-        description: {
-          label: "Description (Markdown)",
-        },
-      },
-      welcome_message: "Welcome Message",
-      currency_labels: {
-        usd: "USD",
-        eur: "EUR",
-      },
-    },
     profile: {
       back: "Back",
       tiers: "Subscription Tiers",
       edit: "Edit",
+      guestCta: "You're browsing as a guest. Finish setup to subscribe.",
+      finishSetup: "Finish setup",
+      copyProfileLink: "Copy profile link",
+      followers: "{count} followers",
+      following: "{count} following",
+      sections: {
+        about: "About",
+        tiers: "Tiers",
+        infrastructure: "Infrastructure trust",
+        faq: "FAQ",
+      },
+      noAbout: "This creator hasn't shared an about section yet.",
+      noTiers: "Creator has not published any subscription tiers yet.",
+      noFaq: "No FAQs published yet.",
+      tierLoadError: "Failed to load tiers – check relay connectivity.",
+      tierRefreshError: "Failed to refresh tiers – check relay connectivity.",
+      retry: "Retry",
+      subscribeCta: "Subscribe",
+      subscribeMicrocopy: "Cancel anytime • Privacy-first via Cashu",
+      featuredTierBadge: "Featured Tier",
+      moreOptions: "More options",
+      featuredTierMissing:
+        "This featured tier isn't available right now. Explore other ways to support below.",
+      featuredTierMissingCta: "Browse all tiers",
+      guestTooltip:
+        "Connect and unlock your Nostr signer, then finish setup to subscribe.",
+      signerAlert: {
+        message:
+          "You need a connected, unlocked Nostr signer before subscribing. Finish onboarding to connect your wallet and signer.",
+        cta: "Open setup",
+      },
+      paywalledPreview: "Protected content visible to subscribers.",
+      infrastructureDetails: "Creator infrastructure",
+      p2pkLabel: "P2PK public key",
+      trustedMintsLabel: "Trusted mints",
+      relaysLabel: "Relays",
+      howCashuWorks: {
+        title: "How Cashu works",
+        intro:
+          "Cashu keeps your support flowing with non-custodial ecash and signed relay instructions.",
+        points: [
+          "You connect to the creator's trusted mints to fund your wallet.",
+          "Subscriptions send pre-signed zap instructions on the schedule you choose.",
+          "Relays deliver the subscription invoices while preserving your privacy.",
+        ],
+      },
     },
   },
 
@@ -1820,7 +1952,7 @@ export const messages = {
             "Your public storefront as seen by visitors. Great for a quick audit of how your profile appears worldwide.",
         },
 
-        creatorHub: {
+        creatorStudio: {
           fan: "Publish a profile; get support.",
           creator: "Set tiers, goals and withdraw earnings.",
         },
@@ -1876,8 +2008,11 @@ export const messages = {
       },
     },
   },
-  creatorHub: {
+  creatorStudio: {
     publish: "Publish Profile",
+    publishBar: {
+      unsavedChanges: "Unsaved changes",
+    },
     profileHeader: "Profile details",
     displayName: "Display Name",
     profilePictureUrl: "Profile Picture URL",
@@ -1909,8 +2044,8 @@ export const messages = {
       title: "Get to Know the App",
       lead: "Explore these key sections to start using the wallet:",
       bullets: {
-        creatorHub: {
-          label: "CreatorHub",
+        creatorStudio: {
+          label: "Creator Studio",
           desc: "Publish your profile and find creators.",
         },
         subscriptions: {

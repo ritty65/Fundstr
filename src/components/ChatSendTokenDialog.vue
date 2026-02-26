@@ -4,7 +4,7 @@
       <q-card-section class="text-h6">Send Tokens</q-card-section>
       <q-card-section>
         <div class="text-caption q-mb-sm">
-          Balance: {{ formattedTotalBalance }}
+          Balance: {{ formattedSelectedBalance }}
         </div>
         <q-select
           v-model="bucketId"
@@ -14,7 +14,11 @@
           label="Bucket"
           outlined
           dense
+          :disable="!hasBuckets"
         />
+        <div v-if="!hasBuckets" class="text-caption text-2 q-mt-sm">
+          Create or fund a bucket before sending tokens.
+        </div>
         <q-input
           v-model.number="amount"
           type="number"
@@ -22,12 +26,19 @@
           outlined
           dense
           class="q-mt-md"
+          :disable="!hasBuckets"
+          :error="!!amountError"
+          :error-message="amountError"
         />
         <q-input v-model="memo" label="Memo" outlined dense class="q-mt-md" />
       </q-card-section>
       <q-card-actions align="right">
         <q-btn flat color="primary" @click="cancel">Cancel</q-btn>
-        <q-btn flat color="primary" :disable="!amount" @click="confirm"
+        <q-btn
+          flat
+          color="primary"
+          :disable="isSendDisabled"
+          @click="confirm"
           >Send</q-btn
         >
       </q-card-actions>
@@ -36,12 +47,13 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useBucketsStore } from "src/stores/buckets";
 import { useMessengerStore } from "src/stores/messenger";
 import { useMintsStore } from "src/stores/mints";
 import { useUiStore } from "src/stores/ui";
+import { notifyWarning } from "src/js/notify";
 
 const props = defineProps<{ recipient: string }>();
 
@@ -56,7 +68,7 @@ const { activeUnit } = storeToRefs(mintsStore);
 const show = ref(false);
 const amount = ref<number | null>(null);
 const memo = ref("");
-const bucketId = ref("");
+const bucketId = ref<string | null>(null);
 
 const bucketOptions = computed(() =>
   bucketList.value.map((b) => ({
@@ -68,19 +80,53 @@ const bucketOptions = computed(() =>
   })),
 );
 
-const totalBalance = computed(() =>
-  Object.values(bucketBalances.value).reduce((sum, v) => sum + v, 0),
+const hasBuckets = computed(() => bucketOptions.value.length > 0);
+
+const selectedBucketBalance = computed(() =>
+  bucketId.value ? bucketBalances.value[bucketId.value] ?? 0 : 0,
 );
 
-const formattedTotalBalance = computed(() =>
-  uiStore.formatCurrency(totalBalance.value, activeUnit.value),
+const formattedSelectedBalance = computed(() =>
+  uiStore.formatCurrency(selectedBucketBalance.value, activeUnit.value),
+);
+
+const amountError = computed<string | undefined>(() => {
+  if (!hasBuckets.value) return undefined;
+  if (amount.value == null) return undefined;
+  if (amount.value <= 0) return "Enter an amount greater than zero.";
+  if (amount.value > selectedBucketBalance.value)
+    return "Amount exceeds the available balance.";
+  return undefined;
+});
+
+const isAmountValid = computed(() =>
+  amount.value != null && amount.value > 0 && amount.value <= selectedBucketBalance.value,
+);
+
+const isSendDisabled = computed(
+  () => !hasBuckets.value || !isAmountValid.value,
 );
 
 function reset() {
   amount.value = null;
   memo.value = "";
-  bucketId.value = bucketList.value[0]?.id || "";
+  const firstBucket = bucketList.value[0];
+  bucketId.value = firstBucket ? firstBucket.id : null;
 }
+
+watch(
+  bucketList,
+  (list) => {
+    if (!list.length) {
+      bucketId.value = null;
+      return;
+    }
+    if (!bucketId.value || !list.some((bucket) => bucket.id === bucketId.value)) {
+      bucketId.value = list[0].id;
+    }
+  },
+  { immediate: true },
+);
 
 function showDialog() {
   reset();
@@ -98,16 +144,25 @@ function cancel() {
 }
 
 async function confirm() {
-  if (!props.recipient || !amount.value) {
+  if (!props.recipient) {
     hideDialog();
     return;
   }
-  await messenger.sendToken(
+  if (!bucketId.value) {
+    notifyWarning("Select a bucket before sending tokens.");
+    return;
+  }
+  if (amount.value == null || !isAmountValid.value) {
+    return;
+  }
+  const success = await messenger.sendToken(
     props.recipient,
     amount.value,
     bucketId.value,
     memo.value.trim() || undefined,
   );
-  hideDialog();
+  if (success) {
+    hideDialog();
+  }
 }
 </script>

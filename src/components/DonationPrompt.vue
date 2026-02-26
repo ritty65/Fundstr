@@ -1,152 +1,139 @@
 <template>
   <q-dialog v-model="visible" persistent>
-    <q-card class="q-pa-md" style="min-width: 300px">
-      <q-card-section class="text-h6">Support Fundstr</q-card-section>
+    <q-card class="q-pa-md donation-card">
+      <q-card-section class="text-h6">
+        {{ t('DonationPrompt.title', { name: supporterDisplayName }) }}
+      </q-card-section>
       <q-card-section>
-        <div v-if="noAddress" class="text-2">
-          Donation address not configured.
-        </div>
-        <template v-else>
-          <q-tabs v-model="tab" dense class="text-primary">
-            <q-tab name="lightning" label="Lightning" />
-            <q-tab name="bitcoin" label="Bitcoin" />
-          </q-tabs>
-          <q-separator />
-          <q-tab-panels v-model="tab" animated>
-            <q-tab-panel name="lightning" class="q-pt-md">
-              <div v-if="lightning">
-                <div class="text-center q-mb-md">
-                  <vue-qrcode :value="lightningQRCode" :options="{ width: 200 }" />
-                </div>
-                <q-input
-                  :model-value="lightning"
-                  readonly
-                  dense
-                  outlined
-                  label="Lightning"
-                >
-                  <template #append>
-                    <q-btn
-                      flat
-                      icon="content_copy"
-                      @click="copy(lightning)"
-                      aria-label="Copy Lightning address"
-                    />
-                  </template>
-                </q-input>
+        <q-tabs v-model="tab" dense class="text-primary donation-tabs">
+          <q-tab name="cashu" :label="t('DonationPrompt.tabs.cashu')" />
+          <q-tab name="liquid" :label="t('DonationPrompt.tabs.liquid')" />
+          <q-tab name="bitcoin" :label="t('DonationPrompt.tabs.bitcoin')" />
+        </q-tabs>
+        <q-separator />
+        <q-tab-panels v-model="tab" animated>
+          <q-tab-panel name="cashu" class="q-pt-md">
+            <DonationCashuPanel
+              :supporter-npub="cashuSupporterNpub"
+              :supporter-display-name="supporterDisplayName"
+              :supporter-avatar-url="supporterAvatarUrl"
+            />
+          </q-tab-panel>
+          <q-tab-panel name="liquid" class="q-pt-md">
+            <div v-if="liquid">
+              <div class="text-center q-mb-md">
+                <vue-qrcode :value="liquidQRCode" :options="{ width: 200 }" />
               </div>
-              <div v-else class="text-2">No Lightning address configured.</div>
-            </q-tab-panel>
-            <q-tab-panel name="bitcoin" class="q-pt-md">
-              <div v-if="bitcoin">
-                <div class="text-center q-mb-md">
-                  <vue-qrcode :value="bitcoinQRCode" :options="{ width: 200 }" />
-                </div>
-                <q-input
-                  :model-value="bitcoin"
-                  readonly
-                  dense
-                  outlined
-                  label="Bitcoin"
-                >
-                  <template #append>
-                    <q-btn
-                      flat
-                      icon="content_copy"
-                      @click="copy(bitcoin)"
-                      aria-label="Copy Bitcoin address"
-                    />
-                  </template>
-                </q-input>
+              <q-input
+                :model-value="liquid"
+                readonly
+                dense
+                outlined
+                :label="t('DonationPrompt.labels.liquid')"
+              >
+                <template #append>
+                  <q-btn
+                    flat
+                    icon="content_copy"
+                    @click="copy(liquid)"
+                    :aria-label="t('DonationPrompt.actions.copyLiquid')"
+                  />
+                </template>
+              </q-input>
+            </div>
+            <div v-else class="text-2">{{ t('DonationPrompt.status.noLiquid') }}</div>
+          </q-tab-panel>
+          <q-tab-panel name="bitcoin" class="q-pt-md">
+            <div v-if="bitcoin">
+              <div class="text-center q-mb-md">
+                <vue-qrcode :value="bitcoinQRCode" :options="{ width: 200 }" />
               </div>
-              <div v-else class="text-2">No Bitcoin address configured.</div>
-            </q-tab-panel>
-          </q-tab-panels>
-        </template>
+              <q-input
+                :model-value="bitcoin"
+                readonly
+                dense
+                outlined
+                :label="t('DonationPrompt.labels.bitcoin')"
+              >
+                <template #append>
+                  <q-btn
+                    flat
+                    icon="content_copy"
+                    @click="copy(bitcoin)"
+                    :aria-label="t('DonationPrompt.actions.copyBitcoin')"
+                  />
+                </template>
+              </q-input>
+            </div>
+            <div v-else class="text-2">{{ t('DonationPrompt.status.noBitcoin') }}</div>
+          </q-tab-panel>
+        </q-tab-panels>
       </q-card-section>
       <q-card-actions align="right">
-        <q-btn flat label="Never Ask Again" @click="never" />
-        <q-btn flat label="Remind Me Later" @click="later" />
-        <q-btn color="primary" label="Donate Now" @click="donate" :disable="noAddress" />
+        <q-btn flat :label="t('DonationPrompt.buttons.never')" @click="never" />
+        <q-btn flat :label="t('DonationPrompt.buttons.later')" @click="later" />
       </q-card-actions>
     </q-card>
   </q-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { copyToClipboard } from 'quasar'
-import { LOCAL_STORAGE_KEYS } from '@/constants/localStorageKeys'
-
+import { onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import VueQrcode from '@chenfengyuan/vue-qrcode'
-
-const visible = ref(false)
-const tab = ref('lightning')
-const lightning = ref(import.meta.env.VITE_DONATION_LIGHTNING || '')
-const bitcoin = ref(import.meta.env.VITE_DONATION_BITCOIN || '')
-const lightningQRCode = ref(lightning.value ? `lightning:${lightning.value}` : '')
-const bitcoinQRCode = ref(bitcoin.value ? `bitcoin:${bitcoin.value}` : '')
-const noAddress = computed(() => !lightning.value && !bitcoin.value)
+import { useDonationPrompt } from '@/composables/useDonationPrompt'
+import DonationCashuPanel from './DonationCashuPanel.vue'
 
 defineOptions({
   name: 'DonationPrompt'
 })
 
-const LAUNCH_THRESHOLD = 5
-const DAY_THRESHOLD = 7
+const emit = defineEmits<{ (event: 'opened'): void }>()
 
-const getLaunchCount = () => parseInt(localStorage.getItem(LOCAL_STORAGE_KEYS.DONATION_LAUNCH_COUNT) || '0')
-const setLaunchCount = (v: number) => localStorage.setItem(LOCAL_STORAGE_KEYS.DONATION_LAUNCH_COUNT, v.toString())
+const { t } = useI18n()
+
+const {
+  bitcoin,
+  bitcoinQRCode,
+  copy,
+  getDefaultTab,
+  later,
+  liquid,
+  liquidQRCode,
+  never,
+  cashuSupporterNpub,
+  open,
+  supporterDisplayName,
+  supporterAvatarUrl,
+  tab,
+  visible
+} = useDonationPrompt()
 
 onMounted(() => {
-  const optOut = localStorage.getItem(LOCAL_STORAGE_KEYS.DONATION_OPT_OUT) === 'true'
-  if (optOut) return
-
-  const launchCount = getLaunchCount() + 1
-  setLaunchCount(launchCount)
-
-  const lastPrompt = parseInt(
-    localStorage.getItem(LOCAL_STORAGE_KEYS.DONATION_LAST_PROMPT) ||
-      Date.now().toString()
-  )
-  const daysSince = (Date.now() - lastPrompt) / (1000 * 60 * 60 * 24)
-
-  if (launchCount >= LAUNCH_THRESHOLD || daysSince >= DAY_THRESHOLD) {
-    visible.value = true
-  }
+  open({ defaultTab: getDefaultTab() })
 })
 
-const donate = () => {
-  if (tab.value === 'lightning' && lightning.value) {
-    window.open(`lightning:${lightning.value}`, '_blank')
-  } else if (tab.value === 'bitcoin' && bitcoin.value) {
-    window.open(`bitcoin:${bitcoin.value}`, '_blank')
+watch(
+  () => visible.value,
+  (isVisible, wasVisible) => {
+    if (isVisible && !wasVisible) {
+      emit('opened')
+    }
   }
-  localStorage.setItem(LOCAL_STORAGE_KEYS.DONATION_LAST_PROMPT, Date.now().toString())
-  setLaunchCount(0)
-  visible.value = false
-}
+)
 
-const later = () => {
-  localStorage.setItem(LOCAL_STORAGE_KEYS.DONATION_LAST_PROMPT, Date.now().toString())
-  setLaunchCount(0)
-  visible.value = false
-}
-
-const never = () => {
-  localStorage.setItem(LOCAL_STORAGE_KEYS.DONATION_OPT_OUT, 'true')
-  setLaunchCount(0)
-  visible.value = false
-}
-
-async function copy(text: string) {
-  try {
-    await copyToClipboard(text)
-  } catch {
-    // ignore copy errors
-  }
-}
+defineExpose({
+  visible
+})
 </script>
 
 <style scoped>
+.donation-card {
+  min-width: 320px;
+}
+
+.donation-tabs {
+  margin-bottom: 8px;
+}
+
 </style>

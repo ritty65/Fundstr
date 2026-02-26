@@ -10,6 +10,24 @@
         <q-card-section class="text-h6">Identity &amp; Relays</q-card-section>
         <q-card-section>
           <q-input v-model="privKey" label="Private Key" type="text" />
+          <q-input
+            v-model="pin"
+            :type="showPin ? 'text' : 'password'"
+            label="Unlock PIN / Password"
+            class="q-mt-sm"
+            outlined
+            dense
+            :error="Boolean(errorMessage)"
+            :error-message="errorMessage"
+          >
+            <template #append>
+              <q-icon
+                :name="showPin ? 'visibility_off' : 'visibility'"
+                class="cursor-pointer"
+                @click="showPin = !showPin"
+              />
+            </template>
+          </q-input>
           <q-btn
             v-if="hasNip07"
             label="Use NIP-07"
@@ -81,12 +99,16 @@ import { storeToRefs } from "pinia";
 import { useNostrStore } from "src/stores/nostr";
 import { useMessengerStore } from "src/stores/messenger";
 import { useSettingsStore } from "src/stores/settings";
+import { nip19, getPublicKey } from "nostr-tools";
+import { isValidNpub } from "src/utils/validators";
+import { useVaultStore } from "src/stores/vault";
 
 const nostr = useNostrStore();
 const settings = useSettingsStore();
 const { nip07SignerAvailable } = storeToRefs(nostr);
 const { checkNip07Signer, connectBrowserSigner } = nostr;
 const hasNip07 = ref(false);
+const vault = useVaultStore();
 onMounted(() => {
   checkNip07Signer(true);
   const check = () => {
@@ -110,6 +132,9 @@ const messenger = useMessengerStore();
 const aliases = messenger.aliases as any;
 const aliasPubkey = ref("");
 const aliasName = ref("");
+const pin = ref("");
+const showPin = ref(false);
+const errorMessage = ref("");
 
 const addRelay = () => {
   if (relayInput.value.trim()) {
@@ -136,16 +161,58 @@ const removeAlias = (key: string) => {
 const useNip07 = async () => {
   const available = await checkNip07Signer(true);
   if (!available) return;
-  await connectBrowserSigner();
-  pubKey.value = nostr.npub;
-  privKey.value = nostr.activePrivateKeyNsec;
-  showDialog.value = false;
+  try {
+    await ensureEncryptionReady();
+    await connectBrowserSigner();
+    if (!isValidNpub(nostr.npub)) {
+      throw new Error("Invalid Nostr Public Key");
+    }
+    pubKey.value = nostr.npub;
+    privKey.value = nostr.activePrivateKeyNsec;
+    showDialog.value = false;
+  } catch (e: any) {
+    errorMessage.value = e?.message || "Invalid Nostr Public Key";
+  }
 };
 
 const save = async () => {
-  settings.defaultNostrRelays = [...relays.value];
-  await nostr.updateIdentity(privKey.value as any, settings.defaultNostrRelays);
-  pubKey.value = nostr.npub;
-  showDialog.value = false;
+  try {
+    await ensureEncryptionReady();
+    const decoded = nip19.decode(privKey.value.trim());
+    const pub = nip19.npubEncode(getPublicKey(decoded.data as Uint8Array));
+    if (!isValidNpub(pub)) {
+      throw new Error("Invalid Nostr Public Key");
+    }
+    settings.defaultNostrRelays = [...relays.value];
+    await nostr.updateIdentity(privKey.value as any, settings.defaultNostrRelays);
+    pubKey.value = nostr.npub;
+    showDialog.value = false;
+  } catch (e: any) {
+    errorMessage.value = e?.message || "Invalid Nostr Public Key";
+  }
+};
+
+const ensureEncryptionReady = async () => {
+  errorMessage.value = "";
+  if (!pin.value.trim()) {
+    errorMessage.value = "PIN required";
+    throw new Error("PIN required");
+  }
+  const pinValue = pin.value.trim();
+  if (!nostr.encryptionKey) {
+    if (nostr.hasEncryptedSecrets()) {
+      await nostr.unlockWithPin(pinValue);
+    } else {
+      await nostr.setEncryptionKeyFromPin(pinValue);
+    }
+  }
+  if (vault.isUnlocked) {
+    return;
+  }
+  if (vault.hasEncryptedVault) {
+    await vault.unlockWithPin(pinValue);
+  } else {
+    await vault.setEncryptionKeyFromPin(pinValue);
+  }
 };
 </script>

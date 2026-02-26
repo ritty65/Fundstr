@@ -20,13 +20,20 @@ export default boot(async () => {
   }
   if (valid) {
     const ok = await verifyMint(mintUrl);
-    if (!ok) {
+    if (ok === false) {
       Notify.create({
         type: "negative",
         message:
           "Selected mint lacks conditional‑secret support (NUT‑10/11/14)",
       });
       throw new Error("Unsupported mint");
+    } else if (ok === null) {
+      console.warn("Unable to verify mint capabilities due to network failure");
+      Notify.create({
+        type: "warning",
+        message:
+          "Unable to contact the selected mint. Using cached keys until connectivity is restored.",
+      });
     }
   }
   if (typeof wallet.initKeys === "function") {

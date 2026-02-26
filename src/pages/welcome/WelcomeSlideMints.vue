@@ -23,6 +23,7 @@
           flat
           dense
           icon="factory"
+          data-testid="welcome-mints-browse"
           @click="showCatalog = true"
           label="Click to browse mints"
           :disable="!recommendedMints.length"
@@ -65,14 +66,15 @@
         />
       </div>
       <q-dialog v-model="showCatalog">
-        <q-card style="min-width:300px">
+        <q-card style="min-width:300px" data-testid="welcome-mints-dialog">
           <q-card-section>
             <div class="text-h6">{{ t('Welcome.mints.browse') }}</div>
           </q-card-section>
           <q-list>
             <q-item
-              v-for="mint in recommendedMints"
+              v-for="(mint, i) in recommendedMints"
               :key="mint.url"
+              :data-testid="`welcome-mint-option-${i}`"
               clickable
               @click="selectMint(mint.url)"
             >

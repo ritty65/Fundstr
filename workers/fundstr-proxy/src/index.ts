@@ -7,9 +7,19 @@ type Env = {
   PROXY_BASE_HTTP?: string;
   PROXY_BASE_WSS?: string;
   RELAY_REQ_TIMEOUT_MS?: string;
+  FIND_PROFILES_TARGET?: string;
 };
 
 const FALLBACK_ALLOW_HEADERS = 'content-type,accept,cache-control';
+
+const CORS_HEADER_KEYS = [
+  'Access-Control-Allow-Origin',
+  'Access-Control-Allow-Headers',
+  'Access-Control-Allow-Methods',
+  'Access-Control-Allow-Credentials',
+  'Access-Control-Expose-Headers',
+  'Access-Control-Max-Age',
+];
 
 function buildCorsHeaders(req?: Request): Record<string, string> {
   const requested = req?.headers.get('Access-Control-Request-Headers');
@@ -31,6 +41,13 @@ async function handle(req: Request, env: Env, _ctx: unknown): Promise<Response> 
 
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: buildCorsHeaders(req) });
+  }
+
+  if (url.pathname === '/find_profiles' || url.pathname === '/find_profiles.php') {
+    if (req.method !== 'GET') {
+      return new Response('method not allowed', { status: 405, headers: DEFAULT_CORS_HEADERS });
+    }
+    return handleFindProfiles(url, env);
   }
 
   if (url.pathname === '/event') {
@@ -99,6 +116,47 @@ async function handle(req: Request, env: Env, _ctx: unknown): Promise<Response> 
 
   // Health check / default
   return new Response('ok', { headers: DEFAULT_CORS_HEADERS });
+}
+
+async function handleFindProfiles(url: URL, env: Env): Promise<Response> {
+  const upstreamBase = (env.FIND_PROFILES_TARGET || 'https://api.fundstr.me/find_profiles').trim();
+
+  let upstream: URL;
+  try {
+    upstream = new URL(upstreamBase);
+  } catch {
+    return jsonResponse({ ok: false, message: 'invalid-upstream' }, 500);
+  }
+
+  const query = (url.searchParams.get('q') || '').trim();
+  if (query) {
+    upstream.searchParams.set('q', query);
+  }
+
+  try {
+    const resp = await fetch(upstream.toString(), { headers: { Accept: 'application/json' } });
+    const text = await resp.text();
+
+    const headers = mergeCorsHeaders(resp.headers);
+    headers.set('Cache-Control', 'no-store');
+    headers.set('Content-Type', resp.headers.get('Content-Type') ?? 'application/json');
+
+    return new Response(text, { status: resp.status, headers });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'upstream-failed';
+    return jsonResponse({ ok: false, message }, 502);
+  }
+}
+
+function mergeCorsHeaders(upstream: Headers): Headers {
+  const headers = new Headers(DEFAULT_CORS_HEADERS);
+  for (const key of CORS_HEADER_KEYS) {
+    const value = upstream.get(key);
+    if (value) {
+      headers.set(key, value);
+    }
+  }
+  return headers;
 }
 
 async function handleReq(url: URL, env: Env): Promise<Response> {

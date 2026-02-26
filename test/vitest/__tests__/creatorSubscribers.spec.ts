@@ -1,6 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mount } from "@vue/test-utils";
 import { ref } from "vue";
+import { setActivePinia, createPinia } from 'pinia';
+import { Quasar } from "quasar";
 import CreatorSubscribersPage from "../../../src/pages/CreatorSubscribersPage.vue";
 import type { CreatorSubscription } from "../../../src/stores/creatorSubscriptions";
 import { useCreatorSubscribersStore } from "../../../src/stores/creatorSubscribers";
@@ -119,36 +121,25 @@ vi.mock("vue-router", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
-vi.mock("quasar", async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...actual,
-    useQuasar: () => ({
-      clipboard: { writeText: vi.fn() },
-      notify: vi.fn(),
-      screen: { lt: { md: false }, gt: { xs: true } },
-    }),
-  };
-});
-
 describe("CreatorSubscribersPage", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
   function mountComponent() {
     return mount(CreatorSubscribersPage, {
       global: {
+        plugins: [Quasar],
         stubs: {
-          "q-page": { template: "<div><slot /></div>" },
           SubscriberCard: {
             props: ["sub", "profile", "compact"],
             template:
               '<div class="subscriber-card">{{ sub.subscriptionId }} {{ sub.totalAmount }}</div>',
           },
           SubscriberDrawer: true,
+          SubscribersTable: true,
           KpiCard: true,
           SubscriptionsCharts: true,
-          "q-virtual-scroll": {
-            props: ["items"],
-            template: '<div><slot v-for="item in items" :item="item" /></div>',
-          },
         },
       },
     });
