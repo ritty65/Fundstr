@@ -125,12 +125,65 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Deploy (rsync to prod docroot)
+      - name: Validate deploy target
+        env:
+          TARGET: ${{ secrets.SSH_TARGET_PROD }}
         run: |
-          rsync -avz --delete \
-            -e "ssh -p ${{ secrets.SSH_PORT }}" \
+          set -euo pipefail
+          test -n "$TARGET" || {
+            echo "::error:: SSH_TARGET_PROD is empty"
+            exit 1
+          }
+          case "$TARGET" in
+            /home/*/domains/*/public_html|/home/*/domains/*/public_html/*) ;;
+            *)
+              echo "::error:: suspicious SSH_TARGET_PROD path: $TARGET"
+              exit 1
+              ;;
+          esac
+
+      - name: Prepare target dir
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ secrets.SSH_TARGET_PROD }}
+          PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euxo pipefail
+          ssh -p "${PORT:-22}" "$USER@$HOST" "T='$TARGET'; mkdir -p \"\$T.__incoming\" \"\$T.__backup\""
+
+      - name: Upload to __incoming (rsync)
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ secrets.SSH_TARGET_PROD }}
+          PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euxo pipefail
+          rsync -az --delete \
+            -e "ssh -o StrictHostKeyChecking=yes -p ${PORT:-22}" \
             dist/pwa/ \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_PROD }}/"
+            "$USER@$HOST:$TARGET.__incoming/"
+
+      - name: Atomic swap
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ secrets.SSH_TARGET_PROD }}
+          PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euxo pipefail
+          ssh -p "${PORT:-22}" "$USER@$HOST" "
+            set -e
+            T='$TARGET'
+            if [ -d \"\$T\" ]; then
+              rm -rf \"\$T.__backup/prev\" || true
+              mv \"\$T\" \"\$T.__backup/prev\"
+            fi
+            test -d \"\$T.__incoming\" || { echo 'ERROR: missing '\"\$T.__incoming\"; exit 1; }
+            mv \"\$T.__incoming\" \"\$T\"
+            ls -lah \"\$T\" | sed -n '1,40p'
+          "
 
       - name: Smoke test production
         env:
