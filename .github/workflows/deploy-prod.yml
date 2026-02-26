@@ -43,7 +43,19 @@ jobs:
         run: echo "VITE_BUILD_ID=${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
 
       - name: Install deps
-        run: pnpm install --frozen-lockfile=false
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if pnpm install --frozen-lockfile=false; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error:: pnpm install failed after 3 attempts"
+              exit 1
+            fi
+            echo "pnpm install failed (attempt $attempt). Retrying..."
+            sleep $((attempt * 5))
+          done
 
       - name: Build (Quasar PWA)
         run: pnpm quasar build -m pwa
@@ -126,10 +138,12 @@ jobs:
           ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Validate deploy target
+        id: target
         env:
-          TARGET: ${{ secrets.SSH_TARGET_PROD }}
+          TARGET_RAW: ${{ secrets.SSH_TARGET_PROD }}
         run: |
           set -euo pipefail
+          TARGET="${TARGET_RAW%/}"
           test -n "$TARGET" || {
             echo "::error:: SSH_TARGET_PROD is empty"
             exit 1
@@ -141,12 +155,13 @@ jobs:
               exit 1
               ;;
           esac
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
 
       - name: Prepare target dir
         env:
           HOST: ${{ secrets.SSH_HOST }}
           USER: ${{ secrets.SSH_USER }}
-          TARGET: ${{ secrets.SSH_TARGET_PROD }}
+          TARGET: ${{ steps.target.outputs.target }}
           PORT: ${{ secrets.SSH_PORT }}
         run: |
           set -euxo pipefail
@@ -156,7 +171,7 @@ jobs:
         env:
           HOST: ${{ secrets.SSH_HOST }}
           USER: ${{ secrets.SSH_USER }}
-          TARGET: ${{ secrets.SSH_TARGET_PROD }}
+          TARGET: ${{ steps.target.outputs.target }}
           PORT: ${{ secrets.SSH_PORT }}
         run: |
           set -euxo pipefail
@@ -169,7 +184,7 @@ jobs:
         env:
           HOST: ${{ secrets.SSH_HOST }}
           USER: ${{ secrets.SSH_USER }}
-          TARGET: ${{ secrets.SSH_TARGET_PROD }}
+          TARGET: ${{ steps.target.outputs.target }}
           PORT: ${{ secrets.SSH_PORT }}
         run: |
           set -euxo pipefail
