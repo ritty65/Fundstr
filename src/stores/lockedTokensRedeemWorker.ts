@@ -10,6 +10,7 @@ import { notifySuccess } from "src/js/notify";
 import token, { hash as hashLock } from "src/js/token";
 import { ensureCompressed } from "src/utils/ecash";
 import { debug } from "src/js/logger";
+import { MintOperationError } from "@cashu/cashu-ts";
 
 export const useLockedTokensRedeemWorker = defineStore(
   "lockedTokensRedeemWorker",
@@ -18,11 +19,20 @@ export const useLockedTokensRedeemWorker = defineStore(
       checkInterval: 60 * 1000,
       worker: null as NodeJS.Timeout | null,
       redeemChain: Promise.resolve() as Promise<void>,
+      messageListener: null as ((event: MessageEvent) => void) | null,
     }),
     actions: {
+      emitWindowMessage(message: unknown) {
+        window.postMessage(message, window.location.origin);
+      },
       startLockedTokensRedeemWorker() {
         if (this.worker) return;
-        window.addEventListener("message", this.handleMessage);
+        if (!this.messageListener) {
+          this.messageListener = (event: MessageEvent) => {
+            this.handleMessage(event);
+          };
+        }
+        window.addEventListener("message", this.messageListener);
         this.worker = setInterval(
           () => this.processTokens(),
           this.checkInterval,
@@ -35,11 +45,19 @@ export const useLockedTokensRedeemWorker = defineStore(
           clearInterval(this.worker);
           this.worker = null;
         }
-        window.removeEventListener("message", this.handleMessage);
+        if (this.messageListener) {
+          window.removeEventListener("message", this.messageListener);
+        }
       },
       handleMessage(event: MessageEvent) {
+        if (
+          event.origin !== window.location.origin ||
+          event.source !== window
+        ) {
+          return;
+        }
         if (event.data?.type === "retry-locked-token") {
-          this.processTokens();
+          void this.processTokens();
         }
       },
       processTokens() {
@@ -91,7 +109,7 @@ export const useLockedTokensRedeemWorker = defineStore(
           try {
             if (entry.htlcHash) {
               if (!entry.htlcSecret) {
-                postMessage({
+                this.emitWindowMessage({
                   type: "locked-token-missing-preimage",
                   tokenId: entry.id,
                 });
@@ -100,8 +118,13 @@ export const useLockedTokensRedeemWorker = defineStore(
               const receiver = entry.creatorP2PK || entry.creatorNpub || "";
               const computedHash = hashLock(entry.htlcSecret, receiver);
               if (computedHash !== entry.htlcHash) {
-                console.error("HTLC preimage does not match hash for token", entry.id);
-                await cashuDb.lockedTokens.update(entry.id, { status: "expired" as any });
+                console.error(
+                  "HTLC preimage does not match hash for token",
+                  entry.id,
+                );
+                await cashuDb.lockedTokens.update(entry.id, {
+                  status: "expired" as any,
+                });
                 continue;
               }
             }
@@ -135,10 +158,10 @@ export const useLockedTokensRedeemWorker = defineStore(
             const mintWallet = wallet.mintWallet(mintUrl, unit);
             const spent = await wallet.checkProofsSpendable(proofs, mintWallet);
             if (spent && spent.length === proofs.length) {
-              await cashuDb.lockedTokens
-                .where("tokenString")
-                .equals(entry.tokenString)
-                .delete();
+              await cashuDb.lockedTokens.update(entry.id, {
+                status: "claimed",
+                redeemed: true,
+              });
               continue;
             }
 
@@ -164,7 +187,7 @@ export const useLockedTokensRedeemWorker = defineStore(
                 typeof p.secret === "string" && p.secret.startsWith('["P2PK"'),
             );
             if (needsSig && !receiveStore.receiveData.p2pkPrivateKey) {
-              postMessage({
+              this.emitWindowMessage({
                 type: "locked-token-missing-signer",
                 tokenId: entry.id,
               });
@@ -181,15 +204,16 @@ export const useLockedTokensRedeemWorker = defineStore(
                   if (!row || (row.status as any) === "processing") return;
                   await cashuDb.lockedTokens.update(entry.id, {
                     status: "processing" as any,
-                    redeemed: true,
+                    redeemed: false,
                   });
                 },
               );
               await receiveStore.enqueue(() =>
-                (wallet as any).receive(entry.tokenString),
+                wallet.redeem(entry.tokenString),
               );
               await cashuDb.lockedTokens.update(entry.id, {
                 status: "claimed",
+                redeemed: true,
               });
 
               // update subscription interval if applicable
@@ -238,6 +262,16 @@ export const useLockedTokensRedeemWorker = defineStore(
                 }
               }
             } catch (err: any) {
+              const alreadySpent =
+                err instanceof MintOperationError &&
+                typeof err.message === "string" &&
+                err.message.includes("already spent");
+
+              await cashuDb.lockedTokens.update(entry.id, {
+                status: alreadySpent ? "claimed" : "unlockable",
+                redeemed: alreadySpent,
+              });
+
               if (
                 typeof err?.message === "string" &&
                 (err.message.includes("No private key or remote signer") ||
@@ -245,12 +279,14 @@ export const useLockedTokensRedeemWorker = defineStore(
                     "You do not have the private key to unlock this token.",
                   ))
               ) {
-                postMessage({
+                this.emitWindowMessage({
                   type: "locked-token-missing-signer",
                   tokenId: entry.id,
                 });
               } else {
-                throw err;
+                if (!alreadySpent) {
+                  throw err;
+                }
               }
             }
           } catch (e) {
