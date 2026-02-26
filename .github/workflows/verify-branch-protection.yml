@@ -1,0 +1,44 @@
+name: verify-branch-protection
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate branch-protection audit token
+        run: |
+          if [ -z "${{ secrets.BRANCH_PROTECTION_AUDIT_TOKEN }}" ]; then
+            echo "::error::Missing required secret BRANCH_PROTECTION_AUDIT_TOKEN"
+            exit 1
+          fi
+
+      - name: Verify branch protection policy
+        env:
+          GITHUB_TOKEN: ${{ secrets.BRANCH_PROTECTION_AUDIT_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          BRANCH_PROTECTION_REPORT_PATH: artifacts/branch-protection-report.json
+          BRANCH_PROTECTION_BRANCHES: main,develop,Develop2
+          BRANCH_PROTECTION_REQUIRED_CHECKS: Test,build
+        run: node scripts/verify-branch-protection.mjs
+
+      - name: Upload branch-protection report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: branch-protection-report
+          path: artifacts/branch-protection-report.json
+          if-no-files-found: warn
