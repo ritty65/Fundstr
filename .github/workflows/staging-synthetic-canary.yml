@@ -1,0 +1,78 @@
+name: staging-synthetic-canary
+
+on:
+  schedule:
+    - cron: "15 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Override canary base URL"
+        required: false
+        default: "https://staging.fundstr.me"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-synthetic-canary
+  cancel-in-progress: true
+
+jobs:
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Enable pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@8.15.7 --activate
+          pnpm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run maintained e2e smoke suite
+        run: pnpm run test:e2e
+
+  synthetic-staging-journey:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Enable pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@8.15.7 --activate
+          pnpm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run synthetic journey canary
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url || 'https://staging.fundstr.me' }}
+          SYNTHETIC_CANARY_ARTIFACT_DIR: artifacts/staging-synthetic-canary
+          SMOKE_TRACE_FILE: artifacts/staging-synthetic-canary/smoke-tests.log
+        run: node scripts/synthetic-staging-journey.mjs
+
+      - name: Upload synthetic canary artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-synthetic-canary-report
+          path: artifacts/staging-synthetic-canary
+          if-no-files-found: error
