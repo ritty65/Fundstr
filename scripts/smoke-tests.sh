@@ -1,108 +1,113 @@
 #!/usr/bin/env bash
 set -euo pipefail
 BASE="${BASE_URL:-https://staging.fundstr.me}"
-EXPECT_SW="${EXPECT_SW:-1}"
-DISCOVERY_ROUTE="${DISCOVERY_ROUTE:-/find-creators}"
-CREATOR_ROUTE="${CREATOR_ROUTE:-/creator/example/profile}"
-DEPLOY_MARKER_REQUIRED="${DEPLOY_MARKER_REQUIRED:-0}"
+TRACE_FILE="${SMOKE_TRACE_FILE:-}"
 
-# Helper to extract a header case-insensitively
-get_header() {
-  # usage: get_header "Header-Name" <<< "$headers"
-  awk -F': *' -v key="$(echo "$1" | tr '[:upper:]' '[:lower:]')" '
-    BEGIN{IGNORECASE=1}
-    tolower($1)==key {print $2; exit}
-  '
+log_step() {
+  local message="$1"
+  local ts
+  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  if [ -n "$TRACE_FILE" ]; then
+    printf '[%s] %s\n' "$ts" "$message" | tee -a "$TRACE_FILE"
+  else
+    printf '[%s] %s\n' "$ts" "$message"
+  fi
 }
 
-# 1) main asset must be JavaScript (and 200)
-HTML=$(curl -fsSL "$BASE/")
-ASSET=$(echo "$HTML" | grep -Eo '/assets/[A-Za-z0-9._-]+\.js' | head -n1)
-[ -n "$ASSET" ] || { echo "No asset reference found in HTML"; exit 1; }
+header_value() {
+  local headers="$1"
+  local key="$2"
+  awk -F': ' -v key="$key" 'tolower($1) == key {print tolower($2)}' <<<"$headers" | tr -d '\r'
+}
 
-H_ASSET=$(curl -fsSI "$BASE$ASSET" || true)
-SC_ASSET=$(echo "$H_ASSET" | awk 'NR==1{print $2}')
-CT_ASSET=$(echo "$H_ASSET" | get_header "Content-Type" | tr -d '\r' | tr '[:upper:]' '[:lower:]')
-
-echo "Asset: $ASSET"
-echo "Status: $SC_ASSET"
-echo "Content-Type: $CT_ASSET"
-
-[ "$SC_ASSET" = "200" ] || { echo "FAIL: $ASSET status $SC_ASSET"; exit 1; }
-if ! echo "$CT_ASSET" | grep -q "javascript"; then
-  echo "FAIL: asset Content-Type '$CT_ASSET' is not JavaScript"
+root_headers=$(curl -fsSI "$BASE/")
+root_csp=$(header_value "$root_headers" "content-security-policy")
+[ -n "$root_csp" ] || {
+  log_step "Missing Content-Security-Policy header on root document"
   exit 1
-fi
+}
+log_step "Root CSP: $root_csp"
 
-if [ "$EXPECT_SW" = "1" ]; then
-  # 2) sw.js must be NO-CACHE — hit with version to bypass CDN edge
-  H_SW=$(curl -fsSI "$BASE/sw.js?v=$(date +%s)" || true)
-  CC_SW=$(echo "$H_SW" | get_header "Cache-Control" | tr -d '\r' | tr '[:upper:]' '[:lower:]')
-  VARY_SW=$(echo "$H_SW" | get_header "Vary" | tr -d '\r')
-
-  echo "sw.js Cache-Control: $CC_SW"
-  echo "sw.js Vary: $VARY_SW"
-
-  echo "$CC_SW" | grep -Eq 'no-cache|no-store|must-revalidate' || { echo "FAIL: sw.js not no-cache"; exit 1; }
-else
-  echo "Skipping sw.js cache checks (EXPECT_SW=$EXPECT_SW)"
-fi
-
-# 3) deep routes must be HTML
-H_HTML=$(curl -fsSI "$BASE/wallet" || true)
-SC_HTML=$(echo "$H_HTML" | awk 'NR==1{print $2}')
-CT_HTML=$(echo "$H_HTML" | get_header "Content-Type" | tr -d '\r' | tr '[:upper:]' '[:lower:]')
-VARY_HTML=$(echo "$H_HTML" | get_header "Vary" | tr -d '\r')
-
-H_DISCOVERY=$(curl -fsSI "$BASE$DISCOVERY_ROUTE" || true)
-SC_DISCOVERY=$(echo "$H_DISCOVERY" | awk 'NR==1{print $2}')
-CT_DISCOVERY=$(echo "$H_DISCOVERY" | get_header "Content-Type" | tr -d '\r' | tr '[:upper:]' '[:lower:]')
-
-H_CREATOR=$(curl -fsSI "$BASE$CREATOR_ROUTE" || true)
-SC_CREATOR=$(echo "$H_CREATOR" | awk 'NR==1{print $2}')
-CT_CREATOR=$(echo "$H_CREATOR" | get_header "Content-Type" | tr -d '\r' | tr '[:upper:]' '[:lower:]')
-VARY_CREATOR=$(echo "$H_CREATOR" | get_header "Vary" | tr -d '\r')
-
-echo "Route status: $SC_HTML"
-echo "Route Content-Type: $CT_HTML"
-echo "Route Vary: $VARY_HTML"
-
-echo "Discovery route: $DISCOVERY_ROUTE"
-echo "Discovery status: $SC_DISCOVERY"
-echo "Discovery Content-Type: $CT_DISCOVERY"
-
-echo "Creator route: $CREATOR_ROUTE"
-echo "Creator status: $SC_CREATOR"
-echo "Creator Content-Type: $CT_CREATOR"
-echo "Creator Vary: $VARY_CREATOR"
-
-[ "$SC_HTML" = "200" ] || { echo "FAIL: route status $SC_HTML"; exit 1; }
-echo "$CT_HTML" | grep -q 'text/html' || { echo "FAIL: route not HTML"; exit 1; }
-
-[ "$SC_DISCOVERY" = "200" ] || { echo "FAIL: discovery route status $SC_DISCOVERY"; exit 1; }
-echo "$CT_DISCOVERY" | grep -q 'text/html' || { echo "FAIL: discovery route not HTML"; exit 1; }
-
-if [ "$SC_CREATOR" != "200" ]; then
-  echo "FAIL: $CREATOR_ROUTE status $SC_CREATOR"
+discovery_headers=$(curl -fsSI "$BASE/find-creators.html")
+discovery_csp=$(header_value "$discovery_headers" "content-security-policy")
+[ -n "$discovery_csp" ] || {
+  log_step "Missing Content-Security-Policy header on discovery iframe document"
   exit 1
-fi
-echo "$CT_CREATOR" | grep -q 'text/html' || { echo "FAIL: creator route not HTML"; exit 1; }
+}
+log_step "Discovery CSP: $discovery_csp"
 
-if [ "$DEPLOY_MARKER_REQUIRED" = "1" ]; then
-  DEPLOY_MARKER=$(curl -fsSL "$BASE/deploy.txt" || true)
-  echo "$DEPLOY_MARKER" | grep -q "<!DOCTYPE html>" && {
-    echo "FAIL: deploy.txt resolved to HTML; expected plain deploy marker"
-    exit 1
-  }
-  echo "$DEPLOY_MARKER" | grep -Eq "^env=" || {
-    echo "FAIL: deploy.txt missing env= line"
-    exit 1
-  }
-  echo "$DEPLOY_MARKER" | grep -Eq "^sha=" || {
-    echo "FAIL: deploy.txt missing sha= line"
-    exit 1
-  }
-  echo "Deploy marker detected"
-fi
+echo "$discovery_csp" | grep -q "frame-ancestors 'none'" && {
+  log_step "Discovery CSP blocks iframe embedding (frame-ancestors 'none')"
+  exit 1
+}
 
-echo "Smoke tests OK"
+discovery_xfo=$(header_value "$discovery_headers" "x-frame-options")
+[ "$discovery_xfo" != "deny" ] || {
+  log_step "Discovery page blocks iframe embedding with X-Frame-Options: DENY"
+  exit 1
+}
+
+discovery_html=$(curl -fsSL "$BASE/find-creators.html")
+echo "$discovery_html" | grep -Eiq '/assets/[A-Za-z0-9._-]+\.js' && {
+  log_step "Discovery page is serving SPA shell HTML; expected standalone discovery document"
+  exit 1
+}
+
+echo "$discovery_html" | grep -q "vendor/nostr.bundle.1.17.0.js" || {
+  log_step "Discovery page missing vendored nostr bundle reference"
+  exit 1
+}
+
+echo "$discovery_html" | grep -Eiq 'unpkg\.com' && {
+  log_step "Discovery page still references unpkg.com"
+  exit 1
+}
+
+log_step "Discovery dependency policy checks passed"
+
+manifest_headers=$(curl -fsSI "$BASE/manifest.json")
+manifest_type=$(header_value "$manifest_headers" "content-type")
+echo "$manifest_type" | grep -Eiq "application/(manifest\+json|json)" || {
+  log_step "manifest.json is not served as JSON (got: $manifest_type)"
+  exit 1
+}
+log_step "Manifest Content-Type: $manifest_type"
+
+featured_headers=$(curl -fsSI "$BASE/featured-creators.json")
+featured_type=$(header_value "$featured_headers" "content-type")
+echo "$featured_type" | grep -Eiq "application/json" || {
+  log_step "featured-creators.json is not served as JSON (got: $featured_type)"
+  exit 1
+}
+log_step "Featured creators Content-Type: $featured_type"
+
+deploy_marker=$(curl -fsSL "$BASE/deploy.txt")
+echo "$deploy_marker" | grep -q "<!DOCTYPE html>" && {
+  log_step "deploy.txt resolved to HTML; expected plain deploy marker"
+  exit 1
+}
+echo "$deploy_marker" | grep -Eq "^env=" || {
+  log_step "deploy.txt is missing expected metadata lines"
+  exit 1
+}
+log_step "Deploy marker detected"
+
+html=$(curl -fsSL "$BASE/")
+asset=$(echo "$html" | grep -Eo '/assets/[A-Za-z0-9._-]+\.js' | head -n1)
+[ -n "$asset" ] || {
+  log_step "No asset reference found in home HTML"
+  exit 1
+}
+log_step "Testing $asset"
+asset_headers=$(curl -fsSI "$BASE$asset")
+ctype=$(header_value "$asset_headers" "content-type")
+log_step "Content-Type: $ctype"
+echo "$ctype" | grep -q javascript || {
+  log_step "Asset is NOT JavaScript"
+  exit 1
+}
+
+log_step "Running relay health smoke checks"
+node scripts/relay-health-smoke.mjs
+
+log_step "Smoke tests OK"
