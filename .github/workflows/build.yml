@@ -17,14 +17,26 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
       - name: Enable pnpm via Corepack
         run: |
           corepack enable
-          corepack prepare pnpm@10.16.1 --activate
+          corepack prepare pnpm@8.15.7 --activate
           pnpm --version
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if pnpm install --frozen-lockfile; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error:: pnpm install failed after 3 attempts"
+              exit 1
+            fi
+            echo "pnpm install failed (attempt $attempt). Retrying..."
+            sleep $((attempt * 5))
+          done
       - name: Build
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
