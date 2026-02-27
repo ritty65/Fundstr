@@ -2,6 +2,7 @@
 set -euo pipefail
 BASE="${BASE_URL:-https://staging.fundstr.me}"
 TRACE_FILE="${SMOKE_TRACE_FILE:-}"
+CURL_ARGS=(--retry 2 --retry-all-errors --retry-delay 1 --connect-timeout 15 --max-time 45)
 
 log_step() {
   local message="$1"
@@ -20,7 +21,25 @@ header_value() {
   awk -F': ' -v key="$key" 'tolower($1) == key {print tolower($2)}' <<<"$headers" | tr -d '\r'
 }
 
-root_headers=$(curl -fsSI "$BASE/")
+fetch_headers() {
+  local url="$1"
+  local headers
+
+  if headers=$(curl "${CURL_ARGS[@]}" -fsSI "$url"); then
+    printf '%s' "$headers"
+    return 0
+  fi
+
+  log_step "HEAD request failed for $url; retrying with GET headers"
+  curl "${CURL_ARGS[@]}" -fsSL -D - -o /dev/null "$url"
+}
+
+fetch_body() {
+  local url="$1"
+  curl "${CURL_ARGS[@]}" -fsSL "$url"
+}
+
+root_headers=$(fetch_headers "$BASE/")
 root_csp=$(header_value "$root_headers" "content-security-policy")
 [ -n "$root_csp" ] || {
   log_step "Missing Content-Security-Policy header on root document"
@@ -28,7 +47,7 @@ root_csp=$(header_value "$root_headers" "content-security-policy")
 }
 log_step "Root CSP: $root_csp"
 
-discovery_headers=$(curl -fsSI "$BASE/find-creators.html")
+discovery_headers=$(fetch_headers "$BASE/find-creators.html")
 discovery_csp=$(header_value "$discovery_headers" "content-security-policy")
 [ -n "$discovery_csp" ] || {
   log_step "Missing Content-Security-Policy header on discovery iframe document"
@@ -47,7 +66,7 @@ discovery_xfo=$(header_value "$discovery_headers" "x-frame-options")
   exit 1
 }
 
-discovery_html=$(curl -fsSL "$BASE/find-creators.html")
+discovery_html=$(fetch_body "$BASE/find-creators.html")
 echo "$discovery_html" | grep -Eiq '/assets/[A-Za-z0-9._-]+\.js' && {
   log_step "Discovery page is serving SPA shell HTML; expected standalone discovery document"
   exit 1
@@ -65,7 +84,7 @@ echo "$discovery_html" | grep -Eiq 'unpkg\.com' && {
 
 log_step "Discovery dependency policy checks passed"
 
-manifest_headers=$(curl -fsSI "$BASE/manifest.json")
+manifest_headers=$(fetch_headers "$BASE/manifest.json")
 manifest_type=$(header_value "$manifest_headers" "content-type")
 echo "$manifest_type" | grep -Eiq "application/(manifest\+json|json)" || {
   log_step "manifest.json is not served as JSON (got: $manifest_type)"
@@ -73,7 +92,7 @@ echo "$manifest_type" | grep -Eiq "application/(manifest\+json|json)" || {
 }
 log_step "Manifest Content-Type: $manifest_type"
 
-featured_headers=$(curl -fsSI "$BASE/featured-creators.json")
+featured_headers=$(fetch_headers "$BASE/featured-creators.json")
 featured_type=$(header_value "$featured_headers" "content-type")
 echo "$featured_type" | grep -Eiq "application/json" || {
   log_step "featured-creators.json is not served as JSON (got: $featured_type)"
@@ -81,7 +100,7 @@ echo "$featured_type" | grep -Eiq "application/json" || {
 }
 log_step "Featured creators Content-Type: $featured_type"
 
-deploy_marker=$(curl -fsSL "$BASE/deploy.txt")
+deploy_marker=$(fetch_body "$BASE/deploy.txt")
 echo "$deploy_marker" | grep -q "<!DOCTYPE html>" && {
   log_step "deploy.txt resolved to HTML; expected plain deploy marker"
   exit 1
@@ -92,14 +111,14 @@ echo "$deploy_marker" | grep -Eq "^env=" || {
 }
 log_step "Deploy marker detected"
 
-html=$(curl -fsSL "$BASE/")
+html=$(fetch_body "$BASE/")
 asset=$(echo "$html" | grep -Eo '/assets/[A-Za-z0-9._-]+\.js' | head -n1)
 [ -n "$asset" ] || {
   log_step "No asset reference found in home HTML"
   exit 1
 }
 log_step "Testing $asset"
-asset_headers=$(curl -fsSI "$BASE$asset")
+asset_headers=$(fetch_headers "$BASE$asset")
 ctype=$(header_value "$asset_headers" "content-type")
 log_step "Content-Type: $ctype"
 echo "$ctype" | grep -q javascript || {
