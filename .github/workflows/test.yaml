@@ -1,7 +1,7 @@
 name: Test
 on:
-  pull_request: { branches: [ Phase10 ] }
-  push:        { branches: [ "**"    ] }
+  pull_request: { branches: [main, develop, Develop2, Phase10] }
+  push: { branches: ["**"] }
 jobs:
   test:
     runs-on: ubuntu-latest
