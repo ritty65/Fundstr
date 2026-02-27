@@ -45,9 +45,11 @@ jobs:
           pnpm --version
 
       - name: Validate production deploy target
+        env:
+          TARGET_RAW: ${{ secrets.SSH_TARGET_PRODUCTION || secrets.SSH_TARGET_PROD || secrets.SSH_TARGET }}
         run: |
-          if [ -z "${{ secrets.SSH_TARGET_PRODUCTION }}" ]; then
-            echo "::error::Missing required secret SSH_TARGET_PRODUCTION"
+          if [ -z "$TARGET_RAW" ]; then
+            echo "::error::Missing production target secret. Set SSH_TARGET_PRODUCTION (preferred) or SSH_TARGET_PROD/SSH_TARGET."
             exit 1
           fi
 
@@ -99,12 +101,12 @@ jobs:
       - name: Validate deploy target
         id: target
         env:
-          TARGET_RAW: ${{ secrets.SSH_TARGET_PRODUCTION }}
+          TARGET_RAW: ${{ secrets.SSH_TARGET_PRODUCTION || secrets.SSH_TARGET_PROD || secrets.SSH_TARGET }}
         run: |
           set -euo pipefail
           TARGET="${TARGET_RAW%/}"
           test -n "$TARGET" || {
-            echo "::error:: SSH_TARGET_PRODUCTION is empty"
+            echo "::error:: Production deploy target is empty (SSH_TARGET_PRODUCTION/SSH_TARGET_PROD/SSH_TARGET)"
             exit 1
           }
           case "$TARGET" in
