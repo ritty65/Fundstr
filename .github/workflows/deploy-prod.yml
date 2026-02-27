@@ -4,29 +4,39 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      ref:
-        description: "Branch to deploy (must be main)"
-        required: true
-        default: "main"
+
+permissions:
+  contents: read
+  checks: read
+  statuses: read
 
 concurrency:
-  group: deploy-production-${{ github.ref }}
+  group: deploy-production-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    # Guard: only allow main (push or manual)
-    if: >
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.ref == 'main')
-
+  build-and-deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://fundstr.me
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
+
+      - name: Validate predeploy quality gate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          PREDEPLOY_REQUIRED_CHECKS: Test,build
+          PREDEPLOY_TIMEOUT_MS: 1200000
+          PREDEPLOY_POLL_INTERVAL_MS: 15000
+        run: node scripts/ci/predeploy-gate.mjs
 
       - name: Enable pnpm via Corepack
         run: |
@@ -34,13 +44,15 @@ jobs:
           corepack prepare pnpm@8.15.7 --activate
           pnpm --version
 
-      - name: Install rsync + ssh-client
+      - name: Validate production deploy target
         run: |
-          sudo apt-get update
-          sudo apt-get install -y rsync openssh-client
+          if [ -z "${{ secrets.SSH_TARGET_PRODUCTION }}" ]; then
+            echo "::error::Missing required secret SSH_TARGET_PRODUCTION"
+            exit 1
+          fi
 
-      - name: Set build id
-        run: echo "VITE_BUILD_ID=${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
+      - name: Use production env
+        run: cp .env.production .env
 
       - name: Install deps
         run: |
@@ -58,77 +70,24 @@ jobs:
           done
 
       - name: Build (Quasar PWA)
-        run: pnpm quasar build -m pwa
+        run: pnpm run build
 
       - name: Verify deploy artifacts
-        env:
-          DEPLOY_DIST_DIR: dist/pwa
-          EXPECT_SW: "1"
-        run: pnpm run verify:deploy-artifacts
-
-      - name: Enforce .htaccess with cache headers (in built bundle)
-        run: |
-          cat > dist/pwa/.htaccess <<'EOF'
-          <IfModule mod_rewrite.c>
-            Options -MultiViews
-            RewriteEngine On
-            RewriteRule ^assets/ - [L]
-            RewriteCond %{REQUEST_FILENAME} !-f
-            RewriteCond %{REQUEST_FILENAME} !-d
-            RewriteRule ^ index.html [QSA,L]
-          </IfModule>
-
-          <IfModule mod_headers.c>
-            Header always set Vary "Accept-Encoding"
-
-            <Files "sw.js">
-              Header always unset Cache-Control
-              Header always unset Expires
-              Header always unset Pragma
-              Header always set Cache-Control "no-cache, no-store, must-revalidate"
-              Header always set Pragma "no-cache"
-              Header always set Expires "0"
-            </Files>
-
-            <FilesMatch "^workbox-.*\.js$">
-              Header always unset Cache-Control
-              Header always set Cache-Control "no-cache, no-store, must-revalidate"
-            </FilesMatch>
-
-            <Files "manifest.json">
-              Header always unset Cache-Control
-              Header always set Cache-Control "no-cache, no-store, must-revalidate"
-            </Files>
-
-            <FilesMatch "\.(html)$">
-              Header always set Cache-Control "no-cache, no-store, must-revalidate"
-              Header always set Pragma "no-cache"
-              Header always set Expires "0"
-            </FilesMatch>
-
-            <FilesMatch "^(?!sw\.js$|workbox-.*\.js$).*\.(js|mjs|css|png|jpe?g|svg|gif|webp|ico|woff2?|ttf|map)$">
-              Header always set Cache-Control "public, max-age=31536000, immutable, no-transform"
-            </FilesMatch>
-          </IfModule>
-
-          <IfModule mod_mime.c>
-            AddType application/javascript .js .mjs
-            AddType application/wasm .wasm
-          </IfModule>
-          EOF
+        run: node scripts/ci/verify-deploy-artifacts.mjs
 
       - name: Write deploy marker
         run: |
           BUILD_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           {
             echo "env=production"
-            echo "sha=${GITHUB_SHA}"
-            echo "ref=${GITHUB_REF_NAME}"
+            echo "sha=${{ github.sha }}"
+            echo "ref=${{ github.ref_name }}"
             echo "built_at=$BUILD_TS"
-            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_id=${{ github.run_id }}"
           } > dist/pwa/deploy.txt
 
-      - uses: webfactory/ssh-agent@v0.9.0
+      - name: Add SSH key
+        uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
@@ -140,18 +99,18 @@ jobs:
       - name: Validate deploy target
         id: target
         env:
-          TARGET_RAW: ${{ secrets.SSH_TARGET_PROD }}
+          TARGET_RAW: ${{ secrets.SSH_TARGET_PRODUCTION }}
         run: |
           set -euo pipefail
           TARGET="${TARGET_RAW%/}"
           test -n "$TARGET" || {
-            echo "::error:: SSH_TARGET_PROD is empty"
+            echo "::error:: SSH_TARGET_PRODUCTION is empty"
             exit 1
           }
           case "$TARGET" in
             /home/*/domains/*/public_html|/home/*/domains/*/public_html/*) ;;
             *)
-              echo "::error:: suspicious SSH_TARGET_PROD path: $TARGET"
+              echo "::error:: suspicious SSH_TARGET_PRODUCTION path: $TARGET"
               exit 1
               ;;
           esac
@@ -200,10 +159,21 @@ jobs:
             ls -lah \"\$T\" | sed -n '1,40p'
           "
 
+      - name: Verify remote deploy artifacts
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ steps.target.outputs.target }}
+          PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          ssh -p "${PORT:-22}" "$USER@$HOST" "set -e; test -f \"$TARGET/index.html\"; test -f \"$TARGET/find-creators.html\"; test -f \"$TARGET/featured-creators.json\"; test -f \"$TARGET/manifest.json\"; test -f \"$TARGET/vendor/nostr.bundle.1.17.0.js\"; test -f \"$TARGET/deploy.txt\""
+
       - name: Smoke test production
         env:
-          BASE_URL: https://fundstr.me
-          EXPECT_SW: "1"
-          DISCOVERY_ROUTE: /find-creators
-          DEPLOY_MARKER_REQUIRED: "1"
-        run: ./scripts/smoke-tests.sh
+          BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+        run: |
+          if [ -z "$BASE_URL" ]; then
+            BASE_URL="https://fundstr.me"
+          fi
+          BASE_URL="$BASE_URL" ./scripts/smoke-tests.sh
