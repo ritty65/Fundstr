@@ -3,17 +3,10 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      CI: true
     steps:
       - uses: actions/checkout@v4
-      - name: Derive release metadata
-        run: |
-          echo "SENTRY_RELEASE=${GITHUB_SHA}" >> $GITHUB_ENV
-          echo "VITE_SENTRY_RELEASE=${GITHUB_SHA}" >> $GITHUB_ENV
-          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
-            echo "VITE_SENTRY_ENVIRONMENT=production" >> $GITHUB_ENV
-          else
-            echo "VITE_SENTRY_ENVIRONMENT=staging" >> $GITHUB_ENV
-          fi
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -24,25 +17,14 @@ jobs:
           corepack prepare pnpm@8.15.7 --activate
           pnpm --version
       - name: Install dependencies
-        run: |
-          set -euo pipefail
-          for attempt in 1 2 3; do
-            if pnpm install --frozen-lockfile; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "::error:: pnpm install failed after 3 attempts"
-              exit 1
-            fi
-            echo "pnpm install failed (attempt $attempt). Retrying..."
-            sleep $((attempt * 5))
-          done
+        run: pnpm install --frozen-lockfile
+      - name: Run lint
+        run: pnpm lint
+      - name: Run type checks
+        run: pnpm types
+      - name: Run tests
+        run: pnpm run test:ci
+      - name: Verify discovery assets
+        run: node scripts/verify-discovery-assets.mjs
       - name: Build
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-          SENTRY_RELEASE: ${{ env.SENTRY_RELEASE }}
-          VITE_SENTRY_ENVIRONMENT: ${{ env.VITE_SENTRY_ENVIRONMENT }}
-          VITE_SENTRY_RELEASE: ${{ env.VITE_SENTRY_RELEASE }}
         run: pnpm run build
