@@ -12,3 +12,6 @@
 - Creator Studio: publish uses fallback relays on failure; per-relay results and connected count fixes; tier definitions included.
 - Messenger DMs: introduced dual signer abstraction (NIP-07 and in-app keys), resilient WS/HTTP transport fallback with relay diagnostics, AUTH toggle, and signer/transport UI badges.
 - Deploy hardening: production deploy now preserves nested staging subpaths during atomic swaps when Hostinger staging is configured under `public_html`, and a new incident/runbook doc (`docs/deploy-never-again-runbook.md`) captures release checks and emergency recovery.
+- Release sync: merged `Develop2` into `main` via `#1357` (`167e0d3`) and verified green `build` (`22521072310`) + `Test` (`22521072300`) checks on `main`.
+- Production deploy evidence: `Deploy production (main -> Hostinger)` run `22521072297` passed, `https://fundstr.me/deploy.txt` now reports `env=production` with `sha=167e0d3c18a3f8cff1b7e4404973b5d7a7ce59f0`.
+- Post-release verification: staging remains pinned to `Develop2` (`sha=6c9e8dafa0140c575796d532839ca04da029afa2`), smoke checks pass on both environments, and synthetic staging journeys pass for both `https://fundstr.me` and `https://staging.fundstr.me`.
