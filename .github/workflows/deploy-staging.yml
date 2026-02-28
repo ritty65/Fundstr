@@ -129,4 +129,5 @@ jobs:
       - name: Smoke test staging
         env:
           BASE_URL: https://staging.fundstr.me
+          SMOKE_EXPECT_ENV: staging
         run: ./scripts/smoke-tests.sh
