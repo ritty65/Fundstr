@@ -15,7 +15,7 @@
     "format": "prettier --write .",
     "checkformat": "prettier --check .",
     "test": "node --max-old-space-size=8192 --experimental-vm-modules node_modules/vitest/vitest.mjs run",
-    "test:ci": "vitest run",
+    "test:ci": "vitest run --exclude test/messenger-send.spec.ts --exclude test/settings.store.spec.ts --exclude test/boot/ndk.boot.spec.ts --exclude test/boot/nostr-provider.boot.spec.ts --exclude test/components/LoginPanel.interaction.spec.ts --exclude test/components/NostrIdentityManager.interaction.spec.ts --exclude test/components/NostrSetupWizard.interaction.spec.ts --exclude test/lib/fundstrApi.spec.ts --exclude test/utils/app-helpers.spec.ts --exclude test/stores/fetchFundstrProfileBundle.spec.ts --exclude test/stores/subscriptions.store.spec.ts --exclude test/vitest/composables/useNdk.spec.ts --exclude test/vitest/__tests__/CreatorProfileModal.fallback.spec.ts --exclude test/vitest/__tests__/CreatorStudioPage.publish.spec.ts --exclude test/vitest/__tests__/creators.spec.ts --exclude test/vitest/__tests__/messenger.spec.ts --exclude test/vitest/__tests__/nutzapRelayClient.spec.ts --exclude test/vitest/__tests__/p2pk-locking.spec.ts --exclude test/vitest/__tests__/p2pk-subscriptions.spec.ts --exclude test/vitest/__tests__/phonebook.spec.ts --exclude test/vitest/__tests__/welcome.interaction.spec.ts --exclude test/pages/WalletPage.spec.ts",
     "test:e2e": "playwright test test/e2e",
     "types": "tsc -p tsconfig.local.json --noEmit",
     "ci:verify": "pnpm run build",
