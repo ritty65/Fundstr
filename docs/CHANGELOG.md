@@ -2,7 +2,6 @@
 
 ## Unreleased
 
-- Rollback drill marker (forward step): 2026-02-28T13:50Z.
 - Buckets UI redesign – Phase9
 - Bucket detail opens in a modal from the Buckets page.
   Direct links to `/buckets/:id` still work but are only kept
