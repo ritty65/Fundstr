@@ -19,7 +19,7 @@ describe("settings store", () => {
         "wss://relay.plebstr.com",
       ]),
     );
-    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const infoSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     const store = useSettingsStore();
     await nextTick();

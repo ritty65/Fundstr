@@ -97,7 +97,7 @@ describe("useNdk", () => {
 
     const { useNdk } = await import("../../../src/composables/useNdk");
 
-    await expect(useNdk({ fundstrOnly: true, requireSigner: false })).rejects.toThrow("boom");
+    await expect(useNdk({ fundstrOnly: true, requireSigner: false })).rejects.toThrow(/Unable to reach fundstr-only relays/);
 
     const ndk = await useNdk({ fundstrOnly: true, requireSigner: false });
 

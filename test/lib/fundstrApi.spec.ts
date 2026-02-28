@@ -73,7 +73,7 @@ describe("fundstr API helpers", () => {
                 amountMsat: 2500,
                 frequency: "weekly",
                 details: "Extra",
-                media: [{ url: "https://cdn/image" }],
+                media: [{ url: "https://example.com/image" }],
               },
               {
                 name: "missing-id",
@@ -141,7 +141,7 @@ describe("fundstr API helpers", () => {
           amountMsat: 2500,
           cadence: "weekly",
           description: "Extra",
-          media: [{ url: "https://cdn/image" }],
+          media: [{ url: "https://example.com/image" }],
         },
       ]);
       expect(creator.tierSummary).toEqual({ count: 3, cheapestPriceMsat: 5000 });

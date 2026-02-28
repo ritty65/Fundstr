@@ -1,6 +1,7 @@
 import { describe, it, beforeEach, expect, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 import { defineComponent, h } from "vue";
+import { createTestingPinia } from "@pinia/testing";
 
 import LoginPanel from "src/components/LoginPanel.vue";
 
@@ -70,6 +71,7 @@ const QInputStub = defineComponent({
 function mountPanel() {
   return mount(LoginPanel, {
     global: {
+      plugins: [createTestingPinia({ createSpy: vi.fn })],
       stubs: {
         "q-btn": QBtnStub,
         "q-input": QInputStub,
