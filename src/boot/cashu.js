@@ -22,11 +22,10 @@ export default boot(async () => {
     const ok = await verifyMint(mintUrl);
     if (ok === false) {
       Notify.create({
-        type: "negative",
+        type: "warning",
         message:
-          "Selected mint lacks conditional‑secret support (NUT‑10/11/14)",
+          "Selected mint lacks conditional-secret support (NUT-10/11/14). Subscription locks may be unavailable.",
       });
-      throw new Error("Unsupported mint");
     } else if (ok === null) {
       console.warn("Unable to verify mint capabilities due to network failure");
       Notify.create({
