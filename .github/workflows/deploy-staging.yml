@@ -2,7 +2,7 @@ name: deploy-staging
 
 on:
   push:
-    branches: [develop, Develop2]
+    branches: [Develop2]
   workflow_dispatch:
 
 permissions:
@@ -126,8 +126,23 @@ jobs:
         run: |
           ssh -p "${{ secrets.SSH_PORT_STAGING || secrets.SSH_PORT }}" "${{ secrets.SSH_USER_STAGING || secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "set -e; test -f \"${{ secrets.SSH_TARGET_STAGING }}/index.html\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/find-creators.html\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/featured-creators.json\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/manifest.json\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/vendor/nostr.bundle.1.17.0.js\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/deploy.txt\""
 
+      - name: Capture staging diagnostics snapshot
+        env:
+          BASE_URL: https://staging.fundstr.me
+          STAGING_DIAG_DIR: artifacts/staging-diagnostics
+        run: ./scripts/ci/staging-diagnostics.sh
+
       - name: Smoke test staging
         env:
           BASE_URL: https://staging.fundstr.me
           SMOKE_EXPECT_ENV: staging
+          SMOKE_TRACE_FILE: artifacts/staging-diagnostics/smoke-trace.log
         run: ./scripts/smoke-tests.sh
+
+      - name: Upload staging diagnostics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/staging-diagnostics
+          if-no-files-found: warn
