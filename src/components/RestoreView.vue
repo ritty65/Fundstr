@@ -18,6 +18,11 @@
                   v-model="mnemonicToRestore"
                   autogrow
                   type="textarea"
+                  :input-attrs="{
+                    'aria-label': $t(
+                      'RestoreView.seed_phrase.inputs.seed_phrase.label',
+                    ),
+                  }"
                   :error="mnemonicError !== ''"
                   :error-message="mnemonicError"
                 >
@@ -95,7 +100,7 @@
         dense
         outline
         @click="restoreAllMints"
-        :disabled="!isMnemonicValid || restoringState || !hasMints"
+        :disabled="restoringState || !hasMints"
       >
         <q-spinner-hourglass size="sm" v-if="restoringState" class="q-mr-sm" />
         {{ restoreAllMintsText }}
@@ -181,7 +186,7 @@
                 dense
                 outline
                 @click="restoreMintForMint(mint.url)"
-                :disabled="!isMnemonicValid || restoringState"
+                :disabled="restoringState"
                 :loading="restoringMint === mint.url"
                 :label="$t('RestoreView.actions.restore.label')"
               />
@@ -194,7 +199,8 @@
   </div>
 </template>
 
-<script>import windowMixin from 'src/mixins/windowMixin'
+<script>
+import windowMixin from "src/mixins/windowMixin";
 import { defineComponent } from "vue";
 
 import { mapActions, mapState, mapWritableState } from "pinia";
@@ -318,9 +324,7 @@ export default defineComponent({
           );
           await this.restoreMint(mint.url);
         }
-        notifySuccess(
-          this.$t("RestoreView.actions.restore_all_mints.success"),
-        );
+        notifySuccess(this.$t("RestoreView.actions.restore_all_mints.success"));
       } catch (error) {
         console.error("Error restoring mints:", error);
         notifyError(
