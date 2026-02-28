@@ -32,7 +32,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           BRANCH_PROTECTION_REPORT_PATH: artifacts/branch-protection-report.json
           BRANCH_PROTECTION_BRANCHES: main,develop,Develop2
-          BRANCH_PROTECTION_REQUIRED_CHECKS: Test,build
+          BRANCH_PROTECTION_REQUIRED_CHECKS: test,build
         run: node scripts/verify-branch-protection.mjs
 
       - name: Upload branch-protection report
