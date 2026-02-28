@@ -2,13 +2,21 @@
   <q-stepper v-model="step" flat animated>
     <q-step :name="1" title="Nostr Identity" :done="welcome.hasIdentity">
       <div class="q-pa-md">
-        <div class="text-h4 text-weight-bold q-mb-md">Set up your Nostr identity</div>
+        <div class="text-h4 text-weight-bold q-mb-md">
+          Set up your Nostr identity
+        </div>
         <TaskModalIdentity inline @done="nextIf(welcome.hasIdentity)" />
         <Coachmark title="What is Nostr?">
-          Your npub is a pseudonymous identity used for tips, DMs, and Lightning Address. Keys never leave this device unless you opt in with NIP-07.
+          Your npub is a pseudonymous identity used for tips, DMs, and Lightning
+          Address. Keys never leave this device unless you opt in with NIP-07.
         </Coachmark>
         <div class="row justify-end q-mt-md">
-          <q-btn color="primary" label="Next" :disable="!welcome.hasIdentity" @click="step = 2" />
+          <q-btn
+            color="primary"
+            label="Next"
+            :disable="!welcome.hasIdentity"
+            @click="step = 2"
+          />
         </div>
       </div>
     </q-step>
@@ -17,15 +25,25 @@
         <div class="text-h4 text-weight-bold q-mb-md">Choose a mint</div>
         <TaskModalMint inline @done="nextIf(welcome.hasMint)" />
         <Coachmark title="How mints work">
-          You pay a Lightning invoice, the mint issues private ecash proofs to your device. On spend, proofs are swapped for new ones.
+          You pay a Lightning invoice, the mint issues private ecash proofs to
+          your device. On spend, proofs are swapped for new ones.
         </Coachmark>
         <div class="row justify-between q-mt-md">
           <q-btn flat label="Back" @click="step = 1" />
-          <q-btn color="primary" label="Next" :disable="!welcome.hasMint" @click="step = 3" />
+          <q-btn
+            color="primary"
+            label="Next"
+            :disable="!welcome.hasMint"
+            @click="step = 3"
+          />
         </div>
       </div>
     </q-step>
-    <q-step :name="3" title="Add sats (optional)" :done="welcome.balanceSats > 0">
+    <q-step
+      :name="3"
+      title="Add sats (optional)"
+      :done="welcome.balanceSats > 0"
+    >
       <div class="q-pa-md">
         <div class="text-h4 text-weight-bold q-mb-md">Add sats</div>
         <TaskModalAddSats inline />
@@ -34,7 +52,12 @@
         </Coachmark>
         <div class="row justify-between q-mt-md">
           <q-btn flat label="Back" @click="step = 2" />
-          <q-btn color="primary" label="Finish" :disable="!welcome.canFinish" @click="finish" />
+          <q-btn
+            color="primary"
+            label="Finish"
+            :disable="!welcome.canFinish"
+            @click="finish"
+          />
         </div>
       </div>
     </q-step>
@@ -42,33 +65,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { useWelcomeStore } from 'src/stores/welcome'
-import TaskModalIdentity from './TaskModalIdentity.vue'
-import TaskModalMint from './TaskModalMint.vue'
-import TaskModalAddSats from './TaskModalAddSats.vue'
-import Coachmark from './Coachmark.vue'
+import { ref } from "vue";
+import { useRouter, useRoute } from "vue-router";
+import { useWelcomeStore } from "src/stores/welcome";
+import { sanitizeAppRedirect } from "src/utils/safeRedirect";
+import TaskModalIdentity from "./TaskModalIdentity.vue";
+import TaskModalMint from "./TaskModalMint.vue";
+import TaskModalAddSats from "./TaskModalAddSats.vue";
+import Coachmark from "./Coachmark.vue";
 
-const welcome = useWelcomeStore()
-const router = useRouter()
-const route = useRoute()
-const step = ref(1)
+const welcome = useWelcomeStore();
+const router = useRouter();
+const route = useRoute();
+const step = ref(1);
 
 function nextIf(cond: boolean) {
-  if (cond) step.value++
+  if (cond) step.value++;
 }
 
 function finish() {
-  welcome.markWelcomeCompleted()
-  const redirect =
-    typeof route.query.redirect === 'string'
-      ? decodeURIComponent(route.query.redirect)
-      : undefined
+  welcome.markWelcomeCompleted();
+  const redirect = sanitizeAppRedirect(router, route.query.redirect);
   if (redirect) {
-    router.replace(redirect)
+    router.replace(redirect);
   } else {
-    router.push('/wallet')
+    router.push("/wallet");
   }
 }
 </script>
