@@ -101,25 +101,28 @@ Then immediately trigger `deploy-staging` from `Develop2`.
 ## Latest Verified Snapshot (2026-02-28)
 
 - Main release sync:
-  - PR `#1357` merged `release/main-rc-20260228` into `main`.
-  - Merge commit on `main`: `167e0d3c18a3f8cff1b7e4404973b5d7a7ce59f0`.
+  - PR `#1357` merged `release/main-rc-20260228` into `main` (`167e0d3c18a3f8cff1b7e4404973b5d7a7ce59f0`).
+  - PR `#1358` merged `chore/main-launch-evidence-20260228` into `main` (`fe1e86f6344f39f5aa34f8bbafcf2b7b7e6e0a74`).
+  - PR `#1359` merged rollback forward marker (`cb418e4e41ea592c586f4300d4b895f304d0cd01`).
+  - PR `#1360` merged rollback revert marker (`f8703ba55cbab5659a5db445e65e5f569c08b59f`).
 - Main quality checks:
-  - `build` run `22521072310` -> success.
-  - `Test` run `22521072300` -> success.
+  - `build` run `22525142074` -> success.
+  - `Test` run `22525142077` -> success.
 - Production deployment:
-  - `Deploy production (main -> Hostinger)` run `22521072297` -> success.
-  - `/deploy.txt` on production reports `env=production` and `sha=167e0d3c18a3f8cff1b7e4404973b5d7a7ce59f0`.
+  - `Deploy production (main -> Hostinger)` run `22525142076` -> success.
+  - `/deploy.txt` on production reports `env=production` and `sha=f8703ba55cbab5659a5db445e65e5f569c08b59f`.
 - Staging parity post-production:
   - `/deploy.txt` on staging remains `env=staging` and `sha=6c9e8dafa0140c575796d532839ca04da029afa2`.
   - `/` and `/restore` return `200` on both production and staging.
-- Manual script checks executed after deploy:
+- Rollback rehearsal evidence (completed):
+  - Forward drill deploy run `22524907098` moved production marker to `sha=cb418e4e41ea592c586f4300d4b895f304d0cd01`.
+  - Rollback deploy run `22525142076` restored pre-drill content on production via revert commit.
+  - `build`/`Test` checks were green on both drill merges (`#1359`, `#1360`).
+- Manual script checks executed after rollback:
   - `BASE_URL=https://fundstr.me SMOKE_EXPECT_ENV=production ./scripts/smoke-tests.sh` -> pass.
   - `BASE_URL=https://staging.fundstr.me SMOKE_EXPECT_ENV=staging ./scripts/smoke-tests.sh` -> pass.
-  - `BASE_URL=https://fundstr.me node scripts/synthetic-staging-journey.mjs` -> pass.
-  - `BASE_URL=https://staging.fundstr.me node scripts/synthetic-staging-journey.mjs` -> pass.
-- Remaining launch blockers:
+- Remaining launch blocker:
   - Branch-protection audit requires `BRANCH_PROTECTION_AUDIT_TOKEN` with admin rights (`verify-branch-protection` cannot be dispatched with limited PAT).
-  - Rollback rehearsal evidence still needs one controlled drill and a run log entry.
 
 ## Weekly Ops Check (5 Minutes)
 
