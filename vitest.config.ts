@@ -123,6 +123,7 @@ export default defineConfig({
       "test/vitest/__tests__/wallet.nut22.spec.ts",
       "test/wallet-store.onTokenPaid.spec.ts",
       "test/wallet-store.melt.spec.ts",
+      "test/wallet-store.mintOnPaid.spec.ts",
       "test/pages/WalletPage.spec.ts",
       "test/pages/NostrMessenger.spec.ts",
       "test/pages/Settings.spec.ts",
