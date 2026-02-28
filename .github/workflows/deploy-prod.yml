@@ -51,7 +51,8 @@ jobs:
             exit 1
           fi
 
-      - name: Validate staging/prod target isolation
+      - name: Evaluate staging/prod target overlap
+        id: overlap
         env:
           PRODUCTION_TARGET_RAW: ${{ secrets.SSH_TARGET_PRODUCTION }}
           STAGING_TARGET_RAW: ${{ secrets.SSH_TARGET_STAGING }}
@@ -62,13 +63,36 @@ jobs:
 
           if [ -z "$staging" ]; then
             echo "::warning::SSH_TARGET_STAGING is empty; skipping overlap guard"
+            echo "nested=false" >> "$GITHUB_OUTPUT"
+            echo "subpath=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
+          if [ "$staging" = "$production" ]; then
+            echo "::error::SSH_TARGET_STAGING must not equal SSH_TARGET_PRODUCTION. Use a dedicated staging subdirectory path."
+            exit 1
+          fi
+
           case "$staging" in
-            "$production"|"$production"/*)
-              echo "::error::SSH_TARGET_STAGING ($staging) is inside SSH_TARGET_PRODUCTION ($production). Move staging to a non-nested path."
-              exit 1
+            "$production"/*)
+              subpath="${staging#"$production"/}"
+              case "$subpath" in
+                ""|/*|".."|../*|*/../*|*/..)
+                  echo "::error::Invalid nested staging subpath: $subpath"
+                  exit 1
+                  ;;
+                __incoming|__incoming/*|__backup|__backup/*)
+                  echo "::error::Nested staging path cannot use reserved deploy directories: $subpath"
+                  exit 1
+                  ;;
+              esac
+              echo "::warning::SSH_TARGET_STAGING ($staging) is nested under SSH_TARGET_PRODUCTION ($production). Workflow will preserve '$subpath' during production deploy."
+              echo "nested=true" >> "$GITHUB_OUTPUT"
+              echo "subpath=$subpath" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "nested=false" >> "$GITHUB_OUTPUT"
+              echo "subpath=" >> "$GITHUB_OUTPUT"
               ;;
           esac
 
@@ -112,12 +136,46 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
+      - name: Snapshot nested staging directory
+        if: steps.overlap.outputs.nested == 'true'
+        run: |
+          set -euxo pipefail
+          ssh -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "
+            set -e
+            T='${{ secrets.SSH_TARGET_PRODUCTION }}'
+            R='${{ steps.overlap.outputs.subpath }}'
+            SRC=\"\$T/\$R\"
+            PRESERVE=\"\$T.__staging_preserve\"
+            test -d \"\$SRC\" || { echo 'ERROR: nested staging path missing before production deploy: '\"\$SRC\"; exit 1; }
+            rm -rf \"\$PRESERVE\"
+            cp -a \"\$SRC\" \"\$PRESERVE\"
+            echo \"Preserved nested staging directory at \$SRC\"
+          "
+
       - name: Deploy (rsync)
         run: |
           rsync -avz --delete \
             -e "ssh -p ${{ secrets.SSH_PORT }}" \
             dist/pwa/ \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_PRODUCTION }}/"
+
+      - name: Restore nested staging directory
+        if: steps.overlap.outputs.nested == 'true'
+        run: |
+          set -euxo pipefail
+          ssh -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "
+            set -e
+            T='${{ secrets.SSH_TARGET_PRODUCTION }}'
+            R='${{ steps.overlap.outputs.subpath }}'
+            PRESERVE=\"\$T.__staging_preserve\"
+            DEST=\"\$T/\$R\"
+            test -d \"\$PRESERVE\" || { echo 'ERROR: preserved staging snapshot missing: '\"\$PRESERVE\"; exit 1; }
+            PARENT=\$(dirname \"\$DEST\")
+            mkdir -p \"\$PARENT\"
+            rm -rf \"\$DEST\"
+            cp -a \"\$PRESERVE\" \"\$DEST\"
+            echo \"Restored nested staging directory to \$DEST\"
+          "
 
       - name: Verify remote deploy artifacts
         run: |
