@@ -9,6 +9,10 @@ export default boot(async () => {
   const wallet = walletStore.wallet;
   const mints = useMintsStore();
   const mintUrl = mints.activeMintUrl;
+  const isRestoreRoute =
+    typeof window !== "undefined" &&
+    typeof window.location?.pathname === "string" &&
+    window.location.pathname.startsWith("/restore");
   let valid = false;
   if (mintUrl && mintUrl !== "undefined") {
     try {
@@ -22,10 +26,13 @@ export default boot(async () => {
     const ok = await verifyMint(mintUrl);
     if (ok === false) {
       Notify.create({
-        type: "warning",
+        type: isRestoreRoute ? "warning" : "negative",
         message:
           "Selected mint lacks conditional-secret support (NUT-10/11/14). Subscription locks may be unavailable.",
       });
+      if (!isRestoreRoute) {
+        throw new Error("Unsupported mint");
+      }
     } else if (ok === null) {
       console.warn("Unable to verify mint capabilities due to network failure");
       Notify.create({
