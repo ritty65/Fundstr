@@ -23,8 +23,15 @@
         </template>
       </q-input>
       <div class="row justify-between q-mt-lg">
-        <q-btn color="primary" :loading="unlocking" label="Unlock" @click="unlock" />
-        <q-btn flat color="primary" :to="{ path: '/welcome' }">Reset Wallet</q-btn>
+        <q-btn
+          color="primary"
+          :loading="unlocking"
+          label="Unlock"
+          @click="unlock"
+        />
+        <q-btn flat color="primary" :to="{ path: '/welcome' }"
+          >Reset Wallet</q-btn
+        >
       </div>
     </div>
   </q-page>
@@ -35,6 +42,7 @@ import { ref } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { useNostrStore } from "src/stores/nostr";
 import { useVaultStore } from "src/stores/vault";
+import { sanitizeAppRedirect } from "src/utils/safeRedirect";
 
 const pin = ref("");
 const showPin = ref(false);
@@ -58,7 +66,8 @@ async function unlock() {
     if (vault.hasEncryptedVault) {
       await vault.unlockWithPin(pinValue);
     }
-    const redirect = (route.query.redirect as string) || "/wallet";
+    const redirect =
+      sanitizeAppRedirect(router, route.query.redirect) || "/wallet";
     router.replace(redirect);
   } catch (e: any) {
     errorMessage.value = e?.message || "Incorrect PIN";
