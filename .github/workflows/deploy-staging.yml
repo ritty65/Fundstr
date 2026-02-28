@@ -2,7 +2,7 @@ name: deploy-staging
 
 on:
   push:
-    branches: [develop, Develop2]
+    branches: [Develop2]
   workflow_dispatch:
 
 permissions:
