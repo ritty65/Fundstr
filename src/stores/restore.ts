@@ -1,12 +1,10 @@
 import { debug } from "src/js/logger";
 import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
-import { generateSecretKey, getPublicKey } from "nostr-tools";
-import { bytesToHex } from "@noble/hashes/utils"; // already an installed dependency
-import { useWalletStore } from "./wallet";
 import { useMnemonicStore } from "./mnemonic";
 import { CashuMint, CashuWallet, CheckStateEnum, Proof } from "@cashu/cashu-ts";
 import { useMintsStore } from "./mints";
+import { useNostrStore } from "./nostr";
 import { notify, notifyError, notifySuccess } from "src/js/notify";
 import { useUiStore } from "./ui";
 import { useProofsStore } from "./proofs";
@@ -45,6 +43,7 @@ export const useRestoreStore = defineStore("restore", {
         notifyError(
           i18n.global.t("restore.restore_mint_error_text", { error }),
         );
+        throw error;
       } finally {
         this.restoringState = false;
         this.restoringMint = "";
@@ -57,10 +56,21 @@ export const useRestoreStore = defineStore("restore", {
         return;
       }
       this.restoreProgress = 0;
-      const walletStore = useWalletStore();
       const proofsStore = useProofsStore();
       const mintStore = useMintsStore();
+      const nostrStore = useNostrStore();
       await mintStore.activateMintUrl(url);
+      const mintPubkey = mintStore.activeInfo?.pubkey;
+      if (typeof mintPubkey === "string" && mintPubkey.length > 0) {
+        nostrStore.setPubkey(mintPubkey);
+        await nostrStore.secureSetItem("cashu.ndk.pubkey", mintPubkey, {
+          bufferIfLocked: true,
+          pendingKeys: [
+            "cashu.ndk.pubkey.pending",
+            "cashu.ndk.signer.publicKey.pending",
+          ],
+        });
+      }
 
       const mnemonic = this.mnemonicToRestore;
       this.restoreStatus = i18n.global.t("restore.prepare_info_text");
