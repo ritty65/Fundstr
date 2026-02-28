@@ -60,6 +60,11 @@ const { t } = useI18n();
 const navLinks = [
   { to: "/wallet", label: "Wallet", icon: "account_balance_wallet" },
   {
+    to: "/my-profile",
+    label: t("MainHeader.menu.myProfile.myProfile.title"),
+    icon: "account_circle",
+  },
+  {
     to: "/find-creators",
     label: "Find Creators",
     icon: "img:icons/find-creators.svg",
@@ -68,11 +73,6 @@ const navLinks = [
 ];
 
 const accountLinks = [
-  {
-    to: "/my-profile",
-    label: t("MainHeader.menu.myProfile.myProfile.title"),
-    icon: "account_circle",
-  },
   { to: "/subscriptions", label: "Subscriptions", icon: "auto_awesome_motion" },
 ];
 
