@@ -23,3 +23,18 @@ Run `scripts/smoke-tests.sh` after each deployment to confirm headers on staging
 bundle returns `application/javascript` (no generic `text/plain` fallbacks) and both `/wallet` and `/creator/example/profile`
 resolve to `text/html`. For an additional sanity check, open the site in a browser, reload with DevTools → Network, and
 verify each asset shows the expected `Content-Type` column before promoting to production.
+
+## Staging/prod isolation (Hostinger safeguard)
+
+On Hostinger, staging can be configured under a production subdirectory (for example `public_html/staging`).
+That layout is now supported by a production deploy safeguard that snapshots and restores the nested staging subtree
+around production atomic swap steps.
+
+Use `docs/deploy-never-again-runbook.md` for the full release checklist, failure map, and emergency restore commands.
+
+Quick verification after each staging/prod deploy:
+
+```bash
+curl -fsSL https://fundstr.me/deploy.txt
+curl -fsSL https://staging.fundstr.me/deploy.txt
+```

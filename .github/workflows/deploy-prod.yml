@@ -256,6 +256,7 @@ jobs:
             mkdir -p \"\$PARENT\"
             rm -rf \"\$DEST\"
             cp -a \"\$PRESERVE\" \"\$DEST\"
+            rm -rf \"\$PRESERVE\"
             echo \"Restored nested staging directory to \$DEST\"
           "
 
@@ -277,3 +278,9 @@ jobs:
             BASE_URL="https://fundstr.me"
           fi
           BASE_URL="$BASE_URL" ./scripts/smoke-tests.sh
+
+      - name: Smoke test staging after production deploy
+        if: steps.overlap.outputs.nested == 'true'
+        env:
+          BASE_URL: https://staging.fundstr.me
+        run: ./scripts/smoke-tests.sh
