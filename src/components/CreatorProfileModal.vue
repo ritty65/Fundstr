@@ -1689,7 +1689,7 @@ function resetState() {
 .notes-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .note-card {
@@ -1698,8 +1698,15 @@ function resetState() {
   gap: 10px;
   padding: 14px 16px;
   border-radius: 14px;
-  background: color-mix(in srgb, var(--surface-2) 85%, var(--surface-1) 15%);
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
+  background: var(--surface-2);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 85%, transparent);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+
+.note-card:hover {
+  border-color: color-mix(in srgb, var(--accent-200) 45%, var(--surface-contrast-border));
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--surface-contrast-border) 18%, transparent);
+  transform: translateY(-1px);
 }
 
 .note-card--skeleton {
@@ -1708,6 +1715,7 @@ function resetState() {
 
 .note-content {
   display: -webkit-box;
+  line-clamp: 3;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -1717,12 +1725,17 @@ function resetState() {
 .note-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   flex-wrap: wrap;
 }
 
+.note-timestamp {
+  min-width: 0;
+}
+
 .note-link {
+  margin-left: auto;
   color: var(--accent-500);
   font-weight: 600;
   text-decoration: none;
