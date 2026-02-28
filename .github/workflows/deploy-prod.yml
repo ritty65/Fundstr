@@ -118,7 +118,8 @@ jobs:
           esac
           echo "target=$TARGET" >> "$GITHUB_OUTPUT"
 
-      - name: Validate staging/prod target isolation
+      - name: Evaluate staging/prod target overlap
+        id: overlap
         env:
           PRODUCTION_TARGET_RAW: ${{ steps.target.outputs.target }}
           STAGING_TARGET_RAW: ${{ secrets.SSH_TARGET_STAGING }}
@@ -129,13 +130,36 @@ jobs:
 
           if [ -z "$staging" ]; then
             echo "::warning::SSH_TARGET_STAGING is empty; skipping overlap guard"
+            echo "nested=false" >> "$GITHUB_OUTPUT"
+            echo "subpath=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
+          if [ "$staging" = "$production" ]; then
+            echo "::error::SSH_TARGET_STAGING must not equal SSH_TARGET_PRODUCTION. Use a dedicated staging subdirectory path."
+            exit 1
+          fi
+
           case "$staging" in
-            "$production"|"$production"/*)
-              echo "::error::SSH_TARGET_STAGING ($staging) is inside SSH_TARGET_PRODUCTION ($production). Move staging to a non-nested path."
-              exit 1
+            "$production"/*)
+              subpath="${staging#"$production"/}"
+              case "$subpath" in
+                ""|/*|".."|../*|*/../*|*/..)
+                  echo "::error::Invalid nested staging subpath: $subpath"
+                  exit 1
+                  ;;
+                __incoming|__incoming/*|__backup|__backup/*)
+                  echo "::error::Nested staging path cannot use reserved deploy directories: $subpath"
+                  exit 1
+                  ;;
+              esac
+              echo "::warning::SSH_TARGET_STAGING ($staging) is nested under SSH_TARGET_PRODUCTION ($production). Workflow will preserve '$subpath' during production deploy."
+              echo "nested=true" >> "$GITHUB_OUTPUT"
+              echo "subpath=$subpath" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "nested=false" >> "$GITHUB_OUTPUT"
+              echo "subpath=" >> "$GITHUB_OUTPUT"
               ;;
           esac
 
@@ -155,6 +179,28 @@ jobs:
         run: |
           set -euxo pipefail
           ssh -p "${PORT:-22}" "$USER@$HOST" "T='$TARGET'; mkdir -p \"\$T.__incoming\" \"\$T.__backup\""
+
+      - name: Snapshot nested staging directory
+        if: steps.overlap.outputs.nested == 'true'
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ steps.target.outputs.target }}
+          PORT: ${{ secrets.SSH_PORT }}
+          STAGING_SUBPATH: ${{ steps.overlap.outputs.subpath }}
+        run: |
+          set -euxo pipefail
+          ssh -p "${PORT:-22}" "$USER@$HOST" "
+            set -e
+            T='$TARGET'
+            R='$STAGING_SUBPATH'
+            SRC=\"\$T/\$R\"
+            PRESERVE=\"\$T.__backup/staging-preserve\"
+            test -d \"\$SRC\" || { echo 'ERROR: nested staging path missing before production deploy: '\"\$SRC\"; exit 1; }
+            rm -rf \"\$PRESERVE\"
+            cp -a \"\$SRC\" \"\$PRESERVE\"
+            echo \"Preserved nested staging directory at \$SRC\"
+          "
 
       - name: Upload to __incoming (rsync)
         env:
@@ -187,6 +233,30 @@ jobs:
             test -d \"\$T.__incoming\" || { echo 'ERROR: missing '\"\$T.__incoming\"; exit 1; }
             mv \"\$T.__incoming\" \"\$T\"
             ls -lah \"\$T\" | sed -n '1,40p'
+          "
+
+      - name: Restore nested staging directory
+        if: steps.overlap.outputs.nested == 'true'
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ steps.target.outputs.target }}
+          PORT: ${{ secrets.SSH_PORT }}
+          STAGING_SUBPATH: ${{ steps.overlap.outputs.subpath }}
+        run: |
+          set -euxo pipefail
+          ssh -p "${PORT:-22}" "$USER@$HOST" "
+            set -e
+            T='$TARGET'
+            R='$STAGING_SUBPATH'
+            PRESERVE=\"\$T.__backup/staging-preserve\"
+            DEST=\"\$T/\$R\"
+            test -d \"\$PRESERVE\" || { echo 'ERROR: preserved staging snapshot missing: '\"\$PRESERVE\"; exit 1; }
+            PARENT=\$(dirname \"\$DEST\")
+            mkdir -p \"\$PARENT\"
+            rm -rf \"\$DEST\"
+            cp -a \"\$PRESERVE\" \"\$DEST\"
+            echo \"Restored nested staging directory to \$DEST\"
           "
 
       - name: Verify remote deploy artifacts
