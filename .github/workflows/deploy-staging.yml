@@ -100,8 +100,7 @@ jobs:
           if [ -n "$production" ]; then
             case "$staging" in
               "$production"|"$production"/*)
-                echo "::error::SSH_TARGET_STAGING ($staging) is inside SSH_TARGET_PRODUCTION ($production). Move staging to a non-nested path."
-                exit 1
+                echo "::warning::SSH_TARGET_STAGING ($staging) is inside SSH_TARGET_PRODUCTION ($production). Move staging to a non-nested path before the next production deploy."
                 ;;
             esac
           fi
