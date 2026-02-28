@@ -65,6 +65,47 @@ jobs:
             echo "run_id=${{ github.run_id }}"
           } > dist/pwa/deploy.txt
 
+      - name: Validate staging deploy settings
+        env:
+          STAGING_TARGET_RAW: ${{ secrets.SSH_TARGET_STAGING }}
+          PRODUCTION_TARGET_RAW: ${{ secrets.SSH_TARGET_PRODUCTION || secrets.SSH_TARGET_PROD || secrets.SSH_TARGET }}
+          STAGING_SSH_USER: ${{ secrets.SSH_USER_STAGING || secrets.SSH_USER }}
+          STAGING_SSH_PORT: ${{ secrets.SSH_PORT_STAGING || secrets.SSH_PORT }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          set -euo pipefail
+          staging="${STAGING_TARGET_RAW%/}"
+          production="${PRODUCTION_TARGET_RAW%/}"
+
+          [ -n "$SSH_HOST" ] || {
+            echo "::error::Missing SSH_HOST secret"
+            exit 1
+          }
+
+          [ -n "$STAGING_SSH_USER" ] || {
+            echo "::error::Missing SSH_USER_STAGING or SSH_USER secret"
+            exit 1
+          }
+
+          [ -n "$STAGING_SSH_PORT" ] || {
+            echo "::error::Missing SSH_PORT_STAGING or SSH_PORT secret"
+            exit 1
+          }
+
+          [ -n "$staging" ] || {
+            echo "::error::Missing SSH_TARGET_STAGING secret"
+            exit 1
+          }
+
+          if [ -n "$production" ]; then
+            case "$staging" in
+              "$production"|"$production"/*)
+                echo "::error::SSH_TARGET_STAGING ($staging) is inside SSH_TARGET_PRODUCTION ($production). Move staging to a non-nested path."
+                exit 1
+                ;;
+            esac
+          fi
+
       - name: Add SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -73,18 +114,18 @@ jobs:
       - name: Trust remote host
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -p "${{ secrets.SSH_PORT_STAGING || secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Deploy (rsync to subdomain docroot)
         run: |
           rsync -avz --delete \
-            -e "ssh -p ${{ secrets.SSH_PORT }}" \
+            -e "ssh -p ${{ secrets.SSH_PORT_STAGING || secrets.SSH_PORT }}" \
             dist/pwa/ \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
+            "${{ secrets.SSH_USER_STAGING || secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
 
       - name: Verify remote deploy artifacts
         run: |
-          ssh -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "set -e; test -f \"${{ secrets.SSH_TARGET_STAGING }}/index.html\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/find-creators.html\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/featured-creators.json\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/manifest.json\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/vendor/nostr.bundle.1.17.0.js\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/deploy.txt\""
+          ssh -p "${{ secrets.SSH_PORT_STAGING || secrets.SSH_PORT }}" "${{ secrets.SSH_USER_STAGING || secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "set -e; test -f \"${{ secrets.SSH_TARGET_STAGING }}/index.html\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/find-creators.html\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/featured-creators.json\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/manifest.json\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/vendor/nostr.bundle.1.17.0.js\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/deploy.txt\""
 
       - name: Smoke test staging
         env:

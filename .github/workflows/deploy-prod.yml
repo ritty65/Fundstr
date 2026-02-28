@@ -118,6 +118,34 @@ jobs:
           esac
           echo "target=$TARGET" >> "$GITHUB_OUTPUT"
 
+      - name: Validate staging/prod target isolation
+        env:
+          PRODUCTION_TARGET_RAW: ${{ steps.target.outputs.target }}
+          STAGING_TARGET_RAW: ${{ secrets.SSH_TARGET_STAGING }}
+        run: |
+          set -euo pipefail
+          production="${PRODUCTION_TARGET_RAW%/}"
+          staging="${STAGING_TARGET_RAW%/}"
+
+          if [ -z "$staging" ]; then
+            echo "::warning::SSH_TARGET_STAGING is empty; skipping overlap guard"
+            exit 0
+          fi
+
+          case "$staging" in
+            "$production"|"$production"/*)
+              echo "::error::SSH_TARGET_STAGING ($staging) is inside SSH_TARGET_PRODUCTION ($production). Move staging to a non-nested path."
+              exit 1
+              ;;
+          esac
+
+          case "$production" in
+            "$staging"|"$staging"/*)
+              echo "::error::SSH_TARGET_PRODUCTION ($production) is inside SSH_TARGET_STAGING ($staging). Move production to a non-nested path."
+              exit 1
+              ;;
+          esac
+
       - name: Prepare target dir
         env:
           HOST: ${{ secrets.SSH_HOST }}
