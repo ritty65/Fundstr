@@ -6,6 +6,7 @@ describe("boot/cashu", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    window.history.replaceState({}, "", "/");
   });
 
   afterEach(() => {
@@ -21,7 +22,9 @@ describe("boot/cashu", () => {
     const useWalletStore = vi.fn(() => ({ wallet: { initKeys } }));
     vi.doMock("src/stores/wallet", () => ({ useWalletStore }));
 
-    const useMintsStore = vi.fn(() => ({ activeMintUrl: "https://mint.example" }));
+    const useMintsStore = vi.fn(() => ({
+      activeMintUrl: "https://mint.example",
+    }));
     vi.doMock("src/stores/mints", () => ({ useMintsStore }));
 
     const verifyMint = vi.fn().mockResolvedValue(false);
@@ -40,6 +43,37 @@ describe("boot/cashu", () => {
     expect(initKeys).not.toHaveBeenCalled();
   });
 
+  it("allows restore route when the active mint is unsupported", async () => {
+    vi.doMock("quasar/wrappers", () => ({ boot: bootStub }));
+    const notifyCreate = vi.fn();
+    vi.doMock("quasar", () => ({ Notify: { create: notifyCreate } }));
+
+    const initKeys = vi.fn();
+    const useWalletStore = vi.fn(() => ({ wallet: { initKeys } }));
+    vi.doMock("src/stores/wallet", () => ({ useWalletStore }));
+
+    const useMintsStore = vi.fn(() => ({
+      activeMintUrl: "https://mint.example",
+    }));
+    vi.doMock("src/stores/mints", () => ({ useMintsStore }));
+
+    const verifyMint = vi.fn().mockResolvedValue(false);
+    vi.doMock("src/boot/mint-info", () => ({ verifyMint }));
+
+    window.history.replaceState({}, "", "/restore");
+    const module = await import("src/boot/cashu.js");
+
+    await expect(module.default()).resolves.toBeUndefined();
+    expect(verifyMint).toHaveBeenCalledWith("https://mint.example");
+    expect(notifyCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "warning",
+        message: expect.stringContaining("NUT"),
+      }),
+    );
+    expect(initKeys).toHaveBeenCalledTimes(1);
+  });
+
   it("warns but continues when mint verification fails due to network", async () => {
     vi.doMock("quasar/wrappers", () => ({ boot: bootStub }));
     const notifyCreate = vi.fn();
@@ -49,7 +83,9 @@ describe("boot/cashu", () => {
     const useWalletStore = vi.fn(() => ({ wallet: { initKeys } }));
     vi.doMock("src/stores/wallet", () => ({ useWalletStore }));
 
-    const useMintsStore = vi.fn(() => ({ activeMintUrl: "https://mint.example" }));
+    const useMintsStore = vi.fn(() => ({
+      activeMintUrl: "https://mint.example",
+    }));
     vi.doMock("src/stores/mints", () => ({ useMintsStore }));
 
     const verifyMint = vi.fn().mockResolvedValue(null);
@@ -76,7 +112,9 @@ describe("boot/cashu", () => {
     const useWalletStore = vi.fn(() => ({ wallet: { initKeys } }));
     vi.doMock("src/stores/wallet", () => ({ useWalletStore }));
 
-    const useMintsStore = vi.fn(() => ({ activeMintUrl: "https://mint.example" }));
+    const useMintsStore = vi.fn(() => ({
+      activeMintUrl: "https://mint.example",
+    }));
     vi.doMock("src/stores/mints", () => ({ useMintsStore }));
 
     const verifyMint = vi.fn().mockResolvedValue(true);
