@@ -98,6 +98,29 @@ rsync -av --delete --exclude 'staging/' "$BASE/public_html/" "$BASE/public_html/
 
 Then immediately trigger `deploy-staging` from `Develop2`.
 
+## Latest Verified Snapshot (2026-02-28)
+
+- Main release sync:
+  - PR `#1357` merged `release/main-rc-20260228` into `main`.
+  - Merge commit on `main`: `167e0d3c18a3f8cff1b7e4404973b5d7a7ce59f0`.
+- Main quality checks:
+  - `build` run `22521072310` -> success.
+  - `Test` run `22521072300` -> success.
+- Production deployment:
+  - `Deploy production (main -> Hostinger)` run `22521072297` -> success.
+  - `/deploy.txt` on production reports `env=production` and `sha=167e0d3c18a3f8cff1b7e4404973b5d7a7ce59f0`.
+- Staging parity post-production:
+  - `/deploy.txt` on staging remains `env=staging` and `sha=6c9e8dafa0140c575796d532839ca04da029afa2`.
+  - `/` and `/restore` return `200` on both production and staging.
+- Manual script checks executed after deploy:
+  - `BASE_URL=https://fundstr.me SMOKE_EXPECT_ENV=production ./scripts/smoke-tests.sh` -> pass.
+  - `BASE_URL=https://staging.fundstr.me SMOKE_EXPECT_ENV=staging ./scripts/smoke-tests.sh` -> pass.
+  - `BASE_URL=https://fundstr.me node scripts/synthetic-staging-journey.mjs` -> pass.
+  - `BASE_URL=https://staging.fundstr.me node scripts/synthetic-staging-journey.mjs` -> pass.
+- Remaining launch blockers:
+  - Branch-protection audit requires `BRANCH_PROTECTION_AUDIT_TOKEN` with admin rights (`verify-branch-protection` cannot be dispatched with limited PAT).
+  - Rollback rehearsal evidence still needs one controlled drill and a run log entry.
+
 ## Weekly Ops Check (5 Minutes)
 
 1. Verify latest `deploy-staging` run is green.
