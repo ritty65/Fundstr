@@ -273,6 +273,7 @@ jobs:
       - name: Smoke test production
         env:
           BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+          SMOKE_EXPECT_ENV: production
         run: |
           if [ -z "$BASE_URL" ]; then
             BASE_URL="https://fundstr.me"
@@ -283,4 +284,5 @@ jobs:
         if: steps.overlap.outputs.nested == 'true'
         env:
           BASE_URL: https://staging.fundstr.me
+          SMOKE_EXPECT_ENV: staging
         run: ./scripts/smoke-tests.sh
