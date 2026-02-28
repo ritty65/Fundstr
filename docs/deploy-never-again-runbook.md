@@ -123,6 +123,30 @@ Then immediately trigger `deploy-staging` from `Develop2`.
 - Remaining launch blocker:
   - Rollback rehearsal evidence still needs one controlled drill and a run log entry.
 
+## Rollback Rehearsal (Remaining Blocker)
+
+Recommended approach: run a controlled docs-only rollback drill so deploy mechanics are exercised without user-facing code risk.
+
+1. **Create drill commit on `main`**
+   - Change only a doc file (for example append a dated marker line in `docs/CHANGELOG.md`).
+   - Merge PR and wait for `build`, `Test`, and `Deploy production (main -> Hostinger)` to pass.
+2. **Capture forward-deploy evidence**
+   - Record production deploy run ID.
+   - Confirm `https://fundstr.me/deploy.txt` SHA matches drill commit.
+   - Run `BASE_URL=https://fundstr.me SMOKE_EXPECT_ENV=production ./scripts/smoke-tests.sh`.
+3. **Rollback by revert PR**
+   - Revert the drill commit via a new PR to `main`.
+   - Merge and wait for `build`, `Test`, and production deploy workflow to pass.
+4. **Capture rollback evidence**
+   - Record rollback deploy run ID.
+   - Confirm `https://fundstr.me/deploy.txt` SHA matches pre-drill commit.
+   - Re-run production smoke script and verify pass.
+5. **Document closure evidence**
+   - Add both run IDs, forward/rollback SHAs, and smoke outputs to `docs/CHANGELOG.md`.
+   - Mark rollback rehearsal blocker as complete in this runbook.
+
+Exit condition: two consecutive successful prod deploys (forward + rollback) with marker parity and green smoke checks.
+
 ## Weekly Ops Check (5 Minutes)
 
 1. Verify latest `deploy-staging` run is green.
