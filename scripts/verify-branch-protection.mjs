@@ -105,6 +105,9 @@ function evaluateProtection(protection) {
   const requiredStatusChecks = protection?.required_status_checks || null;
   const requiredReviews = protection?.required_pull_request_reviews || null;
   const contextNames = getContextNames(requiredStatusChecks);
+  const normalizedContextNames = new Set(
+    Array.from(contextNames, (name) => name.toLowerCase()),
+  );
 
   if (!requiredStatusChecks) {
     failures.push("required_status_checks is not configured");
@@ -114,7 +117,8 @@ function evaluateProtection(protection) {
     }
 
     for (const requiredCheck of requiredChecks) {
-      if (!contextNames.has(requiredCheck)) {
+      const normalizedRequiredCheck = requiredCheck.toLowerCase();
+      if (!normalizedContextNames.has(normalizedRequiredCheck)) {
         failures.push(`missing required status check: ${requiredCheck}`);
       }
     }
