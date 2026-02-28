@@ -2,6 +2,7 @@
 set -euo pipefail
 BASE="${BASE_URL:-https://staging.fundstr.me}"
 TRACE_FILE="${SMOKE_TRACE_FILE:-}"
+SMOKE_EXPECT_ENV="${SMOKE_EXPECT_ENV:-}"
 CURL_ARGS=(--retry 2 --retry-all-errors --retry-delay 1 --connect-timeout 15 --max-time 45)
 
 log_step() {
@@ -105,11 +106,18 @@ echo "$deploy_marker" | grep -q "<!DOCTYPE html>" && {
   log_step "deploy.txt resolved to HTML; expected plain deploy marker"
   exit 1
 }
-echo "$deploy_marker" | grep -Eq "^env=" || {
-  log_step "deploy.txt is missing expected metadata lines"
+deploy_env=$(printf '%s\n' "$deploy_marker" | awk -F'=' '$1=="env" {print $2; exit}')
+[ -n "$deploy_env" ] || {
+  log_step "deploy.txt is missing expected env metadata"
   exit 1
 }
-log_step "Deploy marker detected"
+
+if [ -n "$SMOKE_EXPECT_ENV" ] && [ "$deploy_env" != "$SMOKE_EXPECT_ENV" ]; then
+  log_step "deploy.txt env mismatch: expected '$SMOKE_EXPECT_ENV' but got '$deploy_env'"
+  exit 1
+fi
+
+log_step "Deploy marker detected (env=$deploy_env)"
 
 html=$(fetch_body "$BASE/")
 asset=$(echo "$html" | grep -Eo '/assets/[A-Za-z0-9._-]+\.js' | head -n1)

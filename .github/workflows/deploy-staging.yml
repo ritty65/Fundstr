@@ -135,6 +135,7 @@ jobs:
       - name: Smoke test staging
         env:
           BASE_URL: https://staging.fundstr.me
+          SMOKE_EXPECT_ENV: staging
           SMOKE_TRACE_FILE: artifacts/staging-diagnostics/smoke-trace.log
         run: ./scripts/smoke-tests.sh
 
