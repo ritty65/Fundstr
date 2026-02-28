@@ -5,7 +5,17 @@ export function useClipboard() {
   const { t } = useI18n();
 
   const copy = (text: string, message?: string) => {
-    navigator.clipboard.writeText(text).then(
+    const clipboard =
+      typeof navigator !== "undefined" && navigator
+        ? navigator.clipboard
+        : undefined;
+
+    if (!clipboard || typeof clipboard.writeText !== "function") {
+      toastError(t("copy_failed"));
+      return;
+    }
+
+    clipboard.writeText(text).then(
       () => {
         toastSuccess(message || t("copied_to_clipboard"));
       },

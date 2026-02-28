@@ -1,9 +1,18 @@
-name: Deploy staging (develop → Hostinger)
+name: deploy-staging
 
 on:
   push:
-    branches: [develop]
+    branches: [Develop2]
   workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+  statuses: read
+
+concurrency:
+  group: deploy-staging-${{ github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   build-and-deploy:
@@ -12,29 +21,128 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: "20"
 
-      - run: corepack enable
+      - name: Validate predeploy quality gate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          PREDEPLOY_REQUIRED_CHECKS: Test,build
+          PREDEPLOY_TIMEOUT_MS: 1200000
+          PREDEPLOY_POLL_INTERVAL_MS: 15000
+        run: node scripts/ci/predeploy-gate.mjs
 
-      - name: Use staging env
-        run: cp .env.staging .env
+      - name: Enable pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@8.15.7 --activate
+          pnpm --version
 
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
+      - name: Use staging env (optional)
+        run: cp .env.staging .env || true
 
-      - uses: webfactory/ssh-agent@v0.9.0
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (Quasar PWA)
+        run: pnpm run build
+
+      - name: Verify deploy artifacts
+        run: node scripts/ci/verify-deploy-artifacts.mjs
+
+      - name: Write deploy marker
+        run: |
+          BUILD_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          {
+            echo "env=staging"
+            echo "sha=${{ github.sha }}"
+            echo "ref=${{ github.ref_name }}"
+            echo "built_at=$BUILD_TS"
+            echo "run_id=${{ github.run_id }}"
+          } > dist/pwa/deploy.txt
+
+      - name: Validate staging deploy settings
+        env:
+          STAGING_TARGET_RAW: ${{ secrets.SSH_TARGET_STAGING }}
+          PRODUCTION_TARGET_RAW: ${{ secrets.SSH_TARGET_PRODUCTION || secrets.SSH_TARGET_PROD || secrets.SSH_TARGET }}
+          STAGING_SSH_USER: ${{ secrets.SSH_USER_STAGING || secrets.SSH_USER }}
+          STAGING_SSH_PORT: ${{ secrets.SSH_PORT_STAGING || secrets.SSH_PORT }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          set -euo pipefail
+          staging="${STAGING_TARGET_RAW%/}"
+          production="${PRODUCTION_TARGET_RAW%/}"
+
+          [ -n "$SSH_HOST" ] || {
+            echo "::error::Missing SSH_HOST secret"
+            exit 1
+          }
+
+          [ -n "$STAGING_SSH_USER" ] || {
+            echo "::error::Missing SSH_USER_STAGING or SSH_USER secret"
+            exit 1
+          }
+
+          [ -n "$STAGING_SSH_PORT" ] || {
+            echo "::error::Missing SSH_PORT_STAGING or SSH_PORT secret"
+            exit 1
+          }
+
+          [ -n "$staging" ] || {
+            echo "::error::Missing SSH_TARGET_STAGING secret"
+            exit 1
+          }
+
+          if [ -n "$production" ]; then
+            case "$staging" in
+              "$production"|"$production"/*)
+                echo "::warning::SSH_TARGET_STAGING ($staging) is inside SSH_TARGET_PRODUCTION ($production). Move staging to a non-nested path before the next production deploy."
+                ;;
+            esac
+          fi
+
+      - name: Add SSH key
+        uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - run: |
+      - name: Trust remote host
+        run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -p "${{ secrets.SSH_PORT_STAGING || secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
-      - run: |
+      - name: Deploy (rsync to subdomain docroot)
+        run: |
           rsync -avz --delete \
-            -e "ssh -p ${{ secrets.SSH_PORT }}" \
+            -e "ssh -p ${{ secrets.SSH_PORT_STAGING || secrets.SSH_PORT }}" \
             dist/pwa/ \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
+            "${{ secrets.SSH_USER_STAGING || secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_STAGING }}/"
+
+      - name: Verify remote deploy artifacts
+        run: |
+          ssh -p "${{ secrets.SSH_PORT_STAGING || secrets.SSH_PORT }}" "${{ secrets.SSH_USER_STAGING || secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "set -e; test -f \"${{ secrets.SSH_TARGET_STAGING }}/index.html\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/find-creators.html\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/featured-creators.json\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/manifest.json\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/vendor/nostr.bundle.1.17.0.js\"; test -f \"${{ secrets.SSH_TARGET_STAGING }}/deploy.txt\""
+
+      - name: Capture staging diagnostics snapshot
+        env:
+          BASE_URL: https://staging.fundstr.me
+          STAGING_DIAG_DIR: artifacts/staging-diagnostics
+        run: ./scripts/ci/staging-diagnostics.sh
+
+      - name: Smoke test staging
+        env:
+          BASE_URL: https://staging.fundstr.me
+          SMOKE_EXPECT_ENV: staging
+          SMOKE_TRACE_FILE: artifacts/staging-diagnostics/smoke-trace.log
+        run: ./scripts/smoke-tests.sh
+
+      - name: Upload staging diagnostics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/staging-diagnostics
+          if-no-files-found: warn

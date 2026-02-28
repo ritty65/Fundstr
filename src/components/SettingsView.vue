@@ -126,7 +126,7 @@
           </q-item-section>
         </q-item>
         <div v-if="npcEnabled" class="q-px-xs">
-          <q-item v-if="npcEnabled">
+          <q-item>
             <div class="row">
               <div class="col-12">
                 <q-input outlined v-model="npcAddress" dense rounded readonly>
@@ -169,194 +169,238 @@
               </div>
             </div>
           </q-item>
-
-          <!-- NOSTR KEYS SECTION -->
-          <div class="section-divider q-my-md">
-            <div class="divider-line"></div>
-            <div class="divider-text">
-              {{ $t("Settings.sections.nostr_keys") }}
-            </div>
-            <div class="divider-line"></div>
-          </div>
-
-          <q-item>
-            <q-item-section>
-              <q-item-label overline>{{
-                $t("Settings.nostr_keys.title")
-              }}</q-item-label>
-              <q-item-label caption>{{
-                $t("Settings.nostr_keys.description")
-              }}</q-item-label>
-            </q-item-section>
-          </q-item>
-          <!-- initWalletSeedPrivateKeySigner -->
-          <q-item
-            :active="signerType === 'SEED'"
-            active-class="text-weight-bold text-primary"
-            clickable
-          >
-            <q-item-section avatar>
-              <q-icon
-                :color="signerType === 'SEED' ? 'primary' : 'grey'"
-                :name="
-                  signerType === 'SEED'
-                    ? 'check_circle'
-                    : 'radio_button_unchecked'
-                "
-                @click="handleSeedClick"
-                class="cursor-pointer"
-              />
-            </q-item-section>
-            <q-item-section
-              lines="1"
-              class="cursor-pointer"
-              style="word-break: break-word"
-            >
-              <q-item-label title>{{
-                $t("Settings.nostr_keys.wallet_seed.title")
-              }}</q-item-label>
-              <q-item-label caption
-                >{{ $t("Settings.nostr_keys.wallet_seed.description") }}
-              </q-item-label>
-              <q-item-label
-                caption
-                v-if="signerType === 'SEED' && seedSignerPrivateKeyNsecComputed"
-              >
-                <q-badge
-                  class="cursor-pointer q-mt-xs"
-                  @click="copy(seedSignerPrivateKeyNsecComputed)"
-                  outline
-                  color="grey"
-                >
-                  <q-icon
-                    name="content_copy"
-                    size="0.8em"
-                    color="grey"
-                    class="q-mr-xs"
-                  ></q-icon
-                  >{{ $t("Settings.nostr_keys.wallet_seed.copy_nsec") }}
-                </q-badge>
-              </q-item-label>
-            </q-item-section>
-          </q-item>
-          <!-- Nip46Signer -->
-          <q-item
-            :active="signerType === 'NIP46'"
-            active-class="text-weight-bold text-primary"
-            clickable
-            v-if="false"
-          >
-            <q-item-section avatar>
-              <q-icon
-                :color="signerType === 'NIP46' ? 'primary' : 'grey'"
-                :name="
-                  signerType === 'NIP46'
-                    ? 'check_circle'
-                    : 'radio_button_unchecked'
-                "
-                @click="handleBunkerClick"
-                class="cursor-pointer"
-              />
-            </q-item-section>
-            <q-item-section
-              lines="1"
-              class="cursor-pointer"
-              style="word-break: break-word"
-            >
-              <q-item-label title>{{
-                $t("Settings.nostr_keys.nsec_bunker.title")
-              }}</q-item-label>
-              <q-item-label caption
-                >{{ $t("Settings.nostr_keys.nsec_bunker.description") }}
-              </q-item-label>
-            </q-item-section>
-            <q-item-section side v-if="signerType === 'NIP46'">
-              <q-icon
-                name="delete_outline"
-                @click="handleResetNip46Signer"
-                class="cursor-pointer"
-                ><q-tooltip>{{
-                  $t("Settings.nostr_keys.nsec_bunker.delete_tooltip")
-                }}</q-tooltip>
-              </q-icon>
-            </q-item-section>
-          </q-item>
-          <q-item
-            :active="signerType === 'PRIVATEKEY'"
-            active-class="text-weight-bold text-primary"
-            clickable
-          >
-            <q-item-section avatar>
-              <q-icon
-                :color="signerType === 'PRIVATEKEY' ? 'primary' : 'grey'"
-                :name="
-                  signerType === 'PRIVATEKEY'
-                    ? 'check_circle'
-                    : 'radio_button_unchecked'
-                "
-                @click="handleNsecClick"
-                class="cursor-pointer"
-              />
-            </q-item-section>
-            <q-item-section
-              lines="1"
-              class="cursor-pointer"
-              style="word-break: break-word"
-            >
-              <q-item-label title>{{
-                $t("Settings.nostr_keys.use_nsec.title")
-              }}</q-item-label>
-              <q-item-label caption
-                >{{ $t("Settings.nostr_keys.use_nsec.description") }}
-              </q-item-label>
-            </q-item-section>
-            <q-item-section side v-if="signerType === 'PRIVATEKEY'">
-              <q-icon
-                name="delete_outline"
-                @click="handleResetPrivateKeySigner"
-                class="cursor-pointer"
-                ><q-tooltip>{{
-                  $t("Settings.nostr_keys.use_nsec.delete_tooltip")
-                }}</q-tooltip></q-icon
-              >
-            </q-item-section>
-          </q-item>
-          <!-- Nip07Signer -->
-          <q-item
-            :active="signerType === 'NIP07'"
-            active-class="text-weight-bold text-primary"
-            clickable
-            v-if="nip07SignerAvailable"
-          >
-            <q-item-section avatar>
-              <q-icon
-                :color="signerType === 'NIP07' ? 'primary' : 'grey'"
-                :name="
-                  signerType === 'NIP07'
-                    ? 'check_circle'
-                    : 'radio_button_unchecked'
-                "
-                @click="handleExtensionClick"
-                class="cursor-pointer"
-              />
-            </q-item-section>
-            <q-item-section
-              lines="1"
-              class="cursor-pointer"
-              style="word-break: break-word"
-            >
-              <q-item-label title>{{
-                $t("Settings.nostr_keys.signing_extension.title")
-              }}</q-item-label>
-              <q-item-label caption v-if="nip07SignerAvailable"
-                >{{ $t("Settings.nostr_keys.signing_extension.description") }}
-              </q-item-label>
-              <q-item-label caption v-else
-                >{{ $t("Settings.nostr_keys.signing_extension.not_found") }}
-              </q-item-label>
-            </q-item-section>
-          </q-item>
         </div>
+
+        <!-- NOSTR KEYS SECTION -->
+        <div class="section-divider q-my-md">
+          <div class="divider-line"></div>
+          <div class="divider-text">
+            {{ $t("Settings.sections.nostr_keys") }}
+          </div>
+          <div class="divider-line"></div>
+        </div>
+
+        <q-item>
+          <q-item-section>
+            <q-item-label overline>{{
+              $t("Settings.nostr_keys.title")
+            }}</q-item-label>
+            <q-item-label caption>{{
+              $t("Settings.nostr_keys.description")
+            }}</q-item-label>
+          </q-item-section>
+        </q-item>
+        <q-item class="q-px-md q-pb-none">
+          <q-item-section>
+            <q-btn
+              color="primary"
+              class="full-width"
+              outline
+              icon="vpn_key"
+              :loading="identityLoading"
+              @click="openIdentityDialog"
+            >
+              {{ $t("Settings.nostr_keys.manage_identity_cta") }}
+            </q-btn>
+            <q-item-label caption class="q-mt-sm">
+              {{ $t("Settings.nostr_keys.manage_identity_caption") }}
+            </q-item-label>
+          </q-item-section>
+        </q-item>
+        <!-- initWalletSeedPrivateKeySigner -->
+        <q-item
+          :active="signerType === 'SEED'"
+          active-class="text-weight-bold text-primary"
+          clickable
+        >
+          <q-item-section avatar>
+            <q-icon
+              :color="signerType === 'SEED' ? 'primary' : 'grey'"
+              :name="
+                signerType === 'SEED'
+                  ? 'check_circle'
+                  : 'radio_button_unchecked'
+              "
+              @click="handleSeedClick"
+              class="cursor-pointer"
+            />
+          </q-item-section>
+          <q-item-section
+            lines="1"
+            class="cursor-pointer"
+            style="word-break: break-word"
+          >
+            <q-item-label title>{{
+              $t("Settings.nostr_keys.wallet_seed.title")
+            }}</q-item-label>
+            <q-item-label caption
+              >{{ $t("Settings.nostr_keys.wallet_seed.description") }}
+            </q-item-label>
+            <q-item-label
+              caption
+              v-if="signerType === 'SEED' && seedSignerPrivateKeyNsecComputed"
+            >
+              <q-badge
+                class="cursor-pointer q-mt-xs"
+                @click="copy(seedSignerPrivateKeyNsecComputed)"
+                outline
+                color="grey"
+              >
+                <q-icon
+                  name="content_copy"
+                  size="0.8em"
+                  color="grey"
+                  class="q-mr-xs"
+                ></q-icon
+                >{{ $t("Settings.nostr_keys.wallet_seed.copy_nsec") }}
+              </q-badge>
+            </q-item-label>
+          </q-item-section>
+        </q-item>
+        <!-- Nip46Signer -->
+        <q-item
+          :active="signerType === 'NIP46'"
+          active-class="text-weight-bold text-primary"
+          clickable
+          v-if="false"
+        >
+          <q-item-section avatar>
+            <q-icon
+              :color="signerType === 'NIP46' ? 'primary' : 'grey'"
+              :name="
+                signerType === 'NIP46'
+                  ? 'check_circle'
+                  : 'radio_button_unchecked'
+              "
+              @click="handleBunkerClick"
+              class="cursor-pointer"
+            />
+          </q-item-section>
+          <q-item-section
+            lines="1"
+            class="cursor-pointer"
+            style="word-break: break-word"
+          >
+            <q-item-label title>{{
+              $t("Settings.nostr_keys.nsec_bunker.title")
+            }}</q-item-label>
+            <q-item-label caption
+              >{{ $t("Settings.nostr_keys.nsec_bunker.description") }}
+            </q-item-label>
+          </q-item-section>
+          <q-item-section side v-if="signerType === 'NIP46'">
+            <q-icon
+              name="delete_outline"
+              @click="handleResetNip46Signer"
+              class="cursor-pointer"
+              ><q-tooltip>{{
+                $t("Settings.nostr_keys.nsec_bunker.delete_tooltip")
+              }}</q-tooltip>
+            </q-icon>
+          </q-item-section>
+        </q-item>
+        <q-item
+          :active="signerType === 'PRIVATEKEY'"
+          active-class="text-weight-bold text-primary"
+          clickable
+        >
+          <q-item-section avatar>
+            <q-icon
+              :color="signerType === 'PRIVATEKEY' ? 'primary' : 'grey'"
+              :name="
+                signerType === 'PRIVATEKEY'
+                  ? 'check_circle'
+                  : 'radio_button_unchecked'
+              "
+              @click="handleNsecClick"
+              class="cursor-pointer"
+            />
+          </q-item-section>
+          <q-item-section
+            lines="1"
+            class="cursor-pointer"
+            style="word-break: break-word"
+          >
+            <q-item-label title>{{
+              $t("Settings.nostr_keys.use_nsec.title")
+            }}</q-item-label>
+            <q-item-label caption
+              >{{ $t("Settings.nostr_keys.use_nsec.description") }}
+            </q-item-label>
+          </q-item-section>
+          <q-item-section side v-if="signerType === 'PRIVATEKEY'">
+            <q-icon
+              name="delete_outline"
+              @click="handleResetPrivateKeySigner"
+              class="cursor-pointer"
+              ><q-tooltip>{{
+                $t("Settings.nostr_keys.use_nsec.delete_tooltip")
+              }}</q-tooltip></q-icon
+            >
+          </q-item-section>
+        </q-item>
+        <!-- Nip07Signer -->
+        <q-item
+          :active="signerType === 'NIP07'"
+          active-class="text-weight-bold text-primary"
+          clickable
+        >
+          <q-item-section avatar>
+            <q-icon
+              :color="signerType === 'NIP07' ? 'primary' : 'grey'"
+              :name="
+                signerType === 'NIP07'
+                  ? 'check_circle'
+                  : 'radio_button_unchecked'
+              "
+              @click="handleExtensionClick"
+              class="cursor-pointer"
+            />
+          </q-item-section>
+          <q-item-section
+            lines="1"
+            class="cursor-pointer"
+            style="word-break: break-word"
+          >
+            <div class="row items-center justify-between no-wrap">
+              <div class="col">
+                <q-item-label title>{{
+                  $t("Settings.nostr_keys.signing_extension.title")
+                }}</q-item-label>
+              </div>
+              <q-btn
+                dense
+                outline
+                size="sm"
+                round
+                icon="refresh"
+                :loading="nip07Rescanning"
+                @click.stop="refreshNip07Availability"
+                :aria-label="$t('Settings.nostr_keys.signing_extension.title')"
+                :title="$t('Settings.nostr_keys.signing_extension.title')"
+              />
+            </div>
+            <q-item-label caption v-if="nip07SignerAvailable"
+              >{{ $t("Settings.nostr_keys.signing_extension.description") }}
+            </q-item-label>
+            <q-item-label caption v-else
+              >{{ $t("Settings.nostr_keys.signing_extension.not_found") }}
+            </q-item-label>
+          </q-item-section>
+        </q-item>
+        <q-banner
+          v-if="!nip07SignerAvailable"
+          dense
+          class="bg-amber-1 text-1 q-mt-sm"
+          icon="report_problem"
+        >
+          {{ $t("Settings.nostr_keys.signing_extension.not_found") }}
+        </q-banner>
+        <q-item class="q-px-md q-pt-md">
+          <q-item-section>
+            <AdvancedSignerKeyManager />
+          </q-item-section>
+        </q-item>
       </q-list>
     </div>
 
@@ -1758,6 +1802,104 @@
 
   <!-- NWC DIALOG -->
   <NWCDialog v-model="showNWCDialog" />
+
+  <!-- Nostr identity dialog -->
+  <q-dialog v-model="showIdentityDialog" persistent>
+    <q-card style="max-width: 520px; width: 100%">
+      <q-card-section class="text-h6">
+        {{ $t("Settings.nostr_keys.manage_identity_title") }}
+      </q-card-section>
+      <q-separator inset />
+      <q-card-section class="q-gutter-md">
+        <div class="column q-gutter-sm">
+          <div class="text-subtitle2">
+            {{ $t("Settings.nostr_keys.manage_identity_nsec_label") }}
+          </div>
+          <q-input
+            outlined
+            dense
+            v-model="identityKeyInput"
+            :label="$t('Settings.nostr_keys.manage_identity_nsec_placeholder')"
+            :disable="identityLoading"
+            autocapitalize="off"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <q-btn
+            color="primary"
+            :disable="!identityKeyInput"
+            :loading="identityLoading"
+            @click="submitNsecIdentity"
+          >
+            {{ $t("Settings.nostr_keys.manage_identity_use_nsec") }}
+          </q-btn>
+        </div>
+
+        <q-separator />
+
+        <div class="row q-col-gutter-sm">
+          <div class="col-12 col-md-6">
+            <q-btn
+              color="primary"
+              class="full-width"
+              outline
+              :disable="identityLoading || !nip07SignerAvailable"
+              :loading="identityLoading && identityFlowMode === 'nip07'"
+              @click="submitNip07Identity"
+            >
+              {{ $t("Settings.nostr_keys.manage_identity_use_extension") }}
+            </q-btn>
+            <q-item-label caption class="q-mt-xs">
+              {{ $t("Settings.nostr_keys.manage_identity_use_extension_caption") }}
+            </q-item-label>
+          </div>
+          <div class="col-12 col-md-6">
+            <q-btn
+              color="primary"
+              class="full-width"
+              outline
+              :loading="identityLoading && identityFlowMode === 'generate'"
+              :disable="identityLoading"
+              @click="submitGeneratedIdentity"
+            >
+              {{ $t("Settings.nostr_keys.manage_identity_generate") }}
+            </q-btn>
+            <q-item-label caption class="q-mt-xs">
+              {{ $t("Settings.nostr_keys.manage_identity_generate_caption") }}
+            </q-item-label>
+          </div>
+        </div>
+
+        <q-banner
+          v-if="identityStatus"
+          dense
+          class="bg-grey-2 text-1 q-mt-md"
+        >
+          <div class="row items-center no-wrap">
+            <q-spinner-dots size="18px" class="q-mr-sm" v-if="identityLoading" />
+            <div class="text-body2">{{ identityStatus }}</div>
+          </div>
+        </q-banner>
+
+        <q-banner
+          v-if="identityError"
+          dense
+          class="bg-red-1 text-negative q-mt-sm"
+          icon="warning"
+        >
+          {{ identityError }}
+        </q-banner>
+      </q-card-section>
+      <q-card-actions align="right">
+        <q-btn
+          flat
+          :disable="identityLoading"
+          :label="$t('global.actions.close.label')"
+          v-close-popup
+        />
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
 </template>
 <script lang="ts">import windowMixin from 'src/mixins/windowMixin'
 import { debug } from "src/js/logger";
@@ -1766,6 +1908,7 @@ import { defineComponent, watch } from "vue";
 import { useClipboard } from "src/composables/useClipboard";
 import P2PKDialog from "./P2PKDialog.vue";
 import NWCDialog from "./NWCDialog.vue";
+import AdvancedSignerKeyManager from "./AdvancedSignerKeyManager.vue";
 
 import { getShortUrl } from "src/js/wallet-helpers";
 import { mapActions, mapState, mapWritableState } from "pinia";
@@ -1787,13 +1930,15 @@ import { useRestoreStore } from "src/stores/restore";
 import { useDexieStore } from "../stores/dexie";
 import { useReceiveTokensStore } from "../stores/receiveTokensStore";
 import { useStorageStore } from "src/stores/storage";
-import { useI18n } from "vue-i18n";
+import { nip19, generateSecretKey } from "nostr-tools";
+import { hexToBytes } from "@noble/hashes/utils";
 
 export default defineComponent({
   name: "SettingsView",
   components: {
     P2PKDialog,
     NWCDialog,
+    AdvancedSignerKeyManager,
   },
   mixins: [windowMixin],
   setup() {
@@ -1839,6 +1984,13 @@ export default defineComponent({
       nip07SignerAvailable: false,
       newRelay: "",
       newNostrRelay: "",
+      showIdentityDialog: false,
+      identityKeyInput: "",
+      identityStatus: "",
+      identityError: "",
+      identityLoading: false,
+      identityFlowMode: "" as "nsec" | "nip07" | "generate" | "",
+      nip07Rescanning: false,
     };
   },
   computed: {
@@ -1873,6 +2025,8 @@ export default defineComponent({
       "mintRecommendations",
       "signerType",
       "seedSignerPrivateKeyNsecComputed",
+      "hasIdentity",
+      "activePrivateKeyNsec",
     ]),
     ...mapState(useMnemonicStore, ["mnemonic"]),
     ...mapState(useUiStore, ["ndefSupported"]),
@@ -1949,6 +2103,9 @@ export default defineComponent({
       "resetPrivateKeySigner",
       "resetNip46Signer",
       "initSigner",
+      "bootstrapIdentity",
+      "updateIdentity",
+      "connectBrowserSigner",
     ]),
     ...mapActions(useNWCStore, [
       "generateNWCConnection",
@@ -2079,6 +2236,17 @@ export default defineComponent({
       await this.generateNPCConnection();
     },
     handleExtensionClick: async function () {
+      this.identityError = "";
+      const available = await this.checkNip07Signer(true);
+      this.nip07SignerAvailable = available;
+
+      if (!available) {
+        this.identityError = this.$t(
+          "Settings.nostr_keys.manage_identity_extension_missing",
+        ) as string;
+        return;
+      }
+
       await this.initNip07Signer();
       await this.generateNPCConnection();
     },
@@ -2169,6 +2337,126 @@ export default defineComponent({
       // setTimeout(() => {
       //   window.location.reload();
       // }, 300);
+    },
+    async openIdentityDialog() {
+      this.identityError = "";
+      this.identityStatus = "";
+      this.identityFlowMode = "";
+      this.identityKeyInput = this.activePrivateKeyNsec || "";
+      this.showIdentityDialog = true;
+
+      this.nip07SignerAvailable = await this.checkNip07Signer(true);
+      if (!this.nip07SignerAvailable) {
+        this.identityError = this.$t(
+          "Settings.nostr_keys.manage_identity_extension_missing",
+        ) as string;
+      }
+    },
+    normalizeIdentityKey(input: string) {
+      const trimmed = input.trim();
+      if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+        return nip19.nsecEncode(hexToBytes(trimmed));
+      }
+      return trimmed;
+    },
+    async runIdentityFlow(fn: () => Promise<void>, opts: { handlesBootstrap?: boolean } = {}) {
+      const { handlesBootstrap = false } = opts;
+      this.identityError = "";
+      this.identityStatus = this.$t(
+        "Settings.nostr_keys.manage_identity_progress_start",
+      ) as string;
+      this.identityLoading = true;
+      try {
+        await fn();
+        if (!this.hasIdentity) {
+          throw new Error(
+            this.$t("Settings.nostr_keys.manage_identity_missing") as string,
+          );
+        }
+        if (!handlesBootstrap) {
+          await this.bootstrapIdentity((msg) => {
+            this.identityStatus = msg;
+          });
+        }
+        this.identityStatus = this.$t(
+          "Settings.nostr_keys.manage_identity_redirecting",
+        ) as string;
+        await this.$router.replace("/wallet");
+        this.showIdentityDialog = false;
+      } catch (e: any) {
+        this.identityError =
+          e?.message ||
+          (this.$t("Settings.nostr_keys.manage_identity_failed") as string);
+      } finally {
+        this.identityLoading = false;
+        this.identityFlowMode = "";
+      }
+    },
+    async submitNsecIdentity() {
+      this.identityFlowMode = "nsec";
+      const normalized = this.normalizeIdentityKey(this.identityKeyInput);
+      if (!normalized) {
+        this.identityError =
+          this.$t("Settings.nostr_keys.manage_identity_invalid") as string;
+        return;
+      }
+      await this.runIdentityFlow(
+        () =>
+          this.updateIdentity(normalized, undefined, {
+            onProgress: (msg) => {
+              this.identityStatus = msg;
+            },
+          }),
+        { handlesBootstrap: true },
+      );
+    },
+    async submitNip07Identity() {
+      this.identityFlowMode = "nip07";
+      const available = await this.checkNip07Signer(true);
+      if (!available) {
+        this.identityError =
+          this.$t("Settings.nostr_keys.manage_identity_extension_missing") as string;
+        this.identityFlowMode = "";
+        return;
+      }
+      await this.runIdentityFlow(
+        () =>
+          this.updateIdentity(undefined, undefined, {
+            preferNip07: true,
+            onProgress: (msg) => {
+              this.identityStatus = msg;
+            },
+          }),
+        { handlesBootstrap: true },
+      );
+    },
+    async refreshNip07Availability() {
+      this.identityError = "";
+      this.identityStatus = "Checking for NIP-07 extension...";
+      this.nip07Rescanning = true;
+      this.nip07SignerAvailable = await this.checkNip07Signer(true);
+      if (!this.nip07SignerAvailable) {
+        this.identityError =
+          this.$t("Settings.nostr_keys.manage_identity_extension_missing") as string;
+      }
+      this.identityStatus = this.nip07SignerAvailable
+        ? "NIP-07 extension detected."
+        : "No NIP-07 extension detected.";
+      this.nip07Rescanning = false;
+    },
+    async submitGeneratedIdentity() {
+      this.identityFlowMode = "generate";
+      const sk = generateSecretKey();
+      const nsec = nip19.nsecEncode(sk);
+      await this.runIdentityFlow(
+        () =>
+          this.updateIdentity(nsec, undefined, {
+            onProgress: (msg) => {
+              this.identityStatus = msg;
+            },
+          }),
+        { handlesBootstrap: true },
+      );
     },
   },
   created: async function () {

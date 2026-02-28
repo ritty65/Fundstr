@@ -12,6 +12,33 @@
             />
             <div v-if="loginMethod === 'private'">
               <q-input v-model="privKey" label="nsec or hex private key" />
+              <q-input
+                v-model="pin"
+                :type="showPin ? 'text' : 'password'"
+                label="Create Unlock PIN / Password"
+                class="q-mt-sm"
+                outlined
+                dense
+                :error="Boolean(errorMessage)"
+                :error-message="errorMessage"
+              >
+                <template #append>
+                  <q-icon
+                    :name="showPin ? 'visibility_off' : 'visibility'"
+                    class="cursor-pointer"
+                    @click="showPin = !showPin"
+                  />
+                </template>
+              </q-input>
+              <q-input
+                v-model="pinConfirm"
+                :type="showPin ? 'text' : 'password'"
+                label="Confirm PIN"
+                class="q-mt-sm"
+                outlined
+                dense
+                :error="Boolean(errorMessage)"
+              />
               <div class="row justify-end q-mt-md">
                 <q-btn color="primary" label="Next" @click="nextFromKey" />
               </div>
@@ -20,6 +47,31 @@
               <div v-if="extError" class="text-negative q-mb-sm">
                 {{ extError }}
               </div>
+              <q-input
+                v-model="pin"
+                :type="showPin ? 'text' : 'password'"
+                label="Create Unlock PIN / Password"
+                outlined
+                dense
+                :error="Boolean(errorMessage)"
+                :error-message="errorMessage"
+              >
+                <template #append>
+                  <q-icon
+                    :name="showPin ? 'visibility_off' : 'visibility'"
+                    class="cursor-pointer"
+                    @click="showPin = !showPin"
+                  />
+                </template>
+              </q-input>
+              <q-input
+                v-model="pinConfirm"
+                :type="showPin ? 'text' : 'password'"
+                label="Confirm PIN"
+                class="q-mt-sm"
+                outlined
+                dense
+              />
               <div class="row justify-end q-mt-md">
                 <q-btn
                   color="primary"
@@ -35,6 +87,16 @@
               label="Add Relay"
               @keyup.enter="addRelay"
             />
+            <q-banner
+              v-if="relayError"
+              class="q-mt-sm"
+              dense
+              rounded
+              color="negative"
+              text-color="white"
+            >
+              {{ relayError }}
+            </q-banner>
             <q-list bordered class="q-mt-sm" v-if="relays.length">
               <q-item v-for="(r, idx) in relays" :key="idx">
                 <q-item-section>{{ r }}</q-item-section>
@@ -45,7 +107,12 @@
             </q-list>
             <div class="row justify-between q-gutter-sm q-mt-md">
               <q-btn flat label="Back" @click="step = 1" />
-              <q-btn color="primary" label="Next" @click="nextFromRelays" />
+              <q-btn
+                color="primary"
+                label="Next"
+                :disable="relays.length === 0"
+                @click="nextFromRelays"
+              />
             </div>
           </q-step>
           <q-step :name="3" title="Connect">
@@ -83,22 +150,68 @@
 import { ref, computed } from "vue";
 import { useNostrStore } from "src/stores/nostr";
 import { useMessengerStore } from "src/stores/messenger";
+import { nip19, getPublicKey } from "nostr-tools";
+import { isValidNpub } from "src/utils/validators";
+import { useVaultStore } from "src/stores/vault";
 
 const props = defineProps<{ modelValue: boolean }>();
 const emit = defineEmits(["update:modelValue", "complete"]);
 
 const nostr = useNostrStore();
 const messenger = useMessengerStore();
+const vault = useVaultStore();
 
 const model = computed({
   get: () => props.modelValue,
   set: (v: boolean) => emit("update:modelValue", v),
 });
 
+function normalizeRelayUrl(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  let withProtocol = trimmed;
+  if (/^https?:\/\//i.test(withProtocol)) {
+    withProtocol = withProtocol.replace(/^http/i, "ws");
+  } else if (!/^wss?:\/\//i.test(withProtocol)) {
+    withProtocol = `wss://${withProtocol}`;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(withProtocol);
+  } catch (e) {
+    return null;
+  }
+
+  if (url.protocol !== "ws:" && url.protocol !== "wss:") {
+    return null;
+  }
+
+  url.hostname = url.hostname.toLowerCase();
+
+  return url.toString().replace(/\/$/, "");
+}
+
 const step = ref(1);
 const privKey = ref(nostr.activePrivateKeyNsec || "");
 const relayInput = ref("");
-const relays = ref<string[]>([...messenger.relays]);
+const relayError = ref("");
+const pin = ref("");
+const pinConfirm = ref("");
+const errorMessage = ref("");
+const showPin = ref(false);
+const initialRelays = Array.from(
+  new Set(
+    messenger.relays
+      .map((relay) => normalizeRelayUrl(relay) || "")
+      .filter((relay): relay is string => Boolean(relay)),
+  ),
+);
+const relays = ref<string[]>(initialRelays);
+if (initialRelays.length !== messenger.relays.length) {
+  messenger.relays = [...initialRelays];
+}
 const connecting = ref(false);
 const connected = ref(false);
 const connectError = ref("");
@@ -110,31 +223,60 @@ const loginOptions = [
 const extError = ref("");
 
 function addRelay() {
-  const val = relayInput.value.trim();
-  if (val) {
-    relays.value.push(val);
-    relayInput.value = "";
+  relayError.value = "";
+  const normalized = normalizeRelayUrl(relayInput.value);
+  if (!normalized) {
+    relayError.value = "Please enter a valid relay URL.";
+    return;
   }
+
+  if (relays.value.includes(normalized)) {
+    relayError.value = "Relay already added.";
+    return;
+  }
+
+  relays.value.push(normalized);
+  messenger.relays = [...relays.value];
+  relayInput.value = "";
 }
 function removeRelay(idx: number) {
   relays.value.splice(idx, 1);
+  messenger.relays = [...relays.value];
 }
 
 async function nextFromKey() {
   if (!privKey.value.trim()) return;
-  await nostr.initPrivateKeySigner(privKey.value.trim());
-  step.value = 2;
+  if (!(await ensurePinValid())) return;
+  try {
+    const decoded = nip19.decode(privKey.value.trim());
+    const pub = nip19.npubEncode(getPublicKey(decoded.data as Uint8Array));
+    if (!isValidNpub(pub)) {
+      throw new Error("Invalid Nostr Public Key");
+    }
+    await vault.ensureUnlocked(pin.value.trim());
+    await nostr.setEncryptionKeyFromPin(pin.value.trim());
+    await nostr.initPrivateKeySigner(privKey.value.trim());
+    step.value = 2;
+  } catch (e: any) {
+    errorMessage.value = e?.message || "Invalid Nostr Public Key";
+  }
 }
 
 async function connectExtension() {
   extError.value = "";
+  if (!(await ensurePinValid())) return;
   const available = await nostr.checkNip07Signer(true);
   if (!available) {
     extError.value = "No NIP-07 extension detected";
     return;
   }
   try {
+    await vault.ensureUnlocked(pin.value.trim());
+    await nostr.setEncryptionKeyFromPin(pin.value.trim());
     await nostr.connectBrowserSigner();
+    if (!isValidNpub(nostr.npub)) {
+      throw new Error("Invalid Nostr Public Key");
+    }
     step.value = 2;
   } catch (e: any) {
     extError.value = e?.message || "Failed to connect";
@@ -163,5 +305,18 @@ async function connect() {
 function finish() {
   emit("complete");
   emit("update:modelValue", false);
+}
+
+async function ensurePinValid(): Promise<boolean> {
+  errorMessage.value = "";
+  if (!pin.value.trim() || !pinConfirm.value.trim()) {
+    errorMessage.value = "PIN required";
+    return false;
+  }
+  if (pin.value.trim() !== pinConfirm.value.trim()) {
+    errorMessage.value = "PINs do not match";
+    return false;
+  }
+  return true;
 }
 </script>

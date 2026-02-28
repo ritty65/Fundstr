@@ -1,8 +1,23 @@
-const FREE_RELAYS = [
+const FUNDSTR_RELAY = "wss://relay.nostr.band";
+const BASE_FREE_RELAYS = [
   "wss://relay.damus.io",
-  "wss://relay.primal.net",
+  "wss://relay.snort.social",
   "wss://relayable.org",
 ];
+
+function ensureFundstr(relays) {
+  const seen = new Set();
+  const ordered = [];
+  for (const url of [FUNDSTR_RELAY, ...relays]) {
+    if (url && !seen.has(url)) {
+      ordered.push(url);
+      seen.add(url);
+    }
+  }
+  return ordered;
+}
+
+const FREE_RELAYS = ensureFundstr(BASE_FREE_RELAYS);
 
 // keep track of relays that have already produced a constructor error so we only
 // emit a single console message per relay. This keeps startup logs readable when
@@ -38,7 +53,8 @@ export async function pingRelay(url) {
   const now = Date.now();
   if (cached && now - cached.ts < CACHE_TTL_MS) return cached.ok;
 
-  const attemptOnce = () =>
+  const isFundstr = url === FUNDSTR_RELAY;
+  const attemptOnce = (timeoutMs) =>
     new Promise((resolve) => {
       let settled = false;
       let ws;
@@ -64,7 +80,7 @@ export async function pingRelay(url) {
           }
           resolve(false);
         }
-      }, 1000);
+      }, timeoutMs);
       ws.onopen = () => {
         if (!settled) {
           settled = true;
@@ -94,16 +110,18 @@ export async function pingRelay(url) {
       };
     });
 
-  const maxAttempts = 3;
-  let delay = 1000;
+  const maxAttempts = isFundstr ? 5 : 3;
+  let delay = isFundstr ? 1500 : 1000;
+  let timeoutMs = isFundstr ? 3000 : 1200;
   for (let i = 0; i < maxAttempts; i++) {
-    if (await attemptOnce()) {
+    if (await attemptOnce(timeoutMs)) {
       pingCache.set(url, { ts: now, ok: true });
       return true;
     }
     if (i < maxAttempts - 1) {
       await new Promise((r) => setTimeout(r, delay));
       delay = Math.min(delay * 2, 32000);
+      timeoutMs = Math.min(timeoutMs + (isFundstr ? 500 : 250), 5000);
     }
   }
 
@@ -132,16 +150,22 @@ export async function filterHealthyRelays(relays) {
     const batchHealthy = results.filter((u) => !!u);
     healthy.push(...batchHealthy);
   }
+  const healthyWithFundstr = ensureFundstr(healthy);
+
   if (healthy.length === 0) {
     if (!allFailedWarned) {
       console.warn("No reachable relays; falling back to FREE_RELAYS");
       allFailedWarned = true;
     }
-    filterCache.set(key, { ts: now, res: FREE_RELAYS });
-    return FREE_RELAYS;
+    const fallback = ensureFundstr(FREE_RELAYS);
+    filterCache.set(key, { ts: now, res: fallback });
+    return fallback;
   }
 
-  const res = healthy.length >= 2 ? healthy : FREE_RELAYS;
+  const res =
+    healthy.length >= 2 || healthy.includes(FUNDSTR_RELAY)
+      ? healthyWithFundstr
+      : ensureFundstr(FREE_RELAYS);
   filterCache.set(key, { ts: now, res });
   return res;
 }

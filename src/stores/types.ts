@@ -1,7 +1,7 @@
 export interface TierMedia {
   url: string;
   title?: string;
-  type?: "image" | "video" | "audio";
+  type?: "image" | "video" | "audio" | "link";
 }
 
 export interface Tier {

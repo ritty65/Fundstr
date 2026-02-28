@@ -35,6 +35,16 @@
       <div class="text-caption text-grey q-mb-sm">
         Enter the base URL of the mint.
       </div>
+      <q-banner
+        v-if="!isUrlValid"
+        dense
+        rounded
+        class="q-mb-md"
+        color="negative"
+        text-color="white"
+      >
+        Invalid mint URL
+      </q-banner>
       <div class="row q-mt-lg">
         <div class="col">
           <q-btn
@@ -44,6 +54,7 @@
             color="primary"
             icon="check"
             :loading="addMintBlocking"
+            :disable="!isUrlValid"
             @click="addMintLocal"
             style="width: calc(75%)"
             >{{ $t("AddMintDialog.actions.add_mint.label") }}
@@ -65,6 +76,7 @@
 
 <script>
 import { defineComponent, computed } from "vue";
+import { isValidMintUrl } from "src/utils/validators";
 
 export default defineComponent({
   name: "AddMintDialog",
@@ -89,7 +101,10 @@ export default defineComponent({
       set: (value) => emit("update:showAddMintDialog", value),
     });
 
+    const isUrlValid = computed(() => isValidMintUrl(props.addMintData.url || ""));
+
     const addMintLocal = () => {
+      if (!isUrlValid.value) return;
       emit("add", props.addMintData, true); // Pass verbose = true
     };
 
@@ -99,6 +114,7 @@ export default defineComponent({
       addMintLocal,
       showAddMintDialogLocal,
       mintUrl,
+      isUrlValid,
     };
   },
 });

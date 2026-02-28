@@ -77,22 +77,22 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item v-if="!isGuest" clickable @click="gotoCreatorHub">
+      <q-item v-if="!isGuest" clickable @click="gotoCreatorStudio">
         <q-item-section avatar>
-          <CreatorHubIcon class="themed-icon q-icon" />
+          <q-icon name="dashboard_customize" />
         </q-item-section>
         <q-item-section>
           <q-item-label>{{
-            $t("MainHeader.menu.creatorHub.title")
+            $t("MainHeader.menu.creatorStudio.title")
           }}</q-item-label>
           <q-item-label caption>{{
-            $t("MainHeader.menu.creatorHub.caption")
+            $t("MainHeader.menu.creatorStudio.caption")
           }}</q-item-label>
         </q-item-section>
       </q-item>
       <q-item v-if="!isGuest" clickable @click="gotoMyProfile">
         <q-item-section avatar>
-          <q-icon name="person" />
+          <q-icon name="account_circle" />
         </q-item-section>
         <q-item-section>
           <q-item-label>{{
@@ -129,12 +129,17 @@
           }}</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item v-if="!isGuest" clickable @click="gotoNutzapProfile">
+      <q-item v-if="!isGuest" clickable @click="gotoRestore">
         <q-item-section avatar>
-          <q-icon name="assignment" />
+          <q-icon name="settings_backup_restore" />
         </q-item-section>
         <q-item-section>
-          <q-item-label>Nutzap Profile</q-item-label>
+          <q-item-label>{{
+            $t("MainHeader.menu.restore.restore.title")
+          }}</q-item-label>
+          <q-item-label caption>{{
+            $t("MainHeader.menu.restore.restore.caption")
+          }}</q-item-label>
         </q-item-section>
       </q-item>
       <q-item v-if="!isGuest" clickable @click="gotoChats">
@@ -166,6 +171,22 @@
           }}</q-item-label>
           <q-item-label caption>{{
             $t("MainHeader.menu.terms.terms.caption")
+          }}</q-item-label>
+        </q-item-section>
+      </q-item>
+      <q-item-label header>{{
+        $t("MainHeader.menu.supporters.title")
+      }}</q-item-label>
+      <q-item clickable @click="gotoSupporters">
+        <q-item-section avatar>
+          <q-icon name="favorite" />
+        </q-item-section>
+        <q-item-section>
+          <q-item-label>{{
+            $t("MainHeader.menu.supporters.supporters.title")
+          }}</q-item-label>
+          <q-item-label caption>{{
+            $t("MainHeader.menu.supporters.supporters.caption")
           }}</q-item-label>
         </q-item-section>
       </q-item>
@@ -209,7 +230,6 @@ import { useQuasar } from "quasar";
 import EssentialLink from "components/EssentialLink.vue";
 import { NAV_DRAWER_WIDTH } from "src/constants/layout";
 import FindCreatorsIcon from "src/components/icons/FindCreatorsIcon.vue";
-import CreatorHubIcon from "src/components/icons/CreatorHubIcon.vue";
 
 const ui = useUiStore();
 const router = useRouter();
@@ -225,14 +245,15 @@ function goto(path: string) {
 const gotoWallet = () => goto("/wallet");
 const gotoSettings = () => goto("/settings");
 const gotoFindCreators = () => goto("/find-creators");
-const gotoCreatorHub = () => goto("/creator-hub");
+const gotoCreatorStudio = () => goto("/creator-studio");
 const gotoMyProfile = () => goto("/my-profile");
 const gotoBuckets = () => goto("/buckets");
 const gotoSubscriptions = () => goto("/subscriptions");
-const gotoNutzapProfile = () => goto("/nutzap-profile");
+const gotoRestore = () => goto("/restore");
 const gotoChats = () => goto("/nostr-messenger");
 const gotoNostrLogin = () => goto("/nostr-login");
 const gotoTerms = () => goto("/terms");
+const gotoSupporters = () => goto("/supporters");
 const gotoAbout = () => goto("/about");
 const gotoWelcome = () => goto("/welcome");
 

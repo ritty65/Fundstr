@@ -36,7 +36,7 @@ Think Patreon, but built for the Nostr ecosystem and leveraging the privacy and 
 
 ### Publishing & Trusted Mints
 
-- Use the **Publish** button in the Creator Hub to atomically publish your profile bundle (kinds 0, 10002, 10019) and tier definitions (`kind:30000` with `d="tiers"`). The payment profile (kind 10019) includes a `tierAddr` field referencing your tier set (`30000:<pubkey>:tiers`). See [`docs/nutzap_profile.md`](docs/nutzap_profile.md) for the full schema.
+- Use the **Publish** button in the Creator Studio to atomically publish your profile bundle (kinds 0, 10002, 10019) and tier definitions (`kind:30000` with `d="tiers"`). The payment profile (kind 10019) includes a `tierAddr` field referencing your tier set (`30000:<pubkey>:tiers`). See [`docs/nutzap_profile.md`](docs/nutzap_profile.md) for the full schema.
 - Trusted mint URLs must begin with `http://` or `https://`; `wss://` endpoints are rejected.
 - If your trusted mint list is empty, supporters may pay from any mint.
 
@@ -147,7 +147,7 @@ Troubleshooting: Some browsers block the `beforeinstallprompt` event. If no inst
 
 ### 3. For Creators
 
-1. Go to the **Creator Hub** section.
+1. Go to the **Creator Studio** section.
 2. Set up your profile and link your npub.
 3. Make sure a Nostr signer (NIP-07 extension or nsec key) is connected and at least one relay is configured.
 4. Define support tiers and benefits.
@@ -158,7 +158,7 @@ Troubleshooting: Some browsers block the `beforeinstallprompt` event. If no inst
 
 The **DM-per-token** workflow allows fans to pledge recurring payments by
 sending one locked Cashu token each period via Nostr DM. Creators must publish a
-`kind:10019` profile from the Creator Hub so supporters know which P2PK key and
+`kind:10019` profile from the Creator Studio so supporters know which P2PK key and
 mint URLs to use.
 
 1. Supporter opens the subscription dialog on a creator's page.
@@ -169,7 +169,7 @@ mint URLs to use.
 
 ### Media Previews for Tiers
 
-Creators can attach media links to each tier so supporters can preview what they’ll receive. Simply add trusted URLs (e.g. YouTube, IPFS, or other HTTPS resources) when defining your tiers in the Creator Hub. The app doesn’t host any files itself – it only stores the links you provide and renders previews from those sources.
+Creators can attach media links to each tier so supporters can preview what they’ll receive. Simply add trusted URLs (e.g. YouTube, IPFS, or other HTTPS resources) when defining your tiers in the Creator Studio. The app doesn’t host any files itself – it only stores the links you provide and renders previews from those sources.
 
 You can also supply raw `<iframe>` snippets for custom embeds or include a `nostr:` link that references an event ID. If a `nostr:` link is provided, the preview displays the linked event’s content. These previews appear both on a creator’s profile and when browsing tiers from the **find creators** page.
 **Preview layout tips**
@@ -178,7 +178,7 @@ You can also supply raw `<iframe>` snippets for custom embeds or include a `nost
 - Images and videos are scaled to fit while maintaining their own ratio.
 - Content with very different dimensions may be letterboxed or cropped depending on the source embed.
 
-You can access this documentation from the Creator Hub: look for the "Learn more" link next to the Media Preview help icon when editing tiers.
+You can access this documentation from the Creator Studio: look for the "Learn more" link next to the Media Preview help icon when editing tiers.
 
 Example `kind:30000` event content:
 
@@ -247,7 +247,7 @@ git grep -n ".ndk"
 ### Optional Backend Search Service
 
 You can configure a URL that returns NIP-50 search results for the
-`find-creators.html` page. Set the value in local storage using the key
+`/find-creators` route in the SPA. Set the value in local storage using the key
 `cashu.settings.searchBackendUrl`. When defined, search queries hit this
 backend first and fall back to client-side relay queries if no results are
 returned.
@@ -260,10 +260,10 @@ URLs. If not defined, the search falls back to a short curated list defined in
 [`src/config/relays.ts`](src/config/relays.ts):
 
 ```
+wss://relay.nostr.band/
 wss://relay.damus.io/
-wss://nos.lol/
-wss://relay.primal.net/
-wss://relay.snort.social/
+wss://purplepag.es/
+wss://nostr.wine/
 ```
 
 You can edit that file to customise or extend the defaults for your own
@@ -279,17 +279,26 @@ You can share direct links to creator profiles by appending an `npub` query para
 
 When opened, Fundstr automatically loads the profile for the provided `npub`. If the visitor hasn't logged in or set up a wallet yet, the app will prompt them to authenticate and choose a wallet before they can send support.
 
-### Verify Nutzap Profile
+### Nutzap Private Relay Verification
 
-After publishing your `kind:10019` Nutzap profile, you can confirm that relays
-have received it. Run the helper script with your npub:
+After publishing from `/creator-studio`, run through this checklist to confirm the
+isolated relay flow:
 
-```bash
-npx ts-node scripts/verifyNutzapProfile.ts <your-npub>
-```
-
-The script connects read-only to your configured relays and prints the fetched
-profile data so you can double-check the values.
+1. **Build & Typecheck** – `pnpm install` then `pnpm build` (or the equivalent npm commands).
+2. **Relay Smoke Tests** – ensure the dedicated relay is reachable:
+   ```bash
+   curl -sH 'Accept: application/nostr+json' https://relay.nostr.band/ | jq .
+   curl -s 'https://relay.nostr.band/req?filters=%5B%5D'
+   ```
+3. **Page Behaviour** – load `/creator-studio`, publish tiers and profile, and verify the
+   publish acknowledgements (`via=ws` or `via=http`). Block WebSockets to confirm the HTTP
+   fallback still succeeds.
+4. **CLI Verification** – confirm your `kind:10019` profile lives on the private relay only:
+   ```bash
+   npm run verify:nutzap <creator_hex_pubkey>
+   ```
+5. **Regression Guard** – spot-check other areas (feeds, chat, discovery) to ensure their relay
+   behaviour is unchanged.
 
 ## Contributing
 
@@ -310,6 +319,19 @@ pnpm test
 
 Some tests communicate with an external Cashu mint. Ensure network connectivity
 or provide the required environment variables before running the suite.
+
+### E2E happy-path coverage
+
+Playwright specs under `test/e2e/` exercise the primary journeys with deterministic mocks. Run them individually while iterating:
+
+```bash
+pnpm exec playwright test test/e2e/onboarding-happy-path.spec.ts
+pnpm exec playwright test test/e2e/wallet-flows-happy-path.spec.ts
+pnpm exec playwright test test/e2e/creator-setup-happy-path.spec.ts
+pnpm exec playwright test test/e2e/subscription-happy-path.spec.ts
+```
+
+Each spec reuses the shared helpers in `test/e2e/support/journey-fixtures.ts` so the mocked mints, relay responses, and wallet payments stay deterministic.
 
 ## Updated UI Components
 

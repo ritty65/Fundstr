@@ -6,8 +6,7 @@
     <title>Nostr User Search & Featured Creators</title>
     <link rel="preload" as="style" href="find-creators.css" />
     <link rel="stylesheet" href="find-creators.css" />
-    <!-- nostr-tools CDN -->
-    <script src="https://unpkg.com/nostr-tools@1.17.0/lib/nostr.bundle.js"></script>
+    <script src="vendor/nostr.bundle.1.17.0.js"></script>
     <style>
       body {
         font-family: "Inter", sans-serif;
@@ -15,14 +14,20 @@
         color: #2d3748; /* Tailwind gray-800 */
       }
       .container {
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 1rem;
+        width: 100%;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: clamp(2rem, 4vw, 3rem);
+        padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 4vw, 2.5rem);
+        box-sizing: border-box;
       }
       .search-container,
       .featured-creators-container {
-        margin: 2rem auto;
-        padding: 2rem;
+        width: min(100%, clamp(320px, 85vw, 1100px));
+        margin: 0 auto;
+        padding: clamp(1.5rem, 4vw, 2.5rem);
         background-color: white;
         border-radius: 0.75rem; /* Tailwind rounded-xl */
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
@@ -166,6 +171,15 @@
         padding: 1.5rem;
         font-style: italic;
       }
+      .relay-warning {
+        margin-top: 1rem;
+        padding: 0.75rem 1rem;
+        background-color: #fef3c7;
+        border: 1px solid #f6ad55;
+        border-radius: 0.5rem;
+        color: #b7791f;
+        font-weight: 600;
+      }
       .retry-button {
         margin: 0 auto;
         margin-top: -1rem;
@@ -302,12 +316,47 @@
         <p id="featuredStatusMessage" class="status-message hidden"></p>
       </div>
 
+      <p id="relayWarning" class="relay-warning hidden"></p>
       <div class="relay-info">Connecting to: <span id="relayList"></span></div>
     </div>
 
     <script type="module" defer>
-      import { filterHealthyRelays } from "./relayHealth.js";
+      import { filterHealthyRelays, pingRelay } from "./relayHealth.js";
+      const FUNDSTR_RELAY = "wss://relay.fundstr.me";
+      const APP_ORIGIN = window.location.origin;
+
+      function isPlainObject(value) {
+        return (
+          typeof value === "object" && value !== null && !Array.isArray(value)
+        );
+      }
+
+      function parseParentMessage(data) {
+        if (!isPlainObject(data) || typeof data.type !== "string") {
+          return null;
+        }
+        if (data.type === "prefillSearch" && typeof data.npub === "string") {
+          const npub = data.npub.trim();
+          return npub ? { type: "prefillSearch", npub } : null;
+        }
+        if (data.type === "set-theme" && typeof data.dark === "boolean") {
+          return { type: "set-theme", dark: data.dark };
+        }
+        return null;
+      }
+
+      function getTrustedParentMessage(event) {
+        if (event.origin !== APP_ORIGIN) return null;
+        if (event.source !== window.parent) return null;
+        return parseParentMessage(event.data);
+      }
+
+      function postToParent(payload) {
+        window.parent.postMessage(payload, APP_ORIGIN);
+      }
+
       const DEFAULT_RELAYS = [
+        FUNDSTR_RELAY,
         "wss://relay.damus.io",
         "wss://relay.primal.net",
         "wss://relay.snort.social",
@@ -315,12 +364,14 @@
         "wss://relay.nostr.band",
       ];
       const statusMessageElement = document.getElementById("statusMessage");
+      const relayWarningElement = document.getElementById("relayWarning");
       const retryButtonElement = document.getElementById("retryButton");
       // --- Nostr Tools ---
       if (!window.NostrTools) {
         statusMessageElement.textContent =
           "Error: nostr-tools library not loaded.";
         statusMessageElement.classList.remove("hidden");
+        throw new Error("nostr-tools bundle missing");
       }
       const { SimplePool, nip19, utils } = window.NostrTools;
 
@@ -341,10 +392,23 @@
       async function refreshRelays() {
         try {
           const healthy = await filterHealthyRelays(DEFAULT_RELAYS);
-          RELAYS = healthy;
+          const fundstrReachable = await pingRelay(FUNDSTR_RELAY);
+          const prioritized = [
+            FUNDSTR_RELAY,
+            ...healthy.filter((relay) => relay !== FUNDSTR_RELAY),
+          ];
+          RELAYS = prioritized;
           relayFailureCount = 0;
           document.getElementById("relayList").textContent = RELAYS.join(", ");
           statusMessageElement.classList.add("hidden");
+          if (fundstrReachable) {
+            relayWarningElement.classList.add("hidden");
+            relayWarningElement.textContent = "";
+          } else {
+            relayWarningElement.textContent =
+              "Fundstr relay is temporarily unreachable. We'll keep retrying while temporarily using backups.";
+            relayWarningElement.classList.remove("hidden");
+          }
         } catch {
           relayFailureCount++;
           if (relayFailureCount >= 3) {
@@ -355,6 +419,8 @@
             statusMessageElement.textContent =
               "Network error: could not reach relays.";
             statusMessageElement.classList.remove("hidden");
+            relayWarningElement.classList.add("hidden");
+            relayWarningElement.textContent = "";
             clearInterval(relayInterval);
           }
         }
@@ -499,7 +565,7 @@
         if (profiles.length > 0) {
           renderProfiles(profiles, resultsListElement, false);
           updateStatus("", true);
-          window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
+          postToParent({ type: "viewProfile", pubkey });
           return;
         }
 
@@ -520,7 +586,7 @@
           if (profiles.length > 0) {
             renderProfiles(profiles, resultsListElement, false);
             updateStatus("", true);
-            window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
+            postToParent({ type: "viewProfile", pubkey });
             return;
           }
         }
@@ -544,7 +610,7 @@
           if (profiles.length > 0) {
             renderProfiles(profiles, resultsListElement, false);
             updateStatus("", true);
-            window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
+            postToParent({ type: "viewProfile", pubkey });
             return;
           }
         }
@@ -556,25 +622,13 @@
         if (profile) {
           renderProfiles([profile], resultsListElement, false);
           updateStatus("", true);
-          window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
+          postToParent({ type: "viewProfile", pubkey });
           return;
         }
 
-        // Tier 5: The ultimate fallback, query the Primal.net API
         updateStatus(
-          "Last attempt: Consulting Primal, the most powerful indexer...",
+          "Profile could not be found after exhaustive search on known relays, discovered relays, and trusted public indexers.",
         );
-        profile = await fetchProfileFromPrimal(pubkey, signal);
-        if (signal.aborted) return;
-        if (profile) {
-          renderProfiles([profile], resultsListElement, false);
-          updateStatus("", true);
-          window.parent.postMessage({ type: "viewProfile", pubkey }, "*");
-        } else {
-          updateStatus(
-            "Profile could not be found after exhaustive search on known relays, discovered relays, and multiple public indexers.",
-          );
-        }
       }
 
       async function fetchProfileFromIndexer(pubkey, signal) {
@@ -602,36 +656,6 @@
         } catch (error) {
           if (error.name === "AbortError") throw error;
           console.error("nostr.band API error:", error);
-          return null;
-        }
-      }
-
-      async function fetchProfileFromPrimal(pubkey, signal) {
-        try {
-          const primalUrl = `https://primal-cache.snort.social/api/v1/eose/user/profile/${pubkey}`;
-          const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(
-            primalUrl,
-          )}`;
-          const response = await fetchWithTimeout(proxyUrl, { signal });
-          if (!response.ok) return null;
-          const data = await response.json();
-          if (data && data[0] && data[0].content) {
-            const content = JSON.parse(data[0].content);
-            return {
-              pubkey: data[0].pubkey,
-              name:
-                content.name || content.display_name || content.username || "",
-              nip05: content.nip05 || "",
-              picture: content.picture || "",
-              about: content.about || "",
-              lud16: content.lud16 || "",
-              event: data[0],
-            };
-          }
-          return null;
-        } catch (error) {
-          if (error.name === "AbortError") throw error;
-          console.error("Primal API error:", error);
           return null;
         }
       }
@@ -890,33 +914,24 @@
           viewButton.textContent = "View Subscription Tiers";
           viewButton.onclick = (e) => {
             e.stopPropagation();
-            window.parent.postMessage(
-              { type: "viewProfile", pubkey: profile.pubkey },
-              "*",
-            );
+            postToParent({ type: "viewProfile", pubkey: profile.pubkey });
           };
           const messageButton = document.createElement("button");
           messageButton.className = "action-button message-button";
           messageButton.textContent = "Message";
           messageButton.onclick = (e) => {
             e.stopPropagation();
-            window.parent.postMessage(
-              {
-                type: "startChat",
-                pubkey: profile.pubkey,
-              },
-              "*",
-            );
+            postToParent({
+              type: "startChat",
+              pubkey: profile.pubkey,
+            });
           };
           const donateButton = document.createElement("button");
           donateButton.className = "action-button donate-button";
           donateButton.textContent = "Donate";
           donateButton.onclick = (e) => {
             e.stopPropagation();
-            window.parent.postMessage(
-              { type: "donate", pubkey: profile.pubkey },
-              "*",
-            );
+            postToParent({ type: "donate", pubkey: profile.pubkey });
           };
           actionsContainer.appendChild(viewButton);
           actionsContainer.appendChild(messageButton);
@@ -970,7 +985,8 @@
           "dark",
           window.matchMedia("(prefers-color-scheme: dark)").matches,
         );
-        featuredStatusMessageElement.textContent = "Loading featured creators...";
+        featuredStatusMessageElement.textContent =
+          "Loading featured creators...";
         featuredStatusMessageElement.classList.remove("hidden");
         const featuredPubkeysHex = FEATURED_NPUBS.map((npub) => {
           try {
@@ -1036,20 +1052,25 @@
                 renderProfiles(refreshed, featuredCreatorsGridElement, true);
                 localStorage.setItem(
                   CACHE_KEY,
-                  JSON.stringify({ timestamp: Date.now(), profiles: refreshed }),
+                  JSON.stringify({
+                    timestamp: Date.now(),
+                    profiles: refreshed,
+                  }),
                 );
               }
-            } catch (e) {
-            }
+            } catch (e) {}
           })();
         }
 
         window.addEventListener("message", (ev) => {
-          if (ev.data?.type === "prefillSearch" && ev.data.npub) {
-            searchInputElement.value = ev.data.npub;
-            handleSearch(ev.data.npub);
-          } else if (ev.data?.type === "set-theme") {
-            document.body.classList.toggle("dark", !!ev.data.dark);
+          const message = getTrustedParentMessage(ev);
+          if (!message) return;
+
+          if (message.type === "prefillSearch") {
+            searchInputElement.value = message.npub;
+            handleSearch(message.npub);
+          } else if (message.type === "set-theme") {
+            document.body.classList.toggle("dark", message.dark);
           }
         });
 
@@ -1083,7 +1104,9 @@
         }
       }
       if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", () => waitForStyles(init));
+        document.addEventListener("DOMContentLoaded", () =>
+          waitForStyles(init),
+        );
       } else {
         waitForStyles(init);
       }

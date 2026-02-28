@@ -1,16 +1,25 @@
 <IfModule mod_rewrite.c>
   Options -MultiViews
   RewriteEngine On
-  # when welcome cookie present, block access to /welcome and send to /wallet
-  RewriteCond %{HTTP_COOKIE} welcome_seen_v1=1 [NC]
-  RewriteRule ^welcome/?$ /wallet [R=302,L]
+
+  # Never rewrite static directories
+  RewriteRule ^(assets|icons|vendor)/ - [L,NC]
+
+  # Never rewrite critical root static files
+  RewriteRule ^(find-creators\.html|find-creators\.css|featured-creators\.json|manifest\.json|mints\.json|relayHealth\.js|sw\.js|workbox-[A-Za-z0-9._-]+\.js|deploy\.txt|favicon\.ico|robots\.txt)$ - [L,NC]
+
+  # Never rewrite requests that look like file assets.
+  # Let Apache serve the file directly (or return 404) instead of SPA shell HTML.
+  RewriteCond %{REQUEST_URI} \.(css|js|mjs|json|txt|map|png|jpe?g|gif|svg|ico|webmanifest|wasm|woff2?|ttf|eot)$ [NC]
+  RewriteRule ^ - [L]
+
+  # SPA fallback only if not a real file/dir
   RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule ^ index.html [QSA,L]
 </IfModule>
-<IfModule mod_headers.c>
-  <FilesMatch "^index\.html$">
-    Header set Cache-Control "no-cache, no-store, must-revalidate"
-    Header set Pragma "no-cache"
-    Header set Expires "0"
-  </FilesMatch>
+
+<IfModule mod_mime.c>
+  AddType application/javascript .js .mjs
+  AddType application/wasm .wasm
 </IfModule>

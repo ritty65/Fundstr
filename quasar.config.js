@@ -3,23 +3,43 @@
 import { configure } from 'quasar/wrappers'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-export default configure(() => ({
+export default configure((ctx) => ({
   // 1. 'node-globals' boot file is removed. This is correct.
-  boot: ['welcomeGate', 'cashu', 'i18n', 'notify', 'nostr-provider'],
+  boot: [
+    'sentry',
+    'fundstr-preload',
+    'welcomeGate',
+    'cashu',
+    'i18n',
+    'notify',
+    'safe-html',
+    'trusted-types',
+    'nostr-provider',
+    'prefetch-featured-creators',
+    'fundstrRelay',
+    'e2e-test-api',
+  ],
 
   css: ['app.scss', 'base.scss', 'buckets.scss'],
   extras: ['roboto-font', 'material-icons'],
   build: {
     target: { browser: ['es2022'] },
     sourcemap: true,
-    publicPath: '/',
+    publicPath: './',
     vueRouterMode: 'history',
     extendViteConf (viteConf) {
+      if (ctx.prod) {
+        viteConf.esbuild = {
+          drop: ['console', 'debugger']
+        }
+      }
+
       viteConf.resolve = viteConf.resolve || {}
       viteConf.resolve.alias = {
         ...(viteConf.resolve.alias || {}),
@@ -30,7 +50,7 @@ export default configure(() => ({
           'src/lib/cashu-ts/src/index.ts'
         ),
       }
-      viteConf.plugins = (viteConf.plugins || []).concat([
+      const plugins = (viteConf.plugins || []).concat([
         // 3. This is the correct, complete configuration for the polyfill plugin.
         // It makes Buffer and process available to modules that import them
         // without dangerously injecting them into the global 'window' object.
@@ -47,12 +67,62 @@ export default configure(() => ({
           protocolImports: true,
         })
       ])
+
+      const enableSentrySourcemaps = Boolean(
+        process.env.SENTRY_AUTH_TOKEN &&
+        process.env.SENTRY_ORG &&
+        process.env.SENTRY_PROJECT &&
+        ctx.prod
+      )
+
+      if (enableSentrySourcemaps) {
+        plugins.push(
+          sentryVitePlugin({
+            org: process.env.SENTRY_ORG,
+            project: process.env.SENTRY_PROJECT,
+            authToken: process.env.SENTRY_AUTH_TOKEN,
+            release: process.env.SENTRY_RELEASE || process.env.GITHUB_SHA,
+            sourcemaps: {
+              assets: ['dist/pwa/**/*'],
+              ignore: ['**/*.map.gz'],
+            },
+            telemetry: false,
+          })
+        )
+      }
+
+      viteConf.plugins = plugins
+
+      viteConf.build = viteConf.build || {}
+      viteConf.build.rollupOptions = viteConf.build.rollupOptions || {}
+      const output = (viteConf.build.rollupOptions.output =
+        viteConf.build.rollupOptions.output || {})
+
+      if (!output.manualChunks) {
+        output.manualChunks = (id) => {
+          if (!id.includes('node_modules')) {
+            return
+          }
+
+          if (id.includes('@nostr-dev-kit') || id.includes('nostr-tools')) {
+            return 'vendor-nostr'
+          }
+
+          if (id.includes('@cashu') || id.includes('@scure')) {
+            return 'vendor-cashu'
+          }
+
+          if (id.includes('vue') || id.includes('quasar') || id.includes('pinia')) {
+            return 'vendor-ui'
+          }
+        }
+      }
     }
   },
   framework: {
     config: {
       dark: true
     },
-    plugins: ['Notify', 'LocalStorage']
+    plugins: ['Notify', 'Dialog', 'LocalStorage']
   }
 }))

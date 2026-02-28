@@ -96,12 +96,20 @@ import { getShortUrl } from "src/js/wallet-helpers";
 import { mapActions, mapState, mapWritableState } from "pinia";
 import { useMintsStore } from "stores/mints";
 import { MintClass } from "stores/mints";
+import { useUiStore } from "stores/ui";
 import { i18n } from "../boot/i18n";
-import { title } from "process";
 
 export default defineComponent({
   name: "ChooseMint",
   mixins: [windowMixin],
+  setup() {
+    const uiStore = useUiStore();
+    const formatCurrency = uiStore.formatCurrency.bind(uiStore);
+
+    return {
+      formatCurrency,
+    };
+  },
   props: {
     rounded: {
       type: Boolean,

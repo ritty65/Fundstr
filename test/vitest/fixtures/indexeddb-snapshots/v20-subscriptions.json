@@ -1,0 +1,102 @@
+{
+  "version": 20,
+  "localStorage": {
+    "cashu.mints": "[{\"url\":\"https://example.cashu.network\",\"keys\":[],\"keysets\":[],\"nickname\":\"Recent Mint\"}]",
+    "cashu.activeMintUrl": "https://example.cashu.network",
+    "cashu.activeUnit": "sat"
+  },
+  "tables": {
+    "proofs": [
+      {
+        "id": "recent-keyset-1",
+        "secret": "recent-secret-1",
+        "C": "C-recent-1",
+        "amount": 8,
+        "reserved": false,
+        "bucketId": "unassigned",
+        "label": "bonus",
+        "description": "recent era"
+      }
+    ],
+    "lockedTokens": [
+      {
+        "id": "locked-token-recent-1",
+        "tokenString": "token-string-recent-1",
+        "amount": 5000,
+        "owner": "subscriber",
+        "tierId": "tier-recent-1",
+        "intervalKey": "interval-recent-1",
+        "unlockTs": 1705000000,
+        "status": "pending",
+        "subscriptionEventId": "event-recent-1",
+        "subscriptionId": "subscription-recent-1",
+        "monthIndex": 2,
+        "totalPeriods": 6,
+        "autoRedeem": true,
+        "creatorP2PK": "p2pk-recent",
+        "htlcHash": null,
+        "htlcSecret": null,
+        "redeemed": false
+      }
+    ],
+    "subscriptions": [
+      {
+        "id": "subscription-recent-1",
+        "creatorNpub": "npub-recent-1",
+        "tierId": "tier-recent-1",
+        "creatorP2PK": "p2pk-recent",
+        "mintUrl": "https://mint.recent",
+        "amountPerInterval": 5000,
+        "startDate": 1704000000,
+        "commitmentLength": 6,
+        "intervals": [
+          {
+            "intervalKey": "interval-recent-1",
+            "lockedTokenId": "locked-token-recent-1",
+            "unlockTs": 1705000000,
+            "status": "pending",
+            "tokenString": "token-string-recent-1",
+            "subscriptionId": "subscription-recent-1",
+            "tierId": "tier-recent-1",
+            "monthIndex": 2,
+            "totalPeriods": 6,
+            "redeemed": false
+          }
+        ],
+        "status": "active",
+        "createdAt": 1704000000,
+        "updatedAt": 1704000000,
+        "totalPeriods": 6,
+        "receivedPeriods": 3
+      }
+    ],
+    "creatorsTierDefinitions": [
+      {
+        "creatorNpub": "npub-recent-1",
+        "eventId": "event-tier-1",
+        "updatedAt": 1704000000,
+        "tiers": [
+          {
+            "id": "tier-recent-1",
+            "name": "Backer",
+            "amount": 5000
+          }
+        ]
+      }
+    ]
+  },
+  "messenger": {
+    "conversations": {
+      "recent-contact": [
+        {
+          "id": "recent-message-1",
+          "content": "fresh message"
+        }
+      ]
+    },
+    "unreadCounts": {
+      "recent-contact": 1,
+      "outdated-contact": 7
+    }
+  }
+}

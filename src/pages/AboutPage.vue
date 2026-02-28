@@ -10,18 +10,56 @@
               A privacy-first Bitcoin wallet, social chat, and creator-monetisation hub
               built on the open-source Cashu ecash protocol and the decentralised Nostr network.
             </p>
-          </div>
-          <div class="hero-alert">
-            <div class="alpha">
-              <span aria-hidden="true" class="alpha-icon">⚠️</span>
+            <div class="cta-row hero-cta">
+              <button class="btn solid" @click="installPwa">Install PWA</button>
+              <router-link class="btn outline" to="/wallet">Launch Wallet</router-link>
+              <router-link class="btn outline" to="/creator-studio">Creator Studio</router-link>
+            </div>
+            <div class="hero-warning alpha" role="note" aria-live="polite">
+              <div class="hero-warning__title">
+                <span aria-hidden="true" class="alpha-icon">⚠️</span>
+                <span class="hero-warning__label">Alpha release</span>
+              </div>
               <p>
                 Fundstr is experimental alpha software. Features may break or change,
                 and loss of funds is possible. Use only small amounts you can afford to lose.
               </p>
             </div>
           </div>
+          <aside class="hero-aside" aria-label="Fundstr snapshot">
+            <div class="hero-aside__card">
+              <h2 class="hero-aside__title">Why build Fundstr?</h2>
+              <ul class="hero-stats">
+                <li>
+                  <span class="hero-stats__metric">100% custody</span>
+                  <span class="hero-stats__meta">You hold your keys, ecash, and identity.</span>
+                </li>
+                <li>
+                  <span class="hero-stats__metric">Built on Cashu + Nostr</span>
+                  <span class="hero-stats__meta">Open protocols powering private payments and social discovery.</span>
+                </li>
+                <li>
+                  <span class="hero-stats__metric">Creator ready</span>
+                  <span class="hero-stats__meta">Tools for tipping, memberships, and direct audience support.</span>
+                </li>
+              </ul>
+            </div>
+          </aside>
         </div>
       </section>
+
+      <!-- Section nav -->
+      <nav class="section-nav fade" aria-label="About sections">
+        <ul class="section-nav__list">
+          <li><a class="pill section-nav__link" href="#vision">Vision</a></li>
+          <li><a class="pill section-nav__link" href="#site-overview">Site Overview</a></li>
+          <li><a class="pill section-nav__link" href="#how-it-works">How it Works</a></li>
+          <li><a class="pill section-nav__link" href="#who-for">Who It's For</a></li>
+          <li><a class="pill section-nav__link" href="#trust">Trust</a></li>
+          <li><a class="pill section-nav__link" href="#faq">FAQ</a></li>
+          <li><a class="pill section-nav__link" href="#community">Community</a></li>
+        </ul>
+      </nav>
 
       <!-- Vision -->
       <section class="section fade" id="vision">
@@ -59,42 +97,37 @@
       <section class="section fade" id="site-overview">
         <h2 class="h2 grad center">Site Overview</h2>
         <div class="cards cards--4">
-          <article class="card">
-            <header class="card-head"><span class="emj">💰</span><h3>Money</h3></header>
-            <ul class="links">
-              <li><router-link to="/wallet"><span class="emj">💳</span>Wallet</router-link></li>
-              <li><router-link to="/buckets"><span class="emj">📦</span>Buckets</router-link></li>
-              <li><router-link to="/subscriptions"><span class="emj">📄</span>Subscriptions</router-link></li>
+          <div
+            v-for="(card, cardIndex) in siteOverviewCards"
+            :key="card.title"
+            class="card card--overview"
+            role="group"
+            :aria-labelledby="`overview-card-${cardIndex}-title`"
+            :aria-describedby="`overview-card-${cardIndex}-shortcuts`"
+          >
+            <component
+              :is="card.href ? 'a' : 'router-link'"
+              class="card-link__primary"
+              :id="`overview-card-${cardIndex}-title`"
+              :aria-describedby="`overview-card-${cardIndex}-shortcuts`"
+              v-bind="card.href ? { href: card.href, target: card.target, rel: card.rel } : { to: card.to }"
+            >
+              <span class="emj">{{ card.emoji }}</span>
+              <h3>{{ card.title }}</h3>
+            </component>
+            <ul class="links" :id="`overview-card-${cardIndex}-shortcuts`">
+              <li v-for="item in card.links" :key="item.label">
+                <span class="emj">{{ item.emoji }}</span>
+                <component
+                  :is="item.href ? 'a' : 'router-link'"
+                  class="link-text"
+                  v-bind="item.href ? { href: item.href, target: item.target, rel: item.rel } : { to: item.to }"
+                >
+                  {{ item.label }}
+                </component>
+              </li>
             </ul>
-          </article>
-
-          <article class="card">
-            <header class="card-head"><span class="emj">⭐</span><h3>Creators</h3></header>
-            <ul class="links">
-              <li><router-link to="/find-creators"><span class="emj">🔍</span>Find Creators</router-link></li>
-              <li><router-link to="/creator-hub"><span class="emj">👩‍🎨</span>Creator Hub</router-link></li>
-              <li><router-link to="/my-profile"><span class="emj">👤</span>My Profile</router-link></li>
-            </ul>
-          </article>
-
-          <article class="card">
-            <header class="card-head"><span class="emj">💬</span><h3>Comms</h3></header>
-            <ul class="links">
-              <li><router-link to="/nostr-messenger"><span class="emj">💬</span>Nostr Messenger</router-link></li>
-              <li><router-link to="/nostr-login"><span class="emj">🔑</span>Nostr Login</router-link></li>
-            </ul>
-          </article>
-
-          <article class="card">
-            <header class="card-head"><span class="emj">⚙️</span><h3>System</h3></header>
-            <ul class="links">
-              <li><router-link to="/settings"><span class="emj">⚙️</span>Settings</router-link></li>
-              <li><router-link to="/restore"><span class="emj">🔄</span>Restore</router-link></li>
-              <li><router-link to="/already-running"><span class="emj">⚠️</span>Already Running</router-link></li>
-              <li><router-link to="/welcome"><span class="emj">ℹ️</span>Welcome</router-link></li>
-              <li><router-link to="/terms"><span class="emj">⚖️</span>Terms</router-link></li>
-            </ul>
-          </article>
+          </div>
         </div>
       </section>
 
@@ -102,10 +135,25 @@
       <section class="section fade" id="how-it-works">
         <h2 class="h2 grad center">How Ecash Works</h2>
         <p class="lead center">Bitcoin in → private e-cash out → social payments everywhere.</p>
-        <div class="cards cards--3 rail">
-          <div class="card step"><span class="emj xl">₿</span><h3>Your Bitcoin</h3><p>From any wallet</p></div>
-          <div class="card step"><span class="emj xl">🏦</span><h3>The Mint</h3><p>Issues ecash tokens</p></div>
-          <div class="card step"><span class="emj xl">👛</span><h3>Fundstr Wallet</h3><p>Spend privately</p></div>
+        <div class="how-layout">
+          <figure class="how-video">
+            <video
+              class="how-video__player"
+              controls
+              preload="metadata"
+              poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 630'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop offset='0' stop-color='%231a1b2b'/%3E%3Cstop offset='1' stop-color='%232a2547'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23g)' width='1200' height='630'/%3E%3Cpath d='M180 420h280v40H180zM180 170h280v40H180zM740 170h280v40H740zM740 420h280v40H740z' fill='%233f83f8' opacity='.45'/%3E%3Ccircle cx='600' cy='315' r='120' fill='none' stroke='%23a855f7' stroke-width='32' stroke-dasharray='60 40' stroke-linecap='round' opacity='.65'/%3E%3Ctext x='600' y='310' text-anchor='middle' fill='%23f9fafb' font-family='Inter,Arial,sans-serif' font-size='72' font-weight='700'%3EEcash Flow%3C/text%3E%3Ctext x='600' y='380' text-anchor='middle' fill='%23d1d5db' font-family='Inter,Arial,sans-serif' font-size='32' font-weight='500'%3EDeposit %26%231859; Mint %26%231859; Spend%3C/text%3E%3C/svg%3E"
+              src="https://m.primal.net/HsMt.mp4"
+              aria-label="Short walkthrough showing how Fundstr turns Bitcoin deposits into private ecash you can spend socially"
+            ></video>
+            <figcaption class="how-video__caption">
+              Watch a quick walkthrough of Fundstr converting a Bitcoin deposit into private ecash ready for social payments.
+            </figcaption>
+          </figure>
+          <div class="cards cards--3 rail">
+            <div class="card step"><span class="emj xl">₿</span><h3>Your Bitcoin</h3><p>From any wallet</p></div>
+            <div class="card step"><span class="emj xl">🏦</span><h3>The Mint</h3><p>Issues ecash tokens</p></div>
+            <div class="card step"><span class="emj xl">👛</span><h3>Fundstr Wallet</h3><p>Spend privately</p></div>
+          </div>
         </div>
       </section>
 
@@ -207,11 +255,14 @@
           />
         </div>
 
-        <div class="cards cards--3">
+        <div v-if="filteredFaqs.length" class="cards cards--3">
           <details v-for="(f, i) in filteredFaqs" :key="i" class="card">
             <summary class="faq-q">{{ f.q }}</summary>
             <div class="faq-a" v-html="f.a"></div>
           </details>
+        </div>
+        <div v-else class="card center" aria-live="polite">
+          <p class="lead">No questions found. Try a different search.</p>
         </div>
       </section>
 
@@ -247,7 +298,7 @@
         <div class="cta-row">
           <button class="btn solid" @click="installPwa">Install PWA</button>
           <a class="btn outline" href="https://github.com/ritty65/Fundstr" target="_blank" rel="noopener">View Code</a>
-          <router-link class="btn outline" to="/creator-hub">Support Fundstr</router-link>
+          <router-link class="btn outline" to="/creator-studio">Support Fundstr</router-link>
         </div>
       </section>
     </div>
@@ -264,24 +315,130 @@ const isDark = ref($q.dark.isActive)
 watchEffect(() => (isDark.value = $q.dark.isActive))
 
 const root = ref<HTMLElement | null>(null)
-let io: IntersectionObserver | null = null
+let fadeObserver: IntersectionObserver | null = null
+let sectionObserver: IntersectionObserver | null = null
+let navLinks: HTMLAnchorElement[] = []
+let observedSections: HTMLElement[] = []
+const sectionVisibility = new Map<Element, number>()
+let currentActiveSection: string | null = null
 
 const { deferredPrompt, promptInstall } = usePwaInstall()
 
+function updateActiveLink (nextId: string | null) {
+  if (currentActiveSection === nextId) return
+
+  currentActiveSection = nextId
+  navLinks.forEach(link => {
+    const isActive = nextId ? link.hash === `#${nextId}` : false
+    link.classList.toggle('active', isActive)
+    if (isActive) {
+      link.setAttribute('aria-current', 'true')
+    } else {
+      link.removeAttribute('aria-current')
+    }
+  })
+}
+
 onMounted(() => {
-  io = new IntersectionObserver((entries) => {
-    entries.forEach((e) => {
-      if (e.isIntersecting) {
-        e.target.classList.add('visible')
-        io?.unobserve(e.target)
+  const pageRoot = root.value
+  if (!pageRoot) return
+
+  fadeObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible')
+        fadeObserver?.unobserve(entry.target)
       }
     })
   }, { threshold: 0.12 })
-  root.value?.querySelectorAll<HTMLElement>('.fade').forEach(el => io?.observe(el))
+
+  pageRoot.querySelectorAll<HTMLElement>('.fade').forEach(el => fadeObserver?.observe(el))
+
+  navLinks = Array.from(pageRoot.querySelectorAll<HTMLAnchorElement>('.section-nav__link'))
+  observedSections = navLinks
+    .map(link => (link.hash ? pageRoot.querySelector<HTMLElement>(link.hash) : null))
+    .filter((section): section is HTMLElement => Boolean(section))
+
+  if (!observedSections.length) return
+
+  sectionObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        sectionVisibility.set(entry.target, entry.intersectionRatio)
+      } else {
+        sectionVisibility.delete(entry.target)
+      }
+    })
+
+    if (sectionVisibility.size > 0) {
+      const [topSection] = Array.from(sectionVisibility.entries()).sort((a, b) => b[1] - a[1])
+      if (topSection) {
+        const element = topSection[0] as HTMLElement
+        updateActiveLink(element.id)
+      }
+      return
+    }
+
+    const firstSectionTop = observedSections[0]?.getBoundingClientRect().top ?? 0
+    if (firstSectionTop > 0) {
+      updateActiveLink(null)
+    }
+  }, { rootMargin: '-45% 0px -45% 0px', threshold: [0, 0.1, 0.25, 0.5, 0.75] })
+
+  observedSections.forEach(section => sectionObserver?.observe(section))
 })
-onBeforeUnmount(() => io?.disconnect())
+onBeforeUnmount(() => {
+  fadeObserver?.disconnect()
+  sectionObserver?.disconnect()
+  sectionVisibility.clear()
+  navLinks = []
+  observedSections = []
+  currentActiveSection = null
+})
 
 const faqQuery = ref('')
+const siteOverviewCards = [
+  {
+    emoji: '💰',
+    title: 'Money',
+    to: '/wallet',
+    links: [
+      { emoji: '💳', label: 'Wallet', to: '/wallet' },
+      { emoji: '📦', label: 'Buckets', to: '/buckets' },
+      { emoji: '📄', label: 'Subscriptions', to: '/subscriptions' },
+    ],
+  },
+  {
+    emoji: '⭐',
+    title: 'Creators',
+    to: '/find-creators',
+    links: [
+      { emoji: '🔍', label: 'Find Creators', to: '/find-creators' },
+      { emoji: '👩‍🎨', label: 'Creator Studio', to: '/creator-studio' },
+    ],
+  },
+  {
+    emoji: '💬',
+    title: 'Comms',
+    to: '/nostr-messenger',
+    links: [
+      { emoji: '💬', label: 'Nostr Messenger', to: '/nostr-messenger' },
+      { emoji: '🔑', label: 'Nostr Login', to: '/nostr-login' },
+    ],
+  },
+  {
+    emoji: '⚙️',
+    title: 'System',
+    to: '/settings',
+    links: [
+      { emoji: '⚙️', label: 'Settings', to: '/settings' },
+      { emoji: '🔄', label: 'Restore', to: '/restore' },
+      { emoji: '⚠️', label: 'Already Running', to: '/already-running' },
+      { emoji: 'ℹ️', label: 'Welcome', to: '/welcome' },
+      { emoji: '⚖️', label: 'Terms', to: '/terms' },
+    ],
+  },
+]
 const faqs = ref([
   { q: 'What if a fan stops paying?', a: 'Creator view » Their timelocked token never unlocks for you. Fundstr flags the user as “Expired” and hides future paid posts. Fan view » You simply don’t renew. No recurring pull, no surprise charges.' },
   { q: 'Can I withdraw to a Lightning wallet?', a: 'Yes. Wallet → Send → Lightning Invoice. Paste the invoice from any external wallet; Fundstr melts tokens at the mint and pays it.' },
@@ -330,19 +487,59 @@ function installPwa () {
 .lead{font-size:1.1rem; line-height:1.65;}
 .grad{background:linear-gradient(90deg,#a855f7,#4f46e5,#0ea5e9); -webkit-background-clip:text; -webkit-text-fill-color:transparent;}
 
-.hero-grid{display:grid; grid-template-columns:1.3fr .7fr; gap:2rem}
-@media (max-width: 960px){ .hero-grid{grid-template-columns:1fr; } }
+.section-nav{position:sticky; top:0; z-index:15; margin:0 -1.25rem 3rem; padding:.5rem 1.25rem; background:var(--s1); backdrop-filter:blur(12px); border-bottom:1px solid rgba(var(--acRGB),.16);}
+.section-nav__list{display:flex; gap:.75rem; align-items:center; padding:.25rem 0; margin:0; list-style:none; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:thin; scroll-snap-type:x proximity;}
+.section-nav__list::-webkit-scrollbar{height:6px;}
+.section-nav__list::-webkit-scrollbar-thumb{background:rgba(var(--acRGB),.35); border-radius:999px;}
+.section-nav__list::-webkit-scrollbar-track{background:transparent;}
+.section-nav__link{display:inline-flex; align-items:center; justify-content:center; padding:.35rem .95rem; margin:0; text-decoration:none; font-weight:600; transition:background-color .2s, border-color .2s, box-shadow .2s, color .2s; flex:0 0 auto; white-space:nowrap; scroll-snap-align:center;}
+.section-nav__link:hover{background:rgba(var(--acRGB),.22); border-color:rgba(var(--acRGB),.55);}
+.section-nav__link:active{background:rgba(var(--acRGB),.3);}
+.section-nav__link.active{background:rgba(var(--acRGB),.28); border-color:rgba(var(--acRGB),.65); color:var(--ac500); box-shadow:0 6px 18px rgba(var(--acRGB),.2);}
+.section-nav__link.active:hover{background:rgba(var(--acRGB),.32);}
+.section-nav__link:focus-visible{outline:none; box-shadow:0 0 0 2px var(--s1),0 0 0 5px rgba(var(--acRGB),.55);}
+.section-nav__link.active:focus-visible{box-shadow:0 0 0 2px var(--s1),0 0 0 6px rgba(var(--acRGB),.65);}
 
-.alpha{background:var(--s2); border:1px solid rgba(var(--acRGB),.35); border-radius:1rem; padding:1rem 1.25rem; box-shadow:0 0 16px rgba(var(--acRGB),.15);}
-.alpha-icon{font-size:1.75rem; margin-right:.5rem;}
+.hero-grid{display:grid; gap:2rem; align-items:start}
+@media (min-width: 1024px){
+  .hero-grid{grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr)}
+}
+
+.hero-copy{display:flex; flex-direction:column; gap:1.25rem}
+.hero-warning{margin-top:1.25rem; color:var(--txt);}
+.hero-warning p{margin:0; font-size:.95rem; line-height:1.55;}
+.hero-warning__title{display:flex; align-items:center; gap:.5rem; font-weight:700; font-size:.85rem; letter-spacing:.08em; text-transform:uppercase; color:var(--ac500);}
+.hero-warning__label{display:inline-flex; align-items:center;}
+
+.hero-aside{display:flex; align-items:stretch}
+.hero-aside__card{background:var(--s2); border:1px solid rgba(var(--acRGB),.2); border-radius:1rem; padding:1.5rem; box-shadow:0 10px 25px rgba(0,0,0,.22); display:flex; flex-direction:column; gap:1rem;}
+.hero-aside__title{margin:0; font-size:1.1rem; font-weight:700;}
+.hero-stats{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:1rem;}
+.hero-stats__metric{display:block; font-weight:700; font-size:1rem; color:var(--ac500);}
+.hero-stats__meta{display:block; font-size:.95rem; line-height:1.5; color:var(--txt); opacity:.75;}
+@media (max-width: 640px){
+  .hero-warning{margin-top:1rem;}
+  .hero-aside__card{padding:1.25rem;}
+}
+
+.alpha{background:var(--s2); border:1px solid rgba(var(--acRGB),.35); border-radius:1rem; padding:1rem 1.25rem; box-shadow:0 0 16px rgba(var(--acRGB),.15); display:flex; flex-direction:column; gap:.75rem;}
+.alpha-icon{font-size:1.75rem; margin-right:0;}
 
 /* Grid helpers */
 .cards{display:grid; gap:1rem}
 .cards--2{grid-template-columns:repeat(2,minmax(0,1fr))}
-.cards--3{grid-template-columns:repeat(3,minmax(0,1fr))}
-.cards--4{grid-template-columns:repeat(4,minmax(0,1fr))}
-@media (max-width: 1024px){ .cards--3,.cards--4{grid-template-columns:repeat(2,minmax(0,1fr))} }
+.cards--3{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.cards--4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
 @media (max-width: 640px){ .cards--2,.cards--3,.cards--4{grid-template-columns:1fr} }
+
+.rail.cards--3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+
+.how-layout{display:grid; gap:1.5rem; align-items:start}
+@media (min-width: 1024px){ .how-layout{grid-template-columns:1.1fr .9fr} }
+
+.how-video{margin:0; background:var(--s2); border:1px solid rgba(var(--acRGB),.2); border-radius:1rem; padding:1rem; box-shadow:0 8px 20px rgba(0,0,0,.22)}
+.how-video__player{display:block; width:100%; height:auto; border-radius:.75rem; background:#000}
+.how-video__caption{margin-top:.75rem; font-size:.95rem; line-height:1.5; color:var(--txt)}
 
 .two-col{display:grid; grid-template-columns:1fr 1fr; gap:2rem}
 @media (max-width: 960px){ .two-col{grid-template-columns:1fr} }
@@ -354,17 +551,33 @@ function installPwa () {
 .feature-icon{display:flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,var(--ac500),#4f46e5); color:#fff}
 
 /* Cards */
-.card{background:var(--s2); border:1px solid rgba(var(--acRGB),.18); border-radius:1rem; padding:1.25rem; box-shadow:0 4px 10px rgba(0,0,0,.25); transition:transform .2s, box-shadow .2s, border-color .2s;}
-.card:hover{transform:translateY(-6px); box-shadow:0 12px 22px rgba(0,0,0,.3); border-color:rgba(var(--acRGB),.35)}
-.card-head{display:flex; align-items:center; gap:.5rem; margin-bottom:.5rem}
+.card{background:var(--s2); border:1px solid rgba(var(--acRGB),.18); border-radius:1rem; padding:1.25rem; box-shadow:0 4px 10px rgba(0,0,0,.25); transition:transform .2s, box-shadow .2s, border-color .2s; display:block; color:inherit; text-decoration:none;}
+.card--overview{display:flex; flex-direction:column; gap:.75rem;}
+.card--overview:hover{transform:translateY(-6px); box-shadow:0 12px 22px rgba(0,0,0,.3); border-color:rgba(var(--acRGB),.35);}
+.card--overview:focus-within{transform:translateY(-6px); border-color:rgba(var(--acRGB),.35); box-shadow:0 0 0 3px var(--s1),0 0 0 6px rgba(var(--acRGB),.55),0 12px 22px rgba(0,0,0,.3);}
+.card-link__primary{display:flex; align-items:center; gap:.5rem; color:inherit; text-decoration:none; font-weight:700; transition:color .2s ease;}
+.card-link__primary:hover{color:var(--ac500);}
+.card-link__primary:focus-visible{outline:none; color:var(--ac500);}
+.card-link__primary h3{margin:0;}
 .card-summary{display:flex; align-items:flex-start; gap:.5rem}
 .summary-text{display:flex; flex-direction:column; white-space:normal; /* ensure wrapping */}
 .links{list-style:none; padding:0; margin:0}
-.links a{display:inline-flex; align-items:center; gap:.5rem; text-decoration:none}
-.links a:hover{text-decoration:underline}
+.links li{display:flex; align-items:center; gap:.5rem; font-weight:600;}
+.link-text{display:inline-flex; align-items:center; color:inherit; text-decoration:none; border-radius:.45rem; padding:.05rem .35rem; transition:color .2s ease, background-color .2s ease, box-shadow .2s ease;}
+.link-text:hover{color:var(--ac500); background:rgba(var(--acRGB),.14);}
+.link-text:focus-visible{outline:none; color:var(--ac500); background:rgba(var(--acRGB),.18); box-shadow:0 0 0 2px var(--s1),0 0 0 5px rgba(var(--acRGB),.55);}
 .emj{font-size:1.25rem}
 .emj.xl{font-size:2rem}
 .pill{display:inline-block; padding:.35rem .75rem; border-radius:999px; font-weight:700; letter-spacing:.02em; background:rgba(var(--acRGB),.15); color:var(--ac500); border:1px solid var(--ac500); margin-bottom:.5rem}
+
+.card h3,
+.card p,
+.link-text{overflow-wrap:anywhere; word-break:break-word}
+
+@media (min-width: 768px){
+  .section-nav{margin:0 0 3rem; top:1rem; padding:.75rem 1rem; border:1px solid rgba(var(--acRGB),.22); border-radius:999px; background:var(--s2); box-shadow:0 10px 30px rgba(0,0,0,.18); border-bottom:none;}
+  .section-nav__list{justify-content:center; overflow:visible;}
+}
 
 /* Rail connectors for steps */
 .rail .step{position:relative}
@@ -390,6 +603,7 @@ function installPwa () {
 /* CTA */
 .cta{background:linear-gradient(90deg,rgba(var(--acRGB),.10),rgba(var(--acRGB),.05)); border-radius:1rem}
 .cta-row{display:flex; gap:.75rem; flex-wrap:wrap; justify-content:center; margin-top:1rem}
+.hero-cta{justify-content:flex-start}
 .btn{font-weight:700; padding:.9rem 1.25rem; border-radius:.6rem; border:2px solid var(--ac500); text-decoration:none}
 .btn.solid{background:var(--ac500); color:#fff}
 .btn.outline{color:var(--ac500)}

@@ -193,11 +193,13 @@ export default defineComponent({
       isLoading.value = false;
     });
 
+    type SortOption = "name-asc" | "name-desc" | "balance-asc" | "balance-desc";
+
     const viewMode = ref("active");
 
     const bucketList = computed(() => bucketsStore.bucketList);
     const searchTerm = ref("");
-    const sortBy = ref("name-asc");
+    const sortBy = ref<SortOption>("name-asc");
     const bucketBalances = computed(() => bucketsStore.bucketBalances);
 
     const activeBuckets = computed(() =>
