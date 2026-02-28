@@ -101,14 +101,14 @@ Then immediately trigger `deploy-staging` from `Develop2`.
 ## Latest Verified Snapshot (2026-02-28)
 
 - Main release sync:
-  - PR `#1357` merged `release/main-rc-20260228` into `main`.
-  - Merge commit on `main`: `167e0d3c18a3f8cff1b7e4404973b5d7a7ce59f0`.
+  - PR `#1357` merged `release/main-rc-20260228` into `main` (`167e0d3c18a3f8cff1b7e4404973b5d7a7ce59f0`).
+  - PR `#1358` merged `chore/main-launch-evidence-20260228` into `main` (`fe1e86f6344f39f5aa34f8bbafcf2b7b7e6e0a74`).
 - Main quality checks:
-  - `build` run `22521072310` -> success.
-  - `Test` run `22521072300` -> success.
+  - `build` run `22521782161` -> success.
+  - `Test` run `22521782164` -> success.
 - Production deployment:
-  - `Deploy production (main -> Hostinger)` run `22521072297` -> success.
-  - `/deploy.txt` on production reports `env=production` and `sha=167e0d3c18a3f8cff1b7e4404973b5d7a7ce59f0`.
+  - `Deploy production (main -> Hostinger)` run `22521782163` -> success.
+  - `/deploy.txt` on production reports `env=production` and `sha=fe1e86f6344f39f5aa34f8bbafcf2b7b7e6e0a74`.
 - Staging parity post-production:
   - `/deploy.txt` on staging remains `env=staging` and `sha=6c9e8dafa0140c575796d532839ca04da029afa2`.
   - `/` and `/restore` return `200` on both production and staging.
@@ -117,8 +117,10 @@ Then immediately trigger `deploy-staging` from `Develop2`.
   - `BASE_URL=https://staging.fundstr.me SMOKE_EXPECT_ENV=staging ./scripts/smoke-tests.sh` -> pass.
   - `BASE_URL=https://fundstr.me node scripts/synthetic-staging-journey.mjs` -> pass.
   - `BASE_URL=https://staging.fundstr.me node scripts/synthetic-staging-journey.mjs` -> pass.
-- Remaining launch blockers:
-  - Branch-protection audit requires `BRANCH_PROTECTION_AUDIT_TOKEN` with admin rights (`verify-branch-protection` cannot be dispatched with limited PAT).
+- Branch-protection audit status:
+  - Workflow dispatch with limited PAT is blocked (`HTTP 403`).
+  - Local verification script is wired via `pnpm run verify:branch-protection`, but requires admin-capable `BRANCH_PROTECTION_AUDIT_TOKEN` to pass.
+- Remaining launch blocker:
   - Rollback rehearsal evidence still needs one controlled drill and a run log entry.
 
 ## Weekly Ops Check (5 Minutes)
