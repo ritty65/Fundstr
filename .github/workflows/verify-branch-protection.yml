@@ -33,6 +33,7 @@ jobs:
           BRANCH_PROTECTION_REPORT_PATH: artifacts/branch-protection-report.json
           BRANCH_PROTECTION_BRANCHES: main,develop,Develop2
           BRANCH_PROTECTION_REQUIRED_CHECKS: test,build
+          BRANCH_PROTECTION_MIN_APPROVALS: 0
         run: node scripts/verify-branch-protection.mjs
 
       - name: Upload branch-protection report

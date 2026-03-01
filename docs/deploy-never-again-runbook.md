@@ -9,6 +9,7 @@ Scope: Prevent staging/prod cross-impact and keep deploy recovery deterministic.
 - `Develop2` deploys staging only.
 - Every successful deploy must publish a matching `/deploy.txt` marker and return `200` on core endpoints.
 - Do not rerun stale failed deploy runs after workflow changes; trigger a fresh run from current branch tip.
+- Branch-protection audit runs in solo mode (`BRANCH_PROTECTION_MIN_APPROVALS=0`); raise to `1`+ when a second maintainer can approve PRs.
 
 ## Hostinger Constraint
 
