@@ -23,6 +23,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Enforce production branch policy for manual runs
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${GITHUB_REF_NAME}" != "main" ]; then
+            echo "::error::Manual production deploys must run from main (received ${GITHUB_REF_NAME})."
+            exit 1
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -270,10 +278,14 @@ jobs:
           set -euo pipefail
           ssh -p "${PORT:-22}" "$USER@$HOST" "set -e; test -f \"$TARGET/index.html\"; test -f \"$TARGET/find-creators.html\"; test -f \"$TARGET/featured-creators.json\"; test -f \"$TARGET/manifest.json\"; test -f \"$TARGET/vendor/nostr.bundle.1.17.0.js\"; test -f \"$TARGET/deploy.txt\""
 
+      - name: Prepare production artifact directory
+        run: mkdir -p artifacts/production-smoke
+
       - name: Smoke test production
         env:
           BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
           SMOKE_EXPECT_ENV: production
+          SMOKE_TRACE_FILE: artifacts/production-smoke/smoke-tests.log
         run: |
           if [ -z "$BASE_URL" ]; then
             BASE_URL="https://fundstr.me"
@@ -285,4 +297,13 @@ jobs:
         env:
           BASE_URL: https://staging.fundstr.me
           SMOKE_EXPECT_ENV: staging
+          SMOKE_TRACE_FILE: artifacts/production-smoke/staging-smoke-tests.log
         run: ./scripts/smoke-tests.sh
+
+      - name: Upload production smoke artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/production-smoke
+          if-no-files-found: warn

@@ -21,6 +21,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Enforce staging branch policy for manual runs
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${GITHUB_REF_NAME}" != "Develop2" ]; then
+            echo "::error::Manual staging deploys must run from Develop2 (received ${GITHUB_REF_NAME})."
+            exit 1
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
