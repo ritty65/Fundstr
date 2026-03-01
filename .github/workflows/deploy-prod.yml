@@ -243,6 +243,27 @@ jobs:
             ls -lah \"\$T\" | sed -n '1,40p'
           "
 
+      - name: Backfill previous hashed assets
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ steps.target.outputs.target }}
+          PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euxo pipefail
+          ssh -p "${PORT:-22}" "$USER@$HOST" "
+            set -e
+            T='$TARGET'
+            PREV_ASSETS=\"\$T.__backup/prev/assets\"
+            CUR_ASSETS=\"\$T/assets\"
+            if [ -d \"\$PREV_ASSETS\" ] && [ -d \"\$CUR_ASSETS\" ]; then
+              rsync -a --ignore-existing \"\$PREV_ASSETS/\" \"\$CUR_ASSETS/\"
+              echo \"Backfilled previous hashed assets from \$PREV_ASSETS\"
+            else
+              echo \"Skipping hashed-asset backfill (missing source or destination assets dir)\"
+            fi
+          "
+
       - name: Restore nested staging directory
         if: steps.overlap.outputs.nested == 'true'
         env:

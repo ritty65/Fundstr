@@ -70,7 +70,8 @@ When `SSH_TARGET_STAGING` is nested under `SSH_TARGET_PRODUCTION`, production de
 2. Snapshots nested staging directory.
 3. Performs production atomic swap.
 4. Restores nested staging directory.
-5. Verifies production artifacts and smoke test.
+5. Backfills previous hashed asset files into the current `/assets` directory (ignore existing) to reduce stale-client chunk 404s during rollouts.
+6. Verifies production artifacts and smoke test.
 
 This prevents production deploy from wiping staging content.
 
