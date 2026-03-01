@@ -56,7 +56,30 @@ const PUBLIC_POOL = [
 const HEX_REGEX = /^[0-9a-fA-F]{64}$/;
 
 const WS_FAILURE_TTL_MS = 60_000;
+const HTTP_TIMEOUT_MS = 5_000;
 const wsFailureCache = new Map<string, number>();
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs = HTTP_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if ((err as { name?: string })?.name === "AbortError") {
+      throw new Error(`HTTP request timed out after ${timeoutMs}ms`);
+    }
+    throw err instanceof Error ? err : new Error(String(err));
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function normalizeRelayUrl(url: string): string {
   return url.replace(/\s+/g, "").replace(/\/+$/, "");
@@ -189,7 +212,9 @@ export function pickLatestAddrReplaceable(
           ev.pubkey === key.pubkey &&
           firstDTag(ev) === key.d,
       )
-      .sort((a, b) => b.created_at - a.created_at || (b.id > a.id ? 1 : -1))[0] || null
+      .sort(
+        (a, b) => b.created_at - a.created_at || (b.id > a.id ? 1 : -1),
+      )[0] || null
   );
 }
 
@@ -225,7 +250,9 @@ export function normalizeEvents(events: readonly NostrEvent[]): NostrEvent[] {
     ...Array.from(replaceable.values()),
     ...Array.from(parameterized.values()),
   ];
-  return merged.sort((a, b) => b.created_at - a.created_at || (b.id > a.id ? 1 : -1));
+  return merged.sort(
+    (a, b) => b.created_at - a.created_at || (b.id > a.id ? 1 : -1),
+  );
 }
 
 function uniqueUrls(urls: readonly string[]): string[] {
@@ -260,7 +287,10 @@ async function wsQuery(
     const done = (err?: Error) => {
       if (settled) return;
       settled = true;
-      if (ws && (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING)) {
+      if (
+        ws &&
+        (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING)
+      ) {
         try {
           ws.close();
         } catch {
@@ -345,10 +375,15 @@ function buildEventUrl(httpBase: string): string {
   return `${normalized}/event`;
 }
 
-async function httpReq(httpBase: string, filters: Filter[]): Promise<NostrEvent[]> {
+async function httpReq(
+  httpBase: string,
+  filters: Filter[],
+): Promise<NostrEvent[]> {
   const reqUrl = buildReqUrl(httpBase);
-  const url = `${reqUrl}?filters=${encodeURIComponent(JSON.stringify(filters))}`;
-  const res = await fetch(url, {
+  const url = `${reqUrl}?filters=${encodeURIComponent(
+    JSON.stringify(filters),
+  )}`;
+  const res = await fetchWithTimeout(url, {
     method: "GET",
     headers: {
       accept: "application/json",
@@ -539,10 +574,14 @@ export async function publishNostr(
     typeof evt.content === "string" &&
     typeof evt.sig === "string";
   if (!valid) {
-    return { ok: true, accepted: false, message: "client: bad event (missing fields)" };
+    return {
+      ok: true,
+      accepted: false,
+      message: "client: bad event (missing fields)",
+    };
   }
   const eventUrl = buildEventUrl(opts.httpBase ?? FUNDSTR.http);
-  const res = await fetch(eventUrl, {
+  const res = await fetchWithTimeout(eventUrl, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -560,7 +599,7 @@ export async function publishNostr(
     return {
       ok: false,
       message:
-        (json && typeof json.message === "string")
+        json && typeof json.message === "string"
           ? json.message
           : `HTTP ${res.status}`,
     };
@@ -582,9 +621,7 @@ export async function queryNutzapProfile(
   opts: NutzapQueryOptions = {},
 ): Promise<NostrEvent | null> {
   const pubkey = toHex(pubkeyInput);
-  const filters: Filter[] = [
-    { kinds: [10019], authors: [pubkey], limit: 1 },
-  ];
+  const filters: Filter[] = [{ kinds: [10019], authors: [pubkey], limit: 1 }];
   const queryOptions: QueryOptions = {
     preferFundstr: true,
     fanout: opts.fanout,
