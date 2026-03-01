@@ -108,7 +108,7 @@ function addWarning(report, name, details) {
 }
 
 async function checkRelayHttp() {
-  const filters = encodeURIComponent(JSON.stringify(impossibleFilter()));
+  const filters = JSON.stringify(impossibleFilter());
   const url = buildRelayRequestUrl(relayHttpUrl, filters);
   const res = await withTimeout(url, {
     method: "GET",
@@ -324,6 +324,14 @@ async function main() {
   }
 
   if (report.status !== "passed") {
+    const failedStep = report.steps.find((step) => step.status === "failed");
+    if (failedStep) {
+      console.error(
+        `External relay+mint canary failed at '${failedStep.name}': ${failedStep.details}`,
+      );
+    } else if (report.error) {
+      console.error(`External relay+mint canary failed: ${report.error}`);
+    }
     process.exit(1);
   }
 }
