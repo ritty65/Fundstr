@@ -22,6 +22,25 @@ function normalizeBaseUrl(value) {
   return value.endsWith("/") ? value.slice(0, -1) : value;
 }
 
+function buildRelayRequestUrl(baseUrl, filters) {
+  let parsed;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    throw new Error(`Invalid CANARY_RELAY_HTTP_URL: ${baseUrl}`);
+  }
+
+  const trimmedPath = parsed.pathname.replace(/\/+$/, "");
+  if (trimmedPath.endsWith("/req")) {
+    parsed.pathname = trimmedPath;
+  } else {
+    parsed.pathname = `${trimmedPath || ""}/req`;
+  }
+
+  parsed.searchParams.set("filters", filters);
+  return parsed.toString();
+}
+
 function splitCsv(value) {
   return value
     .split(",")
@@ -90,7 +109,7 @@ function addWarning(report, name, details) {
 
 async function checkRelayHttp() {
   const filters = encodeURIComponent(JSON.stringify(impossibleFilter()));
-  const url = `${relayHttpUrl}/req?filters=${filters}`;
+  const url = buildRelayRequestUrl(relayHttpUrl, filters);
   const res = await withTimeout(url, {
     method: "GET",
     headers: { accept: "application/json", "cache-control": "no-cache" },
