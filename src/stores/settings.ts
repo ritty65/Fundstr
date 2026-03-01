@@ -1,18 +1,19 @@
 import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
-import { DEFAULT_RELAYS } from "src/config/relays";
+import { DEFAULT_RELAYS, FUNDSTR_PRIMARY_RELAY } from "src/config/relays";
 import { sanitizeRelayUrls } from "src/utils/relay";
 import { debug } from "src/js/logger";
 
 type RelayBootstrapMode = "default" | "fundstr-only";
 
-const envRelayDebugPreference = (import.meta as any)?.env?.VITE_RELAY_DEBUG_LOGS;
+const envRelayDebugPreference = (import.meta as any)?.env
+  ?.VITE_RELAY_DEBUG_LOGS;
 const envRelayDebugValue =
   envRelayDebugPreference === "true" || envRelayDebugPreference === true
     ? true
     : envRelayDebugPreference === "false" || envRelayDebugPreference === false
-      ? false
-      : undefined;
+    ? false
+    : undefined;
 
 export const DEFAULT_RELAY_DEBUG_LOGS_ENABLED =
   envRelayDebugValue ??
@@ -24,6 +25,10 @@ const RELAY_DENYLIST = new Set(
     host.toLowerCase(),
   ),
 );
+
+const RELAY_HOST_REPLACEMENTS = new Map<string, string>([
+  ["relay.nostr.band", FUNDSTR_PRIMARY_RELAY],
+]);
 
 export const useSettingsStore = defineStore("settings", {
   state: () => {
@@ -38,10 +43,17 @@ export const useSettingsStore = defineStore("settings", {
     const sanitized = sanitizeRelayUrls(existing);
     const filtered: string[] = [];
     const removed: string[] = [];
+    const replaced: Array<{ from: string; to: string }> = [];
 
     for (const url of sanitized) {
       try {
         const hostname = new URL(url).hostname.toLowerCase();
+        const replacement = RELAY_HOST_REPLACEMENTS.get(hostname);
+        if (replacement) {
+          replaced.push({ from: url, to: replacement });
+          filtered.push(replacement);
+          continue;
+        }
         if (RELAY_DENYLIST.has(hostname)) {
           removed.push(url);
           continue;
@@ -53,7 +65,7 @@ export const useSettingsStore = defineStore("settings", {
       filtered.push(url);
     }
 
-    let next = filtered;
+    let next = sanitizeRelayUrls(filtered);
     if (!next.length) {
       next = [...DEFAULT_RELAYS];
     }
@@ -66,6 +78,9 @@ export const useSettingsStore = defineStore("settings", {
 
     if (changed && removed.length) {
       debug("[settings] Removed blocked Nostr relays from defaults", removed);
+    }
+    if (changed && replaced.length) {
+      debug("[settings] Replaced deprecated Nostr relays", replaced);
     }
 
     return {
