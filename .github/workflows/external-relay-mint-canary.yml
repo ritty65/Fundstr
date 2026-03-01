@@ -1,0 +1,62 @@
+name: external-relay-mint-canary
+
+on:
+  schedule:
+    - cron: "35 */12 * * *"
+  workflow_dispatch:
+    inputs:
+      relay_http_url:
+        description: "Override relay HTTP endpoint"
+        required: false
+      relay_ws_url:
+        description: "Override relay WS endpoint"
+        required: false
+      mint_urls:
+        description: "Comma-separated mint URLs"
+        required: false
+        default: "https://mint.minibits.cash/Bitcoin"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: external-relay-mint-canary
+  cancel-in-progress: true
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Enable pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@8.15.7 --activate
+          pnpm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run external relay+mint canary
+        env:
+          CANARY_RELAY_HTTP_URL: ${{ github.event.inputs.relay_http_url || vars.CANARY_RELAY_HTTP_URL || 'https://relay.fundstr.me' }}
+          CANARY_RELAY_WS_URL: ${{ github.event.inputs.relay_ws_url || vars.CANARY_RELAY_WS_URL || 'wss://relay.fundstr.me' }}
+          CANARY_MINT_URLS: ${{ github.event.inputs.mint_urls || vars.CANARY_MINT_URLS || 'https://mint.minibits.cash/Bitcoin' }}
+          CANARY_REQUIRE_MINTS: ${{ vars.CANARY_REQUIRE_MINTS || '1' }}
+          CANARY_TIMEOUT_MS: ${{ vars.CANARY_TIMEOUT_MS || '8000' }}
+          CANARY_ARTIFACT_DIR: artifacts/external-relay-mint-canary
+        run: node scripts/external-relay-mint-canary.mjs
+
+      - name: Upload external canary artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-relay-mint-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/external-relay-mint-canary
+          if-no-files-found: error
