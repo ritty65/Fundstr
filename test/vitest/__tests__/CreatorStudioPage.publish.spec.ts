@@ -151,14 +151,14 @@ function ensureShared(): SharedMocks {
     };
 
     shared = {
-      relayConnectionUrl: ref('wss://relay.nostr.band'),
+      relayConnectionUrl: ref('wss://relay.fundstr.me'),
       relayConnectionStatus,
       relayAutoReconnect: ref(false),
       relayActivity: ref([]),
       relayReconnectAttempts: ref(0),
       relayIsConnected: ref(true),
       relayNeedsAttention,
-      relayUrlInput: ref('wss://relay.nostr.band'),
+      relayUrlInput: ref('wss://relay.fundstr.me'),
       relayUrlInputValid: ref(true),
       relayUrlInputState: ref(null),
       relayUrlInputMessage: ref(''),
@@ -611,18 +611,18 @@ describe('CreatorStudioPage publishAll fallback', () => {
     const tierCallKinds = state.publishTiersToRelayMock.mock.calls.map(call => call[1]);
     expect(tierCallKinds).toEqual([30000, 30000, 30019, 30019]);
     expect(state.publishTiersToRelayMock.mock.calls[0][2]).toMatchObject({
-      relayUrl: 'wss://relay.nostr.band',
+      relayUrl: 'wss://relay.fundstr.me',
     });
     expect(typeof state.publishTiersToRelayMock.mock.calls[0][2]?.send).toBe('function');
     expect(state.publishTiersToRelayMock.mock.calls[1][2]).toEqual({
-      relayUrl: 'wss://relay.nostr.band',
+      relayUrl: 'wss://relay.fundstr.me',
     });
     expect(state.publishTiersToRelayMock.mock.calls[2][2]).toMatchObject({
-      relayUrl: 'wss://relay.nostr.band',
+      relayUrl: 'wss://relay.fundstr.me',
     });
     expect(typeof state.publishTiersToRelayMock.mock.calls[2][2]?.send).toBe('function');
     expect(state.publishTiersToRelayMock.mock.calls[3][2]).toEqual({
-      relayUrl: 'wss://relay.nostr.band',
+      relayUrl: 'wss://relay.fundstr.me',
     });
     expect(state.publishEventToRelayMock).toHaveBeenCalledTimes(3);
     expect(state.clientPublishMock).toHaveBeenCalledTimes(1);
