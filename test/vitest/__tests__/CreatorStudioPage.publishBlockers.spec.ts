@@ -165,14 +165,14 @@ function ensureShared(): SharedMocks {
     const storedMintsRef = ref([{ url: 'https://mint.example' }]);
 
     shared = {
-      relayConnectionUrl: ref('wss://relay.nostr.band'),
+      relayConnectionUrl: ref('wss://relay.fundstr.me'),
       relayConnectionStatus,
       relayAutoReconnect: ref(false),
       relayActivity: ref([]),
       relayReconnectAttempts: ref(0),
       relayIsConnected: ref(true),
       relayNeedsAttention,
-      relayUrlInput: ref('wss://relay.nostr.band'),
+      relayUrlInput: ref('wss://relay.fundstr.me'),
       relayUrlInputValid: ref(true),
       relayUrlInputState: ref(null),
       relayUrlInputMessage: ref(''),
