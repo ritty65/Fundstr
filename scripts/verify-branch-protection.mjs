@@ -15,6 +15,7 @@ const branches = splitCsv(
 const requiredChecks = splitCsv(
   process.env.BRANCH_PROTECTION_REQUIRED_CHECKS || "Test,build",
 );
+const minApprovals = Number(process.env.BRANCH_PROTECTION_MIN_APPROVALS || "0");
 
 function splitCsv(value) {
   return value
@@ -105,6 +106,9 @@ function evaluateProtection(protection) {
   const requiredStatusChecks = protection?.required_status_checks || null;
   const requiredReviews = protection?.required_pull_request_reviews || null;
   const contextNames = getContextNames(requiredStatusChecks);
+  const normalizedContextNames = new Set(
+    Array.from(contextNames, (name) => name.toLowerCase()),
+  );
 
   if (!requiredStatusChecks) {
     failures.push("required_status_checks is not configured");
@@ -114,7 +118,8 @@ function evaluateProtection(protection) {
     }
 
     for (const requiredCheck of requiredChecks) {
-      if (!contextNames.has(requiredCheck)) {
+      const normalizedRequiredCheck = requiredCheck.toLowerCase();
+      if (!normalizedContextNames.has(normalizedRequiredCheck)) {
         failures.push(`missing required status check: ${requiredCheck}`);
       }
     }
@@ -126,8 +131,10 @@ function evaluateProtection(protection) {
     const approvals = Number(
       requiredReviews.required_approving_review_count || 0,
     );
-    if (!Number.isFinite(approvals) || approvals < 1) {
-      failures.push("required_approving_review_count must be >= 1");
+    if (!Number.isFinite(approvals) || approvals < minApprovals) {
+      failures.push(
+        `required_approving_review_count must be >= ${minApprovals}`,
+      );
     }
     if (requiredReviews.dismiss_stale_reviews !== true) {
       failures.push("dismiss_stale_reviews must be true");
@@ -163,6 +170,10 @@ async function main() {
   );
   assert(branches.length > 0, "No branches configured to verify.");
   assert(requiredChecks.length > 0, "No required checks configured to verify.");
+  assert(
+    Number.isInteger(minApprovals) && minApprovals >= 0,
+    "BRANCH_PROTECTION_MIN_APPROVALS must be a non-negative integer",
+  );
 
   console.log(
     `Verifying branch protection for ${repository} (${branches.join(", ")})${
@@ -177,6 +188,7 @@ async function main() {
       dryRun: true,
       branches,
       requiredChecks,
+      minApprovals,
     };
     await writeReport(report);
     console.log("Dry-run complete");
@@ -230,6 +242,7 @@ async function main() {
     repository,
     dryRun: false,
     requiredChecks,
+    minApprovals,
     failed,
     branchResults,
   };

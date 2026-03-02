@@ -1,24 +1,33 @@
-const metaEnv = (typeof import.meta !== 'undefined' && (import.meta as any)?.env) || {};
-const processEnv = (typeof process !== 'undefined' && (process as any)?.env) || {};
+const metaEnv =
+  (typeof import.meta !== "undefined" && (import.meta as any)?.env) || {};
+const processEnv =
+  (typeof process !== "undefined" && (process as any)?.env) || {};
+
+const DEFAULT_FUNDSTR_RELAY_WSS = "wss://relay.fundstr.me";
+const DEFAULT_FUNDSTR_RELAY_HTTP = "https://relay.fundstr.me";
 
 function pickRelayUrl(key: string, fallback: string): string {
-  const metaValue = typeof metaEnv[key] === 'string' ? metaEnv[key].trim() : '';
-  const processValue = typeof processEnv[key] === 'string' ? processEnv[key].trim() : '';
+  const metaValue = typeof metaEnv[key] === "string" ? metaEnv[key].trim() : "";
+  const processValue =
+    typeof processEnv[key] === "string" ? processEnv[key].trim() : "";
 
   if (metaValue) return metaValue;
   if (processValue) return processValue;
   return fallback;
 }
 
-export const FUNDSTR_PRIMARY_RELAY = pickRelayUrl('VITE_FUNDSTR_PRIMARY_RELAY_WSS', 'wss://relay.nostr.band');
+export const FUNDSTR_PRIMARY_RELAY = pickRelayUrl(
+  "VITE_FUNDSTR_PRIMARY_RELAY_WSS",
+  DEFAULT_FUNDSTR_RELAY_WSS,
+);
 export const FUNDSTR_PRIMARY_RELAY_HTTP = pickRelayUrl(
-  'VITE_FUNDSTR_PRIMARY_RELAY_HTTP',
-  'https://relay.nostr.band',
+  "VITE_FUNDSTR_PRIMARY_RELAY_HTTP",
+  DEFAULT_FUNDSTR_RELAY_HTTP,
 );
 export const PRIMARY_RELAY = FUNDSTR_PRIMARY_RELAY;
 
 export function normalizeRelayUrl(url: string): string {
-  return url.trim().replace(/\/+$/, '');
+  return url.trim().replace(/\/+$/, "");
 }
 
 export function uniqueRelayList(relays: string[]): string[] {
@@ -33,37 +42,37 @@ export function uniqueRelayList(relays: string[]): string[] {
 }
 
 export const FALLBACK_RELAYS: string[] = [
-  'wss://relay.damus.io',
-  'wss://relay.snort.social',
-  'wss://relay.primal.net',
-  'wss://nostr.wine',
-  'wss://purplepag.es',
+  "wss://relay.damus.io",
+  "wss://relay.snort.social",
+  "wss://relay.primal.net",
+  "wss://nostr.wine",
+  "wss://purplepag.es",
 ]; // keep small and easy to rotate
 
 // Curated default read relays – these are added at boot for read operations only.
 export const DEFAULT_RELAYS = [
   FUNDSTR_PRIMARY_RELAY,
-  'wss://relay.damus.io',
-  'wss://relay.snort.social',
-  'wss://relay.primal.net',
-  'wss://nostr.wine',
-  'wss://purplepag.es',
-  'wss://nos.lol',
-  'wss://nostr.mom',
-  'wss://nostr.bitcoiner.social',
+  "wss://relay.damus.io",
+  "wss://relay.snort.social",
+  "wss://relay.primal.net",
+  "wss://nostr.wine",
+  "wss://purplepag.es",
+  "wss://nos.lol",
+  "wss://nostr.mom",
+  "wss://nostr.bitcoiner.social",
 ];
 
 // Small set of known-open relays used as fallback for write operations.
 export const FREE_RELAYS = [
-  'wss://relay.nostr.band',
-  'wss://relay.damus.io',
-  'wss://relay.snort.social',
-  'wss://relay.primal.net',
-  'wss://nostr.wine',
-  'wss://purplepag.es',
+  FUNDSTR_PRIMARY_RELAY,
+  "wss://relay.damus.io",
+  "wss://relay.snort.social",
+  "wss://relay.primal.net",
+  "wss://nostr.wine",
+  "wss://purplepag.es",
   // Last resort large pools
-  'wss://nostr.mom',
-  'wss://nos.lol',
+  "wss://nostr.mom",
+  "wss://nos.lol",
 ];
 
 export const VETTED_OPEN_WRITE_RELAYS: string[] = [
@@ -82,11 +91,15 @@ export const RELAY_CONNECT_RETRY = {
 
 export function computeRelayBackoffMs(attempt: number): number {
   const normalizedAttempt = Math.max(1, Math.floor(attempt));
-  const exponential = RELAY_CONNECT_RETRY.baseDelayMs * 2 ** (normalizedAttempt - 1);
+  const exponential =
+    RELAY_CONNECT_RETRY.baseDelayMs * 2 ** (normalizedAttempt - 1);
   const capped = Math.min(RELAY_CONNECT_RETRY.maxDelayMs, exponential);
   const jitterRange = capped * RELAY_CONNECT_RETRY.jitterRatio;
   const jitterOffset = (Math.random() * 2 - 1) * jitterRange;
-  return Math.max(RELAY_CONNECT_RETRY.baseDelayMs, Math.round(capped + jitterOffset));
+  return Math.max(
+    RELAY_CONNECT_RETRY.baseDelayMs,
+    Math.round(capped + jitterOffset),
+  );
 }
 
 // Optional: allow overrides via env (comma-separated)
@@ -95,8 +108,8 @@ export function envRelayList(key: string, fallback: string[]): string[] {
   if (!v) return fallback;
   return uniqueRelayList(
     v
-    .split(",")
-    .map((s: string) => s.trim())
-    .filter(Boolean),
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean),
   );
 }

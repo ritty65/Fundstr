@@ -1,19 +1,21 @@
+import { FUNDSTR_PRIMARY_RELAY } from "src/config/relays";
+
 export const REQUIRED_DM_RELAYS = [
-  'wss://relay.damus.io',
-  'wss://relay.nostr.band',
-  'wss://relay.snort.social',
-  'wss://relay.primal.net',
+  FUNDSTR_PRIMARY_RELAY,
+  "wss://relay.damus.io",
+  "wss://relay.snort.social",
+  "wss://relay.primal.net",
 ] as const;
 
 export const DM_BLOCKLIST = new Set<string>([
-  'wss://purplepag.es',
-  'wss://purplepag.es/',
-  'wss://relayable.org',
-  'wss://relayable.org/',
+  "wss://purplepag.es",
+  "wss://purplepag.es/",
+  "wss://relayable.org",
+  "wss://relayable.org/",
 ]);
 
 export function normalizeUrl(u: string) {
-  return u.trim().replace(/\/+$/, '');
+  return u.trim().replace(/\/+$/, "");
 }
 
 export function buildDmPublishSet(allRelays: string[]): string[] {

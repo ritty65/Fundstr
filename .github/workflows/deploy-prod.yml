@@ -23,6 +23,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Enforce production branch policy for manual runs
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${GITHUB_REF_NAME}" != "main" ]; then
+            echo "::error::Manual production deploys must run from main (received ${GITHUB_REF_NAME})."
+            exit 1
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -45,16 +53,83 @@ jobs:
           pnpm --version
 
       - name: Validate production deploy target
+        env:
+          TARGET_RAW: ${{ secrets.SSH_TARGET_PRODUCTION || secrets.SSH_TARGET_PROD || secrets.SSH_TARGET }}
         run: |
-          if [ -z "${{ secrets.SSH_TARGET_PRODUCTION }}" ]; then
-            echo "::error::Missing required secret SSH_TARGET_PRODUCTION"
+          if [ -z "$TARGET_RAW" ]; then
+            echo "::error::Missing production target secret. Set SSH_TARGET_PRODUCTION (preferred) or SSH_TARGET_PROD/SSH_TARGET."
             exit 1
           fi
+
+      - name: Use production env
+        run: cp .env.production .env
+
+      - name: Install deps
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if pnpm install --frozen-lockfile=false; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error:: pnpm install failed after 3 attempts"
+              exit 1
+            fi
+            echo "pnpm install failed (attempt $attempt). Retrying..."
+            sleep $((attempt * 5))
+          done
+
+      - name: Build (Quasar PWA)
+        run: pnpm run build
+
+      - name: Verify deploy artifacts
+        run: node scripts/ci/verify-deploy-artifacts.mjs
+
+      - name: Write deploy marker
+        run: |
+          BUILD_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          {
+            echo "env=production"
+            echo "sha=${{ github.sha }}"
+            echo "ref=${{ github.ref_name }}"
+            echo "built_at=$BUILD_TS"
+            echo "run_id=${{ github.run_id }}"
+          } > dist/pwa/deploy.txt
+
+      - name: Add SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Trust remote host
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Validate deploy target
+        id: target
+        env:
+          TARGET_RAW: ${{ secrets.SSH_TARGET_PRODUCTION || secrets.SSH_TARGET_PROD || secrets.SSH_TARGET }}
+        run: |
+          set -euo pipefail
+          TARGET="${TARGET_RAW%/}"
+          test -n "$TARGET" || {
+            echo "::error:: Production deploy target is empty (SSH_TARGET_PRODUCTION/SSH_TARGET_PROD/SSH_TARGET)"
+            exit 1
+          }
+          case "$TARGET" in
+            /home/*/domains/*/public_html|/home/*/domains/*/public_html/*) ;;
+            *)
+              echo "::error:: suspicious SSH_TARGET_PRODUCTION path: $TARGET"
+              exit 1
+              ;;
+          esac
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
 
       - name: Evaluate staging/prod target overlap
         id: overlap
         env:
-          PRODUCTION_TARGET_RAW: ${{ secrets.SSH_TARGET_PRODUCTION }}
+          PRODUCTION_TARGET_RAW: ${{ steps.target.outputs.target }}
           STAGING_TARGET_RAW: ${{ secrets.SSH_TARGET_STAGING }}
         run: |
           set -euo pipefail
@@ -103,71 +178,107 @@ jobs:
               ;;
           esac
 
-      - name: Use production env
-        run: cp .env.production .env
-
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
-
-      - name: Build (Quasar PWA)
-        run: pnpm run build
-
-      - name: Verify deploy artifacts
-        run: node scripts/ci/verify-deploy-artifacts.mjs
-
-      - name: Write deploy marker
+      - name: Prepare target dir
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ steps.target.outputs.target }}
+          PORT: ${{ secrets.SSH_PORT }}
         run: |
-          BUILD_TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          {
-            echo "env=production"
-            echo "sha=${{ github.sha }}"
-            echo "ref=${{ github.ref_name }}"
-            echo "built_at=$BUILD_TS"
-            echo "run_id=${{ github.run_id }}"
-          } > dist/pwa/deploy.txt
-
-      - name: Add SSH key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      - name: Trust remote host
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+          set -euxo pipefail
+          ssh -p "${PORT:-22}" "$USER@$HOST" "T='$TARGET'; mkdir -p \"\$T.__incoming\" \"\$T.__backup\""
 
       - name: Snapshot nested staging directory
         if: steps.overlap.outputs.nested == 'true'
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ steps.target.outputs.target }}
+          PORT: ${{ secrets.SSH_PORT }}
+          STAGING_SUBPATH: ${{ steps.overlap.outputs.subpath }}
         run: |
           set -euxo pipefail
-          ssh -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "
+          ssh -p "${PORT:-22}" "$USER@$HOST" "
             set -e
-            T='${{ secrets.SSH_TARGET_PRODUCTION }}'
-            R='${{ steps.overlap.outputs.subpath }}'
+            T='$TARGET'
+            R='$STAGING_SUBPATH'
             SRC=\"\$T/\$R\"
-            PRESERVE=\"\$T.__staging_preserve\"
+            PRESERVE=\"\$T.__backup/staging-preserve\"
             test -d \"\$SRC\" || { echo 'ERROR: nested staging path missing before production deploy: '\"\$SRC\"; exit 1; }
             rm -rf \"\$PRESERVE\"
             cp -a \"\$SRC\" \"\$PRESERVE\"
             echo \"Preserved nested staging directory at \$SRC\"
           "
 
-      - name: Deploy (rsync)
+      - name: Upload to __incoming (rsync)
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ steps.target.outputs.target }}
+          PORT: ${{ secrets.SSH_PORT }}
         run: |
-          rsync -avz --delete \
-            -e "ssh -p ${{ secrets.SSH_PORT }}" \
+          set -euxo pipefail
+          rsync -az --delete \
+            -e "ssh -o StrictHostKeyChecking=yes -p ${PORT:-22}" \
             dist/pwa/ \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SSH_TARGET_PRODUCTION }}/"
+            "$USER@$HOST:$TARGET.__incoming/"
+
+      - name: Atomic swap
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ steps.target.outputs.target }}
+          PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euxo pipefail
+          ssh -p "${PORT:-22}" "$USER@$HOST" "
+            set -e
+            T='$TARGET'
+            if [ -d \"\$T\" ]; then
+              rm -rf \"\$T.__backup/prev\" || true
+              mv \"\$T\" \"\$T.__backup/prev\"
+            fi
+            test -d \"\$T.__incoming\" || { echo 'ERROR: missing '\"\$T.__incoming\"; exit 1; }
+            mv \"\$T.__incoming\" \"\$T\"
+            ls -lah \"\$T\" | sed -n '1,40p'
+          "
+
+      - name: Backfill previous hashed assets
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ steps.target.outputs.target }}
+          PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euxo pipefail
+          ssh -p "${PORT:-22}" "$USER@$HOST" "
+            set -e
+            T='$TARGET'
+            PREV_ASSETS=\"\$T.__backup/prev/assets\"
+            CUR_ASSETS=\"\$T/assets\"
+            if [ -d \"\$PREV_ASSETS\" ] && [ -d \"\$CUR_ASSETS\" ]; then
+              rsync -a --ignore-existing \"\$PREV_ASSETS/\" \"\$CUR_ASSETS/\"
+              echo \"Backfilled previous hashed assets from \$PREV_ASSETS\"
+            else
+              echo \"Skipping hashed-asset backfill (missing source or destination assets dir)\"
+            fi
+          "
 
       - name: Restore nested staging directory
         if: steps.overlap.outputs.nested == 'true'
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ steps.target.outputs.target }}
+          PORT: ${{ secrets.SSH_PORT }}
+          STAGING_SUBPATH: ${{ steps.overlap.outputs.subpath }}
         run: |
           set -euxo pipefail
-          ssh -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "
+          ssh -p "${PORT:-22}" "$USER@$HOST" "
             set -e
-            T='${{ secrets.SSH_TARGET_PRODUCTION }}'
-            R='${{ steps.overlap.outputs.subpath }}'
-            PRESERVE=\"\$T.__staging_preserve\"
+            T='$TARGET'
+            R='$STAGING_SUBPATH'
+            PRESERVE=\"\$T.__backup/staging-preserve\"
             DEST=\"\$T/\$R\"
             test -d \"\$PRESERVE\" || { echo 'ERROR: preserved staging snapshot missing: '\"\$PRESERVE\"; exit 1; }
             PARENT=\$(dirname \"\$DEST\")
@@ -179,13 +290,23 @@ jobs:
           "
 
       - name: Verify remote deploy artifacts
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          TARGET: ${{ steps.target.outputs.target }}
+          PORT: ${{ secrets.SSH_PORT }}
         run: |
-          ssh -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "set -e; test -f \"${{ secrets.SSH_TARGET_PRODUCTION }}/index.html\"; test -f \"${{ secrets.SSH_TARGET_PRODUCTION }}/find-creators.html\"; test -f \"${{ secrets.SSH_TARGET_PRODUCTION }}/featured-creators.json\"; test -f \"${{ secrets.SSH_TARGET_PRODUCTION }}/manifest.json\"; test -f \"${{ secrets.SSH_TARGET_PRODUCTION }}/vendor/nostr.bundle.1.17.0.js\"; test -f \"${{ secrets.SSH_TARGET_PRODUCTION }}/deploy.txt\""
+          set -euo pipefail
+          ssh -p "${PORT:-22}" "$USER@$HOST" "set -e; test -f \"$TARGET/index.html\"; test -f \"$TARGET/find-creators.html\"; test -f \"$TARGET/featured-creators.json\"; test -f \"$TARGET/manifest.json\"; test -f \"$TARGET/vendor/nostr.bundle.1.17.0.js\"; test -f \"$TARGET/deploy.txt\""
+
+      - name: Prepare production artifact directory
+        run: mkdir -p artifacts/production-smoke
 
       - name: Smoke test production
         env:
           BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
           SMOKE_EXPECT_ENV: production
+          SMOKE_TRACE_FILE: artifacts/production-smoke/smoke-tests.log
         run: |
           if [ -z "$BASE_URL" ]; then
             BASE_URL="https://fundstr.me"
@@ -197,4 +318,13 @@ jobs:
         env:
           BASE_URL: https://staging.fundstr.me
           SMOKE_EXPECT_ENV: staging
+          SMOKE_TRACE_FILE: artifacts/production-smoke/staging-smoke-tests.log
         run: ./scripts/smoke-tests.sh
+
+      - name: Upload production smoke artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/production-smoke
+          if-no-files-found: warn

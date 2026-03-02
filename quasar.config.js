@@ -124,5 +124,19 @@ export default configure((ctx) => ({
       dark: true
     },
     plugins: ['Notify', 'Dialog', 'LocalStorage']
+  },
+
+  pwa: {
+    extendGenerateSWOptions (opts) {
+      const extraDenylist = [
+        /\/(?:assets|icons|vendor)\//i,
+        /\/[^/?]+\.(?:css|js|mjs|json|txt|map|png|jpe?g|gif|svg|ico|webmanifest|wasm|woff2?|ttf|eot)(?:\?.*)?$/i,
+      ]
+
+      opts.navigateFallbackDenylist = [
+        ...(opts.navigateFallbackDenylist || []),
+        ...extraDenylist,
+      ]
+    }
   }
 }))

@@ -9,6 +9,7 @@ Scope: Prevent staging/prod cross-impact and keep deploy recovery deterministic.
 - `Develop2` deploys staging only.
 - Every successful deploy must publish a matching `/deploy.txt` marker and return `200` on core endpoints.
 - Do not rerun stale failed deploy runs after workflow changes; trigger a fresh run from current branch tip.
+- Branch-protection audit runs in solo mode (`BRANCH_PROTECTION_MIN_APPROVALS=0`); raise to `1`+ when a second maintainer can approve PRs.
 
 ## Hostinger Constraint
 
@@ -69,7 +70,8 @@ When `SSH_TARGET_STAGING` is nested under `SSH_TARGET_PRODUCTION`, production de
 2. Snapshots nested staging directory.
 3. Performs production atomic swap.
 4. Restores nested staging directory.
-5. Verifies production artifacts and smoke test.
+5. Backfills previous hashed asset files into the current `/assets` directory (ignore existing) to reduce stale-client chunk 404s during rollouts.
+6. Verifies production artifacts and smoke test.
 
 This prevents production deploy from wiping staging content.
 
@@ -97,6 +99,32 @@ rsync -av --delete --exclude 'staging/' "$BASE/public_html/" "$BASE/public_html/
 ```
 
 Then immediately trigger `deploy-staging` from `Develop2`.
+
+## Latest Verified Snapshot (2026-02-28)
+
+- Main release sync:
+  - PR `#1357` merged `release/main-rc-20260228` into `main` (`167e0d3c18a3f8cff1b7e4404973b5d7a7ce59f0`).
+  - PR `#1358` merged `chore/main-launch-evidence-20260228` into `main` (`fe1e86f6344f39f5aa34f8bbafcf2b7b7e6e0a74`).
+  - PR `#1359` merged rollback forward marker (`cb418e4e41ea592c586f4300d4b895f304d0cd01`).
+  - PR `#1360` merged rollback revert marker (`f8703ba55cbab5659a5db445e65e5f569c08b59f`).
+- Main quality checks:
+  - `build` run `22525142074` -> success.
+  - `Test` run `22525142077` -> success.
+- Production deployment:
+  - `Deploy production (main -> Hostinger)` run `22525142076` -> success.
+  - `/deploy.txt` on production reports `env=production` and `sha=f8703ba55cbab5659a5db445e65e5f569c08b59f`.
+- Staging parity post-production:
+  - `/deploy.txt` on staging remains `env=staging` and `sha=6c9e8dafa0140c575796d532839ca04da029afa2`.
+  - `/` and `/restore` return `200` on both production and staging.
+- Rollback rehearsal evidence (completed):
+  - Forward drill deploy run `22524907098` moved production marker to `sha=cb418e4e41ea592c586f4300d4b895f304d0cd01`.
+  - Rollback deploy run `22525142076` restored pre-drill content on production via revert commit.
+  - `build`/`Test` checks were green on both drill merges (`#1359`, `#1360`).
+- Manual script checks executed after rollback:
+  - `BASE_URL=https://fundstr.me SMOKE_EXPECT_ENV=production ./scripts/smoke-tests.sh` -> pass.
+  - `BASE_URL=https://staging.fundstr.me SMOKE_EXPECT_ENV=staging ./scripts/smoke-tests.sh` -> pass.
+- Remaining launch blocker:
+  - Branch-protection audit requires `BRANCH_PROTECTION_AUDIT_TOKEN` with admin rights (`verify-branch-protection` cannot be dispatched with limited PAT).
 
 ## Weekly Ops Check (5 Minutes)
 
