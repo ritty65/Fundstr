@@ -414,7 +414,7 @@
               <StepTemplate
                 class="studio-publish-step"
                 title="Review &amp; publish"
-                subtitle="Review readiness and publish to relay.nostr.band."
+                subtitle="Review readiness and publish to relay.fundstr.me."
               >
                 <template #toolbar>
                   <q-btn
@@ -824,7 +824,7 @@
                     :active-step="activeStep"
                   />
                   <q-banner class="preview-banner" dense>
-                    Publish pushes both events to relay.nostr.band. Copy JSON if your publisher requires manual input.
+                    Publish pushes both events to relay.fundstr.me. Copy JSON if your publisher requires manual input.
                   </q-banner>
                 </template>
               </q-tab-panel>
@@ -1077,8 +1077,8 @@ const CREATOR_STUDIO_HTTP_AUTH_HEADERS = NUTZAP_HTTP_AUTH_HEADER
   ? { [NUTZAP_HTTP_AUTH_HEADER.name]: NUTZAP_HTTP_AUTH_HEADER.value }
   : null;
 
-const CREATOR_STUDIO_RELAY_WS_URL = 'wss://relay.nostr.band';
-const CREATOR_STUDIO_RELAY_HTTP_URL = 'https://relay.nostr.band/req';
+const CREATOR_STUDIO_RELAY_WS_URL = 'wss://relay.fundstr.me';
+const CREATOR_STUDIO_RELAY_HTTP_URL = 'https://relay.fundstr.me/req';
 const PROXY_BASE_HTTP = (import.meta.env.VITE_PROXY_BASE_HTTP || '').trim();
 const IS_BROWSER = typeof window !== 'undefined';
 const CREATOR_STUDIO_HTTP_FALLBACK_URL = IS_BROWSER
@@ -1708,7 +1708,7 @@ const stepDefinitions: StepDefinition[] = [
   {
     name: 'publish',
     label: 'Review & publish',
-    description: 'Review readiness and publish to relay.nostr.band.',
+    description: 'Review readiness and publish to relay.fundstr.me.',
     sublabel: 'Publish review',
     helper: 'Resolve blockers, then publish updates.',
     readinessKeys: ['relay', 'authorKey', 'mint', 'p2pk', 'tiers', 'verification'],
@@ -5066,7 +5066,7 @@ function formatProfileSummary(outcome?: PublishStageOutcome) {
       : '';
   const summary = eventId
     ? `Profile published${fallbackNote} — id ${eventId}${relayMessage}`
-    : `Profile published${fallbackNote} to relay.nostr.band.${relayMessage}`;
+    : `Profile published${fallbackNote} to relay.fundstr.me.${relayMessage}`;
   return { summary, fallbackUsed: computeFallbackUsed(outcome) };
 }
 
