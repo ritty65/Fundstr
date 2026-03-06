@@ -68,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in 1 2 3; do
-            if pnpm install --frozen-lockfile=false; then
+            if pnpm install --frozen-lockfile; then
               exit 0
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -257,15 +257,18 @@ jobs:
             PREV_ASSETS=\"\$T.__backup/prev/assets\"
             CUR_ASSETS=\"\$T/assets\"
             if [ -d \"\$PREV_ASSETS\" ] && [ -d \"\$CUR_ASSETS\" ]; then
-              rsync -a --ignore-existing \"\$PREV_ASSETS/\" \"\$CUR_ASSETS/\"
-              echo \"Backfilled previous hashed assets from \$PREV_ASSETS\"
+              if rsync -a --ignore-existing \"\$PREV_ASSETS/\" \"\$CUR_ASSETS/\"; then
+                echo \"Backfilled previous hashed assets from \$PREV_ASSETS\"
+              else
+                echo \"::warning::Failed to backfill previous hashed assets from \$PREV_ASSETS\"
+              fi
             else
               echo \"Skipping hashed-asset backfill (missing source or destination assets dir)\"
             fi
           "
 
       - name: Restore nested staging directory
-        if: steps.overlap.outputs.nested == 'true'
+        if: ${{ always() && steps.overlap.outputs.nested == 'true' }}
         env:
           HOST: ${{ secrets.SSH_HOST }}
           USER: ${{ secrets.SSH_USER }}
@@ -280,7 +283,10 @@ jobs:
             R='$STAGING_SUBPATH'
             PRESERVE=\"\$T.__backup/staging-preserve\"
             DEST=\"\$T/\$R\"
-            test -d \"\$PRESERVE\" || { echo 'ERROR: preserved staging snapshot missing: '\"\$PRESERVE\"; exit 1; }
+            if [ ! -d \"\$PRESERVE\" ]; then
+              echo \"::warning::Preserved staging snapshot missing at \$PRESERVE; skipping restore.\"
+              exit 0
+            fi
             PARENT=\$(dirname \"\$DEST\")
             mkdir -p \"\$PARENT\"
             rm -rf \"\$DEST\"
