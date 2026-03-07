@@ -40,6 +40,32 @@ function resolveFindProfilesUrl(): string {
 
 const FIND_PROFILES_URL = resolveFindProfilesUrl();
 
+function shouldSkipCrossOriginDefaultPhonebook(url: string): boolean {
+  const locationOrigin =
+    typeof globalThis !== "undefined" &&
+    typeof (globalThis as { location?: { origin?: unknown } }).location
+      ?.origin === "string"
+      ? String(
+          (globalThis as { location?: { origin?: string } }).location?.origin,
+        ).trim()
+      : "";
+
+  if (!locationOrigin) {
+    return false;
+  }
+
+  try {
+    const endpoint = new URL(url, locationOrigin);
+    return (
+      endpoint.hostname === "fundstr.me" &&
+      endpoint.pathname === "/find_profiles.php" &&
+      endpoint.origin !== locationOrigin
+    );
+  } catch {
+    return false;
+  }
+}
+
 export interface PhonebookProfile {
   pubkey: string;
   name: string | null;
@@ -87,6 +113,19 @@ export async function findProfiles(
 
   if (!trimmedQuery) {
     return { query: "", results: [], count: 0 };
+  }
+
+  if (shouldSkipCrossOriginDefaultPhonebook(FIND_PROFILES_URL)) {
+    debug("[phonebook] skipping cross-origin default phonebook lookup", {
+      query: trimmedQuery,
+      endpoint: FIND_PROFILES_URL,
+    });
+    return {
+      query: trimmedQuery,
+      results: [],
+      count: 0,
+      warning: DISCOVERY_WARNING,
+    };
   }
 
   const endpoint = new URL(FIND_PROFILES_URL);
