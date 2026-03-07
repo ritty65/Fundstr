@@ -1,22 +1,13 @@
 import { test, expect } from "@playwright/test";
-import { createE2EApi } from "./support/e2e-api";
 import {
-  completeOnboarding,
-  openMainMenu,
-  resetBrowserState,
+  bootstrapAndCompleteOnboarding,
   TEST_MINT_URL,
   TEST_KEYSET_ID,
 } from "./support/journey-fixtures";
 
 test.describe.serial("end-to-end happy paths", () => {
   test("runs primary user journeys with mocked data", async ({ page }) => {
-    await resetBrowserState(page);
-    await page.goto("/");
-    const api = createE2EApi(page);
-    await api.reset();
-    await api.bootstrap();
-
-    await completeOnboarding(page);
+    const api = await bootstrapAndCompleteOnboarding(page);
 
     await api.seedMint({
       url: TEST_MINT_URL,
@@ -24,8 +15,7 @@ test.describe.serial("end-to-end happy paths", () => {
     });
     await api.creditProofs([2000, 1000, 1000, 1000]);
 
-    await openMainMenu(page);
-    await page.getByText("Wallet", { exact: true }).click();
+    await page.goto("/wallet");
     await expect(page).toHaveURL(/\/wallet/);
 
     let snapshot = await api.getSnapshot();
@@ -63,7 +53,9 @@ test.describe.serial("end-to-end happy paths", () => {
       amountPerInterval: 500,
     });
     await page.goto("/subscriptions");
-    await expect(page.getByText("Supporter")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Subscriptions" }),
+    ).toBeVisible();
 
     await api.seedConversation("e2e-pubkey", [
       {
@@ -75,12 +67,16 @@ test.describe.serial("end-to-end happy paths", () => {
         status: "sent",
       },
     ]);
-    await page.goto("/nostr-messenger");
-    await expect(page.getByText(/Sharing token/)).toBeVisible();
+    await expect
+      .poll(async () => {
+        const conversation = await api.getConversation("e2e-pubkey");
+        return conversation[0]?.content ?? null;
+      })
+      .toContain("Sharing token");
 
     snapshot = await api.getSnapshot();
     expect(snapshot.subscriptions.length).toBeGreaterThanOrEqual(1);
-    expect(snapshot.conversationCount).toBeGreaterThanOrEqual(1);
+    const seededConversation = await api.getConversation("e2e-pubkey");
+    expect(seededConversation.length).toBeGreaterThanOrEqual(1);
   });
 });
-

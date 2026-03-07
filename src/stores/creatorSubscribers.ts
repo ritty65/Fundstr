@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import type { Subscriber, Frequency } from "../types/subscriber";
+import type { Subscriber, Frequency, SubStatus } from "../types/subscriber";
 import { useNostrStore } from "./nostr";
 import { cashuDb } from "./dexie";
 import { liveQuery } from "dexie";
@@ -257,7 +257,9 @@ export const useCreatorSubscribersStore = defineStore("creatorSubscribers", {
       this.error = null;
 
       try {
-        const unique = Array.from(new Set(this.subscribers.map((s) => s.npub)));
+        const unique = Array.from(
+          new Set<string>(this.subscribers.map((s) => s.npub)),
+        );
         const uncached = unique.filter((npub) => !this.profileCache[npub]);
 
         if (!uncached.length) {
@@ -313,7 +315,9 @@ export const useCreatorSubscribersStore = defineStore("creatorSubscribers", {
         }
 
         const ndk = await useNdk({ requireSigner: false });
-        const authors = uncached.map((npub) => nostr.resolvePubkey(npub));
+        const authors = uncached
+          .map((npub) => nostr.resolvePubkey(npub))
+          .filter((pubkey): pubkey is string => typeof pubkey === "string");
         const events: Set<any> = await ndk.fetchEvents({ kinds: [0], authors });
         const found = new Set<string>();
 

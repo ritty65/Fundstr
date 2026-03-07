@@ -48,7 +48,12 @@ import {
   FREE_RELAYS,
   VETTED_OPEN_WRITE_RELAYS,
 } from "src/config/relays";
-import { publishToRelaysWithAcks, selectPublishRelays, PublishReport, RelayResult } from "src/nostr/publish";
+import {
+  publishToRelaysWithAcks,
+  selectPublishRelays,
+  PublishReport,
+  RelayResult,
+} from "src/nostr/publish";
 import { sanitizeRelayUrls } from "src/utils/relay";
 import { getNdk } from "src/boot/ndk";
 import { getTrustedTime } from "src/utils/time";
@@ -78,7 +83,10 @@ import { decryptDM, encryptDM } from "../nostr/crypto";
 import { useCreatorProfileStore } from "./creatorProfile";
 import { applyFundstrProfileBundle } from "src/utils/creatorProfileHydration";
 import { buildKind10019NutzapProfile } from "src/nostr/builders";
-import { NutzapProfileSchema, type NutzapProfilePayload } from "src/nostr/nutzapProfile";
+import {
+  NutzapProfileSchema,
+  type NutzapProfilePayload,
+} from "src/nostr/nutzapProfile";
 import {
   FUNDSTR_REQ_URL,
   FUNDSTR_WS_URL,
@@ -145,7 +153,11 @@ export async function ensureWriteConnectivity(
 
     for (const r of pool.relays.values()) {
       const normalized = normalizeWsUrls([r.url])[0];
-      if (r.status === 1 /* OPEN */ && normalized && !connected.includes(normalized)) {
+      if (
+        r.status === 1 /* OPEN */ &&
+        normalized &&
+        !connected.includes(normalized)
+      ) {
         connected.push(normalized);
       }
     }
@@ -265,6 +277,7 @@ export type NostrSignerErrorCode =
   | "enable-timeout"
   | "enable-denied"
   | "user-timeout"
+  | "pubkey-timeout"
   | "user-error"
   | "ready-timeout"
   | "capability-missing";
@@ -277,7 +290,11 @@ export class NostrSignerError extends Error {
   constructor(
     code: NostrSignerErrorCode,
     message: string,
-    options: { remediation?: string; details?: Record<string, unknown>; cause?: unknown } = {},
+    options: {
+      remediation?: string;
+      details?: Record<string, unknown>;
+      cause?: unknown;
+    } = {},
   ) {
     super(message);
     this.name = "NostrSignerError";
@@ -345,7 +362,8 @@ function getSubtleCrypto(): SubtleCrypto {
 }
 
 function pkcs7Pad(data: Uint8Array): Uint8Array {
-  const padLength = AES_BLOCK_SIZE - (data.length % AES_BLOCK_SIZE || AES_BLOCK_SIZE);
+  const padLength =
+    AES_BLOCK_SIZE - (data.length % AES_BLOCK_SIZE || AES_BLOCK_SIZE);
   const padded = new Uint8Array(data.length + padLength);
   padded.set(data);
   padded.fill(padLength, data.length);
@@ -383,7 +401,11 @@ async function aesCbcEncrypt(
     ["encrypt"],
   );
   const padded = pkcs7Pad(plaintext);
-  const ciphertext = await subtle.encrypt({ name: "AES-CBC", iv }, cryptoKey, padded);
+  const ciphertext = await subtle.encrypt(
+    { name: "AES-CBC", iv },
+    cryptoKey,
+    padded,
+  );
   return new Uint8Array(ciphertext);
 }
 
@@ -475,7 +497,6 @@ async function decryptNip04(
 
 // --- Nutzap helpers (NIP-61) ----------------------------------------------
 
-import type { NostrEvent } from "@nostr-dev-kit/ndk";
 import { queryNutzapProfile, toHex } from "@/nostr/relayClient";
 import { fallbackDiscoverRelays } from "@/nostr/discovery";
 import type { NostrEvent as RelayEvent } from "@/nostr/relayClient";
@@ -511,13 +532,14 @@ let nutzapProfileCacheHydrated = false;
 
 function getNutzapProfileCacheStorage(): Ref<PersistedNutzapProfileCache> {
   if (!nutzapProfileCacheStorage) {
-    nutzapProfileCacheStorage = safeUseLocalStorage<PersistedNutzapProfileCache>(
-      NUTZAP_PROFILE_CACHE_STORAGE_KEY,
-      {
-        version: NUTZAP_PROFILE_CACHE_VERSION,
-        entries: {},
-      },
-    );
+    nutzapProfileCacheStorage =
+      safeUseLocalStorage<PersistedNutzapProfileCache>(
+        NUTZAP_PROFILE_CACHE_STORAGE_KEY,
+        {
+          version: NUTZAP_PROFILE_CACHE_VERSION,
+          entries: {},
+        },
+      );
   }
   return nutzapProfileCacheStorage;
 }
@@ -565,7 +587,10 @@ function ensureNutzapProfileCacheHydrated() {
     retainedEntries[hex] = entry;
   }
 
-  if (Object.keys(retainedEntries).length !== Object.keys(storage.value.entries ?? {}).length) {
+  if (
+    Object.keys(retainedEntries).length !==
+    Object.keys(storage.value.entries ?? {}).length
+  ) {
     storage.value = {
       version: NUTZAP_PROFILE_CACHE_VERSION,
       entries: retainedEntries,
@@ -575,7 +600,10 @@ function ensureNutzapProfileCacheHydrated() {
   nutzapProfileCacheHydrated = true;
 }
 
-function persistNutzapProfileCacheEntry(hex: string, profile: NutzapProfile | null) {
+function persistNutzapProfileCacheEntry(
+  hex: string,
+  profile: NutzapProfile | null,
+) {
   ensureNutzapProfileCacheHydrated();
   const now = Date.now();
   const storage = getNutzapProfileCacheStorage();
@@ -647,7 +675,6 @@ function scheduleNutzapProfileRefresh(
   }
   return promise;
 }
-
 
 const CUSTOM_LINK_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
 
@@ -807,29 +834,31 @@ export async function publishRawToAny(
       }
     }, timeoutMs);
 
-    const pub = pool.publish(relays, raw as any);
+    const attempts = pool
+      .publish(relays, raw as any)
+      .map((attempt, index) => attempt.then(() => relays[index]));
 
-    pub.on("ok", (url: string) => {
-      if (!settled) {
-        settled = true;
-        clearTimeout(timer);
-        resolve({ okUrl: url });
-      }
-    });
-
-    const failures = new Set<string>();
-    pub.on("failed", (url: string, reason: string) => {
-      failures.add(`${url}: ${reason}`);
-      if (!settled && failures.size === relays.length) {
-        settled = true;
-        clearTimeout(timer);
-        reject(
-          new Error(
-            `All relays refused: ${Array.from(failures).join(", ")}`,
-          ),
+    Promise.any(attempts)
+      .then((okUrl) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve({ okUrl });
+        }
+      })
+      .catch(async () => {
+        const results = await Promise.allSettled(attempts);
+        const failures = results.map((result, index) =>
+          result.status === "rejected"
+            ? `${relays[index]}: ${String(result.reason)}`
+            : `${relays[index]}: unknown`,
         );
-      }
-    });
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          reject(new Error(`All relays refused: ${failures.join(", ")}`));
+        }
+      });
   });
 }
 
@@ -913,7 +942,7 @@ export async function publishWithAcks(
 ): Promise<Record<string, RelayAck>> {
   const pool = new SimplePool();
   const results: Record<string, RelayAck> = {};
-  const pub = pool.publish(relays, event as any);
+  const attempts = pool.publish(relays, event as any);
   return await new Promise((resolve) => {
     const timer = setTimeout(() => {
       for (const r of relays) {
@@ -929,16 +958,17 @@ export async function publishWithAcks(
       }
     };
 
-    pub.on("ok", (relay: any) => {
-      const url = relay.url || relay;
-      results[url] = { ok: true };
-      finish();
-    });
-
-    pub.on("failed", (relay: any, reason: any) => {
-      const url = relay.url || relay;
-      results[url] = { ok: false, reason: String(reason) };
-      finish();
+    attempts.forEach((attempt, index) => {
+      const url = relays[index];
+      attempt
+        .then(() => {
+          results[url] = { ok: true };
+          finish();
+        })
+        .catch((reason: unknown) => {
+          results[url] = { ok: false, reason: String(reason) };
+          finish();
+        });
     });
   });
 }
@@ -1144,7 +1174,9 @@ export async function publishNutzapProfile(opts: {
   await nostr.connect(opts.relays ?? nostr.relays);
 
   const compressedP2pk = ensureCompressed(opts.p2pkPub);
-  const relays = (opts.relays ?? []).filter((url) => typeof url === "string" && url.length);
+  const relays = (opts.relays ?? []).filter(
+    (url) => typeof url === "string" && url.length,
+  );
 
   const tags: string[][] = [
     ["t", "nutzap-profile"],
@@ -1428,8 +1460,12 @@ export enum SignerType {
 }
 
 function getPendingSignerType(): SignerType | null {
-  const pending = localStorage.getItem(PENDING_SIGNER_TYPE_KEY) as SignerType | null;
-  return Object.values(SignerType).includes(pending as SignerType) ? pending : null;
+  const pending = localStorage.getItem(
+    PENDING_SIGNER_TYPE_KEY,
+  ) as SignerType | null;
+  return Object.values(SignerType).includes(pending as SignerType)
+    ? pending
+    : null;
 }
 
 type InitSignerBehaviorOptions = {
@@ -1471,10 +1507,10 @@ export const useNostrStore = defineStore("nostr", {
     const fallbackIdentitySource = pendingPubkey
       ? "pending"
       : pendingSignerPubkey
-        ? "pending"
-        : fallbackPubkey
-          ? "unencrypted"
-          : null;
+      ? "pending"
+      : fallbackPubkey
+      ? "unencrypted"
+      : null;
 
     return {
       connected: false,
@@ -1526,7 +1562,7 @@ export const useNostrStore = defineStore("nostr", {
       connectedRelays: new Set<string>(),
       readOnlyMode: "default" as "default" | "fundstr-only",
       cachedNip07Relays: null as string[] | null,
-      pendingGetRelays: null as Promise<Record<string, any> | null> | null,
+      pendingGetRelays: null as Promise<string[] | null> | null,
       lastNip04EventTimestamp,
       lastNip17EventTimestamp,
       nip17EventIdsWeHaveSeen: useLocalStorage<NostrEventLog[]>(
@@ -1718,8 +1754,8 @@ export const useNostrStore = defineStore("nostr", {
           key === "cashu.ndk.pubkey"
             ? [PENDING_PUBKEY_KEY, PENDING_SIGNER_PUBLIC_KEY]
             : key === "cashu.ndk.signerType"
-              ? [PENDING_SIGNER_TYPE_KEY]
-              : [];
+            ? [PENDING_SIGNER_TYPE_KEY]
+            : [];
         await this.secureSetItem(key, value, { pendingKeys });
       }
 
@@ -1818,7 +1854,9 @@ export const useNostrStore = defineStore("nostr", {
       if (st) this.signerType = st as SignerType;
       const nip46 = await this.secureGetItem("cashu.ndk.nip46Token");
       if (nip46) this.nip46Token = nip46;
-      const pks = await this.secureGetItem("cashu.ndk.privateKeySignerPrivateKey");
+      const pks = await this.secureGetItem(
+        "cashu.ndk.privateKeySignerPrivateKey",
+      );
       if (pks) this.privateKeySignerPrivateKey = pks;
       const seedSk = await this.secureGetItem("cashu.ndk.seedSignerPrivateKey");
       if (seedSk) this.seedSignerPrivateKey = seedSk;
@@ -1836,8 +1874,8 @@ export const useNostrStore = defineStore("nostr", {
         fundstrOnly === true
           ? "fundstr-only"
           : fundstrOnly === false
-            ? "default"
-            : undefined;
+          ? "default"
+          : undefined;
       const desiredMode = requestedMode ?? this.readOnlyMode ?? "default";
       const modeChanged = this.readOnlyMode !== desiredMode;
       const ndk = await useNdk({
@@ -1936,7 +1974,8 @@ export const useNostrStore = defineStore("nostr", {
 
       const hasEnable = typeof ext?.enable === "function";
       const hasCoreMethods =
-        typeof ext?.getPublicKey === "function" && typeof ext?.signEvent === "function";
+        typeof ext?.getPublicKey === "function" &&
+        typeof ext?.signEvent === "function";
       const enablePromise = hasEnable ? ext.enable() : undefined;
 
       if (!hasEnable && !hasCoreMethods) {
@@ -1968,15 +2007,18 @@ export const useNostrStore = defineStore("nostr", {
 
       if (enablePromise) {
         try {
-          await withTimeout(enablePromise, enableTimeoutMs, () =>
-            new NostrSignerError(
-              "enable-timeout",
-              "Signer approval timed out.",
-              {
-                remediation:
-                  "Confirm the browser did not block the extension prompt and approve access.",
-              },
-            ),
+          await withTimeout(
+            enablePromise,
+            enableTimeoutMs,
+            () =>
+              new NostrSignerError(
+                "enable-timeout",
+                "Signer approval timed out.",
+                {
+                  remediation:
+                    "Confirm the browser did not block the extension prompt and approve access.",
+                },
+              ),
           );
         } catch (error) {
           if (error instanceof NostrSignerError) throw error;
@@ -1984,7 +2026,8 @@ export const useNostrStore = defineStore("nostr", {
             "enable-denied",
             "The signer request was denied or blocked.",
             {
-              remediation: "Approve the extension's access request to continue.",
+              remediation:
+                "Approve the extension's access request to continue.",
               cause: error,
             },
           );
@@ -1994,34 +2037,45 @@ export const useNostrStore = defineStore("nostr", {
       let user;
       if (hasEnable) {
         try {
-          user = await withTimeout(nip07.user(), userTimeoutMs, () =>
-            new NostrSignerError(
-              "user-timeout",
-              "Timed out waiting for the signer user.",
-              {
-                remediation: "Ensure the extension is unlocked and retry.",
-              },
-            ),
+          user = await withTimeout(
+            nip07.user(),
+            userTimeoutMs,
+            () =>
+              new NostrSignerError(
+                "user-timeout",
+                "Timed out waiting for the signer user.",
+                {
+                  remediation: "Ensure the extension is unlocked and retry.",
+                },
+              ),
           );
         } catch (error) {
           if (error instanceof NostrSignerError) throw error;
-          throw new NostrSignerError("user-error", "Failed to fetch signer user.", {
-            remediation: "Unlock your NIP-07 extension and try again.",
-            cause: error,
-          });
+          throw new NostrSignerError(
+            "user-error",
+            "Failed to fetch signer user.",
+            {
+              remediation: "Unlock your NIP-07 extension and try again.",
+              cause: error,
+            },
+          );
         }
       }
 
       try {
         const readyUser = hasEnable
-          ? await withTimeout(nip07.blockUntilReady(), readyTimeoutMs, () =>
-              new NostrSignerError(
-                "ready-timeout",
-                "Signer initialization timed out.",
-                {
-                  remediation: "Keep the extension unlocked and retry the connection.",
-                },
-              ),
+          ? await withTimeout(
+              nip07.blockUntilReady(),
+              readyTimeoutMs,
+              () =>
+                new NostrSignerError(
+                  "ready-timeout",
+                  "Signer initialization timed out.",
+                  {
+                    remediation:
+                      "Keep the extension unlocked and retry the connection.",
+                  },
+                ),
             )
           : null;
 
@@ -2055,7 +2109,11 @@ export const useNostrStore = defineStore("nostr", {
             "Signer missing NIP-44 support; continuing with NIP-04 only.",
             "Some newer DM features may be limited until NIP-44 is enabled.",
           );
-          updateSignerCaps({ ...caps, nip44Encrypt: false, nip44Decrypt: false });
+          updateSignerCaps({
+            ...caps,
+            nip44Encrypt: false,
+            nip44Decrypt: false,
+          });
         }
 
         let resolvedUser = readyUser ?? user;
@@ -2080,7 +2138,10 @@ export const useNostrStore = defineStore("nostr", {
         }
 
         if (!resolvedUser?.pubkey) {
-          throw new NostrSignerError("user-error", "Signer did not return a pubkey.");
+          throw new NostrSignerError(
+            "user-error",
+            "Signer did not return a pubkey.",
+          );
         }
 
         this.signer = nip07;
@@ -2093,9 +2154,13 @@ export const useNostrStore = defineStore("nostr", {
         }
       } catch (error) {
         if (error instanceof NostrSignerError) throw error;
-        throw new NostrSignerError("user-error", "Failed to finalize signer connection.", {
-          cause: error,
-        });
+        throw new NostrSignerError(
+          "user-error",
+          "Failed to finalize signer connection.",
+          {
+            cause: error,
+          },
+        );
       }
     },
     connect: async function (relays?: string[]) {
@@ -2114,12 +2179,16 @@ export const useNostrStore = defineStore("nostr", {
       if (isUsingDefaultRelays(targetRelays)) {
         targetRelays = await resolveHealthyDefaultRelays();
       }
-      if (relays || this.relays.length === 0 || isUsingDefaultRelays(this.relays)) {
+      if (
+        relays ||
+        this.relays.length === 0 ||
+        isUsingDefaultRelays(this.relays)
+      ) {
         this.relays = targetRelays as any;
       }
 
       // 2. build a *new* NDK whose pool contains only those relays
-      const ndk = await rebuildNdk(this.relays, this.signer, true);
+      const ndk = await rebuildNdk(this.relays, this.signer);
       ndk.explicitRelayUrls = this.relays;
 
       // 3. connect every relay with a 6-second guard, but do not await ndk.connect() again
@@ -2224,7 +2293,9 @@ export const useNostrStore = defineStore("nostr", {
         }
       }
     },
-    initSignerIfNotSet: async function (options: InitSignerBehaviorOptions = {}) {
+    initSignerIfNotSet: async function (
+      options: InitSignerBehaviorOptions = {},
+    ) {
       try {
         await this.loadKeysFromStorage();
         this.lastError = null;
@@ -2444,7 +2515,11 @@ export const useNostrStore = defineStore("nostr", {
       const maxDelayMs = 4000;
       const flag = localStorage.getItem("nip07.enabled");
 
-      const withTimeout = async <T>(promise: Promise<T> | undefined, ms: number, msg: string) => {
+      const withTimeout = async <T>(
+        promise: Promise<T> | undefined,
+        ms: number,
+        msg: string,
+      ) => {
         if (!promise) throw new Error("NIP-07 extension unavailable");
         return Promise.race([
           promise,
@@ -2455,7 +2530,8 @@ export const useNostrStore = defineStore("nostr", {
       };
 
       const runCheck = async () => {
-        if (this.nip07Checked && this.nip07SignerAvailable && !force) return true;
+        if (this.nip07Checked && this.nip07SignerAvailable && !force)
+          return true;
 
         const startedAt = Date.now();
         let delayMs = baseDelayMs;
@@ -2468,7 +2544,8 @@ export const useNostrStore = defineStore("nostr", {
           const nostrAvailable = Boolean(nostr);
           const hasEnable = typeof nostr?.enable === "function";
           const hasCoreMethods =
-            typeof nostr?.getPublicKey === "function" && typeof nostr?.signEvent === "function";
+            typeof nostr?.getPublicKey === "function" &&
+            typeof nostr?.signEvent === "function";
 
           if (!nostrAvailable) {
             this.nip07SignerAvailable = false;
@@ -2481,7 +2558,8 @@ export const useNostrStore = defineStore("nostr", {
             this.nip07SignerAvailable = false;
             this.nip07Checked = false;
             this.nip07RetryAttempts = attempts;
-            this.nip07LastError = "NIP-07 extension missing enable() and core methods";
+            this.nip07LastError =
+              "NIP-07 extension missing enable() and core methods";
             lastFailureCause = "core-methods-missing";
             this.nip07LastFailureCause = lastFailureCause;
             break;
@@ -2490,14 +2568,22 @@ export const useNostrStore = defineStore("nostr", {
               attempts += 1;
               this.nip07RetryAttempts = attempts;
               if (hasEnable && (!flag || force || !this.nip07SignerAvailable)) {
-                await withTimeout(nostr.enable(), enableTimeoutMs, "NIP-07 enable timed out");
+                await withTimeout(
+                  nostr.enable(),
+                  enableTimeoutMs,
+                  "NIP-07 enable timed out",
+                );
               }
               if (!nip07Signer) {
                 nip07Signer = new NDKNip07Signer();
               }
               const signer = nip07Signer;
               if (hasEnable) {
-                await withTimeout(signer.user(), userTimeoutMs, "NIP-07 user() timed out");
+                await withTimeout(
+                  signer.user(),
+                  userTimeoutMs,
+                  "NIP-07 user() timed out",
+                );
               } else if (hasCoreMethods) {
                 await withTimeout(
                   Promise.resolve(nostr.getPublicKey()),
@@ -2521,7 +2607,11 @@ export const useNostrStore = defineStore("nostr", {
               this.nip07Checked = false;
               this.nip07RetryAttempts = attempts;
               this.nip07LastError =
-                e instanceof Error ? e.message : typeof e === "string" ? e : "Unknown NIP-07 error";
+                e instanceof Error
+                  ? e.message
+                  : typeof e === "string"
+                  ? e
+                  : "Unknown NIP-07 error";
 
               if (this.nip07LastError?.includes("enable")) {
                 lastFailureCause = "enable-failed";
@@ -2539,13 +2629,17 @@ export const useNostrStore = defineStore("nostr", {
           }
 
           const hitRetryLimit =
-            attempts >= maxRetries && lastFailureCause !== "extension-missing" && !force;
+            attempts >= maxRetries &&
+            lastFailureCause !== "extension-missing" &&
+            !force;
           if (hitRetryLimit) break;
 
           const remainingMs = globalTimeoutMs - (Date.now() - startedAt);
           if (remainingMs <= 0) break;
 
-          await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, remainingMs)));
+          await new Promise((resolve) =>
+            setTimeout(resolve, Math.min(delayMs, remainingMs)),
+          );
           delayMs = Math.min(delayMs * 2, maxDelayMs);
         }
 
@@ -2598,12 +2692,33 @@ export const useNostrStore = defineStore("nostr", {
             urls = this.cachedNip07Relays;
           } else {
             if (!this.pendingGetRelays) {
-              this.pendingGetRelays = signer.getRelays?.() || Promise.resolve(null);
+              const signerGetRelays = (signer as any)?.getRelays;
+              if (typeof signerGetRelays === "function") {
+                this.pendingGetRelays = Promise.resolve(
+                  signerGetRelays.call(signer),
+                ).then((relayMap: Record<string, unknown> | null | undefined) =>
+                  sanitizeRelayUrls(Object.keys(relayMap ?? {})),
+                );
+              } else {
+                this.pendingGetRelays =
+                  typeof (window as any)?.nostr?.getRelays === "function"
+                    ? (window as any).nostr
+                        .getRelays()
+                        .then(
+                          (
+                            relayMap:
+                              | Record<string, unknown>
+                              | null
+                              | undefined,
+                          ) => sanitizeRelayUrls(Object.keys(relayMap ?? {})),
+                        )
+                    : Promise.resolve(null);
+              }
             }
             const relays = await this.pendingGetRelays;
             this.pendingGetRelays = null;
             if (relays) {
-              urls = sanitizeRelayUrls(Object.keys(relays));
+              urls = relays;
               if (urls.length) this.cachedNip07Relays = urls;
             }
           }
@@ -2683,11 +2798,16 @@ export const useNostrStore = defineStore("nostr", {
         if (relays) this.relays = relays as any;
         const nip07Available = await this.checkNip07Signer(true);
 
-        if ((preferNip07 || this.signerType === SignerType.NIP07) && nip07Available) {
+        if (
+          (preferNip07 || this.signerType === SignerType.NIP07) &&
+          nip07Available
+        ) {
           await this.initNip07Signer();
         } else {
           if (!nsec) {
-            throw new Error("A private key is required to update your Nostr identity.");
+            throw new Error(
+              "A private key is required to update your Nostr identity.",
+            );
           }
           await this.initPrivateKeySigner(nsec);
         }
@@ -2934,7 +3054,9 @@ export const useNostrStore = defineStore("nostr", {
       message: string,
     ): Promise<string> {
       const key =
-        typeof privKey === "string" || privKey instanceof Uint8Array ? privKey : undefined;
+        typeof privKey === "string" || privKey instanceof Uint8Array
+          ? privKey
+          : undefined;
       const { content } = await encryptDM(recipient, message, key);
       return content;
     },
@@ -2946,7 +3068,7 @@ export const useNostrStore = defineStore("nostr", {
     ): Promise<string> {
       const plaintext = await decryptDM(sender, content, privKey);
       if (plaintext == null) {
-        throw new Error('Unable to decrypt message');
+        throw new Error("Unable to decrypt message");
       }
       return plaintext;
     },
@@ -3029,7 +3151,6 @@ export const useNostrStore = defineStore("nostr", {
     },
     sendNip04DirectMessage: async function (...args: any[]) {
       // legacy alias
-      // @ts-expect-error -- dynamic invocation
       return await (this as any).sendDirectMessageUnified(...args);
     },
     ensureDmListeners: function (options: DmSubscriptionOptions = {}) {
@@ -3120,7 +3241,9 @@ export const useNostrStore = defineStore("nostr", {
               this.parseMessageForEcash(content, event.pubkey);
               try {
                 const chatStore = useDmChatsStore();
-                chatStore.addIncoming(new NDKEvent(undefined, event.rawEvent()));
+                chatStore.addIncoming(
+                  new NDKEvent(undefined, event.rawEvent()),
+                );
               } catch {}
             },
           );
@@ -3166,7 +3289,7 @@ export const useNostrStore = defineStore("nostr", {
         );
         const raw = await ev.toNostrEvent();
         this.lastNip04EventTimestamp = Math.floor(Date.now() / 1000);
-        cb(raw, decrypted);
+        cb(raw as any, decrypted);
       });
     },
     sendNip17DirectMessageToNprofile: async function (
@@ -3204,22 +3327,25 @@ export const useNostrStore = defineStore("nostr", {
       // 2. Create the Seal (the encrypted wrapper for the rumor)
       const seal = new NDKEvent(await useNdk());
       seal.kind = 13 as NDKKind;
-      seal.content = await rumor.encrypt(await this.signer.user());
+      await rumor.encrypt(await this.signer.user());
+      seal.content = rumor.content;
       await seal.sign(this.signer);
 
       // 3. Create the Gift Wrap
       const giftWrap = new NDKEvent(await useNdk());
       giftWrap.kind = 1059 as NDKKind;
       giftWrap.tags = [["p", recipient]];
-      giftWrap.content = await seal.toJson();
+      giftWrap.content = JSON.stringify(await seal.toNostrEvent());
 
       // Sign with an ephemeral key for anonymity
-      const ephemeralSigner = new NDKPrivateKeySigner();
+      const ephemeralSigner = NDKPrivateKeySigner.generate();
       await giftWrap.sign(ephemeralSigner);
 
       // 4. Publish the Gift Wrap
-      const ndk = await useNdk();
-      const published = await ndk.publish(giftWrap, new Set(relays));
+      const relaySet = await urlsToRelaySet(relays);
+      const published = relaySet
+        ? await giftWrap.publish(relaySet)
+        : await giftWrap.publish();
 
       return { success: published.size > 0, event: giftWrap };
     },
@@ -3229,11 +3355,7 @@ export const useNostrStore = defineStore("nostr", {
       const user = ndk.getUser({ pubkey });
       try {
         await user.fetchProfile();
-        await user.fetchRelayList();
-        const relayList = user.relayList;
-        if (relayList) {
-          return Array.from(relayList.readRelayUrls);
-        }
+        return sanitizeRelayUrls(user.relayUrls ?? []);
       } catch {}
       return [];
     },
@@ -3244,7 +3366,7 @@ export const useNostrStore = defineStore("nostr", {
       event.kind = 10002 as NDKKind;
       event.tags = relays.map((r) => ["r", r]);
       await event.sign(this.signer);
-      await ndk.publish(event);
+      await event.publish();
     },
     subscribeToNip17DirectMessages: async function (
       options: DmSubscriptionOptions = {},

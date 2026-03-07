@@ -1,5 +1,9 @@
-import { SimplePool, type Event as NostrEvent, type Filter as NostrFilter } from 'nostr-tools';
-import { sanitizeRelayUrls } from 'src/utils/relay';
+import {
+  SimplePool,
+  type Event as NostrEvent,
+  type Filter as NostrFilter,
+} from "nostr-tools";
+import { sanitizeRelayUrls } from "src/utils/relay";
 
 type PointerLike = {
   relays?: unknown;
@@ -10,9 +14,16 @@ type Closeable = {
   close(reason?: string): Promise<void> | void;
 };
 
-type PoolFactory = () => Pick<SimplePool, 'subscribeMany' | 'destroy'>;
+type PoolLike = Pick<SimplePool, "subscribeMany"> & {
+  close?: (relays: string[]) => void;
+};
 
-type WebSocketCtor = new (url: string, protocols?: string | string[]) => WebSocket;
+type PoolFactory = () => PoolLike;
+
+type WebSocketCtor = new (
+  url: string,
+  protocols?: string | string[],
+) => WebSocket;
 
 type ManualSocketFactory = () => WebSocketCtor | undefined;
 
@@ -23,7 +34,7 @@ export type MultiRelaySearchOptions = {
   timeoutMs?: number;
   signal?: AbortSignal;
   onEvent?: (event: NostrEvent, relay?: string) => void;
-  forceMode?: 'pool' | 'manual';
+  forceMode?: "pool" | "manual";
   poolFactory?: PoolFactory;
   websocketFactory?: ManualSocketFactory;
   additionalRelays?: string[];
@@ -36,25 +47,25 @@ export type MultiRelaySearchResult = {
 };
 
 const DEFAULT_TIMEOUT_MS = 7000;
-const SUBSCRIPTION_PREFIX = 'multi-relay';
+const SUBSCRIPTION_PREFIX = "multi-relay";
 
 const DEFAULT_WS_CLOSING_STATE = 2;
 const DEFAULT_WS_CLOSED_STATE = 3;
 
 function isPromiseLike<T = unknown>(value: unknown): value is Promise<T> {
-  return !!value && typeof (value as Promise<T>).then === 'function';
+  return !!value && typeof (value as Promise<T>).then === "function";
 }
 
 function isClosingState(state: number | undefined): boolean {
-  if (typeof state !== 'number') {
+  if (typeof state !== "number") {
     return false;
   }
   const closingState =
-    typeof WebSocket !== 'undefined' && typeof WebSocket.CLOSING === 'number'
+    typeof WebSocket !== "undefined" && typeof WebSocket.CLOSING === "number"
       ? WebSocket.CLOSING
       : DEFAULT_WS_CLOSING_STATE;
   const closedState =
-    typeof WebSocket !== 'undefined' && typeof WebSocket.CLOSED === 'number'
+    typeof WebSocket !== "undefined" && typeof WebSocket.CLOSED === "number"
       ? WebSocket.CLOSED
       : DEFAULT_WS_CLOSED_STATE;
   return state >= closingState && state <= closedState;
@@ -67,31 +78,34 @@ function isIgnorableCloseError(err: unknown): boolean {
   const message =
     err instanceof Error
       ? err.message
-      : typeof err === 'string'
-        ? err
-        : undefined;
+      : typeof err === "string"
+      ? err
+      : undefined;
   if (!message) {
     return false;
   }
   return /CLOSING|CLOSED/i.test(message);
 }
 
-function safelyCloseCloser(closer: Closeable | undefined, reason: string): void {
-  if (!closer || typeof closer.close !== 'function') {
+function safelyCloseCloser(
+  closer: Closeable | undefined,
+  reason: string,
+): void {
+  if (!closer || typeof closer.close !== "function") {
     return;
   }
   try {
     const result = closer.close(reason);
     if (isPromiseLike(result)) {
-      result.catch(err => {
+      result.catch((err) => {
         if (!isIgnorableCloseError(err)) {
-          console.warn('Failed to close pool subscription', err);
+          console.warn("Failed to close pool subscription", err);
         }
       });
     }
   } catch (err) {
     if (!isIgnorableCloseError(err)) {
-      console.warn('Failed to close pool subscription', err);
+      console.warn("Failed to close pool subscription", err);
     }
   }
 }
@@ -102,11 +116,11 @@ function shouldCloseSocket(socket: WebSocket): boolean {
 }
 
 function normalizeRelay(url: string): string {
-  return url.trim().replace(/\s+/g, '').replace(/\/+$/, '').toLowerCase();
+  return url.trim().replace(/\s+/g, "").replace(/\/+$/, "").toLowerCase();
 }
 
 function collectPointerRelays(pointer: unknown): string[] {
-  if (!pointer || typeof pointer !== 'object') {
+  if (!pointer || typeof pointer !== "object") {
     return [];
   }
 
@@ -116,7 +130,7 @@ function collectPointerRelays(pointer: unknown): string[] {
   }
 
   const nested = (pointer as PointerLike).data;
-  if (nested && typeof nested === 'object') {
+  if (nested && typeof nested === "object") {
     return collectPointerRelays(nested);
   }
 
@@ -150,25 +164,27 @@ function sortEvents(events: NostrEvent[]): NostrEvent[] {
 }
 
 function isSimplePoolAvailable(): boolean {
-  return typeof SimplePool === 'function';
+  return typeof SimplePool === "function";
 }
 
 async function searchWithPool(
-  options: Required<Pick<MultiRelaySearchOptions, 'filters' | 'timeoutMs' | 'onEvent'>> & {
+  options: Required<
+    Pick<MultiRelaySearchOptions, "filters" | "timeoutMs" | "onEvent">
+  > & {
     relays: string[];
     signal?: AbortSignal;
     poolFactory?: PoolFactory;
   },
 ): Promise<MultiRelaySearchResult> {
   const { filters, relays, timeoutMs, signal, onEvent, poolFactory } = options;
-  const pool = poolFactory ? poolFactory() : new SimplePool();
+  const pool: PoolLike = poolFactory ? poolFactory() : new SimplePool();
   let closer: Closeable | undefined;
 
   try {
     const seen = new Map<string, NostrEvent>();
     const ordered: NostrEvent[] = [];
 
-    return await new Promise<MultiRelaySearchResult>(resolve => {
+    return await new Promise<MultiRelaySearchResult>((resolve) => {
       let resolved = false;
       let timedOut = false;
       const finalize = (timeoutTriggered: boolean) => {
@@ -178,8 +194,8 @@ async function searchWithPool(
         resolved = true;
         timedOut = timeoutTriggered;
         clearTimeout(timer);
-        signal?.removeEventListener('abort', onAbort);
-        safelyCloseCloser(closer, 'completed');
+        signal?.removeEventListener("abort", onAbort);
+        safelyCloseCloser(closer, "completed");
         resolve({ events: sortEvents(ordered), usedRelays: relays, timedOut });
       };
 
@@ -191,15 +207,15 @@ async function searchWithPool(
           finalize(false);
           return;
         }
-        signal.addEventListener('abort', onAbort, { once: true });
+        signal.addEventListener("abort", onAbort, { once: true });
       }
 
       try {
         closer = pool.subscribeMany(relays, filters, {
           maxWait: timeoutMs,
-          alreadyHaveEvent: id => seen.has(id),
+          alreadyHaveEvent: (id) => seen.has(id),
           onevent: (event: NostrEvent, relay?: string) => {
-            if (!event || typeof event.id !== 'string') {
+            if (!event || typeof event.id !== "string") {
               return;
             }
             if (seen.has(event.id)) {
@@ -218,27 +234,31 @@ async function searchWithPool(
       }
     });
   } finally {
-    if (typeof pool.destroy === 'function') {
-      pool.destroy();
+    if (typeof pool.close === "function") {
+      pool.close(relays);
     }
   }
 }
 
 async function searchWithManual(
-  options: Required<Pick<MultiRelaySearchOptions, 'filters' | 'timeoutMs' | 'onEvent'>> & {
+  options: Required<
+    Pick<MultiRelaySearchOptions, "filters" | "timeoutMs" | "onEvent">
+  > & {
     relays: string[];
     signal?: AbortSignal;
     websocketFactory?: ManualSocketFactory;
   },
 ): Promise<MultiRelaySearchResult> {
-  const { filters, relays, timeoutMs, signal, onEvent, websocketFactory } = options;
+  const { filters, relays, timeoutMs, signal, onEvent, websocketFactory } =
+    options;
   const resolveCtor: ManualSocketFactory = websocketFactory
     ? websocketFactory
     : () => {
         const ctor =
-          typeof WebSocket !== 'undefined'
+          typeof WebSocket !== "undefined"
             ? WebSocket
-            : (globalThis as unknown as { WebSocket?: WebSocketCtor }).WebSocket;
+            : (globalThis as unknown as { WebSocket?: WebSocketCtor })
+                .WebSocket;
         return ctor as WebSocketCtor | undefined;
       };
 
@@ -252,7 +272,7 @@ async function searchWithManual(
   const eoseRelays = new Set<string>();
   const subId = createSubId();
 
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     let resolved = false;
     let timedOut = false;
 
@@ -263,7 +283,7 @@ async function searchWithManual(
       resolved = true;
       timedOut = timeoutTriggered;
       clearTimeout(timer);
-      signal?.removeEventListener('abort', onAbort);
+      signal?.removeEventListener("abort", onAbort);
       for (const socket of sockets) {
         if (!shouldCloseSocket(socket)) {
           continue;
@@ -272,7 +292,7 @@ async function searchWithManual(
           socket.close();
         } catch (err) {
           if (!isIgnorableCloseError(err)) {
-            console.warn('Failed to close relay socket', err);
+            console.warn("Failed to close relay socket", err);
           }
         }
       }
@@ -287,10 +307,10 @@ async function searchWithManual(
         finalize(false);
         return;
       }
-      signal.addEventListener('abort', onAbort, { once: true });
+      signal.addEventListener("abort", onAbort, { once: true });
     }
 
-    const payload = JSON.stringify(['REQ', subId, ...filters]);
+    const payload = JSON.stringify(["REQ", subId, ...filters]);
 
     for (const relay of relays) {
       let socket: WebSocket | undefined;
@@ -301,7 +321,7 @@ async function searchWithManual(
       try {
         socket = new Impl(relay);
       } catch (err) {
-        console.warn('Failed to create WebSocket for relay', relay, err);
+        console.warn("Failed to create WebSocket for relay", relay, err);
         continue;
       }
       if (!socket) {
@@ -314,7 +334,7 @@ async function searchWithManual(
         try {
           socket?.send(payload);
         } catch (err) {
-          console.warn('Failed to send REQ to relay', relayUrl, err);
+          console.warn("Failed to send REQ to relay", relayUrl, err);
         }
       };
 
@@ -332,21 +352,21 @@ async function searchWithManual(
         }
       };
 
-      socket.onmessage = evt => {
+      socket.onmessage = (evt) => {
         let parsed: unknown;
         try {
           parsed = JSON.parse(String((evt as MessageEvent).data));
         } catch (err) {
-          console.warn('Failed to parse relay message', err);
+          console.warn("Failed to parse relay message", err);
           return;
         }
         if (!Array.isArray(parsed)) {
           return;
         }
         const [type, ...rest] = parsed as [string, ...any[]];
-        if (type === 'EVENT') {
+        if (type === "EVENT") {
           const [id, event] = rest;
-          if (id !== subId || !event || typeof event.id !== 'string') {
+          if (id !== subId || !event || typeof event.id !== "string") {
             return;
           }
           if (seen.has(event.id)) {
@@ -355,7 +375,7 @@ async function searchWithManual(
           seen.set(event.id, event);
           ordered.push(event);
           onEvent(event, relayUrl);
-        } else if (type === 'EOSE') {
+        } else if (type === "EOSE") {
           const [id] = rest;
           if (id === subId) {
             eoseRelays.add(relayUrl);
@@ -373,7 +393,9 @@ async function searchWithManual(
   });
 }
 
-export async function multiRelaySearch(options: MultiRelaySearchOptions): Promise<MultiRelaySearchResult> {
+export async function multiRelaySearch(
+  options: MultiRelaySearchOptions,
+): Promise<MultiRelaySearchResult> {
   const {
     filters,
     relays,
@@ -393,16 +415,26 @@ export async function multiRelaySearch(options: MultiRelaySearchOptions): Promis
     return { events: [], usedRelays: mergedRelays, timedOut: false };
   }
 
-  const poolAllowed = forceMode !== 'manual' && isSimplePoolAvailable();
+  const poolAllowed = forceMode !== "manual" && isSimplePoolAvailable();
 
   if (poolAllowed) {
     try {
-      return await searchWithPool({ filters, relays: mergedRelays, timeoutMs, signal, onEvent, poolFactory });
+      return await searchWithPool({
+        filters,
+        relays: mergedRelays,
+        timeoutMs,
+        signal,
+        onEvent,
+        poolFactory,
+      });
     } catch (err) {
-      if (forceMode === 'pool') {
+      if (forceMode === "pool") {
         throw err;
       }
-      console.warn('SimplePool search failed, falling back to manual sockets', err);
+      console.warn(
+        "SimplePool search failed, falling back to manual sockets",
+        err,
+      );
     }
   }
 
@@ -417,4 +449,3 @@ export async function multiRelaySearch(options: MultiRelaySearchOptions): Promis
 }
 
 export type { NostrEvent, NostrFilter };
-

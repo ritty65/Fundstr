@@ -11,7 +11,9 @@ import {
 } from "./support/journey-fixtures";
 
 test.describe("subscription happy path", () => {
-  test("supporter subscriptions appear in dashboard after successful checkout", async ({ page }) => {
+  test("supporter subscriptions appear in dashboard after successful checkout", async ({
+    page,
+  }) => {
     await installDeterministicRelayMocks(page);
 
     const api = await bootstrapAndCompleteOnboarding(page);
@@ -50,12 +52,13 @@ test.describe("subscription happy path", () => {
     });
 
     await page.goto("/subscriptions");
-    await expect(page.getByRole("heading", { name: /My Subscriptions/i })).toBeVisible();
-    await expect(page.getByText(/Supporter/i)).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /^Subscriptions$/i }),
+    ).toBeVisible();
+    await expect(page.getByText(/^Supporter$/).first()).toBeVisible();
 
     const snapshot = await api.getSnapshot();
     expect(snapshot.balance).toBeGreaterThan(0);
     expect(snapshot.subscriptions.length).toBeGreaterThanOrEqual(1);
   });
 });
-
