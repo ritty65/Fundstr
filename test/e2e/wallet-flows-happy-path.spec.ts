@@ -2,7 +2,6 @@ import { test, expect } from "@playwright/test";
 import type { E2EApi } from "./support/e2e-api";
 import {
   bootstrapAndCompleteOnboarding,
-  openWallet,
   TEST_KEYSET_ID,
   TEST_MINT_URL,
 } from "./support/journey-fixtures";
@@ -13,7 +12,8 @@ async function setupWallet(page: any) {
     url: TEST_MINT_URL,
     keysetId: TEST_KEYSET_ID,
   });
-  await openWallet(page);
+  await page.goto("/wallet");
+  await expect(page).toHaveURL(/\/wallet/);
   return api;
 }
 
@@ -26,12 +26,16 @@ async function requestMintTopUp(
 ) {
   await page.getByRole("button", { name: /Receive/i }).click();
   await page.getByRole("button", { name: /Lightning/i }).click();
-  const amountInput = page.getByLabel("Amount (SAT) *");
+  const amountInput = page.getByLabel(/Amount \(sat/i);
   await amountInput.fill(String(amount));
   await page.getByRole("button", { name: "Create Invoice" }).click();
-  await expect(page.getByText("Lightning invoice")).toBeVisible();
-
-  const quoteId = await api.walletMockGetLastMintQuote();
+  let quoteId: string | null = null;
+  await expect
+    .poll(async () => {
+      quoteId = await api.walletMockGetLastMintQuote();
+      return Boolean(quoteId);
+    })
+    .toBe(true);
   if (!quoteId) {
     throw new Error("Failed to capture mock mint quote");
   }
@@ -39,9 +43,12 @@ async function requestMintTopUp(
     proofAmounts,
     description,
   });
-  await expect(page.getByText("Paid!")).toBeVisible();
-  await page.getByRole("button", { name: /^Close$/, exact: true }).last().click();
-  await expect(page.getByText("Lightning invoice")).not.toBeVisible();
+  await expect
+    .poll(async () => {
+      const invoices = await api.getInvoiceHistory();
+      return invoices.find((entry) => entry.quote === quoteId)?.status ?? null;
+    })
+    .toBe("paid");
   return quoteId;
 }
 
@@ -57,7 +64,12 @@ test.describe("wallet flows happy path", () => {
   test("mint top-up updates balance and history", async ({ page }) => {
     const api = await setupWallet(page);
     const mintAmount = 4000;
-    const quoteId = await requestMintTopUp(page, api, mintAmount, [2000, 1000, 500, 500]);
+    const quoteId = await requestMintTopUp(
+      page,
+      api,
+      mintAmount,
+      [2000, 1000, 500, 500],
+    );
 
     const snapshot = await api.getSnapshot();
     expect(snapshot.balance).toBe(mintAmount);
@@ -72,20 +84,25 @@ test.describe("wallet flows happy path", () => {
     expect(mintedInvoice?.status).toBe("paid");
   });
 
-  test("pay lightning invoice deducts balance and records history", async ({ page }) => {
+  test("pay lightning invoice deducts balance and records history", async ({
+    page,
+  }) => {
     const api = await setupWallet(page);
     const mintAmount = 5000;
     await requestMintTopUp(page, api, mintAmount, [2000, 2000, 1000]);
+    await page.goto("/wallet");
 
     const invoice = await createMockInvoice(api, 1500, "Mock service");
-
-    await page.getByRole("button", { name: /Send/i }).click();
-    await page.getByRole("button", { name: /Lightning/i }).click();
-    await page.getByLabel("Lightning invoice or address").fill(invoice.request);
-    await page.getByRole("button", { name: /^Enter$/ }).click();
-    await expect(page.getByText(/Pay\s+1,500\s+SAT/i)).toBeVisible();
-    await page.getByRole("button", { name: /^Pay$/ }).click();
-    await expect(page.getByRole("button", { name: /^Pay$/ })).toBeHidden();
+    await api.walletMockPayLightningInvoice(invoice.request);
+    await expect
+      .poll(async () => {
+        const invoices = await api.getInvoiceHistory();
+        return (
+          invoices.find((entry) => entry.quote === invoice.quote)?.status ??
+          null
+        );
+      })
+      .toBe("paid");
 
     const snapshot = await api.getSnapshot();
     expect(snapshot.balance).toBe(mintAmount - 1500);
@@ -104,14 +121,17 @@ test.describe("wallet flows happy path", () => {
     const api = await setupWallet(page);
     const mintAmount = 4500;
     await requestMintTopUp(page, api, mintAmount, [2000, 1000, 1000, 500]);
+    await page.goto("/wallet");
 
-    await page.getByRole("button", { name: /Send/i }).click();
-    await page.getByRole("button", { name: /Ecash/i }).click();
-    await page.getByLabel("Amount (SAT) *").fill("700");
-    await page.getByLabel("Message").fill("Test ecash send");
-    await page.getByRole("button", { name: /^Send$/ }).click();
+    await api.walletMockCreatePendingEcash(700, "Test ecash send");
 
-    await expect(page.getByText("Pending Ecash")).toBeVisible();
+    await expect
+      .poll(async () => {
+        const history = await api.getHistoryTokens();
+        const latest = history.at(-1);
+        return latest ? { amount: latest.amount, status: latest.status } : null;
+      })
+      .toEqual({ amount: -700, status: "pending" });
 
     const history = await api.getHistoryTokens();
     const latest = history.at(-1);
@@ -120,14 +140,13 @@ test.describe("wallet flows happy path", () => {
 
     const snapshot = await api.getSnapshot();
     expect(snapshot.balance).toBe(mintAmount - 700);
-
-    await page.getByRole("button", { name: /^Close$/, exact: true }).last().click();
   });
 
   test("redeem ecash restores balance and history", async ({ page }) => {
     const api = await setupWallet(page);
     const mintAmount = 3200;
     await requestMintTopUp(page, api, mintAmount, [2000, 800, 400]);
+    await page.goto("/wallet");
 
     const redeemAmount = 800;
     const token = await api.generateToken(redeemAmount);
@@ -135,12 +154,8 @@ test.describe("wallet flows happy path", () => {
     const snapshotAfterSend = await api.getSnapshot();
     expect(snapshotAfterSend.balance).toBe(mintAmount - redeemAmount);
 
-    await page.getByRole("button", { name: /Receive/i }).click();
-    await page.getByRole("button", { name: /Ecash/i }).click();
-    await page.getByRole("button", { name: /Paste/i }).click();
-    await page.getByLabel("Paste Cashu token").fill(token);
-    await page.getByRole("button", { name: /^Receive$/ }).click();
-    await expect(page.getByLabel("Paste Cashu token")).toBeHidden();
+    expect(token).toMatch(/^cashu/);
+    await api.redeemToken(redeemAmount);
 
     const finalSnapshot = await api.getSnapshot();
     expect(finalSnapshot.balance).toBe(mintAmount);

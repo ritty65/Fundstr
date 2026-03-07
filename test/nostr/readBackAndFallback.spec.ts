@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { verifyReadBack } from '../../src/nostr/readBack';
+import { verifyReadBack } from "../../src/nostr/readBack";
 import {
   __testing as fallbackTesting,
   getFreeRelayFallbackStatus,
@@ -10,9 +10,9 @@ import {
   onFreeRelayFallbackStatusChange,
   recordFallbackAttempt,
   resetFallbackState,
-} from '../../src/nostr/freeRelayFallback';
+} from "../../src/nostr/freeRelayFallback";
 
-describe('verifyReadBack', () => {
+describe("verifyReadBack", () => {
   function createHarness() {
     const sub = {
       on: vi.fn(),
@@ -34,48 +34,48 @@ describe('verifyReadBack', () => {
       .map(([, cb]) => cb as () => void);
   }
 
-  it('resolves true when an event is received before timeout', async () => {
+  it("resolves true when an event is received before timeout", async () => {
     const { sub, relay, ndk } = createHarness();
 
     const promise = verifyReadBack({
       ndk: ndk as any,
-      relayUrl: 'wss://relay.example',
-      authorHex: 'a'.repeat(64),
+      relayUrl: "wss://relay.example",
+      authorHex: "a".repeat(64),
       kind: 30019,
-      dTag: 'tiers',
+      dTag: "tiers",
       timeoutMs: 500,
     });
 
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(ndk.pool.getRelay).toHaveBeenCalledWith('wss://relay.example', true);
-    const eventHandlers = getHandlers(sub, 'event');
+    expect(ndk.pool.getRelay).toHaveBeenCalledWith("wss://relay.example", true);
+    const eventHandlers = getHandlers(sub, "event");
     expect(eventHandlers.length).toBeGreaterThan(0);
     eventHandlers.forEach((handler) => handler());
 
     await expect(promise).resolves.toBe(true);
     expect(sub.stop).toHaveBeenCalled();
     expect(ndk.subscribe).toHaveBeenCalledWith(
-      { kinds: [30019], authors: ['a'.repeat(64)], limit: 1, '#d': ['tiers'] },
-      { closeOnEose: true, relays: [relay] },
+      { kinds: [30019], authors: ["a".repeat(64)], limit: 1, "#d": ["tiers"] },
+      { closeOnEose: true, relayUrls: ["wss://relay.example"] },
     );
   });
 
-  it('resolves false on EOSE and clears timers', async () => {
+  it("resolves false on EOSE and clears timers", async () => {
     const { sub, ndk } = createHarness();
 
     const promise = verifyReadBack({
       ndk: ndk as any,
-      relayUrl: 'wss://relay.example',
-      authorHex: 'b'.repeat(64),
+      relayUrl: "wss://relay.example",
+      authorHex: "b".repeat(64),
       kind: 30000,
     });
 
     await Promise.resolve();
     await Promise.resolve();
 
-    const eoseHandlers = getHandlers(sub, 'eose');
+    const eoseHandlers = getHandlers(sub, "eose");
     expect(eoseHandlers.length).toBeGreaterThan(0);
     eoseHandlers.forEach((handler) => handler());
 
@@ -83,14 +83,14 @@ describe('verifyReadBack', () => {
     expect(sub.stop).toHaveBeenCalled();
   });
 
-  it('times out when no events are received', async () => {
+  it("times out when no events are received", async () => {
     vi.useFakeTimers();
     const { sub, ndk } = createHarness();
 
     const promise = verifyReadBack({
       ndk: ndk as any,
-      relayUrl: 'wss://timeout.example',
-      authorHex: 'c'.repeat(64),
+      relayUrl: "wss://timeout.example",
+      authorHex: "c".repeat(64),
       kind: 1,
       timeoutMs: 250,
     });
@@ -106,7 +106,7 @@ describe('verifyReadBack', () => {
   });
 });
 
-describe('free relay fallback telemetry', () => {
+describe("free relay fallback telemetry", () => {
   const ndk: any = {};
 
   beforeEach(() => {
@@ -119,9 +119,9 @@ describe('free relay fallback telemetry', () => {
     vi.useRealTimers();
   });
 
-  it('tracks attempts, unreachable status, and listener notifications', () => {
+  it("tracks attempts, unreachable status, and listener notifications", () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2024-01-01T00:00:00Z'));
+    vi.setSystemTime(new Date("2024-01-01T00:00:00Z"));
     const updates: any[] = [];
     const off = onFreeRelayFallbackStatusChange((status) => {
       updates.push(status);
@@ -141,9 +141,9 @@ describe('free relay fallback telemetry', () => {
       unreachable: false,
     });
 
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    markFallbackUnreachable(ndk, 'bootstrap', new Error('boom'));
-    markFallbackUnreachable(ndk, 'bootstrap');
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    markFallbackUnreachable(ndk, "bootstrap", new Error("boom"));
+    markFallbackUnreachable(ndk, "bootstrap");
 
     expect(isFallbackUnreachable(ndk)).toBe(true);
     expect(getFreeRelayFallbackStatus()).toEqual({

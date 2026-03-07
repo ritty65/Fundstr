@@ -24,45 +24,16 @@ export async function publishWithAcks(opts: {
       const start = Date.now();
       try {
         const relay = opts.ndk.pool.getRelay(url, true);
-        await relay.connect({ timeoutMs }).catch(() => {});
-        const pub = relay.publish(opts.event);
-        const ack = await new Promise<RelayAck>((resolve) => {
-          let done = false;
-          const to = setTimeout(() => {
-            if (!done) {
-              done = true;
-              resolve({
-                url,
-                ok: false,
-                elapsedMs: Date.now() - start,
-              });
-            }
-          }, timeoutMs);
-          pub.on("ok", (id?: string) => {
-            if (!done) {
-              done = true;
-              clearTimeout(to);
-              resolve({
-                url,
-                ok: true,
-                id,
-                elapsedMs: Date.now() - start,
-              });
-            }
-          });
-          pub.on("failed", (reason: string) => {
-            if (!done) {
-              done = true;
-              clearTimeout(to);
-              resolve({
-                url,
-                ok: false,
-                error: reason,
-                elapsedMs: Date.now() - start,
-              });
-            }
-          });
-        });
+        await relay.connect(timeoutMs).catch(() => {});
+        const ok = await relay
+          .publish(opts.event, timeoutMs)
+          .catch(() => false);
+        const ack: RelayAck = {
+          url,
+          ok,
+          id: ok ? opts.event.id : undefined,
+          elapsedMs: Date.now() - start,
+        };
         acks.push(ack);
         if (ack.ok && !firstOkUrl) firstOkUrl = url;
       } catch (e: any) {

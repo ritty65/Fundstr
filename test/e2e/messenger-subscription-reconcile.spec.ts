@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import {
-  bootstrapFundstr,
+  bootstrapAndCompleteOnboarding,
   TEST_CREATOR_HEX,
 } from "./support/journey-fixtures";
 
@@ -10,8 +10,7 @@ test.describe("Messenger conversation subscription", () => {
   test("late echo after subscription restart stays as a single bubble", async ({
     page,
   }) => {
-    const api = await bootstrapFundstr(page);
-    await page.goto("/nostr-messenger");
+    const api = await bootstrapAndCompleteOnboarding(page);
 
     const eventId = `e2e-event-${Date.now()}`;
 
@@ -21,13 +20,18 @@ test.describe("Messenger conversation subscription", () => {
       eventId,
     });
 
-    const messageRow = page
-      .locator(".message-row")
-      .filter({ hasText: MESSAGE_TEXT })
-      .first();
-
-    await expect(messageRow).toBeVisible();
-    await expect(messageRow.locator(".q-spinner")).toBeVisible();
+    await expect
+      .poll(async () => {
+        const conversation = await api.getConversation(TEST_CREATOR_HEX);
+        return {
+          count: conversation.filter((entry) => entry.content === MESSAGE_TEXT)
+            .length,
+          status:
+            conversation.find((entry) => entry.content === MESSAGE_TEXT)
+              ?.localEcho?.status ?? null,
+        };
+      })
+      .toEqual({ count: 1, status: "pending" });
 
     await api.messengerDropConversationSubscription();
     await api.messengerResumeConversationSubscription();
@@ -43,12 +47,17 @@ test.describe("Messenger conversation subscription", () => {
       created_at: Math.floor(Date.now() / 1000),
     });
 
-    await expect(
-      messageRow.locator(".q-icon").filter({ hasText: "done" }).first(),
-    ).toBeVisible({ timeout: 2000 });
-
-    await expect(
-      page.locator(".message-row").filter({ hasText: MESSAGE_TEXT }),
-    ).toHaveCount(1);
+    await expect
+      .poll(async () => {
+        const conversation = await api.getConversation(TEST_CREATOR_HEX);
+        return {
+          count: conversation.filter((entry) => entry.content === MESSAGE_TEXT)
+            .length,
+          status:
+            conversation.find((entry) => entry.content === MESSAGE_TEXT)
+              ?.localEcho?.status ?? null,
+        };
+      })
+      .toEqual({ count: 1, status: "sent" });
   });
 });

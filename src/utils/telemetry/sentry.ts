@@ -15,11 +15,15 @@ function doNotTrackEnabled(): boolean {
     return false;
   }
 
-  const dntValues = [navigator.doNotTrack, (window as any)?.doNotTrack, (navigator as any)?.msDoNotTrack].filter(
-    (value): value is string => typeof value === "string",
-  );
+  const dntValues = [
+    navigator.doNotTrack,
+    (window as any)?.doNotTrack,
+    (navigator as any)?.msDoNotTrack,
+  ].filter((value): value is string => typeof value === "string");
 
-  return dntValues.some((value) => value === "1" || value.toLowerCase() === "yes");
+  return dntValues.some(
+    (value) => value === "1" || value.toLowerCase() === "yes",
+  );
 }
 
 function getTelemetrySessionId(): string | null {
@@ -33,7 +37,10 @@ function getTelemetrySessionId(): string | null {
   }
 
   let generated: string;
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     generated = crypto.randomUUID();
   } else {
     generated = Math.random().toString(36).slice(2);
@@ -86,34 +93,36 @@ export function initSentry(app: App, router: Router) {
     import.meta.env.VITE_COMMIT_SHA ??
     import.meta.env.VITE_APP_VERSION ??
     undefined;
-  const environment = import.meta.env.VITE_SENTRY_ENVIRONMENT ?? import.meta.env.MODE;
-  const traceSample = Number(import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? 0);
+  const environment =
+    import.meta.env.VITE_SENTRY_ENVIRONMENT ?? import.meta.env.MODE;
+  const traceSample = Number(
+    import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? 0,
+  );
 
-    Sentry.init({
-      app,
-      dsn,
-      release,
-      environment,
-      sendDefaultPii: false,
-      integrations: [
-        Sentry.browserTracingIntegration({
-          router,
-          tracePropagationTargets: [/^https?:\/\//, /^\//],
-        }),
-      ],
-      tracesSampleRate: Number.isFinite(traceSample) ? traceSample : 0,
-      beforeSend(event) {
-        if (doNotTrackEnabled() || telemetryDisabled) {
-          return null;
-        }
+  Sentry.init({
+    app,
+    dsn,
+    release,
+    environment,
+    sendDefaultPii: false,
+    integrations: [
+      Sentry.browserTracingIntegration({
+        router,
+      }),
+    ],
+    tracesSampleRate: Number.isFinite(traceSample) ? traceSample : 0,
+    beforeSend(event) {
+      if (doNotTrackEnabled() || telemetryDisabled) {
+        return null;
+      }
 
-        if (event.user) {
-          event.user.ip_address = undefined;
-        }
+      if (event.user) {
+        event.user.ip_address = undefined;
+      }
 
-        return event;
-      },
-    });
+      return event;
+    },
+  });
 
   const sessionId = getTelemetrySessionId();
   if (sessionId) {
@@ -149,7 +158,10 @@ export function addTelemetryBreadcrumb(
   });
 }
 
-export function captureTelemetryWarning(message: string, context?: Record<string, unknown>) {
+export function captureTelemetryWarning(
+  message: string,
+  context?: Record<string, unknown>,
+) {
   if (!sentryReady) {
     return;
   }

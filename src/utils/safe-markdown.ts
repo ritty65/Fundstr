@@ -10,8 +10,8 @@ const CONFIG: Config = {
 
 export function renderMarkdownSafe(markdown: string): string {
   if (!markdown) return "";
-  const rendered = marked.parse(markdown, { mangle: false, headerIds: false });
-  return DOMPurify.sanitize(rendered, CONFIG);
+  const rendered = marked.parse(markdown);
+  return DOMPurify.sanitize(String(rendered), CONFIG);
 }
 
 export function sanitizeHtml(html: string): string {

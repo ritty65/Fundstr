@@ -1,10 +1,5 @@
 import { createApp, markRaw } from "vue";
-import {
-  Dialog,
-  LocalStorage,
-  Notify,
-  Quasar,
-} from "quasar";
+import { Dialog, LocalStorage, Notify, Quasar } from "quasar";
 
 import App from "./App.vue";
 import registerIcons from "./icons";
@@ -137,6 +132,10 @@ async function bootstrap() {
   await router.isReady();
 
   app.mount("#q-app");
+
+  if (import.meta.env.VITE_E2E && typeof window !== "undefined") {
+    window.__FUNDSTR_E2E_READY__ = true;
+  }
 }
 
 bootstrap().catch((error) => {

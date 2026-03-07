@@ -8,6 +8,7 @@ import { useProofsStore } from "src/stores/proofs";
 import { useUiStore } from "src/stores/ui";
 import { useSettingsStore } from "src/stores/settings";
 import { useCreatorProfileStore } from "src/stores/creatorProfile";
+import { generateP2pkKeyPair, useP2PKStore } from "src/stores/p2pk";
 /* eslint-disable @typescript-eslint/no-this-alias */
 import { useSubscriptionsStore } from "src/stores/subscriptions";
 import { useMessengerStore } from "src/stores/messenger";
@@ -22,11 +23,13 @@ import { MintQuoteState, MeltQuoteState } from "@cashu/cashu-ts";
 import { currentDateStr } from "src/js/utils";
 import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
 import type { Event as NostrEvent } from "nostr-tools";
+import { markWelcomeSeen, resetWelcome } from "src/composables/useWelcomeGate";
 import { useNostrStore } from "src/stores/nostr";
 
 declare global {
   interface Window {
     __FUNDSTR_E2E__?: Record<string, any>;
+    __FUNDSTR_E2E_READY__?: boolean;
   }
 }
 
@@ -61,12 +64,59 @@ type LightningInvoiceMock = {
   state: (typeof MeltQuoteState)[keyof typeof MeltQuoteState];
 };
 
+function createMockProof(amount: number, keysetId: string, tag: string): Proof {
+  const timestamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    amount,
+    id: keysetId,
+    secret: `e2e-${tag}-secret-${timestamp}`,
+    C: `e2e-${tag}-C-${timestamp}`,
+  };
+}
+
+function selectProofsForAmount(
+  proofs: WalletProof[],
+  targetAmount: number,
+): { selected: WalletProof[]; total: number } {
+  const sorted = [...proofs].sort((left, right) => right.amount - left.amount);
+  const selected: WalletProof[] = [];
+  let total = 0;
+
+  for (const proof of sorted) {
+    if (total >= targetAmount) {
+      break;
+    }
+    selected.push(proof);
+    total += proof.amount;
+  }
+
+  if (total < targetAmount) {
+    throw new Error(`Unable to cover mock amount ${targetAmount}`);
+  }
+
+  return { selected, total };
+}
+
 class WalletMockController {
-  private readonly wallet = useWalletStore();
-  private readonly proofsStore = useProofsStore();
-  private readonly tokensStore = useTokensStore();
-  private readonly invoiceHistoryStore = useInvoiceHistoryStore();
-  private readonly mintsStore = useMintsStore();
+  private get wallet() {
+    return useWalletStore();
+  }
+
+  private get proofsStore() {
+    return useProofsStore();
+  }
+
+  private get tokensStore() {
+    return useTokensStore();
+  }
+
+  private get invoiceHistoryStore() {
+    return useInvoiceHistoryStore();
+  }
+
+  private get mintsStore() {
+    return useMintsStore();
+  }
 
   private creditProofsHandler: CreditProofsHandler | null = null;
   private installed = false;
@@ -77,23 +127,33 @@ class WalletMockController {
   private lightningInvoices = new Map<string, LightningInvoiceMock>();
   private invoicesByRequest = new Map<string, LightningInvoiceMock>();
 
-  private readonly originalRequestMint = this.wallet.requestMint.bind(this.wallet);
-  private readonly originalDecodeRequest = this.wallet.decodeRequest.bind(this.wallet);
-  private readonly originalMeltQuoteInvoiceData = this.wallet.meltQuoteInvoiceData.bind(
-    this.wallet,
-  );
-  private readonly originalMelt = this.wallet.melt.bind(this.wallet);
+  private originalRequestMint: any = null;
+  private originalDecodeRequest: any = null;
+  private originalMeltQuoteInvoiceData: any = null;
+  private originalMelt: any = null;
 
   install() {
     if (this.installed) {
       return;
     }
 
+    const wallet = this.wallet;
     const controller = this;
 
-    this.wallet.requestMint = async function (amount: number, mintWallet: any) {
+    this.originalRequestMint = wallet.requestMint.bind(wallet);
+    this.originalDecodeRequest = wallet.decodeRequest.bind(wallet);
+    this.originalMeltQuoteInvoiceData =
+      wallet.meltQuoteInvoiceData.bind(wallet);
+    this.originalMelt = wallet.melt.bind(wallet);
+
+    wallet.requestMint = async function (
+      this: any,
+      amount: number,
+      mintWallet: any,
+    ) {
       const unit = mintWallet.unit ?? controller.mintsStore.activeUnit ?? "sat";
-      const mintUrl = mintWallet.mint?.mintUrl ?? controller.mintsStore.activeMintUrl;
+      const mintUrl =
+        mintWallet.mint?.mintUrl ?? controller.mintsStore.activeMintUrl;
       const quoteId = `mock-quote-${controller.mintCounter++}`;
       const response: MintQuoteMock = {
         id: quoteId,
@@ -127,9 +187,9 @@ class WalletMockController {
       });
 
       return this.invoiceData.mintQuote;
-    };
+    } as any;
 
-    this.wallet.decodeRequest = async function (req: string) {
+    wallet.decodeRequest = async function (req: string) {
       const trimmed = req.trim();
       const invoice = controller.invoicesByRequest.get(trimmed);
       if (!invoice) {
@@ -164,7 +224,7 @@ class WalletMockController {
       this.payInvoiceData.show = true;
     };
 
-    this.wallet.meltQuoteInvoiceData = async function () {
+    wallet.meltQuoteInvoiceData = async function () {
       const request = this.payInvoiceData.input.request;
       const invoice = controller.invoicesByRequest.get(request);
       if (!invoice) {
@@ -185,8 +245,13 @@ class WalletMockController {
       return response;
     };
 
-    this.wallet.melt = async function (proofs: WalletProof[], quote: any, mintWallet: any) {
-      const invoice = controller.mintQuotes.get(quote.quote) ||
+    wallet.melt = async function (
+      proofs: WalletProof[],
+      quote: any,
+      mintWallet: any,
+    ) {
+      const invoice =
+        controller.mintQuotes.get(quote.quote) ||
         controller.lightningInvoices.get(quote.quote);
       const lightning = controller.lightningInvoices.get(quote.quote);
       if (!lightning) {
@@ -201,20 +266,29 @@ class WalletMockController {
 
       const bucketId = proofs[0]?.bucketId ?? DEFAULT_BUCKET_ID;
       const amountNeeded = quote.amount + quote.fee_reserve;
-      let remaining = amountNeeded;
-      const toSpend: Proof[] = [];
-      for (const proof of proofs) {
-        if (remaining <= 0) {
-          break;
-        }
-        toSpend.push(proof);
-        remaining -= proof.amount;
-      }
-      if (remaining > 0) {
-        throw new Error("insufficient proofs for mock melt");
-      }
+      const { selected, total } = selectProofsForAmount(proofs, amountNeeded);
+      const toSpend: Proof[] = selected;
+      const changeAmount = total - amountNeeded;
 
       await controller.proofsStore.removeProofs(toSpend, bucketId);
+      const keysetId =
+        controller.mintsStore.activeKeysets[0]?.id ||
+        controller.mintsStore.mints[0]?.keysets?.[0]?.id;
+      const changeProofs =
+        changeAmount > 0 && keysetId
+          ? [createMockProof(changeAmount, keysetId, "melt-change")]
+          : [];
+      if (changeProofs.length) {
+        await controller.proofsStore.addProofs(
+          changeProofs,
+          undefined,
+          bucketId,
+          "",
+        );
+        controller.proofsStore.proofs =
+          await controller.proofsStore.getProofs();
+        await controller.proofsStore.updateActiveProofs();
+      }
 
       const serialized = controller.proofsStore.serializeProofs(toSpend);
       controller.tokensStore.addPaidToken({
@@ -222,7 +296,7 @@ class WalletMockController {
         token: serialized,
         mint: mintWallet.mint?.mintUrl ?? controller.mintsStore.activeMintUrl,
         unit: mintWallet.unit ?? controller.mintsStore.activeUnit,
-        description: this.payInvoiceData.invoice?.description ?? "",
+        description: this.payInvoiceData.invoice?.memo ?? "",
         bucketId,
       });
 
@@ -247,7 +321,7 @@ class WalletMockController {
           ...quote,
           state: MeltQuoteState.PAID,
         },
-        change: [],
+        change: changeProofs,
       } as any;
     };
 
@@ -309,7 +383,9 @@ class WalletMockController {
       mint: quote.mintUrl,
       unit: quote.unit,
       description: options?.description ?? invoice?.memo ?? "",
-      bucketId: invoice?.bucketId ?? DEFAULT_BUCKET_ID,
+      bucketId:
+        (invoice as { bucketId?: string } | undefined)?.bucketId ??
+        DEFAULT_BUCKET_ID,
     });
   }
 
@@ -343,13 +419,13 @@ class WalletMockController {
   }
 }
 
-const walletMock = new WalletMockController();
-walletMock.install();
-
 export default boot(() => {
   if (!import.meta.env.VITE_E2E) {
     return;
   }
+
+  const walletMock = new WalletMockController();
+  walletMock.install();
 
   const ui = useUiStore();
   const settings = useSettingsStore();
@@ -359,10 +435,21 @@ export default boot(() => {
   ui.globalMutexLock = false;
 
   const messenger = useMessengerStore();
-  const originalExecuteSendWithMeta = messenger.executeSendWithMeta.bind(messenger);
+  const getConversationMap = () => {
+    const raw = (messenger as any).conversations;
+    return raw && typeof raw === "object" && "value" in raw ? raw.value : raw;
+  };
+  const getCurrentConversation = () => {
+    const raw = (messenger as any).currentConversation;
+    return raw && typeof raw === "object" && "value" in raw ? raw.value : raw;
+  };
+  const originalExecuteSendWithMeta =
+    messenger.executeSendWithMeta.bind(messenger);
   type ExecuteOptions = Parameters<typeof messenger.executeSendWithMeta>[0];
   type ExecuteResult = Awaited<ReturnType<typeof originalExecuteSendWithMeta>>;
-  let messengerSendMock: null | ((options: ExecuteOptions) => Promise<ExecuteResult>) = null;
+  let messengerSendMock:
+    | null
+    | ((options: ExecuteOptions) => Promise<ExecuteResult>) = null;
 
   messenger.executeSendWithMeta = async function (
     options: ExecuteOptions,
@@ -377,6 +464,7 @@ export default boot(() => {
     async reset() {
       localStorage.clear();
       sessionStorage.clear();
+      resetWelcome();
       await deleteIndexedDb("cashuDatabase");
       const welcome = useWelcomeStore();
       welcome.$reset?.();
@@ -393,6 +481,11 @@ export default boot(() => {
         buckets: false,
       };
       welcome.welcomeCompleted = false;
+      const p2pkStore = useP2PKStore();
+      p2pkStore.p2pkKeys = [];
+      p2pkStore.verificationRecords = {};
+      const wallet = useWalletStore();
+      wallet.setActiveP2pk("", "");
       const mints = useMintsStore();
       mints.mints = [];
       mints.activeMintUrl = "";
@@ -421,6 +514,21 @@ export default boot(() => {
         await mnemonic.initializeMnemonic();
       }
       ui.mainNavOpen = false;
+    },
+    async finishWelcome() {
+      const mnemonic = useMnemonicStore();
+      if (!mnemonic.mnemonic) {
+        await mnemonic.initializeMnemonic();
+      }
+
+      const welcome = useWelcomeStore();
+      welcome.seedPhraseValidated = true;
+      welcome.walletRestored = true;
+      welcome.termsAccepted = true;
+      welcome.nostrSetupCompleted = true;
+      welcome.closeWelcome();
+      markWelcomeSeen();
+      await nextTick();
     },
     async seedMint(config: {
       url: string;
@@ -476,6 +584,9 @@ export default boot(() => {
           nuts: {
             4: { methods: [], disabled: false },
             5: { methods: [], disabled: false },
+            10: { supported: true },
+            11: { supported: true },
+            14: { supported: true },
           },
         },
       } as any;
@@ -500,6 +611,7 @@ export default boot(() => {
         C: `e2e-C-${Date.now()}-${index}`,
       }));
       await proofsStore.addProofs(proofs);
+      proofsStore.proofs = await proofsStore.getProofs();
       await proofsStore.updateActiveProofs();
     },
     async debitProofs(amounts: number[]) {
@@ -516,22 +628,85 @@ export default boot(() => {
       }
       if (toRemove.length) {
         await proofsStore.removeProofs(toRemove);
+        proofsStore.proofs = await proofsStore.getProofs();
         await proofsStore.updateActiveProofs();
       }
     },
     async generateToken(amount: number) {
-      await api.debitProofs([amount]);
-      const token = `cashu:e2e-token-${amount}-${Date.now()}`;
+      const proofsStore = useProofsStore();
+      const mints = useMintsStore();
+      const proofs = await proofsStore.getProofs();
+      const { selected, total } = selectProofsForAmount(proofs, amount);
+      await proofsStore.removeProofs(selected);
+      const keysetId =
+        mints.activeKeysets[0]?.id || mints.mints[0]?.keysets?.[0]?.id;
+      if (!keysetId) {
+        throw new Error("No keyset available for mock token generation");
+      }
+      const changeAmount = total - amount;
+      if (changeAmount > 0) {
+        await proofsStore.addProofs([
+          createMockProof(changeAmount, keysetId, "token-change"),
+        ]);
+      }
+      proofsStore.proofs = await proofsStore.getProofs();
+      await proofsStore.updateActiveProofs();
+      const token = proofsStore.serializeProofs([
+        createMockProof(amount, keysetId, "token-send"),
+      ]);
       localStorage.setItem("e2e.lastToken", token);
+      return token;
+    },
+    async walletMockCreatePendingEcash(amount: number, description = "") {
+      const token = await api.generateToken(amount);
+      const mints = useMintsStore();
+      useTokensStore().addPendingToken({
+        amount: -amount,
+        tokenStr: token,
+        mint: mints.activeMintUrl || "https://mint.test",
+        unit: mints.activeUnit || "sat",
+        description,
+        bucketId: DEFAULT_BUCKET_ID,
+      });
       return token;
     },
     async redeemToken(amount: number) {
       await api.creditProofs([amount]);
+      const mints = useMintsStore();
+      const tokensStore = useTokensStore();
+      tokensStore.addPaidToken({
+        amount,
+        token:
+          localStorage.getItem("e2e.lastToken") || `cashu:e2e-token-${amount}`,
+        mint: mints.activeMintUrl || "https://mint.test",
+        unit: mints.activeUnit || "sat",
+        description: "",
+        bucketId: DEFAULT_BUCKET_ID,
+      });
     },
     async setCreatorProfile(profile: Record<string, unknown>) {
       const creator = useCreatorProfileStore();
       creator.setProfile(profile as any);
       creator.markClean();
+    },
+    async seedCreatorP2pk() {
+      const p2pkStore = useP2PKStore();
+      const walletStore = useWalletStore();
+      const { pub, priv } = generateP2pkKeyPair();
+
+      p2pkStore.p2pkKeys.unshift({
+        publicKey: pub,
+        privateKey: priv,
+        used: false,
+        usedCount: 0,
+      });
+      walletStore.setActiveP2pk(pub, priv);
+      p2pkStore.recordVerification(pub, {
+        timestamp: Date.now(),
+        mint: useMintsStore().activeMintUrl || "https://mint.test",
+      });
+      await nextTick();
+      return { publicKey: pub };
     },
     async addSubscription(data: {
       creatorNpub: string;
@@ -558,9 +733,8 @@ export default boot(() => {
       } as any);
     },
     async seedConversation(pubkey: string, messages: MessengerMessage[]) {
-      const messenger = useMessengerStore();
       const key = messenger.normalizeKey(pubkey);
-      messenger.conversations[key] = messages;
+      getConversationMap()[key] = messages;
       messenger.currentConversation = key;
     },
     messengerCreateLocalEcho(config: {
@@ -592,9 +766,7 @@ export default boot(() => {
           ? crypto.randomUUID()
           : `local-${Math.random().toString(36).slice(2)}`;
       const eventId = config.eventId ?? null;
-      const createdAtSeconds = Math.floor(
-        (config.createdAt ?? now) / 1000,
-      );
+      const createdAtSeconds = Math.floor((config.createdAt ?? now) / 1000);
       const meta: LocalEchoMeta = {
         localId,
         eventId,
@@ -625,7 +797,9 @@ export default boot(() => {
         undefined,
         meta,
       );
-      message.filesPayload = normalizedFiles.length ? normalizedFiles : undefined;
+      message.filesPayload = normalizedFiles.length
+        ? normalizedFiles
+        : undefined;
       messenger.started = true;
       messenger.currentConversation = key;
       messenger.scheduleLocalEcho(meta, message);
@@ -644,7 +818,20 @@ export default boot(() => {
       );
       return true;
     },
-    messengerSetSendMock(config: { mode: "success" | "failure"; reason?: string }) {
+    messengerMarkLocalEchoFailed(localId: string, reason = "Mock failure") {
+      const message = messenger.findMessageByLocalId(localId);
+      if (!message || !message.localEcho) {
+        return false;
+      }
+      messenger.markLocalEchoFailed(message, message.localEcho, reason, {
+        "e2e-mock": { ok: false, reason },
+      });
+      return true;
+    },
+    messengerSetSendMock(config: {
+      mode: "success" | "failure";
+      reason?: string;
+    }) {
       messengerSendMock = async ({ msg, meta }) => {
         if (config.mode === "success") {
           messenger.markLocalEchoSent(
@@ -656,24 +843,43 @@ export default boot(() => {
           return { success: true, event: null } as ExecuteResult;
         }
         const reason = config.reason ?? "Mock failure";
-        messenger.markLocalEchoFailed(
-          msg,
-          meta,
-          reason,
-          { "e2e-mock": { ok: false, reason } },
-        );
+        messenger.markLocalEchoFailed(msg, meta, reason, {
+          "e2e-mock": { ok: false, reason },
+        });
         return { success: false, event: null } as ExecuteResult;
       };
     },
     messengerClearSendMock() {
       messengerSendMock = null;
     },
+    async messengerRetryLocalEcho(localId: string) {
+      const message = messenger.findMessageByLocalId(localId);
+      if (!message || !message.localEcho) {
+        return { success: false, event: null };
+      }
+
+      if (messengerSendMock) {
+        const meta = message.localEcho;
+        meta.error = null;
+        meta.relayResults = {};
+        message.relayResults = {};
+        messenger.scheduleLocalEcho(meta, message);
+        meta.attempt += 1;
+        return messengerSendMock({ msg: message, meta } as ExecuteOptions);
+      }
+
+      return messenger.retrySend(localId);
+    },
     messengerDropConversationSubscription() {
       messenger.pauseConversationSubscription();
       return true;
     },
     messengerResumeConversationSubscription() {
-      return messenger.resumeConversationSubscription("e2e");
+      if (!messenger.currentConversation) {
+        return false;
+      }
+      void messenger.resumeConversationSubscription("e2e");
+      return true;
     },
     messengerDeliverEvent(event: {
       id: string;
@@ -687,8 +893,7 @@ export default boot(() => {
         id: event.id,
         pubkey: event.pubkey,
         content: event.content,
-        created_at:
-          event.created_at ?? Math.floor(Date.now() / 1000),
+        created_at: event.created_at ?? Math.floor(Date.now() / 1000),
         kind: event.kind ?? 4,
         tags: event.tags ?? [],
         sig: "",
@@ -697,17 +902,44 @@ export default boot(() => {
     getNostrPubkey() {
       return useNostrStore().pubkey;
     },
-    getSnapshot() {
+    getConversation(pubkey: string) {
+      const key = messenger.normalizeKey(pubkey);
+      const conversations = getConversationMap() || {};
+      return ((conversations[key] as MessengerMessage[]) || []).map(
+        (message) => ({
+          id: message.id,
+          content: message.content,
+          status: message.status,
+          localEcho: message.localEcho
+            ? {
+                localId: message.localEcho.localId,
+                status: message.localEcho.status,
+                attempt: message.localEcho.attempt,
+                error: message.localEcho.error,
+              }
+            : null,
+        }),
+      );
+    },
+    async getSnapshot() {
       const mints = useMintsStore();
+      const proofsStore = useProofsStore();
       const subs = useSubscriptionsStore();
-      const messenger = useMessengerStore();
-      const activeConversation = messenger.currentConversation;
+      proofsStore.proofs = await proofsStore.getProofs();
+      await proofsStore.updateActiveProofs();
+      const subscriptions = Array.isArray((subs as any).subscriptions)
+        ? (subs as any).subscriptions
+        : Array.isArray((subs as any).subscriptions?.value)
+        ? (subs as any).subscriptions.value
+        : [];
+      const activeConversation = getCurrentConversation();
+      const conversations = getConversationMap() || {};
       const conversation = activeConversation
-        ? messenger.conversations[activeConversation] || []
+        ? conversations[activeConversation] || []
         : [];
       return {
         balance: mints.totalUnitBalance,
-        subscriptions: subs.subscriptions.value.map((s) => s.id),
+        subscriptions: subscriptions.map((s: any) => s.id),
         conversationCount: conversation.length,
       };
     },
@@ -727,6 +959,27 @@ export default boot(() => {
     }) {
       return walletMock.createLightningInvoice(config);
     },
+    async walletMockPayLightningInvoice(
+      request: string,
+      bucketId: string = DEFAULT_BUCKET_ID,
+    ) {
+      const wallet = useWalletStore();
+      const mints = useMintsStore();
+      const proofsStore = useProofsStore();
+      await wallet.decodeRequest(request);
+      const proofs = await proofsStore.getProofs();
+      const mintWallet = wallet.mintWallet(
+        mints.activeMintUrl,
+        mints.activeUnit || "sat",
+      );
+      return wallet.melt(
+        proofs.filter(
+          (proof) => (proof.bucketId || DEFAULT_BUCKET_ID) === bucketId,
+        ),
+        wallet.payInvoiceData.meltQuote.response,
+        mintWallet,
+      );
+    },
     getHistoryTokens() {
       return walletMock.getHistoryTokens();
     },
@@ -738,5 +991,5 @@ export default boot(() => {
   walletMock.setCreditProofsHandler((amounts) => api.creditProofs(amounts));
 
   window.__FUNDSTR_E2E__ = api;
+  window.__FUNDSTR_E2E_READY__ = true;
 });
-

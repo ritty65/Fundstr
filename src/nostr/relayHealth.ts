@@ -27,7 +27,7 @@ export async function probeWriteRelays(opts: {
       };
       try {
         const relay = ndk.pool.getRelay(url, true);
-        await relay.connect({ timeoutMs }).catch(() => {});
+        await relay.connect(timeoutMs).catch(() => {});
         res.connected = relay.status === 1 || relay.connected;
         if (!res.connected) {
           res.elapsedMs = Date.now() - start;
@@ -38,31 +38,12 @@ export async function probeWriteRelays(opts: {
         ev.content = "";
         ev.tags = [];
         await ev.sign();
-        const pub = relay.publish(ev);
-        const ok = await new Promise<boolean>((resolve) => {
-          let done = false;
-          const to = setTimeout(() => {
-            if (!done) {
-              done = true;
-              resolve(false);
-            }
-          }, timeoutMs);
-          pub.on("ok", () => {
-            if (!done) {
-              done = true;
-              clearTimeout(to);
-              resolve(true);
-            }
+        const ok = await relay
+          .publish(ev, timeoutMs)
+          .catch((error: unknown) => {
+            res.error = error instanceof Error ? error.message : String(error);
+            return false;
           });
-          pub.on("failed", (reason: string) => {
-            if (!done) {
-              done = true;
-              clearTimeout(to);
-              res.error = reason;
-              resolve(false);
-            }
-          });
-        });
         res.writeOk = ok;
         res.elapsedMs = Date.now() - start;
       } catch (e: any) {
@@ -75,8 +56,8 @@ export async function probeWriteRelays(opts: {
   return results;
 }
 
-export function selectHealthyWriteRelays(results: RelayProbeResult[]): string[] {
-  return results
-    .filter((r) => r.connected && r.writeOk)
-    .map((r) => r.url);
+export function selectHealthyWriteRelays(
+  results: RelayProbeResult[],
+): string[] {
+  return results.filter((r) => r.connected && r.writeOk).map((r) => r.url);
 }

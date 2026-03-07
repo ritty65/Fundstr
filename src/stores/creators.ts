@@ -43,11 +43,18 @@ import {
 
 export { FEATURED_CREATORS } from "src/config/featured-creators";
 
-export interface CreatorProfile extends FundstrCreator {
+type CreatorProfileMetrics = NonNullable<FundstrCreator["metrics"]> & {
+  signal_only?: unknown;
+};
+
+export type CreatorProfile = Omit<FundstrCreator, "tiers" | "metrics"> & {
+  tiers?: Tier[];
+  metrics?: CreatorProfileMetrics;
+  meta?: Record<string, unknown> | null;
   tierSecurityBlocked?: boolean | null;
   tierFetchFailed?: boolean | null;
   refreshedInBackground?: boolean | null;
-}
+};
 export type CreatorRow = CreatorProfile;
 
 export type CreatorSearchFilters = {
@@ -100,7 +107,10 @@ function getBundleFallbackDelayMs(): number {
   if (connection.saveData) {
     delay = Math.max(delay, 2400);
   }
-  const effectiveType = typeof connection.effectiveType === "string" ? connection.effectiveType : "";
+  const effectiveType =
+    typeof connection.effectiveType === "string"
+      ? connection.effectiveType
+      : "";
   if (effectiveType === "2g") {
     delay = Math.max(delay, 3400);
   } else if (effectiveType === "3g") {
@@ -177,7 +187,8 @@ function isSecurityDomException(error: unknown): boolean {
   }
   const domError = error as DOMException & { code?: unknown };
   const securityErrCode =
-    typeof DOMException !== "undefined" && typeof DOMException.SECURITY_ERR === "number"
+    typeof DOMException !== "undefined" &&
+    typeof DOMException.SECURITY_ERR === "number"
       ? DOMException.SECURITY_ERR
       : 18;
   if (domError.name === "SecurityError") {
@@ -203,7 +214,8 @@ function isAbortError(error: unknown): boolean {
   }
   const domError = error as DOMException & { code?: unknown };
   const abortErrCode =
-    typeof DOMException !== "undefined" && typeof DOMException.ABORT_ERR === "number"
+    typeof DOMException !== "undefined" &&
+    typeof DOMException.ABORT_ERR === "number"
       ? DOMException.ABORT_ERR
       : 20;
   return typeof domError.code === "number" && domError.code === abortErrCode;
@@ -221,11 +233,14 @@ function logTierSecurityError(
   tierSecurityCooldownUntil = Date.now() + TIER_SECURITY_COOLDOWN_MS;
   const nowWarn = Date.now();
   if (nowWarn - lastTierSecurityLogAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
-    console.warn("fetchFundstrProfileBundle tier lookup blocked by browser security policy", {
-      id,
-      phase,
-      error,
-    });
+    console.warn(
+      "fetchFundstrProfileBundle tier lookup blocked by browser security policy",
+      {
+        id,
+        phase,
+        error,
+      },
+    );
     lastTierSecurityLogAt = nowWarn;
   }
 }
@@ -311,7 +326,10 @@ function extractProfileDetailsFromDiscovery(
     ) {
       displayName ??= candidate.display_name.trim();
     }
-    if (typeof candidate.displayName === "string" && candidate.displayName.trim()) {
+    if (
+      typeof candidate.displayName === "string" &&
+      candidate.displayName.trim()
+    ) {
       displayName ??= candidate.displayName.trim();
     }
     if (typeof candidate.name === "string" && candidate.name.trim()) {
@@ -326,10 +344,16 @@ function extractProfileDetailsFromDiscovery(
     if (typeof candidate.p2pk === "string" && candidate.p2pk.trim()) {
       p2pk = candidate.p2pk.trim();
     }
-    if (typeof candidate.p2pkPubkey === "string" && candidate.p2pkPubkey.trim()) {
+    if (
+      typeof candidate.p2pkPubkey === "string" &&
+      candidate.p2pkPubkey.trim()
+    ) {
       p2pk = candidate.p2pkPubkey.trim();
     }
-    if (typeof candidate.p2pk_pubkey === "string" && candidate.p2pk_pubkey.trim()) {
+    if (
+      typeof candidate.p2pk_pubkey === "string" &&
+      candidate.p2pk_pubkey.trim()
+    ) {
       p2pk = candidate.p2pk_pubkey.trim();
     }
     appendMint(candidate.mints);
@@ -359,7 +383,13 @@ function extractProfileDetailsFromDiscovery(
       (picture && picture.length),
   );
 
-  if (!p2pk && mintList.length === 0 && relayList.length === 0 && !tierAddr && !hasMetadata) {
+  if (
+    !p2pk &&
+    mintList.length === 0 &&
+    relayList.length === 0 &&
+    !tierAddr &&
+    !hasMetadata
+  ) {
     return null;
   }
 
@@ -390,10 +420,13 @@ function convertDiscoveryTier(tier: DiscoveryCreatorTier): Tier | null {
       : null;
   const price_sats =
     amountMsat !== null ? Math.max(0, Math.round(amountMsat / 1000)) : 0;
-  const description = typeof tier.description === "string" ? tier.description : "";
+  const description =
+    typeof tier.description === "string" ? tier.description : "";
 
   const media = Array.isArray(tier.media) ? [...tier.media] : undefined;
-  const frequency = normalizeTierFrequency(tier.cadence ?? (tier as any).frequency);
+  const frequency = normalizeTierFrequency(
+    tier.cadence ?? (tier as any).frequency,
+  );
 
   const converted: Tier = {
     id,
@@ -420,7 +453,8 @@ function convertNutzapTierToDiscoveryTier(
 
   const name = typeof tier.title === "string" ? tier.title : "";
   const price = Number.isFinite(tier.price) ? Number(tier.price) : null;
-  const amountMsat = price !== null ? Math.max(0, Math.round(price * 1000)) : null;
+  const amountMsat =
+    price !== null ? Math.max(0, Math.round(price * 1000)) : null;
   const cadence = typeof tier.frequency === "string" ? tier.frequency : null;
   const description =
     typeof tier.description === "string" && tier.description.length
@@ -493,7 +527,9 @@ async function fetchFundstrProfileBundleFromDiscovery(
     freshError: unknown | null;
   }
 
-  const fetchCreatorByQuery = async (query: string): Promise<CreatorQueryResult> => {
+  const fetchCreatorByQuery = async (
+    query: string,
+  ): Promise<CreatorQueryResult> => {
     const trimmed = typeof query === "string" ? query.trim() : "";
     if (!trimmed) {
       return { query: "", cached: null, fresh: null, freshError: null };
@@ -501,7 +537,10 @@ async function fetchFundstrProfileBundleFromDiscovery(
 
     let cached: DiscoveryCreator | null = null;
     try {
-      const response = await discovery.getCreators({ q: trimmed, fresh: false });
+      const response = await discovery.getCreators({
+        q: trimmed,
+        fresh: false,
+      });
       cached = findCreatorMatch(response.results as DiscoveryCreator[]);
     } catch (error) {
       lastError = error;
@@ -532,7 +571,8 @@ async function fetchFundstrProfileBundleFromDiscovery(
         if (!forceRefresh) {
           profileFreshFailureCount = Math.min(profileFreshFailureCount + 1, 6);
           const delay = Math.min(
-            FRESH_RETRY_BASE_MS * 2 ** Math.max(profileFreshFailureCount - 1, 0),
+            FRESH_RETRY_BASE_MS *
+              2 ** Math.max(profileFreshFailureCount - 1, 0),
             FRESH_RETRY_MAX_MS,
           );
           nextProfileFreshAttemptAt = Date.now() + delay;
@@ -572,13 +612,19 @@ async function fetchFundstrProfileBundleFromDiscovery(
   );
   const freshMatch = creatorResults.find((result) => result.fresh);
   const finalCreator = freshMatch?.fresh ?? firstAvailable?.cached ?? null;
-  const initialCreator = firstAvailable?.cached ?? firstAvailable?.fresh ?? finalCreator ?? null;
+  const initialCreator =
+    firstAvailable?.cached ?? firstAvailable?.fresh ?? finalCreator ?? null;
 
   if (!finalCreator) {
-    throw new FundstrProfileFetchError("No profile records returned from discovery", {
-      fallbackAttempted: creatorResults.some((result) => Boolean(result.cached)),
-      cause: lastError ?? undefined,
-    });
+    throw new FundstrProfileFetchError(
+      "No profile records returned from discovery",
+      {
+        fallbackAttempted: creatorResults.some((result) =>
+          Boolean(result.cached),
+        ),
+        cause: lastError ?? undefined,
+      },
+    );
   }
 
   let usedCachedProfileFallback = false;
@@ -660,7 +706,8 @@ async function fetchFundstrProfileBundleFromDiscovery(
     let aborted = false;
     const now = Date.now();
     const allowFreshBase =
-      forceRefresh || (now >= nextTiersFreshAttemptAt && now >= tierSecurityCooldownUntil);
+      forceRefresh ||
+      (now >= nextTiersFreshAttemptAt && now >= tierSecurityCooldownUntil);
     const allowFresh = securityBlocked ? false : allowFreshBase;
     const backoffBlocked =
       !forceRefresh &&
@@ -668,7 +715,8 @@ async function fetchFundstrProfileBundleFromDiscovery(
       cached.length === 0 &&
       !allowFreshBase &&
       now < nextTiersFreshAttemptAt;
-    const shouldFetchFresh = (forceRefresh || cached.length === 0) && allowFresh;
+    const shouldFetchFresh =
+      (forceRefresh || cached.length === 0) && allowFresh;
     if (shouldFetchFresh) {
       try {
         const request: { id: string; fresh?: boolean; timeoutMs?: number } = {
@@ -701,7 +749,8 @@ async function fetchFundstrProfileBundleFromDiscovery(
           if (!forceRefresh) {
             tiersFreshFailureCount = Math.min(tiersFreshFailureCount + 1, 6);
             const delay = Math.min(
-              FRESH_RETRY_BASE_MS * 2 ** Math.max(tiersFreshFailureCount - 1, 0),
+              FRESH_RETRY_BASE_MS *
+                2 ** Math.max(tiersFreshFailureCount - 1, 0),
               FRESH_RETRY_MAX_MS,
             );
             nextTiersFreshAttemptAt = Date.now() + delay;
@@ -713,24 +762,42 @@ async function fetchFundstrProfileBundleFromDiscovery(
             error,
             cachedCount: cached.length,
             retryable: aborted || !forceRefresh,
-            nextRetryAt: aborted || !forceRefresh ? nextTiersFreshAttemptAt : undefined,
+            nextRetryAt:
+              aborted || !forceRefresh ? nextTiersFreshAttemptAt : undefined,
             timeoutMs: DISCOVERY_TIER_TIMEOUT_MS,
           };
 
           if (aborted) {
             const nowWarn = Date.now();
-            if (nowWarn - lastTierTimeoutWarnAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
+            if (
+              nowWarn - lastTierTimeoutWarnAt >
+              FRESH_FALLBACK_LOG_DEBOUNCE_MS
+            ) {
               console.warn(
                 "fetchFundstrProfileBundle discovery tier lookup timed out; using cached tiers",
                 logContext,
               );
               lastTierTimeoutWarnAt = nowWarn;
             }
-            addTelemetryBreadcrumb("discovery tier lookup timed out", logContext, "warning");
-            captureTelemetryWarning("discovery tier lookup timed out", logContext);
+            addTelemetryBreadcrumb(
+              "discovery tier lookup timed out",
+              logContext,
+              "warning",
+            );
+            captureTelemetryWarning(
+              "discovery tier lookup timed out",
+              logContext,
+            );
           } else {
-            console.error("fetchFundstrProfileBundle discovery tier lookup failed", logContext);
-            addTelemetryBreadcrumb("discovery tier lookup failed", logContext, "error");
+            console.error(
+              "fetchFundstrProfileBundle discovery tier lookup failed",
+              logContext,
+            );
+            addTelemetryBreadcrumb(
+              "discovery tier lookup failed",
+              logContext,
+              "error",
+            );
           }
         }
       }
@@ -777,9 +844,13 @@ async function fetchFundstrProfileBundleFromDiscovery(
     ) &&
     tierResults.some((result) => result.backoffBlocked);
 
-  const tierSecurityBlocked = tierResults.some((result) => result.securityBlocked);
+  const tierSecurityBlocked = tierResults.some(
+    (result) => result.securityBlocked,
+  );
   const tierFreshMatch = tierResults.find((result) => result.fresh !== null);
-  const tierFallbackSource = tierResults.find((result) => result.cached.length > 0);
+  const tierFallbackSource = tierResults.find(
+    (result) => result.cached.length > 0,
+  );
   const tierRetryPlan = tierResults
     .filter((result) => result.nextRetryAt)
     .map((result) => ({ id: result.id, nextRetryAt: result.nextRetryAt }))
@@ -787,8 +858,8 @@ async function fetchFundstrProfileBundleFromDiscovery(
   let finalTierCandidates = tierFreshMatch
     ? [...(tierFreshMatch.fresh ?? [])]
     : tierFallbackSource?.cached
-      ? [...tierFallbackSource.cached]
-      : [];
+    ? [...tierFallbackSource.cached]
+    : [];
   let tierFetchFailed =
     tierLookupFailed ||
     tierLookupBackoff ||
@@ -796,8 +867,8 @@ async function fetchFundstrProfileBundleFromDiscovery(
   let initialTierCandidates = tierFallbackSource?.cached?.length
     ? [...tierFallbackSource.cached]
     : tierFreshMatch?.fresh
-      ? [...tierFreshMatch.fresh]
-      : [];
+    ? [...tierFreshMatch.fresh]
+    : [];
 
   let usedCachedTierFallback = false;
   let usedNutzapTierFallback = false;
@@ -847,16 +918,15 @@ async function fetchFundstrProfileBundleFromDiscovery(
       typeof finalCreator?.pubkey === "string" && finalCreator.pubkey.trim()
         ? finalCreator.pubkey
         : typeof npubQuery === "string" && npubQuery
-          ? npubQuery
-          : tierResults[0]?.id ?? pubkey;
+        ? npubQuery
+        : tierResults[0]?.id ?? pubkey;
     try {
       const nutzapEvent = await queryNutzapTiers(nutzapQueryInput);
-      const recoveredTiers =
-        nutzapEvent?.content
-          ? parseNutzapTiersContent(nutzapEvent.content)
-              .map((tier) => convertNutzapTierToDiscoveryTier(tier))
-              .filter((tier): tier is DiscoveryCreatorTier => tier !== null)
-          : [];
+      const recoveredTiers = nutzapEvent?.content
+        ? parseNutzapTiersContent(nutzapEvent.content)
+            .map((tier) => convertNutzapTierToDiscoveryTier(tier))
+            .filter((tier): tier is DiscoveryCreatorTier => tier !== null)
+        : [];
       if (recoveredTiers.length > 0) {
         finalTierCandidates = [...recoveredTiers];
         initialTierCandidates = [...recoveredTiers];
@@ -864,9 +934,12 @@ async function fetchFundstrProfileBundleFromDiscovery(
         tierFetchFailed = false;
         const nowWarn = Date.now();
         if (nowWarn - lastTierFallbackLogAt > FRESH_FALLBACK_LOG_DEBOUNCE_MS) {
-          debug("fetchFundstrProfileBundle recovered tiers via nutzap fallback", {
-            id: nutzapQueryInput,
-          });
+          debug(
+            "fetchFundstrProfileBundle recovered tiers via nutzap fallback",
+            {
+              id: nutzapQueryInput,
+            },
+          );
           lastTierFallbackLogAt = nowWarn;
         }
       }
@@ -904,14 +977,17 @@ async function fetchFundstrProfileBundleFromDiscovery(
   const baseBundle = finalCreatorForBundle
     ? buildBundleFromDiscoveryCreator(finalCreatorForBundle)
     : initialCreatorForBundle
-      ? buildBundleFromDiscoveryCreator(initialCreatorForBundle)
-      : null;
+    ? buildBundleFromDiscoveryCreator(initialCreatorForBundle)
+    : null;
 
   if (!baseBundle) {
-    throw new FundstrProfileFetchError("No profile records returned from discovery", {
-      fallbackAttempted: usedCachedProfileFallback || usedCachedTierFallback,
-      cause: lastError ?? undefined,
-    });
+    throw new FundstrProfileFetchError(
+      "No profile records returned from discovery",
+      {
+        fallbackAttempted: usedCachedProfileFallback || usedCachedTierFallback,
+        cause: lastError ?? undefined,
+      },
+    );
   }
 
   const normalizedTiers = Array.isArray(baseBundle.tiers)
@@ -932,7 +1008,9 @@ async function fetchFundstrProfileBundleFromDiscovery(
     tierFetchFailed,
     tiers: normalizedTiers && normalizedTiers.length ? normalizedTiers : null,
     fetchedFromFallback:
-      usedCachedProfileFallback || usedCachedTierFallback || usedNutzapTierFallback,
+      usedCachedProfileFallback ||
+      usedCachedTierFallback ||
+      usedNutzapTierFallback,
   };
 }
 
@@ -940,9 +1018,15 @@ function buildBundleFromCachedCreatorProfile(
   creator: CreatorProfile,
   details: NutzapProfileDetails | null,
 ): FundstrProfileBundle {
-  const profile = creator.profile ? JSON.parse(JSON.stringify(creator.profile)) : null;
+  const profile = creator.profile
+    ? JSON.parse(JSON.stringify(creator.profile))
+    : null;
   const profileDetails = details ?? extractProfileDetailsFromDiscovery(profile);
-  const relayHints = collectRelayHintsFromProfile(profile, null, profileDetails);
+  const relayHints = collectRelayHintsFromProfile(
+    profile,
+    null,
+    profileDetails,
+  );
 
   const followers =
     typeof creator.followers === "number" && Number.isFinite(creator.followers)
@@ -978,10 +1062,18 @@ function buildBundleFromCachedCreatorProfile(
   };
 }
 
-function buildBundleFromLegacyCreator(creator: FundstrCreator): FundstrProfileBundle {
-  const profile = creator.profile ? JSON.parse(JSON.stringify(creator.profile)) : null;
+function buildBundleFromLegacyCreator(
+  creator: FundstrCreator,
+): FundstrProfileBundle {
+  const profile = creator.profile
+    ? JSON.parse(JSON.stringify(creator.profile))
+    : null;
   const profileDetails = extractProfileDetailsFromDiscovery(profile);
-  const relayHints = collectRelayHintsFromProfile(profile, null, profileDetails);
+  const relayHints = collectRelayHintsFromProfile(
+    profile,
+    null,
+    profileDetails,
+  );
 
   const followers =
     typeof creator.followers === "number" && Number.isFinite(creator.followers)
@@ -998,7 +1090,9 @@ function buildBundleFromLegacyCreator(creator: FundstrCreator): FundstrProfileBu
 
   const tiers = Array.isArray(creator.tiers)
     ? creator.tiers
-        .map((tier) => convertDiscoveryTier(tier as unknown as DiscoveryCreatorTier))
+        .map((tier) =>
+          convertDiscoveryTier(tier as unknown as DiscoveryCreatorTier),
+        )
         .filter((tier): tier is Tier => tier !== null && isValidTier(tier))
     : null;
 
@@ -1049,10 +1143,13 @@ async function loadBundleFromCache(
       const detailsRow = await db.nutzapProfiles.get(pubkeyHex);
       details = detailsRow?.profile ?? null;
     } catch (error) {
-      console.warn("fetchFundstrProfileBundle failed to load cached profile details", {
-        pubkey: pubkeyHex,
-        error,
-      });
+      console.warn(
+        "fetchFundstrProfileBundle failed to load cached profile details",
+        {
+          pubkey: pubkeyHex,
+          error,
+        },
+      );
     }
 
     return buildBundleFromCachedCreatorProfile(creator, details);
@@ -1065,7 +1162,9 @@ async function loadBundleFromCache(
   }
 }
 
-async function fetchBundleFromLegacy(pubkeyHex: string): Promise<FundstrProfileBundle> {
+async function fetchBundleFromLegacy(
+  pubkeyHex: string,
+): Promise<FundstrProfileBundle> {
   const normalizedPubkey = pubkeyHex.toLowerCase();
   const tried = new Set<string>();
   const queries: string[] = [];
@@ -1078,7 +1177,10 @@ async function fetchBundleFromLegacy(pubkeyHex: string): Promise<FundstrProfileB
       queries.push(npub);
     }
   } catch (error) {
-    console.warn("Failed to encode pubkey to npub for nostr fallback", { pubkey: pubkeyHex, error });
+    console.warn("Failed to encode pubkey to npub for nostr fallback", {
+      pubkey: pubkeyHex,
+      error,
+    });
   }
 
   let lastError: unknown = null;
@@ -1106,10 +1208,13 @@ async function fetchBundleFromLegacy(pubkeyHex: string): Promise<FundstrProfileB
     }
   }
 
-  throw new FundstrProfileFetchError("No profile records returned from nostr fallback", {
-    fallbackAttempted: true,
-    cause: lastError ?? undefined,
-  });
+  throw new FundstrProfileFetchError(
+    "No profile records returned from nostr fallback",
+    {
+      fallbackAttempted: true,
+      cause: lastError ?? undefined,
+    },
+  );
 }
 
 async function fetchFundstrProfileBundleNetwork(
@@ -1169,15 +1274,15 @@ async function fetchFundstrProfileBundleNetwork(
       fallbackPromise = promise;
       promise
         .then((bundle) => {
-        if (settled) {
+          if (settled) {
+            return bundle;
+          }
+          settled = true;
+          cleanupTimer();
+          debug("nostr:fallback-hit", { pubkey: normalizedPubkey });
+          resolve(bundle);
           return bundle;
-        }
-        settled = true;
-        cleanupTimer();
-        debug("nostr:fallback-hit", { pubkey: normalizedPubkey });
-        resolve(bundle);
-        return bundle;
-      })
+        })
         .catch((error) => {
           fallbackError = error;
           if (discoverySettled && !settled) {
@@ -1186,7 +1291,10 @@ async function fetchFundstrProfileBundleNetwork(
         });
     };
 
-    fallbackTimer = setTimeout(() => startFallback("timeout"), getBundleFallbackDelayMs());
+    fallbackTimer = setTimeout(
+      () => startFallback("timeout"),
+      getBundleFallbackDelayMs(),
+    );
 
     fetchFundstrProfileBundleFromDiscovery(pubkeyHex, { forceRefresh })
       .then(async (bundle) => {
@@ -1201,19 +1309,26 @@ async function fetchFundstrProfileBundleNetwork(
             refreshedInBackground: true,
           };
           try {
-            await creatorsStore.applyBundleToCache(normalizedPubkey, refreshedBundle, {
-              cacheHit: false,
-              refreshedInBackground: true,
-            });
+            await creatorsStore.applyBundleToCache(
+              normalizedPubkey,
+              refreshedBundle,
+              {
+                cacheHit: false,
+                refreshedInBackground: true,
+              },
+            );
             debug("discovery:background-refresh", {
               pubkey: normalizedPubkey,
               tierDataFresh: bundle.tierDataFresh,
             });
           } catch (error) {
-            console.warn("[creators] Failed to apply background discovery refresh", {
-              pubkey: normalizedPubkey,
-              error,
-            });
+            console.warn(
+              "[creators] Failed to apply background discovery refresh",
+              {
+                pubkey: normalizedPubkey,
+                error,
+              },
+            );
           }
           return;
         }
@@ -1255,8 +1370,11 @@ export async function fetchFundstrProfileBundle(
   const pubkeyHex = toHex(pubkeyInput);
   const cacheKey = pubkeyHex.toLowerCase();
 
-  const startNetworkFetch = (refresh: boolean): Promise<FundstrProfileBundle> => {
-    const fetchPromise = (async () => {
+  const startNetworkFetch = (
+    refresh: boolean,
+  ): Promise<FundstrProfileBundle> => {
+    let fetchPromise!: Promise<FundstrProfileBundle>;
+    fetchPromise = (async () => {
       try {
         return await fetchFundstrProfileBundleNetwork(pubkeyHex, refresh);
       } finally {
@@ -1295,7 +1413,11 @@ function buildBundleFromDiscoveryCreator(
 ): FundstrProfileBundle {
   const profile = cloneDiscoveryProfile(creator.profile);
   const profileDetails = extractProfileDetailsFromDiscovery(profile);
-  const relayHints = collectRelayHintsFromProfile(profile, null, profileDetails);
+  const relayHints = collectRelayHintsFromProfile(
+    profile,
+    null,
+    profileDetails,
+  );
 
   const followers =
     typeof creator.followers === "number" && Number.isFinite(creator.followers)
@@ -1404,28 +1526,58 @@ function cloneProfileDetails(
   };
 }
 
-function normalizeTier(tier: Tier): Tier {
+function normalizeTier(tier: any): Tier {
+  const perks = typeof tier?.perks === "string" ? tier.perks : null;
+  const amountMsat =
+    typeof tier?.amountMsat === "number" && Number.isFinite(tier.amountMsat)
+      ? tier.amountMsat
+      : null;
   return {
-    ...tier,
-    price_sats: tier.price_sats ?? (tier as any).price ?? 0,
-    ...(tier.perks && !tier.benefits ? { benefits: [tier.perks] } : {}),
-    media: tier.media ? [...tier.media] : [],
+    id: typeof tier?.id === "string" ? tier.id : "",
+    name:
+      typeof tier?.name === "string"
+        ? tier.name
+        : typeof tier?.title === "string"
+        ? tier.title
+        : "",
+    price_sats:
+      typeof tier?.price_sats === "number" && Number.isFinite(tier.price_sats)
+        ? tier.price_sats
+        : typeof tier?.price === "number" && Number.isFinite(tier.price)
+        ? tier.price
+        : amountMsat !== null
+        ? Math.round(amountMsat / 1000)
+        : 0,
+    description: typeof tier?.description === "string" ? tier.description : "",
+    frequency: normalizeTierFrequency(tier?.frequency ?? tier?.cadence),
+    ...(perks && !tier?.benefits ? { benefits: [perks] } : {}),
+    benefits: Array.isArray(tier?.benefits) ? [...tier.benefits] : undefined,
+    welcomeMessage:
+      typeof tier?.welcomeMessage === "string"
+        ? tier.welcomeMessage
+        : undefined,
+    media: Array.isArray(tier?.media) ? [...tier.media] : [],
+    publishStatus: tier?.publishStatus,
   };
 }
 
-function cloneCreatorProfile(source: FundstrCreator): CreatorProfile {
+function cloneCreatorProfile(
+  source: CreatorProfile | FundstrCreator,
+): CreatorProfile {
   const profile = source.profile
     ? JSON.parse(JSON.stringify(source.profile))
     : null;
   const tierSummary = source.tierSummary
     ? { ...source.tierSummary }
     : source.tierSummary ?? null;
-  const metrics = source.metrics ? { ...source.metrics } : source.metrics ?? null;
+  const metrics = source.metrics
+    ? { ...source.metrics }
+    : source.metrics ?? undefined;
   const tiers = Array.isArray(source.tiers)
-    ? source.tiers.map((tier) => ({ ...tier }))
+    ? source.tiers.map((tier) => normalizeTier(tier))
     : source.tiers === undefined
-      ? undefined
-      : [];
+    ? undefined
+    : [];
 
   return {
     ...source,
@@ -1470,7 +1622,9 @@ function computeTierSummary(tiers: Tier[] | null | undefined) {
   return {
     count: tiers.length,
     cheapestPriceMsat:
-      cheapest !== null && cheapest !== undefined ? Math.max(0, cheapest) * 1000 : null,
+      cheapest !== null && cheapest !== undefined
+        ? Math.max(0, cheapest) * 1000
+        : null,
   };
 }
 
@@ -1487,7 +1641,10 @@ function mergeDiscoveryIntoPhonebook(
     setter(trimmed);
   };
 
-  const applyRecord = (value: unknown, setter: (value: Record<string, any>) => void) => {
+  const applyRecord = (
+    value: unknown,
+    setter: (value: Record<string, any>) => void,
+  ) => {
     if (!isRecord(value) || Object.keys(value).length === 0) return;
     setter(value);
   };
@@ -1624,24 +1781,36 @@ export function mergeCreatorProfileWithFallback(
     }
   };
 
-  applyNonEmptyString(incomingProfile.displayName, fallbackProfile.displayName, (value) => {
-    merged.displayName = value;
-  });
+  applyNonEmptyString(
+    incomingProfile.displayName,
+    fallbackProfile.displayName,
+    (value) => {
+      merged.displayName = value;
+    },
+  );
   applyNonEmptyString(incomingProfile.name, fallbackProfile.name, (value) => {
     merged.name = value;
   });
   applyNonEmptyString(incomingProfile.about, fallbackProfile.about, (value) => {
     merged.about = value;
   });
-  applyNonEmptyString(incomingProfile.picture, fallbackProfile.picture, (value) => {
-    merged.picture = value;
-  });
+  applyNonEmptyString(
+    incomingProfile.picture,
+    fallbackProfile.picture,
+    (value) => {
+      merged.picture = value;
+    },
+  );
   applyNonEmptyString(incomingProfile.nip05, fallbackProfile.nip05, (value) => {
     merged.nip05 = value;
   });
-  applyNonEmptyString(incomingProfile.banner, fallbackProfile.banner, (value) => {
-    merged.banner = value;
-  });
+  applyNonEmptyString(
+    incomingProfile.banner,
+    fallbackProfile.banner,
+    (value) => {
+      merged.banner = value;
+    },
+  );
 
   return merged;
 }
@@ -1656,7 +1825,9 @@ function applyPhonebookOverrides(
 
 function createCreatorFromPhonebook(profile: PhonebookProfile): CreatorProfile {
   const displayName =
-    toNullableString(profile.display_name) ?? toNullableString(profile.name) ?? null;
+    toNullableString(profile.display_name) ??
+    toNullableString(profile.name) ??
+    null;
   const name = toNullableString(profile.name);
   const about = toNullableString(profile.about);
   const picture = toNullableString(profile.picture);
@@ -1675,7 +1846,7 @@ function createCreatorFromPhonebook(profile: PhonebookProfile): CreatorProfile {
     picture,
     banner: null,
     tierSummary: null,
-    metrics: null,
+    metrics: undefined,
     tiers: [],
     tierDataFresh: null,
   };
@@ -1741,7 +1912,9 @@ function creatorHasLightning(profile: CreatorProfile): boolean {
     metaRecord["lightning"],
     profileRecord["lightning_address"],
     metaRecord["lightning_address"],
-  ].map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""));
+  ].map((value) =>
+    typeof value === "string" ? value.trim().toLowerCase() : "",
+  );
 
   return normalizedCandidates.some((candidate) => candidate.includes("lnbc"));
 }
@@ -1778,7 +1951,11 @@ export function creatorHasVerifiedNip05(profile: CreatorProfile): boolean {
   const verifiedHandle =
     toNullableString(metaRecord["nip05_verified_value"]) ??
     toNullableString(profileRecord["nip05_verified_value"]) ??
-    toNullableString((profile as Record<string, unknown> | null | undefined)?.["nip05_verified_value"]);
+    toNullableString(
+      (profile as Record<string, unknown> | null | undefined)?.[
+        "nip05_verified_value"
+      ],
+    );
 
   return Boolean(
     nip05Value &&
@@ -1858,7 +2035,8 @@ function applyCreatorFilters(
       .slice()
       .sort(
         (a, b) =>
-          (b.followers ?? Number.NEGATIVE_INFINITY) - (a.followers ?? Number.NEGATIVE_INFINITY),
+          (b.followers ?? Number.NEGATIVE_INFINITY) -
+          (a.followers ?? Number.NEGATIVE_INFINITY),
       );
   }
 
@@ -1870,7 +2048,9 @@ function createCreatorFromBundle(
   bundle: FundstrProfileBundle,
   overrides: Partial<CreatorProfile> = {},
 ): CreatorProfile {
-  const profile = bundle.profile ? JSON.parse(JSON.stringify(bundle.profile)) : null;
+  const profile = bundle.profile
+    ? JSON.parse(JSON.stringify(bundle.profile))
+    : null;
   const followers =
     typeof bundle.followers === "number" && Number.isFinite(bundle.followers)
       ? bundle.followers
@@ -1888,9 +2068,10 @@ function createCreatorFromBundle(
     ? bundle.tiers.map((tier) => normalizeTier(tier))
     : undefined;
 
-  const tierSummary = overrides.tierSummary ?? computeTierSummary(tiers ?? null);
+  const tierSummary =
+    overrides.tierSummary ?? computeTierSummary(tiers ?? null);
 
-  const metrics = overrides.metrics ?? null;
+  const metrics = overrides.metrics ?? undefined;
 
   const overrideDisplayName = toNullableString(overrides.displayName);
   const overrideName = toNullableString(overrides.name);
@@ -1904,7 +2085,8 @@ function createCreatorFromBundle(
     toNullableString(profile?.display_name ?? profile?.displayName ?? null);
   const name = overrideName ?? toNullableString(profile?.name);
   const about = overrideAbout ?? toNullableString(profile?.about);
-  const nip05 = overrideNip05 ?? toNullableString(profile?.nip05 ?? profile?.nip05_npub);
+  const nip05 =
+    overrideNip05 ?? toNullableString(profile?.nip05 ?? profile?.nip05_npub);
   const picture = overridePicture ?? toNullableString(profile?.picture);
   const banner = overrideBanner ?? toNullableString(profile?.banner);
 
@@ -1923,7 +2105,7 @@ function createCreatorFromBundle(
     tierSummary,
     metrics,
     tiers,
-    tierDataFresh: overrides.tierDataFresh ?? (bundle.tierDataFresh !== false),
+    tierDataFresh: overrides.tierDataFresh ?? bundle.tierDataFresh !== false,
     tierSecurityBlocked:
       overrides.tierSecurityBlocked !== undefined
         ? overrides.tierSecurityBlocked
@@ -1970,7 +2152,10 @@ export const useCreatorsStore = defineStore("creators", {
       currentUserPrivkey: "",
       favorites,
       warmCache: {} as Record<string, CreatorWarmCache>,
-      inFlightCreatorRequests: {} as Record<string, Promise<CreatorProfile | null>>,
+      inFlightCreatorRequests: {} as Record<
+        string,
+        Promise<CreatorProfile | null>
+      >,
       searchAbortController: null as AbortController | null,
       unfilteredSearchResults: [] as CreatorProfile[],
     };
@@ -1989,9 +2174,7 @@ export const useCreatorsStore = defineStore("creators", {
       return state.featuredError;
     },
     favoriteHexPubkeys(): string[] {
-      const raw = Array.isArray(this.favorites?.value)
-        ? this.favorites.value
-        : [];
+      const raw = Array.isArray(this.favorites) ? this.favorites : [];
       const seen = new Set<string>();
       for (const entry of raw) {
         if (typeof entry !== "string") continue;
@@ -2029,11 +2212,14 @@ export const useCreatorsStore = defineStore("creators", {
     },
     prefillCacheEntries(): PrefillCreatorCacheEntry[] {
       const results: PrefillCreatorCacheEntry[] = [];
-      for (const [pubkey, data] of Object.entries(this.warmCache)) {
+      for (const [pubkey, data] of Object.entries(this.warmCache) as Array<
+        [string, CreatorWarmCache]
+      >) {
         if (!data) continue;
         const hasProfile =
           data.profileLoaded &&
-          (data.profileEvent !== undefined || data.profileDetails !== undefined);
+          (data.profileEvent !== undefined ||
+            data.profileDetails !== undefined);
         const hasTiers =
           data.tiersLoaded &&
           (data.tierEvent !== undefined || Array.isArray(data.tiers));
@@ -2196,14 +2382,21 @@ export const useCreatorsStore = defineStore("creators", {
         ? tiers.filter(isValidTier).map((tier) => normalizeTier(tier))
         : [];
       const updatedAt =
-        meta.updatedAt ?? event?.created_at ?? (event ? event.created_at : null);
-      this.updateTierCacheState(pubkeyHex, Array.isArray(tiers) ? normalized : [], event, {
-        eventId: event?.id ?? null,
-        updatedAt,
-        fresh: true,
-        securityBlocked: false,
-        fetchFailed: false,
-      });
+        meta.updatedAt ??
+        event?.created_at ??
+        (event ? event.created_at : null);
+      this.updateTierCacheState(
+        pubkeyHex,
+        Array.isArray(tiers) ? normalized : [],
+        event,
+        {
+          eventId: event?.id ?? null,
+          updatedAt,
+          fresh: true,
+          securityBlocked: false,
+          fetchFailed: false,
+        },
+      );
       try {
         if (event) {
           await db.creatorsTierDefinitions.put({
@@ -2235,10 +2428,15 @@ export const useCreatorsStore = defineStore("creators", {
             console.error("Failed to parse cached profile event", e);
           }
         }
-        this.updateProfileCacheState(pubkeyHex, profileRow.profile ?? null, event, {
-          eventId: profileRow.eventId ?? null,
-          updatedAt: profileRow.updatedAt ?? null,
-        });
+        this.updateProfileCacheState(
+          pubkeyHex,
+          profileRow.profile ?? null,
+          event,
+          {
+            eventId: profileRow.eventId ?? null,
+            updatedAt: profileRow.updatedAt ?? null,
+          },
+        );
       }
       if (tierRow) {
         let event: RelayEvent | null = null;
@@ -2272,7 +2470,10 @@ export const useCreatorsStore = defineStore("creators", {
     async applyPhonebookResults(
       results: PhonebookProfile[],
       signal?: AbortSignal,
-      options: { filters?: CreatorSearchFilters; sort?: CreatorSearchSort } = {},
+      options: {
+        filters?: CreatorSearchFilters;
+        sort?: CreatorSearchSort;
+      } = {},
     ): Promise<{ applied: boolean; networkWarning: boolean }> {
       const discovery = useDiscovery();
       const profiles = Array.isArray(results)
@@ -2296,10 +2497,14 @@ export const useCreatorsStore = defineStore("creators", {
           npubs: profiles.map((profile) => toNpub(profile.pubkey)),
           signal,
         });
-        discoveryResults = response.results.map((creator) => cloneCreatorProfile(creator));
+        discoveryResults = response.results.map((creator) =>
+          cloneCreatorProfile(creator),
+        );
         const discoveryWarnings = Array.isArray(response.warnings)
           ? response.warnings
-              .filter((warning): warning is string => typeof warning === "string")
+              .filter(
+                (warning): warning is string => typeof warning === "string",
+              )
               .map((warning) => warning.trim())
               .filter(Boolean)
           : [];
@@ -2347,7 +2552,10 @@ export const useCreatorsStore = defineStore("creators", {
           const fetched = await this.fetchCreator(profile.pubkey, false);
           if (fetched) {
             merged.push(
-              mergeDiscoveryIntoPhonebook(phonebookCreator, cloneCreatorProfile(fetched)),
+              mergeDiscoveryIntoPhonebook(
+                phonebookCreator,
+                cloneCreatorProfile(fetched),
+              ),
             );
             continue;
           }
@@ -2380,7 +2588,11 @@ export const useCreatorsStore = defineStore("creators", {
       this.error = "";
       this.searchStatusMessage = "";
       this.unfilteredSearchResults = merged;
-      this.searchResults = applyCreatorFilters(merged, options.filters, options.sort);
+      this.searchResults = applyCreatorFilters(
+        merged,
+        options.filters,
+        options.sort,
+      );
       this.searchWarnings = uniqueWarnings;
 
       return { applied: true, networkWarning: false };
@@ -2390,12 +2602,20 @@ export const useCreatorsStore = defineStore("creators", {
       filters: CreatorSearchFilters = {},
       sort: CreatorSearchSort = "relevance",
     ) {
-      this.searchResults = applyCreatorFilters(this.unfilteredSearchResults, filters, sort);
+      this.searchResults = applyCreatorFilters(
+        this.unfilteredSearchResults,
+        filters,
+        sort,
+      );
     },
 
     async searchCreators(
       query: string,
-      options: { fresh?: boolean; filters?: CreatorSearchFilters; sort?: CreatorSearchSort } = {},
+      options: {
+        fresh?: boolean;
+        filters?: CreatorSearchFilters;
+        sort?: CreatorSearchSort;
+      } = {},
     ) {
       const { fresh = false, filters = {}, sort = "relevance" } = options;
       const discovery = useDiscovery();
@@ -2456,13 +2676,17 @@ export const useCreatorsStore = defineStore("creators", {
               return null;
             }
           })
-          .filter((entry): entry is { npub: string; pubkey: string } => Boolean(entry));
+          .filter((entry): entry is { npub: string; pubkey: string } =>
+            Boolean(entry),
+          );
 
         if (!featuredEntries.length) {
           return profiles;
         }
 
-        const ensureCachedProfile = async (pubkey: string): Promise<CreatorProfile | null> => {
+        const ensureCachedProfile = async (
+          pubkey: string,
+        ): Promise<CreatorProfile | null> => {
           const cached = cachedFeaturedProfiles.get(pubkey);
           if (cached) {
             return cached;
@@ -2471,10 +2695,13 @@ export const useCreatorsStore = defineStore("creators", {
           try {
             await this.ensureCreatorCacheFromDexie(pubkey);
           } catch (error) {
-            console.warn("[creators] Failed to hydrate featured creator cache during search", {
-              pubkey,
-              error,
-            });
+            console.warn(
+              "[creators] Failed to hydrate featured creator cache during search",
+              {
+                pubkey,
+                error,
+              },
+            );
           }
 
           const hydrated = this.buildCreatorProfileFromCache(pubkey);
@@ -2512,7 +2739,11 @@ export const useCreatorsStore = defineStore("creators", {
         }
 
         const uniqueMatches = matchedPubkeys.filter((pubkey, index, arr) => {
-          return pubkey && arr.indexOf(pubkey) === index && !existingPubkeys.has(pubkey);
+          return (
+            pubkey &&
+            arr.indexOf(pubkey) === index &&
+            !existingPubkeys.has(pubkey)
+          );
         });
 
         if (!uniqueMatches.length) {
@@ -2537,7 +2768,10 @@ export const useCreatorsStore = defineStore("creators", {
           for (const creator of response.results ?? []) {
             if (!creator?.pubkey) continue;
             const key = creator.pubkey.toLowerCase();
-            fetchedProfiles.set(key, { ...cloneCreatorProfile(creator), featured: true });
+            fetchedProfiles.set(key, {
+              ...cloneCreatorProfile(creator),
+              featured: true,
+            });
           }
         } catch (error) {
           if (!signal.aborted) {
@@ -2565,7 +2799,10 @@ export const useCreatorsStore = defineStore("creators", {
             }
           } catch (error) {
             if (!signal.aborted) {
-              console.warn("[creators] Featured creator fetch failed", { pubkey, error });
+              console.warn("[creators] Featured creator fetch failed", {
+                pubkey,
+                error,
+              });
             }
           }
         }
@@ -2586,7 +2823,10 @@ export const useCreatorsStore = defineStore("creators", {
         profiles: CreatorProfile[],
         warnings: string[] = [],
       ) => {
-        const mergedProfiles = await mergeFeaturedResults(profiles, controller.signal);
+        const mergedProfiles = await mergeFeaturedResults(
+          profiles,
+          controller.signal,
+        );
         this.unfilteredSearchResults = mergedProfiles;
         this.searchResults = applyCreatorFilters(mergedProfiles, filters, sort);
         this.searchWarnings = applyTierWarnings(mergedProfiles, warnings);
@@ -2645,6 +2885,7 @@ export const useCreatorsStore = defineStore("creators", {
       };
 
       const handleNetworkWarning = async () => {
+        const pendingController = this.searchAbortController;
         restorePreviousResults();
         this.searchStatusMessage = NETWORK_CHANGE_WARNING;
         this.searching = false;
@@ -2654,7 +2895,7 @@ export const useCreatorsStore = defineStore("creators", {
         if (searchRequestId !== searchRequestCounter) {
           return;
         }
-        if (this.searchAbortController?.signal.aborted) {
+        if (pendingController?.signal.aborted) {
           return;
         }
         void this.searchCreators(rawQuery, { fresh: true, filters, sort });
@@ -2666,7 +2907,11 @@ export const useCreatorsStore = defineStore("creators", {
           if (typeof decoded.data === "string") {
             return decoded.data;
           }
-          if (typeof decoded.data === "object" && decoded.data && (decoded.data as any).pubkey) {
+          if (
+            typeof decoded.data === "object" &&
+            decoded.data &&
+            (decoded.data as any).pubkey
+          ) {
             return String((decoded.data as any).pubkey);
           }
         } catch (error) {
@@ -2678,7 +2923,10 @@ export const useCreatorsStore = defineStore("creators", {
       let normalizedQuery = rawQuery;
       let resolvedHex: string | null = null;
 
-      if (normalizedQuery.startsWith("npub") || normalizedQuery.startsWith("nprofile")) {
+      if (
+        normalizedQuery.startsWith("npub") ||
+        normalizedQuery.startsWith("nprofile")
+      ) {
         resolvedHex = resolveNip19(normalizedQuery);
         resolvedHex ??= null;
       }
@@ -2703,14 +2951,19 @@ export const useCreatorsStore = defineStore("creators", {
       const controller = new AbortController();
       this.searchAbortController = controller;
 
-      let phonebookResponse:
-        | { results: PhonebookProfile[]; count: number; warning?: string }
-        | null = null;
+      let phonebookResponse: {
+        results: PhonebookProfile[];
+        count: number;
+        warning?: string;
+      } | null = null;
 
       try {
-        phonebookResponse = await findProfiles(normalizedQuery, controller.signal);
+        phonebookResponse = await findProfiles(
+          normalizedQuery,
+          controller.signal,
+        );
       } catch (error) {
-        phonebookResponse = { query: normalizedQuery, results: [], count: 0 };
+        phonebookResponse = { results: [], count: 0 };
       }
 
       const phonebookResults = phonebookResponse?.results ?? [];
@@ -2719,7 +2972,11 @@ export const useCreatorsStore = defineStore("creators", {
         return;
       }
 
-      if (!controller.signal.aborted && phonebookResponse?.count && phonebookResults.length) {
+      if (
+        !controller.signal.aborted &&
+        phonebookResponse?.count &&
+        phonebookResults.length
+      ) {
         try {
           const appliedResult = await this.applyPhonebookResults(
             phonebookResults,
@@ -2734,7 +2991,10 @@ export const useCreatorsStore = defineStore("creators", {
             return;
           }
           if (appliedResult.applied) {
-            await applyResults(this.unfilteredSearchResults, this.searchWarnings ?? []);
+            await applyResults(
+              this.unfilteredSearchResults,
+              this.searchWarnings ?? [],
+            );
             this.searching = false;
             this.isRefreshing = false;
             this.searchAbortController = null;
@@ -2802,7 +3062,9 @@ export const useCreatorsStore = defineStore("creators", {
           fresh: false,
           signal: controller.signal,
         });
-        const profiles = response.results.map((creator) => cloneCreatorProfile(creator));
+        const profiles = response.results.map((creator) =>
+          cloneCreatorProfile(creator),
+        );
         const warnings = filterWarnings(response.warnings);
         if (hasNetworkChangeWarning(warnings)) {
           void handleNetworkWarning();
@@ -2840,9 +3102,14 @@ export const useCreatorsStore = defineStore("creators", {
       const creatorProfile = createCreatorFromBundle(pubkey, bundle, overrides);
 
       try {
-        await this.saveProfileCache(pubkey, bundle.profileEvent, bundle.profileDetails, {
-          updatedAt: bundle.joined ?? null,
-        });
+        await this.saveProfileCache(
+          pubkey,
+          bundle.profileEvent,
+          bundle.profileDetails,
+          {
+            updatedAt: bundle.joined ?? null,
+          },
+        );
       } catch (cacheError) {
         console.error("[creators] Failed to persist Fundstr profile cache", {
           pubkey,
@@ -2923,10 +3190,13 @@ export const useCreatorsStore = defineStore("creators", {
                       }
                     })
                     .catch((error) => {
-                      console.warn("[creators] Background creator refresh failed", {
-                        pubkey,
-                        error,
-                      });
+                      console.warn(
+                        "[creators] Background creator refresh failed",
+                        {
+                          pubkey,
+                          error,
+                        },
+                      );
                     });
                 }
               } catch (hexError) {
@@ -3035,14 +3305,21 @@ export const useCreatorsStore = defineStore("creators", {
           try {
             await this.ensureCreatorCacheFromDexie(pubkey);
           } catch (error) {
-            console.warn("[creators] Failed to hydrate featured creator cache", {
-              pubkey,
-              error,
-            });
+            console.warn(
+              "[creators] Failed to hydrate featured creator cache",
+              {
+                pubkey,
+                error,
+              },
+            );
           }
           const cached = this.buildCreatorProfileFromCache(pubkey);
           if (cached) {
-            cachedEntries.set(pubkey, { ...cached, cacheHit: true, featured: true });
+            cachedEntries.set(pubkey, {
+              ...cached,
+              cacheHit: true,
+              featured: true,
+            });
           }
         }),
       );
@@ -3058,7 +3335,9 @@ export const useCreatorsStore = defineStore("creators", {
           );
           if (cachedSecurityBlocked) {
             this.featuredStatusMessage = FIREFOX_TIER_SECURITY_WARNING;
-          } else if (orderedCached.some((profile) => profile.tierDataFresh === false)) {
+          } else if (
+            orderedCached.some((profile) => profile.tierDataFresh === false)
+          ) {
             this.featuredStatusMessage = staleTierWarning;
           }
         }
@@ -3097,16 +3376,21 @@ export const useCreatorsStore = defineStore("creators", {
 
             const resolvedHex = creator.pubkey.trim().toLowerCase();
             if (!/^[0-9a-fA-F]{64}$/.test(resolvedHex)) {
-              console.warn("[creators] Skipping featured creator with invalid pubkey", {
-                pubkey: creator.pubkey,
-              });
+              console.warn(
+                "[creators] Skipping featured creator with invalid pubkey",
+                {
+                  pubkey: creator.pubkey,
+                },
+              );
               captureTelemetryWarning(
                 "[creators] Skipping featured creator with invalid pubkey",
                 {
                   reason: "invalid_pubkey",
                   source: "featured_creators",
                   valueLength:
-                    typeof creator.pubkey === "string" ? creator.pubkey.length : null,
+                    typeof creator.pubkey === "string"
+                      ? creator.pubkey.length
+                      : null,
                 },
               );
               addTelemetryBreadcrumb(
@@ -3158,7 +3442,9 @@ export const useCreatorsStore = defineStore("creators", {
         );
         if (combinedSecurityBlocked) {
           this.featuredStatusMessage = FIREFOX_TIER_SECURITY_WARNING;
-        } else if (combined.some((profile) => profile.tierDataFresh === false)) {
+        } else if (
+          combined.some((profile) => profile.tierDataFresh === false)
+        ) {
           this.featuredStatusMessage = staleTierWarning;
         } else if (!this.featuredError) {
           this.featuredStatusMessage = "";
@@ -3187,7 +3473,10 @@ export const useCreatorsStore = defineStore("creators", {
           }
         }
       } catch (error) {
-        console.error("[creators] Failed to batch load featured creators", error);
+        console.error(
+          "[creators] Failed to batch load featured creators",
+          error,
+        );
         if (!this.featuredCreators.length) {
           this.featuredError = "Failed to load featured creators.";
         }
@@ -3212,7 +3501,9 @@ export const useCreatorsStore = defineStore("creators", {
           phonebookTargets.map(async (pubkey) => {
             try {
               const response = await findProfiles(toNpub(pubkey));
-              const match = response.results.find((result) => result.pubkey === pubkey);
+              const match = response.results.find(
+                (result) => result.pubkey === pubkey,
+              );
               if (!match) {
                 return null;
               }
@@ -3220,17 +3511,23 @@ export const useCreatorsStore = defineStore("creators", {
               const phonebookCreator = createCreatorFromPhonebook(match);
               const existing = combinedMap.get(pubkey);
               const merged = existing
-                ? mergeDiscoveryIntoPhonebook(cloneCreatorProfile(existing), phonebookCreator)
+                ? mergeDiscoveryIntoPhonebook(
+                    cloneCreatorProfile(existing),
+                    phonebookCreator,
+                  )
                 : phonebookCreator;
 
               merged.featured = merged.featured ?? true;
 
               return { pubkey, profile: merged };
             } catch (error) {
-              console.warn("[creators] Phonebook fallback failed for featured creator", {
-                pubkey,
-                error,
-              });
+              console.warn(
+                "[creators] Phonebook fallback failed for featured creator",
+                {
+                  pubkey,
+                  error,
+                },
+              );
               return null;
             }
           }),
@@ -3252,7 +3549,9 @@ export const useCreatorsStore = defineStore("creators", {
     },
 
     async loadFeaturedCreators(forceRefresh = false) {
-      return this.loadFeatured(CONFIG_FEATURED_CREATORS, { fresh: forceRefresh });
+      return this.loadFeatured(CONFIG_FEATURED_CREATORS, {
+        fresh: forceRefresh,
+      });
     },
 
     async refreshFeatured(npubs: string[]) {

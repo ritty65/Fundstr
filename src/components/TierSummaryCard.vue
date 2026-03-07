@@ -21,7 +21,9 @@
         <div class="tier-card__sats">
           {{ formattedSats }} sats / {{ frequencyDisplay }}
         </div>
-        <span v-if="showFiat" class="tier-card__fiat text-2">≈ {{ priceFiat }}</span>
+        <span v-if="showFiat" class="tier-card__fiat text-2"
+          >≈ {{ priceFiat }}</span
+        >
       </div>
     </header>
     <div v-if="hasBenefits" class="tier-card__benefits">
@@ -45,7 +47,9 @@
         data-testid="tier-media-toggle"
         @click="toggleMedia"
       >
-        <span class="tier-card__media-toggle-label">{{ mediaToggleLabel }}</span>
+        <span class="tier-card__media-toggle-label">{{
+          mediaToggleLabel
+        }}</span>
         <span class="tier-card__media-toggle-icon" aria-hidden="true">▾</span>
       </button>
       <div
@@ -83,9 +87,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, useSlots, useId, watch } from "vue";
+import { computed, ref, useSlots, watch } from "vue";
 import { QBtn } from "quasar";
 import MediaPreview from "./MediaPreview.vue";
+
+let tierMediaIdCounter = 0;
 
 type TierMedia = {
   url: string;
@@ -205,8 +211,7 @@ const mediaToggleLabel = computed(() =>
   isMediaCollapsed.value ? "Show media" : "Hide media",
 );
 
-const mediaIdBase = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-const mediaSectionId = `tier-media-${mediaIdBase}`;
+const mediaSectionId = `tier-media-${++tierMediaIdCounter}`;
 
 const normalizedBadges = computed(() =>
   (props.badges ?? []).map((badge, index) => {
