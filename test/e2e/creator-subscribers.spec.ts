@@ -47,7 +47,7 @@ test("drives subscribers page layout", async ({ page }) => {
   await expect(page.locator("#table tbody tr")).toHaveCount(2);
   await page.fill("#search", "Bob");
   await expect(page.locator("#table tbody tr")).toHaveCount(1);
-  await page.click("#table tbody tr:first-child");
+  await page.locator("#table tbody tr").first().click({ force: true });
   await expect(page.locator("#drawer")).toBeVisible();
   await expect(page.locator("#drawer")).toHaveText("Bob");
 });

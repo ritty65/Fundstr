@@ -1,33 +1,48 @@
 import { nip19 } from "nostr-tools";
 import { normalizeTierMediaItems } from "../utils/validateMedia";
-import { DISCOVERY_WARNING, safeJsonFromResponse } from "../api/fundstrDiscovery";
+import {
+  DISCOVERY_WARNING,
+  safeJsonFromResponse,
+} from "../api/fundstrDiscovery";
+import { debug } from "../js/logger";
 import type { TierMedia } from "../stores/types";
 
 const DEFAULT_API_BASE = "/api/v1";
 const DEFAULT_LIMIT = 24;
 
-const metaEnv = (typeof import.meta !== "undefined" && (import.meta as any)?.env) || {};
-const processEnv = (typeof process !== "undefined" && (process as any)?.env) || {};
+const metaEnv =
+  (typeof import.meta !== "undefined" && (import.meta as any)?.env) || {};
+const processEnv =
+  (typeof process !== "undefined" && (process as any)?.env) || {};
 const rawApiBase =
-  (typeof metaEnv.VITE_FUNDSTR_API_BASE === "string" && metaEnv.VITE_FUNDSTR_API_BASE.trim()) ||
-  (typeof processEnv.VITE_FUNDSTR_API_BASE === "string" && processEnv.VITE_FUNDSTR_API_BASE.trim()) ||
-  (typeof processEnv.FUNDSTR_API_BASE === "string" && processEnv.FUNDSTR_API_BASE.trim()) ||
+  (typeof metaEnv.VITE_FUNDSTR_API_BASE === "string" &&
+    metaEnv.VITE_FUNDSTR_API_BASE.trim()) ||
+  (typeof processEnv.VITE_FUNDSTR_API_BASE === "string" &&
+    processEnv.VITE_FUNDSTR_API_BASE.trim()) ||
+  (typeof processEnv.FUNDSTR_API_BASE === "string" &&
+    processEnv.FUNDSTR_API_BASE.trim()) ||
   DEFAULT_API_BASE;
 
 const API_BASE = rawApiBase.replace(/\/+$/, "");
 
 const rawCacheUpdateUrl =
-  (typeof metaEnv.VITE_CACHE_UPDATE_URL === "string" && metaEnv.VITE_CACHE_UPDATE_URL.trim()) ||
-  (typeof processEnv.VITE_CACHE_UPDATE_URL === "string" && processEnv.VITE_CACHE_UPDATE_URL.trim()) ||
-  (typeof processEnv.CACHE_UPDATE_URL === "string" && processEnv.CACHE_UPDATE_URL.trim()) ||
+  (typeof metaEnv.VITE_CACHE_UPDATE_URL === "string" &&
+    metaEnv.VITE_CACHE_UPDATE_URL.trim()) ||
+  (typeof processEnv.VITE_CACHE_UPDATE_URL === "string" &&
+    processEnv.VITE_CACHE_UPDATE_URL.trim()) ||
+  (typeof processEnv.CACHE_UPDATE_URL === "string" &&
+    processEnv.CACHE_UPDATE_URL.trim()) ||
   "";
 
 const CACHE_UPDATE_URL = rawCacheUpdateUrl || undefined;
 
 const rawCacheUpdateAuth =
-  (typeof metaEnv.VITE_CACHE_UPDATE_AUTH === "string" && metaEnv.VITE_CACHE_UPDATE_AUTH.trim()) ||
-  (typeof processEnv.VITE_CACHE_UPDATE_AUTH === "string" && processEnv.VITE_CACHE_UPDATE_AUTH.trim()) ||
-  (typeof processEnv.CACHE_UPDATE_AUTH === "string" && processEnv.CACHE_UPDATE_AUTH.trim()) ||
+  (typeof metaEnv.VITE_CACHE_UPDATE_AUTH === "string" &&
+    metaEnv.VITE_CACHE_UPDATE_AUTH.trim()) ||
+  (typeof processEnv.VITE_CACHE_UPDATE_AUTH === "string" &&
+    processEnv.VITE_CACHE_UPDATE_AUTH.trim()) ||
+  (typeof processEnv.CACHE_UPDATE_AUTH === "string" &&
+    processEnv.CACHE_UPDATE_AUTH.trim()) ||
   "";
 
 const CACHE_UPDATE_AUTH_HEADER = parseCacheUpdateAuth(rawCacheUpdateAuth);
@@ -110,7 +125,8 @@ export async function fetchCreators(
   if (query) {
     url.searchParams.set("q", query);
   }
-  const effectiveLimit = Number.isFinite(limit) && limit > 0 ? limit : DEFAULT_LIMIT;
+  const effectiveLimit =
+    Number.isFinite(limit) && limit > 0 ? limit : DEFAULT_LIMIT;
   url.searchParams.set("limit", String(Math.floor(effectiveLimit)));
 
   if (Number.isFinite(offset) && offset > 0) {
@@ -134,7 +150,10 @@ export async function fetchCreators(
   return entries.map(normalizeCreator);
 }
 
-export async function fetchCreator(identifier: string, signal?: AbortSignal): Promise<Creator> {
+export async function fetchCreator(
+  identifier: string,
+  signal?: AbortSignal,
+): Promise<Creator> {
   const hexPubkey = toHexPubkeyForPath(identifier);
   if (!hexPubkey) {
     throw new Error("Missing or invalid creator identifier");
@@ -167,7 +186,9 @@ export async function updateCreatorCache(bundle: {
   }
   if (!CACHE_UPDATE_URL) {
     if (!cacheUpdateUrlMissingLogged) {
-      console.warn("[cache-update] Skipping cache refresh; VITE_CACHE_UPDATE_URL is not configured.");
+      console.warn(
+        "[cache-update] Skipping cache refresh; VITE_CACHE_UPDATE_URL is not configured.",
+      );
       cacheUpdateUrlMissingLogged = true;
     }
     return;
@@ -217,8 +238,8 @@ export function formatMsatToSats(
     typeof options.maximumFractionDigits === "number"
       ? options.maximumFractionDigits
       : Math.abs(sats) < 1
-        ? 3
-        : 0;
+      ? 3
+      : 0;
 
   const formatter = new Intl.NumberFormat(undefined, {
     minimumFractionDigits: 0,
@@ -230,26 +251,34 @@ export function formatMsatToSats(
 }
 
 async function parseJson(response: Response): Promise<unknown> {
-  const result = await safeJsonFromResponse<unknown>(response, DISCOVERY_WARNING);
+  const result = await safeJsonFromResponse<unknown>(
+    response,
+    DISCOVERY_WARNING,
+  );
   if (!result.ok) {
     if (result.snippet) {
-      console.debug("[fundstr-api] response snippet", result.snippet);
+      debug("[fundstr-api] response snippet", result.snippet);
     }
-    throw new Error(result.warning);
+    const warning = "warning" in result ? result.warning : DISCOVERY_WARNING;
+    throw new Error(warning);
   }
 
   return result.data;
 }
 
 function buildCacheUpdateHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { "content-type": "application/json" };
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
   if (CACHE_UPDATE_AUTH_HEADER) {
     headers[CACHE_UPDATE_AUTH_HEADER.name] = CACHE_UPDATE_AUTH_HEADER.value;
   }
   return headers;
 }
 
-function parseCacheUpdateAuth(raw: unknown): { name: string; value: string } | null {
+function parseCacheUpdateAuth(
+  raw: unknown,
+): { name: string; value: string } | null {
   if (typeof raw !== "string") {
     return null;
   }
@@ -278,10 +307,18 @@ async function extractCacheUpdateError(response: Response): Promise<string> {
     }
     try {
       const json = JSON.parse(text);
-      if (json && typeof (json as any).error === "string" && (json as any).error.trim()) {
+      if (
+        json &&
+        typeof (json as any).error === "string" &&
+        (json as any).error.trim()
+      ) {
         return (json as any).error.trim();
       }
-      if (json && typeof (json as any).message === "string" && (json as any).message.trim()) {
+      if (
+        json &&
+        typeof (json as any).message === "string" &&
+        (json as any).message.trim()
+      ) {
         return (json as any).message.trim();
       }
     } catch (parseError) {
@@ -318,7 +355,9 @@ function normalizeCreator(entry: unknown): Creator {
   }
 
   const pubkey = normalizePubkey(entry.pubkey);
-  const profile = isRecord(entry.profile) ? (entry.profile as Record<string, unknown>) : null;
+  const profile = isRecord(entry.profile)
+    ? (entry.profile as Record<string, unknown>)
+    : null;
   const followers = toNullableNumber(entry.followers);
   const following = toNullableNumber(entry.following);
   const joined = toNullableNumber(entry.joined);
@@ -330,7 +369,8 @@ function normalizeCreator(entry: unknown): Creator {
     toNullableString(entry.name) ??
     toNullableString(profile?.["name"]) ??
     toNullableString(profile?.["username"]);
-  const about = toNullableString(entry.about) ?? toNullableString(profile?.["about"]);
+  const about =
+    toNullableString(entry.about) ?? toNullableString(profile?.["about"]);
   const nip05 =
     toNullableString(entry.nip05 ?? entry.nip_05) ??
     toNullableString(profile?.["nip05"]);
@@ -380,9 +420,15 @@ function normalizeCreator(entry: unknown): Creator {
 function normalizeMetrics(input: Record<string, unknown>): CreatorMetrics {
   return {
     supporters: toNullableNumber(input.supporters),
-    totalSupportMsat: toNullableNumber(input.total_support_msat ?? input.totalSupportMsat),
-    monthlySupportMsat: toNullableNumber(input.monthly_support_msat ?? input.monthlySupportMsat),
-    lastSupportAt: toNullableString(input.last_support_at ?? input.lastSupportAt),
+    totalSupportMsat: toNullableNumber(
+      input.total_support_msat ?? input.totalSupportMsat,
+    ),
+    monthlySupportMsat: toNullableNumber(
+      input.monthly_support_msat ?? input.monthlySupportMsat,
+    ),
+    lastSupportAt: toNullableString(
+      input.last_support_at ?? input.lastSupportAt,
+    ),
   };
 }
 
@@ -401,7 +447,9 @@ function normalizeTier(entry: unknown): CreatorTier | null {
     id: idValue,
     name: toNullableString(entry.name) ?? "",
     amountMsat: toNullableNumber(entry.amount_msat ?? entry.amountMsat),
-    cadence: toNullableString(entry.cadence ?? entry.interval ?? entry.frequency) ?? null,
+    cadence:
+      toNullableString(entry.cadence ?? entry.interval ?? entry.frequency) ??
+      null,
     description: toNullableString(entry.description ?? entry.details) ?? null,
     media,
   };
@@ -415,7 +463,9 @@ function normalizeTierSummary(input: unknown): CreatorTierSummary | null {
   if (isRecord((input as any).cheapest)) {
     cheapest = toNullableNumber((input as any).cheapest!.price_msat);
   } else {
-    cheapest = toNullableNumber((input as any).cheapest_price_msat ?? (input as any).cheapestPriceMsat);
+    cheapest = toNullableNumber(
+      (input as any).cheapest_price_msat ?? (input as any).cheapestPriceMsat,
+    );
   }
   const count = toNullableNumber((input as any).count);
   if (count === null && cheapest === null) {
@@ -432,7 +482,8 @@ function toHexPubkeyForPath(identifier: string): string | null {
   if (id.startsWith("npub1") || id.startsWith("nprofile1")) {
     try {
       const decoded = nip19.decode(id);
-      const pubkey = decoded.type === "npub" ? decoded.data : (decoded.data as any).pubkey;
+      const pubkey =
+        decoded.type === "npub" ? decoded.data : (decoded.data as any).pubkey;
       if (typeof pubkey === "string" && /^[0-9a-f]{64}$/.test(pubkey)) {
         return pubkey;
       }
@@ -464,7 +515,11 @@ function normalizePubkey(value: unknown): string {
   if (trimmed.startsWith("nprofile")) {
     try {
       const decoded = nip19.decode(trimmed);
-      if (decoded.data && typeof decoded.data === "object" && "pubkey" in decoded.data) {
+      if (
+        decoded.data &&
+        typeof decoded.data === "object" &&
+        "pubkey" in decoded.data
+      ) {
         const pubkey = (decoded.data as Record<string, unknown>).pubkey;
         if (typeof pubkey === "string" && pubkey.trim()) {
           return pubkey.trim();

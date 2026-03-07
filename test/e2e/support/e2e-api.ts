@@ -5,6 +5,12 @@ export class E2EApi {
   constructor(private readonly page: Page) {}
 
   private async call<T>(method: string, ...args: unknown[]): Promise<T> {
+    await this.page.waitForFunction(
+      (name) => typeof (window as any).__FUNDSTR_E2E__?.[name] === "function",
+      method,
+      { timeout: 15000 },
+    );
+
     return this.page.evaluate(
       ([name, params]) => {
         const api = (window as any).__FUNDSTR_E2E__;
@@ -23,6 +29,10 @@ export class E2EApi {
 
   bootstrap() {
     return this.call("bootstrap");
+  }
+
+  finishWelcome() {
+    return this.call("finishWelcome");
   }
 
   seedMint(config: {
@@ -51,12 +61,24 @@ export class E2EApi {
     return this.call<string>("generateToken", amount);
   }
 
+  walletMockCreatePendingEcash(amount: number, description?: string) {
+    return this.call<string>(
+      "walletMockCreatePendingEcash",
+      amount,
+      description,
+    );
+  }
+
   redeemToken(amount: number) {
     return this.call("redeemToken", amount);
   }
 
   setCreatorProfile(profile: Record<string, unknown>) {
     return this.call("setCreatorProfile", profile);
+  }
+
+  seedCreatorP2pk() {
+    return this.call<{ publicKey: string }>("seedCreatorP2pk");
   }
 
   addSubscription(data: {
@@ -81,19 +103,33 @@ export class E2EApi {
     eventId?: string;
     createdAt?: number;
   }) {
-    return this.call("messengerCreateLocalEcho", config);
+    return this.call<{ localId: string; messageId: string }>(
+      "messengerCreateLocalEcho",
+      config,
+    );
   }
 
   messengerMarkLocalEchoSent(localId: string) {
     return this.call("messengerMarkLocalEchoSent", localId);
   }
 
-  messengerSetSendMock(config: { mode: "success" | "failure"; reason?: string }) {
+  messengerMarkLocalEchoFailed(localId: string, reason?: string) {
+    return this.call("messengerMarkLocalEchoFailed", localId, reason);
+  }
+
+  messengerSetSendMock(config: {
+    mode: "success" | "failure";
+    reason?: string;
+  }) {
     return this.call("messengerSetSendMock", config);
   }
 
   messengerClearSendMock() {
     return this.call("messengerClearSendMock");
+  }
+
+  messengerRetryLocalEcho(localId: string) {
+    return this.call("messengerRetryLocalEcho", localId);
   }
 
   messengerDropConversationSubscription() {
@@ -117,6 +153,22 @@ export class E2EApi {
 
   getNostrPubkey() {
     return this.call<string | null>("getNostrPubkey");
+  }
+
+  getConversation(pubkey: string) {
+    return this.call<
+      Array<{
+        id: string;
+        content: string;
+        status?: string;
+        localEcho: {
+          localId: string;
+          status: string;
+          attempt: number;
+          error: string | null;
+        } | null;
+      }>
+    >("getConversation", pubkey);
   }
 
   getSnapshot() {
@@ -149,6 +201,10 @@ export class E2EApi {
     );
   }
 
+  walletMockPayLightningInvoice(request: string, bucketId?: string) {
+    return this.call("walletMockPayLightningInvoice", request, bucketId);
+  }
+
   getHistoryTokens() {
     return this.call<any[]>("getHistoryTokens");
   }
@@ -161,4 +217,3 @@ export class E2EApi {
 export function createE2EApi(page: Page): E2EApi {
   return new E2EApi(page);
 }
-

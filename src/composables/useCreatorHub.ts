@@ -1,21 +1,32 @@
-import { computed, ref } from 'vue';
-import type { Tier } from 'src/nutzap/types';
-import { useCreatorProfileStore } from 'src/stores/creatorProfile';
+import { computed, ref } from "vue";
+import type { Tier } from "src/nutzap/types";
+import { useCreatorProfileStore } from "src/stores/creatorProfile";
 
-function cloneTier(tier: Tier): Tier {
-  return {
+type EditableTier = Tier & {
+  benefits?: string[];
+};
+
+function cloneTier(tier: EditableTier): EditableTier {
+  const clone: EditableTier = {
     ...tier,
-    benefits: Array.isArray(tier.benefits) ? [...tier.benefits] : tier.benefits,
-    media: Array.isArray(tier.media) ? [...tier.media] : tier.media,
   };
+  if (Array.isArray(tier.benefits)) {
+    clone.benefits = [...tier.benefits];
+  }
+  if (Array.isArray(tier.media)) {
+    clone.media = [...tier.media];
+  }
+  return clone;
 }
 
-const tierDrafts = ref<Tier[]>([]);
+const tierDrafts = ref<EditableTier[]>([]);
 const tierCleanSnapshot = ref<string>(JSON.stringify([]));
 
-const tiersDirty = computed(() => JSON.stringify(tierDrafts.value) !== tierCleanSnapshot.value);
+const tiersDirty = computed(
+  () => JSON.stringify(tierDrafts.value) !== tierCleanSnapshot.value,
+);
 
-function replaceTierDrafts(next: Tier[]): void {
+function replaceTierDrafts(next: EditableTier[]): void {
   tierDrafts.value = next.map(cloneTier);
 }
 

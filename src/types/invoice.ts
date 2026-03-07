@@ -12,6 +12,7 @@ export interface InvoiceHistory extends Invoice {
   status: "pending" | "paid";
   mint: string;
   unit: string;
+  bucketId?: string;
   mintQuote?: MintQuoteResponse;
   meltQuote?: MeltQuoteResponse;
 }

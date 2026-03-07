@@ -13,11 +13,33 @@ declare module "src/router" {
   const router: any;
   export default router;
 }
+declare module "*.vue" {
+  import type { DefineComponent } from "vue";
+  const component: DefineComponent<
+    Record<string, unknown>,
+    Record<string, unknown>,
+    any
+  >;
+  export default component;
+}
 
 // Web NFC in some browsers
 declare global {
+  interface TrustedTypesPolicyLike {
+    createHTML(input: string): unknown;
+  }
+
+  interface TrustedTypesFactoryLike {
+    defaultPolicy?: TrustedTypesPolicyLike;
+    createPolicy(
+      name: string,
+      rules: TrustedTypesPolicyLike,
+    ): TrustedTypesPolicyLike;
+  }
+
   interface Window {
     NDEFReader?: any;
+    trustedTypes?: TrustedTypesFactoryLike;
   }
 }
 export {};

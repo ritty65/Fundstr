@@ -1,7 +1,9 @@
 <template>
   <q-page class="creator-studio-page bg-surface-1 q-pa-lg">
     <header class="studio-header">
-      <h1 class="studio-header__title text-1 text-weight-semibold">Creator Dashboard</h1>
+      <h1 class="studio-header__title text-1 text-weight-semibold">
+        Creator Dashboard
+      </h1>
       <div class="studio-header__actions" v-if="!isViewMode">
         <q-btn
           outline
@@ -13,37 +15,78 @@
       </div>
     </header>
 
-
     <div class="studio-layout" :class="{ 'is-view-mode': isViewMode }">
       <template v-if="isViewMode">
-        <main class="studio-stage studio-stage--view" role="region" aria-live="polite">
+        <main
+          class="studio-stage studio-stage--view"
+          role="region"
+          aria-live="polite"
+        >
           <div class="studio-overview">
-            <q-card flat bordered class="studio-overview__card studio-overview__hero-card">
+            <q-card
+              flat
+              bordered
+              class="studio-overview__card studio-overview__hero-card"
+            >
               <div class="studio-overview__hero">
                 <div class="studio-overview__hero-meta">
                   <q-avatar size="64px" color="primary" text-color="white">
-                    <img v-if="pictureUrl" :src="pictureUrl" :alt="summaryDisplayName" />
-                    <span v-else class="text-subtitle1">{{ displayNameInitials }}</span>
+                    <img
+                      v-if="pictureUrl"
+                      :src="pictureUrl"
+                      :alt="summaryDisplayName"
+                    />
+                    <span v-else class="text-subtitle1">{{
+                      displayNameInitials
+                    }}</span>
                   </q-avatar>
                   <div class="studio-overview__hero-copy">
-                    <div class="text-h6 text-weight-semibold text-1">{{ summaryDisplayName }}</div>
-                    <div class="text-caption text-2">Author: {{ authorNpubForShare || summaryAuthorKey || 'Not set' }}</div>
+                    <div class="text-h6 text-weight-semibold text-1">
+                      {{ summaryDisplayName }}
+                    </div>
+                    <div class="text-caption text-2">
+                      Author:
+                      {{ authorNpubForShare || summaryAuthorKey || "Not set" }}
+                    </div>
                     <div class="studio-overview__chip-row">
-                      <q-badge :color="publishStatusChip.color" text-color="white" rounded>
-                        <q-icon :name="publishStatusChip.icon" size="16px" class="q-mr-xs" />
+                      <q-badge
+                        :color="publishStatusChip.color"
+                        text-color="white"
+                        rounded
+                      >
+                        <q-icon
+                          :name="publishStatusChip.icon"
+                          size="16px"
+                          class="q-mr-xs"
+                        />
                         {{ publishStatusChip.label }}
                       </q-badge>
-                      <span class="text-caption text-2">{{ lastUpdatedLabel }}</span>
+                      <span class="text-caption text-2">{{
+                        lastUpdatedLabel
+                      }}</span>
                     </div>
                   </div>
                 </div>
                 <div class="studio-overview__hero-actions">
                   <div class="studio-overview__metrics">
-                    <div v-for="metric in heroMetrics" :key="metric.label" class="studio-overview__metric">
-                      <q-icon :name="metric.icon" size="18px" color="primary" aria-hidden="true" />
+                    <div
+                      v-for="metric in heroMetrics"
+                      :key="metric.label"
+                      class="studio-overview__metric"
+                    >
+                      <q-icon
+                        :name="metric.icon"
+                        size="18px"
+                        color="primary"
+                        aria-hidden="true"
+                      />
                       <div>
-                        <div class="text-subtitle2 text-1 text-weight-semibold">{{ metric.value }}</div>
-                        <div class="text-caption text-2">{{ metric.label }}</div>
+                        <div class="text-subtitle2 text-1 text-weight-semibold">
+                          {{ metric.value }}
+                        </div>
+                        <div class="text-caption text-2">
+                          {{ metric.label }}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -59,13 +102,26 @@
             </q-card>
 
             <div class="studio-overview__layout">
-              <q-card flat bordered class="studio-overview__card studio-overview__card--status">
+              <q-card
+                flat
+                bordered
+                class="studio-overview__card studio-overview__card--status"
+              >
                 <div class="studio-overview__card-header">
                   <div class="studio-overview__card-title">
-                    <q-icon name="task_alt" color="primary" size="20px" aria-hidden="true" />
+                    <q-icon
+                      name="task_alt"
+                      color="primary"
+                      size="20px"
+                      aria-hidden="true"
+                    />
                     <div>
-                      <div class="text-subtitle1 text-weight-medium text-1">Readiness status</div>
-                      <div class="text-caption text-2">Profile, relays, mints, and tiers at a glance.</div>
+                      <div class="text-subtitle1 text-weight-medium text-1">
+                        Readiness status
+                      </div>
+                      <div class="text-caption text-2">
+                        Profile, relays, mints, and tiers at a glance.
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -75,13 +131,28 @@
                     :key="item.id"
                     class="studio-overview__status-tile"
                   >
-                    <div class="studio-overview__status-icon" :class="`is-${item.state}`">
-                      <q-icon :name="item.icon" size="20px" aria-hidden="true" />
+                    <div
+                      class="studio-overview__status-icon"
+                      :class="`is-${item.state}`"
+                    >
+                      <q-icon
+                        :name="item.icon"
+                        size="20px"
+                        aria-hidden="true"
+                      />
                     </div>
                     <div class="studio-overview__status-content">
-                      <div class="studio-overview__status-title text-body1 text-weight-medium text-1">
+                      <div
+                        class="studio-overview__status-title text-body1 text-weight-medium text-1"
+                      >
                         {{ item.label }}
-                        <q-chip size="sm" :color="item.chipColor" text-color="white" dense>{{ item.stateLabel }}</q-chip>
+                        <q-chip
+                          size="sm"
+                          :color="item.chipColor"
+                          text-color="white"
+                          dense
+                          >{{ item.stateLabel }}</q-chip
+                        >
                       </div>
                       <div class="text-caption text-2">{{ item.helper }}</div>
                     </div>
@@ -102,88 +173,188 @@
                 <q-card flat bordered class="studio-overview__card">
                   <div class="studio-overview__card-header">
                     <div class="studio-overview__card-title">
-                      <q-icon name="podcasts" color="primary" size="20px" aria-hidden="true" />
+                      <q-icon
+                        name="podcasts"
+                        color="primary"
+                        size="20px"
+                        aria-hidden="true"
+                      />
                       <div>
-                        <div class="text-subtitle1 text-weight-medium text-1">Relays</div>
-                        <div class="text-caption text-2">{{ relayList.length }} selected</div>
+                        <div class="text-subtitle1 text-weight-medium text-1">
+                          Relays
+                        </div>
+                        <div class="text-caption text-2">
+                          {{ relayList.length }} selected
+                        </div>
                       </div>
                     </div>
                   </div>
-                  <div v-if="relayList.length" class="studio-overview__summary-list">
-                    <div v-for="relay in relayList" :key="relay" class="studio-overview__summary-item">
-                      <q-icon name="wifi" size="18px" color="primary" aria-hidden="true" />
+                  <div
+                    v-if="relayList.length"
+                    class="studio-overview__summary-list"
+                  >
+                    <div
+                      v-for="relay in relayList"
+                      :key="relay"
+                      class="studio-overview__summary-item"
+                    >
+                      <q-icon
+                        name="wifi"
+                        size="18px"
+                        color="primary"
+                        aria-hidden="true"
+                      />
                       <div>
-                        <div class="text-body2 text-1 text-weight-medium">{{ relay }}</div>
+                        <div class="text-body2 text-1 text-weight-medium">
+                          {{ relay }}
+                        </div>
                         <div class="text-caption text-2">Preferred relay</div>
                       </div>
                     </div>
                   </div>
                   <div v-else class="studio-overview__empty">
-                    <q-icon name="hub" size="48px" color="primary" aria-hidden="true" />
+                    <q-icon
+                      name="hub"
+                      size="48px"
+                      color="primary"
+                      aria-hidden="true"
+                    />
                     <p class="text-body2 text-2">Relay selection pending.</p>
                   </div>
                   <div class="studio-overview__card-footer">
-                    <q-btn flat color="primary" icon="edit" label="Set up now" @click="startEditingStep('setup')" />
+                    <q-btn
+                      flat
+                      color="primary"
+                      icon="edit"
+                      label="Set up now"
+                      @click="startEditingStep('setup')"
+                    />
                   </div>
                 </q-card>
 
                 <q-card flat bordered class="studio-overview__card">
                   <div class="studio-overview__card-header">
                     <div class="studio-overview__card-title">
-                      <q-icon name="payments" color="primary" size="20px" aria-hidden="true" />
+                      <q-icon
+                        name="payments"
+                        color="primary"
+                        size="20px"
+                        aria-hidden="true"
+                      />
                       <div>
-                        <div class="text-subtitle1 text-weight-medium text-1">Trusted mints</div>
-                        <div class="text-caption text-2">{{ mintList.length }} configured</div>
+                        <div class="text-subtitle1 text-weight-medium text-1">
+                          Trusted mints
+                        </div>
+                        <div class="text-caption text-2">
+                          {{ mintList.length }} configured
+                        </div>
                       </div>
                     </div>
                   </div>
-                  <div v-if="mintList.length" class="studio-overview__summary-list">
-                    <div v-for="mint in mintList" :key="mint" class="studio-overview__summary-item">
-                      <q-icon name="account_balance_wallet" size="18px" color="primary" aria-hidden="true" />
+                  <div
+                    v-if="mintList.length"
+                    class="studio-overview__summary-list"
+                  >
+                    <div
+                      v-for="mint in mintList"
+                      :key="mint"
+                      class="studio-overview__summary-item"
+                    >
+                      <q-icon
+                        name="account_balance_wallet"
+                        size="18px"
+                        color="primary"
+                        aria-hidden="true"
+                      />
                       <div>
-                        <div class="text-body2 text-1 text-weight-medium">{{ mint }}</div>
+                        <div class="text-body2 text-1 text-weight-medium">
+                          {{ mint }}
+                        </div>
                         <div class="text-caption text-2">Active mint</div>
                       </div>
                     </div>
                   </div>
                   <div v-else class="studio-overview__empty">
-                    <q-icon name="account_balance_wallet" size="48px" color="primary" aria-hidden="true" />
+                    <q-icon
+                      name="account_balance_wallet"
+                      size="48px"
+                      color="primary"
+                      aria-hidden="true"
+                    />
                     <p class="text-body2 text-2">No mints configured.</p>
                   </div>
                   <div class="studio-overview__card-footer">
-                    <q-btn flat color="primary" icon="edit" label="Set up now" @click="startEditingStep('profile')" />
+                    <q-btn
+                      flat
+                      color="primary"
+                      icon="edit"
+                      label="Set up now"
+                      @click="startEditingStep('profile')"
+                    />
                   </div>
                 </q-card>
 
                 <q-card flat bordered class="studio-overview__card">
                   <div class="studio-overview__card-header">
                     <div class="studio-overview__card-title">
-                      <q-icon name="workspace_premium" color="primary" size="20px" aria-hidden="true" />
+                      <q-icon
+                        name="workspace_premium"
+                        color="primary"
+                        size="20px"
+                        aria-hidden="true"
+                      />
                       <div>
-                        <div class="text-subtitle1 text-weight-medium text-1">Supporter tiers</div>
-                        <div class="text-caption text-2">{{ tiers.length }} total</div>
+                        <div class="text-subtitle1 text-weight-medium text-1">
+                          Supporter tiers
+                        </div>
+                        <div class="text-caption text-2">
+                          {{ tiers.length }} total
+                        </div>
                       </div>
                     </div>
                   </div>
-                  <div v-if="tiers.length" class="studio-overview__tiers studio-overview__summary-list">
+                  <div
+                    v-if="tiers.length"
+                    class="studio-overview__tiers studio-overview__summary-list"
+                  >
                     <div
                       v-for="(tier, index) in tierSummaryList"
                       :key="tier.id || `tier-${index}`"
                       class="studio-overview__summary-item"
                     >
-                      <q-icon name="star" size="18px" color="primary" aria-hidden="true" />
+                      <q-icon
+                        name="star"
+                        size="18px"
+                        color="primary"
+                        aria-hidden="true"
+                      />
                       <div>
-                        <div class="text-body2 text-1 text-weight-medium">{{ tier.title }}</div>
-                        <div class="text-caption text-2">{{ tier.frequencyLabel }} • {{ tier.priceLabel }}</div>
+                        <div class="text-body2 text-1 text-weight-medium">
+                          {{ tier.title }}
+                        </div>
+                        <div class="text-caption text-2">
+                          {{ tier.frequencyLabel }} • {{ tier.priceLabel }}
+                        </div>
                       </div>
                     </div>
                   </div>
                   <div v-else class="studio-overview__empty">
-                    <q-icon name="workspace_premium" size="48px" color="primary" aria-hidden="true" />
+                    <q-icon
+                      name="workspace_premium"
+                      size="48px"
+                      color="primary"
+                      aria-hidden="true"
+                    />
                     <p class="text-body2 text-2">No tiers configured yet.</p>
                   </div>
                   <div class="studio-overview__card-footer">
-                    <q-btn flat color="primary" icon="edit" label="Set up now" @click="startEditingStep('tiers')" />
+                    <q-btn
+                      flat
+                      color="primary"
+                      icon="edit"
+                      label="Set up now"
+                      @click="startEditingStep('tiers')"
+                    />
                   </div>
                 </q-card>
               </div>
@@ -194,10 +365,20 @@
       <template v-else>
         <nav class="studio-navigation" aria-label="Creator studio progress">
           <div class="studio-navigation__cta">
-            <q-btn color="primary" unelevated icon="edit" label="Edit Fundstr Profile" @click="enterEditMode" />
+            <q-btn
+              color="primary"
+              unelevated
+              icon="edit"
+              label="Edit Fundstr Profile"
+              @click="enterEditMode"
+            />
           </div>
           <ol class="studio-stepper" role="list">
-            <li v-for="step in steps" :key="step.name" class="studio-stepper__item">
+            <li
+              v-for="step in steps"
+              :key="step.name"
+              class="studio-stepper__item"
+            >
               <button
                 class="studio-stepper__button"
                 type="button"
@@ -216,28 +397,46 @@
                 :aria-disabled="isStepLocked(step.name)"
               >
                 <span class="studio-stepper__indicator" aria-hidden="true">
-                  <q-icon v-if="isStepComplete(step)" name="check" size="16px" />
+                  <q-icon
+                    v-if="isStepComplete(step)"
+                    name="check"
+                    size="16px"
+                  />
                   <span v-else>{{ step.indicator }}</span>
                 </span>
                 <span class="studio-stepper__copy">
-                  <span class="studio-stepper__label text-body1 text-weight-medium text-1">
+                  <span
+                    class="studio-stepper__label text-body1 text-weight-medium text-1"
+                  >
                     {{ step.label }}
                   </span>
                   <span class="studio-stepper__sublabel text-caption text-2">
                     {{ step.sublabel }}
                   </span>
-                  <span class="studio-stepper__status text-caption text-2" :id="`step-${step.name}-status`">
+                  <span
+                    class="studio-stepper__status text-caption text-2"
+                    :id="`step-${step.name}-status`"
+                  >
                     {{ step.statusLabel }}
                   </span>
-                  <p class="studio-stepper__description text-caption text-2" :id="`step-${step.name}-description`">
+                  <p
+                    class="studio-stepper__description text-caption text-2"
+                    :id="`step-${step.name}-description`"
+                  >
                     {{ step.description }}
                   </p>
-                  <p class="studio-stepper__helper text-caption text-2" :id="`step-${step.name}-helper`">
+                  <p
+                    class="studio-stepper__helper text-caption text-2"
+                    :id="`step-${step.name}-helper`"
+                  >
                     {{ step.helper }}
                   </p>
                 </span>
               </button>
-              <q-tooltip v-if="isStepLocked(step.name)" class="bg-surface-2 text-1">
+              <q-tooltip
+                v-if="isStepLocked(step.name)"
+                class="bg-surface-2 text-1"
+              >
                 {{ stepLockReason(step.name) }}
               </q-tooltip>
             </li>
@@ -273,7 +472,10 @@
                   :aria-valuenow="currentStepNumber"
                 >
                   <div class="studio-stage__progress-track">
-                    <div class="studio-stage__progress-fill" :style="{ width: `${stageProgress}%` }"></div>
+                    <div
+                      class="studio-stage__progress-fill"
+                      :style="{ width: `${stageProgress}%` }"
+                    ></div>
                   </div>
                 </div>
               </div>
@@ -383,8 +585,12 @@
                     :disable="stageLoading"
                     :options="tierPreviewOptions"
                   />
-                  <q-chip dense :color="tiersReady ? 'positive' : 'warning'" text-color="white">
-                    {{ tiersReady ? 'Tiers valid' : 'Needs review' }}
+                  <q-chip
+                    dense
+                    :color="tiersReady ? 'positive' : 'warning'"
+                    text-color="white"
+                  >
+                    {{ tiersReady ? "Tiers valid" : "Needs review" }}
                   </q-chip>
                 </template>
 
@@ -487,8 +693,12 @@
                         :aria-describedby="'publish-share-helper publish-share-status'"
                         @click="shareLinkReady && copy(publicProfileUrl)"
                       >
-                        <q-tooltip v-if="shareLinkReady" class="bg-surface-2 text-1">
-                          Share this link so supporters can view your profile and tiers.
+                        <q-tooltip
+                          v-if="shareLinkReady"
+                          class="bg-surface-2 text-1"
+                        >
+                          Share this link so supporters can view your profile
+                          and tiers.
                         </q-tooltip>
                       </q-btn>
                     </div>
@@ -508,21 +718,40 @@
                 >
                   <div class="publish-summary__content">
                     <div class="publish-summary-grid">
-                      <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'profile' }">
-                        <div class="publish-summary-tile__label text-caption text-uppercase text-2">Display name</div>
-                        <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                      <div
+                        class="publish-summary-tile"
+                        :class="{ 'is-active': activeStep === 'profile' }"
+                      >
+                        <div
+                          class="publish-summary-tile__label text-caption text-uppercase text-2"
+                        >
+                          Display name
+                        </div>
+                        <div
+                          class="publish-summary-tile__value text-body1 text-weight-medium text-1"
+                        >
                           {{ summaryDisplayName }}
                         </div>
-                        <div v-if="summaryAuthorKey" class="publish-summary-tile__meta text-caption text-2">
+                        <div
+                          v-if="summaryAuthorKey"
+                          class="publish-summary-tile__meta text-caption text-2"
+                        >
                           Signer: {{ summaryAuthorKey }}
                         </div>
-                        <div class="publish-summary-tile__meta text-caption text-2">
+                        <div
+                          class="publish-summary-tile__meta text-caption text-2"
+                        >
                           Share: {{ shareStatusLabel }}
                         </div>
-                        <div class="publish-summary-tile__meta text-caption text-2">
+                        <div
+                          class="publish-summary-tile__meta text-caption text-2"
+                        >
                           {{ shareHelperMessage }}
                         </div>
-                        <div v-if="lastPublishInfo" class="publish-summary-tile__meta text-caption text-2">
+                        <div
+                          v-if="lastPublishInfo"
+                          class="publish-summary-tile__meta text-caption text-2"
+                        >
                           {{ lastPublishInfo }}
                         </div>
                         <div class="publish-summary-tile__cta">
@@ -537,12 +766,23 @@
                           />
                         </div>
                       </div>
-                      <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'tiers' }">
-                        <div class="publish-summary-tile__label text-caption text-uppercase text-2">Tier address</div>
-                        <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                      <div
+                        class="publish-summary-tile"
+                        :class="{ 'is-active': activeStep === 'tiers' }"
+                      >
+                        <div
+                          class="publish-summary-tile__label text-caption text-uppercase text-2"
+                        >
+                          Tier address
+                        </div>
+                        <div
+                          class="publish-summary-tile__value text-body1 text-weight-medium text-1"
+                        >
                           {{ tierAddressPreview }}
                         </div>
-                        <div class="publish-summary-tile__meta text-caption text-2">
+                        <div
+                          class="publish-summary-tile__meta text-caption text-2"
+                        >
                           Publishing as {{ tierPublishSummaryLabel }}
                         </div>
                         <div class="publish-summary-tile__cta">
@@ -557,12 +797,24 @@
                           />
                         </div>
                       </div>
-                      <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'profile' }">
-                        <div class="publish-summary-tile__label text-caption text-uppercase text-2">Trusted mints</div>
-                        <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                      <div
+                        class="publish-summary-tile"
+                        :class="{ 'is-active': activeStep === 'profile' }"
+                      >
+                        <div
+                          class="publish-summary-tile__label text-caption text-uppercase text-2"
+                        >
+                          Trusted mints
+                        </div>
+                        <div
+                          class="publish-summary-tile__value text-body1 text-weight-medium text-1"
+                        >
                           {{ mintList.length }} configured
                         </div>
-                        <div class="publish-summary-tile__stack" v-if="mintList.length">
+                        <div
+                          class="publish-summary-tile__stack"
+                          v-if="mintList.length"
+                        >
                           <q-chip
                             v-for="mint in mintList"
                             :key="mint"
@@ -574,7 +826,12 @@
                             {{ mint }}
                           </q-chip>
                         </div>
-                        <div v-else class="publish-summary-tile__meta text-caption text-2">No mints configured.</div>
+                        <div
+                          v-else
+                          class="publish-summary-tile__meta text-caption text-2"
+                        >
+                          No mints configured.
+                        </div>
                         <div class="publish-summary-tile__cta">
                           <q-btn
                             flat
@@ -587,15 +844,38 @@
                           />
                         </div>
                       </div>
-                      <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'setup' }">
-                        <div class="publish-summary-tile__label text-caption text-uppercase text-2">Preferred relays</div>
-                        <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                      <div
+                        class="publish-summary-tile"
+                        :class="{ 'is-active': activeStep === 'setup' }"
+                      >
+                        <div
+                          class="publish-summary-tile__label text-caption text-uppercase text-2"
+                        >
+                          Preferred relays
+                        </div>
+                        <div
+                          class="publish-summary-tile__value text-body1 text-weight-medium text-1"
+                        >
                           {{ relayList.length }} selected
                         </div>
-                        <div class="publish-summary-tile__stack" v-if="relayList.length">
-                          <q-chip v-for="relay in relayList" :key="relay" dense outline>{{ relay }}</q-chip>
+                        <div
+                          class="publish-summary-tile__stack"
+                          v-if="relayList.length"
+                        >
+                          <q-chip
+                            v-for="relay in relayList"
+                            :key="relay"
+                            dense
+                            outline
+                            >{{ relay }}</q-chip
+                          >
                         </div>
-                        <div v-else class="publish-summary-tile__meta text-caption text-2">Relay selection pending.</div>
+                        <div
+                          v-else
+                          class="publish-summary-tile__meta text-caption text-2"
+                        >
+                          Relay selection pending.
+                        </div>
                         <div class="publish-summary-tile__cta">
                           <q-btn
                             flat
@@ -608,18 +888,40 @@
                           />
                         </div>
                       </div>
-                      <div class="publish-summary-tile" :class="{ 'is-active': activeStep === 'tiers' }">
-                        <div class="publish-summary-tile__label text-caption text-uppercase text-2">Supporter tiers</div>
-                        <div class="publish-summary-tile__value text-body1 text-weight-medium text-1">
+                      <div
+                        class="publish-summary-tile"
+                        :class="{ 'is-active': activeStep === 'tiers' }"
+                      >
+                        <div
+                          class="publish-summary-tile__label text-caption text-uppercase text-2"
+                        >
+                          Supporter tiers
+                        </div>
+                        <div
+                          class="publish-summary-tile__value text-body1 text-weight-medium text-1"
+                        >
                           {{ tiers.length }} total
                         </div>
-                        <ul v-if="tiers.length" class="publish-summary-tile__list text-caption text-2">
-                          <li v-for="(tier, index) in tiers.slice(0, 4)" :key="tier.id || tier.title || `tier-${index}`">
-                            {{ tier.title || 'Untitled tier' }}
+                        <ul
+                          v-if="tiers.length"
+                          class="publish-summary-tile__list text-caption text-2"
+                        >
+                          <li
+                            v-for="(tier, index) in tiers.slice(0, 4)"
+                            :key="tier.id || tier.title || `tier-${index}`"
+                          >
+                            {{ tier.title || "Untitled tier" }}
                           </li>
-                          <li v-if="tiers.length > 4">+ {{ tiers.length - 4 }} more</li>
+                          <li v-if="tiers.length > 4">
+                            + {{ tiers.length - 4 }} more
+                          </li>
                         </ul>
-                        <div v-else class="publish-summary-tile__meta text-caption text-2">No tiers configured yet.</div>
+                        <div
+                          v-else
+                          class="publish-summary-tile__meta text-caption text-2"
+                        >
+                          No tiers configured yet.
+                        </div>
                         <div class="publish-summary-tile__cta">
                           <q-btn
                             flat
@@ -637,77 +939,103 @@
                 </q-expansion-item>
 
                 <div class="publish-readiness">
-                <div class="publish-readiness__title text-subtitle2 text-weight-medium text-1">
-                  Readiness checklist
-                </div>
-                <div class="publish-readiness__groups" v-if="!stageLoading">
                   <div
-                    v-for="group in readinessChecklist"
-                    :key="group.id"
-                    class="publish-readiness__group"
+                    class="publish-readiness__title text-subtitle2 text-weight-medium text-1"
                   >
-                    <div class="publish-readiness__group-label text-caption text-uppercase text-2">
-                      {{ group.label }}
-                    </div>
-                    <div class="publish-readiness__entries">
-                      <button
-                        v-for="item in group.items"
-                        :key="item.key"
-                        type="button"
-                        class="publish-readiness__entry"
-                        :class="[`is-${item.state}`, { 'is-clickable': !!item.step } ]"
-                        @click="handleReadinessNavigation(item)"
+                    Readiness checklist
+                  </div>
+                  <div class="publish-readiness__groups" v-if="!stageLoading">
+                    <div
+                      v-for="group in readinessChecklist"
+                      :key="group.id"
+                      class="publish-readiness__group"
+                    >
+                      <div
+                        class="publish-readiness__group-label text-caption text-uppercase text-2"
                       >
-                        <div class="publish-readiness__entry-icon">
-                          <q-icon :name="item.icon" size="18px" />
-                        </div>
-                        <div class="publish-readiness__entry-content">
-                          <div class="publish-readiness__entry-label text-body2 text-1">
-                            {{ item.label }}
+                        {{ group.label }}
+                      </div>
+                      <div class="publish-readiness__entries">
+                        <button
+                          v-for="item in group.items"
+                          :key="item.key"
+                          type="button"
+                          class="publish-readiness__entry"
+                          :class="[
+                            `is-${item.state}`,
+                            { 'is-clickable': !!item.step },
+                          ]"
+                          @click="handleReadinessNavigation(item)"
+                        >
+                          <div class="publish-readiness__entry-icon">
+                            <q-icon :name="item.icon" size="18px" />
+                          </div>
+                          <div class="publish-readiness__entry-content">
+                            <div
+                              class="publish-readiness__entry-label text-body2 text-1"
+                            >
+                              {{ item.label }}
+                            </div>
+                            <div
+                              v-if="item.stepLabel"
+                              class="publish-readiness__entry-meta text-caption text-2"
+                            >
+                              {{ item.stepLabel }} step
+                            </div>
                           </div>
                           <div
-                            v-if="item.stepLabel"
-                            class="publish-readiness__entry-meta text-caption text-2"
+                            class="publish-readiness__entry-state text-caption"
                           >
-                            {{ item.stepLabel }} step
+                            {{ item.stateLabel }}
                           </div>
-                        </div>
-                        <div class="publish-readiness__entry-state text-caption">
-                          {{ item.stateLabel }}
-                        </div>
-                        <q-tooltip v-if="item.tooltip" class="bg-surface-2 text-1">
-                          {{ item.tooltip }}
-                        </q-tooltip>
-                      </button>
+                          <q-tooltip
+                            v-if="item.tooltip"
+                            class="bg-surface-2 text-1"
+                          >
+                            {{ item.tooltip }}
+                          </q-tooltip>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div class="publish-readiness__groups" v-else>
-                  <div v-for="index in 2" :key="`readiness-skeleton-${index}`" class="publish-readiness__group">
-                    <div class="publish-readiness__group-label text-caption text-uppercase text-2">
-                      <q-skeleton type="text" width="120px" />
-                    </div>
-                    <div class="publish-readiness__entries">
+                  <div class="publish-readiness__groups" v-else>
+                    <div
+                      v-for="index in 2"
+                      :key="`readiness-skeleton-${index}`"
+                      class="publish-readiness__group"
+                    >
                       <div
-                        v-for="entryIndex in 3"
-                        :key="`readiness-skeleton-${index}-${entryIndex}`"
-                        class="publish-readiness__entry is-loading"
+                        class="publish-readiness__group-label text-caption text-uppercase text-2"
                       >
-                        <div class="publish-readiness__entry-icon">
-                          <q-skeleton type="QAvatar" size="24px" />
-                        </div>
-                        <div class="publish-readiness__entry-content">
-                          <q-skeleton type="text" width="160px" class="q-mb-xs" />
-                          <q-skeleton type="text" width="100px" />
-                        </div>
-                        <div class="publish-readiness__entry-state text-caption">
-                          <q-skeleton type="text" width="60px" />
+                        <q-skeleton type="text" width="120px" />
+                      </div>
+                      <div class="publish-readiness__entries">
+                        <div
+                          v-for="entryIndex in 3"
+                          :key="`readiness-skeleton-${index}-${entryIndex}`"
+                          class="publish-readiness__entry is-loading"
+                        >
+                          <div class="publish-readiness__entry-icon">
+                            <q-skeleton type="QAvatar" size="24px" />
+                          </div>
+                          <div class="publish-readiness__entry-content">
+                            <q-skeleton
+                              type="text"
+                              width="160px"
+                              class="q-mb-xs"
+                            />
+                            <q-skeleton type="text" width="100px" />
+                          </div>
+                          <div
+                            class="publish-readiness__entry-state text-caption"
+                          >
+                            <q-skeleton type="text" width="60px" />
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
                 <div class="publish-step__actions">
                   <div class="publish-step__cta">
@@ -721,7 +1049,10 @@
                       icon="send"
                       @click="publishAll"
                     >
-                      <q-tooltip v-if="publishHasGuidance" class="bg-surface-2 text-1">
+                      <q-tooltip
+                        v-if="publishHasGuidance"
+                        class="bg-surface-2 text-1"
+                      >
                         <div
                           v-if="publishGuidanceHeading"
                           class="text-caption text-weight-medium q-mb-xs"
@@ -729,19 +1060,35 @@
                           {{ publishGuidanceHeading }}:
                         </div>
                         <ul class="publish-blockers__tooltip-list">
-                          <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
+                          <li
+                            v-for="blocker in publishGuidanceItems"
+                            :key="blocker"
+                          >
+                            {{ blocker }}
+                          </li>
                         </ul>
                       </q-tooltip>
                     </q-btn>
                   </div>
-                  <div v-if="publishHasGuidance" class="publish-blockers text-caption text-2">
+                  <div
+                    v-if="publishHasGuidance"
+                    class="publish-blockers text-caption text-2"
+                  >
                     <q-icon name="info" size="16px" class="q-mr-xs" />
                     <div>
-                      <span class="text-weight-medium" v-if="publishGuidanceHeading">
+                      <span
+                        class="text-weight-medium"
+                        v-if="publishGuidanceHeading"
+                      >
                         {{ publishGuidanceHeading }}:
                       </span>
                       <ul class="publish-blockers__list">
-                        <li v-for="blocker in publishGuidanceItems" :key="blocker">{{ blocker }}</li>
+                        <li
+                          v-for="blocker in publishGuidanceItems"
+                          :key="blocker"
+                        >
+                          {{ blocker }}
+                        </li>
                       </ul>
                     </div>
                   </div>
@@ -749,7 +1096,6 @@
               </StepTemplate>
             </template>
           </div>
-
         </main>
 
         <div
@@ -758,18 +1104,36 @@
           :class="publishBlockReason ? 'text-warning' : 'text-2'"
         >
           <span v-if="publishBlockReason">{{ publishBlockReason }}</span>
-          <span v-else>Publish to sync your latest updates with the relay.</span>
+          <span v-else
+            >Publish to sync your latest updates with the relay.</span
+          >
         </div>
 
         <aside class="studio-sidebar">
-          <q-card flat bordered class="studio-preview" :data-active-step="activeStep" style="position: relative">
+          <q-card
+            flat
+            bordered
+            class="studio-preview"
+            :data-active-step="activeStep"
+            style="position: relative"
+          >
             <q-inner-loading :showing="stageLoading" color="primary" />
             <div class="studio-preview__header">
               <div>
-                <div class="text-subtitle1 text-weight-medium text-1">Preview &amp; payload</div>
-                <div class="text-caption text-2">Live preview updates as you edit.</div>
+                <div class="text-subtitle1 text-weight-medium text-1">
+                  Preview &amp; payload
+                </div>
+                <div class="text-caption text-2">
+                  Live preview updates as you edit.
+                </div>
               </div>
-              <q-btn color="primary" dense icon="download" label="Download bundle" @click="downloadBundle" />
+              <q-btn
+                color="primary"
+                dense
+                icon="download"
+                label="Download bundle"
+                @click="downloadBundle"
+              />
             </div>
             <q-tabs
               v-model="previewTab"
@@ -782,17 +1146,29 @@
               <q-tab name="profile">
                 <template #default>
                   <span>10019 JSON</span>
-                  <span v-if="profileDirty" class="modified-dot" aria-hidden="true"></span>
+                  <span
+                    v-if="profileDirty"
+                    class="modified-dot"
+                    aria-hidden="true"
+                  ></span>
                 </template>
               </q-tab>
               <q-tab name="tiers">
                 <template #default>
                   <span>{{ tierPreviewLabel }} JSON</span>
-                  <span v-if="tiersDirty" class="modified-dot" aria-hidden="true"></span>
+                  <span
+                    v-if="tiersDirty"
+                    class="modified-dot"
+                    aria-hidden="true"
+                  ></span>
                 </template>
               </q-tab>
             </q-tabs>
-            <q-tab-panels v-model="previewTab" animated class="studio-preview__panels">
+            <q-tab-panels
+              v-model="previewTab"
+              animated
+              class="studio-preview__panels"
+            >
               <q-tab-panel name="preview">
                 <div v-if="stageLoading" class="preview-skeleton">
                   <div class="preview-skeleton__hero">
@@ -810,9 +1186,21 @@
                       width="110px"
                     />
                   </div>
-                  <q-skeleton type="rect" height="96px" class="preview-skeleton__section" />
-                  <q-skeleton type="rect" height="180px" class="preview-skeleton__section" />
-                  <q-skeleton type="rect" height="140px" class="preview-skeleton__section" />
+                  <q-skeleton
+                    type="rect"
+                    height="96px"
+                    class="preview-skeleton__section"
+                  />
+                  <q-skeleton
+                    type="rect"
+                    height="180px"
+                    class="preview-skeleton__section"
+                  />
+                  <q-skeleton
+                    type="rect"
+                    height="140px"
+                    class="preview-skeleton__section"
+                  />
                 </div>
                 <template v-else>
                   <CreatorStudioPreviewCard
@@ -824,7 +1212,8 @@
                     :active-step="activeStep"
                   />
                   <q-banner class="preview-banner" dense>
-                    Publish pushes both events to relay.fundstr.me. Copy JSON if your publisher requires manual input.
+                    Publish pushes both events to relay.fundstr.me. Copy JSON if
+                    your publisher requires manual input.
                   </q-banner>
                 </template>
               </q-tab-panel>
@@ -838,10 +1227,16 @@
                         :color="profileJsonMeta.valid ? 'positive' : 'warning'"
                         :text-color="profileJsonMeta.valid ? 'white' : 'black'"
                       >
-                        {{ profileJsonMeta.valid ? 'Valid JSON' : 'Check JSON' }}
+                        {{
+                          profileJsonMeta.valid ? "Valid JSON" : "Check JSON"
+                        }}
                       </q-badge>
-                      <span class="json-toolbar__stat">{{ profileJsonStats.lines }} lines</span>
-                      <span class="json-toolbar__stat">{{ profileJsonStats.chars }} chars</span>
+                      <span class="json-toolbar__stat"
+                        >{{ profileJsonStats.lines }} lines</span
+                      >
+                      <span class="json-toolbar__stat"
+                        >{{ profileJsonStats.chars }} chars</span
+                      >
                     </div>
                     <div class="json-toolbar__actions">
                       <q-btn-toggle
@@ -884,7 +1279,9 @@
                     </div>
                   </div>
                   <q-card flat bordered class="json-viewer">
-                    <pre class="json-viewer__code"><code>{{ profileJsonDisplay }}</code></pre>
+                    <pre
+                      class="json-viewer__code"
+                    ><code>{{ profileJsonDisplay }}</code></pre>
                   </q-card>
                 </div>
               </q-tab-panel>
@@ -898,10 +1295,14 @@
                         :color="tiersJsonMeta.valid ? 'positive' : 'warning'"
                         :text-color="tiersJsonMeta.valid ? 'white' : 'black'"
                       >
-                        {{ tiersJsonMeta.valid ? 'Valid JSON' : 'Check JSON' }}
+                        {{ tiersJsonMeta.valid ? "Valid JSON" : "Check JSON" }}
                       </q-badge>
-                      <span class="json-toolbar__stat">{{ tiersJsonStats.lines }} lines</span>
-                      <span class="json-toolbar__stat">{{ tiersJsonStats.chars }} chars</span>
+                      <span class="json-toolbar__stat"
+                        >{{ tiersJsonStats.lines }} lines</span
+                      >
+                      <span class="json-toolbar__stat"
+                        >{{ tiersJsonStats.chars }} chars</span
+                      >
                     </div>
                     <div class="json-toolbar__actions">
                       <q-btn-toggle
@@ -944,7 +1345,9 @@
                     </div>
                   </div>
                   <q-card flat bordered class="json-viewer">
-                    <pre class="json-viewer__code"><code>{{ tiersJsonDisplay }}</code></pre>
+                    <pre
+                      class="json-viewer__code"
+                    ><code>{{ tiersJsonDisplay }}</code></pre>
                   </q-card>
                 </div>
               </q-tab-panel>
@@ -954,7 +1357,6 @@
       </template>
     </div>
 
-
     <q-dialog
       v-model="dataExplorerDialogOpen"
       :position="explorerDialogPosition"
@@ -962,10 +1364,20 @@
       :transition-show="explorerDialogTransitions.show"
       :transition-hide="explorerDialogTransitions.hide"
     >
-      <q-card :class="['studio-explorer', $q.screen.lt.md ? 'is-mobile' : '']" class="bg-surface-2 text-1">
+      <q-card
+        :class="['studio-explorer', $q.screen.lt.md ? 'is-mobile' : '']"
+        class="bg-surface-2 text-1"
+      >
         <div class="studio-explorer__header">
           <div class="text-subtitle1 text-weight-medium">Data explorer</div>
-          <q-btn flat dense round icon="close" v-close-popup aria-label="Close data explorer" />
+          <q-btn
+            flat
+            dense
+            round
+            icon="close"
+            v-close-popup
+            aria-label="Close data explorer"
+          />
         </div>
         <div class="studio-explorer__body">
           <NutzapExplorerPanel />
@@ -976,16 +1388,16 @@
 </template>
 <script lang="ts">
 export function normalizeMintUrl(value: string | null | undefined) {
-  if (typeof value !== 'string') {
-    return '';
+  if (typeof value !== "string") {
+    return "";
   }
 
   const lowered = value.trim().toLowerCase();
   if (!lowered) {
-    return '';
+    return "";
   }
 
-  return lowered.replace(/\/+$/u, '');
+  return lowered.replace(/\/+$/u, "");
 }
 </script>
 
@@ -1000,25 +1412,36 @@ import {
   watch,
   type ComputedRef,
   type Ref,
-} from 'vue';
-import { useEventBus, useLocalStorage, useNow } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
-import { sha256 } from '@noble/hashes/sha256';
-import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
-import { getPublicKey as getSecpPublicKey, utils as secpUtils } from '@noble/secp256k1';
-import { useRoute, useRouter } from 'vue-router';
-import { useQuasar } from 'quasar';
-import SetupStep from './creator-studio/SetupStep.vue';
-import ProfileStep from './creator-studio/ProfileStep.vue';
-import StepTemplate from './creator-studio/StepTemplate.vue';
-import TierComposer from './creator-studio/TierComposer.vue';
-import NutzapExplorerPanel from 'src/nutzap/onepage/NutzapExplorerPanel.vue';
-import { notify, notifyError, notifySuccess, notifyWarning } from 'src/js/notify';
-import type { Tier } from 'src/nutzap/types';
-import { nip19 } from 'nostr-tools';
-import { useClipboard } from 'src/composables/useClipboard';
-import { announceCreatorProfileUpdate, useCreatorProfileHydration } from 'src/composables/useCreatorProfileHydration';
-import { buildProfileUrl } from 'src/utils/profileUrl';
+} from "vue";
+import { useEventBus, useLocalStorage, useNow } from "@vueuse/core";
+import { storeToRefs } from "pinia";
+import { sha256 } from "@noble/hashes/sha256";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
+import {
+  getPublicKey as getSecpPublicKey,
+  utils as secpUtils,
+} from "@noble/secp256k1";
+import { useRoute, useRouter } from "vue-router";
+import { useQuasar } from "quasar";
+import SetupStep from "./creator-studio/SetupStep.vue";
+import ProfileStep from "./creator-studio/ProfileStep.vue";
+import StepTemplate from "./creator-studio/StepTemplate.vue";
+import TierComposer from "./creator-studio/TierComposer.vue";
+import NutzapExplorerPanel from "src/nutzap/onepage/NutzapExplorerPanel.vue";
+import {
+  notify,
+  notifyError,
+  notifySuccess,
+  notifyWarning,
+} from "src/js/notify";
+import type { Tier } from "src/nutzap/types";
+import { nip19 } from "nostr-tools";
+import { useClipboard } from "src/composables/useClipboard";
+import {
+  announceCreatorProfileUpdate,
+  useCreatorProfileHydration,
+} from "src/composables/useCreatorProfileHydration";
+import { buildProfileUrl } from "src/utils/profileUrl";
 import {
   WS_FIRST_TIMEOUT_MS,
   HTTP_FALLBACK_TIMEOUT_MS,
@@ -1029,66 +1452,74 @@ import {
   LEGACY_TIER_KIND,
   buildTierPayloadForKind,
   type TierKind,
-} from 'src/nutzap/relayPublishing';
-import type { NostrFilter } from 'src/nutzap/relayPublishing';
+} from "src/nutzap/relayPublishing";
+import type { NostrFilter } from "src/nutzap/relayPublishing";
 import {
   normalizeAuthor,
   pickLatestReplaceable,
   pickLatestParamReplaceable,
   parseTiersContent,
-} from 'src/nutzap/profileShared';
-import { hasTierErrors, tierFrequencies, type TierFieldErrors } from './creator-studio/tierComposerUtils';
-import { debug } from '@/js/logger';
+} from "src/nutzap/profileShared";
+import {
+  hasTierErrors,
+  tierFrequencies,
+  type TierFieldErrors,
+} from "./creator-studio/tierComposerUtils";
+import { debug } from "@/js/logger";
 import {
   RelayPublishError,
   type FundstrRelayClient,
   type FundstrRelayPublishResult,
-} from 'src/nutzap/relayClient';
-import { sanitizeRelayUrls } from 'src/utils/relay';
-import { useNutzapRelayTelemetry } from 'src/nutzap/useNutzapRelayTelemetry';
-import { useNutzapSignerWorkspace } from 'src/nutzap/useNutzapSignerWorkspace';
-import { useP2PKStore } from 'src/stores/p2pk';
-import { useWalletStore } from 'src/stores/wallet';
-import { useMintsStore } from 'src/stores/mints';
-import { useCreatorProfileStore } from 'src/stores/creatorProfile';
-import { maybeRepublishNutzapProfile } from 'src/nutzap/profileRepublish';
-import { useNostrStore } from 'src/stores/nostr';
-import { useUiStore } from 'src/stores/ui';
-import { useCreatorHub } from 'src/composables/useCreatorHub';
-import { useP2pkDiagnostics } from 'src/composables/useP2pkDiagnostics';
-import { seedProfileIdentityFromMetadata } from './creator-studio/identitySeed';
-import { attachNip07SignerIfAvailable, connectNdk, ndkWrite } from 'src/nostr/ndk';
-import { updateCreatorCache } from '@/lib/fundstrApi';
-import { NUTZAP_HTTP_AUTH_HEADER } from '@/nutzap/relayConfig';
+} from "src/nutzap/relayClient";
+import { sanitizeRelayUrls } from "src/utils/relay";
+import { useNutzapRelayTelemetry } from "src/nutzap/useNutzapRelayTelemetry";
+import { useNutzapSignerWorkspace } from "src/nutzap/useNutzapSignerWorkspace";
+import { useP2PKStore } from "src/stores/p2pk";
+import { useWalletStore } from "src/stores/wallet";
+import { useMintsStore } from "src/stores/mints";
+import { useCreatorProfileStore } from "src/stores/creatorProfile";
+import { maybeRepublishNutzapProfile } from "src/nutzap/profileRepublish";
+import { useNostrStore } from "src/stores/nostr";
+import { useUiStore } from "src/stores/ui";
+import { useCreatorHub } from "src/composables/useCreatorHub";
+import { useP2pkDiagnostics } from "src/composables/useP2pkDiagnostics";
+import { seedProfileIdentityFromMetadata } from "./creator-studio/identitySeed";
+import {
+  attachNip07SignerIfAvailable,
+  connectNdk,
+  ndkWrite,
+} from "src/nostr/ndk";
+import { updateCreatorCache } from "@/lib/fundstrApi";
+import { NUTZAP_HTTP_AUTH_HEADER } from "@/nutzap/relayConfig";
 
 const NIP07_HELP_URL =
-  'https://guides.getalby.com/alby-browser-extension/nostr/how-to-sign-with-nostr-browser-extension';
+  "https://guides.getalby.com/alby-browser-extension/nostr/how-to-sign-with-nostr-browser-extension";
 
-void connectNdk().catch(err => {
-  console.warn('[CreatorStudio] failed to connect NDK clients', err);
+void connectNdk().catch((err) => {
+  console.warn("[CreatorStudio] failed to connect NDK clients", err);
 });
 
 const P2PK_VERIFICATION_STALE_MS = 1000 * 60 * 60 * 24 * 7;
 const CREATOR_STUDIO_WS_TIMEOUT_MS = Math.min(WS_FIRST_TIMEOUT_MS, 1200);
 const HTTP_DEFAULT_ACCEPT =
-  'application/nostr+json, application/json;q=0.9, */*;q=0.1';
+  "application/nostr+json, application/json;q=0.9, */*;q=0.1";
 
 const CREATOR_STUDIO_HTTP_AUTH_HEADERS = NUTZAP_HTTP_AUTH_HEADER
   ? { [NUTZAP_HTTP_AUTH_HEADER.name]: NUTZAP_HTTP_AUTH_HEADER.value }
   : null;
 
-const CREATOR_STUDIO_RELAY_WS_URL = 'wss://relay.fundstr.me';
-const CREATOR_STUDIO_RELAY_HTTP_URL = 'https://relay.fundstr.me/req';
-const PROXY_BASE_HTTP = (import.meta.env.VITE_PROXY_BASE_HTTP || '').trim();
-const IS_BROWSER = typeof window !== 'undefined';
+const CREATOR_STUDIO_RELAY_WS_URL = "wss://relay.fundstr.me";
+const CREATOR_STUDIO_RELAY_HTTP_URL = "https://relay.fundstr.me/req";
+const PROXY_BASE_HTTP = (import.meta.env.VITE_PROXY_BASE_HTTP || "").trim();
+const IS_BROWSER = typeof window !== "undefined";
 const CREATOR_STUDIO_HTTP_FALLBACK_URL = IS_BROWSER
   ? PROXY_BASE_HTTP
-    ? `${PROXY_BASE_HTTP.replace(/\/$/, '')}/req`
+    ? `${PROXY_BASE_HTTP.replace(/\/$/, "")}/req`
     : null
   : CREATOR_STUDIO_RELAY_HTTP_URL;
 
-const authorInput = ref('');
-type AuthorLockSource = 'signer' | 'store' | 'profile' | 'user';
+const authorInput = ref("");
+type AuthorLockSource = "signer" | "store" | "profile" | "user";
 const authorLockSources = ref<AuthorLockSource[]>([]);
 const loadedProfileAuthorHex = ref<string | null>(null);
 const userIdentityLocked = ref(false);
@@ -1101,69 +1532,77 @@ function addAuthorLock(source: AuthorLockSource) {
 
 function removeAuthorLock(source: AuthorLockSource) {
   if (authorLockSources.value.includes(source)) {
-    authorLockSources.value = authorLockSources.value.filter(entry => entry !== source);
+    authorLockSources.value = authorLockSources.value.filter(
+      (entry) => entry !== source,
+    );
   }
 }
 
 watch(
   userIdentityLocked,
-  locked => {
+  (locked) => {
     if (locked) {
-      addAuthorLock('user');
+      addAuthorLock("user");
     } else {
-      removeAuthorLock('user');
+      removeAuthorLock("user");
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 const authorInputLocked = computed(() => authorLockSources.value.length > 0);
-const authorIdentityLocked = computed(() => authorLockSources.value.includes('user'));
+const authorIdentityLocked = computed(() =>
+  authorLockSources.value.includes("user"),
+);
 const authorInputLockHint = computed(() => {
-  if (authorLockSources.value.includes('user')) {
-    return 'Author locked. Unlock to let the app sync identities from signers or stored profiles.';
+  if (authorLockSources.value.includes("user")) {
+    return "Author locked. Unlock to let the app sync identities from signers or stored profiles.";
   }
-  if (authorLockSources.value.includes('signer')) {
-    return 'Author comes from the connected Fundstr signer. Disconnect to change it.';
+  if (authorLockSources.value.includes("signer")) {
+    return "Author comes from the connected Fundstr signer. Disconnect to change it.";
   }
-  if (authorLockSources.value.includes('store')) {
-    return 'Author is synced from your saved Fundstr identity. Clear it to change the value.';
+  if (authorLockSources.value.includes("store")) {
+    return "Author is synced from your saved Fundstr identity. Clear it to change the value.";
   }
-  if (authorLockSources.value.includes('profile')) {
-    return 'Author was loaded from the published creator profile. Reset the workspace before changing it.';
+  if (authorLockSources.value.includes("profile")) {
+    return "Author was loaded from the published creator profile. Reset the workspace before changing it.";
   }
-  return '';
+  return "";
 });
 const creatorProfileStore = useCreatorProfileStore();
-const { display_name, picture, mints, relays } = storeToRefs(creatorProfileStore);
+const { display_name, picture, mints, relays } =
+  storeToRefs(creatorProfileStore);
 
 const displayName = computed({
   get: () => display_name.value,
-  set: value => {
+  set: (value) => {
     display_name.value = value;
   },
 });
 
 const pictureUrl = computed({
   get: () => picture.value,
-  set: value => {
+  set: (value) => {
     picture.value = value;
   },
 });
-const p2pkPub = ref('');
-const p2pkPriv = ref('');
-const p2pkDerivedPub = ref('');
-const selectedP2pkPub = ref('');
-const p2pkPubError = ref('');
+const p2pkPub = ref("");
+const p2pkPriv = ref("");
+const p2pkDerivedPub = ref("");
+const selectedP2pkPub = ref("");
+const p2pkPubError = ref("");
 const addingNewP2pkKey = ref(false);
 const hasManuallyToggledP2pk = ref(false);
 const verifyingP2pkPointer = ref(false);
-let previousSelectedP2pkPub = '';
-const cachedMintsText = useLocalStorage<string>('nutzap.profile.mintsDraft', '');
-const mintsText = ref('');
-const lastSeededMintDraft = ref('');
+let previousSelectedP2pkPub = "";
+const cachedMintsText = useLocalStorage<string>(
+  "nutzap.profile.mintsDraft",
+  "",
+);
+const mintsText = ref("");
+const lastSeededMintDraft = ref("");
 const userModifiedMints = ref(false);
-const relaysText = ref('');
+const relaysText = ref("");
 const creatorHub = useCreatorHub();
 type RelayProfileSnapshot = {
   content: string;
@@ -1181,7 +1620,7 @@ const relayProfileSnapshot = ref<RelayProfileSnapshot | null>(null);
 const relayTiersSnapshot = ref<RelayTierSnapshot | null>(null);
 const tiers = computed<Tier[]>({
   get: () => creatorHub.tierDrafts.value,
-  set: value => {
+  set: (value) => {
     const normalized = Array.isArray(value) ? value : [];
     creatorHub.replaceTierDrafts(normalized);
   },
@@ -1191,23 +1630,24 @@ const handleTiersUpdate = (value: Tier[] | unknown) => {
 };
 const tierPreviewKind = ref<TierKind>(CANONICAL_TIER_KIND);
 const loading = ref(false);
-const { hydrating: hydratingProfile, lastHydratedAt } = useCreatorProfileHydration();
+const { hydrating: hydratingProfile, lastHydratedAt } =
+  useCreatorProfileHydration();
 const stageLoading = computed(() => loading.value || hydratingProfile.value);
 const publishingAll = ref(false);
 const nip07SignerDetected = ref(false);
 const authoringSignerAttached = ref(false);
 let loggedAuthoringSignerAttach = false;
 const publishQueueAllowed = true;
-const publishStageOrder = ['legacyTiers', 'canonicalTiers', 'profile'] as const;
+const publishStageOrder = ["legacyTiers", "canonicalTiers", "profile"] as const;
 type PublishStageName = (typeof publishStageOrder)[number];
-type PublishStageJobStatus = 'pending' | 'completed' | 'failed';
+type PublishStageJobStatus = "pending" | "completed" | "failed";
 type TierStageJob = {
-  stage: 'canonicalTiers' | 'legacyTiers';
+  stage: "canonicalTiers" | "legacyTiers";
   kind: typeof CANONICAL_TIER_KIND | typeof LEGACY_TIER_KIND;
   tiers: Tier[];
 };
 type ProfileStageJob = {
-  stage: 'profile';
+  stage: "profile";
   template: { kind: number; tags: any[]; content: string };
 };
 type PublishStageJob = (TierStageJob | ProfileStageJob) & {
@@ -1220,22 +1660,28 @@ type PublishStageOutcome = {
   result: FundstrRelayPublishResult;
   usedFallback: boolean;
 };
-type PublishStageOutcomeMap = Partial<Record<PublishStageName, PublishStageOutcome>>;
+type PublishStageOutcomeMap = Partial<
+  Record<PublishStageName, PublishStageOutcome>
+>;
 const publishStageQueue = ref<PublishStageJob[]>([]);
-const expectedRelayPayloadHashes = reactive<Record<PublishStageName, string | null>>({
+const expectedRelayPayloadHashes = reactive<
+  Record<PublishStageName, string | null>
+>({
   canonicalTiers: null,
   legacyTiers: null,
   profile: null,
 });
-const observedRelayPayloadHashes = reactive<Record<PublishStageName, string | null>>({
+const observedRelayPayloadHashes = reactive<
+  Record<PublishStageName, string | null>
+>({
   canonicalTiers: null,
   legacyTiers: null,
   profile: null,
 });
-type RelayVerificationState = 'idle' | 'pending' | 'confirmed' | 'mismatch';
-const relayVerificationState = ref<RelayVerificationState>('idle');
-const relayVerificationMessage = ref('');
-let lastRelayVerificationState: RelayVerificationState = 'idle';
+type RelayVerificationState = "idle" | "pending" | "confirmed" | "mismatch";
+const relayVerificationState = ref<RelayVerificationState>("idle");
+const relayVerificationMessage = ref("");
+let lastRelayVerificationState: RelayVerificationState = "idle";
 let relayVerificationAttentionId: number | null = null;
 let verificationRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let verificationRetryAttempts = 0;
@@ -1247,25 +1693,23 @@ const publishStateMachine = reactive<{
   failedStage: PublishStageName | null;
   completedStages: Record<PublishStageName, boolean>;
   processing: boolean;
-}>(
-  {
-    currentStage: null,
-    failedStage: null,
-    completedStages: {
-      canonicalTiers: false,
-      legacyTiers: false,
-      profile: false,
-    },
-    processing: false,
-  }
-);
-const lastPublishInfo = ref('');
+}>({
+  currentStage: null,
+  failedStage: null,
+  completedStages: {
+    canonicalTiers: false,
+    legacyTiers: false,
+    profile: false,
+  },
+  processing: false,
+});
+const lastPublishInfo = ref("");
 const profilePublished = ref(false);
 const hasAutoLoaded = ref(false);
-const previewTab = ref<'preview' | 'profile' | 'tiers'>('preview');
+const previewTab = ref<"preview" | "profile" | "tiers">("preview");
 const now = useNow({ interval: 60_000 });
-const lastExportProfile = ref('');
-const lastExportTiers = ref({ canonical: '', legacy: '' });
+const lastExportProfile = ref("");
+const lastExportTiers = ref({ canonical: "", legacy: "" });
 const lastUpdatedAt = ref<number | null>(null);
 
 const identityMetadataSeedingBlocked = ref(false);
@@ -1283,7 +1727,7 @@ let resolvedRelayUrl: string | null = null;
 function setResolvedRelayClient(
   client: FundstrRelayClient,
   sequence: number,
-  url: string
+  url: string,
 ): FundstrRelayClient {
   if (sequence === relayClientInitSequence) {
     relayClientRef.value = client;
@@ -1292,8 +1736,13 @@ function setResolvedRelayClient(
   return client;
 }
 
-function ensureRelayClientInitialized(targetUrl = activeRelayUrl): Promise<FundstrRelayClient> {
-  const sanitized = typeof targetUrl === 'string' && targetUrl.trim() ? targetUrl : CREATOR_STUDIO_RELAY_WS_URL;
+function ensureRelayClientInitialized(
+  targetUrl = activeRelayUrl,
+): Promise<FundstrRelayClient> {
+  const sanitized =
+    typeof targetUrl === "string" && targetUrl.trim()
+      ? targetUrl
+      : CREATOR_STUDIO_RELAY_WS_URL;
 
   if (relayClientRef.value && resolvedRelayUrl === sanitized) {
     activeRelayUrl = sanitized;
@@ -1307,8 +1756,8 @@ function ensureRelayClientInitialized(targetUrl = activeRelayUrl): Promise<Funds
   activeRelayUrl = sanitized;
   const sequence = ++relayClientInitSequence;
   const promise = ensureFundstrRelayClient(sanitized)
-    .then(client => setResolvedRelayClient(client, sequence, sanitized))
-    .catch(err => {
+    .then((client) => setResolvedRelayClient(client, sequence, sanitized))
+    .catch((err) => {
       if (relayClientPromise === promise) {
         relayClientPromise = null;
       }
@@ -1338,10 +1787,15 @@ const { firstKey, p2pkKeys } = storeToRefs(p2pkStore);
 
 const p2pkSelectOptions = computed(() => {
   const entries = Array.isArray(p2pkKeys.value) ? p2pkKeys.value : [];
-  return entries.map(entry => {
-    const trimmed = entry && typeof entry.publicKey === 'string' ? entry.publicKey.trim() : '';
+  return entries.map((entry) => {
+    const trimmed =
+      entry && typeof entry.publicKey === "string"
+        ? entry.publicKey.trim()
+        : "";
     const label =
-      trimmed.length <= 16 ? trimmed : `${trimmed.slice(0, 8)}…${trimmed.slice(-4)}`;
+      trimmed.length <= 16
+        ? trimmed
+        : `${trimmed.slice(0, 8)}…${trimmed.slice(-4)}`;
     return {
       label,
       value: trimmed,
@@ -1351,7 +1805,7 @@ const p2pkSelectOptions = computed(() => {
 
 watch(
   () => (Array.isArray(p2pkKeys.value) ? p2pkKeys.value.length : 0),
-  length => {
+  (length) => {
     if (length === 0) {
       addingNewP2pkKey.value = true;
       return;
@@ -1361,16 +1815,17 @@ watch(
       addingNewP2pkKey.value = false;
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 const mintsStore = useMintsStore();
 const nostrStore = useNostrStore();
-const { activeMintUrl: storeActiveMintUrl, mints: storedMints } = storeToRefs(mintsStore);
+const { activeMintUrl: storeActiveMintUrl, mints: storedMints } =
+  storeToRefs(mintsStore);
 const { npub: storeNpub } = storeToRefs(nostrStore);
 const activeMintUrlTrimmed = computed(() => {
   const value = storeActiveMintUrl.value;
-  return typeof value === 'string' ? value.trim() : '';
+  return typeof value === "string" ? value.trim() : "";
 });
 const uiStore = useUiStore();
 let skipNextMintsSync = false;
@@ -1383,12 +1838,12 @@ watch(
       return;
     }
 
-    const trimmedNextName = typeof nextName === 'string' ? nextName.trim() : '';
+    const trimmedNextName = typeof nextName === "string" ? nextName.trim() : "";
     const trimmedNextPicture =
-      typeof nextPicture === 'string' ? nextPicture.trim() : '';
-    const trimmedPrevName = typeof prevName === 'string' ? prevName.trim() : '';
+      typeof nextPicture === "string" ? nextPicture.trim() : "";
+    const trimmedPrevName = typeof prevName === "string" ? prevName.trim() : "";
     const trimmedPrevPicture =
-      typeof prevPicture === 'string' ? prevPicture.trim() : '';
+      typeof prevPicture === "string" ? prevPicture.trim() : "";
 
     if (
       trimmedNextName !== trimmedPrevName ||
@@ -1398,22 +1853,24 @@ watch(
         identityMetadataSeedingBlocked.value = true;
       }
     }
-  }
+  },
 );
 
 watch(
   mints,
-  next => {
+  (next) => {
     const normalized = Array.isArray(next)
-      ? next.map(entry => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)
+      ? next
+          .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+          .filter(Boolean)
       : [];
     skipNextMintsSync = true;
-    mintsText.value = normalized.join('\n');
+    mintsText.value = normalized.join("\n");
   },
-  { immediate: true, deep: true }
+  { immediate: true, deep: true },
 );
 
-watch(mintsText, value => {
+watch(mintsText, (value) => {
   cachedMintsText.value = value;
   const trimmed = value.trim();
   if (!trimmed) {
@@ -1428,43 +1885,50 @@ watch(mintsText, value => {
   }
 
   const entries = value
-    .split('\n')
-    .map(entry => entry.trim())
+    .split("\n")
+    .map((entry) => entry.trim())
     .filter(Boolean);
   creatorProfileStore.setProfile({ mints: entries });
 });
 
 watch(
   relays,
-  next => {
+  (next) => {
     const normalized = Array.isArray(next)
-      ? next.map(entry => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)
+      ? next
+          .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+          .filter(Boolean)
       : [];
-    const joined = normalized.length ? normalized.join('\n') : CREATOR_STUDIO_RELAY_WS_URL;
+    const joined = normalized.length
+      ? normalized.join("\n")
+      : CREATOR_STUDIO_RELAY_WS_URL;
     skipNextRelaysSync = true;
     relaysText.value = joined;
   },
-  { immediate: true, deep: true }
+  { immediate: true, deep: true },
 );
 
-watch(relaysText, value => {
+watch(relaysText, (value) => {
   if (skipNextRelaysSync) {
     skipNextRelaysSync = false;
     return;
   }
 
   const rawEntries = value
-    .split('\n')
-    .map(entry => entry.trim())
+    .split("\n")
+    .map((entry) => entry.trim())
     .filter(Boolean);
   const { sanitized } = buildRelayList(rawEntries);
   creatorProfileStore.setProfile({ relays: sanitized });
 });
 
-if ((!Array.isArray(mints.value) || mints.value.length === 0) && cachedMintsText.value.trim()) {
+if (
+  (!Array.isArray(mints.value) || mints.value.length === 0) &&
+  cachedMintsText.value.trim()
+) {
   const cachedEntries = cachedMintsText.value
-    .split('\n')
-    .map(entry => entry.trim())
+    .split("\n")
+    .map((entry) => entry.trim())
     .filter(Boolean);
   if (cachedEntries.length) {
     creatorProfileStore.setProfile({ mints: cachedEntries });
@@ -1478,19 +1942,22 @@ if (!Array.isArray(relays.value) || relays.value.length === 0) {
 
 watch(
   () => lastHydratedAt.value,
-  value => {
-    if (typeof value === 'number') {
+  (value) => {
+    if (typeof value === "number") {
       lastUpdatedAt.value = value;
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 const storeMintUrls = computed(() => {
   const urls: string[] = [];
   const seen = new Set<string>();
 
-  const activeUrl = typeof storeActiveMintUrl.value === 'string' ? storeActiveMintUrl.value.trim() : '';
+  const activeUrl =
+    typeof storeActiveMintUrl.value === "string"
+      ? storeActiveMintUrl.value.trim()
+      : "";
   if (activeUrl && !seen.has(activeUrl)) {
     seen.add(activeUrl);
     urls.push(activeUrl);
@@ -1498,7 +1965,8 @@ const storeMintUrls = computed(() => {
 
   const mintEntries = Array.isArray(storedMints.value) ? storedMints.value : [];
   for (const entry of mintEntries) {
-    const candidate = entry && typeof entry.url === 'string' ? entry.url.trim() : '';
+    const candidate =
+      entry && typeof entry.url === "string" ? entry.url.trim() : "";
     if (candidate && !seen.has(candidate)) {
       seen.add(candidate);
       urls.push(candidate);
@@ -1509,12 +1977,12 @@ const storeMintUrls = computed(() => {
 });
 
 function syncComposerMintsWithWallet(mintUrls: string[]) {
-  const normalized = mintUrls.map(entry => entry.trim()).filter(Boolean);
+  const normalized = mintUrls.map((entry) => entry.trim()).filter(Boolean);
   if (!normalized.length) {
     return;
   }
 
-  const joined = normalized.join('\n');
+  const joined = normalized.join("\n");
   const trimmedDraft = mintsText.value.trim();
 
   if (trimmedDraft === joined) {
@@ -1537,26 +2005,29 @@ function seedMintsFromStoreIfEmpty() {
 
 watch(
   () => storeMintUrls.value,
-  mintUrls => {
+  (mintUrls) => {
     syncComposerMintsWithWallet(mintUrls);
   },
-  { immediate: true, deep: true }
+  { immediate: true, deep: true },
 );
 
 const route = useRoute();
 const router = useRouter();
 const { copy } = useClipboard();
-type JsonViewMode = 'pretty' | 'minified';
-const jsonViewMode = reactive({ profile: 'pretty' as JsonViewMode, tiers: 'pretty' as JsonViewMode });
+type JsonViewMode = "pretty" | "minified";
+const jsonViewMode = reactive({
+  profile: "pretty" as JsonViewMode,
+  tiers: "pretty" as JsonViewMode,
+});
 const jsonViewModeOptions: { label: string; value: JsonViewMode }[] = [
-  { label: 'Pretty', value: 'pretty' },
-  { label: 'Minified', value: 'minified' },
+  { label: "Pretty", value: "pretty" },
+  { label: "Minified", value: "minified" },
 ];
 
 function isValidHttpUrl(url: string) {
   try {
     const parsed = new URL(url);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
   } catch {
     return false;
   }
@@ -1565,19 +2036,19 @@ function isValidHttpUrl(url: string) {
 const authorHexForShare = computed(() => {
   const input = authorInput.value;
   if (!input.trim()) {
-    return '';
+    return "";
   }
 
   try {
     return normalizeAuthor(input);
   } catch {
-    return '';
+    return "";
   }
 });
 
 const authorNpubForShare = computed(() => {
   if (!authorHexForShare.value) {
-    return '';
+    return "";
   }
 
   return safeEncodeNpub(authorHexForShare.value);
@@ -1585,18 +2056,21 @@ const authorNpubForShare = computed(() => {
 
 const publicProfileUrl = computed(() => {
   if (!authorNpubForShare.value) {
-    return '';
+    return "";
   }
 
-  if (!router || typeof window === 'undefined' || !window.location) {
-    return '';
+  if (!router || typeof window === "undefined" || !window.location) {
+    return "";
   }
 
   return buildProfileUrl(authorNpubForShare.value, router);
 });
 
 const shareLinkReady = computed(
-  () => profilePublished.value && !!publicProfileUrl.value && !relayNeedsAttention.value
+  () =>
+    profilePublished.value &&
+    !!publicProfileUrl.value &&
+    !relayNeedsAttention.value,
 );
 
 const shareStatusLabel = computed(() => {
@@ -1604,43 +2078,42 @@ const shareStatusLabel = computed(() => {
     return publicProfileUrl.value;
   }
   if (!profilePublished.value) {
-    return 'Publish to unlock';
+    return "Publish to unlock";
   }
   if (relayNeedsAttention.value) {
-    return 'Relay unhealthy';
+    return "Relay unhealthy";
   }
   if (!authorNpubForShare.value) {
-    return 'Waiting on author npub';
+    return "Waiting on author npub";
   }
-  return 'Link unavailable';
+  return "Link unavailable";
 });
 
 const shareHelperMessage = computed(() => {
   if (shareLinkReady.value) {
-    return 'Share this link so supporters can view your profile and tiers.';
+    return "Share this link so supporters can view your profile and tiers.";
   }
   if (!profilePublished.value) {
-    return 'Publish your profile to generate a link supporters can view.';
+    return "Publish your profile to generate a link supporters can view.";
   }
   if (relayNeedsAttention.value) {
-    return 'Restore relay health before sharing your public link.';
+    return "Restore relay health before sharing your public link.";
   }
   if (!authorNpubForShare.value) {
-    return 'Enter a valid author npub to generate the public link.';
+    return "Enter a valid author npub to generate the public link.";
   }
-  return 'Public link unavailable.';
+  return "Public link unavailable.";
 });
 
-
-type ReadinessChipState = 'ready' | 'todo' | 'optional' | 'warning';
+type ReadinessChipState = "ready" | "todo" | "optional" | "warning";
 type ReadinessChipKey =
-  | 'relay'
-  | 'authorKey'
-  | 'identity'
-  | 'mint'
-  | 'p2pk'
-  | 'tiers'
-  | 'verification';
+  | "relay"
+  | "authorKey"
+  | "identity"
+  | "mint"
+  | "p2pk"
+  | "tiers"
+  | "verification";
 
 type ReadinessChip = {
   key: ReadinessChipKey;
@@ -1657,9 +2130,9 @@ type ReadinessChecklistItem = ReadinessChip & {
   stateLabel: string;
 };
 
-type StepStatus = 'ready' | 'pending' | 'attention' | 'optional';
-const stepOrder = ['setup', 'profile', 'tiers', 'publish'] as const;
-const tierStepIndex = stepOrder.indexOf('tiers');
+type StepStatus = "ready" | "pending" | "attention" | "optional";
+const stepOrder = ["setup", "profile", "tiers", "publish"] as const;
+const tierStepIndex = stepOrder.indexOf("tiers");
 type CreatorStudioStep = (typeof stepOrder)[number];
 
 type StepDefinition = {
@@ -1679,75 +2152,87 @@ type StepEntry = StepDefinition & {
 
 const stepDefinitions: StepDefinition[] = [
   {
-    name: 'setup',
-    label: 'Relay & signer',
-    description: 'Connect to the relay, confirm your signer, and enter your author npub.',
-    sublabel: 'Relay status',
-    helper: 'Connect and verify your relay + signer.',
-    readinessKeys: ['relay', 'authorKey'],
-    indicator: '1',
+    name: "setup",
+    label: "Relay & signer",
+    description:
+      "Connect to the relay, confirm your signer, and enter your author npub.",
+    sublabel: "Relay status",
+    helper: "Connect and verify your relay + signer.",
+    readinessKeys: ["relay", "authorKey"],
+    indicator: "1",
   },
   {
-    name: 'profile',
-    label: 'Profile basics',
-    description: 'Establish your creator identity and payout details.',
-    sublabel: 'Profile details',
-    helper: 'Name, avatar, and payout relays.',
-    readinessKeys: ['identity', 'mint', 'p2pk'],
-    indicator: '2',
+    name: "profile",
+    label: "Profile basics",
+    description: "Establish your creator identity and payout details.",
+    sublabel: "Profile details",
+    helper: "Name, avatar, and payout relays.",
+    readinessKeys: ["identity", "mint", "p2pk"],
+    indicator: "2",
   },
   {
-    name: 'tiers',
-    label: 'Supporter tiers',
-    description: 'Compose your supporter offerings and pricing tiers.',
-    sublabel: 'Offerings',
-    helper: 'Create at least one tier for supporters.',
-    readinessKeys: ['tiers'],
-    indicator: '3',
+    name: "tiers",
+    label: "Supporter tiers",
+    description: "Compose your supporter offerings and pricing tiers.",
+    sublabel: "Offerings",
+    helper: "Create at least one tier for supporters.",
+    readinessKeys: ["tiers"],
+    indicator: "3",
   },
   {
-    name: 'publish',
-    label: 'Review & publish',
-    description: 'Review readiness and publish to relay.fundstr.me.',
-    sublabel: 'Publish review',
-    helper: 'Resolve blockers, then publish updates.',
-    readinessKeys: ['relay', 'authorKey', 'mint', 'p2pk', 'tiers', 'verification'],
-    indicator: '4',
+    name: "publish",
+    label: "Review & publish",
+    description: "Review readiness and publish to relay.fundstr.me.",
+    sublabel: "Publish review",
+    helper: "Resolve blockers, then publish updates.",
+    readinessKeys: [
+      "relay",
+      "authorKey",
+      "mint",
+      "p2pk",
+      "tiers",
+      "verification",
+    ],
+    indicator: "4",
   },
 ];
 
-const studioMode = useLocalStorage<'view' | 'edit'>('creatorStudio.mode', 'view');
-const isViewMode = computed(() => studioMode.value === 'view');
+const studioMode = useLocalStorage<"view" | "edit">(
+  "creatorStudio.mode",
+  "view",
+);
+const isViewMode = computed(() => studioMode.value === "view");
 
 watch(
   () => studioMode.value,
-  value => {
-    if (value !== 'view' && value !== 'edit') {
-      studioMode.value = 'view';
+  (value) => {
+    if (value !== "view" && value !== "edit") {
+      studioMode.value = "view";
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
-const activeStep = ref<CreatorStudioStep>('setup');
+const activeStep = ref<CreatorStudioStep>("setup");
 
 watch(
   () => route.query?.step,
-  step => {
-    if (typeof step !== 'string') {
+  (step) => {
+    if (typeof step !== "string") {
       return;
     }
     if (stepOrder.includes(step as CreatorStudioStep)) {
       activeStep.value = step as CreatorStudioStep;
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
   () => activeStep.value,
-  step => {
-    const currentStep = typeof route.query?.step === 'string' ? route.query.step : undefined;
+  (step) => {
+    const currentStep =
+      typeof route.query?.step === "string" ? route.query.step : undefined;
     if (currentStep === step) {
       return;
     }
@@ -1757,49 +2242,55 @@ watch(
         query: { ...route.query, step },
       })
       .catch(() => {});
-  }
+  },
 );
 
 watch(
   () => activeStep.value,
-  step => {
-    if (step === 'profile') {
+  (step) => {
+    if (step === "profile") {
       syncComposerMintsWithWallet(storeMintUrls.value);
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 type DiagnosticsAttention = {
   id: number;
-  source: 'relay' | 'publish';
+  source: "relay" | "publish";
   title: string;
   detail: string;
-  level: 'error' | 'warning';
+  level: "error" | "warning";
 };
 
 const $q = useQuasar();
 
-type ExplorerOpenSource = 'toolbar' | 'banner' | 'diagnostics' | 'publish-error';
-type ExplorerEvent = { type: 'open'; source: ExplorerOpenSource };
+type ExplorerOpenSource =
+  | "toolbar"
+  | "banner"
+  | "diagnostics"
+  | "publish-error";
+type ExplorerEvent = { type: "open"; source: ExplorerOpenSource };
 
-const explorerBus = useEventBus<ExplorerEvent>('nutzap:explorer');
+const explorerBus = useEventBus<ExplorerEvent>("nutzap:explorer");
 const dataExplorerDialogOpen = ref(false);
-const explorerDialogPosition = computed(() => ($q.screen.lt.md ? 'bottom' : 'right'));
+const explorerDialogPosition = computed(() =>
+  $q.screen.lt.md ? "bottom" : "right",
+);
 const explorerDialogTransitions = computed(() =>
   $q.screen.lt.md
-    ? { show: 'slide-up', hide: 'slide-down' }
-    : { show: 'slide-right', hide: 'slide-right' }
+    ? { show: "slide-up", hide: "slide-down" }
+    : { show: "slide-right", hide: "slide-right" },
 );
 
-const stopExplorerBus = explorerBus.on(event => {
-  if (event.type === 'open') {
+const stopExplorerBus = explorerBus.on((event) => {
+  if (event.type === "open") {
     dataExplorerDialogOpen.value = true;
   }
 });
 
 function requestExplorerOpen(source: ExplorerOpenSource) {
-  explorerBus.emit({ type: 'open', source });
+  explorerBus.emit({ type: "open", source });
 }
 
 const diagnosticsAttention = ref<DiagnosticsAttention | null>(null);
@@ -1807,10 +2298,10 @@ const activeDiagnostics = computed(() => diagnosticsAttention.value);
 let diagnosticsAttentionSequence = 0;
 const helpBannerDismissed = ref(false);
 const showContextHelpBanner = computed(
-  () => !helpBannerDismissed.value || !!diagnosticsAttention.value
+  () => !helpBannerDismissed.value || !!diagnosticsAttention.value,
 );
 function handleDiagnosticsAlertCta() {
-  requestExplorerOpen('diagnostics');
+  requestExplorerOpen("diagnostics");
   dismissDiagnosticsAttention();
 }
 
@@ -1826,16 +2317,16 @@ function dismissHelpBanner() {
 }
 
 function flagDiagnosticsAttention(
-  source: 'relay' | 'publish',
+  source: "relay" | "publish",
   detail: string,
-  level: 'error' | 'warning' = 'error'
+  level: "error" | "warning" = "error",
 ) {
   const title =
-    source === 'relay'
-      ? 'Relay connection issue detected'
-      : level === 'warning'
-        ? 'Publish fallback notice'
-        : 'Publish attempt rejected';
+    source === "relay"
+      ? "Relay connection issue detected"
+      : level === "warning"
+      ? "Publish fallback notice"
+      : "Publish attempt rejected";
   diagnosticsAttention.value = {
     id: ++diagnosticsAttentionSequence,
     source,
@@ -1849,41 +2340,41 @@ function maybeFlagHttpFallbackTimeout(error: unknown) {
   const message =
     error instanceof Error
       ? error.message
-      : typeof error === 'string'
-        ? error
-        : '';
+      : typeof error === "string"
+      ? error
+      : "";
   if (!message) {
     return;
   }
-  if (message.toLowerCase().includes('http fallback timed out')) {
+  if (message.toLowerCase().includes("http fallback timed out")) {
     const detail = `${message}. Confirm ${CREATOR_STUDIO_RELAY_HTTP_URL} is reachable or adjust VITE_NUTZAP_PRIMARY_RELAY_HTTP.`;
-    flagDiagnosticsAttention('relay', detail, 'warning');
+    flagDiagnosticsAttention("relay", detail, "warning");
   }
 }
 
-type QuerySource = 'ws' | 'http';
+type QuerySource = "ws" | "http";
 
 type SettledQueryResult =
-  | { source: QuerySource; status: 'fulfilled'; events: any[] }
-  | { source: QuerySource; status: 'rejected'; error: unknown };
+  | { source: QuerySource; status: "fulfilled"; events: any[] }
+  | { source: QuerySource; status: "rejected"; error: unknown };
 
 function buildHttpRequestUrl(base: string, filters: NostrFilter[]): string {
   const serialized = JSON.stringify(filters);
   try {
     const url = new URL(base);
-    url.searchParams.set('filters', serialized);
+    url.searchParams.set("filters", serialized);
     return url.toString();
   } catch {
-    const separator = base.includes('?') ? '&' : '?';
+    const separator = base.includes("?") ? "&" : "?";
     return `${base}${separator}filters=${encodeURIComponent(serialized)}`;
   }
 }
 
 function isAbortError(err: unknown): boolean {
-  if (!err || typeof err !== 'object') {
+  if (!err || typeof err !== "object") {
     return false;
   }
-  return (err as { name?: unknown }).name === 'AbortError';
+  return (err as { name?: unknown }).name === "AbortError";
 }
 
 const noopCancel = () => {};
@@ -1893,16 +2384,19 @@ function createHttpFallbackRequest(filters: NostrFilter[]) {
     return {
       promise: Promise.reject(
         new Error(
-          'HTTP relay fallback is disabled in the browser. Configure VITE_PROXY_BASE_HTTP to enable proxied requests.',
+          "HTTP relay fallback is disabled in the browser. Configure VITE_PROXY_BASE_HTTP to enable proxied requests.",
         ),
       ),
       cancel: noopCancel,
     };
   }
 
-  const requestUrl = buildHttpRequestUrl(CREATOR_STUDIO_HTTP_FALLBACK_URL, filters);
+  const requestUrl = buildHttpRequestUrl(
+    CREATOR_STUDIO_HTTP_FALLBACK_URL,
+    filters,
+  );
   const controller =
-    typeof AbortController !== 'undefined' ? new AbortController() : null;
+    typeof AbortController !== "undefined" ? new AbortController() : null;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   if (controller && HTTP_FALLBACK_TIMEOUT_MS > 0) {
@@ -1913,24 +2407,24 @@ function createHttpFallbackRequest(filters: NostrFilter[]) {
 
   const promise: Promise<any[]> = (async () => {
     let response: Response | null = null;
-    let bodyText = '';
+    let bodyText = "";
     try {
       response = await fetch(requestUrl, {
-        method: 'GET',
+        method: "GET",
         headers: {
           Accept: HTTP_DEFAULT_ACCEPT,
           ...(CREATOR_STUDIO_HTTP_AUTH_HEADERS
             ? CREATOR_STUDIO_HTTP_AUTH_HEADERS
             : {}),
         },
-        cache: 'no-store',
+        cache: "no-store",
         signal: controller?.signal ?? undefined,
       });
       bodyText = await response.text();
     } catch (err) {
       if (isAbortError(err)) {
         throw new Error(
-          `HTTP fallback timed out after ${HTTP_FALLBACK_TIMEOUT_MS}ms (url: ${requestUrl})`
+          `HTTP fallback timed out after ${HTTP_FALLBACK_TIMEOUT_MS}ms (url: ${requestUrl})`,
         );
       }
       const message = err instanceof Error ? err.message : String(err);
@@ -1949,23 +2443,20 @@ function createHttpFallbackRequest(filters: NostrFilter[]) {
     }
 
     const normalizeSnippet = (input: string) =>
-      input
-        .replace(/\s+/gu, ' ')
-        .trim()
-        .slice(0, 200);
+      input.replace(/\s+/gu, " ").trim().slice(0, 200);
 
     if (!response.ok) {
-      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
+      const snippet = normalizeSnippet(bodyText) || "[empty response body]";
       throw new Error(
-        `HTTP query failed with status ${response.status}: ${snippet} (url: ${requestUrl})`
+        `HTTP query failed with status ${response.status}: ${snippet} (url: ${requestUrl})`,
       );
     }
 
-    const contentType = response.headers.get('content-type') || '';
+    const contentType = response.headers.get("content-type") || "";
     const normalizedType = contentType.toLowerCase();
     const isJson =
-      normalizedType.includes('application/json') ||
-      normalizedType.includes('application/nostr+json');
+      normalizedType.includes("application/json") ||
+      normalizedType.includes("application/nostr+json");
 
     if (!isJson) {
       return [];
@@ -1979,10 +2470,10 @@ function createHttpFallbackRequest(filters: NostrFilter[]) {
     try {
       data = JSON.parse(bodyText);
     } catch (err) {
-      const snippet = normalizeSnippet(bodyText) || '[empty response body]';
+      const snippet = normalizeSnippet(bodyText) || "[empty response body]";
       throw new Error(
         `HTTP ${response.status} returned invalid JSON: ${snippet} (url: ${requestUrl})`,
-        { cause: err instanceof Error ? err : undefined }
+        { cause: err instanceof Error ? err : undefined },
       );
     }
 
@@ -2010,11 +2501,11 @@ function createHttpFallbackRequest(filters: NostrFilter[]) {
 
 function settleQueryPromise(
   source: QuerySource,
-  promise: Promise<any[]>
+  promise: Promise<any[]>,
 ): Promise<SettledQueryResult> {
   return promise
-    .then(events => ({ source, status: 'fulfilled', events }) as const)
-    .catch(error => ({ source, status: 'rejected', error }) as const);
+    .then((events) => ({ source, status: "fulfilled", events } as const))
+    .catch((error) => ({ source, status: "rejected", error } as const));
 }
 
 let relayQueryErrorNotified = false;
@@ -2025,29 +2516,31 @@ function notifyRelayQueryError(detail: string) {
   }
   relayQueryErrorNotified = true;
   notifyError(detail);
-  flagDiagnosticsAttention('relay', detail, 'error');
+  flagDiagnosticsAttention("relay", detail, "error");
 }
 
-async function requestCreatorStudioEvents(filters: NostrFilter[]): Promise<any[]> {
+async function requestCreatorStudioEvents(
+  filters: NostrFilter[],
+): Promise<any[]> {
   const relaySocket = await getRelayClient();
   const wsSettled = settleQueryPromise(
-    'ws',
+    "ws",
     relaySocket.requestOnce(filters, {
       timeoutMs: CREATOR_STUDIO_WS_TIMEOUT_MS,
-    })
+    }),
   );
 
   if (!CREATOR_STUDIO_HTTP_FALLBACK_URL) {
     const wsOnlyResult = await wsSettled;
-    if (wsOnlyResult.status === 'fulfilled') {
+    if (wsOnlyResult.status === "fulfilled") {
       return wsOnlyResult.events;
     }
 
     notifyRelayQueryError(
       [
-        'Unable to query the relay over WebSocket, and HTTP fallback is disabled in the browser.',
-        'Configure a same-origin proxy (VITE_PROXY_BASE_HTTP) or retry once your connection recovers.',
-      ].join(' '),
+        "Unable to query the relay over WebSocket, and HTTP fallback is disabled in the browser.",
+        "Configure a same-origin proxy (VITE_PROXY_BASE_HTTP) or retry once your connection recovers.",
+      ].join(" "),
     );
 
     throw wsOnlyResult.error instanceof Error
@@ -2056,32 +2549,31 @@ async function requestCreatorStudioEvents(filters: NostrFilter[]): Promise<any[]
   }
 
   const httpHandle = createHttpFallbackRequest(filters);
-  const httpSettled = settleQueryPromise('http', httpHandle.promise);
+  const httpSettled = settleQueryPromise("http", httpHandle.promise);
 
   try {
     const first = await Promise.race([wsSettled, httpSettled]);
 
-    if (first.source === 'http' && first.status === 'rejected') {
+    if (first.source === "http" && first.status === "rejected") {
       maybeFlagHttpFallbackTimeout(first.error);
     }
 
-    if (first.status === 'fulfilled' && first.events.length > 0) {
-      if (first.source === 'ws') {
+    if (first.status === "fulfilled" && first.events.length > 0) {
+      if (first.source === "ws") {
         httpHandle.cancel();
       }
       return first.events;
     }
 
-    const second =
-      first.source === 'ws' ? await httpSettled : await wsSettled;
+    const second = first.source === "ws" ? await httpSettled : await wsSettled;
 
-    if (second.source === 'http' && second.status === 'rejected') {
+    if (second.source === "http" && second.status === "rejected") {
       maybeFlagHttpFallbackTimeout(second.error);
     }
 
-    if (first.status === 'fulfilled') {
-      if (second.status === 'fulfilled' && second.events.length > 0) {
-        if (second.source === 'http') {
+    if (first.status === "fulfilled") {
+      if (second.status === "fulfilled" && second.events.length > 0) {
+        if (second.source === "http") {
           httpHandle.cancel();
         }
         return second.events;
@@ -2089,8 +2581,8 @@ async function requestCreatorStudioEvents(filters: NostrFilter[]): Promise<any[]
       return first.events;
     }
 
-    if (second.status === 'fulfilled') {
-      if (second.source === 'http') {
+    if (second.status === "fulfilled") {
+      if (second.source === "http") {
         httpHandle.cancel();
       }
       return second.events;
@@ -2103,7 +2595,7 @@ async function requestCreatorStudioEvents(filters: NostrFilter[]): Promise<any[]
   }
 }
 
-watch(diagnosticsAttention, value => {
+watch(diagnosticsAttention, (value) => {
   if (value) {
     helpBannerDismissed.value = false;
   }
@@ -2112,14 +2604,17 @@ watch(diagnosticsAttention, value => {
 let relayNeedsAttentionRef: Ref<boolean> | null = null;
 
 const relayTelemetry = useNutzapRelayTelemetry({
-  onRelayAlert: entry => {
-    const baseDetail = entry.context ? `${entry.message} — ${entry.context}` : entry.message;
+  onRelayAlert: (entry) => {
+    const baseDetail = entry.context
+      ? `${entry.message} — ${entry.context}`
+      : entry.message;
     const needsAttention = relayNeedsAttentionRef?.value === true;
     const detail = needsAttention
       ? `${baseDetail} Verify the workspace key or try the HTTP fallback.`
       : baseDetail;
-    const level: 'error' | 'warning' = needsAttention || entry.level === 'warning' ? 'warning' : 'error';
-    flagDiagnosticsAttention('relay', detail, level);
+    const level: "error" | "warning" =
+      needsAttention || entry.level === "warning" ? "warning" : "error";
+    flagDiagnosticsAttention("relay", detail, level);
   },
 });
 
@@ -2156,33 +2651,38 @@ activeRelayUrl = relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL;
 const activeRelayActivity = computed(() => latestRelayActivity.value);
 const activeRelayActivityTimeLabel = computed(() => {
   const timestamp = activeRelayActivity.value?.timestamp;
-  if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) {
-    return '';
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
+    return "";
   }
   return formatActivityTime(timestamp);
 });
 const activeRelayAlertLabel = computed(() => latestRelayAlertLabel.value);
-const relayTimelinePreview = computed(() => relayActivityTimeline.value.slice(0, 4));
+const relayTimelinePreview = computed(() =>
+  relayActivityTimeline.value.slice(0, 4),
+);
 
 relayNeedsAttentionRef = relayNeedsAttention;
 
 watch(
   () => relayNeedsAttention.value,
-  needsAttention => {
-    if (!needsAttention && diagnosticsAttention.value?.source === 'relay') {
+  (needsAttention) => {
+    if (!needsAttention && diagnosticsAttention.value?.source === "relay") {
       dismissDiagnosticsAttention();
     }
-  }
+  },
 );
 
 function computePayloadHash(content: string | null | undefined): string | null {
-  if (typeof content !== 'string') {
+  if (typeof content !== "string") {
     return null;
   }
   return bytesToHex(sha256(textEncoder.encode(content)));
 }
 
-function setObservedRelayPayloadHash(stage: PublishStageName, content: string | null | undefined) {
+function setObservedRelayPayloadHash(
+  stage: PublishStageName,
+  content: string | null | undefined,
+) {
   observedRelayPayloadHashes[stage] = computePayloadHash(content);
 }
 
@@ -2195,7 +2695,10 @@ function clearRelayVerificationRetry() {
 }
 
 function scheduleVerificationRetry() {
-  if (verificationRetryTimer || verificationRetryAttempts >= MAX_VERIFICATION_RETRIES) {
+  if (
+    verificationRetryTimer ||
+    verificationRetryAttempts >= MAX_VERIFICATION_RETRIES
+  ) {
     return;
   }
 
@@ -2204,8 +2707,11 @@ function scheduleVerificationRetry() {
     verificationRetryAttempts += 1;
     const targetAuthor = activeAuthorHex;
     if (targetAuthor) {
-      void Promise.all([loadTiers(targetAuthor), loadProfile(targetAuthor)]).catch(err => {
-        console.warn('[nutzap] relay verification retry failed', err);
+      void Promise.all([
+        loadTiers(targetAuthor),
+        loadProfile(targetAuthor),
+      ]).catch((err) => {
+        console.warn("[nutzap] relay verification retry failed", err);
       });
     } else {
       void loadAll();
@@ -2222,37 +2728,40 @@ function setRelayVerificationState(
   relayVerificationState.value = nextState;
   relayVerificationMessage.value = message;
 
-  if (nextState === 'mismatch') {
+  if (nextState === "mismatch") {
     scheduleVerificationRetry();
     const existingAttentionMatches =
       !!relayVerificationAttentionId &&
       diagnosticsAttention.value?.id === relayVerificationAttentionId &&
       diagnosticsAttention.value?.detail === message;
     if (!existingAttentionMatches) {
-      flagDiagnosticsAttention('publish', message, 'warning');
+      flagDiagnosticsAttention("publish", message, "warning");
       relayVerificationAttentionId = diagnosticsAttention.value?.id ?? null;
     }
-    if (previous !== 'mismatch') {
-      logRelayActivity('warning', 'Relay copy mismatch detected', message);
+    if (previous !== "mismatch") {
+      logRelayActivity("warning", "Relay copy mismatch detected", message);
     }
   } else {
-    if (relayVerificationAttentionId && diagnosticsAttention.value?.id === relayVerificationAttentionId) {
+    if (
+      relayVerificationAttentionId &&
+      diagnosticsAttention.value?.id === relayVerificationAttentionId
+    ) {
       dismissDiagnosticsAttention();
     }
     relayVerificationAttentionId = null;
     clearRelayVerificationRetry();
-    if (previous === 'mismatch' && nextState === 'confirmed') {
-      logRelayActivity('success', 'Relay copy realigned', message);
-    } else if (nextState === 'confirmed' && previous === 'pending') {
-      logRelayActivity('success', 'Relay copy confirmed', message);
+    if (previous === "mismatch" && nextState === "confirmed") {
+      logRelayActivity("success", "Relay copy realigned", message);
+    } else if (nextState === "confirmed" && previous === "pending") {
+      logRelayActivity("success", "Relay copy confirmed", message);
     }
   }
 
-  if (nextState === 'pending' && previous !== 'pending') {
-    logRelayActivity('info', 'Awaiting relay copy verification', message);
+  if (nextState === "pending" && previous !== "pending") {
+    logRelayActivity("info", "Awaiting relay copy verification", message);
   }
 
-  if (nextState !== 'mismatch') {
+  if (nextState !== "mismatch") {
     verificationRetryAttempts = 0;
   }
 
@@ -2260,18 +2769,22 @@ function setRelayVerificationState(
 }
 
 function evaluateRelayVerificationState() {
-  const expectedStages = publishStageOrder.filter(stage => !!expectedRelayPayloadHashes[stage]);
+  const expectedStages = publishStageOrder.filter(
+    (stage) => !!expectedRelayPayloadHashes[stage],
+  );
 
   if (expectedStages.length === 0) {
-    const observedStages = publishStageOrder.filter(stage => !!observedRelayPayloadHashes[stage]);
+    const observedStages = publishStageOrder.filter(
+      (stage) => !!observedRelayPayloadHashes[stage],
+    );
     const message = observedStages.length
-      ? 'No publish pending verification.'
-      : 'Publish to push your Nutzap profile to the relay.';
-    setRelayVerificationState('idle', message, observedStages);
+      ? "No publish pending verification."
+      : "Publish to push your Nutzap profile to the relay.";
+    setRelayVerificationState("idle", message, observedStages);
     return;
   }
 
-  const mismatched = expectedStages.filter(stage => {
+  const mismatched = expectedStages.filter((stage) => {
     const expected = expectedRelayPayloadHashes[stage];
     const observed = observedRelayPayloadHashes[stage];
     return observed !== null && observed !== expected;
@@ -2281,27 +2794,33 @@ function evaluateRelayVerificationState() {
     const label = formatStageList(mismatched);
     const message = label
       ? `Relay copy mismatch for ${label}. Retrying shortly…`
-      : 'Relay copy mismatch detected. Retrying shortly…';
-    setRelayVerificationState('mismatch', message, mismatched);
+      : "Relay copy mismatch detected. Retrying shortly…";
+    setRelayVerificationState("mismatch", message, mismatched);
     return;
   }
 
-  const missing = expectedStages.filter(stage => !observedRelayPayloadHashes[stage]);
+  const missing = expectedStages.filter(
+    (stage) => !observedRelayPayloadHashes[stage],
+  );
   if (missing.length > 0) {
     const label = formatStageList(missing);
     const message = label
       ? `Awaiting relay copy for ${label}…`
-      : 'Awaiting relay copy…';
-    setRelayVerificationState('pending', message, missing);
+      : "Awaiting relay copy…";
+    setRelayVerificationState("pending", message, missing);
     return;
   }
 
   const label = formatStageList(expectedStages);
-  const message = label ? `Relay copy confirmed for ${label}.` : 'Relay copy confirmed.';
-  setRelayVerificationState('confirmed', message, expectedStages);
+  const message = label
+    ? `Relay copy confirmed for ${label}.`
+    : "Relay copy confirmed.";
+  setRelayVerificationState("confirmed", message, expectedStages);
 }
 
-function beginRelayVerification(payloads: Partial<Record<PublishStageName, string | null>>) {
+function beginRelayVerification(
+  payloads: Partial<Record<PublishStageName, string | null>>,
+) {
   clearRelayVerificationRetry();
 
   for (const stage of publishStageOrder) {
@@ -2318,7 +2837,9 @@ function beginRelayVerification(payloads: Partial<Record<PublishStageName, strin
   evaluateRelayVerificationState();
 }
 
-function resetRelayVerificationTracking(options?: { preserveObserved?: boolean }) {
+function resetRelayVerificationTracking(options?: {
+  preserveObserved?: boolean;
+}) {
   const preserveObserved = options?.preserveObserved ?? false;
 
   for (const stage of publishStageOrder) {
@@ -2330,58 +2851,61 @@ function resetRelayVerificationTracking(options?: { preserveObserved?: boolean }
 
   clearRelayVerificationRetry();
   relayVerificationAttentionId = null;
-  relayVerificationState.value = 'idle';
-  relayVerificationMessage.value = '';
-  lastRelayVerificationState = 'idle';
+  relayVerificationState.value = "idle";
+  relayVerificationMessage.value = "";
+  lastRelayVerificationState = "idle";
   evaluateRelayVerificationState();
 }
-watch(
-  relayConnectionUrl,
-  nextUrl => {
-    const sanitized = typeof nextUrl === 'string' && nextUrl.trim() ? nextUrl : CREATOR_STUDIO_RELAY_WS_URL;
+watch(relayConnectionUrl, (nextUrl) => {
+  const sanitized =
+    typeof nextUrl === "string" && nextUrl.trim()
+      ? nextUrl
+      : CREATOR_STUDIO_RELAY_WS_URL;
 
-    if (resolvedRelayUrl === sanitized && relayClientRef.value) {
-      activeRelayUrl = sanitized;
-      return;
-    }
-
-    if (relayClientRef.value && resolvedRelayUrl) {
-      cleanupSubscriptions();
-    }
-
-    if (stopRelayStatusListener) {
-      stopRelayStatusListener();
-      stopRelayStatusListener = null;
-    }
-
-    hasRelayConnected = false;
-    reloadAfterReconnect = false;
-    relayClientRef.value = null;
-    resolvedRelayUrl = null;
-    relayClientPromise = null;
+  if (resolvedRelayUrl === sanitized && relayClientRef.value) {
     activeRelayUrl = sanitized;
-
-    const sequence = ++relayReconfigureSequence;
-
-    ensureRelayClientInitialized(sanitized)
-      .then(async client => {
-        if (sequence !== relayReconfigureSequence) {
-          return;
-        }
-        attachRelayStatusListener(client);
-        if (activeAuthorHex) {
-          try {
-            await setupSubscriptions(activeAuthorHex);
-          } catch (err) {
-            console.warn('[nutzap] failed to refresh subscriptions after relay change', err);
-          }
-        }
-      })
-      .catch(err => {
-        console.warn('[nutzap] failed to reinitialize relay client', err);
-      });
+    return;
   }
-);
+
+  if (relayClientRef.value && resolvedRelayUrl) {
+    cleanupSubscriptions();
+  }
+
+  if (stopRelayStatusListener) {
+    stopRelayStatusListener();
+    stopRelayStatusListener = null;
+  }
+
+  hasRelayConnected = false;
+  reloadAfterReconnect = false;
+  relayClientRef.value = null;
+  resolvedRelayUrl = null;
+  relayClientPromise = null;
+  activeRelayUrl = sanitized;
+
+  const sequence = ++relayReconfigureSequence;
+
+  ensureRelayClientInitialized(sanitized)
+    .then(async (client) => {
+      if (sequence !== relayReconfigureSequence) {
+        return;
+      }
+      attachRelayStatusListener(client);
+      if (activeAuthorHex) {
+        try {
+          await setupSubscriptions(activeAuthorHex);
+        } catch (err) {
+          console.warn(
+            "[nutzap] failed to refresh subscriptions after relay change",
+            err,
+          );
+        }
+      }
+    })
+    .catch((err) => {
+      console.warn("[nutzap] failed to reinitialize relay client", err);
+    });
+});
 
 function handleRelayConnect() {
   applyRelayUrlInput();
@@ -2404,8 +2928,8 @@ async function handleVerifyP2pkPointer() {
   }
   const trimmed = p2pkPub.value.trim();
   if (!trimmed) {
-    p2pkPubError.value = 'Add a P2PK public key before verifying.';
-    notifyWarning('Add a P2PK public key before verifying.');
+    p2pkPubError.value = "Add a P2PK public key before verifying.";
+    notifyWarning("Add a P2PK public key before verifying.");
     return;
   }
 
@@ -2413,7 +2937,7 @@ async function handleVerifyP2pkPointer() {
   try {
     const result = await verifyPointer(trimmed);
     setDerivedP2pk(result.normalizedPubkey);
-    p2pkPubError.value = '';
+    p2pkPubError.value = "";
     p2pkStore.recordVerification(result.normalizedPubkey, {
       timestamp: result.timestamp,
       mint: result.mintUrl,
@@ -2424,23 +2948,41 @@ async function handleVerifyP2pkPointer() {
       ensureComposerMintsSeeded();
       const existingEntries = composerMints.value;
       const normalizedExisting = existingEntries
-        .map(entry => normalizeMintUrl(entry))
+        .map((entry) => normalizeMintUrl(entry))
         .filter((entry): entry is string => Boolean(entry));
       if (!normalizedExisting.includes(normalizedMintCandidate)) {
         composerMints.value = [...existingEntries, normalizedMintCandidate];
         addedMintUrl = normalizedMintCandidate;
 
-        const storedMintEntries = Array.isArray(storedMints.value) ? storedMints.value : [];
+        const storedMintEntries = Array.isArray(storedMints.value)
+          ? storedMints.value
+          : [];
         const normalizedStored = storedMintEntries
-          .map(entry => (entry && typeof entry.url === 'string' ? normalizeMintUrl(entry.url) : ''))
+          .map((entry) =>
+            entry && typeof entry.url === "string"
+              ? normalizeMintUrl(entry.url)
+              : "",
+          )
           .filter((entry): entry is string => Boolean(entry));
-        const mintExistsInStore = normalizedStored.includes(normalizedMintCandidate);
+        const mintExistsInStore = normalizedStored.includes(
+          normalizedMintCandidate,
+        );
 
-        if (mintExistsInStore && typeof mintsStore.activateMintUrl === 'function') {
+        if (
+          mintExistsInStore &&
+          typeof mintsStore.activateMintUrl === "function"
+        ) {
           try {
-            await mintsStore.activateMintUrl(normalizedMintCandidate, false, true);
+            await mintsStore.activateMintUrl(
+              normalizedMintCandidate,
+              false,
+              true,
+            );
           } catch (err) {
-            console.warn('[nutzap] failed to activate composer mint via store action', err);
+            console.warn(
+              "[nutzap] failed to activate composer mint via store action",
+              err,
+            );
             mintsStore.activeMintUrl = normalizedMintCandidate;
             storeActiveMintUrl.value = normalizedMintCandidate;
           }
@@ -2452,14 +2994,16 @@ async function handleVerifyP2pkPointer() {
     }
 
     if (addedMintUrl) {
-      notifySuccess(`Pointer verified. Added ${addedMintUrl} to trusted mints.`);
+      notifySuccess(
+        `Pointer verified. Added ${addedMintUrl} to trusted mints.`,
+      );
     } else {
       notifySuccess(`Pointer verified with active mint: ${result.mintUrl}`);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     p2pkPubError.value = message;
-    notifyWarning('Pointer verification failed', message);
+    notifyWarning("Pointer verification failed", message);
   } finally {
     verifyingP2pkPointer.value = false;
   }
@@ -2475,7 +3019,7 @@ function persistComposerKeyToStore(pubHex: string, privHex: string) {
   const normalizedPubLower = normalizedPub.toLowerCase();
   const normalizedPrivLower = normalizedPriv.toLowerCase();
   const entries = Array.isArray(p2pkKeys.value) ? p2pkKeys.value : [];
-  const alreadyTracked = entries.some(entry => {
+  const alreadyTracked = entries.some((entry) => {
     return (
       entry.publicKey.toLowerCase() === normalizedPubLower ||
       entry.privateKey.toLowerCase() === normalizedPrivLower
@@ -2487,7 +3031,9 @@ function persistComposerKeyToStore(pubHex: string, privHex: string) {
     return;
   }
 
-  const existingKeys = Array.isArray(p2pkStore.p2pkKeys) ? p2pkStore.p2pkKeys : [];
+  const existingKeys = Array.isArray(p2pkStore.p2pkKeys)
+    ? p2pkStore.p2pkKeys
+    : [];
   p2pkStore.p2pkKeys = [
     {
       publicKey: normalizedPub,
@@ -2502,19 +3048,19 @@ function persistComposerKeyToStore(pubHex: string, privHex: string) {
 
   if (!authoringSignerAttached.value) {
     notifyWarning(
-      'Stored new P2PK key. Connect your Nostr signer and publish to update your Nutzap profile.',
+      "Stored new P2PK key. Connect your Nostr signer and publish to update your Nutzap profile.",
     );
     return;
   }
 
   void maybeRepublishNutzapProfile()
     .then(() => {
-      notifySuccess('Republished Nutzap profile with the active P2PK key.');
+      notifySuccess("Republished Nutzap profile with the active P2PK key.");
     })
-    .catch(err => {
-      console.error('Auto republish failed after storing composer key', err);
+    .catch((err) => {
+      console.error("Auto republish failed after storing composer key", err);
       notifyWarning(
-        'Stored new P2PK key, but auto republish failed. Use the publish workflow to push updates.',
+        "Stored new P2PK key, but auto republish failed. Use the publish workflow to push updates.",
       );
     });
 }
@@ -2527,21 +3073,25 @@ function ensureComposerKeyPersisted(pubHex: string, privHex: string) {
   persistComposerKeyToStore(pubHex, privHex);
 }
 
-function applyValidatedP2pk(pubHex: string, privHex = '', persist = false): boolean {
+function applyValidatedP2pk(
+  pubHex: string,
+  privHex = "",
+  persist = false,
+): boolean {
   const trimmedPub = pubHex.trim();
   if (!trimmedPub) {
-    p2pkPubError.value = '';
-    setDerivedP2pk('');
+    p2pkPubError.value = "";
+    setDerivedP2pk("");
     return false;
   }
 
   if (!p2pkStore.isValidPubkey(trimmedPub)) {
-    p2pkPubError.value = 'Enter a valid Cashu P2PK public key.';
+    p2pkPubError.value = "Enter a valid Cashu P2PK public key.";
     setDerivedP2pk(trimmedPub);
     return false;
   }
 
-  p2pkPubError.value = '';
+  p2pkPubError.value = "";
   setDerivedP2pk(trimmedPub);
 
   const normalizedPriv = privHex.trim();
@@ -2554,36 +3104,36 @@ function applyValidatedP2pk(pubHex: string, privHex = '', persist = false): bool
 }
 
 function handleP2pkSelection(value: string | null) {
-  const trimmed = typeof value === 'string' ? value.trim() : '';
+  const trimmed = typeof value === "string" ? value.trim() : "";
   selectedP2pkPub.value = trimmed;
 
   if (!trimmed) {
-    p2pkPriv.value = '';
-    p2pkPubError.value = '';
-    previousSelectedP2pkPub = '';
-    setDerivedP2pk('');
+    p2pkPriv.value = "";
+    p2pkPubError.value = "";
+    previousSelectedP2pkPub = "";
+    setDerivedP2pk("");
     return;
   }
 
   const entries = Array.isArray(p2pkKeys.value) ? p2pkKeys.value : [];
-  const match = entries.find(entry =>
-    entry && typeof entry.publicKey === 'string'
+  const match = entries.find((entry) =>
+    entry && typeof entry.publicKey === "string"
       ? entry.publicKey.trim().toLowerCase() === trimmed.toLowerCase()
-      : false
+      : false,
   );
 
   if (match) {
-    const priv = match.privateKey ? match.privateKey.trim().toLowerCase() : '';
+    const priv = match.privateKey ? match.privateKey.trim().toLowerCase() : "";
     p2pkPriv.value = priv;
     if (applyValidatedP2pk(match.publicKey, priv, true)) {
       addingNewP2pkKey.value = false;
       hasManuallyToggledP2pk.value = false;
-      previousSelectedP2pkPub = '';
+      previousSelectedP2pkPub = "";
     }
     return;
   }
 
-  p2pkPriv.value = '';
+  p2pkPriv.value = "";
   applyValidatedP2pk(trimmed);
 }
 
@@ -2591,17 +3141,17 @@ function startAddingNewP2pkKey() {
   hasManuallyToggledP2pk.value = true;
   previousSelectedP2pkPub = selectedP2pkPub.value;
   addingNewP2pkKey.value = true;
-  selectedP2pkPub.value = '';
-  p2pkPriv.value = '';
-  p2pkPubError.value = '';
-  setDerivedP2pk('');
+  selectedP2pkPub.value = "";
+  p2pkPriv.value = "";
+  p2pkPubError.value = "";
+  setDerivedP2pk("");
 }
 
 function cancelAddingNewP2pkKey() {
   hasManuallyToggledP2pk.value = false;
   addingNewP2pkKey.value = false;
   const restore = previousSelectedP2pkPub.trim();
-  previousSelectedP2pkPub = '';
+  previousSelectedP2pkPub = "";
   if (restore) {
     handleP2pkSelection(restore);
   } else {
@@ -2637,11 +3187,11 @@ function maybeSeedComposerKeysFromStore() {
 function deriveP2pkPublicKey() {
   const trimmed = p2pkPriv.value.trim();
   if (!trimmed) {
-    notifyWarning('Enter a P2PK private key to derive.');
+    notifyWarning("Enter a P2PK private key to derive.");
     return;
   }
   if (!/^[0-9a-fA-F]{64}$/.test(trimmed)) {
-    notifyError('P2PK private key must be 64 hexadecimal characters.');
+    notifyError("P2PK private key must be 64 hexadecimal characters.");
     return;
   }
 
@@ -2655,12 +3205,12 @@ function deriveP2pkPublicKey() {
       selectedP2pkPub.value = pubHex;
       addingNewP2pkKey.value = false;
       hasManuallyToggledP2pk.value = false;
-      previousSelectedP2pkPub = '';
-      notifySuccess('Derived P2PK public key.');
+      previousSelectedP2pkPub = "";
+      notifySuccess("Derived P2PK public key.");
     }
   } catch (err) {
-    console.error('[nutzap] failed to derive P2PK public key', err);
-    notifyError('Unable to derive P2PK public key.');
+    console.error("[nutzap] failed to derive P2PK public key", err);
+    notifyError("Unable to derive P2PK public key.");
   }
 }
 
@@ -2676,26 +3226,26 @@ function generateP2pkKeypair() {
     selectedP2pkPub.value = normalizedPub;
     addingNewP2pkKey.value = false;
     hasManuallyToggledP2pk.value = false;
-    previousSelectedP2pkPub = '';
-    notifySuccess('Generated new P2PK keypair.');
+    previousSelectedP2pkPub = "";
+    notifySuccess("Generated new P2PK keypair.");
   }
 }
 
 watch(
   p2pkPub,
-  value => {
+  (value) => {
     p2pkDerivedPub.value = value.trim();
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
   [p2pkPub, p2pkPriv],
   ([pub, priv]) => {
-    const trimmedPub = typeof pub === 'string' ? pub.trim() : '';
-    const trimmedPriv = typeof priv === 'string' ? priv.trim() : '';
+    const trimmedPub = typeof pub === "string" ? pub.trim() : "";
+    const trimmedPriv = typeof priv === "string" ? priv.trim() : "";
     if (!trimmedPub) {
-      walletStore.setActiveP2pk('', '');
+      walletStore.setActiveP2pk("", "");
       return;
     }
     if (!p2pkStore.isValidPubkey(trimmedPub)) {
@@ -2703,7 +3253,7 @@ watch(
     }
     walletStore.setActiveP2pk(trimmedPub, trimmedPriv);
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
@@ -2711,7 +3261,7 @@ watch(
   () => {
     maybeSeedComposerKeysFromStore();
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 onMounted(() => {
@@ -2742,17 +3292,17 @@ const {
 const activeIdentitySummary = computed(() => connectedIdentitySummary.value);
 const fallbackIdentityLabel = computed(() => {
   if (!usingFallbackIdentity.value) {
-    return '';
+    return "";
   }
-  if (fallbackIdentitySource.value === 'pending') {
-    return 'Using cached identity until the wallet is unlocked.';
+  if (fallbackIdentitySource.value === "pending") {
+    return "Using cached identity until the wallet is unlocked.";
   }
-  return 'Using fallback identity (unencrypted mirror).';
+  return "Using fallback identity (unencrypted mirror).";
 });
 
 function lockAuthorIdentity() {
   if (!authorInput.value.trim()) {
-    notifyWarning('Enter an author before locking the identity.');
+    notifyWarning("Enter an author before locking the identity.");
     return;
   }
   userIdentityLocked.value = true;
@@ -2765,7 +3315,7 @@ function unlockAuthorIdentity(resync = false) {
 
 function setAuthoringSignerActive(active: boolean) {
   if (active && !loggedAuthoringSignerAttach) {
-    debug('Authoring NDK signer attached');
+    debug("Authoring NDK signer attached");
     loggedAuthoringSignerAttach = true;
   }
   authoringSignerAttached.value = active;
@@ -2795,14 +3345,14 @@ requestSignerAttachment();
 const signerStatusMessage = computed(() => {
   if (authoringSignerAttached.value) {
     if (usingStoreIdentity.value) {
-      return 'Shared Fundstr signer connected for this workspace.';
+      return "Shared Fundstr signer connected for this workspace.";
     }
     if (nip07SignerDetected.value) {
-      return 'Browser signer ready. Approve access in your NIP-07 extension when prompted.';
+      return "Browser signer ready. Approve access in your NIP-07 extension when prompted.";
     }
-    return 'Signer connected for publishing.';
+    return "Signer connected for publishing.";
   }
-  return 'Install or enable a NIP-07 signer (e.g., nos2x, Alby) and approve access.';
+  return "Install or enable a NIP-07 signer (e.g., nos2x, Alby) and approve access.";
 });
 
 function openSharedSignerModal() {
@@ -2812,17 +3362,17 @@ function openSharedSignerModal() {
 
 const routeAuthorQuery = computed(() => {
   const queryValue = route.query?.npub;
-  return typeof queryValue === 'string' ? queryValue.trim() : '';
+  return typeof queryValue === "string" ? queryValue.trim() : "";
 });
 
 const storeAuthorNpub = computed(() => {
   const value = storeNpub.value;
-  return typeof value === 'string' ? value.trim() : '';
+  return typeof value === "string" ? value.trim() : "";
 });
 
 const signerPubkeyTrimmed = computed(() => {
   const value = pubkey.value;
-  return typeof value === 'string' ? value.trim() : '';
+  return typeof value === "string" ? value.trim() : "";
 });
 
 const identityMetadataPubkey = computed(() => {
@@ -2835,7 +3385,7 @@ const identityMetadataPubkey = computed(() => {
   if (storeAuthorNpub.value) {
     return storeAuthorNpub.value;
   }
-  return '';
+  return "";
 });
 
 async function maybeSeedIdentityMetadata() {
@@ -2875,7 +3425,7 @@ async function maybeSeedIdentityMetadata() {
       identityMetadataSeededPubkey.value = resolved;
     }
   } catch (err) {
-    console.warn('[nutzap] failed to seed profile identity metadata', err);
+    console.warn("[nutzap] failed to seed profile identity metadata", err);
   } finally {
     if (sequence === identityMetadataSeedRun) {
       identityMetadataSeedingInProgress.value = false;
@@ -2888,7 +3438,7 @@ watch(
   () => {
     void maybeSeedIdentityMetadata();
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 const hasAuthorIdentity = computed(
@@ -2901,48 +3451,48 @@ const hasAuthorIdentity = computed(
 
 watch(
   signerPubkeyTrimmed,
-  value => {
+  (value) => {
     if (value) {
-      addAuthorLock('signer');
+      addAuthorLock("signer");
       if (loadedProfileAuthorHex.value) {
-        addAuthorLock('profile');
+        addAuthorLock("profile");
       }
     } else {
-      removeAuthorLock('signer');
+      removeAuthorLock("signer");
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
   storeAuthorNpub,
-  value => {
+  (value) => {
     if (value) {
-      addAuthorLock('store');
+      addAuthorLock("store");
       if (loadedProfileAuthorHex.value) {
-        addAuthorLock('profile');
+        addAuthorLock("profile");
       }
     } else {
-      removeAuthorLock('store');
+      removeAuthorLock("store");
       if (!signerPubkeyTrimmed.value) {
-        removeAuthorLock('profile');
+        removeAuthorLock("profile");
       }
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
   () => [signerPubkeyTrimmed.value, storeAuthorNpub.value] as const,
   ([signerValue, storeValue]) => {
     if (!signerValue && !storeValue) {
-      removeAuthorLock('profile');
+      removeAuthorLock("profile");
     }
     if (loadedProfileAuthorHex.value && (signerValue || storeValue)) {
-      addAuthorLock('profile');
+      addAuthorLock("profile");
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 function shortenKey(value: string) {
@@ -2963,8 +3513,8 @@ let relayReconfigureSequence = 0;
 
 const mintList = computed(() => {
   const composerEntries = mintsText.value
-    .split('\n')
-    .map(s => s.trim())
+    .split("\n")
+    .map((s) => s.trim())
     .filter(Boolean);
 
   if (composerEntries.length > 0) {
@@ -2975,17 +3525,20 @@ const mintList = computed(() => {
 });
 
 const identityBasicsComplete = computed(
-  () => displayName.value.trim().length > 0 || pictureUrl.value.trim().length > 0
+  () =>
+    displayName.value.trim().length > 0 || pictureUrl.value.trim().length > 0,
 );
 
 const optionalMetadataComplete = computed(() => mintList.value.length > 0);
 
 const advancedEncryptionComplete = computed(
-  () => p2pkPub.value.trim().length > 0 && !p2pkPubError.value
+  () => p2pkPub.value.trim().length > 0 && !p2pkPubError.value,
 );
 
 const hasP2pkPointer = computed(() => p2pkPub.value.trim().length > 0);
-const p2pkPointerReady = computed(() => hasP2pkPointer.value && !p2pkPubError.value);
+const p2pkPointerReady = computed(
+  () => hasP2pkPointer.value && !p2pkPubError.value,
+);
 
 const p2pkVerificationRecord = computed(() => {
   if (!p2pkPointerReady.value) {
@@ -2998,7 +3551,7 @@ const p2pkVerificationRecord = computed(() => {
 const p2pkLastVerifiedLabel = computed(() => {
   const record = p2pkVerificationRecord.value;
   if (!record) {
-    return '';
+    return "";
   }
   const formatted = new Date(record.timestamp).toLocaleString();
   if (record.mint) {
@@ -3022,10 +3575,14 @@ const p2pkVerificationNeedsRefresh = computed(() => {
   const activeMint = normalizeMintUrl(activeMintUrlTrimmed.value);
   const mintMatchesActive = recordMint ? recordMint === activeMint : true;
   const normalizedMintList = mintList.value
-    .map(mint => normalizeMintUrl(mint))
+    .map((mint) => normalizeMintUrl(mint))
     .filter((mint): mint is string => Boolean(mint));
-  const mintMatchesList = recordMint ? normalizedMintList.includes(recordMint) : true;
-  const mintMismatch = recordMint ? !(mintMatchesActive || mintMatchesList) : false;
+  const mintMatchesList = recordMint
+    ? normalizedMintList.includes(recordMint)
+    : true;
+  const mintMismatch = recordMint
+    ? !(mintMatchesActive || mintMatchesList)
+    : false;
   return isStaleByAge || mintMismatch;
 });
 
@@ -3036,27 +3593,28 @@ const p2pkVerificationHelper = computed(() => {
   const record = p2pkVerificationRecord.value;
   if (!record) {
     return {
-      message: 'Verify the pointer with your active mint to confirm acceptance.',
-      tone: 'warning' as const,
+      message:
+        "Verify the pointer with your active mint to confirm acceptance.",
+      tone: "warning" as const,
     };
   }
   const label = p2pkLastVerifiedLabel.value;
   if (p2pkVerificationNeedsRefresh.value) {
     return {
       message: `${label}. Re-verify to keep this pointer fresh.`,
-      tone: 'warning' as const,
+      tone: "warning" as const,
     };
   }
   return {
     message: label,
-    tone: 'positive' as const,
+    tone: "positive" as const,
   };
 });
 
 const relayList = computed(() => {
   const entries = relaysText.value
-    .split('\n')
-    .map(s => s.trim())
+    .split("\n")
+    .map((s) => s.trim())
     .filter(Boolean);
   const set = new Set(entries);
   set.add(CREATOR_STUDIO_RELAY_WS_URL);
@@ -3066,15 +3624,15 @@ const relayList = computed(() => {
 const composerMints = computed<string[]>({
   get: () =>
     mintsText.value
-      .split('\n')
-      .map(entry => entry.trim())
+      .split("\n")
+      .map((entry) => entry.trim())
       .filter(Boolean),
-  set: entries => {
+  set: (entries) => {
     const normalized = Array.isArray(entries)
-      ? entries.map(entry => entry.trim()).filter(Boolean)
+      ? entries.map((entry) => entry.trim()).filter(Boolean)
       : [];
     skipNextMintsSync = true;
-    mintsText.value = normalized.join('\n');
+    mintsText.value = normalized.join("\n");
     creatorProfileStore.setProfile({ mints: normalized });
   },
 });
@@ -3082,16 +3640,16 @@ const composerMints = computed<string[]>({
 const composerRelays = computed<string[]>({
   get: () =>
     relaysText.value
-      .split('\n')
-      .map(entry => entry.trim())
+      .split("\n")
+      .map((entry) => entry.trim())
       .filter(Boolean),
-  set: entries => {
+  set: (entries) => {
     const normalized = Array.isArray(entries)
-      ? entries.map(entry => entry.trim()).filter(Boolean)
+      ? entries.map((entry) => entry.trim()).filter(Boolean)
       : [];
     const { sanitized } = buildRelayList(normalized);
     skipNextRelaysSync = true;
-    relaysText.value = sanitized.join('\n');
+    relaysText.value = sanitized.join("\n");
     creatorProfileStore.setProfile({ relays: sanitized });
   },
 });
@@ -3102,26 +3660,26 @@ const summaryDisplayName = computed(() => {
     return trimmedName;
   }
   if (usingStoreIdentity.value) {
-    return 'Fundstr identity';
+    return "Fundstr identity";
   }
   if (authorInput.value.trim()) {
-    return 'Nutzap author';
+    return "Nutzap author";
   }
-  return 'Author not loaded';
+  return "Author not loaded";
 });
 
 const displayNameInitials = computed(() => {
   const parts = summaryDisplayName.value
-    .split(' ')
-    .map(chunk => chunk.trim())
+    .split(" ")
+    .map((chunk) => chunk.trim())
     .filter(Boolean);
   if (parts.length === 0) {
-    return 'F';
+    return "F";
   }
   return parts
     .slice(0, 2)
-    .map(part => part.slice(0, 1).toUpperCase())
-    .join('');
+    .map((part) => part.slice(0, 1).toUpperCase())
+    .join("");
 });
 
 const summaryAuthorKey = computed(() => {
@@ -3129,26 +3687,30 @@ const summaryAuthorKey = computed(() => {
     return connectedIdentitySummary.value;
   }
   const trimmed = authorInput.value.trim();
-  return trimmed ? shortenKey(trimmed) : '';
+  return trimmed ? shortenKey(trimmed) : "";
 });
 
 const summaryP2pkPointer = computed(() => {
   const trimmed = p2pkPub.value.trim();
-  return trimmed ? shortenKey(trimmed) : '';
+  return trimmed ? shortenKey(trimmed) : "";
 });
 
-const tierFrequencyLabelMap: Record<Tier['frequency'], string> = {
-  one_time: 'One-time',
-  monthly: 'Monthly',
-  yearly: 'Yearly',
+const tierFrequencyLabelMap: Record<Tier["frequency"], string> = {
+  one_time: "One-time",
+  monthly: "Monthly",
+  yearly: "Yearly",
 };
 
 const tierSummaryList = computed(() =>
-  tiers.value.map(tier => {
-    const title = tier.title?.trim() || 'Untitled tier';
+  tiers.value.map((tier) => {
+    const title = tier.title?.trim() || "Untitled tier";
     const price = Number.isFinite(tier.price) ? tier.price : 0;
-    const description = typeof tier.description === 'string' ? tier.description.trim() : '';
-    const frequency = tier.frequency && tierFrequencyLabelMap[tier.frequency] ? tier.frequency : 'monthly';
+    const description =
+      typeof tier.description === "string" ? tier.description.trim() : "";
+    const frequency =
+      tier.frequency && tierFrequencyLabelMap[tier.frequency]
+        ? tier.frequency
+        : "monthly";
 
     return {
       id: tier.id,
@@ -3157,33 +3719,39 @@ const tierSummaryList = computed(() =>
       frequencyLabel: tierFrequencyLabelMap[frequency],
       ...(description ? { description } : {}),
     };
-  })
+  }),
 );
 
 const heroMetrics = computed(() => [
-  { label: 'Relays', value: relayList.value.length, icon: 'podcasts' },
-  { label: 'Mints', value: mintList.value.length, icon: 'payments' },
-  { label: 'Tiers', value: tiers.value.length, icon: 'workspace_premium' },
+  { label: "Relays", value: relayList.value.length, icon: "podcasts" },
+  { label: "Mints", value: mintList.value.length, icon: "payments" },
+  { label: "Tiers", value: tiers.value.length, icon: "workspace_premium" },
 ]);
 
 const tierPreviewOptions = [
-  { label: 'Preview 30019 JSON', value: CANONICAL_TIER_KIND },
-  { label: 'Preview 30000 JSON', value: LEGACY_TIER_KIND },
+  { label: "Preview 30019 JSON", value: CANONICAL_TIER_KIND },
+  { label: "Preview 30000 JSON", value: LEGACY_TIER_KIND },
 ] as const;
 
 const tierPreviewLabel = computed(() =>
-  tierPreviewKind.value === CANONICAL_TIER_KIND ? 'Canonical (30019)' : 'Legacy (30000)'
+  tierPreviewKind.value === CANONICAL_TIER_KIND
+    ? "Canonical (30019)"
+    : "Legacy (30000)",
 );
 
-const tierPublishSummaryLabel = computed(() => 'Canonical (30019) + Legacy (30000)');
+const tierPublishSummaryLabel = computed(
+  () => "Canonical (30019) + Legacy (30000)",
+);
 
 const tierValidationResults = ref<TierFieldErrors[]>([]);
 const showTierValidation = ref(false);
 const tiersHaveErrors = computed(() =>
-  tierValidationResults.value.some(result => hasTierErrors(result))
+  tierValidationResults.value.some((result) => hasTierErrors(result)),
 );
 
-const tiersReady = computed(() => tiers.value.length > 0 && !tiersHaveErrors.value);
+const tiersReady = computed(
+  () => tiers.value.length > 0 && !tiersHaveErrors.value,
+);
 const profileDirty = computed(() => creatorProfileStore.isDirty);
 const tiersDirty = computed(() => creatorHub.tiersDirty.value);
 const workspaceDirty = computed(() => creatorHub.isDirty.value);
@@ -3191,65 +3759,77 @@ const workspaceDirty = computed(() => creatorHub.isDirty.value);
 const shouldPromptPublishUpdates = computed(
   () =>
     workspaceDirty.value &&
-    relayVerificationState.value !== 'pending' &&
-    relayVerificationState.value !== 'mismatch'
+    relayVerificationState.value !== "pending" &&
+    relayVerificationState.value !== "mismatch",
 );
 
 const publishStatusChip = computed(() => {
   if (publishBlockers.value.length) {
-    return { label: 'Action required', color: 'negative', icon: 'error' } as const;
+    return {
+      label: "Action required",
+      color: "negative",
+      icon: "error",
+    } as const;
   }
   if (shouldPromptPublishUpdates.value) {
-    return { label: 'Updates pending', color: 'warning', icon: 'pending_actions' } as const;
+    return {
+      label: "Updates pending",
+      color: "warning",
+      icon: "pending_actions",
+    } as const;
   }
   if (profilePublished.value) {
-    return { label: 'Published', color: 'positive', icon: 'check_circle' } as const;
+    return {
+      label: "Published",
+      color: "positive",
+      icon: "check_circle",
+    } as const;
   }
-  return { label: 'Draft', color: 'primary', icon: 'hourglass_empty' } as const;
+  return { label: "Draft", color: "primary", icon: "hourglass_empty" } as const;
 });
 
 const lastUpdatedLabel = computed(() => {
   if (!lastUpdatedAt.value) {
-    return 'Not published yet';
+    return "Not published yet";
   }
   return `Updated ${formatRelativeTimestamp(lastUpdatedAt.value)}`;
 });
 
 const tierStepGuidance = computed(() => {
   if (tiersReady.value) {
-    return '';
+    return "";
   }
 
   if (tiers.value.length === 0) {
-    return 'Add at least one tier to continue.';
+    return "Add at least one tier to continue.";
   }
 
   if (tiersHaveErrors.value) {
     return showTierValidation.value
-      ? 'Resolve the highlighted validation issues before continuing.'
-      : 'Review tier validation before continuing.';
+      ? "Resolve the highlighted validation issues before continuing."
+      : "Review tier validation before continuing.";
   }
 
-  return 'Review your tier details before continuing.';
+  return "Review your tier details before continuing.";
 });
 
 watch(
   tiersHaveErrors,
-  hasErrors => {
+  (hasErrors) => {
     if (!hasErrors) {
       showTierValidation.value = false;
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
   () => [activeStep.value, tiersHaveErrors.value] as const,
   ([step, hasErrors]) => {
-    if (step === 'tiers' && hasErrors) {
+    if (step === "tiers" && hasErrors) {
       showTierValidation.value = true;
     }
-  }
+  },
 );
 
 const tierAddressPreview = computed(() => {
@@ -3265,19 +3845,22 @@ function safeEncodeNpub(pubHex: string) {
   try {
     return nip19.npubEncode(pubHex);
   } catch {
-    return '';
+    return "";
   }
 }
 
 function formatRelativeTimestamp(timestamp: number | null) {
   if (!timestamp) {
-    return '';
+    return "";
   }
 
-  const diffMinutes = Math.max(0, Math.round((now.value.getTime() - timestamp) / 60000));
+  const diffMinutes = Math.max(
+    0,
+    Math.round((now.value.getTime() - timestamp) / 60000),
+  );
 
   if (diffMinutes < 1) {
-    return 'just now';
+    return "just now";
   }
   if (diffMinutes < 60) {
     return `${diffMinutes}m ago`;
@@ -3298,27 +3881,27 @@ const publishValidationBlockers = computed<string[]>(() => {
   const blockers: string[] = [];
 
   if (!hasAuthorIdentity.value) {
-    blockers.push('Provide a creator author (npub or hex)');
+    blockers.push("Provide a creator author (npub or hex)");
   }
 
   if (!p2pkPub.value.trim()) {
-    blockers.push('Add a P2PK key');
+    blockers.push("Add a P2PK key");
   }
 
   if (p2pkPubError.value) {
-    blockers.push('Resolve P2PK key error');
+    blockers.push("Resolve P2PK key error");
   }
 
   if (mintList.value.length === 0) {
-    blockers.push('Configure at least one trusted mint');
+    blockers.push("Configure at least one trusted mint");
   }
 
   if (tiers.value.length === 0) {
-    blockers.push('Create at least one tier');
+    blockers.push("Create at least one tier");
   }
 
   if (tiersHaveErrors.value) {
-    blockers.push('Resolve tier validation issues');
+    blockers.push("Resolve tier validation issues");
   }
 
   return blockers;
@@ -3327,12 +3910,14 @@ const publishValidationBlockers = computed<string[]>(() => {
 const publishBlockers = computed<string[]>(() => {
   const blockers = [...publishValidationBlockers.value];
   if (!authoringSignerAttached.value) {
-    blockers.unshift('Connect a NIP-07 signer (nos2x, Alby)');
+    blockers.unshift("Connect a NIP-07 signer (nos2x, Alby)");
   }
   return blockers;
 });
 
-const localValidationOk = computed(() => publishValidationBlockers.value.length === 0);
+const localValidationOk = computed(
+  () => publishValidationBlockers.value.length === 0,
+);
 
 const canPublish = computed(
   () =>
@@ -3342,19 +3927,21 @@ const canPublish = computed(
 );
 
 const tierFrequencyOptions = computed(() =>
-  tierFrequencies.map(value => ({
+  tierFrequencies.map((value) => ({
     value,
     label:
-      value === 'one_time'
-        ? 'One-time'
-        : value === 'monthly'
-          ? 'Monthly'
-          : 'Yearly',
-  }))
+      value === "one_time"
+        ? "One-time"
+        : value === "monthly"
+        ? "Monthly"
+        : "Yearly",
+  })),
 );
 
 const authorKeyReady = computed(() => authorInput.value.trim().length > 0);
-const setupStepReady = computed(() => !relayNeedsAttention.value && authorKeyReady.value);
+const setupStepReady = computed(
+  () => !relayNeedsAttention.value && authorKeyReady.value,
+);
 
 type ReadinessEntry = {
   key: ReadinessChipKey;
@@ -3367,118 +3954,125 @@ type ReadinessEntry = {
   readyTooltip?: string;
   actionTooltip?: string;
   readyState?: ReadinessChipState;
-  actionState?: Exclude<ReadinessChipState, 'ready'>;
+  actionState?: Exclude<ReadinessChipState, "ready">;
 };
 
 const readinessChips = computed<ReadinessChip[]>(() => {
   const entries: ReadinessEntry[] = [
     {
-      key: 'relay',
+      key: "relay",
       ready: !relayNeedsAttention.value,
       required: true,
-      readyLabel: 'Relay healthy',
-      actionLabel: 'Relay degraded',
-      readyIcon: 'podcasts',
-      actionIcon: 'report_problem',
-      readyTooltip: 'Realtime relay connection is healthy.',
-      actionTooltip: 'Realtime relay degraded. Publishing will rely on HTTP fallback until it recovers.',
-      actionState: 'warning',
+      readyLabel: "Relay healthy",
+      actionLabel: "Relay degraded",
+      readyIcon: "podcasts",
+      actionIcon: "report_problem",
+      readyTooltip: "Realtime relay connection is healthy.",
+      actionTooltip:
+        "Realtime relay degraded. Publishing will rely on HTTP fallback until it recovers.",
+      actionState: "warning",
     },
     {
-      key: 'authorKey',
+      key: "authorKey",
       ready: authorKeyReady.value,
       required: true,
-      readyLabel: 'Signer ready',
-      actionLabel: 'Link signer',
-      readyIcon: 'task_alt',
-      actionIcon: 'vpn_key_off',
+      readyLabel: "Signer ready",
+      actionLabel: "Link signer",
+      readyIcon: "task_alt",
+      actionIcon: "vpn_key_off",
     },
     {
-      key: 'identity',
+      key: "identity",
       ready: identityBasicsComplete.value,
       required: false,
-      readyLabel: 'Identity noted',
-      actionLabel: 'Identity optional',
-      readyIcon: 'badge',
-      actionIcon: 'tips_and_updates',
+      readyLabel: "Identity noted",
+      actionLabel: "Identity optional",
+      readyIcon: "badge",
+      actionIcon: "tips_and_updates",
     },
     {
-      key: 'mint',
+      key: "mint",
       ready: optionalMetadataComplete.value,
       required: true,
-      readyLabel: 'Mint configured',
-      actionLabel: 'Add mint',
-      readyIcon: 'payments',
-      actionIcon: 'add_card',
+      readyLabel: "Mint configured",
+      actionLabel: "Add mint",
+      readyIcon: "payments",
+      actionIcon: "add_card",
     },
     {
-      key: 'p2pk',
+      key: "p2pk",
       ready: advancedEncryptionComplete.value,
       required: true,
       readyLabel: p2pkVerificationNeedsRefresh.value
-        ? 'Refresh P2PK verification'
-        : 'P2PK ready',
-      actionLabel: 'Add P2PK pointer',
-      readyIcon: p2pkVerificationNeedsRefresh.value ? 'warning' : 'key',
-      actionIcon: 'key_off',
+        ? "Refresh P2PK verification"
+        : "P2PK ready",
+      actionLabel: "Add P2PK pointer",
+      readyIcon: p2pkVerificationNeedsRefresh.value ? "warning" : "key",
+      actionIcon: "key_off",
       readyTooltip: p2pkVerificationNeedsRefresh.value
-        ? 'Pointer verified previously but needs a fresh check with your active mint.'
-        : 'Pointer verification is up to date.',
-      readyState: p2pkVerificationNeedsRefresh.value ? ('warning' as ReadinessChipState) : undefined,
+        ? "Pointer verified previously but needs a fresh check with your active mint."
+        : "Pointer verification is up to date.",
+      readyState: p2pkVerificationNeedsRefresh.value
+        ? ("warning" as ReadinessChipState)
+        : undefined,
     },
     {
-      key: 'tiers',
+      key: "tiers",
       ready: tiersReady.value,
       required: true,
-      readyLabel: 'Tiers validated',
-      actionLabel: 'Review tiers',
-      readyIcon: 'task_alt',
-      actionIcon: 'playlist_add',
+      readyLabel: "Tiers validated",
+      actionLabel: "Review tiers",
+      readyIcon: "task_alt",
+      actionIcon: "playlist_add",
     },
     {
-      key: 'verification',
+      key: "verification",
       ready:
         !shouldPromptPublishUpdates.value &&
-        (relayVerificationState.value === 'confirmed' || relayVerificationState.value === 'idle'),
+        (relayVerificationState.value === "confirmed" ||
+          relayVerificationState.value === "idle"),
       required: true,
       readyLabel:
-        relayVerificationState.value === 'confirmed' ? 'Relay copy confirmed' : 'No publish pending',
-      actionLabel:
-        shouldPromptPublishUpdates.value
-          ? 'Publish updates'
-          : relayVerificationState.value === 'mismatch'
-            ? 'Relay copy mismatch'
-            : 'Awaiting relay copy',
-      readyIcon: relayVerificationState.value === 'confirmed' ? 'verified' : 'pending',
+        relayVerificationState.value === "confirmed"
+          ? "Relay copy confirmed"
+          : "No publish pending",
+      actionLabel: shouldPromptPublishUpdates.value
+        ? "Publish updates"
+        : relayVerificationState.value === "mismatch"
+        ? "Relay copy mismatch"
+        : "Awaiting relay copy",
+      readyIcon:
+        relayVerificationState.value === "confirmed" ? "verified" : "pending",
       actionIcon: shouldPromptPublishUpdates.value
-        ? 'cloud_upload'
-        : relayVerificationState.value === 'mismatch'
-          ? 'report_problem'
-          : 'hourglass_top',
+        ? "cloud_upload"
+        : relayVerificationState.value === "mismatch"
+        ? "report_problem"
+        : "hourglass_top",
       readyTooltip: relayVerificationMessage.value || undefined,
       actionTooltip: shouldPromptPublishUpdates.value
-        ? 'Local edits differ from the relay copy. Publish to sync your updates.'
+        ? "Local edits differ from the relay copy. Publish to sync your updates."
         : relayVerificationMessage.value || undefined,
       readyState:
-        !shouldPromptPublishUpdates.value && relayVerificationState.value === 'idle'
-          ? ('optional' as ReadinessChipState)
+        !shouldPromptPublishUpdates.value &&
+        relayVerificationState.value === "idle"
+          ? ("optional" as ReadinessChipState)
           : undefined,
       actionState: shouldPromptPublishUpdates.value
-        ? ('todo' as ReadinessChipState)
-        : relayVerificationState.value === 'mismatch'
-          ? ('warning' as ReadinessChipState)
-          : relayVerificationState.value === 'pending'
-            ? ('warning' as ReadinessChipState)
-            : ('todo' as ReadinessChipState),
+        ? ("todo" as ReadinessChipState)
+        : relayVerificationState.value === "mismatch"
+        ? ("warning" as ReadinessChipState)
+        : relayVerificationState.value === "pending"
+        ? ("warning" as ReadinessChipState)
+        : ("todo" as ReadinessChipState),
     },
   ];
 
-  return entries.map(entry =>
+  return entries.map((entry) =>
     entry.ready
       ? {
           key: entry.key,
           label: entry.readyLabel,
-          state: entry.readyState ?? ('ready' as ReadinessChipState),
+          state: entry.readyState ?? ("ready" as ReadinessChipState),
           icon: entry.readyIcon,
           required: entry.required,
           tooltip: entry.readyTooltip,
@@ -3487,19 +4081,22 @@ const readinessChips = computed<ReadinessChip[]>(() => {
           key: entry.key,
           label: entry.actionLabel,
           state:
-            entry.actionState ?? (entry.required ? ('todo' as ReadinessChipState) : ('optional' as ReadinessChipState)),
+            entry.actionState ??
+            (entry.required
+              ? ("todo" as ReadinessChipState)
+              : ("optional" as ReadinessChipState)),
           icon: entry.actionIcon,
           required: entry.required,
           tooltip: entry.actionTooltip,
-        }
+        },
   );
 });
 
 const readinessStateLabels: Record<ReadinessChipState, string> = {
-  ready: 'Ready',
-  todo: 'Action needed',
-  optional: 'Optional',
-  warning: 'Needs attention',
+  ready: "Ready",
+  todo: "Action needed",
+  optional: "Optional",
+  warning: "Needs attention",
 };
 
 const readinessStepMap = computed(() => {
@@ -3515,7 +4112,9 @@ const readinessStepMap = computed(() => {
 });
 
 const statusSummaryItems = computed(() => {
-  const readinessMap = new Map(readinessChips.value.map(chip => [chip.key, chip] as const));
+  const readinessMap = new Map(
+    readinessChips.value.map((chip) => [chip.key, chip] as const),
+  );
 
   const definitions: {
     id: string;
@@ -3526,44 +4125,52 @@ const statusSummaryItems = computed(() => {
     fallbackIcon: string;
   }[] = [
     {
-      id: 'profile',
-      label: 'Profile',
-      keys: ['identity', 'authorKey'],
-      helper: 'Confirm your display name, avatar, and signer.',
-      step: 'profile',
-      fallbackIcon: 'badge',
+      id: "profile",
+      label: "Profile",
+      keys: ["identity", "authorKey"],
+      helper: "Confirm your display name, avatar, and signer.",
+      step: "profile",
+      fallbackIcon: "badge",
     },
     {
-      id: 'relays',
-      label: 'Relays',
-      keys: ['relay'],
-      helper: 'Connect a healthy relay for publishing.',
-      step: 'setup',
-      fallbackIcon: 'podcasts',
+      id: "relays",
+      label: "Relays",
+      keys: ["relay"],
+      helper: "Connect a healthy relay for publishing.",
+      step: "setup",
+      fallbackIcon: "podcasts",
     },
     {
-      id: 'mints',
-      label: 'Mints',
-      keys: ['mint'],
-      helper: 'Add at least one mint to receive payments.',
-      step: 'profile',
-      fallbackIcon: 'payments',
+      id: "mints",
+      label: "Mints",
+      keys: ["mint"],
+      helper: "Add at least one mint to receive payments.",
+      step: "profile",
+      fallbackIcon: "payments",
     },
     {
-      id: 'tiers',
-      label: 'Tiers',
-      keys: ['tiers'],
-      helper: 'Draft supporter tiers with pricing.',
-      step: 'tiers',
-      fallbackIcon: 'workspace_premium',
+      id: "tiers",
+      label: "Tiers",
+      keys: ["tiers"],
+      helper: "Draft supporter tiers with pricing.",
+      step: "tiers",
+      fallbackIcon: "workspace_premium",
     },
   ];
 
-  return definitions.map(definition => {
-    const chip = definition.keys.map(key => readinessMap.get(key)).find(Boolean);
-    const state = chip?.state ?? ('todo' as ReadinessChipState);
+  return definitions.map((definition) => {
+    const chip = definition.keys
+      .map((key) => readinessMap.get(key))
+      .find(Boolean);
+    const state = chip?.state ?? ("todo" as ReadinessChipState);
     const chipColor =
-      state === 'ready' ? 'positive' : state === 'warning' ? 'warning' : state === 'optional' ? 'secondary' : 'primary';
+      state === "ready"
+        ? "positive"
+        : state === "warning"
+        ? "warning"
+        : state === "optional"
+        ? "secondary"
+        : "primary";
 
     return {
       id: definition.id,
@@ -3579,18 +4186,24 @@ const statusSummaryItems = computed(() => {
 });
 
 const itemToReviewStep = computed<CreatorStudioStep>(() => {
-  const next = statusSummaryItems.value.find(item => item.state !== 'ready');
-  return (next?.step as CreatorStudioStep) ?? 'publish';
+  const next = statusSummaryItems.value.find((item) => item.state !== "ready");
+  return (next?.step as CreatorStudioStep) ?? "publish";
 });
 
 const readinessChecklist = computed(() => {
-  const groups: { id: 'required' | 'optional'; label: string; items: ReadinessChecklistItem[] }[] = [
-    { id: 'required', label: 'Required to publish', items: [] },
-    { id: 'optional', label: 'Optional enhancements', items: [] },
+  const groups: {
+    id: "required" | "optional";
+    label: string;
+    items: ReadinessChecklistItem[];
+  }[] = [
+    { id: "required", label: "Required to publish", items: [] },
+    { id: "optional", label: "Optional enhancements", items: [] },
   ];
 
   const stepLabelLookup = new Map<CreatorStudioStep, string>(
-    stepDefinitions.map(definition => [definition.name, definition.label] as const)
+    stepDefinitions.map(
+      (definition) => [definition.name, definition.label] as const,
+    ),
   );
 
   for (const chip of readinessChips.value) {
@@ -3605,19 +4218,24 @@ const readinessChecklist = computed(() => {
     targetGroup.items.push(item);
   }
 
-  return groups.filter(group => group.items.length > 0);
+  return groups.filter((group) => group.items.length > 0);
 });
 
 const requiredReadinessReady = computed(() =>
   readinessChips.value
-    .filter(chip => chip.required)
-    .every(chip => chip.state === 'ready' || chip.state === 'warning' || chip.state === 'optional')
+    .filter((chip) => chip.required)
+    .every(
+      (chip) =>
+        chip.state === "ready" ||
+        chip.state === "warning" ||
+        chip.state === "optional",
+    ),
 );
 
 const publishBlockReason = computed(() => {
   // If we are not dirty or are already publishing, show no reason.
   if (!workspaceDirty.value || publishingAll.value) {
-    return '';
+    return "";
   }
 
   // Check for global hard-stop blockers first
@@ -3628,35 +4246,35 @@ const publishBlockReason = computed(() => {
   // Check Step 2: Setup
   if (!setupStepReady.value) {
     if (relayNeedsAttention.value) {
-      return 'Restore relay connection health before publishing.';
+      return "Restore relay connection health before publishing.";
     }
     if (!authorKeyReady.value) {
-      return 'Enter the creator author to publish.';
+      return "Enter the creator author to publish.";
     }
     // Generic fallback for setup step
-    return 'Complete relay & author setup to publish.';
+    return "Complete relay & author setup to publish.";
   }
 
   // Check Step 3: Tiers (This is a common block)
   if (!tiersReady.value) {
     if (tiers.value.length === 0) {
-      return 'Create at least one tier to publish.';
+      return "Create at least one tier to publish.";
     }
     if (tiersHaveErrors.value) {
-      return 'Resolve tier validation issues before publishing.';
+      return "Resolve tier validation issues before publishing.";
     }
     // Generic fallback for tiers step
-    return 'Review your tier setup before publishing.';
+    return "Review your tier setup before publishing.";
   }
 
   // Check Step 4: Readiness
   if (!requiredReadinessReady.value) {
-    return 'Complete the required readiness checklist before publishing.';
+    return "Complete the required readiness checklist before publishing.";
   }
 
   // If we are dirty but no blockers are found, return an empty string
   // This will allow the "Publish to sync..." message to show.
-  return '';
+  return "";
 });
 
 const publishWarnings = computed<string[]>(() => {
@@ -3667,26 +4285,31 @@ const publishWarnings = computed<string[]>(() => {
   const warnings: string[] = [];
 
   if (relayNeedsAttention.value) {
-    warnings.push('Restore relay connection health');
+    warnings.push("Restore relay connection health");
   }
 
-  if (relayVerificationState.value === 'pending') {
-    warnings.push(relayVerificationMessage.value || 'Awaiting relay copy confirmation');
+  if (relayVerificationState.value === "pending") {
+    warnings.push(
+      relayVerificationMessage.value || "Awaiting relay copy confirmation",
+    );
   }
 
-  if (relayVerificationState.value === 'mismatch') {
-    warnings.push(relayVerificationMessage.value || 'Relay copy mismatch. Publish to overwrite.');
+  if (relayVerificationState.value === "mismatch") {
+    warnings.push(
+      relayVerificationMessage.value ||
+        "Relay copy mismatch. Publish to overwrite.",
+    );
   }
 
   if (shouldPromptPublishUpdates.value) {
-    warnings.push('Publish to sync your latest updates with the relay.');
+    warnings.push("Publish to sync your latest updates with the relay.");
   }
 
   if (p2pkPointerReady.value && p2pkVerificationNeedsRefresh.value) {
     warnings.push(
       p2pkVerificationRecord.value
-        ? 'Refresh Cashu pointer verification to keep it trusted'
-        : 'Verify your Cashu pointer with an active mint',
+        ? "Refresh Cashu pointer verification to keep it trusted"
+        : "Verify your Cashu pointer with an active mint",
     );
   }
 
@@ -3695,12 +4318,12 @@ const publishWarnings = computed<string[]>(() => {
 
 const publishGuidanceHeading = computed(() => {
   if (publishBlockers.value.length > 0) {
-    return 'Complete before publishing';
+    return "Complete before publishing";
   }
   if (publishWarnings.value.length > 0) {
-    return 'Review before publishing';
+    return "Review before publishing";
   }
-  return '';
+  return "";
 });
 
 const publishGuidanceItems = computed(() => [
@@ -3708,70 +4331,78 @@ const publishGuidanceItems = computed(() => [
   ...publishWarnings.value,
 ]);
 
-const publishHasGuidance = computed(() => publishGuidanceItems.value.length > 0);
+const publishHasGuidance = computed(
+  () => publishGuidanceItems.value.length > 0,
+);
 
 const summaryExpanded = ref(publishBlockers.value.length > 0);
 
 watch(
   () => publishBlockers.value.length,
-  length => {
+  (length) => {
     if (length > 0 && !summaryExpanded.value) {
       summaryExpanded.value = true;
     }
-  }
+  },
 );
 
 const summaryCaption = computed(() => {
   if (publishBlockers.value.length > 0) {
-    return 'Resolve blockers before publishing.';
+    return "Resolve blockers before publishing.";
   }
   if (publishWarnings.value.length > 0) {
-    return 'Review warnings before publishing.';
+    return "Review warnings before publishing.";
   }
-  return 'Review creator details before publishing.';
+  return "Review creator details before publishing.";
 });
 
-const publishDisabled = computed(() => publishingAll.value || !canPublish.value);
+const publishDisabled = computed(
+  () => publishingAll.value || !canPublish.value,
+);
 
 const steps = computed<StepEntry[]>(() => {
-  const readinessMap = new Map(readinessChips.value.map(chip => [chip.key, chip] as const));
+  const readinessMap = new Map(
+    readinessChips.value.map((chip) => [chip.key, chip] as const),
+  );
 
-  return stepDefinitions.map(definition => {
+  return stepDefinitions.map((definition) => {
     const chips = definition.readinessKeys
-      .map(key => readinessMap.get(key))
+      .map((key) => readinessMap.get(key))
       .filter((chip): chip is ReadinessChip => Boolean(chip));
 
-    let status: StepStatus = 'ready';
+    let status: StepStatus = "ready";
 
     if (chips.length === 0) {
-      status = 'ready';
+      status = "ready";
     } else {
-      const hasAttention = chips.some(chip => chip.state === 'warning');
-      const hasTodo = chips.some(chip => chip.state === 'todo');
-      const allOptional = chips.every(chip => chip.state === 'optional');
-      const allReady = chips.every(chip => chip.state === 'ready' || chip.state === 'optional');
+      const hasAttention = chips.some((chip) => chip.state === "warning");
+      const hasTodo = chips.some((chip) => chip.state === "todo");
+      const allOptional = chips.every((chip) => chip.state === "optional");
+      const allReady = chips.every(
+        (chip) => chip.state === "ready" || chip.state === "optional",
+      );
 
       if (hasAttention) {
-        status = 'attention';
+        status = "attention";
       } else if (hasTodo) {
-        status = 'pending';
+        status = "pending";
       } else if (allOptional) {
-        status = 'optional';
+        status = "optional";
       } else if (allReady) {
-        status = 'ready';
+        status = "ready";
       } else {
-        status = 'pending';
+        status = "pending";
       }
     }
 
     const statusLabel =
-      status === 'ready'
-        ? 'Ready'
-        : status === 'attention'
-          ? 'Needs attention'
-          : status === 'pending'
-            ? 'In progress'
-            : 'Optional';
+      status === "ready"
+        ? "Ready"
+        : status === "attention"
+        ? "Needs attention"
+        : status === "pending"
+        ? "In progress"
+        : "Optional";
 
     return {
       ...definition,
@@ -3781,40 +4412,54 @@ const steps = computed<StepEntry[]>(() => {
   });
 });
 
-const currentStep = computed(() => steps.value.find(step => step.name === activeStep.value) ?? steps.value[0]!);
+const currentStep = computed(
+  () =>
+    steps.value.find((step) => step.name === activeStep.value) ??
+    steps.value[0]!,
+);
 const stepIndex = computed(() => stepOrder.indexOf(activeStep.value));
-const currentStepNumber = computed(() => (stepIndex.value >= 0 ? stepIndex.value + 1 : 1));
+const currentStepNumber = computed(() =>
+  stepIndex.value >= 0 ? stepIndex.value + 1 : 1,
+);
 const canGoBack = computed(() => stepIndex.value > 0);
 const canGoNext = computed(() => {
   if (stepIndex.value >= stepOrder.length - 1) {
     return false;
   }
 
-  if (activeStep.value === 'setup') {
+  if (activeStep.value === "setup") {
     return setupStepReady.value;
   }
 
-  if (activeStep.value === 'tiers') {
+  if (activeStep.value === "tiers") {
     return tiersReady.value;
   }
 
   return true;
 });
 
-const stageProgress = computed(() => Math.min((currentStepNumber.value / steps.value.length) * 100, 100));
-const primaryCtaLabel = computed(() => (activeStep.value === 'publish' ? 'Publish' : 'Next'));
-const primaryCtaIcon = computed(() => (activeStep.value === 'publish' ? 'send' : 'arrow_forward'));
+const stageProgress = computed(() =>
+  Math.min((currentStepNumber.value / steps.value.length) * 100, 100),
+);
+const primaryCtaLabel = computed(() =>
+  activeStep.value === "publish" ? "Publish" : "Next",
+);
+const primaryCtaIcon = computed(() =>
+  activeStep.value === "publish" ? "send" : "arrow_forward",
+);
 const primaryCtaDisabled = computed(() =>
-  activeStep.value === 'publish'
+  activeStep.value === "publish"
     ? publishDisabled.value || stageLoading.value
-    : !canGoNext.value || stageLoading.value
+    : !canGoNext.value || stageLoading.value,
 );
 const primaryCtaLoading = computed(
-  () => stageLoading.value || (activeStep.value === 'publish' && publishingAll.value)
+  () =>
+    stageLoading.value ||
+    (activeStep.value === "publish" && publishingAll.value),
 );
 
 function enterEditMode() {
-  studioMode.value = 'edit';
+  studioMode.value = "edit";
 }
 
 function startEditingStep(step: CreatorStudioStep) {
@@ -3823,38 +4468,45 @@ function startEditingStep(step: CreatorStudioStep) {
 }
 
 function returnToViewMode() {
-  studioMode.value = 'view';
+  studioMode.value = "view";
 }
 
 function canAdvanceFromStepName(step: CreatorStudioStep) {
-  if (step === 'setup') {
+  if (step === "setup") {
     return setupStepReady.value;
   }
 
-  if (step === 'tiers') {
+  if (step === "tiers") {
     return tiersReady.value;
   }
 
   return true;
 }
 
-const stepLockReasons = computed<Record<CreatorStudioStep, string | null>>(() => {
-  const reasons: Partial<Record<CreatorStudioStep, string | null>> = {};
+const stepLockReasons = computed<Record<CreatorStudioStep, string | null>>(
+  () => {
+    const reasons: Partial<Record<CreatorStudioStep, string | null>> = {};
 
-  stepOrder.forEach((step, index) => {
-    if (index === 0) {
-      reasons[step] = null;
-      return;
-    }
+    stepOrder.forEach((step, index) => {
+      if (index === 0) {
+        reasons[step] = null;
+        return;
+      }
 
-    const blockingStep = stepOrder.slice(0, index).find(name => !canAdvanceFromStepName(name));
-    reasons[step] = blockingStep
-      ? `Complete ${stepDefinitions.find(def => def.name === blockingStep)?.label ?? 'previous step'} to unlock`
-      : null;
-  });
+      const blockingStep = stepOrder
+        .slice(0, index)
+        .find((name) => !canAdvanceFromStepName(name));
+      reasons[step] = blockingStep
+        ? `Complete ${
+            stepDefinitions.find((def) => def.name === blockingStep)?.label ??
+            "previous step"
+          } to unlock`
+        : null;
+    });
 
-  return reasons as Record<CreatorStudioStep, string | null>;
-});
+    return reasons as Record<CreatorStudioStep, string | null>;
+  },
+);
 
 function isStepLocked(step: CreatorStudioStep) {
   const targetIndex = stepOrder.indexOf(step);
@@ -3870,12 +4522,12 @@ function isStepLocked(step: CreatorStudioStep) {
 }
 
 function stepLockReason(step: CreatorStudioStep) {
-  return stepLockReasons.value[step] ?? '';
+  return stepLockReasons.value[step] ?? "";
 }
 
 function isStepComplete(step: StepEntry) {
   const index = stepOrder.indexOf(step.name);
-  return step.status === 'ready' && index < stepIndex.value;
+  return step.status === "ready" && index < stepIndex.value;
 }
 
 function goToStep(step: CreatorStudioStep) {
@@ -3889,14 +4541,18 @@ function goToStep(step: CreatorStudioStep) {
     return;
   }
 
-  if (targetIndex > stepIndex.value && activeStep.value === 'tiers' && !tiersReady.value) {
+  if (
+    targetIndex > stepIndex.value &&
+    activeStep.value === "tiers" &&
+    !tiersReady.value
+  ) {
     showTierValidation.value = true;
     return;
   }
 
   if (targetIndex > tierStepIndex && !tiersReady.value) {
     showTierValidation.value = true;
-    activeStep.value = 'tiers';
+    activeStep.value = "tiers";
     return;
   }
 
@@ -3918,7 +4574,7 @@ function goToPreviousStep() {
 }
 
 function goToNextStep() {
-  if (activeStep.value === 'tiers' && !tiersReady.value) {
+  if (activeStep.value === "tiers" && !tiersReady.value) {
     showTierValidation.value = true;
     return;
   }
@@ -3930,7 +4586,7 @@ function goToNextStep() {
 }
 
 function handlePrimaryCta() {
-  if (activeStep.value === 'publish') {
+  if (activeStep.value === "publish") {
     void publishAll();
     return;
   }
@@ -3939,7 +4595,7 @@ function handlePrimaryCta() {
 }
 
 const profileJsonPreview = computed(() => {
-  let author = '<author>';
+  let author = "<author>";
   try {
     author = normalizeAuthor(authorInput.value);
   } catch {
@@ -3963,21 +4619,31 @@ const profileJsonPreview = computed(() => {
 });
 
 const canonicalTiersJsonPreview = computed(() =>
-  JSON.stringify(buildTierPayloadForKind(tiers.value, CANONICAL_TIER_KIND), null, 2)
+  JSON.stringify(
+    buildTierPayloadForKind(tiers.value, CANONICAL_TIER_KIND),
+    null,
+    2,
+  ),
 );
 const legacyTiersJsonPreview = computed(() =>
-  JSON.stringify(buildTierPayloadForKind(tiers.value, LEGACY_TIER_KIND), null, 2)
+  JSON.stringify(
+    buildTierPayloadForKind(tiers.value, LEGACY_TIER_KIND),
+    null,
+    2,
+  ),
 );
 const tiersJsonPreview = computed(() =>
   tierPreviewKind.value === CANONICAL_TIER_KIND
     ? canonicalTiersJsonPreview.value
-    : legacyTiersJsonPreview.value
+    : legacyTiersJsonPreview.value,
 );
 type JsonMeta = { pretty: string; minified: string; valid: boolean };
 
-function buildJsonMeta(source: Ref<string> | ComputedRef<string>): ComputedRef<JsonMeta> {
+function buildJsonMeta(
+  source: Ref<string> | ComputedRef<string>,
+): ComputedRef<JsonMeta> {
   return computed(() => {
-    const original = (source.value || '').trim();
+    const original = (source.value || "").trim();
     let pretty = original;
     let minified = original;
     let valid = false;
@@ -4001,14 +4667,18 @@ const profileJsonMeta = buildJsonMeta(profileJsonPreview);
 const tiersJsonMeta = buildJsonMeta(tiersJsonPreview);
 
 const profileJsonDisplay = computed(() =>
-  jsonViewMode.profile === 'minified' ? profileJsonMeta.value.minified : profileJsonMeta.value.pretty,
+  jsonViewMode.profile === "minified"
+    ? profileJsonMeta.value.minified
+    : profileJsonMeta.value.pretty,
 );
 const tiersJsonDisplay = computed(() =>
-  jsonViewMode.tiers === 'minified' ? tiersJsonMeta.value.minified : tiersJsonMeta.value.pretty,
+  jsonViewMode.tiers === "minified"
+    ? tiersJsonMeta.value.minified
+    : tiersJsonMeta.value.pretty,
 );
 
 function jsonStats(text: string) {
-  const normalized = text || '';
+  const normalized = text || "";
   return {
     chars: normalized.length,
     lines: normalized ? normalized.split(/\r?\n/u).length : 0,
@@ -4018,15 +4688,19 @@ function jsonStats(text: string) {
 const profileJsonStats = computed(() => jsonStats(profileJsonDisplay.value));
 const tiersJsonStats = computed(() => jsonStats(tiersJsonDisplay.value));
 
-watch(relayProfileSnapshot, snapshot => {
+watch(relayProfileSnapshot, (snapshot) => {
   if (!snapshot) {
     return;
   }
   const normalizedDisplayName =
-    typeof displayName.value === 'string' ? displayName.value.trim() : '';
+    typeof displayName.value === "string" ? displayName.value.trim() : "";
   const normalizedPictureUrl =
-    typeof pictureUrl.value === 'string' ? pictureUrl.value.trim() : '';
-  const normalizedPubkeyTag = (p2pkDerivedPub.value || p2pkPub.value || '').trim();
+    typeof pictureUrl.value === "string" ? pictureUrl.value.trim() : "";
+  const normalizedPubkeyTag = (
+    p2pkDerivedPub.value ||
+    p2pkPub.value ||
+    ""
+  ).trim();
   const matchesSnapshot =
     snapshot.content === profileJsonPreview.value &&
     snapshot.displayName === normalizedDisplayName &&
@@ -4037,7 +4711,7 @@ watch(relayProfileSnapshot, snapshot => {
   }
 });
 
-watch(relayTiersSnapshot, snapshot => {
+watch(relayTiersSnapshot, (snapshot) => {
   if (!snapshot) {
     return;
   }
@@ -4051,7 +4725,7 @@ watch(relayTiersSnapshot, snapshot => {
 
 function ensureComposerMintsSeeded() {
   if (!mintsText.value.trim() && mintList.value.length) {
-    mintsText.value = mintList.value.join('\n');
+    mintsText.value = mintList.value.join("\n");
   }
 }
 
@@ -4062,28 +4736,36 @@ function downloadBundle() {
     legacy: legacyTiersJsonPreview.value,
   };
   const bundle = `// profile-10019.json\n${profileJsonPreview.value}\n\n// tiers-${CANONICAL_TIER_KIND}.json\n${canonicalTiersJsonPreview.value}\n\n// tiers-${LEGACY_TIER_KIND}.json\n${legacyTiersJsonPreview.value}\n`;
-  const blob = new Blob([bundle], { type: 'text/plain' });
+  const blob = new Blob([bundle], { type: "text/plain" });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
+  const link = document.createElement("a");
   link.href = url;
-  link.download = 'nutzap-export.txt';
+  link.download = "nutzap-export.txt";
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  notifySuccess('Exported Nutzap profile bundle.');
+  notifySuccess("Exported Nutzap profile bundle.");
 }
 
-function handleCopyJson(target: 'profile' | 'tiers') {
-  const label = target === 'profile' ? '10019 JSON copied' : `${tierPreviewLabel.value} JSON copied`;
-  const payload = target === 'profile' ? profileJsonDisplay.value : tiersJsonDisplay.value;
+function handleCopyJson(target: "profile" | "tiers") {
+  const label =
+    target === "profile"
+      ? "10019 JSON copied"
+      : `${tierPreviewLabel.value} JSON copied`;
+  const payload =
+    target === "profile" ? profileJsonDisplay.value : tiersJsonDisplay.value;
   copy(payload, label);
 }
 
-function handleDownloadJson(target: 'profile' | 'tiers') {
-  const filename = target === 'profile' ? 'profile-10019.json' : `tiers-${tierPreviewKind.value}.json`;
-  const payload = target === 'profile' ? profileJsonDisplay.value : tiersJsonDisplay.value;
-  const blob = new Blob([payload], { type: 'application/json' });
+function handleDownloadJson(target: "profile" | "tiers") {
+  const filename =
+    target === "profile"
+      ? "profile-10019.json"
+      : `tiers-${tierPreviewKind.value}.json`;
+  const payload =
+    target === "profile" ? profileJsonDisplay.value : tiersJsonDisplay.value;
+  const blob = new Blob([payload], { type: "application/json" });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
+  const link = document.createElement("a");
   link.href = url;
   link.download = filename;
   link.click();
@@ -4098,8 +4780,8 @@ function handleTierRefreshRequest() {
   if (!activeAuthorHex) {
     return;
   }
-  void loadTiers(activeAuthorHex).catch(err => {
-    console.warn('[nutzap] failed to reload tiers from relay', err);
+  void loadTiers(activeAuthorHex).catch((err) => {
+    console.warn("[nutzap] failed to reload tiers from relay", err);
   });
 }
 
@@ -4114,19 +4796,22 @@ type ComparableTier = {
 
 function normalizeTierForComparison(tier: Tier): ComparableTier {
   const media = Array.isArray(tier.media)
-    ? tier.media.map(entry => ({
-        url: typeof entry?.url === 'string' ? entry.url.trim() : '',
-        title: typeof entry?.title === 'string' ? entry.title.trim() : '',
-        type: typeof entry?.type === 'string' ? entry.type : '',
+    ? tier.media.map((entry) => ({
+        url: typeof entry?.url === "string" ? entry.url.trim() : "",
+        title: typeof entry?.title === "string" ? entry.title.trim() : "",
+        type: typeof entry?.type === "string" ? entry.type : "",
       }))
     : [];
 
   return {
-    id: typeof tier.id === 'string' ? tier.id : '',
-    title: typeof tier.title === 'string' ? tier.title : '',
-    price: typeof tier.price === 'number' && Number.isFinite(tier.price) ? tier.price : 0,
-    frequency: typeof tier.frequency === 'string' ? tier.frequency : '',
-    description: typeof tier.description === 'string' ? tier.description : '',
+    id: typeof tier.id === "string" ? tier.id : "",
+    title: typeof tier.title === "string" ? tier.title : "",
+    price:
+      typeof tier.price === "number" && Number.isFinite(tier.price)
+        ? tier.price
+        : 0,
+    frequency: typeof tier.frequency === "string" ? tier.frequency : "",
+    description: typeof tier.description === "string" ? tier.description : "",
     media,
   };
 }
@@ -4153,7 +4838,11 @@ function tiersEqual(left: Tier[], right: Tier[]): boolean {
     for (let mediaIndex = 0; mediaIndex < a.media.length; mediaIndex += 1) {
       const mediaA = a.media[mediaIndex];
       const mediaB = b.media[mediaIndex];
-      if (mediaA.url !== mediaB.url || mediaA.title !== mediaB.title || mediaA.type !== mediaB.type) {
+      if (
+        mediaA.url !== mediaB.url ||
+        mediaA.title !== mediaB.title ||
+        mediaA.type !== mediaB.type
+      ) {
         return false;
       }
     }
@@ -4164,28 +4853,34 @@ function tiersEqual(left: Tier[], right: Tier[]): boolean {
 function applyTiersEvent(event: any | null, overrideKind?: TierKind | null) {
   if (!event) {
     tiers.value = [];
-    setObservedRelayPayloadHash('canonicalTiers', null);
-    setObservedRelayPayloadHash('legacyTiers', null);
+    setObservedRelayPayloadHash("canonicalTiers", null);
+    setObservedRelayPayloadHash("legacyTiers", null);
     creatorHub.markTierDraftsClean();
     evaluateRelayVerificationState();
     return;
   }
 
   const eventKind =
-    overrideKind && (overrideKind === CANONICAL_TIER_KIND || overrideKind === LEGACY_TIER_KIND)
+    overrideKind &&
+    (overrideKind === CANONICAL_TIER_KIND || overrideKind === LEGACY_TIER_KIND)
       ? overrideKind
-      : typeof event?.kind === 'number' &&
-          (event.kind === CANONICAL_TIER_KIND || event.kind === LEGACY_TIER_KIND)
-        ? (event.kind as TierKind)
-        : null;
+      : typeof event?.kind === "number" &&
+        (event.kind === CANONICAL_TIER_KIND || event.kind === LEGACY_TIER_KIND)
+      ? (event.kind as TierKind)
+      : null;
 
   if (eventKind) {
     tierPreviewKind.value = eventKind;
-    const stage = eventKind === CANONICAL_TIER_KIND ? 'canonicalTiers' : 'legacyTiers';
-    setObservedRelayPayloadHash(stage, typeof event?.content === 'string' ? event.content : null);
+    const stage =
+      eventKind === CANONICAL_TIER_KIND ? "canonicalTiers" : "legacyTiers";
+    setObservedRelayPayloadHash(
+      stage,
+      typeof event?.content === "string" ? event.content : null,
+    );
   }
 
-  const content = typeof event?.content === 'string' ? event.content : undefined;
+  const content =
+    typeof event?.content === "string" ? event.content : undefined;
   const parsed = parseTiersContent(content);
   if (tiersEqual(parsed, tiers.value)) {
     creatorHub.markTierDraftsClean();
@@ -4226,27 +4921,38 @@ function buildRelayList(rawRelays: string[]) {
 
 function applyProfileEvent(latest: any | null) {
   applyingProfileEvent.value = true;
-  const profileContent = typeof latest?.content === 'string' ? latest.content : null;
-  setObservedRelayPayloadHash('profile', profileContent);
+  const profileContent =
+    typeof latest?.content === "string" ? latest.content : null;
+  setObservedRelayPayloadHash("profile", profileContent);
   let parsedMints: string[] | undefined;
   let parsedRelays: string[] | undefined;
   try {
     if (!latest) {
+      const hasLocalP2pkSelection = Boolean(
+        p2pkPub.value.trim() ||
+          selectedP2pkPub.value.trim() ||
+          p2pkPriv.value.trim() ||
+          firstKey.value?.publicKey?.trim(),
+      );
       creatorProfileStore.setProfile({
-        display_name: '',
-        picture: '',
+        display_name: "",
+        picture: "",
         mints: [],
         relays: buildRelayList([]).sanitized,
       });
       creatorProfileStore.markClean();
-      p2pkPub.value = '';
-      p2pkPriv.value = '';
-      p2pkDerivedPub.value = '';
-      selectedP2pkPub.value = '';
-      p2pkPubError.value = '';
-      previousSelectedP2pkPub = '';
+      if (!hasLocalP2pkSelection) {
+        p2pkPub.value = "";
+        p2pkPriv.value = "";
+        p2pkDerivedPub.value = "";
+        selectedP2pkPub.value = "";
+      } else {
+        maybeSeedComposerKeysFromStore();
+      }
+      p2pkPubError.value = "";
+      previousSelectedP2pkPub = "";
       loadedProfileAuthorHex.value = null;
-      removeAuthorLock('profile');
+      removeAuthorLock("profile");
       identityMetadataSeedingBlocked.value = false;
       identityMetadataSeededPubkey.value = null;
       profilePublished.value = false;
@@ -4255,13 +4961,13 @@ function applyProfileEvent(latest: any | null) {
       return;
     }
 
-    if (typeof latest.pubkey === 'string' && latest.pubkey) {
+    if (typeof latest.pubkey === "string" && latest.pubkey) {
       const normalized = latest.pubkey.toLowerCase();
       const encoded = safeEncodeNpub(normalized);
       authorInput.value = encoded || normalized;
       loadedProfileAuthorHex.value = normalized;
       if (signerPubkeyTrimmed.value || storeAuthorNpub.value) {
-        addAuthorLock('profile');
+        addAuthorLock("profile");
       }
     }
 
@@ -4270,19 +4976,19 @@ function applyProfileEvent(latest: any | null) {
     try {
       parsed = profileContent ? JSON.parse(profileContent) : {};
 
-      if (typeof parsed.p2pk === 'string') {
+      if (typeof parsed.p2pk === "string") {
         const candidate = parsed.p2pk.trim();
         const entries = Array.isArray(p2pkKeys.value) ? p2pkKeys.value : [];
-        const match = entries.find(entry =>
-          entry && typeof entry.publicKey === 'string'
+        const match = entries.find((entry) =>
+          entry && typeof entry.publicKey === "string"
             ? entry.publicKey.trim().toLowerCase() === candidate.toLowerCase()
-            : false
+            : false,
         );
         if (match) {
           handleP2pkSelection(match.publicKey);
         } else {
-          selectedP2pkPub.value = '';
-          p2pkPriv.value = '';
+          selectedP2pkPub.value = "";
+          p2pkPriv.value = "";
           applyValidatedP2pk(candidate);
         }
       } else {
@@ -4290,80 +4996,112 @@ function applyProfileEvent(latest: any | null) {
       }
       if (Array.isArray(parsed.mints)) {
         parsedMints = parsed.mints
-          .map((entry: unknown) => (typeof entry === 'string' ? entry.trim() : ''))
+          .map((entry: unknown) =>
+            typeof entry === "string" ? entry.trim() : "",
+          )
           .filter(Boolean);
       }
       if (Array.isArray(parsed.relays) && parsed.relays.length > 0) {
         const rawRelays = parsed.relays
-          .map((entry: unknown) => (typeof entry === 'string' ? entry.trim() : ''))
+          .map((entry: unknown) =>
+            typeof entry === "string" ? entry.trim() : "",
+          )
           .filter(Boolean);
         const { sanitized, dropped } = buildRelayList(rawRelays);
         if (dropped.length > 0) {
           notifyWarning(
             dropped.length === 1
-              ? 'Discarded invalid relay URL'
-              : 'Discarded invalid relay URLs',
-            dropped.join(', ')
+              ? "Discarded invalid relay URL"
+              : "Discarded invalid relay URLs",
+            dropped.join(", "),
           );
         }
         parsedRelays = sanitized;
       }
-      if (typeof parsed.tierAddr === 'string') {
-        const [kindPart, , dPart] = parsed.tierAddr.split(':');
+      if (typeof parsed.tierAddr === "string") {
+        const [kindPart, , dPart] = parsed.tierAddr.split(":");
         const maybeKind = Number(kindPart);
         if (
-          (maybeKind === CANONICAL_TIER_KIND || maybeKind === LEGACY_TIER_KIND) &&
-          dPart === 'tiers'
+          (maybeKind === CANONICAL_TIER_KIND ||
+            maybeKind === LEGACY_TIER_KIND) &&
+          dPart === "tiers"
         ) {
           tierPreviewKind.value = maybeKind as TierKind;
         }
       }
     } catch (err) {
-      console.warn('[nutzap] failed to parse profile content', err);
-      notifyWarning('Unable to parse Nutzap profile JSON. Using relay metadata where available.');
+      console.warn("[nutzap] failed to parse profile content", err);
+      notifyWarning(
+        "Unable to parse Nutzap profile JSON. Using relay metadata where available.",
+      );
     }
 
     const tags = Array.isArray(latest.tags) ? latest.tags : [];
-    const nameTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'name' && t[1]);
+    const nameTag = tags.find(
+      (t: any) => Array.isArray(t) && t[0] === "name" && t[1],
+    );
     const displayNameTagValue =
-      typeof nameTag?.[1] === 'string' ? nameTag[1].trim() : '';
+      typeof nameTag?.[1] === "string" ? nameTag[1].trim() : "";
     const parsedDisplayName =
-      typeof parsed?.display_name === 'string' ? parsed.display_name.trim() : '';
-    const parsedName = typeof parsed?.name === 'string' ? parsed.name.trim() : '';
+      typeof parsed?.display_name === "string"
+        ? parsed.display_name.trim()
+        : "";
+    const parsedName =
+      typeof parsed?.name === "string" ? parsed.name.trim() : "";
     const nextDisplayName =
       parsedDisplayName ||
       parsedName ||
       displayNameTagValue ||
-      (typeof displayName.value === 'string' ? displayName.value.trim() : '');
-    const pictureTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'picture' && t[1]);
-    const parsedPicture = typeof parsed?.picture === 'string' ? parsed.picture.trim() : '';
+      (typeof displayName.value === "string" ? displayName.value.trim() : "");
+    const pictureTag = tags.find(
+      (t: any) => Array.isArray(t) && t[0] === "picture" && t[1],
+    );
+    const parsedPicture =
+      typeof parsed?.picture === "string" ? parsed.picture.trim() : "";
     const pictureTagValue =
-      typeof pictureTag?.[1] === 'string' ? pictureTag[1].trim() : '';
+      typeof pictureTag?.[1] === "string" ? pictureTag[1].trim() : "";
     const nextPictureUrl =
-      parsedPicture || pictureTagValue || (typeof pictureUrl.value === 'string' ? pictureUrl.value.trim() : '');
-    const mintTags = tags.filter((t: any) => Array.isArray(t) && t[0] === 'mint' && t[1]);
-    let nextMints = parsedMints ? [...parsedMints] : Array.isArray(mints.value) ? [...mints.value] : [];
+      parsedPicture ||
+      pictureTagValue ||
+      (typeof pictureUrl.value === "string" ? pictureUrl.value.trim() : "");
+    const mintTags = tags.filter(
+      (t: any) => Array.isArray(t) && t[0] === "mint" && t[1],
+    );
+    let nextMints = parsedMints
+      ? [...parsedMints]
+      : Array.isArray(mints.value)
+      ? [...mints.value]
+      : [];
     if (!nextMints.length && Array.isArray(mintTags) && mintTags.length) {
-      nextMints = mintTags.map((t: any) => t[1]).filter((value: string) => typeof value === 'string' && value.trim());
-      nextMints = nextMints.map(entry => entry.trim());
+      nextMints = mintTags
+        .map((t: any) => t[1])
+        .filter((value: string) => typeof value === "string" && value.trim());
+      nextMints = nextMints.map((entry) => entry.trim());
     }
-    const relayTags = tags.filter((t: any) => Array.isArray(t) && t[0] === 'relay' && t[1]);
-    let nextRelays = parsedRelays ? [...parsedRelays] : Array.isArray(relays.value) ? [...relays.value] : [];
+    const relayTags = tags.filter(
+      (t: any) => Array.isArray(t) && t[0] === "relay" && t[1],
+    );
+    let nextRelays = parsedRelays
+      ? [...parsedRelays]
+      : Array.isArray(relays.value)
+      ? [...relays.value]
+      : [];
     const hasOnlyDefaultRelay =
       nextRelays.length === 0 ||
-      (nextRelays.length === 1 && nextRelays[0] === CREATOR_STUDIO_RELAY_WS_URL);
+      (nextRelays.length === 1 &&
+        nextRelays[0] === CREATOR_STUDIO_RELAY_WS_URL);
     if (hasOnlyDefaultRelay && relayTags.length) {
       const rawRelays = relayTags
-        .map((t: any) => (typeof t[1] === 'string' ? t[1].trim() : ''))
+        .map((t: any) => (typeof t[1] === "string" ? t[1].trim() : ""))
         .filter(Boolean);
       if (rawRelays.length) {
         const { sanitized, dropped } = buildRelayList(rawRelays);
         if (dropped.length > 0) {
           notifyWarning(
             dropped.length === 1
-              ? 'Discarded invalid relay URL'
-              : 'Discarded invalid relay URLs',
-            dropped.join(', ')
+              ? "Discarded invalid relay URL"
+              : "Discarded invalid relay URLs",
+            dropped.join(", "),
           );
         }
         nextRelays = sanitized;
@@ -4373,17 +5111,19 @@ function applyProfileEvent(latest: any | null) {
       nextRelays = buildRelayList([]).sanitized;
     }
     if (!p2pkPub.value) {
-      const pkTag = tags.find((t: any) => Array.isArray(t) && t[0] === 'pubkey' && t[1]);
+      const pkTag = tags.find(
+        (t: any) => Array.isArray(t) && t[0] === "pubkey" && t[1],
+      );
       if (pkTag) {
-        selectedP2pkPub.value = '';
-        p2pkPriv.value = '';
+        selectedP2pkPub.value = "";
+        p2pkPriv.value = "";
         applyValidatedP2pk(pkTag[1]);
       }
     }
 
     creatorProfileStore.setProfile({
-      display_name: typeof nextDisplayName === 'string' ? nextDisplayName : '',
-      picture: typeof nextPictureUrl === 'string' ? nextPictureUrl : '',
+      display_name: typeof nextDisplayName === "string" ? nextDisplayName : "",
+      picture: typeof nextPictureUrl === "string" ? nextPictureUrl : "",
       mints: nextMints,
       relays: nextRelays,
     });
@@ -4404,16 +5144,19 @@ function findLatestTierEvent(events: readonly any[], kind: TierKind) {
   let latest: any | null = null;
 
   for (const event of events) {
-    if (!event || typeof event !== 'object') {
+    if (!event || typeof event !== "object") {
       continue;
     }
-    if (typeof (event as any).kind !== 'number' || (event as any).kind !== kind) {
+    if (
+      typeof (event as any).kind !== "number" ||
+      (event as any).kind !== kind
+    ) {
       continue;
     }
     const tags = Array.isArray((event as any).tags) ? (event as any).tags : [];
-    const dTag = tags.find(tag => Array.isArray(tag) && tag[0] === 'd');
-    const dValue = typeof dTag?.[1] === 'string' ? dTag[1] : '';
-    if (dValue && dValue !== 'tiers') {
+    const dTag = tags.find((tag) => Array.isArray(tag) && tag[0] === "d");
+    const dValue = typeof dTag?.[1] === "string" ? dTag[1] : "";
+    if (dValue && dValue !== "tiers") {
       continue;
     }
     if (
@@ -4434,7 +5177,7 @@ async function loadTiers(authorHex: string) {
       {
         kinds: [30019, 30000],
         authors: [normalized],
-        '#d': ['tiers'],
+        "#d": ["tiers"],
         limit: 2,
       },
     ]);
@@ -4442,17 +5185,19 @@ async function loadTiers(authorHex: string) {
     const canonicalEvent = findLatestTierEvent(events, CANONICAL_TIER_KIND);
     const legacyEvent = findLatestTierEvent(events, LEGACY_TIER_KIND);
     setObservedRelayPayloadHash(
-      'canonicalTiers',
-      typeof canonicalEvent?.content === 'string' ? canonicalEvent.content : null,
+      "canonicalTiers",
+      typeof canonicalEvent?.content === "string"
+        ? canonicalEvent.content
+        : null,
     );
     setObservedRelayPayloadHash(
-      'legacyTiers',
-      typeof legacyEvent?.content === 'string' ? legacyEvent.content : null,
+      "legacyTiers",
+      typeof legacyEvent?.content === "string" ? legacyEvent.content : null,
     );
     const latest = pickLatestParamReplaceable(events);
     applyTiersEvent(latest);
   } catch (err) {
-    console.error('[nutzap] failed to load tiers', err);
+    console.error("[nutzap] failed to load tiers", err);
     maybeFlagHttpFallbackTimeout(err);
     const message = err instanceof Error ? err.message : String(err);
     notifyRelayQueryError(message);
@@ -4470,7 +5215,7 @@ async function loadProfile(authorHex: string) {
     const latest = pickLatestReplaceable(events);
     applyProfileEvent(latest);
   } catch (err) {
-    console.error('[nutzap] failed to load profile', err);
+    console.error("[nutzap] failed to load profile", err);
     maybeFlagHttpFallbackTimeout(err);
     const message = err instanceof Error ? err.message : String(err);
     notifyRelayQueryError(message);
@@ -4501,8 +5246,8 @@ function attachRelayStatusListener(relaySocket: FundstrRelayClient) {
     return;
   }
 
-  stopRelayStatusListener = relaySocket.onStatusChange(status => {
-    if (status === 'connected') {
+  stopRelayStatusListener = relaySocket.onStatusChange((status) => {
+    if (status === "connected") {
       if (hasRelayConnected && reloadAfterReconnect && activeAuthorHex) {
         reloadAfterReconnect = false;
         void loadAll();
@@ -4510,7 +5255,9 @@ function attachRelayStatusListener(relaySocket: FundstrRelayClient) {
       hasRelayConnected = true;
     } else if (
       hasRelayConnected &&
-      (status === 'reconnecting' || status === 'connecting' || status === 'disconnected')
+      (status === "reconnecting" ||
+        status === "connecting" ||
+        status === "disconnected")
     ) {
       if (activeAuthorHex) {
         reloadAfterReconnect = true;
@@ -4532,11 +5279,11 @@ function ensureRelayStatusListenerOnce() {
 
   const targetUrl = relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL;
   void ensureRelayClientInitialized(targetUrl)
-    .then(client => {
+    .then((client) => {
       attachRelayStatusListener(client);
     })
-    .catch(err => {
-      console.warn('[nutzap] failed to attach relay status listener', err);
+    .catch((err) => {
+      console.warn("[nutzap] failed to attach relay status listener", err);
     });
 }
 
@@ -4556,15 +5303,17 @@ async function setupSubscriptions(authorHex: string) {
   try {
     profileSubId = relaySocket.subscribe(
       [{ kinds: [10019], authors: [normalized], limit: 1 }],
-      event => {
-        if (!event || typeof event.kind !== 'number' || event.kind !== 10019) {
+      (event) => {
+        if (!event || typeof event.kind !== "number" || event.kind !== 10019) {
           return;
         }
-        const eventAuthor = typeof event.pubkey === 'string' ? event.pubkey.toLowerCase() : '';
+        const eventAuthor =
+          typeof event.pubkey === "string" ? event.pubkey.toLowerCase() : "";
         if (eventAuthor !== normalized) {
           return;
         }
-        const createdAt = typeof event.created_at === 'number' ? event.created_at : 0;
+        const createdAt =
+          typeof event.created_at === "number" ? event.created_at : 0;
         if (!profileSeen || createdAt >= profileLatestAt) {
           profileSeen = true;
           profileLatestAt = createdAt;
@@ -4575,10 +5324,10 @@ async function setupSubscriptions(authorHex: string) {
         if (!profileSeen) {
           applyProfileEvent(null);
         }
-      }
+      },
     );
   } catch (err) {
-    console.warn('[nutzap] failed to subscribe to profile', err);
+    console.warn("[nutzap] failed to subscribe to profile", err);
     profileSubId = null;
   }
 
@@ -4591,22 +5340,24 @@ async function setupSubscriptions(authorHex: string) {
         {
           kinds: [30019, 30000],
           authors: [normalized],
-          '#d': ['tiers'],
+          "#d": ["tiers"],
           limit: 1,
         },
       ],
-      event => {
-        if (!event || typeof event.kind !== 'number') {
+      (event) => {
+        if (!event || typeof event.kind !== "number") {
           return;
         }
         if (event.kind !== 30019 && event.kind !== 30000) {
           return;
         }
-        const eventAuthor = typeof event.pubkey === 'string' ? event.pubkey.toLowerCase() : '';
+        const eventAuthor =
+          typeof event.pubkey === "string" ? event.pubkey.toLowerCase() : "";
         if (eventAuthor !== normalized) {
           return;
         }
-        const createdAt = typeof event.created_at === 'number' ? event.created_at : 0;
+        const createdAt =
+          typeof event.created_at === "number" ? event.created_at : 0;
         if (!tierSeen || createdAt >= tierLatestAt) {
           tierSeen = true;
           tierLatestAt = createdAt;
@@ -4617,10 +5368,10 @@ async function setupSubscriptions(authorHex: string) {
         if (!tierSeen) {
           applyTiersEvent(null);
         }
-      }
+      },
     );
   } catch (err) {
-    console.warn('[nutzap] failed to subscribe to tiers', err);
+    console.warn("[nutzap] failed to subscribe to tiers", err);
     tiersSubId = null;
   }
 }
@@ -4661,7 +5412,7 @@ async function refreshSubscriptions(force = false) {
   try {
     await setupSubscriptions(nextHex);
   } catch (err) {
-    console.warn('[nutzap] failed to refresh subscriptions', err);
+    console.warn("[nutzap] failed to refresh subscriptions", err);
   }
 }
 
@@ -4678,9 +5429,9 @@ async function loadAll() {
   try {
     await Promise.all([loadTiers(authorHex), loadProfile(authorHex)]);
   } catch (err) {
-    console.error('[nutzap] failed to load Nutzap profile', err);
+    console.error("[nutzap] failed to load Nutzap profile", err);
     if (!(err instanceof Error)) {
-      notifyError('Failed to load Nutzap profile.');
+      notifyError("Failed to load Nutzap profile.");
     }
   } finally {
     loading.value = false;
@@ -4688,16 +5439,16 @@ async function loadAll() {
 }
 
 const SOCKET_UNAVAILABLE_PATTERNS = [
-  'websocket unsupported',
-  'relay socket unavailable',
-  'relay connection closed',
-  'relay disconnected',
-  'timed out waiting for relay socket',
-  'timed out waiting for relay ack',
-  'failed to send event',
-  'failed to open relay socket',
-  'relay ack timeout',
-  'relay disconnected before ack',
+  "websocket unsupported",
+  "relay socket unavailable",
+  "relay connection closed",
+  "relay disconnected",
+  "timed out waiting for relay socket",
+  "timed out waiting for relay ack",
+  "failed to send event",
+  "failed to open relay socket",
+  "relay ack timeout",
+  "relay disconnected before ack",
 ];
 
 function matchesSocketUnavailable(message?: string | null) {
@@ -4705,7 +5456,9 @@ function matchesSocketUnavailable(message?: string | null) {
     return false;
   }
   const normalized = message.toLowerCase();
-  return SOCKET_UNAVAILABLE_PATTERNS.some(pattern => normalized.includes(pattern));
+  return SOCKET_UNAVAILABLE_PATTERNS.some((pattern) =>
+    normalized.includes(pattern),
+  );
 }
 
 function shouldUseHttpFallback(error: unknown): boolean {
@@ -4720,12 +5473,14 @@ function shouldUseHttpFallback(error: unknown): boolean {
       return true;
     }
     const causeMessage =
-      typeof (error as any)?.cause?.message === 'string' ? (error as any).cause.message : undefined;
+      typeof (error as any)?.cause?.message === "string"
+        ? (error as any).cause.message
+        : undefined;
     if (matchesSocketUnavailable(causeMessage)) {
       return true;
     }
   }
-  if (typeof error === 'string') {
+  if (typeof error === "string") {
     return matchesSocketUnavailable(error);
   }
   return false;
@@ -4733,12 +5488,12 @@ function shouldUseHttpFallback(error: unknown): boolean {
 
 function describeFallbackReason(error: unknown): string {
   if (error instanceof RelayPublishError) {
-    return error.ack?.message || error.message || 'Relay publish failed';
+    return error.ack?.message || error.message || "Relay publish failed";
   }
   if (error instanceof Error) {
-    return error.message || 'Relay publish failed';
+    return error.message || "Relay publish failed";
   }
-  return typeof error === 'string' ? error : 'Relay publish failed';
+  return typeof error === "string" ? error : "Relay publish failed";
 }
 
 class PublishWorkflowError extends Error {
@@ -4756,7 +5511,7 @@ class PublishWorkflowError extends Error {
     requeuedStages: PublishStageName[],
   ) {
     super(original instanceof Error ? original.message : String(original));
-    this.name = 'PublishWorkflowError';
+    this.name = "PublishWorkflowError";
     this.stage = stage;
     this.original = original;
     this.outcomes = outcomes;
@@ -4777,7 +5532,9 @@ function resetPublishStateMachine() {
 function cloneTier(tier: Tier): Tier {
   return {
     ...tier,
-    media: Array.isArray(tier.media) ? tier.media.map(entry => ({ ...entry })) : undefined,
+    media: Array.isArray(tier.media)
+      ? tier.media.map((entry) => ({ ...entry }))
+      : undefined,
   };
 }
 
@@ -4797,26 +5554,26 @@ function buildProfileTemplate(authorHex: string) {
   });
 
   const tags: string[][] = [
-    ['t', 'nutzap-profile'],
-    ['client', 'fundstr'],
-    ...mintList.value.map(mint => ['mint', mint, 'sat']),
-    ...relays.map(relay => ['relay', relay]),
+    ["t", "nutzap-profile"],
+    ["client", "fundstr"],
+    ...mintList.value.map((mint) => ["mint", mint, "sat"]),
+    ...relays.map((relay) => ["relay", relay]),
   ];
 
   if (tagPubkey) {
-    tags.push(['pubkey', tagPubkey]);
+    tags.push(["pubkey", tagPubkey]);
   }
-  if (!tags.some(tag => tag[0] === 'a' && tag[1] === canonicalTierPointer)) {
-    tags.push(['a', canonicalTierPointer]);
+  if (!tags.some((tag) => tag[0] === "a" && tag[1] === canonicalTierPointer)) {
+    tags.push(["a", canonicalTierPointer]);
   }
-  if (!tags.some(tag => tag[0] === 'a' && tag[1] === legacyTierPointer)) {
-    tags.push(['a', legacyTierPointer]);
+  if (!tags.some((tag) => tag[0] === "a" && tag[1] === legacyTierPointer)) {
+    tags.push(["a", legacyTierPointer]);
   }
   if (displayName.value.trim()) {
-    tags.push(['name', displayName.value.trim()]);
+    tags.push(["name", displayName.value.trim()]);
   }
   if (pictureUrl.value.trim()) {
-    tags.push(['picture', pictureUrl.value.trim()]);
+    tags.push(["picture", pictureUrl.value.trim()]);
   }
 
   return { kind: 10019, tags, content };
@@ -4829,25 +5586,25 @@ function stagePublishJobs(authorHex: string) {
 
   publishStageQueue.value = [
     {
-      stage: 'legacyTiers',
+      stage: "legacyTiers",
       kind: LEGACY_TIER_KIND,
       tiers: legacySnapshot,
-      status: 'pending',
+      status: "pending",
       attempts: 0,
       compensating: false,
     },
     {
-      stage: 'canonicalTiers',
+      stage: "canonicalTiers",
       kind: CANONICAL_TIER_KIND,
       tiers: canonicalSnapshot,
-      status: 'pending',
+      status: "pending",
       attempts: 0,
       compensating: false,
     },
     {
-      stage: 'profile',
+      stage: "profile",
       template: profileTemplate,
-      status: 'pending',
+      status: "pending",
       attempts: 0,
       compensating: false,
     },
@@ -4856,7 +5613,9 @@ function stagePublishJobs(authorHex: string) {
   const canonicalPayload = JSON.stringify(
     buildTierPayloadForKind(canonicalSnapshot, CANONICAL_TIER_KIND),
   );
-  const legacyPayload = JSON.stringify(buildTierPayloadForKind(legacySnapshot, LEGACY_TIER_KIND));
+  const legacyPayload = JSON.stringify(
+    buildTierPayloadForKind(legacySnapshot, LEGACY_TIER_KIND),
+  );
   beginRelayVerification({
     canonicalTiers: canonicalPayload,
     legacyTiers: legacyPayload,
@@ -4869,8 +5628,8 @@ function queueCompensation(failedStage: PublishStageName): PublishStageName[] {
   const requeued: PublishStageName[] = [];
   for (const job of publishStageQueue.value) {
     const stageIndex = publishStageOrder.indexOf(job.stage);
-    if (stageIndex < failedIndex && job.status === 'completed') {
-      job.status = 'pending';
+    if (stageIndex < failedIndex && job.status === "completed") {
+      job.status = "pending";
       job.compensating = true;
       job.lastError = undefined;
       publishStateMachine.completedStages[job.stage] = false;
@@ -4883,17 +5642,17 @@ function queueCompensation(failedStage: PublishStageName): PublishStageName[] {
 }
 
 function describeStageLabel(stage: PublishStageName): string {
-  if (stage === 'canonicalTiers') {
-    return 'canonical tiers';
+  if (stage === "canonicalTiers") {
+    return "canonical tiers";
   }
-  if (stage === 'legacyTiers') {
-    return 'legacy tiers';
+  if (stage === "legacyTiers") {
+    return "legacy tiers";
   }
-  return 'profile';
+  return "profile";
 }
 
 async function executeTierStage(
-  job: Extract<PublishStageJob, { stage: 'canonicalTiers' | 'legacyTiers' }>,
+  job: Extract<PublishStageJob, { stage: "canonicalTiers" | "legacyTiers" }>,
   relayUrl: string,
   fallbackNotices: string[],
 ): Promise<PublishStageOutcome> {
@@ -4911,17 +5670,19 @@ async function executeTierStage(
       relayUrl,
     });
     const reason = describeFallbackReason(err);
-    const prefix = job.compensating ? 'Compensation replay' : 'Publish';
+    const prefix = job.compensating ? "Compensation replay" : "Publish";
     const stageLabel = describeStageLabel(job.stage);
     fallbackNotices.push(
-      `${prefix} for ${stageLabel} used HTTP fallback${reason ? ` — ${reason}` : ''}.`,
+      `${prefix} for ${stageLabel} used HTTP fallback${
+        reason ? ` — ${reason}` : ""
+      }.`,
     );
     return { result: fallbackResult, usedFallback: true };
   }
 }
 
 async function executeProfileStage(
-  job: Extract<PublishStageJob, { stage: 'profile' }>,
+  job: Extract<PublishStageJob, { stage: "profile" }>,
   relayUrl: string,
   fallbackNotices: string[],
 ): Promise<PublishStageOutcome> {
@@ -4938,8 +5699,12 @@ async function executeProfileStage(
     const fallbackClient = await ensureRelayClientInitialized(relayUrl);
     const fallbackResult = await fallbackClient.publish(job.template);
     const reason = describeFallbackReason(err);
-    const prefix = job.compensating ? 'Compensation profile replay' : 'Publish profile';
-    fallbackNotices.push(`${prefix} used HTTP fallback${reason ? ` — ${reason}` : ''}.`);
+    const prefix = job.compensating
+      ? "Compensation profile replay"
+      : "Publish profile";
+    fallbackNotices.push(
+      `${prefix} used HTTP fallback${reason ? ` — ${reason}` : ""}.`,
+    );
     return { result: fallbackResult, usedFallback: true };
   }
 }
@@ -4963,29 +5728,31 @@ async function processPublishQueue(options: {
 
   try {
     for (const stage of publishStageOrder) {
-      const job = publishStageQueue.value.find(entry => entry.stage === stage);
+      const job = publishStageQueue.value.find(
+        (entry) => entry.stage === stage,
+      );
       if (!job) {
         continue;
       }
       if (onlyCompensation && !job.compensating) {
         continue;
       }
-      if (job.status === 'completed' && !job.compensating) {
+      if (job.status === "completed" && !job.compensating) {
         continue;
       }
 
       publishStateMachine.currentStage = stage;
-      job.status = 'pending';
+      job.status = "pending";
       job.lastError = undefined;
       job.attempts += 1;
 
       try {
         const outcome =
-          job.stage === 'profile'
+          job.stage === "profile"
             ? await executeProfileStage(job, relayUrl, fallbackNotices)
             : await executeTierStage(job, relayUrl, fallbackNotices);
         outcomes[stage] = outcome;
-        job.status = 'completed';
+        job.status = "completed";
         if (job.compensating) {
           compensationApplied = true;
           job.compensating = false;
@@ -4993,11 +5760,17 @@ async function processPublishQueue(options: {
         publishStateMachine.completedStages[stage] = true;
         processedStages.push(stage);
       } catch (err) {
-        job.status = 'failed';
+        job.status = "failed";
         job.lastError = err instanceof Error ? err.message : String(err);
         publishStateMachine.completedStages[stage] = false;
         const requeuedStages = queueCompensation(stage);
-        throw new PublishWorkflowError(stage, err, { ...outcomes }, [...fallbackNotices], requeuedStages);
+        throw new PublishWorkflowError(
+          stage,
+          err,
+          { ...outcomes },
+          [...fallbackNotices],
+          requeuedStages,
+        );
       }
     }
   } finally {
@@ -5010,19 +5783,24 @@ async function processPublishQueue(options: {
 }
 
 function formatTierSummary(
-  stage: 'canonicalTiers' | 'legacyTiers',
+  stage: "canonicalTiers" | "legacyTiers",
   outcome: PublishStageOutcome,
 ): string {
   const result = outcome.result;
   const eventId = result.ack?.id ?? result.event?.id;
   const relayMessage =
-    typeof result.ack?.message === 'string' && result.ack.message ? ` — ${result.ack.message}` : '';
+    typeof result.ack?.message === "string" && result.ack.message
+      ? ` — ${result.ack.message}`
+      : "";
   const fallbackNote =
-    outcome.usedFallback || result.ack?.via === 'http' || (result as any)?.via === 'http'
-      ? ' via HTTP fallback'
-      : '';
-  const kind = stage === 'canonicalTiers' ? CANONICAL_TIER_KIND : LEGACY_TIER_KIND;
-  const label = stage === 'canonicalTiers' ? 'Canonical tiers' : 'Legacy tiers';
+    outcome.usedFallback ||
+    result.ack?.via === "http" ||
+    (result as any)?.via === "http"
+      ? " via HTTP fallback"
+      : "";
+  const kind =
+    stage === "canonicalTiers" ? CANONICAL_TIER_KIND : LEGACY_TIER_KIND;
+  const label = stage === "canonicalTiers" ? "Canonical tiers" : "Legacy tiers";
   if (eventId) {
     return `${label} published${fallbackNote} (kind ${kind}) — id ${eventId}${relayMessage}`;
   }
@@ -5032,8 +5810,12 @@ function formatTierSummary(
 function buildTierSummary(outcomes: PublishStageOutcomeMap) {
   const canonicalOutcome = outcomes.canonicalTiers;
   const legacyOutcome = outcomes.legacyTiers;
-  const canonicalSummary = canonicalOutcome ? formatTierSummary('canonicalTiers', canonicalOutcome) : '';
-  const legacySummary = legacyOutcome ? formatTierSummary('legacyTiers', legacyOutcome) : '';
+  const canonicalSummary = canonicalOutcome
+    ? formatTierSummary("canonicalTiers", canonicalOutcome)
+    : "";
+  const legacySummary = legacyOutcome
+    ? formatTierSummary("legacyTiers", legacyOutcome)
+    : "";
   return {
     canonicalOutcome,
     legacyOutcome,
@@ -5047,23 +5829,27 @@ function computeFallbackUsed(outcome?: PublishStageOutcome): boolean {
   }
   return (
     outcome.usedFallback ||
-    outcome.result.ack?.via === 'http' ||
-    (outcome.result as any)?.via === 'http'
+    outcome.result.ack?.via === "http" ||
+    (outcome.result as any)?.via === "http"
   );
 }
 
 function formatProfileSummary(outcome?: PublishStageOutcome) {
   if (!outcome) {
-    return { summary: '', fallbackUsed: false };
+    return { summary: "", fallbackUsed: false };
   }
   const result = outcome.result;
   const eventId = result.ack?.id ?? result.event?.id;
   const relayMessage =
-    typeof result.ack?.message === 'string' && result.ack.message ? ` — ${result.ack.message}` : '';
+    typeof result.ack?.message === "string" && result.ack.message
+      ? ` — ${result.ack.message}`
+      : "";
   const fallbackNote =
-    outcome.usedFallback || result.ack?.via === 'http' || (result as any)?.via === 'http'
-      ? ' via HTTP fallback'
-      : '';
+    outcome.usedFallback ||
+    result.ack?.via === "http" ||
+    (result as any)?.via === "http"
+      ? " via HTTP fallback"
+      : "";
   const summary = eventId
     ? `Profile published${fallbackNote} — id ${eventId}${relayMessage}`
     : `Profile published${fallbackNote} to relay.fundstr.me.${relayMessage}`;
@@ -5072,13 +5858,13 @@ function formatProfileSummary(outcome?: PublishStageOutcome) {
 
 function formatStageList(stages: PublishStageName[]): string {
   if (stages.length === 0) {
-    return '';
+    return "";
   }
-  const labels = stages.map(stage => describeStageLabel(stage));
+  const labels = stages.map((stage) => describeStageLabel(stage));
   if (labels.length === 1) {
     return labels[0];
   }
-  return `${labels.slice(0, -1).join(', ')} and ${labels.slice(-1)[0]}`;
+  return `${labels.slice(0, -1).join(", ")} and ${labels.slice(-1)[0]}`;
 }
 
 async function publishAll() {
@@ -5091,42 +5877,42 @@ async function publishAll() {
   }
 
   if (!requestSignerAttachment() && !authoringSignerAttached.value) {
-    notifyError('Connect a NIP-07 signer (nos2x, Alby) to publish.');
+    notifyError("Connect a NIP-07 signer (nos2x, Alby) to publish.");
     return;
   }
 
   showTierValidation.value = true;
   if (tiers.value.length === 0) {
-    notifyError('Add at least one tier before publishing.');
+    notifyError("Add at least one tier before publishing.");
     return;
   }
   if (tiersHaveErrors.value) {
-    notifyError('Fix tier validation errors before publishing.');
+    notifyError("Fix tier validation errors before publishing.");
     return;
   }
 
   showTierValidation.value = false;
 
   if (!p2pkPub.value.trim()) {
-    notifyError('P2PK public key is required.');
+    notifyError("P2PK public key is required.");
     return;
   }
   if (p2pkPubError.value) {
-    notifyError('Resolve the P2PK key error before publishing.');
+    notifyError("Resolve the P2PK key error before publishing.");
     return;
   }
   if (mintList.value.length === 0) {
-    notifyError('Add at least one trusted mint URL.');
+    notifyError("Add at least one trusted mint URL.");
     return;
   }
 
   publishingAll.value = true;
-  lastPublishInfo.value = '';
+  lastPublishInfo.value = "";
 
-  let tierSummary = '';
+  let tierSummary = "";
 
   const publishStart = performance.now();
-  debug('[CreatorStudio] publish:start', {
+  debug("[CreatorStudio] publish:start", {
     author: authorHex,
     tiers: tiers.value.length,
   });
@@ -5144,14 +5930,16 @@ async function publishAll() {
     });
 
     if (compensationResult.compensationApplied) {
-      const restoredStages = formatStageList(compensationResult.processedStages);
+      const restoredStages = formatStageList(
+        compensationResult.processedStages,
+      );
       if (restoredStages) {
         const detail = `Compensation replayed ${restoredStages} before staging new publish data.`;
-        logRelayActivity('info', 'Publish compensation completed', detail);
+        logRelayActivity("info", "Publish compensation completed", detail);
         flagDiagnosticsAttention(
-          'publish',
+          "publish",
           `${detail} Latest staged payloads will now publish.`,
-          'warning',
+          "warning",
         );
       }
     }
@@ -5164,12 +5952,13 @@ async function publishAll() {
       fallbackNotices,
     });
 
-    const { canonicalOutcome, legacyOutcome, summary } = buildTierSummary(outcomes);
+    const { canonicalOutcome, legacyOutcome, summary } =
+      buildTierSummary(outcomes);
     const profileOutcome = outcomes.profile;
     tierSummary = summary;
 
     if (!canonicalOutcome || !legacyOutcome || !profileOutcome) {
-      throw new Error('Publish pipeline did not complete all stages.');
+      throw new Error("Publish pipeline did not complete all stages.");
     }
 
     const canonicalResult = canonicalOutcome.result;
@@ -5177,55 +5966,69 @@ async function publishAll() {
     const profileResult = profileOutcome.result;
 
     const signerPubkey =
-      profileResult.event?.pubkey || canonicalResult.event?.pubkey || legacyResult.event?.pubkey;
-    const reloadKey = typeof signerPubkey === 'string' && signerPubkey ? signerPubkey : authorHex;
-    if (typeof signerPubkey === 'string' && signerPubkey) {
+      profileResult.event?.pubkey ||
+      canonicalResult.event?.pubkey ||
+      legacyResult.event?.pubkey;
+    const reloadKey =
+      typeof signerPubkey === "string" && signerPubkey
+        ? signerPubkey
+        : authorHex;
+    if (typeof signerPubkey === "string" && signerPubkey) {
       const normalizedSigner = signerPubkey.toLowerCase();
       const encodedSigner = safeEncodeNpub(normalizedSigner);
-      let currentHex = '';
+      let currentHex = "";
       try {
         currentHex = normalizeAuthor(authorInput.value);
       } catch {
-        currentHex = '';
+        currentHex = "";
       }
-      if (currentHex !== normalizedSigner || (encodedSigner && authorInput.value !== encodedSigner)) {
+      if (
+        currentHex !== normalizedSigner ||
+        (encodedSigner && authorInput.value !== encodedSigner)
+      ) {
         authorInput.value = encodedSigner || normalizedSigner;
       }
     }
 
     const profileSummaryData = formatProfileSummary(profileOutcome);
-    lastPublishInfo.value = `${tierSummary} ${profileSummaryData.summary}`.trim();
+    lastPublishInfo.value =
+      `${tierSummary} ${profileSummaryData.summary}`.trim();
 
     const canonicalAckLabel =
-      typeof canonicalResult.ack?.message === 'string' && canonicalResult.ack.message
+      typeof canonicalResult.ack?.message === "string" &&
+      canonicalResult.ack.message
         ? canonicalResult.ack.message
-        : 'accepted';
+        : "accepted";
     const legacyAckLabel =
-      typeof legacyResult.ack?.message === 'string' && legacyResult.ack.message
+      typeof legacyResult.ack?.message === "string" && legacyResult.ack.message
         ? legacyResult.ack.message
-        : 'accepted';
+        : "accepted";
     const profileAckLabel =
-      typeof profileResult.ack?.message === 'string' && profileResult.ack.message
+      typeof profileResult.ack?.message === "string" &&
+      profileResult.ack.message
         ? profileResult.ack.message
-        : 'accepted';
+        : "accepted";
     notifySuccess(
-      `Nutzap profile published (profile ${profileAckLabel}, canonical tiers ${canonicalAckLabel}, legacy tiers ${legacyAckLabel}).`
+      `Nutzap profile published (profile ${profileAckLabel}, canonical tiers ${canonicalAckLabel}, legacy tiers ${legacyAckLabel}).`,
     );
 
     const canonicalFallbackUsed = computeFallbackUsed(canonicalOutcome);
     const legacyFallbackUsed = computeFallbackUsed(legacyOutcome);
     const profileFallbackUsed = profileSummaryData.fallbackUsed;
 
-    const canonicalEventId = canonicalResult.ack?.id ?? canonicalResult.event?.id ?? 'unknown';
-    const legacyEventId = legacyResult.ack?.id ?? legacyResult.event?.id ?? 'unknown';
-    const profileEventId = profileResult.ack?.id ?? profileResult.event?.id ?? 'unknown';
+    const canonicalEventId =
+      canonicalResult.ack?.id ?? canonicalResult.event?.id ?? "unknown";
+    const legacyEventId =
+      legacyResult.ack?.id ?? legacyResult.event?.id ?? "unknown";
+    const profileEventId =
+      profileResult.ack?.id ?? profileResult.event?.id ?? "unknown";
     const successContext = `HTTP fallback used — profile: ${
-      profileFallbackUsed ? 'yes' : 'no'
-    }, canonical tiers: ${canonicalFallbackUsed ? 'yes' : 'no'}, legacy tiers: ${
-      legacyFallbackUsed ? 'yes' : 'no'
-    }`;
+      profileFallbackUsed ? "yes" : "no"
+    }, canonical tiers: ${
+      canonicalFallbackUsed ? "yes" : "no"
+    }, legacy tiers: ${legacyFallbackUsed ? "yes" : "no"}`;
     logRelayActivity(
-      'success',
+      "success",
       `Publish succeeded (profile ${profileEventId}, canonical ${canonicalEventId}, legacy ${legacyEventId})`,
       successContext,
     );
@@ -5242,102 +6045,126 @@ async function publishAll() {
         await updateCreatorCache(cacheBundle);
       } catch (error: any) {
         const message =
-          error?.message === 'rate_limited'
-            ? 'Cache throttled (10m). Your Nostr events are live; discovery will refresh soon.'
-            : 'Cache update deferred. Your Nostr events are live.';
-        console.warn('[cache-update]', message, error);
+          error?.message === "rate_limited"
+            ? "Cache throttled (10m). Your Nostr events are live; discovery will refresh soon."
+            : "Cache update deferred. Your Nostr events are live.";
+        console.warn("[cache-update]", message, error);
         notify(message);
       }
     }
 
     if (compensationApplied) {
       const detail =
-        'Compensation replayed staged publish steps before final success. Verify that relay data is now consistent.';
-      logRelayActivity('info', 'Publish compensation restored staged data', detail);
-      flagDiagnosticsAttention('publish', detail, 'warning');
+        "Compensation replayed staged publish steps before final success. Verify that relay data is now consistent.";
+      logRelayActivity(
+        "info",
+        "Publish compensation restored staged data",
+        detail,
+      );
+      flagDiagnosticsAttention("publish", detail, "warning");
     }
 
     if (fallbackNotices.length) {
-      const detail = fallbackNotices.join(' ');
-      logRelayActivity('warning', 'Publish used HTTP fallback', detail);
-      flagDiagnosticsAttention('publish', detail, 'warning');
+      const detail = fallbackNotices.join(" ");
+      logRelayActivity("warning", "Publish used HTTP fallback", detail);
+      flagDiagnosticsAttention("publish", detail, "warning");
     }
 
     profilePublished.value = true;
     lastUpdatedAt.value = Date.now();
-    debug('[CreatorStudio] publish:success', {
+    debug("[CreatorStudio] publish:success", {
       durationMs: Math.round(performance.now() - publishStart),
     });
     try {
       const verificationStart = performance.now();
       await Promise.all([loadTiers(reloadKey), loadProfile(reloadKey)]);
-      debug('[CreatorStudio] publish:verify:success', {
+      debug("[CreatorStudio] publish:verify:success", {
         durationMs: Math.round(performance.now() - verificationStart),
       });
     } catch (verificationError) {
-      console.warn('[CreatorStudio] publish:verify:failed', verificationError);
-      notifyWarning('Published locally; relay verification pending.');
+      console.warn("[CreatorStudio] publish:verify:failed", verificationError);
+      notifyWarning("Published locally; relay verification pending.");
     }
     await refreshSubscriptions(true);
   } catch (err) {
     resetRelayVerificationTracking({ preserveObserved: true });
-    console.error('[nutzap] publish profile workflow failed', err);
-    debug('[CreatorStudio] publish:fail', err);
+    console.error("[nutzap] publish profile workflow failed", err);
+    debug("[CreatorStudio] publish:fail", err);
     if (err instanceof PublishWorkflowError) {
       const original = err.original;
       const tierDetails = buildTierSummary(err.outcomes);
       tierSummary = tierDetails.summary;
       const stageLabel = describeStageLabel(err.stage);
-      const ack = (original as any)?.ack as { id?: string; message?: string } | undefined;
+      const ack = (original as any)?.ack as
+        | { id?: string; message?: string }
+        | undefined;
       const fallbackMessage =
         ack?.message ??
         (original instanceof RelayPublishError
           ? original.message
           : original instanceof Error
-            ? original.message
-            : err.message || 'Unable to publish Nutzap profile.');
-      const ackId = ack?.id ?? 'unknown';
+          ? original.message
+          : err.message || "Unable to publish Nutzap profile.");
+      const ackId = ack?.id ?? "unknown";
       const rejectionDetail = ack
-        ? `Publish ${stageLabel} rejected — id ${ackId}${ack?.message ? ` — ${ack.message}` : ''}`
-        : `Publish ${stageLabel} failed${fallbackMessage ? ` — ${fallbackMessage}` : ''}`;
-      lastPublishInfo.value = tierSummary ? `${tierSummary} ${rejectionDetail}` : rejectionDetail;
+        ? `Publish ${stageLabel} rejected — id ${ackId}${
+            ack?.message ? ` — ${ack.message}` : ""
+          }`
+        : `Publish ${stageLabel} failed${
+            fallbackMessage ? ` — ${fallbackMessage}` : ""
+          }`;
+      lastPublishInfo.value = tierSummary
+        ? `${tierSummary} ${rejectionDetail}`
+        : rejectionDetail;
       notifyError(fallbackMessage);
       if (err.fallbackNotices.length) {
-        const fallbackDetail = err.fallbackNotices.join(' ');
-        logRelayActivity('warning', 'Publish used HTTP fallback', fallbackDetail);
-        flagDiagnosticsAttention('publish', fallbackDetail, 'warning');
+        const fallbackDetail = err.fallbackNotices.join(" ");
+        logRelayActivity(
+          "warning",
+          "Publish used HTTP fallback",
+          fallbackDetail,
+        );
+        flagDiagnosticsAttention("publish", fallbackDetail, "warning");
       }
       const requeueLabel = formatStageList(err.requeuedStages);
       if (requeueLabel) {
         const detail = `${rejectionDetail}. Compensation queued for ${requeueLabel}.`;
-        logRelayActivity('warning', 'Publish staged retry queued', detail);
-        flagDiagnosticsAttention('publish', detail, 'warning');
+        logRelayActivity("warning", "Publish staged retry queued", detail);
+        flagDiagnosticsAttention("publish", detail, "warning");
       } else {
-        logRelayActivity('error', 'Publish stage failed', rejectionDetail);
-        flagDiagnosticsAttention('publish', rejectionDetail);
+        logRelayActivity("error", "Publish stage failed", rejectionDetail);
+        flagDiagnosticsAttention("publish", rejectionDetail);
       }
-      requestExplorerOpen('publish-error');
+      requestExplorerOpen("publish-error");
     } else {
-      const ack = (err as any)?.ack as { id?: string; message?: string } | undefined;
-      const isRelayError = err instanceof RelayPublishError || (ack && typeof ack.id === 'string');
+      const ack = (err as any)?.ack as
+        | { id?: string; message?: string }
+        | undefined;
+      const isRelayError =
+        err instanceof RelayPublishError || (ack && typeof ack.id === "string");
       if (isRelayError) {
-        const message = ack?.message ?? 'Relay rejected event.';
-        const ackId = ack?.id ?? 'unknown';
+        const message = ack?.message ?? "Relay rejected event.";
+        const ackId = ack?.id ?? "unknown";
         const rejectionDetail = `Publish rejected — id ${ackId}${
-          ack?.message ? ` — ${ack?.message}` : ''
+          ack?.message ? ` — ${ack?.message}` : ""
         }`;
         lastPublishInfo.value = tierSummary
           ? `${tierSummary} ${rejectionDetail}`
           : rejectionDetail;
         notifyError(message);
-        flagDiagnosticsAttention('publish', message);
-        requestExplorerOpen('publish-error');
+        flagDiagnosticsAttention("publish", message);
+        requestExplorerOpen("publish-error");
       } else {
-        const fallback = err instanceof Error ? err.message : 'Unable to publish Nutzap profile.';
-        lastPublishInfo.value = tierSummary ? `${tierSummary} ${fallback}` : fallback;
+        const fallback =
+          err instanceof Error
+            ? err.message
+            : "Unable to publish Nutzap profile.";
+        lastPublishInfo.value = tierSummary
+          ? `${tierSummary} ${fallback}`
+          : fallback;
         notifyError(fallback);
-        flagDiagnosticsAttention('publish', fallback);
-        requestExplorerOpen('publish-error');
+        flagDiagnosticsAttention("publish", fallback);
+        requestExplorerOpen("publish-error");
       }
     }
   } finally {
@@ -5350,14 +6177,14 @@ watch(
   () => {
     void refreshSubscriptions();
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
   signer,
-  newSigner => {
+  (newSigner) => {
     if (newSigner) {
-      if (typeof (newSigner as any).user === 'function') {
+      if (typeof (newSigner as any).user === "function") {
         ndkWrite.signer = newSigner as any;
         setAuthoringSignerActive(true);
         return;
@@ -5378,7 +6205,7 @@ watch(
     ndkWrite.signer = undefined;
     setAuthoringSignerActive(false);
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 onMounted(() => {
@@ -5392,7 +6219,10 @@ onMounted(() => {
     } else if (storeAuthorNpub.value) {
       authorInput.value = storeAuthorNpub.value;
     } else {
-      const normalizedSigner = typeof pubkey.value === 'string' ? pubkey.value.trim().toLowerCase() : '';
+      const normalizedSigner =
+        typeof pubkey.value === "string"
+          ? pubkey.value.trim().toLowerCase()
+          : "";
       if (normalizedSigner) {
         const encoded = safeEncodeNpub(normalizedSigner);
         authorInput.value = encoded || normalizedSigner;
@@ -5404,16 +6234,21 @@ onMounted(() => {
     void loadAll();
   }
   if (relaySupported) {
-    const initialRelayUrl = relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL;
+    const initialRelayUrl =
+      relayConnectionUrl.value || CREATOR_STUDIO_RELAY_WS_URL;
     void ensureRelayClientInitialized(initialRelayUrl)
       .then(() => {
         connectRelay();
       })
-      .catch(err => {
-        console.warn('[nutzap] skipped auto-connect due to relay init failure', err);
+      .catch((err) => {
+        console.warn(
+          "[nutzap] skipped auto-connect due to relay init failure",
+          err,
+        );
         if (!relayNeedsAttention.value) {
-          const detail = 'Relay client failed to initialize. Verify the workspace key or try the HTTP fallback.';
-          flagDiagnosticsAttention('relay', detail, 'warning');
+          const detail =
+            "Relay client failed to initialize. Verify the workspace key or try the HTTP fallback.";
+          flagDiagnosticsAttention("relay", detail, "warning");
         }
       });
   }
@@ -5463,41 +6298,44 @@ onBeforeUnmount(() => {
   gap: 24px;
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    'nav'
-    'stage'
-    'sidebar';
+    "nav"
+    "stage"
+    "sidebar";
 }
 
 .studio-layout.is-view-mode {
   grid-template-areas:
-    'nav'
-    'stage';
+    "nav"
+    "stage";
 }
 
 @media (min-width: 768px) {
   .studio-layout {
     grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
     grid-template-areas:
-      'nav nav'
-      'stage sidebar';
+      "nav nav"
+      "stage sidebar";
   }
 
   .studio-layout.is-view-mode {
     grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
-    grid-template-areas: 'nav stage';
+    grid-template-areas: "nav stage";
   }
 }
 
 @media (min-width: 1280px) {
   .studio-layout {
-    grid-template-columns: minmax(220px, 260px) minmax(0, 2fr) minmax(320px, 1fr);
-    grid-template-areas: 'nav stage sidebar';
+    grid-template-columns: minmax(220px, 260px) minmax(0, 2fr) minmax(
+        320px,
+        1fr
+      );
+    grid-template-areas: "nav stage sidebar";
     align-items: flex-start;
   }
 
   .studio-layout.is-view-mode {
     grid-template-columns: minmax(220px, 260px) minmax(0, 2fr);
-    grid-template-areas: 'nav stage';
+    grid-template-areas: "nav stage";
   }
 }
 
@@ -5528,13 +6366,17 @@ onBeforeUnmount(() => {
 }
 
 .studio-stepper__item::after {
-  content: '';
+  content: "";
   position: absolute;
   left: 22px;
   top: 46px;
   bottom: -12px;
   width: 2px;
-  background: color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--surface-contrast-border) 75%,
+    transparent
+  );
 }
 
 .studio-stepper__item:last-child::after {
@@ -5553,7 +6395,8 @@ onBeforeUnmount(() => {
   background: var(--surface-2);
   cursor: pointer;
   text-align: left;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease,
+    box-shadow 0.2s ease;
   position: relative;
 }
 
@@ -5564,7 +6407,11 @@ onBeforeUnmount(() => {
 }
 
 .studio-stepper__button:hover {
-  border-color: color-mix(in srgb, var(--surface-contrast-border) 60%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--surface-contrast-border) 60%,
+    transparent
+  );
 }
 
 .studio-stepper__indicator {
@@ -5651,7 +6498,11 @@ onBeforeUnmount(() => {
 
 .studio-stepper__button.is-locked {
   color: var(--text-2);
-  border-color: color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--surface-contrast-border) 70%,
+    transparent
+  );
   cursor: not-allowed;
 }
 
@@ -5735,7 +6586,11 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 6px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--surface-contrast-border) 70%,
+    transparent
+  );
   overflow: hidden;
 }
 
@@ -5808,7 +6663,8 @@ onBeforeUnmount(() => {
 
 .studio-overview__hero-card {
   background: color-mix(in srgb, var(--surface-2) 85%, transparent);
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
@@ -5951,7 +6807,8 @@ onBeforeUnmount(() => {
   gap: 10px;
   align-items: flex-start;
   padding: 8px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
 }
 
 .studio-overview__summary-item:last-child {
@@ -6182,7 +7039,8 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .publish-summary-tile.is-active {
@@ -6321,7 +7179,11 @@ onBeforeUnmount(() => {
 }
 
 .publish-readiness__entry.is-optional {
-  border-color: color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--surface-contrast-border) 80%,
+    transparent
+  );
 }
 
 .publish-readiness__entry.is-optional .publish-readiness__entry-state {
@@ -6467,7 +7329,8 @@ onBeforeUnmount(() => {
   border-radius: 1.5rem;
   padding: 1.25rem;
   background: color-mix(in srgb, var(--surface-2) 92%, transparent);
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 65%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--surface-contrast-border) 65%, transparent);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
 }
 
@@ -6535,8 +7398,8 @@ onBeforeUnmount(() => {
 
 .json-toolbar__action.q-btn--outline {
   border-color: var(--surface-contrast-border);
-  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease,
-    box-shadow 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease,
+    border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .json-toolbar__action.q-btn--outline:hover {
@@ -6558,7 +7421,8 @@ onBeforeUnmount(() => {
 }
 
 .json-viewer__code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
   font-size: 13px;
   white-space: pre-wrap;
   word-break: break-word;
