@@ -4,7 +4,7 @@ export function buildProfileUrl(npub: string, router: Router): string {
   if (!npub) return ''
   const href = router.resolve({
     name: 'PublicCreatorProfile',
-    params: { npub },
+    params: { npubOrHex: npub },
   }).href
   return new URL(href, window.location.origin).href
 }

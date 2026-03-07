@@ -88,6 +88,7 @@ import { shortenString } from "src/js/string-utils";
 import { useLockedTokensStore } from "stores/lockedTokens";
 import { useMintsStore } from "stores/mints";
 import { nip19 } from "nostr-tools";
+import { useUiStore } from "src/stores/ui";
 
 export default defineComponent({
   name: "LockedTokensTable",
@@ -119,6 +120,9 @@ export default defineComponent({
   },
   methods: {
     shortenString,
+    formatCurrency(amount, unit) {
+      return useUiStore().formatCurrency(amount, unit);
+    },
     formattedDate(dateStr) {
       const date = parseISO(dateStr);
       return formatDistanceToNow(date, { addSuffix: false });

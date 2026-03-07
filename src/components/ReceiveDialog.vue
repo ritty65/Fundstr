@@ -154,12 +154,12 @@ export default defineComponent({
     },
     cardClass: function () {
       return this.$q.dark.isActive
-        ? "bg-gray-100 text-white"
-        : "bg-white text-dark";
+        ? "bg-surface-2 text-inverse"
+        : "bg-surface-2 text-1";
     },
     iconBgColor: function () {
       return this.$q.dark.isActive
-        ? "var(--q-color-grey-10)"
+        ? "var(--surface-contrast-border)"
         : "var(--q-color-grey-2)";
     },
   },

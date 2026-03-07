@@ -30,7 +30,57 @@
           <q-btn flat dense label="Reconnect All" @click="reconnectAll" />
         </div>
         </q-banner>
+        <q-banner
+          v-if="initError || startTimedOut"
+          dense
+          class="bg-red-2 q-mb-sm"
+        >
+          <div class="row items-center no-wrap q-gutter-sm">
+            <div class="column">
+              <span v-if="startTimedOut">Messenger startup timed out.</span>
+              <span
+                v-if="
+                  initError &&
+                  (!startTimedOut || initError !== 'Messenger startup timed out')
+                "
+              >
+                {{ initError }}
+              </span>
+            </div>
+            <q-space />
+            <q-btn
+              flat
+              dense
+              label="Retry"
+              :loading="connecting"
+              @click="init"
+            />
+            <q-btn
+              flat
+              dense
+              label="Open Setup Wizard"
+              @click="openSetupWizardFromError"
+            />
+          </div>
+        </q-banner>
         <NostrRelayErrorBanner />
+        <q-banner
+          v-if="sendTokenWarning"
+          dense
+          class="bg-orange-2 q-mb-sm"
+        >
+          <div class="row items-center no-wrap q-gutter-sm">
+            <span>{{ sendTokenWarning.message }}</span>
+            <q-space />
+            <q-btn
+              flat
+              dense
+              color="primary"
+              label="Go to wallet"
+              @click="handleSendTokenWarningAction"
+            />
+          </div>
+        </q-banner>
         <q-banner
           v-if="failedRelays.length"
           dense
@@ -51,19 +101,31 @@
             />
           </div>
         </q-banner>
+        <q-banner v-if="failedOutboxCount" dense class="bg-orange-2 q-mb-sm">
+          <div class="row items-center no-wrap">
+            <span>{{ failedOutboxCount }} message(s) failed</span>
+            <q-space />
+            <q-btn flat dense label="Retry" @click="retryFailedQueue" />
+          </div>
+        </q-banner>
         <q-banner
-          v-if="(messenger.sendQueue || []).length"
+          v-if="pendingDecryptCount"
           dense
-          class="bg-orange-2 q-mb-sm"
+          class="bg-grey-2 q-mb-sm"
         >
           <div class="row items-center no-wrap">
-            <span>{{ (messenger.sendQueue || []).length }} message(s) failed</span>
+            <span>
+              {{ pendingDecryptCount }} encrypted message
+              <span v-if="pendingDecryptCount > 1">s</span>
+              awaiting decryption
+            </span>
             <q-space />
             <q-btn
               flat
               dense
-              label="Retry"
-              @click="messenger.retryFailedMessages"
+              label="Retry decryption"
+              :loading="retryingDecrypts"
+              @click="retryPendingDecrypts"
             />
           </div>
         </q-banner>
@@ -94,21 +156,31 @@ import {
   onMounted,
   onUnmounted,
   watch,
+  nextTick,
+  type WatchStopHandle,
 } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useMessengerStore } from "src/stores/messenger";
 import { useNdk } from "src/composables/useNdk";
 import { useNostrStore } from "src/stores/nostr";
 import { useUiStore } from "src/stores/ui";
-import { nip19 } from "nostr-tools";
 import type NDK from "@nostr-dev-kit/ndk";
 import ActiveChatHeader from "components/ActiveChatHeader.vue";
 import MessageList from "components/MessageList.vue";
 import MessageInput from "components/MessageInput.vue";
+import type { FileMeta } from "src/utils/messengerFiles";
 import ChatSendTokenDialog from "components/ChatSendTokenDialog.vue";
 import NostrSetupWizard from "components/NostrSetupWizard.vue";
 import NostrRelayErrorBanner from "components/NostrRelayErrorBanner.vue";
 import { useQuasar, TouchSwipe } from "quasar";
+import { useMintsStore } from "src/stores/mints";
+import { useBucketsStore } from "src/stores/buckets";
+import { storeToRefs } from "pinia";
+
+type SendTokenWarning = {
+  message: string;
+  tab?: string;
+};
 
 export default defineComponent({
   name: "NostrMessenger",
@@ -124,46 +196,153 @@ export default defineComponent({
   setup() {
     const loading = ref(true);
     const connecting = ref(false);
+    const initError = ref<string | null>(null);
+    const startTimedOut = ref(false);
     const messenger = useMessengerStore();
     const nostr = useNostrStore();
     const showSetupWizard = ref(false);
     const $q = useQuasar();
     const ui = useUiStore();
+    const route = useRoute();
+    const router = useRouter();
+    const mintsStore = useMintsStore();
+    const bucketsStore = useBucketsStore();
+    const { mints, activeMintUrl } = storeToRefs(mintsStore);
+    const { activeBuckets } = storeToRefs(bucketsStore);
 
     const ndkRef = ref<NDK | null>(null);
     const now = ref(Date.now());
     let timer: ReturnType<typeof setInterval> | undefined;
+    const retryingDecrypts = ref(false);
+    const pendingDecryptCount = computed(() => messenger.pendingDecryptCount);
+    let decryptRetryTimer: ReturnType<typeof setInterval> | null = null;
+    let startPromise: Promise<void> | null = null;
+    let startRunId = 0;
+    let lastCompletedStartRunId = 0;
+    let startRecoveryStop: WatchStopHandle | null = null;
 
-    function bech32ToHex(pubkey: string): string {
+    const cleanupStartRecoveryWatcher = () => {
+      if (startRecoveryStop) {
+        startRecoveryStop();
+        startRecoveryStop = null;
+      }
+    };
+
+    const finalizeStartSuccess = (runId: number) => {
+      if (runId !== startRunId) return;
+      if (lastCompletedStartRunId === runId) return;
+      lastCompletedStartRunId = runId;
+      loading.value = false;
+      initError.value = null;
+      startTimedOut.value = false;
+      startPromise = null;
+      cleanupStartRecoveryWatcher();
+      handleRoutePubkeyChange(route.query.pubkey);
+    };
+
+    const registerStartRecoveryWatcher = (runId: number) => {
+      cleanupStartRecoveryWatcher();
+      startRecoveryStop = watch(
+        [() => messenger.started, () => messenger.connected],
+        ([started, connected]) => {
+          if (runId !== startRunId) return;
+          if (!started && !connected) return;
+          finalizeStartSuccess(runId);
+        },
+      );
+    };
+
+    function bech32ToHex(pubkey: string): string | null {
+      const resolved = nostr.resolvePubkey(pubkey);
+      return resolved ?? null;
+    }
+
+    function startDecryptRetryTimer() {
+      if (decryptRetryTimer) return;
+      decryptRetryTimer = setInterval(() => {
+        if (
+          typeof document === "undefined" ||
+          document.visibilityState === "visible"
+        ) {
+          void runPendingDecryptRetry("timer");
+        }
+      }, 15000);
+    }
+
+    function stopDecryptRetryTimer() {
+      if (!decryptRetryTimer) return;
+      clearInterval(decryptRetryTimer);
+      decryptRetryTimer = null;
+    }
+
+    async function runPendingDecryptRetry(
+      _reason: string,
+      opts: { force?: boolean } = {},
+    ) {
+      if (!pendingDecryptCount.value) return;
+      if (retryingDecrypts.value) return;
       try {
-        const decoded = nip19.decode(pubkey);
-        return typeof decoded.data === "string" ? decoded.data : pubkey;
-      } catch {
-        return pubkey;
+        retryingDecrypts.value = true;
+        await messenger.retryAllPendingDecrypts(opts);
+      } catch (err) {
+        console.warn("[nostrMessenger.retryDecrypt]", err);
+      } finally {
+        retryingDecrypts.value = false;
       }
     }
 
-    function timeout(ms: number) {
-      return new Promise<void>((resolve) => setTimeout(resolve, ms));
+    async function retryPendingDecrypts() {
+      await runPendingDecryptRetry("manual", { force: true });
+    }
+
+    function handleDecryptVisibility() {
+      if (typeof document === "undefined") return;
+      if (document.visibilityState === "visible") {
+        void runPendingDecryptRetry("visibility");
+      }
     }
 
     async function init() {
+      const runId = ++startRunId;
       connecting.value = true;
+      loading.value = true;
+      initError.value = null;
+      startTimedOut.value = false;
+      cleanupStartRecoveryWatcher();
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
       try {
         await nostr.initSignerIfNotSet();
         await messenger.loadIdentity();
         ndkRef.value = await useNdk();
-        await Promise.race([messenger.start(), timeout(10000)]);
+        const start = messenger.start();
+        startPromise = start;
+
+        timeoutHandle = setTimeout(() => {
+          if (runId !== startRunId) return;
+          startTimedOut.value = true;
+          console.warn("Messenger startup taking longer than expected");
+          registerStartRecoveryWatcher(runId);
+        }, 10000);
+
+        await start;
+
+        if (runId !== startRunId) return;
+
+        finalizeStartSuccess(runId);
       } catch (e) {
+        if (runId !== startRunId) return;
         console.error(e);
-      } finally {
-        connecting.value = false;
+        const message = e instanceof Error ? e.message : String(e);
         loading.value = false;
-        const qp = route.query.pubkey as string | undefined;
-        if (qp) {
-          const hex = bech32ToHex(qp);
-          messenger.startChat(hex);
-          messenger.setCurrentConversation(hex);
+        initError.value = message;
+        startPromise = null;
+        cleanupStartRecoveryWatcher();
+      } finally {
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+        if (runId === startRunId) {
+          connecting.value = false;
         }
       }
     }
@@ -180,13 +359,171 @@ export default defineComponent({
     onMounted(() => {
       checkAndInit();
       timer = setInterval(() => (now.value = Date.now()), 1000);
+      if (typeof document !== "undefined") {
+        document.addEventListener("visibilitychange", handleDecryptVisibility);
+      }
     });
 
     onUnmounted(() => {
       if (timer) clearInterval(timer);
+      stopDecryptRetryTimer();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleDecryptVisibility);
+      }
+      cleanupStartRecoveryWatcher();
     });
 
-    const route = useRoute();
+    const lastRoutePubkey = ref<string | null>(null);
+
+    const handleRoutePubkeyChange = (pubkey: unknown) => {
+      if (typeof pubkey !== "string" || !pubkey) {
+        lastRoutePubkey.value = null;
+        return;
+      }
+
+      const normalized = bech32ToHex(pubkey);
+
+      if (!normalized) {
+        lastRoutePubkey.value = null;
+        return;
+      }
+
+      if (
+        normalized === lastRoutePubkey.value ||
+        normalized === messenger.currentConversation
+      ) {
+        lastRoutePubkey.value = normalized;
+        return;
+      }
+
+      lastRoutePubkey.value = normalized;
+      messenger.startChat(normalized);
+      messenger.setCurrentConversation(normalized);
+      void messenger.ensureConversationSubscription(normalized, "route-change");
+
+      if ($q.screen.lt.md) {
+        messenger.setDrawer(false);
+      }
+    };
+
+    const pendingTokenModal = ref(false);
+    const sendTokenWarning = ref<SendTokenWarning | null>(null);
+
+    const routeConversation = computed(() => {
+      const pubkey = route.query.pubkey;
+      if (Array.isArray(pubkey)) {
+        return pubkey.length ? bech32ToHex(pubkey[0]) : null;
+      }
+      return typeof pubkey === "string" && pubkey
+        ? bech32ToHex(pubkey)
+        : null;
+    });
+
+    const hasActiveMint = computed(
+      () => Boolean(activeMintUrl.value && mints.value.length),
+    );
+    const hasActiveBucket = computed(() => activeBuckets.value.length > 0);
+
+    const clearDonationIntent = async () => {
+      if (route.query.intent === undefined) return;
+      const query = { ...route.query };
+      delete query.intent;
+      try {
+        await router.replace({ query });
+      } catch (err) {
+        console.warn("Failed to clear donation intent", err);
+      }
+    };
+
+    const ensureSendTokenPrerequisites = () => {
+      sendTokenWarning.value = null;
+      if (!hasActiveMint.value) {
+        sendTokenWarning.value = {
+          message: "Add an active mint in your wallet before sending tokens.",
+          tab: "mints",
+        };
+        return false;
+      }
+      if (!hasActiveBucket.value) {
+        sendTokenWarning.value = {
+          message: "Create a bucket in your wallet before sending tokens.",
+          tab: "buckets",
+        };
+        return false;
+      }
+      return true;
+    };
+
+    const handleSendTokenWarningAction = () => {
+      if (!sendTokenWarning.value) return;
+      if (sendTokenWarning.value.tab) {
+        ui.setTab(sendTokenWarning.value.tab);
+      }
+      sendTokenWarning.value = null;
+      pendingTokenModal.value = false;
+      void router.push({ path: "/wallet" });
+    };
+
+    watch(
+      () => route.query.pubkey,
+      (pubkey, previous) => {
+        handleRoutePubkeyChange(pubkey);
+        if (pubkey !== previous) {
+          pendingTokenModal.value =
+            (Array.isArray(route.query.intent)
+              ? route.query.intent.includes("donate")
+              : route.query.intent === "donate") &&
+            !!routeConversation.value;
+        }
+      },
+    );
+
+    watch(
+      () => route.query.intent,
+      (intent) => {
+        const isDonate = Array.isArray(intent)
+          ? intent.includes("donate")
+          : intent === "donate";
+        pendingTokenModal.value = isDonate && !!routeConversation.value;
+        if (!isDonate) {
+          sendTokenWarning.value = null;
+        }
+      },
+      { immediate: true },
+    );
+
+    watch(
+      () => messenger.connected,
+      (connected) => {
+        if (connected) {
+          void runPendingDecryptRetry("reconnect");
+        }
+      },
+    );
+
+    watch(
+      () => nostr.signer,
+      (signer, previous) => {
+        if (signer && signer !== previous) {
+          void runPendingDecryptRetry("signer-change");
+        }
+      },
+    );
+
+    watch(
+      pendingDecryptCount,
+      (count, previous) => {
+        if (count > 0) {
+          startDecryptRetryTimer();
+          if (!previous || previous === 0) {
+            void runPendingDecryptRetry("pending-change", { force: true });
+          }
+        } else {
+          stopDecryptRetryTimer();
+        }
+      },
+      { immediate: true },
+    );
 
     const openDrawer = () => {
       if ($q.screen.lt.md) {
@@ -257,39 +594,81 @@ export default defineComponent({
       },
     );
 
-    const sendMessage = (
-      payload:
-        | string
-        | {
-            text: string;
-            attachment?: { dataUrl: string; name: string; type: string };
-          },
-    ) => {
+    const failedOutboxCount = computed(() => {
+      if (messenger.outboxEnabled) {
+        const count = messenger.failedOutboxCount;
+        return typeof count === "number" ? count : 0;
+      }
+      const queue = Array.isArray(messenger.sendQueue)
+        ? messenger.sendQueue.length
+        : 0;
+      return queue;
+    });
+
+    const sendMessage = (payload: { text: string; files?: FileMeta[] }) => {
       if (!selected.value) return;
-      if (typeof payload === "string") {
-        messenger.sendDm(selected.value, payload);
+      const files = Array.isArray(payload.files) && payload.files.length
+        ? payload.files
+        : undefined;
+      const text = payload.text.trim();
+      if (files?.length) {
+        messenger.sendDm(
+          selected.value,
+          text,
+          undefined,
+          undefined,
+          undefined,
+          files,
+        );
         return;
       }
-      const { text, attachment } = payload;
-      if (text) messenger.sendDm(selected.value, text);
-      if (attachment) {
-        messenger.sendDm(selected.value, attachment.dataUrl, undefined, {
-          name: attachment.name,
-          type: attachment.type,
-        });
+      if (text) {
+        messenger.sendDm(selected.value, text);
       }
     };
 
-    function openSendTokenDialog() {
+    const retryFailedQueue = async () => {
+      if (messenger.outboxEnabled) {
+        await messenger.outboxRetryAll();
+        return;
+      }
+      const queue = Array.isArray(messenger.sendQueue)
+        ? messenger.sendQueue.slice()
+        : [];
+      for (const msg of queue) {
+        const localId = msg?.localEcho?.localId;
+        if (localId) {
+          await messenger.retrySend(localId);
+        }
+      }
+    };
+
+    const showSendTokenDialog = () => {
       if (!selected.value) return;
       (chatSendTokenDialogRef.value as any)?.show();
+    };
+
+    function openSendTokenDialog() {
+      if (!ensureSendTokenPrerequisites()) {
+        void clearDonationIntent();
+        return;
+      }
+      showSendTokenDialog();
     }
+
+    const openSetupWizardFromError = () => {
+      initError.value = null;
+      startTimedOut.value = false;
+      loading.value = false;
+      showSetupWizard.value = true;
+    };
 
     const reconnectAll = async () => {
       connecting.value = true;
+      initError.value = null;
+      startTimedOut.value = false;
       try {
-        messenger.disconnect();
-        messenger.started = false;
+        await messenger.disconnect();
         await messenger.start();
       } catch (e) {
         console.error(e);
@@ -301,19 +680,60 @@ export default defineComponent({
     const setupComplete = async () => {
       showSetupWizard.value = false;
       loading.value = true;
+      initError.value = null;
+      startTimedOut.value = false;
       await init();
     };
+
+    watch(
+      [pendingTokenModal, selected, loading, () => messenger.started],
+      async ([shouldOpen, currentSelected, isLoading, started]) => {
+        if (!shouldOpen || isLoading || !started) return;
+        if (!routeConversation.value || currentSelected !== routeConversation.value) {
+          return;
+        }
+        if (!ensureSendTokenPrerequisites()) {
+          pendingTokenModal.value = false;
+          await clearDonationIntent();
+          return;
+        }
+        await nextTick();
+        showSendTokenDialog();
+        pendingTokenModal.value = false;
+        await clearDonationIntent();
+      },
+    );
+
+    watch(
+      () => route.fullPath,
+      () => {
+        if (!routeConversation.value) {
+          pendingTokenModal.value = false;
+        }
+      },
+    );
 
     return {
       loading,
       connecting,
+      initError,
+      startTimedOut,
       messenger,
       selected,
       chatSendTokenDialogRef,
       messages,
       showSetupWizard,
+      sendTokenWarning,
+      handleSendTokenWarningAction,
+      init,
+      openSetupWizardFromError,
       sendMessage,
       openSendTokenDialog,
+      retryFailedQueue,
+      failedOutboxCount,
+      pendingDecryptCount,
+      retryPendingDecrypts,
+      retryingDecrypts,
       reconnectAll,
       connectedCount,
       totalRelays,

@@ -90,33 +90,46 @@ export const useProofsStore = defineStore("proofs", {
       });
     },
     proofsToWalletProofs(
-      proofs: Proof[],
+      proofs: Array<Proof | WalletProof>,
       quote?: string,
       bucketId: string = "unassigned",
       label: string = "",
       description: string = "",
+      reserved?: boolean,
     ): WalletProof[] {
       return proofs.map((p) => {
+        const existing = p as WalletProof;
+        const assignedBucketId =
+          existing.bucketId !== undefined ? existing.bucketId : bucketId;
         return {
           ...p,
-          reserved: false,
-          quote: quote,
-          bucketId,
-          label,
-          description,
+          reserved:
+            typeof existing.reserved === "boolean"
+              ? existing.reserved
+              : reserved ?? false,
+          quote: existing.quote ?? quote,
+          bucketId: assignedBucketId,
+          label: existing.label ?? label,
+          description: existing.description ?? description,
         } as WalletProof;
       });
     },
     async addProofs(
-      proofs: Proof[],
+      proofs: Array<Proof | WalletProof>,
       quote?: string,
       bucketId: string = "unassigned",
       label: string = "",
       description: string = "",
+      reserved?: boolean,
     ) {
       const bucketsStore = useBucketsStore();
       const mintsStore = useMintsStore();
-      if (bucketId === DEFAULT_BUCKET_ID) {
+      const containsWalletMetadata = proofs.some((proof) =>
+        ["reserved", "bucketId", "label", "description", "quote"].some(
+          (key) => Object.prototype.hasOwnProperty.call(proof, key),
+        ),
+      );
+      if (!containsWalletMetadata && bucketId === DEFAULT_BUCKET_ID) {
         let mintUrl: string | undefined;
         if (proofs.length) {
           const m = mintsStore.mints.find((mint) =>
@@ -135,11 +148,12 @@ export const useProofsStore = defineStore("proofs", {
         bucketId,
         label,
         description,
+        reserved,
       );
       await cashuDb.transaction("rw", cashuDb.proofs, async () => {
-        walletProofs.forEach(async (p) => {
+        for (const p of walletProofs) {
           await cashuDb.proofs.add(p);
-        });
+        }
       });
     },
     async removeProofs(proofs: Proof[], bucketId: string = "unassigned") {
@@ -149,9 +163,9 @@ export const useProofsStore = defineStore("proofs", {
         bucketId,
       );
       await cashuDb.transaction("rw", cashuDb.proofs, async () => {
-        walletProofs.forEach(async (p) => {
+        for (const p of walletProofs) {
           await cashuDb.proofs.delete(p.secret);
-        });
+        }
       });
     },
     async getProofsForQuote(quote: string): Promise<WalletProof[]> {

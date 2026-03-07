@@ -189,6 +189,7 @@ import { useSendTokensStore } from "src/stores/sendTokensStore";
 import token from "../js/token";
 import { notify } from "src/js/notify";
 import { DEFAULT_COLOR } from "src/js/constants";
+import { useUiStore } from "src/stores/ui";
 
 export default defineComponent({
   name: "HistoryTable",
@@ -301,6 +302,9 @@ export default defineComponent({
         newDescription: this.editDialog.description,
       });
       this.editDialog.show = false;
+    },
+    formatCurrency(amount, unit) {
+      return useUiStore().formatCurrency(amount, unit);
     },
   },
   created: function () {},

@@ -270,7 +270,10 @@
                   <q-item
                     clickable
                     v-close-popup
-                    :to="`/creator/${pubkeyNpub(row.creator)}`"
+                    :to="{
+                      name: 'PublicCreatorProfile',
+                      params: { npubOrHex: pubkeyNpub(row.creator) },
+                    }"
                   >
                     <q-item-section>{{
                       $t("FindCreators.actions.view_profile.label")
@@ -422,7 +425,7 @@ import { useUiStore } from "stores/ui";
 import { useNostrStore } from "stores/nostr";
 import { useMessengerStore } from "stores/messenger";
 import { useSubscriptionsStore } from "stores/subscriptions";
-import { useNutzapStore } from "stores/nutzap";
+import { useCashuStore } from "stores/cashu";
 import { useCreatorSubscriptionsStore } from "stores/creatorSubscriptions";
 import { fetchNutzapProfile, RelayConnectionError } from "stores/nostr";
 import { useRouter } from "vue-router";
@@ -432,7 +435,7 @@ import { nip19 } from "nostr-tools";
 import { formatDistanceToNow } from "date-fns";
 import { shortenString } from "src/js/string-utils";
 import { useI18n } from "vue-i18n";
-import { notifyError } from "src/js/notify";
+import { notifyError, notifySuccess, notifyWarning } from "src/js/notify";
 import { showToast } from "src/js/toast";
 import type { Proof } from "@cashu/cashu-ts";
 import { useProofsStore } from "stores/proofs";
@@ -450,10 +453,10 @@ const mintsStore = useMintsStore();
 const uiStore = useUiStore();
 const proofsStore = useProofsStore();
 const sendTokensStore = useSendTokensStore();
-const nutzap = useNutzapStore();
+const cashuStore = useCashuStore();
 const creatorSubscriptionsStore = useCreatorSubscriptionsStore();
 const { activeUnit } = storeToRefs(mintsStore);
-const { sendQueue } = storeToRefs(nutzap);
+const { sendQueue } = storeToRefs(cashuStore);
 const { subscriptions: creatorSubscriptions } = storeToRefs(
   creatorSubscriptionsStore,
 );
@@ -669,21 +672,26 @@ async function confirmMessage() {
   const recipient = messageRecipient.value;
   showMessageDialog.value = false;
   if (!text || !recipient) return;
-  const { success } = await messenger.sendDm(recipient, text);
+  const { success, confirmationPending } = await messenger.sendDm(
+    recipient,
+    text,
+  );
   if (success) {
     notifySuccess(t("wallet.notifications.nostr_dm_sent"));
     messenger.createConversation(recipient);
     messenger.setCurrentConversation(recipient);
     messenger.markRead(recipient);
     router.push("/nostr-messenger");
+  } else if (confirmationPending) {
+    notifyWarning("DM delivery pending confirmation");
   } else {
     notifyError(t("wallet.notifications.nostr_dm_failed"));
   }
 }
 
 async function retryQueuedSends() {
-  await nutzap.retryQueuedSends();
-  nutzap.clearSendQueue();
+  await cashuStore.retryQueuedSends();
+  cashuStore.clearSendQueue();
 }
 
 function cancelSubscription(pubkey: string) {
@@ -735,7 +743,7 @@ function extendSubscription(pubkey: string) {
         notifyError("Creator has not published a Nutzap profile (kind-10019)");
         return;
       }
-      const newTokens = await nutzap.send({
+      const newTokens = await cashuStore.send({
         npub: pubkey,
         periods,
         amount: row.monthly,

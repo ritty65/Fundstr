@@ -6,6 +6,7 @@ beforeEach(async () => {
   localStorage.clear();
   await cashuDb.close(); // close() is safe under fake-indexeddb
   await cashuDb.open();
+  await cashuDb.historyTokens.clear();
 });
 
 describe("Tokens store", () => {

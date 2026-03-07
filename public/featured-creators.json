@@ -1,12 +1,39 @@
 [
   {
+    "pubkey": "805b34f708837dfb3e7f05815ac5760564628b58d5a0ce839ccbb6ef3620fac3",
+    "name": "paulinthejungle",
+    "nip05": "paul@primal.net",
+    "picture": "https://blossom.primal.net/eeee0f4694562e787b20f88986f0d95d1d93f3c5794c69457a4fc94cd0a04710.jpg",
+    "about": "#bitcoin\nBuilding Primal",
+    "lud16": "paul@primal.net",
+    "created_at": 1771870941
+  },
+  {
     "pubkey": "04c915daefee38317fa734444acee390a8269fe5810b2241e5e6dd343dfbecc9",
     "name": "ODELL",
     "nip05": "odell@primal.net",
     "picture": "https://m.primal.net/NcKe.jpg",
     "about": "partner - ten31\ncofounder - opensats + bitcoin park\nfounding board - bitcoin policy institute ",
     "lud16": "odell@primal.net",
-    "created_at": 1757864644
+    "created_at": 1766517954
+  },
+  {
+    "pubkey": "6e468422dfb74a5738702a8823b9b28168abab8655faacb6853cd0ee15deee93",
+    "name": "Gigi",
+    "nip05": "dergigi.com",
+    "picture": "https://dergigi.com/assets/images/avatars/09.png",
+    "about": "Not doing DMs. Aspiring Saunameister.",
+    "lud16": "dergigi@primal.net",
+    "created_at": 1763120495
+  },
+  {
+    "pubkey": "c48e29f04b482cc01ca1f9ef8c86ef8318c059e0e9353235162f080f26e14c11",
+    "name": "walker",
+    "nip05": "walker@primal.net",
+    "picture": "https://image.nostr.build/89ad0e9a72ff60b6c8c7dc71bb92800598c56d09cad44a4ff6b700479104811f.jpg",
+    "about": "host of @npub10qrssqjsydd38j8mv7h27dq0ynpns3djgu88mhr7cr2qcqrgyezspkxqj8 AKA THE #Bitcoin Podcast\n\n⚡️Listen to THE Bitcoin Podcast: https://bitcoinpodcast.net/podcast\n⚡️YouTube: http://youtube.com/@walkeramerica",
+    "lud16": "walker@getalby.com",
+    "created_at": 1762923932
   },
   {
     "pubkey": "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
@@ -16,33 +43,6 @@
     "about": "~",
     "lud16": "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6@npub.cash",
     "created_at": 1755901618
-  },
-  {
-    "pubkey": "c48e29f04b482cc01ca1f9ef8c86ef8318c059e0e9353235162f080f26e14c11",
-    "name": "walker",
-    "nip05": "walker@primal.net",
-    "picture": "https://image.nostr.build/89ad0e9a72ff60b6c8c7dc71bb92800598c56d09cad44a4ff6b700479104811f.jpg",
-    "about": "host of @npub10qrssqjsydd38j8mv7h27dq0ynpns3djgu88mhr7cr2qcqrgyezspkxqj8 AKA THE #Bitcoin Podcast\n\n⚡️Listen to THE Bitcoin Podcast: https://bitcoinpodcast.net/podcast\n⚡️YouTube: http://youtube.com/@walkeramerica",
-    "lud16": "walker@getalby.com",
-    "created_at": 1753848667
-  },
-  {
-    "pubkey": "805b34f708837dfb3e7f05815ac5760564628b58d5a0ce839ccbb6ef3620fac3",
-    "name": "paulinthejungle",
-    "nip05": "paul@primal.net",
-    "picture": "https://nostr.build/i/nostr.build_022e43d7dec5b66d6bc8be6aa47117b5b8850ce0767e76df6ded4143fa5bbd14.jpeg",
-    "about": "#bitcoin\nBuilding Primal",
-    "lud16": "paul@primal.net",
-    "created_at": 1752024909
-  },
-  {
-    "pubkey": "6e468422dfb74a5738702a8823b9b28168abab8655faacb6853cd0ee15deee93",
-    "name": "Gigi",
-    "nip05": "_@dergigi.com",
-    "picture": "https://dergigi.com/assets/images/avatars/09.png",
-    "about": "Not doing DMs. Aspiring Saunameister.",
-    "lud16": "dergigi@primal.net",
-    "created_at": 1751577606
   },
   {
     "pubkey": "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2",

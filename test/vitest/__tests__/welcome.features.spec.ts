@@ -44,7 +44,7 @@ describe("WelcomeSlideFeatures", () => {
     });
 
     const hrefs = wrapper.findAll("a").map((a) => a.attributes("href"));
-    expect(hrefs).toEqual(["/creator-hub", "/subscriptions", "/buckets"]);
+    expect(hrefs).toEqual(["/creator-studio", "/subscriptions", "/buckets"]);
   });
 });
 

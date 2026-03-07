@@ -56,6 +56,7 @@ export function subscriptionPayload(
   unlock_time: number | null,
   meta: SubscriptionMeta,
   htlc_hash?: string,
+  htlc_secret?: string,
 ) {
   return {
     type: "cashu_subscription_payment" as const,
@@ -66,6 +67,7 @@ export function subscriptionPayload(
     month_index: meta.month_index,
     total_months: meta.total_months,
     ...(htlc_hash ? { htlc_hash } : {}),
+    ...(htlc_secret ? { htlc_secret } : {}),
   };
 }
 

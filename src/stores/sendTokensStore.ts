@@ -20,6 +20,7 @@ export const useSendTokensStore = defineStore("sendTokensStore", {
       paymentRequest: undefined,
       historyToken: undefined,
       bucketId: DEFAULT_BUCKET_ID,
+      anonymous: false,
     } as {
       amount: number | null;
       historyAmount: number | null;
@@ -31,6 +32,7 @@ export const useSendTokensStore = defineStore("sendTokensStore", {
       paymentRequest?: PaymentRequest;
       historyToken: HistoryToken | undefined;
       bucketId?: string;
+      anonymous: boolean;
     },
   }),
   actions: {
@@ -45,6 +47,9 @@ export const useSendTokensStore = defineStore("sendTokensStore", {
       this.sendData.paymentRequest = undefined;
       this.sendData.historyToken = undefined;
       this.sendData.bucketId = DEFAULT_BUCKET_ID;
+      this.sendData.anonymous = false;
+      this.showSendTokens = false;
+      this.showLockInput = false;
       this.recipientPubkey = "";
       this.sendViaNostr = false;
     },

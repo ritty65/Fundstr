@@ -82,6 +82,7 @@ import { useP2PKStore } from "src/stores/p2pk";
 import { ensureCompressed } from "src/utils/ecash";
 import { shortenString } from "src/js/string-utils";
 import token from "src/js/token";
+import { useUiStore } from "src/stores/ui";
 
 export default defineComponent({
   name: "TokenInformation",
@@ -145,6 +146,9 @@ export default defineComponent({
       "getTokenLocktime",
       "isHTLC",
     ]),
+    formatCurrency(amount, unit) {
+      return useUiStore().formatCurrency(amount, unit);
+    },
     formatPubkey(hex) {
       try {
         if (!hex) return "";

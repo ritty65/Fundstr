@@ -18,7 +18,7 @@ import { defineComponent, computed } from "vue";
 import { useRoute } from "vue-router";
 import MainHeader from "components/MainHeader.vue";
 import AppNavDrawer from "components/AppNavDrawer.vue";
-import { useCreatorHub } from "src/composables/useCreatorHub";
+import { useNostrAuth } from "src/composables/useNostrAuth";
 import { useQuasar } from "quasar";
 import { useUiStore } from "src/stores/ui";
 import { NAV_DRAWER_WIDTH, NAV_DRAWER_GUTTER } from "src/constants/layout";
@@ -31,7 +31,7 @@ export default defineComponent({
     AppNavDrawer,
   },
   setup() {
-    const { loggedIn } = useCreatorHub();
+    const { loggedIn } = useNostrAuth();
     const route = useRoute();
 
     const $q = useQuasar();

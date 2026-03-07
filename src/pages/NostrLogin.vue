@@ -14,10 +14,37 @@
       <q-card-section>
         <q-input v-model="key" type="text" label="nsec or hex private key" />
       </q-card-section>
+      <q-card-section v-if="statusMessage || statusError">
+        <q-banner
+          v-if="statusError"
+          dense
+          class="bg-red-2 text-red-10 q-mb-sm"
+          rounded
+        >
+          {{ statusError }}
+        </q-banner>
+        <q-banner v-else dense class="bg-primary text-white" rounded>
+          {{ statusMessage }}
+        </q-banner>
+        <q-linear-progress
+          v-if="isBootstrapping"
+          indeterminate
+          color="primary"
+          class="q-mt-sm"
+        />
+      </q-card-section>
       <q-card-actions vertical class="q-gutter-sm">
-        <q-btn color="primary" @click="submitKey">Use Key</q-btn>
-        <q-btn color="primary" @click="useNip07">Use NIP-07</q-btn>
-        <q-btn flat color="primary" @click="createIdentity"
+        <q-btn color="primary" :disable="isBootstrapping" @click="submitKey"
+          >Use Key</q-btn
+        >
+        <q-btn color="primary" :disable="isBootstrapping" @click="useNip07"
+          >Use NIP-07</q-btn
+        >
+        <q-btn
+          flat
+          color="primary"
+          :disable="isBootstrapping"
+          @click="createIdentity"
           >Create Identity</q-btn
         >
       </q-card-actions>
@@ -28,24 +55,39 @@
 <script lang="ts">
 import { defineComponent, ref, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { useCreatorHubStore } from "stores/creatorHub";
-import { useNostrStore } from "stores/nostr";
+import {
+  WALLET_LOCKED_MESSAGE,
+  WalletLockedError,
+  useNostrStore,
+} from "stores/nostr";
 import { generateSecretKey, nip19 } from "nostr-tools";
 import { hexToBytes } from "@noble/hashes/utils";
+import { useNostrAuth } from "src/composables/useNostrAuth";
+import { sanitizeAppRedirect } from "src/utils/safeRedirect";
 
 export default defineComponent({
   name: "NostrLogin",
   setup() {
     const nostr = useNostrStore();
-    const creatorHubStore = useCreatorHubStore();
-    const key = ref(nostr.activePrivateKeyNsec || nostr.privKeyHex || "");
-    const hasExistingKey = computed(() => !!key.value);
+    const { loginWithExtension } = useNostrAuth();
+    const walletLocked = computed(
+      () => nostr.hasEncryptedSecrets() && !nostr.encryptionKey,
+    );
+    const key = ref(
+      walletLocked.value
+        ? ""
+        : nostr.activePrivateKeyNsec || nostr.privKeyHex || "",
+    );
+    const hasExistingKey = computed(() => !walletLocked.value && !!key.value);
     const router = useRouter();
     const route = useRoute();
-    const redirect =
-      typeof route.query.redirect === "string"
-        ? decodeURIComponent(route.query.redirect)
-        : undefined;
+    const isBootstrapping = ref(false);
+    const statusMessage = ref("" as string | null);
+    const statusError = ref("" as string | null);
+    if (walletLocked.value) {
+      statusError.value = WALLET_LOCKED_MESSAGE;
+    }
+    const redirect = sanitizeAppRedirect(router, route.query.redirect);
     const tierId =
       typeof route.query.tierId === "string" ? route.query.tierId : undefined;
 
@@ -57,27 +99,80 @@ export default defineComponent({
       return trimmed;
     };
 
-    const submitKey = async () => {
-      if (!key.value.trim()) return;
-      await nostr.updateIdentity(normalizeKey(key.value));
-      if (!nostr.hasIdentity) return;
+    const handleRedirect = () => {
       if (redirect) {
-        router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
+        const resolved = router.resolve(redirect);
+        const nextQuery: Record<string, string | string[] | null> = {
+          ...resolved.query,
+        };
+        if (tierId && !nextQuery.tierId) {
+          nextQuery.tierId = tierId;
+        }
+        router.replace({
+          path: resolved.path,
+          query: Object.keys(nextQuery).length ? nextQuery : undefined,
+          hash: resolved.hash || undefined,
+        });
       } else {
         router.replace("/wallet");
       }
     };
 
+    const completeLogin = async (
+      fn: () => Promise<void>,
+      { handlesBootstrap = false }: { handlesBootstrap?: boolean } = {},
+    ) => {
+      statusError.value = null;
+      statusMessage.value = "Starting identity bootstrap";
+      isBootstrapping.value = true;
+      try {
+        await fn();
+        if (!nostr.hasIdentity) return;
+        if (!handlesBootstrap) {
+          await nostr.bootstrapIdentity((msg) => {
+            statusMessage.value = msg;
+          });
+        }
+        handleRedirect();
+      } catch (err) {
+        console.error(err);
+        if (err instanceof WalletLockedError) {
+          statusError.value = WALLET_LOCKED_MESSAGE;
+        } else {
+          statusError.value =
+            (err as Error)?.message ??
+            "Failed to finish setting up your identity.";
+        }
+      } finally {
+        isBootstrapping.value = false;
+      }
+    };
+
+    const submitKey = async () => {
+      if (!key.value.trim()) return;
+      await completeLogin(
+        () =>
+          nostr.updateIdentity(normalizeKey(key.value), undefined, {
+            onProgress: (msg) => {
+              statusMessage.value = msg;
+            },
+          }),
+        { handlesBootstrap: true },
+      );
+    };
+
     const createIdentity = async () => {
       const sk = generateSecretKey();
       const nsec = nip19.nsecEncode(sk);
-      await nostr.updateIdentity(nsec);
-      if (!nostr.hasIdentity) return;
-      if (redirect) {
-        router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
-      } else {
-        router.replace("/wallet");
-      }
+      await completeLogin(
+        () =>
+          nostr.updateIdentity(nsec, undefined, {
+            onProgress: (msg) => {
+              statusMessage.value = msg;
+            },
+          }),
+        { handlesBootstrap: true },
+      );
     };
 
     const useNip07 = async () => {
@@ -85,18 +180,23 @@ export default defineComponent({
       if (!available) return;
       try {
         await nostr.connectBrowserSigner();
-        await creatorHubStore.login();
-        if (redirect) {
-          router.replace({ path: redirect, query: tierId ? { tierId } : undefined });
-        } else {
-          router.replace("/wallet");
-        }
+        await completeLogin(() => loginWithExtension());
       } catch (e) {
         console.error(e);
+        statusError.value = (e as Error)?.message ?? "NIP-07 login failed";
       }
     };
 
-    return { key, hasExistingKey, submitKey, createIdentity, useNip07 };
+    return {
+      key,
+      hasExistingKey,
+      submitKey,
+      createIdentity,
+      useNip07,
+      isBootstrapping,
+      statusMessage,
+      statusError,
+    };
   },
 });
 </script>

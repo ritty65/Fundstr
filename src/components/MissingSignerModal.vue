@@ -26,7 +26,6 @@
 import { ref } from "vue";
 import { useSignerStore } from "src/stores/signer";
 import { useUiStore } from "src/stores/ui";
-import { nip19 } from "nostr-tools";
 import { notifyError } from "src/js/notify";
 
 const props = defineProps<{ dialogRef?: any }>();
@@ -42,28 +41,22 @@ const signer = useSignerStore();
 const nsec = ref("");
 
 function chooseLocal() {
-  const key = nsec.value.trim();
   try {
-    const decoded = nip19.decode(key);
-    if (decoded.type !== "nsec") {
-      throw new Error("invalid type");
-    }
+    signer.loginWithNsec(nsec.value);
   } catch (e) {
     notifyError("Invalid nsec");
     return;
   }
-  signer.method = "local";
-  signer.nsec = key;
   emit("ok");
   dialogRef.value?.hide();
 }
 function chooseNip07() {
-  signer.method = "nip07";
+  signer.loginWithExtension();
   emit("ok");
   dialogRef.value?.hide();
 }
 function chooseNip46() {
-  signer.method = "nip46";
+  signer.loginWithNostrConnect();
   emit("ok");
   dialogRef.value?.hide();
 }

@@ -1,35 +1,31 @@
-import { useLocalStorage } from "@vueuse/core";
 import { date } from "quasar";
 import { defineStore } from "pinia";
-import { PaymentRequest, Proof, Token } from "@cashu/cashu-ts";
+import { PaymentRequest, Token } from "@cashu/cashu-ts";
 import token from "src/js/token";
 import { DEFAULT_COLOR } from "src/js/constants";
 import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
 import { useProofsStore } from "./proofs";
+import { cashuDb } from "./dexie";
+import { liveQuery } from "dexie";
+import { v4 as uuidv4 } from "uuid";
+import type { HistoryToken } from "@/types/historyToken";
 
 /**
  * The tokens store handles everything related to tokens and proofs
  */
 
-export type HistoryToken = {
-  status: "paid" | "pending";
-  amount: number;
-  date: string;
-  token: string;
-  mint: string;
-  unit: string;
-  label?: string;
-  color?: string;
-  description?: string;
-  paymentRequest?: PaymentRequest;
-  fee?: number;
-  bucketId: string;
-};
+export type { HistoryToken } from "@/types/historyToken";
 
 export const useTokensStore = defineStore("tokens", {
-  state: () => ({
-    historyTokens: useLocalStorage("cashu.historyTokens", [] as HistoryToken[]),
-  }),
+  state: () => {
+    const state: TokensStoreState = {
+      historyTokens: [],
+    };
+
+    initializeHistoryTokensState(state);
+
+    return state;
+  },
   actions: {
     /**
      * @param {{amount: number, token: string, mint: string, unit: string}} param0
@@ -45,6 +41,7 @@ export const useTokensStore = defineStore("tokens", {
       description,
       color,
       bucketId = DEFAULT_BUCKET_ID,
+      referenceId,
     }: {
       amount: number;
       token: string;
@@ -56,8 +53,10 @@ export const useTokensStore = defineStore("tokens", {
       description?: string;
       color?: string;
       bucketId?: string;
+      referenceId?: string;
     }) {
-      this.historyTokens.push({
+      const entry: HistoryToken = {
+        id: uuidv4(),
         status: "paid",
         amount,
         date: currentDateStr(),
@@ -70,7 +69,14 @@ export const useTokensStore = defineStore("tokens", {
         fee,
         paymentRequest,
         bucketId,
-      } as HistoryToken);
+        referenceId,
+        archived: false,
+        archivedAt: null,
+        createdAt: Date.now(),
+      };
+
+      this.historyTokens.push(entry);
+      persistLatestToken(entry);
     },
     addPendingToken({
       amount,
@@ -83,6 +89,7 @@ export const useTokensStore = defineStore("tokens", {
       description,
       color,
       bucketId = DEFAULT_BUCKET_ID,
+      referenceId,
     }: {
       amount: number;
       tokenStr: string;
@@ -94,8 +101,10 @@ export const useTokensStore = defineStore("tokens", {
       description?: string;
       color?: string;
       bucketId?: string;
+      referenceId?: string;
     }) {
-      this.historyTokens.push({
+      const entry: HistoryToken = {
+        id: uuidv4(),
         status: "pending",
         amount,
         date: currentDateStr(),
@@ -108,7 +117,14 @@ export const useTokensStore = defineStore("tokens", {
         fee,
         paymentRequest,
         bucketId,
-      });
+        referenceId,
+        archived: false,
+        archivedAt: null,
+        createdAt: Date.now(),
+      };
+
+      this.historyTokens.push(entry);
+      persistLatestToken(entry);
     },
     editHistoryToken(
       tokenToEdit: string,
@@ -185,7 +201,9 @@ export const useTokensStore = defineStore("tokens", {
           }
         }
 
-        return this.historyTokens[index];
+        const updated = this.historyTokens[index];
+        persistUpdatedToken(updated);
+        return updated;
       }
 
       return undefined;
@@ -231,12 +249,21 @@ export const useTokensStore = defineStore("tokens", {
       );
       if (index >= 0) {
         this.historyTokens[index].status = "paid";
+        persistUpdatedToken(this.historyTokens[index]);
       }
     },
     deleteToken(token: string) {
       const index = this.historyTokens.findIndex((t) => t.token === token);
       if (index >= 0) {
-        this.historyTokens.splice(index, 1);
+        const [removed] = this.historyTokens.splice(index, 1);
+        if (removed?.id) {
+          void cashuDb.historyTokens.delete(removed.id);
+        } else {
+          void cashuDb.historyTokens
+            .where("token")
+            .equals(token)
+            .delete();
+        }
       }
     },
     changeHistoryTokenBucket({
@@ -268,6 +295,7 @@ export const useTokensStore = defineStore("tokens", {
         }
         if (update) {
           ht.bucketId = newBucketId;
+          persistUpdatedToken(ht);
         }
       });
     },
@@ -293,6 +321,49 @@ export const useTokensStore = defineStore("tokens", {
         return undefined;
       }
     },
+    async archiveOldPaidTokens(limit: number): Promise<number> {
+      if (limit <= 0) {
+        return 0;
+      }
+
+      const paidTokens = this.historyTokens
+        .filter((t) => t.status === "paid" && !t.archived)
+        .sort((a, b) =>
+          (a.createdAt ?? safeDate(a.date)?.getTime() ?? 0) -
+          (b.createdAt ?? safeDate(b.date)?.getTime() ?? 0),
+        );
+
+      if (paidTokens.length <= limit) {
+        return 0;
+      }
+
+      const tokensToArchive = paidTokens.slice(0, paidTokens.length - limit);
+      const archivedAt = new Date().toISOString();
+
+      tokensToArchive.forEach((token) => {
+        token.archived = true;
+        token.archivedAt = archivedAt;
+      });
+
+      await cashuDb.transaction("rw", cashuDb.historyTokens, async () => {
+        await Promise.all(
+          tokensToArchive.map((token) =>
+            updateTokenInDexie(token, { archived: true, archivedAt }),
+          ),
+        );
+      });
+
+      return tokensToArchive.length;
+    },
+  },
+  getters: {
+    canPasteFromClipboard() {
+      return (
+        window.isSecureContext &&
+        navigator.clipboard &&
+        navigator.clipboard.readText
+      );
+    },
   },
 });
 
@@ -303,4 +374,159 @@ function currentDateStr() {
 function isValidTokenString(tokenStr: string): boolean {
   const prefixRegex = /^cashu[A-Za-z0-9][A-Za-z0-9_\-+=\/]*$/;
   return prefixRegex.test(tokenStr);
+}
+
+type TokensStoreState = {
+  historyTokens: HistoryToken[];
+};
+
+let historyTokensStateRef: TokensStoreState | null = null;
+let historyTokensSubscription: { unsubscribe(): void } | null = null;
+let historyMigrationStarted = false;
+
+function initializeHistoryTokensState(state: TokensStoreState) {
+  historyTokensStateRef = state;
+
+  if (!historyMigrationStarted) {
+    historyMigrationStarted = true;
+    void migrateHistoryTokensFromLocalStorage();
+  }
+
+  if (historyTokensSubscription) {
+    return;
+  }
+
+  historyTokensSubscription = liveQuery(() => cashuDb.historyTokens.toArray()).subscribe({
+    next: (rows) => {
+      if (!historyTokensStateRef) {
+        return;
+      }
+      const normalized = rows.map(normalizeHistoryToken);
+      normalized.sort(
+        (a, b) =>
+          (a.createdAt ?? safeDate(a.date)?.getTime() ?? 0) -
+          (b.createdAt ?? safeDate(b.date)?.getTime() ?? 0),
+      );
+      historyTokensStateRef.historyTokens = normalized;
+    },
+    error: (err) => console.error(err),
+  });
+}
+
+async function migrateHistoryTokensFromLocalStorage() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const storageKey = "cashu.historyTokens";
+  const raw = window.localStorage.getItem(storageKey);
+  if (!raw) {
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    const existingCount = await cashuDb.historyTokens.count();
+    if (existingCount > 0) {
+      window.localStorage.removeItem(storageKey);
+      return;
+    }
+
+    const entries = Array.isArray(parsed) ? parsed : [];
+    const now = Date.now();
+    const normalized = entries
+      .filter((entry) => typeof entry?.token === "string")
+      .map((entry, index) => {
+        const createdAt =
+          typeof entry.createdAt === "number"
+            ? entry.createdAt
+            : safeDate(entry.date)?.getTime() ?? now + index;
+        return {
+          ...entry,
+          id: entry.id ?? uuidv4(),
+          archived: Boolean(entry.archived),
+          archivedAt:
+            entry.archivedAt !== undefined && entry.archivedAt !== null
+              ? entry.archivedAt
+              : null,
+          createdAt,
+        } as HistoryToken;
+      });
+
+    if (normalized.length) {
+      await cashuDb.historyTokens.bulkPut(normalized as any);
+    }
+  } catch (err) {
+    console.error("Failed to migrate history tokens", err);
+  } finally {
+    window.localStorage.removeItem(storageKey);
+  }
+}
+
+function persistLatestToken(token: HistoryToken | undefined) {
+  if (!token) {
+    return;
+  }
+  const entry = withPersistDefaults(token);
+  void cashuDb.historyTokens.put(entry as any);
+}
+
+function persistUpdatedToken(token: HistoryToken) {
+  const entry = withPersistDefaults(token);
+  void updateTokenInDexie(entry, entry);
+}
+
+async function updateTokenInDexie(
+  token: HistoryToken,
+  data: Partial<HistoryToken>,
+) {
+  const payload = { ...data } as any;
+  if (token.id) {
+    await cashuDb.historyTokens.update(token.id, payload);
+    return;
+  }
+  await cashuDb.historyTokens
+    .where("token")
+    .equals(token.token)
+    .modify((record) => Object.assign(record, payload));
+}
+
+function normalizeHistoryToken(token: HistoryToken): HistoryToken {
+  const createdAt =
+    typeof token.createdAt === "number"
+      ? token.createdAt
+      : safeDate(token.date)?.getTime();
+  return {
+    ...token,
+    id: token.id ?? uuidv4(),
+    archived: token.archived ?? false,
+    archivedAt:
+      token.archivedAt !== undefined && token.archivedAt !== null
+        ? token.archivedAt
+        : null,
+    createdAt: createdAt ?? Date.now(),
+  };
+}
+
+function withPersistDefaults(token: HistoryToken): HistoryToken {
+  return {
+    ...token,
+    id: token.id ?? uuidv4(),
+    archived: token.archived ?? false,
+    archivedAt:
+      token.archivedAt !== undefined && token.archivedAt !== null
+        ? token.archivedAt
+        : null,
+    createdAt:
+      typeof token.createdAt === "number"
+        ? token.createdAt
+        : safeDate(token.date)?.getTime() ?? Date.now(),
+  };
+}
+
+function safeDate(value: string | undefined): Date | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
