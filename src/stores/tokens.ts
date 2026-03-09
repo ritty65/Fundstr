@@ -125,6 +125,7 @@ export const useTokensStore = defineStore("tokens", {
 
       this.historyTokens.push(entry);
       persistLatestToken(entry);
+      return entry;
     },
     editHistoryToken(
       tokenToEdit: string,
@@ -259,10 +260,7 @@ export const useTokensStore = defineStore("tokens", {
         if (removed?.id) {
           void cashuDb.historyTokens.delete(removed.id);
         } else {
-          void cashuDb.historyTokens
-            .where("token")
-            .equals(token)
-            .delete();
+          void cashuDb.historyTokens.where("token").equals(token).delete();
         }
       }
     },
@@ -328,9 +326,10 @@ export const useTokensStore = defineStore("tokens", {
 
       const paidTokens = this.historyTokens
         .filter((t) => t.status === "paid" && !t.archived)
-        .sort((a, b) =>
-          (a.createdAt ?? safeDate(a.date)?.getTime() ?? 0) -
-          (b.createdAt ?? safeDate(b.date)?.getTime() ?? 0),
+        .sort(
+          (a, b) =>
+            (a.createdAt ?? safeDate(a.date)?.getTime() ?? 0) -
+            (b.createdAt ?? safeDate(b.date)?.getTime() ?? 0),
         );
 
       if (paidTokens.length <= limit) {
@@ -396,7 +395,9 @@ function initializeHistoryTokensState(state: TokensStoreState) {
     return;
   }
 
-  historyTokensSubscription = liveQuery(() => cashuDb.historyTokens.toArray()).subscribe({
+  historyTokensSubscription = liveQuery(() =>
+    cashuDb.historyTokens.toArray(),
+  ).subscribe({
     next: (rows) => {
       if (!historyTokensStateRef) {
         return;
