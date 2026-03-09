@@ -78,7 +78,8 @@ const {
   getKeySetsMock,
 } = hoisted;
 
-const { notifySuccess, notifyError, notifyWarning, notifyApiError } = notifySpies;
+const { notifySuccess, notifyError, notifyWarning, notifyApiError } =
+  notifySpies;
 
 describe("mints store", () => {
   beforeEach(() => {
@@ -102,7 +103,10 @@ describe("mints store", () => {
       .mockResolvedValue(undefined as any);
 
     const inputUrl = "cashu.example/API?foo=bar#baz";
-    const mint = await store.addMint({ url: inputUrl, nickname: "Cashu" }, true);
+    const mint = await store.addMint(
+      { url: inputUrl, nickname: "Cashu" },
+      true,
+    );
 
     expect(mint.url).toBe("https://cashu.example/API");
     expect(store.mints).toHaveLength(1);
@@ -126,6 +130,26 @@ describe("mints store", () => {
     expect(store.addMintBlocking).toBe(false);
   });
 
+  it("does not block mint addition on nutzap profile republish", async () => {
+    const store = useMintsStore();
+    vi.spyOn(store, "activateMint").mockResolvedValue(undefined as any);
+    maybeRepublishNutzapProfile.mockImplementation(() => new Promise(() => {}));
+
+    const result = await Promise.race([
+      store.addMint({ url: "https://mint.pending" }),
+      new Promise((resolve) => setTimeout(() => resolve("timeout"), 50)),
+    ]);
+
+    expect(result).not.toBe("timeout");
+    expect(store.mints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ url: "https://mint.pending" }),
+      ]),
+    );
+    expect(store.addMintBlocking).toBe(false);
+    expect(maybeRepublishNutzapProfile).toHaveBeenCalled();
+  });
+
   it("rejects invalid mint URLs and surfaces the error", async () => {
     const store = useMintsStore();
 
@@ -137,9 +161,7 @@ describe("mints store", () => {
       "MintSettings.add.actions.add_mint.error_invalid_url",
     );
     expect(store.mints).toHaveLength(0);
-    expect(JSON.parse(localStorage.getItem("cashu.mints") || "[]")).toEqual(
-      [],
-    );
+    expect(JSON.parse(localStorage.getItem("cashu.mints") || "[]")).toEqual([]);
   });
 
   it("avoids adding duplicate mints but still informs the user when verbose", async () => {
@@ -149,10 +171,7 @@ describe("mints store", () => {
     await store.addMint({ url: "https://mint.instance" });
     vi.clearAllMocks();
 
-    const result = await store.addMint(
-      { url: "https://mint.instance" },
-      true,
-    );
+    const result = await store.addMint({ url: "https://mint.instance" }, true);
 
     expect(result.url).toBe("https://mint.instance");
     expect(store.mints).toHaveLength(1);
