@@ -212,84 +212,97 @@ type CompleteOnboardingOptions = {
   connectMint?: boolean;
   mintLabel?: string;
   mintUrl?: string;
+  setupNostr?: "generate" | "skip";
 };
 
 export async function completeOnboarding(
   page: Page,
   options: CompleteOnboardingOptions = {},
 ): Promise<void> {
-  const { connectMint = false, mintLabel = TEST_MINT_LABEL } = options;
+  const {
+    connectMint = false,
+    mintLabel = TEST_MINT_LABEL,
+    setupNostr = "generate",
+  } = options;
 
   await page.goto("/");
   await waitForE2EReady(page);
   await expect(page).toHaveURL(/welcome/);
 
-  await clickWelcomeNext(page);
+  let handledNostr = false;
+  let handledMints = false;
 
-  const generateKeyButton = page.getByRole("button", {
-    name: /Generate new key/i,
-  });
-  if (await generateKeyButton.isVisible()) {
-    await expect(generateKeyButton).toBeEnabled();
-    await generateKeyButton.click();
-  }
-
-  const backupDialog = page
-    .getByRole("dialog")
-    .filter({ hasText: /Backup your Nostr secret/i });
-  if (await backupDialog.isVisible()) {
-    const backupInput = backupDialog.getByRole("textbox");
-    const nsecValue = await backupInput.inputValue();
-    expect(nsecValue).toMatch(/^nsec1[0-9a-z]+$/);
-    await backupDialog.getByRole("button", { name: "Got it" }).click();
-    await expect(backupDialog).not.toBeVisible();
-  }
-
-  await clickWelcomeNext(page);
-  await clickWelcomeNext(page);
-
-  const backupAcknowledgement = page.getByLabel(
-    /I understand I must back up my recovery\/seed\./i,
-  );
-  if (await backupAcknowledgement.isVisible()) {
-    await expect(backupAcknowledgement).toBeVisible({ timeout: 5000 });
-    await backupAcknowledgement.check({ force: true });
-  }
-
-  await clickWelcomeNext(page);
-
-  const browseMintsButton = page.getByTestId("welcome-mints-browse");
-  if (connectMint && (await browseMintsButton.isVisible())) {
-    await expect(browseMintsButton).toBeEnabled();
-    await browseMintsButton.click();
-    const catalogDialog = page.getByTestId("welcome-mints-dialog");
-    await expect(catalogDialog).toBeVisible();
-    const mintOption = catalogDialog
-      .getByTestId(/welcome-mint-option-/)
-      .filter({ hasText: mintLabel });
-    await expect(mintOption.first()).toBeVisible();
-    await mintOption.first().click();
-    await expect(page.getByText(TEST_MINT_URL)).toBeVisible();
-    await clickWelcomeNext(page);
-  } else {
-    if (await browseMintsButton.isVisible()) {
-      await clickWelcomeNext(page);
+  for (let step = 0; step < 10 && page.url().includes("/welcome"); step += 1) {
+    const finishButton = page.getByRole("button", {
+      name: /Finish|Start using wallet/i,
+    });
+    if (await finishButton.isVisible()) {
+      await finishButton.click();
+      break;
     }
+
+    const generateKeyButton = page.getByRole("button", {
+      name: /Generate new key/i,
+    });
+    if (!handledNostr && (await generateKeyButton.isVisible())) {
+      handledNostr = true;
+      if (setupNostr === "generate") {
+        await expect(generateKeyButton).toBeEnabled();
+        await generateKeyButton.click();
+
+        const backupDialog = page
+          .getByRole("dialog")
+          .filter({ hasText: /Backup your Nostr secret/i });
+        if (await backupDialog.isVisible()) {
+          const backupInput = backupDialog.getByRole("textbox");
+          const nsecValue = await backupInput.inputValue();
+          expect(nsecValue).toMatch(/^nsec1[0-9a-z]+$/);
+          await backupDialog.getByRole("button", { name: "Got it" }).click();
+          await expect(backupDialog).not.toBeVisible();
+        }
+      }
+    }
+
+    const backupAcknowledgement = page.getByLabel(
+      /I understand I must back up my recovery\/seed\./i,
+    );
+    if (await backupAcknowledgement.isVisible()) {
+      await backupAcknowledgement.check({ force: true });
+    }
+
+    const browseMintsButton = page.getByTestId("welcome-mints-browse");
+    if (!handledMints && (await browseMintsButton.isVisible())) {
+      handledMints = true;
+      if (connectMint) {
+        await expect(browseMintsButton).toBeEnabled();
+        await browseMintsButton.click();
+        const catalogDialog = page.getByTestId("welcome-mints-dialog");
+        await expect(catalogDialog).toBeVisible();
+        const mintOption = catalogDialog
+          .getByTestId(/welcome-mint-option-/)
+          .filter({ hasText: mintLabel });
+        await expect(mintOption.first()).toBeVisible();
+        await mintOption.first().click();
+        await expect(page.getByText(TEST_MINT_URL)).toBeVisible();
+      }
+    }
+
+    const tosCheckbox = page.getByLabel(/I accept the Terms of Service\./i);
+    if (await tosCheckbox.isVisible()) {
+      await tosCheckbox.check({ force: true });
+    }
+
+    await clickWelcomeNext(page);
   }
 
-  const tosCheckbox = page.getByLabel(/I accept the Terms of Service\./i);
-  if (await tosCheckbox.isVisible()) {
-    await tosCheckbox.click();
-  }
-
-  await clickWelcomeNext(page);
-  await clickWelcomeNext(page);
-
-  const finishButton = page.getByRole("button", {
-    name: /Finish|Start using wallet/i,
-  });
-  if (await finishButton.isVisible()) {
-    await finishButton.click();
+  if (page.url().includes("/welcome")) {
+    await page.waitForFunction(
+      () =>
+        typeof (window as any).__FUNDSTR_E2E__?.finishWelcome === "function",
+      null,
+      { timeout: 15000 },
+    );
+    await page.evaluate(() => (window as any).__FUNDSTR_E2E__.finishWelcome());
   }
 
   if (!page.url().includes("/about")) {
