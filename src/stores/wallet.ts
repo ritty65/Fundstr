@@ -186,7 +186,9 @@ export const useWalletStore = defineStore("wallet", {
     },
     seed(): Uint8Array {
       const mnemonicStore = useMnemonicStore();
-      return mnemonicToSeedSync(mnemonicStore.mnemonic);
+      const mnemonic =
+        mnemonicStore.mnemonic || mnemonicStore.initializeMnemonic();
+      return mnemonicToSeedSync(mnemonic);
     },
   },
   actions: {
