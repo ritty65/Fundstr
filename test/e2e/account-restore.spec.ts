@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import {
-  bootstrapFundstr,
+  bootstrapAndCompleteOnboarding,
   resetBrowserState,
   TEST_KEYSET_ID,
   TEST_MINT_URL,
@@ -238,7 +238,7 @@ async function prepareRestorePage(
 ) {
   await resetBrowserState(page);
   const mintMock = await setupRestoreMintMocks(page, restoreAmounts);
-  const api = await bootstrapFundstr(page);
+  const api = await bootstrapAndCompleteOnboarding(page);
   await api.seedMint({
     url: TEST_MINT_URL,
     keysetId: TEST_KEYSET_ID,

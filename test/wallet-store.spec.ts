@@ -31,6 +31,15 @@ const uiStoreMock: any = {};
 const receiveStoreMock: any = {};
 const prStoreMock: any = {};
 const p2pkStoreMock: any = {};
+const VALID_MNEMONIC =
+  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const mnemonicStoreMock: any = {
+  mnemonic: VALID_MNEMONIC,
+  initializeMnemonic: vi.fn(() => {
+    mnemonicStoreMock.mnemonic = VALID_MNEMONIC;
+    return mnemonicStoreMock.mnemonic;
+  }),
+};
 const mintsStoreMock: any = {
   activeUnit: "sat",
   activeMintUrl: "mint",
@@ -72,6 +81,10 @@ vi.mock("stores/ui", () => ({
 
 vi.mock("stores/signer", () => ({
   useSignerStore: () => ({ reset: vi.fn(), method: null }),
+}));
+
+vi.mock("stores/mnemonic", () => ({
+  useMnemonicStore: () => mnemonicStoreMock,
 }));
 
 vi.mock("stores/price", () => ({
@@ -116,6 +129,13 @@ beforeEach(() => {
     showReceiveTokens: false,
   });
   Object.assign(prStoreMock, { showPRKData: "" });
+  Object.assign(mnemonicStoreMock, {
+    mnemonic: VALID_MNEMONIC,
+    initializeMnemonic: vi.fn(() => {
+      mnemonicStoreMock.mnemonic = VALID_MNEMONIC;
+      return mnemonicStoreMock.mnemonic;
+    }),
+  });
   Object.assign(p2pkStoreMock, {
     p2pkKeys: [] as any[],
     isValidPubkey: vi.fn(() => true),
@@ -136,6 +156,15 @@ beforeEach(() => {
 });
 
 describe("wallet store", () => {
+  it("initializes a mnemonic before deriving the wallet seed", () => {
+    mnemonicStoreMock.mnemonic = "";
+    const walletStore = useWalletStore();
+
+    expect(walletStore.seed).toBeInstanceOf(Uint8Array);
+    expect(mnemonicStoreMock.initializeMnemonic).toHaveBeenCalledTimes(1);
+    expect(mnemonicStoreMock.mnemonic).toBe(VALID_MNEMONIC);
+  });
+
   it("calls wallet.send with selected proofs", async () => {
     const walletStore = useWalletStore();
     const proofs = [

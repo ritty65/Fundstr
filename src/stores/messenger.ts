@@ -104,7 +104,11 @@ export interface DedupMergeResult {
 
 type UnsignedDmEvent = Parameters<DmSigner["signEvent"]>[0];
 
-type EncryptionResult = { content: string; signerInfo: ActiveDmSigner; protocol: DmProtocol };
+type EncryptionResult = {
+  content: string;
+  signerInfo: ActiveDmSigner;
+  protocol: DmProtocol;
+};
 
 async function ensureActiveDmSigner(): Promise<ActiveDmSigner> {
   const signerInfo = await getActiveDmSigner();
@@ -129,13 +133,22 @@ export async function encryptDmContent({
     nostrStore.signerCaps.nip44Encrypt && nostrStore.signerCaps.nip44Decrypt;
   let protocol: DmProtocol = "nip04";
   try {
-    if (nip44Available && typeof signerInfo.signer.nip44Encrypt === "function") {
-      const content = await signerInfo.signer.nip44Encrypt(recipientHex, plaintext);
+    if (
+      nip44Available &&
+      typeof signerInfo.signer.nip44Encrypt === "function"
+    ) {
+      const content = await signerInfo.signer.nip44Encrypt(
+        recipientHex,
+        plaintext,
+      );
       protocol = "nip44";
       return { content, signerInfo, protocol };
     }
   } catch (err) {
-    console.warn("[messenger] nip44 encrypt failed, falling back to nip04", err);
+    console.warn(
+      "[messenger] nip44 encrypt failed, falling back to nip04",
+      err,
+    );
   }
 
   const content = await signerInfo.signer.nip04Encrypt(recipientHex, plaintext);
@@ -195,7 +208,9 @@ function resolveDmProtocol(
   return undefined;
 }
 
-export function mergeMessengerEvent(params: DedupMergeParams): DedupMergeResult {
+export function mergeMessengerEvent(
+  params: DedupMergeParams,
+): DedupMergeResult {
   const {
     eventId,
     eventMap,
@@ -295,7 +310,8 @@ interface ConversationSubscriptionHandle {
   fetchEvent: (eventId: string, meta?: { reason?: string }) => Promise<boolean>;
 }
 
-let activeConversationSubscription: ConversationSubscriptionHandle | null = null;
+let activeConversationSubscription: ConversationSubscriptionHandle | null =
+  null;
 let conversationWatchStop: null | (() => void) = null;
 let conversationRelayOff: null | (() => void) = null;
 
@@ -455,9 +471,13 @@ function buildDmHttpHeaders(): Record<string, string> | undefined {
   return { ...DM_HTTP_AUTH_HEADER_RECORD };
 }
 
-function isNonRetryableHttpAck(ack: HttpPublishAck | null | undefined): boolean {
+function isNonRetryableHttpAck(
+  ack: HttpPublishAck | null | undefined,
+): boolean {
   if (!ack?.message) return false;
-  return NON_RETRYABLE_ACK_PATTERNS.some((pattern) => pattern.test(ack.message!));
+  return NON_RETRYABLE_ACK_PATTERNS.some((pattern) =>
+    pattern.test(ack.message!),
+  );
 }
 
 function emitDmCounter(
@@ -465,9 +485,14 @@ function emitDmCounter(
   detail: Record<string, unknown> = {},
 ): void {
   const payload = { name, timestamp: Date.now(), ...detail };
-  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.dispatchEvent === "function"
+  ) {
     try {
-      window.dispatchEvent(new CustomEvent("fundstr:dm-counter", { detail: payload }));
+      window.dispatchEvent(
+        new CustomEvent("fundstr:dm-counter", { detail: payload }),
+      );
     } catch (err) {
       debug("[messenger.telemetry] dispatch failed", err);
     }
@@ -476,9 +501,14 @@ function emitDmCounter(
 }
 
 function computePendingDecryptDelay(attempt: number): number {
-  const normalized = Number.isFinite(attempt) ? Math.max(0, Math.floor(attempt)) : 0;
+  const normalized = Number.isFinite(attempt)
+    ? Math.max(0, Math.floor(attempt))
+    : 0;
   const base = PENDING_DECRYPT_BASE_DELAY_MS * Math.pow(2, normalized);
-  return Math.min(PENDING_DECRYPT_MAX_DELAY_MS, base || PENDING_DECRYPT_BASE_DELAY_MS);
+  return Math.min(
+    PENDING_DECRYPT_MAX_DELAY_MS,
+    base || PENDING_DECRYPT_BASE_DELAY_MS,
+  );
 }
 
 function extractRelayHintsFromEvent(event: NostrEvent | undefined): string[] {
@@ -512,13 +542,17 @@ function cloneNostrEvent(event: NostrEvent): NostrEvent {
   }
 }
 
-function extractProofsFromTokenString(encoded?: string | null): Proof[] | undefined {
+function extractProofsFromTokenString(
+  encoded?: string | null,
+): Proof[] | undefined {
   if (!encoded) return undefined;
   try {
     const decoded = tokenUtil.decode(encoded);
     if (!decoded) return undefined;
     if (Array.isArray((decoded as any).proofs)) {
-      return ((decoded as any).proofs as Proof[]).map((proof) => ({ ...proof }));
+      return ((decoded as any).proofs as Proof[]).map((proof) => ({
+        ...proof,
+      }));
     }
     if (Array.isArray((decoded as any).token)) {
       return ((decoded as any).token as any[])
@@ -568,9 +602,7 @@ export const useMessengerStore = defineStore("messenger", {
     const settings = useSettingsStore();
     const nostrStore = useNostrStore();
     const storageKey = (suffix: string) =>
-      computed(
-        () => `cashu.messenger.${nostrStore.pubkey || "anon"}.${suffix}`,
-      );
+      `cashu.messenger.${nostrStore.pubkey || "anon"}.${suffix}`;
     if (!Array.isArray(settings.defaultNostrRelays)) {
       settings.defaultNostrRelays = Array.from(new Set(DEFAULT_RELAYS));
     }
@@ -587,11 +619,17 @@ export const useMessengerStore = defineStore("messenger", {
     const aliases = ref<Record<string, string>>({});
     const eventLog = ref<MessengerMessage[]>([]);
     const eventMap: Record<string, MessengerMessage> = {};
-    const pendingDecrypts = reactive<Record<string, PendingDmDecryptRecord>>({});
+    const pendingDecrypts = reactive<Record<string, PendingDmDecryptRecord>>(
+      {},
+    );
     const pendingDecryptRetryInFlight = ref(false);
-    const localEchoTimeouts: Record<string, ReturnType<typeof setTimeout> | null> = {};
+    const localEchoTimeouts: Record<
+      string,
+      ReturnType<typeof setTimeout> | null
+    > = {};
     const localEchoIndex: Record<string, MessengerMessage> = {};
-    const conversationSubscriptionRef = ref<ConversationSubscriptionHandle | null>(null);
+    const conversationSubscriptionRef =
+      ref<ConversationSubscriptionHandle | null>(null);
     const drawerOpen = useLocalStorage<boolean>(storageKey("drawerOpen"), true);
     const drawerMini = useLocalStorage<boolean>(
       storageKey("drawerMini"),
@@ -741,7 +779,12 @@ export const useMessengerStore = defineStore("messenger", {
                   .filter((id): id is string => !!id)
               : [];
             if (ids.length) {
-              await writeConversationMeta(ownerKey, pubkey, "conversation", ids);
+              await writeConversationMeta(
+                ownerKey,
+                pubkey,
+                "conversation",
+                ids,
+              );
             }
           }
         }
@@ -975,12 +1018,18 @@ export const useMessengerStore = defineStore("messenger", {
       return nostr?.pubkey || "anon";
     },
     computeBackoffMs(attempt: number): number {
-      const normalizedAttempt = Number.isFinite(attempt) ? Math.max(1, Math.floor(attempt)) : 1;
-      const exponential = OUTBOX_BACKOFF_BASE_MS * Math.pow(2, normalizedAttempt - 1);
+      const normalizedAttempt = Number.isFinite(attempt)
+        ? Math.max(1, Math.floor(attempt))
+        : 1;
+      const exponential =
+        OUTBOX_BACKOFF_BASE_MS * Math.pow(2, normalizedAttempt - 1);
       const capped = Math.min(OUTBOX_BACKOFF_MAX_MS, exponential);
       const jitterRange = capped * OUTBOX_BACKOFF_JITTER_RATIO;
       const jitterOffset = jitterRange * (Math.random() * 2 - 1);
-      const value = Math.max(OUTBOX_BACKOFF_BASE_MS, Math.round(capped + jitterOffset));
+      const value = Math.max(
+        OUTBOX_BACKOFF_BASE_MS,
+        Math.round(capped + jitterOffset),
+      );
       return value;
     },
     async persistMessage(msg: MessengerMessage) {
@@ -1010,7 +1059,9 @@ export const useMessengerStore = defineStore("messenger", {
           value = Array.isArray(conv)
             ? conv
                 .map((entry) => entry?.id)
-                .filter((id): id is string => typeof id === "string" && id.length > 0)
+                .filter(
+                  (id): id is string => typeof id === "string" && id.length > 0,
+                )
             : [];
         }
         if (value === null || value === undefined || value === "") {
@@ -1043,7 +1094,9 @@ export const useMessengerStore = defineStore("messenger", {
       const indexed = this.localEchoIndex?.[localId];
       if (indexed) return indexed;
       if (!Array.isArray(this.eventLog)) this.eventLog = [];
-      const found = this.eventLog.find((entry) => entry.localEcho?.localId === localId);
+      const found = this.eventLog.find(
+        (entry) => entry.localEcho?.localId === localId,
+      );
       if (found) {
         this.localEchoIndex[localId] = found;
       }
@@ -1126,7 +1179,12 @@ export const useMessengerStore = defineStore("messenger", {
       if (!Array.isArray(this.eventLog)) this.eventLog = [];
       let message = this.eventMap[record.id];
       if (!message) {
-        message = this.eventLog.find((entry) => entry.id === record.id);
+        const existingMessage = this.eventLog.find(
+          (entry) => entry.id === record.id,
+        );
+        if (existingMessage) {
+          message = existingMessage;
+        }
       }
       if (!message) {
         const conversationId = record.senderPubkey;
@@ -1216,7 +1274,9 @@ export const useMessengerStore = defineStore("messenger", {
         ciphertext: event.content,
         event: cloneNostrEvent(event),
         eventCreatedAt:
-          event.created_at ?? existing?.eventCreatedAt ?? Math.floor(now / 1000),
+          event.created_at ??
+          existing?.eventCreatedAt ??
+          Math.floor(now / 1000),
         eventKind: event.kind ?? existing?.eventKind ?? 4,
         relayHints: hints.length ? hints : existing?.relayHints ?? null,
         attemptCount,
@@ -1262,7 +1322,8 @@ export const useMessengerStore = defineStore("messenger", {
         !nostr.signer &&
         !!lastSignerAttempt &&
         !lastSignerAttempt.success &&
-        Date.now() - lastSignerAttempt.timestamp < SIGNER_INIT_RETRY_WINDOW_MS &&
+        Date.now() - lastSignerAttempt.timestamp <
+          SIGNER_INIT_RETRY_WINDOW_MS &&
         this.signerMode === "none";
       if (shouldSkipIdentityLoad) {
         await this.refreshSignerMode();
@@ -1308,26 +1369,32 @@ export const useMessengerStore = defineStore("messenger", {
           notify: !opts.quiet,
         };
       }
-      const protocolHint = resolveDmProtocol(event.kind, event.content) ?? "nip44";
+      const protocolHint =
+        resolveDmProtocol(event.kind, event.content) ?? "nip44";
       const nip44Available =
-        nostr.signerCaps.nip44Encrypt && nostr.signerCaps.nip44Decrypt;
+        Boolean(nostr.signerCaps?.nip44Encrypt) &&
+        Boolean(nostr.signerCaps?.nip44Decrypt);
       const signerDecryptOrder: Array<"nip44Decrypt" | "nip04Decrypt"> =
         protocolHint === "nip04" || !nip44Available
           ? ["nip04Decrypt", "nip44Decrypt"]
           : ["nip44Decrypt", "nip04Decrypt"];
 
       for (const method of signerDecryptOrder) {
-        const decrypt = signerInfo?.signer?.[method];
+        const signer = signerInfo?.signer;
+        const decrypt = signer?.[method];
         if (typeof decrypt !== "function") continue;
         try {
           const decrypted = await decrypt.call(
-            signerInfo.signer,
+            signer,
             event.pubkey,
             event.content,
           );
           return { ok: true, plaintext: decrypted };
         } catch (err) {
-          console.warn("[messenger] signer decrypt failed, attempting fallback", err);
+          console.warn(
+            "[messenger] signer decrypt failed, attempting fallback",
+            err,
+          );
         }
       }
       try {
@@ -1520,7 +1587,10 @@ export const useMessengerStore = defineStore("messenger", {
         this.teardownActiveConversationSubscription();
         return;
       }
-      if (!opts.force && activeConversationSubscription?.pubkey === normalized) {
+      if (
+        !opts.force &&
+        activeConversationSubscription?.pubkey === normalized
+      ) {
         return;
       }
       this.teardownActiveConversationSubscription();
@@ -1632,7 +1702,10 @@ export const useMessengerStore = defineStore("messenger", {
     ) {
       if (!updates || !Object.keys(updates).length) return;
       const next = { ...(msg.relayResults ?? {}) } as Record<string, RelayAck>;
-      const metaNext = { ...(meta.relayResults ?? {}) } as Record<string, RelayAck>;
+      const metaNext = { ...(meta.relayResults ?? {}) } as Record<
+        string,
+        RelayAck
+      >;
       for (const [relay, ack] of Object.entries(updates)) {
         next[relay] = ack;
         metaNext[relay] = ack;
@@ -1756,7 +1829,11 @@ export const useMessengerStore = defineStore("messenger", {
       pubkey: string,
     ): Promise<boolean> {
       try {
-        return await this.fetchConversationEvent(pubkey, eventId, "timeout-recovery");
+        return await this.fetchConversationEvent(
+          pubkey,
+          eventId,
+          "timeout-recovery",
+        );
       } catch (err) {
         console.warn("[messenger.recoverLocalEchoFromRelays]", err);
         return false;
@@ -2004,7 +2081,10 @@ export const useMessengerStore = defineStore("messenger", {
           try {
             await nostr.initSignerIfNotSet();
           } catch (e) {
-            console.warn("[messenger] signer unavailable, continuing read-only", e);
+            console.warn(
+              "[messenger] signer unavailable, continuing read-only",
+              e,
+            );
           }
           this.signerInitCache = {
             timestamp: Date.now(),
@@ -2032,7 +2112,9 @@ export const useMessengerStore = defineStore("messenger", {
           );
         }
         if (typeof relays === "object") {
-          return Object.values(relays).reduce(
+          return Object.values(
+            relays as Record<string, { connected?: boolean }>,
+          ).reduce(
             (acc, relay) => acc + ((relay as any)?.connected ? 1 : 0),
             0,
           );
@@ -2076,10 +2158,14 @@ export const useMessengerStore = defineStore("messenger", {
         }
       } catch (err) {
         if (err instanceof HttpFallbackThrottledError) {
-          console.warn("[messenger.syncDmViaHttp] HTTP fallback throttled", err);
+          console.warn(
+            "[messenger.syncDmViaHttp] HTTP fallback throttled",
+            err,
+          );
           throw err;
         }
-        const message = err instanceof Error ? err.message : String(err ?? "error");
+        const message =
+          err instanceof Error ? err.message : String(err ?? "error");
         console.error("[messenger.syncDmViaHttp]", err);
         notifyError(`Failed to sync DMs via HTTP fallback: ${message}`);
         throw err instanceof Error ? err : new Error(message);
@@ -2113,7 +2199,13 @@ export const useMessengerStore = defineStore("messenger", {
         tokenPayload?: any;
         files?: FileMeta[];
       }): Promise<SendDmResult> => {
-        const { text, contentOverride, attachment: attach, tokenPayload: token, files } = options;
+        const {
+          text,
+          contentOverride,
+          attachment: attach,
+          tokenPayload: token,
+          files,
+        } = options;
         const normalized = Array.isArray(files)
           ? files
               .map((file) => normalizeFileMeta(file))
@@ -2213,7 +2305,8 @@ export const useMessengerStore = defineStore("messenger", {
         try {
           await upsertOutbox(record);
         } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err ?? "error");
+          const reason =
+            err instanceof Error ? err.message : String(err ?? "error");
           this.markLocalEchoFailed(msg, meta, reason);
           notifyError(`Failed to queue DM: ${reason}`);
           return { success: false, event: null };
@@ -2310,7 +2403,8 @@ export const useMessengerStore = defineStore("messenger", {
       try {
         await this.loadIdentity({ refresh: false });
       } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        const reason =
+          err instanceof Error ? err.message : String(err ?? "error");
         this.markLocalEchoFailed(msg, meta, reason, {
           identity: { ok: false, reason },
         });
@@ -2324,7 +2418,11 @@ export const useMessengerStore = defineStore("messenger", {
       let encryptedProtocol: DmProtocol = "nip04";
       let event: NostrEvent;
       try {
-        const { content: encryptedContent, signerInfo, protocol } = await encryptDmContent({
+        const {
+          content: encryptedContent,
+          signerInfo,
+          protocol,
+        } = await encryptDmContent({
           recipientHex: recipient,
           plaintext: contentToSend,
         });
@@ -2346,7 +2444,8 @@ export const useMessengerStore = defineStore("messenger", {
         event = signed.event;
         activeSigner = signed.signerInfo;
       } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        const reason =
+          err instanceof Error ? err.message : String(err ?? "error");
         if (reason === "No signer available for direct messages") {
           this.markLocalEchoFailed(msg, meta, reason, {
             signer: { ok: false, reason: "No signer available" },
@@ -2354,7 +2453,10 @@ export const useMessengerStore = defineStore("messenger", {
           notifyError(reason);
           return { success: false, event: null };
         }
-        const relayResults = { encryption: { ok: false, reason } } as Record<string, RelayAck>;
+        const relayResults = { encryption: { ok: false, reason } } as Record<
+          string,
+          RelayAck
+        >;
         this.markLocalEchoFailed(msg, meta, reason, relayResults);
         notifyError(`Failed to encrypt DM: ${reason}`);
         return { success: false, event: null };
@@ -2390,7 +2492,12 @@ export const useMessengerStore = defineStore("messenger", {
       }
       msg.content = textContent;
       msg.filesPayload = filesPayload?.length ? filesPayload : undefined;
-      this.registerMessage(msg, [meta.eventId, event.id, previousId, meta.localId]);
+      this.registerMessage(msg, [
+        meta.eventId,
+        event.id,
+        previousId,
+        meta.localId,
+      ]);
 
       let relayResults: Record<string, RelayAck> = {};
       let delivered = false;
@@ -2415,15 +2522,18 @@ export const useMessengerStore = defineStore("messenger", {
           const fundstrRelays = relayTargets?.length
             ? relayTargets
             : Array.isArray(this.relays)
-              ? this.relays
-              : Array.from(new Set([...DM_RELAYS]));
+            ? this.relays
+            : Array.from(new Set([...DM_RELAYS]));
           for (const relayUrl of fundstrRelays) {
             if (!relayUrl) continue;
-            let client: Awaited<ReturnType<typeof ensureFundstrRelayClient>> | null = null;
+            let client: Awaited<
+              ReturnType<typeof ensureFundstrRelayClient>
+            > | null = null;
             try {
               client = await ensureFundstrRelayClient(relayUrl);
             } catch (err) {
-              const reason = err instanceof Error ? err.message : String(err ?? "error");
+              const reason =
+                err instanceof Error ? err.message : String(err ?? "error");
               relayResults[relayUrl] = { ok: false, reason };
               lastFailureReason = reason;
               continue;
@@ -2450,13 +2560,19 @@ export const useMessengerStore = defineStore("messenger", {
               if (ack.accepted) {
                 delivered = true;
                 sentVia = "ws";
-                this.markLocalEchoSent(msg, meta, { [relayUrl]: ackRecord }, "ws");
+                this.markLocalEchoSent(
+                  msg,
+                  meta,
+                  { [relayUrl]: ackRecord },
+                  "ws",
+                );
                 ensureConfirmation();
                 break;
               }
               lastFailureReason = ack.message ?? lastFailureReason;
             } catch (err) {
-              const reason = err instanceof Error ? err.message : String(err ?? "error");
+              const reason =
+                err instanceof Error ? err.message : String(err ?? "error");
               relayResults[relayUrl] = { ok: false, reason };
               lastFailureReason = reason;
               continue;
@@ -2497,7 +2613,9 @@ export const useMessengerStore = defineStore("messenger", {
             }
           } catch (httpErr) {
             const reason =
-              httpErr instanceof Error ? httpErr.message : String(httpErr ?? "error");
+              httpErr instanceof Error
+                ? httpErr.message
+                : String(httpErr ?? "error");
             relayResults[DM_HTTP_EVENT_URL] = { ok: false, reason };
             if (httpErr instanceof HttpFallbackThrottledError) {
               console.warn(
@@ -2527,7 +2645,8 @@ export const useMessengerStore = defineStore("messenger", {
           );
         }
       } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        const reason =
+          err instanceof Error ? err.message : String(err ?? "error");
         this.markLocalEchoFailed(msg, meta, reason, relayResults);
         notifyError(
           reason && reason.startsWith("Failed to send DM")
@@ -2577,7 +2696,9 @@ export const useMessengerStore = defineStore("messenger", {
         }
 
         const caption =
-          ackMessage || lastFailureReason || "The relay has not confirmed receipt yet.";
+          ackMessage ||
+          lastFailureReason ||
+          "The relay has not confirmed receipt yet.";
         notifyWarning("DM delivery pending confirmation", caption, 7000);
 
         return {
@@ -2593,12 +2714,16 @@ export const useMessengerStore = defineStore("messenger", {
     async publishWithQuorum(options: {
       event: NostrEvent;
       relays?: string[];
-      signer: SignerType;
+      signer: DmSigner;
       allowHttpFallback?: boolean;
     }): Promise<{
       ackMap: Record<string, RelayAck>;
       acceptedCount: number;
-      firstAck: { transport: DmTransportMode; relay: string; ack: RelayAck } | null;
+      firstAck: {
+        transport: DmTransportMode;
+        relay: string;
+        ack: RelayAck;
+      } | null;
       httpAck: HttpPublishAck | null;
       nonRetryableHttpAck: boolean;
       lastError?: string;
@@ -2620,11 +2745,18 @@ export const useMessengerStore = defineStore("messenger", {
       let nonRetryableHttpAck = false;
       let lastError: string | undefined;
 
-      const relayCandidates = Array.isArray(relays) && relays.length
-        ? relays
-        : Array.isArray(this.relays) && this.relays.length
-          ? Array.from(new Set(this.relays))
-          : Array.from(new Set([...DM_RELAYS]));
+      const relayCandidates: string[] =
+        Array.isArray(relays) && relays.length
+          ? relays.filter((relay): relay is string => typeof relay === "string")
+          : Array.isArray(this.relays) && this.relays.length
+          ? Array.from(
+              new Set(
+                this.relays.filter(
+                  (relay): relay is string => typeof relay === "string",
+                ),
+              ),
+            )
+          : (Array.from(new Set([...DM_RELAYS])) as string[]);
 
       for (const relayUrl of relayCandidates) {
         if (!relayUrl) continue;
@@ -2658,7 +2790,8 @@ export const useMessengerStore = defineStore("messenger", {
             lastError = ack.message;
           }
         } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err ?? "error");
+          const reason =
+            err instanceof Error ? err.message : String(err ?? "error");
           ackRecord = { ok: false, reason };
           ackMap[relayUrl] = ackRecord;
           await recordRelayResult(relayUrl, false);
@@ -2667,7 +2800,14 @@ export const useMessengerStore = defineStore("messenger", {
       }
 
       if (acceptedCount >= this.outboxQuorum) {
-        return { ackMap, acceptedCount, firstAck, httpAck, nonRetryableHttpAck, lastError };
+        return {
+          ackMap,
+          acceptedCount,
+          firstAck,
+          httpAck,
+          nonRetryableHttpAck,
+          lastError,
+        };
       }
 
       if (allowHttpFallback) {
@@ -2700,19 +2840,29 @@ export const useMessengerStore = defineStore("messenger", {
             }
           }
         } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err ?? "error");
+          const reason =
+            err instanceof Error ? err.message : String(err ?? "error");
           ackMap[DM_HTTP_EVENT_URL] = { ok: false, reason };
           lastError = reason;
         }
       }
 
-      return { ackMap, acceptedCount, firstAck, httpAck, nonRetryableHttpAck, lastError };
+      return {
+        ackMap,
+        acceptedCount,
+        firstAck,
+        httpAck,
+        nonRetryableHttpAck,
+        lastError,
+      };
     },
     async deliverOutboxItem(record: MessengerOutboxRecord): Promise<void> {
       if (!this.outboxEnabled) return;
       if (!record) return;
       const localId = record.localId || record.id;
-      const existingByLocal = localId ? this.findMessageByLocalId(localId) : undefined;
+      const existingByLocal = localId
+        ? this.findMessageByLocalId(localId)
+        : undefined;
       const existingByMessage = record.messageId
         ? (this.eventMap?.[record.messageId] as MessengerMessage | undefined)
         : undefined;
@@ -2776,21 +2926,34 @@ export const useMessengerStore = defineStore("messenger", {
         content: contentCandidate,
         text: textCandidate,
         attachment:
-          payloadSource.attachment ?? meta.payload?.attachment ?? msg.attachment,
+          payloadSource.attachment ??
+          meta.payload?.attachment ??
+          msg.attachment,
         tokenPayload:
-          payloadSource.tokenPayload ?? meta.payload?.tokenPayload ?? msg.tokenPayload,
+          payloadSource.tokenPayload ??
+          meta.payload?.tokenPayload ??
+          msg.tokenPayload,
         filesPayload: normalizedFiles,
       };
 
       const resolveTokenPayload = (): MessengerTokenPayload | undefined => {
-        const sourceToken =
-          (payloadSource as any)?.tokenPayload as MessengerTokenPayload | undefined;
-        const payloadToken =
-          payload.tokenPayload as MessengerTokenPayload | undefined;
-        const metaToken =
-          meta.payload?.tokenPayload as MessengerTokenPayload | undefined;
+        const sourceToken = (payloadSource as any)?.tokenPayload as
+          | MessengerTokenPayload
+          | undefined;
+        const payloadToken = payload.tokenPayload as
+          | MessengerTokenPayload
+          | undefined;
+        const metaToken = meta.payload?.tokenPayload as
+          | MessengerTokenPayload
+          | undefined;
         const msgToken = msg.tokenPayload as MessengerTokenPayload | undefined;
-        return sourceToken ?? payloadToken ?? metaToken ?? msgToken ?? recordTokenPayload();
+        return (
+          sourceToken ??
+          payloadToken ??
+          metaToken ??
+          msgToken ??
+          recordTokenPayload()
+        );
       };
 
       const recipientKey = this.normalizeKey(
@@ -2827,7 +2990,9 @@ export const useMessengerStore = defineStore("messenger", {
         });
         this.markLocalEchoFailed(msg, meta, reason, ackMapAll);
         notifyError(
-          reason.startsWith("Failed to send DM") ? reason : `Failed to send DM: ${reason}`,
+          reason.startsWith("Failed to send DM")
+            ? reason
+            : `Failed to send DM: ${reason}`,
         );
         const tokenPayload = resolveTokenPayload();
         if (tokenPayload) {
@@ -2883,7 +3048,8 @@ export const useMessengerStore = defineStore("messenger", {
       try {
         await this.loadIdentity({ refresh: false });
       } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        const reason =
+          err instanceof Error ? err.message : String(err ?? "error");
         await scheduleRetry(`Failed to prepare DM signer: ${reason}`);
         return;
       }
@@ -2899,10 +3065,15 @@ export const useMessengerStore = defineStore("messenger", {
       let event = (payloadSource.event as NostrEvent | undefined) || undefined;
       try {
         if (!event) {
-          event = await buildKind4Event(signerInfo.signer, recipientKey, payload.content ?? "");
+          event = await buildKind4Event(
+            signerInfo.signer,
+            recipientKey,
+            payload.content ?? "",
+          );
         }
       } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        const reason =
+          err instanceof Error ? err.message : String(err ?? "error");
         await handlePermanentFailure(`Failed to encrypt DM: ${reason}`);
         return;
       }
@@ -2917,7 +3088,8 @@ export const useMessengerStore = defineStore("messenger", {
       msg.filesPayload = payload.filesPayload.length
         ? payload.filesPayload
         : undefined;
-      msg.created_at = event.created_at ?? msg.created_at ?? Math.floor(now / 1000);
+      msg.created_at =
+        event.created_at ?? msg.created_at ?? Math.floor(now / 1000);
       if (event.kind) {
         msg.protocol = resolveDmProtocol(event.kind, event.content);
       }
@@ -2929,17 +3101,32 @@ export const useMessengerStore = defineStore("messenger", {
       if (Array.isArray(record.relays) && record.relays.length) {
         meta.relays = record.relays.slice();
       }
-      this.registerMessage(msg, [meta.eventId, event.id, previousId, meta.localId]);
+      this.registerMessage(msg, [
+        meta.eventId,
+        event.id,
+        previousId,
+        meta.localId,
+      ]);
 
-      const relayCandidates = Array.isArray(record.relays) && record.relays.length
-        ? record.relays
-        : Array.isArray(meta.relays) && meta.relays.length
+      const relayCandidates =
+        Array.isArray(record.relays) && record.relays.length
+          ? record.relays
+          : Array.isArray(meta.relays) && meta.relays.length
           ? meta.relays
           : Array.isArray(this.relays) && this.relays.length
-            ? this.relays
-            : Array.from(new Set([...DM_RELAYS]));
-      const uniqueRelays = Array.from(new Set(relayCandidates.filter(Boolean)));
-      const rankedRelays = uniqueRelays.length ? await rankRelays(uniqueRelays) : [];
+          ? this.relays
+          : Array.from(new Set([...DM_RELAYS]));
+      const uniqueRelays: string[] = Array.from(
+        new Set(
+          relayCandidates.filter(
+            (relay): relay is string =>
+              typeof relay === "string" && relay.length > 0,
+          ),
+        ),
+      );
+      const rankedRelays = uniqueRelays.length
+        ? await rankRelays(uniqueRelays)
+        : [];
       if (rankedRelays.length) {
         meta.relays = rankedRelays.slice();
       }
@@ -2975,7 +3162,8 @@ export const useMessengerStore = defineStore("messenger", {
           allowHttpFallback: this.httpFallbackEnabled,
         });
       } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        const reason =
+          err instanceof Error ? err.message : String(err ?? "error");
         await scheduleRetry(reason);
         return;
       }
@@ -3008,7 +3196,8 @@ export const useMessengerStore = defineStore("messenger", {
           relayResults: ackMapAll,
           ackCount,
           lastAckAt: baseRecord.lastAckAt ?? Date.now(),
-          firstAckAt: baseRecord.firstAckAt ?? baseRecord.lastAckAt ?? Date.now(),
+          firstAckAt:
+            baseRecord.firstAckAt ?? baseRecord.lastAckAt ?? Date.now(),
           lastError: null,
           messageId: event.id,
         });
@@ -3028,10 +3217,11 @@ export const useMessengerStore = defineStore("messenger", {
       const reason = publishResult.lastError
         ? publishResult.lastError
         : ackCount > 0
-          ? "Awaiting relay quorum"
-          : "Failed to send DM";
+        ? "Awaiting relay quorum"
+        : "Failed to send DM";
       const nonRetryable =
-        (publishResult.nonRetryableHttpAck && ackCount === 0) || attemptNumber >= OUTBOX_MAX_ATTEMPTS;
+        (publishResult.nonRetryableHttpAck && ackCount === 0) ||
+        attemptNumber >= OUTBOX_MAX_ATTEMPTS;
       await scheduleRetry(reason, { nonRetryable });
     },
     async outboxPump(): Promise<void> {
@@ -3076,7 +3266,8 @@ export const useMessengerStore = defineStore("messenger", {
       if (!recovery || recovery.restored) return;
       const encoded = recovery.encodedProofs || tokenPayload.token;
       if (!encoded) return;
-      const bucketId = recovery.bucketId || tokenPayload.bucketId || DEFAULT_BUCKET_ID;
+      const bucketId =
+        recovery.bucketId || tokenPayload.bucketId || DEFAULT_BUCKET_ID;
       const proofsStore = useProofsStore();
       const tokensStore = useTokensStore();
       try {
@@ -3196,13 +3387,14 @@ export const useMessengerStore = defineStore("messenger", {
           }
         }
 
-        const { success, event, localId, confirmationPending } = await this.sendDm(
-          recipient,
-          JSON.stringify(payload),
-          undefined,
-          undefined,
-          tokenPayloadMeta,
-        );
+        const { success, event, localId, confirmationPending } =
+          await this.sendDm(
+            recipient,
+            JSON.stringify(payload),
+            undefined,
+            undefined,
+            tokenPayloadMeta,
+          );
         if (!success && !confirmationPending) {
           await this.restoreFailedTokenPayload(tokenPayloadMeta);
         }
@@ -3375,7 +3567,8 @@ export const useMessengerStore = defineStore("messenger", {
 
       try {
         const now = Date.now();
-        const existing = existingRecord ?? (await messengerDb.outbox.get(localId));
+        const existing =
+          existingRecord ?? (await messengerDb.outbox.get(localId));
         const basePayload = {
           content: payloadSource.content,
           text: payloadSource.text,
@@ -3389,7 +3582,9 @@ export const useMessengerStore = defineStore("messenger", {
               ...existing,
               status: "queued",
               payload: { ...existing.payload, ...basePayload },
-              relays: Array.isArray(meta.relays) ? meta.relays.slice() : existing.relays,
+              relays: Array.isArray(meta.relays)
+                ? meta.relays.slice()
+                : existing.relays,
               nextAttemptAt: now,
               lastError: null,
               relayResults: {},
@@ -3405,7 +3600,9 @@ export const useMessengerStore = defineStore("messenger", {
               nextAttemptAt: now,
               attemptCount: 0,
               payload: { ...basePayload },
-              relays: Array.isArray(meta.relays) ? meta.relays.slice() : undefined,
+              relays: Array.isArray(meta.relays)
+                ? meta.relays.slice()
+                : undefined,
               lastError: null,
               relayResults: {},
               ackCount: 0,
@@ -3416,7 +3613,10 @@ export const useMessengerStore = defineStore("messenger", {
             };
         await upsertOutbox(nextRecord);
         meta.attempt = (nextRecord.attemptCount ?? 0) + 1;
-        emitDmCounter("dm_retry", { localId: meta.localId, attempt: meta.attempt });
+        emitDmCounter("dm_retry", {
+          localId: meta.localId,
+          attempt: meta.attempt,
+        });
         void this.outboxPump();
         return {
           success: true,
@@ -3426,7 +3626,8 @@ export const useMessengerStore = defineStore("messenger", {
           eventId: nextRecord.messageId ?? null,
         };
       } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err ?? "error");
+        const reason =
+          err instanceof Error ? err.message : String(err ?? "error");
         this.markLocalEchoFailed(msg, meta, reason);
         notifyError(`Failed to queue DM retry: ${reason}`);
         return { success: false, event: null };
@@ -3452,20 +3653,27 @@ export const useMessengerStore = defineStore("messenger", {
       msg.relayResults = {};
       this.scheduleLocalEcho(meta, msg);
       meta.attempt += 1;
-      emitDmCounter("dm_retry", { localId: meta.localId, attempt: meta.attempt });
+      emitDmCounter("dm_retry", {
+        localId: meta.localId,
+        attempt: meta.attempt,
+      });
       return await this.executeSendWithMeta({
         msg,
         meta,
         recipient: msg.pubkey,
-        safeMessage: payload.content,
+        contentToSend: payload.content,
+        textContent: payload.text ?? msg.content,
         attachment: payload.attachment,
         tokenPayload: payload.tokenPayload,
+        filesPayload: payload.filesPayload,
         relayTargets: meta.relays,
       });
     },
     async outboxRetryAll(): Promise<number> {
       if (!this.outboxEnabled) {
-        const queue = Array.isArray(this.sendQueue) ? this.sendQueue.slice() : [];
+        const queue = Array.isArray(this.sendQueue)
+          ? this.sendQueue.slice()
+          : [];
         let retried = 0;
         for (const msg of queue) {
           const localId = msg?.localEcho?.localId;
@@ -3490,7 +3698,12 @@ export const useMessengerStore = defineStore("messenger", {
         const localId = record.localId || record.id;
         if (!localId) continue;
         const result = await this.retryOutboxItem(localId, record);
-        if (result && typeof result === "object" && "success" in result && result.success) {
+        if (
+          result &&
+          typeof result === "object" &&
+          "success" in result &&
+          result.success
+        ) {
           retried += 1;
         }
       }
@@ -3508,12 +3721,11 @@ export const useMessengerStore = defineStore("messenger", {
     ): MessengerMessage {
       pubkey = this.normalizeKey(pubkey);
       if (!pubkey) throw new Error("Invalid pubkey");
-      const eventLogRef = this.eventLog as Ref<MessengerMessage[]>;
-      if (!Array.isArray(eventLogRef.value)) {
-        eventLogRef.value = [];
+      if (!Array.isArray(this.eventLog)) {
+        this.eventLog = [];
       }
       const messageId = localEcho?.localId || id || uuidv4();
-      const existingMessage = eventLogRef.value.find((m) => m.id === messageId);
+      const existingMessage = this.eventLog.find((m) => m.id === messageId);
       if (existingMessage) {
         return existingMessage;
       }
@@ -3531,16 +3743,14 @@ export const useMessengerStore = defineStore("messenger", {
         msg.localEcho = localEcho;
         msg.status = localEcho.status;
       }
-      const conversationsRef =
-        this.conversations as Ref<Record<string, MessengerMessage[]>>;
-      let conversationMap = conversationsRef.value;
+      let conversationMap = this.conversations;
       if (
         !conversationMap ||
         typeof conversationMap !== "object" ||
         Array.isArray(conversationMap)
       ) {
         conversationMap = {} as Record<string, MessengerMessage[]>;
-        conversationsRef.value = conversationMap;
+        this.conversations = conversationMap;
       }
       let existingConversation = conversationMap[pubkey];
       if (!Array.isArray(existingConversation)) {
@@ -3550,7 +3760,7 @@ export const useMessengerStore = defineStore("messenger", {
       if (!existingConversation.some((m) => m.id === messageId)) {
         existingConversation.push(msg);
       }
-      eventLogRef.value.push(msg);
+      this.eventLog.push(msg);
       this.registerMessage(msg);
       this.recordMutation();
       void this.persistConversationSnapshot(pubkey);
@@ -3568,7 +3778,10 @@ export const useMessengerStore = defineStore("messenger", {
           timeoutHandle = setTimeout(() => resolve(null), timeoutMs);
         });
         const ndkEvent = (await Promise.race([
-          ndk.fetchEvent({ ids: [targetId] }, { closeOnEose: true, groupable: false }),
+          ndk.fetchEvent(
+            { ids: [targetId] },
+            { closeOnEose: true, groupable: false },
+          ),
           timeoutPromise,
         ])) as NDKEvent | null | undefined;
         if (timeoutHandle) clearTimeout(timeoutHandle);
@@ -3578,9 +3791,15 @@ export const useMessengerStore = defineStore("messenger", {
           this.eventLog.find((m) => m.id === messageId) ||
           this.eventLog.find((m) => m.id === targetId);
         if (!msg) {
-          msg = Object.values(this.localEchoIndex).find((entry) => {
+          msg = Object.values(
+            this.localEchoIndex as Record<string, MessengerMessage>,
+          ).find((entry) => {
             const metaId = entry.localEcho?.eventId;
-            return entry.id === targetId || metaId === targetId || entry.id === messageId;
+            return (
+              entry.id === targetId ||
+              metaId === targetId ||
+              entry.id === messageId
+            );
           });
           if (msg) {
             if (!this.eventLog.some((existing) => existing === msg)) {
@@ -3639,9 +3858,9 @@ export const useMessengerStore = defineStore("messenger", {
         msg = this.eventLog.find((m) => m.id === eventId);
       }
       if (!msg) {
-        msg = Object.values(this.localEchoIndex).find(
-          (entry) => entry.localEcho?.eventId === eventId,
-        );
+        msg = Object.values(
+          this.localEchoIndex as Record<string, MessengerMessage>,
+        ).find((entry) => entry.localEcho?.eventId === eventId);
         if (msg) {
           if (!this.eventLog.some((existing) => existing === msg)) {
             this.eventLog = [...this.eventLog, msg];
@@ -3652,8 +3871,12 @@ export const useMessengerStore = defineStore("messenger", {
         }
       }
       if (!msg) return;
-      const outboundFiles = extractFilesFromContent(event.content || msg.content || "");
-      msg.filesPayload = outboundFiles.length ? outboundFiles : msg.filesPayload;
+      const outboundFiles = extractFilesFromContent(
+        event.content || msg.content || "",
+      );
+      msg.filesPayload = outboundFiles.length
+        ? outboundFiles
+        : msg.filesPayload;
       if (!this.conversations[msg.pubkey]) {
         this.conversations[msg.pubkey] = [];
       }
@@ -3728,10 +3951,14 @@ export const useMessengerStore = defineStore("messenger", {
         );
         return;
       }
-      const decryptResult = await this.tryDecryptIncomingContent(event, context, {
-        plaintext,
-        quiet: Boolean(plaintext),
-      });
+      const decryptResult = await this.tryDecryptIncomingContent(
+        event,
+        context,
+        {
+          plaintext,
+          quiet: Boolean(plaintext),
+        },
+      );
       if (!decryptResult.ok) {
         await this.handlePendingDecryptFailure(
           event,
@@ -3743,7 +3970,10 @@ export const useMessengerStore = defineStore("messenger", {
         );
         return;
       }
-      await this.processDecryptedIncomingMessage(event, decryptResult.plaintext);
+      await this.processDecryptedIncomingMessage(
+        event,
+        decryptResult.plaintext,
+      );
     },
     async processDecryptedIncomingMessage(
       event: NostrEvent,
@@ -3831,7 +4061,12 @@ export const useMessengerStore = defineStore("messenger", {
           const creatorPubkey = sub?.creatorNpub
             ? this.normalizeKey(sub.creatorNpub)
             : "";
-          if (!sub || !senderPubkey || !creatorPubkey || senderPubkey !== creatorPubkey) {
+          if (
+            !sub ||
+            !senderPubkey ||
+            !creatorPubkey ||
+            senderPubkey !== creatorPubkey
+          ) {
             continue;
           }
           const idx = sub.intervals.findIndex(
@@ -3949,7 +4184,10 @@ export const useMessengerStore = defineStore("messenger", {
             const name = primaryFile.name?.trim();
             snippet = name ? `Received file: ${name}` : "Received file";
           } else {
-            const cleaned = stripFileMetaLines(target.content ?? "").slice(0, 40);
+            const cleaned = stripFileMetaLines(target.content ?? "").slice(
+              0,
+              40,
+            );
             if (cleaned) {
               snippet = cleaned;
             }
@@ -3977,14 +4215,19 @@ export const useMessengerStore = defineStore("messenger", {
       const record = this.pendingDecrypts[eventId];
       if (!record) return false;
       const now = Date.now();
-      if (!options.force && record.nextAttemptAt && record.nextAttemptAt > now) {
+      if (
+        !options.force &&
+        record.nextAttemptAt &&
+        record.nextAttemptAt > now
+      ) {
         return false;
       }
       const updated: PendingDmDecryptRecord = {
         ...record,
         attemptCount: (record.attemptCount ?? 0) + 1,
         lastAttemptAt: now,
-        nextAttemptAt: now + computePendingDecryptDelay((record.attemptCount ?? 0) + 1),
+        nextAttemptAt:
+          now + computePendingDecryptDelay((record.attemptCount ?? 0) + 1),
         lastError: null,
       };
       try {
@@ -4019,9 +4262,13 @@ export const useMessengerStore = defineStore("messenger", {
         );
         return false;
       }
-      const decryptResult = await this.tryDecryptIncomingContent(eventClone, context, {
-        quiet: true,
-      });
+      const decryptResult = await this.tryDecryptIncomingContent(
+        eventClone,
+        context,
+        {
+          quiet: true,
+        },
+      );
       if (!decryptResult.ok) {
         await this.handlePendingDecryptFailure(
           eventClone,
@@ -4030,7 +4277,10 @@ export const useMessengerStore = defineStore("messenger", {
         );
         return false;
       }
-      await this.processDecryptedIncomingMessage(eventClone, decryptResult.plaintext);
+      await this.processDecryptedIncomingMessage(
+        eventClone,
+        decryptResult.plaintext,
+      );
       return true;
     },
     async retryAllPendingDecrypts(
@@ -4042,11 +4292,20 @@ export const useMessengerStore = defineStore("messenger", {
       this.pendingDecryptRetryInFlight = true;
       try {
         const now = Date.now();
-        const records = Object.values(this.pendingDecrypts || {});
+        const records = Object.values(
+          (this.pendingDecrypts || {}) as Record<
+            string,
+            PendingDmDecryptRecord
+          >,
+        );
         let success = 0;
         for (const record of records) {
           if (!record?.id) continue;
-          if (!options.force && record.nextAttemptAt && record.nextAttemptAt > now) {
+          if (
+            !options.force &&
+            record.nextAttemptAt &&
+            record.nextAttemptAt > now
+          ) {
             continue;
           }
           const result = await this.retryDecryptMessage(record.id, options);
@@ -4089,7 +4348,10 @@ export const useMessengerStore = defineStore("messenger", {
               try {
                 await handler(event);
               } catch (err) {
-                console.error("[messenger.start] subscription handler failed", err);
+                console.error(
+                  "[messenger.start] subscription handler failed",
+                  err,
+                );
               }
             });
             return sub;
@@ -4202,7 +4464,6 @@ export const useMessengerStore = defineStore("messenger", {
       conversationRelayOff = null;
       this.started = false;
     },
-
 
     createConversation(pubkey: string) {
       pubkey = this.normalizeKey(pubkey);

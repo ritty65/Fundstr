@@ -20,15 +20,50 @@ const notifyMocks = vi.hoisted(() => ({
   notifySuccess: vi.fn(),
 }));
 
+const nostrStoreMock = vi.hoisted(() => ({
+  sendDirectMessageUnified: vi.fn(),
+}));
+
+const dmChatsStoreMock = vi.hoisted(() => ({
+  addOutgoing: vi.fn(),
+}));
+
+const tokenModuleMock = vi.hoisted(() => ({
+  decode: vi.fn((encoded?: string) => ({
+    token: encoded ?? "",
+    proofs: [{ amount: 1, secret: "secret", id: "proof-id" }],
+    mint: "https://mint",
+    unit: "sat",
+    memo: "",
+  })),
+  getProofs: vi.fn((decoded: any) => decoded?.proofs ?? []),
+  getAmount: vi.fn(() => 1),
+  getUnit: vi.fn((decoded: any) => decoded?.unit ?? "sat"),
+  getMint: vi.fn((decoded: any) => decoded?.mint ?? "https://mint"),
+  getMemo: vi.fn((decoded: any) => decoded?.memo ?? ""),
+}));
+
 vi.mock("src/js/notify", () => notifyMocks);
 vi.mock("src/js/notify.ts", () => notifyMocks);
+vi.mock("src/stores/nostr", () => ({
+  useNostrStore: () => nostrStoreMock,
+}));
+vi.mock("src/stores/dmChats", () => ({
+  useDmChatsStore: () => dmChatsStoreMock,
+}));
+vi.mock("src/js/token", () => ({
+  default: tokenModuleMock,
+}));
 
 vi.mock("quasar", async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
     Dialog: { create: vi.fn(() => ({ onOk: vi.fn() })) },
-    QSelect: actual.QSelect ?? { name: "QSelect", template: "<div><slot /></div>" },
+    QSelect: actual.QSelect ?? {
+      name: "QSelect",
+      template: "<div><slot /></div>",
+    },
   };
 });
 
@@ -53,7 +88,16 @@ const notifyError = notifyMocks.notifyError;
 
 const qBtnStub = {
   name: "QBtnStub",
-  props: ["label", "disable", "loading", "icon", "color", "flat", "rounded", "unelevated"],
+  props: [
+    "label",
+    "disable",
+    "loading",
+    "icon",
+    "color",
+    "flat",
+    "rounded",
+    "unelevated",
+  ],
   emits: ["click"],
   template: `
     <button
@@ -110,6 +154,9 @@ function mountSendTokenDialog(options?: {
   showLockInput?: boolean;
   p2pkPubkey?: string;
   activeMintUrl?: string;
+  recipientPubkey?: string;
+  sendViaNostr?: boolean;
+  memo?: string;
 }) {
   const pinia = createTestingPinia({
     createSpy: vi.fn,
@@ -121,7 +168,7 @@ function mountSendTokenDialog(options?: {
         sendData: {
           amount: options?.amount ?? 0,
           historyAmount: null,
-          memo: "",
+          memo: options?.memo ?? "",
           tokens: "",
           tokensBase64: "",
           p2pkPubkey: options?.p2pkPubkey ?? "",
@@ -131,8 +178,8 @@ function mountSendTokenDialog(options?: {
           bucketId: DEFAULT_BUCKET_ID,
           anonymous: false,
         },
-        recipientPubkey: "",
-        sendViaNostr: false,
+        recipientPubkey: options?.recipientPubkey ?? "",
+        sendViaNostr: options?.sendViaNostr ?? false,
       },
       mints: {
         mints: [{}],
@@ -159,7 +206,7 @@ function mountSendTokenDialog(options?: {
       settings: {
         checkSentTokens: false,
         includeFeesInSendAmount: false,
-        nfcEncoding: "", 
+        nfcEncoding: "",
         useNumericKeyboard: false,
       },
       price: {
@@ -190,22 +237,41 @@ function mountSendTokenDialog(options?: {
     },
   };
   (globalThis as any).navigator =
-    (globalThis as any).navigator || ({ permissions: { query: vi.fn() } } as any);
+    (globalThis as any).navigator ||
+    ({ permissions: { query: vi.fn() } } as any);
 
   const walletStore = useWalletStore();
-  walletStore.send = vi.fn().mockResolvedValue({ _: null, sendProofs: [] });
+  walletStore.send = vi.fn().mockResolvedValue({
+    _: null,
+    sendProofs: [{ amount: 1, secret: "secret", id: "proof-id" }],
+  });
   walletStore.coinSelect = vi.fn().mockReturnValue([[]]);
   walletStore.spendableProofs = vi.fn().mockReturnValue([]);
   walletStore.getFeesForProofs = vi.fn().mockReturnValue(0);
   walletStore.onTokenPaid = vi.fn();
-  walletStore.mintWallet = vi.fn().mockReturnValue({});
+  walletStore.mintWallet = vi.fn().mockReturnValue({
+    unit: "sat",
+    mint: {
+      getInfo: vi.fn().mockResolvedValue({ nuts: { 4: { supported: true } } }),
+    },
+  });
   walletStore.checkTokenSpendable = vi.fn().mockReturnValue(true);
   Object.defineProperty(walletStore, "wallet", {
     get: () => ({}),
   });
 
   const tokensStore = useTokensStore();
-  tokensStore.addPendingToken = vi.fn();
+  tokensStore.addPendingToken = vi.fn((payload: any) => ({
+    id: "history-id",
+    status: "pending" as const,
+    amount: payload.amount,
+    date: new Date().toISOString(),
+    token: payload.tokenStr,
+    mint: payload.mint,
+    unit: payload.unit,
+    description: payload.description,
+    bucketId: payload.bucketId,
+  }));
   tokensStore.setTokenPaid = vi.fn();
   tokensStore.deleteToken = vi.fn();
 
@@ -245,8 +311,8 @@ function mountSendTokenDialog(options?: {
         QToggle: qToggleStub,
         "q-btn": qBtnStub,
         QBtn: qBtnStub,
-        "NumericKeyboard": simpleStub,
-        "ChooseMint": simpleStub,
+        NumericKeyboard: simpleStub,
+        ChooseMint: simpleStub,
         "vue-qrcode": simpleStub,
       },
       mocks: {
@@ -259,8 +325,11 @@ function mountSendTokenDialog(options?: {
       },
       config: {
         globalProperties: {
-          formatCurrency: (value: number | null, unit?: string, _forceFiat?: boolean) =>
-            `${value ?? ""}${unit ? ` ${unit}` : ""}`.trim(),
+          formatCurrency: (
+            value: number | null,
+            unit?: string,
+            _forceFiat?: boolean,
+          ) => `${value ?? ""}${unit ? ` ${unit}` : ""}`.trim(),
         },
       },
     },
@@ -273,6 +342,9 @@ describe("SendTokenDialog interactions", () => {
   beforeEach(() => {
     notifyWarning.mockClear();
     notifyError.mockClear();
+    notifyMocks.notifySuccess.mockClear();
+    nostrStoreMock.sendDirectMessageUnified.mockReset();
+    dmChatsStoreMock.addOutgoing.mockReset();
   });
 
   it("warns when trying to send without selecting a mint", async () => {
@@ -282,7 +354,9 @@ describe("SendTokenDialog interactions", () => {
     });
 
     await nextTick();
-    await (wrapper.vm as unknown as { sendTokens: () => Promise<void> }).sendTokens();
+    await (
+      wrapper.vm as unknown as { sendTokens: () => Promise<void> }
+    ).sendTokens();
 
     expect(notifyError).toHaveBeenCalledWith(
       "Select a mint in Wallet before sending.",
@@ -298,7 +372,9 @@ describe("SendTokenDialog interactions", () => {
     });
 
     await nextTick();
-    await (wrapper.vm as unknown as { lockTokens: () => Promise<void> }).lockTokens();
+    await (
+      wrapper.vm as unknown as { lockTokens: () => Promise<void> }
+    ).lockTokens();
 
     expect(notifyError).toHaveBeenCalledWith(
       "Select a mint in Wallet before sending.",
@@ -323,7 +399,9 @@ describe("SendTokenDialog interactions", () => {
       p2pkPubkey: "",
     });
     await nextTick();
-    await (wrapper.vm as unknown as { sendTokens: () => Promise<void> }).sendTokens();
+    await (
+      wrapper.vm as unknown as { sendTokens: () => Promise<void> }
+    ).sendTokens();
 
     expect(notifyWarning).toHaveBeenCalledWith(
       "A public key is required for a locked token.",
@@ -348,5 +426,48 @@ describe("SendTokenDialog interactions", () => {
     expect(store.sendData.anonymous).toBe(false);
     expect(store.recipientPubkey).toBe("");
     expect(store.sendViaNostr).toBe(false);
+  });
+
+  it("persists pending history before a Nostr DM send settles", async () => {
+    nostrStoreMock.sendDirectMessageUnified.mockImplementation(
+      () => new Promise(() => {}),
+    );
+
+    const { wrapper, walletStore } = mountSendTokenDialog({
+      amount: 1,
+      activeBalance: 10,
+      recipientPubkey: "f".repeat(64),
+      sendViaNostr: true,
+      memo: "staging live validation",
+    });
+
+    await nextTick();
+
+    const outcome = await Promise.race([
+      (wrapper.vm as unknown as { sendTokens: () => Promise<void> })
+        .sendTokens()
+        .then(() => "resolved"),
+      new Promise((resolve) => setTimeout(() => resolve("timeout"), 50)),
+    ]);
+
+    expect(outcome).toBe("resolved");
+    expect(useTokensStore().addPendingToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: -1,
+        tokenStr: "serialized",
+        description: "staging live validation",
+      }),
+    );
+    expect(useSendTokensStore().sendData.historyToken).toEqual(
+      expect.objectContaining({
+        id: "history-id",
+        status: "pending",
+        amount: -1,
+        token: "serialized",
+      }),
+    );
+    expect(walletStore.onTokenPaid).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "history-id" }),
+    );
   });
 });

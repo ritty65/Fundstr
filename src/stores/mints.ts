@@ -402,7 +402,12 @@ export const useMintsStore = defineStore("mints", {
         if (!profileStore.mints.length) {
           profileStore.mints = [url];
         }
-        await maybeRepublishNutzapProfile();
+        void maybeRepublishNutzapProfile().catch((error) => {
+          console.warn(
+            "Failed to republish nutzap profile after mint add",
+            error,
+          );
+        });
         return mintToAdd;
       } catch (error) {
         // activation failed, we remove the mint again from local storage
@@ -536,7 +541,10 @@ export const useMintsStore = defineStore("mints", {
       } catch (error: any) {
         console.error(error);
         try {
-          notifyApiError(error, this.t("wallet.mint.notifications.could_not_get_info"));
+          notifyApiError(
+            error,
+            this.t("wallet.mint.notifications.could_not_get_info"),
+          );
         } catch {}
         throw error;
       }
@@ -576,7 +584,10 @@ export const useMintsStore = defineStore("mints", {
       } catch (error: any) {
         console.error(error);
         try {
-          notifyApiError(error, this.t("wallet.mint.notifications.could_not_get_keys"));
+          notifyApiError(
+            error,
+            this.t("wallet.mint.notifications.could_not_get_keys"),
+          );
         } catch {}
         throw error;
       }
@@ -593,7 +604,10 @@ export const useMintsStore = defineStore("mints", {
       } catch (error: any) {
         console.error(error);
         try {
-          notifyApiError(error, this.t("wallet.mint.notifications.could_not_get_keysets"));
+          notifyApiError(
+            error,
+            this.t("wallet.mint.notifications.could_not_get_keysets"),
+          );
         } catch {}
         throw error;
       }
@@ -720,7 +734,10 @@ export const useMintsStore = defineStore("mints", {
         if (state.keysets && state.keysets.length) {
           options.keysets = state.keysets;
         }
-        const wallet = new CashuAuthWallet(new CashuAuthMint(mint.url), options);
+        const wallet = new CashuAuthWallet(
+          new CashuAuthMint(mint.url),
+          options,
+        );
         if (!state.keys?.length || !state.keysets?.length) {
           await wallet.loadMint();
           this.updateMintAuthState(mint.url, (current) => ({
@@ -765,7 +782,10 @@ export const useMintsStore = defineStore("mints", {
           Math.min(Number.isFinite(maxBatch) ? maxBatch : 1, amount),
         );
         try {
-          const proofs = await wallet.mintProofs(batchSize, state.clearAuthToken);
+          const proofs = await wallet.mintProofs(
+            batchSize,
+            state.clearAuthToken,
+          );
           const tokens = proofs.map((p) => getEncodedAuthToken(p));
           this.updateMintAuthState(mint.url, (current) => ({
             ...current,
@@ -797,8 +817,13 @@ export const useMintsStore = defineStore("mints", {
       await this.getAuthWallet(mint);
       const state = this.ensureMintAuthState(mint.url);
       if (!state.tokens.length) {
-        const maxBatch = Number((mint.info as any)?.nuts?.[22]?.bat_max_mint ?? 1);
-        const batch = Math.max(1, Math.min(5, Number.isFinite(maxBatch) ? maxBatch : 1));
+        const maxBatch = Number(
+          (mint.info as any)?.nuts?.[22]?.bat_max_mint ?? 1,
+        );
+        const batch = Math.max(
+          1,
+          Math.min(5, Number.isFinite(maxBatch) ? maxBatch : 1),
+        );
         await this.fetchBlindAuthTokens(mint, batch);
       }
       return true;

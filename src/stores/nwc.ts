@@ -368,10 +368,7 @@ export const useNWCStore = defineStore("nwc", {
       const nostr = useNostrStore();
       replyEvent.content = nip44.encrypt(
         JSON.stringify(result),
-        nip44.utils.getConversationKey(
-          hexToBytes(nostr.privKeyHex),
-          event.author.pubkey,
-        ),
+        nip44.utils.getConversationKey(nostr.privKeyHex, event.author.pubkey),
       );
       replyEvent.tags = [
         ["p", event.author.pubkey],
@@ -552,7 +549,7 @@ export const useNWCStore = defineStore("nwc", {
         const decryptedContent = await nip44.decrypt(
           event.content,
           nip44.utils.getConversationKey(
-            hexToBytes(conn.connectionSecret),
+            conn.connectionSecret,
             conn.walletPublicKey,
           ),
         );

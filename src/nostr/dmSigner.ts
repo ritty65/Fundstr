@@ -1,18 +1,21 @@
 import {
   nip19,
   nip04,
-  nip44,
   finalizeEvent,
   getPublicKey,
   type Event as NostrEvent,
 } from "nostr-tools";
+import { v2 as nip44 } from "nostr-tools/nip44";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import type { DmSignerMode } from "@/config/dm";
 import { useSignerStore } from "@/stores/signer";
 import { useNostrStore } from "@/stores/nostr";
 import { NDKEvent, NDKUser, type NDKSigner } from "@nostr-dev-kit/ndk";
 
-type UnsignedEvent = Omit<NostrEvent, "id" | "sig"> & { id?: string; sig?: string };
+type UnsignedEvent = Omit<NostrEvent, "id" | "sig"> & {
+  id?: string;
+  sig?: string;
+};
 
 export interface DmSigner {
   getPubkeyHex(): Promise<string>;
@@ -73,7 +76,7 @@ export class SoftwareSigner implements DmSigner {
     };
     delete (payload as any).id;
     delete (payload as any).sig;
-    const signed = finalizeEvent(payload as NostrEvent, this.secretHex);
+    const signed = finalizeEvent(payload as NostrEvent, this.secretKey);
     return signed;
   }
 
@@ -86,12 +89,18 @@ export class SoftwareSigner implements DmSigner {
   }
 
   async nip44Encrypt(recipientHex: string, plaintext: string): Promise<string> {
-    const conversationKey = nip44.getConversationKey(this.secretHex, recipientHex);
+    const conversationKey = nip44.utils.getConversationKey(
+      this.secretHex as any,
+      recipientHex,
+    );
     return nip44.encrypt(plaintext, conversationKey);
   }
 
   async nip44Decrypt(peerHex: string, ciphertext: string): Promise<string> {
-    const conversationKey = nip44.getConversationKey(this.secretHex, peerHex);
+    const conversationKey = nip44.utils.getConversationKey(
+      this.secretHex as any,
+      peerHex,
+    );
     return nip44.decrypt(ciphertext, conversationKey);
   }
 }
@@ -101,32 +110,46 @@ class NdkSignerAdapter implements DmSigner {
   private readonly localSecret?: SoftwareSigner;
   private cachedPubkey?: string;
 
-  constructor(options: { signer: NDKSigner; localSecret?: string | null | undefined }) {
+  constructor(options: {
+    signer: NDKSigner;
+    localSecret?: string | null | undefined;
+  }) {
     this.signer = options.signer;
     const secret = options.localSecret?.trim();
     if (secret) {
       try {
         this.localSecret = new SoftwareSigner(secret);
       } catch (err) {
-        console.warn("[NdkSignerAdapter] Failed to initialize local secret", err);
+        console.warn(
+          "[NdkSignerAdapter] Failed to initialize local secret",
+          err,
+        );
       }
     }
   }
 
-  private getNdkEncryptor(): ((recipient: NDKUser, value: string) => Promise<string>) | null {
-    const maybe = (this.signer as unknown as { encrypt?: NDKSigner["encrypt"] }).encrypt;
+  private getNdkEncryptor():
+    | ((recipient: NDKUser, value: string) => Promise<string>)
+    | null {
+    const maybe = (this.signer as unknown as { encrypt?: NDKSigner["encrypt"] })
+      .encrypt;
     if (typeof maybe !== "function") {
       return null;
     }
-    return (recipient: NDKUser, value: string) => maybe.call(this.signer, recipient, value, "nip04");
+    return (recipient: NDKUser, value: string) =>
+      maybe.call(this.signer, recipient, value, "nip04");
   }
 
-  private getNdkDecryptor(): ((sender: NDKUser, value: string) => Promise<string>) | null {
-    const maybe = (this.signer as unknown as { decrypt?: NDKSigner["decrypt"] }).decrypt;
+  private getNdkDecryptor():
+    | ((sender: NDKUser, value: string) => Promise<string>)
+    | null {
+    const maybe = (this.signer as unknown as { decrypt?: NDKSigner["decrypt"] })
+      .decrypt;
     if (typeof maybe !== "function") {
       return null;
     }
-    return (sender: NDKUser, value: string) => maybe.call(this.signer, sender, value, "nip04");
+    return (sender: NDKUser, value: string) =>
+      maybe.call(this.signer, sender, value, "nip04");
   }
 
   private async resolvePubkey(): Promise<string> {
@@ -139,12 +162,15 @@ class NdkSignerAdapter implements DmSigner {
 
     try {
       const user = await this.signer.user();
-      if (user?.hexpubkey) {
-        this.cachedPubkey = user.hexpubkey.toLowerCase();
+      if (user?.pubkey) {
+        this.cachedPubkey = user.pubkey.toLowerCase();
         return this.cachedPubkey;
       }
     } catch (err) {
-      console.warn("[NdkSignerAdapter] Failed to resolve pubkey via signer.user()", err);
+      console.warn(
+        "[NdkSignerAdapter] Failed to resolve pubkey via signer.user()",
+        err,
+      );
     }
 
     const pubkey = (this.signer as unknown as { pubkey?: string }).pubkey;
@@ -208,8 +234,13 @@ class NdkSignerAdapter implements DmSigner {
     }
 
     const signerAny = this.signer as unknown as {
-      nip44Encrypt?: (recipientHex: string, plaintext: string) => Promise<string>;
-      nip44?: { encrypt?: (recipientHex: string, plaintext: string) => Promise<string> };
+      nip44Encrypt?: (
+        recipientHex: string,
+        plaintext: string,
+      ) => Promise<string>;
+      nip44?: {
+        encrypt?: (recipientHex: string, plaintext: string) => Promise<string>;
+      };
     };
 
     if (typeof signerAny.nip44Encrypt === "function") {
@@ -230,7 +261,9 @@ class NdkSignerAdapter implements DmSigner {
 
     const signerAny = this.signer as unknown as {
       nip44Decrypt?: (peerHex: string, ciphertext: string) => Promise<string>;
-      nip44?: { decrypt?: (peerHex: string, ciphertext: string) => Promise<string> };
+      nip44?: {
+        decrypt?: (peerHex: string, ciphertext: string) => Promise<string>;
+      };
     };
 
     if (typeof signerAny.nip44Decrypt === "function") {
@@ -342,14 +375,20 @@ export async function getActiveDmSigner(): Promise<ActiveDmSigner | null> {
       await signer.getPubkeyHex();
       return { mode: "software", signer };
     } catch (err) {
-      console.warn("[dmSigner] Failed to initialize software signer from signer store", err);
+      console.warn(
+        "[dmSigner] Failed to initialize software signer from signer store",
+        err,
+      );
     }
   }
 
   const nostrStore = useNostrStore();
   if (nostrStore?.signer) {
     try {
-      const signer = new NdkSignerAdapter({ signer: nostrStore.signer, localSecret: nostrStore.privKeyHex });
+      const signer = new NdkSignerAdapter({
+        signer: nostrStore.signer as unknown as NDKSigner,
+        localSecret: nostrStore.privKeyHex,
+      });
       await signer.getPubkeyHex();
       return { mode: "software", signer };
     } catch (err) {
@@ -364,7 +403,10 @@ export async function getActiveDmSigner(): Promise<ActiveDmSigner | null> {
       await signer.getPubkeyHex();
       return { mode: "software", signer };
     } catch (err) {
-      console.warn("[dmSigner] Failed to initialize software signer from nostr store", err);
+      console.warn(
+        "[dmSigner] Failed to initialize software signer from nostr store",
+        err,
+      );
     }
   }
 

@@ -566,6 +566,7 @@ export default {
     ...mapWritableState(useCameraStore, ["camera", "hasCamera"]),
     ...mapWritableState(useP2PKStore, ["showP2PKDialog"]),
     ...mapWritableState(useNWCStore, ["showNWCDialog", "nwcEnabled"]),
+    ...mapState(useNostrStore, ["signerType"]),
     pendingPaymentsExist: function () {
       return this.payments.findIndex((payment) => payment.pending) !== -1;
     },
@@ -893,8 +894,8 @@ export default {
       this.registerPWAEventHook();
       this.initializeMnemonic();
 
-      const hasExt = await this.checkNip07Signer();
       if (this.signerType === SignerType.NIP07) {
+        const hasExt = await this.checkNip07Signer();
         if (hasExt) {
           await this.initNip07Signer();
         } else {
@@ -905,11 +906,6 @@ export default {
         }
       } else {
         await this.initSigner();
-        if (this.signerType === SignerType.NIP07 && !hasExt) {
-          this.notifyWarning(
-            this.$t("settings.nostr.signing_extension.not_found"),
-          );
-        }
       }
 
       this.showWelcomePage();
@@ -927,15 +923,29 @@ export default {
   },
   watch: {},
 
-  mounted() {
-    const ndkReady = useNdk();
-    ndkReady.then(() => {
-      this.generateNPCConnection();
-      this.claimAllTokens();
-    });
-    this.initPage();
+  async mounted() {
     this.$nextTick(this.equalizeButtonWidths);
     window.addEventListener("resize", this.equalizeButtonWidths);
+
+    await this.initPage();
+
+    if (this.$route.path !== "/wallet") {
+      return;
+    }
+
+    try {
+      await useNdk();
+      this.generateNPCConnection();
+      this.claimAllTokens();
+    } catch (error) {
+      console.error("Failed to warm wallet Nostr client", error);
+      notifyWarning(
+        "Wallet started with limited Nostr features",
+        error instanceof Error
+          ? error.message
+          : "Background Nostr bootstrap failed.",
+      );
+    }
   },
 
   unmounted: function () {

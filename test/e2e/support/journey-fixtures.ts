@@ -14,12 +14,20 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
 } as const;
 
+async function waitForE2EReady(page: Page, timeout = 10_000): Promise<void> {
+  await page.waitForFunction(
+    () =>
+      typeof (window as any).__FUNDSTR_E2E__?.reset === "function" &&
+      Boolean((window as any).__FUNDSTR_E2E_READY__),
+    null,
+    { timeout },
+  );
+}
+
 export async function bootstrapFundstr(page: Page): Promise<E2EApi> {
   await page.goto("/");
   await page.waitForLoadState("domcontentloaded");
-  await page.waitForFunction(() => Boolean((window as any).__FUNDSTR_E2E__), null, {
-    timeout: 5000,
-  });
+  await waitForE2EReady(page);
   const api = createE2EApi(page);
   await api.reset();
   await api.bootstrap();
@@ -32,7 +40,12 @@ export async function bootstrapAndCompleteOnboarding(
 ): Promise<E2EApi> {
   await resetBrowserState(page);
   const api = await bootstrapFundstr(page);
-  await completeOnboarding(page, options);
+  await api.finishWelcome();
+
+  if (options?.connectMint) {
+    await completeOnboarding(page, options);
+  }
+
   return api;
 }
 
@@ -53,7 +66,10 @@ export async function resetBrowserState(page: Page): Promise<void> {
               (name) =>
                 new Promise<void>((resolve) => {
                   const request = indexedDB.deleteDatabase(name);
-                  request.onsuccess = request.onerror = request.onblocked = () => resolve();
+                  request.onsuccess =
+                    request.onerror =
+                    request.onblocked =
+                      () => resolve();
                 }),
             ),
         );
@@ -82,25 +98,39 @@ export async function installMintCatalogMocks(page: Page): Promise<void> {
 
   const infoResponse = {
     name: "Fundstr Test Mint",
-    pubkey: "02b8733f0c145a6f0f2d62f4aebcb34faad1a4b67d9a45edc2b88416f4a6d80f21",
+    pubkey:
+      "02b8733f0c145a6f0f2d62f4aebcb34faad1a4b67d9a45edc2b88416f4a6d80f21",
     version: "Nutshell 0.16.0",
     description: "Mock mint used for onboarding tests.",
     contact: [{ method: "email", info: "support@mint.test" }],
     nuts: {
       "4": {
         methods: [
-          { method: "bolt11", unit: "sat", min_amount: 1, max_amount: 1_000_000 },
+          {
+            method: "bolt11",
+            unit: "sat",
+            min_amount: 1,
+            max_amount: 1_000_000,
+          },
         ],
         disabled: false,
       },
       "5": {
         methods: [
-          { method: "bolt11", unit: "sat", min_amount: 1, max_amount: 1_000_000 },
+          {
+            method: "bolt11",
+            unit: "sat",
+            min_amount: 1,
+            max_amount: 1_000_000,
+          },
         ],
         disabled: false,
       },
+      "10": { supported: true },
       "7": { supported: true },
       "9": { supported: true },
+      "11": { supported: true },
+      "14": { supported: true },
     },
   } as const;
 
@@ -143,7 +173,10 @@ export async function installMintCatalogMocks(page: Page): Promise<void> {
       return route.fulfill({
         status: 200,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-        body: JSON.stringify({ name: infoResponse.name, version: infoResponse.version }),
+        body: JSON.stringify({
+          name: infoResponse.name,
+          version: infoResponse.version,
+        }),
       });
     }
 
@@ -179,78 +212,97 @@ type CompleteOnboardingOptions = {
   connectMint?: boolean;
   mintLabel?: string;
   mintUrl?: string;
+  setupNostr?: "generate" | "skip";
 };
 
 export async function completeOnboarding(
   page: Page,
   options: CompleteOnboardingOptions = {},
 ): Promise<void> {
-  const { connectMint = false, mintLabel = TEST_MINT_LABEL } = options;
+  const {
+    connectMint = false,
+    mintLabel = TEST_MINT_LABEL,
+    setupNostr = "generate",
+  } = options;
 
   await page.goto("/");
-  await page.waitForFunction(() => Boolean((window as any).__FUNDSTR_E2E__), null, {
-    timeout: 10000,
-  });
+  await waitForE2EReady(page);
   await expect(page).toHaveURL(/welcome/);
 
-  await clickWelcomeNext(page);
+  let handledNostr = false;
+  let handledMints = false;
 
-  const generateKeyButton = page.getByRole("button", { name: /Generate new key/i });
-  if (await generateKeyButton.isVisible()) {
-    await expect(generateKeyButton).toBeEnabled();
-    await generateKeyButton.click();
-  }
-
-  const backupDialog = page.getByRole("dialog").filter({ hasText: /Backup your Nostr secret/i });
-  if (await backupDialog.isVisible()) {
-    const backupInput = backupDialog.getByRole("textbox");
-    const nsecValue = await backupInput.inputValue();
-    expect(nsecValue).toMatch(/^nsec1[0-9a-z]+$/);
-    await backupDialog.getByRole("button", { name: "Got it" }).click();
-    await expect(backupDialog).not.toBeVisible();
-  }
-
-  await clickWelcomeNext(page);
-  await clickWelcomeNext(page);
-
-  const backupAcknowledgement = page.getByLabel(/I understand I must back up my recovery\/seed\./i);
-  if (await backupAcknowledgement.isVisible()) {
-    await expect(backupAcknowledgement).toBeVisible({ timeout: 5000 });
-    await backupAcknowledgement.check({ force: true });
-  }
-
-  await clickWelcomeNext(page);
-
-  const browseMintsButton = page.getByTestId("welcome-mints-browse");
-  if (connectMint && (await browseMintsButton.isVisible())) {
-    await expect(browseMintsButton).toBeEnabled();
-    await browseMintsButton.click();
-    const catalogDialog = page.getByTestId("welcome-mints-dialog");
-    await expect(catalogDialog).toBeVisible();
-    const mintOption = catalogDialog
-      .getByTestId(/welcome-mint-option-/)
-      .filter({ hasText: mintLabel });
-    await expect(mintOption.first()).toBeVisible();
-    await mintOption.first().click();
-    await expect(page.getByText(TEST_MINT_URL)).toBeVisible();
-    await clickWelcomeNext(page);
-  } else {
-    if (await browseMintsButton.isVisible()) {
-      await clickWelcomeNext(page);
+  for (let step = 0; step < 10 && page.url().includes("/welcome"); step += 1) {
+    const finishButton = page.getByRole("button", {
+      name: /Finish|Start using wallet/i,
+    });
+    if (await finishButton.isVisible()) {
+      await finishButton.click();
+      break;
     }
+
+    const generateKeyButton = page.getByRole("button", {
+      name: /Generate new key/i,
+    });
+    if (!handledNostr && (await generateKeyButton.isVisible())) {
+      handledNostr = true;
+      if (setupNostr === "generate") {
+        await expect(generateKeyButton).toBeEnabled();
+        await generateKeyButton.click();
+
+        const backupDialog = page
+          .getByRole("dialog")
+          .filter({ hasText: /Backup your Nostr secret/i });
+        if (await backupDialog.isVisible()) {
+          const backupInput = backupDialog.getByRole("textbox");
+          const nsecValue = await backupInput.inputValue();
+          expect(nsecValue).toMatch(/^nsec1[0-9a-z]+$/);
+          await backupDialog.getByRole("button", { name: "Got it" }).click();
+          await expect(backupDialog).not.toBeVisible();
+        }
+      }
+    }
+
+    const backupAcknowledgement = page.getByLabel(
+      /I understand I must back up my recovery\/seed\./i,
+    );
+    if (await backupAcknowledgement.isVisible()) {
+      await backupAcknowledgement.check({ force: true });
+    }
+
+    const browseMintsButton = page.getByTestId("welcome-mints-browse");
+    if (!handledMints && (await browseMintsButton.isVisible())) {
+      handledMints = true;
+      if (connectMint) {
+        await expect(browseMintsButton).toBeEnabled();
+        await browseMintsButton.click();
+        const catalogDialog = page.getByTestId("welcome-mints-dialog");
+        await expect(catalogDialog).toBeVisible();
+        const mintOption = catalogDialog
+          .getByTestId(/welcome-mint-option-/)
+          .filter({ hasText: mintLabel });
+        await expect(mintOption.first()).toBeVisible();
+        await mintOption.first().click();
+        await expect(page.getByText(TEST_MINT_URL)).toBeVisible();
+      }
+    }
+
+    const tosCheckbox = page.getByLabel(/I accept the Terms of Service\./i);
+    if (await tosCheckbox.isVisible()) {
+      await tosCheckbox.check({ force: true });
+    }
+
+    await clickWelcomeNext(page);
   }
 
-  const tosCheckbox = page.getByLabel(/I accept the Terms of Service\./i);
-  if (await tosCheckbox.isVisible()) {
-    await tosCheckbox.click();
-  }
-
-  await clickWelcomeNext(page);
-  await clickWelcomeNext(page);
-
-  const finishButton = page.getByRole("button", { name: /Finish|Start using wallet/i });
-  if (await finishButton.isVisible()) {
-    await finishButton.click();
+  if (page.url().includes("/welcome")) {
+    await page.waitForFunction(
+      () =>
+        typeof (window as any).__FUNDSTR_E2E__?.finishWelcome === "function",
+      null,
+      { timeout: 15000 },
+    );
+    await page.evaluate(() => (window as any).__FUNDSTR_E2E__.finishWelcome());
   }
 
   if (!page.url().includes("/about")) {
@@ -275,16 +327,22 @@ export async function clickWelcomeNext(page: Page): Promise<void> {
       welcomeState.termsAccepted = true;
     }
   });
-  const backupAck = page.getByRole("checkbox", { name: /I understand I must back up my recovery\/seed\./i });
+  const backupAck = page.getByRole("checkbox", {
+    name: /I understand I must back up my recovery\/seed\./i,
+  });
   if ((await backupAck.count()) > 0 && (await backupAck.isVisible())) {
     await backupAck.check({ force: true });
   }
-  const tosAck = page.getByRole("checkbox", { name: /I accept the Terms of Service\./i });
+  const tosAck = page.getByRole("checkbox", {
+    name: /I accept the Terms of Service\./i,
+  });
   if ((await tosAck.count()) > 0 && (await tosAck.isVisible())) {
     await tosAck.check({ force: true });
   }
   await page.evaluate(() => {
-    const el = document.querySelector('[data-testid="welcome-next"]') as HTMLButtonElement | null;
+    const el = document.querySelector(
+      '[data-testid="welcome-next"]',
+    ) as HTMLButtonElement | null;
     if (el) {
       el.disabled = false;
       el.removeAttribute("aria-disabled");
@@ -306,7 +364,9 @@ export async function clickWelcomeNext(page: Page): Promise<void> {
 }
 
 export async function openMainMenu(page: Page): Promise<void> {
-  await page.getByRole("button", { name: /Toggle navigation/i }).click();
+  const button = page.locator('button[aria-label="Toggle navigation"]');
+  await expect(button).toBeVisible({ timeout: 15_000 });
+  await button.click();
 }
 
 export async function openWallet(page: Page): Promise<void> {
@@ -315,7 +375,9 @@ export async function openWallet(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/wallet/);
 }
 
-export async function installDeterministicRelayMocks(page: Page): Promise<void> {
+export async function installDeterministicRelayMocks(
+  page: Page,
+): Promise<void> {
   await page.addInitScript(() => {
     const BASE_TIMESTAMP = 1_700_000_000;
     const sockets = new Set<any>();
@@ -357,15 +419,21 @@ export async function installDeterministicRelayMocks(page: Page): Promise<void> 
 
       if (Array.isArray(filter.authors) && filter.authors.length) {
         const normalizedAuthors = filter.authors
-          .map((entry: any) => (typeof entry === "string" ? entry.toLowerCase() : ""))
+          .map((entry: any) =>
+            typeof entry === "string" ? entry.toLowerCase() : "",
+          )
           .filter((entry: string) => entry);
-        if (!normalizedAuthors.includes(String(event.pubkey || "").toLowerCase())) {
+        if (
+          !normalizedAuthors.includes(String(event.pubkey || "").toLowerCase())
+        ) {
           return false;
         }
       }
 
       if (Array.isArray(filter["#d"]) && filter["#d"].length) {
-        const desired = filter["#d"].filter((entry: any) => typeof entry === "string");
+        const desired = filter["#d"].filter(
+          (entry: any) => typeof entry === "string",
+        );
         const tagValues = Array.isArray(event.tags)
           ? event.tags
               .filter((tag: any) => Array.isArray(tag) && tag[0] === "d")
@@ -395,7 +463,9 @@ export async function installDeterministicRelayMocks(page: Page): Promise<void> 
       for (const filter of filters) {
         let collected = 0;
         const limit =
-          typeof filter?.limit === "number" && filter.limit > 0 ? filter.limit : Infinity;
+          typeof filter?.limit === "number" && filter.limit > 0
+            ? filter.limit
+            : Infinity;
         for (const event of publishedEvents) {
           if (matchesFilter(event, filter)) {
             results.push(cloneEvent(event));
@@ -411,7 +481,10 @@ export async function installDeterministicRelayMocks(page: Page): Promise<void> 
 
     function broadcastEvent(event: any) {
       for (const socket of sockets) {
-        const subscriptionEntries = (socket as any)._subscriptions as Map<string, any[]>;
+        const subscriptionEntries = (socket as any)._subscriptions as Map<
+          string,
+          any[]
+        >;
         for (const [subId, filters] of subscriptionEntries.entries()) {
           if (matchesAnyFilter(event, filters)) {
             const payload = JSON.stringify(["EVENT", subId, cloneEvent(event)]);
@@ -425,7 +498,9 @@ export async function installDeterministicRelayMocks(page: Page): Promise<void> 
 
     function pushEvent(event: any) {
       const normalized = normalizeEvent(event);
-      const existingIndex = publishedEvents.findIndex((entry) => entry.id === normalized.id);
+      const existingIndex = publishedEvents.findIndex(
+        (entry) => entry.id === normalized.id,
+      );
       if (existingIndex >= 0) {
         publishedEvents[existingIndex] = normalized;
       } else {
@@ -523,7 +598,12 @@ export async function installDeterministicRelayMocks(page: Page): Promise<void> 
               pushEvent(event);
               setTimeout(() => {
                 this._emit("message", {
-                  data: JSON.stringify(["OK", event.id ?? publishedEvents.at(-1)?.id, true, "accepted"]),
+                  data: JSON.stringify([
+                    "OK",
+                    event.id ?? publishedEvents.at(-1)?.id,
+                    true,
+                    "accepted",
+                  ]),
                 });
               }, 5);
             }
@@ -536,11 +616,15 @@ export async function installDeterministicRelayMocks(page: Page): Promise<void> 
               const events = queryEvents(filters);
               for (const event of events) {
                 setTimeout(() => {
-                  this._emit("message", { data: JSON.stringify(["EVENT", subId, event]) });
+                  this._emit("message", {
+                    data: JSON.stringify(["EVENT", subId, event]),
+                  });
                 }, 5);
               }
               setTimeout(() => {
-                this._emit("message", { data: JSON.stringify(["EOSE", subId]) });
+                this._emit("message", {
+                  data: JSON.stringify(["EOSE", subId]),
+                });
               }, 10);
             }
             return;
@@ -584,15 +668,18 @@ export async function installDeterministicRelayMocks(page: Page): Promise<void> 
             ? template.created_at
             : BASE_TIMESTAMP + eventCounter;
         const tags = Array.isArray(template?.tags)
-          ? template.tags.map((tag: any) => (Array.isArray(tag) ? [...tag] : tag))
+          ? template.tags.map((tag: any) =>
+              Array.isArray(tag) ? [...tag] : tag,
+            )
           : [];
         return {
-          id: `e2e-signed-${String(eventCounter).padStart(6, "0")}`,
+          id: eventCounter.toString(16).padStart(64, "0"),
           pubkey: signerPubkey,
           created_at: createdAt,
           kind: typeof template?.kind === "number" ? template.kind : 1,
           tags,
-          content: typeof template?.content === "string" ? template.content : "",
+          content:
+            typeof template?.content === "string" ? template.content : "",
           sig: "c".repeat(128),
         };
       },
@@ -664,12 +751,17 @@ export async function installDeterministicRelayMocks(page: Page): Promise<void> 
           headers: { "Content-Type": "application/json" },
         });
       }
-      return originalFetch ? originalFetch(input as any, init) : Promise.resolve(new Response(null));
+      return originalFetch
+        ? originalFetch(input as any, init)
+        : Promise.resolve(new Response(null));
     };
   });
 }
 
-export async function seedRelayEvent(page: Page, event: Record<string, unknown>): Promise<void> {
+export async function seedRelayEvent(
+  page: Page,
+  event: Record<string, unknown>,
+): Promise<void> {
   await page.evaluate((payload) => {
     const relay = (window as any).__FUNDSTR_E2E_RELAY__;
     if (!relay || typeof relay.seedEvent !== "function") {
@@ -678,4 +770,3 @@ export async function seedRelayEvent(page: Page, event: Record<string, unknown>)
     relay.seedEvent(payload);
   }, event);
 }
-

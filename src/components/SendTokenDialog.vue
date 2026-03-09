@@ -621,7 +621,8 @@
     </q-card>
   </q-dialog>
 </template>
-<script lang="ts">import windowMixin from 'src/mixins/windowMixin'
+<script lang="ts">
+import windowMixin from "src/mixins/windowMixin";
 import { defineComponent } from "vue";
 
 import { useClipboard } from "src/composables/useClipboard";
@@ -1001,8 +1002,7 @@ export default defineComponent({
           errObj?.error ??
           "";
         return {
-          message:
-            typeof messageCandidate === "string" ? messageCandidate : "",
+          message: typeof messageCandidate === "string" ? messageCandidate : "",
           status,
           code,
         };
@@ -1010,24 +1010,19 @@ export default defineComponent({
 
       return { message: "" };
     },
-    handleSendFailure(
-      context: "lock" | "send",
-      error: unknown,
-    ) {
+    handleSendFailure(context: "lock" | "send", error: unknown) {
       const { message, status, code } = this.extractErrorDetails(error);
       const defaultMessage =
         context === "lock"
           ? "Failed to lock tokens."
           : "Failed to send tokens.";
-      const trimmedMessage =
-        typeof message === "string" ? message.trim() : "";
+      const trimmedMessage = typeof message === "string" ? message.trim() : "";
       const shouldSuggestMintChange =
         typeof status === "number" && status >= 500;
-      const guidance =
-        "Try switching to a mint that supports splitting.";
-      const displayMessage = `${
-        trimmedMessage || defaultMessage
-      }${shouldSuggestMintChange ? ` ${guidance}` : ""}`;
+      const guidance = "Try switching to a mint that supports splitting.";
+      const displayMessage = `${trimmedMessage || defaultMessage}${
+        shouldSuggestMintChange ? ` ${guidance}` : ""
+      }`;
       const mintUrl = this.activeMintUrl ?? "unknown";
       const statusParts = [
         typeof status === "number" ? `status ${status}` : null,
@@ -1039,7 +1034,11 @@ export default defineComponent({
         error,
       );
 
-      if (error instanceof Error && trimmedMessage && !shouldSuggestMintChange) {
+      if (
+        error instanceof Error &&
+        trimmedMessage &&
+        !shouldSuggestMintChange
+      ) {
         notifyApiError(error);
         return;
       }
@@ -1069,6 +1068,60 @@ export default defineComponent({
 
       return recipient;
     },
+    async sendTokenDirectMessage(
+      recipientPubkey: string,
+      payload: {
+        token: string;
+        amount: number;
+        unlockTime: number | null;
+        bucketId: string;
+        referenceId: string;
+      },
+    ) {
+      const recipient = this.resolveRecipientPubkey(recipientPubkey);
+      if (!recipient) {
+        return;
+      }
+
+      try {
+        const dmContent = JSON.stringify(payload);
+        const { success, event } =
+          await useNostrStore().sendDirectMessageUnified(recipient, dmContent);
+        if (success && event) {
+          useDmChatsStore().addOutgoing(event);
+          Dialog.create({
+            message: this.$t("wallet.notifications.nostr_dm_sent") as string,
+          });
+        } else {
+          Dialog.create({
+            message: this.$t("wallet.notifications.nostr_dm_failed") as string,
+          });
+        }
+      } catch (error) {
+        console.error(error);
+        Dialog.create({
+          message: this.$t("wallet.notifications.nostr_dm_failed") as string,
+        });
+      }
+    },
+    queueTokenDirectMessage(payload: {
+      token: string;
+      amount: number;
+      unlockTime: number | null;
+      bucketId: string;
+      referenceId: string;
+    }) {
+      if (!this.sendViaNostr || !this.recipientPubkey) {
+        return;
+      }
+
+      const recipientPubkey = this.recipientPubkey;
+      this.recipientPubkey = "";
+      this.sendViaNostr = false;
+      this.sendData.memo = "";
+
+      void this.sendTokenDirectMessage(recipientPubkey, payload);
+    },
     async sendDonationNotification(
       amount: number,
       rail: DonationRail,
@@ -1084,8 +1137,7 @@ export default defineComponent({
       const sendViaNostr =
         options?.sendViaNostr ?? (this.sendViaNostr as boolean | undefined);
       const memo = options?.memo ?? this.sendData.memo;
-      const anonymous =
-        options?.anonymous ?? (this.sendData.anonymous ?? false);
+      const anonymous = options?.anonymous ?? this.sendData.anonymous ?? false;
 
       if (!sendViaNostr || !recipientPubkey || this.offline) {
         return;
@@ -1118,15 +1170,11 @@ export default defineComponent({
             useDmChatsStore().addOutgoing(event);
           }
           notifySuccess(
-            this.$t(
-              "FindCreators.notifications.donation_dm_sent",
-            ) as string,
+            this.$t("FindCreators.notifications.donation_dm_sent") as string,
           );
         } else {
           notifyError(
-            this.$t(
-              "FindCreators.notifications.donation_dm_failed",
-            ) as string,
+            this.$t("FindCreators.notifications.donation_dm_failed") as string,
           );
         }
       } catch (error) {
@@ -1415,63 +1463,6 @@ export default defineComponent({
           memo: this.sendData.memo,
           anonymous: this.sendData.anonymous ?? false,
         };
-        if (this.sendViaNostr && this.recipientPubkey) {
-          try {
-            let recipient = this.recipientPubkey;
-            if (
-              recipient.startsWith("npub") ||
-              recipient.startsWith("nprofile")
-            ) {
-              try {
-                const decoded = nip19.decode(recipient);
-                recipient =
-                  decoded.type === "npub"
-                    ? (decoded.data as string)
-                    : (decoded.data as ProfilePointer).pubkey;
-              } catch (e) {
-                console.error(e);
-              }
-            }
-            const payload = {
-              token: this.sendData.tokensBase64,
-              amount: this.sendData.amount * this.activeUnitCurrencyMultiplyer,
-              unlockTime: this.sendData.locktime || null,
-              bucketId: this.sendData.bucketId,
-              referenceId: this.sendData.historyToken?.id || "",
-            };
-            const dmContent = JSON.stringify(payload);
-            const { success, event } =
-              await useNostrStore().sendDirectMessageUnified(
-                recipient,
-                dmContent,
-              );
-            if (success && event) {
-              useDmChatsStore().addOutgoing(event);
-              Dialog.create({
-                message: this.$t(
-                  "wallet.notifications.nostr_dm_sent",
-                ) as string,
-              });
-            } else {
-              Dialog.create({
-                message: this.$t(
-                  "wallet.notifications.nostr_dm_failed",
-                ) as string,
-              });
-            }
-          } catch (e) {
-            console.error(e);
-            Dialog.create({
-              message: this.$t(
-                "wallet.notifications.nostr_dm_failed",
-              ) as string,
-            });
-          } finally {
-            this.recipientPubkey = "";
-            this.sendViaNostr = false;
-            this.sendData.memo = "";
-          }
-        }
         useLockedTokensStore().addLockedToken({
           amount: sendAmount,
           token: this.sendData.tokensBase64,
@@ -1481,16 +1472,27 @@ export default defineComponent({
           bucketId,
         });
         const historyToken = {
-          amount: -this.sendData.amount,
+          amount: -sendAmount,
           token: this.sendData.tokensBase64,
           unit: this.activeUnit,
           mint: this.activeMintUrl,
           label: "",
           description: this.sendData.memo || "",
           bucketId,
+          status: "pending",
         };
-        this.addPendingToken({ ...historyToken, tokenStr: historyToken.token });
-        this.sendData.historyToken = historyToken;
+        const persistedHistoryToken = this.addPendingToken({
+          ...historyToken,
+          tokenStr: historyToken.token,
+        });
+        this.sendData.historyToken = persistedHistoryToken;
+        this.queueTokenDirectMessage({
+          token: this.sendData.tokensBase64,
+          amount: sendAmount,
+          unlockTime: this.sendData.locktime || null,
+          bucketId,
+          referenceId: persistedHistoryToken.id || "",
+        });
         Dialog.create({
           message: this.$t(
             "FindCreators.notifications.donation_sent",
@@ -1506,8 +1508,12 @@ export default defineComponent({
         });
 
         if (!this.offline) {
-          void this.sendDonationNotification(sendAmount, "cashu", donationContext);
-          this.onTokenPaid(historyToken);
+          void this.sendDonationNotification(
+            sendAmount,
+            "cashu",
+            donationContext,
+          );
+          void this.onTokenPaid(persistedHistoryToken);
         }
       } catch (error) {
         this.handleSendFailure("lock", error);
@@ -1525,7 +1531,6 @@ export default defineComponent({
 
       this.showNumericKeyboard = false;
       const p2pkInput = this.sendData.p2pkPubkey;
-      let nostrDm = false;
       if (
         p2pkInput &&
         (p2pkInput.startsWith("npub1") || p2pkInput.startsWith("nprofile1"))
@@ -1538,7 +1543,6 @@ export default defineComponent({
             this.recipientPubkey = (decoded.data as ProfilePointer).pubkey;
           }
           this.sendViaNostr = true;
-          nostrDm = true;
         } catch (e) {
           console.error(e);
         }
@@ -1601,63 +1605,6 @@ export default defineComponent({
           memo: this.sendData.memo,
           anonymous: this.sendData.anonymous ?? false,
         };
-        if (this.sendViaNostr && this.recipientPubkey) {
-          try {
-            let recipient = this.recipientPubkey;
-            if (
-              recipient.startsWith("npub") ||
-              recipient.startsWith("nprofile")
-            ) {
-              try {
-                const decoded = nip19.decode(recipient);
-                recipient =
-                  decoded.type === "npub"
-                    ? (decoded.data as string)
-                    : (decoded.data as ProfilePointer).pubkey;
-              } catch (e) {
-                console.error(e);
-              }
-            }
-            const payload2 = {
-              token: this.sendData.tokensBase64,
-              amount: this.sendData.amount * this.activeUnitCurrencyMultiplyer,
-              unlockTime: this.sendData.locktime || null,
-              bucketId: this.sendData.bucketId,
-              referenceId: this.sendData.historyToken?.id || "",
-            };
-            const dmContent2 = JSON.stringify(payload2);
-            const { success, event } =
-              await useNostrStore().sendDirectMessageUnified(
-                recipient,
-                dmContent2,
-              );
-            if (success && event) {
-              useDmChatsStore().addOutgoing(event);
-              Dialog.create({
-                message: this.$t(
-                  "wallet.notifications.nostr_dm_sent",
-                ) as string,
-              });
-            } else {
-              Dialog.create({
-                message: this.$t(
-                  "wallet.notifications.nostr_dm_failed",
-                ) as string,
-              });
-            }
-          } catch (e) {
-            console.error(e);
-            Dialog.create({
-              message: this.$t(
-                "wallet.notifications.nostr_dm_failed",
-              ) as string,
-            });
-          } finally {
-            this.recipientPubkey = "";
-            this.sendViaNostr = false;
-            this.sendData.memo = "";
-          }
-        }
         this.sendData.historyAmount =
           -this.sendData.amount * this.activeUnitCurrencyMultiplyer;
 
@@ -1672,12 +1619,22 @@ export default defineComponent({
           description: this.sendData.memo || "",
           bucketId,
         };
-        this.addPendingToken({ ...historyToken, tokenStr: historyToken.token });
-        this.sendData.historyToken = historyToken;
+        const persistedHistoryToken = this.addPendingToken({
+          ...historyToken,
+          tokenStr: historyToken.token,
+        });
+        this.sendData.historyToken = persistedHistoryToken;
+        this.queueTokenDirectMessage({
+          token: this.sendData.tokensBase64,
+          amount: sendAmount,
+          unlockTime: this.sendData.locktime || null,
+          bucketId,
+          referenceId: persistedHistoryToken.id || "",
+        });
 
         if (!this.offline) {
           void this.sendDonationNotification(sendAmount, rail, donationContext);
-          this.onTokenPaid(historyToken);
+          void this.onTokenPaid(persistedHistoryToken);
         }
       } catch (error) {
         this.handleSendFailure("send", error);

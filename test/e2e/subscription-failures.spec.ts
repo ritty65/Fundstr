@@ -3,13 +3,16 @@ import { test, expect, type Page } from "@playwright/test";
 const setContentWithOrigin = async (
   page: Page,
   html: string,
-  url = "https://fundstr.test/subscriptions"
+  url = "/subscriptions",
 ) => {
-  await page.setContent(html, { url });
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+  await page.setContent(html);
 };
 
 test.describe("subscription failure handling", () => {
-  test("queues failed DMs and drains after relay recovery", async ({ page }) => {
+  test("queues failed DMs and drains after relay recovery", async ({
+    page,
+  }) => {
     await page.addInitScript(() => {
       class MockSocket {
         url: string;
@@ -30,7 +33,9 @@ test.describe("subscription failure handling", () => {
               return;
             }
             setTimeout(() => {
-              this.onmessage?.({ data: JSON.stringify(["OK", parsed?.[1]?.id ?? "evt"]) } as MessageEvent);
+              this.onmessage?.({
+                data: JSON.stringify(["OK", parsed?.[1]?.id ?? "evt"]),
+              } as MessageEvent);
             }, 0);
           } catch (err) {
             setTimeout(() => this.onerror?.(new Event("error")), 0);
@@ -44,7 +49,9 @@ test.describe("subscription failure handling", () => {
       (window as any).WebSocket = MockSocket as any;
     });
 
-    await setContentWithOrigin(page, `
+    await setContentWithOrigin(
+      page,
+      `
       <button id="subscribe">Subscribe</button>
       <script>
         localStorage.clear();
@@ -84,14 +91,20 @@ test.describe("subscription failure handling", () => {
           sendDm();
         };
       </script>
-    `);
+    `,
+    );
 
     await page.click("#subscribe");
     await page.waitForFunction(() => {
-      return JSON.parse(localStorage.getItem('cashu.cashu.sendQueue') || '[]').length === 1;
+      return (
+        JSON.parse(localStorage.getItem("cashu.cashu.sendQueue") || "[]")
+          .length === 1
+      );
     });
 
-    const balanceAfterFailure = await page.evaluate(() => localStorage.getItem('cashu.wallet.balance'));
+    const balanceAfterFailure = await page.evaluate(() =>
+      localStorage.getItem("cashu.wallet.balance"),
+    );
     expect(balanceAfterFailure).toBe("400");
 
     await page.evaluate(() => {
@@ -100,17 +113,28 @@ test.describe("subscription failure handling", () => {
     });
 
     await page.waitForFunction(() => {
-      return JSON.parse(localStorage.getItem('cashu.cashu.sendQueue') || '[]').length === 0;
+      return (
+        JSON.parse(localStorage.getItem("cashu.cashu.sendQueue") || "[]")
+          .length === 0
+      );
     });
 
-    const finalQueue = await page.evaluate(() => localStorage.getItem('cashu.cashu.sendQueue'));
+    const finalQueue = await page.evaluate(() =>
+      localStorage.getItem("cashu.cashu.sendQueue"),
+    );
     expect(finalQueue).toBe("[]");
-    const finalBalance = await page.evaluate(() => localStorage.getItem('cashu.wallet.balance'));
+    const finalBalance = await page.evaluate(() =>
+      localStorage.getItem("cashu.wallet.balance"),
+    );
     expect(finalBalance).toBe("400");
   });
 
-  test("double click subscription charges once and records single lock", async ({ page }) => {
-    await setContentWithOrigin(page, `
+  test("double click subscription charges once and records single lock", async ({
+    page,
+  }) => {
+    await setContentWithOrigin(
+      page,
+      `
       <button id="double">Subscribe</button>
       <script>
         localStorage.clear();
@@ -159,15 +183,20 @@ test.describe("subscription failure handling", () => {
         };
         window.waitReady = () => ready;
       </script>
-    `);
+    `,
+    );
 
     await page.evaluate(() => (window as any).waitReady());
     await page.click("#double", { clickCount: 2 });
     await page.waitForTimeout(50);
 
-    const balance = await page.evaluate(() => localStorage.getItem('wallet.balance'));
+    const balance = await page.evaluate(() =>
+      localStorage.getItem("wallet.balance"),
+    );
     expect(balance).toBe("380");
-    const lockCount = await page.evaluate(() => (window as any).countSubscriptions());
+    const lockCount = await page.evaluate(() =>
+      (window as any).countSubscriptions(),
+    );
     expect(lockCount).toBe(1);
   });
 });

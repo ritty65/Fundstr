@@ -6,7 +6,9 @@ import {
 import { useNostrStore } from "src/stores/nostr";
 import { applyFundstrProfileBundle } from "src/utils/creatorProfileHydration";
 import { isValidTier } from "src/utils/tiers";
+import type { Tier as StoreTier } from "src/stores/types";
 import { useCreatorHub } from "./useCreatorHub";
+import type { Tier as NutzapTier } from "src/nutzap/types";
 
 type HydrationStatus = "idle" | "pending" | "ready" | "error";
 type ProfileUpdateListener = (payload: {
@@ -23,7 +25,10 @@ const HYDRATION_CACHE_MS = 60 * 1000; // 1 minute
 
 const profileUpdateListeners = new Set<ProfileUpdateListener>();
 
-function emitProfileUpdate(pubkey: string, bundle: FundstrProfileBundle | null) {
+function emitProfileUpdate(
+  pubkey: string,
+  bundle: FundstrProfileBundle | null,
+) {
   for (const listener of profileUpdateListeners) {
     listener({ pubkey, bundle });
   }
@@ -32,6 +37,18 @@ function emitProfileUpdate(pubkey: string, bundle: FundstrProfileBundle | null) 
 function onProfileUpdated(listener: ProfileUpdateListener): () => void {
   profileUpdateListeners.add(listener);
   return () => profileUpdateListeners.delete(listener);
+}
+
+function toDraftTier(tier: StoreTier): NutzapTier & { benefits?: string[] } {
+  return {
+    id: tier.id,
+    title: tier.name,
+    price: tier.price_sats,
+    frequency: "monthly",
+    description: tier.description,
+    media: Array.isArray(tier.media) ? [...tier.media] : undefined,
+    benefits: Array.isArray(tier.benefits) ? [...tier.benefits] : undefined,
+  };
 }
 
 export function announceCreatorProfileUpdate(
@@ -88,7 +105,7 @@ export function useCreatorProfileHydration() {
         ? bundle.tiers.filter((tier) => isValidTier(tier))
         : [];
       if (validTiers.length) {
-        creatorHub.replaceTierDrafts(validTiers);
+        creatorHub.replaceTierDrafts(validTiers.map(toDraftTier));
         creatorHub.markTierDraftsClean();
       }
       hydrationStatus.value = "ready";

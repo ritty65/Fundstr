@@ -2,6 +2,30 @@ import { nip04, nip44 } from "nostr-tools";
 
 export type DmProtocol = "nip04" | "nip44";
 
+const nip44Compat = {
+  getConversationKey: (privKeyHex: string | Uint8Array, pubkeyHex: string) => {
+    const legacyGetConversationKey = (nip44 as any)?.getConversationKey;
+    if (typeof legacyGetConversationKey === "function") {
+      return legacyGetConversationKey(privKeyHex, pubkeyHex);
+    }
+    return nip44.v2.utils.getConversationKey(privKeyHex as any, pubkeyHex);
+  },
+  decrypt: (content: string, conversationKey: Uint8Array) => {
+    const legacyDecrypt = (nip44 as any)?.decrypt;
+    if (typeof legacyDecrypt === "function") {
+      return legacyDecrypt(content, conversationKey);
+    }
+    return nip44.v2.decrypt(content, conversationKey);
+  },
+  encrypt: (plaintext: string, conversationKey: Uint8Array) => {
+    const legacyEncrypt = (nip44 as any)?.encrypt;
+    if (typeof legacyEncrypt === "function") {
+      return legacyEncrypt(plaintext, conversationKey);
+    }
+    return nip44.v2.encrypt(plaintext, conversationKey);
+  },
+};
+
 export function isLegacyNip04Ciphertext(content: string): boolean {
   return typeof content === "string" && content.includes("?iv=");
 }
@@ -23,8 +47,11 @@ async function tryNip44Decrypt(
   }
   if (privKeyHex) {
     try {
-      const conversationKey = nip44.getConversationKey(privKeyHex as any, senderHex);
-      return await nip44.decrypt(content, conversationKey);
+      const conversationKey = nip44Compat.getConversationKey(
+        privKeyHex,
+        senderHex,
+      );
+      return await nip44Compat.decrypt(content, conversationKey);
     } catch {}
   }
   return null;
@@ -85,8 +112,11 @@ export async function encryptDM(
 
   if (privKeyHex) {
     try {
-      const conversationKey = nip44.getConversationKey(privKeyHex as any, recipientHex);
-      const content = nip44.encrypt(plaintext, conversationKey);
+      const conversationKey = nip44Compat.getConversationKey(
+        privKeyHex,
+        recipientHex,
+      );
+      const content = await nip44Compat.encrypt(plaintext, conversationKey);
       return { content, protocol: "nip44" };
     } catch {}
   }
@@ -100,7 +130,11 @@ export async function encryptDM(
 
   if (privKeyHex) {
     try {
-      const content = await nip04.encrypt(privKeyHex as any, recipientHex, plaintext);
+      const content = await nip04.encrypt(
+        privKeyHex as any,
+        recipientHex,
+        plaintext,
+      );
       return { content, protocol: "nip04" };
     } catch {}
   }

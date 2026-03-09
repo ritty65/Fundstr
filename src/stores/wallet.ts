@@ -186,7 +186,9 @@ export const useWalletStore = defineStore("wallet", {
     },
     seed(): Uint8Array {
       const mnemonicStore = useMnemonicStore();
-      return mnemonicToSeedSync(mnemonicStore.mnemonic);
+      const mnemonic =
+        mnemonicStore.mnemonic || mnemonicStore.initializeMnemonic();
+      return mnemonicToSeedSync(mnemonic);
     },
   },
   actions: {
@@ -200,7 +202,8 @@ export const useWalletStore = defineStore("wallet", {
     },
     setActiveP2pk(publicKey: string, privateKey = "") {
       const trimmedPub = typeof publicKey === "string" ? publicKey.trim() : "";
-      const trimmedPriv = typeof privateKey === "string" ? privateKey.trim() : "";
+      const trimmedPriv =
+        typeof privateKey === "string" ? privateKey.trim() : "";
       const receiveStore = useReceiveTokensStore();
       const p2pkStore = useP2PKStore();
 
@@ -240,20 +243,24 @@ export const useWalletStore = defineStore("wallet", {
           : [];
         const match = entries.find((entry: any) =>
           entry?.publicKey
-            ? entry.publicKey.trim().toLowerCase() === compressedPub.toLowerCase()
+            ? entry.publicKey.trim().toLowerCase() ===
+              compressedPub.toLowerCase()
             : false,
         );
         if (match?.privateKey) {
           resolvedPriv = match.privateKey.trim();
         } else if (
-          this.activeP2pk?.publicKey?.toLowerCase() === compressedPub.toLowerCase() &&
+          this.activeP2pk?.publicKey?.toLowerCase() ===
+            compressedPub.toLowerCase() &&
           this.activeP2pk?.privateKey
         ) {
           resolvedPriv = this.activeP2pk.privateKey;
         }
       }
 
-      const normalizedPriv = resolvedPriv ? resolvedPriv.trim().toLowerCase() : "";
+      const normalizedPriv = resolvedPriv
+        ? resolvedPriv.trim().toLowerCase()
+        : "";
       const prevPub = (this.activeP2pk?.publicKey ?? "").toLowerCase();
       const prevPriv = (this.activeP2pk?.privateKey ?? "").toLowerCase();
       const changed =
@@ -1359,7 +1366,10 @@ export const useWalletStore = defineStore("wallet", {
         debug("Invoice still pending", invoice.quote);
         if (typeof (error as any)?.message === "string") {
           const message = (error as any).message as string;
-          if (message.toLowerCase().includes("fetch") || message.toLowerCase().includes("network")) {
+          if (
+            message.toLowerCase().includes("fetch") ||
+            message.toLowerCase().includes("network")
+          ) {
             throw new CashuNetworkError(
               "Unable to reach the mint to confirm your invoice. We'll retry when connectivity returns.",
               error,
@@ -1372,6 +1382,7 @@ export const useWalletStore = defineStore("wallet", {
     checkOutgoingInvoice: async function (quote: string, verbose = true) {
       const uIStore = useUiStore();
       const mintStore = useMintsStore();
+      const proofsStore = useProofsStore();
       const invoice = useInvoiceHistoryStore().invoiceHistory.find(
         (i) => i.quote === quote,
       );
