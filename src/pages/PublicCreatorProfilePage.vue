@@ -588,6 +588,8 @@ import {
   type FundstrProfileBundle,
 } from "stores/creators";
 import { useNostrStore, fetchNutzapProfile } from "stores/nostr";
+import { queryNutzapTiers } from "@/nostr/relayClient";
+import { parseTiersContent } from "@/nutzap/profileShared";
 import {
   buildProfileUrl,
   extractCreatorIdentifier,
@@ -1110,6 +1112,18 @@ export default defineComponent({
             : typeof cachedDetails?.p2pkPubkey === "string"
             ? cachedDetails.p2pkPubkey
             : "";
+        const currentDisplayName =
+          typeof profile.value.display_name === "string"
+            ? profile.value.display_name
+            : typeof profile.value.name === "string"
+            ? profile.value.name
+            : "";
+        const currentAbout =
+          typeof profile.value.about === "string" ? profile.value.about : "";
+        const currentPicture =
+          typeof profile.value.picture === "string"
+            ? profile.value.picture
+            : "";
 
         const updates: Record<string, unknown> = {};
         let hasDiff = false;
@@ -1133,6 +1147,40 @@ export default defineComponent({
           updates.p2pkPubkey = relayProfile.p2pkPubkey;
           hasDiff = true;
         }
+        if (
+          typeof relayProfile.display_name === "string" &&
+          relayProfile.display_name.trim() &&
+          relayProfile.display_name.trim() !== currentDisplayName
+        ) {
+          updates.display_name = relayProfile.display_name.trim();
+          hasDiff = true;
+        }
+        if (
+          typeof relayProfile.name === "string" &&
+          relayProfile.name.trim() &&
+          !updates.display_name &&
+          relayProfile.name.trim() !== currentDisplayName
+        ) {
+          updates.name = relayProfile.name.trim();
+          hasDiff = true;
+        }
+        if (
+          typeof relayProfile.about === "string" &&
+          relayProfile.about.trim() &&
+          relayProfile.about.trim() !== currentAbout
+        ) {
+          updates.about = relayProfile.about.trim();
+          hasDiff = true;
+        }
+        if (
+          typeof relayProfile.picture === "string" &&
+          relayProfile.picture.trim() &&
+          relayProfile.picture.trim() !== currentPicture &&
+          isTrustedUrl(relayProfile.picture.trim())
+        ) {
+          updates.picture = relayProfile.picture.trim();
+          hasDiff = true;
+        }
 
         if (Object.keys(updates).length) {
           profile.value = {
@@ -1149,6 +1197,36 @@ export default defineComponent({
 
         if (hasDiff && Array.isArray(bundle?.tiers)) {
           applyBundleTierList(bundle!.tiers);
+        }
+
+        const cachedTierList = creators.tiersMap[creatorHex.value] ?? [];
+        const needsRelayTiers =
+          (!Array.isArray(bundle?.tiers) || bundle!.tiers.length === 0) &&
+          (!Array.isArray(cachedTierList) || cachedTierList.length === 0);
+        if (needsRelayTiers) {
+          try {
+            const relayTierEvent = await queryNutzapTiers(creatorHex.value);
+            const relayTiers = parseTiersContent(relayTierEvent?.content)
+              .map((tier) => ({
+                id: tier.id,
+                name: tier.title,
+                price_sats: tier.price,
+                frequency: tier.frequency,
+                description: tier.description ?? "",
+                media: Array.isArray(tier.media) ? [...tier.media] : [],
+              }))
+              .filter((tier) => typeof tier.id === "string" && tier.id.trim());
+            if (relayTiers.length > 0) {
+              applyBundleTierList(relayTiers);
+              loadingTiers.value = false;
+              creators.tierFetchError = false;
+            }
+          } catch (error) {
+            console.warn(
+              "[creator-profile] Failed to hydrate relay tiers",
+              error,
+            );
+          }
         }
       } catch (error) {
         console.error(

@@ -491,6 +491,7 @@ vi.mock("lucide-vue-next", async () => {
 
 vi.mock("quasar", async () => {
   const { defineComponent, h } = await import("vue");
+  const cookieStore = new Map<string, string>();
   return {
     TouchSwipe: {},
     useQuasar: () => ({
@@ -498,6 +499,22 @@ vi.mock("quasar", async () => {
       screen: { gt: { xs: true }, lt: { md: false } },
     }),
     date: { formatDate: vi.fn((value: any) => value) },
+    LocalStorage: {
+      getItem: vi.fn((key: string) => window.localStorage.getItem(key)),
+      set: vi.fn((key: string, value: string) =>
+        window.localStorage.setItem(key, value),
+      ),
+      remove: vi.fn((key: string) => window.localStorage.removeItem(key)),
+    },
+    Cookies: {
+      get: vi.fn((key: string) => cookieStore.get(key)),
+      set: vi.fn((key: string, value: string) => {
+        cookieStore.set(key, value);
+      }),
+      remove: vi.fn((key: string) => {
+        cookieStore.delete(key);
+      }),
+    },
     QPage: SimpleStub("QPage"),
     QBanner: QBannerStub,
     QBtn: QBtnStub,

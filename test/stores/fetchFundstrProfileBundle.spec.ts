@@ -34,6 +34,8 @@ interface DiscoveryMock {
 
 const queryNutzapTiersMock =
   vi.fn<(input: string) => Promise<NostrEvent | null>>();
+const queryNutzapProfileMock =
+  vi.fn<(input: string) => Promise<NostrEvent | null>>();
 
 const baseProfile = {
   name: "Sample Creator",
@@ -136,11 +138,20 @@ function createDiscoveryMock(plan: DiscoveryMockPlan): DiscoveryMock {
 
 async function loadCreatorsModule(
   discoveryMock: DiscoveryMock,
-  options: { nutzapTierEvent?: NostrEvent | null } = {},
+  options: {
+    nutzapTierEvent?: NostrEvent | null;
+    nutzapProfileEvent?: NostrEvent | null;
+  } = {},
 ) {
   queryNutzapTiersMock.mockReset();
+  queryNutzapProfileMock.mockReset();
   queryNutzapTiersMock.mockResolvedValue(
     options.nutzapTierEvent === undefined ? null : options.nutzapTierEvent,
+  );
+  queryNutzapProfileMock.mockResolvedValue(
+    options.nutzapProfileEvent === undefined
+      ? null
+      : options.nutzapProfileEvent,
   );
   vi.doMock("@/nostr/relayClient", async () => {
     const actual = await vi.importActual<Record<string, any>>(
@@ -148,6 +159,7 @@ async function loadCreatorsModule(
     );
     return {
       ...actual,
+      queryNutzapProfile: queryNutzapProfileMock,
       queryNutzapTiers: queryNutzapTiersMock,
     };
   });
@@ -203,6 +215,115 @@ describe("fetchFundstrProfileBundle", () => {
     });
     expect(bundle.relayHints).toEqual(["wss://relay.example"]);
     expect(bundle.tiers).toEqual([expectNormalizedTier()]);
+  });
+
+  it("hydrates missing discovery metadata and tiers directly from relay events", async () => {
+    const discoveryMock = createDiscoveryMock({
+      creators: {
+        [PUBKEY_HEX]: {
+          cached: { results: [] },
+          fresh: {
+            results: [
+              makeCreator({
+                profile: {
+                  relays: ["wss://relay.example"],
+                },
+                tiers: [],
+              }),
+            ],
+          },
+        },
+      },
+      tiers: {
+        [PUBKEY_HEX]: {
+          cached: { tiers: [] },
+          fresh: { tiers: [] },
+        },
+      },
+    });
+
+    const relayProfileEvent = {
+      pubkey: PUBKEY_HEX,
+      kind: 10019,
+      created_at: 1700000300,
+      id: "p".repeat(64),
+      sig: "a".repeat(128),
+      tags: [
+        ["t", "nutzap-profile"],
+        ["client", "fundstr"],
+        ["pubkey", PUBKEY_HEX],
+        ["mint", "https://mint.minibits.cash/Bitcoin", "sat"],
+        ["relay", "wss://relay.fundstr.me"],
+        ["a", `30019:${PUBKEY_HEX}:tiers`],
+        ["name", "Relay Creator"],
+        ["picture", "https://example.com/avatar.png"],
+      ],
+      content: JSON.stringify({
+        v: 1,
+        p2pk: PUBKEY_HEX,
+        mints: ["https://mint.minibits.cash/Bitcoin"],
+        relays: ["wss://relay.fundstr.me"],
+        tierAddr: `30019:${PUBKEY_HEX}:tiers`,
+        display_name: "Relay Creator",
+        about: "Recovered from relay",
+        picture: "https://example.com/avatar.png",
+      }),
+    } satisfies NostrEvent;
+
+    const relayTierEvent = {
+      pubkey: PUBKEY_HEX,
+      kind: 30019,
+      created_at: 1700000310,
+      id: "t".repeat(64),
+      sig: "b".repeat(128),
+      tags: [["d", "tiers"]],
+      content: JSON.stringify({
+        v: 1,
+        tiers: [
+          {
+            id: "relay-tier",
+            title: "Relay Tier",
+            price: 7000,
+            frequency: "monthly",
+            description: "Recovered from relay tiers",
+          },
+        ],
+      }),
+    } satisfies NostrEvent;
+
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(
+      discoveryMock,
+      {
+        nutzapProfileEvent: relayProfileEvent,
+        nutzapTierEvent: relayTierEvent,
+      },
+    );
+    const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX, {
+      forceRefresh: true,
+    });
+
+    expect(queryNutzapProfileMock).toHaveBeenCalledTimes(1);
+    expect(queryNutzapTiersMock).toHaveBeenCalledTimes(1);
+    expect(bundle.fetchedFromFallback).toBe(true);
+    expect(bundle.profile).toMatchObject({
+      display_name: "Relay Creator",
+      about: "Recovered from relay",
+      picture: "https://example.com/avatar.png",
+    });
+    expect(bundle.profileDetails).toMatchObject({
+      trustedMints: ["https://mint.minibits.cash/Bitcoin"],
+      display_name: "Relay Creator",
+    });
+    expect(bundle.profileDetails?.relays).toEqual(
+      expect.arrayContaining(["wss://relay.example", "wss://relay.fundstr.me"]),
+    );
+    expect(bundle.tiers).toEqual([
+      expect.objectContaining({
+        id: "relay-tier",
+        name: "Relay Tier",
+        price_sats: 7000,
+      }),
+    ]);
   });
 
   it("uses cached discovery data when fresh creator lookup fails", async () => {
