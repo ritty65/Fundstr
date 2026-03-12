@@ -97,6 +97,7 @@ import { publishNostrEvent } from "src/nutzap/relayPublishing";
 import { useFundstrRelayStatus } from "src/nutzap/relayClient";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import { updateCreatorCache } from "@/lib/fundstrApi";
+import { parseNutzapProfileEvent } from "src/nutzap/profileCache";
 import {
   decryptData,
   deriveKey,
@@ -509,6 +510,10 @@ interface NutzapProfile {
   trustedMints: string[];
   relays?: string[];
   tierAddr?: string;
+  display_name?: string;
+  name?: string;
+  about?: string;
+  picture?: string;
 }
 
 interface NutzapProfileCacheRecord {
@@ -1053,49 +1058,12 @@ async function fetchNutzapProfileFromNetwork(
     return null;
   }
 
-  let parsedPayload: NutzapProfilePayload | null = null;
-  if (event.content) {
-    try {
-      const parsed = JSON.parse(event.content);
-      parsedPayload = NutzapProfileSchema.parse(parsed);
-    } catch (e) {
-      console.warn("Invalid Nutzap profile JSON", e);
-    }
-  }
-
-  const relaySet = new Set<string>();
-  const mintSet = new Set<string>();
-  let tierAddr: string | undefined = parsedPayload?.tierAddr;
-  let p2pkValue = parsedPayload?.p2pk ?? "";
-
-  if (Array.isArray(parsedPayload?.relays)) {
-    for (const relay of parsedPayload!.relays) {
-      if (typeof relay === "string" && relay) relaySet.add(relay);
-    }
-  }
-  if (Array.isArray(parsedPayload?.mints)) {
-    for (const mint of parsedPayload!.mints) {
-      if (typeof mint === "string" && mint) mintSet.add(mint);
-    }
-  }
-
-  for (const tag of event.tags || []) {
-    if (tag[0] === "mint" && typeof tag[1] === "string" && tag[1]) {
-      mintSet.add(tag[1]);
-    } else if (tag[0] === "relay" && typeof tag[1] === "string" && tag[1]) {
-      relaySet.add(tag[1]);
-    } else if (tag[0] === "a" && typeof tag[1] === "string" && tag[1]) {
-      if (!tierAddr) tierAddr = tag[1];
-    } else if (tag[0] === "pubkey" && typeof tag[1] === "string" && tag[1]) {
-      if (!p2pkValue) p2pkValue = tag[1];
-    }
-  }
-
-  if (!p2pkValue && !mintSet.size && !relaySet.size) {
+  const parsedDetails = parseNutzapProfileEvent(event);
+  if (!parsedDetails) {
     return null;
   }
 
-  let p2pkPubkey = p2pkValue;
+  let p2pkPubkey = parsedDetails.p2pkPubkey;
   if (p2pkPubkey.startsWith("npub")) {
     const hx = npubToHex(p2pkPubkey);
     if (hx) p2pkPubkey = hx;
@@ -1110,9 +1078,15 @@ async function fetchNutzapProfileFromNetwork(
   return {
     hexPub: hex,
     p2pkPubkey,
-    trustedMints: Array.from(mintSet),
-    relays: relaySet.size ? Array.from(relaySet) : undefined,
-    tierAddr,
+    trustedMints: Array.from(parsedDetails.trustedMints ?? []),
+    relays: parsedDetails.relays?.length
+      ? Array.from(parsedDetails.relays)
+      : undefined,
+    tierAddr: parsedDetails.tierAddr,
+    display_name: parsedDetails.display_name,
+    name: parsedDetails.name,
+    about: parsedDetails.about,
+    picture: parsedDetails.picture,
   };
 }
 

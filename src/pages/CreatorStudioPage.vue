@@ -5167,6 +5167,15 @@ const profileJsonPreview = computed(() => {
     tierAddr: `${CANONICAL_TIER_KIND}:${author}:tiers`,
   };
 
+  if (displayName.value.trim()) {
+    payload.display_name = displayName.value.trim();
+    payload.name = displayName.value.trim();
+  }
+
+  if (pictureUrl.value.trim()) {
+    payload.picture = pictureUrl.value.trim();
+  }
+
   const trimmed = p2pkPub.value.trim();
   if (trimmed) {
     payload.p2pk = trimmed;
@@ -6117,6 +6126,13 @@ function buildProfileTemplate(authorHex: string) {
     mints: mintList.value,
     relays,
     tierAddr: canonicalTierPointer,
+    ...(displayName.value.trim()
+      ? {
+          display_name: displayName.value.trim(),
+          name: displayName.value.trim(),
+        }
+      : {}),
+    ...(pictureUrl.value.trim() ? { picture: pictureUrl.value.trim() } : {}),
   });
 
   const tags: string[][] = [

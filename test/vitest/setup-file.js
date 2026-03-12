@@ -17,6 +17,7 @@ afterEach(() => {
 // Mock the Quasar framework features
 vi.mock("quasar", async (importOriginal) => {
   const actual = await importOriginal();
+  const cookieStore = new Map();
   return {
     ...actual,
     useQuasar: () => ({
@@ -28,6 +29,20 @@ vi.mock("quasar", async (importOriginal) => {
     }),
     Notify: {
       create: vi.fn(),
+    },
+    LocalStorage: {
+      getItem: vi.fn((key) => window.localStorage.getItem(key)),
+      set: vi.fn((key, value) => window.localStorage.setItem(key, value)),
+      remove: vi.fn((key) => window.localStorage.removeItem(key)),
+    },
+    Cookies: {
+      get: vi.fn((key) => cookieStore.get(key)),
+      set: vi.fn((key, value) => {
+        cookieStore.set(key, value);
+      }),
+      remove: vi.fn((key) => {
+        cookieStore.delete(key);
+      }),
     },
   };
 });

@@ -6,6 +6,7 @@ import { nip19 } from "nostr-tools";
 import { Event as NostrEvent } from "nostr-tools";
 import type { Tier } from "./types";
 import {
+  queryNutzapProfile,
   queryNutzapTiers,
   toHex,
   type NostrEvent as RelayEvent,
@@ -13,7 +14,10 @@ import {
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import { normalizeTierMediaItems } from "src/utils/validateMedia";
 import { debug } from "src/js/logger";
-import { type NutzapProfileDetails } from "@/nutzap/profileCache";
+import {
+  parseNutzapProfileEvent,
+  type NutzapProfileDetails,
+} from "@/nutzap/profileCache";
 import {
   NETWORK_CHANGE_WARNING,
   RecoverableDiscoveryError,
@@ -41,6 +45,7 @@ import {
   addTelemetryBreadcrumb,
   captureTelemetryWarning,
 } from "src/utils/telemetry/sentry";
+import { FUNDSTR_REQ_URL, FUNDSTR_WS_URL } from "@/nutzap/relayEndpoints";
 
 export { FEATURED_CREATORS } from "src/config/featured-creators";
 
@@ -1002,7 +1007,7 @@ async function fetchFundstrProfileBundleFromDiscovery(
     tierFetchFailed = false;
   }
 
-  return {
+  let bundle: FundstrProfileBundle = {
     ...baseBundle,
     tierDataFresh,
     tierSecurityBlocked,
@@ -1013,6 +1018,88 @@ async function fetchFundstrProfileBundleFromDiscovery(
       usedCachedTierFallback ||
       usedNutzapTierFallback,
   };
+
+  const needsRelayProfileMetadata = !hasBundleProfileMetadata(
+    bundle.profile,
+    bundle.profileDetails,
+  );
+  const needsRelayTierFallback =
+    !Array.isArray(bundle.tiers) || bundle.tiers.length === 0;
+
+  if (needsRelayProfileMetadata || needsRelayTierFallback) {
+    if (needsRelayProfileMetadata) {
+      try {
+        const relayProfileEvent = await queryNutzapProfile(pubkey, {
+          httpBase: FUNDSTR_REQ_URL,
+          fundstrWsUrl: FUNDSTR_WS_URL,
+          allowFanoutFallback: false,
+        });
+        const relayProfileDetails = parseNutzapProfileEvent(relayProfileEvent);
+        if (relayProfileDetails) {
+          bundle = {
+            ...bundle,
+            profileEvent: bundle.profileEvent ?? relayProfileEvent,
+            profileDetails: mergeProfileDetailsWithRelay(
+              bundle.profileDetails,
+              relayProfileDetails,
+            ),
+            relayHints: mergeStringLists(
+              bundle.relayHints,
+              relayProfileDetails.relays,
+            ),
+            fetchedFromFallback: true,
+          };
+          bundle.profile = mergeProfileRecordWithDetails(
+            bundle.profile,
+            bundle.profileDetails,
+          );
+        }
+      } catch (error) {
+        console.warn(
+          "fetchFundstrProfileBundle relay profile hydration failed",
+          {
+            pubkey,
+            error,
+          },
+        );
+      }
+    }
+
+    if (needsRelayTierFallback) {
+      try {
+        const relayTierEvent = await queryNutzapTiers(pubkey, {
+          httpBase: FUNDSTR_REQ_URL,
+          fundstrWsUrl: FUNDSTR_WS_URL,
+          allowFanoutFallback: false,
+        });
+        const recoveredTiers = relayTierEvent?.content
+          ? parseNutzapTiersContent(relayTierEvent.content)
+              .map((tier) => convertNutzapTierToDiscoveryTier(tier))
+              .filter((tier): tier is DiscoveryCreatorTier => tier !== null)
+              .map((tier) => convertDiscoveryTier(tier))
+              .filter(
+                (tier): tier is Tier => tier !== null && isValidTier(tier),
+              )
+          : [];
+        if (recoveredTiers.length > 0) {
+          bundle = {
+            ...bundle,
+            tiers: recoveredTiers,
+            tierFetchFailed: false,
+            tierDataFresh: false,
+            fetchedFromFallback: true,
+          };
+        }
+      } catch (error) {
+        console.warn("fetchFundstrProfileBundle relay tier hydration failed", {
+          pubkey,
+          error,
+        });
+      }
+    }
+  }
+
+  return bundle;
 }
 
 function buildBundleFromCachedCreatorProfile(
@@ -1454,6 +1541,85 @@ function buildBundleFromDiscoveryCreator(
     tierFetchFailed: false,
     tiers: tiers.length ? tiers : null,
   };
+}
+
+function hasBundleProfileMetadata(
+  profile: Record<string, any> | null | undefined,
+  details: NutzapProfileDetails | null | undefined,
+): boolean {
+  const candidates = [
+    profile?.display_name,
+    profile?.displayName,
+    profile?.name,
+    profile?.about,
+    profile?.picture,
+    details?.display_name,
+    details?.name,
+    details?.about,
+    details?.picture,
+  ];
+
+  return candidates.some(
+    (value) => typeof value === "string" && value.trim().length > 0,
+  );
+}
+
+function mergeStringLists(
+  primary: string[] = [],
+  fallback: string[] = [],
+): string[] {
+  return Array.from(
+    new Set(
+      [...primary, ...fallback]
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter((value) => value.length > 0),
+    ),
+  );
+}
+
+function mergeProfileDetailsWithRelay(
+  existing: NutzapProfileDetails | null | undefined,
+  relay: NutzapProfileDetails | null | undefined,
+): NutzapProfileDetails | null {
+  if (!existing) {
+    return relay ? cloneProfileDetails(relay) : null;
+  }
+  if (!relay) {
+    return cloneProfileDetails(existing);
+  }
+
+  return {
+    p2pkPubkey: existing.p2pkPubkey || relay.p2pkPubkey,
+    trustedMints: mergeStringLists(existing.trustedMints, relay.trustedMints),
+    relays: mergeStringLists(existing.relays, relay.relays),
+    tierAddr: existing.tierAddr || relay.tierAddr,
+    display_name: existing.display_name || relay.display_name,
+    name: existing.name || relay.name,
+    about: existing.about || relay.about,
+    picture: existing.picture || relay.picture,
+  };
+}
+
+function mergeProfileRecordWithDetails(
+  profile: Record<string, any> | null | undefined,
+  details: NutzapProfileDetails | null | undefined,
+): Record<string, any> | null {
+  const next: Record<string, any> = profile
+    ? cloneDiscoveryProfile(profile) ?? {}
+    : {};
+
+  const applyString = (key: string, value: unknown) => {
+    if (typeof value === "string" && value.trim()) {
+      next[key] = value.trim();
+    }
+  };
+
+  applyString("display_name", details?.display_name);
+  applyString("name", details?.name);
+  applyString("about", details?.about);
+  applyString("picture", details?.picture);
+
+  return Object.keys(next).length ? next : null;
 }
 
 export interface CreatorWarmCache {
@@ -2218,12 +2384,26 @@ function createCreatorFromBundle(
 
   const displayName =
     overrideDisplayName ??
-    toNullableString(profile?.display_name ?? profile?.displayName ?? null);
-  const name = overrideName ?? toNullableString(profile?.name);
-  const about = overrideAbout ?? toNullableString(profile?.about);
+    toNullableString(
+      profile?.display_name ??
+        profile?.displayName ??
+        bundle.profileDetails?.display_name ??
+        bundle.profileDetails?.name ??
+        null,
+    );
+  const name =
+    overrideName ??
+    toNullableString(profile?.name ?? bundle.profileDetails?.name ?? null);
+  const about =
+    overrideAbout ??
+    toNullableString(profile?.about ?? bundle.profileDetails?.about ?? null);
   const nip05 =
     overrideNip05 ?? toNullableString(profile?.nip05 ?? profile?.nip05_npub);
-  const picture = overridePicture ?? toNullableString(profile?.picture);
+  const picture =
+    overridePicture ??
+    toNullableString(
+      profile?.picture ?? bundle.profileDetails?.picture ?? null,
+    );
   const banner = overrideBanner ?? toNullableString(profile?.banner);
 
   const creator: CreatorProfile = {

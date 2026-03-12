@@ -2,17 +2,21 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createRouter, createMemoryHistory } from "vue-router";
 import { createPinia, setActivePinia } from "pinia";
-import {
-  defineComponent,
-  h,
-  inject,
-  provide,
-  computed,
-  nextTick,
-} from "vue";
+import { defineComponent, h, inject, provide, computed, nextTick } from "vue";
 
 import "./pageStoreMocks";
-import { SimpleStub, QBtnStub, QBannerStub, QTabsStub, QTabStub, QTabPanelsStub, QTabPanelStub, QExpansionItemStub, QDialogStub, QSkeletonStub } from "./quasarStubs";
+import {
+  SimpleStub,
+  QBtnStub,
+  QBannerStub,
+  QTabsStub,
+  QTabStub,
+  QTabPanelsStub,
+  QTabPanelStub,
+  QExpansionItemStub,
+  QDialogStub,
+  QSkeletonStub,
+} from "./quasarStubs";
 import { useMintsStore } from "src/stores/mints";
 
 if (!window.matchMedia) {
@@ -26,7 +30,6 @@ if (!window.matchMedia) {
     dispatchEvent: () => false,
   });
 }
-
 
 function createDeferred<T>() {
   let resolve: (value: T | PromiseLike<T>) => void;
@@ -118,7 +121,12 @@ describe("WalletPage", () => {
     setActivePinia(pinia);
     const router = createRouter({
       history: createMemoryHistory(),
-      routes: [{ path: "/", component: (await import("src/pages/WalletPage.vue")).default }],
+      routes: [
+        {
+          path: "/",
+          component: (await import("src/pages/WalletPage.vue")).default,
+        },
+      ],
     });
 
     await router.push("/");
@@ -134,7 +142,11 @@ describe("WalletPage", () => {
         stubs,
         mocks: {
           $t: (key: string) => key,
-          $q: { dark: { isActive: false }, screen: { gt: { xs: true }, lt: { md: false } } },
+          $q: {
+            dark: { isActive: false },
+            screen: { gt: { xs: true }, lt: { md: false } },
+          },
+          $route: { path: "/wallet" },
         },
       },
     });
@@ -148,7 +160,12 @@ describe("WalletPage", () => {
     setActivePinia(pinia);
     const router = createRouter({
       history: createMemoryHistory(),
-      routes: [{ path: "/", component: (await import("src/pages/WalletPage.vue")).default }],
+      routes: [
+        {
+          path: "/",
+          component: (await import("src/pages/WalletPage.vue")).default,
+        },
+      ],
     });
     await router.push("/");
     await router.isReady();
@@ -160,7 +177,14 @@ describe("WalletPage", () => {
       global: {
         plugins: [pinia, router],
         stubs,
-        mocks: { $t: (key: string) => key, $q: { dark: { isActive: false }, screen: { gt: { xs: true }, lt: { md: false } } } },
+        mocks: {
+          $t: (key: string) => key,
+          $q: {
+            dark: { isActive: false },
+            screen: { gt: { xs: true }, lt: { md: false } },
+          },
+          $route: { path: "/wallet" },
+        },
       },
     });
 
@@ -196,8 +220,16 @@ describe("WalletPage", () => {
     await flushPromises();
     await nextTick();
 
-    const tabNames = wrapper.findAll("[data-role='tab']").map((tab) => tab.attributes("data-name"));
-    expect(tabNames).toEqual(["history", "invoices", "mints", "buckets", "info"]);
+    const tabNames = wrapper
+      .findAll("[data-role='tab']")
+      .map((tab) => tab.attributes("data-name"));
+    expect(tabNames).toEqual([
+      "history",
+      "invoices",
+      "mints",
+      "buckets",
+      "info",
+    ]);
 
     await wrapper.vm.setTab("mints");
     await nextTick();
