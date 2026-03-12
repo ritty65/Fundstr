@@ -377,6 +377,12 @@ export default defineComponent({
         const start = messenger.start();
         startPromise = start;
 
+        if (routeConversation.value || messenger.currentConversation) {
+          handleRoutePubkeyChange(route.query.pubkey);
+          registerStartRecoveryWatcher(runId);
+          loading.value = false;
+        }
+
         timeoutHandle = setTimeout(() => {
           if (runId !== startRunId) return;
           startTimedOut.value = true;
@@ -591,7 +597,9 @@ export default defineComponent({
       }
     };
 
-    const selected = computed(() => messenger.currentConversation);
+    const selected = computed(
+      () => messenger.currentConversation || routeConversation.value || "",
+    );
     const chatSendTokenDialogRef = ref<InstanceType<
       typeof ChatSendTokenDialog
     > | null>(null);

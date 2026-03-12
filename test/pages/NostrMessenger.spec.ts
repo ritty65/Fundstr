@@ -213,6 +213,55 @@ describe("NostrMessenger", () => {
     );
   });
 
+  it("shows the active chat shell for a routed conversation even while start is pending", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const messenger = useMessengerStore();
+    const pending = createDeferred<void>();
+    messenger.start = vi
+      .fn<() => Promise<void>>()
+      .mockReturnValue(pending.promise);
+
+    vi.mocked(useNdk).mockResolvedValue(createNdk());
+
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: "/",
+          component: (await import("src/pages/NostrMessenger.vue")).default,
+        },
+      ],
+    });
+    await router.push({ path: "/", query: { pubkey: "a".repeat(64) } });
+    await router.isReady();
+    const module = await import("src/pages/NostrMessenger.vue");
+    const component = module.default;
+    const wrapper = mount(component, {
+      global: {
+        plugins: [pinia, router],
+        stubs,
+        mocks: {
+          $t: (key: string) => key,
+          $q: {
+            dark: { isActive: false },
+            screen: { gt: { xs: true }, lt: { md: false } },
+          },
+        },
+      },
+    });
+
+    await flushPromises();
+    await nextTick();
+
+    expect((wrapper.vm as any).selected).toBeTruthy();
+    expect(wrapper.find(".MessageInput-stub").exists()).toBe(true);
+    expect(wrapper.text()).toContain("Connecting to your message relays...");
+
+    pending.resolve();
+    await flushPromises();
+  });
+
   it("hides the spinner and keeps retry interactive when start fails", async () => {
     const consoleError = vi
       .spyOn(console, "error")
