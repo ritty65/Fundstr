@@ -1,7 +1,5 @@
 <template>
-  <div
-    class="profile-page bg-surface-1 text-1"
-  >
+  <div class="profile-page bg-surface-1 text-1">
     <div class="profile-page__inner">
       <div class="profile-page__back q-mb-md">
         <q-btn flat color="primary" to="/find-creators">{{
@@ -9,13 +7,16 @@
         }}</q-btn>
       </div>
 
-      <q-banner v-if="decodeError" class="profile-page__banner bg-negative text-white">
+      <q-banner
+        v-if="decodeError"
+        class="profile-page__banner profile-page__banner--error text-white"
+      >
         {{ decodeError }}
       </q-banner>
 
       <q-banner
         v-if="fallbackActive && fallbackBannerText"
-        class="profile-page__banner bg-warning text-1"
+        class="profile-page__banner profile-page__banner--warning text-1"
         icon="cloud_off"
         aria-live="polite"
       >
@@ -25,7 +26,13 @@
         </div>
       </q-banner>
 
-      <section class="profile-hero" :class="{ 'profile-hero--with-banner': heroBannerUrl }">
+      <section
+        class="profile-hero"
+        :class="{
+          'profile-hero--with-banner': heroBannerUrl,
+          'profile-hero--with-status-banner': hasStatusBanner,
+        }"
+      >
         <div
           v-if="heroBannerUrl"
           class="profile-hero__banner"
@@ -40,11 +47,15 @@
               :alt="profileDisplayName"
               @error="onHeroAvatarError"
             />
-            <div v-else class="profile-hero__avatar-placeholder">{{ profileInitials }}</div>
+            <div v-else class="profile-hero__avatar-placeholder">
+              {{ profileInitials }}
+            </div>
           </div>
           <div class="profile-hero__details">
             <div class="profile-hero__heading">
-              <h1 class="profile-hero__name text-h4">{{ profileDisplayName }}</h1>
+              <h1 class="profile-hero__name text-h4">
+                {{ profileDisplayName }}
+              </h1>
               <q-btn
                 flat
                 round
@@ -54,16 +65,22 @@
                 @click="copy(profileUrl)"
               />
             </div>
-            <p v-if="profileHandle" class="profile-hero__handle text-2">@{{ profileHandle }}</p>
+            <p v-if="profileHandle" class="profile-hero__handle text-2">
+              @{{ profileHandle }}
+            </p>
             <div v-if="hasFollowerStats" class="profile-hero__stats text-2">
               <span v-if="followers !== null">
-                {{ $t('CreatorHub.profile.followers', { count: followers }) }}
+                {{ $t("CreatorHub.profile.followers", { count: followers }) }}
               </span>
               <span v-if="following !== null">
-                {{ $t('CreatorHub.profile.following', { count: following }) }}
+                {{ $t("CreatorHub.profile.following", { count: following }) }}
               </span>
             </div>
-            <div v-if="metadataChips.length" class="profile-hero__chips" role="list">
+            <div
+              v-if="metadataChips.length"
+              class="profile-hero__chips"
+              role="list"
+            >
               <q-chip
                 v-for="chip in metadataChips"
                 :key="chip.id"
@@ -79,6 +96,107 @@
                 role="listitem"
               />
             </div>
+            <div class="profile-hero__support bg-surface-1 text-1">
+              <div class="profile-hero__support-copy">
+                <div class="profile-hero__support-eyebrow">
+                  Support this creator
+                </div>
+                <div class="profile-hero__support-title">
+                  {{ supportHeadline }}
+                </div>
+                <p class="profile-hero__support-text text-2 q-mb-none">
+                  {{ supportMicrocopy }}
+                </p>
+                <div
+                  v-if="supportHighlights.length"
+                  class="profile-hero__support-highlights"
+                  role="list"
+                >
+                  <div
+                    v-for="highlight in supportHighlights"
+                    :key="highlight.label"
+                    class="profile-hero__support-highlight"
+                    role="listitem"
+                  >
+                    <span class="profile-hero__support-highlight-label">
+                      {{ highlight.label }}
+                    </span>
+                    <span class="profile-hero__support-highlight-value">
+                      {{ highlight.value }}
+                    </span>
+                  </div>
+                </div>
+                <div
+                  v-if="supportReadiness"
+                  class="profile-hero__support-status"
+                  :class="`is-${supportReadiness.tone}`"
+                >
+                  <q-icon :name="supportReadiness.icon" size="18px" />
+                  <div>
+                    <div class="text-body2 text-weight-medium">
+                      {{ supportReadiness.title }}
+                    </div>
+                    <div class="text-caption q-mt-xs">
+                      {{ supportReadiness.message }}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  v-if="featuredTier"
+                  class="profile-hero__tier-spotlight bg-surface-2"
+                >
+                  <div class="profile-hero__tier-spotlight-copy">
+                    <div class="profile-hero__tier-spotlight-label">
+                      Recommended tier
+                    </div>
+                    <div class="text-body1 text-weight-medium text-1">
+                      {{ featuredTier.name || featuredTier.title }}
+                    </div>
+                    <div class="text-caption text-2">
+                      {{ featuredTierSummary }}
+                    </div>
+                  </div>
+                  <div
+                    v-if="featuredTierMediaLabels.length"
+                    class="profile-hero__tier-spotlight-badges"
+                  >
+                    <q-chip
+                      v-for="label in featuredTierMediaLabels"
+                      :key="label"
+                      dense
+                      outline
+                    >
+                      {{ label }}
+                    </q-chip>
+                  </div>
+                </div>
+              </div>
+              <div class="profile-hero__support-actions">
+                <q-btn
+                  color="primary"
+                  unelevated
+                  no-caps
+                  label="Donate once"
+                  :disable="!creatorHex"
+                  @click="openDonate"
+                />
+                <q-btn
+                  flat
+                  color="primary"
+                  no-caps
+                  label="Message"
+                  :disable="!creatorHex"
+                  @click="startMessage"
+                />
+                <q-btn
+                  outline
+                  color="primary"
+                  no-caps
+                  :label="tiers.length ? 'Browse tiers' : 'Read more'"
+                  @click="scrollToTiers"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -87,36 +205,52 @@
         <section class="profile-section">
           <header class="profile-section__header">
             <h2 class="profile-section__title text-h5">
-              {{ $t('CreatorHub.profile.sections.about') }}
+              {{ $t("CreatorHub.profile.sections.about") }}
             </h2>
           </header>
           <div class="profile-section__body">
-            <p v-if="aboutText" class="profile-section__text text-body1">{{ aboutText }}</p>
+            <p v-if="aboutText" class="profile-section__text text-body1">
+              {{ aboutText }}
+            </p>
             <p v-else class="profile-section__text text-2">
               {{
                 $t(
-                  'CreatorHub.profile.noAbout',
-                  "This creator hasn't shared an about section yet. Their latest updates are available to subscribers."
+                  "CreatorHub.profile.noAbout",
+                  "This creator hasn't shared an about section yet. Their latest updates are available to subscribers.",
                 )
               }}
             </p>
           </div>
         </section>
 
-        <q-banner v-if="isGuest" class="profile-page__banner bg-surface-2 text-2" icon="info">
+        <q-banner
+          v-if="isGuest"
+          class="profile-page__banner bg-surface-2 text-2"
+          icon="info"
+        >
           {{ $t("CreatorHub.profile.guestCta") }}
           <template #action>
-            <q-btn flat color="primary" :label="$t('CreatorHub.profile.finishSetup')" @click="gotoWelcome" />
+            <q-btn
+              flat
+              color="primary"
+              :label="$t('CreatorHub.profile.finishSetup')"
+              @click="gotoWelcome"
+            />
           </template>
         </q-banner>
 
-        <div
-          class="profile-tier-grid"
-        >
-          <section class="profile-section profile-section--tiers" aria-live="polite">
-            <header class="profile-section__header profile-section__header--with-spinner">
+        <div class="profile-tier-grid">
+          <section
+            ref="tiersSectionRef"
+            class="profile-section profile-section--tiers"
+            :class="{ 'profile-section--focused': isTierFocusActive }"
+            aria-live="polite"
+          >
+            <header
+              class="profile-section__header profile-section__header--with-spinner"
+            >
               <h2 class="profile-section__title text-h5">
-                {{ $t('CreatorHub.profile.sections.tiers') }}
+                {{ $t("CreatorHub.profile.sections.tiers") }}
               </h2>
               <q-spinner-dots
                 v-if="refreshingTiers && !loadingTiers"
@@ -132,7 +266,7 @@
                 v-if="tierFetchError && !tiers.length"
                 class="profile-page__banner bg-surface-2"
               >
-                {{ $t('CreatorHub.profile.tierLoadError') }}
+                {{ $t("CreatorHub.profile.tierLoadError") }}
                 <template #action>
                   <button
                     type="button"
@@ -140,7 +274,9 @@
                     tabindex="-1"
                     aria-hidden="true"
                     @click="retryFetchTiers"
-                  >{{ retryLabel }}</button>
+                  >
+                    {{ retryLabel }}
+                  </button>
                   <q-btn
                     flat
                     color="primary"
@@ -149,8 +285,11 @@
                   />
                 </template>
               </q-banner>
-              <div v-else-if="!tiers.length" class="profile-section__state text-2">
-                {{ $t('CreatorHub.profile.noTiers') }}
+              <div
+                v-else-if="!tiers.length"
+                class="profile-section__state text-2"
+              >
+                {{ $t("CreatorHub.profile.noTiers") }}
               </div>
               <div v-else class="profile-tier-list">
                 <TierSummaryCard
@@ -160,16 +299,19 @@
                   :price-sats="getPrice(t)"
                   :price-fiat="formatFiat(getPrice(t))"
                   :frequency-label="frequencyLabel(t)"
+                  :badges="tierBadges(t)"
                   :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
-                  :subscribe-disabled="isGuest"
+                  :subscribe-disabled="false"
                   :collapse-media="false"
                   @subscribe="openSubscribe"
                 >
                   <template v-if="needsSignerSetupTooltip" #subscribe-tooltip>
-                    <q-tooltip>{{ $t('CreatorHub.profile.guestTooltip') }}</q-tooltip>
+                    <q-tooltip>{{
+                      $t("CreatorHub.profile.guestTooltip")
+                    }}</q-tooltip>
                   </template>
                   <template #footer-note>
-                    {{ $t('CreatorHub.profile.subscribeMicrocopy') }}
+                    {{ tierSupportNote }}
                   </template>
                   <template v-if="creatorHex" #default>
                     <PaywalledContent
@@ -177,7 +319,7 @@
                       :tier-id="t.id"
                       class="profile-tier__paywalled"
                     >
-                      <div>{{ $t('CreatorHub.profile.paywalledPreview') }}</div>
+                      <div>{{ $t("CreatorHub.profile.paywalledPreview") }}</div>
                     </PaywalledContent>
                   </template>
                 </TierSummaryCard>
@@ -186,7 +328,7 @@
                 v-if="tierFetchError && tiers.length"
                 class="profile-page__banner bg-surface-2"
               >
-                {{ $t('CreatorHub.profile.tierRefreshError') }}
+                {{ $t("CreatorHub.profile.tierRefreshError") }}
                 <template #action>
                   <button
                     type="button"
@@ -194,7 +336,9 @@
                     tabindex="-1"
                     aria-hidden="true"
                     @click="retryFetchTiers"
-                  >{{ retryLabel }}</button>
+                  >
+                    {{ retryLabel }}
+                  </button>
                   <q-btn
                     flat
                     color="primary"
@@ -206,130 +350,162 @@
             </template>
           </section>
 
-          <section class="profile-section profile-section--video-explainer">
+          <section class="profile-section profile-section--support-details">
             <header class="profile-section__header">
-              <h2 class="profile-section__title text-h5">
-                {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-              </h2>
+              <h2 class="profile-section__title text-h5">Support details</h2>
             </header>
             <div class="profile-section__body">
-              <div class="profile-card__media">
-                <div class="profile-card__media-main">
-                  <div class="profile-card__video">
-                    <video
-                      controls
-                      preload="metadata"
-                      playsinline
-                      poster="https://m.primal.net/HsMt.jpg"
-                    >
-                      <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
-                      {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
-                    </video>
-                    <div class="sr-only">
-                      <a href="https://m.primal.net/HsMt.mp4" target="_blank" rel="noopener">
-                        {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                      </a>
+              <q-expansion-item
+                dense
+                dense-toggle
+                switch-toggle-side
+                class="profile-detail-expansion"
+                :label="$t('CreatorHub.profile.howCashuWorks.title')"
+                caption="Learn how private Cashu support works on Fundstr."
+              >
+                <div class="profile-card__media">
+                  <div class="profile-card__media-main">
+                    <div class="profile-card__video">
+                      <video
+                        controls
+                        preload="metadata"
+                        playsinline
+                        poster="https://m.primal.net/HsMt.jpg"
+                      >
+                        <source
+                          src="https://m.primal.net/HsMt.mp4"
+                          type="video/mp4"
+                        />
+                        {{ $t("CreatorHub.profile.howCashuWorks.intro") }}
+                      </video>
+                      <div class="sr-only">
+                        <a
+                          href="https://m.primal.net/HsMt.mp4"
+                          target="_blank"
+                          rel="noopener"
+                        >
+                          {{ $t("CreatorHub.profile.howCashuWorks.title") }}
+                        </a>
+                      </div>
                     </div>
-                  </div>
-                  <p class="profile-card__caption profile-card__text text-2">
-                    {{ $t('CreatorHub.profile.howCashuWorks.intro') }}
-                  </p>
-                </div>
-                <div
-                  v-if="howCashuWorksHighlight || howCashuWorksList.length"
-                  class="profile-card__media-aside"
-                >
-                  <div v-if="howCashuWorksHighlight" class="profile-card__highlight text-body2">
-                    <span class="profile-card__highlight-label text-2">
-                      {{ $t('CreatorHub.profile.howCashuWorks.title') }}
-                    </span>
-                    <p class="profile-card__highlight-text">
-                      {{ howCashuWorksHighlight }}
+                    <p class="profile-card__caption profile-card__text text-2">
+                      {{ $t("CreatorHub.profile.howCashuWorks.intro") }}
                     </p>
                   </div>
-                  <ul v-if="howCashuWorksList.length" class="profile-card__list">
-                    <li
-                      v-for="(item, index) in howCashuWorksList"
-                      :key="index"
-                      class="profile-card__list-item text-2"
+                  <div
+                    v-if="howCashuWorksHighlight || howCashuWorksList.length"
+                    class="profile-card__media-aside"
+                  >
+                    <div
+                      v-if="howCashuWorksHighlight"
+                      class="profile-card__highlight text-body2"
                     >
-                      {{ item }}
-                    </li>
-                  </ul>
+                      <span class="profile-card__highlight-label text-2">
+                        {{ $t("CreatorHub.profile.howCashuWorks.title") }}
+                      </span>
+                      <p class="profile-card__highlight-text">
+                        {{ howCashuWorksHighlight }}
+                      </p>
+                    </div>
+                    <ul
+                      v-if="howCashuWorksList.length"
+                      class="profile-card__list"
+                    >
+                      <li
+                        v-for="(item, index) in howCashuWorksList"
+                        :key="index"
+                        class="profile-card__list-item text-2"
+                      >
+                        {{ item }}
+                      </li>
+                    </ul>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </section>
+              </q-expansion-item>
 
-          <section class="profile-section profile-section--infrastructure">
-            <header class="profile-section__header">
-              <h2 class="profile-section__title text-h5">
-                {{ $t('CreatorHub.profile.sections.infrastructure') }}
-              </h2>
-            </header>
-            <div class="profile-section__body">
-              <article class="profile-card">
-                <h3 class="profile-card__title text-subtitle1">
-                  {{ $t('CreatorHub.profile.infrastructureDetails') }}
-                </h3>
-                <div v-if="profile.p2pkPubkey" class="profile-card__row">
-                  <div class="profile-card__label text-2">
-                    <span>{{ $t('CreatorHub.profile.p2pkLabel') }}</span>
-                    <q-btn
-                      flat
-                      dense
-                      round
-                      size="sm"
-                      class="profile-card__info-btn"
-                      icon="info"
-                      :aria-label="$t('FindCreators.explainers.tooltips.p2pk')"
-                    >
-                      <q-tooltip anchor="top middle" self="bottom middle">
-                        {{ $t('FindCreators.explainers.tooltips.p2pk') }}
-                      </q-tooltip>
-                    </q-btn>
+              <q-expansion-item
+                dense
+                dense-toggle
+                switch-toggle-side
+                class="profile-detail-expansion q-mt-md"
+                :label="$t('CreatorHub.profile.sections.infrastructure')"
+                caption="Inspect payout pointer, trusted mints, and relay details."
+              >
+                <article class="profile-card">
+                  <h3 class="profile-card__title text-subtitle1">
+                    {{ $t("CreatorHub.profile.infrastructureDetails") }}
+                  </h3>
+                  <div v-if="profile.p2pkPubkey" class="profile-card__row">
+                    <div class="profile-card__label text-2">
+                      <span>{{ $t("CreatorHub.profile.p2pkLabel") }}</span>
+                      <q-btn
+                        flat
+                        dense
+                        round
+                        size="sm"
+                        class="profile-card__info-btn"
+                        icon="info"
+                        :aria-label="
+                          $t('FindCreators.explainers.tooltips.p2pk')
+                        "
+                      >
+                        <q-tooltip anchor="top middle" self="bottom middle">
+                          {{ $t("FindCreators.explainers.tooltips.p2pk") }}
+                        </q-tooltip>
+                      </q-btn>
+                    </div>
+                    <code class="profile-card__value">{{
+                      profile.p2pkPubkey
+                    }}</code>
                   </div>
-                  <code class="profile-card__value">{{ profile.p2pkPubkey }}</code>
-                </div>
-                <div class="profile-card__row">
-                  <div class="profile-card__label text-2">
-                    <span>{{ $t('CreatorHub.profile.trustedMintsLabel') }}</span>
-                    <q-btn
-                      flat
-                      dense
-                      round
-                      size="sm"
-                      class="profile-card__info-btn"
-                      icon="info"
-                      :aria-label="$t('FindCreators.explainers.tooltips.trustedMints')"
-                    >
-                      <q-tooltip anchor="top middle" self="bottom middle">
-                        {{ $t('FindCreators.explainers.tooltips.trustedMints') }}
-                      </q-tooltip>
-                    </q-btn>
+                  <div class="profile-card__row">
+                    <div class="profile-card__label text-2">
+                      <span>{{
+                        $t("CreatorHub.profile.trustedMintsLabel")
+                      }}</span>
+                      <q-btn
+                        flat
+                        dense
+                        round
+                        size="sm"
+                        class="profile-card__info-btn"
+                        icon="info"
+                        :aria-label="
+                          $t('FindCreators.explainers.tooltips.trustedMints')
+                        "
+                      >
+                        <q-tooltip anchor="top middle" self="bottom middle">
+                          {{
+                            $t("FindCreators.explainers.tooltips.trustedMints")
+                          }}
+                        </q-tooltip>
+                      </q-btn>
+                    </div>
+                    <MintSafetyList :mints="trustedMints" />
                   </div>
-                  <MintSafetyList :mints="trustedMints" />
-                </div>
-                <div class="profile-card__row">
-                  <div class="profile-card__label text-2">
-                    <span>{{ $t('CreatorHub.profile.relaysLabel') }}</span>
-                    <q-btn
-                      flat
-                      dense
-                      round
-                      size="sm"
-                      class="profile-card__info-btn"
-                      icon="info"
-                      :aria-label="$t('FindCreators.explainers.tooltips.relays')"
-                    >
-                      <q-tooltip anchor="top middle" self="bottom middle">
-                        {{ $t('FindCreators.explainers.tooltips.relays') }}
-                      </q-tooltip>
-                    </q-btn>
+                  <div class="profile-card__row">
+                    <div class="profile-card__label text-2">
+                      <span>{{ $t("CreatorHub.profile.relaysLabel") }}</span>
+                      <q-btn
+                        flat
+                        dense
+                        round
+                        size="sm"
+                        class="profile-card__info-btn"
+                        icon="info"
+                        :aria-label="
+                          $t('FindCreators.explainers.tooltips.relays')
+                        "
+                      >
+                        <q-tooltip anchor="top middle" self="bottom middle">
+                          {{ $t("FindCreators.explainers.tooltips.relays") }}
+                        </q-tooltip>
+                      </q-btn>
+                    </div>
+                    <RelayBadgeList :relays="relayList" />
                   </div>
-                  <RelayBadgeList :relays="relayList" />
-                </div>
-              </article>
+                </article>
+              </q-expansion-item>
             </div>
           </section>
         </div>
@@ -337,7 +513,7 @@
         <section class="profile-section">
           <header class="profile-section__header">
             <h2 class="profile-section__title text-h5">
-              {{ $t('CreatorHub.profile.sections.faq') }}
+              {{ $t("CreatorHub.profile.sections.faq") }}
             </h2>
           </header>
           <div class="profile-section__body">
@@ -356,8 +532,8 @@
             <p v-else class="profile-section__text text-2">
               {{
                 $t(
-                  'CreatorHub.profile.noFaq',
-                  'No FAQs published yet. Have a question? The creator may answer it in their private member-only posts.'
+                  "CreatorHub.profile.noFaq",
+                  "No FAQs published yet. Have a question? The creator may answer it in their private member-only posts.",
                 )
               }}
             </p>
@@ -371,13 +547,24 @@
         :creator-pubkey="creatorHex || ''"
         @confirm="confirmSubscribe"
       />
-      <SetupRequiredDialog v-model="showSetupDialog" :tier-id="selectedTier?.id" />
+      <DonateDialog
+        v-model="showDonateDialog"
+        :creator-pubkey="creatorHex || ''"
+        :creator-trusted-mints="trustedMints"
+        :creator-name="profileDisplayName"
+        @confirm="handleDonate"
+      />
+      <SetupRequiredDialog
+        v-model="showSetupDialog"
+        :tier-id="selectedTier?.id"
+        :tier-name="selectedTier?.name"
+      />
       <SubscriptionReceipt
         v-model="showReceiptDialog"
         :receipts="receiptList"
       />
+      <SendTokenDialog />
     </div>
-
   </div>
 </template>
 
@@ -390,21 +577,30 @@ import {
   onUnmounted,
   computed,
   watch,
+  nextTick,
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   useCreatorsStore,
+  creatorHasVerifiedNip05,
   fetchFundstrProfileBundle,
   FundstrProfileFetchError,
   type FundstrProfileBundle,
 } from "stores/creators";
 import { useNostrStore, fetchNutzapProfile } from "stores/nostr";
-import { buildProfileUrl } from "src/utils/profileUrl";
+import {
+  buildProfileUrl,
+  extractCreatorIdentifier,
+  preferredCreatorPublicIdentifier,
+} from "src/utils/profileUrl";
 import { deriveCreatorKeys } from "src/utils/nostrKeys";
+import { useDiscovery } from "src/api/fundstrDiscovery";
 
 import { usePriceStore } from "stores/price";
 import { useUiStore } from "stores/ui";
 import SubscribeDialog from "components/SubscribeDialog.vue";
+import DonateDialog from "components/DonateDialog.vue";
+import SendTokenDialog from "components/SendTokenDialog.vue";
 import SubscriptionReceipt from "components/SubscriptionReceipt.vue";
 import SetupRequiredDialog from "components/SetupRequiredDialog.vue";
 import { useI18n } from "vue-i18n";
@@ -422,16 +618,28 @@ import {
 } from "src/utils/profile";
 import { useClipboard } from "src/composables/useClipboard";
 import { usePhonebookEnrichment } from "src/utils/phonebookEnrichment";
+import {
+  determineMediaType,
+  normalizeTierMediaItems,
+  normalizeMediaUrl,
+} from "src/utils/validateMedia";
 import { useWelcomeStore } from "stores/welcome";
 import {
   daysToFrequency,
   type SubscriptionFrequency,
 } from "src/constants/subscriptionFrequency";
+import { useSendTokensStore } from "stores/sendTokensStore";
+import { useDonationPresetsStore } from "stores/donationPresets";
+import { useMessengerStore } from "stores/messenger";
+import { useMintsStore } from "stores/mints";
+import { describeMintPaymentCapabilities } from "src/utils/paymentCapabilities";
 
 export default defineComponent({
   name: "PublicCreatorProfilePage",
   components: {
     PaywalledContent,
+    DonateDialog,
+    SendTokenDialog,
     SubscriptionReceipt,
     SetupRequiredDialog,
     MintSafetyList,
@@ -441,18 +649,56 @@ export default defineComponent({
   setup() {
     const route = useRoute();
     const router = useRouter();
-    const creatorParam =
-      (route.params.npubOrHex ?? route.params.npub) as string | undefined;
+    const creatorParam = (route.params.npubOrHex ?? route.params.npub) as
+      | string
+      | undefined;
+    const discovery = useDiscovery();
     const decodeError = ref<string | null>(null);
     const creatorNpub = ref<string>(creatorParam ?? "");
     const creatorHex = ref<string | null>(null);
+    const resolvingCreatorIdentifier = ref(false);
     const decodeFailureMessage =
       "We couldn't load this creator profile. Double-check the link and try again.";
 
     const currentCreatorParam = ref<string>(creatorParam ?? "");
 
-    const updateCreatorKeys = (param: string | undefined) => {
-      const nextParam = typeof param === "string" ? param : "";
+    const resolveHexFromDiscovery = async (identifier: string) => {
+      if (!identifier.includes("@")) {
+        return null;
+      }
+
+      try {
+        const response = await discovery.getCreators({
+          q: identifier,
+          fresh: true,
+          timeoutMs: 8_000,
+        });
+        const exactMatches = response.results.filter((creator) => {
+          if (!creator?.pubkey || typeof creator.nip05 !== "string") {
+            return false;
+          }
+          return (
+            creator.nip05.trim().toLowerCase() === identifier.toLowerCase()
+          );
+        });
+
+        if (exactMatches.length === 1) {
+          return exactMatches[0].pubkey.trim().toLowerCase();
+        }
+      } catch (error) {
+        console.warn("[creator-profile] Failed to resolve creator identifier", {
+          identifier,
+          error,
+        });
+      }
+
+      return null;
+    };
+
+    const updateCreatorKeys = async (param: string | undefined) => {
+      const nextParam = extractCreatorIdentifier(
+        typeof param === "string" ? param : "",
+      );
       creatorNpub.value = nextParam;
       creatorHex.value = null;
       decodeError.value = null;
@@ -460,25 +706,45 @@ export default defineComponent({
         return;
       }
       try {
-        const keys = deriveCreatorKeys(param);
+        const keys = deriveCreatorKeys(nextParam);
         creatorNpub.value = keys.npub;
         creatorHex.value = keys.hex;
-      } catch (err) {
+        return;
+      } catch {
+        resolvingCreatorIdentifier.value = true;
+      }
+
+      try {
+        const resolvedHex = await resolveHexFromDiscovery(nextParam);
+        if (!resolvedHex) {
+          decodeError.value = decodeFailureMessage;
+          return;
+        }
+        const keys = deriveCreatorKeys(resolvedHex);
+        creatorNpub.value = keys.npub;
+        creatorHex.value = keys.hex;
+      } catch {
         decodeError.value = decodeFailureMessage;
+      } finally {
+        resolvingCreatorIdentifier.value = false;
       }
     };
-
-    updateCreatorKeys(creatorParam);
     const creators = useCreatorsStore();
     const nostr = useNostrStore();
     const priceStore = usePriceStore();
     const uiStore = useUiStore();
     const welcomeStore = useWelcomeStore();
+    const sendTokensStore = useSendTokensStore();
+    const donationStore = useDonationPresetsStore();
+    const messenger = useMessengerStore();
+    const mintsStore = useMintsStore();
     const { t } = useI18n();
     const { copy } = useClipboard();
     const bitcoinPrice = computed(() => priceStore.bitcoinPrice);
     const profile = ref<any>({});
-    const profileMeta = computed<ProfileMeta>(() => normalizeMeta(profile.value ?? {}));
+    const profileMeta = computed<ProfileMeta>(() =>
+      normalizeMeta(profile.value ?? {}),
+    );
     const { mergeInto: mergePhonebookMeta, loadPhonebookProfile } =
       usePhonebookEnrichment(creatorHex);
     const enrichedProfileMeta = computed<ProfileMeta>(() =>
@@ -498,10 +764,12 @@ export default defineComponent({
       () => creatorTierList.value !== undefined,
     );
     const showSubscribeDialog = ref(false);
+    const showDonateDialog = ref(false);
     const showSetupDialog = ref(false);
     const showReceiptDialog = ref(false);
     const receiptList = ref<any[]>([]);
     const selectedTier = ref<any>(null);
+    const tiersSectionRef = ref<HTMLElement | null>(null);
     const followers = ref<number | null>(null);
     const following = ref<number | null>(null);
     const loadingTiers = ref(true);
@@ -513,6 +781,12 @@ export default defineComponent({
     const needsSignerSetupTooltip = computed(
       () => isGuest.value || !nostr.hasIdentity,
     );
+    const hasStatusBanner = computed(() =>
+      Boolean(
+        decodeError.value || (fallbackActive.value && fallbackBannerText.value),
+      ),
+    );
+    const isTierFocusActive = computed(() => route.query.tab === "tiers");
 
     const REFRESH_INTERVAL_MS = 2 * 60 * 1000;
     let refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -566,6 +840,28 @@ export default defineComponent({
       return unique;
     };
 
+    const normalizeMintUrl = (value: string | null | undefined) => {
+      if (typeof value !== "string") {
+        return "";
+      }
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return "";
+      }
+      try {
+        const parsed = new URL(trimmed);
+        parsed.hash = "";
+        parsed.search = "";
+        const normalizedPath = parsed.pathname.replace(/\/+$/, "");
+        parsed.pathname = normalizedPath || "/";
+        return `${parsed.origin}${
+          parsed.pathname === "/" ? "" : parsed.pathname
+        }`;
+      } catch {
+        return trimmed.replace(/\/+$/, "");
+      }
+    };
+
     const listsEqual = (a: string[], b: string[]): boolean => {
       if (a.length !== b.length) return false;
       for (let i = 0; i < a.length; i += 1) {
@@ -586,14 +882,16 @@ export default defineComponent({
             typeof tier.price_sats === "number"
               ? tier.price_sats
               : typeof tier.price === "number"
-                ? tier.price
-                : undefined;
+              ? tier.price
+              : undefined;
           const description =
             typeof tier.description === "string" ? tier.description : "";
           const frequency =
             typeof tier.frequency === "string" ? tier.frequency : undefined;
           const intervalDays =
-            typeof tier.intervalDays === "number" ? tier.intervalDays : undefined;
+            typeof tier.intervalDays === "number"
+              ? tier.intervalDays
+              : undefined;
           const benefits = Array.isArray(tier.benefits)
             ? tier.benefits
                 .map((benefit) =>
@@ -601,18 +899,30 @@ export default defineComponent({
                 )
                 .filter((benefit) => benefit.length > 0)
             : [];
+          const media = normalizeTierMediaItems(tier.media ?? [])
+            .map((item) => ({
+              url: item.url,
+              type:
+                item.type ?? determineMediaType(normalizeMediaUrl(item.url)),
+              title: item.title ?? "",
+            }))
+            .sort((a, b) => a.url.localeCompare(b.url));
           return {
             id,
             name,
-            price: typeof priceRaw === "number" ? Math.round(priceRaw) : undefined,
+            price:
+              typeof priceRaw === "number" ? Math.round(priceRaw) : undefined,
             description,
             frequency,
             intervalDays,
             benefits,
+            media,
           };
         })
         .filter(
-          (tier): tier is {
+          (
+            tier,
+          ): tier is {
             id: string;
             name: string;
             price?: number;
@@ -620,16 +930,15 @@ export default defineComponent({
             frequency?: string;
             intervalDays?: number;
             benefits: string[];
+            media: Array<{ url: string; type: string; title: string }>;
           } => tier !== null,
         )
         .sort((a, b) => a.id.localeCompare(b.id));
       return JSON.stringify(normalized);
     };
 
-    const tiersEqual = (
-      a: any[] | undefined,
-      b: any[] | undefined,
-    ): boolean => normalizeTierSnapshot(a) === normalizeTierSnapshot(b);
+    const tiersEqual = (a: any[] | undefined, b: any[] | undefined): boolean =>
+      normalizeTierSnapshot(a) === normalizeTierSnapshot(b);
 
     const applyBundleTierList = (tierList: any[] | null | undefined) => {
       if (!creatorHex.value || !Array.isArray(tierList)) return;
@@ -701,7 +1010,10 @@ export default defineComponent({
           fallbackFailed.value = true;
         }
       } catch (error) {
-        console.error("[creator-profile] Failed to refresh tier definitions", error);
+        console.error(
+          "[creator-profile] Failed to refresh tier definitions",
+          error,
+        );
         creators.tierFetchError = true;
         fallbackActive.value = true;
         fallbackFailed.value = true;
@@ -786,16 +1098,18 @@ export default defineComponent({
           typeof profile.value.tierAddr === "string"
             ? profile.value.tierAddr
             : typeof cachedDetails?.tierAddr === "string"
-              ? cachedDetails.tierAddr
-              : "";
+            ? cachedDetails.tierAddr
+            : "";
         const nextTierAddr =
-          typeof relayProfile.tierAddr === "string" ? relayProfile.tierAddr : "";
+          typeof relayProfile.tierAddr === "string"
+            ? relayProfile.tierAddr
+            : "";
         const currentP2pk =
           typeof profile.value.p2pkPubkey === "string"
             ? profile.value.p2pkPubkey
             : typeof cachedDetails?.p2pkPubkey === "string"
-              ? cachedDetails.p2pkPubkey
-              : "";
+            ? cachedDetails.p2pkPubkey
+            : "";
 
         const updates: Record<string, unknown> = {};
         let hasDiff = false;
@@ -812,7 +1126,10 @@ export default defineComponent({
           updates.tierAddr = nextTierAddr;
           hasDiff = true;
         }
-        if (relayProfile.p2pkPubkey && relayProfile.p2pkPubkey !== currentP2pk) {
+        if (
+          relayProfile.p2pkPubkey &&
+          relayProfile.p2pkPubkey !== currentP2pk
+        ) {
           updates.p2pkPubkey = relayProfile.p2pkPubkey;
           hasDiff = true;
         }
@@ -834,7 +1151,10 @@ export default defineComponent({
           applyBundleTierList(bundle!.tiers);
         }
       } catch (error) {
-        console.error("[creator-profile] Failed to refresh relay profile", error);
+        console.error(
+          "[creator-profile] Failed to refresh relay profile",
+          error,
+        );
         fallbackActive.value = true;
         fallbackFailed.value = true;
       } finally {
@@ -843,20 +1163,22 @@ export default defineComponent({
     };
 
     const loadProfile = async ({ forceRelayRefresh = false } = {}) => {
-      const tierPromise = fetchTiers();
-
       if (!creatorHex.value) {
-        await tierPromise;
         return;
       }
+
+      let shouldFetchStandaloneTiers = true;
 
       const profilePromise = fetchFundstrProfileBundle(creatorHex.value, {
         forceRefresh: true,
       })
         .then(async (bundle) => {
           if (!bundle) return;
-          const { profile: profileData, followers: followersCount, following: followingCount } =
-            bundle;
+          const {
+            profile: profileData,
+            followers: followersCount,
+            following: followingCount,
+          } = bundle;
           if (profileData) {
             const nextProfile = { ...profileData };
             if (nextProfile.picture && !isTrustedUrl(nextProfile.picture)) {
@@ -868,7 +1190,8 @@ export default defineComponent({
             profile.value = nextProfile;
           }
           if (bundle.profileDetails) {
-            const { trustedMints, relays, tierAddr, p2pkPubkey } = bundle.profileDetails;
+            const { trustedMints, relays, tierAddr, p2pkPubkey } =
+              bundle.profileDetails;
             const relayCandidates = toStringList(relays);
             const mintCandidates = toStringList(trustedMints);
             profile.value = {
@@ -887,6 +1210,9 @@ export default defineComponent({
           }
           if (Array.isArray(bundle.tiers)) {
             applyBundleTierList(bundle.tiers);
+            shouldFetchStandaloneTiers = false;
+            loadingTiers.value = false;
+            creators.tierFetchError = false;
           }
           if (typeof followersCount === "number") {
             followers.value = followersCount;
@@ -921,7 +1247,11 @@ export default defineComponent({
           }
         });
 
-      await Promise.all([profilePromise, tierPromise]);
+      await profilePromise;
+
+      if (shouldFetchStandaloneTiers) {
+        await fetchTiers();
+      }
     };
     const requestAutoRefresh = () => {
       if (!creatorHex.value) return;
@@ -973,8 +1303,8 @@ export default defineComponent({
           return;
         }
         currentCreatorParam.value = normalized;
-        updateCreatorKeys(nextParam);
         resetCreatorState();
+        await updateCreatorKeys(nextParam);
         await loadProfile();
         scheduleAutoRefresh();
       },
@@ -982,6 +1312,181 @@ export default defineComponent({
 
     const retryFetchTiers = () => {
       void fetchTiers();
+    };
+
+    const startingSupportPrice = computed(() => {
+      const prices = tiers.value
+        .map((tier: any) => getPrice(tier))
+        .filter((price) => price > 0);
+      if (!prices.length) {
+        return 0;
+      }
+
+      return Math.min(...prices);
+    });
+
+    const supportHeadline = computed(() => {
+      if (!startingSupportPrice.value) {
+        return "One-time Cashu support is available.";
+      }
+
+      const fiat = formatFiat(startingSupportPrice.value);
+      return `Subscriptions start at ${startingSupportPrice.value} sats${
+        fiat ? ` (${fiat})` : ""
+      }.`;
+    });
+
+    const supportMicrocopy = computed(() => {
+      if (isGuest.value || !nostr.hasIdentity) {
+        return "Finish setup to donate privately, subscribe, or start a chat with this creator.";
+      }
+
+      return tiers.value.length
+        ? "Send a one-time gift now, open a chat, or choose a recurring tier below."
+        : "Send a one-time gift now or start a private conversation with this creator.";
+    });
+
+    const supportReadiness = computed(() => {
+      if (isGuest.value || !nostr.hasIdentity) {
+        return {
+          tone: "info" as const,
+          icon: "info",
+          title: "Finish setup to verify payment options",
+          message:
+            "After setup, Fundstr can check whether your current mint is ready for one-time gifts or subscriptions on this creator page.",
+        };
+      }
+
+      if (!activeMintLabel.value) {
+        return {
+          tone: "warning" as const,
+          icon: "account_balance_wallet",
+          title: "Select an active mint",
+          message:
+            "Choose a wallet mint before donating or subscribing so Fundstr can verify payment compatibility.",
+        };
+      }
+
+      if (
+        normalizedTrustedMints.value.length > 0 &&
+        !activeMintTrustedByCreator.value
+      ) {
+        return {
+          tone: "warning" as const,
+          icon: "swap_horiz",
+          title: "Switch to a creator-trusted mint",
+          message:
+            "Your current wallet mint is not on this creator's trusted list. Switch mints before sending support.",
+        };
+      }
+
+      if (activeMintCapability.value.capability === "exact") {
+        return {
+          tone: "warning" as const,
+          icon: "warning",
+          title: "Exact-match one-time gifts only",
+          message:
+            "This mint can still support exact one-time gifts, but subscriptions and locked support need a split-capable mint.",
+        };
+      }
+
+      if (activeMintCapability.value.capability === "unknown") {
+        return {
+          tone: "warning" as const,
+          icon: "help_outline",
+          title: "Verify your current mint",
+          message:
+            "Fundstr cannot verify split support for the current mint yet. Flexible one-time gifts and subscriptions work best on a verified split-capable mint.",
+        };
+      }
+
+      return {
+        tone: "positive" as const,
+        icon: "check_circle",
+        title: "Current mint is ready for support",
+        message: normalizedTrustedMints.value.length
+          ? "Your current mint is creator-trusted and split-capable for flexible gifts and recurring tiers."
+          : "Your current mint is split-capable for flexible gifts and recurring tiers.",
+      };
+    });
+
+    const tierSupportNote = computed(() => {
+      if (isGuest.value || !nostr.hasIdentity) {
+        return t("CreatorHub.profile.subscribeMicrocopy");
+      }
+
+      if (!activeMintLabel.value) {
+        return "Select an active mint in Wallet before locking a tier.";
+      }
+
+      if (
+        normalizedTrustedMints.value.length > 0 &&
+        !activeMintTrustedByCreator.value
+      ) {
+        return "Switch to a creator-trusted mint before subscribing.";
+      }
+
+      if (activeMintCapability.value.capability === "exact") {
+        return "This mint is exact-match only. Switch to a split-capable mint before subscribing.";
+      }
+
+      if (activeMintCapability.value.capability === "unknown") {
+        return "Verify your current mint supports split ecash before subscribing.";
+      }
+
+      return t("CreatorHub.profile.subscribeMicrocopy");
+    });
+
+    const ensureSupporterReady = () => {
+      if (isGuest.value || !welcomeStore.welcomeCompleted) {
+        gotoWelcome();
+        return false;
+      }
+
+      if (!nostr.hasIdentity) {
+        void router.push({
+          path: "/nostr-login",
+          query: { redirect: route.fullPath },
+        });
+        return false;
+      }
+
+      return true;
+    };
+
+    const scrollToTiers = () => {
+      tiersSectionRef.value?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    };
+
+    const openDonate = () => {
+      if (!creatorHex.value) {
+        return;
+      }
+
+      if (!ensureSupporterReady()) {
+        return;
+      }
+
+      showDonateDialog.value = true;
+    };
+
+    const startMessage = () => {
+      if (!creatorHex.value) {
+        return;
+      }
+
+      if (!ensureSupporterReady()) {
+        return;
+      }
+
+      messenger.startChat(creatorHex.value);
+      void router.push({
+        path: "/nostr-messenger",
+        query: { pubkey: creatorHex.value },
+      });
     };
 
     const openSubscribe = (tier: any) => {
@@ -1004,13 +1509,24 @@ export default defineComponent({
       router.push({ path: "/welcome", query: { redirect: route.fullPath } });
     };
 
+    const applyRouteFocusHint = async () => {
+      if (route.query.tab !== "tiers") {
+        return;
+      }
+
+      await nextTick();
+      scrollToTiers();
+    };
+
     onMounted(async () => {
       if (typeof document !== "undefined") {
         document.addEventListener("visibilitychange", handleVisibilityChange);
       }
 
+      await updateCreatorKeys(creatorParam);
       await loadProfile({ forceRelayRefresh: true });
       scheduleAutoRefresh();
+      await applyRouteFocusHint();
 
       if (!creatorHex.value) return;
       const tierId = route.query.tierId as string | undefined;
@@ -1021,7 +1537,7 @@ export default defineComponent({
           openSubscribe(t);
           router.replace({
             name: "PublicCreatorProfile",
-            params: { npubOrHex: creatorNpub.value },
+            params: { npubOrHex: publicRouteIdentifier.value },
           });
           return true;
         }
@@ -1037,12 +1553,23 @@ export default defineComponent({
     onActivated(() => {
       requestAutoRefresh();
       scheduleAutoRefresh();
+      void applyRouteFocusHint();
     });
+
+    watch(
+      () => route.query.tab,
+      () => {
+        void applyRouteFocusHint();
+      },
+    );
 
     onUnmounted(() => {
       clearAutoRefreshTimer();
       if (typeof document !== "undefined") {
-        document.removeEventListener("visibilitychange", handleVisibilityChange);
+        document.removeEventListener(
+          "visibilitychange",
+          handleVisibilityChange,
+        );
       }
     });
 
@@ -1064,6 +1591,37 @@ export default defineComponent({
     }: any) => {
       // Transaction already processed in SubscribeDialog.
       showSubscribeDialog.value = false;
+    };
+
+    const handleDonate = ({
+      bucketId,
+      locked,
+      type,
+      amount,
+      periods,
+      message,
+    }: any) => {
+      if (!creatorHex.value) return;
+      if (type === "one-time") {
+        sendTokensStore.clearSendData();
+        sendTokensStore.recipientPubkey = creatorHex.value;
+        sendTokensStore.sendViaNostr = true;
+        sendTokensStore.sendData.bucketId = bucketId;
+        sendTokensStore.sendData.amount = amount;
+        sendTokensStore.sendData.memo = message;
+        sendTokensStore.sendData.p2pkPubkey = locked ? creatorHex.value : "";
+        sendTokensStore.showLockInput = locked;
+        sendTokensStore.showSendTokens = true;
+      } else {
+        donationStore.createDonationPreset(
+          periods,
+          amount,
+          creatorHex.value,
+          bucketId,
+        );
+        donationStore.showCreatePresetDialog = true;
+      }
+      showDonateDialog.value = false;
     };
 
     function formatFiat(sats: number): string {
@@ -1104,14 +1662,46 @@ export default defineComponent({
       }
     }
 
-    const profileUrl = computed(() => buildProfileUrl(creatorNpub.value, router));
+    const profileHasVerifiedNip05 = computed(() =>
+      creatorHasVerifiedNip05({
+        pubkey: creatorHex.value ?? "",
+        profile: {
+          ...(profile.value ?? {}),
+          ...(enrichedProfileMeta.value ?? {}),
+        },
+        nip05:
+          typeof enrichedProfileMeta.value.nip05 === "string"
+            ? enrichedProfileMeta.value.nip05
+            : null,
+        nip05Verified:
+          (profile.value?.nip05Verified as boolean | null | undefined) ?? null,
+      } as any),
+    );
+
+    const publicRouteIdentifier = computed(() =>
+      preferredCreatorPublicIdentifier({
+        fallbackIdentifier: creatorNpub.value,
+        nip05:
+          typeof enrichedProfileMeta.value.nip05 === "string"
+            ? enrichedProfileMeta.value.nip05
+            : null,
+        nip05Verified: profileHasVerifiedNip05.value,
+      }),
+    );
+
+    const profileUrl = computed(() =>
+      buildProfileUrl(publicRouteIdentifier.value, router),
+    );
 
     const profileDisplayName = computed(() =>
       displayNameFromProfile(enrichedProfileMeta.value, creatorNpub.value),
     );
 
     const profileHandle = computed(() => {
-      const name = typeof enrichedProfileMeta.value.name === "string" ? enrichedProfileMeta.value.name.trim() : "";
+      const name =
+        typeof enrichedProfileMeta.value.name === "string"
+          ? enrichedProfileMeta.value.name.trim()
+          : "";
       if (name) return name;
       const nip05 =
         typeof enrichedProfileMeta.value.nip05 === "string"
@@ -1121,11 +1711,16 @@ export default defineComponent({
     });
 
     const profileAvatar = computed(() =>
-      safeImageSrc(enrichedProfileMeta.value.picture, profileDisplayName.value, 160),
+      safeImageSrc(
+        enrichedProfileMeta.value.picture,
+        profileDisplayName.value,
+        160,
+      ),
     );
 
     const heroBannerUrl = computed(() => {
-      const banner = profile.value.banner || profile.value.cover || profile.value.header;
+      const banner =
+        profile.value.banner || profile.value.cover || profile.value.header;
       if (banner && isTrustedUrl(banner)) {
         return banner;
       }
@@ -1140,7 +1735,9 @@ export default defineComponent({
         : {},
     );
 
-    const profileInitials = computed(() => initialFromName(profileDisplayName.value));
+    const profileInitials = computed(() =>
+      initialFromName(profileDisplayName.value),
+    );
 
     const aboutText = computed(() => {
       const about =
@@ -1193,12 +1790,20 @@ export default defineComponent({
       };
     });
 
-    const lightningAddress = computed(() =>
-      profile.value.lud16 || profile.value.lud06 || profile.value.lightning_address,
+    const lightningAddress = computed(
+      () =>
+        profile.value.lud16 ||
+        profile.value.lud06 ||
+        profile.value.lightning_address,
     );
 
     const metadataChips = computed(() => {
-      const chips: Array<{ id: string; icon: string; label: string; href?: string }> = [];
+      const chips: Array<{
+        id: string;
+        icon: string;
+        label: string;
+        href?: string;
+      }> = [];
       const nip = nip05Chip.value;
       if (nip) {
         chips.push(nip);
@@ -1238,6 +1843,124 @@ export default defineComponent({
       return [];
     });
 
+    const normalizedTrustedMints = computed(() =>
+      trustedMints.value
+        .map((mint) => normalizeMintUrl(mint))
+        .filter((mint): mint is string => Boolean(mint)),
+    );
+
+    const activeMintLabel = computed(() => {
+      const normalized = normalizeMintUrl(mintsStore.activeMintUrl);
+      return normalized || "";
+    });
+
+    const activeMintCapability = computed(() =>
+      describeMintPaymentCapabilities(mintsStore.activeInfo as any),
+    );
+
+    const activeMintTrustedByCreator = computed(() => {
+      if (!normalizedTrustedMints.value.length) {
+        return true;
+      }
+      if (!activeMintLabel.value) {
+        return false;
+      }
+      return normalizedTrustedMints.value.includes(activeMintLabel.value);
+    });
+
+    const supportHighlights = computed(() => {
+      const highlights: Array<{ label: string; value: string }> = [];
+
+      if (startingSupportPrice.value > 0) {
+        const fiat = formatFiat(startingSupportPrice.value);
+        highlights.push({
+          label: "Starts at",
+          value: `${startingSupportPrice.value.toLocaleString()} sats${
+            fiat ? ` (${fiat})` : ""
+          }`,
+        });
+      }
+
+      if (tiers.value.length > 0) {
+        highlights.push({
+          label: "Tiers",
+          value: `${tiers.value.length}`,
+        });
+      }
+
+      if (trustedMints.value.length > 0) {
+        highlights.push({
+          label: "Trusted mints",
+          value: `${trustedMints.value.length}`,
+        });
+      }
+
+      if (!highlights.length && activeMintLabel.value) {
+        let compactLabel = activeMintLabel.value;
+        try {
+          compactLabel = new URL(activeMintLabel.value).host;
+        } catch {
+          compactLabel = activeMintLabel.value;
+        }
+        highlights.push({ label: "Current mint", value: compactLabel });
+      }
+
+      return highlights.slice(0, 3);
+    });
+
+    const summarizeTierMedia = (tier: any): string[] => {
+      const items = normalizeTierMediaItems(tier?.media ?? []);
+      if (!items.length) {
+        return [];
+      }
+
+      const labels = new Set<string>();
+      for (const item of items) {
+        const type =
+          item.type || determineMediaType(normalizeMediaUrl(item.url));
+        if (type === "youtube" || type === "video") {
+          labels.add("Video preview");
+        } else if (type === "audio") {
+          labels.add("Audio preview");
+        } else if (type === "image") {
+          labels.add("Image preview");
+        } else {
+          labels.add("External link");
+        }
+      }
+      return Array.from(labels).slice(0, 3);
+    };
+
+    const featuredTier = computed(() => {
+      if (!tiers.value.length) {
+        return null;
+      }
+
+      return (
+        tiers.value.find(
+          (tier: any) => normalizeTierMediaItems(tier?.media ?? []).length > 0,
+        ) ?? tiers.value[0]
+      );
+    });
+
+    const featuredTierSummary = computed(() => {
+      if (!featuredTier.value) {
+        return "";
+      }
+
+      const price = getPrice(featuredTier.value);
+      const fiat = formatFiat(price);
+      return `${price.toLocaleString()} sats / ${frequencyLabel(
+        featuredTier.value,
+      )}${fiat ? ` (${fiat})` : ""}`;
+    });
+
+    const featuredTierMediaLabels = computed(() =>
+      featuredTier.value ? summarizeTierMedia(featuredTier.value) : [],
+    );
+
+    const tierBadges = (tier: any) => summarizeTierMedia(tier);
+
     const relayList = computed(() => {
       const relays = profile.value.relays;
       if (Array.isArray(relays)) {
@@ -1274,7 +1997,9 @@ export default defineComponent({
       return [];
     });
 
-    const howCashuWorksHighlight = computed(() => howCashuWorksList.value[0] || "");
+    const howCashuWorksHighlight = computed(
+      () => howCashuWorksList.value[0] || "",
+    );
 
     const faqEntries = computed(() => {
       const raw = profile.value.faq;
@@ -1346,16 +2071,19 @@ export default defineComponent({
       heroBannerUrl,
       heroBannerStyle,
       tiers,
+      showDonateDialog,
       showSubscribeDialog,
       showSetupDialog,
       showReceiptDialog,
       receiptList,
       selectedTier,
+      tiersSectionRef,
       followers,
       following,
       loadingTiers,
       refreshingTiers,
       tierFetchError,
+      isTierFocusActive,
       bitcoinPrice,
       priceStore,
       metadataChips,
@@ -1370,11 +2098,25 @@ export default defineComponent({
       fallbackBannerText,
       fallbackRelaysLabel,
       fallbackFailed,
+      hasStatusBanner,
       // no markdown rendering needed
       formatFiat,
       getPrice,
       frequencyLabel,
+      supportHeadline,
+      supportMicrocopy,
+      supportHighlights,
+      supportReadiness,
+      featuredTier,
+      featuredTierSummary,
+      featuredTierMediaLabels,
+      tierBadges,
+      tierSupportNote,
+      scrollToTiers,
+      openDonate,
+      startMessage,
       openSubscribe,
+      handleDonate,
       confirmSubscribe,
       retryFetchTiers,
       copy,
@@ -1400,8 +2142,18 @@ export default defineComponent({
 }
 
 .profile-page__banner {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
   border-radius: 1rem;
+  border: 1px solid var(--surface-contrast-border);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.profile-page__banner--warning {
+  background: color-mix(in srgb, #f4c242 18%, var(--surface-2));
+}
+
+.profile-page__banner--error {
+  background: color-mix(in srgb, #b42318 22%, var(--surface-2));
 }
 
 .profile-hero {
@@ -1445,29 +2197,33 @@ export default defineComponent({
   font-weight: 600;
 }
 
-.profile-hero__content {
-  /* Pulls content up over banner */
+.profile-hero--with-banner .profile-hero__content {
   margin-top: -4rem;
   position: relative;
   z-index: 1;
 }
 
-.profile-hero__avatar {
-  /* Creates the overlap effect */
+.profile-hero--with-banner .profile-hero__avatar {
   margin-top: -60px;
-  /* Use content bg color to "cut out" the border */
   border: 4px solid var(--surface-2);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
+.profile-hero--with-status-banner .profile-hero__content {
+  margin-top: 0;
+}
+
+.profile-hero--with-status-banner .profile-hero__avatar {
+  margin-top: 0;
+}
+
 @media (max-width: 767px) {
-  .profile-hero__content {
-    /* Adjust for mobile view */
+  .profile-hero--with-banner .profile-hero__content {
     margin-top: -3rem;
   }
 
-  .profile-hero__avatar {
-    margin-top: -50px; /* Adjust as needed for 100px avatar */
+  .profile-hero--with-banner .profile-hero__avatar {
+    margin-top: -50px;
   }
 }
 
@@ -1480,10 +2236,6 @@ export default defineComponent({
 .profile-hero__details {
   flex: 1;
   min-width: 0;
-}
-
-.profile-tier-list :deep(.tier-card__benefits) {
-  display: none !important;
 }
 
 .profile-hero__heading {
@@ -1514,6 +2266,136 @@ export default defineComponent({
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.profile-hero__support {
+  margin-top: 1.1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 1rem;
+  border: 1px solid var(--surface-contrast-border);
+  display: grid;
+  gap: 1rem;
+}
+
+.profile-hero__support-eyebrow {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-200) 28%, transparent);
+  color: var(--accent-600);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.profile-hero__support-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.profile-hero__support-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.profile-hero__support-text {
+  line-height: 1.5;
+}
+
+.profile-hero__support-highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.profile-hero__support-highlight {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.38rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--surface-contrast-border);
+  background: color-mix(in srgb, var(--surface-2) 84%, transparent);
+}
+
+.profile-hero__support-highlight-label {
+  color: var(--text-2);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.profile-hero__support-highlight-value {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.profile-hero__support-status {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  padding: 0.8rem 0.9rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--surface-contrast-border);
+}
+
+.profile-hero__support-status.is-info {
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+}
+
+.profile-hero__support-status.is-warning {
+  background: color-mix(in srgb, #f4c242 16%, var(--surface-2));
+}
+
+.profile-hero__support-status.is-positive {
+  background: color-mix(in srgb, #12725b 12%, var(--surface-2));
+}
+
+.profile-hero__tier-spotlight {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 0.95rem;
+  border: 1px solid var(--surface-contrast-border);
+}
+
+.profile-hero__tier-spotlight-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.profile-hero__tier-spotlight-label {
+  color: var(--text-2);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.profile-hero__tier-spotlight-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.profile-hero__support-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.profile-hero__support-actions .q-btn {
+  min-width: 10rem;
 }
 
 .profile-layout {
@@ -1547,6 +2429,17 @@ export default defineComponent({
   gap: 1rem;
 }
 
+.profile-section--focused {
+  scroll-margin-top: 1.5rem;
+}
+
+.profile-section--focused .profile-section__header {
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--accent-200) 24%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-500) 24%, transparent);
+}
+
 .profile-section__text {
   margin: 0;
 }
@@ -1570,8 +2463,6 @@ export default defineComponent({
   overflow: hidden;
 }
 
-
-
 .profile-tier-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1580,8 +2471,7 @@ export default defineComponent({
 }
 
 .profile-section--tiers,
-.profile-section--video-explainer,
-.profile-section--infrastructure {
+.profile-section--support-details {
   grid-column: 1 / -1;
 }
 
@@ -1609,28 +2499,18 @@ export default defineComponent({
   background: rgba(0, 0, 0, 0.04);
 }
 
-.profile-section--infrastructure .profile-section__body {
-  flex: 1;
-  gap: 1.5rem;
+.profile-detail-expansion {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 1rem;
+  background: var(--surface-2);
 }
 
-.profile-infrastructure {
-  flex: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-auto-rows: auto;
-  gap: 1.5rem;
+.profile-detail-expansion :deep(.q-item) {
+  border-radius: 1rem;
 }
 
-@media (min-width: 1024px) {
-  .profile-infrastructure {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: start;
-  }
-}
-
-.profile-infrastructure .profile-card {
-  height: 100%;
+.profile-detail-expansion :deep(.q-item__label--caption) {
+  color: var(--text-2);
 }
 
 .profile-card {
@@ -1736,7 +2616,6 @@ export default defineComponent({
   grid-column: 1 / -1;
 }
 
-
 .profile-card__video {
   position: relative;
   width: 100%;
@@ -1744,7 +2623,11 @@ export default defineComponent({
   margin-inline: 0;
   border-radius: 1.25rem;
   overflow: hidden;
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 64, 175, 0.55));
+  background: linear-gradient(
+    135deg,
+    rgba(15, 23, 42, 0.85),
+    rgba(30, 64, 175, 0.55)
+  );
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.4);
 }
 
@@ -1855,6 +2738,15 @@ export default defineComponent({
     height: 100px;
   }
 
+  .profile-hero__support-actions {
+    flex-direction: column;
+  }
+
+  .profile-hero__support-actions .q-btn {
+    width: 100%;
+    min-width: 0;
+  }
+
   .profile-tier__header {
     flex-direction: column;
     align-items: flex-start;
@@ -1880,23 +2772,20 @@ export default defineComponent({
   .profile-tier-grid {
     grid-column: 1 / -1;
     grid-template-columns: minmax(0, 2.85fr) minmax(320px, 2fr);
-    grid-template-areas:
-      "tiers video"
-      "infra video";
+    grid-template-areas: "tiers tiers";
   }
 
   .profile-section--tiers {
     grid-area: tiers;
   }
 
-  .profile-section--infrastructure {
-    grid-area: infra;
+  .profile-hero__support {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: flex-end;
   }
 
-  .profile-section--video-explainer {
-    grid-area: video;
-    position: sticky;
-    top: 1.5rem;
+  .profile-hero__support-actions {
+    justify-content: flex-end;
   }
 }
 </style>

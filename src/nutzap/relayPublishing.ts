@@ -1,19 +1,23 @@
-import { NDKEvent } from '@nostr-dev-kit/ndk';
+import { NDKEvent } from "@nostr-dev-kit/ndk";
 import type {
   FundstrRelayClient,
   FundstrRelayPublishAck,
   FundstrRelayPublishResult,
-} from 'src/nutzap/relayClient';
-import type { Tier } from 'src/nutzap/types';
+} from "src/nutzap/relayClient";
+import type { Tier } from "src/nutzap/types";
+import { filterValidMedia } from "src/utils/validateMedia";
 import {
   FUNDSTR_WS_URL,
   FUNDSTR_REQ_URL,
   FUNDSTR_EVT_URL,
   WS_FIRST_TIMEOUT_MS,
   HTTP_FALLBACK_TIMEOUT_MS,
-} from 'src/nutzap/relayEndpoints';
-import { getNutzapNdk } from 'src/nutzap/ndkInstance';
-import { prepareUnsignedEvent, type UnsignedEvent } from '../nostr/serializableEvent';
+} from "src/nutzap/relayEndpoints";
+import { getNutzapNdk } from "src/nutzap/ndkInstance";
+import {
+  prepareUnsignedEvent,
+  type UnsignedEvent,
+} from "../nostr/serializableEvent";
 
 export {
   FUNDSTR_WS_URL,
@@ -41,40 +45,45 @@ export type PublishNostrEventOptions = {
   relayUrl?: string;
 };
 
-let relayClientModulePromise: Promise<typeof import('src/nutzap/relayClient')> | null = null;
+let relayClientModulePromise: Promise<
+  typeof import("src/nutzap/relayClient")
+> | null = null;
 
 async function loadRelayClientModule() {
   if (!relayClientModulePromise) {
-    relayClientModulePromise = import('src/nutzap/relayClient');
+    relayClientModulePromise = import("src/nutzap/relayClient");
   }
   return relayClientModulePromise;
 }
 
 export async function ensureFundstrRelayClient(
-  relayUrl?: string
+  relayUrl?: string,
 ): Promise<FundstrRelayClient> {
   const module = await loadRelayClientModule();
-  const sanitized = typeof relayUrl === 'string' && relayUrl.trim() ? relayUrl : FUNDSTR_WS_URL;
+  const sanitized =
+    typeof relayUrl === "string" && relayUrl.trim() ? relayUrl : FUNDSTR_WS_URL;
   return module.setFundstrRelayUrl(sanitized);
 }
 
 export type NostrFilter = {
   kinds: number[];
   authors: string[];
-  '#d'?: string[];
+  "#d"?: string[];
   limit?: number;
 };
 
 export function isNostrEvent(e: any): e is NostrEvent {
-  if (!e || typeof e !== 'object') return false;
-  const { id, pubkey, created_at, kind, tags, content, sig } = e as Partial<NostrEvent>;
-  if (!HEX_64_REGEX.test(id ?? '')) return false;
-  if (!HEX_64_REGEX.test(pubkey ?? '')) return false;
-  if (typeof created_at !== 'number' || !Number.isFinite(created_at)) return false;
-  if (typeof kind !== 'number' || !Number.isInteger(kind)) return false;
+  if (!e || typeof e !== "object") return false;
+  const { id, pubkey, created_at, kind, tags, content, sig } =
+    e as Partial<NostrEvent>;
+  if (!HEX_64_REGEX.test(id ?? "")) return false;
+  if (!HEX_64_REGEX.test(pubkey ?? "")) return false;
+  if (typeof created_at !== "number" || !Number.isFinite(created_at))
+    return false;
+  if (typeof kind !== "number" || !Number.isInteger(kind)) return false;
   if (!Array.isArray(tags)) return false;
-  if (typeof content !== 'string') return false;
-  if (!HEX_128_REGEX.test(sig ?? '')) return false;
+  if (typeof content !== "string") return false;
+  if (!HEX_128_REGEX.test(sig ?? "")) return false;
   return true;
 }
 
@@ -87,34 +96,33 @@ type NormalizedTierPayload = {
     id: string;
     title: string;
     price: number;
-    frequency: Tier['frequency'];
+    frequency: Tier["frequency"];
     description?: string;
-    media?: string[];
+    media?: NonNullable<Tier["media"]>;
   };
   legacy: {
     id: string;
     title: string;
     price: number;
-    frequency: Tier['frequency'];
+    frequency: Tier["frequency"];
     description?: string;
-    media?: string[];
+    media?: NonNullable<Tier["media"]>;
     name: string;
     price_sats: number;
   };
 };
 
 function normalizeTierForPayload(tier: Tier): NormalizedTierPayload {
-  const media = Array.isArray(tier.media)
-    ? tier.media
-        .map(entry => (typeof entry?.url === 'string' ? entry.url.trim() : ''))
-        .filter(url => !!url)
-    : [];
+  const media = Array.isArray(tier.media) ? filterValidMedia(tier.media) : [];
 
   const numericPrice = Number(tier.price);
-  const price = Number.isFinite(numericPrice) ? Math.max(0, Math.round(numericPrice)) : 0;
-  const title = typeof tier.title === 'string' ? tier.title.trim() : '';
-  const description = typeof tier.description === 'string' ? tier.description.trim() : '';
-  const frequency: Tier['frequency'] = tier.frequency ?? 'monthly';
+  const price = Number.isFinite(numericPrice)
+    ? Math.max(0, Math.round(numericPrice))
+    : 0;
+  const title = typeof tier.title === "string" ? tier.title.trim() : "";
+  const description =
+    typeof tier.description === "string" ? tier.description.trim() : "";
+  const frequency: Tier["frequency"] = tier.frequency ?? "monthly";
 
   const canonical = {
     id: tier.id,
@@ -122,7 +130,7 @@ function normalizeTierForPayload(tier: Tier): NormalizedTierPayload {
     price,
     frequency,
     ...(description ? { description } : {}),
-    ...(media.length ? { media } : {}),
+    ...(media.length ? { media: media.map((entry) => ({ ...entry })) } : {}),
   };
 
   const legacy = {
@@ -135,11 +143,11 @@ function normalizeTierForPayload(tier: Tier): NormalizedTierPayload {
 }
 
 export function buildTierPayloads(tiers: Tier[]): {
-  canonical: NormalizedTierPayload['canonical'][];
-  legacy: NormalizedTierPayload['legacy'][];
+  canonical: NormalizedTierPayload["canonical"][];
+  legacy: NormalizedTierPayload["legacy"][];
 } {
-  const canonical: NormalizedTierPayload['canonical'][] = [];
-  const legacy: NormalizedTierPayload['legacy'][] = [];
+  const canonical: NormalizedTierPayload["canonical"][] = [];
+  const legacy: NormalizedTierPayload["legacy"][] = [];
 
   for (const tier of tiers) {
     const normalized = normalizeTierForPayload(tier);
@@ -158,10 +166,15 @@ export function buildTierPayloadForKind(tiers: Tier[], kind: TierKind) {
   };
 }
 
-async function signPublishTemplate(template: UnsignedEvent): Promise<NostrEvent> {
+async function signPublishTemplate(
+  template: UnsignedEvent,
+): Promise<NostrEvent> {
   const created_at = template.created_at ?? Math.floor(Date.now() / 1000);
   const payload: UnsignedEvent = { ...template, created_at };
-  const maybeWindow = typeof window !== 'undefined' ? (window as any) : (globalThis as any)?.window;
+  const maybeWindow =
+    typeof window !== "undefined"
+      ? (window as any)
+      : (globalThis as any)?.window;
   const nostrSigner = maybeWindow?.nostr;
   let signed: unknown;
 
@@ -175,7 +188,7 @@ async function signPublishTemplate(template: UnsignedEvent): Promise<NostrEvent>
   }
 
   if (!isNostrEvent(signed)) {
-    throw new Error('Signed event is invalid');
+    throw new Error("Signed event is invalid");
   }
 
   return signed;
@@ -188,7 +201,7 @@ export async function publishNostrEvent(
     content: string;
     created_at?: number;
   },
-  options?: PublishNostrEventOptions
+  options?: PublishNostrEventOptions,
 ): Promise<FundstrRelayPublishResult> {
   const unsigned = prepareUnsignedEvent(template);
 
@@ -205,12 +218,12 @@ export async function publishNostrEvent(
 export async function publishTiers(
   tiers: Tier[],
   kind: TierKind,
-  options?: PublishNostrEventOptions
+  options?: PublishNostrEventOptions,
 ) {
   const tags = [
-    ['d', 'tiers'],
-    ['t', 'nutzap-tiers'],
-    ['client', 'fundstr'],
+    ["d", "tiers"],
+    ["t", "nutzap-tiers"],
+    ["client", "fundstr"],
   ];
   const payload = buildTierPayloadForKind(tiers, kind);
   const content = JSON.stringify(payload);

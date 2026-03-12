@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  vi,
+} from "vitest";
 import { nip19 } from "nostr-tools";
 import {
   fetchCreator,
@@ -82,7 +90,11 @@ describe("fundstr API helpers", () => {
           },
           {
             pubkey: nip19.npubEncode(secondPubkey),
-            profile: { displayName: "Eve", username: "eve", cover: "https://banner" },
+            profile: {
+              displayName: "Eve",
+              username: "eve",
+              cover: "https://banner",
+            },
             following: "5",
             tierSummary: { count: "", cheapest_price_msat: "2000" },
             tiers: [
@@ -100,7 +112,11 @@ describe("fundstr API helpers", () => {
 
       fetchMock.mockResolvedValueOnce(createJsonResponse(body));
 
-      const creators = await fetchCreators("satoshi", 0 as unknown as number, Number.NaN);
+      const creators = await fetchCreators(
+        "satoshi",
+        0 as unknown as number,
+        Number.NaN,
+      );
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [requestUrl, init] = fetchMock.mock.calls[0];
@@ -141,10 +157,13 @@ describe("fundstr API helpers", () => {
           amountMsat: 2500,
           cadence: "weekly",
           description: "Extra",
-          media: [{ url: "https://cdn/image" }],
+          media: [],
         },
       ]);
-      expect(creator.tierSummary).toEqual({ count: 3, cheapestPriceMsat: 5000 });
+      expect(creator.tierSummary).toEqual({
+        count: 3,
+        cheapestPriceMsat: 5000,
+      });
 
       expect(second.pubkey).toBe(secondPubkey);
       expect(second.displayName).toBe("Eve");
@@ -164,7 +183,9 @@ describe("fundstr API helpers", () => {
     });
 
     it("throws using buildResponseError on non-success statuses", async () => {
-      fetchMock.mockResolvedValueOnce(createJsonResponse({ error: "nope" }, 502));
+      fetchMock.mockResolvedValueOnce(
+        createJsonResponse({ error: "nope" }, 502),
+      );
 
       await expect(fetchCreators("", 10, 0)).rejects.toMatchObject({
         message: "Request failed with status 502",
@@ -177,10 +198,12 @@ describe("fundstr API helpers", () => {
     it("translates npub identifiers to hex paths", async () => {
       const pubkey = "b".repeat(64);
       const npub = nip19.npubEncode(pubkey);
-      fetchMock.mockResolvedValueOnce(createJsonResponse({
-        pubkey,
-        profile: null,
-      }));
+      fetchMock.mockResolvedValueOnce(
+        createJsonResponse({
+          pubkey,
+          profile: null,
+        }),
+      );
 
       const creator = await fetchCreator(npub);
 
@@ -194,22 +217,31 @@ describe("fundstr API helpers", () => {
 
     it("accepts raw hex identifiers", async () => {
       const pubkey = "c".repeat(64);
-      fetchMock.mockResolvedValueOnce(createJsonResponse({ pubkey, profile: null }));
+      fetchMock.mockResolvedValueOnce(
+        createJsonResponse({ pubkey, profile: null }),
+      );
 
       const creator = await fetchCreator(pubkey);
 
-      expect(fetchMock).toHaveBeenCalledWith(`/api/v1/creators/${pubkey}`, expect.any(Object));
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/v1/creators/${pubkey}`,
+        expect.any(Object),
+      );
       expect(creator.pubkey).toBe(pubkey);
     });
 
     it("rejects missing identifiers", async () => {
-      await expect(fetchCreator("")).rejects.toThrow("Missing or invalid creator identifier");
+      await expect(fetchCreator("")).rejects.toThrow(
+        "Missing or invalid creator identifier",
+      );
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it("propagates non-ok responses with buildResponseError", async () => {
       const pubkey = "d".repeat(64);
-      fetchMock.mockResolvedValueOnce(createJsonResponse({ message: "bad" }, 404));
+      fetchMock.mockResolvedValueOnce(
+        createJsonResponse({ message: "bad" }, 404),
+      );
 
       await expect(fetchCreator(pubkey)).rejects.toMatchObject({
         message: "Request failed with status 404",
@@ -225,7 +257,9 @@ describe("fundstr API helpers", () => {
       expect(formatMsatToSats("", { maximumFractionDigits: 4 })).toBe("0");
       expect(formatMsatToSats("500")).toBe("0.5");
       expect(formatMsatToSats(1500)).toBe("2");
-      expect(formatMsatToSats("2500", { maximumFractionDigits: 2 })).toBe("2.5");
+      expect(formatMsatToSats("2500", { maximumFractionDigits: 2 })).toBe(
+        "2.5",
+      );
       expect(formatMsatToSats("abc")).toBe("0");
     });
   });

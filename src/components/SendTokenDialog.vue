@@ -1581,7 +1581,11 @@ export default defineComponent({
         }
 
         const supportedNuts = resolveSupportedNuts(mintInfo);
-        if (!mintSupportsSplit(mintInfo, supportedNuts)) {
+        const requiresSplitSupport = !this.canSpendOffline;
+        if (
+          requiresSplitSupport &&
+          !mintSupportsSplit(mintInfo, supportedNuts)
+        ) {
           notifyError(SPLIT_SUPPORT_REQUIRED_MESSAGE);
           return;
         }

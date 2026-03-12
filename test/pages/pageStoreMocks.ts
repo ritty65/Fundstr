@@ -1,5 +1,16 @@
 import { vi } from "vitest";
-import { SimpleStub, QBtnStub, QBannerStub, QTabsStub, QTabStub, QTabPanelsStub, QTabPanelStub, QExpansionItemStub, QDialogStub, QSkeletonStub } from "./quasarStubs";
+import {
+  SimpleStub,
+  QBtnStub,
+  QBannerStub,
+  QTabsStub,
+  QTabStub,
+  QTabPanelsStub,
+  QTabPanelStub,
+  QExpansionItemStub,
+  QDialogStub,
+  QSkeletonStub,
+} from "./quasarStubs";
 
 const signerType = {
   NIP07: "nip07",
@@ -461,7 +472,12 @@ vi.mock("lucide-vue-next", async () => {
         target[prop] = defineComponent({
           name: `${String(prop)}Stub`,
           setup(_, { attrs }) {
-            return () => h("span", { class: "icon-stub", "data-icon": String(prop), ...attrs });
+            return () =>
+              h("span", {
+                class: "icon-stub",
+                "data-icon": String(prop),
+                ...attrs,
+              });
           },
         });
       }
@@ -482,11 +498,11 @@ vi.mock("quasar", async () => {
       screen: { gt: { xs: true }, lt: { md: false } },
     }),
     date: { formatDate: vi.fn((value: any) => value) },
-    QPage: SimpleStub('QPage'),
+    QPage: SimpleStub("QPage"),
     QBanner: QBannerStub,
     QBtn: QBtnStub,
-    QSpinner: SimpleStub('QSpinner'),
-    QSpace: SimpleStub('QSpace'),
+    QSpinner: SimpleStub("QSpinner"),
+    QSpace: SimpleStub("QSpace"),
     QDialog: QDialogStub,
     QTabs: QTabsStub,
     QTab: QTabStub,
@@ -494,13 +510,14 @@ vi.mock("quasar", async () => {
     QTabPanel: QTabPanelStub,
     QExpansionItem: QExpansionItemStub,
     QSkeleton: QSkeletonStub,
-    QIcon: SimpleStub('QIcon'),
-    QCard: SimpleStub('QCard'),
-    QCardSection: SimpleStub('QCardSection'),
-    QSeparator: SimpleStub('QSeparator'),
-    QTooltip: SimpleStub('QTooltip'),
-    QItem: SimpleStub('QItem'),
-    QItemSection: SimpleStub('QItemSection'),
+    QIcon: SimpleStub("QIcon"),
+    QCard: SimpleStub("QCard"),
+    QCardSection: SimpleStub("QCardSection"),
+    QChip: SimpleStub("QChip"),
+    QSeparator: SimpleStub("QSeparator"),
+    QTooltip: SimpleStub("QTooltip"),
+    QItem: SimpleStub("QItem"),
+    QItemSection: SimpleStub("QItemSection"),
   };
 });
 

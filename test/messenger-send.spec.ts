@@ -32,17 +32,27 @@ vi.mock("@/stores/wallet", () => ({ useWalletStore: () => ({}) }));
 vi.mock("@/stores/mints", () => ({ useMintsStore: () => ({}) }));
 vi.mock("@/stores/proofs", () => ({ useProofsStore: () => ({}) }));
 vi.mock("@/stores/tokens", () => ({ useTokensStore: () => ({}) }));
-vi.mock("@/stores/receiveTokensStore", () => ({ useReceiveTokensStore: () => ({}) }));
+vi.mock("@/stores/receiveTokensStore", () => ({
+  useReceiveTokensStore: () => ({}),
+}));
 vi.mock("@/stores/buckets", () => ({ useBucketsStore: () => ({}) }));
 vi.mock("@/stores/lockedTokens", () => ({ useLockedTokensStore: () => ({}) }));
 vi.mock("@/stores/dmChats", () => ({ useDmChatsStore: () => ({}) }));
 vi.mock("@/stores/creators", () => ({ useCreatorsStore: () => ({}) }));
 
 vi.mock("@/stores/messengerDb", () => ({
-  loadConversationState: vi.fn(),
-  loadMessengerMessages: vi.fn(),
-  messengerDb: {},
+  loadConversationState: vi.fn().mockResolvedValue({
+    conversations: {},
+    unread: {},
+    pinned: {},
+    aliases: {},
+  }),
+  loadMessengerMessages: vi.fn().mockResolvedValue([]),
+  loadPendingDmDecrypts: vi.fn().mockResolvedValue([]),
+  messengerDb: { markMigrationComplete: vi.fn() },
   removeConversationState: vi.fn(),
+  removePendingDmDecrypt: vi.fn(),
+  savePendingDmDecrypt: vi.fn(),
   saveMessengerMessage: vi.fn(),
   saveMessengerMessages: vi.fn(),
   getDueOutboxItems: vi.fn().mockResolvedValue([]),
@@ -62,18 +72,38 @@ vi.mock("@/utils/messengerFiles", () => ({
   stripFileMetaLines: (input: string) => input,
 }));
 
-vi.mock("@/config/relays", () => ({ DEFAULT_RELAYS: [], FREE_RELAYS: [], VETTED_OPEN_WRITE_RELAYS: [] }));
-vi.mock("@/js/message-utils", () => ({ sanitizeMessage: (value: string) => value }));
+vi.mock("@/config/relays", () => ({
+  DEFAULT_RELAYS: [],
+  FREE_RELAYS: [],
+  VETTED_OPEN_WRITE_RELAYS: [],
+}));
+vi.mock("@/js/message-utils", () => ({
+  sanitizeMessage: (value: string) => value,
+}));
 vi.mock("@/js/token", () => ({ default: {} }));
 vi.mock("@/utils/receipt-utils", () => ({ subscriptionPayload: vi.fn() }));
-vi.mock("@/constants/subscriptionFrequency", () => ({ frequencyToDays: vi.fn() }));
+vi.mock("@/constants/subscriptionFrequency", () => ({
+  frequencyToDays: vi.fn(),
+}));
 vi.mock("@/composables/useNdk", () => ({ useNdk: () => ({}) }));
-vi.mock("@/nutzap/relayPublishing", () => ({ ensureFundstrRelayClient: vi.fn() }));
+vi.mock("@/nutzap/relayPublishing", () => ({
+  ensureFundstrRelayClient: vi.fn(),
+}));
 vi.mock("@/nutzap/relayClient", () => ({ useFundstrRelayStatus: () => ({}) }));
 
-const nostrStore = { connected: false, privKeyHex: null, signer: undefined } as any;
+const nostrStore = {
+  connected: false,
+  privKeyHex: null,
+  signer: undefined,
+  signerCaps: { nip44Encrypt: false, nip44Decrypt: false },
+} as any;
 vi.mock("@/stores/nostr", () => ({
-  SignerType: { SEED: "seed", NIP07: "nip07", NIP46: "nip46", PRIVATEKEY: "private" },
+  SignerType: {
+    SEED: "seed",
+    NIP07: "nip07",
+    NIP46: "nip46",
+    PRIVATEKEY: "private",
+  },
   useNostrStore: () => nostrStore,
 }));
 
@@ -87,27 +117,28 @@ vi.mock("@/nostr/dmSigner", () => ({
 }));
 const getActiveDmSigner = dmSignerMocks.getActiveDmSigner;
 
-
 import { useMessengerStore } from "@/stores/messenger";
 
-const createMessage = () => ({
-  id: "local",
-  pubkey: "sender",
-  content: "",
-  created_at: Math.floor(Date.now() / 1000),
-  outgoing: true,
-  localEcho: undefined,
-}) as any;
+const createMessage = () =>
+  ({
+    id: "local",
+    pubkey: "sender",
+    content: "",
+    created_at: Math.floor(Date.now() / 1000),
+    outgoing: true,
+    localEcho: undefined,
+  } as any);
 
-const createMeta = () => ({
-  localId: "local",
-  status: "pending",
-  relayResults: {},
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
-  attempt: 0,
-  payload: { content: "" },
-}) as any;
+const createMeta = () =>
+  ({
+    localId: "local",
+    status: "pending",
+    relayResults: {},
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    attempt: 0,
+    payload: { content: "" },
+  } as any);
 
 describe("messenger send queue signer fallbacks", () => {
   beforeEach(() => {
@@ -134,7 +165,11 @@ describe("messenger send queue signer fallbacks", () => {
         id: "signed",
         sig: "signature",
       })),
-      nip04Encrypt: vi.fn().mockImplementation(async (_recipient: string, plaintext: string) => `enc:${plaintext}`),
+      nip04Encrypt: vi
+        .fn()
+        .mockImplementation(
+          async (_recipient: string, plaintext: string) => `enc:${plaintext}`,
+        ),
       nip04Decrypt: vi.fn(),
     };
     getActiveDmSigner.mockResolvedValue({ mode: "software", signer });
@@ -155,7 +190,7 @@ describe("messenger send queue signer fallbacks", () => {
     const result = await store.executeSendWithMeta({
       msg,
       meta,
-      recipient: "cafebabe",
+      recipient: "c".repeat(64),
       contentToSend: "hello",
       textContent: "hello",
     });
@@ -186,14 +221,16 @@ describe("messenger send queue signer fallbacks", () => {
     const result = await store.executeSendWithMeta({
       msg,
       meta,
-      recipient: "cafebabe",
+      recipient: "c".repeat(64),
       contentToSend: "hello",
       textContent: "hello",
     });
 
     expect(result.success).toBe(false);
     expect(result.event).toBeNull();
-    expect(notifyError).toHaveBeenCalledWith("No signer available for direct messages");
+    expect(notifyError).toHaveBeenCalledWith(
+      "No signer available for direct messages",
+    );
     expect(store.markLocalEchoFailed).toHaveBeenCalledWith(
       msg,
       meta,

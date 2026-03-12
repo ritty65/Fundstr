@@ -19,7 +19,7 @@ vi.mock("src/stores/dexie", () => ({
     lockedTokens: {
       bulkAdd: vi.fn(),
       bulkDelete: vi.fn(),
-    }
+    },
   },
 }));
 
@@ -34,7 +34,11 @@ vi.mock("dexie", () => {
         };
       }
     },
-    liveQuery: (fn) => ({ subscribe: (cb) => { /* mock subscribe */ } }),
+    liveQuery: (fn) => ({
+      subscribe: (cb) => {
+        /* mock subscribe */
+      },
+    }),
   };
 });
 
@@ -57,49 +61,49 @@ describe("P2PK Subscriptions", () => {
     // Here we verify the utility function `buildTimedOutputs` which is key for subscriptions.
 
     it("buildTimedOutputs generates correct locktimes", async () => {
-       const walletMock = {
-         split: vi.fn((amounts, opts) => {
-           // Simulate buildSecret callback
-           const proofs = amounts.map((a, i) => {
-             const secret = opts.buildSecret(i);
-             return { amount: a, secret };
-           });
-           return Promise.resolve({ proofs, tokenStrings: [] });
-         })
-       };
+      const walletMock = {
+        split: vi.fn((amounts, opts) => {
+          // Simulate buildSecret callback
+          const proofs = amounts.map((a, i) => {
+            const secret = opts.buildSecret(i);
+            return { amount: a, secret };
+          });
+          return Promise.resolve({ proofs, tokenStrings: [] });
+        }),
+      };
 
-       const count = 3;
-       const startTime = 10000;
-       const interval = 1000;
-       const creatorPk = "02pubkey";
+      const count = 3;
+      const startTime = 10000;
+      const interval = 1000;
+      const creatorPk = "02pubkey";
 
-       const { proofs } = await buildTimedOutputs(
-         walletMock as any,
-         300,
-         count,
-         creatorPk,
-         startTime,
-         interval
-       );
+      const { proofs } = await buildTimedOutputs(
+        walletMock as any,
+        300,
+        count,
+        creatorPk,
+        startTime,
+        interval,
+      );
 
-       expect(proofs.length).toBe(3);
+      expect(proofs.length).toBe(3);
 
-       // Index 0: locktime = 0 (immediate)
-       const secret0 = JSON.parse(proofs[0].secret);
-       const tags0 = secret0[1].tags;
-       expect(tags0).toEqual([]); // No locktime for first payment usually, or checks impl
+      // Index 0: locktime = 0 (immediate)
+      const secret0 = JSON.parse(proofs[0].secret);
+      const tags0 = secret0[1].tags;
+      expect(tags0).toEqual([]); // No locktime for first payment usually, or checks impl
 
-       // Index 1: locktime = startTime + interval
-       const secret1 = JSON.parse(proofs[1].secret);
-       const tags1 = secret1[1].tags;
-       const locktime1 = tags1.find(t => t[0] === "locktime")[1];
-       expect(Number(locktime1)).toBe(startTime + interval);
+      // Index 1: locktime = startTime + interval
+      const secret1 = JSON.parse(proofs[1].secret);
+      const tags1 = secret1[1].tags;
+      const locktime1 = tags1.find((t) => t[0] === "locktime")[1];
+      expect(Number(locktime1)).toBe(startTime + interval);
 
-       // Index 2: locktime = startTime + 2*interval
-       const secret2 = JSON.parse(proofs[2].secret);
-       const tags2 = secret2[1].tags;
-       const locktime2 = tags2.find(t => t[0] === "locktime")[1];
-       expect(Number(locktime2)).toBe(startTime + 2 * interval);
+      // Index 2: locktime = startTime + 2*interval
+      const secret2 = JSON.parse(proofs[2].secret);
+      const tags2 = secret2[1].tags;
+      const locktime2 = tags2.find((t) => t[0] === "locktime")[1];
+      expect(Number(locktime2)).toBe(startTime + 2 * interval);
     });
   });
 
@@ -113,8 +117,8 @@ describe("P2PK Subscriptions", () => {
         creatorNpub: pubkey,
         intervals: [
           { lockedTokenId: "tok1", unlockTs: 100 }, // Past
-          { lockedTokenId: "tok2", unlockTs: 9999999999 } // Future
-        ]
+          { lockedTokenId: "tok2", unlockTs: 9999999999, htlcHash: "hash" }, // Future and cancellable
+        ],
       };
 
       subscriptionsStore.subscriptions = [sub];
@@ -125,27 +129,32 @@ describe("P2PK Subscriptions", () => {
       expect(cashuDb.lockedTokens.bulkDelete).toHaveBeenCalledWith(["tok2"]);
 
       // Should verify status update
-      expect(cashuDb.subscriptions.update).toHaveBeenCalledWith("sub1", expect.objectContaining({ status: "cancelled" }));
+      expect(cashuDb.subscriptions.update).toHaveBeenCalledWith(
+        "sub1",
+        expect.objectContaining({ status: "cancelled" }),
+      );
     });
   });
 
   describe("Interval Updates", () => {
-     it("markIntervalRedeemed updates subscription interval status", async () => {
-        const sub = {
-          id: "sub1",
-          intervals: [
-             { monthIndex: 0, status: "pending", redeemed: false },
-             { monthIndex: 1, status: "pending", redeemed: false }
-          ]
-        };
-        // @ts-ignore
-        cashuDb.subscriptions.get.mockResolvedValue(sub);
+    it("markIntervalRedeemed updates subscription interval status", async () => {
+      const sub = {
+        id: "sub1",
+        intervals: [
+          { monthIndex: 0, status: "pending", redeemed: false },
+          { monthIndex: 1, status: "pending", redeemed: false },
+        ],
+      };
+      // @ts-ignore
+      cashuDb.subscriptions.get.mockResolvedValue(sub);
 
-        await subscriptionsStore.markIntervalRedeemed("sub1", 1);
+      await subscriptionsStore.markIntervalRedeemed("sub1", 1);
 
-        expect(sub.intervals[1].status).toBe("claimed");
-        expect(sub.intervals[1].redeemed).toBe(true);
-        expect(cashuDb.subscriptions.update).toHaveBeenCalledWith("sub1", { intervals: sub.intervals });
-     });
+      expect(sub.intervals[1].status).toBe("claimed");
+      expect(sub.intervals[1].redeemed).toBe(true);
+      expect(cashuDb.subscriptions.update).toHaveBeenCalledWith("sub1", {
+        intervals: sub.intervals,
+      });
+    });
   });
 });

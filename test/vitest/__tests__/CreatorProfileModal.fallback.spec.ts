@@ -8,7 +8,12 @@ vi.mock("quasar", async (importOriginal) => {
     useQuasar: () => ({
       dark: { isActive: false },
       platform: { is: { mobile: false } },
-      screen: { width: 1920, height: 1080, lt: { sm: false, md: false }, gt: { sm: true } },
+      screen: {
+        width: 1920,
+        height: 1080,
+        lt: { sm: false, md: false },
+        gt: { sm: true },
+      },
       iconSet: { arrow: { dropdown: "arrow_drop_down" } },
       notify: vi.fn(),
     }),
@@ -35,6 +40,23 @@ vi.mock("stores/creators", () => ({
     fetchCreator: fetchCreatorMock,
     warmCache: {},
   }),
+  mergeCreatorProfileWithFallback: (fallback: any, profile: any) =>
+    profile ?? fallback,
+  creatorIsSignalOnly: () => false,
+  FundstrProfileFetchError: class FundstrProfileFetchError extends Error {
+    fallbackAttempted = false;
+  },
+}));
+
+vi.mock("stores/nostr", () => ({
+  useNostrStore: () => ({
+    hasIdentity: true,
+    pubkey: "pubkey-123",
+    npub: "npub1test",
+    connected: false,
+    relays: [],
+    fetchRecentNotes: vi.fn().mockResolvedValue([]),
+  }),
 }));
 
 describe("CreatorProfileModal fallback", () => {
@@ -60,12 +82,20 @@ describe("CreatorProfileModal fallback", () => {
     "q-dialog": { template: "<div><slot /></div>" },
     "q-card": { template: "<div><slot /></div>" },
     "q-card-section": { template: "<section><slot /></section>" },
-    "q-btn": { props: ["label"], template: "<button><slot />{{ label }}</button>" },
+    "q-btn": {
+      props: ["label"],
+      template: "<button><slot />{{ label }}</button>",
+    },
     "q-avatar": { template: "<div><slot /></div>" },
+    "q-tooltip": { template: "<div><slot /></div>" },
     "q-spinner": true,
+    "q-tabs": { template: "<div><slot /></div>" },
+    "q-tab": { template: "<div><slot /></div>" },
+    "q-tab-panels": { template: "<div><slot /></div>" },
+    "q-tab-panel": { template: "<div><slot /></div>" },
     TierDetailsPanel: {
       props: ["tierName"],
-      template: "<div class=\"tier-stub\">{{ tierName }}</div>",
+      template: '<div class="tier-stub">{{ tierName }}</div>',
     },
   } as const;
 
@@ -83,7 +113,7 @@ describe("CreatorProfileModal fallback", () => {
 
     await flushPromises();
 
-    expect(fetchCreatorMock).toHaveBeenCalledWith(initialProfile.pubkey);
+    expect(fetchCreatorMock).toHaveBeenCalledWith(initialProfile.pubkey, false);
     expect(wrapper.text()).toContain("Initial Creator");
     expect(wrapper.text()).toContain("Fallback bio");
     expect(wrapper.text()).toContain("Starter Tier");
@@ -101,7 +131,7 @@ describe("CreatorProfileModal fallback", () => {
 
     await flushPromises();
 
-    expect(fetchCreatorMock).toHaveBeenCalledWith(initialProfile.pubkey);
+    expect(fetchCreatorMock).toHaveBeenCalledWith(initialProfile.pubkey, false);
     expect(wrapper.text()).toContain("Initial Creator");
     expect(wrapper.text()).toContain("Fallback bio");
     expect(wrapper.text()).toContain("Starter Tier");

@@ -4,6 +4,7 @@ import { createRouter, createMemoryHistory } from "vue-router";
 import { defineComponent, h } from "vue";
 
 import "./pageStoreMocks";
+import { SimpleStub } from "./quasarStubs";
 
 const SettingsViewStub = defineComponent({
   name: "SettingsViewStub",
@@ -14,13 +15,20 @@ const SettingsViewStub = defineComponent({
 
 const stubs = {
   SettingsView: SettingsViewStub,
+  "q-page": SimpleStub("QPage"),
+  "q-chip": SimpleStub("QChip"),
 };
 
 describe("Settings page", () => {
   it("wraps the settings view in the themed container", async () => {
     const router = createRouter({
       history: createMemoryHistory(),
-      routes: [{ path: "/", component: (await import("src/pages/Settings.vue")).default }],
+      routes: [
+        {
+          path: "/",
+          component: (await import("src/pages/Settings.vue")).default,
+        },
+      ],
     });
     await router.push("/");
     await router.isReady();
@@ -31,12 +39,18 @@ describe("Settings page", () => {
       global: {
         plugins: [router],
         stubs,
-        mocks: { $t: (key: string) => key, $q: { dark: { isActive: false }, screen: { gt: { xs: true }, lt: { md: false } } } },
+        mocks: {
+          $t: (key: string) => key,
+          $q: {
+            dark: { isActive: false },
+            screen: { gt: { xs: true }, lt: { md: false } },
+          },
+        },
       },
     });
 
-    expect(wrapper.classes()).toContain("flex");
-    expect(wrapper.classes()).toContain("flex-center");
+    expect(wrapper.classes()).toContain("settings-page");
+    expect(wrapper.classes()).toContain("bg-surface-1");
     expect(wrapper.find("[data-test='settings-view']").exists()).toBe(true);
   });
 });

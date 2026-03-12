@@ -312,7 +312,6 @@ async function generate() {
     backupNsec.value = nostr.activePrivateKeyNsec;
     nsec.value = nostr.activePrivateKeyNsec;
     showBackup.value = true;
-    void nostr.connect().catch(() => {});
   } catch {
     error.value = t("Welcome.nostr.errorConnect");
   }
@@ -348,7 +347,6 @@ async function importKey() {
     backupNsec.value = nostr.activePrivateKeyNsec;
     showBackup.value = true;
     nsec.value = "";
-    void nostr.connect().catch(() => {});
   } catch {
     error.value = t("Welcome.nostr.errorInvalid");
   }

@@ -1,7 +1,11 @@
 import { boot } from "quasar/wrappers";
 import { useBootErrorStore } from "stores/bootError";
 import NDK, { NDKSigner } from "@nostr-dev-kit/ndk";
-import { useNostrStore, WALLET_LOCKED_MESSAGE, WalletLockedError } from "stores/nostr";
+import {
+  useNostrStore,
+  WALLET_LOCKED_MESSAGE,
+  WalletLockedError,
+} from "stores/nostr";
 import { NDKEvent, type NDKFilter } from "@nostr-dev-kit/ndk";
 import {
   useSettingsStore,
@@ -257,6 +261,37 @@ let ndkInstance: NDK | undefined;
 let ndkPromise: Promise<NDK> | undefined;
 let relayWatchdog: RelayWatchdog | undefined;
 
+function disconnectNdkRelays(ndk?: NDK) {
+  if (!ndk) {
+    return;
+  }
+
+  for (const relay of ndk.pool.relays.values()) {
+    try {
+      relay.disconnect?.();
+    } catch (error) {
+      debug("[NDK] failed to disconnect relay during reset", relay.url, error);
+    }
+  }
+}
+
+export function adoptNdkInstance(ndk: NDK) {
+  ndkInstance = ndk;
+  ndkPromise = Promise.resolve(ndk);
+  return ndk;
+}
+
+export function resetNdkInstance() {
+  disconnectNdkRelays(ndkInstance);
+  ndkInstance = undefined;
+  ndkPromise = undefined;
+  if (relayWatchdog) {
+    relayWatchdog.stop();
+    relayWatchdog = undefined;
+  }
+  clearRelayFailureCache();
+}
+
 function startRelayWatchdog(ndk: NDK) {
   if (!shouldAutoConnectRelays()) {
     if (relayWatchdog) {
@@ -296,7 +331,10 @@ export async function safeConnect(
     }
   }
   console.warn(
-    "[NDK] connect failed after", retries, "attempts:", lastError?.message,
+    "[NDK] connect failed after",
+    retries,
+    "attempts:",
+    lastError?.message,
   );
   return lastError;
 }
@@ -305,7 +343,9 @@ export type CreateReadOnlyOptions = {
   fundstrOnly?: boolean;
 };
 
-async function createReadOnlyNdk(opts: CreateReadOnlyOptions = {}): Promise<NDK> {
+async function createReadOnlyNdk(
+  opts: CreateReadOnlyOptions = {},
+): Promise<NDK> {
   const settings = useSettingsStore();
   if (!Array.isArray(settings.defaultNostrRelays)) {
     settings.defaultNostrRelays = DEFAULT_RELAYS;
@@ -318,9 +358,7 @@ async function createReadOnlyNdk(opts: CreateReadOnlyOptions = {}): Promise<NDK>
     opts.fundstrOnly === true ||
     (opts.fundstrOnly !== false && isFundstrOnlyRelayModeActive(settings));
   const autoBootstrap = shouldAutoConnectRelays(settings, opts.fundstrOnly);
-  const bootstrapRelays = fundstrOnly
-    ? [FUNDSTR_PRIMARY_RELAY]
-    : relays;
+  const bootstrapRelays = fundstrOnly ? [FUNDSTR_PRIMARY_RELAY] : relays;
   const healthyPromise =
     fundstrOnly || !autoBootstrap
       ? Promise.resolve<string[]>([])
@@ -369,9 +407,7 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
     : DEFAULT_RELAYS;
   const fundstrOnly = isFundstrOnlyRelayModeActive(settings);
   const autoBootstrap = shouldAutoConnectRelays(settings);
-  const bootstrapRelays = fundstrOnly
-    ? [FUNDSTR_PRIMARY_RELAY]
-    : relays;
+  const bootstrapRelays = fundstrOnly ? [FUNDSTR_PRIMARY_RELAY] : relays;
   const healthyPromise =
     fundstrOnly || !autoBootstrap
       ? Promise.resolve<string[]>([])
@@ -444,14 +480,15 @@ export async function createNdk(
   const relays = userRelays.length ? userRelays : DEFAULT_RELAYS;
   const fundstrOnly = isFundstrOnlyRelayModeActive(settings);
   const autoBootstrap = shouldAutoConnectRelays(settings);
-  const bootstrapRelays = fundstrOnly
-    ? [FUNDSTR_PRIMARY_RELAY]
-    : relays;
+  const bootstrapRelays = fundstrOnly ? [FUNDSTR_PRIMARY_RELAY] : relays;
   const healthyPromise =
     fundstrOnly || !autoBootstrap
       ? Promise.resolve<string[]>([])
       : filterHealthyRelays(relays).catch(() => []);
-  const ndk = new NDK({ signer: signer as any, explicitRelayUrls: bootstrapRelays });
+  const ndk = new NDK({
+    signer: signer as any,
+    explicitRelayUrls: bootstrapRelays,
+  });
   attachRelayErrorHandlers(ndk);
   if (autoBootstrap && !fundstrOnly) {
     mergeDefaultRelays(ndk);
@@ -504,7 +541,8 @@ export async function rebuildNdk(
 }
 
 export async function syncNdkRelaysWithMode(ndk?: NDK) {
-  const instance = ndk ?? ndkInstance ?? (await getNdk().catch(() => undefined));
+  const instance =
+    ndk ?? ndkInstance ?? (await getNdk().catch(() => undefined));
   if (!instance) return;
   const settings = useSettingsStore();
   const fundstrOnly = isFundstrOnlyRelayModeActive();
@@ -552,10 +590,7 @@ export async function getNdk(): Promise<NDK> {
     const options: CreateReadOnlyOptions = shouldBootstrapFundstrOnly
       ? { fundstrOnly: true }
       : {};
-    ndkPromise = createNdk(options).then((ndk) => {
-      ndkInstance = ndk;
-      return ndk;
-    });
+    ndkPromise = createNdk(options).then((ndk) => adoptNdkInstance(ndk));
   }
   const ndk = await ndkPromise;
   if (!ndk) {

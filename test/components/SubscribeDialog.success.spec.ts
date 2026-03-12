@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/vue";
+import { render, screen } from "@testing-library/vue";
 import userEvent from "@testing-library/user-event";
 import { defineComponent, h, reactive, ref, nextTick } from "vue";
+import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
 
 import SubscribeDialog from "src/components/SubscribeDialog.vue";
 
@@ -16,9 +17,7 @@ const notifyMocks = vi.hoisted(() => ({
 
 vi.mock("src/js/notify", () => notifyMocks);
 
-const bucketList = ref<Bucket[]>([
-  { id: "default", name: "Default" },
-]);
+const bucketList = ref<Bucket[]>([{ id: "default", name: "Default" }]);
 
 const bucketBalances = ref<Record<string, number>>({ default: 0 });
 
@@ -50,6 +49,29 @@ const donationStoreMock = {
 };
 
 const activeUnit = ref("sat");
+const activeMintUrl = ref("https://mint");
+const activeBalance = ref(2500);
+const activeInfo = ref<any>({
+  nuts: {
+    4: { methods: [], disabled: false },
+    10: { supported: true },
+    11: { supported: true },
+    14: { supported: true },
+  },
+});
+
+const mintsStoreMock = {
+  activeUnit,
+  get activeMintUrl() {
+    return activeMintUrl.value;
+  },
+  get activeBalance() {
+    return activeBalance.value;
+  },
+  get activeInfo() {
+    return activeInfo.value;
+  },
+};
 
 const bootErrorStoreMock = { set: vi.fn() };
 
@@ -70,7 +92,7 @@ vi.mock("stores/buckets", () => ({
 }));
 
 vi.mock("stores/mints", () => ({
-  useMintsStore: () => ({ activeUnit }),
+  useMintsStore: () => mintsStoreMock,
 }));
 
 vi.mock("stores/ui", () => ({
@@ -81,7 +103,8 @@ vi.mock("stores/ui", () => ({
 
 vi.mock("stores/nostr", () => ({
   useNostrStore: () => nostrStoreMock,
-  fetchNutzapProfile: fetchNutzapProfileMock,
+  fetchNutzapProfile: (...args: any[]) =>
+    fetchNutzapProfileMock.apply(null, args),
   npubToHex: (value: string) => value,
   RelayConnectionError: class RelayConnectionError extends Error {},
 }));
@@ -163,13 +186,10 @@ const QSelectStub = defineComponent({
                 (event.target as HTMLSelectElement).value,
               ),
           },
-          (props.options as Array<{ label: string; value: string | number }>).map(
-            (option) =>
-              h(
-                "option",
-                { value: option.value },
-                option.label ?? option.value,
-              ),
+          (
+            props.options as Array<{ label: string; value: string | number }>
+          ).map((option) =>
+            h("option", { value: option.value }, option.label ?? option.value),
           ),
         ),
       ]);
@@ -202,10 +222,7 @@ const QBannerStub = defineComponent({
   name: "QBannerStub",
   setup(_, { slots }) {
     return () =>
-      h("div", { role: "status" }, [
-        slots.default?.(),
-        slots.action?.(),
-      ]);
+      h("div", { role: "status" }, [slots.default?.(), slots.action?.()]);
   },
 });
 
@@ -251,6 +268,16 @@ describe("SubscribeDialog success flow", () => {
     nostrStoreMock.initSignerIfNotSet.mockClear();
     cashuStoreMock.subscribeToTier.mockClear();
     fetchNutzapProfileMock.mockClear();
+    activeMintUrl.value = "https://mint";
+    activeBalance.value = 2500;
+    activeInfo.value = {
+      nuts: {
+        4: { methods: [], disabled: false },
+        10: { supported: true },
+        11: { supported: true },
+        14: { supported: true },
+      },
+    };
   });
 
   it("subscribes successfully and emits confirmation payload", async () => {
@@ -258,14 +285,16 @@ describe("SubscribeDialog success flow", () => {
 
     await nextTick();
 
-    const dialog = screen.getByText("Subscribe to Supporter").closest("div");
-    expect(dialog).toBeTruthy();
+    expect(screen.getByText("Subscribe to Supporter")).toBeTruthy();
 
-    const confirmButton = within(dialog as HTMLElement).getByRole("button", {
-      name: "global.actions.ok.label",
-    });
+    const buttons = Array.from(document.querySelectorAll("button"));
+    const confirmButton = buttons.find((button) =>
+      /lock 1000 sat/i.test(button.textContent || ""),
+    );
 
-    await user.click(confirmButton);
+    expect(confirmButton).toBeTruthy();
+
+    await user.click(confirmButton as HTMLButtonElement);
 
     expect(nostrStoreMock.initSignerIfNotSet).toHaveBeenCalled();
     expect(fetchNutzapProfileMock).toHaveBeenCalledWith("npub-creator");
@@ -287,7 +316,7 @@ describe("SubscribeDialog success flow", () => {
     const events = emitted();
     expect(events["confirm"]).toBeTruthy();
     expect(events["confirm"][0][0]).toMatchObject({
-      bucketId: "default",
+      bucketId: DEFAULT_BUCKET_ID,
       periods: 1,
       total: 1000,
     });
