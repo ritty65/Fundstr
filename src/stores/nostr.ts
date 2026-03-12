@@ -1142,6 +1142,10 @@ export async function publishNutzapProfile(opts: {
   mints: string[];
   relays?: string[];
   tierAddr?: string;
+  display_name?: string;
+  name?: string;
+  about?: string;
+  picture?: string;
 }) {
   const nostr = useNostrStore();
   if (!nostr.signer) {
@@ -1170,6 +1174,18 @@ export async function publishNutzapProfile(opts: {
   if (opts.tierAddr) {
     tags.push(["a", opts.tierAddr]);
   }
+  const displayName =
+    typeof opts.display_name === "string" && opts.display_name.trim()
+      ? opts.display_name.trim()
+      : typeof opts.name === "string" && opts.name.trim()
+      ? opts.name.trim()
+      : "";
+  if (displayName) {
+    tags.push(["name", displayName]);
+  }
+  if (typeof opts.picture === "string" && opts.picture.trim()) {
+    tags.push(["picture", opts.picture.trim()]);
+  }
 
   const body: NutzapProfilePayload = {
     p2pk: compressedP2pk,
@@ -1177,6 +1193,16 @@ export async function publishNutzapProfile(opts: {
   };
   if (relays.length) body.relays = relays;
   if (opts.tierAddr) body.tierAddr = opts.tierAddr;
+  if (displayName) {
+    body.display_name = displayName;
+    body.name = displayName;
+  }
+  if (typeof opts.about === "string" && opts.about.trim()) {
+    body.about = opts.about.trim();
+  }
+  if (typeof opts.picture === "string" && opts.picture.trim()) {
+    body.picture = opts.picture.trim();
+  }
 
   const ndk = await useNdk();
   if (!ndk) {

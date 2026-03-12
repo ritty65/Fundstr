@@ -142,6 +142,7 @@ export default defineConfig({
       "test/nostr/publishNostrEvent.spec.ts",
       "test/nostr/discovery.fallback.spec.ts",
       "test/nutzap/profileShared.spec.ts",
+      "test/nutzap/profileRepublish.spec.ts",
       "test/nutzap/creatorCache.service.spec.ts",
       "test/boot/**/*.spec.ts",
       "test/vitest/__tests__/p2pk-key-management.spec.ts",
