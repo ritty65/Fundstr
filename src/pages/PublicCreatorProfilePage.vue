@@ -300,15 +300,22 @@
                   :price-fiat="formatFiat(getPrice(t))"
                   :frequency-label="frequencyLabel(t)"
                   :badges="tierBadges(t)"
-                  :subscribe-label="$t('CreatorHub.profile.subscribeCta')"
+                  :subscribe-label="''"
                   :subscribe-disabled="false"
                   :collapse-media="false"
-                  @subscribe="openSubscribe"
                 >
-                  <template v-if="needsSignerSetupTooltip" #subscribe-tooltip>
-                    <q-tooltip>{{
-                      $t("CreatorHub.profile.guestTooltip")
-                    }}</q-tooltip>
+                  <template #actions>
+                    <q-btn
+                      color="primary"
+                      class="profile-tier-list__subscribe"
+                      no-caps
+                      :label="$t('CreatorHub.profile.subscribeCta')"
+                      @click="openSubscribe(t)"
+                    >
+                      <q-tooltip v-if="needsSignerSetupTooltip">{{
+                        $t("CreatorHub.profile.guestTooltip")
+                      }}</q-tooltip>
+                    </q-btn>
                   </template>
                   <template #footer-note>
                     {{ tierSupportNote }}
