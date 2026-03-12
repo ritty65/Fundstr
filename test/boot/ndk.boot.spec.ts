@@ -31,7 +31,9 @@ async function setupNdkModule(
   const mustConnectRequiredRelays = vi.fn();
 
   vi.doMock("quasar/wrappers", () => ({ boot: bootStub }));
-  vi.doMock("stores/bootError", () => ({ useBootErrorStore: vi.fn(() => ({ set: vi.fn() })) }));
+  vi.doMock("stores/bootError", () => ({
+    useBootErrorStore: vi.fn(() => ({ set: vi.fn() })),
+  }));
 
   const nostrStore = {
     initSignerIfNotSet: vi.fn(() => Promise.resolve()),
@@ -47,7 +49,10 @@ async function setupNdkModule(
   }));
 
   vi.doMock("src/config/relays", () => ({
-    DEFAULT_RELAYS: options.defaultRelays ?? ["wss://relay.default", "wss://relay.backup"],
+    DEFAULT_RELAYS: options.defaultRelays ?? [
+      "wss://relay.default",
+      "wss://relay.backup",
+    ],
     FREE_RELAYS: ["wss://relay.free"],
     FUNDSTR_PRIMARY_RELAY: "wss://relay.primary",
   }));
@@ -63,7 +68,9 @@ async function setupNdkModule(
     stop = relayWatchdogStop;
     updateNdk = relayWatchdogUpdate;
   }
-  vi.doMock("src/js/nostr-runtime", () => ({ RelayWatchdog: RelayWatchdogMock }));
+  vi.doMock("src/js/nostr-runtime", () => ({
+    RelayWatchdog: RelayWatchdogMock,
+  }));
 
   vi.doMock("src/nostr/freeRelayFallback", () => ({
     getFreeRelayFallbackStatus: vi.fn(),
@@ -108,7 +115,11 @@ async function setupNdkModule(
       explicitRelayUrls: string[];
 
       addExplicitRelay(url: string) {
-        this.pool.relays.set(url, { url, connected: false, disconnect: vi.fn() });
+        this.pool.relays.set(url, {
+          url,
+          connected: false,
+          disconnect: vi.fn(),
+        });
       }
 
       async connect() {
@@ -180,9 +191,11 @@ describe("boot/ndk", () => {
     expect(handlers.has("relay:connect")).toBe(true);
     expect(handlers.has("notice")).toBe(true);
 
-    const disconnectHandler = Array.from(handlers.get("relay:disconnect") ?? [])[0]!;
+    const disconnectHandler = Array.from(
+      handlers.get("relay:disconnect") ?? [],
+    )[0]!;
 
-    const consoleDebug = vi.spyOn(console, "debug").mockImplementation(() => {});
+    const consoleDebug = vi.spyOn(console, "log").mockImplementation(() => {});
     vi.useFakeTimers();
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
 
@@ -197,10 +210,11 @@ describe("boot/ndk", () => {
   });
 
   it("clears fallback state and failure cache on relay connect", async () => {
-    const { module, clearRelayFailureCache, resetFallbackState } = await setupNdkModule({
-      relayBootstrapMode: "auto",
-      relayDebugLogsEnabled: false,
-    });
+    const { module, clearRelayFailureCache, resetFallbackState } =
+      await setupNdkModule({
+        relayBootstrapMode: "auto",
+        relayDebugLogsEnabled: false,
+      });
 
     const ndk = await module.createNdk();
     const handlers: Map<string, Set<Function>> = (ndk.pool as any).handlers;
@@ -210,7 +224,9 @@ describe("boot/ndk", () => {
     connectHandler(relay);
 
     expect(resetFallbackState).toHaveBeenCalledWith(ndk);
-    expect(clearRelayFailureCache).toHaveBeenCalledWith("wss://relay.connected");
+    expect(clearRelayFailureCache).toHaveBeenCalledWith(
+      "wss://relay.connected",
+    );
   });
 
   it("skips disconnect logging when debug logs are disabled", async () => {
@@ -221,11 +237,13 @@ describe("boot/ndk", () => {
 
     const ndk = await module.createNdk();
     const handlers: Map<string, Set<Function>> = (ndk.pool as any).handlers;
-    const disconnectHandler = Array.from(handlers.get("relay:disconnect") ?? [])[0]!;
+    const disconnectHandler = Array.from(
+      handlers.get("relay:disconnect") ?? [],
+    )[0]!;
 
     vi.useFakeTimers();
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
-    const consoleDebug = vi.spyOn(console, "debug").mockImplementation(() => {});
+    const consoleDebug = vi.spyOn(console, "log").mockImplementation(() => {});
 
     settings.relayDebugLogsEnabled = false;
     disconnectHandler({ url: "wss://relay.one" });

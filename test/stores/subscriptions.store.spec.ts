@@ -2,18 +2,28 @@ import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 
-const realDexie = await vi.importActual<typeof import("dexie")>("dexie");
-const liveQueryMock = vi.fn(realDexie.liveQuery);
-vi.mock("dexie", () => ({
-  ...realDexie,
-  liveQuery: (...args: any[]) => liveQueryMock(...args),
+const dexieMocks = vi.hoisted(() => ({
+  liveQueryMock: vi.fn(),
 }));
+
+vi.mock("dexie", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("dexie")>();
+  dexieMocks.liveQueryMock.mockImplementation((...args: any[]) =>
+    (actual.liveQuery as any)(...args),
+  );
+  return {
+    ...actual,
+    liveQuery: (...args: any[]) => dexieMocks.liveQueryMock(...args),
+  };
+});
 
 import { useSubscriptionsStore } from "@/stores/subscriptions";
 import { cashuDb, type Subscription } from "@/stores/dexie";
 import type { SubscriptionFrequency } from "@/constants/subscriptionFrequency";
 
-const baseSubscription = (overrides: Partial<Subscription> = {}): Subscription => ({
+const baseSubscription = (
+  overrides: Partial<Subscription> = {},
+): Subscription => ({
   id: "sub-" + Math.random().toString(16).slice(2),
   creatorNpub: "npub-target",
   tierId: "tier-id",
@@ -35,7 +45,9 @@ const baseSubscription = (overrides: Partial<Subscription> = {}): Subscription =
   ...overrides,
 });
 
-const interval = (overrides: Partial<Subscription["intervals"][number]> = {}) => ({
+const interval = (
+  overrides: Partial<Subscription["intervals"][number]> = {},
+) => ({
   intervalKey: "interval-" + Math.random().toString(16).slice(2),
   lockedTokenId: "lock-" + Math.random().toString(16).slice(2),
   unlockTs: 1,
@@ -49,7 +61,11 @@ const interval = (overrides: Partial<Subscription["intervals"][number]> = {}) =>
 
 beforeEach(async () => {
   setActivePinia(createPinia());
-  liveQueryMock.mockImplementation((...args) => realDexie.liveQuery(...args));
+  dexieMocks.liveQueryMock.mockClear();
+  const actualDexie = await vi.importActual<typeof import("dexie")>("dexie");
+  dexieMocks.liveQueryMock.mockImplementation((...args: any[]) =>
+    (actualDexie.liveQuery as any)(...args),
+  );
   await cashuDb.close();
   await cashuDb.delete();
   await cashuDb.open();
@@ -71,6 +87,7 @@ describe("subscriptions store", () => {
         frequency: "monthly",
         startDate: nowSeconds,
         commitmentLength: 6,
+        status: "active",
         intervals: [
           {
             intervalKey: "int-1",
@@ -110,15 +127,35 @@ describe("subscriptions store", () => {
     const firstSub = baseSubscription({
       id: "sub-1",
       intervals: [
-        interval({ lockedTokenId: "future-1", unlockTs: futureUnlock, status: "pending" }),
-        interval({ lockedTokenId: "future-2", unlockTs: futureUnlock + 10, status: "unlockable" }),
-        interval({ lockedTokenId: "past-1", unlockTs: pastUnlock, status: "claimed" }),
+        interval({
+          lockedTokenId: "future-1",
+          unlockTs: futureUnlock,
+          status: "pending",
+          htlcHash: "hash-1",
+        }),
+        interval({
+          lockedTokenId: "future-2",
+          unlockTs: futureUnlock + 10,
+          status: "unlockable",
+          htlcHash: "hash-2",
+        }),
+        interval({
+          lockedTokenId: "past-1",
+          unlockTs: pastUnlock,
+          status: "claimed",
+        }),
       ],
     });
 
     const secondSub = baseSubscription({
       id: "sub-2",
-      intervals: [interval({ lockedTokenId: "past-2", unlockTs: pastUnlock, status: "claimed" })],
+      intervals: [
+        interval({
+          lockedTokenId: "past-2",
+          unlockTs: pastUnlock,
+          status: "claimed",
+        }),
+      ],
     });
 
     await cashuDb.subscriptions.bulkPut([firstSub, secondSub]);
@@ -176,7 +213,9 @@ describe("subscriptions store", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(store.subscriptions.some((row) => row.id === "sub-delete")).toBe(true);
+    expect(store.subscriptions.some((row) => row.id === "sub-delete")).toBe(
+      true,
+    );
 
     await store.deleteSubscription("sub-delete");
 
@@ -184,11 +223,13 @@ describe("subscriptions store", () => {
 
     const persisted = await cashuDb.subscriptions.get("sub-delete");
     expect(persisted).toBeUndefined();
-    expect(store.subscriptions.some((row) => row.id === "sub-delete")).toBe(false);
+    expect(store.subscriptions.some((row) => row.id === "sub-delete")).toBe(
+      false,
+    );
   });
 
   it("logs liveQuery errors when subscription updates fail", async () => {
-    liveQueryMock.mockImplementationOnce((_fn) => ({
+    dexieMocks.liveQueryMock.mockImplementationOnce((_fn) => ({
       subscribe: ({ error }: any) => {
         error?.(new Error("network down"));
         return { unsubscribe: vi.fn() } as any;
@@ -204,7 +245,7 @@ describe("subscriptions store", () => {
   });
 
   it("tolerates malformed subscription rows without throwing", () => {
-    liveQueryMock.mockImplementationOnce((_fn) => ({
+    dexieMocks.liveQueryMock.mockImplementationOnce((_fn) => ({
       subscribe: ({ next }: any) => {
         next?.([{ id: "bad", intervals: null } as any]);
         return { unsubscribe: vi.fn() } as any;

@@ -41,7 +41,8 @@ const creatorsStore = reactive({
 
 vi.mock("stores/creators", () => ({
   useCreatorsStore: () => creatorsStore,
-  fetchFundstrProfileBundle: (...args: any[]) => mockFetchFundstrProfileBundle(...args),
+  fetchFundstrProfileBundle: (...args: any[]) =>
+    mockFetchFundstrProfileBundle(...args),
   FundstrProfileFetchError: class FundstrProfileFetchError extends Error {},
 }));
 
@@ -61,6 +62,9 @@ vi.mock("src/utils/nostrKeys", () => ({
 
 vi.mock("src/utils/profileUrl", () => ({
   buildProfileUrl: () => "/profile/npub-test",
+  extractCreatorIdentifier: (value: string) => value,
+  preferredCreatorPublicIdentifier: ({ fallbackIdentifier }: any) =>
+    fallbackIdentifier,
 }));
 
 vi.mock("src/composables/useClipboard", () => ({
@@ -68,11 +72,47 @@ vi.mock("src/composables/useClipboard", () => ({
 }));
 
 vi.mock("stores/price", () => ({ usePriceStore: () => ({ bitcoinPrice: 0 }) }));
-vi.mock("stores/ui", () => ({ useUiStore: () => ({ formatCurrency: () => "" }) }));
-vi.mock("stores/welcome", () => ({ useWelcomeStore: () => ({ welcomeCompleted: true }) }));
+vi.mock("stores/ui", () => ({
+  useUiStore: () => ({ formatCurrency: () => "" }),
+}));
+vi.mock("stores/welcome", () => ({
+  useWelcomeStore: () => ({ welcomeCompleted: true }),
+}));
+
+vi.mock("stores/sendTokensStore", () => ({
+  useSendTokensStore: () => ({
+    clearSendData: vi.fn(),
+    recipientPubkey: "",
+    sendViaNostr: false,
+    sendData: {},
+    showLockInput: false,
+    showSendTokens: false,
+  }),
+}));
+
+vi.mock("stores/donationPresets", () => ({
+  useDonationPresetsStore: () => ({
+    createDonationPreset: vi.fn(),
+    showCreatePresetDialog: false,
+  }),
+}));
+
+vi.mock("stores/messenger", () => ({
+  useMessengerStore: () => ({
+    startChat: vi.fn(),
+  }),
+}));
+
+vi.mock("stores/mints", () => ({
+  useMintsStore: () => ({
+    activeMintUrl: "",
+    activeInfo: null,
+  }),
+}));
 
 vi.mock("vue-i18n", () => ({
   useI18n: () => ({ t: (key: string) => key }),
+  createI18n: () => ({ global: { t: (key: string) => key } }),
 }));
 
 describe("PublicCreatorProfilePage phonebook enrichment", () => {
@@ -138,10 +178,17 @@ describe("PublicCreatorProfilePage phonebook enrichment", () => {
 
     await flushPromises();
 
-    expect(mockFindProfiles).toHaveBeenCalledWith("hex-test", expect.anything());
+    expect(mockFindProfiles).toHaveBeenCalledWith(
+      "hex-test",
+      expect.anything(),
+    );
 
-    expect(wrapper.find(".profile-hero__name").text()).toBe("Phonebook Creator");
-    expect(wrapper.find(".profile-section__text").text()).toBe("Phonebook about");
+    expect(wrapper.find(".profile-hero__name").text()).toBe(
+      "Phonebook Creator",
+    );
+    expect(wrapper.find(".profile-section__text").text()).toBe(
+      "Phonebook about",
+    );
     expect(wrapper.find(".profile-hero__avatar img").attributes("src")).toBe(
       "https://example.com/pb.png",
     );

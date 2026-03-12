@@ -25,6 +25,7 @@ import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
 import type { Event as NostrEvent } from "nostr-tools";
 import { markWelcomeSeen, resetWelcome } from "src/composables/useWelcomeGate";
 import { useNostrStore } from "src/stores/nostr";
+import { useCreatorHub } from "src/composables/useCreatorHub";
 
 declare global {
   interface Window {
@@ -530,11 +531,32 @@ export default boot(() => {
       markWelcomeSeen();
       await nextTick();
     },
+    async setPrivateKeyIdentity(
+      nsec: string,
+      options: { skipRelayConnect?: boolean } = {},
+    ) {
+      const nostr = useNostrStore();
+      await nostr.initPrivateKeySigner(nsec, {
+        skipRelayConnect: options.skipRelayConnect !== false,
+      });
+
+      const welcome = useWelcomeStore();
+      welcome.nostrSetupCompleted = true;
+      markWelcomeSeen();
+      await nextTick();
+
+      return {
+        pubkey: nostr.pubkey,
+        npub: nostr.npub,
+        signerType: nostr.signerType,
+      };
+    },
     async seedMint(config: {
       url: string;
       nickname?: string;
       keysetId: string;
       keys?: Record<number, string>;
+      nuts?: Record<number, unknown>;
       info?: {
         name?: string;
         pubkey?: string;
@@ -581,7 +603,7 @@ export default boot(() => {
           ...infoDefaults,
           ...config.info,
           contact: [],
-          nuts: {
+          nuts: config.nuts ?? {
             4: { methods: [], disabled: false },
             5: { methods: [], disabled: false },
             10: { supported: true },
@@ -597,6 +619,12 @@ export default boot(() => {
       localStorage.setItem("cashu.activeMintUrl", config.url);
       localStorage.setItem("cashu.activeUnit", "sat");
       await nextTick();
+    },
+    async addMint(url: string, verbose = false) {
+      const mints = useMintsStore();
+      const mint = await mints.addMint({ url }, verbose);
+      await nextTick();
+      return mint?.url ?? url;
     },
     async creditProofs(amounts: number[]) {
       const proofsStore = useProofsStore();
@@ -688,6 +716,14 @@ export default boot(() => {
       const creator = useCreatorProfileStore();
       creator.setProfile(profile as any);
       creator.markClean();
+    },
+    async setCreatorTiers(tiers: Record<string, unknown>[], markClean = false) {
+      const creatorHub = useCreatorHub();
+      creatorHub.replaceTierDrafts(tiers as any);
+      if (markClean) {
+        creatorHub.markTierDraftsClean();
+      }
+      await nextTick();
     },
     async seedCreatorP2pk() {
       const p2pkStore = useP2PKStore();

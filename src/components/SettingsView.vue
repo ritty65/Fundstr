@@ -1,5 +1,5 @@
 <template>
-  <div style="max-width: 800px; margin: 0 auto">
+  <div class="settings-shell">
     <!-- BACKUP & RESTORE SECTION -->
     <div class="section-divider q-my-md">
       <div class="divider-line"></div>
@@ -1581,12 +1581,12 @@
                       >
                     </div>
                   </div>
-              </q-item-section>
-            </q-item>
-            <q-item>
-              <q-item-section>
-                <div class="row">
-                  <q-btn
+                </q-item-section>
+              </q-item>
+              <q-item>
+                <q-item-section>
+                  <div class="row">
+                    <q-btn
                       dense
                       flat
                       outline
@@ -1850,7 +1850,9 @@
               {{ $t("Settings.nostr_keys.manage_identity_use_extension") }}
             </q-btn>
             <q-item-label caption class="q-mt-xs">
-              {{ $t("Settings.nostr_keys.manage_identity_use_extension_caption") }}
+              {{
+                $t("Settings.nostr_keys.manage_identity_use_extension_caption")
+              }}
             </q-item-label>
           </div>
           <div class="col-12 col-md-6">
@@ -1870,13 +1872,13 @@
           </div>
         </div>
 
-        <q-banner
-          v-if="identityStatus"
-          dense
-          class="bg-grey-2 text-1 q-mt-md"
-        >
+        <q-banner v-if="identityStatus" dense class="bg-grey-2 text-1 q-mt-md">
           <div class="row items-center no-wrap">
-            <q-spinner-dots size="18px" class="q-mr-sm" v-if="identityLoading" />
+            <q-spinner-dots
+              size="18px"
+              class="q-mr-sm"
+              v-if="identityLoading"
+            />
             <div class="text-body2">{{ identityStatus }}</div>
           </div>
         </q-banner>
@@ -1901,7 +1903,8 @@
     </q-card>
   </q-dialog>
 </template>
-<script lang="ts">import windowMixin from 'src/mixins/windowMixin'
+<script lang="ts">
+import windowMixin from "src/mixins/windowMixin";
 import { debug } from "src/js/logger";
 
 import { defineComponent, watch } from "vue";
@@ -2359,7 +2362,10 @@ export default defineComponent({
       }
       return trimmed;
     },
-    async runIdentityFlow(fn: () => Promise<void>, opts: { handlesBootstrap?: boolean } = {}) {
+    async runIdentityFlow(
+      fn: () => Promise<void>,
+      opts: { handlesBootstrap?: boolean } = {},
+    ) {
       const { handlesBootstrap = false } = opts;
       this.identityError = "";
       this.identityStatus = this.$t(
@@ -2396,8 +2402,9 @@ export default defineComponent({
       this.identityFlowMode = "nsec";
       const normalized = this.normalizeIdentityKey(this.identityKeyInput);
       if (!normalized) {
-        this.identityError =
-          this.$t("Settings.nostr_keys.manage_identity_invalid") as string;
+        this.identityError = this.$t(
+          "Settings.nostr_keys.manage_identity_invalid",
+        ) as string;
         return;
       }
       await this.runIdentityFlow(
@@ -2414,8 +2421,9 @@ export default defineComponent({
       this.identityFlowMode = "nip07";
       const available = await this.checkNip07Signer(true);
       if (!available) {
-        this.identityError =
-          this.$t("Settings.nostr_keys.manage_identity_extension_missing") as string;
+        this.identityError = this.$t(
+          "Settings.nostr_keys.manage_identity_extension_missing",
+        ) as string;
         this.identityFlowMode = "";
         return;
       }
@@ -2436,8 +2444,9 @@ export default defineComponent({
       this.nip07Rescanning = true;
       this.nip07SignerAvailable = await this.checkNip07Signer(true);
       if (!this.nip07SignerAvailable) {
-        this.identityError =
-          this.$t("Settings.nostr_keys.manage_identity_extension_missing") as string;
+        this.identityError = this.$t(
+          "Settings.nostr_keys.manage_identity_extension_missing",
+        ) as string;
       }
       this.identityStatus = this.nip07SignerAvailable
         ? "NIP-07 extension detected."
@@ -2476,23 +2485,57 @@ export default defineComponent({
 });
 </script>
 <style>
+.settings-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.settings-shell .q-list {
+  background: color-mix(in srgb, var(--surface-2) 94%, transparent);
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 20px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+}
+
+.settings-shell .q-item + .q-item {
+  border-top: 1px solid
+    color-mix(in srgb, var(--surface-contrast-border) 78%, transparent);
+}
+
+.settings-shell .q-expansion-item {
+  border-radius: 18px;
+}
+
+.settings-shell .q-item__label--overline {
+  letter-spacing: 0.08em;
+}
+
 /* Section Divider */
 .section-divider {
   display: flex;
   align-items: center;
   width: 100%;
-  margin-bottom: 24px;
+  margin: 8px 0 20px;
 }
 
 .divider-line {
   flex: 1;
   height: 1px;
-  background-color: var(--divider-color);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--divider-color) 85%, transparent),
+    transparent
+  );
 }
 
 .divider-text {
-  padding: 0 10px;
-  font-size: 14px;
-  font-weight: 600;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
 }
 </style>

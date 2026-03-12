@@ -8,6 +8,7 @@ import {
   pickLatestReplaceable,
   queryNostr,
   queryNutzapProfile,
+  queryNutzapTiers,
   toHex,
   type NostrEvent,
 } from "@/nostr/relayClient";
@@ -95,7 +96,9 @@ describe("relayClient dedup & replaceable handling", () => {
     expect(normalized.find((ev) => ev.id === "profile-new")).toBeTruthy();
     expect(normalized.find((ev) => ev.id === "profile-old")).toBeUndefined();
     expect(normalized.find((ev) => ev.id === "profile-10019-new")).toBeTruthy();
-    expect(normalized.find((ev) => ev.id === "profile-10019-old")).toBeUndefined();
+    expect(
+      normalized.find((ev) => ev.id === "profile-10019-old"),
+    ).toBeUndefined();
 
     expect(normalized.find((ev) => ev.id === "tiers-new")).toBeTruthy();
     expect(normalized.find((ev) => ev.id === "tiers-old")).toBeUndefined();
@@ -117,13 +120,12 @@ describe("relayClient dedup & replaceable handling", () => {
 
 describe("relayClient pubkey coercion", () => {
   it("accepts raw hex keys and normalizes case", () => {
-    const key = "ABCDEF".repeat(10) + "AB";
+    const key = "ABCDEF".repeat(10) + "ABCD";
     expect(toHex(key)).toBe(key.toLowerCase());
   });
 
   it("throws on malformed identifiers", () => {
-    expect(() => toHex("npub1invalid"))
-      .toThrowErrorMatchingInlineSnapshot("\"Invalid npub or hex pubkey\"");
+    expect(() => toHex("npub1invalid")).toThrow("Invalid npub or hex pubkey");
   });
 });
 
@@ -147,11 +149,12 @@ describe("relayClient transport", () => {
       makeEvent({ id: "http-event", kind: 10019, pubkey: pubkeyHex }),
     ];
 
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify(responseEvents), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(responseEvents), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
@@ -164,7 +167,10 @@ describe("relayClient transport", () => {
     (globalThis as any).WebSocket = ThrowingWebSocket as any;
 
     const filters = [{ kinds: [10019], authors: [pubkeyHex] }];
-    const events = await queryNostr(filters, { preferFundstr: true, wsTimeoutMs: 10 });
+    const events = await queryNostr(filters, {
+      preferFundstr: true,
+      wsTimeoutMs: 10,
+    });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(events).toHaveLength(1);
@@ -177,11 +183,12 @@ describe("relayClient transport", () => {
       makeEvent({ id: "http-event-retry", kind: 10019, pubkey: pubkeyHex }),
     ];
 
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify(responseEvents), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(responseEvents), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
@@ -205,7 +212,7 @@ describe("relayClient transport", () => {
     expect(ThrowingWebSocket).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    clearRelayFailureCache("wss://relay.fundstr.network");
+    clearRelayFailureCache("wss://relay.fundstr.me");
 
     await queryNostr(filters, { preferFundstr: true, wsTimeoutMs: 10 });
 
@@ -256,17 +263,60 @@ describe("relayClient transport", () => {
     expect(parsed[0].authors[0]).toBe(pubkeyHex);
   });
 
+  it("prefers canonical tier events when canonical and legacy share a timestamp", async () => {
+    const pubkeyHex = "9".repeat(64);
+    const responseEvents = [
+      makeEvent({
+        id: "legacy-tiers",
+        kind: 30000,
+        pubkey: pubkeyHex,
+        created_at: 100,
+        tags: [["d", "tiers"]],
+      }),
+      makeEvent({
+        id: "canonical-tiers",
+        kind: 30019,
+        pubkey: pubkeyHex,
+        created_at: 100,
+        tags: [["d", "tiers"]],
+      }),
+    ];
+
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(responseEvents), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    class ThrowingWebSocket {
+      constructor() {
+        throw new Error("connect failed");
+      }
+    }
+
+    (globalThis as any).WebSocket = ThrowingWebSocket as any;
+
+    const tierEvent = await queryNutzapTiers(pubkeyHex);
+
+    expect(tierEvent?.id).toBe("canonical-tiers");
+    expect(tierEvent?.kind).toBe(30019);
+  });
+
   it("falls back to HTTP when websocket returns no events", async () => {
     const pubkeyHex = "a".repeat(64);
     const responseEvents = [
       makeEvent({ id: "http-event-empty", kind: 10019, pubkey: pubkeyHex }),
     ];
 
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify(responseEvents), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify(responseEvents), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 

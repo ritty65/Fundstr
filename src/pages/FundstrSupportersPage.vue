@@ -1,28 +1,45 @@
 <template>
-  <q-page class="fundstr-supporters q-pa-xl-xl q-pa-lg-md q-pa-md bg-surface-1 text-1">
-    <CreatorProfileModal
-      :show="showProfileModal"
-      :pubkey="selectedProfilePubkey"
-      @close="showProfileModal = false"
-      @message="startChat"
-      @donate="donate"
+  <q-page
+    class="fundstr-supporters q-pa-xl-xl q-pa-lg-md q-pa-md bg-surface-1 text-1"
+  >
+    <DonateDialog
+      v-model="showDonateDialog"
+      :creator-pubkey="selectedPubkey"
+      @confirm="handleDonate"
     />
-    <DonateDialog v-model="showDonateDialog" :creator-pubkey="selectedPubkey" @confirm="handleDonate" />
     <SendTokenDialog />
 
-    <div class="hero text-center q-mx-auto">
+    <div class="hero text-center q-mx-auto bg-surface-2 text-1">
+      <div class="hero__eyebrow">Community Ledger</div>
       <h1 class="text-h3 text-bold q-mb-md">Fundstr Supporters</h1>
-      <p class="text-subtitle1 text-2 q-mb-xl">
-        These Nostr public keys belong to early supporters and donors who help Fundstr grow.
-        We are grateful for their contributions to privacy-preserving creator tools.
+      <p class="text-subtitle1 text-2 q-mb-lg">
+        These Nostr identities belong to the early supporters and donors helping
+        Fundstr grow. This page exists to recognize that support without turning
+        every supporter into a generic featured creator.
       </p>
-      <div v-if="canShowSupportCta" class="q-mt-md">
-        <q-btn color="primary" unelevated @click="supportFundstr">Want to support?</q-btn>
+      <div class="hero__metrics">
+        <div class="hero__metric bg-surface-1 text-1">
+          <span class="text-caption text-2">Known supporters</span>
+          <strong>{{ supporterNpubs.length }}</strong>
+        </div>
+        <div class="hero__metric bg-surface-1 text-1">
+          <span class="text-caption text-2">Loaded profiles</span>
+          <strong>{{ supporterProfiles.length }}</strong>
+        </div>
+      </div>
+      <div v-if="canShowSupportCta" class="q-mt-lg">
+        <q-btn color="primary" unelevated no-caps @click="supportFundstr"
+          >Want to support Fundstr?</q-btn
+        >
       </div>
     </div>
 
     <section class="supporters-section">
-      <div v-if="loadingSupporters" class="row q-col-gutter-lg" aria-label="Loading supporters">
+      <div
+        v-if="loadingSupporters"
+        class="row q-col-gutter-lg"
+        aria-label="Loading supporters"
+      >
         <div
           v-for="placeholder in skeletonPlaceholders"
           :key="placeholder"
@@ -59,7 +76,11 @@
             <q-icon name="info" size="20px" />
           </template>
           <div class="column">
-            <span v-for="(warning, index) in supportersWarnings" :key="index" class="status-banner__text">
+            <span
+              v-for="(warning, index) in supportersWarnings"
+              :key="index"
+              class="status-banner__text"
+            >
               {{ warning }}
             </span>
           </div>
@@ -70,13 +91,13 @@
             v-for="profile in supporterProfiles"
             :key="profile.pubkey"
             :profile="profile"
-            featured
             :has-lightning="profile.hasLightning ?? undefined"
             :has-tiers="profile.hasTiers ?? undefined"
             :is-creator="profile.isCreator ?? undefined"
             :is-personal="profile.isPersonal ?? undefined"
             :nip05="profile.nip05 ?? undefined"
-            @view-tiers="viewProfile"
+            @view-tiers="() => openProfile(profile.pubkey, 'tiers')"
+            @view-profile="() => openProfile(profile.pubkey, 'profile')"
             @message="startChat"
             @donate="donate"
           />
@@ -86,10 +107,16 @@
           v-else
           class="empty-state column items-center text-center q-pt-xl q-pb-xl q-px-md text-2"
         >
-          <q-icon name="favorite" size="4rem" class="q-mb-md text-accent-500" aria-hidden="true" />
+          <q-icon
+            name="favorite"
+            size="4rem"
+            class="q-mb-md text-accent-500"
+            aria-hidden="true"
+          />
           <div class="text-h6 text-1">Supporter profiles coming soon</div>
           <p class="text-body1 q-mt-sm q-mb-none">
-            We&apos;re fetching supporter data from the discovery service. Please check back shortly.
+            We&apos;re fetching supporter data from the discovery service.
+            Please check back shortly.
           </p>
         </div>
       </template>
@@ -98,23 +125,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { nip19 } from 'nostr-tools';
-import CreatorProfileModal from 'components/CreatorProfileModal.vue';
-import CreatorCard from 'components/CreatorCard.vue';
-import DonateDialog from 'components/DonateDialog.vue';
-import SendTokenDialog from 'components/SendTokenDialog.vue';
-import { createFundstrDiscoveryClient } from 'src/api/fundstrDiscovery';
-import type { Creator } from 'src/lib/fundstrApi';
-import { SUPPORTERS } from 'src/data/supporters';
-import { useRouter } from 'vue-router';
-import { useQuasar } from 'quasar';
-import { useSendTokensStore } from 'stores/sendTokensStore';
-import { useDonationPresetsStore } from 'stores/donationPresets';
-import { useNostrStore } from 'stores/nostr';
-import { useMessengerStore } from 'stores/messenger';
-import { useDonationPrompt } from '@/composables/useDonationPrompt';
-import { debug } from '@/js/logger';
+import { computed, onMounted, ref } from "vue";
+import { nip19 } from "nostr-tools";
+import CreatorCard from "components/CreatorCard.vue";
+import DonateDialog from "components/DonateDialog.vue";
+import SendTokenDialog from "components/SendTokenDialog.vue";
+import { createFundstrDiscoveryClient } from "src/api/fundstrDiscovery";
+import type { Creator } from "src/lib/fundstrApi";
+import { SUPPORTERS } from "src/data/supporters";
+import { useRouter } from "vue-router";
+import { useQuasar } from "quasar";
+import { useSendTokensStore } from "stores/sendTokensStore";
+import { useDonationPresetsStore } from "stores/donationPresets";
+import { useNostrStore } from "stores/nostr";
+import { useMessengerStore } from "stores/messenger";
+import { useDonationPrompt } from "@/composables/useDonationPrompt";
+import { debug } from "@/js/logger";
 
 const discoveryClient = createFundstrDiscoveryClient();
 const router = useRouter();
@@ -127,12 +153,14 @@ const { open: openDonationPrompt, hasPaymentRails } = useDonationPrompt();
 const canShowSupportCta = hasPaymentRails;
 
 const loadingSupporters = ref(false);
-const supportersError = ref('');
+const supportersError = ref("");
 const supportersWarnings = ref<string[]>([]);
 const supporterProfiles = ref<Creator[]>([]);
 
 const supporterNpubs = computed(() =>
-  SUPPORTERS.map((supporter) => supporter.npub).filter((npub) => typeof npub === 'string' && npub.trim().length > 0),
+  SUPPORTERS.map((supporter) => supporter.npub).filter(
+    (npub) => typeof npub === "string" && npub.trim().length > 0,
+  ),
 );
 
 const skeletonPlaceholders = computed(() => {
@@ -151,7 +179,7 @@ async function loadSupporterProfiles() {
   }
 
   loadingSupporters.value = true;
-  supportersError.value = '';
+  supportersError.value = "";
   supportersWarnings.value = [];
 
   try {
@@ -163,20 +191,23 @@ async function loadSupporterProfiles() {
 
     const results = Array.isArray(response.results) ? response.results : [];
     const warnings = Array.isArray(response.warnings)
-      ? response.warnings.filter((warning): warning is string => typeof warning === 'string' && warning.trim().length > 0)
+      ? response.warnings.filter(
+          (warning): warning is string =>
+            typeof warning === "string" && warning.trim().length > 0,
+        )
       : [];
     supportersWarnings.value = warnings;
 
     const profilesByHex = new Map<string, Creator>();
     for (const creator of results) {
-      if (!creator || typeof creator.pubkey !== 'string') {
+      if (!creator || typeof creator.pubkey !== "string") {
         continue;
       }
       const normalizedPubkey = creator.pubkey.trim().toLowerCase();
       if (!/^[0-9a-f]{64}$/i.test(normalizedPubkey)) {
         continue;
       }
-      profilesByHex.set(normalizedPubkey, { ...creator, featured: true });
+      profilesByHex.set(normalizedPubkey, { ...creator });
     }
 
     const resolvedProfiles: Creator[] = [];
@@ -193,11 +224,11 @@ async function loadSupporterProfiles() {
 
     supporterProfiles.value = resolvedProfiles;
   } catch (error) {
-    console.error('[supporters] Failed to load supporter profiles', error);
+    console.error("[supporters] Failed to load supporter profiles", error);
     supportersError.value =
       error instanceof Error && error.message
         ? error.message
-        : 'Unable to load supporter profiles right now. Please try again later.';
+        : "Unable to load supporter profiles right now. Please try again later.";
   } finally {
     loadingSupporters.value = false;
   }
@@ -206,7 +237,7 @@ async function loadSupporterProfiles() {
 function decodeNpubToHex(identifier: string): string {
   const trimmed = identifier.trim();
   if (!trimmed) {
-    return '';
+    return "";
   }
   if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
     return trimmed.toLowerCase();
@@ -215,30 +246,34 @@ function decodeNpubToHex(identifier: string): string {
     const decoded = nip19.decode(trimmed);
     if (decoded.data instanceof Uint8Array) {
       return Array.from(decoded.data)
-        .map((byte) => byte.toString(16).padStart(2, '0'))
-        .join('')
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("")
         .toLowerCase();
     }
-    if (typeof decoded.data === 'string') {
+    if (typeof decoded.data === "string") {
       return decoded.data.toLowerCase();
     }
-    if (decoded.data && typeof (decoded.data as any).pubkey === 'string') {
+    if (decoded.data && typeof (decoded.data as any).pubkey === "string") {
       return String((decoded.data as any).pubkey).toLowerCase();
     }
   } catch (error) {
-    console.warn('[supporters] Unable to decode npub', { identifier, error });
+    console.warn("[supporters] Unable to decode npub", { identifier, error });
   }
-  return '';
+  return "";
 }
 
 const showDonateDialog = ref(false);
-const selectedPubkey = ref('');
-const showProfileModal = ref(false);
-const selectedProfilePubkey = ref('');
+const selectedPubkey = ref("");
 
-function viewProfile(pubkey: string) {
-  selectedProfilePubkey.value = pubkey;
-  showProfileModal.value = true;
+function openProfile(pubkey: string, tab: "profile" | "tiers" = "profile") {
+  const normalizedPubkey = typeof pubkey === "string" ? pubkey.trim() : "";
+  if (!normalizedPubkey) return;
+
+  void router.push({
+    name: "PublicCreatorProfile",
+    params: { npubOrHex: normalizedPubkey },
+    query: tab === "tiers" ? { tab: "tiers" } : undefined,
+  });
 }
 
 function startChat(pubkey: string) {
@@ -247,7 +282,10 @@ function startChat(pubkey: string) {
   if ($q.screen.lt.md) {
     messenger.setDrawer(true);
   }
-  void router.push({ path: '/nostr-messenger', query: { pubkey: resolvedPubkey } });
+  void router.push({
+    path: "/nostr-messenger",
+    query: { pubkey: resolvedPubkey },
+  });
 }
 
 function donate(pubkey: string) {
@@ -256,8 +294,8 @@ function donate(pubkey: string) {
 }
 
 function supportFundstr() {
-  const opened = openDonationPrompt({ bypassGate: true, defaultTab: 'cashu' });
-  debug('[supporters] Want to support CTA clicked', { opened });
+  const opened = openDonationPrompt({ bypassGate: true, defaultTab: "cashu" });
+  debug("[supporters] Want to support CTA clicked", { opened });
 }
 
 function handleDonate({
@@ -269,18 +307,23 @@ function handleDonate({
   message,
 }: any) {
   if (!selectedPubkey.value) return;
-  if (type === 'one-time') {
+  if (type === "one-time") {
     sendTokensStore.clearSendData();
     sendTokensStore.recipientPubkey = selectedPubkey.value;
     sendTokensStore.sendViaNostr = true;
     sendTokensStore.sendData.bucketId = bucketId;
     sendTokensStore.sendData.amount = amount;
     sendTokensStore.sendData.memo = message;
-    sendTokensStore.sendData.p2pkPubkey = locked ? selectedPubkey.value : '';
+    sendTokensStore.sendData.p2pkPubkey = locked ? selectedPubkey.value : "";
     sendTokensStore.showLockInput = locked;
     sendTokensStore.showSendTokens = true;
   } else {
-    donationStore.createDonationPreset(periods, amount, selectedPubkey.value, bucketId);
+    donationStore.createDonationPreset(
+      periods,
+      amount,
+      selectedPubkey.value,
+      bucketId,
+    );
     donationStore.showCreatePresetDialog = true;
   }
   showDonateDialog.value = false;
@@ -297,6 +340,43 @@ function handleDonate({
   max-width: 720px;
   margin-left: auto;
   margin-right: auto;
+}
+
+.hero {
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  border-radius: 24px;
+  border: 1px solid var(--surface-contrast-border, rgba(0, 0, 0, 0.08));
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.06);
+}
+
+.hero__eyebrow {
+  display: inline-flex;
+  margin-bottom: 0.85rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-200) 30%, transparent);
+  color: var(--accent-600);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero__metrics {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+}
+
+.hero__metric {
+  min-width: 10rem;
+  padding: 0.9rem 1rem;
+  border-radius: 16px;
+  border: 1px solid var(--surface-contrast-border, rgba(0, 0, 0, 0.08));
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .supporters-section {
@@ -329,5 +409,15 @@ function handleDonate({
 
 .status-banner__text {
   line-height: 1.4;
+}
+
+@media (max-width: 599px) {
+  .hero {
+    border-radius: 20px;
+  }
+
+  .hero__metric {
+    width: 100%;
+  }
 }
 </style>

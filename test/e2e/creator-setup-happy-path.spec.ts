@@ -68,7 +68,11 @@ test.describe("creator studio happy path", () => {
     await page.getByLabel("Picture URL").fill(PICTURE_URL);
     await page.getByPlaceholder("Add mint & press enter").fill(TEST_MINT_URL);
     await page.keyboard.press("Enter");
-    await expect(page.getByText(TEST_MINT_URL)).toBeVisible();
+    await expect(
+      page.locator(".chip-input__chips").getByText(TEST_MINT_URL, {
+        exact: true,
+      }),
+    ).toBeVisible();
     const { publicKey } = await api.seedCreatorP2pk();
     await ensureCreatorP2pkSelected(page, publicKey);
 
@@ -80,11 +84,20 @@ test.describe("creator studio happy path", () => {
     const tierCard = page.locator(".tier-composer__card").first();
     await tierCard.getByLabel("Title").fill(TIER_TITLE);
     await tierCard.getByLabel("Price (sats)").fill(TIER_PRICE);
-    await tierCard.getByLabel("Frequency").click();
+    await tierCard.getByRole("combobox", { name: "Frequency" }).click({
+      force: true,
+    });
     await page.getByRole("option", { name: /Monthly/i }).click();
 
     await expect(page.getByRole("button", { name: "Next" })).toBeEnabled();
     await page.getByRole("button", { name: "Next" }).click();
+
+    await expect(page.locator(".preview-hero__name")).toContainText(
+      DISPLAY_NAME,
+    );
+    await expect(
+      page.locator(".preview-tier-card__title").first(),
+    ).toContainText(TIER_TITLE);
 
     const publishButton = page.getByRole("button", {
       name: "Publish profile & tiers",

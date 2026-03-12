@@ -1,6 +1,9 @@
 import { describe, it, beforeEach, expect, vi } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
-import { useSettingsStore, DEFAULT_RELAY_DEBUG_LOGS_ENABLED } from "stores/settings";
+import {
+  useSettingsStore,
+  DEFAULT_RELAY_DEBUG_LOGS_ENABLED,
+} from "stores/settings";
 import { DEFAULT_RELAYS } from "src/config/relays";
 import { nextTick } from "vue";
 
@@ -19,7 +22,7 @@ describe("settings store", () => {
         "wss://relay.plebstr.com",
       ]),
     );
-    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const debugSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     const store = useSettingsStore();
     await nextTick();
@@ -33,7 +36,7 @@ describe("settings store", () => {
       localStorage.getItem("cashu.settings.defaultNostrRelays") || "[]",
     );
     expect(persisted).toEqual(DEFAULT_RELAYS);
-    expect(infoSpy).toHaveBeenCalledWith(
+    expect(debugSpy).toHaveBeenCalledWith(
       "[settings] Removed blocked Nostr relays from defaults",
       [
         "wss://relay.nostr.bg",
@@ -42,7 +45,7 @@ describe("settings store", () => {
       ],
     );
 
-    infoSpy.mockRestore();
+    debugSpy.mockRestore();
   });
 
   it("retains allowed relays and toggles bootstrap modes", async () => {
@@ -58,10 +61,7 @@ describe("settings store", () => {
       ? store.defaultNostrRelays
       : store.defaultNostrRelays.value;
 
-    expect(actualRelays).toEqual([
-      "wss://relay.allowed",
-      "wss://relay.zap",
-    ]);
+    expect(actualRelays).toEqual(["wss://relay.allowed", "wss://relay.zap"]);
     const debugPref =
       typeof (store.relayDebugLogsEnabled as any)?.value === "boolean"
         ? (store.relayDebugLogsEnabled as any).value

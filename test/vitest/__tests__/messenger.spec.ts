@@ -113,7 +113,9 @@ vi.mock("../../../src/stores/nostr", async (importOriginal) => {
     privKeyHex: "priv",
     pubkey: "pub",
     connected: true,
+    hasIdentity: true,
     signerType: "NIP07",
+    signerCaps: { nip44Encrypt: false, nip44Decrypt: false },
     resolvePubkey,
   } as any;
   return {
@@ -175,7 +177,8 @@ beforeEach(async () => {
   } else {
     (m as any).eventLog = [];
   }
-  const convoTarget = (m as any).conversations?.value ?? (m as any).conversations;
+  const convoTarget =
+    (m as any).conversations?.value ?? (m as any).conversations;
   if (convoTarget && typeof convoTarget === "object") {
     for (const key of Object.keys(convoTarget)) delete convoTarget[key];
   } else {
@@ -213,7 +216,9 @@ beforeEach(async () => {
     via: "http",
   });
   requestEventsViaHttpMock.mockResolvedValue([]);
-  ndkInstance.pool.relays = new Map([["wss://relay", { url: "wss://relay", connected: true }]]);
+  ndkInstance.pool.relays = new Map([
+    ["wss://relay", { url: "wss://relay", connected: true }],
+  ]);
 });
 
 afterEach(() => {
@@ -312,7 +317,10 @@ describe("messenger store", () => {
     const messenger = useMessengerStore();
     decryptDm.mockResolvedValue("Incoming🙂\u0000");
     (globalThis as any).nostr = {
-      nip04: { decrypt: vi.fn(async () => "Incoming🙂\u0000"), encrypt: vi.fn() },
+      nip04: {
+        decrypt: vi.fn(async () => "Incoming🙂\u0000"),
+        encrypt: vi.fn(),
+      },
       signEvent: vi.fn(),
       getPublicKey: vi.fn(async () => "f".repeat(64)),
     };
@@ -402,7 +410,7 @@ describe("messenger store", () => {
   });
 
   it("recovers from corrupted event log in localStorage", () => {
-    lsStore["cashu.messenger.pub.eventLog"] = "{\"bad\":1}";
+    lsStore["cashu.messenger.pub.eventLog"] = '{"bad":1}';
     setActivePinia(createPinia());
     const messenger = useMessengerStore();
     expect(Array.isArray(messenger.eventLog)).toBe(true);
@@ -429,7 +437,9 @@ describe("messenger store", () => {
       getPublicKey: vi.fn(async () => "f".repeat(64)),
     };
     messenger.relays = ["wss://a"] as any;
-    publishWithAcksMock.mockResolvedValue({ "wss://a": { ok: false, reason: "down" } });
+    publishWithAcksMock.mockResolvedValue({
+      "wss://a": { ok: false, reason: "down" },
+    });
     const addSpy = vi.spyOn(messenger, "addOutgoingMessage");
 
     await messenger.sendDm("npub1alice", "hello");
@@ -439,7 +449,10 @@ describe("messenger store", () => {
     expect(addSpy).toHaveBeenCalled();
     const added = addSpy.mock.results[0]?.value as any;
     expect(added?.status).toBe("sent");
-    expect(added?.relayResults?.["wss://a"]).toEqual({ ok: false, reason: "down" });
+    expect(added?.relayResults?.["wss://a"]).toEqual({
+      ok: false,
+      reason: "down",
+    });
     expect(added?.relayResults?.[httpKey]).toEqual({ ok: true });
     addSpy.mockRestore();
   });
@@ -452,7 +465,9 @@ describe("messenger store", () => {
       getPublicKey: vi.fn(async () => "f".repeat(64)),
     };
     messenger.relays = ["wss://a"] as any;
-    publishWithAcksMock.mockResolvedValue({ "wss://a": { ok: false, reason: "down" } });
+    publishWithAcksMock.mockResolvedValue({
+      "wss://a": { ok: false, reason: "down" },
+    });
     publishEventViaHttpMock.mockRejectedValue(new Error("offline"));
     const addSpy = vi.spyOn(messenger, "addOutgoingMessage");
 
@@ -512,7 +527,9 @@ describe("messenger store", () => {
     await nextTick();
 
     expect(msg?.localEcho?.status).toBe("failed");
-    expect(notifyErrorSpy).toHaveBeenCalledWith("Direct message delivery timed out");
+    expect(notifyErrorSpy).toHaveBeenCalledWith(
+      "Direct message delivery timed out",
+    );
 
     signerSpy.mockRestore();
     addSpy.mockRestore();
@@ -545,7 +562,7 @@ describe("messenger store", () => {
           nip04Decrypt: vi.fn(async () => "dec"),
           signEvent: vi.fn(async (event) => ({
             ...event,
-            id: event.id ?? "echo", 
+            id: event.id ?? "echo",
             sig: "sig",
           })),
         },
@@ -620,7 +637,9 @@ describe("messenger store", () => {
 
     messenger.markLocalEchoSent(msg, meta);
 
-    const entry = tokensStore.historyTokens.find((t) => t.referenceId === "ref-ack");
+    const entry = tokensStore.historyTokens.find(
+      (t) => t.referenceId === "ref-ack",
+    );
     expect(entry?.status).toBe("paid");
     expect(entry?.amount).toBe(-500);
     expect(meta.status).toBe("sent");
@@ -674,7 +693,9 @@ describe("messenger store", () => {
 
     messenger.markLocalEchoFailed(msg, meta, "network error");
 
-    const entry = tokensStore.historyTokens.find((t) => t.referenceId === "ref-fail");
+    const entry = tokensStore.historyTokens.find(
+      (t) => t.referenceId === "ref-fail",
+    );
     expect(entry).toBeUndefined();
     expect(meta.status).toBe("failed");
     expect(msg.status).toBe("failed");
@@ -744,7 +765,9 @@ describe("messenger store", () => {
       getPublicKey: vi.fn(async () => "f".repeat(64)),
     };
     messenger.relays = ["wss://a"] as any;
-    publishWithAcksMock.mockResolvedValue({ "wss://a": { ok: false, reason: "down" } });
+    publishWithAcksMock.mockResolvedValue({
+      "wss://a": { ok: false, reason: "down" },
+    });
     publishEventViaHttpMock.mockResolvedValue({
       id: "http",
       accepted: false,

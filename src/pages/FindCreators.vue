@@ -1,20 +1,13 @@
 <template>
-  <q-page class="find-creators-page page-shell bg-surface-1 text-1 q-pt-xl q-pb-xl">
-    <CreatorProfileModal
-      :show="showProfileModal"
-      :pubkey="selectedProfilePubkey"
-      :initial-profile="selectedProfile"
-      :initial-tab="selectedProfileInitialTab"
-      @close="showProfileModal = false"
-      @message="startChat"
-      @donate="donate"
-    />
-
+  <q-page
+    class="find-creators-page page-shell bg-surface-1 text-1 q-pt-xl q-pb-xl"
+  >
     <div class="find-creators-content">
       <section class="page-hero stack-12">
         <h1 class="text-h3 text-bold">Discover Creators on Nostr</h1>
         <p class="text-body1 text-2 q-mb-none">
-          Search the Nostr network, explore featured voices, and support the builders shaping the ecosystem.
+          Search the Nostr network, explore featured voices, and support the
+          builders shaping the ecosystem.
         </p>
       </section>
 
@@ -24,11 +17,15 @@
             <header class="stack-12">
               <div class="text-h5">Nostr User Search</div>
               <p class="text-body2 text-2 q-mb-none">
-                Search by name, npub, or NIP-05 identifier (e.g., user@domain.com).
+                Search by name, npub, or NIP-05 identifier (e.g.,
+                user@domain.com).
               </p>
             </header>
 
-            <q-form class="column q-gutter-sm" @submit.prevent="triggerImmediateSearch">
+            <q-form
+              class="column q-gutter-sm"
+              @submit.prevent="triggerImmediateSearch"
+            >
               <q-input
                 v-model="searchQuery"
                 outlined
@@ -58,14 +55,25 @@
               </q-input>
             </q-form>
 
-            <section class="column q-gutter-lg" role="region" aria-live="polite">
-              <div v-if="searchLoading && !searchResults.length" class="row q-col-gutter-lg" aria-label="Searching creators">
+            <section
+              class="column q-gutter-lg"
+              role="region"
+              aria-live="polite"
+            >
+              <div
+                v-if="searchLoading && !searchResults.length"
+                class="row q-col-gutter-lg"
+                aria-label="Searching creators"
+              >
                 <div
                   v-for="placeholder in searchSkeletonPlaceholders"
                   :key="placeholder"
                   class="col-12 col-sm-6 col-md-4"
                 >
-                  <q-skeleton type="rect" class="result-skeleton bg-surface-1" />
+                  <q-skeleton
+                    type="rect"
+                    class="result-skeleton bg-surface-1"
+                  />
                 </div>
               </div>
 
@@ -78,9 +86,14 @@
                   aria-live="polite"
                 >
                   <template #avatar>
-                    <q-icon :name="resolveBannerIcon(searchStatusMessage)" size="20px" />
+                    <q-icon
+                      :name="resolveBannerIcon(searchStatusMessage)"
+                      size="20px"
+                    />
                   </template>
-                  <span class="status-banner__text">{{ searchStatusMessage }}</span>
+                  <span class="status-banner__text">{{
+                    searchStatusMessage
+                  }}</span>
                 </q-banner>
 
                 <q-banner
@@ -91,7 +104,10 @@
                   aria-live="polite"
                 >
                   <template #avatar>
-                    <q-icon :name="resolveBannerIcon(searchError)" size="20px" />
+                    <q-icon
+                      :name="resolveBannerIcon(searchError)"
+                      size="20px"
+                    />
                   </template>
                   <span class="status-banner__text">{{ searchError }}</span>
                   <template #action>
@@ -120,7 +136,11 @@
                     <q-icon name="warning" size="20px" />
                   </template>
                   <div class="column">
-                    <span v-for="(warning, index) in searchWarnings" :key="index" class="status-banner__text">
+                    <span
+                      v-for="(warning, index) in searchWarnings"
+                      :key="index"
+                      class="status-banner__text"
+                    >
                       {{ warning }}
                     </span>
                   </div>
@@ -143,9 +163,14 @@
                   v-if="resultSummary"
                   class="search-results-toolbar row items-center justify-between q-col-gutter-md"
                 >
-                  <div class="row items-center q-gutter-sm">
-                    <div class="text-body2 text-2">{{ resultSummary }}</div>
-                    <div v-if="activeFilterCount" class="text-body2 text-2">
+                  <div class="row items-center q-gutter-sm toolbar-summary">
+                    <div class="text-body2 text-2 toolbar-summary__meta">
+                      {{ resultSummary }}
+                    </div>
+                    <div
+                      v-if="activeFilterCount"
+                      class="text-body2 toolbar-summary__label"
+                    >
                       {{ activeFilterLabel }}
                     </div>
                   </div>
@@ -158,9 +183,13 @@
                         dense
                         square
                         class="filter-chip"
-                        :color="activeFilters[filter.key] ? 'accent' : 'accent-200'"
+                        :color="
+                          activeFilters[filter.key] ? 'accent' : 'accent-200'
+                        "
                         :outline="!activeFilters[filter.key]"
-                        :text-color="activeFilters[filter.key] ? 'white' : 'text-2'"
+                        :text-color="
+                          activeFilters[filter.key] ? 'white' : 'text-2'
+                        "
                         :selected="activeFilters[filter.key]"
                         @click="toggleFilter(filter.key)"
                       >
@@ -218,8 +247,12 @@
                         :is-creator="profile.isCreator ?? undefined"
                         :is-personal="profile.isPersonal ?? undefined"
                         :nip05="profile.nip05 ?? undefined"
-                        @view-tiers="(payload) => viewProfile(profile, payload?.initialTab)"
-                        @view-profile="(payload) => viewProfile(profile, payload?.initialTab)"
+                        @view-tiers="
+                          (payload) => viewProfile(profile, payload?.initialTab)
+                        "
+                        @view-profile="
+                          (payload) => viewProfile(profile, payload?.initialTab)
+                        "
                         @message="startChat"
                         @donate="donate"
                       />
@@ -234,7 +267,9 @@
                         class="grouped-section"
                         aria-live="polite"
                       >
-                        <h2 class="grouped-heading text-subtitle1 text-bold">{{ group.title }}</h2>
+                        <h2 class="grouped-heading text-subtitle1 text-bold">
+                          {{ group.title }}
+                        </h2>
                         <div class="fixed-grid">
                           <CreatorCard
                             v-for="profile in group.profiles"
@@ -246,8 +281,14 @@
                             :is-creator="profile.isCreator ?? undefined"
                             :is-personal="profile.isPersonal ?? undefined"
                             :nip05="profile.nip05 ?? undefined"
-                            @view-tiers="(payload) => viewProfile(profile, payload?.initialTab)"
-                            @view-profile="(payload) => viewProfile(profile, payload?.initialTab)"
+                            @view-tiers="
+                              (payload) =>
+                                viewProfile(profile, payload?.initialTab)
+                            "
+                            @view-profile="
+                              (payload) =>
+                                viewProfile(profile, payload?.initialTab)
+                            "
                             @message="startChat"
                             @donate="donate"
                           />
@@ -262,7 +303,7 @@
                       no-caps
                       color="accent"
                       class="load-more-button"
-                      label="Load more"
+                      :label="loadMoreLabel"
                       @click="loadMoreResults"
                     />
                   </div>
@@ -274,9 +315,17 @@
                 >
                   <div class="empty-illustration q-mb-md" aria-hidden="true">
                     <div class="empty-illustration__halo">
-                      <q-icon name="travel_explore" size="3.5rem" class="text-accent-500" />
+                      <q-icon
+                        name="travel_explore"
+                        size="3.5rem"
+                        class="text-accent-500"
+                      />
                     </div>
-                    <div class="empty-badges" role="group" aria-label="Quick filter toggles">
+                    <div
+                      class="empty-badges"
+                      role="group"
+                      aria-label="Quick filter toggles"
+                    >
                       <div
                         v-for="action in emptyStateFilterActions"
                         :key="action.key"
@@ -293,15 +342,21 @@
                           :aria-label="action.ariaLabel || action.label"
                           @click="applyFilterSampleAction(action)"
                         />
-                        <div class="text-caption text-2 badge-toggle__helper">{{ action.helper }}</div>
+                        <div class="text-caption text-2 badge-toggle__helper">
+                          {{ action.helper }}
+                        </div>
                       </div>
                     </div>
                   </div>
                   <div class="text-h6 text-1">{{ emptyStateTitle }}</div>
-                  <p class="text-body1 q-mt-sm q-mb-none">{{ emptyStateMessage }}</p>
+                  <p class="text-body1 q-mt-sm q-mb-none">
+                    {{ emptyStateMessage }}
+                  </p>
 
                   <div class="empty-actions column q-gutter-md q-mt-md">
-                    <div class="row justify-center q-col-gutter-sm sample-queries">
+                    <div
+                      class="row justify-center q-col-gutter-sm sample-queries"
+                    >
                       <q-btn
                         v-for="sample in sampleQueries"
                         :key="sample.value"
@@ -333,7 +388,9 @@
                       />
                     </div>
                     <div class="text-body2 text-2 helper-text">
-                      Run a filtered sample search with the toggles above, try a suggested search, paste an npub, or jump to our curated list.
+                      Run a filtered sample search with the toggles above, try a
+                      suggested search, paste an npub, or jump to our curated
+                      list.
                     </div>
                   </div>
                 </div>
@@ -381,11 +438,17 @@
                   :key="placeholder"
                   class="col-12 col-sm-6 col-md-4"
                 >
-                  <q-skeleton type="rect" class="featured-skeleton bg-surface-1" />
+                  <q-skeleton
+                    type="rect"
+                    class="featured-skeleton bg-surface-1"
+                  />
                 </div>
               </div>
 
-              <div v-else-if="featuredCreators.length" class="column q-gutter-md">
+              <div
+                v-else-if="featuredCreators.length"
+                class="column q-gutter-md"
+              >
                 <q-banner
                   v-if="featuredWarningMessage"
                   rounded
@@ -394,14 +457,27 @@
                   aria-live="polite"
                 >
                   <template #avatar>
-                    <q-icon :name="resolveBannerIcon(featuredWarningMessage)" size="20px" />
+                    <q-icon
+                      :name="resolveBannerIcon(featuredWarningMessage)"
+                      size="20px"
+                    />
                   </template>
-                  <span class="status-banner__text">{{ featuredWarningMessage }}</span>
+                  <span class="status-banner__text">{{
+                    featuredWarningMessage
+                  }}</span>
                 </q-banner>
                 <div class="featured-grid-container">
-                  <div class="featured-legend" aria-label="Legend for featured badges">
-                    <div class="legend-header" :class="{ 'legend-header--mobile': isMobileScreen }">
-                      <div class="legend-title text-subtitle1 text-1">Badge legend</div>
+                  <div
+                    class="featured-legend"
+                    aria-label="Legend for featured badges"
+                  >
+                    <div
+                      class="legend-header"
+                      :class="{ 'legend-header--mobile': isMobileScreen }"
+                    >
+                      <div class="legend-title text-subtitle1 text-1">
+                        Badge legend
+                      </div>
                       <q-btn
                         v-if="isMobileScreen"
                         dense
@@ -422,9 +498,13 @@
                     >
                       <div class="legend-item" role="listitem">
                         <div class="legend-chip">
-                          <q-badge color="accent" class="badge badge-featured">Featured</q-badge>
+                          <q-badge color="accent" class="badge badge-featured"
+                            >Featured</q-badge
+                          >
                         </div>
-                        <div class="legend-text text-2">Fundstr-curated pick</div>
+                        <div class="legend-text text-2">
+                          Fundstr-curated pick
+                        </div>
                       </div>
 
                       <div class="legend-item" role="listitem">
@@ -434,7 +514,9 @@
                             <span>Fundstr creator</span>
                           </span>
                         </div>
-                        <div class="legend-text text-2">Official Fundstr creator profile</div>
+                        <div class="legend-text text-2">
+                          Official Fundstr creator profile
+                        </div>
                       </div>
 
                       <div class="legend-item" role="listitem">
@@ -454,7 +536,9 @@
                             <span>Personal</span>
                           </span>
                         </div>
-                        <div class="legend-text text-2">Personal supporter profile</div>
+                        <div class="legend-text text-2">
+                          Personal supporter profile
+                        </div>
                       </div>
 
                       <div class="legend-item" role="listitem">
@@ -464,7 +548,9 @@
                             <span>Lightning</span>
                           </span>
                         </div>
-                        <div class="legend-text text-2">Lightning-ready for zaps</div>
+                        <div class="legend-text text-2">
+                          Lightning-ready for zaps
+                        </div>
                       </div>
 
                       <div class="legend-item" role="listitem">
@@ -474,7 +560,9 @@
                             <span>Has tiers</span>
                           </span>
                         </div>
-                        <div class="legend-text text-2">Subscription tiers available</div>
+                        <div class="legend-text text-2">
+                          Subscription tiers available
+                        </div>
                       </div>
 
                       <div class="legend-item" role="listitem">
@@ -484,7 +572,9 @@
                             <span>NIP-05 verified</span>
                           </span>
                         </div>
-                        <div class="legend-text text-2">Verified NIP-05 handle</div>
+                        <div class="legend-text text-2">
+                          Verified NIP-05 handle
+                        </div>
                       </div>
 
                       <div class="legend-item" role="listitem">
@@ -494,7 +584,9 @@
                             <span>Signal only</span>
                           </span>
                         </div>
-                        <div class="legend-text text-2">Profile shows signal metrics only</div>
+                        <div class="legend-text text-2">
+                          Profile shows signal metrics only
+                        </div>
                       </div>
 
                       <div class="legend-item" role="listitem">
@@ -504,7 +596,9 @@
                             <span>Cache hit</span>
                           </span>
                         </div>
-                        <div class="legend-text text-2">Data pulled from cache</div>
+                        <div class="legend-text text-2">
+                          Data pulled from cache
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -519,8 +613,12 @@
                       :is-creator="profile.isCreator ?? undefined"
                       :is-personal="profile.isPersonal ?? undefined"
                       :nip05="profile.nip05 ?? undefined"
-                      @view-tiers="(payload) => viewProfile(profile, payload?.initialTab)"
-                      @view-profile="(payload) => viewProfile(profile, payload?.initialTab)"
+                      @view-tiers="
+                        (payload) => viewProfile(profile, payload?.initialTab)
+                      "
+                      @view-profile="
+                        (payload) => viewProfile(profile, payload?.initialTab)
+                      "
                       @message="startChat"
                       @donate="donate"
                     />
@@ -536,9 +634,14 @@
                 aria-live="polite"
               >
                 <template #avatar>
-                  <q-icon :name="resolveBannerIcon(featuredStatusMessage)" size="20px" />
+                  <q-icon
+                    :name="resolveBannerIcon(featuredStatusMessage)"
+                    size="20px"
+                  />
                 </template>
-                <span class="status-banner__text">{{ featuredStatusMessage }}</span>
+                <span class="status-banner__text">{{
+                  featuredStatusMessage
+                }}</span>
                 <template #action>
                   <q-btn
                     v-if="featuredError"
@@ -567,7 +670,8 @@
                 />
                 <div class="text-h6 text-1">No featured creators yet</div>
                 <p class="text-body1 q-mt-sm q-mb-none">
-                  Check back soon as we highlight more voices from the Nostr community.
+                  Check back soon as we highlight more voices from the Nostr
+                  community.
                 </p>
               </div>
             </div>
@@ -579,45 +683,51 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch, type ComponentPublicInstance } from 'vue';
-import { storeToRefs } from 'pinia';
-import { useRoute, useRouter } from 'vue-router';
-import { useQuasar } from 'quasar';
-import { nip19 } from 'nostr-tools';
-import CreatorProfileModal from 'components/CreatorProfileModal.vue';
-import CreatorCard from 'components/CreatorCard.vue';
-import { useNostrStore } from 'stores/nostr';
-import { useCreatorsStore, type CreatorProfile } from 'stores/creators';
-import { useMessengerStore } from 'stores/messenger';
-import { useMintsStore } from 'stores/mints';
-import { useBucketsStore } from 'stores/buckets';
-import { useUiStore } from 'stores/ui';
-import { notifyError, notifyWarning } from 'src/js/notify';
-import { debug } from '@/js/logger';
+import {
+  computed,
+  onMounted,
+  ref,
+  watch,
+  type ComponentPublicInstance,
+} from "vue";
+import { storeToRefs } from "pinia";
+import { useRoute, useRouter } from "vue-router";
+import { useQuasar } from "quasar";
+import { nip19 } from "nostr-tools";
+import CreatorCard from "components/CreatorCard.vue";
+import { useNostrStore } from "stores/nostr";
+import { useCreatorsStore, type CreatorProfile } from "stores/creators";
+import { useMessengerStore } from "stores/messenger";
+import { useMintsStore } from "stores/mints";
+import { useBucketsStore } from "stores/buckets";
+import { useUiStore } from "stores/ui";
+import { notifyError, notifyWarning } from "src/js/notify";
+import { debug } from "@/js/logger";
 import {
   mintSupportsSplit,
   resolveSupportedNuts,
   SPLIT_SUPPORT_REQUIRED_MESSAGE,
-} from 'src/utils/nuts';
-import { useDonationPrompt } from '@/composables/useDonationPrompt';
-import { captureTelemetryWarning } from 'src/utils/telemetry/sentry';
-import { useI18n } from 'vue-i18n';
+} from "src/utils/nuts";
+import { useDonationPrompt } from "@/composables/useDonationPrompt";
+import { captureTelemetryWarning } from "src/utils/telemetry/sentry";
+import { useI18n } from "vue-i18n";
 import {
   creatorHasVerifiedNip05,
   creatorIsFundstrCreator,
   creatorIsSignalOnly,
-} from 'stores/creators';
+} from "stores/creators";
+import { preferredCreatorPublicIdentifier } from "src/utils/profileUrl";
 
 type FilterKey =
-  | 'hasTiers'
-  | 'hasLightning'
-  | 'featured'
-  | 'nip05Verified'
-  | 'fundstrCreator'
-  | 'signalOnly';
-type SortOption = 'relevance' | 'followers';
-type ViewMode = 'grid' | 'grouped';
-type ProfileTab = 'profile' | 'tiers';
+  | "hasTiers"
+  | "hasLightning"
+  | "featured"
+  | "nip05Verified"
+  | "fundstrCreator"
+  | "signalOnly";
+type SortOption = "relevance" | "followers";
+type ViewMode = "grid" | "grouped";
+type ProfileTab = "profile" | "tiers";
 
 const creatorsStore = useCreatorsStore();
 const {
@@ -644,7 +754,7 @@ const uiStore = useUiStore();
 const { open: openDonationPrompt } = useDonationPrompt();
 const { t } = useI18n();
 
-const searchQuery = ref('');
+const searchQuery = ref("");
 const initialLoadComplete = ref(false);
 const MIN_SEARCH_LENGTH = 2;
 const PAGE_SIZE = 24;
@@ -662,42 +772,44 @@ type EmptyStateFilterAction = {
 };
 
 const sampleQueries = [
-  { label: 'Lightning devs', value: 'lightning' },
-  { label: 'NIP-05 creators', value: 'nip-05' },
-  { label: 'Zaps & tipping', value: 'zap me' },
+  { label: "Lightning devs", value: "lightning" },
+  { label: "NIP-05 creators", value: "nip-05" },
+  { label: "Zaps & tipping", value: "zap me" },
 ];
 
 const emptyStateFilterActions: EmptyStateFilterAction[] = [
   {
-    key: 'hasLightning',
-    label: 'Lightning builders',
-    icon: 'bolt',
-    helper: 'Filters to creators ready for lightning zaps.',
-    sampleQuery: 'lightning',
-    ariaLabel: 'Search lightning-ready creators and enable the lightning filter',
+    key: "hasLightning",
+    label: "Lightning builders",
+    icon: "bolt",
+    helper: "Filters to creators ready for lightning zaps.",
+    sampleQuery: "lightning",
+    ariaLabel:
+      "Search lightning-ready creators and enable the lightning filter",
   },
   {
-    key: 'nip05Verified',
-    label: 'NIP-05 ready',
-    icon: 'verified',
-    helper: 'Shows creators with verified NIP-05 handles.',
-    sampleQuery: 'nip-05',
-    ariaLabel: 'Search verified NIP-05 creators and enable the verification filter',
+    key: "nip05Verified",
+    label: "NIP-05 ready",
+    icon: "verified",
+    helper: "Shows creators with verified NIP-05 handles.",
+    sampleQuery: "nip-05",
+    ariaLabel:
+      "Search verified NIP-05 creators and enable the verification filter",
   },
 ];
 
 const filterChips: { key: FilterKey; label: string }[] = [
-  { key: 'hasTiers', label: 'Has tiers' },
-  { key: 'hasLightning', label: 'Has lightning' },
-  { key: 'featured', label: 'Featured' },
-  { key: 'nip05Verified', label: 'NIP-05 verified' },
-  { key: 'fundstrCreator', label: 'Fundstr creator' },
-  { key: 'signalOnly', label: 'Signal only' },
+  { key: "hasTiers", label: "Has tiers" },
+  { key: "hasLightning", label: "Has lightning" },
+  { key: "featured", label: "Featured" },
+  { key: "nip05Verified", label: "NIP-05 verified" },
+  { key: "fundstrCreator", label: "Fundstr creator" },
+  { key: "signalOnly", label: "Signal only" },
 ];
 
 const sortOptions: { label: string; value: SortOption }[] = [
-  { label: 'Relevance', value: 'relevance' },
-  { label: 'Followers', value: 'followers' },
+  { label: "Relevance", value: "relevance" },
+  { label: "Followers", value: "followers" },
 ];
 
 const activeFilters = ref<Record<FilterKey, boolean>>({
@@ -709,36 +821,38 @@ const activeFilters = ref<Record<FilterKey, boolean>>({
   signalOnly: false,
 });
 
-const viewMode = ref<ViewMode>('grid');
+const viewMode = ref<ViewMode>("grid");
 
-const sortOption = ref<SortOption>('relevance');
+const sortOption = ref<SortOption>("relevance");
 const visibleCount = ref(PAGE_SIZE);
 const hasFollowerMetrics = computed(() =>
   creatorsStore.unfilteredSearchResults.some(
-    (profile) => typeof profile.followers === 'number' && Number.isFinite(profile.followers),
+    (profile) =>
+      typeof profile.followers === "number" &&
+      Number.isFinite(profile.followers),
   ),
 );
 const availableSortOptions = computed(() =>
   hasFollowerMetrics.value
     ? sortOptions
-    : sortOptions.filter((option) => option.value === 'relevance'),
+    : sortOptions.filter((option) => option.value === "relevance"),
 );
 
 const viewModeOptions = [
-  { label: 'Grid', icon: 'grid_view', value: 'grid' },
-  { label: 'Grouped', icon: 'view_agenda', value: 'grouped' },
+  { label: "Grid", icon: "grid_view", value: "grid" },
+  { label: "Grouped", icon: "view_agenda", value: "grouped" },
 ];
 
-const trimmedQuery = computed(() => (searchQuery.value || '').trim());
+const trimmedQuery = computed(() => (searchQuery.value || "").trim());
 const hasQuery = computed(() => trimmedQuery.value.length > 0);
 const isValidNip19Query = (value: string): boolean => {
-  if (!value || (!value.startsWith('npub') && !value.startsWith('nprofile'))) {
+  if (!value || (!value.startsWith("npub") && !value.startsWith("nprofile"))) {
     return false;
   }
 
   try {
     const decoded = nip19.decode(value);
-    return decoded.type === 'npub' || decoded.type === 'nprofile';
+    return decoded.type === "npub" || decoded.type === "nprofile";
   } catch {
     return false;
   }
@@ -746,7 +860,7 @@ const isValidNip19Query = (value: string): boolean => {
 
 const isValidNip05Query = (value: string): boolean => {
   const trimmed = value.trim();
-  if (!trimmed.includes('@')) {
+  if (!trimmed.includes("@")) {
     return false;
   }
 
@@ -760,12 +874,15 @@ const isQueryTooShort = computed(() => {
   if (trimmedQuery.value.length >= MIN_SEARCH_LENGTH) {
     return false;
   }
-  return !(isValidNip19Query(trimmedQuery.value) || isValidNip05Query(trimmedQuery.value));
+  return !(
+    isValidNip19Query(trimmedQuery.value) ||
+    isValidNip05Query(trimmedQuery.value)
+  );
 });
 
 const searchHint = computed(() => {
   if (!isQueryTooShort.value) {
-    return '';
+    return "";
   }
   return `Type at least ${MIN_SEARCH_LENGTH} characters or paste an npub/NIP-05.`;
 });
@@ -773,53 +890,75 @@ const searchLoading = computed(() => searching.value);
 const isRefreshing = computed(() => storeIsRefreshing.value);
 const searchError = computed(() => storeError.value);
 const searchWarnings = computed(() => storeSearchWarnings?.value ?? []);
-const searchStatusMessage = computed(() => storeSearchStatusMessage?.value ?? '');
+const searchStatusMessage = computed(
+  () => storeSearchStatusMessage?.value ?? "",
+);
 const searchFilters = computed(() => ({ ...activeFilters.value }));
 const normalizedFilterKeys = new Set<FilterKey>([
-  'hasTiers',
-  'hasLightning',
-  'featured',
-  'nip05Verified',
-  'fundstrCreator',
-  'signalOnly',
+  "hasTiers",
+  "hasLightning",
+  "featured",
+  "nip05Verified",
+  "fundstrCreator",
+  "signalOnly",
 ]);
 const resultSummary = computed(() => {
   if (!initialLoadComplete.value) {
-    return '';
+    return "";
   }
 
   if (isQueryTooShort.value) {
-    return '';
+    return "";
   }
 
   if (!hasQuery.value && !searchResults.value.length && !searchLoading.value) {
-    return '';
+    return "";
   }
 
   if (searchLoading.value) {
-    return 'Searching creators...';
+    return "Searching creators...";
   }
 
+  const visibleCount = pagedSearchResults.value.length;
   const count = searchResults.value.length;
-  const noun = count === 1 ? 'creator' : 'creators';
+  const noun = count === 1 ? "creator" : "creators";
+  if (visibleCount < count) {
+    return `Showing ${visibleCount} of ${count} ${noun}`;
+  }
   return `${count} ${noun} found`;
 });
 const pagedSearchResults = computed(() =>
   searchResults.value.slice(0, Math.max(visibleCount.value, PAGE_SIZE)),
 );
-const canLoadMore = computed(() => searchResults.value.length > visibleCount.value);
+const canLoadMore = computed(
+  () => searchResults.value.length > visibleCount.value,
+);
+const remainingResultsCount = computed(() =>
+  Math.max(0, searchResults.value.length - pagedSearchResults.value.length),
+);
+const loadMoreLabel = computed(() => {
+  const remaining = remainingResultsCount.value;
+  if (!remaining) {
+    return "Load more";
+  }
+  const nextBatch = Math.min(PAGE_SIZE, remaining);
+  return `Load ${nextBatch} more`;
+});
 const activeFilterCount = computed(
   () => Object.values(activeFilters.value).filter(Boolean).length,
 );
 const activeFilterLabel = computed(() => {
   if (!activeFilterCount.value) {
-    return '';
+    return "";
   }
-  return `${activeFilterCount.value} filter${activeFilterCount.value === 1 ? '' : 's'}`;
+  return `${activeFilterCount.value} filter${
+    activeFilterCount.value === 1 ? "" : "s"
+  }`;
 });
 const loadingFeatured = computed(() => storeLoadingFeatured?.value ?? false);
 
-const isPersonalProfile = (profile: CreatorProfile) => profile.isPersonal === true;
+const isPersonalProfile = (profile: CreatorProfile) =>
+  profile.isPersonal === true;
 
 const isCreatorProfile = (profile: CreatorProfile) => {
   if (profile.isCreator !== undefined && profile.isCreator !== null) {
@@ -831,14 +970,33 @@ const isCreatorProfile = (profile: CreatorProfile) => {
 
 const groupedResults = computed(() => {
   const groups = [
-    { key: 'fundstr', title: 'Fundstr creators', predicate: creatorIsFundstrCreator },
-    { key: 'signal-only', title: 'Signal only', predicate: creatorIsSignalOnly },
-    { key: 'verified', title: 'NIP-05 verified', predicate: creatorHasVerifiedNip05 },
-    { key: 'creators', title: 'Creators', predicate: isCreatorProfile },
-    { key: 'personal', title: 'Personal profiles', predicate: isPersonalProfile },
+    {
+      key: "fundstr",
+      title: "Fundstr creators",
+      predicate: creatorIsFundstrCreator,
+    },
+    {
+      key: "signal-only",
+      title: "Signal only",
+      predicate: creatorIsSignalOnly,
+    },
+    {
+      key: "verified",
+      title: "NIP-05 verified",
+      predicate: creatorHasVerifiedNip05,
+    },
+    { key: "creators", title: "Creators", predicate: isCreatorProfile },
+    {
+      key: "personal",
+      title: "Personal profiles",
+      predicate: isPersonalProfile,
+    },
   ];
 
-  const buckets = groups.map((group) => ({ ...group, profiles: [] as CreatorProfile[] }));
+  const buckets = groups.map((group) => ({
+    ...group,
+    profiles: [] as CreatorProfile[],
+  }));
   const ungrouped: CreatorProfile[] = [];
 
   for (const profile of pagedSearchResults.value) {
@@ -852,8 +1010,8 @@ const groupedResults = computed(() => {
 
   if (ungrouped.length) {
     buckets.push({
-      key: 'other',
-      title: 'Other profiles',
+      key: "other",
+      title: "Other profiles",
       predicate: () => true,
       profiles: ungrouped,
     });
@@ -873,11 +1031,17 @@ const showSearchEmptyState = computed(
 );
 
 const resetVisibleCount = () => {
-  visibleCount.value = Math.min(PAGE_SIZE, searchResults.value.length || PAGE_SIZE);
+  visibleCount.value = Math.min(
+    PAGE_SIZE,
+    searchResults.value.length || PAGE_SIZE,
+  );
 };
 
 const loadMoreResults = () => {
-  visibleCount.value = Math.min(visibleCount.value + PAGE_SIZE, searchResults.value.length);
+  visibleCount.value = Math.min(
+    visibleCount.value + PAGE_SIZE,
+    searchResults.value.length,
+  );
 };
 const showInitialEmptyState = computed(
   () =>
@@ -890,25 +1054,35 @@ const showInitialEmptyState = computed(
 );
 
 const emptyStateTitle = computed(() =>
-  showInitialEmptyState.value ? 'Search for creators' : 'No profiles yet',
+  showInitialEmptyState.value ? "Search for creators" : "No profiles yet",
 );
 const emptyStateMessage = computed(() =>
   showInitialEmptyState.value
-    ? 'Start typing a name, npub, or NIP-05 handle to find creators.'
-    : 'Try a different name or paste an npub to explore more creators.',
+    ? "Start typing a name, npub, or NIP-05 handle to find creators."
+    : "Try a different name or paste an npub to explore more creators.",
 );
 
 function debounce(func: (...args: any[]) => void, delay: number) {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  return function (this: unknown, ...args: any[]) {
+  const debounced = function (this: unknown, ...args: any[]) {
     if (timeoutId) {
       clearTimeout(timeoutId);
     }
     timeoutId = setTimeout(() => func.apply(this, args), delay);
+  } as ((...args: any[]) => void) & { cancel: () => void };
+
+  debounced.cancel = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = undefined;
+    }
   };
+
+  return debounced;
 }
 
 const triggerImmediateSearch = () => {
+  debouncedSearch.cancel();
   void runSearch({ fresh: true });
 };
 
@@ -941,12 +1115,12 @@ watch(viewMode, () => {
 });
 
 const parseFiltersFromQuery = (value: unknown): FilterKey[] => {
-  if (typeof value === 'string') {
-    return value.split(',').map((filter) => filter.trim() as FilterKey);
+  if (typeof value === "string") {
+    return value.split(",").map((filter) => filter.trim() as FilterKey);
   }
   if (Array.isArray(value)) {
     return value
-      .flatMap((entry) => (typeof entry === 'string' ? entry.split(',') : []))
+      .flatMap((entry) => (typeof entry === "string" ? entry.split(",") : []))
       .map((filter) => filter.trim() as FilterKey);
   }
   return [];
@@ -954,12 +1128,12 @@ const parseFiltersFromQuery = (value: unknown): FilterKey[] => {
 
 const applyQueryState = () => {
   const query = route.query;
-  if (typeof query.q === 'string') {
+  if (typeof query.q === "string") {
     searchQuery.value = query.q;
   }
 
-  const requestedFilters = parseFiltersFromQuery(query.filters).filter((filter) =>
-    normalizedFilterKeys.has(filter),
+  const requestedFilters = parseFiltersFromQuery(query.filters).filter(
+    (filter) => normalizedFilterKeys.has(filter),
   );
 
   if (requestedFilters.length) {
@@ -971,12 +1145,15 @@ const applyQueryState = () => {
     ) as Record<FilterKey, boolean>;
   }
 
-  if (typeof query.sort === 'string' && sortOptions.some((option) => option.value === query.sort)) {
+  if (
+    typeof query.sort === "string" &&
+    sortOptions.some((option) => option.value === query.sort)
+  ) {
     sortOption.value = query.sort as SortOption;
   }
 
   if (
-    typeof query.view === 'string' &&
+    typeof query.view === "string" &&
     viewModeOptions.some((option) => option.value === query.view)
   ) {
     viewMode.value = query.view as ViewMode;
@@ -1000,18 +1177,18 @@ const buildViewQuery = () => {
     .filter(([, enabled]) => enabled)
     .map(([key]) => key);
   if (activeFilterKeys.length) {
-    query.filters = activeFilterKeys.join(',');
+    query.filters = activeFilterKeys.join(",");
   } else {
     delete query.filters;
   }
 
-  if (sortOption.value !== 'relevance') {
+  if (sortOption.value !== "relevance") {
     query.sort = sortOption.value;
   } else {
     delete query.sort;
   }
 
-  if (viewMode.value !== 'grid') {
+  if (viewMode.value !== "grid") {
     query.view = viewMode.value;
   } else {
     delete query.view;
@@ -1038,14 +1215,11 @@ watch(
   { deep: true },
 );
 
-watch(
-  hasFollowerMetrics,
-  (hasFollowers) => {
-    if (!hasFollowers && sortOption.value === 'followers') {
-      sortOption.value = 'relevance';
-    }
-  },
-);
+watch(hasFollowerMetrics, (hasFollowers) => {
+  if (!hasFollowers && sortOption.value === "followers") {
+    sortOption.value = "relevance";
+  }
+});
 
 const loadMore = () => {
   // The new discovery service does not support pagination.
@@ -1055,7 +1229,7 @@ const loadMore = () => {
 
 async function runSearch({ fresh = false }: { fresh?: boolean } = {}) {
   if (isQueryTooShort.value) {
-    await creatorsStore.searchCreators('');
+    await creatorsStore.searchCreators("");
     initialLoadComplete.value = true;
     return;
   }
@@ -1084,20 +1258,23 @@ const featuredStatusMessage = computed(() => {
     return storeFeaturedStatusMessage.value;
   }
   if (loadingFeatured.value && !featuredCreators.value.length) {
-    return 'Loading creators...';
+    return "Loading creators...";
   }
   if (!loadingFeatured.value && !featuredCreators.value.length) {
-    return 'No featured creators available right now.';
+    return "No featured creators available right now.";
   }
-  return '';
+  return "";
 });
 
 const featuredWarningMessage = computed(
-  () => storeFeaturedStatusMessage.value || '',
+  () => storeFeaturedStatusMessage.value || "",
 );
 
 const showFeaturedEmptyState = computed(
-  () => !loadingFeatured.value && !featuredCreators.value.length && !featuredError.value,
+  () =>
+    !loadingFeatured.value &&
+    !featuredCreators.value.length &&
+    !featuredError.value,
 );
 
 const refreshFeatured = async () => {
@@ -1117,40 +1294,57 @@ const toggleLegend = () => {
 
 watch(searchWarnings, (warnings) => {
   if (Array.isArray(warnings) && warnings.length > 0) {
-    debug('Search warnings:', warnings);
+    debug("Search warnings:", warnings);
   }
 });
 
-const showProfileModal = ref(false);
-const selectedProfilePubkey = ref('');
-const selectedProfile = ref<CreatorProfile | null>(null);
-const selectedProfileInitialTab = ref<ProfileTab>('profile');
-const featuredSectionRef = ref<HTMLElement | ComponentPublicInstance | null>(null);
+const featuredSectionRef = ref<HTMLElement | ComponentPublicInstance | null>(
+  null,
+);
 const activeMintInfo = computed(() => mintsStore.activeInfo);
-const supportedNuts = computed(() => resolveSupportedNuts(activeMintInfo.value));
+const supportedNuts = computed(() =>
+  resolveSupportedNuts(activeMintInfo.value),
+);
 const activeMintSupportsSplit = computed(() =>
   mintSupportsSplit(activeMintInfo.value, supportedNuts.value),
 );
 const { activeBuckets } = storeToRefs(bucketsStore);
 const bucketBalances = computed(() => bucketsStore.bucketBalances);
 const hasFundedBucket = computed(() =>
-  activeBuckets.value.some((bucket) => (bucketBalances.value[bucket.id] ?? 0) > 0),
+  activeBuckets.value.some(
+    (bucket) => (bucketBalances.value[bucket.id] ?? 0) > 0,
+  ),
 );
 
-function viewProfile(profile: CreatorProfile, initialTab: ProfileTab = 'profile') {
+function viewProfile(
+  profile: CreatorProfile,
+  initialTab: ProfileTab = "profile",
+) {
   if (!profile?.pubkey) {
-    notifyError('We could not open this profile because its public key is missing.');
-    captureTelemetryWarning('findCreators.missingPubkey', {
-      profileId: profile?.id ?? profile?.nip05 ?? profile?.name ?? 'unknown',
+    notifyError(
+      "We could not open this profile because its public key is missing.",
+    );
+    captureTelemetryWarning("findCreators.missingPubkey", {
+      profileId: profile?.id ?? profile?.nip05 ?? profile?.name ?? "unknown",
       profile,
     });
     return;
   }
 
-  selectedProfilePubkey.value = profile.pubkey;
-  selectedProfile.value = profile;
-  selectedProfileInitialTab.value = initialTab;
-  showProfileModal.value = true;
+  const npubOrHex =
+    preferredCreatorPublicIdentifier({
+      fallbackIdentifier:
+        (typeof profile.npub === "string" && profile.npub.trim()) ||
+        profile.pubkey,
+      nip05: typeof profile.nip05 === "string" ? profile.nip05 : null,
+      nip05Verified: creatorHasVerifiedNip05(profile),
+    }) || profile.pubkey;
+
+  void router.push({
+    name: "PublicCreatorProfile",
+    params: { npubOrHex },
+    query: initialTab === "tiers" ? { tab: "tiers" } : undefined,
+  });
 }
 
 function startChat(pubkey: string) {
@@ -1159,7 +1353,10 @@ function startChat(pubkey: string) {
   if ($q.screen.lt.md) {
     messenger.setDrawer(true);
   }
-  void router.push({ path: '/nostr-messenger', query: { pubkey: resolvedPubkey } });
+  void router.push({
+    path: "/nostr-messenger",
+    query: { pubkey: resolvedPubkey },
+  });
 }
 
 async function donate(pubkey: string) {
@@ -1168,28 +1365,27 @@ async function donate(pubkey: string) {
     return;
   }
   const hasActiveMint =
-    typeof mintsStore.activeMintUrl === 'string' && mintsStore.activeMintUrl.trim().length > 0;
+    typeof mintsStore.activeMintUrl === "string" &&
+    mintsStore.activeMintUrl.trim().length > 0;
   const hasPositiveBalance = mintsStore.activeBalance > 0;
   const hasActiveBucketWithFunds = hasFundedBucket.value;
 
   if (!hasActiveMint || !hasPositiveBalance || !hasActiveBucketWithFunds) {
-    const title = t('DonationPrompt.cashu.ctas.setupTitle');
-    const description = t('DonationPrompt.cashu.ctas.setupDescription');
+    const title = t("DonationPrompt.cashu.ctas.setupTitle");
+    const description = t("DonationPrompt.cashu.ctas.setupDescription");
 
     notifyWarning(title, description);
-    showProfileModal.value = false;
-
     if (!hasActiveMint) {
-      void openDonationPrompt({ bypassGate: true, defaultTab: 'cashu' });
+      void openDonationPrompt({ bypassGate: true, defaultTab: "cashu" });
     }
 
-    void router.push('/wallet');
+    void router.push("/wallet");
     return;
   }
   if (!nostr.hasIdentity) {
     uiStore.showMissingSignerModal = true;
     notifyWarning(
-      'You\'ll need a Nostr identity before we can deliver the Cashu token.',
+      "You'll need a Nostr identity before we can deliver the Cashu token.",
     );
     return;
   }
@@ -1197,45 +1393,55 @@ async function donate(pubkey: string) {
   try {
     await nostr.initSignerIfNotSet();
   } catch (error) {
-    notifyError('We couldn\'t connect to your Nostr signer. Please try again.');
+    notifyError("We couldn't connect to your Nostr signer. Please try again.");
     return;
   }
 
   if (!nostr.signer || !nostr.pubkey) {
-    notifyError('Your Nostr identity is not ready yet. Please try again.');
+    notifyError("Your Nostr identity is not ready yet. Please try again.");
     return;
   }
   const resolvedPubkey = nostr.resolvePubkey(pubkey);
   messenger.startChat(resolvedPubkey);
-  showProfileModal.value = false;
   void router.push({
-    path: '/nostr-messenger',
-    query: { pubkey: resolvedPubkey, intent: 'donate' },
+    path: "/nostr-messenger",
+    query: { pubkey: resolvedPubkey, intent: "donate" },
   });
 }
 
 const resolveBannerIcon = (message: string | null | undefined) => {
   if (!message) {
-    return 'info';
+    return "info";
   }
 
   const normalized = message.toLowerCase();
 
-  if (normalized.includes('fail') || normalized.includes('error')) {
-    return 'warning';
+  if (normalized.includes("fail") || normalized.includes("error")) {
+    return "warning";
   }
 
-  if (normalized.includes('refresh') || normalized.includes('loading')) {
-    return 'autorenew';
+  if (normalized.includes("refresh") || normalized.includes("loading")) {
+    return "autorenew";
   }
 
-  return 'info';
+  return "info";
 };
 
 function redirectToCreatorIfPresent() {
-  const npub = route.query.npub;
-  if (typeof npub === 'string' && npub.trim()) {
-    void router.replace({ name: 'creator-profile', params: { npub: npub.trim() } });
+  const queryNpub = route.query.npub;
+  const routeNpubOrHex = route.params?.npubOrHex;
+  const target =
+    typeof queryNpub === "string" && queryNpub.trim()
+      ? queryNpub.trim()
+      : typeof routeNpubOrHex === "string" && routeNpubOrHex.trim()
+      ? routeNpubOrHex.trim()
+      : "";
+
+  if (target) {
+    void router.replace({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: target },
+    });
   }
 }
 
@@ -1250,7 +1456,7 @@ const clearFilters = () => {
   activeFilters.value = Object.fromEntries(
     Object.keys(activeFilters.value).map((key) => [key, false]),
   ) as Record<FilterKey, boolean>;
-  sortOption.value = 'relevance';
+  sortOption.value = "relevance";
 };
 
 const applySampleQuery = (query: string) => {
@@ -1269,25 +1475,27 @@ const applyFilterSampleAction = (action: EmptyStateFilterAction) => {
 
 const pasteNpubFromClipboard = async () => {
   if (!navigator?.clipboard?.readText) {
-    notifyWarning('Clipboard access is unavailable. Paste manually instead.');
+    notifyWarning("Clipboard access is unavailable. Paste manually instead.");
     return;
   }
 
   try {
     const npub = (await navigator.clipboard.readText()).trim();
     if (!npub) {
-      notifyWarning('Your clipboard is empty. Copy an npub and try again.');
+      notifyWarning("Your clipboard is empty. Copy an npub and try again.");
       return;
     }
     searchQuery.value = npub;
     triggerImmediateSearch();
   } catch (error) {
-    debug('Failed to paste npub from clipboard', error);
-    notifyError('Unable to read from your clipboard. Please paste manually.');
+    debug("Failed to paste npub from clipboard", error);
+    notifyError("Unable to read from your clipboard. Please paste manually.");
   }
 };
 
-const resolveElement = (target: HTMLElement | ComponentPublicInstance | null) => {
+const resolveElement = (
+  target: HTMLElement | ComponentPublicInstance | null,
+) => {
   if (!target) {
     return undefined;
   }
@@ -1296,7 +1504,7 @@ const resolveElement = (target: HTMLElement | ComponentPublicInstance | null) =>
     return target;
   }
 
-  if ('$el' in target && target.$el instanceof HTMLElement) {
+  if ("$el" in target && target.$el instanceof HTMLElement) {
     return target.$el;
   }
 
@@ -1306,11 +1514,11 @@ const resolveElement = (target: HTMLElement | ComponentPublicInstance | null) =>
 const jumpToFeatured = () => {
   const el = resolveElement(featuredSectionRef.value);
   if (el) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
   }
 
-  void router.push({ hash: '#featured-creators' });
+  void router.push({ hash: "#featured-creators" });
 };
 
 onMounted(() => {
@@ -1325,9 +1533,7 @@ onMounted(() => {
 });
 </script>
 
-
 <style scoped>
-
 .fixed-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -1454,7 +1660,8 @@ onMounted(() => {
   line-height: 1;
   background: var(--chip-bg);
   color: var(--text-2);
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 55%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--surface-contrast-border) 55%, transparent);
   transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
 
@@ -1471,7 +1678,11 @@ onMounted(() => {
 
 .status-chip.neutral {
   background: color-mix(in srgb, var(--chip-bg) 60%, transparent);
-  border-color: color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--surface-contrast-border) 70%,
+    transparent
+  );
 }
 
 .status-chip:focus-visible {
@@ -1546,8 +1757,7 @@ h1 {
   width: 100%;
   border-radius: 16px;
   border: 1px solid var(--surface-contrast-border);
-  box-shadow:
-    0 12px 24px rgba(15, 23, 42, 0.04),
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.04),
     0 24px 48px rgba(15, 23, 42, 0.08);
 }
 
@@ -1556,7 +1766,6 @@ h1 {
   flex-direction: column;
   gap: 24px;
 }
-
 
 .load-more-wrapper {
   display: flex;
@@ -1586,8 +1795,7 @@ h1 {
   border-radius: 26px;
   background: color-mix(in srgb, var(--accent-200) 24%, transparent);
   border: 1px solid var(--surface-contrast-border);
-  box-shadow:
-    0 10px 30px rgba(15, 23, 42, 0.06),
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06),
     0 18px 46px rgba(15, 23, 42, 0.08);
 }
 
@@ -1664,19 +1872,41 @@ h1 {
 }
 
 .search-results-toolbar {
-  padding: 10px 12px;
-  border-radius: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
   border: 1px solid var(--surface-contrast-border);
-  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
-  gap: 10px;
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+  gap: 12px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.toolbar-summary {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.toolbar-summary__meta {
+  font-weight: 600;
+}
+
+.toolbar-summary__label {
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-200) 32%, transparent);
+  color: var(--accent-600);
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .toolbar-controls {
   flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .filters-group {
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .filter-chip {
@@ -1689,6 +1919,56 @@ h1 {
 
 .view-mode-toggle {
   min-width: 164px;
+}
+
+@media (max-width: 1023px) {
+  .search-results-toolbar {
+    align-items: stretch;
+  }
+
+  .toolbar-controls {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 767px) {
+  .search-results-toolbar {
+    padding: 12px;
+  }
+
+  .toolbar-summary,
+  .toolbar-controls {
+    width: 100%;
+  }
+
+  .toolbar-controls {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .filters-group {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    margin-right: -2px;
+  }
+
+  .filters-group::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .filters-group::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--accent-200) 60%, transparent);
+    border-radius: 999px;
+  }
+
+  .view-mode-toggle,
+  .sort-select {
+    min-width: 0;
+    width: 100%;
+  }
 }
 
 .grouped-results {
@@ -1704,7 +1984,6 @@ h1 {
 .grouped-heading {
   margin: 0;
 }
-
 
 .result-skeleton,
 .featured-skeleton {

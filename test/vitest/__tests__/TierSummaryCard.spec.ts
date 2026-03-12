@@ -4,7 +4,7 @@ import TierSummaryCard from "../../../src/components/TierSummaryCard.vue";
 
 const baseTier = {
   name: "Supporter",
-  media: [{ url: "https://example.com/one.png" }],
+  media: [{ url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }],
 };
 
 function mountComponent(props: Record<string, unknown> = {}) {
@@ -17,10 +17,10 @@ function mountComponent(props: Record<string, unknown> = {}) {
     global: {
       stubs: {
         QBtn: {
-          template: "<button class=\"q-btn\"><slot /></button>",
+          template: '<button class="q-btn"><slot /></button>',
         },
         MediaPreview: {
-          template: "<div class=\"media-preview\"></div>",
+          template: '<div class="media-preview"></div>',
         },
       },
     },
@@ -47,5 +47,25 @@ describe("TierSummaryCard", () => {
     const toggle = wrapper.get("[data-testid='tier-media-toggle']");
     expect(toggle.attributes("aria-expanded")).toBe("true");
     expect(wrapper.find(".tier-card__media").exists()).toBe(true);
+  });
+
+  it("renders link media as external links instead of embedded previews", () => {
+    const wrapper = mountComponent({
+      tier: {
+        name: "Supporter",
+        media: [
+          {
+            url: "https://fundstr.me/resource",
+            type: "link",
+            title: "Launch video",
+          },
+        ],
+      },
+    });
+
+    expect(wrapper.find(".tier-card__media-link").text()).toContain(
+      "Launch video",
+    );
+    expect(wrapper.find(".media-preview").exists()).toBe(false);
   });
 });

@@ -83,6 +83,37 @@ vi.mock("stores/welcome", () => ({
   useWelcomeStore: () => ({ welcomeCompleted: true }),
 }));
 
+vi.mock("stores/sendTokensStore", () => ({
+  useSendTokensStore: () => ({
+    clearSendData: vi.fn(),
+    recipientPubkey: "",
+    sendViaNostr: false,
+    sendData: {},
+    showLockInput: false,
+    showSendTokens: false,
+  }),
+}));
+
+vi.mock("stores/donationPresets", () => ({
+  useDonationPresetsStore: () => ({
+    createDonationPreset: vi.fn(),
+    showCreatePresetDialog: false,
+  }),
+}));
+
+vi.mock("stores/messenger", () => ({
+  useMessengerStore: () => ({
+    startChat: vi.fn(),
+  }),
+}));
+
+vi.mock("stores/mints", () => ({
+  useMintsStore: () => ({
+    activeMintUrl: "",
+    activeInfo: null,
+  }),
+}));
+
 vi.mock("src/composables/useClipboard", () => ({
   useClipboard: () => ({ copy: vi.fn() }),
 }));
@@ -94,6 +125,9 @@ vi.mock("vue-i18n", () => ({
 
 vi.mock("src/utils/profileUrl", () => ({
   buildProfileUrl: () => "https://example.com/profile",
+  extractCreatorIdentifier: (value: string) => value,
+  preferredCreatorPublicIdentifier: ({ fallbackIdentifier }: any) =>
+    fallbackIdentifier,
 }));
 
 vi.mock("src/utils/nostrKeys", () => ({
@@ -103,8 +137,8 @@ vi.mock("src/utils/nostrKeys", () => ({
       typeof param === "string" && param.startsWith("npub")
         ? hex
         : typeof param === "string"
-          ? param
-          : "",
+        ? param
+        : "",
   }),
 }));
 
@@ -125,7 +159,12 @@ const makeEvent = (overrides: Partial<Record<string, unknown>> = {}) => {
       mints,
       relays,
     }),
-    tags: [["t", "nutzap-profile"], ["client", "fundstr"], ["pubkey", p2pk], ...relays.map((url) => ["relay", url])],
+    tags: [
+      ["t", "nutzap-profile"],
+      ["client", "fundstr"],
+      ["pubkey", p2pk],
+      ...relays.map((url) => ["relay", url]),
+    ],
   } as any;
 };
 
@@ -185,7 +224,11 @@ describe("fetchNutzapProfile", () => {
 
   it("forces bypassing cached values and rehydrates the cache", async () => {
     queryNutzapProfileMock.mockResolvedValue(
-      makeEvent({ p2pk: altNpub, mints: ["https://cached"], relays: ["wss://cached"] }),
+      makeEvent({
+        p2pk: altNpub,
+        mints: ["https://cached"],
+        relays: ["wss://cached"],
+      }),
     );
     await nostrModule.fetchNutzapProfile(altNpub, { forceRefresh: true });
     expect(queryNutzapProfileMock).toHaveBeenCalledTimes(1);
@@ -197,7 +240,9 @@ describe("fetchNutzapProfile", () => {
         relays: ["wss://fresh"],
       }),
     );
-    const fresh = await nostrModule.fetchNutzapProfile(altNpub, { forceRefresh: true });
+    const fresh = await nostrModule.fetchNutzapProfile(altNpub, {
+      forceRefresh: true,
+    });
     expect(fresh?.trustedMints).toEqual(["https://fresh"]);
     expect(fresh?.relays).toEqual(["wss://fresh"]);
     expect(queryNutzapProfileMock).toHaveBeenCalledTimes(2);
@@ -212,7 +257,6 @@ describe("fetchNutzapProfile", () => {
 
 describe("PublicCreatorProfilePage", () => {
   it("forces a relay refresh on load and waits for the fresh profile", async () => {
-    vi.useFakeTimers();
     resetComponentDeps();
 
     const deferred: { resolve: (value: any) => void; promise: Promise<any> } = {
@@ -223,12 +267,10 @@ describe("PublicCreatorProfilePage", () => {
       deferred.resolve = resolve;
     });
 
-    const fetchSpy = vi
-      .spyOn(nostrModule, "fetchNutzapProfile")
-      .mockImplementation(async (_hex, options) => {
-        expect(options?.forceRefresh).toBe(true);
-        return deferred.promise;
-      });
+    fetchFundstrProfileBundleMock.mockImplementation(async (_hex, options) => {
+      expect(options?.forceRefresh).toBe(true);
+      return deferred.promise;
+    });
 
     const wrapper = shallowMount(PublicCreatorProfilePage, {
       global: {
@@ -258,17 +300,26 @@ describe("PublicCreatorProfilePage", () => {
     });
 
     await nextTick();
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(fetchSpy.mock.calls[0][1]?.fundstrOnly).toBe(true);
-
-    expect(wrapper.vm.profile.trustedMints).toEqual(["https://cached"]);
+    expect(fetchFundstrProfileBundleMock).toHaveBeenCalledTimes(1);
 
     deferred.resolve({
-      hexPub: hex,
-      p2pkPubkey: ensureCompressed(hex),
-      trustedMints: ["https://fresh"],
-      relays: ["wss://fresh"],
-      tierAddr: "tier:1",
+      profile: {},
+      profileDetails: {
+        p2pkPubkey: ensureCompressed(hex),
+        trustedMints: ["https://fresh"],
+        relays: ["wss://fresh"],
+        tierAddr: "tier:1",
+      },
+      tiers: [],
+      profileEvent: null,
+      tierDataFresh: true,
+      tierSecurityBlocked: false,
+      tierFetchFailed: false,
+      relayHints: [],
+      fetchedFromFallback: false,
+      followers: null,
+      following: null,
+      joined: Date.now(),
     });
 
     await flushPromises();
@@ -277,7 +328,6 @@ describe("PublicCreatorProfilePage", () => {
     expect(wrapper.vm.profile.trustedMints).toEqual(["https://fresh"]);
     expect(wrapper.vm.profile.relays).toEqual(["wss://fresh"]);
 
-    fetchSpy.mockRestore();
     wrapper.unmount();
   });
 });

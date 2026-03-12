@@ -44,9 +44,9 @@ vi.mock("src/stores/dexie", () => ({
       get: vi.fn(),
     },
     subscriptions: {
-       update: vi.fn(),
-       get: vi.fn(),
-    }
+      update: vi.fn(),
+      get: vi.fn(),
+    },
   },
 }));
 
@@ -85,7 +85,7 @@ describe("P2PK Locking & Unlocking", () => {
       increaseKeysetCounter: vi.fn(),
       t: (key: string) => key, // Mock translation
       mintWallet: vi.fn(() => ({
-         receive: vi.fn(),
+        receive: vi.fn(),
       })),
       reconcileSpentProofs: vi.fn(),
       handleOutputsHaveAlreadyBeenSignedError: vi.fn(),
@@ -109,7 +109,9 @@ describe("P2PK Locking & Unlocking", () => {
       // Mock mint info to NOT support NUT-10/11
       mintsStoreMock.activeInfo = { nut_supports: [4, 5] };
 
-      await expect(p2pk.sendToLock(100, "02pubkey", 0)).rejects.toThrow("Mint does not support timelocks or P2PK");
+      await expect(p2pk.sendToLock(100, "02pubkey", 0)).rejects.toThrow(
+        "Mint does not support timelocks or P2PK",
+      );
     });
 
     it("Basic Lock Roundtrip: creates locked token entry", async () => {
@@ -139,106 +141,124 @@ describe("P2PK Locking & Unlocking", () => {
         amount,
         pubkey,
         locktime,
-        tokenString: "cashuA_locked_token"
+        tokenString: "cashuA_locked_token",
       });
     });
   });
 
   describe("Unlocking / Redeem Flow", () => {
     it("Redeem with Missing Key: triggers missing signer flow", async () => {
-       // This tests the worker logic mostly.
-       const worker = useLockedTokensRedeemWorker();
-       const p2pk = useP2PKStore();
+      // This tests the worker logic mostly.
+      const worker = useLockedTokensRedeemWorker();
+      const p2pk = useP2PKStore();
 
-       // Mock DB to return a locked token
-       const tokenString = "cashuA_test_token";
-       const lockedTokenEntry = {
-         id: "token-id",
-         tokenString,
-         tierId: "tier1",
-         unlockTs: Math.floor(Date.now() / 1000) - 100, // Past unlock time
-         autoRedeem: true
-       };
+      // Mock DB to return a locked token
+      const tokenString = "cashuA_test_token";
+      const lockedTokenEntry = {
+        id: "token-id",
+        tokenString,
+        tierId: "tier1",
+        unlockTs: Math.floor(Date.now() / 1000) - 100, // Past unlock time
+        autoRedeem: true,
+      };
 
-       // Mock cashuDb to return this token
-       const toArrayMock = vi.fn().mockResolvedValue([lockedTokenEntry]);
-       // @ts-ignore
-       cashuDb.lockedTokens.where.mockReturnValue({ belowOrEqual: () => ({ toArray: toArrayMock }) });
-       // @ts-ignore
-       cashuDb.lockedTokens.filter.mockReturnValue({ toArray: vi.fn(() => []) }); // Legacy entries
+      // Mock cashuDb to return this token
+      const toArrayMock = vi.fn().mockResolvedValue([lockedTokenEntry]);
+      // @ts-ignore
+      cashuDb.lockedTokens.where.mockReturnValue({
+        belowOrEqual: () => ({ toArray: toArrayMock }),
+      });
+      // @ts-ignore
+      cashuDb.lockedTokens.filter.mockReturnValue({ toArray: vi.fn(() => []) }); // Legacy entries
 
-       // Mock token decode
-       const validPub = "02" + "a".repeat(64);
-       const secret = JSON.stringify(["P2PK", { data: validPub }]);
-       vi.spyOn(tokenUtil, "decode").mockReturnValue({
-         token: [{ proofs: [{ secret }] }],
-         proofs: [{ secret }],
-         memo: "memo"
-       } as any);
-       vi.spyOn(tokenUtil, "getMint").mockReturnValue("https://mint.com");
-       vi.spyOn(tokenUtil, "getUnit").mockReturnValue("sat");
-       vi.spyOn(tokenUtil, "getProofs").mockReturnValue([{ secret, id: "kid" }] as any);
+      // Mock token decode
+      const validPub = "02" + "a".repeat(64);
+      const secret = JSON.stringify(["P2PK", { data: validPub }]);
+      vi.spyOn(tokenUtil, "decode").mockReturnValue({
+        token: [{ proofs: [{ secret }] }],
+        proofs: [{ secret }],
+        memo: "memo",
+      } as any);
+      vi.spyOn(tokenUtil, "getMint").mockReturnValue("https://mint.com");
+      vi.spyOn(tokenUtil, "getUnit").mockReturnValue("sat");
+      vi.spyOn(tokenUtil, "getProofs").mockReturnValue([
+        { secret, id: "kid" },
+      ] as any);
 
-       // Mock p2pkStore to return NO private key
-       vi.spyOn(p2pk, "getPrivateKeyForP2PKEncodedToken").mockReturnValue("");
+      // Mock p2pkStore to return NO private key
+      vi.spyOn(p2pk, "getPrivateKeyForP2PKEncodedToken").mockReturnValue("");
 
-       // Spy on postMessage to verify "missing signer" signal
-       const postMessageSpy = vi.spyOn(window, "postMessage").mockImplementation(() => {});
+      // Spy on postMessage to verify "missing signer" signal
+      const postMessageSpy = vi
+        .spyOn(window, "postMessage")
+        .mockImplementation(() => {});
 
-       await worker._processTokens();
+      await worker._processTokens();
 
-       expect(postMessageSpy).toHaveBeenCalledWith({
-         type: "locked-token-missing-signer",
-         tokenId: "token-id",
-       });
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        {
+          type: "locked-token-missing-signer",
+          tokenId: "token-id",
+        },
+        expect.any(String),
+      );
     });
 
     it("Redeem success: updates DB and receives tokens", async () => {
-       const worker = useLockedTokensRedeemWorker();
-       const p2pk = useP2PKStore();
-       const receiveStore = useReceiveTokensStore();
+      const worker = useLockedTokensRedeemWorker();
+      const p2pk = useP2PKStore();
+      const receiveStore = useReceiveTokensStore();
 
-       const tokenString = "cashuA_test_token";
-       const lockedTokenEntry = {
-         id: "token-id",
-         tokenString,
-         tierId: "tier1",
-         unlockTs: Math.floor(Date.now() / 1000) - 100,
-         autoRedeem: true,
-         status: "pending"
-       };
+      const tokenString = "cashuA_test_token";
+      const lockedTokenEntry = {
+        id: "token-id",
+        tokenString,
+        tierId: "tier1",
+        unlockTs: Math.floor(Date.now() / 1000) - 100,
+        autoRedeem: true,
+        status: "pending",
+      };
 
-       const toArrayMock = vi.fn().mockResolvedValue([lockedTokenEntry]);
-       // @ts-ignore
-       cashuDb.lockedTokens.where.mockReturnValue({ belowOrEqual: () => ({ toArray: toArrayMock }) });
-        // @ts-ignore
-       cashuDb.lockedTokens.filter.mockReturnValue({ toArray: vi.fn(() => []) });
-       // @ts-ignore
-       cashuDb.lockedTokens.get.mockResolvedValue(lockedTokenEntry);
+      const toArrayMock = vi.fn().mockResolvedValue([lockedTokenEntry]);
+      // @ts-ignore
+      cashuDb.lockedTokens.where.mockReturnValue({
+        belowOrEqual: () => ({ toArray: toArrayMock }),
+      });
+      // @ts-ignore
+      cashuDb.lockedTokens.filter.mockReturnValue({ toArray: vi.fn(() => []) });
+      // @ts-ignore
+      cashuDb.lockedTokens.get.mockResolvedValue(lockedTokenEntry);
 
-       const validPub = "02" + "a".repeat(64);
-       const secret = JSON.stringify(["P2PK", { data: validPub }]);
-       vi.spyOn(tokenUtil, "decode").mockReturnValue({
-         token: [{ proofs: [{ secret }] }],
-         proofs: [{ secret }],
-         memo: "memo"
-       } as any);
-       vi.spyOn(tokenUtil, "getMint").mockReturnValue("https://mint.com");
-       vi.spyOn(tokenUtil, "getUnit").mockReturnValue("sat");
-       vi.spyOn(tokenUtil, "getProofs").mockReturnValue([{ secret, id: "kid" }] as any);
+      const validPub = "02" + "a".repeat(64);
+      const secret = JSON.stringify(["P2PK", { data: validPub }]);
+      vi.spyOn(tokenUtil, "decode").mockReturnValue({
+        token: [{ proofs: [{ secret }] }],
+        proofs: [{ secret }],
+        memo: "memo",
+      } as any);
+      vi.spyOn(tokenUtil, "getMint").mockReturnValue("https://mint.com");
+      vi.spyOn(tokenUtil, "getUnit").mockReturnValue("sat");
+      vi.spyOn(tokenUtil, "getProofs").mockReturnValue([
+        { secret, id: "kid" },
+      ] as any);
 
-       // Mock valid private key
-       vi.spyOn(p2pk, "getPrivateKeyForP2PKEncodedToken").mockReturnValue("privkeyhex");
+      // Mock valid private key
+      vi.spyOn(p2pk, "getPrivateKeyForP2PKEncodedToken").mockReturnValue(
+        "privkeyhex",
+      );
 
-       // Mock receive enqueue
-       receiveStore.enqueue = vi.fn().mockResolvedValue(undefined);
+      // Mock receive enqueue
+      receiveStore.enqueue = vi.fn().mockResolvedValue(undefined);
 
-       await worker._processTokens();
+      await worker._processTokens();
 
-       expect(receiveStore.receiveData.tokensBase64).toBe(tokenString);
-       expect(receiveStore.receiveData.p2pkPrivateKey).toBe("privkeyhex");
-       expect(receiveStore.enqueue).toHaveBeenCalled();
-       expect(cashuDb.lockedTokens.update).toHaveBeenCalledWith("token-id", { status: "claimed" });
+      expect(receiveStore.receiveData.tokensBase64).toBe(tokenString);
+      expect(receiveStore.receiveData.p2pkPrivateKey).toBe("privkeyhex");
+      expect(receiveStore.enqueue).toHaveBeenCalled();
+      expect(cashuDb.lockedTokens.update).toHaveBeenCalledWith(
+        "token-id",
+        expect.objectContaining({ status: "claimed", redeemed: true }),
+      );
     });
   });
 });

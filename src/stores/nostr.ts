@@ -319,6 +319,8 @@ const SENSITIVE_STORAGE_KEYS = [
 const PENDING_PUBKEY_KEY = "cashu.ndk.pubkey.pending";
 const PENDING_SIGNER_TYPE_KEY = "cashu.ndk.signerType.pending";
 const PENDING_SIGNER_PUBLIC_KEY = "cashu.ndk.signerPubkey.pending";
+const PENDING_PRIVATEKEY_SIGNER_KEY =
+  "cashu.ndk.privateKeySignerPrivateKey.pending";
 const UNENCRYPTED_PUBKEY_KEY = "cashu.ndk.pubkey.fallback";
 
 function hasEncryptedSecrets(): boolean {
@@ -1503,6 +1505,9 @@ export const useNostrStore = defineStore("nostr", {
     const pendingPubkey = localStorage.getItem(PENDING_PUBKEY_KEY);
     const pendingSignerType = getPendingSignerType();
     const pendingSignerPubkey = localStorage.getItem(PENDING_SIGNER_PUBLIC_KEY);
+    const pendingPrivateKeySigner = localStorage.getItem(
+      PENDING_PRIVATEKEY_SIGNER_KEY,
+    );
     const fallbackPubkey = localStorage.getItem(UNENCRYPTED_PUBKEY_KEY);
     const fallbackIdentitySource = pendingPubkey
       ? "pending"
@@ -1523,7 +1528,7 @@ export const useNostrStore = defineStore("nostr", {
       nip07signer: {} as NDKNip07Signer,
       nip46Token: "",
       nip46signer: {} as NDKNip46Signer,
-      privateKeySignerPrivateKey: "",
+      privateKeySignerPrivateKey: pendingPrivateKeySigner ?? "",
       seedSignerPrivateKey: "",
       seedSignerPublicKey: "",
       seedSigner: {} as NDKPrivateKeySigner,
@@ -1749,12 +1754,24 @@ export const useNostrStore = defineStore("nostr", {
         pendingEntries.set("cashu.ndk.signerType", bufferedSignerType);
       }
 
+      const bufferedPrivateKeySigner = localStorage.getItem(
+        PENDING_PRIVATEKEY_SIGNER_KEY,
+      );
+      if (bufferedPrivateKeySigner) {
+        pendingEntries.set(
+          "cashu.ndk.privateKeySignerPrivateKey",
+          bufferedPrivateKeySigner,
+        );
+      }
+
       for (const [key, value] of pendingEntries.entries()) {
         const pendingKeys =
           key === "cashu.ndk.pubkey"
             ? [PENDING_PUBKEY_KEY, PENDING_SIGNER_PUBLIC_KEY]
             : key === "cashu.ndk.signerType"
             ? [PENDING_SIGNER_TYPE_KEY]
+            : key === "cashu.ndk.privateKeySignerPrivateKey"
+            ? [PENDING_PRIVATEKEY_SIGNER_KEY]
             : [];
         await this.secureSetItem(key, value, { pendingKeys });
       }
@@ -1780,6 +1797,7 @@ export const useNostrStore = defineStore("nostr", {
       localStorage.removeItem(PENDING_PUBKEY_KEY);
       localStorage.removeItem(PENDING_SIGNER_TYPE_KEY);
       localStorage.removeItem(PENDING_SIGNER_PUBLIC_KEY);
+      localStorage.removeItem(PENDING_PRIVATEKEY_SIGNER_KEY);
     },
     registerSecureWatchers() {
       if (this.secureWatchersRegistered) return;
@@ -1814,6 +1832,7 @@ export const useNostrStore = defineStore("nostr", {
         async (v) => {
           await this.secureSetItem("cashu.ndk.privateKeySignerPrivateKey", v, {
             bufferIfLocked: true,
+            pendingKeys: [PENDING_PRIVATEKEY_SIGNER_KEY],
           });
         },
       );
@@ -2431,13 +2450,11 @@ export const useNostrStore = defineStore("nostr", {
         delete (this.profiles as any)[previous];
       }
       if (this.pubkey) {
-        await this.getProfile(this.pubkey);
+        void this.getProfile(this.pubkey).catch((error) => {
+          console.error("Failed to warm profile after identity change", error);
+        });
       }
-      try {
-        useMessengerStore().start();
-      } catch (e) {
-        console.error(e);
-      }
+
       try {
         useWalletStore().$reset();
       } catch (e) {

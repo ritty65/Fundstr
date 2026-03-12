@@ -4,11 +4,20 @@
       No relay preferences shared.
     </div>
     <ul v-else class="relay-badge-list__items">
-      <li v-for="relay in normalizedRelays" :key="relay" class="relay-badge-list__item">
+      <li
+        v-for="relay in normalizedRelays"
+        :key="relay.full"
+        class="relay-badge-list__item"
+      >
         <QIcon name="rss_feed" size="18px" class="relay-badge-list__icon" />
-        <span class="relay-badge-list__label">{{ relay }}</span>
-        <QTooltip class="relay-badge-list__tooltip" anchor="top middle" self="bottom middle">
-          Relay advertised for subscription event discovery.
+        <span class="relay-badge-list__label">{{ relay.label }}</span>
+        <QTooltip
+          class="relay-badge-list__tooltip"
+          anchor="top middle"
+          self="bottom middle"
+        >
+          <div>{{ relay.full }}</div>
+          <div>Relay advertised for subscription event discovery.</div>
         </QTooltip>
       </li>
     </ul>
@@ -21,11 +30,16 @@ import { QIcon, QTooltip } from "quasar";
 
 const props = defineProps<{ relays: string[] | undefined }>();
 
+function compactLabel(value: string) {
+  return value.replace(/^(https?:\/\/|wss?:\/\/)/i, "");
+}
+
 const normalizedRelays = computed(() =>
   Array.isArray(props.relays)
     ? props.relays
         .map((relay) => relay?.trim())
         .filter((relay): relay is string => !!relay)
+        .map((relay) => ({ full: relay, label: compactLabel(relay) }))
     : [],
 );
 </script>
@@ -39,7 +53,7 @@ const normalizedRelays = computed(() =>
 
 .relay-badge-list__items {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 0.5rem;
   list-style: none;
   padding: 0;
@@ -52,9 +66,10 @@ const normalizedRelays = computed(() =>
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--surface-contrast-border);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.02);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-2) 84%, transparent);
   color: var(--text-1);
+  max-width: 100%;
 }
 
 .relay-badge-list__icon {
@@ -64,7 +79,7 @@ const normalizedRelays = computed(() =>
 .relay-badge-list__label {
   font-size: 0.85rem;
   line-height: 1.2;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .relay-badge-list__empty {
@@ -74,7 +89,7 @@ const normalizedRelays = computed(() =>
 }
 
 .relay-badge-list__tooltip {
-  max-width: 220px;
-  text-align: center;
+  max-width: 260px;
+  text-align: left;
 }
 </style>

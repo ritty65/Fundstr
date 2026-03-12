@@ -117,13 +117,37 @@
                     />
                     <div>
                       <div class="text-subtitle1 text-weight-medium text-1">
-                        Readiness status
+                        Next best action
                       </div>
                       <div class="text-caption text-2">
-                        Profile, relays, mints, and tiers at a glance.
+                        Focus on the highest-priority task, then review the
+                        setup details below.
                       </div>
                     </div>
                   </div>
+                </div>
+                <div
+                  class="studio-overview__focus-card"
+                  :class="`is-${overviewAction.tone}`"
+                >
+                  <div class="studio-overview__focus-copy">
+                    <div class="studio-overview__focus-eyebrow text-caption">
+                      {{ overviewAction.eyebrow }}
+                    </div>
+                    <div class="text-subtitle1 text-weight-medium text-1">
+                      {{ overviewAction.title }}
+                    </div>
+                    <div class="text-caption text-2">
+                      {{ overviewAction.description }}
+                    </div>
+                  </div>
+                  <q-btn
+                    color="primary"
+                    unelevated
+                    :icon="overviewAction.icon"
+                    :label="overviewAction.ctaLabel"
+                    @click="startEditingStep(overviewAction.step)"
+                  />
                 </div>
                 <div class="studio-overview__status-grid">
                   <div
@@ -158,15 +182,6 @@
                     </div>
                   </div>
                 </div>
-                <div class="studio-overview__card-footer">
-                  <q-btn
-                    flat
-                    color="primary"
-                    icon="tune"
-                    label="Adjust readiness"
-                    @click="startEditingStep(itemToReviewStep)"
-                  />
-                </div>
               </q-card>
 
               <div class="studio-overview__secondary-grid">
@@ -190,11 +205,11 @@
                     </div>
                   </div>
                   <div
-                    v-if="relayList.length"
+                    v-if="relayOverviewList.length"
                     class="studio-overview__summary-list"
                   >
                     <div
-                      v-for="relay in relayList"
+                      v-for="relay in relayOverviewList"
                       :key="relay"
                       class="studio-overview__summary-item"
                     >
@@ -211,6 +226,15 @@
                         <div class="text-caption text-2">Preferred relay</div>
                       </div>
                     </div>
+                    <div
+                      v-if="relayOverviewOverflow > 0"
+                      class="studio-overview__summary-more text-caption text-2"
+                    >
+                      + {{ relayOverviewOverflow }} more relay{{
+                        relayOverviewOverflow === 1 ? "" : "s"
+                      }}
+                      configured
+                    </div>
                   </div>
                   <div v-else class="studio-overview__empty">
                     <q-icon
@@ -226,7 +250,7 @@
                       flat
                       color="primary"
                       icon="edit"
-                      label="Set up now"
+                      label="Edit relays"
                       @click="startEditingStep('setup')"
                     />
                   </div>
@@ -252,11 +276,11 @@
                     </div>
                   </div>
                   <div
-                    v-if="mintList.length"
+                    v-if="mintOverviewList.length"
                     class="studio-overview__summary-list"
                   >
                     <div
-                      v-for="mint in mintList"
+                      v-for="mint in mintOverviewList"
                       :key="mint"
                       class="studio-overview__summary-item"
                     >
@@ -270,8 +294,22 @@
                         <div class="text-body2 text-1 text-weight-medium">
                           {{ mint }}
                         </div>
-                        <div class="text-caption text-2">Active mint</div>
+                        <div
+                          class="text-caption studio-overview__summary-meta"
+                          :class="`is-${mintCapabilityToneFor(mint)}`"
+                        >
+                          {{ mintCapabilityLabelFor(mint) }}
+                        </div>
                       </div>
+                    </div>
+                    <div
+                      v-if="mintOverviewOverflow > 0"
+                      class="studio-overview__summary-more text-caption text-2"
+                    >
+                      + {{ mintOverviewOverflow }} more mint{{
+                        mintOverviewOverflow === 1 ? "" : "s"
+                      }}
+                      configured
                     </div>
                   </div>
                   <div v-else class="studio-overview__empty">
@@ -283,12 +321,65 @@
                     />
                     <p class="text-body2 text-2">No mints configured.</p>
                   </div>
+                  <q-banner
+                    v-if="publishedMintCapability"
+                    dense
+                    class="studio-payment-capability-banner q-mt-md"
+                    :class="
+                      publishedMintCapability.tone === 'positive'
+                        ? 'is-positive'
+                        : 'is-warning'
+                    "
+                  >
+                    <q-icon
+                      :name="
+                        publishedMintCapability.tone === 'positive'
+                          ? 'check_circle'
+                          : 'warning_amber'
+                      "
+                      size="16px"
+                      class="q-mr-sm"
+                    />
+                    <div>
+                      <div class="text-body2 text-weight-medium">
+                        {{ publishedMintCapability.label }}
+                      </div>
+                      <div class="text-caption q-mt-xs">
+                        {{ publishedMintCapability.message }}
+                      </div>
+                      <div
+                        v-if="publishedMintCapability.rows.length"
+                        class="studio-payment-capability-matrix q-mt-sm"
+                      >
+                        <div
+                          v-for="row in publishedMintCapability.rows"
+                          :key="row.key"
+                          class="studio-payment-capability-row"
+                        >
+                          <div class="studio-payment-capability-row__copy">
+                            <div class="text-caption text-weight-medium">
+                              {{ row.label }}
+                            </div>
+                            <div class="text-caption q-mt-xs">
+                              {{ row.description }}
+                            </div>
+                          </div>
+                          <span
+                            class="studio-payment-capability-pill"
+                            :class="paymentCapabilityStatusClass(row.status)"
+                          >
+                            {{ paymentCapabilityStatusLabel(row.status) }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </q-banner>
                   <div class="studio-overview__card-footer">
                     <q-btn
                       flat
                       color="primary"
                       icon="edit"
-                      label="Set up now"
+                      label="Manage mints"
                       @click="startEditingStep('profile')"
                     />
                   </div>
@@ -314,11 +405,11 @@
                     </div>
                   </div>
                   <div
-                    v-if="tiers.length"
+                    v-if="tierOverviewList.length"
                     class="studio-overview__tiers studio-overview__summary-list"
                   >
                     <div
-                      v-for="(tier, index) in tierSummaryList"
+                      v-for="(tier, index) in tierOverviewList"
                       :key="tier.id || `tier-${index}`"
                       class="studio-overview__summary-item"
                     >
@@ -337,6 +428,15 @@
                         </div>
                       </div>
                     </div>
+                    <div
+                      v-if="tierOverviewOverflow > 0"
+                      class="studio-overview__summary-more text-caption text-2"
+                    >
+                      + {{ tierOverviewOverflow }} more tier{{
+                        tierOverviewOverflow === 1 ? "" : "s"
+                      }}
+                      configured
+                    </div>
                   </div>
                   <div v-else class="studio-overview__empty">
                     <q-icon
@@ -352,7 +452,7 @@
                       flat
                       color="primary"
                       icon="edit"
-                      label="Set up now"
+                      label="Edit tiers"
                       @click="startEditingStep('tiers')"
                     />
                   </div>
@@ -603,6 +703,60 @@
                   <div>{{ tierStepGuidance }}</div>
                 </q-banner>
 
+                <q-banner
+                  v-if="tierPaymentsGuidance"
+                  class="studio-tier-step__guidance studio-payment-capability-banner"
+                  :class="
+                    tierPaymentsGuidance.tone === 'positive'
+                      ? 'is-positive'
+                      : 'is-warning'
+                  "
+                  dense
+                >
+                  <q-icon
+                    :name="
+                      tierPaymentsGuidance.tone === 'positive'
+                        ? 'check_circle'
+                        : 'warning_amber'
+                    "
+                    size="16px"
+                    class="q-mr-sm"
+                  />
+                  <div>
+                    <div class="text-body2 text-weight-medium">
+                      {{ tierPaymentsGuidance.label }}
+                    </div>
+                    <div class="text-caption q-mt-xs">
+                      {{ tierPaymentsGuidance.message }}
+                    </div>
+                    <div
+                      v-if="tierPaymentsGuidance.rows.length"
+                      class="studio-payment-capability-matrix q-mt-sm"
+                    >
+                      <div
+                        v-for="row in tierPaymentsGuidance.rows"
+                        :key="row.key"
+                        class="studio-payment-capability-row"
+                      >
+                        <div class="studio-payment-capability-row__copy">
+                          <div class="text-caption text-weight-medium">
+                            {{ row.label }}
+                          </div>
+                          <div class="text-caption q-mt-xs">
+                            {{ row.description }}
+                          </div>
+                        </div>
+                        <span
+                          class="studio-payment-capability-pill"
+                          :class="paymentCapabilityStatusClass(row.status)"
+                        >
+                          {{ paymentCapabilityStatusLabel(row.status) }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </q-banner>
+
                 <div class="studio-tier-step__composer">
                   <TierComposer
                     :tiers="tiers"
@@ -627,7 +781,7 @@
                     flat
                     dense
                     icon="travel_explore"
-                    label="Open data explorer"
+                    label="Inspect publish data"
                     @click="requestExplorerOpen('banner')"
                   />
                 </template>
@@ -687,18 +841,17 @@
                         icon="content_copy"
                         label="Copy public link"
                         type="button"
-                        :aria-disabled="!shareLinkReady"
-                        :class="{ 'is-disabled': !shareLinkReady }"
+                        :aria-disabled="!shareLinkCopyReady"
+                        :class="{ 'is-disabled': !shareLinkCopyReady }"
                         :tabindex="0"
                         :aria-describedby="'publish-share-helper publish-share-status'"
-                        @click="shareLinkReady && copy(publicProfileUrl)"
+                        @click="shareLinkCopyReady && copy(publicProfileUrl)"
                       >
                         <q-tooltip
-                          v-if="shareLinkReady"
+                          v-if="shareLinkCopyReady"
                           class="bg-surface-2 text-1"
                         >
-                          Share this link so supporters can view your profile
-                          and tiers.
+                          {{ shareLinkCopyTooltip }}
                         </q-tooltip>
                       </q-btn>
                     </div>
@@ -813,10 +966,10 @@
                         </div>
                         <div
                           class="publish-summary-tile__stack"
-                          v-if="mintList.length"
+                          v-if="mintOverviewList.length"
                         >
                           <q-chip
-                            v-for="mint in mintList"
+                            v-for="mint in mintOverviewList"
                             :key="mint"
                             dense
                             outline
@@ -825,12 +978,42 @@
                           >
                             {{ mint }}
                           </q-chip>
+                          <q-chip v-if="mintOverviewOverflow > 0" dense outline>
+                            + {{ mintOverviewOverflow }} more
+                          </q-chip>
                         </div>
                         <div
                           v-else
                           class="publish-summary-tile__meta text-caption text-2"
                         >
                           No mints configured.
+                        </div>
+                        <div
+                          v-if="publishedMintCapability"
+                          class="publish-summary-tile__meta publish-summary-tile__capability"
+                          :class="`is-${publishedMintCapability.tone}`"
+                        >
+                          {{ publishedMintCapability.message }}
+                        </div>
+                        <div
+                          v-if="publishedMintCapability?.rows.length"
+                          class="publish-summary-tile__capability-list"
+                        >
+                          <div
+                            v-for="row in publishedMintCapability.rows"
+                            :key="row.key"
+                            class="publish-summary-tile__capability-row"
+                          >
+                            <span class="text-caption text-2">
+                              {{ row.label }}
+                            </span>
+                            <span
+                              class="publish-summary-tile__capability-badge"
+                              :class="paymentCapabilityStatusClass(row.status)"
+                            >
+                              {{ paymentCapabilityStatusLabel(row.status) }}
+                            </span>
+                          </div>
                         </div>
                         <div class="publish-summary-tile__cta">
                           <q-btn
@@ -860,15 +1043,22 @@
                         </div>
                         <div
                           class="publish-summary-tile__stack"
-                          v-if="relayList.length"
+                          v-if="relayOverviewList.length"
                         >
                           <q-chip
-                            v-for="relay in relayList"
+                            v-for="relay in relayOverviewList"
                             :key="relay"
                             dense
                             outline
                             >{{ relay }}</q-chip
                           >
+                          <q-chip
+                            v-if="relayOverviewOverflow > 0"
+                            dense
+                            outline
+                          >
+                            + {{ relayOverviewOverflow }} more
+                          </q-chip>
                         </div>
                         <div
                           v-else
@@ -1121,237 +1311,320 @@
             <div class="studio-preview__header">
               <div>
                 <div class="text-subtitle1 text-weight-medium text-1">
-                  Preview &amp; payload
+                  Preview &amp; publish data
                 </div>
                 <div class="text-caption text-2">
-                  Live preview updates as you edit.
+                  Check the supporter-facing page and the event content Fundstr
+                  publishes for you.
                 </div>
               </div>
               <q-btn
                 color="primary"
                 dense
                 icon="download"
-                label="Download bundle"
+                label="Download event bundle"
                 @click="downloadBundle"
               />
             </div>
-            <q-tabs
-              v-model="previewTab"
+            <div class="studio-preview__guide">
+              <div class="studio-preview__guide-copy">
+                <div class="text-body2 text-weight-medium text-1">
+                  {{ livePreviewGuide.title }}
+                </div>
+                <div class="text-caption text-2">
+                  {{ livePreviewGuide.description }}
+                </div>
+              </div>
+              <div class="studio-preview__guide-meta">
+                <q-badge
+                  outline
+                  color="primary"
+                  class="studio-preview__guide-badge"
+                >
+                  {{ livePreviewGuide.kindLabel }}
+                </q-badge>
+                <q-badge
+                  outline
+                  color="secondary"
+                  class="studio-preview__guide-badge"
+                >
+                  {{ livePreviewGuide.usageLabel }}
+                </q-badge>
+              </div>
+            </div>
+            <div class="studio-preview__surface">
+              <div v-if="stageLoading" class="preview-skeleton">
+                <div class="preview-skeleton__hero">
+                  <q-skeleton type="QAvatar" size="68px" />
+                  <div class="column q-gutter-xs">
+                    <q-skeleton type="text" width="160px" />
+                    <q-skeleton type="text" width="120px" />
+                  </div>
+                </div>
+                <div class="preview-skeleton__chips row q-gutter-xs">
+                  <q-skeleton
+                    v-for="chipIndex in 3"
+                    :key="`preview-chip-${chipIndex}`"
+                    type="QChip"
+                    width="110px"
+                  />
+                </div>
+                <q-skeleton
+                  type="rect"
+                  height="96px"
+                  class="preview-skeleton__section"
+                />
+                <q-skeleton
+                  type="rect"
+                  height="180px"
+                  class="preview-skeleton__section"
+                />
+                <q-skeleton
+                  type="rect"
+                  height="140px"
+                  class="preview-skeleton__section"
+                />
+              </div>
+              <template v-else>
+                <CreatorStudioPreviewCard
+                  :display-name="displayName"
+                  :author-input="authorInput"
+                  :mint-list="mintList"
+                  :relay-list="relayList"
+                  :tiers="tiers"
+                  :active-step="activeStep"
+                />
+                <q-banner class="preview-banner" dense>
+                  Fundstr signs and publishes the profile event plus both tier
+                  events for you. Open advanced publish data only if you want to
+                  inspect the exact event content or use a manual publisher.
+                </q-banner>
+              </template>
+            </div>
+            <q-expansion-item
+              v-model="advancedPublishDataExpanded"
               dense
-              class="studio-preview__tabs"
-              indicator-color="primary"
-              active-color="primary"
+              dense-toggle
+              expand-separator
+              switch-toggle-side
+              class="studio-preview__advanced"
+              label="Advanced publish data"
+              :caption="advancedPublishDataCaption"
             >
-              <q-tab name="preview" label="Preview" />
-              <q-tab name="profile">
-                <template #default>
-                  <span>10019 JSON</span>
-                  <span
-                    v-if="profileDirty"
-                    class="modified-dot"
-                    aria-hidden="true"
-                  ></span>
-                </template>
-              </q-tab>
-              <q-tab name="tiers">
-                <template #default>
-                  <span>{{ tierPreviewLabel }} JSON</span>
-                  <span
-                    v-if="tiersDirty"
-                    class="modified-dot"
-                    aria-hidden="true"
-                  ></span>
-                </template>
-              </q-tab>
-            </q-tabs>
-            <q-tab-panels
-              v-model="previewTab"
-              animated
-              class="studio-preview__panels"
-            >
-              <q-tab-panel name="preview">
-                <div v-if="stageLoading" class="preview-skeleton">
-                  <div class="preview-skeleton__hero">
-                    <q-skeleton type="QAvatar" size="68px" />
-                    <div class="column q-gutter-xs">
-                      <q-skeleton type="text" width="160px" />
-                      <q-skeleton type="text" width="120px" />
-                    </div>
+              <div class="studio-preview__advanced-guide">
+                <div class="studio-preview__guide-copy">
+                  <div class="text-body2 text-weight-medium text-1">
+                    {{ previewPanelMeta.title }}
                   </div>
-                  <div class="preview-skeleton__chips row q-gutter-xs">
-                    <q-skeleton
-                      v-for="chipIndex in 3"
-                      :key="`preview-chip-${chipIndex}`"
-                      type="QChip"
-                      width="110px"
-                    />
+                  <div class="text-caption text-2">
+                    {{ previewPanelMeta.description }}
                   </div>
-                  <q-skeleton
-                    type="rect"
-                    height="96px"
-                    class="preview-skeleton__section"
-                  />
-                  <q-skeleton
-                    type="rect"
-                    height="180px"
-                    class="preview-skeleton__section"
-                  />
-                  <q-skeleton
-                    type="rect"
-                    height="140px"
-                    class="preview-skeleton__section"
-                  />
                 </div>
-                <template v-else>
-                  <CreatorStudioPreviewCard
-                    :display-name="displayName"
-                    :author-input="authorInput"
-                    :mint-list="mintList"
-                    :relay-list="relayList"
-                    :tiers="tiers"
-                    :active-step="activeStep"
-                  />
-                  <q-banner class="preview-banner" dense>
-                    Publish pushes both events to relay.fundstr.me. Copy JSON if
-                    your publisher requires manual input.
-                  </q-banner>
-                </template>
-              </q-tab-panel>
-              <q-tab-panel name="profile">
-                <div class="json-panel">
-                  <div class="json-toolbar">
-                    <div class="json-toolbar__meta">
-                      <q-badge
-                        dense
-                        rounded
-                        :color="profileJsonMeta.valid ? 'positive' : 'warning'"
-                        :text-color="profileJsonMeta.valid ? 'white' : 'black'"
-                      >
-                        {{
-                          profileJsonMeta.valid ? "Valid JSON" : "Check JSON"
-                        }}
-                      </q-badge>
-                      <span class="json-toolbar__stat"
-                        >{{ profileJsonStats.lines }} lines</span
-                      >
-                      <span class="json-toolbar__stat"
-                        >{{ profileJsonStats.chars }} chars</span
-                      >
-                    </div>
-                    <div class="json-toolbar__actions">
-                      <q-btn-toggle
-                        v-model="jsonViewMode.profile"
-                        size="sm"
-                        rounded
-                        unelevated
-                        color="primary"
-                        text-color="white"
-                        toggle-color="primary"
-                        :options="jsonViewModeOptions"
-                      />
-                      <q-btn
-                        outline
-                        dense
-                        color="primary"
-                        icon="content_copy"
-                        label="Copy"
-                        class="json-toolbar__action"
-                        @click="handleCopyJson('profile')"
-                      />
-                      <q-btn
-                        outline
-                        dense
-                        color="primary"
-                        icon="download"
-                        label="Download"
-                        class="json-toolbar__action"
-                        @click="handleDownloadJson('profile')"
-                      />
-                      <q-btn
-                        outline
-                        dense
-                        color="primary"
-                        icon="travel_explore"
-                        label="Open in explorer"
-                        class="json-toolbar__action"
-                        @click="requestExplorerOpen('toolbar')"
-                      />
-                    </div>
-                  </div>
-                  <q-card flat bordered class="json-viewer">
-                    <pre
-                      class="json-viewer__code"
-                    ><code>{{ profileJsonDisplay }}</code></pre>
-                  </q-card>
+                <div class="studio-preview__guide-meta">
+                  <q-badge
+                    v-if="previewPanelMeta.kindLabel"
+                    outline
+                    color="primary"
+                    class="studio-preview__guide-badge"
+                  >
+                    {{ previewPanelMeta.kindLabel }}
+                  </q-badge>
+                  <q-badge
+                    outline
+                    color="secondary"
+                    class="studio-preview__guide-badge"
+                  >
+                    {{ previewPanelMeta.usageLabel }}
+                  </q-badge>
                 </div>
-              </q-tab-panel>
-              <q-tab-panel name="tiers">
-                <div class="json-panel">
-                  <div class="json-toolbar">
-                    <div class="json-toolbar__meta">
-                      <q-badge
-                        dense
-                        rounded
-                        :color="tiersJsonMeta.valid ? 'positive' : 'warning'"
-                        :text-color="tiersJsonMeta.valid ? 'white' : 'black'"
-                      >
-                        {{ tiersJsonMeta.valid ? "Valid JSON" : "Check JSON" }}
-                      </q-badge>
-                      <span class="json-toolbar__stat"
-                        >{{ tiersJsonStats.lines }} lines</span
-                      >
-                      <span class="json-toolbar__stat"
-                        >{{ tiersJsonStats.chars }} chars</span
-                      >
+                <q-btn-toggle
+                  v-if="previewTab === 'tiers'"
+                  v-model="tierPreviewKind"
+                  dense
+                  toggle-color="primary"
+                  :options="previewTierToggleOptions"
+                  class="studio-preview__guide-toggle"
+                />
+              </div>
+              <q-tabs
+                v-model="previewTab"
+                dense
+                class="studio-preview__tabs"
+                indicator-color="primary"
+                active-color="primary"
+              >
+                <q-tab name="profile">
+                  <template #default>
+                    <span>Profile event</span>
+                    <span
+                      v-if="profileDirty"
+                      class="modified-dot"
+                      aria-hidden="true"
+                    ></span>
+                  </template>
+                </q-tab>
+                <q-tab name="tiers">
+                  <template #default>
+                    <span>Tier event</span>
+                    <span
+                      v-if="tiersDirty"
+                      class="modified-dot"
+                      aria-hidden="true"
+                    ></span>
+                  </template>
+                </q-tab>
+              </q-tabs>
+              <q-tab-panels
+                v-model="previewTab"
+                animated
+                class="studio-preview__panels"
+              >
+                <q-tab-panel name="profile">
+                  <div class="json-panel">
+                    <div class="json-toolbar">
+                      <div class="json-toolbar__meta">
+                        <q-badge
+                          dense
+                          rounded
+                          :color="
+                            profileJsonMeta.valid ? 'positive' : 'warning'
+                          "
+                          :text-color="
+                            profileJsonMeta.valid ? 'white' : 'black'
+                          "
+                        >
+                          {{
+                            profileJsonMeta.valid ? "Valid JSON" : "Check JSON"
+                          }}
+                        </q-badge>
+                        <span class="json-toolbar__stat"
+                          >{{ profileJsonStats.lines }} lines</span
+                        >
+                        <span class="json-toolbar__stat"
+                          >{{ profileJsonStats.chars }} chars</span
+                        >
+                        <span class="json-toolbar__stat">Kind 10019</span>
+                      </div>
+                      <div class="json-toolbar__actions">
+                        <q-btn-toggle
+                          v-model="jsonViewMode.profile"
+                          size="sm"
+                          rounded
+                          unelevated
+                          color="primary"
+                          text-color="white"
+                          toggle-color="primary"
+                          :options="jsonViewModeOptions"
+                        />
+                        <q-btn
+                          outline
+                          dense
+                          color="primary"
+                          icon="content_copy"
+                          label="Copy"
+                          class="json-toolbar__action"
+                          @click="handleCopyJson('profile')"
+                        />
+                        <q-btn
+                          outline
+                          dense
+                          color="primary"
+                          icon="download"
+                          label="Download"
+                          class="json-toolbar__action"
+                          @click="handleDownloadJson('profile')"
+                        />
+                        <q-btn
+                          outline
+                          dense
+                          color="primary"
+                          icon="travel_explore"
+                          label="Inspect in explorer"
+                          class="json-toolbar__action"
+                          @click="requestExplorerOpen('toolbar')"
+                        />
+                      </div>
                     </div>
-                    <div class="json-toolbar__actions">
-                      <q-btn-toggle
-                        v-model="jsonViewMode.tiers"
-                        size="sm"
-                        rounded
-                        unelevated
-                        color="primary"
-                        text-color="white"
-                        toggle-color="primary"
-                        :options="jsonViewModeOptions"
-                      />
-                      <q-btn
-                        outline
-                        dense
-                        color="primary"
-                        icon="content_copy"
-                        label="Copy"
-                        class="json-toolbar__action"
-                        @click="handleCopyJson('tiers')"
-                      />
-                      <q-btn
-                        outline
-                        dense
-                        color="primary"
-                        icon="download"
-                        label="Download"
-                        class="json-toolbar__action"
-                        @click="handleDownloadJson('tiers')"
-                      />
-                      <q-btn
-                        outline
-                        dense
-                        color="primary"
-                        icon="travel_explore"
-                        label="Open in explorer"
-                        class="json-toolbar__action"
-                        @click="requestExplorerOpen('toolbar')"
-                      />
-                    </div>
+                    <q-card flat bordered class="json-viewer">
+                      <pre
+                        class="json-viewer__code"
+                      ><code>{{ profileJsonDisplay }}</code></pre>
+                    </q-card>
                   </div>
-                  <q-card flat bordered class="json-viewer">
-                    <pre
-                      class="json-viewer__code"
-                    ><code>{{ tiersJsonDisplay }}</code></pre>
-                  </q-card>
-                </div>
-              </q-tab-panel>
-            </q-tab-panels>
+                </q-tab-panel>
+                <q-tab-panel name="tiers">
+                  <div class="json-panel">
+                    <div class="json-toolbar">
+                      <div class="json-toolbar__meta">
+                        <q-badge
+                          dense
+                          rounded
+                          :color="tiersJsonMeta.valid ? 'positive' : 'warning'"
+                          :text-color="tiersJsonMeta.valid ? 'white' : 'black'"
+                        >
+                          {{
+                            tiersJsonMeta.valid ? "Valid JSON" : "Check JSON"
+                          }}
+                        </q-badge>
+                        <span class="json-toolbar__stat"
+                          >{{ tiersJsonStats.lines }} lines</span
+                        >
+                        <span class="json-toolbar__stat"
+                          >{{ tiersJsonStats.chars }} chars</span
+                        >
+                        <span class="json-toolbar__stat"
+                          >Kind {{ tierPreviewKind }}</span
+                        >
+                      </div>
+                      <div class="json-toolbar__actions">
+                        <q-btn-toggle
+                          v-model="jsonViewMode.tiers"
+                          size="sm"
+                          rounded
+                          unelevated
+                          color="primary"
+                          text-color="white"
+                          toggle-color="primary"
+                          :options="jsonViewModeOptions"
+                        />
+                        <q-btn
+                          outline
+                          dense
+                          color="primary"
+                          icon="content_copy"
+                          label="Copy"
+                          class="json-toolbar__action"
+                          @click="handleCopyJson('tiers')"
+                        />
+                        <q-btn
+                          outline
+                          dense
+                          color="primary"
+                          icon="download"
+                          label="Download"
+                          class="json-toolbar__action"
+                          @click="handleDownloadJson('tiers')"
+                        />
+                        <q-btn
+                          outline
+                          dense
+                          color="primary"
+                          icon="travel_explore"
+                          label="Inspect in explorer"
+                          class="json-toolbar__action"
+                          @click="requestExplorerOpen('toolbar')"
+                        />
+                      </div>
+                    </div>
+                    <q-card flat bordered class="json-viewer">
+                      <pre
+                        class="json-viewer__code"
+                      ><code>{{ tiersJsonDisplay }}</code></pre>
+                    </q-card>
+                  </div>
+                </q-tab-panel>
+              </q-tab-panels>
+            </q-expansion-item>
           </q-card>
         </aside>
       </template>
@@ -1369,7 +1642,9 @@
         class="bg-surface-2 text-1"
       >
         <div class="studio-explorer__header">
-          <div class="text-subtitle1 text-weight-medium">Data explorer</div>
+          <div class="text-subtitle1 text-weight-medium">
+            Published data explorer
+          </div>
           <q-btn
             flat
             dense
@@ -1427,6 +1702,7 @@ import SetupStep from "./creator-studio/SetupStep.vue";
 import ProfileStep from "./creator-studio/ProfileStep.vue";
 import StepTemplate from "./creator-studio/StepTemplate.vue";
 import TierComposer from "./creator-studio/TierComposer.vue";
+import CreatorStudioPreviewCard from "./creator-studio/CreatorStudioPreviewCard.vue";
 import NutzapExplorerPanel from "src/nutzap/onepage/NutzapExplorerPanel.vue";
 import {
   notify,
@@ -1491,6 +1767,12 @@ import {
 } from "src/nostr/ndk";
 import { updateCreatorCache } from "@/lib/fundstrApi";
 import { NUTZAP_HTTP_AUTH_HEADER } from "@/nutzap/relayConfig";
+import {
+  describeMintPaymentCapabilities,
+  paymentCapabilityStatusLabel,
+  summarizeMintPaymentCapabilities,
+  type AggregatedPaymentCapabilityStatus,
+} from "src/utils/paymentCapabilities";
 
 const NIP07_HELP_URL =
   "https://guides.getalby.com/alby-browser-extension/nostr/how-to-sign-with-nostr-browser-extension";
@@ -1570,21 +1852,21 @@ const authorInputLockHint = computed(() => {
   return "";
 });
 const creatorProfileStore = useCreatorProfileStore();
-const { display_name, picture, mints, relays } =
-  storeToRefs(creatorProfileStore);
+const { mints, relays } = storeToRefs(creatorProfileStore);
 
-const displayName = computed({
-  get: () => display_name.value,
-  set: (value) => {
-    display_name.value = value;
-  },
+const displayName = ref(creatorProfileStore.display_name || "");
+const pictureUrl = ref(creatorProfileStore.picture || "");
+
+watch(displayName, (value) => {
+  if (creatorProfileStore.display_name !== value) {
+    creatorProfileStore.setProfile({ display_name: value });
+  }
 });
 
-const pictureUrl = computed({
-  get: () => picture.value,
-  set: (value) => {
-    picture.value = value;
-  },
+watch(pictureUrl, (value) => {
+  if (creatorProfileStore.picture !== value) {
+    creatorProfileStore.setProfile({ picture: value });
+  }
 });
 const p2pkPub = ref("");
 const p2pkPriv = ref("");
@@ -1630,9 +1912,8 @@ const handleTiersUpdate = (value: Tier[] | unknown) => {
 };
 const tierPreviewKind = ref<TierKind>(CANONICAL_TIER_KIND);
 const loading = ref(false);
-const { hydrating: hydratingProfile, lastHydratedAt } =
-  useCreatorProfileHydration();
-const stageLoading = computed(() => loading.value || hydratingProfile.value);
+const { lastHydratedAt } = useCreatorProfileHydration();
+const stageLoading = computed(() => loading.value);
 const publishingAll = ref(false);
 const nip07SignerDetected = ref(false);
 const authoringSignerAttached = ref(false);
@@ -1705,8 +1986,10 @@ const publishStateMachine = reactive<{
 });
 const lastPublishInfo = ref("");
 const profilePublished = ref(false);
+const lastPublishUsedHttpFallback = ref(false);
 const hasAutoLoaded = ref(false);
-const previewTab = ref<"preview" | "profile" | "tiers">("preview");
+const previewTab = ref<"profile" | "tiers">("profile");
+const advancedPublishDataExpanded = ref(false);
 const now = useNow({ interval: 60_000 });
 const lastExportProfile = ref("");
 const lastExportTiers = ref({ canonical: "", legacy: "" });
@@ -2066,15 +2349,28 @@ const publicProfileUrl = computed(() => {
   return buildProfileUrl(authorNpubForShare.value, router);
 });
 
-const shareLinkReady = computed(
-  () =>
-    profilePublished.value &&
-    !!publicProfileUrl.value &&
-    !relayNeedsAttention.value,
+const shareLinkCopyReady = computed(
+  () => profilePublished.value && !!publicProfileUrl.value,
 );
 
+const shareLinkReady = computed(
+  () => shareLinkCopyReady.value && !relayNeedsAttention.value,
+);
+
+const shareLinkCopyTooltip = computed(() => {
+  if (!shareLinkCopyReady.value) {
+    return "Publish your profile to unlock a public creator link.";
+  }
+  if (relayNeedsAttention.value) {
+    return lastPublishUsedHttpFallback.value
+      ? "Your creator page is shareable now. Recent publishing used HTTP fallback while relay health was degraded."
+      : "Your creator page is shareable now, but relay health still needs review for the smoothest sync experience.";
+  }
+  return "Share this link so supporters can view your profile and tiers.";
+});
+
 const shareStatusLabel = computed(() => {
-  if (shareLinkReady.value) {
+  if (shareLinkCopyReady.value) {
     return publicProfileUrl.value;
   }
   if (!profilePublished.value) {
@@ -2090,7 +2386,12 @@ const shareStatusLabel = computed(() => {
 });
 
 const shareHelperMessage = computed(() => {
-  if (shareLinkReady.value) {
+  if (shareLinkCopyReady.value && relayNeedsAttention.value) {
+    return lastPublishUsedHttpFallback.value
+      ? "Public link is ready to share. Recent publishing used HTTP fallback, so relay health still deserves attention even though supporters can open the page now."
+      : "Public link is ready to share, but relay health still needs attention for the smoothest live sync.";
+  }
+  if (shareLinkCopyReady.value) {
     return "Share this link so supporters can view your profile and tiers.";
   }
   if (!profilePublished.value) {
@@ -3441,6 +3742,28 @@ watch(
   { immediate: true },
 );
 
+watch(
+  [displayName, pictureUrl],
+  (
+    [nextDisplayName, nextPictureUrl],
+    [previousDisplayName, previousPictureUrl],
+  ) => {
+    if (
+      nextDisplayName === previousDisplayName &&
+      nextPictureUrl === previousPictureUrl
+    ) {
+      return;
+    }
+
+    if (!nextDisplayName.trim() && !nextPictureUrl.trim()) {
+      return;
+    }
+
+    identityMetadataSeedingBlocked.value = true;
+    identityMetadataSeedRun += 1;
+  },
+);
+
 const hasAuthorIdentity = computed(
   () =>
     !!authorInput.value.trim() ||
@@ -3523,6 +3846,72 @@ const mintList = computed(() => {
 
   return storeMintUrls.value;
 });
+
+const publishedMintDiagnostics = computed(() => {
+  const published = mintList.value
+    .map((mint) => normalizeMintUrl(mint))
+    .filter((mint): mint is string => Boolean(mint));
+
+  if (!published.length) {
+    return [];
+  }
+
+  const storedEntries = Array.isArray(storedMints.value)
+    ? storedMints.value
+    : [];
+  const activeNormalized = normalizeMintUrl(activeMintUrlTrimmed.value);
+
+  return published.map((mintUrl) => {
+    const stored = storedEntries.find(
+      (entry) => normalizeMintUrl(entry?.url) === mintUrl,
+    );
+    const info =
+      stored?.info ||
+      (activeNormalized === mintUrl ? mintsStore.activeInfo : null);
+
+    return {
+      mintUrl,
+      details: describeMintPaymentCapabilities(info as any),
+    };
+  });
+});
+
+const publishedMintCapability = computed(() =>
+  summarizeMintPaymentCapabilities(
+    publishedMintDiagnostics.value.map((entry) => entry.details),
+  ),
+);
+
+function mintCapabilityLabelFor(mintUrl: string) {
+  const normalized = normalizeMintUrl(mintUrl);
+  return (
+    publishedMintDiagnostics.value.find((entry) => entry.mintUrl === normalized)
+      ?.details.label ?? "Capability unknown"
+  );
+}
+
+function mintCapabilityToneFor(mintUrl: string) {
+  const normalized = normalizeMintUrl(mintUrl);
+  return (
+    publishedMintDiagnostics.value.find((entry) => entry.mintUrl === normalized)
+      ?.details.tone ?? "warning"
+  );
+}
+
+function paymentCapabilityStatusClass(
+  status: AggregatedPaymentCapabilityStatus,
+) {
+  switch (status) {
+    case "supported":
+      return "is-supported";
+    case "mixed":
+      return "is-mixed";
+    case "unsupported":
+      return "is-unsupported";
+    case "unknown":
+      return "is-unknown";
+  }
+}
 
 const identityBasicsComplete = computed(
   () =>
@@ -3728,9 +4117,40 @@ const heroMetrics = computed(() => [
   { label: "Tiers", value: tiers.value.length, icon: "workspace_premium" },
 ]);
 
+const OVERVIEW_SUMMARY_LIMIT = 3;
+
+const relayOverviewList = computed(() =>
+  relayList.value.slice(0, OVERVIEW_SUMMARY_LIMIT),
+);
+
+const relayOverviewOverflow = computed(() =>
+  Math.max(0, relayList.value.length - relayOverviewList.value.length),
+);
+
+const mintOverviewList = computed(() =>
+  mintList.value.slice(0, OVERVIEW_SUMMARY_LIMIT),
+);
+
+const mintOverviewOverflow = computed(() =>
+  Math.max(0, mintList.value.length - mintOverviewList.value.length),
+);
+
+const tierOverviewList = computed(() =>
+  tierSummaryList.value.slice(0, OVERVIEW_SUMMARY_LIMIT),
+);
+
+const tierOverviewOverflow = computed(() =>
+  Math.max(0, tierSummaryList.value.length - tierOverviewList.value.length),
+);
+
 const tierPreviewOptions = [
   { label: "Preview 30019 JSON", value: CANONICAL_TIER_KIND },
   { label: "Preview 30000 JSON", value: LEGACY_TIER_KIND },
+] as const;
+
+const previewTierToggleOptions = [
+  { label: "Canonical 30019", value: CANONICAL_TIER_KIND },
+  { label: "Legacy 30000", value: LEGACY_TIER_KIND },
 ] as const;
 
 const tierPreviewLabel = computed(() =>
@@ -3742,6 +4162,45 @@ const tierPreviewLabel = computed(() =>
 const tierPublishSummaryLabel = computed(
   () => "Canonical (30019) + Legacy (30000)",
 );
+
+const livePreviewGuide = {
+  title: "Live creator page preview",
+  description:
+    "Use this to review the supporter-facing page before you publish. It helps you catch copy, payout, and tier presentation issues without reading raw event data.",
+  kindLabel: "Supporter-facing preview",
+  usageLabel: "Updates as you edit",
+} as const;
+
+const advancedPublishDataCaption = computed(() => {
+  if (previewTab.value === "profile") {
+    return "Inspect the kind 10019 profile event";
+  }
+
+  return `Inspect the ${tierPreviewKind.value} tier event content`;
+});
+
+const previewPanelMeta = computed(() => {
+  if (previewTab.value === "profile") {
+    return {
+      title: "Nutzap profile event content",
+      description:
+        "This JSON becomes your kind 10019 discovery event. Wallets and clients read it to learn your trusted mints, relays, primary tier address, and optional P2PK payout pointer.",
+      kindLabel: "Kind 10019",
+      usageLabel: "Discovery event",
+    };
+  }
+
+  return {
+    title:
+      tierPreviewKind.value === CANONICAL_TIER_KIND
+        ? "Canonical tier catalog event"
+        : "Legacy tier catalog event",
+    description:
+      "This JSON becomes your published tier catalog. Fundstr publishes both the canonical 30019 event and the legacy 30000 event for compatibility, and this toggle lets you inspect either payload before publish.",
+    kindLabel: `Kind ${tierPreviewKind.value}`,
+    usageLabel: "Tier catalog event",
+  };
+});
 
 const tierValidationResults = ref<TierFieldErrors[]>([]);
 const showTierValidation = ref(false);
@@ -3755,6 +4214,21 @@ const tiersReady = computed(
 const profileDirty = computed(() => creatorProfileStore.isDirty);
 const tiersDirty = computed(() => creatorHub.tiersDirty.value);
 const workspaceDirty = computed(() => creatorHub.isDirty.value);
+
+const hasLocalProfileDraft = computed(
+  () =>
+    Boolean(displayName.value.trim()) ||
+    Boolean(pictureUrl.value.trim()) ||
+    mintList.value.length > 0 ||
+    relayList.value.length > 1 ||
+    Boolean(p2pkPub.value.trim()) ||
+    Boolean(selectedP2pkPub.value.trim()) ||
+    Boolean(p2pkPriv.value.trim()),
+);
+
+const hasLocalTierDraft = computed(
+  () => tiers.value.length > 0 || creatorHub.tiersDirty.value,
+);
 
 const shouldPromptPublishUpdates = computed(
   () =>
@@ -3811,6 +4285,14 @@ const tierStepGuidance = computed(() => {
   }
 
   return "Review your tier details before continuing.";
+});
+
+const tierPaymentsGuidance = computed(() => {
+  if (!publishedMintCapability.value) {
+    return null;
+  }
+
+  return publishedMintCapability.value;
 });
 
 watch(
@@ -3994,10 +4476,22 @@ const readinessChips = computed<ReadinessChip[]>(() => {
       key: "mint",
       ready: optionalMetadataComplete.value,
       required: true,
-      readyLabel: "Mint configured",
+      readyLabel: publishedMintCapability.value
+        ? publishedMintCapability.value.label
+        : "Mint configured",
       actionLabel: "Add mint",
-      readyIcon: "payments",
+      readyIcon:
+        publishedMintCapability.value?.tone === "warning"
+          ? "warning_amber"
+          : "payments",
       actionIcon: "add_card",
+      readyTooltip:
+        publishedMintCapability.value?.message ||
+        "Add at least one mint supporters can use for payments.",
+      readyState:
+        publishedMintCapability.value?.tone === "warning"
+          ? ("warning" as ReadinessChipState)
+          : undefined,
     },
     {
       key: "p2pk",
@@ -4316,6 +4810,70 @@ const publishWarnings = computed<string[]>(() => {
   return warnings;
 });
 
+const overviewAction = computed(() => {
+  if (publishBlockReason.value) {
+    return {
+      eyebrow: "Next action",
+      title: "Unblock publishing",
+      description: publishBlockReason.value,
+      ctaLabel: "Resolve now",
+      icon: "priority_high",
+      tone: "warning" as const,
+      step: itemToReviewStep.value,
+    };
+  }
+
+  if (publishWarnings.value.length > 0) {
+    const [firstWarning, ...remainingWarnings] = publishWarnings.value;
+    return {
+      eyebrow: "Needs review",
+      title: firstWarning,
+      description: remainingWarnings.length
+        ? `${remainingWarnings.length} additional item${
+            remainingWarnings.length === 1 ? "" : "s"
+          } still need review before you publish or share confidently.`
+        : "Everything else looks ready, so this is the main detail to review next.",
+      ctaLabel: relayNeedsAttention.value
+        ? "Check relay setup"
+        : "Review publish step",
+      icon: relayNeedsAttention.value ? "podcasts" : "fact_check",
+      tone: relayNeedsAttention.value
+        ? ("warning" as const)
+        : ("neutral" as const),
+      step: relayNeedsAttention.value
+        ? ("setup" as CreatorStudioStep)
+        : ("publish" as CreatorStudioStep),
+    };
+  }
+
+  if (shareLinkCopyReady.value) {
+    return {
+      eyebrow: "Public link",
+      title: relayNeedsAttention.value
+        ? "Shareable, with relay caution"
+        : "Ready to share",
+      description: shareHelperMessage.value,
+      ctaLabel: "Review share details",
+      icon: relayNeedsAttention.value ? "warning_amber" : "campaign",
+      tone: relayNeedsAttention.value
+        ? ("warning" as const)
+        : ("positive" as const),
+      step: "publish" as CreatorStudioStep,
+    };
+  }
+
+  return {
+    eyebrow: "Next action",
+    title: "Continue creator setup",
+    description:
+      "Complete your profile, payment setup, and tiers so you can publish with confidence.",
+    ctaLabel: "Continue setup",
+    icon: "arrow_forward",
+    tone: "neutral" as const,
+    step: itemToReviewStep.value,
+  };
+});
+
 const publishGuidanceHeading = computed(() => {
   if (publishBlockers.value.length > 0) {
     return "Complete before publishing";
@@ -4607,7 +5165,6 @@ const profileJsonPreview = computed(() => {
     mints: mintList.value,
     relays: relayList.value,
     tierAddr: `${CANONICAL_TIER_KIND}:${author}:tiers`,
-    legacyTierAddr: `${LEGACY_TIER_KIND}:${author}:tiers`,
   };
 
   const trimmed = p2pkPub.value.trim();
@@ -4740,10 +5297,10 @@ function downloadBundle() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "nutzap-export.txt";
+  link.download = "fundstr-publish-event-bundle.txt";
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  notifySuccess("Exported Nutzap profile bundle.");
+  notifySuccess("Exported publish event bundle.");
 }
 
 function handleCopyJson(target: "profile" | "tiers") {
@@ -4852,10 +5409,12 @@ function tiersEqual(left: Tier[], right: Tier[]): boolean {
 
 function applyTiersEvent(event: any | null, overrideKind?: TierKind | null) {
   if (!event) {
-    tiers.value = [];
     setObservedRelayPayloadHash("canonicalTiers", null);
     setObservedRelayPayloadHash("legacyTiers", null);
-    creatorHub.markTierDraftsClean();
+    if (!hasLocalTierDraft.value) {
+      tiers.value = [];
+      creatorHub.markTierDraftsClean();
+    }
     evaluateRelayVerificationState();
     return;
   }
@@ -4934,20 +5493,24 @@ function applyProfileEvent(latest: any | null) {
           p2pkPriv.value.trim() ||
           firstKey.value?.publicKey?.trim(),
       );
-      creatorProfileStore.setProfile({
-        display_name: "",
-        picture: "",
-        mints: [],
-        relays: buildRelayList([]).sanitized,
-      });
-      creatorProfileStore.markClean();
-      if (!hasLocalP2pkSelection) {
-        p2pkPub.value = "";
-        p2pkPriv.value = "";
-        p2pkDerivedPub.value = "";
-        selectedP2pkPub.value = "";
-      } else {
-        maybeSeedComposerKeysFromStore();
+      if (!hasLocalProfileDraft.value) {
+        displayName.value = "";
+        pictureUrl.value = "";
+        creatorProfileStore.setProfile({
+          display_name: "",
+          picture: "",
+          mints: [],
+          relays: buildRelayList([]).sanitized,
+        });
+        creatorProfileStore.markClean();
+        if (!hasLocalP2pkSelection) {
+          p2pkPub.value = "";
+          p2pkPriv.value = "";
+          p2pkDerivedPub.value = "";
+          selectedP2pkPub.value = "";
+        } else {
+          maybeSeedComposerKeysFromStore();
+        }
       }
       p2pkPubError.value = "";
       previousSelectedP2pkPub = "";
@@ -4956,6 +5519,7 @@ function applyProfileEvent(latest: any | null) {
       identityMetadataSeedingBlocked.value = false;
       identityMetadataSeededPubkey.value = null;
       profilePublished.value = false;
+      lastPublishUsedHttpFallback.value = false;
       seedMintsFromStoreIfEmpty();
       void maybeSeedIdentityMetadata();
       return;
@@ -5121,9 +5685,12 @@ function applyProfileEvent(latest: any | null) {
       }
     }
 
+    displayName.value =
+      typeof nextDisplayName === "string" ? nextDisplayName : "";
+    pictureUrl.value = typeof nextPictureUrl === "string" ? nextPictureUrl : "";
     creatorProfileStore.setProfile({
-      display_name: typeof nextDisplayName === "string" ? nextDisplayName : "",
-      picture: typeof nextPictureUrl === "string" ? nextPictureUrl : "",
+      display_name: displayName.value,
+      picture: pictureUrl.value,
       mints: nextMints,
       relays: nextRelays,
     });
@@ -5550,7 +6117,6 @@ function buildProfileTemplate(authorHex: string) {
     mints: mintList.value,
     relays,
     tierAddr: canonicalTierPointer,
-    legacyTierAddr: legacyTierPointer,
   });
 
   const tags: string[][] = [
@@ -5908,6 +6474,7 @@ async function publishAll() {
 
   publishingAll.value = true;
   lastPublishInfo.value = "";
+  lastPublishUsedHttpFallback.value = false;
 
   let tierSummary = "";
 
@@ -6070,6 +6637,8 @@ async function publishAll() {
       flagDiagnosticsAttention("publish", detail, "warning");
     }
 
+    lastPublishUsedHttpFallback.value =
+      profileFallbackUsed || canonicalFallbackUsed || legacyFallbackUsed;
     profilePublished.value = true;
     lastUpdatedAt.value = Date.now();
     debug("[CreatorStudio] publish:success", {
@@ -6740,6 +7309,44 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
+.studio-overview__focus-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  margin-bottom: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--surface-contrast-border);
+  background: color-mix(in srgb, var(--surface-2) 90%, transparent);
+}
+
+.studio-overview__focus-card.is-positive {
+  background: color-mix(in srgb, #12725b 12%, var(--surface-2));
+}
+
+.studio-overview__focus-card.is-warning {
+  background: color-mix(in srgb, #f4c242 16%, var(--surface-2));
+}
+
+.studio-overview__focus-card.is-neutral {
+  background: color-mix(in srgb, var(--accent-200) 14%, var(--surface-2));
+}
+
+.studio-overview__focus-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.studio-overview__focus-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-2);
+  font-weight: 700;
+}
+
 .studio-overview__status-tile {
   display: flex;
   gap: 12px;
@@ -6815,6 +7422,10 @@ onBeforeUnmount(() => {
   border-bottom: none;
 }
 
+.studio-overview__summary-more {
+  padding-top: 2px;
+}
+
 .studio-overview__tiers {
   display: flex;
   flex-direction: column;
@@ -6852,6 +7463,11 @@ onBeforeUnmount(() => {
 @media (max-width: 767.98px) {
   .studio-overview__hero {
     align-items: flex-start;
+  }
+
+  .studio-overview__focus-card {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .studio-overview__hero-actions {
@@ -6913,6 +7529,101 @@ onBeforeUnmount(() => {
   border: 1px solid var(--surface-contrast-border);
   border-radius: 12px;
   padding: 12px 16px;
+}
+
+.studio-payment-capability-banner {
+  border: 1px solid var(--surface-contrast-border);
+}
+
+.studio-payment-capability-banner.is-positive {
+  background: color-mix(in srgb, #12725b 12%, var(--surface-2));
+}
+
+.studio-payment-capability-banner.is-warning {
+  background: color-mix(in srgb, #f4c242 16%, var(--surface-2));
+}
+
+.studio-overview__summary-meta.is-positive {
+  color: color-mix(in srgb, #12725b 72%, var(--text-1));
+}
+
+.studio-overview__summary-meta.is-warning {
+  color: color-mix(in srgb, #b85a12 88%, var(--text-1));
+}
+
+.studio-payment-capability-matrix {
+  display: grid;
+  gap: 10px;
+}
+
+.studio-payment-capability-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--surface-contrast-border) 72%, transparent);
+}
+
+.studio-payment-capability-row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.studio-payment-capability-row__copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.studio-payment-capability-pill,
+.publish-summary-tile__capability-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.28rem 0.62rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.studio-payment-capability-pill.is-supported,
+.publish-summary-tile__capability-badge.is-supported {
+  background: color-mix(in srgb, #12725b 16%, transparent);
+  color: color-mix(in srgb, #12725b 82%, var(--text-1));
+  border-color: color-mix(in srgb, #12725b 35%, transparent);
+}
+
+.studio-payment-capability-pill.is-mixed,
+.publish-summary-tile__capability-badge.is-mixed {
+  background: color-mix(in srgb, #f4c242 24%, transparent);
+  color: color-mix(in srgb, #8a5a00 86%, var(--text-1));
+  border-color: color-mix(in srgb, #f4c242 45%, transparent);
+}
+
+.studio-payment-capability-pill.is-unsupported,
+.publish-summary-tile__capability-badge.is-unsupported {
+  background: color-mix(in srgb, #c24d4d 16%, transparent);
+  color: color-mix(in srgb, #982d2d 88%, var(--text-1));
+  border-color: color-mix(in srgb, #c24d4d 40%, transparent);
+}
+
+.studio-payment-capability-pill.is-unknown,
+.publish-summary-tile__capability-badge.is-unknown {
+  background: color-mix(
+    in srgb,
+    var(--surface-contrast-border) 32%,
+    transparent
+  );
+  color: var(--text-2);
+  border-color: color-mix(
+    in srgb,
+    var(--surface-contrast-border) 72%,
+    transparent
+  );
 }
 
 .studio-tier-step__composer {
@@ -7058,6 +7769,26 @@ onBeforeUnmount(() => {
 .publish-summary-tile__meta {
   color: var(--text-2);
   word-break: break-word;
+}
+
+.publish-summary-tile__capability.is-positive {
+  color: color-mix(in srgb, #12725b 75%, var(--text-1));
+}
+
+.publish-summary-tile__capability.is-warning {
+  color: color-mix(in srgb, #b85a12 88%, var(--text-1));
+}
+
+.publish-summary-tile__capability-list {
+  display: grid;
+  gap: 8px;
+}
+
+.publish-summary-tile__capability-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .publish-summary-tile__cta {
@@ -7271,32 +8002,78 @@ onBeforeUnmount(() => {
   .studio-preview {
     padding: 16px;
   }
-
-  .studio-preview__panels {
-    order: 2;
-  }
-
-  .studio-preview__tabs {
-    order: 3;
-    margin-top: 8px;
-  }
 }
 
 .studio-preview__header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
+}
+
+.studio-preview__guide {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--surface-contrast-border);
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+}
+
+.studio-preview__guide-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.studio-preview__guide-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.studio-preview__guide-badge {
+  padding-inline: 8px;
+}
+
+.studio-preview__guide-toggle {
+  align-self: flex-start;
+}
+
+.studio-preview__surface {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.studio-preview__advanced {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+}
+
+.studio-preview__advanced :deep(.q-item) {
+  border-radius: 14px;
+}
+
+.studio-preview__advanced-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 14px 14px;
 }
 
 .studio-preview__tabs {
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface-2) 85%, transparent);
   transition: background-color 0.2s ease, color 0.2s ease;
+  margin: 0 14px 14px;
 }
 
 .studio-preview__panels {
   background: transparent;
+  padding: 0 14px 14px;
 }
 
 .studio-preview__panels .q-tab-panel {
@@ -7381,6 +8158,18 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+@media (max-width: 767.98px) {
+  .studio-preview__header {
+    flex-direction: column;
+  }
+
+  .studio-preview__tabs,
+  .studio-preview__panels {
+    margin-inline: 0;
+    padding-inline: 0;
+  }
 }
 
 .json-toolbar__stat {

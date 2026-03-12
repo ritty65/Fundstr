@@ -57,8 +57,20 @@
         :id="mediaSectionId"
         class="tier-card__media"
       >
+        <div v-if="linkMedia.length" class="tier-card__media-links">
+          <a
+            v-for="(item, index) in linkMedia"
+            :key="`${item.url}-${index}`"
+            class="tier-card__media-link"
+            :href="item.url"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {{ item.label }}
+          </a>
+        </div>
         <MediaPreview
-          v-for="(item, index) in displayMedia"
+          v-for="(item, index) in embeddedMedia"
           :key="`${item.url}-${index}`"
           :url="item.url"
         />
@@ -90,11 +102,18 @@
 import { computed, ref, useSlots, watch } from "vue";
 import { QBtn } from "quasar";
 import MediaPreview from "./MediaPreview.vue";
+import {
+  determineMediaType,
+  normalizeMediaUrl,
+  normalizeTierMediaItems,
+} from "src/utils/validateMedia";
 
 let tierMediaIdCounter = 0;
 
 type TierMedia = {
   url: string;
+  title?: string;
+  type?: "image" | "video" | "audio" | "link";
 };
 
 type TierDetails = {
@@ -189,8 +208,49 @@ const displayBenefits = computed(() => {
 });
 const hasBenefits = computed(() => displayBenefits.value.length > 0);
 
-const displayMedia = computed(() => props.tier?.media ?? []);
+const displayMedia = computed(() =>
+  normalizeTierMediaItems(props.tier?.media ?? []),
+);
 const hasMedia = computed(() => displayMedia.value.length > 0);
+
+function resolvedMediaType(item: TierMedia) {
+  if (item.type) {
+    return item.type;
+  }
+
+  const normalizedUrl = normalizeMediaUrl(item.url);
+  const detected = determineMediaType(normalizedUrl);
+
+  if (detected === "iframe" || detected === "nostr") {
+    return "link" as const;
+  }
+
+  return detected;
+}
+
+function mediaLabel(item: TierMedia) {
+  if (typeof item.title === "string" && item.title.trim()) {
+    return item.title.trim();
+  }
+
+  try {
+    const parsed = new URL(item.url);
+    const host = parsed.hostname.replace(/^www\./, "");
+    return host || item.url;
+  } catch {
+    return item.url;
+  }
+}
+
+const embeddedMedia = computed(() =>
+  displayMedia.value.filter((item) => resolvedMediaType(item) !== "link"),
+);
+
+const linkMedia = computed(() =>
+  displayMedia.value
+    .filter((item) => resolvedMediaType(item) === "link")
+    .map((item) => ({ ...item, label: mediaLabel(item) })),
+);
 
 const isMediaCollapsed = ref(Boolean(props.collapseMedia));
 
@@ -381,6 +441,37 @@ const emitSubscribe = () => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 0.75rem;
+}
+
+.tier-card__media-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  grid-column: 1 / -1;
+}
+
+.tier-card__media-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  padding: 0.38rem 0.72rem;
+  border-radius: 999px;
+  border: 1px solid var(--surface-contrast-border);
+  background: color-mix(in srgb, var(--surface-2) 84%, transparent);
+  color: var(--accent-600);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.tier-card__media-link:hover {
+  background: color-mix(in srgb, var(--accent-200) 22%, transparent);
+}
+
+.tier-card__media-link:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: 2px;
 }
 
 .tier-card__footer {

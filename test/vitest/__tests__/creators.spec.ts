@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from "pinia";
 import {
   useCreatorsStore,
   FEATURED_CREATORS,
+  sortCreatorsByRelevance,
 } from "../../../src/stores/creators";
 import { toHex } from "@/nostr/relayClient";
 
@@ -53,6 +54,7 @@ vi.mock("../../../src/api/fundstrDiscovery", () => ({
     getCreators: getCreatorsMock,
     getCreatorsByPubkeys: getCreatorsByPubkeysMock,
   }),
+  isNetworkChangeWarning: () => false,
 }));
 
 vi.mock("../../../src/lib/fundstrApi", () => ({
@@ -122,16 +124,14 @@ describe("Creators store", () => {
   it("populates searchResults for valid npub", async () => {
     (nip19.decode as any).mockReturnValue({ data: "f".repeat(64) });
     const creators = useCreatorsStore();
-    creators.fetchCreator = vi
-      .fn()
-      .mockResolvedValue(
-        makeCreator("f".repeat(64), {
-          profile: userProfile,
-          followers: 10,
-          following: 5,
-          joined: 123456,
-        }),
-      ) as any;
+    creators.fetchCreator = vi.fn().mockResolvedValue(
+      makeCreator("f".repeat(64), {
+        profile: userProfile,
+        followers: 10,
+        following: 5,
+        joined: 123456,
+      }),
+    ) as any;
     await creators.searchCreators("npub123");
 
     expect(creators.error).toBe("");
@@ -141,6 +141,21 @@ describe("Creators store", () => {
     expect(creators.searchResults[0].followers).toBe(10);
     expect(creators.searchResults[0].following).toBe(5);
     expect(creators.searchResults[0].joined).toBe(123456);
+  });
+
+  it("extracts creator identifiers from pasted public profile URLs", async () => {
+    (nip19.decode as any).mockReturnValue({ data: "f".repeat(64) });
+    const creators = useCreatorsStore();
+    creators.fetchCreator = vi
+      .fn()
+      .mockResolvedValue(makeCreator("f".repeat(64))) as any;
+
+    await creators.searchCreators(
+      "https://fundstr.me/creator/npub1pastedprofile/profile",
+    );
+
+    expect(creators.fetchCreator).toHaveBeenCalledWith("f".repeat(64), false);
+    expect(creators.searchResults).toHaveLength(1);
   });
 
   it("populates searchResults for hex pubkey", async () => {
@@ -185,7 +200,10 @@ describe("Creators store", () => {
 
     await creators.searchCreators("npubbad");
 
-    expect(findProfilesMock).toHaveBeenCalledWith("npubbad", expect.any(AbortSignal));
+    expect(findProfilesMock).toHaveBeenCalledWith(
+      "npubbad",
+      expect.any(AbortSignal),
+    );
     expect(creators.searchResults.length).toBe(1);
     expect(creators.searchResults[0].pubkey).toBe(pubkey);
     expect(creators.error).toBe("");
@@ -196,15 +214,25 @@ describe("Creators store", () => {
       throw new Error("bad npub");
     });
 
-    findProfilesMock.mockResolvedValueOnce({ query: "npubbad", results: [], count: 0 });
+    findProfilesMock.mockResolvedValueOnce({
+      query: "npubbad",
+      results: [],
+      count: 0,
+    });
 
     const discoveryCreator = makeCreator("d".repeat(64), { name: "fallback" });
-    getCreatorsMock.mockResolvedValueOnce({ results: [discoveryCreator], warnings: [] });
+    getCreatorsMock.mockResolvedValueOnce({
+      results: [discoveryCreator],
+      warnings: [],
+    });
 
     const creators = useCreatorsStore();
     await creators.searchCreators("npubbad");
 
-    expect(findProfilesMock).toHaveBeenCalledWith("npubbad", expect.any(AbortSignal));
+    expect(findProfilesMock).toHaveBeenCalledWith(
+      "npubbad",
+      expect.any(AbortSignal),
+    );
     expect(getCreatorsMock).toHaveBeenCalled();
     expect(creators.searchResults).toHaveLength(1);
     expect(creators.error).toBe("");
@@ -219,6 +247,25 @@ describe("Creators store", () => {
 
     expect(creators.searchResults.length).toBe(0);
     expect(creators.error).toBe("");
+  });
+
+  it("prioritizes exact handle matches over partial name matches", () => {
+    const exact = makeCreator("a".repeat(64), {
+      nip05: "alice@fundstr.me",
+      displayName: "Alice",
+      followers: 5,
+    });
+    const partial = makeCreator("b".repeat(64), {
+      displayName: "Alice Studio",
+      followers: 50,
+    });
+
+    const sorted = sortCreatorsByRelevance(
+      [partial, exact],
+      "alice@fundstr.me",
+    );
+
+    expect(sorted[0].pubkey).toBe(exact.pubkey);
   });
 
   it("loads featured creators", async () => {
@@ -251,7 +298,7 @@ describe("Creators store", () => {
       results: [
         {
           pubkey,
-          name: "phonebook", 
+          name: "phonebook",
           display_name: "Phonebook Name",
           about: "Phonebook bio",
           picture: "https://example.com/avatar.png",
@@ -273,7 +320,8 @@ describe("Creators store", () => {
   });
 
   it("uses phonebook results before discovery search", async () => {
-    const pubkey = "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2";
+    const pubkey =
+      "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2";
     findProfilesMock.mockResolvedValueOnce({
       query: "jack",
       results: [
@@ -299,7 +347,10 @@ describe("Creators store", () => {
 
     await creators.searchCreators("jack");
 
-    expect(findProfilesMock).toHaveBeenCalledWith("jack", expect.any(AbortSignal));
+    expect(findProfilesMock).toHaveBeenCalledWith(
+      "jack",
+      expect.any(AbortSignal),
+    );
     expect(getCreatorsByPubkeysMock).toHaveBeenCalledWith({
       npubs: [`npub${pubkey}`],
       signal: expect.any(AbortSignal),
@@ -315,7 +366,8 @@ describe("Creators store", () => {
   });
 
   it("retains phonebook metadata when discovery enrichment fails", async () => {
-    const pubkey = "52341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2";
+    const pubkey =
+      "52341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2";
     findProfilesMock.mockResolvedValueOnce({
       query: "jackson",
       results: [
@@ -331,7 +383,9 @@ describe("Creators store", () => {
       count: 1,
     });
 
-    getCreatorsByPubkeysMock.mockRejectedValueOnce(new SyntaxError("Unexpected token <"));
+    getCreatorsByPubkeysMock.mockRejectedValueOnce(
+      new SyntaxError("Unexpected token <"),
+    );
 
     const creators = useCreatorsStore();
     creators.fetchCreator = vi.fn().mockResolvedValue(null) as any;
@@ -348,7 +402,8 @@ describe("Creators store", () => {
   });
 
   it("enriches phonebook hits for direct pubkey searches", async () => {
-    const pubkey = "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2";
+    const pubkey =
+      "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2";
     findProfilesMock.mockResolvedValueOnce({
       query: pubkey,
       results: [
@@ -364,7 +419,10 @@ describe("Creators store", () => {
       count: 1,
     });
 
-    getCreatorsByPubkeysMock.mockResolvedValueOnce({ results: [], warnings: [] });
+    getCreatorsByPubkeysMock.mockResolvedValueOnce({
+      results: [],
+      warnings: [],
+    });
 
     const fetchedCreator = makeCreator(pubkey);
     const fetchCreatorMock = vi.fn().mockResolvedValue(fetchedCreator);
@@ -373,7 +431,10 @@ describe("Creators store", () => {
 
     await creators.searchCreators(pubkey);
 
-    expect(findProfilesMock).toHaveBeenCalledWith(pubkey, expect.any(AbortSignal));
+    expect(findProfilesMock).toHaveBeenCalledWith(
+      pubkey,
+      expect.any(AbortSignal),
+    );
     expect(getCreatorsByPubkeysMock).toHaveBeenCalled();
     expect(fetchCreatorMock).toHaveBeenCalledWith(pubkey, false);
     expect(getCreatorsMock).not.toHaveBeenCalled();
@@ -386,15 +447,25 @@ describe("Creators store", () => {
   });
 
   it("falls back to discovery search when phonebook is empty", async () => {
-    findProfilesMock.mockResolvedValueOnce({ query: "randomxyz", results: [], count: 0 });
+    findProfilesMock.mockResolvedValueOnce({
+      query: "randomxyz",
+      results: [],
+      count: 0,
+    });
 
     const discoveryCreator = makeCreator("b".repeat(64), { name: "random" });
-    getCreatorsMock.mockResolvedValueOnce({ results: [discoveryCreator], warnings: ["warn"] });
+    getCreatorsMock.mockResolvedValueOnce({
+      results: [discoveryCreator],
+      warnings: ["warn"],
+    });
 
     const creators = useCreatorsStore();
     await creators.searchCreators("randomxyz");
 
-    expect(findProfilesMock).toHaveBeenCalledWith("randomxyz", expect.any(AbortSignal));
+    expect(findProfilesMock).toHaveBeenCalledWith(
+      "randomxyz",
+      expect.any(AbortSignal),
+    );
     expect(getCreatorsMock).toHaveBeenCalledWith({
       q: "randomxyz",
       fresh: false,
@@ -411,7 +482,10 @@ describe("Creators store", () => {
     findProfilesMock.mockRejectedValueOnce(new Error("network failure"));
 
     const discoveryCreator = makeCreator("c".repeat(64), { name: "fallback" });
-    getCreatorsMock.mockResolvedValueOnce({ results: [discoveryCreator], warnings: [] });
+    getCreatorsMock.mockResolvedValueOnce({
+      results: [discoveryCreator],
+      warnings: [],
+    });
 
     const creators = useCreatorsStore();
     await creators.searchCreators("jack");
@@ -433,9 +507,16 @@ describe("Creators store", () => {
       featured: true,
     });
 
-    findProfilesMock.mockResolvedValueOnce({ query: "Featured Hero", results: [], count: 0 });
+    findProfilesMock.mockResolvedValueOnce({
+      query: "Featured Hero",
+      results: [],
+      count: 0,
+    });
     getCreatorsMock.mockResolvedValueOnce({ results: [], warnings: [] });
-    getCreatorsByPubkeysMock.mockResolvedValueOnce({ results: [], warnings: [] });
+    getCreatorsByPubkeysMock.mockResolvedValueOnce({
+      results: [],
+      warnings: [],
+    });
 
     const creators = useCreatorsStore();
     creators.featuredCreators = [featuredCreator];
@@ -444,10 +525,13 @@ describe("Creators store", () => {
     await creators.searchCreators("Featured Hero");
 
     expect(creators.searchResults.length).toBeGreaterThan(0);
-    expect(creators.searchResults.some((result) => result.pubkey === featuredPubkey)).toBe(true);
-    expect(creators.searchResults.find((result) => result.pubkey === featuredPubkey)?.featured).toBe(
-      true,
-    );
+    expect(
+      creators.searchResults.some((result) => result.pubkey === featuredPubkey),
+    ).toBe(true);
+    expect(
+      creators.searchResults.find((result) => result.pubkey === featuredPubkey)
+        ?.featured,
+    ).toBe(true);
   });
 
   it("surfaces featured npub queries even without discovery hits", async () => {
@@ -461,9 +545,16 @@ describe("Creators store", () => {
       })
       .mockImplementation(() => ({ data: featuredPubkey }));
 
-    findProfilesMock.mockResolvedValueOnce({ query: featuredNpub, results: [], count: 0 });
+    findProfilesMock.mockResolvedValueOnce({
+      query: featuredNpub,
+      results: [],
+      count: 0,
+    });
     getCreatorsMock.mockResolvedValueOnce({ results: [], warnings: [] });
-    getCreatorsByPubkeysMock.mockResolvedValueOnce({ results: [], warnings: [] });
+    getCreatorsByPubkeysMock.mockResolvedValueOnce({
+      results: [],
+      warnings: [],
+    });
     fetchLegacyCreatorsMock.mockResolvedValueOnce([]);
 
     const creators = useCreatorsStore();
@@ -472,10 +563,13 @@ describe("Creators store", () => {
     await creators.searchCreators(featuredNpub);
 
     expect(creators.searchResults.length).toBeGreaterThan(0);
-    expect(creators.searchResults.some((result) => result.pubkey === featuredPubkey)).toBe(true);
-    expect(creators.searchResults.find((result) => result.pubkey === featuredPubkey)?.featured).toBe(
-      true,
-    );
+    expect(
+      creators.searchResults.some((result) => result.pubkey === featuredPubkey),
+    ).toBe(true);
+    expect(
+      creators.searchResults.find((result) => result.pubkey === featuredPubkey)
+        ?.featured,
+    ).toBe(true);
   });
 
   it("treats failed NIP-05 lookups as plain discovery queries", async () => {
@@ -488,7 +582,10 @@ describe("Creators store", () => {
     getUserFromNip05Mock.mockRejectedValueOnce(new Error("nip05 failed"));
 
     const discoveryCreator = makeCreator("e".repeat(64), { name: "nip05" });
-    getCreatorsMock.mockResolvedValueOnce({ results: [discoveryCreator], warnings: [] });
+    getCreatorsMock.mockResolvedValueOnce({
+      results: [discoveryCreator],
+      warnings: [],
+    });
 
     const creators = useCreatorsStore();
     await creators.searchCreators("user@example.com");

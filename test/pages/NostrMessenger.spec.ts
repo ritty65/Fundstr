@@ -9,7 +9,6 @@ import { useMessengerStore } from "src/stores/messenger";
 import { useNostrStore } from "src/stores/nostr";
 import { useNdk } from "src/composables/useNdk";
 
-
 function createDeferred<T>() {
   let resolve: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>((res) => {
@@ -22,7 +21,8 @@ const SimpleStub = (name: string) =>
   defineComponent({
     name: `${name}Stub`,
     setup(_, { slots, attrs }) {
-      return () => h("div", { class: `${name}-stub`, ...attrs }, slots.default?.());
+      return () =>
+        h("div", { class: `${name}-stub`, ...attrs }, slots.default?.());
     },
   });
 
@@ -50,7 +50,8 @@ const QBtnStub = defineComponent({
 const QPageStub = defineComponent({
   name: "QPageStub",
   setup(_, { slots, attrs }) {
-    return () => h("div", { class: "q-page-stub", ...attrs }, slots.default?.());
+    return () =>
+      h("div", { class: "q-page-stub", ...attrs }, slots.default?.());
   },
 });
 
@@ -94,9 +95,11 @@ type RelayMock = {
   nextReconnectAt?: number | null;
 };
 
-function createNdk(relays: RelayMock[] = [
-  { url: "wss://relay", connected: true, status: 5, nextReconnectAt: null },
-]) {
+function createNdk(
+  relays: RelayMock[] = [
+    { url: "wss://relay", connected: true, status: 5, nextReconnectAt: null },
+  ],
+) {
   return {
     pool: {
       relays: new Map(
@@ -119,7 +122,12 @@ async function mountMessenger() {
   setActivePinia(pinia);
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: "/", component: (await import("src/pages/NostrMessenger.vue")).default }],
+    routes: [
+      {
+        path: "/",
+        component: (await import("src/pages/NostrMessenger.vue")).default,
+      },
+    ],
   });
   await router.push("/");
   await router.isReady();
@@ -132,7 +140,13 @@ async function mountMessenger() {
       global: {
         plugins: [pinia, router],
         stubs,
-        mocks: { $t: (key: string) => key, $q: { dark: { isActive: false }, screen: { gt: { xs: true }, lt: { md: false } } } },
+        mocks: {
+          $t: (key: string) => key,
+          $q: {
+            dark: { isActive: false },
+            screen: { gt: { xs: true }, lt: { md: false } },
+          },
+        },
       },
     }),
   };
@@ -158,7 +172,12 @@ describe("NostrMessenger", () => {
 
     const router = createRouter({
       history: createMemoryHistory(),
-      routes: [{ path: "/", component: (await import("src/pages/NostrMessenger.vue")).default }],
+      routes: [
+        {
+          path: "/",
+          component: (await import("src/pages/NostrMessenger.vue")).default,
+        },
+      ],
     });
     await router.push("/");
     await router.isReady();
@@ -168,7 +187,13 @@ describe("NostrMessenger", () => {
       global: {
         plugins: [pinia, router],
         stubs,
-        mocks: { $t: (key: string) => key, $q: { dark: { isActive: false }, screen: { gt: { xs: true }, lt: { md: false } } } },
+        mocks: {
+          $t: (key: string) => key,
+          $q: {
+            dark: { isActive: false },
+            screen: { gt: { xs: true }, lt: { md: false } },
+          },
+        },
       },
     });
 
@@ -177,17 +202,21 @@ describe("NostrMessenger", () => {
     const reconnecting = (wrapper.vm as any).reconnectAll();
     await nextTick();
 
-    expect(wrapper.text()).toContain("Connecting...");
+    expect(wrapper.text()).toContain("Connecting to your message relays...");
 
     pending.resolve();
     await reconnecting;
     await flushPromises();
 
-    expect(wrapper.text()).not.toContain("Connecting...");
+    expect(wrapper.text()).not.toContain(
+      "Connecting to your message relays...",
+    );
   });
 
   it("hides the spinner and keeps retry interactive when start fails", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     try {
       const pinia = createPinia();
       setActivePinia(pinia);
@@ -206,7 +235,12 @@ describe("NostrMessenger", () => {
 
       const router = createRouter({
         history: createMemoryHistory(),
-        routes: [{ path: "/", component: (await import("src/pages/NostrMessenger.vue")).default }],
+        routes: [
+          {
+            path: "/",
+            component: (await import("src/pages/NostrMessenger.vue")).default,
+          },
+        ],
       });
       await router.push("/");
       await router.isReady();
@@ -216,7 +250,13 @@ describe("NostrMessenger", () => {
         global: {
           plugins: [pinia, router],
           stubs,
-          mocks: { $t: (key: string) => key, $q: { dark: { isActive: false }, screen: { gt: { xs: true }, lt: { md: false } } } },
+          mocks: {
+            $t: (key: string) => key,
+            $q: {
+              dark: { isActive: false },
+              screen: { gt: { xs: true }, lt: { md: false } },
+            },
+          },
         },
       });
 
@@ -242,9 +282,24 @@ describe("NostrMessenger", () => {
   it("renders relay disconnect and failure banners when offline", async () => {
     vi.mocked(useNdk).mockResolvedValue(
       createNdk([
-        { url: "wss://relay-1", connected: true, status: 5, nextReconnectAt: null },
-        { url: "wss://relay-2", connected: false, status: 2, nextReconnectAt: Date.now() + 5000 },
-        { url: "wss://relay-3", connected: false, status: 2, nextReconnectAt: Date.now() + 5000 },
+        {
+          url: "wss://relay-1",
+          connected: true,
+          status: 5,
+          nextReconnectAt: null,
+        },
+        {
+          url: "wss://relay-2",
+          connected: false,
+          status: 2,
+          nextReconnectAt: Date.now() + 5000,
+        },
+        {
+          url: "wss://relay-3",
+          connected: false,
+          status: 2,
+          nextReconnectAt: Date.now() + 5000,
+        },
       ]),
     );
     const { wrapper } = await mountMessenger();
@@ -259,7 +314,7 @@ describe("NostrMessenger", () => {
     await nextTick();
 
     const text = wrapper.text();
-    expect(text).toContain("Offline - 1/3 connected");
+    expect(text).toContain("Offline - 1/3 relays connected");
     expect(text).toContain("Relay wss://down unreachable");
     expect(text).toContain("message(s) failed");
   });
@@ -275,7 +330,12 @@ describe("NostrMessenger", () => {
     vi.mocked(useNdk).mockResolvedValue(createNdk());
     const router = createRouter({
       history: createMemoryHistory(),
-      routes: [{ path: "/", component: (await import("src/pages/NostrMessenger.vue")).default }],
+      routes: [
+        {
+          path: "/",
+          component: (await import("src/pages/NostrMessenger.vue")).default,
+        },
+      ],
     });
     await router.push("/");
     await router.isReady();
@@ -286,7 +346,13 @@ describe("NostrMessenger", () => {
       global: {
         plugins: [pinia, router],
         stubs,
-        mocks: { $t: (key: string) => key, $q: { dark: { isActive: false }, screen: { gt: { xs: true }, lt: { md: false } } } },
+        mocks: {
+          $t: (key: string) => key,
+          $q: {
+            dark: { isActive: false },
+            screen: { gt: { xs: true }, lt: { md: false } },
+          },
+        },
       },
     });
 
