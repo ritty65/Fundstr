@@ -300,6 +300,13 @@ export default defineComponent({
       handleRoutePubkeyChange(route.query.pubkey);
     };
 
+    const revealRouteConversationShell = () => {
+      if (!nostr.hasIdentity) return;
+      if (!(routeConversation.value || messenger.currentConversation)) return;
+      loading.value = false;
+      startTimedOut.value = false;
+    };
+
     const registerStartRecoveryWatcher = (runId: number) => {
       cleanupStartRecoveryWatcher();
       startRecoveryStop = watch(
@@ -380,7 +387,7 @@ export default defineComponent({
         if (routeConversation.value || messenger.currentConversation) {
           handleRoutePubkeyChange(route.query.pubkey);
           registerStartRecoveryWatcher(runId);
-          loading.value = false;
+          revealRouteConversationShell();
         }
 
         timeoutHandle = setTimeout(() => {
@@ -469,6 +476,7 @@ export default defineComponent({
       messenger.startChat(normalized);
       messenger.setCurrentConversation(normalized);
       void messenger.ensureConversationSubscription(normalized, "route-change");
+      revealRouteConversationShell();
 
       if ($q.screen.lt.md) {
         messenger.setDrawer(false);
@@ -542,6 +550,15 @@ export default defineComponent({
               : route.query.intent === "donate") && !!routeConversation.value;
         }
       },
+      { immediate: true },
+    );
+
+    watch(
+      [routeConversation, () => messenger.currentConversation],
+      () => {
+        revealRouteConversationShell();
+      },
+      { immediate: true },
     );
 
     watch(
