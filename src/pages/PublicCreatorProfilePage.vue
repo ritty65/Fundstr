@@ -305,17 +305,18 @@
                   :collapse-media="false"
                 >
                   <template #actions>
-                    <q-btn
-                      color="primary"
+                    <button
+                      type="button"
                       class="profile-tier-list__subscribe"
-                      no-caps
-                      :label="$t('CreatorHub.profile.subscribeCta')"
+                      :title="
+                        needsSignerSetupTooltip
+                          ? $t('CreatorHub.profile.guestTooltip')
+                          : ''
+                      "
                       @click="openSubscribe(t)"
                     >
-                      <q-tooltip v-if="needsSignerSetupTooltip">{{
-                        $t("CreatorHub.profile.guestTooltip")
-                      }}</q-tooltip>
-                    </q-btn>
+                      {{ $t("CreatorHub.profile.subscribeCta") }}
+                    </button>
                   </template>
                   <template #footer-note>
                     {{ tierSupportNote }}
@@ -1574,10 +1575,11 @@ export default defineComponent({
       });
     };
 
-    const openSubscribe = (tier: any) => {
+    const openSubscribe = async (tier: any) => {
       if (!creatorHex.value) {
         return;
       }
+
       selectedTier.value = tier;
       if (isGuest.value || !welcomeStore.welcomeCompleted) {
         showSetupDialog.value = true;
@@ -1587,6 +1589,10 @@ export default defineComponent({
         showSetupDialog.value = true;
         return;
       }
+
+      showSetupDialog.value = false;
+      showSubscribeDialog.value = false;
+      await nextTick();
       showSubscribeDialog.value = true;
     };
 
@@ -2575,6 +2581,29 @@ export default defineComponent({
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 1.5rem;
   align-items: stretch;
+}
+
+.profile-tier-list__subscribe {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.75rem 1.2rem;
+  background: var(--accent-500);
+  color: var(--text-inverse);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent-500) 20%, transparent);
+}
+
+.profile-tier-list__subscribe:hover {
+  background: var(--accent-600);
+  transform: translateY(-1px);
+}
+
+.profile-tier-list__subscribe:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent-200) 65%, white);
+  outline-offset: 3px;
 }
 
 .profile-tier__paywalled {
