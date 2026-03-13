@@ -550,9 +550,10 @@
       </main>
 
       <SubscribeDialog
-        v-model="showSubscribeDialog"
-        :tier="selectedTier"
+        :model-value="subscribeDialogVisible"
+        :tier="subscribeDialogTier"
         :creator-pubkey="creatorHex || ''"
+        @update:model-value="handleSubscribeDialogVisibility"
         @confirm="confirmSubscribe"
       />
       <DonateDialog
@@ -648,6 +649,7 @@ export default defineComponent({
   name: "PublicCreatorProfilePage",
   components: {
     PaywalledContent,
+    SubscribeDialog,
     DonateDialog,
     SendTokenDialog,
     SubscriptionReceipt,
@@ -797,6 +799,32 @@ export default defineComponent({
       ),
     );
     const isTierFocusActive = computed(() => route.query.tab === "tiers");
+    const routeTierId = computed(() => {
+      const tierId = route.query.tierId;
+      if (Array.isArray(tierId)) {
+        return typeof tierId[0] === "string" ? tierId[0] : "";
+      }
+      return typeof tierId === "string" ? tierId : "";
+    });
+    const routeTier = computed(() => {
+      const tierId = routeTierId.value;
+      if (!tierId) {
+        return null;
+      }
+      return (
+        tiers.value.find(
+          (tier: any) => tier?.id === tierId || tier?.name === tierId,
+        ) ?? null
+      );
+    });
+    const subscribeDialogTier = computed(
+      () => routeTier.value || selectedTier.value,
+    );
+    const subscribeDialogVisible = computed(
+      () =>
+        (showSubscribeDialog.value || Boolean(routeTier.value)) &&
+        Boolean(subscribeDialogTier.value),
+    );
 
     const REFRESH_INTERVAL_MS = 2 * 60 * 1000;
     let refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -1581,6 +1609,12 @@ export default defineComponent({
       }
 
       selectedTier.value = tier;
+      const nextTierId =
+        typeof tier?.id === "string" && tier.id.trim()
+          ? tier.id
+          : typeof tier?.name === "string"
+          ? tier.name
+          : "";
       if (isGuest.value || !welcomeStore.welcomeCompleted) {
         showSetupDialog.value = true;
         return;
@@ -1592,8 +1626,38 @@ export default defineComponent({
 
       showSetupDialog.value = false;
       showSubscribeDialog.value = false;
+      if (nextTierId) {
+        await router.replace({
+          name: "PublicCreatorProfile",
+          params: { npubOrHex: publicRouteIdentifier.value },
+          query: {
+            ...route.query,
+            tierId: nextTierId,
+          },
+        });
+      }
       await nextTick();
       showSubscribeDialog.value = true;
+    };
+
+    const handleSubscribeDialogVisibility = async (open: boolean) => {
+      showSubscribeDialog.value = open;
+      if (open) {
+        return;
+      }
+
+      selectedTier.value = null;
+      if (!routeTierId.value) {
+        return;
+      }
+
+      const query = { ...route.query };
+      delete query.tierId;
+      await router.replace({
+        name: "PublicCreatorProfile",
+        params: { npubOrHex: publicRouteIdentifier.value },
+        query,
+      });
     };
 
     const gotoWelcome = () => {
@@ -1618,27 +1682,6 @@ export default defineComponent({
       await loadProfile({ forceRelayRefresh: true });
       scheduleAutoRefresh();
       await applyRouteFocusHint();
-
-      if (!creatorHex.value) return;
-      const tierId = route.query.tierId as string | undefined;
-      if (!nostr.hasIdentity || !tierId) return;
-      const tryOpen = () => {
-        const t = tiers.value.find((ti: any) => ti.id === tierId);
-        if (t) {
-          openSubscribe(t);
-          router.replace({
-            name: "PublicCreatorProfile",
-            params: { npubOrHex: publicRouteIdentifier.value },
-          });
-          return true;
-        }
-        return false;
-      };
-      if (!tryOpen()) {
-        const stop = watch(tiers, () => {
-          if (tryOpen()) stop();
-        });
-      }
     });
 
     onActivated(() => {
@@ -2164,6 +2207,8 @@ export default defineComponent({
       tiers,
       showDonateDialog,
       showSubscribeDialog,
+      subscribeDialogVisible,
+      subscribeDialogTier,
       showSetupDialog,
       showReceiptDialog,
       receiptList,
@@ -2207,6 +2252,7 @@ export default defineComponent({
       openDonate,
       startMessage,
       openSubscribe,
+      handleSubscribeDialogVisibility,
       handleDonate,
       confirmSubscribe,
       retryFetchTiers,
