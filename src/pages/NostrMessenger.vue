@@ -152,7 +152,7 @@
       </div>
 
       <q-spinner
-        v-if="loading"
+        v-if="loading && !selected"
         size="lg"
         color="primary"
         class="self-center q-mt-xl"
