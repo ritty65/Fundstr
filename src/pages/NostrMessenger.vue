@@ -308,6 +308,16 @@ export default defineComponent({
       startTimedOut.value = false;
     };
 
+    const primeRouteConversationViaHttp = () => {
+      if (!nostr.hasIdentity || !nostr.pubkey) return;
+      if (messenger.started && messenger.connected) return;
+      const since =
+        messenger.eventLog?.[messenger.eventLog.length - 1]?.created_at || 0;
+      void messenger.syncDmViaHttp(nostr.pubkey, since).catch((err) => {
+        console.warn("[nostrMessenger.routePrime] HTTP sync failed", err);
+      });
+    };
+
     const registerStartRecoveryWatcher = (runId: number) => {
       cleanupStartRecoveryWatcher();
       startRecoveryStop = watch(
@@ -487,6 +497,7 @@ export default defineComponent({
       messenger.setCurrentConversation(normalized);
       void messenger.ensureConversationSubscription(normalized, "route-change");
       revealRouteConversationShell();
+      primeRouteConversationViaHttp();
 
       if ($q.screen.lt.md) {
         messenger.setDrawer(false);
