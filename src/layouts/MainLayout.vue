@@ -134,7 +134,7 @@ import {
   fundstrRelayClient,
   useFundstrRelayStatus,
 } from "src/nutzap/relayClient";
-import { WS_FIRST_TIMEOUT_MS } from "src/nutzap/relayEndpoints";
+import { FUNDSTR_WS_URL, WS_FIRST_TIMEOUT_MS } from "src/nutzap/relayEndpoints";
 import { creatorCacheService } from "src/nutzap/creatorCache";
 import { debug } from "src/js/logger";
 
@@ -434,9 +434,18 @@ export default defineComponent({
   },
   async mounted() {
     const nostr = useNostrStore();
-    void nostr.initSignerIfNotSet().catch((error) => {
-      console.warn("MainLayout signer bootstrap failed", error);
-    });
+    void (async () => {
+      try {
+        await nostr.initSignerIfNotSet();
+        if (nostr.hasIdentity && typeof nostr.connect === "function") {
+          void nostr.connect([FUNDSTR_WS_URL]).catch((connectError) => {
+            console.warn("MainLayout relay bootstrap failed", connectError);
+          });
+        }
+      } catch (error) {
+        console.warn("MainLayout signer/bootstrap relay connect failed", error);
+      }
+    })();
     creatorCacheService.start();
   },
 });

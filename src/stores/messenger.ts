@@ -60,6 +60,7 @@ import {
   DM_RELAYS,
   DM_HTTP_EVENT_URL,
   DM_HTTP_REQ_URL,
+  DM_WS_ACK_TIMEOUT_MS,
   DM_HTTP_ACK_TIMEOUT_MS,
   DM_POLL_INTERVAL_MS,
   DM_REQUIRE_AUTH,
@@ -450,7 +451,7 @@ const NON_RETRYABLE_ACK_PATTERNS = [
 const LOCAL_ECHO_TIMEOUT_MS = 5_000;
 
 const MESSENGER_OUTBOX_ENABLED = true;
-const OUTBOX_DELIVERY_QUORUM = 2;
+const OUTBOX_DELIVERY_QUORUM = 1;
 const OUTBOX_BACKOFF_BASE_MS = 2_000;
 const OUTBOX_BACKOFF_MAX_MS = 120_000;
 const OUTBOX_BACKOFF_JITTER_RATIO = 0.25;
@@ -2068,7 +2069,7 @@ export const useMessengerStore = defineStore("messenger", {
         this.signerInitCache = null;
       }
       const now = Date.now();
-      const shouldInitSigner = refresh || !this.started || !nostr.signer;
+      const shouldInitSigner = refresh || !nostr.signer;
       if (shouldInitSigner) {
         const lastAttempt = this.signerInitCache;
         const recentFailedAttempt =
@@ -2524,7 +2525,10 @@ export const useMessengerStore = defineStore("messenger", {
             : Array.isArray(this.relays)
             ? this.relays
             : Array.from(new Set([...DM_RELAYS]));
-          for (const relayUrl of fundstrRelays) {
+          const prioritizedRelayTargets = Array.from(
+            new Set([...DM_RELAYS, ...fundstrRelays]),
+          ).slice(0, 1);
+          for (const relayUrl of prioritizedRelayTargets) {
             if (!relayUrl) continue;
             let client: Awaited<
               ReturnType<typeof ensureFundstrRelayClient>
@@ -2758,12 +2762,24 @@ export const useMessengerStore = defineStore("messenger", {
             )
           : (Array.from(new Set([...DM_RELAYS])) as string[]);
 
-      for (const relayUrl of relayCandidates) {
+      const prioritizedRelayTargets = Array.from(
+        new Set([...DM_RELAYS, ...relayCandidates]),
+      ).slice(0, 1);
+
+      for (const relayUrl of prioritizedRelayTargets) {
         if (!relayUrl) continue;
         if (acceptedCount >= this.outboxQuorum) break;
         let ackRecord: RelayAck;
         try {
-          const client = await ensureFundstrRelayClient(relayUrl);
+          const client = await Promise.race([
+            ensureFundstrRelayClient(relayUrl),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () => reject(new Error(`Relay client timeout: ${relayUrl}`)),
+                DM_WS_ACK_TIMEOUT_MS,
+              ),
+            ),
+          ]);
           const authOptions: FundstrRelayAuthOptions = this.dmRequireAuth
             ? {
                 enabled: true,
@@ -2773,7 +2789,15 @@ export const useMessengerStore = defineStore("messenger", {
               }
             : { enabled: false };
           client.setAuthOptions(authOptions);
-          const result = await client.publishSigned(event);
+          const result = await Promise.race([
+            client.publishSigned(event),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () => reject(new Error(`Relay publish timeout: ${relayUrl}`)),
+                DM_WS_ACK_TIMEOUT_MS,
+              ),
+            ),
+          ]);
           const ack = result.ack;
           ackRecord = {
             ok: ack.accepted,
@@ -2834,9 +2858,60 @@ export const useMessengerStore = defineStore("messenger", {
               };
             }
           } else {
-            nonRetryableHttpAck = isNonRetryableHttpAck(ack);
-            if (ack.message) {
-              lastError = ack.message;
+            let verifiedByReadback = false;
+            if (ack.id) {
+              try {
+                for (
+                  let attempt = 0;
+                  attempt < 3 && !verifiedByReadback;
+                  attempt++
+                ) {
+                  if (attempt > 0) {
+                    await new Promise((resolve) => setTimeout(resolve, 750));
+                  }
+                  const readback = await requestEventsViaHttp(
+                    [{ ids: [ack.id], limit: 1 }],
+                    {
+                      url: DM_HTTP_REQ_URL,
+                      timeoutMs: DM_HTTP_ACK_TIMEOUT_MS,
+                      ...(dmHeaders ? { headers: dmHeaders } : {}),
+                    },
+                  );
+                  verifiedByReadback = Array.isArray(readback)
+                    ? readback.some(
+                        (entry) =>
+                          entry &&
+                          typeof entry === "object" &&
+                          (entry as any).id === ack.id,
+                      )
+                    : false;
+                }
+              } catch (err) {
+                console.warn(
+                  "[messenger.publishWithQuorum] HTTP readback verification failed",
+                  err,
+                );
+              }
+            }
+
+            if (verifiedByReadback) {
+              ackMap[DM_HTTP_EVENT_URL] = {
+                ok: true,
+                reason: ack.message || "verified via relay readback",
+              };
+              acceptedCount += 1;
+              if (!firstAck) {
+                firstAck = {
+                  transport: "http",
+                  relay: DM_HTTP_EVENT_URL,
+                  ack: ackMap[DM_HTTP_EVENT_URL],
+                };
+              }
+            } else {
+              nonRetryableHttpAck = isNonRetryableHttpAck(ack);
+              if (ack.message) {
+                lastError = ack.message;
+              }
             }
           }
         } catch (err) {

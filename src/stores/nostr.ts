@@ -76,6 +76,7 @@ import { v4 as uuidv4 } from "uuid";
 import { useRouter } from "vue-router";
 import { useP2PKStore } from "./p2pk";
 import { watch, type Ref } from "vue";
+import { safeConnect } from "boot/ndk";
 import { fetchFundstrProfileBundle, useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useMessengerStore } from "./messenger";
@@ -2210,19 +2211,27 @@ export const useNostrStore = defineStore("nostr", {
       const ndk = await rebuildNdk(this.relays, this.signer);
       ndk.explicitRelayUrls = this.relays;
 
-      // 3. connect every relay with a 6-second guard, but do not await ndk.connect() again
+      // 3. connect the pool using the same NDK bootstrap path the app uses elsewhere
       const relaysArr = Array.from(ndk.pool.relays.values());
       this.connectedRelays.clear();
-      const connectPromises = relaysArr.map((r) => connectWithTimeout(r, 6000));
+      const connectError = await safeConnect(ndk, 1);
+      for (const relay of relaysArr) {
+        if (relay?.connected && relay.url) {
+          this.connectedRelays.add(relay.url);
+        }
+      }
+      this.connected = this.connectedRelays.size > 0;
 
-      // wait for any to connect to reset backoff
       try {
-        await Promise.any(connectPromises);
-        this.lastError = null;
-        this.reconnectBackoffUntil = 0;
-        this.reconnectFailures = 0;
-        this.failedRelays = [];
-        this.connectionFailed = false;
+        if (this.connectedRelays.size > 0) {
+          this.lastError = null;
+          this.reconnectBackoffUntil = 0;
+          this.reconnectFailures = 0;
+          this.failedRelays = [];
+          this.connectionFailed = false;
+        } else {
+          throw connectError ?? new Error("No selected relay connected");
+        }
       } catch (e: any) {
         this.lastError = e?.message ?? String(e);
         this.reconnectFailures++;
@@ -2262,20 +2271,19 @@ export const useNostrStore = defineStore("nostr", {
       });
 
       // 5. track relay health – never throw
-      Promise.allSettled(connectPromises).then((res) =>
-        res.forEach((r, i) => {
-          const url = relaysArr[i].url;
-          if (r.status === "rejected") {
-            if (!this.failedRelays.includes(url)) {
-              this.failedRelays.push(url);
-              notifyWarning(`Relay ${url} unreachable`);
-            }
-          } else {
-            const idx = this.failedRelays.indexOf(url);
-            if (idx !== -1) this.failedRelays.splice(idx, 1);
-          }
-        }),
-      );
+      relaysArr.forEach((relay) => {
+        const url = relay?.url;
+        if (!url) return;
+        if (relay.connected) {
+          const idx = this.failedRelays.indexOf(url);
+          if (idx !== -1) this.failedRelays.splice(idx, 1);
+          return;
+        }
+        if (!this.failedRelays.includes(url)) {
+          this.failedRelays.push(url);
+          notifyWarning(`Relay ${url} unreachable`);
+        }
+      });
 
       return ndk;
     },
