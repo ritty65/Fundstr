@@ -140,7 +140,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, computed, ref, watch } from "vue";
+import { defineComponent, computed, ref, watch, nextTick } from "vue";
 import { useDonationPresetsStore } from "stores/donationPresets";
 import { useBucketsStore } from "stores/buckets";
 import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
@@ -464,18 +464,23 @@ export default defineComponent({
       }
     };
 
+    const bootstrapDialogState = async () => {
+      try {
+        await nostr.initSignerIfNotSet();
+      } catch (error) {
+        console.warn("SubscribeDialog signer bootstrap failed", error);
+      }
+      await loadCreatorPaymentProfile();
+    };
+
     watch(
       () => props.modelValue,
-      async (val) => {
-        if (val) {
-          try {
-            await nostr.initSignerIfNotSet();
-          } catch (error) {
-            console.warn("SubscribeDialog signer bootstrap failed", error);
-          }
-          selectCreatorBucket();
-          await loadCreatorPaymentProfile();
+      (val) => {
+        if (!val) {
+          return;
         }
+        selectCreatorBucket();
+        void nextTick(() => bootstrapDialogState());
       },
       { immediate: true },
     );

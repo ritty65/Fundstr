@@ -263,6 +263,7 @@ describe("SubscribeDialog invalid states", () => {
 
     nostrStoreMock.signer = { pubkey: "abc" };
 
+    await flushPromises();
     await nextTick();
 
     expect(wrapper.html()).not.toContain(
@@ -378,6 +379,9 @@ describe("SubscribeDialog invalid states", () => {
     const confirmButton = getConfirmButton(wrapper);
 
     expect(confirmButton).toBeDefined();
+
+    await flushPromises();
+    await nextTick();
 
     await confirmButton!.trigger("click");
     await nextTick();
