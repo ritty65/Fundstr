@@ -236,6 +236,7 @@ import { useQuasar, TouchSwipe } from "quasar";
 import { useMintsStore } from "src/stores/mints";
 import { useBucketsStore } from "src/stores/buckets";
 import { storeToRefs } from "pinia";
+import { FUNDSTR_WS_URL } from "@/nutzap/relayEndpoints";
 
 type SendTokenWarning = {
   message: string;
@@ -379,6 +380,15 @@ export default defineComponent({
       let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
       try {
         await nostr.initSignerIfNotSet();
+        if (
+          nostr.hasIdentity &&
+          !nostr.connected &&
+          typeof nostr.connect === "function"
+        ) {
+          void nostr.connect([FUNDSTR_WS_URL]).catch((error: unknown) => {
+            console.warn("Messenger relay bootstrap failed", error);
+          });
+        }
         await messenger.loadIdentity();
         ndkRef.value = await useNdk();
         const start = messenger.start();
