@@ -614,6 +614,27 @@ describe("messenger store", () => {
     ).toBeTruthy();
   });
 
+  it("limits routed HTTP sync to the active conversation", async () => {
+    const messenger = useMessengerStore();
+    const nostr = useNostrStore() as any;
+    const peer = "peer-route";
+
+    requestEventsViaHttpMock.mockResolvedValue([]);
+
+    await messenger.syncConversationViaHttp(nostr.pubkey, peer, 0);
+
+    expect(requestEventsViaHttpMock).toHaveBeenCalledWith(
+      [
+        { kinds: [4], authors: [peer], "#p": [nostr.pubkey] },
+        { kinds: [4], authors: [nostr.pubkey], "#p": [peer] },
+      ],
+      expect.objectContaining({
+        url: expect.any(String),
+        timeoutMs: expect.any(Number),
+      }),
+    );
+  });
+
   it("marks pending token history entries as paid on acknowledgement", () => {
     const messenger = useMessengerStore();
     const tokensStore = useTokensStore();

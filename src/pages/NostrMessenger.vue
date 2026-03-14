@@ -322,9 +322,11 @@ export default defineComponent({
         : conversationMessages[conversationMessages.length - 1]?.created_at ||
           messenger.eventLog?.[messenger.eventLog.length - 1]?.created_at ||
           0;
-      void messenger.syncDmViaHttp(nostr.pubkey, since).catch((err) => {
-        console.warn("[nostrMessenger.routePrime] HTTP sync failed", err);
-      });
+      void messenger
+        .syncConversationViaHttp(nostr.pubkey, targetConversation, since)
+        .catch((err) => {
+          console.warn("[nostrMessenger.routePrime] HTTP sync failed", err);
+        });
     };
 
     const registerStartRecoveryWatcher = (runId: number) => {

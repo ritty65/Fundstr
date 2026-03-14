@@ -2186,6 +2186,69 @@ export const useMessengerStore = defineStore("messenger", {
         throw err instanceof Error ? err : new Error(message);
       }
     },
+    async syncConversationViaHttp(
+      pubkey: string | undefined,
+      peerPubkey: string | undefined,
+      since: number,
+    ) {
+      if (!pubkey || !peerPubkey) return;
+      if (!this.httpFallbackEnabled) return;
+      const normalizedPeer = this.normalizeKey(peerPubkey);
+      if (!normalizedPeer) return;
+      const sinceFilter = since > 0 ? { since } : {};
+      const filters = [
+        {
+          kinds: [4],
+          authors: [normalizedPeer],
+          "#p": [pubkey],
+          ...sinceFilter,
+        },
+        {
+          kinds: [4],
+          authors: [pubkey],
+          "#p": [normalizedPeer],
+          ...sinceFilter,
+        },
+      ];
+      try {
+        const dmHeaders = buildDmHttpHeaders();
+        const events = await requestEventsViaHttp(filters, {
+          url: DM_HTTP_REQ_URL,
+          timeoutMs: DM_HTTP_ACK_TIMEOUT_MS,
+          ...(dmHeaders ? { headers: dmHeaders } : {}),
+        });
+        if (!Array.isArray(events) || events.length === 0) {
+          return;
+        }
+        const sorted = events
+          .filter((e) => e && typeof e === "object")
+          .sort((a, b) => (a?.created_at || 0) - (b?.created_at || 0));
+        const seen = new Set<string>();
+        for (const raw of sorted) {
+          const event = raw as NostrEvent;
+          if (event.id && seen.has(event.id)) continue;
+          if (event.id) seen.add(event.id);
+          if (event.pubkey === pubkey) {
+            await this.pushOwnMessage(event);
+          } else {
+            await this.addIncomingMessage(event);
+          }
+        }
+      } catch (err) {
+        if (err instanceof HttpFallbackThrottledError) {
+          console.warn(
+            "[messenger.syncConversationViaHttp] HTTP fallback throttled",
+            err,
+          );
+          throw err;
+        }
+        const message =
+          err instanceof Error ? err.message : String(err ?? "error");
+        console.error("[messenger.syncConversationViaHttp]", err);
+        notifyError(`Failed to sync DMs via HTTP fallback: ${message}`);
+        throw err instanceof Error ? err : new Error(message);
+      }
+    },
     async sendDm(
       recipient: string,
       message: string,
