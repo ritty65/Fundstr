@@ -529,6 +529,20 @@ function extractRelayHintsFromEvent(event: NostrEvent | undefined): string[] {
   return Array.from(hints);
 }
 
+function extractDirectMessageRecipient(
+  event: NostrEvent | undefined,
+): string | null {
+  if (!event?.tags) return null;
+  for (const tag of event.tags) {
+    if (!Array.isArray(tag) || tag[0] !== "p") continue;
+    const recipient = tag[1];
+    if (typeof recipient === "string" && recipient) {
+      return recipient;
+    }
+  }
+  return null;
+}
+
 function cloneNostrEvent(event: NostrEvent): NostrEvent {
   if (!event) return event;
   if (typeof structuredClone === "function") {
@@ -1439,7 +1453,7 @@ export const useMessengerStore = defineStore("messenger", {
               try {
                 const raw = await ndkEvent.toNostrEvent();
                 if ((raw as NostrEvent).pubkey === nostr.pubkey) {
-                  this.pushOwnMessage(raw as NostrEvent);
+                  await this.pushOwnMessage(raw as NostrEvent);
                 } else {
                   await this.addIncomingMessage(raw as NostrEvent);
                 }
@@ -1517,7 +1531,7 @@ export const useMessengerStore = defineStore("messenger", {
               }
               const nostrEvent = await ndkEvent.toNostrEvent();
               if ((nostrEvent as NostrEvent).pubkey === nostr.pubkey) {
-                this.pushOwnMessage(nostrEvent as NostrEvent);
+                await this.pushOwnMessage(nostrEvent as NostrEvent);
               } else {
                 await this.addIncomingMessage(nostrEvent as NostrEvent);
               }
@@ -1691,7 +1705,7 @@ export const useMessengerStore = defineStore("messenger", {
     async deliverDmEventForTesting(event: NostrEvent) {
       const nostr = useNostrStore();
       if (event.pubkey === nostr.pubkey) {
-        this.pushOwnMessage(event);
+        await this.pushOwnMessage(event);
       } else {
         await this.addIncomingMessage(event);
       }
@@ -2152,7 +2166,7 @@ export const useMessengerStore = defineStore("messenger", {
           if (event.id && seen.has(event.id)) continue;
           if (event.id) seen.add(event.id);
           if (event.pubkey === pubkey) {
-            this.pushOwnMessage(event);
+            await this.pushOwnMessage(event);
           } else {
             await this.addIncomingMessage(event);
           }
@@ -3889,7 +3903,7 @@ export const useMessengerStore = defineStore("messenger", {
 
         try {
           const nostrEvent = await ndkEvent.toNostrEvent();
-          this.pushOwnMessage(nostrEvent as NostrEvent);
+          await this.pushOwnMessage(nostrEvent as NostrEvent);
         } catch (conversionErr) {
           console.error(
             "[messenger.confirmMessageDelivery] failed to convert event",
@@ -3923,7 +3937,7 @@ export const useMessengerStore = defineStore("messenger", {
         console.error("[messenger.confirmMessageDelivery] failed", err);
       }
     },
-    pushOwnMessage(event: NostrEvent) {
+    async pushOwnMessage(event: NostrEvent) {
       if (!Array.isArray(this.eventLog)) this.eventLog = [];
       const eventId = event.id;
       let msg = (eventId ? this.eventMap[eventId] : undefined) as
@@ -3945,9 +3959,77 @@ export const useMessengerStore = defineStore("messenger", {
           }
         }
       }
+      if (!msg) {
+        const nostr = useNostrStore();
+        const recipient = this.normalizeKey(
+          extractDirectMessageRecipient(event) || "",
+        );
+        if (!recipient) return;
+
+        const privKey =
+          nostr.signerType === SignerType.NIP07 ? undefined : nostr.privKeyHex;
+        let plaintext: string;
+        try {
+          plaintext = await nostr.decryptDmContent(
+            privKey,
+            recipient,
+            event.content,
+          );
+        } catch (err) {
+          console.warn(
+            "[messenger.pushOwnMessage] failed to hydrate outgoing DM",
+            { eventId, recipient },
+            err,
+          );
+          return;
+        }
+
+        const outboundFiles = extractFilesFromContent(plaintext);
+        const primaryFile = outboundFiles[0];
+        const normalizedContent = outboundFiles.length
+          ? sanitizeMessage(
+              stripFileMetaLines(plaintext),
+              Math.max(1000, plaintext.length),
+            )
+          : sanitizeMessage(plaintext);
+
+        if (!this.conversations[recipient]) {
+          this.conversations[recipient] = [];
+        }
+        const mergeResult = mergeMessengerEvent({
+          eventId,
+          eventMap: this.eventMap,
+          eventLog: this.eventLog,
+          conversation: this.conversations[recipient],
+          localEchoIndex: this.localEchoIndex,
+          createMessage: () => ({
+            id: eventId || uuidv4(),
+            pubkey: recipient,
+            content: normalizedContent,
+            created_at: event.created_at ?? Math.floor(Date.now() / 1000),
+            outgoing: true,
+            protocol: resolveDmProtocol(event.kind, event.content),
+            filesPayload: outboundFiles.length ? outboundFiles : undefined,
+            attachment: primaryFile
+              ? { type: primaryFile.mime, name: primaryFile.name }
+              : undefined,
+          }),
+          onRegister: (message) => this.registerMessage(message, [eventId]),
+        });
+        msg = mergeResult.message;
+        msg.pubkey = recipient;
+        msg.content = normalizedContent;
+        msg.created_at = event.created_at ?? msg.created_at;
+        msg.outgoing = true;
+        msg.protocol = resolveDmProtocol(event.kind, event.content);
+        msg.filesPayload = outboundFiles.length ? outboundFiles : undefined;
+        if (primaryFile) {
+          msg.attachment = { type: primaryFile.mime, name: primaryFile.name };
+        }
+      }
       if (!msg) return;
       const outboundFiles = extractFilesFromContent(
-        event.content || msg.content || "",
+        msg.content || event.content || "",
       );
       msg.filesPayload = outboundFiles.length
         ? outboundFiles
@@ -4452,7 +4534,7 @@ export const useMessengerStore = defineStore("messenger", {
           { kinds: [4], authors: [nostr.pubkey], ...sinceFilter },
           async (event: NDKEvent) => {
             const raw = await event.toNostrEvent();
-            this.pushOwnMessage(raw as NostrEvent);
+            await this.pushOwnMessage(raw as NostrEvent);
           },
         );
 
