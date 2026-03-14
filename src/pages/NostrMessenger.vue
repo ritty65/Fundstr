@@ -489,6 +489,12 @@ export default defineComponent({
         normalized === messenger.currentConversation
       ) {
         lastRoutePubkey.value = normalized;
+        void messenger.ensureConversationSubscription(
+          normalized,
+          "route-refresh",
+        );
+        revealRouteConversationShell();
+        primeRouteConversationViaHttp();
         return;
       }
 
