@@ -226,7 +226,7 @@ afterEach(() => {
 });
 
 describe("messenger store", () => {
-  it("broadcasts DM to all relays", async () => {
+  it("publishes DM through the prioritized relay without HTTP fallback", async () => {
     const messenger = useMessengerStore();
     (globalThis as any).nostr = {
       nip04: { encrypt: vi.fn(async () => "enc"), decrypt: vi.fn() },
@@ -234,18 +234,14 @@ describe("messenger store", () => {
       getPublicKey: vi.fn(async () => "f".repeat(64)),
     };
     messenger.relays = ["wss://a", "wss://b"] as any;
-    publishWithAcksMock
-      .mockImplementationOnce(async (_, relaysArg) => {
-        expect(relaysArg).toEqual(["wss://a"]);
-        return { "wss://a": { ok: false, reason: "down" } };
-      })
-      .mockImplementationOnce(async (_, relaysArg) => {
-        expect(relaysArg).toEqual(["wss://b"]);
-        return { "wss://b": { ok: true } };
-      });
+    publishWithAcksMock.mockImplementationOnce(async (_, relaysArg) => {
+      expect(Array.isArray(relaysArg)).toBe(true);
+      expect(relaysArg).toHaveLength(1);
+      return { [relaysArg[0]]: { ok: true } };
+    });
 
     await messenger.sendDm("r", "m");
-    expect(publishWithAcksMock).toHaveBeenCalledTimes(2);
+    expect(publishWithAcksMock).toHaveBeenCalledTimes(1);
     expect(publishEventViaHttpMock).not.toHaveBeenCalled();
   });
 
@@ -449,10 +445,6 @@ describe("messenger store", () => {
     expect(addSpy).toHaveBeenCalled();
     const added = addSpy.mock.results[0]?.value as any;
     expect(added?.status).toBe("sent");
-    expect(added?.relayResults?.["wss://a"]).toEqual({
-      ok: false,
-      reason: "down",
-    });
     expect(added?.relayResults?.[httpKey]).toEqual({ ok: true });
     addSpy.mockRestore();
   });
@@ -574,7 +566,7 @@ describe("messenger store", () => {
     expect(result.event?.id).toBeTruthy();
     expect(msg.localEcho?.status).toBe("pending");
 
-    messenger.pushOwnMessage({
+    await messenger.pushOwnMessage({
       id: result.event?.id ?? "echo",
       pubkey: useNostrStore().pubkey!,
       content: "enc",
@@ -588,6 +580,38 @@ describe("messenger store", () => {
     signerSpy.mockRestore();
     addSpy.mockRestore();
     vi.useRealTimers();
+  });
+
+  it("hydrates restored outgoing messages from HTTP sync without a local echo", async () => {
+    const messenger = useMessengerStore();
+    const nostr = useNostrStore() as any;
+    const recipient = "peer-restored";
+
+    decryptDm.mockResolvedValue("restored outbound message");
+    requestEventsViaHttpMock.mockResolvedValue([
+      {
+        id: "restore-echo-1",
+        pubkey: nostr.pubkey,
+        content: "ciphertext",
+        created_at: 123,
+        kind: 4,
+        tags: [["p", recipient]],
+      },
+    ]);
+
+    await messenger.syncDmViaHttp(nostr.pubkey, 0);
+
+    expect(decryptDm).toHaveBeenCalledWith(undefined, recipient, "ciphertext");
+    expect(messenger.conversations[recipient]).toHaveLength(1);
+    expect(messenger.conversations[recipient]?.[0]).toMatchObject({
+      id: "restore-echo-1",
+      pubkey: recipient,
+      content: "restored outbound message",
+      outgoing: true,
+    });
+    expect(
+      messenger.eventLog.find((msg) => msg.id === "restore-echo-1"),
+    ).toBeTruthy();
   });
 
   it("marks pending token history entries as paid on acknowledgement", () => {
