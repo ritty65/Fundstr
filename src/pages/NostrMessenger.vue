@@ -310,9 +310,18 @@ export default defineComponent({
 
     const primeRouteConversationViaHttp = () => {
       if (!nostr.hasIdentity || !nostr.pubkey) return;
-      if (messenger.started && messenger.connected) return;
-      const since =
-        messenger.eventLog?.[messenger.eventLog.length - 1]?.created_at || 0;
+      const targetConversation =
+        routeConversation.value || messenger.currentConversation;
+      if (!targetConversation) return;
+      const conversationMessages =
+        messenger.conversations?.[targetConversation] || [];
+      const needsFullPrime = conversationMessages.length === 0;
+      if (messenger.started && messenger.connected && !needsFullPrime) return;
+      const since = needsFullPrime
+        ? 0
+        : conversationMessages[conversationMessages.length - 1]?.created_at ||
+          messenger.eventLog?.[messenger.eventLog.length - 1]?.created_at ||
+          0;
       void messenger.syncDmViaHttp(nostr.pubkey, since).catch((err) => {
         console.warn("[nostrMessenger.routePrime] HTTP sync failed", err);
       });
