@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useNutzapStore } from "../../../src/stores/nutzap";
+import { useCashuStore } from "../../../src/stores/cashu";
 import { useP2PKStore } from "../../../src/stores/p2pk";
 import { cashuDb } from "../../../src/stores/dexie";
 
@@ -78,7 +78,7 @@ beforeEach(async () => {
 
 describe("subscribeToTier", () => {
   it("uses creator cashuP2pk when building HTLC token", async () => {
-    const store = useNutzapStore();
+    const store = useCashuStore();
     const pk = "021f77d9dc444b" + "0".repeat(52);
     await store.subscribeToTier({
       creator: { nostrPubkey: "1975".repeat(16), cashuP2pk: pk },
@@ -93,7 +93,7 @@ describe("subscribeToTier", () => {
   });
 
   it("stores receiver pubkey in locked token", async () => {
-    const store = useNutzapStore();
+    const store = useCashuStore();
     const pk = "022233445566" + "0".repeat(54);
     const secret = JSON.stringify(["P2PK", { data: pk }]);
     const proof = { id: "kid", amount: 1, C: "c", secret };

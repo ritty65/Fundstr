@@ -78,3 +78,6 @@ dist-ssr/
 # allowlist envs safe to commit
 !.env.staging
 !.env.production
+
+# local deploy bundles
+fundstr-pwa.tgz

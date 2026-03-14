@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useNutzapStore, calcUnlock } from "../../../src/stores/nutzap";
+import { useCashuStore, calcUnlock } from "../../../src/stores/cashu";
 import { subscriptionPayload } from "../../../src/utils/receipt-utils";
 import { useCreatorSubscriptionsStore } from "../../../src/stores/creatorSubscriptions";
 import { useLockedTokensRedeemWorker } from "../../../src/stores/lockedTokensRedeemWorker";
@@ -119,7 +119,7 @@ beforeEach(async () => {
   await cashuDb.close();
   await cashuDb.delete();
   await cashuDb.open();
-  useNutzapStore().$reset();
+  useCashuStore().$reset();
   sendDm = vi.fn(async () => ({}));
   setBootError = vi.fn();
   fetchNutzapProfile = vi.fn(async () => ({
@@ -147,7 +147,7 @@ beforeEach(async () => {
 
 describe("Nutzap subscriptions", () => {
   it("send() sends DM per interval with payload", async () => {
-    const store = useNutzapStore();
+    const store = useCashuStore();
     const start = 1000;
     await store.send({
       npub: "npub",
@@ -193,7 +193,7 @@ describe("Nutzap subscriptions", () => {
       );
     });
     cashuDb.lockedTokens.bulkAdd = vi.fn();
-    const store = useNutzapStore();
+    const store = useCashuStore();
     await store.send({ npub: "npub", amount: 1, periods: 1, startDate: 0 });
     expect(setBootError).toHaveBeenCalled();
     expect(store.sendQueue.length).toBe(1);
@@ -321,7 +321,7 @@ describe("Nutzap subscriptions", () => {
     vi.spyOn(mod, "ndkSend").mockRejectedValue(
       new mod.NdkBootError("no-signer"),
     );
-    const subStore = useNutzapStore();
+    const subStore = useCashuStore();
     sendDm = vi.fn(async () => ({ success: true }));
     cashuDb.lockedTokens.bulkAdd = vi.fn();
     await subStore.subscribeToTier({

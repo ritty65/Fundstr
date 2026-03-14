@@ -142,6 +142,7 @@ import {
   notifyWarning,
   notifyRefreshed,
 } from "src/js/notify";
+import { debug } from "src/js/logger";
 
 export default defineComponent({
   name: "MainHeader",
@@ -186,7 +187,7 @@ export default defineComponent({
     );
 
     const toggleDarkMode = () => {
-      console.log("toggleDarkMode", $q.dark.isActive);
+      debug("toggleDarkMode", $q.dark.isActive);
       $q.dark.toggle();
       $q.localStorage.set("cashu.darkMode", $q.dark.isActive);
       notifySuccess(
@@ -223,13 +224,7 @@ export default defineComponent({
     };
 
     const reload = () => {
-      console.log(
-        "reload",
-        "countdown:",
-        countdown.value,
-        "mutex:",
-        ui.globalMutexLock,
-      );
+      debug("reload", "countdown:", countdown.value, "mutex:", ui.globalMutexLock);
       if (countdown.value > 0) {
         try {
           clearInterval(countdownInterval);

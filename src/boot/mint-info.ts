@@ -1,6 +1,16 @@
-export async function verifyMint(url: string): Promise<boolean> {
+export async function verifyMint(url: string): Promise<boolean | null> {
+  let resp: Response;
   try {
-    const resp = await fetch(`${url}/v1/info`);
+    resp = await fetch(`${url}/v1/info`);
+  } catch {
+    return null;
+  }
+
+  if (!resp.ok) {
+    return false;
+  }
+
+  try {
     const info = await resp.json();
     const nuts = info?.nuts || {};
     return (

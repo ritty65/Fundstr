@@ -1,15 +1,75 @@
 import type { TierMedia } from "stores/types";
 
+const ALLOWED_MEDIA_TYPES: NonNullable<TierMedia["type"]>[] = [
+  "image",
+  "video",
+  "audio",
+  "link",
+];
+
+const DEFAULT_TRUSTED_HTTPS_HOSTS = [
+  "fundstr.me",
+  "staging.fundstr.me",
+  "assets.fundstr.me",
+  "cdn.fundstr.me",
+  "media.fundstr.me",
+  "www.youtube.com",
+  "youtube.com",
+  "youtu.be",
+  "nftstorage.link",
+  "primal.net",
+  "snort.social",
+];
+
+const metaEnv = (typeof import.meta !== "undefined" && (import.meta as any)?.env) || {};
+const processEnv = (typeof process !== "undefined" && (process as any)?.env) || {};
+
+function parseTrustedHosts(): Set<string> {
+  const raw =
+    (typeof metaEnv.VITE_TRUSTED_MEDIA_HOSTS === "string" && metaEnv.VITE_TRUSTED_MEDIA_HOSTS) ||
+    (typeof processEnv.VITE_TRUSTED_MEDIA_HOSTS === "string" && processEnv.VITE_TRUSTED_MEDIA_HOSTS) ||
+    (typeof processEnv.TRUSTED_MEDIA_HOSTS === "string" && processEnv.TRUSTED_MEDIA_HOSTS) ||
+    "";
+
+  const envHosts = String(raw)
+    .split(/[\s,]+/)
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+
+  return new Set([...DEFAULT_TRUSTED_HTTPS_HOSTS, ...envHosts]);
+}
+
+const ALLOWED_HTTPS_HOSTS = parseTrustedHosts();
+
+function isAllowedHttpsHost(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && ALLOWED_HTTPS_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch (error) {
+    return false;
+  }
+}
+
 export function isTrustedUrl(url: string): boolean {
   const cleaned = extractIframeSrc(url);
-  return /^(https:\/\/|ipfs:\/\/|nostr:)/i.test(cleaned.trim());
+  const trimmed = cleaned.trim();
+
+  if (!trimmed) {
+    return false;
+  }
+
+  if (/^ipfs:\/\//i.test(trimmed) || /^nostr:/i.test(trimmed)) {
+    return true;
+  }
+
+  return isAllowedHttpsHost(trimmed);
 }
 
 export function normalizeYouTube(url: string): string {
   const idMatch = url
     .replace("https://", "")
     .match(
-      /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))(\w{11})/i,
+      /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([A-Za-z0-9_-]{11})/i,
     );
   if (idMatch) {
     return `https://www.youtube.com/embed/${idMatch[1]}`;
@@ -41,12 +101,25 @@ export function isNostrEventUrl(url: string): boolean {
   );
 }
 
-export function extractIframeSrc(input: string): string {
-  const match = input.trim().match(/<iframe[^>]*src=['"]([^'"]+)['"][^>]*>/i);
-  return match ? match[1].trim() : input.trim();
+export function extractIframeSrc(input: unknown): string {
+  if (typeof input !== "string") {
+    return "";
+  }
+
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const match = trimmed.match(/<iframe[^>]*src=['"]([^'"]+)['"][^>]*>/i);
+  return match ? match[1].trim() : trimmed;
 }
 
-export function normalizeMediaUrl(url: string): string {
+export function normalizeMediaUrl(url: unknown): string {
+  if (typeof url !== "string") {
+    return "";
+  }
+
   const cleaned = extractIframeSrc(url);
   return normalizeYouTube(ipfsToGateway(normalizeNostrEventUrl(cleaned)));
 }
@@ -77,4 +150,49 @@ export function filterValidMedia(media: TierMedia[] = []): TierMedia[] {
   return media
     .map((m) => ({ ...m, url: normalizeMediaUrl(m.url) }))
     .filter((m) => m.url && isTrustedUrl(m.url));
+}
+
+export function normalizeTierMediaItems(input: unknown): TierMedia[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const collected: TierMedia[] = [];
+
+  for (const entry of input) {
+    if (!entry) {
+      continue;
+    }
+
+    if (typeof entry === "string") {
+      const url = entry.trim();
+      if (url) {
+        collected.push({ url });
+      }
+      continue;
+    }
+
+    if (typeof entry === "object") {
+      const media = entry as Record<string, unknown>;
+      const url = typeof media.url === "string" ? media.url.trim() : "";
+      if (!url) {
+        continue;
+      }
+      const title = typeof media.title === "string" ? media.title.trim() : undefined;
+      const rawType = typeof media.type === "string" ? media.type.trim().toLowerCase() : "";
+      const normalizedType = rawType as NonNullable<TierMedia["type"]>;
+      const type = ALLOWED_MEDIA_TYPES.includes(normalizedType) ? normalizedType : undefined;
+
+      const normalized: TierMedia = { url };
+      if (title) {
+        normalized.title = title;
+      }
+      if (type) {
+        normalized.type = type;
+      }
+      collected.push(normalized);
+    }
+  }
+
+  return filterValidMedia(collected);
 }

@@ -10,3 +10,4 @@ babel.config.js
 src/lib/cashu-ts/**
 dist/
 src/lib/cashu-ts/test/
+public/vendor/**

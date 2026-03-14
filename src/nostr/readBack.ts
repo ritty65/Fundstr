@@ -12,12 +12,16 @@ export async function verifyReadBack(opts: {
   const timeoutMs = opts.timeoutMs ?? 2000;
   try {
     const relay = opts.ndk.pool.getRelay(opts.relayUrl, true);
-    await relay.connect({ timeoutMs }).catch(() => {});
-    const filter: any = { kinds: [opts.kind], authors: [opts.authorHex], limit: 1 };
+    await relay.connect(timeoutMs).catch(() => {});
+    const filter: any = {
+      kinds: [opts.kind],
+      authors: [opts.authorHex],
+      limit: 1,
+    };
     if (opts.dTag) filter["#d"] = [opts.dTag];
     const sub: NDKSubscription = opts.ndk.subscribe(filter, {
       closeOnEose: true,
-      relays: [relay],
+      relayUrls: [opts.relayUrl],
     });
     return await new Promise<boolean>((resolve) => {
       let done = false;

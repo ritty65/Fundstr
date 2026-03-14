@@ -1,9 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   useNostrStore,
   SignerType,
   publishDmNip04,
   PublishTimeoutError,
+  ensureWriteConnectivity,
+  normalizeWsUrls,
+  publishWithTimeout,
 } from "../../../src/stores/nostr";
 import { useP2PKStore } from "../../../src/stores/p2pk";
 import { NDKKind, NDKPublishError } from "@nostr-dev-kit/ndk";
@@ -43,6 +46,18 @@ vi.mock("nostr-tools", () => {
   };
 });
 
+const getNdkMock = vi.fn();
+vi.mock("../../../src/config/relays", () => ({
+  DEFAULT_RELAYS: [],
+  FREE_RELAYS: ["wss://free.one"],
+  VETTED_OPEN_WRITE_RELAYS: [],
+}));
+
+vi.mock("../../../src/boot/ndk", () => ({
+  getNdk: () => getNdkMock(),
+  NdkBootError: class NdkBootError extends Error {},
+}));
+
 vi.mock("@noble/hashes/utils", () => ({
   bytesToHex: (b: Uint8Array) => Buffer.from(b).toString("hex"),
   hexToBytes: (h: string) => Uint8Array.from(Buffer.from(h, "hex")),
@@ -74,6 +89,8 @@ beforeEach(() => {
   filterHealthyRelaysFn = vi.fn(async (r: string[]) =>
     r.length ? r : ["wss://relay.test"],
   );
+  getNdkMock.mockReset();
+  getNdkMock.mockResolvedValue(createNdkStub() as any);
 });
 
 afterEach(() => {
@@ -124,6 +141,129 @@ describe.skip("sendDirectMessageUnified", () => {
     expect(res.event).toBeNull();
     expect(notifyError).toHaveBeenCalled();
     publishSuccess = true;
+  });
+});
+
+function createNdkStub(relays: Array<{ url: string; status: number }> = []) {
+  const listenerMap = new Map<string, Set<(...args: any[]) => void>>();
+  const addExplicitRelay = vi.fn();
+  const pool = {
+    relays: new Map(relays.map((r) => [r.url, r])),
+    on: vi.fn((event: string, cb: (...args: any[]) => void) => {
+      if (!listenerMap.has(event)) {
+        listenerMap.set(event, new Set());
+      }
+      listenerMap.get(event)!.add(cb);
+    }),
+    off: vi.fn((event: string, cb: (...args: any[]) => void) => {
+      listenerMap.get(event)?.delete(cb);
+    }),
+  };
+  return { addExplicitRelay, pool, listenerMap };
+}
+
+describe("ensureWriteConnectivity", () => {
+  it("returns existing open relays without waiting for events", async () => {
+    const stub = createNdkStub([
+      { url: "wss://relay.one/", status: 1 },
+      { url: "wss://relay.two/", status: 1 },
+    ]);
+    getNdkMock.mockResolvedValue(stub as any);
+
+    const result = await ensureWriteConnectivity(
+      ["wss://relay.one/", "wss://relay.two/", "wss://relay.one/"],
+      { minConnected: 2, timeoutMs: 50 },
+    );
+
+    expect(result.urlsTried).toEqual([
+      "wss://relay.one",
+      "wss://relay.two",
+      "wss://free.one",
+    ]);
+    expect(result.urlsConnected).toEqual([
+      "wss://relay.one",
+      "wss://relay.two",
+    ]);
+    expect(result.elapsedMs).toBeGreaterThanOrEqual(0);
+    expect(stub.pool.on).toHaveBeenCalledWith(
+      "relay:connect",
+      expect.any(Function),
+    );
+    expect(stub.pool.off).toHaveBeenCalledWith(
+      "relay:connect",
+      expect.any(Function),
+    );
+    expect(stub.addExplicitRelay).toHaveBeenCalledWith("wss://relay.one");
+    expect(stub.addExplicitRelay).toHaveBeenCalledWith("wss://relay.two");
+    expect(stub.addExplicitRelay).toHaveBeenCalledWith("wss://free.one");
+  });
+
+  it("waits for relay:connect events up to minConnected", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(0));
+    const stub = createNdkStub();
+    getNdkMock.mockResolvedValue(stub as any);
+
+    const promise = ensureWriteConnectivity(["ws://new-relay"], {
+      minConnected: 1,
+      timeoutMs: 1000,
+    });
+
+    const onConnect = Array.from(
+      stub.listenerMap.get("relay:connect") ?? [],
+    )[0] as (relay: { url: string }) => void;
+    expect(onConnect).toBeTypeOf("function");
+
+    vi.advanceTimersByTime(500);
+    vi.setSystemTime(new Date(500));
+    onConnect({ url: "wss://connected.one/" } as any);
+
+    const result = await promise;
+    expect(result.urlsConnected).toEqual(["wss://connected.one"]);
+    expect(result.urlsTried).toEqual(["wss://new-relay", "wss://free.one"]);
+    expect(result.elapsedMs).toBeGreaterThanOrEqual(500);
+
+    expect(stub.pool.off).toHaveBeenCalledWith("relay:connect", onConnect);
+    expect(stub.addExplicitRelay).toHaveBeenCalledWith("wss://new-relay");
+    expect(stub.addExplicitRelay).toHaveBeenCalledWith("wss://free.one");
+  });
+});
+
+describe("normalizeWsUrls", () => {
+  it("deduplicates and trims invalid relay URLs", () => {
+    const normalized = normalizeWsUrls([
+      " wss://relay.one/ ",
+      "wss://relay.one",
+      "ftp://ignored", // should be dropped
+      "wss://relay.two///",
+      "", // should be filtered out
+    ] as any);
+
+    expect(normalized).toEqual(["wss://relay.one", "wss://relay.two"]);
+  });
+});
+
+describe("publishWithTimeout", () => {
+  it("resolves when publish completes before timeout", async () => {
+    const ev = { publish: vi.fn(() => Promise.resolve()) } as any;
+    await expect(publishWithTimeout(ev, undefined, 10)).resolves.toBeUndefined();
+    expect(ev.publish).toHaveBeenCalled();
+  });
+
+  it("rejects with PublishTimeoutError when publish takes too long", async () => {
+    vi.useFakeTimers();
+    const ev = {
+      publish: vi.fn(
+        () =>
+          new Promise<void>(() => {
+            /* never resolves */
+          }),
+      ),
+    } as any;
+
+    const promise = publishWithTimeout(ev, undefined, 5);
+    await vi.advanceTimersByTimeAsync(6);
+    await expect(promise).rejects.toBeInstanceOf(PublishTimeoutError);
   });
 });
 

@@ -13,7 +13,7 @@ export const useWelcomeStore = defineStore('welcome', {
     nostrSetupCompleted: useLocalStorage('cashu.welcome.nostrSetupCompleted', false),
     mintConnected: useLocalStorage('cashu.welcome.mintConnected', false),
     featuresVisited: useLocalStorage('cashu.welcome.featuresVisited', {
-      creatorHub: false,
+      creatorStudio: false,
       subscriptions: false,
       buckets: false,
     }),
@@ -41,7 +41,7 @@ export const useWelcomeStore = defineStore('welcome', {
     closeWelcome() {
       this.showWelcome = false
       this.currentSlide = 0
-      this.featuresVisited = { creatorHub: false, subscriptions: false, buckets: false }
+      this.featuresVisited = { creatorStudio: false, subscriptions: false, buckets: false }
       this.welcomeCompleted = true
     },
   },

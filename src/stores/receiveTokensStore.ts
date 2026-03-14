@@ -111,14 +111,11 @@ export const useReceiveTokensStore = defineStore("receiveTokensStore", {
         await mintStore.addMint({ url: token.getMint(tokenJson) });
       }
       // redeem the token
-      try {
-        await walletStore.redeem(receiveStore.receiveData.tokensBase64);
-      } finally {
-        await cashuDb.lockedTokens
-          .where("tokenString")
-          .equals(receiveStore.receiveData.tokensBase64)
-          .delete();
-      }
+      await walletStore.redeem(receiveStore.receiveData.tokensBase64);
+      await cashuDb.lockedTokens
+        .where("tokenString")
+        .equals(receiveStore.receiveData.tokensBase64)
+        .delete();
       receiveStore.showReceiveTokens = false;
       uiStore.closeDialogs();
     },

@@ -19,7 +19,7 @@ import { useLockedTokensStore } from "./lockedTokens";
 import { useSignerStore } from "./signer";
 import { notifyApiError, notifyError } from "src/js/notify";
 import { cashuDb } from "./dexie";
-import { maybeRepublishNutzapProfile } from "./creatorHub";
+import { maybeRepublishNutzapProfile } from "src/nutzap/profileRepublish";
 
 /** Return `{ pub, priv }` where `pub` is SEC-compressed hex. */
 export function generateP2pkKeyPair(): { pub: string; priv: string } {
@@ -29,12 +29,28 @@ export function generateP2pkKeyPair(): { pub: string; priv: string } {
   return { pub: pubHex, priv: privHex };
 }
 
-type P2PKKey = {
+export type P2PKKey = {
   publicKey: string;
   privateKey: string;
   used: boolean;
   usedCount: number;
 };
+
+export type P2pkVerificationRecord = {
+  timestamp: number;
+  mint: string;
+};
+
+function normalizeVerificationKey(pubkey: string): string | null {
+  if (typeof pubkey !== "string" || !pubkey.trim()) {
+    return null;
+  }
+  try {
+    return ensureCompressed(pubkey).toLowerCase();
+  } catch {
+    return null;
+  }
+}
 
 //--------------------------------------------------------------------------
 // NEW  helper: buildTimedOutputs()
@@ -78,13 +94,17 @@ export async function buildTimedOutputs(
 
 export const useP2PKStore = defineStore("p2pk", {
   state: () => ({
-    p2pkKeys: useLocalStorage<P2PKKey[]>(LOCAL_STORAGE_KEYS.CASHU_P2PKKEYS, []),
+    p2pkKeys: [] as P2PKKey[],
     showP2PkButtonInDrawer: useLocalStorage<boolean>(
       LOCAL_STORAGE_KEYS.CASHU_P2PK_SHOWP2PKBUTTONINDRAWER,
       false,
     ),
     showP2PKDialog: false,
     showP2PKData: {} as P2PKKey,
+    verificationRecords: useLocalStorage<Record<string, P2pkVerificationRecord>>(
+      LOCAL_STORAGE_KEYS.CASHU_P2PK_VERIFICATIONS,
+      {},
+    ),
   }),
   getters: {
     firstKey: (state) => state.p2pkKeys[0] || null,
@@ -92,6 +112,39 @@ export const useP2PKStore = defineStore("p2pk", {
   actions: {
     haveThisKey: function (key: string) {
       return this.p2pkKeys.filter((m) => m.publicKey == key).length > 0;
+    },
+    getVerificationRecord: function (pubkey: string): P2pkVerificationRecord | null {
+      const normalized = normalizeVerificationKey(pubkey);
+      if (!normalized) {
+        return null;
+      }
+      const map = this.verificationRecords || {};
+      return map[normalized] || null;
+    },
+    recordVerification: function (pubkey: string, record: P2pkVerificationRecord) {
+      const normalized = normalizeVerificationKey(pubkey);
+      if (!normalized) {
+        return;
+      }
+      const mint = typeof record.mint === "string" ? record.mint.trim() : "";
+      const payload: P2pkVerificationRecord = {
+        timestamp: record.timestamp,
+        mint,
+      };
+      const next = {
+        ...(this.verificationRecords || {}),
+        [normalized]: payload,
+      } as Record<string, P2pkVerificationRecord>;
+      this.verificationRecords = next;
+    },
+    clearVerification: function (pubkey: string) {
+      const normalized = normalizeVerificationKey(pubkey);
+      if (!normalized || !this.verificationRecords?.[normalized]) {
+        return;
+      }
+      const next = { ...(this.verificationRecords as Record<string, P2pkVerificationRecord>) };
+      delete next[normalized];
+      this.verificationRecords = next;
     },
     isValidPubkey: function (key: string) {
       if (!key) return false;
@@ -428,7 +481,12 @@ export const useP2PKStore = defineStore("p2pk", {
         bucketId,
       });
     },
-    async sendToLock(amount: number, receiverPubkey: string, locktime: number) {
+    async sendToLock(
+      amount: number,
+      receiverPubkey: string,
+      locktime: number,
+      opts?: { htlcHash?: string },
+    ) {
       const mintStore = useMintsStore();
       const walletStore = useWalletStore();
       const wallet = walletStore.wallet;
@@ -458,12 +516,22 @@ export const useP2PKStore = defineStore("p2pk", {
       let sendProofs: any[] = [];
       const proofsStore = useProofsStore();
       try {
+        const supporterPubkey = this.firstKey?.publicKey
+          ? ensureCompressed(this.firstKey.publicKey)
+          : undefined;
         ({ keep: keepProofs, send: sendProofs } = await wallet.send(
           amount,
           proofsToSend,
           {
             keysetId,
-            p2pk: { pubkey: ensureCompressed(receiverPubkey), locktime },
+            p2pk: {
+              pubkey: ensureCompressed(receiverPubkey),
+              locktime,
+              ...(opts?.htlcHash ? { hashlock: opts.htlcHash } : {}),
+              ...(supporterPubkey
+                ? { cosigners: [supporterPubkey, ensureCompressed(receiverPubkey)], minSigners: 1 }
+                : {}),
+            },
           },
         ));
         await proofsStore.removeProofs(proofsToSend);

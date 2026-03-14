@@ -69,38 +69,61 @@ export class OutputData implements OutputDataLike {
 		return serializedProof;
 	}
 
-	static createP2PKData(
-		p2pk: { pubkey: string; locktime?: number; refundKeys?: Array<string> },
-		amount: number,
-		keyset: MintKeys,
-		customSplit?: Array<number>
-	) {
-		const amounts = splitAmount(amount, keyset.keys, customSplit);
-		return amounts.map((a) => this.createSingleP2PKData(p2pk, a, keyset.id));
-	}
+        static createP2PKData(
+                p2pk: {
+                        pubkey: string;
+                        locktime?: number;
+                        refundKeys?: Array<string>;
+                        hashlock?: string;
+                        cosigners?: Array<string>;
+                        minSigners?: number;
+                },
+                amount: number,
+                keyset: MintKeys,
+                customSplit?: Array<number>
+        ) {
+                const amounts = splitAmount(amount, keyset.keys, customSplit);
+                return amounts.map((a) => this.createSingleP2PKData(p2pk, a, keyset.id));
+        }
 
-	static createSingleP2PKData(
-		p2pk: { pubkey: string; locktime?: number; refundKeys?: Array<string> },
-		amount: number,
-		keysetId: string
-	) {
-		const newSecret: [string, { nonce: string; data: string; tags: Array<any> }] = [
-			'P2PK',
+        static createSingleP2PKData(
+                p2pk: {
+                        pubkey: string;
+                        locktime?: number;
+                        refundKeys?: Array<string>;
+                        hashlock?: string;
+                        cosigners?: Array<string>;
+                        minSigners?: number;
+                },
+                amount: number,
+                keysetId: string
+        ) {
+                const newSecret: [string, { nonce: string; data: string; tags: Array<any> }] = [
+                        'P2PK',
 			{
 				nonce: bytesToHex(randomBytes(32)),
 				data: p2pk.pubkey,
 				tags: []
 			}
-		];
-		if (p2pk.locktime) {
-			newSecret[1].tags.push(['locktime', p2pk.locktime]);
-		}
-		if (p2pk.refundKeys) {
-			newSecret[1].tags.push(['refund', ...p2pk.refundKeys]);
-		}
-		const parsed = JSON.stringify(newSecret);
-		const secretBytes = new TextEncoder().encode(parsed);
-		const { r, B_ } = blindMessage(secretBytes);
+                ];
+                if (p2pk.locktime) {
+                        newSecret[1].tags.push(['locktime', p2pk.locktime]);
+                }
+                if (p2pk.refundKeys) {
+                        newSecret[1].tags.push(['refund', ...p2pk.refundKeys]);
+                }
+                if (p2pk.hashlock) {
+                        newSecret[1].tags.push(['hashlock', p2pk.hashlock]);
+                }
+                if (p2pk.cosigners?.length) {
+                        newSecret[1].tags.push(['pubkeys', ...p2pk.cosigners]);
+                }
+                if (typeof p2pk.minSigners === 'number') {
+                        newSecret[1].tags.push(['n_sigs', p2pk.minSigners]);
+                }
+                const parsed = JSON.stringify(newSecret);
+                const secretBytes = new TextEncoder().encode(parsed);
+                const { r, B_ } = blindMessage(secretBytes);
 		return new OutputData(
 			new BlindedMessage(amount, B_, keysetId).getSerializedBlindedMessage(),
 			r,

@@ -5,7 +5,10 @@
 
       <!-- Message -->
       <q-card-section>
-        <p v-if="isLocked">
+        <p v-if="isWalletLocked">
+          Unlock to restore your Nostr identity, then click <b>Retry</b>.
+        </p>
+        <p v-else-if="isLocked">
           Please unlock your NIP‑07 signer extension and click <b>Retry</b>, or
           paste an <code>nsec</code> below.
         </p>
@@ -37,6 +40,12 @@
           label="Continue"
           @click="saveNsec"
         />
+        <q-btn
+          v-else-if="isWalletLocked"
+          color="primary"
+          label="Unlock"
+          @click="goToUnlock"
+        />
         <q-btn v-else color="primary" label="Retry" @click="retry" />
       </q-card-actions>
     </q-card>
@@ -46,16 +55,20 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useBootErrorStore } from "stores/bootError";
+import { useRouter, useRoute } from "vue-router";
 
 const errStore = useBootErrorStore();
 const show = computed(() => !!errStore.error);
 const reason = computed(() => errStore.error?.reason ?? "unknown");
 const isLocked = computed(() => reason.value === "nip07-locked");
+const isWalletLocked = computed(() => reason.value === "wallet-locked");
 const allowPaste = computed(
   () => isLocked.value || reason.value === "no-signer",
 );
 
 const nsec = ref("");
+const router = useRouter();
+const route = useRoute();
 
 function saveNsec() {
   if (!nsec.value.startsWith("nsec")) return;
@@ -67,6 +80,12 @@ function saveNsec() {
 function retry() {
   errStore.clear();
   location.reload();
+}
+
+function goToUnlock() {
+  errStore.clear();
+  const redirect = encodeURIComponent(route.fullPath);
+  router.replace({ path: "/unlock", query: { redirect } });
 }
 
 function closeDialog() {
