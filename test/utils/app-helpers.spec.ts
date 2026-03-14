@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { format } from "date-fns";
 
 vi.mock("@vueuse/core", () => ({
   useLocalStorage: vi.fn(),
@@ -104,7 +105,9 @@ describe("application helpers", () => {
 
       safeUseLocalStorage("legacyKey", {});
 
-      expect(localStorage.getItem("legacyKey")).toBe(JSON.stringify({ ok: true }));
+      expect(localStorage.getItem("legacyKey")).toBe(
+        JSON.stringify({ ok: true }),
+      );
       expect(warnSpy).not.toHaveBeenCalled();
       warnSpy.mockRestore();
     });
@@ -131,22 +134,16 @@ describe("application helpers", () => {
       expect(sanitizeRelayUrls(urls, 2)).toEqual(urls.slice(0, 2));
     });
 
-    it.each([[""], ["   "], ["	"]])(
-      "filters unsupported relay %s",
-      (bad) => {
-        expect(sanitizeRelayUrls([bad])).toEqual([]);
-      },
-    );
+    it.each([[""], ["   "], ["	"]])("filters unsupported relay %s", (bad) => {
+      expect(sanitizeRelayUrls([bad])).toEqual([]);
+    });
 
     it.each([
       ["ftp://bad", "wss://ftp://bad"],
       ["javascript:alert(1)", "wss://javascript:alert(1)"],
-    ])(
-      "coerces unknown protocols for %s",
-      (input, expected) => {
-        expect(sanitizeRelayUrls([input])).toEqual([expected]);
-      },
-    );
+    ])("coerces unknown protocols for %s", (input, expected) => {
+      expect(sanitizeRelayUrls([input])).toEqual([expected]);
+    });
   });
 
   describe("profile helpers", () => {
@@ -184,10 +181,16 @@ describe("application helpers", () => {
       };
       expect(displayNameFromProfile(meta, "npub12345")).toBe("Display");
       expect(
-        displayNameFromProfile({ display_name: "", name: "Alice" }, "npub12345"),
+        displayNameFromProfile(
+          { display_name: "", name: "Alice" },
+          "npub12345",
+        ),
       ).toBe("Alice");
       expect(
-        displayNameFromProfile({ name: "", nip05: "bob@example.com" }, "npubABCDE"),
+        displayNameFromProfile(
+          { name: "", nip05: "bob@example.com" },
+          "npubABCDE",
+        ),
       ).toBe("bob");
       expect(displayNameFromProfile({}, "npubWXYZ")).toBe("npubWXYZ");
       expect(displayNameFromProfile(undefined, undefined)).toBe("Unnamed User");
@@ -256,28 +259,29 @@ describe("application helpers", () => {
 
       expect(createObjectURL).toHaveBeenCalledTimes(1);
       const blob = createObjectURL.mock.calls[0][0] as Blob;
-      const header = 'name,npub,nip05,tier,frequency,status,amount_sat,next_renewal_iso,lifetime_sat,start_date_iso';
+      const header =
+        "name,npub,nip05,tier,frequency,status,amount_sat,next_renewal_iso,lifetime_sat,start_date_iso";
       const expectedRow = [
-        "\"Alice\"",
+        '"Alice"',
         "npub1",
         "alice@example.com",
-        "\"Tier\"",
+        '"Tier"',
         "monthly",
         "active",
         "1234",
         new Date(1_700_000_000 * 1000).toISOString(),
         "4321",
         new Date(1_699_000_000 * 1000).toISOString(),
-      ].join(',');
+      ].join(",");
       const expectedText = `${header}\n${expectedRow}`;
-      if (typeof blob.text === 'function') {
+      if (typeof blob.text === "function") {
         const text = await blob.text();
         expect(text).toBe(expectedText);
       } else {
         const expectedLength = new TextEncoder().encode(expectedText).length;
         expect(blob.size).toBe(expectedLength);
       }
-      expect(blob.type).toBe('text/csv;charset=utf-8;');
+      expect(blob.type).toBe("text/csv;charset=utf-8;");
       expect(clickSpy).toHaveBeenCalledTimes(1);
       expect(revokeObjectURL).toHaveBeenCalledWith("blob:csv");
     });
@@ -295,10 +299,7 @@ describe("application helpers", () => {
 
     it("saves receipts with decoded details", () => {
       tokenMock.decode.mockReturnValue({});
-      tokenMock.getProofs.mockReturnValue([
-        { amount: 10 },
-        { amount: 20 },
-      ]);
+      tokenMock.getProofs.mockReturnValue([{ amount: 10 }, { amount: 20 }]);
       tokenMock.getMint.mockReturnValue("https://mint");
 
       saveReceipt({
@@ -311,7 +312,9 @@ describe("application helpers", () => {
 
       expect(exportFileMock).toHaveBeenCalledTimes(1);
       const [name, payload] = exportFileMock.mock.calls[0];
-      expect(name).toBe("fundstr_sub-1_20240102-030405.json");
+      expect(name).toBe(
+        `fundstr_sub-1_${format(new Date(), "yyyyMMdd-HHmmss")}.json`,
+      );
       const parsed = JSON.parse(payload as string);
       expect(parsed).toEqual({
         rawToken: "encoded",
@@ -357,7 +360,11 @@ describe("application helpers", () => {
     it("formats timestamps and parses subscription payloads", () => {
       const ts = 1_700_000_000;
       const d = new Date(ts * 1000);
-      const expected = `${d.getFullYear()}-${("0" + (d.getMonth() + 1)).slice(-2)}-${"0" + d.getDate()}.slice(-2) ${("0" + d.getHours()).slice(-2)}:${("0" + d.getMinutes()).slice(-2)}`;
+      const expected = `${d.getFullYear()}-${("0" + (d.getMonth() + 1)).slice(
+        -2,
+      )}-${"0" + d.getDate()}.slice(-2) ${("0" + d.getHours()).slice(-2)}:${(
+        "0" + d.getMinutes()
+      ).slice(-2)}`;
       expect(formatTimestamp(ts)).toBe(expected);
 
       const payload = {
@@ -409,7 +416,9 @@ describe("application helpers", () => {
     });
 
     it("falls back to relay HEAD requests when pool fails", async () => {
-      const ndk = { pool: { now: vi.fn().mockRejectedValue(new Error("fail")) } } as any;
+      const ndk = {
+        pool: { now: vi.fn().mockRejectedValue(new Error("fail")) },
+      } as any;
       const date = new Date("2024-01-03T12:34:56Z");
       fetchMock.mockResolvedValue({
         headers: new Headers({ date: date.toUTCString() }),
@@ -417,7 +426,9 @@ describe("application helpers", () => {
 
       const result = await getTrustedTime(ndk, ["wss://relay.example"]);
 
-      expect(fetchMock).toHaveBeenCalledWith("https://relay.example", { method: "HEAD" });
+      expect(fetchMock).toHaveBeenCalledWith("https://relay.example", {
+        method: "HEAD",
+      });
       expect(result).toBe(date.getTime());
     });
 

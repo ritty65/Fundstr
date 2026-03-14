@@ -76,6 +76,7 @@ import { v4 as uuidv4 } from "uuid";
 import { useRouter } from "vue-router";
 import { useP2PKStore } from "./p2pk";
 import { watch, type Ref } from "vue";
+import { safeConnect } from "boot/ndk";
 import { fetchFundstrProfileBundle, useCreatorsStore } from "./creators";
 import { frequencyToDays } from "src/constants/subscriptionFrequency";
 import { useMessengerStore } from "./messenger";
@@ -97,6 +98,7 @@ import { publishNostrEvent } from "src/nutzap/relayPublishing";
 import { useFundstrRelayStatus } from "src/nutzap/relayClient";
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import { updateCreatorCache } from "@/lib/fundstrApi";
+import { parseNutzapProfileEvent } from "src/nutzap/profileCache";
 import {
   decryptData,
   deriveKey,
@@ -319,6 +321,8 @@ const SENSITIVE_STORAGE_KEYS = [
 const PENDING_PUBKEY_KEY = "cashu.ndk.pubkey.pending";
 const PENDING_SIGNER_TYPE_KEY = "cashu.ndk.signerType.pending";
 const PENDING_SIGNER_PUBLIC_KEY = "cashu.ndk.signerPubkey.pending";
+const PENDING_PRIVATEKEY_SIGNER_KEY =
+  "cashu.ndk.privateKeySignerPrivateKey.pending";
 const UNENCRYPTED_PUBKEY_KEY = "cashu.ndk.pubkey.fallback";
 
 function hasEncryptedSecrets(): boolean {
@@ -507,6 +511,10 @@ interface NutzapProfile {
   trustedMints: string[];
   relays?: string[];
   tierAddr?: string;
+  display_name?: string;
+  name?: string;
+  about?: string;
+  picture?: string;
 }
 
 interface NutzapProfileCacheRecord {
@@ -1051,49 +1059,12 @@ async function fetchNutzapProfileFromNetwork(
     return null;
   }
 
-  let parsedPayload: NutzapProfilePayload | null = null;
-  if (event.content) {
-    try {
-      const parsed = JSON.parse(event.content);
-      parsedPayload = NutzapProfileSchema.parse(parsed);
-    } catch (e) {
-      console.warn("Invalid Nutzap profile JSON", e);
-    }
-  }
-
-  const relaySet = new Set<string>();
-  const mintSet = new Set<string>();
-  let tierAddr: string | undefined = parsedPayload?.tierAddr;
-  let p2pkValue = parsedPayload?.p2pk ?? "";
-
-  if (Array.isArray(parsedPayload?.relays)) {
-    for (const relay of parsedPayload!.relays) {
-      if (typeof relay === "string" && relay) relaySet.add(relay);
-    }
-  }
-  if (Array.isArray(parsedPayload?.mints)) {
-    for (const mint of parsedPayload!.mints) {
-      if (typeof mint === "string" && mint) mintSet.add(mint);
-    }
-  }
-
-  for (const tag of event.tags || []) {
-    if (tag[0] === "mint" && typeof tag[1] === "string" && tag[1]) {
-      mintSet.add(tag[1]);
-    } else if (tag[0] === "relay" && typeof tag[1] === "string" && tag[1]) {
-      relaySet.add(tag[1]);
-    } else if (tag[0] === "a" && typeof tag[1] === "string" && tag[1]) {
-      if (!tierAddr) tierAddr = tag[1];
-    } else if (tag[0] === "pubkey" && typeof tag[1] === "string" && tag[1]) {
-      if (!p2pkValue) p2pkValue = tag[1];
-    }
-  }
-
-  if (!p2pkValue && !mintSet.size && !relaySet.size) {
+  const parsedDetails = parseNutzapProfileEvent(event);
+  if (!parsedDetails) {
     return null;
   }
 
-  let p2pkPubkey = p2pkValue;
+  let p2pkPubkey = parsedDetails.p2pkPubkey;
   if (p2pkPubkey.startsWith("npub")) {
     const hx = npubToHex(p2pkPubkey);
     if (hx) p2pkPubkey = hx;
@@ -1108,9 +1079,15 @@ async function fetchNutzapProfileFromNetwork(
   return {
     hexPub: hex,
     p2pkPubkey,
-    trustedMints: Array.from(mintSet),
-    relays: relaySet.size ? Array.from(relaySet) : undefined,
-    tierAddr,
+    trustedMints: Array.from(parsedDetails.trustedMints ?? []),
+    relays: parsedDetails.relays?.length
+      ? Array.from(parsedDetails.relays)
+      : undefined,
+    tierAddr: parsedDetails.tierAddr,
+    display_name: parsedDetails.display_name,
+    name: parsedDetails.name,
+    about: parsedDetails.about,
+    picture: parsedDetails.picture,
   };
 }
 
@@ -1166,6 +1143,10 @@ export async function publishNutzapProfile(opts: {
   mints: string[];
   relays?: string[];
   tierAddr?: string;
+  display_name?: string;
+  name?: string;
+  about?: string;
+  picture?: string;
 }) {
   const nostr = useNostrStore();
   if (!nostr.signer) {
@@ -1194,6 +1175,18 @@ export async function publishNutzapProfile(opts: {
   if (opts.tierAddr) {
     tags.push(["a", opts.tierAddr]);
   }
+  const displayName =
+    typeof opts.display_name === "string" && opts.display_name.trim()
+      ? opts.display_name.trim()
+      : typeof opts.name === "string" && opts.name.trim()
+      ? opts.name.trim()
+      : "";
+  if (displayName) {
+    tags.push(["name", displayName]);
+  }
+  if (typeof opts.picture === "string" && opts.picture.trim()) {
+    tags.push(["picture", opts.picture.trim()]);
+  }
 
   const body: NutzapProfilePayload = {
     p2pk: compressedP2pk,
@@ -1201,6 +1194,16 @@ export async function publishNutzapProfile(opts: {
   };
   if (relays.length) body.relays = relays;
   if (opts.tierAddr) body.tierAddr = opts.tierAddr;
+  if (displayName) {
+    body.display_name = displayName;
+    body.name = displayName;
+  }
+  if (typeof opts.about === "string" && opts.about.trim()) {
+    body.about = opts.about.trim();
+  }
+  if (typeof opts.picture === "string" && opts.picture.trim()) {
+    body.picture = opts.picture.trim();
+  }
 
   const ndk = await useNdk();
   if (!ndk) {
@@ -1503,6 +1506,9 @@ export const useNostrStore = defineStore("nostr", {
     const pendingPubkey = localStorage.getItem(PENDING_PUBKEY_KEY);
     const pendingSignerType = getPendingSignerType();
     const pendingSignerPubkey = localStorage.getItem(PENDING_SIGNER_PUBLIC_KEY);
+    const pendingPrivateKeySigner = localStorage.getItem(
+      PENDING_PRIVATEKEY_SIGNER_KEY,
+    );
     const fallbackPubkey = localStorage.getItem(UNENCRYPTED_PUBKEY_KEY);
     const fallbackIdentitySource = pendingPubkey
       ? "pending"
@@ -1523,7 +1529,7 @@ export const useNostrStore = defineStore("nostr", {
       nip07signer: {} as NDKNip07Signer,
       nip46Token: "",
       nip46signer: {} as NDKNip46Signer,
-      privateKeySignerPrivateKey: "",
+      privateKeySignerPrivateKey: pendingPrivateKeySigner ?? "",
       seedSignerPrivateKey: "",
       seedSignerPublicKey: "",
       seedSigner: {} as NDKPrivateKeySigner,
@@ -1749,12 +1755,24 @@ export const useNostrStore = defineStore("nostr", {
         pendingEntries.set("cashu.ndk.signerType", bufferedSignerType);
       }
 
+      const bufferedPrivateKeySigner = localStorage.getItem(
+        PENDING_PRIVATEKEY_SIGNER_KEY,
+      );
+      if (bufferedPrivateKeySigner) {
+        pendingEntries.set(
+          "cashu.ndk.privateKeySignerPrivateKey",
+          bufferedPrivateKeySigner,
+        );
+      }
+
       for (const [key, value] of pendingEntries.entries()) {
         const pendingKeys =
           key === "cashu.ndk.pubkey"
             ? [PENDING_PUBKEY_KEY, PENDING_SIGNER_PUBLIC_KEY]
             : key === "cashu.ndk.signerType"
             ? [PENDING_SIGNER_TYPE_KEY]
+            : key === "cashu.ndk.privateKeySignerPrivateKey"
+            ? [PENDING_PRIVATEKEY_SIGNER_KEY]
             : [];
         await this.secureSetItem(key, value, { pendingKeys });
       }
@@ -1780,6 +1798,7 @@ export const useNostrStore = defineStore("nostr", {
       localStorage.removeItem(PENDING_PUBKEY_KEY);
       localStorage.removeItem(PENDING_SIGNER_TYPE_KEY);
       localStorage.removeItem(PENDING_SIGNER_PUBLIC_KEY);
+      localStorage.removeItem(PENDING_PRIVATEKEY_SIGNER_KEY);
     },
     registerSecureWatchers() {
       if (this.secureWatchersRegistered) return;
@@ -1814,6 +1833,7 @@ export const useNostrStore = defineStore("nostr", {
         async (v) => {
           await this.secureSetItem("cashu.ndk.privateKeySignerPrivateKey", v, {
             bufferIfLocked: true,
+            pendingKeys: [PENDING_PRIVATEKEY_SIGNER_KEY],
           });
         },
       );
@@ -2191,19 +2211,27 @@ export const useNostrStore = defineStore("nostr", {
       const ndk = await rebuildNdk(this.relays, this.signer);
       ndk.explicitRelayUrls = this.relays;
 
-      // 3. connect every relay with a 6-second guard, but do not await ndk.connect() again
+      // 3. connect the pool using the same NDK bootstrap path the app uses elsewhere
       const relaysArr = Array.from(ndk.pool.relays.values());
       this.connectedRelays.clear();
-      const connectPromises = relaysArr.map((r) => connectWithTimeout(r, 6000));
+      const connectError = await safeConnect(ndk, 1);
+      for (const relay of relaysArr) {
+        if (relay?.connected && relay.url) {
+          this.connectedRelays.add(relay.url);
+        }
+      }
+      this.connected = this.connectedRelays.size > 0;
 
-      // wait for any to connect to reset backoff
       try {
-        await Promise.any(connectPromises);
-        this.lastError = null;
-        this.reconnectBackoffUntil = 0;
-        this.reconnectFailures = 0;
-        this.failedRelays = [];
-        this.connectionFailed = false;
+        if (this.connectedRelays.size > 0) {
+          this.lastError = null;
+          this.reconnectBackoffUntil = 0;
+          this.reconnectFailures = 0;
+          this.failedRelays = [];
+          this.connectionFailed = false;
+        } else {
+          throw connectError ?? new Error("No selected relay connected");
+        }
       } catch (e: any) {
         this.lastError = e?.message ?? String(e);
         this.reconnectFailures++;
@@ -2243,20 +2271,19 @@ export const useNostrStore = defineStore("nostr", {
       });
 
       // 5. track relay health – never throw
-      Promise.allSettled(connectPromises).then((res) =>
-        res.forEach((r, i) => {
-          const url = relaysArr[i].url;
-          if (r.status === "rejected") {
-            if (!this.failedRelays.includes(url)) {
-              this.failedRelays.push(url);
-              notifyWarning(`Relay ${url} unreachable`);
-            }
-          } else {
-            const idx = this.failedRelays.indexOf(url);
-            if (idx !== -1) this.failedRelays.splice(idx, 1);
-          }
-        }),
-      );
+      relaysArr.forEach((relay) => {
+        const url = relay?.url;
+        if (!url) return;
+        if (relay.connected) {
+          const idx = this.failedRelays.indexOf(url);
+          if (idx !== -1) this.failedRelays.splice(idx, 1);
+          return;
+        }
+        if (!this.failedRelays.includes(url)) {
+          this.failedRelays.push(url);
+          notifyWarning(`Relay ${url} unreachable`);
+        }
+      });
 
       return ndk;
     },
@@ -2431,13 +2458,11 @@ export const useNostrStore = defineStore("nostr", {
         delete (this.profiles as any)[previous];
       }
       if (this.pubkey) {
-        await this.getProfile(this.pubkey);
+        void this.getProfile(this.pubkey).catch((error) => {
+          console.error("Failed to warm profile after identity change", error);
+        });
       }
-      try {
-        useMessengerStore().start();
-      } catch (e) {
-        console.error(e);
-      }
+
       try {
         useWalletStore().$reset();
       } catch (e) {

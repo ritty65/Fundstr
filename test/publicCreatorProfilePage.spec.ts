@@ -11,9 +11,26 @@ const buildProfileUrl = vi.fn(() => "https://profile/url");
 vi.mock("components/SubscribeDialog.vue", () => ({
   default: defineComponent({
     name: "SubscribeDialog",
-    props: { modelValue: { type: Boolean, default: false }, tier: { type: Object, default: null } },
+    props: {
+      modelValue: { type: Boolean, default: false },
+      tier: { type: Object, default: null },
+    },
     emits: ["update:modelValue", "confirm"],
     template: `<div v-if="modelValue" class="subscribe-dialog"><slot /></div>`,
+  }),
+}));
+vi.mock("components/DonateDialog.vue", () => ({
+  default: defineComponent({
+    name: "DonateDialog",
+    props: { modelValue: { type: Boolean, default: false } },
+    emits: ["update:modelValue", "confirm"],
+    template: `<div v-if="modelValue" class="donate-dialog"><slot /></div>`,
+  }),
+}));
+vi.mock("components/SendTokenDialog.vue", () => ({
+  default: defineComponent({
+    name: "SendTokenDialog",
+    template: `<div class="send-token-dialog" />`,
   }),
 }));
 vi.mock("components/SetupRequiredDialog.vue", () => ({
@@ -25,17 +42,26 @@ vi.mock("components/SetupRequiredDialog.vue", () => ({
   }),
 }));
 vi.mock("components/SubscriptionReceipt.vue", () => ({
-  default: defineComponent({ name: "SubscriptionReceipt", template: `<div class="receipt" />` }),
+  default: defineComponent({
+    name: "SubscriptionReceipt",
+    template: `<div class="receipt" />`,
+  }),
 }));
 vi.mock("components/PaywalledContent.vue", () => ({
-  default: defineComponent({ name: "PaywalledContent", template: `<div class="paywalled"><slot /></div>` }),
+  default: defineComponent({
+    name: "PaywalledContent",
+    template: `<div class="paywalled"><slot /></div>`,
+  }),
 }));
 vi.mock("components/MediaPreview.vue", () => ({
-  default: defineComponent({ name: "MediaPreview", template: `<div class="media" />` }),
+  default: defineComponent({
+    name: "MediaPreview",
+    template: `<div class="media" />`,
+  }),
 }));
 
 vi.mock("src/utils/profileUrl", () => ({
-  buildProfileUrl: (...args: any[]) => buildProfileUrl(...args),
+  buildProfileUrl: (...args: any[]) => buildProfileUrl.apply(null, args),
 }));
 vi.mock("src/utils/sanitize-url", () => ({
   isTrustedUrl: () => true,
@@ -57,10 +83,22 @@ const nostrStore = {
   fetchFollowerCount: vi.fn().mockResolvedValue(5),
   fetchFollowingCount: vi.fn().mockResolvedValue(3),
 };
+const mintsStore = reactive({
+  activeMintUrl: "https://mint.example",
+  activeInfo: {
+    nuts: {
+      4: { methods: [], disabled: false },
+      10: { supported: true },
+      11: { supported: true },
+      14: { supported: true },
+    },
+  },
+});
 
 vi.mock("stores/creators", () => ({
   useCreatorsStore: () => creatorsStore,
-  fetchFundstrProfileBundle: (...args: any[]) => fetchFundstrProfileBundleMock(...args),
+  fetchFundstrProfileBundle: (...args: any[]) =>
+    fetchFundstrProfileBundleMock(...args),
 }));
 vi.mock("stores/price", () => ({
   usePriceStore: () => priceStore,
@@ -73,17 +111,28 @@ vi.mock("stores/welcome", () => ({
 }));
 vi.mock("stores/nostr", () => ({
   useNostrStore: () => nostrStore,
+  fetchNutzapProfile: vi.fn().mockResolvedValue(null),
 }));
-const translations: Record<string, string> = {
-  "CreatorHub.profile.retry": "Retry",
-  "CreatorHub.profile.tierLoadError": "Failed to load tiers – check relay connectivity.",
-  "CreatorHub.profile.tierRefreshError": "Failed to refresh tiers – check relay connectivity.",
-  "CreatorHub.profile.fallbackFailed": "Could not load creator. Please try again later.",
-  "CreatorHub.profile.fallbackActive": "Fundstr relay is slow, loading data from public relays…",
-  "CreatorHub.profile.fallbackRelaysLabel": "Attempting relays:",
-  "CreatorHub.profile.followers": "{count} followers",
-  "CreatorHub.profile.following": "{count} following",
-};
+vi.mock("stores/mints", () => ({
+  useMintsStore: () => mintsStore,
+}));
+const translations = vi.hoisted(
+  () =>
+    ({
+      "CreatorHub.profile.retry": "Retry",
+      "CreatorHub.profile.tierLoadError":
+        "Failed to load tiers – check relay connectivity.",
+      "CreatorHub.profile.tierRefreshError":
+        "Failed to refresh tiers – check relay connectivity.",
+      "CreatorHub.profile.fallbackFailed":
+        "Could not load creator. Please try again later.",
+      "CreatorHub.profile.fallbackActive":
+        "Fundstr relay is slow, loading data from public relays…",
+      "CreatorHub.profile.fallbackRelaysLabel": "Attempting relays:",
+      "CreatorHub.profile.followers": "{count} followers",
+      "CreatorHub.profile.following": "{count} following",
+    } as Record<string, string>),
+);
 
 function translate(key: string, params?: Record<string, unknown>): string {
   const template = translations[key];
@@ -99,7 +148,16 @@ function translate(key: string, params?: Record<string, unknown>): string {
 }
 
 vi.mock("vue-i18n", () => ({
-  useI18n: () => ({ t: (key: string, params?: Record<string, unknown>) => translate(key, params) }),
+  useI18n: () => ({
+    t: (key: string, params?: Record<string, unknown>) =>
+      translate(key, params),
+  }),
+  createI18n: () => ({
+    global: {
+      t: (key: string, params?: Record<string, unknown>) =>
+        translate(key, params),
+    },
+  }),
 }));
 
 import PublicCreatorProfilePage from "src/pages/PublicCreatorProfilePage.vue";
@@ -189,6 +247,15 @@ describe("PublicCreatorProfilePage", () => {
     priceStore.bitcoinPrice = 0;
     welcomeStore.welcomeCompleted = true;
     nostrStore.hasIdentity = true;
+    mintsStore.activeMintUrl = "https://mint.example";
+    mintsStore.activeInfo = {
+      nuts: {
+        4: { methods: [], disabled: false },
+        10: { supported: true },
+        11: { supported: true },
+        14: { supported: true },
+      },
+    };
     copy.mockClear();
     buildProfileUrl.mockReturnValue("https://profile/url");
   });
@@ -210,6 +277,7 @@ describe("PublicCreatorProfilePage", () => {
           QCard: SimpleStub("QCard"),
           QCardSection: SimpleStub("QCardSection"),
           QCardActions: SimpleStub("QCardActions"),
+          QIcon: SimpleStub("QIcon"),
           QExpansionItem: QExpansionItemStub,
           QTooltip: QTooltipStub,
           QSpinnerHourglass: QSpinnerStub,
@@ -224,10 +292,18 @@ describe("PublicCreatorProfilePage", () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
-        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+        {
+          path: "/creator/:npubOrHex",
+          name: "PublicCreatorProfile",
+          component: PublicCreatorProfilePage,
+        },
       ],
     });
-    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub }, query: { tierId: "tier-1" } });
+    router.push({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+      query: { tierId: "tier-1" },
+    });
     await router.isReady();
 
     const wrapper = mountPage(router);
@@ -247,10 +323,17 @@ describe("PublicCreatorProfilePage", () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
-        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+        {
+          path: "/creator/:npubOrHex",
+          name: "PublicCreatorProfile",
+          component: PublicCreatorProfilePage,
+        },
       ],
     });
-    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleHex } });
+    router.push({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleHex },
+    });
     await router.isReady();
 
     const wrapper = mountPage(router);
@@ -267,10 +350,17 @@ describe("PublicCreatorProfilePage", () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
-        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+        {
+          path: "/creator/:npubOrHex",
+          name: "PublicCreatorProfile",
+          component: PublicCreatorProfilePage,
+        },
       ],
     });
-    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub } });
+    router.push({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+    });
     await router.isReady();
 
     const wrapper = mountPage(router);
@@ -290,10 +380,17 @@ describe("PublicCreatorProfilePage", () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
-        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+        {
+          path: "/creator/:npubOrHex",
+          name: "PublicCreatorProfile",
+          component: PublicCreatorProfilePage,
+        },
       ],
     });
-    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub } });
+    router.push({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+    });
     await router.isReady();
 
     const wrapper = mountPage(router);
@@ -312,10 +409,17 @@ describe("PublicCreatorProfilePage", () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
-        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+        {
+          path: "/creator/:npubOrHex",
+          name: "PublicCreatorProfile",
+          component: PublicCreatorProfilePage,
+        },
       ],
     });
-    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub } });
+    router.push({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+    });
     await router.isReady();
 
     fetchCreatorMock.mockReset();
@@ -348,10 +452,17 @@ describe("PublicCreatorProfilePage", () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
-        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+        {
+          path: "/creator/:npubOrHex",
+          name: "PublicCreatorProfile",
+          component: PublicCreatorProfilePage,
+        },
       ],
     });
-    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub } });
+    router.push({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+    });
     await router.isReady();
 
     fetchCreatorMock.mockReset();
@@ -374,13 +485,22 @@ describe("PublicCreatorProfilePage", () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
-        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+        {
+          path: "/creator/:npubOrHex",
+          name: "PublicCreatorProfile",
+          component: PublicCreatorProfilePage,
+        },
       ],
     });
-    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub } });
+    router.push({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+    });
     await router.isReady();
 
-    fetchFundstrProfileBundleMock.mockRejectedValueOnce(new Error("bundle failed"));
+    fetchFundstrProfileBundleMock.mockRejectedValueOnce(
+      new Error("bundle failed"),
+    );
 
     const wrapper = mountPage(router);
     await flushPromises();
@@ -399,10 +519,17 @@ describe("PublicCreatorProfilePage", () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
-        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+        {
+          path: "/creator/:npubOrHex",
+          name: "PublicCreatorProfile",
+          component: PublicCreatorProfilePage,
+        },
       ],
     });
-    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: sampleNpub } });
+    router.push({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+    });
     await router.isReady();
 
     const wrapper = mountPage(router);
@@ -427,17 +554,112 @@ describe("PublicCreatorProfilePage", () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
-        { path: "/creator/:npubOrHex", name: "PublicCreatorProfile", component: PublicCreatorProfilePage },
+        {
+          path: "/creator/:npubOrHex",
+          name: "PublicCreatorProfile",
+          component: PublicCreatorProfilePage,
+        },
       ],
     });
-    router.push({ name: "PublicCreatorProfile", params: { npubOrHex: "invalid" } });
+    router.push({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: "invalid" },
+    });
     await router.isReady();
 
     const wrapper = mountPage(router);
     await flushPromises();
 
     const banners = wrapper.findAll(".q-banner");
-    expect(banners.some((b) => b.text().includes("We couldn't load this creator profile"))).toBe(true);
+    expect(
+      banners.some((b) =>
+        b.text().includes("We couldn't load this creator profile"),
+      ),
+    ).toBe(true);
     expect(fetchCreatorMock).not.toHaveBeenCalled();
+  });
+
+  it("shows support readiness when the active mint is creator-trusted and split-capable", async () => {
+    const sampleHex = "i".repeat(64);
+    const sampleNpub = nip19.npubEncode(sampleHex);
+    fetchFundstrProfileBundleMock.mockResolvedValueOnce({
+      profile: { display_name: "Creator" },
+      profileEvent: null,
+      followers: 5,
+      following: 3,
+      profileDetails: {
+        trustedMints: ["https://mint.example"],
+        relays: [],
+        p2pkPubkey: "p2pk",
+      },
+      relayHints: [],
+      fetchedFromFallback: false,
+    });
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: "/creator/:npubOrHex",
+          name: "PublicCreatorProfile",
+          component: PublicCreatorProfilePage,
+        },
+      ],
+    });
+    router.push({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+    });
+    await router.isReady();
+
+    const wrapper = mountPage(router);
+    await flushPromises();
+    await nextTick();
+
+    expect(wrapper.html()).toContain("Current mint is ready for support");
+    expect(wrapper.html()).toContain(
+      "creator-trusted and split-capable for flexible gifts and recurring tiers",
+    );
+  });
+
+  it("warns when the active mint is not on the creator trusted list", async () => {
+    const sampleHex = "j".repeat(64);
+    const sampleNpub = nip19.npubEncode(sampleHex);
+    fetchFundstrProfileBundleMock.mockResolvedValueOnce({
+      profile: { display_name: "Creator" },
+      profileEvent: null,
+      followers: 5,
+      following: 3,
+      profileDetails: {
+        trustedMints: ["https://creator-only.example"],
+        relays: [],
+        p2pkPubkey: "p2pk",
+      },
+      relayHints: [],
+      fetchedFromFallback: false,
+    });
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: "/creator/:npubOrHex",
+          name: "PublicCreatorProfile",
+          component: PublicCreatorProfilePage,
+        },
+      ],
+    });
+    router.push({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+    });
+    await router.isReady();
+
+    const wrapper = mountPage(router);
+    await flushPromises();
+    await nextTick();
+
+    expect(wrapper.html()).toContain("Switch to a creator-trusted mint");
+    expect(wrapper.html()).toContain(
+      "Switch to a creator-trusted mint before subscribing.",
+    );
   });
 });

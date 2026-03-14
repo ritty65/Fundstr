@@ -1,9 +1,11 @@
 import type NDK from "@nostr-dev-kit/ndk";
 import type { NDKSigner } from "@nostr-dev-kit/ndk";
 import {
+  adoptNdkInstance,
   createNdk,
   createSignedNdk,
   type CreateReadOnlyOptions,
+  resetNdkInstance,
   setFundstrOnlyRuntimeOverride,
   rebuildNdk as bootRebuildNdk,
 } from "boot/ndk";
@@ -12,13 +14,36 @@ import { NetworkError } from "src/types/errors";
 
 let cached: NDK | undefined;
 let cachedMode: "default" | "fundstr-only" = "default";
+let cachedIdentityKey = "unsigned";
+
+function resolveIdentityKey(nostr = useNostrStore()): string {
+  if (!nostr.signer || !nostr.pubkey) {
+    return "unsigned";
+  }
+
+  return `${nostr.signerType || "unknown"}:${nostr.pubkey}`;
+}
+
+async function clearCachedNdk() {
+  cached = undefined;
+  cachedMode = "default";
+  cachedIdentityKey = "unsigned";
+  resetNdkInstance();
+}
+
+function adoptCachedNdk(ndk: NDK, mode: "default" | "fundstr-only") {
+  cached = adoptNdkInstance(ndk);
+  cachedMode = mode;
+  cachedIdentityKey =
+    mode === "fundstr-only" ? "fundstr-only" : resolveIdentityKey();
+  return cached;
+}
 
 /** Force-rebuild the cached NDK with a new relay set (and optional signer). */
 export async function rebuildNdk(relays: string[], signer?: NDKSigner) {
-  cached = await bootRebuildNdk(relays, signer);
-  cachedMode = "default";
+  const ndk = await bootRebuildNdk(relays, signer);
   setFundstrOnlyRuntimeOverride(false);
-  return cached;
+  return adoptCachedNdk(ndk, "default");
 }
 
 export async function useNdk(
@@ -30,8 +55,8 @@ export async function useNdk(
     opts.fundstrOnly === true
       ? "fundstr-only"
       : opts.fundstrOnly === false
-        ? "default"
-        : undefined;
+      ? "default"
+      : undefined;
   let targetMode: "default" | "fundstr-only";
   if (requestedMode) {
     targetMode = requestedMode;
@@ -42,15 +67,22 @@ export async function useNdk(
   }
 
   if (cached && cachedMode !== targetMode) {
-    cached = undefined;
+    await clearCachedNdk();
+  }
+
+  if (
+    cached &&
+    targetMode === "default" &&
+    cachedIdentityKey !== resolveIdentityKey(nostr)
+  ) {
+    await clearCachedNdk();
   }
 
   if (!cached) {
     if (targetMode === "fundstr-only") {
       setFundstrOnlyRuntimeOverride(true);
       try {
-        cached = await createNdk({ fundstrOnly: true });
-        cachedMode = "fundstr-only";
+        adoptCachedNdk(await createNdk({ fundstrOnly: true }), "fundstr-only");
       } catch (err) {
         throw new NetworkError(
           "Unable to reach fundstr-only relays. Please retry after confirming connectivity.",
@@ -61,8 +93,7 @@ export async function useNdk(
     } else {
       setFundstrOnlyRuntimeOverride(false);
       try {
-        cached = await createNdk();
-        cachedMode = "default";
+        adoptCachedNdk(await createNdk(), "default");
       } catch (err) {
         throw new NetworkError(
           "Nostr relays are unreachable right now. We'll keep retrying in the background.",
@@ -79,11 +110,10 @@ export async function useNdk(
     return cached as NDK;
   }
 
-  if (requireSigner && !cached.signer && nostr.signer) {
+  if (requireSigner && cached && !cached.signer && nostr.signer) {
     setFundstrOnlyRuntimeOverride(false);
     try {
-      cached = await createSignedNdk(nostr.signer as any);
-      cachedMode = "default";
+      adoptCachedNdk(await createSignedNdk(nostr.signer as any), "default");
     } catch (err) {
       throw new NetworkError(
         "Unable to attach signer to Nostr client. Please ensure your signer is available and try again.",

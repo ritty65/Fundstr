@@ -1,5 +1,16 @@
 import { vi } from "vitest";
-import { SimpleStub, QBtnStub, QBannerStub, QTabsStub, QTabStub, QTabPanelsStub, QTabPanelStub, QExpansionItemStub, QDialogStub, QSkeletonStub } from "./quasarStubs";
+import {
+  SimpleStub,
+  QBtnStub,
+  QBannerStub,
+  QTabsStub,
+  QTabStub,
+  QTabPanelsStub,
+  QTabPanelStub,
+  QExpansionItemStub,
+  QDialogStub,
+  QSkeletonStub,
+} from "./quasarStubs";
 
 const signerType = {
   NIP07: "nip07",
@@ -461,7 +472,12 @@ vi.mock("lucide-vue-next", async () => {
         target[prop] = defineComponent({
           name: `${String(prop)}Stub`,
           setup(_, { attrs }) {
-            return () => h("span", { class: "icon-stub", "data-icon": String(prop), ...attrs });
+            return () =>
+              h("span", {
+                class: "icon-stub",
+                "data-icon": String(prop),
+                ...attrs,
+              });
           },
         });
       }
@@ -475,6 +491,7 @@ vi.mock("lucide-vue-next", async () => {
 
 vi.mock("quasar", async () => {
   const { defineComponent, h } = await import("vue");
+  const cookieStore = new Map<string, string>();
   return {
     TouchSwipe: {},
     useQuasar: () => ({
@@ -482,11 +499,27 @@ vi.mock("quasar", async () => {
       screen: { gt: { xs: true }, lt: { md: false } },
     }),
     date: { formatDate: vi.fn((value: any) => value) },
-    QPage: SimpleStub('QPage'),
+    LocalStorage: {
+      getItem: vi.fn((key: string) => window.localStorage.getItem(key)),
+      set: vi.fn((key: string, value: string) =>
+        window.localStorage.setItem(key, value),
+      ),
+      remove: vi.fn((key: string) => window.localStorage.removeItem(key)),
+    },
+    Cookies: {
+      get: vi.fn((key: string) => cookieStore.get(key)),
+      set: vi.fn((key: string, value: string) => {
+        cookieStore.set(key, value);
+      }),
+      remove: vi.fn((key: string) => {
+        cookieStore.delete(key);
+      }),
+    },
+    QPage: SimpleStub("QPage"),
     QBanner: QBannerStub,
     QBtn: QBtnStub,
-    QSpinner: SimpleStub('QSpinner'),
-    QSpace: SimpleStub('QSpace'),
+    QSpinner: SimpleStub("QSpinner"),
+    QSpace: SimpleStub("QSpace"),
     QDialog: QDialogStub,
     QTabs: QTabsStub,
     QTab: QTabStub,
@@ -494,13 +527,14 @@ vi.mock("quasar", async () => {
     QTabPanel: QTabPanelStub,
     QExpansionItem: QExpansionItemStub,
     QSkeleton: QSkeletonStub,
-    QIcon: SimpleStub('QIcon'),
-    QCard: SimpleStub('QCard'),
-    QCardSection: SimpleStub('QCardSection'),
-    QSeparator: SimpleStub('QSeparator'),
-    QTooltip: SimpleStub('QTooltip'),
-    QItem: SimpleStub('QItem'),
-    QItemSection: SimpleStub('QItemSection'),
+    QIcon: SimpleStub("QIcon"),
+    QCard: SimpleStub("QCard"),
+    QCardSection: SimpleStub("QCardSection"),
+    QChip: SimpleStub("QChip"),
+    QSeparator: SimpleStub("QSeparator"),
+    QTooltip: SimpleStub("QTooltip"),
+    QItem: SimpleStub("QItem"),
+    QItemSection: SimpleStub("QItemSection"),
   };
 });
 

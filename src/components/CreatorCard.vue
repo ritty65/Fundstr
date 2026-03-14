@@ -2,13 +2,20 @@
   <div class="creator-card bg-surface-2 text-1">
     <div class="profile-header">
       <div class="avatar-wrapper">
-        <img class="avatar" :src="avatarSrc" :alt="displayName" @error="onAvatarError" />
+        <img
+          class="avatar"
+          :src="avatarSrc"
+          :alt="displayName"
+          @error="onAvatarError"
+        />
       </div>
       <div class="info">
         <div class="name-row">
           <h3 class="text-h6 text-weight-medium q-mb-xs">{{ displayName }}</h3>
           <div v-if="isFeatured" class="badge-row">
-            <q-badge color="accent" class="badge badge-featured">Featured</q-badge>
+            <q-badge color="accent" class="badge badge-featured"
+              >Featured</q-badge
+            >
           </div>
         </div>
         <div v-if="statusChips.length" class="status-chip-row" role="list">
@@ -32,7 +39,9 @@
               <span class="meta-label">Npub</span>
               <span class="meta-value" :title="npubFull">
                 {{ npubShort }}
-                <q-tooltip v-if="npubFull" class="tooltip">{{ npubFull }}</q-tooltip>
+                <q-tooltip v-if="npubFull" class="tooltip">{{
+                  npubFull
+                }}</q-tooltip>
               </span>
             </div>
           </div>
@@ -53,7 +62,9 @@
               <div class="about-preview">
                 <span class="about-text" :title="aboutFull">
                   {{ aboutPreview }}
-                  <q-tooltip v-if="aboutFull" class="tooltip">{{ aboutFull }}</q-tooltip>
+                  <q-tooltip v-if="aboutFull" class="tooltip">{{
+                    aboutFull
+                  }}</q-tooltip>
                 </span>
                 <q-btn
                   flat
@@ -67,7 +78,10 @@
               </div>
             </div>
           </div>
-          <div v-if="tierSummaryText || followers !== null" class="meta-chip-row text-2">
+          <div
+            v-if="tierSummaryText || followers !== null"
+            class="meta-chip-row text-2"
+          >
             <span v-if="tierSummaryText" class="meta-chip">
               <q-icon name="sell" size="14px" class="meta-chip-icon" />
               {{ tierSummaryText }}
@@ -86,71 +100,86 @@
         <q-btn
           color="accent"
           unelevated
-          class="action-btn"
-          label="View subscription tiers"
+          class="action-btn action-btn--primary"
+          :label="hasTiers ? 'View subscription tiers' : 'View profile'"
           no-caps
           :disable="!canViewProfile"
-          @click.stop="$emit('view-tiers', { pubkey: profile.pubkey, initialTab: 'tiers' })"
+          @click.stop="handlePrimaryAction"
         />
-        <div v-if="!canViewProfile" class="action-helper text-2">Profile key unavailable</div>
+        <div class="action-helper text-2">
+          {{
+            hasTiers
+              ? "Open the creator page and browse tiers."
+              : "Open the full creator page."
+          }}
+        </div>
+        <div v-if="!canViewProfile" class="action-helper text-2">
+          Profile key unavailable
+        </div>
       </div>
-      <div class="action-group">
+
+      <div class="secondary-actions">
         <q-btn
+          v-if="hasTiers"
           flat
           color="accent"
-          class="action-btn tertiary-btn"
+          class="action-btn action-btn--secondary"
           label="View profile"
           no-caps
           :disable="!canViewProfile"
-          @click.stop="$emit('view-profile', { pubkey: profile.pubkey, initialTab: 'profile' })"
+          @click.stop="
+            $emit('view-profile', {
+              pubkey: profile.pubkey,
+              initialTab: 'profile',
+            })
+          "
         />
-        <div v-if="!canViewProfile" class="action-helper text-2">Profile key unavailable</div>
+        <q-btn
+          color="accent"
+          outline
+          class="action-btn action-btn--secondary"
+          label="Message"
+          no-caps
+          @click.stop="$emit('message', profile.pubkey)"
+        />
+        <q-btn
+          outline
+          color="accent"
+          class="action-btn action-btn--secondary"
+          label="Donate"
+          no-caps
+          v-if="hasLightning"
+          @click.stop="$emit('donate', profile.pubkey)"
+        />
       </div>
-      <q-btn
-        color="accent"
-        outline
-        class="action-btn"
-        label="Message"
-        no-caps
-        @click.stop="$emit('message', profile.pubkey)"
-      />
-      <q-btn
-        outline
-        color="accent"
-        class="action-btn"
-        label="Donate"
-        no-caps
-        v-if="hasLightning"
-        @click.stop="$emit('donate', profile.pubkey)"
-      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { nip19 } from 'nostr-tools';
-import type { Creator } from 'src/lib/fundstrApi';
-import { formatMsatToSats } from 'src/lib/fundstrApi';
-import { DONATION_FALLBACK_LOOKUP } from 'src/config/donation-eligibility';
+import { computed } from "vue";
+import { nip19 } from "nostr-tools";
+import type { Creator } from "src/lib/fundstrApi";
+import { formatMsatToSats } from "src/lib/fundstrApi";
+import { DONATION_FALLBACK_LOOKUP } from "src/config/donation-eligibility";
 import {
   creatorHasVerifiedNip05,
   creatorIsFundstrCreator,
   creatorIsSignalOnly,
-} from 'stores/creators';
+} from "stores/creators";
 import {
   displayNameFromProfile,
   normalizeMeta,
   safeImageSrc,
   shortenNpub,
   type ProfileMeta,
-} from 'src/utils/profile';
+} from "src/utils/profile";
 
 interface StatusChip {
   key: string;
   label: string;
   icon?: string;
-  variant?: 'accent' | 'muted' | 'neutral' | 'success' | 'warning';
+  variant?: "accent" | "muted" | "neutral" | "success" | "warning";
   ariaLabel: string;
 }
 
@@ -176,7 +205,7 @@ const props = withDefaults(
   },
 );
 
-const emit = defineEmits(['view-tiers', 'view-profile', 'message', 'donate']);
+const emit = defineEmits(["view-tiers", "view-profile", "message", "donate"]);
 
 const meta = computed<ProfileMeta>(() => {
   const profileMeta = normalizeMeta((props.profile?.profile as any) ?? {});
@@ -191,12 +220,16 @@ const meta = computed<ProfileMeta>(() => {
   return { ...profileMeta, ...extraMeta, ...directMeta };
 });
 
-const profileRecord = computed(() => (props.profile?.profile ?? {}) as Record<string, unknown>);
-const metaRecord = computed(() => (meta.value ?? {}) as Record<string, unknown>);
+const profileRecord = computed(
+  () => (props.profile?.profile ?? {}) as Record<string, unknown>,
+);
+const metaRecord = computed(
+  () => (meta.value ?? {}) as Record<string, unknown>,
+);
 
 const npub = computed(() => {
-  const pubkey = props.profile?.pubkey ?? '';
-  if (!pubkey) return '';
+  const pubkey = props.profile?.pubkey ?? "";
+  if (!pubkey) return "";
   try {
     return nip19.npubEncode(pubkey);
   } catch {
@@ -204,42 +237,60 @@ const npub = computed(() => {
   }
 });
 
-const npubShort = computed(() => shortenNpub(npub.value || props.profile?.pubkey || ''));
+const npubShort = computed(() =>
+  shortenNpub(npub.value || props.profile?.pubkey || ""),
+);
 
-const npubFull = computed(() => npub.value || props.profile?.pubkey || '');
+const npubFull = computed(() => npub.value || props.profile?.pubkey || "");
 
-const displayName = computed(() => displayNameFromProfile(meta.value, npub.value));
+const displayName = computed(() =>
+  displayNameFromProfile(meta.value, npub.value),
+);
 
-const avatarSrc = computed(() => safeImageSrc(meta.value?.picture, displayName.value, 96));
+const avatarSrc = computed(() =>
+  safeImageSrc(meta.value?.picture, displayName.value, 96),
+);
 
 const canViewProfile = computed(() => {
-  if (typeof props.profile?.pubkey !== 'string') return false;
+  if (typeof props.profile?.pubkey !== "string") return false;
   return props.profile.pubkey.trim().length > 0;
 });
 
 function onAvatarError(event: Event) {
-  (event.target as HTMLImageElement).src = safeImageSrc(null, displayName.value, 96);
+  (event.target as HTMLImageElement).src = safeImageSrc(
+    null,
+    displayName.value,
+    96,
+  );
 }
 
-const nip05 = computed(() => props.nip05 ?? meta.value.nip05 ?? '');
-const nip05Verified = computed(() => creatorHasVerifiedNip05(props.profile as any));
+const nip05 = computed(() => props.nip05 ?? meta.value.nip05 ?? "");
+const nip05Verified = computed(() =>
+  creatorHasVerifiedNip05(props.profile as any),
+);
 
-const isFundstrCreator = computed(() => creatorIsFundstrCreator(props.profile as any));
+const isFundstrCreator = computed(() =>
+  creatorIsFundstrCreator(props.profile as any),
+);
 
-const isSignalOnlyProfile = computed(() => creatorIsSignalOnly(props.profile as any));
+const isSignalOnlyProfile = computed(() =>
+  creatorIsSignalOnly(props.profile as any),
+);
 
-const aboutPreview = computed(() => (typeof meta.value.about === 'string' ? meta.value.about.trim() : ''));
+const aboutPreview = computed(() =>
+  typeof meta.value.about === "string" ? meta.value.about.trim() : "",
+);
 
 const aboutFull = computed(() => aboutPreview.value);
 
 const tierSummaryText = computed(() => {
   const s = props.profile.tierSummary;
-  if (!s || typeof s.count !== 'number') return '';
-  const parts = [`${s.count} ${s.count === 1 ? 'tier' : 'tiers'}`];
+  if (!s || typeof s.count !== "number") return "";
+  const parts = [`${s.count} ${s.count === 1 ? "tier" : "tiers"}`];
   if (s.cheapestPriceMsat != null) {
     parts.push(`from ${formatMsatToSats(s.cheapestPriceMsat)} sats`);
   }
-  return parts.join(' · ');
+  return parts.join(" · ");
 });
 
 const followers = computed(() => props.profile.followers ?? null);
@@ -250,7 +301,11 @@ const inferredHasTiers = computed(() => {
   }
 
   const tierSummary = props.profile?.tierSummary;
-  if (tierSummary && typeof tierSummary.count === 'number' && tierSummary.count > 0) {
+  if (
+    tierSummary &&
+    typeof tierSummary.count === "number" &&
+    tierSummary.count > 0
+  ) {
     return true;
   }
 
@@ -258,24 +313,27 @@ const inferredHasTiers = computed(() => {
 });
 
 const hasTiers = computed(() => {
-  if (typeof props.hasTiers === 'boolean') {
+  if (typeof props.hasTiers === "boolean") {
     return props.hasTiers;
   }
   return inferredHasTiers.value;
 });
 
 const inferredHasLightning = computed(() => {
-  if (props.profile.hasLightning !== undefined && props.profile.hasLightning !== null) {
+  if (
+    props.profile.hasLightning !== undefined &&
+    props.profile.hasLightning !== null
+  ) {
     return Boolean(props.profile.hasLightning);
   }
   const metaRecord = meta.value as Record<string, unknown>;
 
   const hasExplicitLightning = [
-    metaRecord['lud16'],
-    metaRecord['lud06'],
-    profileRecord.value['lud16'],
-    profileRecord.value['lud06'],
-  ].some((value) => typeof value === 'string' && value.trim().length > 0);
+    metaRecord["lud16"],
+    metaRecord["lud06"],
+    profileRecord.value["lud16"],
+    profileRecord.value["lud06"],
+  ].some((value) => typeof value === "string" && value.trim().length > 0);
   if (hasExplicitLightning) {
     return true;
   }
@@ -283,12 +341,15 @@ const inferredHasLightning = computed(() => {
   const normalizeBoolean = (value: unknown) => {
     if (value === true) return true;
     if (value === false) return false;
-    if (typeof value === 'string') {
+    if (typeof value === "string") {
       const normalized = value.trim().toLowerCase();
-      if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
-      return normalized === 'true' || normalized === '1' || normalized === 'yes';
+      if (normalized === "false" || normalized === "0" || normalized === "no")
+        return false;
+      return (
+        normalized === "true" || normalized === "1" || normalized === "yes"
+      );
     }
-    if (typeof value === 'number') {
+    if (typeof value === "number") {
       if (value === 0) return false;
       return value === 1;
     }
@@ -296,9 +357,11 @@ const inferredHasLightning = computed(() => {
   };
 
   const hasNutzapSignal = [
-    profileRecord.value['has_nutzap'],
-    metaRecord['has_nutzap'],
-    (props.profile as Record<string, unknown> | null | undefined)?.['has_nutzap'],
+    profileRecord.value["has_nutzap"],
+    metaRecord["has_nutzap"],
+    (props.profile as Record<string, unknown> | null | undefined)?.[
+      "has_nutzap"
+    ],
   ].some((value) => normalizeBoolean(value));
   if (hasNutzapSignal) {
     return true;
@@ -309,29 +372,33 @@ const inferredHasLightning = computed(() => {
   }
 
   const normalizedCandidates = [
-    typeof props.profile?.pubkey === 'string' ? props.profile.pubkey.trim().toLowerCase() : '',
-    npub.value ? npub.value.trim().toLowerCase() : '',
+    typeof props.profile?.pubkey === "string"
+      ? props.profile.pubkey.trim().toLowerCase()
+      : "",
+    npub.value ? npub.value.trim().toLowerCase() : "",
   ].filter(Boolean);
 
-  return normalizedCandidates.some((candidate) => DONATION_FALLBACK_LOOKUP.has(candidate));
+  return normalizedCandidates.some((candidate) =>
+    DONATION_FALLBACK_LOOKUP.has(candidate),
+  );
 });
 
 const hasLightning = computed(() => {
-  if (typeof props.hasLightning === 'boolean') {
+  if (typeof props.hasLightning === "boolean") {
     return props.hasLightning;
   }
   return inferredHasLightning.value;
 });
 
 const isCached = computed(() => {
-  if (typeof props.cacheHit === 'boolean') {
+  if (typeof props.cacheHit === "boolean") {
     return props.cacheHit;
   }
   return Boolean(props.profile.cacheHit);
 });
 
 const isFeatured = computed(() => {
-  if (typeof props.featured === 'boolean') {
+  if (typeof props.featured === "boolean") {
     return props.featured;
   }
   return Boolean(props.profile.featured);
@@ -340,12 +407,13 @@ const isFeatured = computed(() => {
 const normalizeBooleanFlag = (value: unknown): boolean | null => {
   if (value === true) return true;
   if (value === false) return false;
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
-    if (['true', '1', 'yes', 'creator', 'personal'].includes(normalized)) return true;
-    if (['false', '0', 'no'].includes(normalized)) return false;
+    if (["true", "1", "yes", "creator", "personal"].includes(normalized))
+      return true;
+    if (["false", "0", "no"].includes(normalized)) return false;
   }
-  if (typeof value === 'number') {
+  if (typeof value === "number") {
     if (value === 1) return true;
     if (value === 0) return false;
   }
@@ -357,10 +425,14 @@ const isCreator = computed(() => {
   if (fromProp !== null) return fromProp;
 
   const candidates = [
-    (props.profile as Record<string, unknown> | null | undefined)?.['isCreator'],
-    (props.profile as Record<string, unknown> | null | undefined)?.['is_creator'],
-    profileRecord.value['isCreator'],
-    profileRecord.value['is_creator'],
+    (props.profile as Record<string, unknown> | null | undefined)?.[
+      "isCreator"
+    ],
+    (props.profile as Record<string, unknown> | null | undefined)?.[
+      "is_creator"
+    ],
+    profileRecord.value["isCreator"],
+    profileRecord.value["is_creator"],
   ];
 
   for (const candidate of candidates) {
@@ -376,10 +448,14 @@ const isPersonal = computed(() => {
   if (fromProp !== null) return fromProp;
 
   const candidates = [
-    (props.profile as Record<string, unknown> | null | undefined)?.['isPersonal'],
-    (props.profile as Record<string, unknown> | null | undefined)?.['is_personal'],
-    profileRecord.value['isPersonal'],
-    profileRecord.value['is_personal'],
+    (props.profile as Record<string, unknown> | null | undefined)?.[
+      "isPersonal"
+    ],
+    (props.profile as Record<string, unknown> | null | undefined)?.[
+      "is_personal"
+    ],
+    profileRecord.value["isPersonal"],
+    profileRecord.value["is_personal"],
   ];
 
   for (const candidate of candidates) {
@@ -391,9 +467,9 @@ const isPersonal = computed(() => {
 });
 
 const accountTypeLabel = computed(() => {
-  if (isCreator.value) return 'Creator';
-  if (isPersonal.value) return 'Personal';
-  return '';
+  if (isCreator.value) return "Creator";
+  if (isPersonal.value) return "Personal";
+  return "";
 });
 
 const statusChips = computed<StatusChip[]>(() => {
@@ -401,71 +477,71 @@ const statusChips = computed<StatusChip[]>(() => {
 
   if (accountTypeLabel.value) {
     chips.push({
-      key: 'account-type',
+      key: "account-type",
       label: accountTypeLabel.value,
-      icon: 'verified_user',
-      variant: 'accent',
+      icon: "verified_user",
+      variant: "accent",
       ariaLabel: `Account type: ${accountTypeLabel.value}`,
     });
   }
 
   if (isFundstrCreator.value) {
     chips.push({
-      key: 'fundstr-creator',
-      label: 'Fundstr creator',
-      icon: 'workspace_premium',
-      variant: 'accent',
-      ariaLabel: 'Fundstr creator profile',
+      key: "fundstr-creator",
+      label: "Fundstr creator",
+      icon: "workspace_premium",
+      variant: "accent",
+      ariaLabel: "Fundstr creator profile",
     });
   }
 
   if (isSignalOnlyProfile.value) {
     chips.push({
-      key: 'signal-only',
-      label: 'Signal only',
-      icon: 'sensors',
-      variant: 'warning',
-      ariaLabel: 'Signal-only profile',
+      key: "signal-only",
+      label: "Signal only",
+      icon: "sensors",
+      variant: "warning",
+      ariaLabel: "Signal-only profile",
     });
   }
 
   if (hasLightning.value) {
     chips.push({
-      key: 'lightning',
-      label: 'Lightning',
-      icon: 'bolt',
-      variant: 'accent',
-      ariaLabel: 'Lightning ready profile',
+      key: "lightning",
+      label: "Lightning",
+      icon: "bolt",
+      variant: "accent",
+      ariaLabel: "Lightning ready profile",
     });
   }
 
   if (hasTiers.value) {
     chips.push({
-      key: 'tiers',
-      label: 'Has tiers',
-      icon: 'sell',
-      variant: 'accent',
-      ariaLabel: 'Subscription tiers available',
+      key: "tiers",
+      label: "Has tiers",
+      icon: "sell",
+      variant: "accent",
+      ariaLabel: "Subscription tiers available",
     });
   }
 
   if (nip05Verified.value) {
     chips.push({
-      key: 'nip05-verified',
-      label: 'NIP-05 verified',
-      icon: 'verified',
-      variant: 'success',
-      ariaLabel: 'NIP-05 handle verified',
+      key: "nip05-verified",
+      label: "NIP-05 verified",
+      icon: "verified",
+      variant: "success",
+      ariaLabel: "NIP-05 handle verified",
     });
   }
 
   if (isCached.value) {
     chips.push({
-      key: 'cache',
-      label: 'Cache hit',
-      icon: 'data_thresholding',
-      variant: 'neutral',
-      ariaLabel: 'Cached profile result',
+      key: "cache",
+      label: "Cache hit",
+      icon: "data_thresholding",
+      variant: "neutral",
+      ariaLabel: "Cached profile result",
     });
   }
 
@@ -473,7 +549,16 @@ const statusChips = computed<StatusChip[]>(() => {
 });
 
 function openProfileModal() {
-  emit('view-profile', { pubkey: props.profile.pubkey, initialTab: 'profile' });
+  emit("view-profile", { pubkey: props.profile.pubkey, initialTab: "profile" });
+}
+
+function handlePrimaryAction() {
+  if (hasTiers.value) {
+    emit("view-tiers", { pubkey: props.profile.pubkey, initialTab: "tiers" });
+    return;
+  }
+
+  emit("view-profile", { pubkey: props.profile.pubkey, initialTab: "profile" });
 }
 </script>
 
@@ -572,7 +657,8 @@ function openProfileModal() {
   line-height: 1;
   background: var(--chip-bg);
   color: var(--text-2);
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 55%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--surface-contrast-border) 55%, transparent);
   transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
 
@@ -589,7 +675,11 @@ function openProfileModal() {
 
 .status-chip.neutral {
   background: color-mix(in srgb, var(--chip-bg) 60%, transparent);
-  border-color: color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--surface-contrast-border) 70%,
+    transparent
+  );
 }
 
 .status-chip.success {
@@ -633,7 +723,7 @@ function openProfileModal() {
 }
 
 .meta-value {
-  font-family: var(--font-mono, 'Fira Code', monospace);
+  font-family: var(--font-mono, "Fira Code", monospace);
 }
 
 .meta-content {
@@ -669,7 +759,7 @@ function openProfileModal() {
 .creator-actions {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.9rem;
   margin-top: auto;
 }
 
@@ -740,14 +830,30 @@ function openProfileModal() {
 }
 
 .action-btn {
-  width: 100%;
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0.01em;
-  padding: 0.875rem 0;
   border-radius: 0.75rem;
   transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease,
     transform 0.2s ease;
+}
+
+.action-btn--primary {
+  width: 100%;
+  padding: 0.875rem 0;
+}
+
+.secondary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.action-btn--secondary {
+  flex: 1 1 8.5rem;
+  min-width: 0;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.94rem;
 }
 
 .action-btn.q-btn--unelevated {
@@ -778,22 +884,6 @@ function openProfileModal() {
   background: color-mix(in srgb, var(--accent-200) 35%, transparent);
 }
 
-.tertiary-btn {
-  font-size: 0.95rem;
-  font-weight: 600;
-  padding: 0.75rem 0;
-  color: var(--text-2);
-  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
-  background: transparent;
-}
-
-.tertiary-btn:hover,
-.tertiary-btn:focus-visible {
-  color: var(--accent-600);
-  border-color: var(--surface-contrast-border);
-  background: color-mix(in srgb, var(--accent-200) 28%, transparent);
-}
-
 .action-btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--accent-200);
@@ -808,6 +898,16 @@ function openProfileModal() {
 @media (min-width: 600px) {
   .profile-header {
     flex-direction: row;
+  }
+}
+
+@media (max-width: 639px) {
+  .secondary-actions {
+    flex-direction: column;
+  }
+
+  .action-btn--secondary {
+    width: 100%;
   }
 }
 </style>

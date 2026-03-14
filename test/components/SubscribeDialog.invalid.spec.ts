@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mount } from "@vue/test-utils";
+import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick, reactive, ref } from "vue";
 
 import SubscribeDialog from "src/components/SubscribeDialog.vue";
@@ -13,9 +13,7 @@ const notifyMocks = vi.hoisted(() => ({
 
 vi.mock("src/js/notify", () => notifyMocks);
 
-const bucketList = ref([
-  { id: "default", name: "Default" },
-]);
+const bucketList = ref([{ id: "default", name: "Default" }]);
 const bucketBalances = ref<Record<string, number>>({ default: 0 });
 
 const bucketsStoreMock = {
@@ -46,6 +44,29 @@ const donationStoreMock = {
 };
 
 const activeUnit = ref("sat");
+const activeMintUrl = ref("https://mint");
+const activeBalance = ref(2500);
+const activeInfo = ref<any>({
+  nuts: {
+    4: { methods: [], disabled: false },
+    10: { supported: true },
+    11: { supported: true },
+    14: { supported: true },
+  },
+});
+
+const mintsStoreMock = {
+  activeUnit,
+  get activeMintUrl() {
+    return activeMintUrl.value;
+  },
+  get activeBalance() {
+    return activeBalance.value;
+  },
+  get activeInfo() {
+    return activeInfo.value;
+  },
+};
 
 const bootErrorStoreMock = { set: vi.fn() };
 
@@ -57,7 +78,9 @@ const fetchNutzapProfileMock = vi.fn(async () => ({
   picture: "pic",
 }));
 
-class RelayConnectionErrorMock extends Error {}
+const RelayConnectionErrorMock = vi.hoisted(
+  () => class RelayConnectionErrorMock extends Error {},
+);
 
 vi.mock("stores/donationPresets", () => ({
   useDonationPresetsStore: () => donationStoreMock,
@@ -68,7 +91,7 @@ vi.mock("stores/buckets", () => ({
 }));
 
 vi.mock("stores/mints", () => ({
-  useMintsStore: () => ({ activeUnit }),
+  useMintsStore: () => mintsStoreMock,
 }));
 
 vi.mock("stores/ui", () => ({
@@ -79,7 +102,8 @@ vi.mock("stores/ui", () => ({
 
 vi.mock("stores/nostr", () => ({
   useNostrStore: () => nostrStoreMock,
-  fetchNutzapProfile: fetchNutzapProfileMock,
+  fetchNutzapProfile: (...args: any[]) =>
+    fetchNutzapProfileMock.apply(null, args),
   npubToHex: (value: string) => value,
   RelayConnectionError: RelayConnectionErrorMock,
 }));
@@ -170,7 +194,12 @@ function mountDialog(options?: { signer?: Record<string, unknown> | null }) {
   const wrapper = mount(SubscribeDialog, {
     props: {
       modelValue: true,
-      tier: { id: "tier", name: "Supporter", price_sats: 1000, frequency: "monthly" },
+      tier: {
+        id: "tier",
+        name: "Supporter",
+        price_sats: 1000,
+        frequency: "monthly",
+      },
       supporterPubkey: "npub-supporter",
       creatorPubkey: "npub-creator",
     },
@@ -194,6 +223,12 @@ function mountDialog(options?: { signer?: Record<string, unknown> | null }) {
   return wrapper;
 }
 
+function getConfirmButton(wrapper: ReturnType<typeof mountDialog>) {
+  return wrapper
+    .findAll("button")
+    .find((btn) => /lock 1000 sat|subscribe/i.test(btn.text()));
+}
+
 describe("SubscribeDialog invalid states", () => {
   beforeEach(() => {
     nostrStoreMock.initSignerIfNotSet.mockClear();
@@ -202,6 +237,16 @@ describe("SubscribeDialog invalid states", () => {
     bootErrorStoreMock.set.mockClear();
     notifyMocks.notifyError.mockClear();
     notifyMocks.notifySuccess.mockClear();
+    activeMintUrl.value = "https://mint";
+    activeBalance.value = 2500;
+    activeInfo.value = {
+      nuts: {
+        4: { methods: [], disabled: false },
+        10: { supported: true },
+        11: { supported: true },
+        14: { supported: true },
+      },
+    };
   });
 
   it("surfaces the signer warning banner and disables confirmation until a signer is present", async () => {
@@ -209,19 +254,16 @@ describe("SubscribeDialog invalid states", () => {
 
     await nextTick();
 
-    expect(wrapper.html()).toContain(
-      "CreatorHub.profile.signerAlert.message",
-    );
+    expect(wrapper.html()).toContain("CreatorHub.profile.signerAlert.message");
 
-    const confirmButton = wrapper
-      .findAll("button")
-      .find((btn) => btn.text().includes("global.actions.ok.label"));
+    const confirmButton = getConfirmButton(wrapper);
 
     expect(confirmButton).toBeDefined();
     expect(confirmButton!.attributes()["disabled"]).toBeDefined();
 
     nostrStoreMock.signer = { pubkey: "abc" };
 
+    await flushPromises();
     await nextTick();
 
     expect(wrapper.html()).not.toContain(
@@ -247,33 +289,75 @@ describe("SubscribeDialog invalid states", () => {
 
     expect(wrapper.html()).not.toContain("Start date is in the past");
 
-    const confirmButton = wrapper
-      .findAll("button")
-      .find((btn) => btn.text().includes("global.actions.ok.label"));
+    const confirmButton = getConfirmButton(wrapper);
 
     expect(confirmButton).toBeDefined();
     expect(confirmButton!.attributes()["disabled"]).toBeUndefined();
   });
 
-  it("surfaces relay connectivity failures when fetching the creator profile fails", async () => {
+  it("blocks confirmation when the active mint is exact-only", async () => {
+    activeInfo.value = {
+      nuts: {
+        10: { supported: true },
+        11: { supported: true },
+        14: { supported: true },
+      },
+    };
+
     const wrapper = mountDialog({ signer: { pubkey: "abc" } });
 
+    await flushPromises();
+    await nextTick();
+
+    expect(wrapper.html()).toContain("Recurring support needs split support");
+    expect(wrapper.html()).toContain(
+      "Your active mint is exact-match only. Switch to a split-capable mint before locking this subscription.",
+    );
+
+    const confirmButton = getConfirmButton(wrapper);
+    expect(confirmButton).toBeDefined();
+    expect(confirmButton!.attributes()["disabled"]).toBeDefined();
+  });
+
+  it("blocks confirmation when the active mint is not creator-trusted", async () => {
+    fetchNutzapProfileMock.mockResolvedValueOnce({
+      p2pkPubkey: "p2pk",
+      relays: [],
+      trustedMints: ["https://creator-trusted-mint"],
+      name: "Creator",
+      picture: "pic",
+    });
+
+    const wrapper = mountDialog({ signer: { pubkey: "abc" } });
+
+    await flushPromises();
+    await nextTick();
+
+    expect(wrapper.html()).toContain("Switch to a creator-trusted mint");
+
+    const confirmButton = getConfirmButton(wrapper);
+    expect(confirmButton).toBeDefined();
+    expect(confirmButton!.attributes()["disabled"]).toBeDefined();
+  });
+
+  it("surfaces relay connectivity failures when fetching the creator profile fails", async () => {
     fetchNutzapProfileMock.mockRejectedValueOnce(
       new RelayConnectionErrorMock("offline"),
     );
 
-    const confirmButton = wrapper
-      .findAll("button")
-      .find((btn) => btn.text().includes("global.actions.ok.label"));
+    const wrapper = mountDialog({ signer: { pubkey: "abc" } });
 
-    expect(confirmButton).toBeDefined();
-
-    await confirmButton!.trigger("click");
+    await flushPromises();
     await nextTick();
 
+    const confirmButton = getConfirmButton(wrapper);
+
+    expect(confirmButton).toBeDefined();
+    expect(confirmButton!.attributes()["disabled"]).toBeDefined();
+
     expect(cashuStoreMock.subscribeToTier).not.toHaveBeenCalled();
-    expect(notifyMocks.notifyError).toHaveBeenCalledWith(
-      "Unable to connect to Nostr relays",
+    expect(wrapper.html()).toContain(
+      "Unable to verify creator payment setup right now.",
     );
     expect(bootErrorStoreMock.set).not.toHaveBeenCalled();
   });
@@ -292,11 +376,12 @@ describe("SubscribeDialog invalid states", () => {
       new Error("network offline"),
     );
 
-    const confirmButton = wrapper
-      .findAll("button")
-      .find((btn) => btn.text().includes("global.actions.ok.label"));
+    const confirmButton = getConfirmButton(wrapper);
 
     expect(confirmButton).toBeDefined();
+
+    await flushPromises();
+    await nextTick();
 
     await confirmButton!.trigger("click");
     await nextTick();

@@ -44,4 +44,19 @@ test.describe("fresh account wallet startup", () => {
 
     await expectWalletInteractive(page);
   });
+
+  test("wallet stays interactive after imported-key onboarding", async ({
+    page,
+  }) => {
+    await installMintCatalogMocks(page);
+    await resetBrowserState(page);
+    await bootstrapFundstr(page);
+
+    await completeOnboarding(page, {
+      connectMint: true,
+      setupNostr: "import",
+    });
+
+    await expectWalletInteractive(page);
+  });
 });

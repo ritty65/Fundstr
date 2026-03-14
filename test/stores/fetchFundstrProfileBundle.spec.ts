@@ -32,9 +32,10 @@ interface DiscoveryMock {
   getCreatorTiers: ReturnType<typeof vi.fn>;
 }
 
-const queryNutzapTiersMock = vi.fn<
-  (input: string) => Promise<NostrEvent | null>
->();
+const queryNutzapTiersMock =
+  vi.fn<(input: string) => Promise<NostrEvent | null>>();
+const queryNutzapProfileMock =
+  vi.fn<(input: string) => Promise<NostrEvent | null>>();
 
 const baseProfile = {
   name: "Sample Creator",
@@ -51,7 +52,29 @@ const baseTier: DiscoveryCreatorTier = {
   media: [],
 };
 
-function makeCreator(overrides: Partial<DiscoveryCreator> = {}): DiscoveryCreator {
+const expectNormalizedTier = (overrides: Record<string, unknown> = {}) =>
+  expect.objectContaining({
+    id: "tier-basic",
+    name: "Basic",
+    price_sats: 2500,
+    description: "Access to basic content",
+    media: [],
+    ...overrides,
+  });
+
+const expectFallbackTier = (overrides: Record<string, unknown> = {}) =>
+  expect.objectContaining({
+    id: "fallback-tier",
+    name: "Fallback Tier",
+    price_sats: 5000,
+    description: "Recovered via nutzap",
+    media: [],
+    ...overrides,
+  });
+
+function makeCreator(
+  overrides: Partial<DiscoveryCreator> = {},
+): DiscoveryCreator {
   return {
     pubkey: PUBKEY_HEX,
     profile: baseProfile,
@@ -63,7 +86,10 @@ function makeCreator(overrides: Partial<DiscoveryCreator> = {}): DiscoveryCreato
   };
 }
 
-function planStepToPromise<T>(step: PlanStep<T> | undefined, label: string): Promise<T> {
+function planStepToPromise<T>(
+  step: PlanStep<T> | undefined,
+  label: string,
+): Promise<T> {
   if (step === undefined) {
     throw new Error(`Missing ${label} plan`);
   }
@@ -88,13 +114,23 @@ function createDiscoveryMock(plan: DiscoveryMockPlan): DiscoveryMock {
   const mock = {
     getCreators: vi.fn(async (request: { q: string; fresh?: boolean }) => {
       const query = typeof request?.q === "string" ? request.q.trim() : "";
-      const variant = request?.fresh ? plan.creators?.[query]?.fresh : plan.creators?.[query]?.cached;
-      return planStepToPromise(variant, `getCreators(${query}) fresh=${Boolean(request?.fresh)}`);
+      const variant = request?.fresh
+        ? plan.creators?.[query]?.fresh
+        : plan.creators?.[query]?.cached;
+      return planStepToPromise(
+        variant,
+        `getCreators(${query}) fresh=${Boolean(request?.fresh)}`,
+      );
     }),
     getCreatorTiers: vi.fn(async (request: { id: string; fresh?: boolean }) => {
       const id = typeof request?.id === "string" ? request.id.trim() : "";
-      const variant = request?.fresh ? plan.tiers?.[id]?.fresh : plan.tiers?.[id]?.cached;
-      return planStepToPromise(variant, `getCreatorTiers(${id}) fresh=${Boolean(request?.fresh)}`);
+      const variant = request?.fresh
+        ? plan.tiers?.[id]?.fresh
+        : plan.tiers?.[id]?.cached;
+      return planStepToPromise(
+        variant,
+        `getCreatorTiers(${id}) fresh=${Boolean(request?.fresh)}`,
+      );
     }),
   } satisfies DiscoveryMock;
   return mock;
@@ -102,16 +138,28 @@ function createDiscoveryMock(plan: DiscoveryMockPlan): DiscoveryMock {
 
 async function loadCreatorsModule(
   discoveryMock: DiscoveryMock,
-  options: { nutzapTierEvent?: NostrEvent | null } = {},
+  options: {
+    nutzapTierEvent?: NostrEvent | null;
+    nutzapProfileEvent?: NostrEvent | null;
+  } = {},
 ) {
   queryNutzapTiersMock.mockReset();
+  queryNutzapProfileMock.mockReset();
   queryNutzapTiersMock.mockResolvedValue(
     options.nutzapTierEvent === undefined ? null : options.nutzapTierEvent,
   );
+  queryNutzapProfileMock.mockResolvedValue(
+    options.nutzapProfileEvent === undefined
+      ? null
+      : options.nutzapProfileEvent,
+  );
   vi.doMock("@/nostr/relayClient", async () => {
-    const actual = await vi.importActual<Record<string, any>>("@/nostr/relayClient");
+    const actual = await vi.importActual<Record<string, any>>(
+      "@/nostr/relayClient",
+    );
     return {
       ...actual,
+      queryNutzapProfile: queryNutzapProfileMock,
       queryNutzapTiers: queryNutzapTiersMock,
     };
   });
@@ -147,7 +195,9 @@ describe("fetchFundstrProfileBundle", () => {
       },
     });
 
-    const { fetchFundstrProfileBundle } = await loadCreatorsModule(discoveryMock);
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(
+      discoveryMock,
+    );
     const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX);
 
     expect(discoveryMock.getCreators).toHaveBeenCalledTimes(2);
@@ -164,14 +214,115 @@ describe("fetchFundstrProfileBundle", () => {
       p2pkPubkey: "",
     });
     expect(bundle.relayHints).toEqual(["wss://relay.example"]);
-    expect(bundle.tiers).toEqual([
-      {
-        id: "tier-basic",
-        name: "Basic",
-        price_sats: 2500,
-        description: "Access to basic content",
-        media: [],
+    expect(bundle.tiers).toEqual([expectNormalizedTier()]);
+  });
+
+  it("hydrates missing discovery metadata and tiers directly from relay events", async () => {
+    const discoveryMock = createDiscoveryMock({
+      creators: {
+        [PUBKEY_HEX]: {
+          cached: { results: [] },
+          fresh: {
+            results: [
+              makeCreator({
+                profile: {
+                  relays: ["wss://relay.example"],
+                },
+                tiers: [],
+              }),
+            ],
+          },
+        },
       },
+      tiers: {
+        [PUBKEY_HEX]: {
+          cached: { tiers: [] },
+          fresh: { tiers: [] },
+        },
+      },
+    });
+
+    const relayProfileEvent = {
+      pubkey: PUBKEY_HEX,
+      kind: 10019,
+      created_at: 1700000300,
+      id: "p".repeat(64),
+      sig: "a".repeat(128),
+      tags: [
+        ["t", "nutzap-profile"],
+        ["client", "fundstr"],
+        ["pubkey", PUBKEY_HEX],
+        ["mint", "https://mint.minibits.cash/Bitcoin", "sat"],
+        ["relay", "wss://relay.fundstr.me"],
+        ["a", `30019:${PUBKEY_HEX}:tiers`],
+        ["name", "Relay Creator"],
+        ["picture", "https://example.com/avatar.png"],
+      ],
+      content: JSON.stringify({
+        v: 1,
+        p2pk: PUBKEY_HEX,
+        mints: ["https://mint.minibits.cash/Bitcoin"],
+        relays: ["wss://relay.fundstr.me"],
+        tierAddr: `30019:${PUBKEY_HEX}:tiers`,
+        display_name: "Relay Creator",
+        about: "Recovered from relay",
+        picture: "https://example.com/avatar.png",
+      }),
+    } satisfies NostrEvent;
+
+    const relayTierEvent = {
+      pubkey: PUBKEY_HEX,
+      kind: 30019,
+      created_at: 1700000310,
+      id: "t".repeat(64),
+      sig: "b".repeat(128),
+      tags: [["d", "tiers"]],
+      content: JSON.stringify({
+        v: 1,
+        tiers: [
+          {
+            id: "relay-tier",
+            title: "Relay Tier",
+            price: 7000,
+            frequency: "monthly",
+            description: "Recovered from relay tiers",
+          },
+        ],
+      }),
+    } satisfies NostrEvent;
+
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(
+      discoveryMock,
+      {
+        nutzapProfileEvent: relayProfileEvent,
+        nutzapTierEvent: relayTierEvent,
+      },
+    );
+    const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX, {
+      forceRefresh: true,
+    });
+
+    expect(queryNutzapProfileMock).toHaveBeenCalledTimes(1);
+    expect(queryNutzapTiersMock).toHaveBeenCalledTimes(1);
+    expect(bundle.fetchedFromFallback).toBe(true);
+    expect(bundle.profile).toMatchObject({
+      display_name: "Relay Creator",
+      about: "Recovered from relay",
+      picture: "https://example.com/avatar.png",
+    });
+    expect(bundle.profileDetails).toMatchObject({
+      trustedMints: ["https://mint.minibits.cash/Bitcoin"],
+      display_name: "Relay Creator",
+    });
+    expect(bundle.profileDetails?.relays).toEqual(
+      expect.arrayContaining(["wss://relay.example", "wss://relay.fundstr.me"]),
+    );
+    expect(bundle.tiers).toEqual([
+      expect.objectContaining({
+        id: "relay-tier",
+        name: "Relay Tier",
+        price_sats: 7000,
+      }),
     ]);
   });
 
@@ -198,10 +349,14 @@ describe("fetchFundstrProfileBundle", () => {
       },
     });
 
-    const { fetchFundstrProfileBundle } = await loadCreatorsModule(discoveryMock);
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(
+      discoveryMock,
+    );
     const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX);
 
-    const creatorCalls = discoveryMock.getCreators.mock.calls.map(([request]) => request);
+    const creatorCalls = discoveryMock.getCreators.mock.calls.map(
+      ([request]) => request,
+    );
     expect(creatorCalls).toEqual([
       expect.objectContaining({ q: PUBKEY_HEX, fresh: false }),
       expect.objectContaining({ q: NPUB, fresh: false }),
@@ -213,15 +368,7 @@ describe("fetchFundstrProfileBundle", () => {
     expect(bundle.profile).toEqual(baseProfile);
     expect(bundle.followers).toBe(100);
     expect(bundle.following).toBe(5);
-    expect(bundle.tiers).toEqual([
-      {
-        id: "tier-basic",
-        name: "Basic",
-        price_sats: 2500,
-        description: "Access to basic content",
-        media: [],
-      },
-    ]);
+    expect(bundle.tiers).toEqual([expectNormalizedTier()]);
   });
 
   it("falls back to cached tiers from the npub lookup when the direct tier request fails", async () => {
@@ -245,10 +392,14 @@ describe("fetchFundstrProfileBundle", () => {
       },
     });
 
-    const { fetchFundstrProfileBundle } = await loadCreatorsModule(discoveryMock);
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(
+      discoveryMock,
+    );
     const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX);
 
-    const tierCalls = discoveryMock.getCreatorTiers.mock.calls.map(([request]) => request);
+    const tierCalls = discoveryMock.getCreatorTiers.mock.calls.map(
+      ([request]) => request,
+    );
     expect(tierCalls).toEqual([
       expect.objectContaining({ id: PUBKEY_HEX, fresh: false }),
       expect.objectContaining({ id: PUBKEY_HEX, fresh: true }),
@@ -257,20 +408,14 @@ describe("fetchFundstrProfileBundle", () => {
     expect(bundle.fetchedFromFallback).toBe(true);
     expect(bundle.tierDataFresh).toBe(false);
     expect(bundle.tierSecurityBlocked).toBe(false);
-    expect(bundle.tiers).toEqual([
-      {
-        id: "tier-basic",
-        name: "Basic",
-        price_sats: 2500,
-        description: "Access to basic content",
-        media: [],
-      },
-    ]);
+    expect(bundle.tiers).toEqual([expectNormalizedTier()]);
     expect(bundle.relayHints).toEqual(["wss://relay.example"]);
   });
 
   it("recovers tiers via nutzap fallback when discovery tier lookups abort", async () => {
-    const abortError = Object.assign(new Error("tier aborted"), { name: "AbortError" });
+    const abortError = Object.assign(new Error("tier aborted"), {
+      name: "AbortError",
+    });
 
     const discoveryMock = createDiscoveryMock({
       creators: {
@@ -320,9 +465,12 @@ describe("fetchFundstrProfileBundle", () => {
       sig: "sig",
     };
 
-    const { fetchFundstrProfileBundle } = await loadCreatorsModule(discoveryMock, {
-      nutzapTierEvent,
-    });
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(
+      discoveryMock,
+      {
+        nutzapTierEvent,
+      },
+    );
 
     const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX);
 
@@ -331,21 +479,17 @@ describe("fetchFundstrProfileBundle", () => {
     expect(bundle.fetchedFromFallback).toBe(true);
     expect(bundle.tierDataFresh).toBe(false);
     expect(bundle.tierSecurityBlocked).toBe(false);
-    expect(bundle.tiers).toEqual([
-      {
-        id: "fallback-tier",
-        name: "Fallback Tier",
-        price_sats: 5000,
-        description: "Recovered via nutzap",
-        media: [],
-      },
-    ]);
+    expect(bundle.tiers).toEqual([expectFallbackTier()]);
   });
 
   it("treats security DOMExceptions from cached tier lookups as blocked", async () => {
-    const domException = typeof DOMException !== "undefined"
-      ? new DOMException("Blocked by tracking protection", "SecurityError")
-      : Object.assign(new Error("dom exception"), { name: "DOMException", code: 18 });
+    const domException =
+      typeof DOMException !== "undefined"
+        ? new DOMException("Blocked by tracking protection", "SecurityError")
+        : Object.assign(new Error("dom exception"), {
+            name: "DOMException",
+            code: 18,
+          });
 
     const discoveryMock = createDiscoveryMock({
       creators: {
@@ -371,11 +515,15 @@ describe("fetchFundstrProfileBundle", () => {
 
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    const { fetchFundstrProfileBundle } = await loadCreatorsModule(discoveryMock);
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(
+      discoveryMock,
+    );
 
     const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX);
 
-    const tierCalls = discoveryMock.getCreatorTiers.mock.calls.map(([request]) => request);
+    const tierCalls = discoveryMock.getCreatorTiers.mock.calls.map(
+      ([request]) => request,
+    );
     expect(tierCalls).toEqual([
       expect.objectContaining({ id: PUBKEY_HEX, fresh: false }),
       expect.objectContaining({ id: NPUB, fresh: false }),
@@ -384,23 +532,19 @@ describe("fetchFundstrProfileBundle", () => {
     expect(bundle.tierSecurityBlocked).toBe(true);
     expect(bundle.tierDataFresh).toBe(false);
     expect(bundle.fetchedFromFallback).toBe(true);
-    expect(bundle.tiers).toEqual([
-      {
-        id: "tier-basic",
-        name: "Basic",
-        price_sats: 2500,
-        description: "Access to basic content",
-        media: [],
-      },
-    ]);
+    expect(bundle.tiers).toEqual([expectNormalizedTier()]);
 
     warnSpy.mockRestore();
   });
 
   it("marks the bundle as tierSecurityBlocked when discovery throws a security DOMException", async () => {
-    const domException = typeof DOMException !== "undefined"
-      ? new DOMException("Blocked by tracking protection", "SecurityError")
-      : Object.assign(new Error("dom exception"), { name: "DOMException", code: 18 });
+    const domException =
+      typeof DOMException !== "undefined"
+        ? new DOMException("Blocked by tracking protection", "SecurityError")
+        : Object.assign(new Error("dom exception"), {
+            name: "DOMException",
+            code: 18,
+          });
 
     const discoveryMock = createDiscoveryMock({
       creators: {
@@ -425,30 +569,25 @@ describe("fetchFundstrProfileBundle", () => {
 
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    const { fetchFundstrProfileBundle } = await loadCreatorsModule(discoveryMock);
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(
+      discoveryMock,
+    );
 
     const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX);
 
     expect(bundle.tierSecurityBlocked).toBe(true);
     expect(bundle.tierDataFresh).toBe(false);
     expect(bundle.fetchedFromFallback).toBe(true);
-    expect(bundle.tiers).toEqual([
-      {
-        id: "tier-basic",
-        name: "Basic",
-        price_sats: 2500,
-        description: "Access to basic content",
-        media: [],
-      },
-    ]);
+    expect(bundle.tiers).toEqual([expectNormalizedTier()]);
 
     warnSpy.mockRestore();
   });
 
   it("treats AbortError DOMExceptions as retryable tier lookup failures", async () => {
-    const abortError = typeof DOMException !== "undefined"
-      ? new DOMException("The operation was aborted.", "AbortError")
-      : Object.assign(new Error("aborted"), { name: "AbortError" });
+    const abortError =
+      typeof DOMException !== "undefined"
+        ? new DOMException("The operation was aborted.", "AbortError")
+        : Object.assign(new Error("aborted"), { name: "AbortError" });
 
     const discoveryMock = createDiscoveryMock({
       creators: {
@@ -473,35 +612,33 @@ describe("fetchFundstrProfileBundle", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const { fetchFundstrProfileBundle } = await loadCreatorsModule(discoveryMock);
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(
+      discoveryMock,
+    );
 
     const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX);
 
     expect(bundle.tierSecurityBlocked).toBe(false);
     expect(bundle.tierDataFresh).toBe(false);
     expect(bundle.fetchedFromFallback).toBe(true);
-    expect(bundle.tiers).toEqual([
-      {
-        id: "tier-basic",
-        name: "Basic",
-        price_sats: 2500,
-        description: "Access to basic content",
-        media: [],
-      },
-    ]);
+    expect(bundle.tiers).toEqual([expectNormalizedTier()]);
 
     expect(
       warnSpy.mock.calls.some(
         ([message]) =>
           typeof message === "string" &&
-          message.includes("fetchFundstrProfileBundle discovery tier lookup aborted"),
+          message.includes(
+            "fetchFundstrProfileBundle discovery tier lookup timed out",
+          ),
       ),
     ).toBe(true);
     expect(
       errorSpy.mock.calls.some(
         ([message]) =>
           typeof message === "string" &&
-          message.includes("fetchFundstrProfileBundle discovery tier lookup failed"),
+          message.includes(
+            "fetchFundstrProfileBundle discovery tier lookup failed",
+          ),
       ),
     ).toBe(false);
 
@@ -523,7 +660,8 @@ describe("fetchFundstrProfileBundle", () => {
       },
     });
 
-    const { fetchFundstrProfileBundle, FundstrProfileFetchError } = await loadCreatorsModule(discoveryMock);
+    const { fetchFundstrProfileBundle, FundstrProfileFetchError } =
+      await loadCreatorsModule(discoveryMock);
 
     await fetchFundstrProfileBundle(PUBKEY_HEX)
       .then(() => {
@@ -536,9 +674,10 @@ describe("fetchFundstrProfileBundle", () => {
   });
 
   it("falls back gracefully when tier lookups are blocked by browser security", async () => {
-    const securityError = typeof DOMException !== "undefined"
-      ? new DOMException("The operation is insecure.", "SecurityError")
-      : Object.assign(new Error("security"), { name: "SecurityError" });
+    const securityError =
+      typeof DOMException !== "undefined"
+        ? new DOMException("The operation is insecure.", "SecurityError")
+        : Object.assign(new Error("security"), { name: "SecurityError" });
 
     const discoveryMock = createDiscoveryMock({
       creators: {
@@ -569,22 +708,16 @@ describe("fetchFundstrProfileBundle", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const { fetchFundstrProfileBundle } = await loadCreatorsModule(discoveryMock);
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(
+      discoveryMock,
+    );
 
     const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX);
 
     expect(bundle.tierDataFresh).toBe(false);
     expect(bundle.fetchedFromFallback).toBe(true);
     expect(bundle.tierSecurityBlocked).toBe(true);
-    expect(bundle.tiers).toEqual([
-      {
-        id: "tier-basic",
-        name: "Basic",
-        price_sats: 2500,
-        description: "Access to basic content",
-        media: [],
-      },
-    ]);
+    expect(bundle.tiers).toEqual([expectNormalizedTier()]);
 
     await fetchFundstrProfileBundle(PUBKEY_HEX);
 
@@ -594,7 +727,9 @@ describe("fetchFundstrProfileBundle", () => {
     expect(freshTierCalls).toHaveLength(0);
 
     expect(errorSpy).not.toHaveBeenCalledWith(
-      expect.stringContaining("fetchFundstrProfileBundle discovery tier lookup failed"),
+      expect.stringContaining(
+        "fetchFundstrProfileBundle discovery tier lookup failed",
+      ),
       expect.anything(),
     );
     expect(warnSpy).toHaveBeenCalledTimes(1);

@@ -21,6 +21,10 @@ export function parseNutzapProfileEvent(
   const mints: string[] = [];
   let p2pk = "";
   let tierAddr: string | undefined;
+  let display_name: string | undefined;
+  let name: string | undefined;
+  let about: string | undefined;
+  let picture: string | undefined;
 
   if (event.content) {
     try {
@@ -48,6 +52,18 @@ export function parseNutzapProfileEvent(
         if (typeof data.tierAddr === "string" && data.tierAddr) {
           tierAddr = data.tierAddr;
         }
+        if (typeof data.display_name === "string" && data.display_name.trim()) {
+          display_name = data.display_name.trim();
+        }
+        if (typeof data.name === "string" && data.name.trim()) {
+          name = data.name.trim();
+        }
+        if (typeof data.about === "string" && data.about.trim()) {
+          about = data.about.trim();
+        }
+        if (typeof data.picture === "string" && data.picture.trim()) {
+          picture = data.picture.trim();
+        }
       }
     } catch (e) {
       console.warn("[nutzap] failed to parse profile JSON", e);
@@ -68,6 +84,26 @@ export function parseNutzapProfileEvent(
     if (!tierAddr && tag[0] === "a" && typeof tag[1] === "string" && tag[1]) {
       tierAddr = tag[1];
     }
+    if (
+      !display_name &&
+      tag[0] === "display_name" &&
+      typeof tag[1] === "string"
+    ) {
+      const value = tag[1].trim();
+      if (value) display_name = value;
+    }
+    if (!name && tag[0] === "name" && typeof tag[1] === "string") {
+      const value = tag[1].trim();
+      if (value) name = value;
+    }
+    if (!about && tag[0] === "about" && typeof tag[1] === "string") {
+      const value = tag[1].trim();
+      if (value) about = value;
+    }
+    if (!picture && tag[0] === "picture" && typeof tag[1] === "string") {
+      const value = tag[1].trim();
+      if (value) picture = value;
+    }
   }
 
   const uniqueMints = Array.from(new Set(mints.filter((m) => !!m)));
@@ -82,9 +118,9 @@ export function parseNutzapProfileEvent(
     trustedMints: uniqueMints,
     relays: uniqueRelays,
     tierAddr,
-    display_name: undefined,
-    name: undefined,
-    about: undefined,
-    picture: undefined,
+    display_name,
+    name,
+    about,
+    picture,
   };
 }

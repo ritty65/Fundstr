@@ -6,6 +6,7 @@ import { nip19 } from "nostr-tools";
 import { Event as NostrEvent } from "nostr-tools";
 import type { Tier } from "./types";
 import {
+  queryNutzapProfile,
   queryNutzapTiers,
   toHex,
   type NostrEvent as RelayEvent,
@@ -13,7 +14,10 @@ import {
 import { safeUseLocalStorage } from "src/utils/safeLocalStorage";
 import { normalizeTierMediaItems } from "src/utils/validateMedia";
 import { debug } from "src/js/logger";
-import { type NutzapProfileDetails } from "@/nutzap/profileCache";
+import {
+  parseNutzapProfileEvent,
+  type NutzapProfileDetails,
+} from "@/nutzap/profileCache";
 import {
   NETWORK_CHANGE_WARNING,
   RecoverableDiscoveryError,
@@ -33,6 +37,7 @@ import {
 } from "src/lib/fundstrApi";
 import { useNdk } from "src/composables/useNdk";
 import { shortenNpub } from "src/utils/profile";
+import { extractCreatorIdentifier } from "src/utils/profileUrl";
 import { FEATURED_CREATORS as CONFIG_FEATURED_CREATORS } from "src/config/featured-creators";
 import { parseTiersContent as parseNutzapTiersContent } from "@/nutzap/profileShared";
 import type { Tier as NutzapTier } from "@/nutzap/types";
@@ -40,6 +45,7 @@ import {
   addTelemetryBreadcrumb,
   captureTelemetryWarning,
 } from "src/utils/telemetry/sentry";
+import { FUNDSTR_REQ_URL, FUNDSTR_WS_URL } from "@/nutzap/relayEndpoints";
 
 export { FEATURED_CREATORS } from "src/config/featured-creators";
 
@@ -1001,7 +1007,7 @@ async function fetchFundstrProfileBundleFromDiscovery(
     tierFetchFailed = false;
   }
 
-  return {
+  let bundle: FundstrProfileBundle = {
     ...baseBundle,
     tierDataFresh,
     tierSecurityBlocked,
@@ -1012,6 +1018,88 @@ async function fetchFundstrProfileBundleFromDiscovery(
       usedCachedTierFallback ||
       usedNutzapTierFallback,
   };
+
+  const needsRelayProfileMetadata = !hasBundleProfileMetadata(
+    bundle.profile,
+    bundle.profileDetails,
+  );
+  const needsRelayTierFallback =
+    !Array.isArray(bundle.tiers) || bundle.tiers.length === 0;
+
+  if (needsRelayProfileMetadata || needsRelayTierFallback) {
+    if (needsRelayProfileMetadata) {
+      try {
+        const relayProfileEvent = await queryNutzapProfile(pubkey, {
+          httpBase: FUNDSTR_REQ_URL,
+          fundstrWsUrl: FUNDSTR_WS_URL,
+          allowFanoutFallback: false,
+        });
+        const relayProfileDetails = parseNutzapProfileEvent(relayProfileEvent);
+        if (relayProfileDetails) {
+          bundle = {
+            ...bundle,
+            profileEvent: bundle.profileEvent ?? relayProfileEvent,
+            profileDetails: mergeProfileDetailsWithRelay(
+              bundle.profileDetails,
+              relayProfileDetails,
+            ),
+            relayHints: mergeStringLists(
+              bundle.relayHints,
+              relayProfileDetails.relays,
+            ),
+            fetchedFromFallback: true,
+          };
+          bundle.profile = mergeProfileRecordWithDetails(
+            bundle.profile,
+            bundle.profileDetails,
+          );
+        }
+      } catch (error) {
+        console.warn(
+          "fetchFundstrProfileBundle relay profile hydration failed",
+          {
+            pubkey,
+            error,
+          },
+        );
+      }
+    }
+
+    if (needsRelayTierFallback) {
+      try {
+        const relayTierEvent = await queryNutzapTiers(pubkey, {
+          httpBase: FUNDSTR_REQ_URL,
+          fundstrWsUrl: FUNDSTR_WS_URL,
+          allowFanoutFallback: false,
+        });
+        const recoveredTiers = relayTierEvent?.content
+          ? parseNutzapTiersContent(relayTierEvent.content)
+              .map((tier) => convertNutzapTierToDiscoveryTier(tier))
+              .filter((tier): tier is DiscoveryCreatorTier => tier !== null)
+              .map((tier) => convertDiscoveryTier(tier))
+              .filter(
+                (tier): tier is Tier => tier !== null && isValidTier(tier),
+              )
+          : [];
+        if (recoveredTiers.length > 0) {
+          bundle = {
+            ...bundle,
+            tiers: recoveredTiers,
+            tierFetchFailed: false,
+            tierDataFresh: false,
+            fetchedFromFallback: true,
+          };
+        }
+      } catch (error) {
+        console.warn("fetchFundstrProfileBundle relay tier hydration failed", {
+          pubkey,
+          error,
+        });
+      }
+    }
+  }
+
+  return bundle;
 }
 
 function buildBundleFromCachedCreatorProfile(
@@ -1453,6 +1541,85 @@ function buildBundleFromDiscoveryCreator(
     tierFetchFailed: false,
     tiers: tiers.length ? tiers : null,
   };
+}
+
+function hasBundleProfileMetadata(
+  profile: Record<string, any> | null | undefined,
+  details: NutzapProfileDetails | null | undefined,
+): boolean {
+  const candidates = [
+    profile?.display_name,
+    profile?.displayName,
+    profile?.name,
+    profile?.about,
+    profile?.picture,
+    details?.display_name,
+    details?.name,
+    details?.about,
+    details?.picture,
+  ];
+
+  return candidates.some(
+    (value) => typeof value === "string" && value.trim().length > 0,
+  );
+}
+
+function mergeStringLists(
+  primary: string[] = [],
+  fallback: string[] = [],
+): string[] {
+  return Array.from(
+    new Set(
+      [...primary, ...fallback]
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter((value) => value.length > 0),
+    ),
+  );
+}
+
+function mergeProfileDetailsWithRelay(
+  existing: NutzapProfileDetails | null | undefined,
+  relay: NutzapProfileDetails | null | undefined,
+): NutzapProfileDetails | null {
+  if (!existing) {
+    return relay ? cloneProfileDetails(relay) : null;
+  }
+  if (!relay) {
+    return cloneProfileDetails(existing);
+  }
+
+  return {
+    p2pkPubkey: existing.p2pkPubkey || relay.p2pkPubkey,
+    trustedMints: mergeStringLists(existing.trustedMints, relay.trustedMints),
+    relays: mergeStringLists(existing.relays, relay.relays),
+    tierAddr: existing.tierAddr || relay.tierAddr,
+    display_name: existing.display_name || relay.display_name,
+    name: existing.name || relay.name,
+    about: existing.about || relay.about,
+    picture: existing.picture || relay.picture,
+  };
+}
+
+function mergeProfileRecordWithDetails(
+  profile: Record<string, any> | null | undefined,
+  details: NutzapProfileDetails | null | undefined,
+): Record<string, any> | null {
+  const next: Record<string, any> = profile
+    ? cloneDiscoveryProfile(profile) ?? {}
+    : {};
+
+  const applyString = (key: string, value: unknown) => {
+    if (typeof value === "string" && value.trim()) {
+      next[key] = value.trim();
+    }
+  };
+
+  applyString("display_name", details?.display_name);
+  applyString("name", details?.name);
+  applyString("about", details?.about);
+  applyString("picture", details?.picture);
+
+  return Object.keys(next).length ? next : null;
 }
 
 export interface CreatorWarmCache {
@@ -1997,10 +2164,145 @@ export function creatorIsSignalOnly(profile: CreatorProfile): boolean {
   return candidates.some(isTruthyFlag);
 }
 
+function normalizeSearchValue(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function profileNameCandidates(profile: CreatorProfile): string[] {
+  const profileRecord = (profile?.profile ?? {}) as Record<string, unknown>;
+  const metaRecord = (profile?.meta ?? {}) as Record<string, unknown>;
+  const nip05 = normalizeSearchValue(profile.nip05);
+  const localHandle = nip05.includes("@") ? nip05.split("@")[0] ?? "" : nip05;
+  return [
+    normalizeSearchValue(profile.displayName),
+    normalizeSearchValue(profile.name),
+    normalizeSearchValue(profile.about),
+    normalizeSearchValue(profileRecord["display_name"]),
+    normalizeSearchValue(profileRecord["name"]),
+    normalizeSearchValue(profileRecord["username"]),
+    normalizeSearchValue(metaRecord["display_name"]),
+    normalizeSearchValue(metaRecord["name"]),
+    normalizeSearchValue(metaRecord["username"]),
+    nip05,
+    localHandle,
+  ].filter(Boolean);
+}
+
+function profileIdentifierCandidates(profile: CreatorProfile): string[] {
+  const candidates = [
+    normalizeSearchValue(profile.pubkey),
+    normalizeSearchValue(profile.nip05),
+  ];
+  if (profile.pubkey) {
+    try {
+      candidates.push(normalizeSearchValue(toNpub(profile.pubkey)));
+    } catch {
+      /* ignore invalid pubkey */
+    }
+  }
+  return candidates.filter(Boolean);
+}
+
+export function scoreCreatorRelevance(
+  profile: CreatorProfile,
+  query: string,
+): number {
+  const normalizedQuery = normalizeSearchValue(query);
+  if (!normalizedQuery) {
+    return 0;
+  }
+
+  const exactCandidates = profileIdentifierCandidates(profile);
+  if (exactCandidates.includes(normalizedQuery)) {
+    return 10_000;
+  }
+
+  let score = 0;
+  const nameCandidates = profileNameCandidates(profile);
+  for (const value of nameCandidates) {
+    if (value === normalizedQuery) {
+      score = Math.max(score, 8_000);
+      continue;
+    }
+    if (value.startsWith(normalizedQuery)) {
+      score = Math.max(score, 6_000);
+      continue;
+    }
+    if (value.includes(normalizedQuery)) {
+      score = Math.max(score, 4_000);
+    }
+  }
+
+  if (!score && normalizedQuery.length >= 3) {
+    const compactQuery = normalizedQuery.replace(/[^a-z0-9]/g, "");
+    for (const value of nameCandidates) {
+      const compactValue = value.replace(/[^a-z0-9]/g, "");
+      if (!compactValue || !compactQuery) {
+        continue;
+      }
+      if (compactValue.startsWith(compactQuery)) {
+        score = Math.max(score, 3_500);
+      } else if (compactValue.includes(compactQuery)) {
+        score = Math.max(score, 2_500);
+      }
+    }
+  }
+
+  if (creatorHasVerifiedNip05(profile)) {
+    score += 120;
+  }
+  if (creatorHasTiers(profile)) {
+    score += 90;
+  }
+  if (creatorHasLightning(profile)) {
+    score += 60;
+  }
+  if (profile.featured) {
+    score += 40;
+  }
+  if (
+    typeof profile.followers === "number" &&
+    Number.isFinite(profile.followers)
+  ) {
+    score += Math.min(200, Math.round(Math.log10(profile.followers + 1) * 40));
+  }
+
+  return score;
+}
+
+export function sortCreatorsByRelevance(
+  profiles: CreatorProfile[],
+  query: string,
+): CreatorProfile[] {
+  const normalizedQuery = normalizeSearchValue(query);
+  if (!normalizedQuery) {
+    return profiles.slice();
+  }
+
+  return profiles.slice().sort((a, b) => {
+    const scoreDelta =
+      scoreCreatorRelevance(b, normalizedQuery) -
+      scoreCreatorRelevance(a, normalizedQuery);
+    if (scoreDelta !== 0) {
+      return scoreDelta;
+    }
+
+    const followerDelta =
+      (b.followers ?? Number.NEGATIVE_INFINITY) -
+      (a.followers ?? Number.NEGATIVE_INFINITY);
+    if (followerDelta !== 0) {
+      return followerDelta;
+    }
+
+    return fallbackName(a).localeCompare(fallbackName(b));
+  });
+}
+
 function applyCreatorFilters(
   profiles: CreatorProfile[],
   filters: CreatorSearchFilters = {},
   sort: CreatorSearchSort = "relevance",
+  query = "",
 ): CreatorProfile[] {
   const filtered = profiles.filter((profile) => {
     if (filters.hasTiers && !creatorHasTiers(profile)) {
@@ -2040,7 +2342,7 @@ function applyCreatorFilters(
       );
   }
 
-  return filtered.slice();
+  return sortCreatorsByRelevance(filtered, query);
 }
 
 function createCreatorFromBundle(
@@ -2082,12 +2384,26 @@ function createCreatorFromBundle(
 
   const displayName =
     overrideDisplayName ??
-    toNullableString(profile?.display_name ?? profile?.displayName ?? null);
-  const name = overrideName ?? toNullableString(profile?.name);
-  const about = overrideAbout ?? toNullableString(profile?.about);
+    toNullableString(
+      profile?.display_name ??
+        profile?.displayName ??
+        bundle.profileDetails?.display_name ??
+        bundle.profileDetails?.name ??
+        null,
+    );
+  const name =
+    overrideName ??
+    toNullableString(profile?.name ?? bundle.profileDetails?.name ?? null);
+  const about =
+    overrideAbout ??
+    toNullableString(profile?.about ?? bundle.profileDetails?.about ?? null);
   const nip05 =
     overrideNip05 ?? toNullableString(profile?.nip05 ?? profile?.nip05_npub);
-  const picture = overridePicture ?? toNullableString(profile?.picture);
+  const picture =
+    overridePicture ??
+    toNullableString(
+      profile?.picture ?? bundle.profileDetails?.picture ?? null,
+    );
   const banner = overrideBanner ?? toNullableString(profile?.banner);
 
   const creator: CreatorProfile = {
@@ -2158,6 +2474,7 @@ export const useCreatorsStore = defineStore("creators", {
       >,
       searchAbortController: null as AbortController | null,
       unfilteredSearchResults: [] as CreatorProfile[],
+      lastSearchQuery: "",
     };
   },
   getters: {
@@ -2473,6 +2790,7 @@ export const useCreatorsStore = defineStore("creators", {
       options: {
         filters?: CreatorSearchFilters;
         sort?: CreatorSearchSort;
+        query?: string;
       } = {},
     ): Promise<{ applied: boolean; networkWarning: boolean }> {
       const discovery = useDiscovery();
@@ -2584,14 +2902,20 @@ export const useCreatorsStore = defineStore("creators", {
       }
 
       const uniqueWarnings = Array.from(new Set(warnings));
+      const appliedQuery =
+        typeof options.query === "string"
+          ? options.query
+          : this.lastSearchQuery;
 
       this.error = "";
       this.searchStatusMessage = "";
+      this.lastSearchQuery = appliedQuery;
       this.unfilteredSearchResults = merged;
       this.searchResults = applyCreatorFilters(
         merged,
         options.filters,
         options.sort,
+        appliedQuery,
       );
       this.searchWarnings = uniqueWarnings;
 
@@ -2606,6 +2930,7 @@ export const useCreatorsStore = defineStore("creators", {
         this.unfilteredSearchResults,
         filters,
         sort,
+        this.lastSearchQuery,
       );
     },
 
@@ -2920,7 +3245,8 @@ export const useCreatorsStore = defineStore("creators", {
         return null;
       };
 
-      let normalizedQuery = rawQuery;
+      let normalizedQuery = extractCreatorIdentifier(rawQuery);
+      this.lastSearchQuery = normalizedQuery;
       let resolvedHex: string | null = null;
 
       if (
@@ -2984,6 +3310,7 @@ export const useCreatorsStore = defineStore("creators", {
             {
               filters,
               sort,
+              query: normalizedQuery,
             },
           );
           if (appliedResult.networkWarning) {

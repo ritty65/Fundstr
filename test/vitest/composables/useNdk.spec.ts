@@ -4,8 +4,14 @@ const createNdkMock = vi.fn<any, Promise<any>>();
 const createSignedNdkMock = vi.fn<any, Promise<any>>();
 const rebuildNdkBootMock = vi.fn<any, Promise<any>>();
 const setFundstrOnlyMock = vi.fn<(enabled: boolean) => void>();
+const adoptNdkInstanceMock = vi.fn((instance: any) => instance);
+const resetNdkInstanceMock = vi.fn();
 
-const nostrStoreMock: { signer?: unknown } = {};
+const nostrStoreMock: {
+  signer?: unknown;
+  pubkey?: string;
+  signerType?: string;
+} = {};
 
 vi.mock("../../../src/stores/nostr", () => ({
   useNostrStore: () => nostrStoreMock,
@@ -15,7 +21,10 @@ vi.mock("../../../src/boot/ndk", () => ({
   createNdk: (...args: any[]) => createNdkMock(...args),
   createSignedNdk: (...args: any[]) => createSignedNdkMock(...args),
   rebuildNdk: (...args: any[]) => rebuildNdkBootMock(...args),
-  setFundstrOnlyRuntimeOverride: (...args: any[]) => setFundstrOnlyMock(...args),
+  setFundstrOnlyRuntimeOverride: (...args: any[]) =>
+    setFundstrOnlyMock(...args),
+  adoptNdkInstance: (...args: any[]) => adoptNdkInstanceMock(...args),
+  resetNdkInstance: (...args: any[]) => resetNdkInstanceMock(...args),
 }));
 
 describe("useNdk", () => {
@@ -23,6 +32,8 @@ describe("useNdk", () => {
     vi.resetModules();
     vi.clearAllMocks();
     delete nostrStoreMock.signer;
+    delete nostrStoreMock.pubkey;
+    delete nostrStoreMock.signerType;
   });
 
   it("caches the default instance between calls", async () => {
@@ -36,6 +47,7 @@ describe("useNdk", () => {
     expect(first).toBe(instance);
     expect(second).toBe(instance);
     expect(createNdkMock).toHaveBeenCalledTimes(1);
+    expect(adoptNdkInstanceMock).toHaveBeenCalledTimes(1);
     expect(setFundstrOnlyMock).toHaveBeenCalledWith(false);
   });
 
@@ -45,6 +57,8 @@ describe("useNdk", () => {
     createNdkMock.mockResolvedValue(unsigned);
     createSignedNdkMock.mockResolvedValue(signed);
     nostrStoreMock.signer = { type: "nip07" };
+    nostrStoreMock.pubkey = "f".repeat(64);
+    nostrStoreMock.signerType = "nip07";
 
     const { useNdk } = await import("../../../src/composables/useNdk");
     const ndk = await useNdk();
@@ -79,11 +93,14 @@ describe("useNdk", () => {
     const signer = { type: "private-key" };
     rebuildNdkBootMock.mockResolvedValue(rebuilt);
 
-    const { rebuildNdk, useNdk } = await import("../../../src/composables/useNdk");
+    const { rebuildNdk, useNdk } = await import(
+      "../../../src/composables/useNdk"
+    );
 
     await rebuildNdk(relays, signer as any);
 
     expect(rebuildNdkBootMock).toHaveBeenCalledWith(relays, signer);
+    expect(adoptNdkInstanceMock).toHaveBeenCalledWith(rebuilt);
     expect(setFundstrOnlyMock).toHaveBeenLastCalledWith(false);
 
     const ndk = await useNdk({ requireSigner: false });
@@ -97,7 +114,11 @@ describe("useNdk", () => {
 
     const { useNdk } = await import("../../../src/composables/useNdk");
 
-    await expect(useNdk({ fundstrOnly: true, requireSigner: false })).rejects.toThrow("boom");
+    await expect(
+      useNdk({ fundstrOnly: true, requireSigner: false }),
+    ).rejects.toThrow(
+      "Unable to reach fundstr-only relays. Please retry after confirming connectivity.",
+    );
 
     const ndk = await useNdk({ fundstrOnly: true, requireSigner: false });
 

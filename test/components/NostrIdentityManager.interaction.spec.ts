@@ -1,18 +1,29 @@
 import { describe, it, beforeEach, afterEach, expect, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 import { defineComponent, h, nextTick, reactive, ref } from "vue";
+import { nip19 } from "nostr-tools";
+import { hexToBytes } from "@noble/hashes/utils";
 
 import NostrIdentityManager from "src/components/NostrIdentityManager.vue";
 
 let nostrStoreMock: any;
 let messengerStoreMock: any;
 let settingsStoreMock: any;
+let vaultStoreMock: any;
 
-vi.mock("pinia", () => ({
-  storeToRefs: (store: any) => ({
-    nip07SignerAvailable: store.nip07SignerAvailable,
-  }),
-}));
+const TEST_NSEC = nip19.nsecEncode(hexToBytes("11".repeat(32)));
+const TEST_UPDATED_NPUB = nip19.npubEncode("22".repeat(32));
+const TEST_NIP07_NPUB = nip19.npubEncode("33".repeat(32));
+
+vi.mock("pinia", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("pinia")>();
+  return {
+    ...actual,
+    storeToRefs: (store: any) => ({
+      nip07SignerAvailable: store.nip07SignerAvailable,
+    }),
+  };
+});
 
 vi.mock("src/stores/nostr", () => ({
   useNostrStore: () => nostrStoreMock,
@@ -24,6 +35,10 @@ vi.mock("src/stores/messenger", () => ({
 
 vi.mock("src/stores/settings", () => ({
   useSettingsStore: () => settingsStoreMock,
+}));
+
+vi.mock("src/stores/vault", () => ({
+  useVaultStore: () => vaultStoreMock,
 }));
 
 const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
@@ -141,22 +156,39 @@ describe("NostrIdentityManager interactions", () => {
     vi.clearAllMocks();
 
     nostrStoreMock = {
-      activePrivateKeyNsec: "nsec-initial",
-      npub: "npub-initial",
+      activePrivateKeyNsec: TEST_NSEC,
+      npub: TEST_UPDATED_NPUB,
       nip07SignerAvailable: ref(false),
       checkNip07Signer: vi.fn().mockResolvedValue(true),
       connectBrowserSigner: vi.fn().mockImplementation(async () => {
-        nostrStoreMock.activePrivateKeyNsec = "nsec-nip07";
-        nostrStoreMock.npub = "npub-nip07";
+        nostrStoreMock.activePrivateKeyNsec = TEST_NSEC;
+        nostrStoreMock.npub = TEST_NIP07_NPUB;
       }),
       updateIdentity: vi.fn().mockImplementation(async (priv: string) => {
         nostrStoreMock.activePrivateKeyNsec = priv;
-        nostrStoreMock.npub = "npub-updated";
+        nostrStoreMock.npub = TEST_UPDATED_NPUB;
       }),
+      encryptionKey: null,
+      hasEncryptedSecrets: vi.fn(() => false),
+      setEncryptionKeyFromPin: vi.fn(async () => {
+        nostrStoreMock.encryptionKey = "pin-ready";
+      }),
+      unlockWithPin: vi.fn(async () => {}),
     };
 
     settingsStoreMock = {
       defaultNostrRelays: ["wss://relay.one"],
+    };
+
+    vaultStoreMock = {
+      isUnlocked: false,
+      hasEncryptedVault: false,
+      setEncryptionKeyFromPin: vi.fn(async () => {
+        vaultStoreMock.isUnlocked = true;
+      }),
+      unlockWithPin: vi.fn(async () => {
+        vaultStoreMock.isUnlocked = true;
+      }),
     };
 
     messengerStoreMock = {
@@ -220,17 +252,19 @@ describe("NostrIdentityManager interactions", () => {
     expect(messengerStoreMock.aliases).not.toHaveProperty("npub-new");
 
     const privKeyInput = wrapper.get('label[data-label="Private Key"] input');
-    await privKeyInput.setValue("nsec-updated");
+    await privKeyInput.setValue(TEST_NSEC);
+    await wrapper
+      .get('label[data-label="Unlock PIN / Password"] input')
+      .setValue("1234");
 
     const saveButton = wrapper.get('button[data-label="Save"]');
     await saveButton.trigger("click");
     await flushPromises();
 
     expect(settingsStoreMock.defaultNostrRelays).toEqual(["wss://relay.two"]);
-    expect(nostrStoreMock.updateIdentity).toHaveBeenCalledWith(
-      "nsec-updated",
-      ["wss://relay.two"],
-    );
+    expect(nostrStoreMock.updateIdentity).toHaveBeenCalledWith(TEST_NSEC, [
+      "wss://relay.two",
+    ]);
     expect((wrapper.vm as any).showDialog).toBe(false);
   });
 
@@ -248,6 +282,9 @@ describe("NostrIdentityManager interactions", () => {
     await nextTick();
 
     expect(useNip07Button.attributes("disabled")).toBeUndefined();
+    await wrapper
+      .get('label[data-label="Unlock PIN / Password"] input')
+      .setValue("1234");
 
     await useNip07Button.trigger("click");
     await flushPromises();
@@ -255,6 +292,6 @@ describe("NostrIdentityManager interactions", () => {
     expect(nostrStoreMock.checkNip07Signer).toHaveBeenCalledTimes(2);
     expect(nostrStoreMock.connectBrowserSigner).toHaveBeenCalledTimes(1);
     expect((wrapper.vm as any).showDialog).toBe(false);
-    expect((wrapper.vm as any).pubKey).toBe("npub-nip07");
+    expect((wrapper.vm as any).pubKey).toBe(TEST_NIP07_NPUB);
   });
 });

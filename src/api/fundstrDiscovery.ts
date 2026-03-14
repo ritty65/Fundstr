@@ -111,6 +111,35 @@ function isNetworkChangeError(error: unknown): boolean {
   return false;
 }
 
+function isAbortLikeError(error: unknown): boolean {
+  const name =
+    typeof (error as { name?: unknown })?.name === "string"
+      ? String((error as { name?: unknown }).name)
+      : "";
+  if (name === "AbortError") {
+    return true;
+  }
+
+  if (
+    typeof DOMException !== "undefined" &&
+    error instanceof DOMException &&
+    error.code === DOMException.ABORT_ERR
+  ) {
+    return true;
+  }
+
+  const message =
+    typeof (error as { message?: unknown })?.message === "string"
+      ? String((error as { message?: unknown }).message).toLowerCase()
+      : "";
+
+  return (
+    message.includes("abort") ||
+    message.includes("signal is aborted") ||
+    message.includes("the operation was aborted")
+  );
+}
+
 function createTimeoutSignal(signal?: AbortSignal, timeoutMs?: number) {
   if (!timeoutMs || timeoutMs <= 0) {
     return { signal, cleanup: () => {} };
@@ -200,7 +229,7 @@ export async function safeFetchJson<T>(
     const response = await fetch(input, init);
     return safeJsonFromResponse<T>(response, init.warning ?? DEFAULT_WARNING);
   } catch (error) {
-    if ((error as any)?.name === "AbortError") {
+    if (isAbortLikeError(error)) {
       throw error;
     }
     if (isNetworkChangeError(error)) {
@@ -263,6 +292,9 @@ async function fetchJsonWithRetry<T>(
       await new Promise((resolve) => setTimeout(resolve, backoff * (i + 1)));
       continue;
     } catch (error) {
+      if (isAbortLikeError(error)) {
+        throw error;
+      }
       lastResult = {
         ok: false,
         warning: (error as Error)?.message || DEFAULT_WARNING,

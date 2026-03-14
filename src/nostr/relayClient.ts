@@ -672,11 +672,24 @@ export async function queryNutzapTiers(
     queryOptions.allowFanoutFallback = true;
   }
   const events = await queryNostr(filters, queryOptions);
-  return pickLatestAddrReplaceable(events, {
-    kind: [30019, 30000],
-    pubkey,
-    d: "tiers",
-  });
+  const tierCandidates = events
+    .filter(
+      (event) =>
+        (event.kind === 30019 || event.kind === 30000) &&
+        event.pubkey === pubkey &&
+        firstDTag(event) === "tiers",
+    )
+    .sort((a, b) => {
+      if (b.created_at !== a.created_at) {
+        return b.created_at - a.created_at;
+      }
+      if (a.kind !== b.kind) {
+        return a.kind === 30019 ? -1 : 1;
+      }
+      return (b.id ?? "") > (a.id ?? "") ? 1 : -1;
+    });
+
+  return tierCandidates[0] ?? null;
 }
 
 export { FUNDSTR, PUBLIC_POOL };

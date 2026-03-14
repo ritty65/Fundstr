@@ -9,11 +9,17 @@ import {
   nextTick,
   type Ref,
 } from "vue";
+import { nip19 } from "nostr-tools";
+import { hexToBytes } from "@noble/hashes/utils";
 
 import NostrSetupWizard from "src/components/NostrSetupWizard.vue";
 
 let nostrStoreMock: any;
 let messengerStoreMock: any;
+let vaultStoreMock: any;
+
+const TEST_NSEC = nip19.nsecEncode(hexToBytes("11".repeat(32)));
+const TEST_NPUB = nip19.npubEncode("22".repeat(32));
 
 vi.mock("src/stores/nostr", () => ({
   useNostrStore: () => nostrStoreMock,
@@ -21,6 +27,10 @@ vi.mock("src/stores/nostr", () => ({
 
 vi.mock("src/stores/messenger", () => ({
   useMessengerStore: () => messengerStoreMock,
+}));
+
+vi.mock("src/stores/vault", () => ({
+  useVaultStore: () => vaultStoreMock,
 }));
 
 const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
@@ -101,7 +111,10 @@ const QOptionGroupStub = defineComponent({
   name: "QOptionGroupStub",
   props: {
     modelValue: { type: String, default: "" },
-    options: { type: Array as () => Array<{ label: string; value: string }>, default: () => [] },
+    options: {
+      type: Array as () => Array<{ label: string; value: string }>,
+      default: () => [],
+    },
   },
   emits: ["update:modelValue"],
   setup(props, { emit }) {
@@ -139,10 +152,7 @@ const QInputStub = defineComponent({
           value: props.modelValue,
           type: props.type || "text",
           onInput: (event: Event) =>
-            emit(
-              "update:modelValue",
-              (event.target as HTMLInputElement).value,
-            ),
+            emit("update:modelValue", (event.target as HTMLInputElement).value),
           onKeyup: (event: KeyboardEvent) => emit("keyup", event),
         }),
       ]);
@@ -186,9 +196,13 @@ describe("NostrSetupWizard interactions", () => {
     vi.clearAllMocks();
     nostrStoreMock = {
       activePrivateKeyNsec: "",
+      npub: TEST_NPUB,
       initPrivateKeySigner: vi.fn().mockResolvedValue(undefined),
       checkNip07Signer: vi.fn().mockResolvedValue(true),
-      connectBrowserSigner: vi.fn().mockResolvedValue(undefined),
+      setEncryptionKeyFromPin: vi.fn().mockResolvedValue(undefined),
+      connectBrowserSigner: vi.fn().mockImplementation(async () => {
+        nostrStoreMock.npub = TEST_NPUB;
+      }),
     };
     messengerStoreMock = {
       relays: ["wss://relay.one"],
@@ -196,6 +210,9 @@ describe("NostrSetupWizard interactions", () => {
         messengerStoreMock.connected = true;
       }),
       connected: false,
+    };
+    vaultStoreMock = {
+      ensureUnlocked: vi.fn().mockResolvedValue(undefined),
     };
   });
 
@@ -212,12 +229,15 @@ describe("NostrSetupWizard interactions", () => {
     expect(wrapper.vm.step).toBe(1);
 
     const privateKeyInput = wrapper.find('input[type="text"]');
-    await privateKeyInput.setValue(" nsec123 ");
+    await privateKeyInput.setValue(` ${TEST_NSEC} `);
+    const pinInputs = wrapper.findAll('input[type="password"]');
+    await pinInputs[0].setValue("1234");
+    await pinInputs[1].setValue("1234");
     await privateNextBtn.trigger("click");
     await flushPromises();
     await nextTick();
 
-    expect(nostrStoreMock.initPrivateKeySigner).toHaveBeenCalledWith("nsec123");
+    expect(nostrStoreMock.initPrivateKeySigner).toHaveBeenCalledWith(TEST_NSEC);
     expect(wrapper.vm.step).toBe(2);
 
     const deleteRelayBtn = wrapper.find('[data-icon="delete"]');
@@ -245,7 +265,9 @@ describe("NostrSetupWizard interactions", () => {
     await flushPromises();
     await nextTick();
 
-    expect(messengerStoreMock.connect).toHaveBeenCalledWith(["wss://relay.new"]);
+    expect(messengerStoreMock.connect).toHaveBeenCalledWith([
+      "wss://relay.new",
+    ]);
     expect(wrapper.vm.connected).toBe(true);
 
     const finishBtn = wrapper.find('[data-label="Finish"]');
@@ -263,10 +285,17 @@ describe("NostrSetupWizard interactions", () => {
     const wrapper = mountWizard();
 
     const extensionRadio = wrapper.find('input[value="extension"]');
-    await extensionRadio.setChecked();
+    (extensionRadio.element as HTMLInputElement).checked = true;
+    await extensionRadio.trigger("change");
     await nextTick();
 
-    const connectExtensionBtn = wrapper.find('[data-label="Connect Extension"]');
+    const connectExtensionBtn = wrapper.find(
+      '[data-label="Connect Extension"]',
+    );
+
+    const pinInputs = wrapper.findAll('input[type="password"]');
+    await pinInputs[0].setValue("1234");
+    await pinInputs[1].setValue("1234");
 
     await connectExtensionBtn.trigger("click");
     await flushPromises();

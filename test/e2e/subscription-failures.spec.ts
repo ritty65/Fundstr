@@ -3,9 +3,19 @@ import { test, expect, type Page } from "@playwright/test";
 const setContentWithOrigin = async (
   page: Page,
   html: string,
-  url = "/subscriptions",
+  url = "/deploy-test.txt",
 ) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("welcome.seen:v1", "1");
+    localStorage.setItem("cashu.welcome.completed", "1");
+    document.cookie = "welcome_seen_v1=1; path=/";
+  });
   await page.goto(url, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    localStorage.setItem("welcome.seen:v1", "1");
+    localStorage.setItem("cashu.welcome.completed", "1");
+    document.cookie = "welcome_seen_v1=1; path=/";
+  });
   await page.setContent(html);
 };
 
@@ -155,6 +165,7 @@ test.describe("subscription failure handling", () => {
         let processing = false;
         async function storeSubscription() {
           await ready;
+          await new Promise((resolve) => setTimeout(resolve, 25));
           const db = window.db;
           return await new Promise((resolve) => {
             const tx = db.transaction('subscriptions', 'readwrite');
@@ -186,7 +197,11 @@ test.describe("subscription failure handling", () => {
     `,
     );
 
-    await page.evaluate(() => (window as any).waitReady());
+    await page.waitForFunction(
+      () =>
+        typeof (window as any).countSubscriptions === "function" &&
+        Boolean((window as any).db),
+    );
     await page.click("#double", { clickCount: 2 });
     await page.waitForTimeout(50);
 

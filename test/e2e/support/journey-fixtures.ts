@@ -1,4 +1,6 @@
 import { expect, type Page } from "@playwright/test";
+import { nip19 } from "nostr-tools";
+import { hexToBytes } from "@noble/hashes/utils";
 import { createE2EApi, type E2EApi } from "./e2e-api";
 
 export const TEST_MINT_URL = "https://mint.test" as const;
@@ -7,6 +9,7 @@ export const TEST_KEYSET_ID = "e2e-keyset" as const;
 export const TEST_RELAY_URL = "wss://relay.test" as const;
 export const TEST_CREATOR_HEX = "f".repeat(64);
 export const TEST_CREATOR_NPUB = "e2e-pubkey";
+export const TEST_IMPORT_NSEC = nip19.nsecEncode(hexToBytes("11".repeat(32)));
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -212,7 +215,7 @@ type CompleteOnboardingOptions = {
   connectMint?: boolean;
   mintLabel?: string;
   mintUrl?: string;
-  setupNostr?: "generate" | "skip";
+  setupNostr?: "generate" | "skip" | "import";
 };
 
 export async function completeOnboarding(
@@ -257,6 +260,23 @@ export async function completeOnboarding(
           const backupInput = backupDialog.getByRole("textbox");
           const nsecValue = await backupInput.inputValue();
           expect(nsecValue).toMatch(/^nsec1[0-9a-z]+$/);
+          await backupDialog.getByRole("button", { name: "Got it" }).click();
+          await expect(backupDialog).not.toBeVisible();
+        }
+      } else if (setupNostr === "import") {
+        const importInput = page.getByLabel(/nsec or hex key/i);
+        await expect(importInput).toBeVisible();
+        await importInput.fill(TEST_IMPORT_NSEC);
+        await page
+          .getByRole("button", { name: /Import existing key/i })
+          .click();
+
+        await expect(page.getByText(/^npub1/i)).toBeVisible();
+
+        const backupDialog = page
+          .getByRole("dialog")
+          .filter({ hasText: /Backup your Nostr secret/i });
+        if (await backupDialog.isVisible()) {
           await backupDialog.getByRole("button", { name: "Got it" }).click();
           await expect(backupDialog).not.toBeVisible();
         }

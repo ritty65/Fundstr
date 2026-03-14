@@ -60,6 +60,7 @@ import {
   DM_RELAYS,
   DM_HTTP_EVENT_URL,
   DM_HTTP_REQ_URL,
+  DM_WS_ACK_TIMEOUT_MS,
   DM_HTTP_ACK_TIMEOUT_MS,
   DM_POLL_INTERVAL_MS,
   DM_REQUIRE_AUTH,
@@ -450,7 +451,7 @@ const NON_RETRYABLE_ACK_PATTERNS = [
 const LOCAL_ECHO_TIMEOUT_MS = 5_000;
 
 const MESSENGER_OUTBOX_ENABLED = true;
-const OUTBOX_DELIVERY_QUORUM = 2;
+const OUTBOX_DELIVERY_QUORUM = 1;
 const OUTBOX_BACKOFF_BASE_MS = 2_000;
 const OUTBOX_BACKOFF_MAX_MS = 120_000;
 const OUTBOX_BACKOFF_JITTER_RATIO = 0.25;
@@ -526,6 +527,20 @@ function extractRelayHintsFromEvent(event: NostrEvent | undefined): string[] {
     }
   }
   return Array.from(hints);
+}
+
+function extractDirectMessageRecipient(
+  event: NostrEvent | undefined,
+): string | null {
+  if (!event?.tags) return null;
+  for (const tag of event.tags) {
+    if (!Array.isArray(tag) || tag[0] !== "p") continue;
+    const recipient = tag[1];
+    if (typeof recipient === "string" && recipient) {
+      return recipient;
+    }
+  }
+  return null;
 }
 
 function cloneNostrEvent(event: NostrEvent): NostrEvent {
@@ -1438,7 +1453,7 @@ export const useMessengerStore = defineStore("messenger", {
               try {
                 const raw = await ndkEvent.toNostrEvent();
                 if ((raw as NostrEvent).pubkey === nostr.pubkey) {
-                  this.pushOwnMessage(raw as NostrEvent);
+                  await this.pushOwnMessage(raw as NostrEvent);
                 } else {
                   await this.addIncomingMessage(raw as NostrEvent);
                 }
@@ -1516,7 +1531,7 @@ export const useMessengerStore = defineStore("messenger", {
               }
               const nostrEvent = await ndkEvent.toNostrEvent();
               if ((nostrEvent as NostrEvent).pubkey === nostr.pubkey) {
-                this.pushOwnMessage(nostrEvent as NostrEvent);
+                await this.pushOwnMessage(nostrEvent as NostrEvent);
               } else {
                 await this.addIncomingMessage(nostrEvent as NostrEvent);
               }
@@ -1690,7 +1705,7 @@ export const useMessengerStore = defineStore("messenger", {
     async deliverDmEventForTesting(event: NostrEvent) {
       const nostr = useNostrStore();
       if (event.pubkey === nostr.pubkey) {
-        this.pushOwnMessage(event);
+        await this.pushOwnMessage(event);
       } else {
         await this.addIncomingMessage(event);
       }
@@ -2068,7 +2083,7 @@ export const useMessengerStore = defineStore("messenger", {
         this.signerInitCache = null;
       }
       const now = Date.now();
-      const shouldInitSigner = refresh || !this.started || !nostr.signer;
+      const shouldInitSigner = refresh || !nostr.signer;
       if (shouldInitSigner) {
         const lastAttempt = this.signerInitCache;
         const recentFailedAttempt =
@@ -2151,7 +2166,7 @@ export const useMessengerStore = defineStore("messenger", {
           if (event.id && seen.has(event.id)) continue;
           if (event.id) seen.add(event.id);
           if (event.pubkey === pubkey) {
-            this.pushOwnMessage(event);
+            await this.pushOwnMessage(event);
           } else {
             await this.addIncomingMessage(event);
           }
@@ -2167,6 +2182,69 @@ export const useMessengerStore = defineStore("messenger", {
         const message =
           err instanceof Error ? err.message : String(err ?? "error");
         console.error("[messenger.syncDmViaHttp]", err);
+        notifyError(`Failed to sync DMs via HTTP fallback: ${message}`);
+        throw err instanceof Error ? err : new Error(message);
+      }
+    },
+    async syncConversationViaHttp(
+      pubkey: string | undefined,
+      peerPubkey: string | undefined,
+      since: number,
+    ) {
+      if (!pubkey || !peerPubkey) return;
+      if (!this.httpFallbackEnabled) return;
+      const normalizedPeer = this.normalizeKey(peerPubkey);
+      if (!normalizedPeer) return;
+      const sinceFilter = since > 0 ? { since } : {};
+      const filters = [
+        {
+          kinds: [4],
+          authors: [normalizedPeer],
+          "#p": [pubkey],
+          ...sinceFilter,
+        },
+        {
+          kinds: [4],
+          authors: [pubkey],
+          "#p": [normalizedPeer],
+          ...sinceFilter,
+        },
+      ];
+      try {
+        const dmHeaders = buildDmHttpHeaders();
+        const events = await requestEventsViaHttp(filters, {
+          url: DM_HTTP_REQ_URL,
+          timeoutMs: DM_HTTP_ACK_TIMEOUT_MS,
+          ...(dmHeaders ? { headers: dmHeaders } : {}),
+        });
+        if (!Array.isArray(events) || events.length === 0) {
+          return;
+        }
+        const sorted = events
+          .filter((e) => e && typeof e === "object")
+          .sort((a, b) => (a?.created_at || 0) - (b?.created_at || 0));
+        const seen = new Set<string>();
+        for (const raw of sorted) {
+          const event = raw as NostrEvent;
+          if (event.id && seen.has(event.id)) continue;
+          if (event.id) seen.add(event.id);
+          if (event.pubkey === pubkey) {
+            await this.pushOwnMessage(event);
+          } else {
+            await this.addIncomingMessage(event);
+          }
+        }
+      } catch (err) {
+        if (err instanceof HttpFallbackThrottledError) {
+          console.warn(
+            "[messenger.syncConversationViaHttp] HTTP fallback throttled",
+            err,
+          );
+          throw err;
+        }
+        const message =
+          err instanceof Error ? err.message : String(err ?? "error");
+        console.error("[messenger.syncConversationViaHttp]", err);
         notifyError(`Failed to sync DMs via HTTP fallback: ${message}`);
         throw err instanceof Error ? err : new Error(message);
       }
@@ -2524,7 +2602,10 @@ export const useMessengerStore = defineStore("messenger", {
             : Array.isArray(this.relays)
             ? this.relays
             : Array.from(new Set([...DM_RELAYS]));
-          for (const relayUrl of fundstrRelays) {
+          const prioritizedRelayTargets = Array.from(
+            new Set([...DM_RELAYS, ...fundstrRelays]),
+          ).slice(0, 1);
+          for (const relayUrl of prioritizedRelayTargets) {
             if (!relayUrl) continue;
             let client: Awaited<
               ReturnType<typeof ensureFundstrRelayClient>
@@ -2758,12 +2839,24 @@ export const useMessengerStore = defineStore("messenger", {
             )
           : (Array.from(new Set([...DM_RELAYS])) as string[]);
 
-      for (const relayUrl of relayCandidates) {
+      const prioritizedRelayTargets = Array.from(
+        new Set([...DM_RELAYS, ...relayCandidates]),
+      ).slice(0, 1);
+
+      for (const relayUrl of prioritizedRelayTargets) {
         if (!relayUrl) continue;
         if (acceptedCount >= this.outboxQuorum) break;
         let ackRecord: RelayAck;
         try {
-          const client = await ensureFundstrRelayClient(relayUrl);
+          const client = await Promise.race([
+            ensureFundstrRelayClient(relayUrl),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () => reject(new Error(`Relay client timeout: ${relayUrl}`)),
+                DM_WS_ACK_TIMEOUT_MS,
+              ),
+            ),
+          ]);
           const authOptions: FundstrRelayAuthOptions = this.dmRequireAuth
             ? {
                 enabled: true,
@@ -2773,7 +2866,15 @@ export const useMessengerStore = defineStore("messenger", {
               }
             : { enabled: false };
           client.setAuthOptions(authOptions);
-          const result = await client.publishSigned(event);
+          const result = await Promise.race([
+            client.publishSigned(event),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () => reject(new Error(`Relay publish timeout: ${relayUrl}`)),
+                DM_WS_ACK_TIMEOUT_MS,
+              ),
+            ),
+          ]);
           const ack = result.ack;
           ackRecord = {
             ok: ack.accepted,
@@ -2834,9 +2935,60 @@ export const useMessengerStore = defineStore("messenger", {
               };
             }
           } else {
-            nonRetryableHttpAck = isNonRetryableHttpAck(ack);
-            if (ack.message) {
-              lastError = ack.message;
+            let verifiedByReadback = false;
+            if (ack.id) {
+              try {
+                for (
+                  let attempt = 0;
+                  attempt < 3 && !verifiedByReadback;
+                  attempt++
+                ) {
+                  if (attempt > 0) {
+                    await new Promise((resolve) => setTimeout(resolve, 750));
+                  }
+                  const readback = await requestEventsViaHttp(
+                    [{ ids: [ack.id], limit: 1 }],
+                    {
+                      url: DM_HTTP_REQ_URL,
+                      timeoutMs: DM_HTTP_ACK_TIMEOUT_MS,
+                      ...(dmHeaders ? { headers: dmHeaders } : {}),
+                    },
+                  );
+                  verifiedByReadback = Array.isArray(readback)
+                    ? readback.some(
+                        (entry) =>
+                          entry &&
+                          typeof entry === "object" &&
+                          (entry as any).id === ack.id,
+                      )
+                    : false;
+                }
+              } catch (err) {
+                console.warn(
+                  "[messenger.publishWithQuorum] HTTP readback verification failed",
+                  err,
+                );
+              }
+            }
+
+            if (verifiedByReadback) {
+              ackMap[DM_HTTP_EVENT_URL] = {
+                ok: true,
+                reason: ack.message || "verified via relay readback",
+              };
+              acceptedCount += 1;
+              if (!firstAck) {
+                firstAck = {
+                  transport: "http",
+                  relay: DM_HTTP_EVENT_URL,
+                  ack: ackMap[DM_HTTP_EVENT_URL],
+                };
+              }
+            } else {
+              nonRetryableHttpAck = isNonRetryableHttpAck(ack);
+              if (ack.message) {
+                lastError = ack.message;
+              }
             }
           }
         } catch (err) {
@@ -3814,7 +3966,7 @@ export const useMessengerStore = defineStore("messenger", {
 
         try {
           const nostrEvent = await ndkEvent.toNostrEvent();
-          this.pushOwnMessage(nostrEvent as NostrEvent);
+          await this.pushOwnMessage(nostrEvent as NostrEvent);
         } catch (conversionErr) {
           console.error(
             "[messenger.confirmMessageDelivery] failed to convert event",
@@ -3848,7 +4000,7 @@ export const useMessengerStore = defineStore("messenger", {
         console.error("[messenger.confirmMessageDelivery] failed", err);
       }
     },
-    pushOwnMessage(event: NostrEvent) {
+    async pushOwnMessage(event: NostrEvent) {
       if (!Array.isArray(this.eventLog)) this.eventLog = [];
       const eventId = event.id;
       let msg = (eventId ? this.eventMap[eventId] : undefined) as
@@ -3870,9 +4022,77 @@ export const useMessengerStore = defineStore("messenger", {
           }
         }
       }
+      if (!msg) {
+        const nostr = useNostrStore();
+        const recipient = this.normalizeKey(
+          extractDirectMessageRecipient(event) || "",
+        );
+        if (!recipient) return;
+
+        const privKey =
+          nostr.signerType === SignerType.NIP07 ? undefined : nostr.privKeyHex;
+        let plaintext: string;
+        try {
+          plaintext = await nostr.decryptDmContent(
+            privKey,
+            recipient,
+            event.content,
+          );
+        } catch (err) {
+          console.warn(
+            "[messenger.pushOwnMessage] failed to hydrate outgoing DM",
+            { eventId, recipient },
+            err,
+          );
+          return;
+        }
+
+        const outboundFiles = extractFilesFromContent(plaintext);
+        const primaryFile = outboundFiles[0];
+        const normalizedContent = outboundFiles.length
+          ? sanitizeMessage(
+              stripFileMetaLines(plaintext),
+              Math.max(1000, plaintext.length),
+            )
+          : sanitizeMessage(plaintext);
+
+        if (!this.conversations[recipient]) {
+          this.conversations[recipient] = [];
+        }
+        const mergeResult = mergeMessengerEvent({
+          eventId,
+          eventMap: this.eventMap,
+          eventLog: this.eventLog,
+          conversation: this.conversations[recipient],
+          localEchoIndex: this.localEchoIndex,
+          createMessage: () => ({
+            id: eventId || uuidv4(),
+            pubkey: recipient,
+            content: normalizedContent,
+            created_at: event.created_at ?? Math.floor(Date.now() / 1000),
+            outgoing: true,
+            protocol: resolveDmProtocol(event.kind, event.content),
+            filesPayload: outboundFiles.length ? outboundFiles : undefined,
+            attachment: primaryFile
+              ? { type: primaryFile.mime, name: primaryFile.name }
+              : undefined,
+          }),
+          onRegister: (message) => this.registerMessage(message, [eventId]),
+        });
+        msg = mergeResult.message;
+        msg.pubkey = recipient;
+        msg.content = normalizedContent;
+        msg.created_at = event.created_at ?? msg.created_at;
+        msg.outgoing = true;
+        msg.protocol = resolveDmProtocol(event.kind, event.content);
+        msg.filesPayload = outboundFiles.length ? outboundFiles : undefined;
+        if (primaryFile) {
+          msg.attachment = { type: primaryFile.mime, name: primaryFile.name };
+        }
+      }
       if (!msg) return;
       const outboundFiles = extractFilesFromContent(
-        event.content || msg.content || "",
+        msg.content || event.content || "",
       );
       msg.filesPayload = outboundFiles.length
         ? outboundFiles
@@ -4377,7 +4597,7 @@ export const useMessengerStore = defineStore("messenger", {
           { kinds: [4], authors: [nostr.pubkey], ...sinceFilter },
           async (event: NDKEvent) => {
             const raw = await event.toNostrEvent();
-            this.pushOwnMessage(raw as NostrEvent);
+            await this.pushOwnMessage(raw as NostrEvent);
           },
         );
 

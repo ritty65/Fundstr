@@ -4,11 +4,20 @@
       No trusted mints published yet.
     </div>
     <ul v-else class="mint-safety-list__items">
-      <li v-for="mint in normalizedMints" :key="mint" class="mint-safety-list__item">
+      <li
+        v-for="mint in normalizedMints"
+        :key="mint.full"
+        class="mint-safety-list__item"
+      >
         <QIcon name="shield" size="18px" class="mint-safety-list__icon" />
-        <span class="mint-safety-list__label">{{ mint }}</span>
-        <QTooltip class="mint-safety-list__tooltip" anchor="top middle" self="bottom middle">
-          Verified Cashu mint shared via Nutzap profile.
+        <span class="mint-safety-list__label">{{ mint.label }}</span>
+        <QTooltip
+          class="mint-safety-list__tooltip"
+          anchor="top middle"
+          self="bottom middle"
+        >
+          <div>{{ mint.full }}</div>
+          <div>Verified Cashu mint shared via Nutzap profile.</div>
         </QTooltip>
       </li>
     </ul>
@@ -21,11 +30,16 @@ import { QIcon, QTooltip } from "quasar";
 
 const props = defineProps<{ mints: string[] | undefined }>();
 
+function compactLabel(value: string) {
+  return value.replace(/^(https?:\/\/|wss?:\/\/)/i, "");
+}
+
 const normalizedMints = computed(() =>
   Array.isArray(props.mints)
     ? props.mints
         .map((mint) => mint?.trim())
         .filter((mint): mint is string => !!mint)
+        .map((mint) => ({ full: mint, label: compactLabel(mint) }))
     : [],
 );
 </script>
@@ -39,7 +53,7 @@ const normalizedMints = computed(() =>
 
 .mint-safety-list__items {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 0.5rem;
   list-style: none;
   padding: 0;
@@ -52,9 +66,10 @@ const normalizedMints = computed(() =>
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--surface-contrast-border);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.02);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-2) 84%, transparent);
   color: var(--text-1);
+  max-width: 100%;
 }
 
 .mint-safety-list__icon {
@@ -64,7 +79,7 @@ const normalizedMints = computed(() =>
 .mint-safety-list__label {
   font-size: 0.85rem;
   line-height: 1.2;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .mint-safety-list__empty {
@@ -74,7 +89,7 @@ const normalizedMints = computed(() =>
 }
 
 .mint-safety-list__tooltip {
-  max-width: 220px;
-  text-align: center;
+  max-width: 260px;
+  text-align: left;
 }
 </style>

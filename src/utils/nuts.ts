@@ -10,12 +10,14 @@ type NutEntry = {
   [key: string]: unknown;
 };
 
-type MintInfoLike = {
+export type MintInfoLike = {
   nut_supports?: unknown;
   nuts?: Record<string, unknown> | undefined;
 };
 
-export function resolveSupportedNuts(info: MintInfoLike | undefined | null): number[] {
+export function resolveSupportedNuts(
+  info: MintInfoLike | undefined | null,
+): number[] {
   if (!info) {
     return [];
   }

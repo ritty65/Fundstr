@@ -41,7 +41,9 @@
             </transition>
 
             <!-- button to showSendDialog -->
-            <div class="col-12 col-sm-5 col-md-4 q-mb-md flex justify-center items-center">
+            <div
+              class="col-12 col-sm-5 col-md-4 q-mb-md flex justify-center items-center"
+            >
               <q-btn
                 rounded
                 dense
@@ -61,40 +63,40 @@
           <!-- ///////////////////////////////////////////
       ////////////////// TABLES /////////////////
       /////////////////////////////////////////// -->
-            <q-expansion-item expand-icon-class="hidden" v-model="expandHistory">
-              <template v-slot:header="{ expanded }">
-                <q-item-section class="item-center text-center">
-                  <span
-                    ><q-icon
-                      color="primary"
-                      :name="
-                        expanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down'
-                      "
-                  /></span>
-                </q-item-section>
-              </template>
-              <q-tabs v-model="tab" no-caps class="bg-surface-2">
-                <q-tab
-                  name="history"
-                  :label="$t('WalletPage.tabs.history.label')"
-                ></q-tab>
-                <q-tab
-                  name="invoices"
-                  :label="$t('WalletPage.tabs.invoices.label')"
-                ></q-tab>
-                <!-- <q-tab name="tokens" label="Tokens"></q-tab> -->
-                <q-tab
-                  name="mints"
-                  :label="$t('WalletPage.tabs.mints.label')"
-                ></q-tab>
-                <q-tab
-                  name="buckets"
-                  :label="$t('WalletPage.tabs.buckets.label')"
-                ></q-tab>
-                <q-tab name="info" label="Info"></q-tab>
-              </q-tabs>
+          <q-expansion-item expand-icon-class="hidden" v-model="expandHistory">
+            <template v-slot:header="{ expanded }">
+              <q-item-section class="item-center text-center">
+                <span
+                  ><q-icon
+                    color="primary"
+                    :name="
+                      expanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down'
+                    "
+                /></span>
+              </q-item-section>
+            </template>
+            <q-tabs v-model="tab" no-caps class="bg-surface-2">
+              <q-tab
+                name="history"
+                :label="$t('WalletPage.tabs.history.label')"
+              ></q-tab>
+              <q-tab
+                name="invoices"
+                :label="$t('WalletPage.tabs.invoices.label')"
+              ></q-tab>
+              <!-- <q-tab name="tokens" label="Tokens"></q-tab> -->
+              <q-tab
+                name="mints"
+                :label="$t('WalletPage.tabs.mints.label')"
+              ></q-tab>
+              <q-tab
+                name="buckets"
+                :label="$t('WalletPage.tabs.buckets.label')"
+              ></q-tab>
+              <q-tab name="info" label="Info"></q-tab>
+            </q-tabs>
 
-              <q-tab-panels class="bg-surface-2" v-model="tab" animated>
+            <q-tab-panels class="bg-surface-2" v-model="tab" animated>
               <!-- ////////////////// HISTORY LIST ///////////////// -->
 
               <q-tab-panel name="history">
@@ -120,20 +122,23 @@
                   <q-card-section class="text-1">
                     <div class="text-h6 text-1 q-mb-md">What is Cashu?</div>
                     <p>
-                      Cashu is an open protocol that revives the idea of Chaumian e-cash for
-                      the Lightning era. Instead of balances being held on a server, Cashu uses
-                      <strong>blind signatures</strong> to mint ecash tokens that only you can
-                      spend. A Cashu mint signs withdrawal requests without seeing the actual
-                      value or owner of the proofs, so your balance stays private while still
-                      being 100% backed by sats held by the mint.
+                      Cashu is an open protocol that revives the idea of
+                      Chaumian e-cash for the Lightning era. Instead of balances
+                      being held on a server, Cashu uses
+                      <strong>blind signatures</strong> to mint ecash tokens
+                      that only you can spend. A Cashu mint signs withdrawal
+                      requests without seeing the actual value or owner of the
+                      proofs, so your balance stays private while still being
+                      100% backed by sats held by the mint.
                     </p>
                     <p>
-                      When you deposit Lightning funds, the mint issues a collection of proofs
-                      (think of them as digital banknotes). Each proof contains a random secret
-                      known only to you and is signed by the mint. To spend, you reveal the
-                      secret to the mint and it checks the signature. Because every proof can be
-                      spent only once, the mint prevents double-spends while never learning who
-                      funded or redeemed the tokens.
+                      When you deposit Lightning funds, the mint issues a
+                      collection of proofs (think of them as digital banknotes).
+                      Each proof contains a random secret known only to you and
+                      is signed by the mint. To spend, you reveal the secret to
+                      the mint and it checks the signature. Because every proof
+                      can be spent only once, the mint prevents double-spends
+                      while never learning who funded or redeemed the tokens.
                     </p>
                   </q-card-section>
                   <q-separator dark inset></q-separator>
@@ -141,75 +146,83 @@
                     <div class="text-subtitle1 text-1">Why it matters</div>
                     <ul class="cashu-info-list">
                       <li>
-                        <strong>Privacy-first:</strong> Blind signatures keep your transaction
-                        graph hidden from the mint or outside observers.
+                        <strong>Privacy-first:</strong> Blind signatures keep
+                        your transaction graph hidden from the mint or outside
+                        observers.
                       </li>
                       <li>
-                        <strong>Instant and final:</strong> Proofs settle immediately between
-                        users, and redemption via Lightning is as fast as the network allows.
+                        <strong>Instant and final:</strong> Proofs settle
+                        immediately between users, and redemption via Lightning
+                        is as fast as the network allows.
                       </li>
                       <li>
-                        <strong>Interoperable:</strong> Wallets can withdraw, transfer, and
-                        deposit across any Cashu-compatible mint, enabling fluid movement of
-                        sats between communities.
+                        <strong>Interoperable:</strong> Wallets can withdraw,
+                        transfer, and deposit across any Cashu-compatible mint,
+                        enabling fluid movement of sats between communities.
                       </li>
                       <li>
-                        <strong>Composable:</strong> Proofs can be bundled, split, or locked in
-                        smart workflows like buckets, time-locks, or programmable payouts.
+                        <strong>Composable:</strong> Proofs can be bundled,
+                        split, or locked in smart workflows like buckets,
+                        time-locks, or programmable payouts.
                       </li>
                     </ul>
                   </q-card-section>
                   <q-separator dark inset></q-separator>
                   <q-card-section class="text-1">
-                    <div class="text-subtitle1 text-1 q-mb-sm">How a typical flow works</div>
+                    <div class="text-subtitle1 text-1 q-mb-sm">
+                      How a typical flow works
+                    </div>
                     <div class="cashu-flow-grid">
                       <div>
                         <div class="cashu-flow-step">1. Request</div>
                         <p>
-                          Send a Lightning payment to the mint (via invoice, swap-in, or direct
-                          deposit). The mint prepares blinded tokens worth the exact amount you
-                          paid.
+                          Send a Lightning payment to the mint (via invoice,
+                          swap-in, or direct deposit). The mint prepares blinded
+                          tokens worth the exact amount you paid.
                         </p>
                       </div>
                       <div>
                         <div class="cashu-flow-step">2. Minting</div>
                         <p>
-                          You unblind and store the signed proofs locally. Only you can unlock
-                          them because the mint never sees the secrets inside the proofs.
+                          You unblind and store the signed proofs locally. Only
+                          you can unlock them because the mint never sees the
+                          secrets inside the proofs.
                         </p>
                       </div>
                       <div>
                         <div class="cashu-flow-step">3. Spending</div>
                         <p>
-                          Share proofs with anyone you trust or redeem them in apps. Spent
-                          proofs are invalidated, while change is reissued as brand-new proofs to
-                          preserve privacy.
+                          Share proofs with anyone you trust or redeem them in
+                          apps. Spent proofs are invalidated, while change is
+                          reissued as brand-new proofs to preserve privacy.
                         </p>
                       </div>
                       <div>
                         <div class="cashu-flow-step">4. Redemption</div>
                         <p>
-                          When you want to exit, present your proofs to the mint and receive a
-                          Lightning payout or on-chain swap, closing the loop.
+                          When you want to exit, present your proofs to the mint
+                          and receive a Lightning payout or on-chain swap,
+                          closing the loop.
                         </p>
                       </div>
                     </div>
                   </q-card-section>
                   <q-separator dark inset></q-separator>
                   <q-card-section class="text-1">
-                    <div class="text-subtitle1 text-1 q-mb-sm">Learn by watching</div>
+                    <div class="text-subtitle1 text-1 q-mb-sm">
+                      Learn by watching
+                    </div>
                     <p class="q-mb-md">
-                      Prefer a quick overview? Watch this short explainer video to see Cashu in
-                      action and understand how Fundstr integrates Chaumian ecash into your
-                      wallet experience.
+                      Prefer a quick overview? Watch this short explainer video
+                      to see Cashu in action and understand how Fundstr
+                      integrates Chaumian ecash into your wallet experience.
                     </p>
                     <div class="cashu-video-wrapper">
-                      <video
-                        class="cashu-video"
-                        controls
-                        preload="metadata"
-                      >
-                        <source src="https://m.primal.net/HsMt.mp4" type="video/mp4" />
+                      <video class="cashu-video" controls preload="metadata">
+                        <source
+                          src="https://m.primal.net/HsMt.mp4"
+                          type="video/mp4"
+                        />
                         Your browser does not support the video tag.
                       </video>
                     </div>
@@ -413,7 +426,8 @@ body.body--dark .wallet-action-btn:active {
   background: #000;
 }
 </style>
-<script>import windowMixin from 'src/mixins/windowMixin'
+<script>
+import windowMixin from "src/mixins/windowMixin";
 import { debug } from "src/js/logger";
 
 import { date } from "quasar";
@@ -629,6 +643,27 @@ export default {
       startSubscriptionRedeemWorker: "start",
     }),
     ...mapActions(useCashuSendWorker, ["start"]),
+    initWalletNostrBootstrap: async function () {
+      if (this.signerType === SignerType.NIP07) {
+        const hasExt = await this.checkNip07Signer();
+        if (hasExt) {
+          await this.initNip07Signer();
+        } else {
+          await this.initSigner();
+          this.notifyWarning(
+            this.$t("settings.nostr.signing_extension.not_found"),
+          );
+        }
+      } else {
+        await this.initSigner();
+      }
+
+      if (this.nwcEnabled) {
+        this.listenToNWCCommands();
+      }
+
+      this.ensureDmListeners({ suppressWarnings: true });
+    },
     // TOKEN METHODS
     decodeToken: function (encoded_token) {
       try {
@@ -894,26 +929,17 @@ export default {
       this.registerPWAEventHook();
       this.initializeMnemonic();
 
-      if (this.signerType === SignerType.NIP07) {
-        const hasExt = await this.checkNip07Signer();
-        if (hasExt) {
-          await this.initNip07Signer();
-        } else {
-          await this.initSigner();
-          this.notifyWarning(
-            this.$t("settings.nostr.signing_extension.not_found"),
-          );
-        }
-      } else {
-        await this.initSigner();
-      }
+      void this.initWalletNostrBootstrap().catch((error) => {
+        console.error("Failed to bootstrap wallet Nostr features", error);
+        notifyWarning(
+          "Wallet started with limited Nostr features",
+          error instanceof Error
+            ? error.message
+            : "Background Nostr bootstrap failed.",
+        );
+      });
 
       this.showWelcomePage();
-
-      if (this.nwcEnabled) {
-        this.listenToNWCCommands();
-      }
-      this.ensureDmListeners({ suppressWarnings: true });
       this.startInvoiceCheckerWorker();
       this.startLockedTokensRedeemWorker();
       this.start();
@@ -933,19 +959,21 @@ export default {
       return;
     }
 
-    try {
-      await useNdk();
-      this.generateNPCConnection();
-      this.claimAllTokens();
-    } catch (error) {
-      console.error("Failed to warm wallet Nostr client", error);
-      notifyWarning(
-        "Wallet started with limited Nostr features",
-        error instanceof Error
-          ? error.message
-          : "Background Nostr bootstrap failed.",
-      );
-    }
+    void (async () => {
+      try {
+        await useNdk();
+        this.generateNPCConnection();
+        this.claimAllTokens();
+      } catch (error) {
+        console.error("Failed to warm wallet Nostr client", error);
+        notifyWarning(
+          "Wallet started with limited Nostr features",
+          error instanceof Error
+            ? error.message
+            : "Background Nostr bootstrap failed.",
+        );
+      }
+    })();
   },
 
   unmounted: function () {

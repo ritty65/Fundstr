@@ -106,8 +106,16 @@
   </q-layout>
 </template>
 
-<script>import windowMixin from 'src/mixins/windowMixin'
-import { defineComponent, ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
+<script>
+import windowMixin from "src/mixins/windowMixin";
+import {
+  defineComponent,
+  ref,
+  computed,
+  watch,
+  onMounted,
+  onBeforeUnmount,
+} from "vue";
 
 import { useRouter, useRoute } from "vue-router";
 import { useQuasar, LocalStorage } from "quasar";
@@ -122,8 +130,11 @@ import { useCashuStore } from "src/stores/cashu";
 import { useMessengerStore } from "src/stores/messenger";
 import { useUiStore } from "src/stores/ui";
 import { NAV_DRAWER_WIDTH, NAV_DRAWER_GUTTER } from "src/constants/layout";
-import { fundstrRelayClient, useFundstrRelayStatus } from "src/nutzap/relayClient";
-import { WS_FIRST_TIMEOUT_MS } from "src/nutzap/relayEndpoints";
+import {
+  fundstrRelayClient,
+  useFundstrRelayStatus,
+} from "src/nutzap/relayClient";
+import { FUNDSTR_WS_URL, WS_FIRST_TIMEOUT_MS } from "src/nutzap/relayEndpoints";
 import { creatorCacheService } from "src/nutzap/creatorCache";
 import { debug } from "src/js/logger";
 
@@ -216,14 +227,23 @@ export default defineComponent({
     };
 
     const showRelayBanner = computed(() => {
-      if (relayStatus.value === "reconnecting" || relayStatus.value === "disconnected") {
+      if (
+        relayStatus.value === "reconnecting" ||
+        relayStatus.value === "disconnected"
+      ) {
         return true;
       }
-      return connectingTimeoutElapsed.value && relayStatus.value !== "connected";
+      return (
+        connectingTimeoutElapsed.value && relayStatus.value !== "connected"
+      );
     });
-    const isRelayDisconnected = computed(() => relayStatus.value === "disconnected");
+    const isRelayDisconnected = computed(
+      () => relayStatus.value === "disconnected",
+    );
     const relayBannerClass = computed(() =>
-      relayStatus.value === "disconnected" ? "bg-negative text-inverse" : "bg-warning text-1",
+      relayStatus.value === "disconnected"
+        ? "bg-negative text-inverse"
+        : "bg-warning text-1",
     );
     const relayBannerMessage = computed(() => {
       switch (relayStatus.value) {
@@ -232,7 +252,10 @@ export default defineComponent({
         case "reconnecting":
           return "Reconnecting to Nutzap relay…";
         default:
-          if (connectingTimeoutElapsed.value && relayStatus.value !== "connected") {
+          if (
+            connectingTimeoutElapsed.value &&
+            relayStatus.value !== "connected"
+          ) {
             return "Still trying to reach the Nutzap relay…";
           }
           return "";
@@ -240,7 +263,9 @@ export default defineComponent({
     });
 
     const HEARTBEAT_AUTHOR = "0".repeat(64);
-    const heartbeatFilters = [{ kinds: [0], authors: [HEARTBEAT_AUTHOR], limit: 1 }];
+    const heartbeatFilters = [
+      { kinds: [0], authors: [HEARTBEAT_AUTHOR], limit: 1 },
+    ];
     const HEARTBEAT_INTERVAL_MS = 60000;
     let heartbeatTimer = null;
     let heartbeatInFlight = false;
@@ -409,7 +434,18 @@ export default defineComponent({
   },
   async mounted() {
     const nostr = useNostrStore();
-    await nostr.initSignerIfNotSet();
+    void (async () => {
+      try {
+        await nostr.initSignerIfNotSet();
+        if (nostr.hasIdentity && typeof nostr.connect === "function") {
+          void nostr.connect([FUNDSTR_WS_URL]).catch((connectError) => {
+            console.warn("MainLayout relay bootstrap failed", connectError);
+          });
+        }
+      } catch (error) {
+        console.warn("MainLayout signer/bootstrap relay connect failed", error);
+      }
+    })();
     creatorCacheService.start();
   },
 });

@@ -3,6 +3,10 @@ export interface NutzapProfilePayload {
   mints: string[];
   relays?: string[];
   tierAddr?: string;
+  display_name?: string;
+  name?: string;
+  about?: string;
+  picture?: string;
   v?: number;
 }
 
@@ -70,6 +74,23 @@ function validateNutzapProfile(input: unknown): SafeParseResult {
     typeof candidate.tierAddr === "string" && candidate.tierAddr.length > 0
       ? candidate.tierAddr
       : undefined;
+  const display_name =
+    typeof candidate.display_name === "string" &&
+    candidate.display_name.length > 0
+      ? candidate.display_name
+      : undefined;
+  const name =
+    typeof candidate.name === "string" && candidate.name.length > 0
+      ? candidate.name
+      : undefined;
+  const about =
+    typeof candidate.about === "string" && candidate.about.length > 0
+      ? candidate.about
+      : undefined;
+  const picture =
+    typeof candidate.picture === "string" && candidate.picture.length > 0
+      ? candidate.picture
+      : undefined;
   const version = typeof candidate.v === "number" ? candidate.v : undefined;
 
   return {
@@ -79,6 +100,10 @@ function validateNutzapProfile(input: unknown): SafeParseResult {
       mints,
       relays,
       tierAddr,
+      display_name,
+      name,
+      about,
+      picture,
       v: version,
     },
   };

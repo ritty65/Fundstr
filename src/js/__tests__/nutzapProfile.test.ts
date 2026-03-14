@@ -18,6 +18,7 @@ const {
   creatorsStoreMock,
   fetchFundstrProfileBundleMock,
   queryNutzapProfileMock,
+  queryNutzapTiersMock,
   fallbackDiscoverRelaysMock,
 } = vi.hoisted(() => ({
   storeMock: { initNdkReadOnly: vi.fn(), hasIdentity: true } as any,
@@ -30,6 +31,7 @@ const {
   },
   fetchFundstrProfileBundleMock: vi.fn(),
   queryNutzapProfileMock: vi.fn(),
+  queryNutzapTiersMock: vi.fn(),
   fallbackDiscoverRelaysMock: vi.fn(async () => []),
 }));
 
@@ -41,6 +43,7 @@ vi.mock("@/nostr/relayClient", async (importOriginal) => {
   return {
     ...actual,
     queryNutzapProfile: queryNutzapProfileMock,
+    queryNutzapTiers: queryNutzapTiersMock,
   };
 });
 vi.mock("@/nostr/discovery", () => ({
@@ -83,6 +86,37 @@ vi.mock("stores/welcome", () => ({
   useWelcomeStore: () => ({ welcomeCompleted: true }),
 }));
 
+vi.mock("stores/sendTokensStore", () => ({
+  useSendTokensStore: () => ({
+    clearSendData: vi.fn(),
+    recipientPubkey: "",
+    sendViaNostr: false,
+    sendData: {},
+    showLockInput: false,
+    showSendTokens: false,
+  }),
+}));
+
+vi.mock("stores/donationPresets", () => ({
+  useDonationPresetsStore: () => ({
+    createDonationPreset: vi.fn(),
+    showCreatePresetDialog: false,
+  }),
+}));
+
+vi.mock("stores/messenger", () => ({
+  useMessengerStore: () => ({
+    startChat: vi.fn(),
+  }),
+}));
+
+vi.mock("stores/mints", () => ({
+  useMintsStore: () => ({
+    activeMintUrl: "",
+    activeInfo: null,
+  }),
+}));
+
 vi.mock("src/composables/useClipboard", () => ({
   useClipboard: () => ({ copy: vi.fn() }),
 }));
@@ -94,6 +128,9 @@ vi.mock("vue-i18n", () => ({
 
 vi.mock("src/utils/profileUrl", () => ({
   buildProfileUrl: () => "https://example.com/profile",
+  extractCreatorIdentifier: (value: string) => value,
+  preferredCreatorPublicIdentifier: ({ fallbackIdentifier }: any) =>
+    fallbackIdentifier,
 }));
 
 vi.mock("src/utils/nostrKeys", () => ({
@@ -103,8 +140,8 @@ vi.mock("src/utils/nostrKeys", () => ({
       typeof param === "string" && param.startsWith("npub")
         ? hex
         : typeof param === "string"
-          ? param
-          : "",
+        ? param
+        : "",
   }),
 }));
 
@@ -119,15 +156,51 @@ const makeEvent = (overrides: Partial<Record<string, unknown>> = {}) => {
   const p2pk = (overrides.p2pk as string | undefined) ?? npub;
   const mints = (overrides.mints as string[] | undefined) ?? ["https://mint"];
   const relays = (overrides.relays as string[] | undefined) ?? [];
+  const displayName = overrides.display_name as string | undefined;
+  const about = overrides.about as string | undefined;
+  const picture = overrides.picture as string | undefined;
   return {
     content: JSON.stringify({
       p2pk,
       mints,
       relays,
+      ...(displayName ? { display_name: displayName } : {}),
+      ...(about ? { about } : {}),
+      ...(picture ? { picture } : {}),
     }),
-    tags: [["t", "nutzap-profile"], ["client", "fundstr"], ["pubkey", p2pk], ...relays.map((url) => ["relay", url])],
+    tags: [
+      ["t", "nutzap-profile"],
+      ["client", "fundstr"],
+      ["pubkey", p2pk],
+      ...(displayName ? [["name", displayName]] : []),
+      ...(picture ? [["picture", picture]] : []),
+      ...relays.map((url) => ["relay", url]),
+    ],
   } as any;
 };
+
+const makeTierEvent = (overrides: Partial<Record<string, unknown>> = {}) => ({
+  pubkey: hex,
+  kind: 30019,
+  created_at: 1700000200,
+  id: "t".repeat(64),
+  sig: "e".repeat(128),
+  tags: [["d", "tiers"]],
+  content: JSON.stringify({
+    v: 1,
+    tiers: [
+      {
+        id: "relay-tier",
+        title: "Relay Tier",
+        price: 5000,
+        frequency: "monthly",
+        description: "Recovered via relay refresh",
+      },
+    ],
+    ...(overrides.content as Record<string, unknown> | undefined),
+  }),
+  ...overrides,
+});
 
 const resetComponentDeps = () => {
   creatorsStoreMock.fetchCreator.mockReset();
@@ -158,6 +231,8 @@ const resetComponentDeps = () => {
 beforeEach(() => {
   localStorage.clear();
   queryNutzapProfileMock.mockReset();
+  queryNutzapTiersMock.mockReset();
+  queryNutzapTiersMock.mockResolvedValue(null);
   fallbackDiscoverRelaysMock.mockReset();
   fallbackDiscoverRelaysMock.mockResolvedValue([]);
   storeMock.initNdkReadOnly.mockReset();
@@ -183,9 +258,33 @@ describe("fetchNutzapProfile", () => {
     expect(prof?.p2pkPubkey?.length).toBe(66);
   });
 
+  it("hydrates display metadata from relay profile content and tags", async () => {
+    queryNutzapProfileMock.mockResolvedValue(
+      makeEvent({
+        display_name: "Relay Creator",
+        about: "Recovered from relay",
+        picture: "https://example.com/avatar.png",
+      }),
+    );
+
+    const prof = await nostrModule.fetchNutzapProfile(npub, {
+      forceRefresh: true,
+    });
+
+    expect(prof).toMatchObject({
+      display_name: "Relay Creator",
+      about: "Recovered from relay",
+      picture: "https://example.com/avatar.png",
+    });
+  });
+
   it("forces bypassing cached values and rehydrates the cache", async () => {
     queryNutzapProfileMock.mockResolvedValue(
-      makeEvent({ p2pk: altNpub, mints: ["https://cached"], relays: ["wss://cached"] }),
+      makeEvent({
+        p2pk: altNpub,
+        mints: ["https://cached"],
+        relays: ["wss://cached"],
+      }),
     );
     await nostrModule.fetchNutzapProfile(altNpub, { forceRefresh: true });
     expect(queryNutzapProfileMock).toHaveBeenCalledTimes(1);
@@ -197,7 +296,9 @@ describe("fetchNutzapProfile", () => {
         relays: ["wss://fresh"],
       }),
     );
-    const fresh = await nostrModule.fetchNutzapProfile(altNpub, { forceRefresh: true });
+    const fresh = await nostrModule.fetchNutzapProfile(altNpub, {
+      forceRefresh: true,
+    });
     expect(fresh?.trustedMints).toEqual(["https://fresh"]);
     expect(fresh?.relays).toEqual(["wss://fresh"]);
     expect(queryNutzapProfileMock).toHaveBeenCalledTimes(2);
@@ -212,7 +313,6 @@ describe("fetchNutzapProfile", () => {
 
 describe("PublicCreatorProfilePage", () => {
   it("forces a relay refresh on load and waits for the fresh profile", async () => {
-    vi.useFakeTimers();
     resetComponentDeps();
 
     const deferred: { resolve: (value: any) => void; promise: Promise<any> } = {
@@ -223,12 +323,10 @@ describe("PublicCreatorProfilePage", () => {
       deferred.resolve = resolve;
     });
 
-    const fetchSpy = vi
-      .spyOn(nostrModule, "fetchNutzapProfile")
-      .mockImplementation(async (_hex, options) => {
-        expect(options?.forceRefresh).toBe(true);
-        return deferred.promise;
-      });
+    fetchFundstrProfileBundleMock.mockImplementation(async (_hex, options) => {
+      expect(options?.forceRefresh).toBe(true);
+      return deferred.promise;
+    });
 
     const wrapper = shallowMount(PublicCreatorProfilePage, {
       global: {
@@ -258,17 +356,26 @@ describe("PublicCreatorProfilePage", () => {
     });
 
     await nextTick();
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(fetchSpy.mock.calls[0][1]?.fundstrOnly).toBe(true);
-
-    expect(wrapper.vm.profile.trustedMints).toEqual(["https://cached"]);
+    expect(fetchFundstrProfileBundleMock).toHaveBeenCalledTimes(1);
 
     deferred.resolve({
-      hexPub: hex,
-      p2pkPubkey: ensureCompressed(hex),
-      trustedMints: ["https://fresh"],
-      relays: ["wss://fresh"],
-      tierAddr: "tier:1",
+      profile: {},
+      profileDetails: {
+        p2pkPubkey: ensureCompressed(hex),
+        trustedMints: ["https://fresh"],
+        relays: ["wss://fresh"],
+        tierAddr: "tier:1",
+      },
+      tiers: [],
+      profileEvent: null,
+      tierDataFresh: true,
+      tierSecurityBlocked: false,
+      tierFetchFailed: false,
+      relayHints: [],
+      fetchedFromFallback: false,
+      followers: null,
+      following: null,
+      joined: Date.now(),
     });
 
     await flushPromises();
@@ -277,7 +384,80 @@ describe("PublicCreatorProfilePage", () => {
     expect(wrapper.vm.profile.trustedMints).toEqual(["https://fresh"]);
     expect(wrapper.vm.profile.relays).toEqual(["wss://fresh"]);
 
-    fetchSpy.mockRestore();
+    wrapper.unmount();
+  });
+
+  it("hydrates relay metadata and tiers when discovery returns sparse profile data", async () => {
+    resetComponentDeps();
+    fetchFundstrProfileBundleMock.mockResolvedValue({
+      profile: {},
+      profileEvent: null,
+      profileDetails: {
+        trustedMints: ["https://mint"],
+        relays: ["wss://cached"],
+        tierAddr: `30019:${hex}:tiers`,
+        p2pkPubkey: ensureCompressed(hex),
+      },
+      tiers: null,
+      followers: 0,
+      following: 0,
+      joined: null,
+      relayHints: [],
+      fetchedFromFallback: false,
+      tierDataFresh: true,
+      tierSecurityBlocked: false,
+      tierFetchFailed: false,
+    });
+    queryNutzapProfileMock.mockResolvedValue(
+      makeEvent({
+        display_name: "Relay Creator",
+        about: "Recovered from relay",
+        picture: "https://example.com/avatar.png",
+        relays: ["wss://relay.fundstr.me"],
+      }),
+    );
+    queryNutzapTiersMock.mockResolvedValue(makeTierEvent());
+
+    const wrapper = shallowMount(PublicCreatorProfilePage, {
+      global: {
+        stubs: {
+          transition: false,
+          "q-btn": true,
+          "q-banner": true,
+          "q-tooltip": true,
+          "q-chip": true,
+          "q-spinner-dots": true,
+          "q-spinner-hourglass": true,
+          SubscribeDialog: true,
+          SetupRequiredDialog: true,
+          SubscriptionReceipt: true,
+          MintSafetyList: true,
+          RelayBadgeList: true,
+          TierSummaryCard: true,
+          PaywalledContent: true,
+        },
+        config: {
+          globalProperties: {
+            $t: (key: string) => key,
+            $tc: (key: string) => key,
+          },
+        },
+      },
+    });
+
+    await flushPromises();
+    await nextTick();
+    await flushPromises();
+
+    expect(wrapper.vm.profile.display_name).toBe("Relay Creator");
+    expect(wrapper.vm.profile.about).toBe("Recovered from relay");
+    expect(queryNutzapTiersMock).toHaveBeenCalledTimes(1);
+    expect(creatorsStoreMock.tiersMap[hex]?.[0]).toMatchObject({
+      id: "relay-tier",
+      name: "Relay Tier",
+      price_sats: 5000,
+    });
+
     wrapper.unmount();
   });
 });

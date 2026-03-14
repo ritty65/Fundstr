@@ -2,7 +2,7 @@
   <q-dialog v-model="visible" persistent>
     <q-card class="q-pa-md donation-card">
       <q-card-section class="text-h6">
-        {{ t('DonationPrompt.title', { name: supporterDisplayName }) }}
+        {{ t("DonationPrompt.title", { name: supporterDisplayName }) }}
       </q-card-section>
       <q-card-section>
         <q-tabs v-model="tab" dense class="text-primary donation-tabs">
@@ -41,7 +41,9 @@
                 </template>
               </q-input>
             </div>
-            <div v-else class="text-2">{{ t('DonationPrompt.status.noLiquid') }}</div>
+            <div v-else class="text-2">
+              {{ t("DonationPrompt.status.noLiquid") }}
+            </div>
           </q-tab-panel>
           <q-tab-panel name="bitcoin" class="q-pt-md">
             <div v-if="bitcoin">
@@ -65,7 +67,9 @@
                 </template>
               </q-input>
             </div>
-            <div v-else class="text-2">{{ t('DonationPrompt.status.noBitcoin') }}</div>
+            <div v-else class="text-2">
+              {{ t("DonationPrompt.status.noBitcoin") }}
+            </div>
           </q-tab-panel>
         </q-tab-panels>
       </q-card-section>
@@ -78,19 +82,22 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
-import VueQrcode from '@chenfengyuan/vue-qrcode'
-import { useDonationPrompt } from '@/composables/useDonationPrompt'
-import DonationCashuPanel from './DonationCashuPanel.vue'
+import { onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import { useRoute } from "vue-router";
+import VueQrcode from "@chenfengyuan/vue-qrcode";
+import { useDonationPrompt } from "@/composables/useDonationPrompt";
+import DonationCashuPanel from "./DonationCashuPanel.vue";
 
 defineOptions({
-  name: 'DonationPrompt'
-})
+  name: "DonationPrompt",
+});
 
-const emit = defineEmits<{ (event: 'opened'): void }>()
+const emit = defineEmits<{ (event: "opened"): void }>();
 
-const { t } = useI18n()
+const { t } = useI18n();
+const route = useRoute();
+const autoPromptAttempted = ref(false);
 
 const {
   bitcoin,
@@ -106,34 +113,71 @@ const {
   supporterDisplayName,
   supporterAvatarUrl,
   tab,
-  visible
-} = useDonationPrompt()
+  visible,
+} = useDonationPrompt();
+
+const blockedAutoPromptPrefixes = [
+  "/wallet",
+  "/settings",
+  "/my-profile",
+  "/creator-studio",
+  "/creator-subscribers",
+  "/subscriptions",
+  "/nostr-messenger",
+  "/unlock",
+  "/restore",
+];
+
+const shouldAutoPromptOnRoute = (path: string) =>
+  !blockedAutoPromptPrefixes.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
+
+const attemptAutoOpen = (path: string) => {
+  if (autoPromptAttempted.value || !shouldAutoPromptOnRoute(path)) {
+    return;
+  }
+
+  autoPromptAttempted.value = true;
+  open({ defaultTab: getDefaultTab() });
+};
 
 onMounted(() => {
-  open({ defaultTab: getDefaultTab() })
-})
+  attemptAutoOpen(route.path);
+});
 
 watch(
   () => visible.value,
   (isVisible, wasVisible) => {
     if (isVisible && !wasVisible) {
-      emit('opened')
+      emit("opened");
     }
-  }
-)
+  },
+);
+
+watch(
+  () => route.path,
+  (path) => {
+    attemptAutoOpen(path);
+  },
+);
 
 defineExpose({
-  visible
-})
+  visible,
+});
 </script>
 
 <style scoped>
 .donation-card {
-  min-width: 320px;
+  width: min(100%, 38rem);
+  border-radius: 22px;
+  border: 1px solid var(--surface-contrast-border);
+  background: var(--surface-2);
+  color: var(--text-1);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
 }
 
 .donation-tabs {
   margin-bottom: 8px;
 }
-
 </style>

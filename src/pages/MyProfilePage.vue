@@ -1,6 +1,6 @@
 <template>
   <q-page class="my-profile-page bg-surface-1 q-pa-md q-pa-lg-xl">
-  <div v-if="profileHydrationReady" class="profile-grid q-gutter-md">
+    <div v-if="profileHydrationReady" class="profile-grid q-gutter-md">
       <div class="profile-primary column q-gutter-md">
         <q-card class="profile-hero bg-surface-2">
           <q-banner
@@ -11,11 +11,22 @@
             <div class="banner-header">
               <q-icon name="error_outline" class="banner-icon" />
               <div class="banner-text">
-                <div class="banner-title text-subtitle1 text-1">
-                  Complete your profile
+                <div class="banner-title-row">
+                  <div class="banner-title text-subtitle1 text-1">
+                    Complete your profile
+                  </div>
+                  <q-chip
+                    dense
+                    outline
+                    color="primary"
+                    text-color="primary"
+                    class="banner-progress-chip"
+                  >
+                    {{ readinessSummary }}
+                  </q-chip>
                 </div>
                 <div class="banner-description text-body2 text-2">
-                  Finish these details so supporters can trust and share your work.
+                  {{ readinessMessage }}
                 </div>
               </div>
             </div>
@@ -26,8 +37,12 @@
                 class="banner-item"
               >
                 <div class="banner-item-text">
-                  <span class="banner-item-label text-body1 text-1">{{ item.label }}</span>
-                  <span class="banner-item-helper text-caption text-2">{{ item.helper }}</span>
+                  <span class="banner-item-label text-body1 text-1">{{
+                    item.label
+                  }}</span>
+                  <span class="banner-item-helper text-caption text-2">{{
+                    item.helper
+                  }}</span>
                 </div>
                 <q-btn
                   size="sm"
@@ -66,6 +81,35 @@
                   Tell supporters who you are and what you create.
                 </div>
               </div>
+              <div class="hero-status-row">
+                <q-chip
+                  dense
+                  outline
+                  color="primary"
+                  text-color="primary"
+                  class="hero-status-chip"
+                >
+                  {{ readinessSummary }}
+                </q-chip>
+                <q-chip
+                  dense
+                  outline
+                  :color="hasPaymentRail ? 'positive' : 'accent'"
+                  :text-color="hasPaymentRail ? 'positive' : 'primary'"
+                  class="hero-status-chip"
+                >
+                  {{ paymentStatusLabel }}
+                </q-chip>
+                <q-chip
+                  dense
+                  outline
+                  color="secondary"
+                  text-color="secondary"
+                  class="hero-status-chip"
+                >
+                  {{ relayStatusLabel }}
+                </q-chip>
+              </div>
               <div class="hero-actions">
                 <q-btn
                   class="hero-primary-action"
@@ -74,6 +118,16 @@
                   unelevated
                   :to="{ name: 'CreatorStudio' }"
                   :label="primaryActionLabel"
+                />
+                <q-btn
+                  class="hero-preview-action"
+                  color="primary"
+                  outline
+                  icon="open_in_new"
+                  no-caps
+                  :disable="!publicProfileRoute"
+                  :to="publicProfileRoute || undefined"
+                  label="View public profile"
                 />
                 <q-btn-dropdown
                   class="hero-secondary-dropdown"
@@ -96,7 +150,9 @@
                         <q-icon name="content_copy" />
                       </q-item-section>
                       <q-item-section>
-                        <q-item-label>{{ $t('actions.copyNpub') }}</q-item-label>
+                        <q-item-label>{{
+                          $t("actions.copyNpub")
+                        }}</q-item-label>
                       </q-item-section>
                     </q-item>
                     <q-item
@@ -124,7 +180,9 @@
                         <q-icon name="ios_share" />
                       </q-item-section>
                       <q-item-section>
-                        <q-item-label>{{ $t('actions.shareProfile') }}</q-item-label>
+                        <q-item-label>{{
+                          $t("actions.shareProfile")
+                        }}</q-item-label>
                       </q-item-section>
                     </q-item>
                   </q-list>
@@ -137,13 +195,17 @@
             <div class="contact-row">
               <span class="contact-label text-2">npub</span>
               <div class="contact-value text-1">
-                <code>{{ npub || 'Add your npub to share with supporters.' }}</code>
+                <code>{{
+                  npub || "Add your npub to share with supporters."
+                }}</code>
               </div>
             </div>
             <div class="contact-row">
               <span class="contact-label text-2">Pubkey</span>
               <div class="contact-value text-1">
-                <code>{{ pubkey || 'Connect a pubkey so supporters can find you.' }}</code>
+                <code>{{
+                  pubkey || "Connect a pubkey so supporters can find you."
+                }}</code>
               </div>
             </div>
           </q-card-section>
@@ -230,57 +292,85 @@
         <q-card class="bg-surface-2 section-card">
           <q-card-section>
             <div class="section-title text-subtitle1 text-1">
-              At a glance
+              Public profile readiness
             </div>
             <div class="text-body2 text-2">
-              Keep essential profile details ready for quick sharing.
+              Preview what supporters can already discover and what still needs
+              polish.
             </div>
           </q-card-section>
           <q-separator />
-          <q-list separator class="stat-list">
-            <q-item>
-              <q-item-section avatar>
-                <q-icon name="account_tree" class="text-2" />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label class="text-1">{{ mints.length }}</q-item-label>
-                <q-item-label caption class="text-2">
-                  Mints connected
-                </q-item-label>
-              </q-item-section>
-            </q-item>
-            <q-item>
-              <q-item-section avatar>
-                <q-icon name="router" class="text-2" />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label class="text-1">{{ relays.length }}</q-item-label>
-                <q-item-label caption class="text-2">
-                  Relays published
-                </q-item-label>
-              </q-item-section>
-            </q-item>
-            <q-item clickable tag="a" :href="supportersLink" target="_blank">
-              <q-item-section avatar>
-                <q-icon name="favorite" class="text-2" />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label class="text-1">
-                  Need tips for supporters?
-                </q-item-label>
-                <q-item-label caption class="text-2">
-                  Explore documentation on growing your community.
-                </q-item-label>
-              </q-item-section>
-            </q-item>
-          </q-list>
+          <q-card-section class="column q-gutter-md">
+            <div class="profile-readiness-meter bg-surface-1 text-1">
+              <div class="profile-readiness-meter__header">
+                <div>
+                  <div class="text-subtitle2 text-1">
+                    {{ readinessSummary }}
+                  </div>
+                  <div class="text-caption text-2">{{ readinessMessage }}</div>
+                </div>
+                <div class="profile-readiness-meter__percent">
+                  {{ readinessPercent }}%
+                </div>
+              </div>
+              <q-linear-progress
+                rounded
+                size="10px"
+                :value="readinessPercent / 100"
+                color="primary"
+                track-color="grey-8"
+              />
+            </div>
+
+            <div class="profile-preview-actions">
+              <q-btn
+                color="primary"
+                unelevated
+                no-caps
+                icon="open_in_new"
+                :disable="!publicProfileRoute"
+                :to="publicProfileRoute || undefined"
+                label="Open public profile"
+              />
+              <q-btn
+                color="primary"
+                outline
+                no-caps
+                icon="content_copy"
+                :disable="!shareUrl"
+                label="Copy profile link"
+                @click="copyShareLink"
+              />
+            </div>
+
+            <div class="profile-readiness-list">
+              <div
+                v-for="item in readinessItems"
+                :key="item.key"
+                class="profile-readiness-item bg-surface-1 text-1"
+              >
+                <div
+                  class="profile-readiness-item__icon"
+                  :class="{ 'is-ready': item.ready }"
+                >
+                  <q-icon
+                    :name="
+                      item.ready ? 'check_circle' : 'radio_button_unchecked'
+                    "
+                  />
+                </div>
+                <div class="profile-readiness-item__copy">
+                  <div class="text-body2 text-1">{{ item.label }}</div>
+                  <div class="text-caption text-2">{{ item.helper }}</div>
+                </div>
+              </div>
+            </div>
+          </q-card-section>
         </q-card>
 
         <q-card class="bg-surface-2 section-card">
           <q-card-section class="column q-gutter-sm">
-            <div class="section-title text-subtitle1 text-1">
-              Quick links
-            </div>
+            <div class="section-title text-subtitle1 text-1">Quick links</div>
             <div class="text-body2 text-2">
               Jump into the tools you use to engage supporters.
             </div>
@@ -313,25 +403,28 @@
           </q-card-section>
         </q-card>
       </aside>
-  </div>
-
-  <div v-else class="profile-hydration-state column items-center justify-center q-gutter-md">
-    <q-spinner-dots v-if="hydratingProfile" color="primary" size="32px" />
-    <q-icon v-else name="cloud_off" color="grey" size="32px" />
-    <div class="text-body1 text-1">{{ hydrationHeadline }}</div>
-    <div class="text-body2 text-2 hydration-helper">
-      {{ hydrationHelper }}
     </div>
-    <q-btn
-      v-if="hydrationError"
-      color="primary"
-      unelevated
-      icon="refresh"
-      label="Retry loading"
-      @click="retryHydration"
-    />
-  </div>
-</q-page>
+
+    <div
+      v-else
+      class="profile-hydration-state column items-center justify-center q-gutter-md"
+    >
+      <q-spinner-dots v-if="hydratingProfile" color="primary" size="32px" />
+      <q-icon v-else name="cloud_off" color="grey" size="32px" />
+      <div class="text-body1 text-1">{{ hydrationHeadline }}</div>
+      <div class="text-body2 text-2 hydration-helper">
+        {{ hydrationHelper }}
+      </div>
+      <q-btn
+        v-if="hydrationError"
+        color="primary"
+        unelevated
+        icon="refresh"
+        label="Retry loading"
+        @click="retryHydration"
+      />
+    </div>
+  </q-page>
 </template>
 
 <script setup lang="ts">
@@ -383,7 +476,10 @@ const hydrationHelper = computed(() => {
   if (hydratingProfile.value) {
     return "Fetching your Fundstr creator profile from Nostr...";
   }
-  return hydrationError.value?.message ?? "Check your Nostr connection and try again.";
+  return (
+    hydrationError.value?.message ??
+    "Check your Nostr connection and try again."
+  );
 });
 
 let profileRefreshInFlight = false;
@@ -404,10 +500,11 @@ onBeforeUnmount(() => {
   stopProfileListener();
 });
 
-const heroName = computed(() =>
-  enrichedProfileMeta.value.display_name?.trim() ||
-  enrichedProfileMeta.value.name?.trim() ||
-  t("MainHeader.menu.myProfile.title"),
+const heroName = computed(
+  () =>
+    enrichedProfileMeta.value.display_name?.trim() ||
+    enrichedProfileMeta.value.name?.trim() ||
+    t("MainHeader.menu.myProfile.title"),
 );
 
 const picture = computed(() => enrichedProfileMeta.value.picture || "");
@@ -427,6 +524,7 @@ const npub = computed(() => derivedKeys.value?.npub || "");
 
 const mints = computed(() => creatorProfile.mints || []);
 const relays = computed(() => creatorProfile.relays || []);
+const hasPaymentRail = computed(() => mints.value.length > 0);
 
 type CreatorStudioStep = "setup" | "profile" | "tiers" | "publish";
 
@@ -494,7 +592,66 @@ const missingProfileItems = computed<MissingProfileItem[]>(() => {
   return items;
 });
 
-const isProfileIncomplete = computed(() => missingProfileItems.value.length > 0);
+const isProfileIncomplete = computed(
+  () => missingProfileItems.value.length > 0,
+);
+const profileReadinessTotal = computed(() => 5);
+const profileReadinessComplete = computed(
+  () => profileReadinessTotal.value - missingProfileItems.value.length,
+);
+const readinessPercent = computed(() =>
+  Math.round(
+    (profileReadinessComplete.value / profileReadinessTotal.value) * 100,
+  ),
+);
+const readinessSummary = computed(
+  () =>
+    `${profileReadinessComplete.value}/${profileReadinessTotal.value} profile basics ready`,
+);
+const readinessMessage = computed(() => {
+  if (!missingProfileItems.value.length) {
+    return "Your public profile is ready to share with supporters.";
+  }
+
+  if (missingProfileItems.value.length === 1) {
+    return "You are one final step away from a supporter-ready profile.";
+  }
+
+  return "Finish these details so supporters can trust, share, and pay you with confidence.";
+});
+
+const readinessItems = computed(() => [
+  {
+    key: "display-name",
+    label: "Display name",
+    helper: "A recognizable name builds trust on discovery pages.",
+    ready: Boolean(creatorProfile.display_name?.trim()),
+  },
+  {
+    key: "about",
+    label: "About section",
+    helper: "Explain what you create and why supporters should care.",
+    ready: Boolean(creatorProfile.about?.trim()),
+  },
+  {
+    key: "pubkey",
+    label: "Nostr identity",
+    helper: "Needed for discovery, messages, and private support delivery.",
+    ready: Boolean(creatorProfile.pubkey?.trim()),
+  },
+  {
+    key: "mints",
+    label: "Payment rails",
+    helper: "At least one Cashu mint gives supporters a direct way to pay.",
+    ready: hasPaymentRail.value,
+  },
+  {
+    key: "relays",
+    label: "Relay reach",
+    helper: "Published relays help supporters and clients find you faster.",
+    ready: relays.value.length > 0,
+  },
+]);
 
 const shareUrl = computed(() => {
   if (!derivedKeys.value) return "";
@@ -507,11 +664,38 @@ const shareUrl = computed(() => {
   }
   return new URL(resolved.href, window.location.origin).toString();
 });
+const publicProfileRoute = computed(() =>
+  derivedKeys.value
+    ? {
+        name: "PublicCreatorProfile",
+        params: { npubOrHex: derivedKeys.value.npub },
+      }
+    : null,
+);
 
-const primaryActionLabel = computed(() =>
-  isProfileIncomplete.value
-    ? "Complete profile"
-    : t("MainHeader.menu.creatorStudio.title"),
+const primaryActionLabel = computed(() => {
+  if (!isProfileIncomplete.value) {
+    return t("MainHeader.menu.creatorStudio.title");
+  }
+
+  if (missingProfileItems.value.length === 1) {
+    return missingProfileItems.value[0]?.ctaLabel || "Complete profile";
+  }
+
+  return "Complete profile";
+});
+
+const paymentStatusLabel = computed(() =>
+  hasPaymentRail.value
+    ? `${mints.value.length} mint${mints.value.length === 1 ? "" : "s"} ready`
+    : "Add payment rails",
+);
+
+const relayStatusLabel = computed(
+  () =>
+    `${relays.value.length} relay${
+      relays.value.length === 1 ? "" : "s"
+    } published`,
 );
 
 const secondaryActionsLabel = computed(() => "Share & copy");
@@ -519,8 +703,6 @@ const secondaryActionsAriaLabel = computed(() => "Profile secondary actions");
 const secondaryActionsDisabled = computed(
   () => !npub.value && !pubkey.value && !shareUrl.value,
 );
-
-const supportersLink = computed(() => "https://docs.cashu.space/contribute");
 
 const chipStyle = computed(() => ({
   background: "var(--chip-bg)",
@@ -547,10 +729,13 @@ watch(
 function handleCopy(value: string, type: "npub" | "pubkey") {
   if (!value) return;
   const message =
-    type === "npub"
-      ? "npub copied to clipboard"
-      : "Pubkey copied to clipboard";
+    type === "npub" ? "npub copied to clipboard" : "Pubkey copied to clipboard";
   copy(value, message);
+}
+
+function copyShareLink() {
+  if (!shareUrl.value) return;
+  copy(shareUrl.value, "Profile link copied");
 }
 
 async function shareProfile() {
@@ -653,6 +838,17 @@ function goToCreatorStudioStep(step: CreatorStudioStep) {
   align-items: flex-start;
 }
 
+.banner-title-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.banner-progress-chip {
+  font-weight: 600;
+}
+
 .banner-icon {
   color: var(--accent-500);
   font-size: 24px;
@@ -737,16 +933,30 @@ function goToCreatorStudioStep(step: CreatorStudioStep) {
   font-style: italic;
 }
 
+.hero-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.hero-status-chip {
+  font-weight: 600;
+}
+
 .hero-actions {
   margin-top: 8px;
   display: flex;
   gap: 12px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: stretch;
 }
 
 .hero-primary-action {
-  flex: 1 1 auto;
+  flex: 1 1 12rem;
+}
+
+.hero-preview-action {
+  flex: 1 1 12rem;
 }
 
 .hero-secondary-dropdown {
@@ -805,6 +1015,79 @@ function goToCreatorStudioStep(step: CreatorStudioStep) {
   word-break: break-all;
 }
 
+.profile-readiness-meter {
+  padding: 1rem;
+  border-radius: 16px;
+  border: 1px solid var(--surface-contrast-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.profile-readiness-meter__header {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.profile-readiness-meter__percent {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--accent-500);
+}
+
+.profile-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.profile-preview-actions .q-btn {
+  flex: 1 1 12rem;
+}
+
+.profile-readiness-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.profile-readiness-item {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  padding: 0.85rem 0.95rem;
+  border-radius: 14px;
+  border: 1px solid var(--surface-contrast-border);
+}
+
+.profile-readiness-item__icon {
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  background: color-mix(
+    in srgb,
+    var(--surface-contrast-border) 40%,
+    transparent
+  );
+  flex-shrink: 0;
+}
+
+.profile-readiness-item__icon.is-ready {
+  color: var(--accent-500);
+  background: color-mix(in srgb, var(--accent-200) 40%, transparent);
+}
+
+.profile-readiness-item__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
 .section-card {
   border: 1px solid var(--surface-contrast-border);
   border-radius: 16px;
@@ -848,5 +1131,15 @@ function goToCreatorStudioStep(step: CreatorStudioStep) {
 
 .profile-sections .q-card-section:last-of-type {
   flex: 1;
+}
+
+@media (max-width: 599px) {
+  .profile-readiness-meter__header {
+    flex-direction: column;
+  }
+
+  .profile-preview-actions {
+    flex-direction: column;
+  }
 }
 </style>

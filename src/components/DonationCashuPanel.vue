@@ -43,15 +43,19 @@
         </q-avatar>
         <div class="cashu-panel__headline">
           <div class="cashu-panel__name">{{ supporterDisplayName }}</div>
-          <div class="cashu-panel__tagline text-2">{{ t('DonationPrompt.cashu.tagline') }}</div>
+          <div class="cashu-panel__tagline text-2">
+            {{ t("DonationPrompt.cashu.tagline") }}
+          </div>
         </div>
       </div>
 
       <div class="cashu-panel__section">
-        <div class="cashu-panel__section-title">{{ t('DonationPrompt.cashu.donateHeading') }}</div>
+        <div class="cashu-panel__section-title">
+          {{ t("DonationPrompt.cashu.donateHeading") }}
+        </div>
         <div v-if="presetAmounts.length" class="cashu-panel__preset-wrapper">
           <div class="cashu-panel__preset-label text-2">
-            {{ t('DonationPrompt.cashu.quickPresetsLabel') }}
+            {{ t("DonationPrompt.cashu.quickPresetsLabel") }}
           </div>
           <div class="cashu-panel__preset-grid">
             <button
@@ -59,10 +63,16 @@
               :key="preset"
               type="button"
               class="cashu-panel__preset"
-              :class="{ 'cashu-panel__preset--active': preset === activePreset }"
+              :class="{
+                'cashu-panel__preset--active': preset === activePreset,
+              }"
               @click="selectPreset(preset)"
             >
-              {{ t('DonationPrompt.cashu.priceLabel', { amount: numberFormatter.format(preset) }) }}
+              {{
+                t("DonationPrompt.cashu.priceLabel", {
+                  amount: numberFormatter.format(preset),
+                })
+              }}
             </button>
           </div>
         </div>
@@ -75,25 +85,28 @@
           min="1"
           :disable="isAuthBlocked"
         />
-        <div v-if="sendError" class="cashu-panel__send-error text-negative text-caption q-mt-xs">
+        <div
+          v-if="sendError"
+          class="cashu-panel__send-error text-negative text-caption q-mt-xs"
+        >
           {{ sendError }}
         </div>
         <div v-if="ctaMode" class="cashu-panel__auth-cta q-mt-sm">
           <div class="cashu-panel__cta-title">
             {{
               t(
-                ctaMode === 'signin'
-                  ? 'DonationPrompt.cashu.ctas.signInTitle'
-                  : 'DonationPrompt.cashu.ctas.setupTitle'
+                ctaMode === "signin"
+                  ? "DonationPrompt.cashu.ctas.signInTitle"
+                  : "DonationPrompt.cashu.ctas.setupTitle",
               )
             }}
           </div>
           <div class="cashu-panel__cta-description text-2">
             {{
               t(
-                ctaMode === 'signin'
-                  ? 'DonationPrompt.cashu.ctas.signInDescription'
-                  : 'DonationPrompt.cashu.ctas.setupDescription'
+                ctaMode === "signin"
+                  ? "DonationPrompt.cashu.ctas.signInDescription"
+                  : "DonationPrompt.cashu.ctas.setupDescription",
               )
             }}
           </div>
@@ -105,14 +118,17 @@
               t(
                 ctaMode === 'signin'
                   ? 'DonationPrompt.cashu.ctas.signInCta'
-                  : 'DonationPrompt.cashu.ctas.setupCta'
+                  : 'DonationPrompt.cashu.ctas.setupCta',
               )
             "
             @click="ctaMode === 'signin' ? handleSignIn() : handleWalletSetup()"
           />
-          <div v-if="ctaMode === 'setup'" class="cashu-panel__quick-links q-mt-sm">
+          <div
+            v-if="ctaMode === 'setup'"
+            class="cashu-panel__quick-links q-mt-sm"
+          >
             <div class="cashu-panel__quick-links-label text-2">
-              {{ t('DonationPrompt.cashu.ctas.quickLinksLabel') }}
+              {{ t("DonationPrompt.cashu.ctas.quickLinksLabel") }}
             </div>
             <div class="cashu-panel__quick-links-grid">
               <q-btn
@@ -142,16 +158,18 @@
         />
         <div v-if="showExplainer" class="cashu-panel__explainer q-mt-md">
           <div class="cashu-panel__explainer-title text-1">
-            {{ t('DonationPrompt.cashu.explainer.heading') }}
+            {{ t("DonationPrompt.cashu.explainer.heading") }}
           </div>
           <p class="cashu-panel__explainer-body text-2">
-            {{ t('DonationPrompt.cashu.explainer.body') }}
+            {{ t("DonationPrompt.cashu.explainer.body") }}
           </p>
         </div>
       </div>
 
       <div class="cashu-panel__section">
-        <div class="cashu-panel__section-title">{{ t('DonationPrompt.cashu.trustedMintsHeading') }}</div>
+        <div class="cashu-panel__section-title">
+          {{ t("DonationPrompt.cashu.trustedMintsHeading") }}
+        </div>
         <div v-if="trustedMints.length" class="cashu-panel__mint-list">
           <q-chip
             v-for="mint in trustedMints"
@@ -168,7 +186,7 @@
           </q-chip>
         </div>
         <div v-else class="cashu-panel__empty text-2">
-          {{ t('DonationPrompt.cashu.trustedMintsEmpty') }}
+          {{ t("DonationPrompt.cashu.trustedMintsEmpty") }}
         </div>
       </div>
     </template>
@@ -176,265 +194,287 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { storeToRefs } from 'pinia'
-import { useRouter } from 'vue-router'
-import { useI18n } from 'vue-i18n'
-import { fetchNutzapProfile, useNostrStore } from 'stores/nostr'
-import { useMintsStore } from 'stores/mints'
-import { queryNutzapTiers } from '@/nostr/relayClient'
-import { useCashuStore } from 'stores/cashu'
-import { notifyError, notifySuccess } from 'src/js/notify'
-import { useDonationPrompt, CASHU_SUPPORTER_NPUB } from '@/composables/useDonationPrompt'
+import { computed, onMounted, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
+import { useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
+import { fetchNutzapProfile, useNostrStore } from "stores/nostr";
+import { useMintsStore } from "stores/mints";
+import { queryNutzapTiers } from "@/nostr/relayClient";
+import { parseTiersContent } from "src/nutzap/profileShared";
+import { useCashuStore } from "stores/cashu";
+import { notifyError, notifySuccess } from "src/js/notify";
+import {
+  useDonationPrompt,
+  CASHU_SUPPORTER_NPUB,
+} from "@/composables/useDonationPrompt";
 
 defineOptions({
-  name: 'DonationCashuPanel'
-})
+  name: "DonationCashuPanel",
+});
 
 const props = defineProps<{
-  supporterNpub: string
-  supporterDisplayName: string
-  supporterAvatarUrl?: string | null
-}>()
+  supporterNpub: string;
+  supporterDisplayName: string;
+  supporterAvatarUrl?: string | null;
+}>();
 
-const { t } = useI18n()
+const { t } = useI18n();
 
-const router = useRouter()
-const { close } = useDonationPrompt()
-const cashuStore = useCashuStore()
-const nostrStore = useNostrStore()
-const mintsStore = useMintsStore()
+const router = useRouter();
+const { close } = useDonationPrompt();
+const cashuStore = useCashuStore();
+const nostrStore = useNostrStore();
+const mintsStore = useMintsStore();
 
-const { pubkey } = storeToRefs(nostrStore)
-const { mints, activeMintUrl } = storeToRefs(mintsStore)
+const { pubkey } = storeToRefs(nostrStore);
+const { mints, activeMintUrl } = storeToRefs(mintsStore);
 
-const panelLoading = ref(true)
-const panelError = ref('')
-const profile = ref<{ hexPub: string; trustedMints: string[] } | null>(null)
-const amount = ref<number | null>(null)
-const sending = ref(false)
-const sendError = ref('')
-const avatarLoadFailed = ref(false)
-const supporterNpubValue = computed(() => (props.supporterNpub?.trim() || CASHU_SUPPORTER_NPUB).trim())
-const presetAmounts = ref<number[]>([])
-const activePreset = ref<number | null>(null)
+const panelLoading = ref(true);
+const panelError = ref("");
+const profile = ref<{ hexPub: string; trustedMints: string[] } | null>(null);
+const amount = ref<number | null>(null);
+const sending = ref(false);
+const sendError = ref("");
+const avatarLoadFailed = ref(false);
+const supporterNpubValue = computed(() =>
+  (props.supporterNpub?.trim() || CASHU_SUPPORTER_NPUB).trim(),
+);
+const presetAmounts = ref<number[]>([]);
+const activePreset = ref<number | null>(null);
 
-type CtaMode = 'signin' | 'setup' | null
+type CtaMode = "signin" | "setup" | null;
 
-const isSignedIn = computed(() => Boolean(pubkey.value && pubkey.value.trim()))
+const isSignedIn = computed(() => Boolean(pubkey.value && pubkey.value.trim()));
 const hasWalletSetup = computed(
-  () => mints.value.length > 0 && Boolean(activeMintUrl.value && activeMintUrl.value.trim())
-)
+  () =>
+    mints.value.length > 0 &&
+    Boolean(activeMintUrl.value && activeMintUrl.value.trim()),
+);
 const ctaMode = computed<CtaMode>(() => {
   if (!isSignedIn.value) {
-    return 'signin'
+    return "signin";
   }
   if (!hasWalletSetup.value) {
-    return 'setup'
+    return "setup";
   }
-  return null
-})
-const isAuthBlocked = computed(() => ctaMode.value !== null)
-const showExplainer = computed(() => !isAuthBlocked.value)
+  return null;
+});
+const isAuthBlocked = computed(() => ctaMode.value !== null);
+const showExplainer = computed(() => !isAuthBlocked.value);
 
 const walletQuickLinks = [
   {
-    labelKey: 'DonationPrompt.cashu.ctas.quickLinkDesktop',
-    href: 'https://cashu.space/wallet'
+    labelKey: "DonationPrompt.cashu.ctas.quickLinkDesktop",
+    href: "https://cashu.space/wallet",
   },
   {
-    labelKey: 'DonationPrompt.cashu.ctas.quickLinkMobile',
-    href: 'https://cashu.space/apps'
-  }
-] as const
+    labelKey: "DonationPrompt.cashu.ctas.quickLinkMobile",
+    href: "https://cashu.space/apps",
+  },
+] as const;
 
 const numberFormatter = new Intl.NumberFormat(undefined, {
-  maximumFractionDigits: 0
-})
+  maximumFractionDigits: 0,
+});
 
-const avatarUrl = computed(() => (props.supporterAvatarUrl || '').trim())
-const showAvatarImage = computed(() => Boolean(avatarUrl.value) && !avatarLoadFailed.value)
-const avatarAlt = computed(() => t('DonationPrompt.cashu.avatarAlt', { name: props.supporterDisplayName }))
+const avatarUrl = computed(() => (props.supporterAvatarUrl || "").trim());
+const showAvatarImage = computed(
+  () => Boolean(avatarUrl.value) && !avatarLoadFailed.value,
+);
+const avatarAlt = computed(() =>
+  t("DonationPrompt.cashu.avatarAlt", { name: props.supporterDisplayName }),
+);
 const initials = computed(() => {
-  const name = props.supporterDisplayName?.trim()
-  return name ? name[0]?.toUpperCase() || 'F' : 'F'
-})
+  const name = props.supporterDisplayName?.trim();
+  return name ? name[0]?.toUpperCase() || "F" : "F";
+});
 
-const trustedMints = computed(() => profile.value?.trustedMints ?? [])
-const isSending = computed(() => sending.value || cashuStore.loading)
+const trustedMints = computed(() => profile.value?.trustedMints ?? []);
+const isSending = computed(() => sending.value || cashuStore.loading);
 const isSendDisabled = computed(() => {
   if (isAuthBlocked.value) {
-    return true
+    return true;
   }
   if (!amount.value || amount.value <= 0) {
-    return true
+    return true;
   }
-  return isSending.value
-})
+  return isSending.value;
+});
 
 watch(
   () => supporterNpubValue.value,
   () => {
-    void loadData()
-  }
-)
+    void loadData();
+  },
+);
 
 watch(ctaMode, () => {
-  sendError.value = ''
-})
+  sendError.value = "";
+});
 
 onMounted(() => {
-  void loadData()
-})
+  void loadData();
+});
 
 async function loadData() {
-  const npub = supporterNpubValue.value
-  panelLoading.value = true
-  panelError.value = ''
-  profile.value = null
-  amount.value = null
-  presetAmounts.value = []
-  activePreset.value = null
+  const npub = supporterNpubValue.value;
+  panelLoading.value = true;
+  panelError.value = "";
+  profile.value = null;
+  amount.value = null;
+  presetAmounts.value = [];
+  activePreset.value = null;
 
   if (!npub) {
-    panelError.value = t('DonationPrompt.cashu.errors.profileMissing')
-    panelLoading.value = false
-    return
+    panelError.value = t("DonationPrompt.cashu.errors.profileMissing");
+    panelLoading.value = false;
+    return;
   }
 
   try {
-    const profileResult = await fetchNutzapProfile(npub)
+    const profileResult = await fetchNutzapProfile(npub);
     if (!profileResult) {
-      panelError.value = t('DonationPrompt.cashu.errors.profileMissing')
-      return
+      panelError.value = t("DonationPrompt.cashu.errors.profileMissing");
+      return;
     }
     profile.value = {
       hexPub: profileResult.hexPub,
       trustedMints: Array.isArray(profileResult.trustedMints)
-        ? profileResult.trustedMints.filter((mint): mint is string => typeof mint === 'string' && mint.length > 0)
-        : []
-    }
+        ? profileResult.trustedMints.filter(
+            (mint): mint is string =>
+              typeof mint === "string" && mint.length > 0,
+          )
+        : [],
+    };
 
     try {
-      const tierEvent = await queryNutzapTiers(profileResult.hexPub)
+      const tierEvent = await queryNutzapTiers(profileResult.hexPub);
       if (tierEvent?.content) {
-        const parsed = JSON.parse(tierEvent.content)
-        if (Array.isArray(parsed)) {
-          const extracted = parsed
-            .map(extractTierAmount)
-            .filter((value): value is number => Number.isFinite(value) && value > 0)
-            .map((value) => Math.round(value))
-          const unique = Array.from(new Set(extracted)).sort((a, b) => a - b)
-          presetAmounts.value = unique
-        }
+        const parsedTiers = parseTiersContent(tierEvent.content);
+        const extracted = parsedTiers
+          .map(extractTierAmount)
+          .filter(
+            (value): value is number => Number.isFinite(value) && value > 0,
+          )
+          .map((value) => Math.round(value));
+        const unique = Array.from(new Set(extracted)).sort((a, b) => a - b);
+        presetAmounts.value = unique;
       }
     } catch (error) {
-      console.warn('[donation] failed to load Cashu tiers', error)
+      console.warn("[donation] failed to load Cashu tiers", error);
     }
 
-    const suggested = presetAmounts.value[presetAmounts.value.length - 1]
-    if (typeof suggested === 'number') {
-      amount.value = suggested
-      activePreset.value = suggested
+    const suggested = presetAmounts.value[presetAmounts.value.length - 1];
+    if (typeof suggested === "number") {
+      amount.value = suggested;
+      activePreset.value = suggested;
     } else {
-      amount.value = 1000
+      amount.value = 1000;
     }
   } catch (error) {
-    console.error('[donation] failed to load Cashu profile', error)
-    panelError.value = t('DonationPrompt.cashu.errors.loadFailed')
+    console.error("[donation] failed to load Cashu profile", error);
+    panelError.value = t("DonationPrompt.cashu.errors.loadFailed");
   } finally {
-    panelLoading.value = false
+    panelLoading.value = false;
   }
 }
 
 function onAvatarError() {
-  avatarLoadFailed.value = true
+  avatarLoadFailed.value = true;
 }
 
 function extractTierAmount(raw: any): number | null {
   if (!raw) {
-    return null
+    return null;
   }
 
-  const priceCandidates = [raw.price, raw.price_sats, raw.priceSats, raw.amount, raw.amount_sats, raw.amountSats]
+  const priceCandidates = [
+    raw.price,
+    raw.price_sats,
+    raw.priceSats,
+    raw.amount,
+    raw.amount_sats,
+    raw.amountSats,
+  ];
   for (const candidate of priceCandidates) {
     if (candidate !== undefined && candidate !== null) {
-      const numeric = Number(candidate)
+      const numeric = Number(candidate);
       if (Number.isFinite(numeric)) {
-        return numeric
+        return numeric;
       }
     }
   }
 
   if (raw.price_msat || raw.amount_msat || raw.amountMsat) {
-    const msats = Number(raw.price_msat ?? raw.amount_msat ?? raw.amountMsat)
+    const msats = Number(raw.price_msat ?? raw.amount_msat ?? raw.amountMsat);
     if (Number.isFinite(msats)) {
-      return Math.max(0, Math.round(msats / 1000))
+      return Math.max(0, Math.round(msats / 1000));
     }
   }
 
-  return null
+  return null;
 }
 
 function selectPreset(preset: number) {
-  activePreset.value = preset
-  amount.value = preset
-  sendError.value = ''
+  activePreset.value = preset;
+  amount.value = preset;
+  sendError.value = "";
 }
 
 async function sendCashuDonation() {
   if (isAuthBlocked.value) {
-    return
+    return;
   }
   if (!amount.value || amount.value <= 0) {
-    sendError.value = t('DonationPrompt.cashu.errors.invalidAmount')
-    return
+    sendError.value = t("DonationPrompt.cashu.errors.invalidAmount");
+    return;
   }
-  sendError.value = ''
-  sending.value = true
+  sendError.value = "";
+  sending.value = true;
   try {
     await cashuStore.send({
       npub: supporterNpubValue.value,
       amount: Math.round(amount.value),
       periods: 1,
-      startDate: Math.floor(Date.now() / 1000)
-    })
-    notifySuccess(t('DonationPrompt.cashu.notifications.success'))
+      startDate: Math.floor(Date.now() / 1000),
+    });
+    notifySuccess(t("DonationPrompt.cashu.notifications.success"));
   } catch (error) {
-    console.error('[donation] failed to send Cashu donation', error)
-    const message = error instanceof Error ? error.message : ''
-    const lowered = message.toLowerCase()
-    const fallback = lowered.includes('nostr')
-      ? t('DonationPrompt.cashu.notifications.dmFailure')
-      : t('DonationPrompt.cashu.notifications.failure')
-    const finalMessage = message || fallback
-    notifyError(finalMessage)
-    sendError.value = finalMessage
+    console.error("[donation] failed to send Cashu donation", error);
+    const message = error instanceof Error ? error.message : "";
+    const lowered = message.toLowerCase();
+    const fallback = lowered.includes("nostr")
+      ? t("DonationPrompt.cashu.notifications.dmFailure")
+      : t("DonationPrompt.cashu.notifications.failure");
+    const finalMessage = message || fallback;
+    notifyError(finalMessage);
+    sendError.value = finalMessage;
   } finally {
-    sending.value = false
+    sending.value = false;
   }
 }
 
 async function handleSignIn() {
-  close()
-  await router.push('/nostr-login')
+  close();
+  await router.push("/nostr-login");
 }
 
 async function handleWalletSetup() {
-  close()
-  await router.push('/wallet')
+  close();
+  await router.push("/wallet");
 }
 
 watch(amount, (value) => {
   if (value === null) {
-    activePreset.value = null
-    return
+    activePreset.value = null;
+    return;
   }
 
   if (!presetAmounts.value.includes(value)) {
-    activePreset.value = null
+    activePreset.value = null;
   }
-})
+});
 </script>
 
 <style scoped>

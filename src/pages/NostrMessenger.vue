@@ -1,39 +1,49 @@
 <template>
   <q-page
-    class="row full-height no-horizontal-scroll"
-    :class="[$q.dark.isActive ? 'bg-dark text-white' : 'bg-white text-dark']"
+    class="row full-height no-horizontal-scroll messenger-page bg-surface-1 text-1"
     v-touch-swipe.right="openDrawer"
   >
     <div
       :class="[
-        'col column',
+        'col column messenger-shell',
         $q.screen.gt.xs
           ? 'q-pt-xs q-px-lg q-pb-md'
           : 'q-pt-none q-px-md q-pb-md',
       ]"
     >
-      <q-banner v-if="connecting && !loading" dense class="bg-grey-3">
-        Connecting...
-      </q-banner>
+      <div class="messenger-status-stack">
+        <q-banner
+          v-if="connecting && !loading"
+          dense
+          class="messenger-status messenger-status--neutral"
+        >
+          Connecting to your message relays...
+        </q-banner>
         <q-banner
           v-else-if="!messenger.connected && !loading"
           dense
-          class="bg-grey-3"
+          class="messenger-status messenger-status--neutral"
         >
-        <div class="row items-center q-gutter-sm">
-          <span>
-            Offline - {{ connectedCount }}/{{ totalRelays }} connected
-            <span v-if="nextReconnectIn !== null">
-              - reconnecting in {{ nextReconnectIn }}s
+          <div class="row items-center q-gutter-sm">
+            <span>
+              Offline - {{ connectedCount }}/{{ totalRelays }} relays connected
+              <span v-if="nextReconnectIn !== null">
+                - retrying in {{ nextReconnectIn }}s
+              </span>
             </span>
-          </span>
-          <q-btn flat dense label="Reconnect All" @click="reconnectAll" />
-        </div>
+            <q-btn
+              flat
+              dense
+              no-caps
+              label="Reconnect all"
+              @click="reconnectAll"
+            />
+          </div>
         </q-banner>
         <q-banner
           v-if="initError || startTimedOut"
           dense
-          class="bg-red-2 q-mb-sm"
+          class="messenger-status messenger-status--error"
         >
           <div class="row items-center no-wrap q-gutter-sm">
             <div class="column">
@@ -41,7 +51,8 @@
               <span
                 v-if="
                   initError &&
-                  (!startTimedOut || initError !== 'Messenger startup timed out')
+                  (!startTimedOut ||
+                    initError !== 'Messenger startup timed out')
                 "
               >
                 {{ initError }}
@@ -51,6 +62,7 @@
             <q-btn
               flat
               dense
+              no-caps
               label="Retry"
               :loading="connecting"
               @click="init"
@@ -58,6 +70,7 @@
             <q-btn
               flat
               dense
+              no-caps
               label="Open Setup Wizard"
               @click="openSetupWizardFromError"
             />
@@ -67,7 +80,7 @@
         <q-banner
           v-if="sendTokenWarning"
           dense
-          class="bg-orange-2 q-mb-sm"
+          class="messenger-status messenger-status--warning"
         >
           <div class="row items-center no-wrap q-gutter-sm">
             <span>{{ sendTokenWarning.message }}</span>
@@ -75,6 +88,7 @@
             <q-btn
               flat
               dense
+              no-caps
               color="primary"
               label="Go to wallet"
               @click="handleSendTokenWarningAction"
@@ -84,7 +98,7 @@
         <q-banner
           v-if="failedRelays.length"
           dense
-          class="bg-red-2 q-mb-sm"
+          class="messenger-status messenger-status--error"
         >
           <div
             v-for="url in failedRelays"
@@ -96,22 +110,27 @@
             <q-btn
               flat
               dense
+              no-caps
               label="Remove"
               @click="removeRelay(url)"
             />
           </div>
         </q-banner>
-        <q-banner v-if="failedOutboxCount" dense class="bg-orange-2 q-mb-sm">
+        <q-banner
+          v-if="failedOutboxCount"
+          dense
+          class="messenger-status messenger-status--warning"
+        >
           <div class="row items-center no-wrap">
             <span>{{ failedOutboxCount }} message(s) failed</span>
             <q-space />
-            <q-btn flat dense label="Retry" @click="retryFailedQueue" />
+            <q-btn flat dense no-caps label="Retry" @click="retryFailedQueue" />
           </div>
         </q-banner>
         <q-banner
           v-if="pendingDecryptCount"
           dense
-          class="bg-grey-2 q-mb-sm"
+          class="messenger-status messenger-status--neutral"
         >
           <div class="row items-center no-wrap">
             <span>
@@ -123,16 +142,57 @@
             <q-btn
               flat
               dense
+              no-caps
               label="Retry decryption"
               :loading="retryingDecrypts"
               @click="retryPendingDecrypts"
             />
           </div>
         </q-banner>
-        <q-spinner v-if="loading" size="lg" color="primary" />
+      </div>
+
+      <q-spinner
+        v-if="loading && !selected"
+        size="lg"
+        color="primary"
+        class="self-center q-mt-xl"
+      />
+
+      <template v-else-if="selected">
         <ActiveChatHeader :pubkey="selected" :relays="relayInfos" />
-      <MessageList :messages="messages" class="col" />
-      <MessageInput @send="sendMessage" @sendToken="openSendTokenDialog" />
+        <MessageList :messages="messages" class="col" />
+        <MessageInput @send="sendMessage" @sendToken="openSendTokenDialog" />
+      </template>
+
+      <div v-else class="messenger-empty-state col">
+        <div class="messenger-empty-card bg-surface-2 text-1">
+          <div class="messenger-empty-card__icon">
+            <q-icon name="chat" size="40px" />
+          </div>
+          <div class="text-h5">Choose a conversation</div>
+          <p class="text-body1 text-2 q-mb-none">
+            Pick an existing chat from the left drawer or start a new one to
+            send messages, share tokens, and manage conversations.
+          </p>
+          <div class="messenger-empty-card__actions">
+            <q-btn
+              color="primary"
+              unelevated
+              no-caps
+              label="Open chats"
+              @click="openDrawer"
+            />
+            <q-btn
+              flat
+              color="primary"
+              no-caps
+              label="Retry connection"
+              @click="reconnectAll"
+            />
+          </div>
+        </div>
+      </div>
+
       <ChatSendTokenDialog ref="chatSendTokenDialogRef" :recipient="selected" />
     </div>
     <q-btn
@@ -176,6 +236,7 @@ import { useQuasar, TouchSwipe } from "quasar";
 import { useMintsStore } from "src/stores/mints";
 import { useBucketsStore } from "src/stores/buckets";
 import { storeToRefs } from "pinia";
+import { FUNDSTR_WS_URL } from "@/nutzap/relayEndpoints";
 
 type SendTokenWarning = {
   message: string;
@@ -238,6 +299,34 @@ export default defineComponent({
       startPromise = null;
       cleanupStartRecoveryWatcher();
       handleRoutePubkeyChange(route.query.pubkey);
+    };
+
+    const revealRouteConversationShell = () => {
+      if (!nostr.hasIdentity) return;
+      if (!(routeConversation.value || messenger.currentConversation)) return;
+      loading.value = false;
+      startTimedOut.value = false;
+    };
+
+    const primeRouteConversationViaHttp = () => {
+      if (!nostr.hasIdentity || !nostr.pubkey) return;
+      const targetConversation =
+        routeConversation.value || messenger.currentConversation;
+      if (!targetConversation) return;
+      const conversationMessages =
+        messenger.conversations?.[targetConversation] || [];
+      const needsFullPrime = conversationMessages.length === 0;
+      if (messenger.started && messenger.connected && !needsFullPrime) return;
+      const since = needsFullPrime
+        ? 0
+        : conversationMessages[conversationMessages.length - 1]?.created_at ||
+          messenger.eventLog?.[messenger.eventLog.length - 1]?.created_at ||
+          0;
+      void messenger
+        .syncConversationViaHttp(nostr.pubkey, targetConversation, since)
+        .catch((err) => {
+          console.warn("[nostrMessenger.routePrime] HTTP sync failed", err);
+        });
     };
 
     const registerStartRecoveryWatcher = (runId: number) => {
@@ -312,10 +401,25 @@ export default defineComponent({
       let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
       try {
         await nostr.initSignerIfNotSet();
+        if (
+          nostr.hasIdentity &&
+          !nostr.connected &&
+          typeof nostr.connect === "function"
+        ) {
+          void nostr.connect([FUNDSTR_WS_URL]).catch((error: unknown) => {
+            console.warn("Messenger relay bootstrap failed", error);
+          });
+        }
         await messenger.loadIdentity();
         ndkRef.value = await useNdk();
         const start = messenger.start();
         startPromise = start;
+
+        if (routeConversation.value || messenger.currentConversation) {
+          handleRoutePubkeyChange(route.query.pubkey);
+          registerStartRecoveryWatcher(runId);
+          revealRouteConversationShell();
+        }
 
         timeoutHandle = setTimeout(() => {
           if (runId !== startRunId) return;
@@ -368,7 +472,10 @@ export default defineComponent({
       if (timer) clearInterval(timer);
       stopDecryptRetryTimer();
       if (typeof document !== "undefined") {
-        document.removeEventListener("visibilitychange", handleDecryptVisibility);
+        document.removeEventListener(
+          "visibilitychange",
+          handleDecryptVisibility,
+        );
       }
       cleanupStartRecoveryWatcher();
     });
@@ -393,6 +500,12 @@ export default defineComponent({
         normalized === messenger.currentConversation
       ) {
         lastRoutePubkey.value = normalized;
+        void messenger.ensureConversationSubscription(
+          normalized,
+          "route-refresh",
+        );
+        revealRouteConversationShell();
+        primeRouteConversationViaHttp();
         return;
       }
 
@@ -400,6 +513,8 @@ export default defineComponent({
       messenger.startChat(normalized);
       messenger.setCurrentConversation(normalized);
       void messenger.ensureConversationSubscription(normalized, "route-change");
+      revealRouteConversationShell();
+      primeRouteConversationViaHttp();
 
       if ($q.screen.lt.md) {
         messenger.setDrawer(false);
@@ -414,13 +529,11 @@ export default defineComponent({
       if (Array.isArray(pubkey)) {
         return pubkey.length ? bech32ToHex(pubkey[0]) : null;
       }
-      return typeof pubkey === "string" && pubkey
-        ? bech32ToHex(pubkey)
-        : null;
+      return typeof pubkey === "string" && pubkey ? bech32ToHex(pubkey) : null;
     });
 
-    const hasActiveMint = computed(
-      () => Boolean(activeMintUrl.value && mints.value.length),
+    const hasActiveMint = computed(() =>
+      Boolean(activeMintUrl.value && mints.value.length),
     );
     const hasActiveBucket = computed(() => activeBuckets.value.length > 0);
 
@@ -472,10 +585,18 @@ export default defineComponent({
           pendingTokenModal.value =
             (Array.isArray(route.query.intent)
               ? route.query.intent.includes("donate")
-              : route.query.intent === "donate") &&
-            !!routeConversation.value;
+              : route.query.intent === "donate") && !!routeConversation.value;
         }
       },
+      { immediate: true },
+    );
+
+    watch(
+      [routeConversation, () => messenger.currentConversation],
+      () => {
+        revealRouteConversationShell();
+      },
+      { immediate: true },
     );
 
     watch(
@@ -531,7 +652,9 @@ export default defineComponent({
       }
     };
 
-    const selected = computed(() => messenger.currentConversation);
+    const selected = computed(
+      () => messenger.currentConversation || routeConversation.value || "",
+    );
     const chatSendTokenDialogRef = ref<InstanceType<
       typeof ChatSendTokenDialog
     > | null>(null);
@@ -607,9 +730,10 @@ export default defineComponent({
 
     const sendMessage = (payload: { text: string; files?: FileMeta[] }) => {
       if (!selected.value) return;
-      const files = Array.isArray(payload.files) && payload.files.length
-        ? payload.files
-        : undefined;
+      const files =
+        Array.isArray(payload.files) && payload.files.length
+          ? payload.files
+          : undefined;
       const text = payload.text.trim();
       if (files?.length) {
         messenger.sendDm(
@@ -689,7 +813,10 @@ export default defineComponent({
       [pendingTokenModal, selected, loading, () => messenger.started],
       async ([shouldOpen, currentSelected, isLoading, started]) => {
         if (!shouldOpen || isLoading || !started) return;
-        if (!routeConversation.value || currentSelected !== routeConversation.value) {
+        if (
+          !routeConversation.value ||
+          currentSelected !== routeConversation.value
+        ) {
           return;
         }
         if (!ensureSendTokenPrerequisites()) {
@@ -748,3 +875,90 @@ export default defineComponent({
   },
 });
 </script>
+
+<style scoped>
+.messenger-page {
+  background: radial-gradient(
+      circle at top left,
+      color-mix(in srgb, var(--accent-200) 28%, transparent),
+      transparent 34%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-1) 96%, transparent),
+      var(--surface-1)
+    );
+}
+
+.messenger-shell {
+  min-width: 0;
+}
+
+.messenger-status-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.messenger-status {
+  border-radius: 14px;
+  border: 1px solid var(--surface-contrast-border);
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+  color: var(--text-1);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+}
+
+.messenger-status--warning {
+  background: color-mix(in srgb, #c76816 10%, var(--surface-2));
+  border-color: color-mix(in srgb, #c76816 28%, var(--surface-contrast-border));
+}
+
+.messenger-status--error {
+  background: color-mix(in srgb, #b42318 10%, var(--surface-2));
+  border-color: color-mix(in srgb, #b42318 28%, var(--surface-contrast-border));
+}
+
+.messenger-empty-state {
+  display: grid;
+  place-items: center;
+  padding-block: clamp(2rem, 8vh, 4rem);
+}
+
+.messenger-empty-card {
+  width: min(100%, 38rem);
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  border-radius: 22px;
+  border: 1px solid var(--surface-contrast-border);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+}
+
+.messenger-empty-card__icon {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto;
+  border-radius: 22px;
+  display: grid;
+  place-items: center;
+  color: var(--accent-500);
+  background: color-mix(in srgb, var(--accent-200) 30%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-200) 60%, transparent);
+}
+
+.messenger-empty-card__actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 599px) {
+  .messenger-empty-card__actions {
+    flex-direction: column;
+  }
+}
+</style>

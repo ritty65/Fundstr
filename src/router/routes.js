@@ -29,8 +29,12 @@ const routes = [
       {
         path: "",
         name: "creator-deeplink",
-        component: () => import("src/pages/FindCreators.vue"),
-        props: true,
+        redirect: (to) => ({
+          name: "PublicCreatorProfile",
+          params: { npubOrHex: to.params.npubOrHex },
+          query: to.query,
+          hash: to.hash,
+        }),
       },
       {
         path: "profile",
