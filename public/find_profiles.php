@@ -121,7 +121,7 @@ function build_phonebook_config(): array
         'db_user' => trim((string) getenv('FUNDSTR_PHONEBOOK_DB_USER')),
         'db_pass' => (string) getenv('FUNDSTR_PHONEBOOK_DB_PASS'),
         'db_tables' => $tables,
-        'db_authoritative' => resolve_bool_env('FUNDSTR_PHONEBOOK_DB_AUTHORITATIVE', true),
+        'db_authoritative' => resolve_bool_env('FUNDSTR_PHONEBOOK_DB_AUTHORITATIVE', false),
     ];
 }
 

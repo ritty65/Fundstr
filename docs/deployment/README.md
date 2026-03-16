@@ -71,3 +71,11 @@ FUNDSTR_PHONEBOOK_TIMEOUT
 Do not commit real values. Set them in Hostinger runtime config or server env so
 the phonebook can query local cache tables without routing every search through
 slow upstream discovery.
+
+Recommended rollout default:
+
+- leave `FUNDSTR_PHONEBOOK_DB_AUTHORITATIVE=false` at first
+
+That means the DB is preferred when it has a hit, but upstream discovery can still
+fill misses while you validate coverage. Only switch to `true` after you confirm the
+database alone returns complete enough results for common searches.

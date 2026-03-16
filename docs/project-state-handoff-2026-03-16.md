@@ -111,6 +111,13 @@ The PHP phonebook endpoint should support runtime settings such as:
 
 These should be configured on Hostinger, not committed to git.
 
+Recommended first rollout:
+
+- set `FUNDSTR_PHONEBOOK_DB_AUTHORITATIVE=false`
+
+That keeps the DB in a "prefer when present" mode instead of making empty local DB
+results override upstream discovery.
+
 ## Safe workflow from here
 
 1. create all new sprint branches from `origin/Develop2`
