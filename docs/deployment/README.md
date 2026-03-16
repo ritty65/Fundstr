@@ -44,3 +44,78 @@ curl -i 'https://staging.fundstr.me/find_profiles.php?q=jack'
 The phonebook endpoint checks above must return `application/json`.
 If either one returns the SPA shell HTML, the deploy is incomplete or the
 server rewrite rules are still intercepting `/find_profiles.php`.
+
+## Phonebook runtime config
+
+`public/find_profiles.php` now supports a fast local DB-backed lookup path before
+falling back to upstream discovery.
+
+Recommended runtime variables on Hostinger:
+
+```text
+FUNDSTR_PHONEBOOK_DSN
+FUNDSTR_PHONEBOOK_DB_HOST
+FUNDSTR_PHONEBOOK_DB_PORT
+FUNDSTR_PHONEBOOK_DB_NAME
+FUNDSTR_PHONEBOOK_DB_USER
+FUNDSTR_PHONEBOOK_DB_PASS
+FUNDSTR_PHONEBOOK_DB_TABLES
+FUNDSTR_PHONEBOOK_DB_AUTHORITATIVE
+FUNDSTR_PHONEBOOK_CACHE_DIR
+FUNDSTR_PHONEBOOK_CACHE_TTL_DB
+FUNDSTR_PHONEBOOK_CACHE_TTL_UPSTREAM
+FUNDSTR_PHONEBOOK_CACHE_TTL_DEGRADED
+FUNDSTR_PHONEBOOK_TIMEOUT
+FUNDSTR_PHONEBOOK_CONFIG_FILE
+```
+
+Do not commit real values. Set them in Hostinger runtime config or server env so
+the phonebook can query local cache tables without routing every search through
+slow upstream discovery.
+
+If Hostinger does not provide convenient per-app environment variables, use a
+non-versioned PHP config file outside `public_html`. The phonebook endpoint now
+checks these paths automatically:
+
+- `/home/u444965226/domains/fundstr.me/public_html/_fundstr-phonebook.php`
+- `/home/u444965226/domains/fundstr.me/public_html/.fundstr-phonebook.php`
+- `/home/u444965226/domains/fundstr.me/.fundstr-phonebook.php`
+- `/home/u444965226/domains/fundstr.me/config/fundstr-phonebook.php`
+- `~/.config/fundstr-phonebook.php`
+
+Example file:
+
+```php
+<?php
+
+return [
+    'db_host' => '127.0.0.1',
+    'db_port' => '3306',
+    'db_name' => 'u444965226_fundstr_cache',
+    'db_user' => 'u444965226_fundstr_user',
+    'db_pass' => 'YOUR_DB_PASSWORD',
+    'db_tables' => ['profiles', 'creators'],
+    'db_authoritative' => false,
+    'cache_dir' => '/home/u444965226/tmp/fundstr-phonebook-cache',
+    'cache_ttl_db' => 300,
+    'cache_ttl_upstream' => 180,
+    'cache_ttl_degraded' => 45,
+    'upstream_timeout' => 4,
+];
+```
+
+The `public_html` config-file locations are blocked from direct HTTP access by
+`.htaccess`, so they can be used if parent-directory includes are restricted by
+shared-hosting PHP runtime rules.
+
+The response header `X-Fundstr-Phonebook-Config` now reports a coarse source
+label like `current_file`, `parent_file`, `grandparent_dotfile`, or `env`
+instead of leaking absolute filesystem paths.
+
+Recommended rollout default:
+
+- leave `FUNDSTR_PHONEBOOK_DB_AUTHORITATIVE=false` at first
+
+That means the DB is preferred when it has a hit, but upstream discovery can still
+fill misses while you validate coverage. Only switch to `true` after you confirm the
+database alone returns complete enough results for common searches.
