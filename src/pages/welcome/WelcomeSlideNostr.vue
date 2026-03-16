@@ -77,7 +77,6 @@ import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import { useNostrStore } from "src/stores/nostr";
 import { useWelcomeStore } from "src/stores/welcome";
-import { useNostrAuth } from "src/composables/useNostrAuth";
 import NostrBackupDialog from "src/components/welcome/NostrBackupDialog.vue";
 import { nip19 } from "nostr-tools";
 import { hexToBytes } from "@noble/hashes/utils";
@@ -86,8 +85,11 @@ const { t } = useI18n();
 const $q = useQuasar();
 const nostr = useNostrStore();
 const welcome = useWelcomeStore();
-const { loginWithExtension } = useNostrAuth();
 const id = "welcome-nostr-title";
+const emit = defineEmits<{
+  (e: "completed"): void;
+  (e: "skipped"): void;
+}>();
 
 const nsec = ref("");
 const error = ref("");
@@ -105,6 +107,12 @@ let checkTimeout: ReturnType<typeof setTimeout> | null = null;
 const maxWaitForNip07Ms = 15000;
 let nip07WaitStartedAt = 0;
 
+function readBooleanFlag(value: unknown): boolean {
+  return typeof value === "object" && value !== null && "value" in value
+    ? Boolean((value as { value?: unknown }).value)
+    : Boolean(value);
+}
+
 const refreshNip07Status = async (force = false) => {
   if (refreshPromise) return refreshPromise;
 
@@ -119,6 +127,11 @@ const refreshNip07Status = async (force = false) => {
 
       if (!nip07Detected.value) {
         nip07Available.value = false;
+        return;
+      }
+
+      if (!force) {
+        nip07Available.value = readBooleanFlag(nostr.nip07SignerAvailable);
         return;
       }
 
@@ -276,15 +289,13 @@ async function connectNip07(options: { allowRetry?: boolean } = {}) {
     await refreshNip07Status(true);
     const available = nip07Available.value;
     if (!available) throw new Error("NIP-07 unavailable");
-    if (!nostr.signer) {
-      await nostr.connectBrowserSigner();
-    }
-    await loginWithExtension();
+    await nostr.connectBrowserSigner();
     welcome.nostrSetupCompleted = true;
     npub.value = nostr.npub;
     connected.value = true;
     nip07Available.value = true;
     $q.notify({ type: "positive", message: t("Welcome.nostr.connected") });
+    emit("completed");
   } catch (e) {
     const { message, retryable } = resolveNip07Error();
     if (retryable && allowRetry) {
@@ -357,6 +368,7 @@ function skip() {
   error.value = "";
   npub.value = "";
   connected.value = false;
+  emit("skipped");
 }
 </script>
 

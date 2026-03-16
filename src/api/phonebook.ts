@@ -7,7 +7,17 @@ import {
 } from "./fundstrDiscovery";
 import { debug } from "src/js/logger";
 
-const DEFAULT_FIND_PROFILES_URL = "https://fundstr.me/find_profiles.php";
+const DEFAULT_FIND_PROFILES_URL = "/find_profiles.php";
+
+function getLocationOrigin(): string {
+  return typeof globalThis !== "undefined" &&
+    typeof (globalThis as { location?: { origin?: unknown } }).location
+      ?.origin === "string"
+    ? String(
+        (globalThis as { location?: { origin?: string } }).location?.origin,
+      ).trim()
+    : "";
+}
 
 function resolveFindProfilesUrl(): string {
   const metaEnv =
@@ -41,14 +51,7 @@ function resolveFindProfilesUrl(): string {
 const FIND_PROFILES_URL = resolveFindProfilesUrl();
 
 function shouldSkipCrossOriginDefaultPhonebook(url: string): boolean {
-  const locationOrigin =
-    typeof globalThis !== "undefined" &&
-    typeof (globalThis as { location?: { origin?: unknown } }).location
-      ?.origin === "string"
-      ? String(
-          (globalThis as { location?: { origin?: string } }).location?.origin,
-        ).trim()
-      : "";
+  const locationOrigin = getLocationOrigin();
 
   if (!locationOrigin) {
     return false;
@@ -64,6 +67,10 @@ function shouldSkipCrossOriginDefaultPhonebook(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+function buildFindProfilesEndpoint(url: string): URL {
+  return new URL(url, getLocationOrigin() || "https://fundstr.me");
 }
 
 export interface PhonebookProfile {
@@ -128,7 +135,7 @@ export async function findProfiles(
     };
   }
 
-  const endpoint = new URL(FIND_PROFILES_URL);
+  const endpoint = buildFindProfilesEndpoint(FIND_PROFILES_URL);
   endpoint.searchParams.set("q", trimmedQuery);
 
   try {

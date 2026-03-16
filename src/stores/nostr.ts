@@ -2691,6 +2691,29 @@ export const useNostrStore = defineStore("nostr", {
       }
     },
     initNip07Signer: async function (options: InitSignerBehaviorOptions = {}) {
+      const withSoftTimeout = async <T>(
+        promise: Promise<T>,
+        timeoutMs: number,
+        label: string,
+      ): Promise<T | null> => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        try {
+          return await Promise.race([
+            promise,
+            new Promise<null>((resolve) => {
+              timer = setTimeout(() => resolve(null), timeoutMs);
+            }),
+          ]);
+        } catch (error) {
+          console.warn(`[nostr] ${label} failed`, error);
+          return null;
+        } finally {
+          if (timer) {
+            clearTimeout(timer);
+          }
+        }
+      };
+
       const available = await this.checkNip07Signer();
       if (!available) {
         if (!this.nip07Warned) {
@@ -2705,8 +2728,17 @@ export const useNostrStore = defineStore("nostr", {
       }
       try {
         const signer = new NDKNip07Signer();
-        await signer.blockUntilReady();
-        const user = await signer.user();
+        const user =
+          (await withSoftTimeout(
+            Promise.resolve(signer.blockUntilReady()),
+            7000,
+            "NIP-07 signer readiness",
+          )) ||
+          (await withSoftTimeout(
+            Promise.resolve(signer.user()),
+            5000,
+            "NIP-07 signer user lookup",
+          ));
         if (user?.npub) {
           this.signerType = SignerType.NIP07;
           this.setPubkey(user.pubkey);
@@ -2740,7 +2772,13 @@ export const useNostrStore = defineStore("nostr", {
                     : Promise.resolve(null);
               }
             }
-            const relays = await this.pendingGetRelays;
+            const relayLookup =
+              this.pendingGetRelays ?? Promise.resolve<string[] | null>(null);
+            const relays = await withSoftTimeout<string[] | null>(
+              relayLookup,
+              4000,
+              "NIP-07 relay list lookup",
+            );
             this.pendingGetRelays = null;
             if (relays) {
               urls = relays;

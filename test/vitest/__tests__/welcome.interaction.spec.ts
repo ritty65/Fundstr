@@ -490,7 +490,9 @@ const welcomePageStubs = {
   ...componentStubs,
   WelcomeSlideNostr: defineComponent({
     name: "WelcomeSlideNostr",
-    template: "<div>nostr slide</div>",
+    emits: ["completed", "skipped"],
+    template:
+      '<div><button data-test="nostr-completed" @click="$emit(\'completed\')">complete</button><button data-test="nostr-skipped" @click="$emit(\'skipped\')">skip</button></div>',
   }),
 };
 
@@ -607,9 +609,8 @@ describe("WelcomeSlideNostr", () => {
     await connectBtn!.trigger("click");
     await flushPromises();
 
-    expect(nostrStore.checkNip07Signer).toHaveBeenCalled();
     expect(nostrStore.connectBrowserSigner).toHaveBeenCalled();
-    expect(loginWithExtension).toHaveBeenCalled();
+    expect(loginWithExtension).not.toHaveBeenCalled();
     expect(welcomeStore.nostrSetupCompleted).toBe(true);
     expect(wrapper.text()).toContain(TEST_NIP07_NPUB);
     expect(quasarNotify).toHaveBeenCalledWith(
@@ -646,6 +647,7 @@ describe("WelcomeSlideNostr", () => {
     vi.useFakeTimers();
     (globalThis as any).nostr = { getPublicKey: vi.fn() };
     nostrStore.checkNip07Signer.mockResolvedValue(false);
+    nostrStore.nip07SignerAvailable = ref(false);
     nostrStore.nip07LastFailureCause = "extension-missing";
     const wrapper = mount(WelcomeSlideNostr, {
       global: { stubs: componentStubs },
@@ -1003,6 +1005,26 @@ describe("WelcomePage", () => {
     expect(nextBtn?.attributes("disabled")).toBeDefined();
     nextBtn && nextBtn.trigger("click");
     expect(welcomeStore.currentSlide).toBe(1);
+  });
+
+  it("advances after the Nostr step reports completion", async () => {
+    welcomeStore.currentSlide = 1;
+    welcomeStore.canProceed = vi.fn(() => true);
+
+    const wrapper = mountPage();
+    await wrapper.get('[data-test="nostr-completed"]').trigger("click");
+
+    expect(welcomeStore.currentSlide).toBe(2);
+  });
+
+  it("advances after the Nostr step is skipped", async () => {
+    welcomeStore.currentSlide = 1;
+    welcomeStore.canProceed = vi.fn(() => true);
+
+    const wrapper = mountPage();
+    await wrapper.get('[data-test="nostr-skipped"]').trigger("click");
+
+    expect(welcomeStore.currentSlide).toBe(2);
   });
 
   it("finishes onboarding through footer and marks welcome seen", async () => {

@@ -1,8 +1,8 @@
 import { LocalStorage, Cookies } from "quasar";
 
 // storage keys for tracking if the welcome flow has been seen on this device
-const KEY = "welcome.seen:v1";
-const COOKIE_KEY = "welcome_seen_v1";
+const KEY = "welcome.seen:v2";
+const COOKIE_KEY = "welcome_seen_v2";
 
 function getStorage() {
   // use Quasar LocalStorage if available, otherwise fall back to the native API

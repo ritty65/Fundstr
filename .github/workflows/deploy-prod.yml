@@ -303,7 +303,7 @@ jobs:
           PORT: ${{ secrets.SSH_PORT }}
         run: |
           set -euo pipefail
-          ssh -p "${PORT:-22}" "$USER@$HOST" "set -e; test -f \"$TARGET/index.html\"; test -f \"$TARGET/find-creators.html\"; test -f \"$TARGET/featured-creators.json\"; test -f \"$TARGET/manifest.json\"; test -f \"$TARGET/vendor/nostr.bundle.1.17.0.js\"; test -f \"$TARGET/deploy.txt\""
+          ssh -p "${PORT:-22}" "$USER@$HOST" "set -e; test -f \"$TARGET/index.html\"; test -f \"$TARGET/find-creators.html\"; test -f \"$TARGET/find_profiles.php\"; test -f \"$TARGET/featured-creators.json\"; test -f \"$TARGET/manifest.json\"; test -f \"$TARGET/vendor/nostr.bundle.1.17.0.js\"; test -f \"$TARGET/deploy.txt\""
 
       - name: Prepare production artifact directory
         run: mkdir -p artifacts/production-smoke
