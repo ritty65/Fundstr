@@ -96,33 +96,67 @@ emit_json_payload($degradedPayload['payload'], $method, 200, [
 
 function build_phonebook_config(): array
 {
-    $cacheDir = trim((string) getenv('FUNDSTR_PHONEBOOK_CACHE_DIR'));
+    $fileConfig = load_phonebook_file_config();
+
+    $cacheDir = resolve_config_string($fileConfig, 'cache_dir', 'FUNDSTR_PHONEBOOK_CACHE_DIR', '');
     if ($cacheDir === '') {
         $cacheDir = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'fundstr-phonebook-cache';
     }
 
-    $tables = split_csv_values((string) getenv('FUNDSTR_PHONEBOOK_DB_TABLES'));
+    $tables = resolve_config_list($fileConfig, 'db_tables', 'FUNDSTR_PHONEBOOK_DB_TABLES');
     if ($tables === []) {
         $tables = ['profiles', 'creators'];
     }
 
     return [
         'cache_dir' => $cacheDir,
-        'cache_ttl_db' => resolve_int_env('FUNDSTR_PHONEBOOK_CACHE_TTL_DB', 300, 30, 3600),
-        'cache_ttl_upstream' => resolve_int_env('FUNDSTR_PHONEBOOK_CACHE_TTL_UPSTREAM', 180, 10, 1800),
-        'cache_ttl_degraded' => resolve_int_env('FUNDSTR_PHONEBOOK_CACHE_TTL_DEGRADED', 45, 5, 300),
-        'limit' => resolve_int_env('FUNDSTR_PHONEBOOK_LIMIT', 25, 1, 50),
-        'upstream_timeout' => resolve_int_env('FUNDSTR_PHONEBOOK_TIMEOUT', 4, 1, 15),
-        'upstream_base' => resolve_trimmed_env('FUNDSTR_PHONEBOOK_UPSTREAM', 'https://api.fundstr.me/discover/creators'),
-        'db_dsn' => trim((string) getenv('FUNDSTR_PHONEBOOK_DSN')),
-        'db_host' => trim((string) getenv('FUNDSTR_PHONEBOOK_DB_HOST')),
-        'db_port' => resolve_trimmed_env('FUNDSTR_PHONEBOOK_DB_PORT', '3306'),
-        'db_name' => trim((string) getenv('FUNDSTR_PHONEBOOK_DB_NAME')),
-        'db_user' => trim((string) getenv('FUNDSTR_PHONEBOOK_DB_USER')),
-        'db_pass' => (string) getenv('FUNDSTR_PHONEBOOK_DB_PASS'),
+        'cache_ttl_db' => resolve_config_int($fileConfig, 'cache_ttl_db', 'FUNDSTR_PHONEBOOK_CACHE_TTL_DB', 300, 30, 3600),
+        'cache_ttl_upstream' => resolve_config_int($fileConfig, 'cache_ttl_upstream', 'FUNDSTR_PHONEBOOK_CACHE_TTL_UPSTREAM', 180, 10, 1800),
+        'cache_ttl_degraded' => resolve_config_int($fileConfig, 'cache_ttl_degraded', 'FUNDSTR_PHONEBOOK_CACHE_TTL_DEGRADED', 45, 5, 300),
+        'limit' => resolve_config_int($fileConfig, 'limit', 'FUNDSTR_PHONEBOOK_LIMIT', 25, 1, 50),
+        'upstream_timeout' => resolve_config_int($fileConfig, 'upstream_timeout', 'FUNDSTR_PHONEBOOK_TIMEOUT', 4, 1, 15),
+        'upstream_base' => resolve_config_string($fileConfig, 'upstream_base', 'FUNDSTR_PHONEBOOK_UPSTREAM', 'https://api.fundstr.me/discover/creators'),
+        'db_dsn' => resolve_config_string($fileConfig, 'db_dsn', 'FUNDSTR_PHONEBOOK_DSN', ''),
+        'db_host' => resolve_config_string($fileConfig, 'db_host', 'FUNDSTR_PHONEBOOK_DB_HOST', ''),
+        'db_port' => resolve_config_string($fileConfig, 'db_port', 'FUNDSTR_PHONEBOOK_DB_PORT', '3306'),
+        'db_name' => resolve_config_string($fileConfig, 'db_name', 'FUNDSTR_PHONEBOOK_DB_NAME', ''),
+        'db_user' => resolve_config_string($fileConfig, 'db_user', 'FUNDSTR_PHONEBOOK_DB_USER', ''),
+        'db_pass' => resolve_config_string($fileConfig, 'db_pass', 'FUNDSTR_PHONEBOOK_DB_PASS', ''),
         'db_tables' => $tables,
-        'db_authoritative' => resolve_bool_env('FUNDSTR_PHONEBOOK_DB_AUTHORITATIVE', true),
+        'db_authoritative' => resolve_config_bool($fileConfig, 'db_authoritative', 'FUNDSTR_PHONEBOOK_DB_AUTHORITATIVE', false),
     ];
+}
+
+function load_phonebook_file_config(): array
+{
+    $candidates = [];
+
+    $explicit = getenv('FUNDSTR_PHONEBOOK_CONFIG_FILE');
+    if (is_string($explicit) && trim($explicit) !== '') {
+        $candidates[] = trim($explicit);
+    }
+
+    $baseDir = dirname(__DIR__);
+    $candidates[] = $baseDir . DIRECTORY_SEPARATOR . '.fundstr-phonebook.php';
+    $candidates[] = $baseDir . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'fundstr-phonebook.php';
+
+    $home = getenv('HOME');
+    if (is_string($home) && trim($home) !== '') {
+        $candidates[] = rtrim($home, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . '.config' . DIRECTORY_SEPARATOR . 'fundstr-phonebook.php';
+    }
+
+    foreach ($candidates as $candidate) {
+        if (!is_string($candidate) || $candidate === '' || !is_file($candidate)) {
+            continue;
+        }
+
+        $loaded = include $candidate;
+        if (is_array($loaded)) {
+            return $loaded;
+        }
+    }
+
+    return [];
 }
 
 function load_cached_query(string $query, array $config): ?array
@@ -709,4 +743,79 @@ function split_csv_values(string $raw): array
     }
 
     return $values;
+}
+
+function resolve_config_string(array $fileConfig, string $key, string $envName, string $default): string
+{
+    if (array_key_exists($key, $fileConfig) && is_string($fileConfig[$key])) {
+        $trimmed = trim($fileConfig[$key]);
+        if ($trimmed !== '') {
+            return $trimmed;
+        }
+    }
+
+    return resolve_trimmed_env($envName, $default);
+}
+
+function resolve_config_int(array $fileConfig, string $key, string $envName, int $default, int $min, int $max): int
+{
+    if (array_key_exists($key, $fileConfig)) {
+        $value = (int) $fileConfig[$key];
+        if ($value >= $min) {
+            return min($value, $max);
+        }
+    }
+
+    return resolve_int_env($envName, $default, $min, $max);
+}
+
+function resolve_config_bool(array $fileConfig, string $key, string $envName, bool $default): bool
+{
+    if (array_key_exists($key, $fileConfig)) {
+        $value = $fileConfig[$key];
+        if (is_bool($value)) {
+            return $value;
+        }
+        if (is_string($value)) {
+            $normalized = strtolower(trim($value));
+            if (in_array($normalized, ['1', 'true', 'yes', 'on'], true)) {
+                return true;
+            }
+            if (in_array($normalized, ['0', 'false', 'no', 'off'], true)) {
+                return false;
+            }
+        }
+    }
+
+    return resolve_bool_env($envName, $default);
+}
+
+function resolve_config_list(array $fileConfig, string $key, string $envName): array
+{
+    if (array_key_exists($key, $fileConfig)) {
+        $value = $fileConfig[$key];
+        if (is_array($value)) {
+            $values = [];
+            foreach ($value as $item) {
+                if (!is_string($item)) {
+                    continue;
+                }
+                $trimmed = trim($item);
+                if ($trimmed !== '') {
+                    $values[] = $trimmed;
+                }
+            }
+            if ($values !== []) {
+                return $values;
+            }
+        }
+        if (is_string($value)) {
+            $values = split_csv_values($value);
+            if ($values !== []) {
+                return $values;
+            }
+        }
+    }
+
+    return split_csv_values((string) getenv($envName));
 }
