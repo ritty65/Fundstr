@@ -121,6 +121,8 @@ results override upstream discovery.
 If Hostinger env vars are awkward to manage, the endpoint can now also load a
 non-versioned PHP config file from one of these paths:
 
+- `/home/u444965226/domains/fundstr.me/public_html/_fundstr-phonebook.php`
+- `/home/u444965226/domains/fundstr.me/public_html/.fundstr-phonebook.php`
 - `/home/u444965226/domains/fundstr.me/.fundstr-phonebook.php`
 - `/home/u444965226/domains/fundstr.me/config/fundstr-phonebook.php`
 - `~/.config/fundstr-phonebook.php`

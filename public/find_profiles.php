@@ -25,6 +25,7 @@ if ($method !== 'GET' && $method !== 'HEAD') {
         'count' => 0,
         'warning' => 'Method not allowed',
     ], $method, 200, [
+        'X-Fundstr-Phonebook-Config' => (string) $config['config_source'],
         'X-Fundstr-Phonebook-Status' => 'invalid-method',
     ]);
     exit;
@@ -36,6 +37,7 @@ if ($query === '') {
         'results' => [],
         'count' => 0,
     ], $method, 200, [
+        'X-Fundstr-Phonebook-Config' => (string) $config['config_source'],
         'X-Fundstr-Phonebook-Status' => 'empty-query',
     ]);
     exit;
@@ -43,6 +45,7 @@ if ($query === '') {
 
 if ($method === 'HEAD') {
     emit_json_payload(null, 'HEAD', 200, [
+        'X-Fundstr-Phonebook-Config' => (string) $config['config_source'],
         'X-Fundstr-Phonebook-Status' => 'probe',
     ]);
     exit;
@@ -51,6 +54,7 @@ if ($method === 'HEAD') {
 $cached = load_cached_query($query, $config);
 if ($cached !== null) {
     emit_json_payload($cached['payload'], $method, 200, [
+        'X-Fundstr-Phonebook-Config' => (string) $config['config_source'],
         'X-Fundstr-Phonebook-Source' => (string) ($cached['source'] ?? 'cache'),
         'X-Fundstr-Phonebook-Status' => (string) ($cached['status'] ?? 'ok'),
     ]);
@@ -61,6 +65,7 @@ $databasePayload = fetch_database_payload($query, $config);
 if ($databasePayload !== null) {
     cache_query_payload($query, $databasePayload, $config['cache_ttl_db'], $config['cache_dir']);
     emit_json_payload($databasePayload['payload'], $method, 200, [
+        'X-Fundstr-Phonebook-Config' => (string) $config['config_source'],
         'X-Fundstr-Phonebook-Source' => (string) $databasePayload['source'],
         'X-Fundstr-Phonebook-Status' => 'ok',
     ]);
@@ -71,6 +76,7 @@ $upstreamPayload = fetch_upstream_payload($query, $config);
 if ($upstreamPayload !== null) {
     cache_query_payload($query, $upstreamPayload, $config['cache_ttl_upstream'], $config['cache_dir']);
     emit_json_payload($upstreamPayload['payload'], $method, 200, [
+        'X-Fundstr-Phonebook-Config' => (string) $config['config_source'],
         'X-Fundstr-Phonebook-Source' => (string) $upstreamPayload['source'],
         'X-Fundstr-Phonebook-Status' => 'ok',
     ]);
@@ -90,6 +96,7 @@ $degradedPayload = [
 
 cache_query_payload($query, $degradedPayload, $config['cache_ttl_degraded'], $config['cache_dir']);
 emit_json_payload($degradedPayload['payload'], $method, 200, [
+    'X-Fundstr-Phonebook-Config' => (string) $config['config_source'],
     'X-Fundstr-Phonebook-Source' => 'degraded',
     'X-Fundstr-Phonebook-Status' => 'degraded',
 ]);
@@ -109,6 +116,7 @@ function build_phonebook_config(): array
     }
 
     return [
+        'config_source' => isset($fileConfig['__fundstr_config_source']) ? (string) $fileConfig['__fundstr_config_source'] : 'env',
         'cache_dir' => $cacheDir,
         'cache_ttl_db' => resolve_config_int($fileConfig, 'cache_ttl_db', 'FUNDSTR_PHONEBOOK_CACHE_TTL_DB', 300, 30, 3600),
         'cache_ttl_upstream' => resolve_config_int($fileConfig, 'cache_ttl_upstream', 'FUNDSTR_PHONEBOOK_CACHE_TTL_UPSTREAM', 180, 10, 1800),
@@ -137,6 +145,8 @@ function load_phonebook_file_config(): array
     }
 
     $baseDir = dirname(__DIR__);
+    $candidates[] = __DIR__ . DIRECTORY_SEPARATOR . '_fundstr-phonebook.php';
+    $candidates[] = __DIR__ . DIRECTORY_SEPARATOR . '.fundstr-phonebook.php';
     $candidates[] = $baseDir . DIRECTORY_SEPARATOR . '.fundstr-phonebook.php';
     $candidates[] = $baseDir . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'fundstr-phonebook.php';
 
@@ -152,6 +162,7 @@ function load_phonebook_file_config(): array
 
         $loaded = include $candidate;
         if (is_array($loaded)) {
+            $loaded['__fundstr_config_source'] = $candidate;
             return $loaded;
         }
     }
