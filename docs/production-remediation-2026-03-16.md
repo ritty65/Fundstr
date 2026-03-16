@@ -116,37 +116,26 @@ Expected result:
 - `deploy.txt` shows the new SHA
 - onboarding opens quickly and no longer hangs when the extension path is slow or unavailable
 
-## Current rollout note
+## Confirmed live rollout state
 
-As of the latest manual verification, production and staging are still returning SPA HTML for `/find_profiles.php`.
+The remediation is now deployed and confirmed live.
 
-That means the patch has **not been deployed yet** to the Hostinger docroots.
+- Production branch: `main`
+- Production live SHA: `1bcc9cbdff1482f92b655cd6bb9be142260dfa94`
+- Production deploy run: `23134106991`
+- Staging branch: `Develop2`
+- Staging live SHA: `069747d1580f42adcdd150ed292e44c1076f56a8`
+- Staging deploy run: `23133608775`
 
-The release-ready clean worktree for this remediation is now:
+Verified outcomes:
 
-- `/home/ai_dev/Desktop/AI-Apps/Websites/Fundstr-Develop2-cleanroom-20260316`
-- branch `ai/develop2-clean-remediation-20260316`
+- `https://fundstr.me/find_profiles.php?q=jack` returns `200` JSON
+- `https://staging.fundstr.me/find_profiles.php?q=jack` returns `200` JSON
+- production smoke checks pass
+- staging smoke checks pass
+- live browser checks confirm the onboarding skip flow and generate-key flow both complete successfully
 
-That clean branch was rebuilt and re-verified after the remediation was isolated from the older sandbox worktrees.
-
-The immediate next step is to deploy the new build so the following file exists remotely:
-
-- `/home/u444965226/domains/fundstr.me/public_html/find_profiles.php`
-
-Once deployed, re-run:
-
-```bash
-curl -i 'https://fundstr.me/find_profiles.php?q=jack'
-curl -i 'https://staging.fundstr.me/find_profiles.php?q=jack'
-```
-
-If deployment succeeded, both should return JSON instead of the SPA shell.
-
-If Hostinger CLI access is available, also run:
-
-```bash
-php -l /home/u444965226/domains/fundstr.me/public_html/find_profiles.php
-```
+The release baseline is therefore considered stable enough to freeze while backend performance work continues.
 
 ## Follow-up after staging deploy failures
 
@@ -195,9 +184,12 @@ Resulting intent:
 - diagnostics upload should no longer fail because of invalid filenames
 - degraded phonebook responses should be fast instead of blocking smoke checks and UX
 
-## Remaining timeline estimate
+## Next sprint focus
 
-- App-side welcome/startup fixes: done in this patch.
-- Hostinger deployment and smoke verification: about 30 to 60 minutes.
-- Fast search backend / phonebook backend cleanup: about 0.5 to 2 days depending on where the real source of truth lives.
-- Final production hardening and rollout confidence pass: about 1 to 2 more days.
+The next sprint should not spend time on deploy plumbing unless a regression appears.
+
+The new focus is:
+
+1. add a fast local DB-backed phonebook path on Hostinger for `find_profiles.php`
+2. reduce or eliminate dependence on slow upstream discovery for common creator searches
+3. keep the March 16 release as the clean baseline while shrinking the local worktree footprint

@@ -39,6 +39,26 @@ Only the vetted onboarding, phonebook, deploy-guard, and documentation fixes wer
 
 This clean worktree is now the only local folder that should be used for the current remediation release effort.
 
+## Confirmed Live Baseline
+
+The remediation release is now live in both environments.
+
+- Production branch truth: `origin/main`
+- Production live SHA: `1bcc9cbdff1482f92b655cd6bb9be142260dfa94`
+- Production deploy run: `23134106991`
+- Staging branch truth: `origin/Develop2`
+- Staging live SHA: `069747d1580f42adcdd150ed292e44c1076f56a8`
+- Staging deploy run: `23133608775`
+
+Verified outcomes:
+
+- `fundstr.me/deploy.txt` reports the new production SHA
+- `staging.fundstr.me/deploy.txt` reports the new staging SHA
+- `/find_profiles.php?q=jack` returns JSON on both staging and production
+- onboarding skip flow and generate-key flow both complete successfully in live browser checks
+
+The release baseline is therefore considered frozen and validated.
+
 ## Current Source-of-Truth Rules
 
 ### GitHub branch truth
@@ -340,11 +360,11 @@ If staging is nested, also verify its docroot target and `deploy.txt` separately
 
 ### Approved current working folder
 
-- `/home/ai_dev/Desktop/AI-Apps/Websites/Fundstr-Develop2-cleanroom-20260316`
+- `/home/ai_dev/Desktop/AI-Apps/Websites/Fundstr-Develop2-backend-sprint-20260316`
 
 ### Approved current branch
 
-- `ai/develop2-clean-remediation-20260316`
+- `ai/develop2-backend-phonebook-sprint-20260316`
 
 ### Do not release from
 
@@ -354,49 +374,52 @@ If staging is nested, also verify its docroot target and `deploy.txt` separately
 
 ## Current Remaining Risks
 
-Even after this cleanup, a few production issues still remain outside the repo-canonicalization task:
+Even after the release baseline was stabilized, a few issues still remain:
 
 1. `api.fundstr.me/discover/creators` is still too slow for a best-in-class UX.
 2. discovery responses leak an internal relay address (`ws://127.0.0.1:7777`) publicly.
-3. the new `find_profiles.php` restores correctness, but long-term phonebook speed will still be better with a direct DB-backed lookup.
-4. production/staging are still old until the clean branch is merged/deployed.
+3. the current `find_profiles.php` endpoint is now correct and resilient, but still degrades when upstream discovery is unhealthy.
+4. the next sprint should move creator phonebook lookups toward a local DB-backed fast path on Hostinger instead of relying on slow upstream discovery.
 
 ## Current Release Recommendation
 
 Recommended next release path:
 
-1. keep using `ai/develop2-clean-remediation-20260316` as the only active release branch for this fix set
-2. commit only the isolated cleanroom diff
-3. push that branch and open a PR into `Develop2`
-4. wait for the staging deploy and verify `/find_profiles.php` and onboarding behavior on staging
-5. once staging is confirmed, promote the exact tested commit to `main`
+1. keep the March 16 remediation release frozen as the clean baseline
+2. do new work only from fresh branches created from `origin/Develop2`
+3. focus the next sprint on backend discovery and phonebook performance, not deployment plumbing
+4. validate on staging before promoting to `main`
+5. keep using the cleanup policy below so no new worktree zoo forms around the release baseline
 
-Do **not** pull extra changes from `Fundstr-main-livefix` or other sibling worktrees into this release unless they are independently reviewed and intentionally scoped.
+Do **not** reopen the old remediation branches or use `Fundstr-main-livefix` as a release source.
 
 ## How To Hand This To Another AI
 
 Tell the AI the following:
 
-- The canonical local worktree is `/home/ai_dev/Desktop/AI-Apps/Websites/Fundstr-Develop2-cleanroom-20260316`.
-- The active branch is `ai/develop2-clean-remediation-20260316`.
+- The canonical local worktree is `/home/ai_dev/Desktop/AI-Apps/Websites/Fundstr-Develop2-backend-sprint-20260316`.
+- The active branch is `ai/develop2-backend-phonebook-sprint-20260316`.
 - Staging source of truth is `origin/Develop2`.
 - Production source of truth is `origin/main`.
+- Production is confirmed live on `1bcc9cbdff1482f92b655cd6bb9be142260dfa94`.
+- Staging is confirmed live on `069747d1580f42adcdd150ed292e44c1076f56a8`.
 - Do not use `Fundstr` or `Fundstr-main-livefix` as release sources.
 - Read these documents first:
+  - `docs/project-state-handoff-2026-03-16.md`
   - `docs/canonical-repo-recovery-2026-03-16.md`
   - `docs/production-remediation-2026-03-16.md`
+  - `docs/worktree-cleanup-2026-03-16.md`
   - `docs/deploy-never-again-runbook.md`
   - `AGENTS.md`
 
 ## Final Goal
 
-The cleanup is considered successful when:
+The cleanup baseline is now successful because:
 
-- one clean worktree is used for the release
 - staging deploys from `Develop2` cleanly
 - production promotes from tested content only
 - `/find_profiles.php` serves JSON on both staging and production
 - onboarding is fast and no longer appears stuck
 - future deploys fail automatically if the phonebook endpoint disappears again
 
-At that point, the “folder zoo” is no longer part of the release process. It becomes only historical context.
+The remaining objective is different now: speed up backend discovery and phonebook lookups while shrinking the local worktree footprint.
