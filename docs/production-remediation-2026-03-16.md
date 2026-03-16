@@ -148,6 +148,29 @@ If Hostinger CLI access is available, also run:
 php -l /home/u444965226/domains/fundstr.me/public_html/find_profiles.php
 ```
 
+## Follow-up after staging deploy failure
+
+After the remediation merged into `Develop2`, the staging deploy workflow still failed at the `Smoke test staging` step.
+
+Observed behavior:
+
+- `https://staging.fundstr.me/find_profiles.php?q=jack` returned `502 Bad Gateway`
+- the workflow failure happened after rsync/deploy completed, during smoke verification
+
+Root cause:
+
+- the first version of `public/find_profiles.php` returned HTTP `502` whenever the upstream discovery request failed
+- it also relied on `curl_init()` being available in the Hostinger PHP environment
+- that made the endpoint too brittle for deployment smoke checks and too dependent on host PHP capabilities/upstream health
+
+The follow-up hotfix changes the endpoint to be resilient:
+
+- support `HEAD` requests cleanly for smoke/header checks
+- fall back to `file_get_contents()` when cURL is unavailable
+- return `200` JSON with a warning payload instead of `502` when upstream discovery is unavailable
+
+That keeps the frontend and smoke tests focused on endpoint correctness instead of failing the entire release because a dependency is degraded.
+
 ## Remaining timeline estimate
 
 - App-side welcome/startup fixes: done in this patch.
