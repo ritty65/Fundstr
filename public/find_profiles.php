@@ -141,28 +141,63 @@ function load_phonebook_file_config(): array
 
     $explicit = getenv('FUNDSTR_PHONEBOOK_CONFIG_FILE');
     if (is_string($explicit) && trim($explicit) !== '') {
-        $candidates[] = trim($explicit);
+        $candidates[] = [
+            'label' => 'explicit',
+            'path' => trim($explicit),
+        ];
     }
 
-    $baseDir = dirname(__DIR__);
-    $candidates[] = __DIR__ . DIRECTORY_SEPARATOR . '_fundstr-phonebook.php';
-    $candidates[] = __DIR__ . DIRECTORY_SEPARATOR . '.fundstr-phonebook.php';
-    $candidates[] = $baseDir . DIRECTORY_SEPARATOR . '.fundstr-phonebook.php';
-    $candidates[] = $baseDir . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'fundstr-phonebook.php';
+    $currentDir = __DIR__;
+    $parentDir = dirname($currentDir);
+    $grandparentDir = dirname($parentDir);
+
+    $candidates[] = [
+        'label' => 'current_file',
+        'path' => $currentDir . DIRECTORY_SEPARATOR . '_fundstr-phonebook.php',
+    ];
+    $candidates[] = [
+        'label' => 'current_dotfile',
+        'path' => $currentDir . DIRECTORY_SEPARATOR . '.fundstr-phonebook.php',
+    ];
+    $candidates[] = [
+        'label' => 'parent_file',
+        'path' => $parentDir . DIRECTORY_SEPARATOR . '_fundstr-phonebook.php',
+    ];
+    $candidates[] = [
+        'label' => 'parent_dotfile',
+        'path' => $parentDir . DIRECTORY_SEPARATOR . '.fundstr-phonebook.php',
+    ];
+    $candidates[] = [
+        'label' => 'parent_config',
+        'path' => $parentDir . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'fundstr-phonebook.php',
+    ];
+    $candidates[] = [
+        'label' => 'grandparent_file',
+        'path' => $grandparentDir . DIRECTORY_SEPARATOR . '_fundstr-phonebook.php',
+    ];
+    $candidates[] = [
+        'label' => 'grandparent_dotfile',
+        'path' => $grandparentDir . DIRECTORY_SEPARATOR . '.fundstr-phonebook.php',
+    ];
 
     $home = getenv('HOME');
     if (is_string($home) && trim($home) !== '') {
-        $candidates[] = rtrim($home, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . '.config' . DIRECTORY_SEPARATOR . 'fundstr-phonebook.php';
+        $candidates[] = [
+            'label' => 'home_config',
+            'path' => rtrim($home, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . '.config' . DIRECTORY_SEPARATOR . 'fundstr-phonebook.php',
+        ];
     }
 
     foreach ($candidates as $candidate) {
-        if (!is_string($candidate) || $candidate === '' || !is_file($candidate)) {
+        $label = isset($candidate['label']) && is_string($candidate['label']) ? $candidate['label'] : 'file';
+        $path = isset($candidate['path']) && is_string($candidate['path']) ? $candidate['path'] : '';
+        if ($path === '' || !is_file($path)) {
             continue;
         }
 
-        $loaded = include $candidate;
+        $loaded = include $path;
         if (is_array($loaded)) {
-            $loaded['__fundstr_config_source'] = $candidate;
+            $loaded['__fundstr_config_source'] = $label;
             return $loaded;
         }
     }

@@ -127,6 +127,10 @@ non-versioned PHP config file from one of these paths:
 - `/home/u444965226/domains/fundstr.me/config/fundstr-phonebook.php`
 - `~/.config/fundstr-phonebook.php`
 
+The runtime debug header `X-Fundstr-Phonebook-Config` exposes only a coarse
+label (`current_file`, `parent_file`, `grandparent_dotfile`, `env`, etc.) so
+operators can verify config loading without leaking full server paths.
+
 ## Safe workflow from here
 
 1. create all new sprint branches from `origin/Develop2`
