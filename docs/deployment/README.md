@@ -108,6 +108,10 @@ The `public_html` config-file locations are blocked from direct HTTP access by
 `.htaccess`, so they can be used if parent-directory includes are restricted by
 shared-hosting PHP runtime rules.
 
+The response header `X-Fundstr-Phonebook-Config` now reports a coarse source
+label like `current_file`, `parent_file`, `grandparent_dotfile`, or `env`
+instead of leaking absolute filesystem paths.
+
 Recommended rollout default:
 
 - leave `FUNDSTR_PHONEBOOK_DB_AUTHORITATIVE=false` at first
