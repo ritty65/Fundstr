@@ -101,6 +101,26 @@ echo "$featured_type" | grep -Eiq "application/json" || {
 }
 log_step "Featured creators Content-Type: $featured_type"
 
+phonebook_headers=$(fetch_headers "$BASE/find_profiles.php?q=jack")
+phonebook_type=$(header_value "$phonebook_headers" "content-type")
+echo "$phonebook_type" | grep -Eiq "application/json" || {
+  log_step "find_profiles.php is not served as JSON (got: $phonebook_type)"
+  exit 1
+}
+
+phonebook_body=$(fetch_body "$BASE/find_profiles.php?q=jack")
+echo "$phonebook_body" | grep -q "<!DOCTYPE html>" && {
+  log_step "find_profiles.php resolved to SPA HTML; expected JSON endpoint"
+  exit 1
+}
+
+echo "$phonebook_body" | grep -q '"results"' || {
+  log_step "find_profiles.php response is missing results payload"
+  exit 1
+}
+
+log_step "Phonebook endpoint Content-Type: $phonebook_type"
+
 deploy_marker=$(fetch_body "$BASE/deploy.txt")
 echo "$deploy_marker" | grep -q "<!DOCTYPE html>" && {
   log_step "deploy.txt resolved to HTML; expected plain deploy marker"
