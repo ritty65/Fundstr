@@ -62,14 +62,12 @@ import {
 } from "stores/nostr";
 import { generateSecretKey, nip19 } from "nostr-tools";
 import { hexToBytes } from "@noble/hashes/utils";
-import { useNostrAuth } from "src/composables/useNostrAuth";
 import { sanitizeAppRedirect } from "src/utils/safeRedirect";
 
 export default defineComponent({
   name: "NostrLogin",
   setup() {
     const nostr = useNostrStore();
-    const { loginWithExtension } = useNostrAuth();
     const walletLocked = computed(
       () => nostr.hasEncryptedSecrets() && !nostr.encryptionKey,
     );
@@ -179,8 +177,16 @@ export default defineComponent({
       const available = await nostr.checkNip07Signer(true);
       if (!available) return;
       try {
-        await nostr.connectBrowserSigner();
-        await completeLogin(() => loginWithExtension());
+        await completeLogin(
+          () =>
+            nostr.updateIdentity(undefined, undefined, {
+              preferNip07: true,
+              onProgress: (msg) => {
+                statusMessage.value = msg;
+              },
+            }),
+          { handlesBootstrap: true },
+        );
       } catch (e) {
         console.error(e);
         statusError.value = (e as Error)?.message ?? "NIP-07 login failed";

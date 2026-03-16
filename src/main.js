@@ -5,6 +5,7 @@ import App from "./App.vue";
 import registerIcons from "./icons";
 import createRouter from "./router";
 import createStore from "./stores";
+import { hasSeenWelcome } from "./composables/useWelcomeGate";
 
 import "quasar/dist/quasar.css";
 import "@quasar/extras/roboto-font/roboto-font.css";
@@ -14,14 +15,8 @@ import "./css/base.scss";
 import "./css/buckets.scss";
 
 import bootSentry from "./boot/sentry";
-import bootFundstrPreload from "./boot/fundstr-preload";
-import bootWelcomeGate from "./boot/welcomeGate";
-import bootCashu from "./boot/cashu";
 import bootI18n from "./boot/i18n";
 import bootNotify from "./boot/notify";
-import bootNostrProvider from "./boot/nostr-provider";
-import bootPrefetchFeaturedCreators from "./boot/prefetch-featured-creators";
-import bootFundstrRelay from "./boot/fundstrRelay";
 import bootE2eTestApi from "./boot/e2e-test-api";
 
 const quasarConfig = {
@@ -34,6 +29,72 @@ const quasarConfig = {
     LocalStorage,
   },
 };
+
+const deferredBootLoaders = [
+  () => import("./boot/fundstr-preload"),
+  () => import("./boot/welcomeGate"),
+  () => import("./boot/cashu"),
+  () => import("./boot/nostr-provider"),
+  () => import("./boot/prefetch-featured-creators"),
+  () => import("./boot/fundstrRelay"),
+];
+
+function scheduleDeferredStartup(task, delayMs = 0) {
+  if (typeof window === "undefined") {
+    void task();
+    return;
+  }
+
+  const queueTask = () => {
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(
+        () => {
+          void task();
+        },
+        { timeout: 1500 },
+      );
+      return;
+    }
+
+    window.setTimeout(() => {
+      void task();
+    }, 0);
+  };
+
+  if (delayMs > 0) {
+    window.setTimeout(queueTask, delayMs);
+    return;
+  }
+
+  queueTask();
+}
+
+async function loadDeferredBootFiles() {
+  const modules = await Promise.all(
+    deferredBootLoaders.map((loadModule) => loadModule()),
+  );
+
+  return modules
+    .map((module) => module.default)
+    .filter((entry) => typeof entry === "function");
+}
+
+async function runBootFiles(bootFiles, context, phase, shouldStop) {
+  for (const bootFn of bootFiles) {
+    if (shouldStop()) {
+      break;
+    }
+
+    try {
+      await bootFn(context);
+    } catch (error) {
+      console.error(`[boot] error during ${phase}`, error);
+      return false;
+    }
+  }
+
+  return true;
+}
 
 async function bootstrap() {
   const app = createApp(App);
@@ -65,19 +126,6 @@ async function bootstrap() {
     });
   }
 
-  const bootFiles = [
-    bootSentry,
-    bootFundstrPreload,
-    bootWelcomeGate,
-    bootCashu,
-    bootI18n,
-    bootNotify,
-    bootNostrProvider,
-    bootPrefetchFeaturedCreators,
-    bootFundstrRelay,
-    bootE2eTestApi,
-  ].filter((entry) => typeof entry === "function");
-
   let hasRedirected = false;
   const redirect = (url) => {
     hasRedirected = true;
@@ -97,26 +145,33 @@ async function bootstrap() {
       ? window.location.href.replace(window.location.origin, "")
       : "/";
   const publicPath = import.meta.env.BASE_URL ?? "/";
+  const bootContext = {
+    app,
+    router,
+    store,
+    ssrContext: null,
+    redirect,
+    urlPath,
+    publicPath,
+  };
+  const shouldStopBoots = () => hasRedirected;
+  const essentialBootFiles = [bootSentry, bootI18n, bootNotify].filter(
+    (entry) => typeof entry === "function",
+  );
 
-  for (const bootFn of bootFiles) {
-    if (hasRedirected) {
-      break;
-    }
+  if (import.meta.env.VITE_E2E && typeof bootE2eTestApi === "function") {
+    essentialBootFiles.push(bootE2eTestApi);
+  }
 
-    try {
-      await bootFn({
-        app,
-        router,
-        store,
-        ssrContext: null,
-        redirect,
-        urlPath,
-        publicPath,
-      });
-    } catch (error) {
-      console.error("[boot] error during startup", error);
-      return;
-    }
+  const essentialBootsOk = await runBootFiles(
+    essentialBootFiles,
+    bootContext,
+    "critical startup",
+    shouldStopBoots,
+  );
+
+  if (!essentialBootsOk) {
+    return;
   }
 
   if (hasRedirected) {
@@ -125,13 +180,33 @@ async function bootstrap() {
 
   app.use(router);
 
-  if (import.meta.env.MODE === "pwa") {
-    await import("app/src-pwa/register-service-worker");
-  }
-
   await router.isReady();
 
   app.mount("#q-app");
+
+  const isWelcomeExperience =
+    urlPath.startsWith("/welcome") || !hasSeenWelcome();
+
+  scheduleDeferredStartup(
+    async () => {
+      const deferredBootFiles = await loadDeferredBootFiles();
+      const deferredBootsOk = await runBootFiles(
+        deferredBootFiles,
+        bootContext,
+        "deferred startup",
+        shouldStopBoots,
+      );
+
+      if (!deferredBootsOk) {
+        return;
+      }
+
+      if (import.meta.env.MODE === "pwa") {
+        await import("app/src-pwa/register-service-worker");
+      }
+    },
+    isWelcomeExperience ? 750 : 0,
+  );
 
   if (import.meta.env.VITE_E2E && typeof window !== "undefined") {
     window.__FUNDSTR_E2E_READY__ = true;

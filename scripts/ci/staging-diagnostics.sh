@@ -39,6 +39,7 @@ fetch_endpoint_snapshot() {
 
   slug="${endpoint#/}"
   slug="${slug//\//_}"
+  slug="$(printf '%s' "$slug" | sed -E 's/[^A-Za-z0-9._-]+/_/g; s/^_+//; s/_+$//')"
   if [ -z "$slug" ]; then
     slug="root"
   fi
@@ -82,7 +83,7 @@ else
   log "dns_lookup_ipv6_failed host=${host}"
 fi
 
-for endpoint in / /deploy.txt /find-creators.html /manifest.json /featured-creators.json; do
+for endpoint in / /deploy.txt /find-creators.html /find_profiles.php?q=jack /manifest.json /featured-creators.json; do
   fetch_endpoint_snapshot "$endpoint"
 done
 

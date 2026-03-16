@@ -40,6 +40,8 @@
       <component
         :is="slides[welcome.currentSlide].component"
         v-bind="slides[welcome.currentSlide].props"
+        @completed="handleStepCompleted"
+        @skipped="handleStepSkipped"
       />
       <div class="row justify-between q-mt-lg">
         <q-btn
@@ -105,8 +107,6 @@ import {
 } from "src/composables/useWelcomeGate";
 import { useMnemonicStore } from "src/stores/mnemonic";
 import { useStorageStore } from "src/stores/storage";
-import { useNostrStore } from "src/stores/nostr";
-import { useNdk } from "src/composables/useNdk";
 import ThemeToggle from "src/components/ThemeToggle.vue";
 import { usePwaInstall } from "src/composables/usePwaInstall";
 import { sanitizeAppRedirect } from "src/utils/safeRedirect";
@@ -118,7 +118,6 @@ const route = useRoute();
 const $q = useQuasar();
 const mnemonicStore = useMnemonicStore();
 const storageStore = useStorageStore();
-const nostr = useNostrStore();
 const showSeedDialog = ref(false);
 const showChecklist = ref(false);
 const { deferredPrompt } = usePwaInstall();
@@ -227,14 +226,17 @@ function jump(i: number) {
   }
 }
 
-onMounted(() => {
-  nostr
-    .initNip07Signer()
-    .then(() => {
-      if (nostr.signer) {
-        useNdk({ requireSigner: true }).catch(() => {});
-      }
-    })
-    .catch(() => {});
-});
+function handleStepCompleted() {
+  if (welcome.currentSlide >= LAST_WELCOME_SLIDE) {
+    return;
+  }
+  void next();
+}
+
+function handleStepSkipped() {
+  if (welcome.currentSlide >= LAST_WELCOME_SLIDE) {
+    return;
+  }
+  welcome.currentSlide++;
+}
 </script>
