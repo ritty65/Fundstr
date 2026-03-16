@@ -315,22 +315,24 @@ function fetch_database_payload(string $query, array $config): ?array
         return null;
     }
 
-    $results = [];
-    $seen = [];
+    $featuredPubkeys = load_featured_pubkey_set();
+    $creatorPubkeys = load_creator_pubkey_set($pdo);
+    $ranked = [];
     foreach ($config['db_tables'] as $table) {
-        $rows = query_phonebook_table($pdo, $table, $query, (int) $config['limit']);
+        $rows = query_phonebook_table(
+            $pdo,
+            $table,
+            $query,
+            (int) $config['limit'],
+            $featuredPubkeys,
+            $creatorPubkeys
+        );
         foreach ($rows as $row) {
-            $pubkey = strtolower((string) ($row['pubkey'] ?? ''));
-            if ($pubkey === '' || isset($seen[$pubkey])) {
-                continue;
-            }
-            $seen[$pubkey] = true;
-            $results[] = $row;
-            if (count($results) >= (int) $config['limit']) {
-                break 2;
-            }
+            merge_ranked_phonebook_row($ranked, $row);
         }
     }
+
+    $results = finalize_ranked_phonebook_rows($ranked, (int) $config['limit']);
 
     if ($results === [] && !$config['db_authoritative']) {
         return null;
@@ -379,7 +381,14 @@ function connect_phonebook_database(array $config): ?PDO
     }
 }
 
-function query_phonebook_table(PDO $pdo, string $table, string $query, int $limit): array
+function query_phonebook_table(
+    PDO $pdo,
+    string $table,
+    string $query,
+    int $limit,
+    array $featuredPubkeys,
+    array $creatorPubkeys
+): array
 {
     if (!preg_match('/^[A-Za-z0-9_]+$/', $table)) {
         return [];
@@ -388,6 +397,10 @@ function query_phonebook_table(PDO $pdo, string $table, string $query, int $limi
     $columns = load_table_columns($pdo, $table);
     if ($columns === [] || !isset($columns['pubkey'])) {
         return [];
+    }
+
+    if (isset($columns['profile_json']) && !isset($columns['name']) && !isset($columns['display_name'])) {
+        return query_creator_json_table($pdo, $table, $query, $limit, $featuredPubkeys, $creatorPubkeys, $columns);
     }
 
     $searchColumns = array_values(array_filter([
@@ -403,6 +416,8 @@ function query_phonebook_table(PDO $pdo, string $table, string $query, int $limi
         return [];
     }
 
+    $candidateLimit = resolve_phonebook_candidate_limit($limit, strlen($query));
+
     $selectColumns = unique_columns(array_filter([
         'pubkey',
         first_existing_column($columns, ['name', 'username']),
@@ -413,12 +428,16 @@ function query_phonebook_table(PDO $pdo, string $table, string $query, int $limi
         first_existing_column($columns, ['updated_at', 'created_at']),
     ]));
 
+    $updatedColumn = first_existing_column($columns, ['updated_at', 'created_at']);
+
     $quotedColumns = [];
     foreach ($selectColumns as $column) {
         $quotedColumns[] = sprintf('`%s`', $column);
     }
 
-    $like = '%' . lowercase_string($query) . '%';
+    $normalizedQuery = lowercase_string($query);
+    $like = '%' . $normalizedQuery . '%';
+    $prefixLike = $normalizedQuery . '%';
     $clauses = [];
     $params = [];
     foreach ($searchColumns as $index => $column) {
@@ -433,8 +452,9 @@ function query_phonebook_table(PDO $pdo, string $table, string $query, int $limi
         $params[':exact_pubkey'] = $exactPubkey;
     }
 
-    $orderColumn = first_existing_column($columns, ['updated_at', 'created_at']);
-    $orderBy = $orderColumn !== null ? sprintf(' ORDER BY `%s` DESC', $orderColumn) : '';
+    $orderBy = build_ranked_order_clause($columns, $updatedColumn);
+    $params[':rank_exact'] = $normalizedQuery;
+    $params[':rank_prefix'] = $prefixLike;
 
     $sql = sprintf(
         'SELECT %s FROM `%s` WHERE (%s)%s LIMIT %d',
@@ -442,7 +462,7 @@ function query_phonebook_table(PDO $pdo, string $table, string $query, int $limi
         $table,
         implode(' OR ', $clauses),
         $orderBy,
-        max(1, min($limit, 50))
+        $candidateLimit
     );
 
     try {
@@ -467,7 +487,7 @@ function query_phonebook_table(PDO $pdo, string $table, string $query, int $limi
             continue;
         }
 
-        $results[] = [
+        $normalized = [
             'pubkey' => $pubkey,
             'name' => normalize_string_from_candidates($row, ['name', 'username']),
             'display_name' => normalize_string_from_candidates($row, ['display_name', 'displayName']),
@@ -475,9 +495,101 @@ function query_phonebook_table(PDO $pdo, string $table, string $query, int $limi
             'picture' => normalize_string_from_candidates($row, ['picture', 'avatar', 'image']),
             'nip05' => normalize_string_from_candidates($row, ['nip05']),
         ];
+        $score = score_phonebook_match(
+            $normalized,
+            $query,
+            isset($creatorPubkeys[$pubkey]),
+            isset($featuredPubkeys[$pubkey])
+        );
+        if ($score <= 0) {
+            continue;
+        }
+        $normalized['_score'] = $score;
+        $normalized['_updated_at'] = extract_row_updated_at($row, ['updated_at', 'created_at']);
+        $results[] = $normalized;
     }
 
-    return $results;
+    usort($results, 'compare_ranked_phonebook_rows');
+
+    return array_slice($results, 0, max(1, min($limit, 50)));
+}
+
+function query_creator_json_table(
+    PDO $pdo,
+    string $table,
+    string $query,
+    int $limit,
+    array $featuredPubkeys,
+    array $creatorPubkeys,
+    array $columns
+): array {
+    $selectColumns = unique_columns(array_filter([
+        'pubkey',
+        first_existing_column($columns, ['profile_json']),
+        first_existing_column($columns, ['profile_updated_at', 'last_updated']),
+    ]));
+
+    if ($selectColumns === []) {
+        return [];
+    }
+
+    $quotedColumns = [];
+    foreach ($selectColumns as $column) {
+        $quotedColumns[] = sprintf('`%s`', $column);
+    }
+
+    $sql = sprintf(
+        'SELECT %s FROM `%s` LIMIT %d',
+        implode(', ', $quotedColumns),
+        $table,
+        resolve_phonebook_candidate_limit($limit, strlen($query))
+    );
+
+    try {
+        $statement = $pdo->query($sql);
+        $rows = $statement instanceof PDOStatement ? $statement->fetchAll() : [];
+    } catch (Throwable $error) {
+        return [];
+    }
+
+    $results = [];
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $pubkey = normalize_pubkey($row['pubkey'] ?? null);
+        if ($pubkey === null) {
+            continue;
+        }
+
+        $profile = decode_profile_json($row['profile_json'] ?? null);
+        $normalized = [
+            'pubkey' => $pubkey,
+            'name' => normalize_string($profile['name'] ?? null),
+            'display_name' => normalize_string($profile['display_name'] ?? null),
+            'about' => normalize_string($profile['about'] ?? null),
+            'picture' => normalize_string($profile['picture'] ?? null),
+            'nip05' => normalize_string($profile['nip05'] ?? null),
+        ];
+        $score = score_phonebook_match(
+            $normalized,
+            $query,
+            isset($creatorPubkeys[$pubkey]),
+            isset($featuredPubkeys[$pubkey])
+        );
+        if ($score <= 0) {
+            continue;
+        }
+
+        $normalized['_score'] = $score;
+        $normalized['_updated_at'] = extract_row_updated_at($row, ['profile_updated_at', 'last_updated']);
+        $results[] = $normalized;
+    }
+
+    usort($results, 'compare_ranked_phonebook_rows');
+
+    return array_slice($results, 0, max(1, min($limit, 50)));
 }
 
 function load_table_columns(PDO $pdo, string $table): array
@@ -654,6 +766,297 @@ function normalize_upstream_results(array $entries, int $limit): array
     }
 
     return $results;
+}
+
+function load_featured_pubkey_set(): array
+{
+    static $cache = null;
+    if (is_array($cache)) {
+        return $cache;
+    }
+
+    $cache = [];
+    $path = __DIR__ . DIRECTORY_SEPARATOR . 'featured-creators.json';
+    if (!is_file($path)) {
+        return $cache;
+    }
+
+    $raw = @file_get_contents($path);
+    if (!is_string($raw) || $raw === '') {
+        return $cache;
+    }
+
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return $cache;
+    }
+
+    foreach ($decoded as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+        $pubkey = normalize_pubkey($entry['pubkey'] ?? null);
+        if ($pubkey !== null) {
+            $cache[$pubkey] = true;
+        }
+    }
+
+    return $cache;
+}
+
+function load_creator_pubkey_set(PDO $pdo): array
+{
+    static $cache = null;
+    if (is_array($cache)) {
+        return $cache;
+    }
+
+    $cache = [];
+    try {
+        $statement = $pdo->query('SELECT `pubkey` FROM `creators` LIMIT 1000');
+        $rows = $statement instanceof PDOStatement ? $statement->fetchAll() : [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $pubkey = normalize_pubkey($row['pubkey'] ?? null);
+            if ($pubkey !== null) {
+                $cache[$pubkey] = true;
+            }
+        }
+    } catch (Throwable $error) {
+        return $cache;
+    }
+
+    return $cache;
+}
+
+function resolve_phonebook_candidate_limit(int $limit, int $queryLength): int
+{
+    $base = max(60, $limit * 6);
+    if ($queryLength <= 3) {
+        $base = max(40, $limit * 4);
+    }
+
+    return min($base, 180);
+}
+
+function build_ranked_order_clause(array $columns, ?string $updatedColumn): string
+{
+    $caseParts = [];
+    $rank = 0;
+    foreach (['name', 'display_name', 'nip05'] as $column) {
+        if (!isset($columns[$column])) {
+            continue;
+        }
+        $caseParts[] = sprintf('WHEN LOWER(COALESCE(`%s`, \'\')) = :rank_exact THEN %d', $column, $rank);
+        $rank += 1;
+    }
+    foreach (['name', 'display_name', 'nip05'] as $column) {
+        if (!isset($columns[$column])) {
+            continue;
+        }
+        $caseParts[] = sprintf('WHEN LOWER(COALESCE(`%s`, \'\')) LIKE :rank_prefix THEN %d', $column, $rank);
+        $rank += 1;
+    }
+
+    $parts = [];
+    if ($caseParts !== []) {
+        $parts[] = 'CASE ' . implode(' ', $caseParts) . ' ELSE 999 END';
+    }
+    if ($updatedColumn !== null) {
+        $parts[] = sprintf('`%s` DESC', $updatedColumn);
+    }
+
+    return $parts === [] ? '' : ' ORDER BY ' . implode(', ', $parts);
+}
+
+function merge_ranked_phonebook_row(array &$ranked, array $row): void
+{
+    $pubkey = isset($row['pubkey']) ? (string) $row['pubkey'] : '';
+    if ($pubkey === '') {
+        return;
+    }
+
+    if (!isset($ranked[$pubkey])) {
+        $ranked[$pubkey] = $row;
+        return;
+    }
+
+    $existing = $ranked[$pubkey];
+    $existingScore = isset($existing['_score']) ? (int) $existing['_score'] : 0;
+    $incomingScore = isset($row['_score']) ? (int) $row['_score'] : 0;
+
+    if ($incomingScore > $existingScore) {
+        $existing['_score'] = $incomingScore;
+    }
+    if ((int) ($row['_updated_at'] ?? 0) > (int) ($existing['_updated_at'] ?? 0)) {
+        $existing['_updated_at'] = (int) $row['_updated_at'];
+    }
+
+    foreach (['name', 'display_name', 'about', 'picture', 'nip05'] as $field) {
+        if (empty($existing[$field]) && !empty($row[$field])) {
+            $existing[$field] = $row[$field];
+        }
+    }
+
+    $ranked[$pubkey] = $existing;
+}
+
+function finalize_ranked_phonebook_rows(array $ranked, int $limit): array
+{
+    $rows = array_values($ranked);
+    usort($rows, 'compare_ranked_phonebook_rows');
+    $rows = array_slice($rows, 0, max(1, min($limit, 50)));
+
+    $results = [];
+    foreach ($rows as $row) {
+        unset($row['_score'], $row['_updated_at']);
+        $results[] = $row;
+    }
+
+    return $results;
+}
+
+function compare_ranked_phonebook_rows(array $left, array $right): int
+{
+    $leftScore = (int) ($left['_score'] ?? 0);
+    $rightScore = (int) ($right['_score'] ?? 0);
+    if ($leftScore !== $rightScore) {
+        return $rightScore <=> $leftScore;
+    }
+
+    $leftUpdated = (int) ($left['_updated_at'] ?? 0);
+    $rightUpdated = (int) ($right['_updated_at'] ?? 0);
+    if ($leftUpdated !== $rightUpdated) {
+        return $rightUpdated <=> $leftUpdated;
+    }
+
+    $leftName = lowercase_string((string) ($left['display_name'] ?? $left['name'] ?? $left['pubkey'] ?? ''));
+    $rightName = lowercase_string((string) ($right['display_name'] ?? $right['name'] ?? $right['pubkey'] ?? ''));
+    return strcmp($leftName, $rightName);
+}
+
+function score_phonebook_match(array $row, string $query, bool $isCreator, bool $isFeatured): int
+{
+    $normalizedQuery = lowercase_string(trim($query));
+    if ($normalizedQuery === '') {
+        return 0;
+    }
+
+    $score = 0;
+    $score += score_text_field($row['name'] ?? null, $normalizedQuery, 5200, 3400, 2200, 1400);
+    $score += score_text_field($row['display_name'] ?? null, $normalizedQuery, 5000, 3200, 2100, 1300);
+    $score += score_text_field(extract_nip05_local_part($row['nip05'] ?? null), $normalizedQuery, 4700, 3000, 1900, 1100);
+    $score += score_text_field($row['nip05'] ?? null, $normalizedQuery, 4300, 2600, 1700, 900);
+    $score += score_text_field($row['about'] ?? null, $normalizedQuery, 0, 0, 0, 120);
+
+    if ($isCreator && $score > 0) {
+        $score += 900;
+    }
+    if ($isFeatured && $score > 0) {
+        $score += 1600;
+    }
+    if (!empty($row['picture'])) {
+        $score += 20;
+    }
+    if (!empty($row['nip05'])) {
+        $score += 20;
+    }
+
+    return $score;
+}
+
+function score_text_field($value, string $query, int $exact, int $prefix, int $word, int $substring): int
+{
+    if (!is_string($value)) {
+        return 0;
+    }
+
+    $normalized = lowercase_string(trim($value));
+    if ($normalized === '') {
+        return 0;
+    }
+
+    if ($normalized === $query) {
+        return $exact;
+    }
+
+    if (starts_with_string($normalized, $query)) {
+        return max(0, $prefix - length_penalty($normalized, $query, 20));
+    }
+
+    if (contains_word_like_match($normalized, $query)) {
+        return max(0, $word - length_penalty($normalized, $query, 8));
+    }
+
+    if (strpos($normalized, $query) !== false) {
+        return max(0, $substring - length_penalty($normalized, $query, 4));
+    }
+
+    return 0;
+}
+
+function length_penalty(string $value, string $query, int $multiplier): int
+{
+    return max(0, strlen($value) - strlen($query)) * $multiplier;
+}
+
+function starts_with_string(string $value, string $prefix): bool
+{
+    return strncmp($value, $prefix, strlen($prefix)) === 0;
+}
+
+function contains_word_like_match(string $value, string $query): bool
+{
+    $pattern = '/(^|[^a-z0-9])' . preg_quote($query, '/') . '([^a-z0-9]|$)/i';
+    return (bool) preg_match($pattern, $value);
+}
+
+function extract_nip05_local_part($value): ?string
+{
+    if (!is_string($value)) {
+        return null;
+    }
+
+    $trimmed = trim($value);
+    if ($trimmed === '') {
+        return null;
+    }
+
+    $parts = explode('@', $trimmed, 2);
+    return normalize_string($parts[0] ?? null);
+}
+
+function extract_row_updated_at(array $row, array $candidates): int
+{
+    foreach ($candidates as $candidate) {
+        if (!array_key_exists($candidate, $row)) {
+            continue;
+        }
+        $value = $row[$candidate];
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+        if (is_string($value) && trim($value) !== '') {
+            $timestamp = strtotime($value);
+            if ($timestamp !== false) {
+                return (int) $timestamp;
+            }
+        }
+    }
+
+    return 0;
+}
+
+function decode_profile_json($value): array
+{
+    if (!is_string($value) || trim($value) === '') {
+        return [];
+    }
+
+    $decoded = json_decode($value, true);
+    return is_array($decoded) ? $decoded : [];
 }
 
 function emit_json_payload(?array $payload, string $method, int $status = 200, array $headers = []): void
