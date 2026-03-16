@@ -77,6 +77,8 @@ If Hostinger does not provide convenient per-app environment variables, use a
 non-versioned PHP config file outside `public_html`. The phonebook endpoint now
 checks these paths automatically:
 
+- `/home/u444965226/domains/fundstr.me/public_html/_fundstr-phonebook.php`
+- `/home/u444965226/domains/fundstr.me/public_html/.fundstr-phonebook.php`
 - `/home/u444965226/domains/fundstr.me/.fundstr-phonebook.php`
 - `/home/u444965226/domains/fundstr.me/config/fundstr-phonebook.php`
 - `~/.config/fundstr-phonebook.php`
@@ -101,6 +103,10 @@ return [
     'upstream_timeout' => 4,
 ];
 ```
+
+The `public_html` config-file locations are blocked from direct HTTP access by
+`.htaccess`, so they can be used if parent-directory includes are restricted by
+shared-hosting PHP runtime rules.
 
 Recommended rollout default:
 
