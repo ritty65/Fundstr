@@ -66,11 +66,41 @@ FUNDSTR_PHONEBOOK_CACHE_TTL_DB
 FUNDSTR_PHONEBOOK_CACHE_TTL_UPSTREAM
 FUNDSTR_PHONEBOOK_CACHE_TTL_DEGRADED
 FUNDSTR_PHONEBOOK_TIMEOUT
+FUNDSTR_PHONEBOOK_CONFIG_FILE
 ```
 
 Do not commit real values. Set them in Hostinger runtime config or server env so
 the phonebook can query local cache tables without routing every search through
 slow upstream discovery.
+
+If Hostinger does not provide convenient per-app environment variables, use a
+non-versioned PHP config file outside `public_html`. The phonebook endpoint now
+checks these paths automatically:
+
+- `/home/u444965226/domains/fundstr.me/.fundstr-phonebook.php`
+- `/home/u444965226/domains/fundstr.me/config/fundstr-phonebook.php`
+- `~/.config/fundstr-phonebook.php`
+
+Example file:
+
+```php
+<?php
+
+return [
+    'db_host' => '127.0.0.1',
+    'db_port' => '3306',
+    'db_name' => 'u444965226_fundstr_cache',
+    'db_user' => 'u444965226_fundstr_user',
+    'db_pass' => 'YOUR_DB_PASSWORD',
+    'db_tables' => ['profiles', 'creators'],
+    'db_authoritative' => false,
+    'cache_dir' => '/home/u444965226/tmp/fundstr-phonebook-cache',
+    'cache_ttl_db' => 300,
+    'cache_ttl_upstream' => 180,
+    'cache_ttl_degraded' => 45,
+    'upstream_timeout' => 4,
+];
+```
 
 Recommended rollout default:
 
