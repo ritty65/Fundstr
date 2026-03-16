@@ -315,7 +315,8 @@ function fetch_database_payload(string $query, array $config): ?array
         return null;
     }
 
-    $featuredPubkeys = load_featured_pubkey_set();
+    $featuredProfiles = load_featured_creator_map();
+    $featuredPubkeys = array_fill_keys(array_keys($featuredProfiles), true);
     $creatorPubkeys = load_creator_pubkey_set($pdo);
     $ranked = [];
     foreach ($config['db_tables'] as $table) {
@@ -331,6 +332,8 @@ function fetch_database_payload(string $query, array $config): ?array
             merge_ranked_phonebook_row($ranked, $row);
         }
     }
+
+    merge_featured_candidates($ranked, $featuredProfiles, $query, $creatorPubkeys);
 
     $results = finalize_ranked_phonebook_rows($ranked, (int) $config['limit']);
 
@@ -768,7 +771,7 @@ function normalize_upstream_results(array $entries, int $limit): array
     return $results;
 }
 
-function load_featured_pubkey_set(): array
+function load_featured_creator_map(): array
 {
     static $cache = null;
     if (is_array($cache)) {
@@ -797,11 +800,43 @@ function load_featured_pubkey_set(): array
         }
         $pubkey = normalize_pubkey($entry['pubkey'] ?? null);
         if ($pubkey !== null) {
-            $cache[$pubkey] = true;
+            $cache[$pubkey] = [
+                'pubkey' => $pubkey,
+                'name' => normalize_string($entry['name'] ?? null),
+                'display_name' => normalize_string($entry['display_name'] ?? $entry['displayName'] ?? null),
+                'about' => normalize_string($entry['about'] ?? null),
+                'picture' => normalize_string($entry['picture'] ?? null),
+                'nip05' => normalize_string($entry['nip05'] ?? null),
+                '_updated_at' => isset($entry['created_at']) && is_numeric($entry['created_at']) ? (int) $entry['created_at'] : 0,
+            ];
         }
     }
 
     return $cache;
+}
+
+function merge_featured_candidates(array &$ranked, array $featuredProfiles, string $query, array $creatorPubkeys): void
+{
+    foreach ($featuredProfiles as $pubkey => $profile) {
+        if (!is_array($profile)) {
+            continue;
+        }
+
+        $score = score_phonebook_match(
+            $profile,
+            $query,
+            isset($creatorPubkeys[$pubkey]),
+            true
+        );
+        if ($score <= 0) {
+            continue;
+        }
+
+        $candidate = $profile;
+        $candidate['_score'] = $score;
+        $candidate['_updated_at'] = (int) ($candidate['_updated_at'] ?? 0);
+        merge_ranked_phonebook_row($ranked, $candidate);
+    }
 }
 
 function load_creator_pubkey_set(PDO $pdo): array
@@ -955,7 +990,7 @@ function score_phonebook_match(array $row, string $query, bool $isCreator, bool 
         $score += 900;
     }
     if ($isFeatured && $score > 0) {
-        $score += 1600;
+        $score += 4200;
     }
     if (!empty($row['picture'])) {
         $score += 20;
