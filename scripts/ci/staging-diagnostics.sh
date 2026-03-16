@@ -39,6 +39,7 @@ fetch_endpoint_snapshot() {
 
   slug="${endpoint#/}"
   slug="${slug//\//_}"
+  slug="$(printf '%s' "$slug" | sed -E 's/[^A-Za-z0-9._-]+/_/g; s/^_+//; s/_+$//')"
   if [ -z "$slug" ]; then
     slug="root"
   fi

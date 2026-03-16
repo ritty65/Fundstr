@@ -8,6 +8,7 @@ header('Pragma: no-cache');
 header('Access-Control-Allow-Origin: *');
 
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+$upstreamTimeoutSeconds = resolve_timeout_seconds();
 
 if ($method === 'OPTIONS') {
     header('Access-Control-Allow-Methods: GET, HEAD, OPTIONS');
@@ -38,6 +39,12 @@ if ($query === '') {
     exit;
 }
 
+if ($method === 'HEAD') {
+    http_response_code(200);
+    header('X-Fundstr-Phonebook-Status: probe');
+    exit;
+}
+
 $upstreamBase = trim((string) getenv('FUNDSTR_PHONEBOOK_UPSTREAM'));
 if ($upstreamBase === '') {
     $upstreamBase = 'https://api.fundstr.me/discover/creators';
@@ -50,7 +57,7 @@ $upstreamUrl = $upstreamBase . $separator . http_build_query([
     'swr' => '1',
 ]);
 
-$response = fetchJson($upstreamUrl, 15);
+$response = fetchJson($upstreamUrl, $upstreamTimeoutSeconds);
 if ($response === null || !isset($response['results']) || !is_array($response['results'])) {
     http_response_code(200);
     header('X-Fundstr-Phonebook-Status: degraded');
@@ -96,9 +103,8 @@ emit_payload([
 
 function fetchJson(string $url, int $timeoutSeconds): ?array
 {
-    $decoded = fetchJsonViaCurl($url, $timeoutSeconds);
-    if (is_array($decoded)) {
-        return $decoded;
+    if (function_exists('curl_init')) {
+        return fetchJsonViaCurl($url, $timeoutSeconds);
     }
 
     return fetchJsonViaStream($url, $timeoutSeconds);
@@ -172,13 +178,29 @@ function fetchJsonViaStream(string $url, int $timeoutSeconds): ?array
 
 function extract_status_code(array $headers): int
 {
+    $status = 0;
     foreach ($headers as $header) {
         if (preg_match('/^HTTP\/\S+\s+(\d{3})\b/', (string) $header, $matches)) {
-            return (int) $matches[1];
+            $status = (int) $matches[1];
         }
     }
 
-    return 0;
+    return $status;
+}
+
+function resolve_timeout_seconds(): int
+{
+    $raw = getenv('FUNDSTR_PHONEBOOK_TIMEOUT');
+    if (!is_string($raw) || trim($raw) === '') {
+        return 6;
+    }
+
+    $timeout = (int) trim($raw);
+    if ($timeout < 1) {
+        return 6;
+    }
+
+    return min($timeout, 15);
 }
 
 function emit_payload(array $payload, string $method): void

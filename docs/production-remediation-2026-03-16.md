@@ -148,28 +148,52 @@ If Hostinger CLI access is available, also run:
 php -l /home/u444965226/domains/fundstr.me/public_html/find_profiles.php
 ```
 
-## Follow-up after staging deploy failure
+## Follow-up after staging deploy failures
 
-After the remediation merged into `Develop2`, the staging deploy workflow still failed at the `Smoke test staging` step.
+The first two staging deploy attempts after the remediation merge failed for two different reasons.
+
+### Failure 1: brittle phonebook endpoint
 
 Observed behavior:
 
 - `https://staging.fundstr.me/find_profiles.php?q=jack` returned `502 Bad Gateway`
-- the workflow failure happened after rsync/deploy completed, during smoke verification
+- the workflow failed during smoke verification after rsync/deploy finished
 
 Root cause:
 
 - the first version of `public/find_profiles.php` returned HTTP `502` whenever the upstream discovery request failed
-- it also relied on `curl_init()` being available in the Hostinger PHP environment
-- that made the endpoint too brittle for deployment smoke checks and too dependent on host PHP capabilities/upstream health
+- it also depended too strongly on host PHP/network behavior
 
-The follow-up hotfix changes the endpoint to be resilient:
+Hotfix applied:
 
 - support `HEAD` requests cleanly for smoke/header checks
 - fall back to `file_get_contents()` when cURL is unavailable
 - return `200` JSON with a warning payload instead of `502` when upstream discovery is unavailable
 
-That keeps the frontend and smoke tests focused on endpoint correctness instead of failing the entire release because a dependency is degraded.
+### Failure 2: diagnostics artifact upload bug
+
+Observed behavior:
+
+- staging actually deployed and smoke checks passed
+- GitHub Actions still marked the workflow red during `Upload staging diagnostics artifact`
+
+Root cause:
+
+- `scripts/ci/staging-diagnostics.sh` generated artifact filenames directly from endpoint paths
+- the phonebook path included `?q=jack`, which produced invalid artifact filenames containing `?`
+- GitHub artifact upload rejects those filenames
+
+Hardening applied:
+
+- sanitize diagnostic snapshot slugs before writing files
+- make `HEAD /find_profiles.php` return immediately for faster probes
+- shorten degraded upstream timeout behavior so the endpoint fails fast instead of hanging for ~30 seconds
+
+Resulting intent:
+
+- staging deploys should stay green when the endpoint is present and serving valid JSON
+- diagnostics upload should no longer fail because of invalid filenames
+- degraded phonebook responses should be fast instead of blocking smoke checks and UX
 
 ## Remaining timeline estimate
 
