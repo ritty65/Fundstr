@@ -5,33 +5,36 @@ declare(strict_types=1);
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
+header('Access-Control-Allow-Origin: *');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    header('Access-Control-Allow-Origin: *');
-    header('Access-Control-Allow-Methods: GET, OPTIONS');
+$method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+
+if ($method === 'OPTIONS') {
+    header('Access-Control-Allow-Methods: GET, HEAD, OPTIONS');
     header('Access-Control-Allow-Headers: Content-Type');
     http_response_code(204);
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
-    http_response_code(405);
-    echo json_encode([
+if ($method !== 'GET' && $method !== 'HEAD') {
+    http_response_code(200);
+    emit_payload([
         'query' => '',
         'results' => [],
         'count' => 0,
         'warning' => 'Method not allowed',
-    ], JSON_UNESCAPED_SLASHES);
+    ], $method);
     exit;
 }
 
 $query = trim((string) ($_GET['q'] ?? ''));
 if ($query === '') {
-    echo json_encode([
+    http_response_code(200);
+    emit_payload([
         'query' => '',
         'results' => [],
         'count' => 0,
-    ], JSON_UNESCAPED_SLASHES);
+    ], $method);
     exit;
 }
 
@@ -49,13 +52,14 @@ $upstreamUrl = $upstreamBase . $separator . http_build_query([
 
 $response = fetchJson($upstreamUrl, 15);
 if ($response === null || !isset($response['results']) || !is_array($response['results'])) {
-    http_response_code(502);
-    echo json_encode([
+    http_response_code(200);
+    header('X-Fundstr-Phonebook-Status: degraded');
+    emit_payload([
         'query' => $query,
         'results' => [],
         'count' => 0,
         'warning' => 'Limited results (discovery unavailable)',
-    ], JSON_UNESCAPED_SLASHES);
+    ], $method);
     exit;
 }
 
@@ -83,13 +87,24 @@ foreach ($response['results'] as $entry) {
     ];
 }
 
-echo json_encode([
+http_response_code(200);
+emit_payload([
     'query' => $query,
     'results' => $results,
     'count' => count($results),
-], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+], $method);
 
 function fetchJson(string $url, int $timeoutSeconds): ?array
+{
+    $decoded = fetchJsonViaCurl($url, $timeoutSeconds);
+    if (is_array($decoded)) {
+        return $decoded;
+    }
+
+    return fetchJsonViaStream($url, $timeoutSeconds);
+}
+
+function fetchJsonViaCurl(string $url, int $timeoutSeconds): ?array
 {
     if (!function_exists('curl_init')) {
         return null;
@@ -120,6 +135,59 @@ function fetchJson(string $url, int $timeoutSeconds): ?array
 
     $decoded = json_decode($raw, true);
     return is_array($decoded) ? $decoded : null;
+}
+
+function fetchJsonViaStream(string $url, int $timeoutSeconds): ?array
+{
+    if (!ini_get('allow_url_fopen')) {
+        return null;
+    }
+
+    $context = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'header' => "Accept: application/json\r\n",
+            'timeout' => max(1, $timeoutSeconds),
+            'ignore_errors' => true,
+        ],
+        'ssl' => [
+            'verify_peer' => true,
+            'verify_peer_name' => true,
+        ],
+    ]);
+
+    $raw = @file_get_contents($url, false, $context);
+    $headers = isset($http_response_header) && is_array($http_response_header)
+        ? $http_response_header
+        : [];
+    $status = extract_status_code($headers);
+
+    if (!is_string($raw) || $raw === '' || $status < 200 || $status >= 300) {
+        return null;
+    }
+
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : null;
+}
+
+function extract_status_code(array $headers): int
+{
+    foreach ($headers as $header) {
+        if (preg_match('/^HTTP\/\S+\s+(\d{3})\b/', (string) $header, $matches)) {
+            return (int) $matches[1];
+        }
+    }
+
+    return 0;
+}
+
+function emit_payload(array $payload, string $method): void
+{
+    if ($method === 'HEAD') {
+        return;
+    }
+
+    echo json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 }
 
 function normalize_string($value): ?string
