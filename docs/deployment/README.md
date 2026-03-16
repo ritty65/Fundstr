@@ -44,3 +44,30 @@ curl -i 'https://staging.fundstr.me/find_profiles.php?q=jack'
 The phonebook endpoint checks above must return `application/json`.
 If either one returns the SPA shell HTML, the deploy is incomplete or the
 server rewrite rules are still intercepting `/find_profiles.php`.
+
+## Phonebook runtime config
+
+`public/find_profiles.php` now supports a fast local DB-backed lookup path before
+falling back to upstream discovery.
+
+Recommended runtime variables on Hostinger:
+
+```text
+FUNDSTR_PHONEBOOK_DSN
+FUNDSTR_PHONEBOOK_DB_HOST
+FUNDSTR_PHONEBOOK_DB_PORT
+FUNDSTR_PHONEBOOK_DB_NAME
+FUNDSTR_PHONEBOOK_DB_USER
+FUNDSTR_PHONEBOOK_DB_PASS
+FUNDSTR_PHONEBOOK_DB_TABLES
+FUNDSTR_PHONEBOOK_DB_AUTHORITATIVE
+FUNDSTR_PHONEBOOK_CACHE_DIR
+FUNDSTR_PHONEBOOK_CACHE_TTL_DB
+FUNDSTR_PHONEBOOK_CACHE_TTL_UPSTREAM
+FUNDSTR_PHONEBOOK_CACHE_TTL_DEGRADED
+FUNDSTR_PHONEBOOK_TIMEOUT
+```
+
+Do not commit real values. Set them in Hostinger runtime config or server env so
+the phonebook can query local cache tables without routing every search through
+slow upstream discovery.
