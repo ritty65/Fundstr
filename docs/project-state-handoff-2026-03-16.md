@@ -8,32 +8,35 @@ Use this first, then read:
 
 1. `docs/canonical-repo-recovery-2026-03-16.md`
 2. `docs/production-remediation-2026-03-16.md`
-3. `docs/worktree-cleanup-2026-03-16.md`
-4. `docs/deploy-never-again-runbook.md`
-5. `AGENTS.md`
+3. `docs/final-validation-report-2026-03-16.md`
+4. `docs/worktree-cleanup-2026-03-16.md`
+5. `docs/deploy-never-again-runbook.md`
+6. `AGENTS.md`
 
 ## Confirmed live status
 
 ### Production
 
 - branch: `main`
-- live SHA: `1bcc9cbdff1482f92b655cd6bb9be142260dfa94`
-- deploy run: `23134106991`
+- live SHA: `5f07012153002182ae5ff04078d205eb8cbc25d8`
+- deploy run: `23138838266`
 - verification:
   - `https://fundstr.me/deploy.txt` returns the SHA above
   - `https://fundstr.me/find_profiles.php?q=jack` returns `200` JSON
   - production smoke checks passed
   - live onboarding skip and generate-key flows passed in browser automation
+  - production phonebook now returns `X-Fundstr-Phonebook-Source: db`
 
 ### Staging
 
 - branch: `Develop2`
-- live SHA: `069747d1580f42adcdd150ed292e44c1076f56a8`
-- deploy run: `23133608775`
+- live SHA: `a6555b2914b1de3b489ef1da297d45d007a94ebe`
+- deploy run: `23138193154`
 - verification:
   - `https://staging.fundstr.me/deploy.txt` returns the SHA above
   - `https://staging.fundstr.me/find_profiles.php?q=jack` returns `200` JSON
   - staging smoke checks passed
+  - staging phonebook now returns `X-Fundstr-Phonebook-Source: db`
 
 ## What was fixed in the March 16 release
 
@@ -47,8 +50,8 @@ Use this first, then read:
 
 ### Active development worktree
 
-- path: `/home/ai_dev/Desktop/AI-Apps/Websites/Fundstr-Develop2-backend-sprint-20260316`
-- branch: `ai/develop2-backend-phonebook-sprint-20260316`
+- path: `/home/ai_dev/Desktop/AI-Apps/Websites/Fundstr-Develop2-validation-20260316`
+- branch: `ai/develop2-validation-search-quality-20260316`
 
 ### Branch truth
 
@@ -65,11 +68,11 @@ Use this first, then read:
 
 The app is now deployed correctly, but backend discovery quality is still not where it should be.
 
-### Remaining issue 1: phonebook results are correct but degraded
+### Remaining issue 1: search quality / ranking needs work
 
-- `/find_profiles.php` now returns JSON reliably
-- but it can still return degraded empty results when upstream discovery is slow or unavailable
-- this is correct behavior for stability, but not good enough for creator discovery UX
+- `/find_profiles.php` is now fast and DB-backed
+- but common-name searches still return many loose substring matches
+- expected creators are not always ranked first
 
 ### Remaining issue 2: upstream discovery is too slow
 
@@ -87,7 +90,7 @@ The next focused sprint is **backend discovery and phonebook performance**, not 
 
 ### Sprint objective
 
-Make creator search fast and local-first.
+Make creator search fast, local-first, and smarter in ranking.
 
 ### Immediate implementation direction
 
@@ -95,6 +98,7 @@ Make creator search fast and local-first.
 2. add a fast local DB-backed lookup path using Hostinger MySQL when configured
 3. cache phonebook results so repeated lookups avoid slow upstream fanout
 4. keep upstream discovery only as a fallback, not the primary fast path
+5. improve search ranking for exact matches, prefix matches, and known creators
 
 ### Runtime configuration direction
 
@@ -161,8 +165,8 @@ BASE_URL=https://fundstr.me SMOKE_EXPECT_ENV=production ./scripts/smoke-tests.sh
 
 If another AI is asked to continue this project, tell it:
 
-- production is already live on `1bcc9cbdff1482f92b655cd6bb9be142260dfa94`
-- staging is already live on `069747d1580f42adcdd150ed292e44c1076f56a8`
-- the immediate priority is backend discovery and phonebook performance
-- the canonical active worktree is `/home/ai_dev/Desktop/AI-Apps/Websites/Fundstr-Develop2-backend-sprint-20260316`
+- production is already live on `5f07012153002182ae5ff04078d205eb8cbc25d8`
+- staging is already live on `a6555b2914b1de3b489ef1da297d45d007a94ebe`
+- the immediate priority is search quality and ranking, not deploy plumbing
+- the canonical active worktree is `/home/ai_dev/Desktop/AI-Apps/Websites/Fundstr-Develop2-validation-20260316`
 - do not revive `Fundstr-main-livefix` or other stale sandboxes for release work
