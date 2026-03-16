@@ -5,6 +5,9 @@
   # Never rewrite static directories
   RewriteRule ^(assets|icons|vendor)/ - [L,NC]
 
+  # Never allow direct access to local phonebook config files
+  RewriteRule ^(_fundstr-phonebook\.php|\.fundstr-phonebook\.php)$ - [F,L,NC]
+
   # Never rewrite critical root static files
   RewriteRule ^(find-creators\.html|find-creators\.css|featured-creators\.json|manifest\.json|mints\.json|relayHealth\.js|sw\.js|workbox-[A-Za-z0-9._-]+\.js|deploy\.txt|find_profiles\.php|favicon\.ico|robots\.txt)$ - [L,NC]
 
