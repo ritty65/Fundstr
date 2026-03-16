@@ -18,6 +18,11 @@
                   v-model="mnemonicToRestore"
                   autogrow
                   type="textarea"
+                  :input-attrs="{
+                    'aria-label': $t(
+                      'RestoreView.seed_phrase.inputs.seed_phrase.label',
+                    ),
+                  }"
                   :error="mnemonicError !== ''"
                   :error-message="mnemonicError"
                 >
@@ -95,11 +100,34 @@
         dense
         outline
         @click="restoreAllMints"
-        :disabled="!isMnemonicValid || restoringState"
+        :disabled="restoringState || !hasMints"
       >
         <q-spinner-hourglass size="sm" v-if="restoringState" class="q-mr-sm" />
         {{ restoreAllMintsText }}
       </q-btn>
+      <q-banner
+        v-if="!hasMints"
+        rounded
+        dense
+        class="q-mt-md bg-warning text-black"
+      >
+        <div class="row items-center no-wrap">
+          <div class="col">
+            {{ $t("RestoreView.restore_mints.empty_state.message") }}
+          </div>
+          <div class="col-auto">
+            <q-btn
+              flat
+              dense
+              color="primary"
+              class="q-ml-md"
+              @click="goToMints"
+            >
+              {{ $t("RestoreView.restore_mints.empty_state.action") }}
+            </q-btn>
+          </div>
+        </div>
+      </q-banner>
       <q-list padding class="q-pt-md">
         <!-- List mints here -->
         <div v-for="mint in mints" :key="mint.url">
@@ -158,7 +186,7 @@
                 dense
                 outline
                 @click="restoreMintForMint(mint.url)"
-                :disabled="!isMnemonicValid || restoringState"
+                :disabled="restoringState"
                 :loading="restoringMint === mint.url"
                 :label="$t('RestoreView.actions.restore.label')"
               />
@@ -171,7 +199,8 @@
   </div>
 </template>
 
-<script>import windowMixin from 'src/mixins/windowMixin'
+<script>
+import windowMixin from "src/mixins/windowMixin";
 import { defineComponent } from "vue";
 
 import { mapActions, mapState, mapWritableState } from "pinia";
@@ -180,7 +209,7 @@ import { useRestoreStore } from "src/stores/restore";
 import { useWalletStore } from "src/stores/wallet";
 import { useMnemonicStore } from "src/stores/mnemonic";
 import { useUiStore } from "src/stores/ui";
-import { notifyError, notifySuccess } from "src/js/notify";
+import { notifyError, notifySuccess, notifyWarning } from "src/js/notify";
 
 export default defineComponent({
   name: "RestoreView",
@@ -188,7 +217,7 @@ export default defineComponent({
   data() {
     return {
       mnemonicError: "",
-      restoreAllMintsText: this.$i18n.t(
+      restoreAllMintsText: this.$t(
         "RestoreView.actions.restore_all_mints.label",
       ),
     };
@@ -212,10 +241,19 @@ export default defineComponent({
       const words = this.mnemonicToRestore.trim().split(/\s+/);
       return words.length >= 12;
     },
+    hasMints() {
+      return Array.isArray(this.mints) && this.mints.length > 0;
+    },
   },
   methods: {
     ...mapActions(useRestoreStore, ["restoreMint"]),
-    ...mapActions(useUiStore, ["pasteFromClipboard"]),
+    ...mapActions(useUiStore, {
+      pasteFromClipboard: "pasteFromClipboard",
+      setUiTab: "setTab",
+    }),
+    formatCurrency(amount, unit) {
+      return useUiStore().formatCurrency(amount, unit);
+    },
     mintClass(mint) {
       return new MintClass(mint);
     },
@@ -223,7 +261,7 @@ export default defineComponent({
       // Simple validation: check if mnemonicToRestore has at least 12 words
       const words = this.mnemonicToRestore.trim().split(/\s+/);
       if (words.length < 12) {
-        this.mnemonicError = this.$i18n.t("RestoreView.actions.validate.error");
+        this.mnemonicError = this.$t("RestoreView.actions.validate.error");
         return false;
       }
       this.mnemonicError = "";
@@ -234,19 +272,19 @@ export default defineComponent({
         return;
       }
       try {
-        this.restoreAllMintsText = this.$i18n.t(
+        this.restoreAllMintsText = this.$t(
           "RestoreView.actions.restore.in_progress",
         );
         await this.restoreMint(mintUrl);
       } catch (error) {
         console.error("Error restoring mint:", error);
         notifyError(
-          this.$i18n.t("RestoreView.actions.restore.error", {
+          this.$t("RestoreView.actions.restore.error", {
             error: error.message || error,
           }),
         );
       } finally {
-        this.restoreAllMintsText = this.$i18n.t(
+        this.restoreAllMintsText = this.$t(
           "RestoreView.actions.restore_all_mints.label",
         );
       }
@@ -256,17 +294,28 @@ export default defineComponent({
         const text = await this.pasteFromClipboard();
         this.mnemonicToRestore = text.trim();
       } catch (error) {
-        notifyError(this.$i18n.t("RestoreView.actions.paste.error"));
+        notifyError(this.$t("RestoreView.actions.paste.error"));
       }
+    },
+    goToMints() {
+      this.setUiTab("mints");
+      this.$router.push("/wallet");
     },
     async restoreAllMints() {
       let i = 0;
       if (!this.validateMnemonic()) {
         return;
       }
+      if (!this.hasMints) {
+        notifyWarning(
+          this.$t("RestoreView.actions.restore_all_mints.no_mints_warning"),
+          this.$t("RestoreView.actions.restore_all_mints.no_mints_caption"),
+        );
+        return;
+      }
       try {
         for (const mint of this.mints) {
-          this.restoreAllMintsText = this.$i18n.t(
+          this.restoreAllMintsText = this.$t(
             "RestoreView.actions.restore_all_mints.in_progress",
             {
               index: ++i,
@@ -275,18 +324,16 @@ export default defineComponent({
           );
           await this.restoreMint(mint.url);
         }
-        notifySuccess(
-          this.$i18n.t("RestoreView.actions.restore_all_mints.success"),
-        );
+        notifySuccess(this.$t("RestoreView.actions.restore_all_mints.success"));
       } catch (error) {
         console.error("Error restoring mints:", error);
         notifyError(
-          this.$i18n.t("RestoreView.actions.restore_all_mints.error", {
+          this.$t("RestoreView.actions.restore_all_mints.error", {
             error: error.message || error,
           }),
         );
       } finally {
-        this.restoreAllMintsText = this.$i18n.t(
+        this.restoreAllMintsText = this.$t(
           "RestoreView.actions.restore_all_mints.label",
         );
       }

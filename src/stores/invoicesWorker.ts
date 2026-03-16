@@ -4,6 +4,8 @@ import { useWalletStore } from "./wallet";
 import { useInvoiceHistoryStore } from "./invoiceHistory";
 import { useLocalStorage } from "@vueuse/core";
 import { useSettingsStore } from "./settings";
+import { useUiStore } from "./ui";
+import { isRetryableError } from "src/types/errors";
 interface InvoiceQuote {
   quote: string;
   addedAt: number;
@@ -111,9 +113,19 @@ export const useInvoicesWorkerStore = defineStore("invoicesWorker", {
           try {
             await walletStore.checkInvoice(q.quote, false);
             this.quotes.splice(i, 1);
+            useUiStore().clearDegradedNotice("invoice-queue");
           } catch (error) {
             q.lastChecked = now;
             q.checkCount += 1;
+            const retryable = isRetryableError(error);
+            useUiStore().addDegradedNotice({
+              id: "invoice-queue",
+              message: retryable
+                ? "Checking pending invoices failed due to connectivity. We'll retry."
+                : "Invoice checker paused due to an error. Please reopen the invoice.",
+              retryable,
+              level: retryable ? "warning" : "negative",
+            });
           }
           this.lastInvoiceCheckTime = now;
           break;

@@ -582,6 +582,9 @@ export default defineComponent({
     ...mapActions(useWorkersStore, ["clearAllWorkers"]),
     ...mapActions(useCameraStore, ["closeCamera", "showCamera"]),
     ...mapActions(useSwapStore, ["mintAmountSwap"]),
+    formatCurrency(amount, unit) {
+      return useUiStore().formatCurrency(amount, unit);
+    },
     activateMintUrlInternal: async function (mintUrl) {
       this.activatingMintUrl = mintUrl;
       debug(`Activating mint ${this.activatingMintUrl}`);

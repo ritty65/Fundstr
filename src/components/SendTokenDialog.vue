@@ -149,6 +149,12 @@
             :label="$t('SendTokenDialog.inputs.memo.label')"
           />
           <q-toggle
+            v-model="sendData.anonymous"
+            color="primary"
+            :label="$t('SendTokenDialog.inputs.anonymous_toggle.label')"
+            class="q-mt-sm"
+          />
+          <q-toggle
             v-model="showLockInput"
             color="primary"
             :label="$t('SendTokenDialog.inputs.lock_toggle.label')"
@@ -615,8 +621,9 @@
     </q-card>
   </q-dialog>
 </template>
-<script lang="ts">import windowMixin from 'src/mixins/windowMixin'
-import { defineComponent, defineAsyncComponent } from "vue";
+<script lang="ts">
+import windowMixin from "src/mixins/windowMixin";
+import { defineComponent } from "vue";
 
 import { useClipboard } from "src/composables/useClipboard";
 import { debug } from "src/js/logger";
@@ -638,6 +645,7 @@ import { useCameraStore } from "src/stores/camera";
 import { useP2PKStore } from "src/stores/p2pk";
 import { nip19, ProfilePointer } from "nostr-tools";
 import { ensureCompressed } from "src/utils/ecash";
+import { getOrCreateBrowserId } from "@/utils/browserId";
 import TokenInformation from "components/TokenInformation.vue";
 import {
   getDecodedToken,
@@ -646,6 +654,7 @@ import {
 } from "@cashu/cashu-ts";
 import { useBucketsStore } from "src/stores/buckets";
 import { DEFAULT_BUCKET_ID } from "@/constants/buckets";
+import { sendDonationDm, type DonationRail } from "@/services/donationDm";
 
 import { mapActions, mapState, mapWritableState } from "pinia";
 import ChooseMint from "components/ChooseMint.vue";
@@ -661,6 +670,7 @@ import {
   Nfc as NfcIcon,
 } from "lucide-vue-next";
 import {
+  notifyApiError,
   notifyError,
   notifySuccess,
   notify,
@@ -668,10 +678,12 @@ import {
 } from "src/js/notify.ts";
 import { Dialog } from "quasar";
 import { useDmChatsStore } from "src/stores/dmChats";
-
-const VueQrcode = defineAsyncComponent(
-  () => import("@chenfengyuan/vue-qrcode"),
-);
+import VueQrcode from "@chenfengyuan/vue-qrcode";
+import {
+  mintSupportsSplit,
+  resolveSupportedNuts,
+  SPLIT_SUPPORT_REQUIRED_MESSAGE,
+} from "src/utils/nuts";
 export default defineComponent({
   name: "SendTokenDialog",
   mixins: [windowMixin],
@@ -686,7 +698,10 @@ export default defineComponent({
   },
   setup() {
     const { copy } = useClipboard();
-    return { copy };
+    const uiStore = useUiStore();
+    const formatCurrency = uiStore.formatCurrency.bind(uiStore);
+
+    return { copy, formatCurrency };
   },
   props: {},
   data: function () {
@@ -884,6 +899,7 @@ export default defineComponent({
         this.sendData.tokensBase64 = "";
         this.sendData.historyToken = null;
         this.sendData.paymentRequest = null;
+        this.sendData.anonymous = false;
         this.recipientPubkey = "";
         this.sendViaNostr = false;
       }
@@ -924,6 +940,250 @@ export default defineComponent({
     ...mapActions(useP2PKStore, ["isValidPubkey", "sendToLock"]),
     ...mapActions(useCameraStore, ["closeCamera", "showCamera"]),
     ...mapActions(useMintsStore, ["toggleUnit"]),
+    extractErrorDetails(error: unknown): {
+      message: string;
+      status?: number;
+      code?: string | number;
+    } {
+      const toNumber = (value: unknown): number | undefined => {
+        if (typeof value === "number") {
+          return value;
+        }
+        if (typeof value === "string") {
+          const parsed = parseInt(value, 10);
+          return Number.isNaN(parsed) ? undefined : parsed;
+        }
+        return undefined;
+      };
+
+      if (!error) {
+        return { message: "" };
+      }
+
+      if (typeof error === "string") {
+        return { message: error };
+      }
+
+      if (error instanceof Error) {
+        const errAny = error as any;
+        const status =
+          toNumber(errAny?.status) ??
+          toNumber(errAny?.response?.status) ??
+          toNumber(errAny?.cause?.status);
+        const code =
+          errAny?.code ??
+          errAny?.response?.data?.code ??
+          errAny?.cause?.code ??
+          status;
+        return {
+          message: error.message ?? "",
+          status,
+          code,
+        };
+      }
+
+      if (typeof error === "object") {
+        const errObj = error as Record<string, any>;
+        const status =
+          toNumber(errObj?.status) ??
+          toNumber(errObj?.response?.status) ??
+          toNumber(errObj?.cause?.status);
+        const code =
+          errObj?.code ??
+          errObj?.response?.data?.code ??
+          errObj?.cause?.code ??
+          status;
+        const messageCandidate =
+          errObj?.message ??
+          errObj?.response?.data?.message ??
+          errObj?.response?.data?.detail ??
+          errObj?.response?.data?.error ??
+          errObj?.detail ??
+          errObj?.error ??
+          "";
+        return {
+          message: typeof messageCandidate === "string" ? messageCandidate : "",
+          status,
+          code,
+        };
+      }
+
+      return { message: "" };
+    },
+    handleSendFailure(context: "lock" | "send", error: unknown) {
+      const { message, status, code } = this.extractErrorDetails(error);
+      const defaultMessage =
+        context === "lock"
+          ? "Failed to lock tokens."
+          : "Failed to send tokens.";
+      const trimmedMessage = typeof message === "string" ? message.trim() : "";
+      const shouldSuggestMintChange =
+        typeof status === "number" && status >= 500;
+      const guidance = "Try switching to a mint that supports splitting.";
+      const displayMessage = `${trimmedMessage || defaultMessage}${
+        shouldSuggestMintChange ? ` ${guidance}` : ""
+      }`;
+      const mintUrl = this.activeMintUrl ?? "unknown";
+      const statusParts = [
+        typeof status === "number" ? `status ${status}` : null,
+        code && code !== status ? `code ${code}` : null,
+      ].filter(Boolean);
+      const suffix = statusParts.length ? ` (${statusParts.join(", ")})` : "";
+      console.error(
+        `[SendTokenDialog] ${context}Tokens failed for mint ${mintUrl}${suffix}`,
+        error,
+      );
+
+      if (
+        error instanceof Error &&
+        trimmedMessage &&
+        !shouldSuggestMintChange
+      ) {
+        notifyApiError(error);
+        return;
+      }
+
+      notifyApiError(new Error(displayMessage));
+    },
+    resolveRecipientPubkey(pubkey?: string | null) {
+      if (!pubkey) {
+        return null;
+      }
+
+      let recipient = pubkey.trim();
+      if (recipient.startsWith("npub") || recipient.startsWith("nprofile")) {
+        try {
+          const decoded = nip19.decode(recipient);
+          if (decoded.type === "npub") {
+            return decoded.data as string;
+          }
+          if (decoded.type === "nprofile") {
+            return (decoded.data as ProfilePointer).pubkey;
+          }
+        } catch (error) {
+          console.error(error);
+          return null;
+        }
+      }
+
+      return recipient;
+    },
+    async sendTokenDirectMessage(
+      recipientPubkey: string,
+      payload: {
+        token: string;
+        amount: number;
+        unlockTime: number | null;
+        bucketId: string;
+        referenceId: string;
+      },
+    ) {
+      const recipient = this.resolveRecipientPubkey(recipientPubkey);
+      if (!recipient) {
+        return;
+      }
+
+      try {
+        const dmContent = JSON.stringify(payload);
+        const { success, event } =
+          await useNostrStore().sendDirectMessageUnified(recipient, dmContent);
+        if (success && event) {
+          useDmChatsStore().addOutgoing(event);
+          Dialog.create({
+            message: this.$t("wallet.notifications.nostr_dm_sent") as string,
+          });
+        } else {
+          Dialog.create({
+            message: this.$t("wallet.notifications.nostr_dm_failed") as string,
+          });
+        }
+      } catch (error) {
+        console.error(error);
+        Dialog.create({
+          message: this.$t("wallet.notifications.nostr_dm_failed") as string,
+        });
+      }
+    },
+    queueTokenDirectMessage(payload: {
+      token: string;
+      amount: number;
+      unlockTime: number | null;
+      bucketId: string;
+      referenceId: string;
+    }) {
+      if (!this.sendViaNostr || !this.recipientPubkey) {
+        return;
+      }
+
+      const recipientPubkey = this.recipientPubkey;
+      this.recipientPubkey = "";
+      this.sendViaNostr = false;
+      this.sendData.memo = "";
+
+      void this.sendTokenDirectMessage(recipientPubkey, payload);
+    },
+    async sendDonationNotification(
+      amount: number,
+      rail: DonationRail,
+      options?: {
+        recipientPubkey?: string | null;
+        sendViaNostr?: boolean;
+        anonymous?: boolean;
+        memo?: string | null;
+      },
+    ) {
+      const recipientPubkey =
+        options?.recipientPubkey ?? this.recipientPubkey ?? null;
+      const sendViaNostr =
+        options?.sendViaNostr ?? (this.sendViaNostr as boolean | undefined);
+      const memo = options?.memo ?? this.sendData.memo;
+      const anonymous = options?.anonymous ?? this.sendData.anonymous ?? false;
+
+      if (!sendViaNostr || !recipientPubkey || this.offline) {
+        return;
+      }
+
+      const browserId = getOrCreateBrowserId();
+
+      const recipient = this.resolveRecipientPubkey(recipientPubkey);
+      if (!recipient) {
+        return;
+      }
+
+      try {
+        const nostrStore = useNostrStore();
+        const { success, event } = await sendDonationDm(
+          (target, content) =>
+            nostrStore.sendDirectMessageUnified(target, content),
+          {
+            targetPubkey: recipient,
+            amount,
+            rail,
+            browserId,
+            memo,
+            anonymous,
+          },
+        );
+
+        if (success) {
+          if (event) {
+            useDmChatsStore().addOutgoing(event);
+          }
+          notifySuccess(
+            this.$t("FindCreators.notifications.donation_dm_sent") as string,
+          );
+        } else {
+          notifyError(
+            this.$t("FindCreators.notifications.donation_dm_failed") as string,
+          );
+        }
+      } catch (error) {
+        console.error("Failed to send donation DM", error);
+        notifyError(
+          this.$t("FindCreators.notifications.donation_dm_failed") as string,
+        );
+      }
+    },
     onDialogShown() {
       this.$nextTick(() => {
         if (this.$refs.amountInput) {
@@ -1155,6 +1415,11 @@ export default defineComponent({
       this.scanningCard = false;
     },
     lockTokens: async function () {
+      if (!this.activeMintUrl) {
+        notifyError("Select a mint in Wallet before sending.");
+        this.showSendTokens = false;
+        return;
+      }
       let sendAmount = Math.floor(
         this.sendData.amount * this.activeUnitCurrencyMultiplyer,
       );
@@ -1192,63 +1457,12 @@ export default defineComponent({
         this.sendData.tokens = sendProofs;
 
         this.sendData.tokensBase64 = this.serializeProofs(sendProofs);
-        if (this.sendViaNostr && this.recipientPubkey) {
-          try {
-            let recipient = this.recipientPubkey;
-            if (
-              recipient.startsWith("npub") ||
-              recipient.startsWith("nprofile")
-            ) {
-              try {
-                const decoded = nip19.decode(recipient);
-                recipient =
-                  decoded.type === "npub"
-                    ? (decoded.data as string)
-                    : (decoded.data as ProfilePointer).pubkey;
-              } catch (e) {
-                console.error(e);
-              }
-            }
-            const payload = {
-              token: this.sendData.tokensBase64,
-              amount: this.sendData.amount * this.activeUnitCurrencyMultiplyer,
-              unlockTime: this.sendData.locktime || null,
-              bucketId: this.sendData.bucketId,
-              referenceId: this.sendData.historyToken?.id || "",
-            };
-            const dmContent = JSON.stringify(payload);
-            const { success, event } =
-              await useNostrStore().sendDirectMessageUnified(
-                recipient,
-                dmContent,
-              );
-            if (success && event) {
-              useDmChatsStore().addOutgoing(event);
-              Dialog.create({
-                message: this.$t(
-                  "wallet.notifications.nostr_dm_sent",
-                ) as string,
-              });
-            } else {
-              Dialog.create({
-                message: this.$t(
-                  "wallet.notifications.nostr_dm_failed",
-                ) as string,
-              });
-            }
-          } catch (e) {
-            console.error(e);
-            Dialog.create({
-              message: this.$t(
-                "wallet.notifications.nostr_dm_failed",
-              ) as string,
-            });
-          } finally {
-            this.recipientPubkey = "";
-            this.sendViaNostr = false;
-            this.sendData.memo = "";
-          }
-        }
+        const donationContext = {
+          recipientPubkey: this.recipientPubkey,
+          sendViaNostr: this.sendViaNostr,
+          memo: this.sendData.memo,
+          anonymous: this.sendData.anonymous ?? false,
+        };
         useLockedTokensStore().addLockedToken({
           amount: sendAmount,
           token: this.sendData.tokensBase64,
@@ -1258,16 +1472,27 @@ export default defineComponent({
           bucketId,
         });
         const historyToken = {
-          amount: -this.sendData.amount,
+          amount: -sendAmount,
           token: this.sendData.tokensBase64,
           unit: this.activeUnit,
           mint: this.activeMintUrl,
           label: "",
           description: this.sendData.memo || "",
           bucketId,
+          status: "pending",
         };
-        this.addPendingToken({ ...historyToken, tokenStr: historyToken.token });
-        this.sendData.historyToken = historyToken;
+        const persistedHistoryToken = this.addPendingToken({
+          ...historyToken,
+          tokenStr: historyToken.token,
+        });
+        this.sendData.historyToken = persistedHistoryToken;
+        this.queueTokenDirectMessage({
+          token: this.sendData.tokensBase64,
+          amount: sendAmount,
+          unlockTime: this.sendData.locktime || null,
+          bucketId,
+          referenceId: persistedHistoryToken.id || "",
+        });
         Dialog.create({
           message: this.$t(
             "FindCreators.notifications.donation_sent",
@@ -1283,20 +1508,29 @@ export default defineComponent({
         });
 
         if (!this.offline) {
-          this.onTokenPaid(historyToken);
+          void this.sendDonationNotification(
+            sendAmount,
+            "cashu",
+            donationContext,
+          );
+          void this.onTokenPaid(persistedHistoryToken);
         }
       } catch (error) {
-        console.error(error);
-        notifyError("Failed to send tokens");
+        this.handleSendFailure("lock", error);
       }
     },
     sendTokens: async function () {
       /*
       calls send, displays token and kicks off the spendableWorker
       */
+      if (!this.activeMintUrl) {
+        notifyError("Select a mint in Wallet before sending.");
+        this.showSendTokens = false;
+        return;
+      }
+
       this.showNumericKeyboard = false;
       const p2pkInput = this.sendData.p2pkPubkey;
-      let nostrDm = false;
       if (
         p2pkInput &&
         (p2pkInput.startsWith("npub1") || p2pkInput.startsWith("nprofile1"))
@@ -1309,7 +1543,6 @@ export default defineComponent({
             this.recipientPubkey = (decoded.data as ProfilePointer).pubkey;
           }
           this.sendViaNostr = true;
-          nostrDm = true;
         } catch (e) {
           console.error(e);
         }
@@ -1328,11 +1561,35 @@ export default defineComponent({
         return;
       }
 
+      let sendAmount = Math.floor(
+        this.sendData.amount * this.activeUnitCurrencyMultiplyer,
+      );
+      const rail: DonationRail = this.sendData.paymentRequest
+        ? "lightning"
+        : "cashu";
+      const mintWallet = this.mintWallet(this.activeMintUrl, this.activeUnit);
+
       try {
-        let sendAmount = Math.floor(
-          this.sendData.amount * this.activeUnitCurrencyMultiplyer,
-        );
-        const mintWallet = this.mintWallet(this.activeMintUrl, this.activeUnit);
+        const mintsStore = useMintsStore();
+        let mintInfo: any = mintsStore.activeInfo;
+        if (!mintInfo || Object.keys(mintInfo).length === 0) {
+          try {
+            mintInfo = await mintWallet.mint.getInfo();
+          } catch (infoError) {
+            console.warn("Failed to refresh mint info", infoError);
+          }
+        }
+
+        const supportedNuts = resolveSupportedNuts(mintInfo);
+        const requiresSplitSupport = !this.canSpendOffline;
+        if (
+          requiresSplitSupport &&
+          !mintSupportsSplit(mintInfo, supportedNuts)
+        ) {
+          notifyError(SPLIT_SUPPORT_REQUIRED_MESSAGE);
+          return;
+        }
+
         const bucketId = this.sendData.bucketId;
         let { _, sendProofs } = await this.send(
           this.activeProofs,
@@ -1346,63 +1603,12 @@ export default defineComponent({
         // update UI
         this.sendData.tokens = sendProofs;
         this.sendData.tokensBase64 = this.serializeProofs(sendProofs);
-        if (this.sendViaNostr && this.recipientPubkey) {
-          try {
-            let recipient = this.recipientPubkey;
-            if (
-              recipient.startsWith("npub") ||
-              recipient.startsWith("nprofile")
-            ) {
-              try {
-                const decoded = nip19.decode(recipient);
-                recipient =
-                  decoded.type === "npub"
-                    ? (decoded.data as string)
-                    : (decoded.data as ProfilePointer).pubkey;
-              } catch (e) {
-                console.error(e);
-              }
-            }
-            const payload2 = {
-              token: this.sendData.tokensBase64,
-              amount: this.sendData.amount * this.activeUnitCurrencyMultiplyer,
-              unlockTime: this.sendData.locktime || null,
-              bucketId: this.sendData.bucketId,
-              referenceId: this.sendData.historyToken?.id || "",
-            };
-            const dmContent2 = JSON.stringify(payload2);
-            const { success, event } =
-              await useNostrStore().sendDirectMessageUnified(
-                recipient,
-                dmContent2,
-              );
-            if (success && event) {
-              useDmChatsStore().addOutgoing(event);
-              Dialog.create({
-                message: this.$t(
-                  "wallet.notifications.nostr_dm_sent",
-                ) as string,
-              });
-            } else {
-              Dialog.create({
-                message: this.$t(
-                  "wallet.notifications.nostr_dm_failed",
-                ) as string,
-              });
-            }
-          } catch (e) {
-            console.error(e);
-            Dialog.create({
-              message: this.$t(
-                "wallet.notifications.nostr_dm_failed",
-              ) as string,
-            });
-          } finally {
-            this.recipientPubkey = "";
-            this.sendViaNostr = false;
-            this.sendData.memo = "";
-          }
-        }
+        const donationContext = {
+          recipientPubkey: this.recipientPubkey,
+          sendViaNostr: this.sendViaNostr,
+          memo: this.sendData.memo,
+          anonymous: this.sendData.anonymous ?? false,
+        };
         this.sendData.historyAmount =
           -this.sendData.amount * this.activeUnitCurrencyMultiplyer;
 
@@ -1417,15 +1623,25 @@ export default defineComponent({
           description: this.sendData.memo || "",
           bucketId,
         };
-        this.addPendingToken({ ...historyToken, tokenStr: historyToken.token });
-        this.sendData.historyToken = historyToken;
+        const persistedHistoryToken = this.addPendingToken({
+          ...historyToken,
+          tokenStr: historyToken.token,
+        });
+        this.sendData.historyToken = persistedHistoryToken;
+        this.queueTokenDirectMessage({
+          token: this.sendData.tokensBase64,
+          amount: sendAmount,
+          unlockTime: this.sendData.locktime || null,
+          bucketId,
+          referenceId: persistedHistoryToken.id || "",
+        });
 
         if (!this.offline) {
-          this.onTokenPaid(historyToken);
+          void this.sendDonationNotification(sendAmount, rail, donationContext);
+          void this.onTokenPaid(persistedHistoryToken);
         }
       } catch (error) {
-        console.error(error);
-        notifyError("Failed to send tokens");
+        this.handleSendFailure("send", error);
       }
     },
     pasteToP2PKField: async function () {

@@ -4,6 +4,23 @@
       >Login with Browser Signer</q-btn
     >
     <q-input v-model="nsec" type="password" label="nsec" outlined dense />
+    <q-input
+      v-model="pin"
+      :type="showPin ? 'text' : 'password'"
+      label="Unlock PIN / Password"
+      outlined
+      dense
+      :error="Boolean(errorMessage)"
+      :error-message="errorMessage"
+    >
+      <template #append>
+        <q-icon
+          :name="showPin ? 'visibility_off' : 'visibility'"
+          class="cursor-pointer"
+          @click="showPin = !showPin"
+        />
+      </template>
+    </q-input>
     <div class="text-negative text-xs">
       Keep your nsec secret – it never leaves your browser.
     </div>
@@ -15,17 +32,70 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { useCreatorHub } from "src/composables/useCreatorHub";
+import { useNostrAuth } from "src/composables/useNostrAuth";
+import { useNostrStore } from "src/stores/nostr";
+import { nip19, getPublicKey } from "nostr-tools";
+import { isValidNpub } from "src/utils/validators";
+import { useVaultStore } from "src/stores/vault";
 
-const { login } = useCreatorHub();
+const { loginWithExtension, loginWithSecret } = useNostrAuth();
 const nsec = ref("");
+const pin = ref("");
+const showPin = ref(false);
+const errorMessage = ref("");
+const nostr = useNostrStore();
+const vault = useVaultStore();
+
+async function ensureEncryptionReady() {
+  errorMessage.value = "";
+  if (!pin.value.trim()) {
+    errorMessage.value = "PIN required";
+    throw new Error("PIN required");
+  }
+  const pinValue = pin.value.trim();
+  if (!nostr.encryptionKey) {
+    if (nostr.hasEncryptedSecrets()) {
+      await nostr.unlockWithPin(pinValue);
+    } else {
+      await nostr.setEncryptionKeyFromPin(pinValue);
+    }
+  }
+  if (vault.isUnlocked) {
+    return;
+  }
+  if (vault.hasEncryptedVault) {
+    await vault.unlockWithPin(pinValue);
+  } else {
+    await vault.setEncryptionKeyFromPin(pinValue);
+  }
+}
 
 async function loginWithNip07() {
-  await login();
+  try {
+    await ensureEncryptionReady();
+    await loginWithExtension();
+    if (!isValidNpub(nostr.npub)) {
+      throw new Error("Invalid Nostr Public Key");
+    }
+  } catch (e: any) {
+    errorMessage.value = e?.message || "Invalid Nostr Public Key";
+  }
 }
 
 async function loginNsec() {
   if (!nsec.value) return;
-  await login(nsec.value);
+  errorMessage.value = "";
+  try {
+    const decoded = nip19.decode(nsec.value);
+    const pub = getPublicKey(decoded.data as Uint8Array);
+    const encoded = nip19.npubEncode(pub);
+    if (!isValidNpub(encoded)) {
+      throw new Error("Invalid Nostr Public Key");
+    }
+    await ensureEncryptionReady();
+    await loginWithSecret(nsec.value);
+  } catch (e: any) {
+    errorMessage.value = e?.message || "Invalid Nostr Public Key";
+  }
 }
 </script>

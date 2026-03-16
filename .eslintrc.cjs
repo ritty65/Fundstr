@@ -29,7 +29,16 @@ module.exports = {
     "no-useless-catch": "off",
     "no-async-promise-executor": "off",
     "@typescript-eslint/no-non-null-assertion": "off",
+    "no-console": ["error", { allow: ["warn", "error"] }],
   },
+  overrides: [
+    {
+      files: ["src/js/logger.ts"],
+      rules: {
+        "no-console": "off",
+      },
+    },
+  ],
   ignorePatterns: [
     "dist/**",
     "backups/**",

@@ -1,9 +1,6 @@
 import { debug } from "src/js/logger";
 import { defineStore } from "pinia";
 import { useLocalStorage } from "@vueuse/core";
-import { generateSecretKey, getPublicKey } from "nostr-tools";
-import { bytesToHex } from "@noble/hashes/utils"; // already an installed dependency
-import { useWalletStore } from "./wallet";
 import { useMnemonicStore } from "./mnemonic";
 import { CashuMint, CashuWallet, CheckStateEnum, Proof } from "@cashu/cashu-ts";
 import { useMintsStore } from "./mints";
@@ -45,6 +42,7 @@ export const useRestoreStore = defineStore("restore", {
         notifyError(
           i18n.global.t("restore.restore_mint_error_text", { error }),
         );
+        throw error;
       } finally {
         this.restoringState = false;
         this.restoringMint = "";
@@ -57,7 +55,6 @@ export const useRestoreStore = defineStore("restore", {
         return;
       }
       this.restoreProgress = 0;
-      const walletStore = useWalletStore();
       const proofsStore = useProofsStore();
       const mintStore = useMintsStore();
       await mintStore.activateMintUrl(url);

@@ -23,10 +23,25 @@ const routes = [
     ],
   },
   {
-    path: "/creator-hub",
+    path: "/creator/:npubOrHex",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
-      { path: "", component: () => import("src/pages/CreatorHubPage.vue") },
+      {
+        path: "",
+        name: "creator-deeplink",
+        redirect: (to) => ({
+          name: "PublicCreatorProfile",
+          params: { npubOrHex: to.params.npubOrHex },
+          query: to.query,
+          hash: to.hash,
+        }),
+      },
+      {
+        path: "profile",
+        name: "PublicCreatorProfile",
+        component: () => import("src/pages/PublicCreatorProfilePage.vue"),
+        props: true,
+      },
     ],
   },
   {
@@ -45,29 +60,19 @@ const routes = [
     children: [
       {
         path: "",
+        name: "MyProfile",
         component: () => import("src/pages/MyProfilePage.vue"),
       },
     ],
   },
   {
-    path: "/nutzap-profile",
+    path: "/creator-studio",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
       {
         path: "",
-        name: "NutzapProfile",
-        component: () => import("src/pages/NutzapProfilePage.vue"),
-      },
-    ],
-  },
-  {
-    path: "/creator/:npub",
-    component: () => import("layouts/FullscreenLayout.vue"),
-    children: [
-      {
-        path: "",
-        name: "PublicCreatorProfile",
-        component: () => import("src/pages/PublicCreatorProfilePage.vue"),
+        name: "CreatorStudio",
+        component: () => import("src/pages/CreatorStudioPage.vue"),
       },
     ],
   },
@@ -105,7 +110,6 @@ const routes = [
   {
     path: "/restore",
     component: () => import("layouts/FullscreenLayout.vue"),
-    meta: { hideHeader: true },
     children: [{ path: "", component: () => import("src/pages/Restore.vue") }],
   },
   {
@@ -132,6 +136,16 @@ const routes = [
     ],
   },
   {
+    path: "/supporters",
+    component: () => import("layouts/FullscreenLayout.vue"),
+    children: [
+      {
+        path: "",
+        component: () => import("src/pages/FundstrSupportersPage.vue"),
+      },
+    ],
+  },
+  {
     path: "/about",
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
@@ -143,6 +157,13 @@ const routes = [
     component: () => import("layouts/FullscreenLayout.vue"),
     children: [
       { path: "", component: () => import("src/pages/NostrLogin.vue") },
+    ],
+  },
+  {
+    path: "/unlock",
+    component: () => import("layouts/FullscreenLayout.vue"),
+    children: [
+      { path: "", component: () => import("src/pages/UnlockWallet.vue") },
     ],
   },
 

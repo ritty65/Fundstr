@@ -1,0 +1,195 @@
+# Fundstr Production Remediation - 2026-03-16
+
+## What was happening
+
+The production app had two urgent problems:
+
+1. The welcome flow could look stuck on the Nostr identity step because the UI was doing repeated NIP-07 extension handshakes and waiting on work that was not required to continue onboarding.
+2. The live site expected a same-origin phonebook endpoint at `/find_profiles.php`, but Hostinger was serving the SPA shell instead because no real endpoint existed in the deployed artifact.
+
+There was also avoidable startup latency because heavy boot work ran before the app mounted.
+
+## Changes shipped in this remediation
+
+### 1. Faster, safer onboarding NIP-07 flow
+
+- `src/pages/welcome/WelcomeSlideNostr.vue`
+  - removed the duplicate `loginWithExtension()` call after `connectBrowserSigner()`
+  - stopped passive mount-time extension checks from doing a full signer handshake
+  - added completion/skip events so the parent welcome flow can advance deliberately
+- `src/pages/WelcomePage.vue`
+  - removed automatic `initNip07Signer()` work on welcome page mount
+  - added step-complete and step-skip handlers for the Nostr slide
+- `src/pages/NostrLogin.vue`
+  - replaced the duplicate browser-signer login flow with a single `updateIdentity({ preferNip07: true })` path
+- `src/stores/nostr.ts`
+  - added soft timeouts around `blockUntilReady()`, `user()`, and relay-list lookup inside `initNip07Signer()` so the app no longer waits forever on slow extensions or relay APIs
+
+### 2. Faster first paint for onboarding and initial load
+
+- `src/main.js`
+  - reduced critical startup boot work to the essentials needed to render
+  - moved heavy boots (`cashu`, preload, relay preconnect, featured creators, nostr provider) into deferred background startup
+  - delayed deferred startup slightly for the welcome experience so the page can paint before wallet/relay work begins
+
+### 3. Restored same-origin phonebook endpoint contract
+
+- `public/find_profiles.php`
+  - added a production-safe same-origin JSON endpoint that proxies discovery search into the existing phonebook response shape
+  - this prevents Hostinger from returning SPA HTML for `/find_profiles.php`
+- `src/api/phonebook.ts`
+  - switched the default phonebook URL to same-origin `/find_profiles.php`
+  - updated endpoint construction so staging and production both resolve correctly on their own origins
+- `.env.example`
+- `.env.staging`
+- `.env.production`
+  - aligned `VITE_FIND_PROFILES_URL` to `/find_profiles.php`
+- `public/.htaccess`
+  - explicitly exempted `find_profiles.php` from SPA rewrite rules and asset-style rewrite fallback
+- `scripts/ci/verify-deploy-artifacts.mjs`
+- `scripts/smoke-tests.sh`
+- `.github/workflows/deploy-staging.yml`
+- `.github/workflows/deploy-prod.yml`
+  - added deploy verification and smoke coverage so future deploys fail if `find_profiles.php` is missing or resolves to HTML
+
+### 4. Reduced bad API fallback behavior
+
+- `src/lib/fundstrApi.ts`
+  - added support for `VITE_API_BASE` as a fallback source for legacy API base resolution
+  - this prevents accidental fallback to the broken same-origin `/api/v1` path when a configured API base already exists
+
+### 5. Forced the revised onboarding to re-run
+
+- `src/composables/useWelcomeGate.ts`
+  - bumped the welcome gate key from `welcome.seen:v1` to `welcome.seen:v2`
+  - bumped the cookie from `welcome_seen_v1` to `welcome_seen_v2`
+
+## Local verification completed
+
+The following checks were run after the code changes:
+
+```bash
+pnpm exec vitest run test/vitest/__tests__/welcome.interaction.spec.ts test/vitest/__tests__/phonebook.spec.ts test/stores/nostr.signers.spec.ts
+pnpm exec vitest run test/lib/fundstrApi.spec.ts
+pnpm run types
+pnpm run lint
+pnpm run test:ci
+pnpm run build
+```
+
+All of the commands above completed successfully.
+
+## What still needs to be fixed outside this patch
+
+### High priority infra work
+
+1. `api.fundstr.me/discover/creators` is still too slow for a snappy production search experience.
+   - Live evidence showed ~17.7s response time for a basic search query.
+2. The discovery API response currently leaks an internal relay address (`ws://127.0.0.1:7777`) in `relays_used`.
+3. The new `find_profiles.php` endpoint currently proxies discovery search.
+   - This restores correctness.
+   - It does **not** restore true phonebook speed.
+   - The long-term fix is a direct DB-backed query path on Hostinger or a dedicated fast API route.
+4. Legacy `/api/v1` creator endpoints still appear absent on `api.fundstr.me`.
+   - The app is more defensive now, but the backend contract is still incomplete.
+
+### Important hardening work
+
+1. Nostr private keys and wallet mnemonics still need stronger storage hardening in other parts of the app.
+2. Hostinger should serve stronger headers than only `Content-Security-Policy: upgrade-insecure-requests`.
+3. The large frontend bundles and oversized route chunks still need follow-up optimization.
+
+## Deployment follow-up checklist
+
+After deploying this remediation, verify:
+
+```bash
+curl -i 'https://fundstr.me/find_profiles.php?q=jack'
+curl -i 'https://staging.fundstr.me/find_profiles.php?q=jack'
+curl -i 'https://fundstr.me/deploy.txt'
+curl -i 'https://fundstr.me/featured-creators.json'
+```
+
+Expected result:
+
+- `/find_profiles.php` returns `application/json`, not SPA HTML
+- `deploy.txt` shows the new SHA
+- onboarding opens quickly and no longer hangs when the extension path is slow or unavailable
+
+## Confirmed live rollout state
+
+The remediation is now deployed and confirmed live.
+
+- Production branch: `main`
+- Production live SHA: `1bcc9cbdff1482f92b655cd6bb9be142260dfa94`
+- Production deploy run: `23134106991`
+- Staging branch: `Develop2`
+- Staging live SHA: `069747d1580f42adcdd150ed292e44c1076f56a8`
+- Staging deploy run: `23133608775`
+
+Verified outcomes:
+
+- `https://fundstr.me/find_profiles.php?q=jack` returns `200` JSON
+- `https://staging.fundstr.me/find_profiles.php?q=jack` returns `200` JSON
+- production smoke checks pass
+- staging smoke checks pass
+- live browser checks confirm the onboarding skip flow and generate-key flow both complete successfully
+
+The release baseline is therefore considered stable enough to freeze while backend performance work continues.
+
+## Follow-up after staging deploy failures
+
+The first two staging deploy attempts after the remediation merge failed for two different reasons.
+
+### Failure 1: brittle phonebook endpoint
+
+Observed behavior:
+
+- `https://staging.fundstr.me/find_profiles.php?q=jack` returned `502 Bad Gateway`
+- the workflow failed during smoke verification after rsync/deploy finished
+
+Root cause:
+
+- the first version of `public/find_profiles.php` returned HTTP `502` whenever the upstream discovery request failed
+- it also depended too strongly on host PHP/network behavior
+
+Hotfix applied:
+
+- support `HEAD` requests cleanly for smoke/header checks
+- fall back to `file_get_contents()` when cURL is unavailable
+- return `200` JSON with a warning payload instead of `502` when upstream discovery is unavailable
+
+### Failure 2: diagnostics artifact upload bug
+
+Observed behavior:
+
+- staging actually deployed and smoke checks passed
+- GitHub Actions still marked the workflow red during `Upload staging diagnostics artifact`
+
+Root cause:
+
+- `scripts/ci/staging-diagnostics.sh` generated artifact filenames directly from endpoint paths
+- the phonebook path included `?q=jack`, which produced invalid artifact filenames containing `?`
+- GitHub artifact upload rejects those filenames
+
+Hardening applied:
+
+- sanitize diagnostic snapshot slugs before writing files
+- make `HEAD /find_profiles.php` return immediately for faster probes
+- shorten degraded upstream timeout behavior so the endpoint fails fast instead of hanging for ~30 seconds
+
+Resulting intent:
+
+- staging deploys should stay green when the endpoint is present and serving valid JSON
+- diagnostics upload should no longer fail because of invalid filenames
+- degraded phonebook responses should be fast instead of blocking smoke checks and UX
+
+## Next sprint focus
+
+The next sprint should not spend time on deploy plumbing unless a regression appears.
+
+The new focus is:
+
+1. add a fast local DB-backed phonebook path on Hostinger for `find_profiles.php`
+2. reduce or eliminate dependence on slow upstream discovery for common creator searches
+3. keep the March 16 release as the clean baseline while shrinking the local worktree footprint

@@ -1,5 +1,7 @@
 <template>
-  <router-view />
+  <div class="app-shell">
+    <router-view />
+  </div>
   <DonationPrompt />
   <GuestConsentBar />
 </template>
@@ -10,7 +12,7 @@ import { useUiStore } from "src/stores/ui";
 import DonationPrompt from "components/DonationPrompt.vue";
 import GuestConsentBar from "components/GuestConsentBar.vue";
 
-  export default defineComponent({
+export default defineComponent({
   name: "App",
   components: { DonationPrompt, GuestConsentBar },
   setup() {
@@ -19,3 +21,9 @@ import GuestConsentBar from "components/GuestConsentBar.vue";
   },
 });
 </script>
+
+<style scoped>
+.app-shell {
+  padding-bottom: var(--guest-consent-space, 0px);
+}
+</style>

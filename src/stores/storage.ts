@@ -9,6 +9,8 @@ import { currentDateStr } from "src/js/utils";
 import { useProofsStore } from "./proofs";
 import { useBucketsStore } from "./buckets";
 import { useInvoiceHistoryStore } from "./invoiceHistory";
+import { cashuDb } from "./dexie";
+import type { WalletProof } from "src/types/proofs";
 
 export const useStorageStore = defineStore("storage", {
   state: () => ({
@@ -28,8 +30,40 @@ export const useStorageStore = defineStore("storage", {
         for (const key of keys) {
           // we treat some keys differently *magic*
           if (key === "cashu.dexie.db.proofs") {
-            const proofs = JSON.parse(backup[key]);
-            await proofsStore.addProofs(proofs);
+            const parsed = JSON.parse(backup[key] ?? "[]");
+            const proofs = Array.isArray(parsed)
+              ? (parsed as WalletProof[])
+              : [];
+            await cashuDb.transaction("rw", cashuDb.proofs, async () => {
+              await cashuDb.proofs.clear();
+              if (proofs.length) {
+                await cashuDb.proofs.bulkPut(proofs);
+              }
+            });
+            if (proofsStore.updateActiveProofs) {
+              await proofsStore.updateActiveProofs();
+            }
+          } else if (key === "cashu.dexie.db.lockedTokens") {
+            const parsed = JSON.parse(backup[key] ?? "[]");
+            const lockedTokens = Array.isArray(parsed) ? parsed : [];
+            await cashuDb.lockedTokens.clear();
+            if (lockedTokens.length) {
+              await cashuDb.lockedTokens.bulkPut(lockedTokens as any);
+            }
+          } else if (key === "cashu.dexie.db.subscriptions") {
+            const parsed = JSON.parse(backup[key] ?? "[]");
+            const subscriptions = Array.isArray(parsed) ? parsed : [];
+            await cashuDb.subscriptions.clear();
+            if (subscriptions.length) {
+              await cashuDb.subscriptions.bulkPut(subscriptions as any);
+            }
+          } else if (key === "cashu.dexie.db.historyTokens") {
+            const parsed = JSON.parse(backup[key] ?? "[]");
+            const historyTokens = Array.isArray(parsed) ? parsed : [];
+            await cashuDb.historyTokens.clear();
+            if (historyTokens.length) {
+              await cashuDb.historyTokens.bulkPut(historyTokens as any);
+            }
           } else if (key === "cashu.buckets") {
             bucketsStore.buckets = JSON.parse(backup[key]);
           } else {
@@ -51,8 +85,20 @@ export const useStorageStore = defineStore("storage", {
         jsonToSave[k] = v;
       }
       // proofs table *magic*
-      const proofs = await useProofsStore().getProofs();
+      const proofsStore = useProofsStore();
+      const [proofs, lockedTokens, subscriptions, historyTokens] =
+        await Promise.all([
+          proofsStore.getProofs(),
+          cashuDb.lockedTokens.toArray(),
+          cashuDb.subscriptions.toArray(),
+          cashuDb.historyTokens.toArray(),
+        ]);
       jsonToSave["cashu.dexie.db.proofs"] = JSON.stringify(proofs);
+      jsonToSave["cashu.dexie.db.lockedTokens"] = JSON.stringify(lockedTokens);
+      jsonToSave["cashu.dexie.db.subscriptions"] = JSON.stringify(
+        subscriptions,
+      );
+      jsonToSave["cashu.dexie.db.historyTokens"] = JSON.stringify(historyTokens);
 
       var textToSave = JSON.stringify(jsonToSave);
       var textToSaveAsBlob = new Blob([textToSave], {
@@ -65,8 +111,12 @@ export const useStorageStore = defineStore("storage", {
       downloadLink.download = fileName;
       downloadLink.textContent = "Download File";
       downloadLink.href = textToSaveAsURL;
-      downloadLink.onclick = function () {
-        document.body.removeChild(event.target as Node);
+      downloadLink.onclick = (evt) => {
+        const target = evt.currentTarget as HTMLAnchorElement | null;
+        if (target?.parentNode) {
+          target.parentNode.removeChild(target);
+        }
+        window.URL.revokeObjectURL(textToSaveAsURL);
       };
       downloadLink.style.display = "none";
       document.body.appendChild(downloadLink);
@@ -76,7 +126,7 @@ export const useStorageStore = defineStore("storage", {
     checkLocalStorage: async function () {
       const needsCleanup = this.checkLocalStorageQuota();
       if (needsCleanup) {
-        this.cleanUpLocalStorage(true);
+        await this.cleanUpLocalStorage(true);
       } else {
         this.cleanUpLocalStorageScheduler();
       }
@@ -108,10 +158,10 @@ export const useStorageStore = defineStore("storage", {
         new Date().getTime() - new Date(lastCleanUp).getTime() > cleanUpInterval
       ) {
         debug(`Last clean up: ${lastCleanUp}, cleaning up local storage`);
-        this.cleanUpLocalStorage();
+        void this.cleanUpLocalStorage();
       }
     },
-    cleanUpLocalStorage: function (verbose = false) {
+    cleanUpLocalStorage: async function (verbose = false) {
       const walletStore = useWalletStore();
       const tokenStore = useTokensStore();
       const localStorageSizeBefore = JSON.stringify(localStorage).length;
@@ -139,22 +189,9 @@ export const useStorageStore = defineStore("storage", {
         );
       }
 
-      // walk through the oldest paid tokenStore.historyTokens and delete the token
-      let paidTokens = tokenStore.historyTokens.filter(
-        (t) => t.status == "paid",
-      );
-
-      if (paidTokens.length > max_history) {
-        let sortedTokens = paidTokens.sort((a, b) => {
-          return new Date(a.date).getTime() - new Date(b.date).getTime();
-        });
-        const deleteTokens = sortedTokens.slice(
-          0,
-          sortedTokens.length - max_history,
-        );
-        for (var i = 0; i < deleteTokens.length; i++) {
-          deleteTokens[i].token = undefined;
-        }
+      const archivedCount = await tokenStore.archiveOldPaidTokens(max_history);
+      if (archivedCount > 0) {
+        debug(`Archived ${archivedCount} history tokens`);
       }
 
       const localStorageSizeAfter = JSON.stringify(localStorage).length;

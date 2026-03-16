@@ -6,16 +6,18 @@
     :virtual-scroll-slice-size="30"
     v-slot="{ item: msg, index: idx }"
   >
-    <div
-      v-if="showDateSeparator(idx)"
-      class="text-caption text-center q-my-md q-mx-sm divider-text"
-    >
-      {{ formatDay(msg.created_at) }}
+    <div :key="msg.localEcho?.localId || msg.id" class="message-item">
+      <div
+        v-if="showDateSeparator(idx)"
+        class="text-caption text-center q-my-md q-mx-sm divider-text"
+      >
+        {{ formatDay(msg.created_at) }}
+      </div>
+      <ChatMessageBubble
+        :message="msg"
+        :prev-message="messages[idx - 1]"
+      />
     </div>
-    <ChatMessageBubble
-      :message="msg"
-      :prev-message="messages[idx - 1]"
-    />
   </q-virtual-scroll>
 </template>
 
@@ -51,3 +53,8 @@ watch(
 
 defineExpose({ formatDay, showDateSeparator });
 </script>
+
+<style scoped>
+.message-item {
+}
+</style>

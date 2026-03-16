@@ -200,7 +200,7 @@ const connect = async () => {
 
 const disconnect = async () => {
   try {
-    await Promise.resolve(messenger.disconnect());
+    await messenger.disconnect();
     notifySuccess("Disconnected from relays");
   } catch (err: any) {
     notifyError(err?.message || "Failed to disconnect");

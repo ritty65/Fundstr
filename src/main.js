@@ -1,6 +1,218 @@
-import { createApp } from "vue";
+import { createApp, markRaw } from "vue";
+import { Dialog, LocalStorage, Notify, Quasar } from "quasar";
+
 import App from "./App.vue";
 import registerIcons from "./icons";
+import createRouter from "./router";
+import createStore from "./stores";
+import { hasSeenWelcome } from "./composables/useWelcomeGate";
 
-const app = createApp(App);
-registerIcons(app);
+import "quasar/dist/quasar.css";
+import "@quasar/extras/roboto-font/roboto-font.css";
+import "@quasar/extras/material-icons/material-icons.css";
+import "./css/app.scss";
+import "./css/base.scss";
+import "./css/buckets.scss";
+
+import bootSentry from "./boot/sentry";
+import bootI18n from "./boot/i18n";
+import bootNotify from "./boot/notify";
+import bootE2eTestApi from "./boot/e2e-test-api";
+
+const quasarConfig = {
+  config: {
+    dark: true,
+  },
+  plugins: {
+    Notify,
+    Dialog,
+    LocalStorage,
+  },
+};
+
+const deferredBootLoaders = [
+  () => import("./boot/fundstr-preload"),
+  () => import("./boot/welcomeGate"),
+  () => import("./boot/cashu"),
+  () => import("./boot/nostr-provider"),
+  () => import("./boot/prefetch-featured-creators"),
+  () => import("./boot/fundstrRelay"),
+];
+
+function scheduleDeferredStartup(task, delayMs = 0) {
+  if (typeof window === "undefined") {
+    void task();
+    return;
+  }
+
+  const queueTask = () => {
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(
+        () => {
+          void task();
+        },
+        { timeout: 1500 },
+      );
+      return;
+    }
+
+    window.setTimeout(() => {
+      void task();
+    }, 0);
+  };
+
+  if (delayMs > 0) {
+    window.setTimeout(queueTask, delayMs);
+    return;
+  }
+
+  queueTask();
+}
+
+async function loadDeferredBootFiles() {
+  const modules = await Promise.all(
+    deferredBootLoaders.map((loadModule) => loadModule()),
+  );
+
+  return modules
+    .map((module) => module.default)
+    .filter((entry) => typeof entry === "function");
+}
+
+async function runBootFiles(bootFiles, context, phase, shouldStop) {
+  for (const bootFn of bootFiles) {
+    if (shouldStop()) {
+      break;
+    }
+
+    try {
+      await bootFn(context);
+    } catch (error) {
+      console.error(`[boot] error during ${phase}`, error);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+async function bootstrap() {
+  const app = createApp(App);
+
+  registerIcons(app);
+
+  app.use(Quasar, quasarConfig);
+
+  const storeFactory = createStore;
+  const store =
+    typeof storeFactory === "function"
+      ? await storeFactory({ ssrContext: null })
+      : storeFactory;
+
+  if (store) {
+    app.use(store);
+  }
+
+  const routerFactory = createRouter;
+  const router = markRaw(
+    typeof routerFactory === "function"
+      ? await routerFactory({ store, ssrContext: null })
+      : routerFactory,
+  );
+
+  if (store && typeof store.use === "function") {
+    store.use(({ store: piniaStore }) => {
+      piniaStore.router = router;
+    });
+  }
+
+  let hasRedirected = false;
+  const redirect = (url) => {
+    hasRedirected = true;
+
+    if (typeof url === "string" && /^https?:\/\//.test(url)) {
+      window.location.href = url;
+      return;
+    }
+
+    void router.push(url).catch((error) => {
+      console.error("[boot] redirect navigation error", error);
+    });
+  };
+
+  const urlPath =
+    typeof window !== "undefined"
+      ? window.location.href.replace(window.location.origin, "")
+      : "/";
+  const publicPath = import.meta.env.BASE_URL ?? "/";
+  const bootContext = {
+    app,
+    router,
+    store,
+    ssrContext: null,
+    redirect,
+    urlPath,
+    publicPath,
+  };
+  const shouldStopBoots = () => hasRedirected;
+  const essentialBootFiles = [bootSentry, bootI18n, bootNotify].filter(
+    (entry) => typeof entry === "function",
+  );
+
+  if (import.meta.env.VITE_E2E && typeof bootE2eTestApi === "function") {
+    essentialBootFiles.push(bootE2eTestApi);
+  }
+
+  const essentialBootsOk = await runBootFiles(
+    essentialBootFiles,
+    bootContext,
+    "critical startup",
+    shouldStopBoots,
+  );
+
+  if (!essentialBootsOk) {
+    return;
+  }
+
+  if (hasRedirected) {
+    return;
+  }
+
+  app.use(router);
+
+  await router.isReady();
+
+  app.mount("#q-app");
+
+  const isWelcomeExperience =
+    urlPath.startsWith("/welcome") || !hasSeenWelcome();
+
+  scheduleDeferredStartup(
+    async () => {
+      const deferredBootFiles = await loadDeferredBootFiles();
+      const deferredBootsOk = await runBootFiles(
+        deferredBootFiles,
+        bootContext,
+        "deferred startup",
+        shouldStopBoots,
+      );
+
+      if (!deferredBootsOk) {
+        return;
+      }
+
+      if (import.meta.env.MODE === "pwa") {
+        await import("app/src-pwa/register-service-worker");
+      }
+    },
+    isWelcomeExperience ? 750 : 0,
+  );
+
+  if (import.meta.env.VITE_E2E && typeof window !== "undefined") {
+    window.__FUNDSTR_E2E_READY__ = true;
+  }
+}
+
+bootstrap().catch((error) => {
+  console.error("[main] failed to bootstrap application", error);
+});
