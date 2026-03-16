@@ -49,7 +49,7 @@ Run from any shell with curl:
 curl -fsSL https://fundstr.me/deploy.txt
 curl -fsSL https://staging.fundstr.me/deploy.txt
 
-for p in / /deploy.txt /find-creators.html /manifest.json /featured-creators.json; do
+for p in / /deploy.txt /find-creators.html /find_profiles.php?q=jack /manifest.json /featured-creators.json; do
   echo "PROD    $p $(curl -sS -o /dev/null -w "%{http_code}" "https://fundstr.me$p")"
   echo "STAGING $p $(curl -sS -o /dev/null -w "%{http_code}" "https://staging.fundstr.me$p")"
 done
@@ -61,6 +61,7 @@ Expected:
 - Production marker SHA equals `origin/main`.
 - Staging marker SHA equals `origin/Develop2`.
 - All listed endpoints return `200`.
+- `/find_profiles.php?q=jack` returns JSON instead of the SPA shell.
 
 ## Production Guard Behavior (Nested Staging)
 

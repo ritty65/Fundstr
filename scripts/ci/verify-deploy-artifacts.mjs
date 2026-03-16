@@ -10,6 +10,7 @@ const requiredFiles = [
   "index.html",
   "find-creators.html",
   "find-creators.css",
+  "find_profiles.php",
   "featured-creators.json",
   "manifest.json",
   "relayHealth.js",

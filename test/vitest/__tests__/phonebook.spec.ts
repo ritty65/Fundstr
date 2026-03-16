@@ -93,8 +93,11 @@ describe("findProfiles", () => {
     warnSpy.mockRestore();
   });
 
-  it("skips the default phonebook on cross-origin staging hosts", async () => {
+  it("uses the same-origin default phonebook on staging hosts", async () => {
     setLocationOrigin("https://staging.fundstr.me");
+    mockFetch.mockResolvedValue(
+      mockJsonResponse({ query: "jack", results: [], count: 0 }),
+    );
 
     try {
       const { findProfiles } = await loadPhonebook();
@@ -103,9 +106,11 @@ describe("findProfiles", () => {
         query: "jack",
         results: [],
         count: 0,
-        warning: "Limited results (discovery unavailable)",
       });
-      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://staging.fundstr.me/find_profiles.php?q=jack",
+        expect.any(Object),
+      );
     } finally {
       setLocationOrigin("https://fundstr.me");
     }

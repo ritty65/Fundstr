@@ -37,4 +37,10 @@ Quick verification after each staging/prod deploy:
 ```bash
 curl -fsSL https://fundstr.me/deploy.txt
 curl -fsSL https://staging.fundstr.me/deploy.txt
+curl -i 'https://fundstr.me/find_profiles.php?q=jack'
+curl -i 'https://staging.fundstr.me/find_profiles.php?q=jack'
 ```
+
+The phonebook endpoint checks above must return `application/json`.
+If either one returns the SPA shell HTML, the deploy is incomplete or the
+server rewrite rules are still intercepting `/find_profiles.php`.

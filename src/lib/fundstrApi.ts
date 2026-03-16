@@ -14,11 +14,22 @@ const metaEnv =
   (typeof import.meta !== "undefined" && (import.meta as any)?.env) || {};
 const processEnv =
   (typeof process !== "undefined" && (process as any)?.env) || {};
+const metaApiBase =
+  typeof metaEnv.VITE_API_BASE === "string" && metaEnv.VITE_API_BASE.trim()
+    ? `${metaEnv.VITE_API_BASE.trim().replace(/\/+$/, "")}/api/v1`
+    : "";
+const processApiBase =
+  typeof processEnv.VITE_API_BASE === "string" &&
+  processEnv.VITE_API_BASE.trim()
+    ? `${processEnv.VITE_API_BASE.trim().replace(/\/+$/, "")}/api/v1`
+    : "";
 const rawApiBase =
   (typeof metaEnv.VITE_FUNDSTR_API_BASE === "string" &&
     metaEnv.VITE_FUNDSTR_API_BASE.trim()) ||
   (typeof processEnv.VITE_FUNDSTR_API_BASE === "string" &&
     processEnv.VITE_FUNDSTR_API_BASE.trim()) ||
+  metaApiBase ||
+  processApiBase ||
   (typeof processEnv.FUNDSTR_API_BASE === "string" &&
     processEnv.FUNDSTR_API_BASE.trim()) ||
   DEFAULT_API_BASE;
