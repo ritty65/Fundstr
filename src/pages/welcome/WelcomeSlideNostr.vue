@@ -29,9 +29,7 @@
           </div>
           <ul class="q-mt-xs">
             <li v-for="ext in suggestedExtensions" :key="ext.name">
-              <a :href="ext.url" target="_blank" class="text-primary">{{
-                ext.name
-              }}</a>
+              {{ ext.name }}
             </li>
           </ul>
         </div>
@@ -202,59 +200,48 @@ const browserLabel = computed(() => {
 
 interface ExtensionLink {
   name: string;
-  url: string;
   browsers: BrowserKind[];
 }
 
 const extensions: ExtensionLink[] = [
   {
     name: "Alby",
-    url: "https://github.com/getAlby/lightning-browser-extension",
     browsers: ["chromium", "firefox"],
   },
   {
     name: "nos2x",
-    url: "https://github.com/fiatjaf/nos2x",
     browsers: ["chromium"],
   },
   {
     name: "nos2x-fox",
-    url: "https://github.com/diegogurpegui/nos2x-fox",
     browsers: ["firefox"],
   },
   {
     name: "nostr-keyx",
-    url: "https://github.com/susumuota/nostr-keyx",
     browsers: ["chromium"],
   },
   {
     name: "AKA Profiles",
-    url: "https://github.com/neilck/aka-extension",
     browsers: ["chromium"],
   },
   {
     name: "Frost2x",
-    url: "https://github.com/FROSTR-ORG/frost2x",
     browsers: ["chromium"],
   },
   {
     name: "Keys.Band",
-    url: "https://github.com/toastr-space/keys-band",
     browsers: ["chromium"],
   },
   {
     name: "horse",
-    url: "https://github.com/fiatjaf/horse",
     browsers: ["chromium"],
   },
   {
     name: "Nostore",
-    url: "https://github.com/ursuscamp/nostore",
     browsers: ["safari"],
   },
   {
     name: "Blockcore Wallet",
-    url: "https://github.com/block-core/blockcore-wallet",
     browsers: ["chromium", "firefox"],
   },
 ];

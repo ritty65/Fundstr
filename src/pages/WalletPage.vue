@@ -243,31 +243,6 @@
               </q-tab-panel>
             </q-tab-panels>
           </q-expansion-item>
-
-          <div style="margin-bottom: 0rem">
-            <div class="row q-pt-sm">
-              <div class="col-12 q-pt-xs">
-                <q-btn
-                  class="q-mx-xs q-px-sm q-my-sm"
-                  outline
-                  size="0.6rem"
-                  v-if="
-                    getPwaDisplayMode() == 'browser' &&
-                    deferredPWAInstallPrompt != null
-                  "
-                  color="primary"
-                  @click="triggerPwaInstall()"
-                  ><b>{{ $t("WalletPage.install.text") }}</b
-                  ><q-tooltip>{{
-                    $t("WalletPage.install.tooltip")
-                  }}</q-tooltip></q-btn
-                >
-              </div>
-            </div>
-          </div>
-
-          <iOSPWAPrompt />
-          <AndroidPWAPrompt />
         </div>
 
         <!-- BOTTOM LIGHTNING BUTTONS -->
@@ -446,8 +421,6 @@ import InvoiceDetailDialog from "components/InvoiceDetailDialog.vue";
 import SendDialog from "components/SendDialog.vue";
 import ReceiveDialog from "components/ReceiveDialog.vue";
 import QrcodeReader from "components/QrcodeReader.vue";
-import iOSPWAPrompt from "components/iOSPWAPrompt.vue";
-import AndroidPWAPrompt from "components/AndroidPWAPrompt.vue";
 import ActivityOrb from "components/ActivityOrb.vue";
 import BucketManager from "components/BucketManager.vue";
 import { watch } from "vue";
@@ -508,8 +481,6 @@ export default {
     QrcodeReader,
     SendDialog,
     ReceiveDialog,
-    iOSPWAPrompt,
-    AndroidPWAPrompt,
     ScanIcon,
     ActivityOrb,
     BucketManager,
@@ -519,7 +490,6 @@ export default {
       name: "",
       mintId: "",
       mintName: "",
-      deferredPWAInstallPrompt: null,
       action: "main",
       parse: {
         show: false,
@@ -776,43 +746,6 @@ export default {
     ////////////// WORKERS //////////////
 
     ////////////// UI HELPERS /////////////
-    registerPWAEventHook: function () {
-      // register event listener for PWA install prompt
-      window.addEventListener("beforeinstallprompt", (e) => {
-        // Prevent the mini-infobar from appearing on mobile
-        // e.preventDefault()
-        // Stash the event so it can be triggered later.
-        this.deferredPWAInstallPrompt = e;
-        debug(
-          `'beforeinstallprompt' event was fired.`,
-          this.getPwaDisplayMode(),
-        );
-      });
-    },
-    getPwaDisplayMode: function () {
-      const isStandalone = window.matchMedia(
-        "(display-mode: standalone)",
-      ).matches;
-      if (document.referrer.startsWith("android-app://")) {
-        return "twa";
-      } else if (navigator.standalone || isStandalone) {
-        return "standalone";
-      }
-      return "browser";
-    },
-    triggerPwaInstall: function () {
-      // Show the install prompt
-      // Note: this doesn't work with IOS, we do it with iOSPWAPrompt
-      this.deferredPWAInstallPrompt.prompt();
-      // Wait for the user to respond to the prompt
-      this.deferredPWAInstallPrompt.userChoice.then((choiceResult) => {
-        if (choiceResult.outcome === "accepted") {
-          debug("User accepted the install prompt");
-        } else {
-          debug("User dismissed the install prompt");
-        }
-      });
-    },
     registerBroadcastChannel: async function () {
       // uses session storage to identify the tab so we can ignore incoming messages from the same tab
       if (!sessionStorage.getItem("tabId")) {
@@ -926,7 +859,6 @@ export default {
       useUiStore().enableDebugConsole();
       await this.migrateToDexie();
       this.checkLocalStorage();
-      this.registerPWAEventHook();
       this.initializeMnemonic();
 
       void this.initWalletNostrBootstrap().catch((error) => {
