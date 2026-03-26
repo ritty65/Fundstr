@@ -455,8 +455,8 @@
             class="card tcenter community-card"
           >
             <span class="emj xl">💵</span>
-            <h3>View KalonAxiarch’s Tiers</h3>
-            <p>Support the creator</p>
+            <h3>KalonAxiarch’s Tiers</h3>
+            <p>Browse creator tiers</p>
           </router-link>
         </div>
       </section>
@@ -1203,10 +1203,16 @@ const filteredFaqs = computed(() => {
 .community-card h3 {
   margin: 0;
   line-height: 1.2;
+  max-width: 10ch;
+  font-size: clamp(1.9rem, 2.6vw, 2.8rem);
+  text-wrap: balance;
 }
 
 .community-card p {
   margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  text-wrap: balance;
 }
 
 .trust-grid .detail,

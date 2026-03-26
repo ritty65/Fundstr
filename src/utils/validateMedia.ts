@@ -18,6 +18,7 @@ const DEFAULT_TRUSTED_HTTPS_HOSTS = [
   "youtu.be",
   "nftstorage.link",
   "primal.net",
+  "m.primal.net",
   "snort.social",
 ];
 
