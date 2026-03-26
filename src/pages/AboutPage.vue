@@ -122,7 +122,7 @@
       <!-- Site Overview -->
       <section class="section fade" id="site-overview">
         <h2 class="h2 grad center">Site Overview</h2>
-        <div class="cards cards--4">
+        <div class="cards cards--4 site-overview-grid">
           <div
             v-for="(card, cardIndex) in siteOverviewCards"
             :key="card.title"
@@ -249,7 +249,7 @@
       <!-- Trust -->
       <section class="section fade" id="trust">
         <h2 class="h2 grad center">Trust Through Transparency</h2>
-        <div class="cards cards--4">
+        <div class="cards cards--4 trust-grid">
           <details class="card">
             <summary class="card-summary">
               <span class="emj xl">💻</span>
@@ -410,7 +410,7 @@
           />
         </div>
 
-        <div v-if="filteredFaqs.length" class="cards cards--3">
+        <div v-if="filteredFaqs.length" class="cards cards--3 faq-grid">
           <details v-for="(f, i) in filteredFaqs" :key="i" class="card">
             <summary class="faq-q">{{ f.q }}</summary>
             <div class="faq-a" v-html="f.a"></div>
@@ -429,12 +429,12 @@
           community.
         </p>
 
-        <div class="cards cards--3">
+        <div class="cards cards--3 community-grid">
           <a
             href="https://primal.net/p/nprofile1qqsdndspt5x07jhp5vrs0s4a7z0spwl4v28su0263vdjmwfmumxdygc6lzn8y"
             target="_blank"
             rel="noopener"
-            class="card tcenter"
+            class="card tcenter community-card"
           >
             <span class="emj xl">🧡</span>
             <h3>Fundstr on Nostr</h3>
@@ -444,7 +444,7 @@
             href="https://primal.net/KalonAxiarch"
             target="_blank"
             rel="noopener"
-            class="card tcenter"
+            class="card tcenter community-card"
           >
             <span class="emj xl">👤</span>
             <h3>Creator’s Profile</h3>
@@ -452,7 +452,7 @@
           </a>
           <router-link
             to="/find-creators?npub=npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m"
-            class="card tcenter"
+            class="card tcenter community-card"
           >
             <span class="emj xl">💵</span>
             <h3>View KalonAxiarch’s Tiers</h3>
@@ -926,10 +926,21 @@ const filteredFaqs = computed(() => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .cards--3 {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
 }
 .cards--4 {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+@media (max-width: 1080px) {
+  .site-overview-grid,
+  .trust-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .faq-grid,
+  .community-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 @media (max-width: 640px) {
   .cards--2,
@@ -1021,7 +1032,7 @@ const filteredFaqs = computed(() => {
   background: var(--s2);
   border: 1px solid rgba(var(--acRGB), 0.18);
   border-radius: 1rem;
-  padding: 1.25rem;
+  padding: 1.4rem;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
   display: block;
@@ -1048,6 +1059,7 @@ const filteredFaqs = computed(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
   color: inherit;
   text-decoration: none;
   font-weight: 700;
@@ -1062,31 +1074,54 @@ const filteredFaqs = computed(() => {
 }
 .card-link__primary h3 {
   margin: 0;
+  min-width: 0;
+  line-height: 1.2;
 }
 .card-summary {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
+  min-width: 0;
+  cursor: pointer;
+  list-style: none;
+}
+.card-summary::-webkit-details-marker,
+.faq-q::-webkit-details-marker {
+  display: none;
 }
 .summary-text {
   display: flex;
   flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
   white-space: normal; /* ensure wrapping */
+}
+.summary-title {
+  display: block;
+  line-height: 1.25;
+}
+.summary-desc {
+  display: block;
+  line-height: 1.5;
 }
 .links {
   list-style: none;
   padding: 0;
   margin: 0;
+  display: grid;
+  gap: 0.5rem;
 }
 .links li {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-weight: 600;
+  min-width: 0;
 }
 .link-text {
   display: inline-flex;
   align-items: center;
+  min-width: 0;
   color: inherit;
   text-decoration: none;
   border-radius: 0.45rem;
@@ -1123,9 +1158,71 @@ const filteredFaqs = computed(() => {
 
 .card h3,
 .card p,
-.link-text {
+.link-text,
+.faq-q,
+.summary-title,
+.summary-desc {
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.card p,
+.detail p,
+.faq-a,
+.community-card p {
+  line-height: 1.55;
+}
+
+.faq-grid .card,
+.community-card,
+.trust-grid .card,
+.site-overview-grid .card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.faq-q {
+  display: block;
+  cursor: pointer;
+  list-style: none;
+  line-height: 1.35;
+}
+
+.faq-a {
+  min-width: 0;
+}
+
+.community-card {
+  align-items: center;
+  justify-content: flex-start;
+  text-align: center;
+}
+
+.community-card h3 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.community-card p {
+  margin: 0;
+}
+
+.trust-grid .detail,
+.faq-grid .card,
+.site-overview-grid .card {
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .card {
+    padding: 1.2rem;
+  }
+
+  .summary-text {
+    gap: 0.25rem;
+  }
 }
 
 @media (min-width: 768px) {

@@ -77,7 +77,8 @@
   </q-dialog>
 </template>
 
-<script>import windowMixin from 'src/mixins/windowMixin'
+<script>
+import windowMixin from "src/mixins/windowMixin";
 import { debug } from "src/js/logger";
 
 import { defineComponent } from "vue";
@@ -140,13 +141,11 @@ export default defineComponent({
       }
     },
     cardClass: function () {
-      return this.$q.dark.isActive
-        ? "bg-gray-100 text-white"
-        : "bg-white text-dark";
+      return "bg-surface-2 text-1";
     },
     iconBgColor: function () {
       return this.$q.dark.isActive
-        ? "var(--q-color-grey-10)"
+        ? "var(--surface-contrast-border)"
         : "var(--q-color-grey-2)";
     },
   },
