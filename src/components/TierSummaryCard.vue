@@ -258,10 +258,6 @@ function resolvedMediaType(item: TierMedia) {
   const normalizedUrl = normalizeMediaUrl(item.url);
   const detected = determineMediaType(normalizedUrl);
 
-  if (detected === "iframe" || detected === "nostr") {
-    return "link" as const;
-  }
-
   return detected;
 }
 
@@ -281,15 +277,13 @@ function mediaLabel(item: TierMedia) {
 
 const embeddedMedia = computed(() =>
   displayMedia.value.filter(
-    (item) => isTrustedUrl(item.url) && resolvedMediaType(item) !== "link",
+    (item) => isTrustedUrl(item.url) && item.type !== "link",
   ),
 );
 
 const linkMedia = computed(() =>
   displayMedia.value
-    .filter(
-      (item) => !isTrustedUrl(item.url) || resolvedMediaType(item) === "link",
-    )
+    .filter((item) => !isTrustedUrl(item.url) || item.type === "link")
     .map((item) => ({
       ...item,
       label: mediaLabel(item),
@@ -486,6 +480,18 @@ const emitSubscribe = () => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 0.75rem;
+}
+
+.tier-card__media :deep(.media-preview-container) {
+  margin-bottom: 0;
+  border: 1px solid var(--surface-contrast-border);
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+}
+
+.tier-card__media :deep(video),
+.tier-card__media :deep(iframe),
+.tier-card__media :deep(img) {
+  display: block;
 }
 
 .tier-card__media-links {
