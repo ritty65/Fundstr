@@ -157,7 +157,7 @@ describe("fundstr API helpers", () => {
           amountMsat: 2500,
           cadence: "weekly",
           description: "Extra",
-          media: [],
+          media: [{ url: "https://cdn/image" }],
         },
       ]);
       expect(creator.tierSummary).toEqual({

@@ -125,6 +125,12 @@ const qOptionGroupStub = {
   template: `<div><button v-for="option in options" :key="option.value" type="button" @click="$emit('update:modelValue', option.value)">{{ option.label }}</button></div>`,
 };
 
+const qExpansionItemStub = {
+  props: ["modelValue", "label", "caption"],
+  emits: ["update:modelValue"],
+  template: `<div class="q-expansion-item"><div>{{ label }}</div><div>{{ caption }}</div><slot /></div>`,
+};
+
 function mountDialog(props?: Record<string, unknown>) {
   return mount(DonateDialog, {
     props: {
@@ -146,10 +152,13 @@ function mountDialog(props?: Record<string, unknown>) {
         "q-btn": qBtnStub,
         "q-chip": qChipStub,
         "q-option-group": qOptionGroupStub,
+        "q-expansion-item": qExpansionItemStub,
+        "q-space": simpleStub,
         "q-icon": simpleStub,
       },
       mocks: {
         $t: (key: string) => key,
+        $q: { screen: { lt: { sm: false } } },
       },
     },
   });

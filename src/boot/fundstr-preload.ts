@@ -1,5 +1,4 @@
 import { boot } from "quasar/wrappers";
-import { useNostrStore } from "stores/nostr";
 import {
   useCreatorsStore,
   FEATURED_CREATORS,
@@ -8,6 +7,30 @@ import {
 import { toHex } from "@/nostr/relayClient";
 
 const CONCURRENCY_LIMIT = 2;
+
+function runWhenIdle(task: () => void, timeout = 1200): void {
+  if (typeof window === "undefined") {
+    task();
+    return;
+  }
+
+  const idleCallback = (
+    window as Window & {
+      requestIdleCallback?: (
+        callback: () => void,
+        options?: { timeout?: number },
+      ) => number;
+    }
+  ).requestIdleCallback;
+
+  if (typeof idleCallback === "function") {
+    idleCallback(task, { timeout });
+    return;
+  }
+
+  window.setTimeout(task, timeout);
+}
+
 function normalizeHexTarget(entry: string, seen: Set<string>): string | null {
   if (typeof entry !== "string" || !entry.trim()) {
     return null;
@@ -48,9 +71,14 @@ async function hydrateCreator(
     const updatedAt = bundle.joined ?? null;
 
     await creators
-      .saveProfileCache(hex, bundle.profileEvent, bundle.profileDetails, { updatedAt })
+      .saveProfileCache(hex, bundle.profileEvent, bundle.profileDetails, {
+        updatedAt,
+      })
       .catch((error) => {
-        console.error(`[fundstr-preload] failed to cache discovery profile ${hex}`, error);
+        console.error(
+          `[fundstr-preload] failed to cache discovery profile ${hex}`,
+          error,
+        );
       });
 
     const tiers = Array.isArray(bundle.tiers) ? bundle.tiers : [];
@@ -97,7 +125,6 @@ async function runPreloadQueue(
 function scheduleFavoritesPreload(
   seenTargets: Set<string>,
   creators: ReturnType<typeof useCreatorsStore>,
-  initPromise: Promise<unknown>,
 ): void {
   if (typeof window === "undefined") {
     return;
@@ -111,7 +138,7 @@ function scheduleFavoritesPreload(
     }
     started = true;
     cleanup();
-    void initPromise.then(() => {
+    runWhenIdle(() => {
       const favorites = creators.favoriteHexPubkeys
         .map((favorite) => normalizeHexTarget(favorite, seenTargets))
         .filter((hex): hex is string => Boolean(hex));
@@ -134,19 +161,10 @@ function scheduleFavoritesPreload(
 }
 
 export default boot(() => {
-  const nostr = useNostrStore();
   const creators = useCreatorsStore();
   const seenTargets = new Set<string>();
 
-  const deferredInit = Promise.resolve().then(async () => {
-    try {
-      await nostr.initNdkReadOnly({ fundstrOnly: true });
-    } catch (e) {
-      console.warn("[fundstr-preload] initNdkReadOnly failed", e);
-    }
-  });
-
-  void deferredInit.then(() => {
+  runWhenIdle(() => {
     const featuredTargets = FEATURED_CREATORS.map((entry) =>
       normalizeHexTarget(entry, seenTargets),
     ).filter((hex): hex is string => Boolean(hex));
@@ -156,5 +174,5 @@ export default boot(() => {
     void runPreloadQueue(featuredTargets, creators);
   });
 
-  scheduleFavoritesPreload(seenTargets, creators, deferredInit);
+  scheduleFavoritesPreload(seenTargets, creators);
 });

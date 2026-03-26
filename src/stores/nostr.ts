@@ -265,6 +265,7 @@ async function publishDiscoveryProfileWithAcks(
 
 const RECONNECT_BACKOFF_MS = 15000; // 15s cooldown after failed attempts
 const MAX_RECONNECT_BACKOFF_MS = 5 * 60_000; // cap at 5 minutes
+const FETCH_MINTS_TIMEOUT_MS = 5000;
 
 export class WalletLockedError extends Error {
   constructor(message = "Wallet locked") {
@@ -3087,9 +3088,24 @@ export const useNostrStore = defineStore("nostr", {
     fetchMints: async function () {
       const filter: NDKFilter = { kinds: [38000 as NDKKind], limit: 2000 };
       const ndk = await useNdk();
-      const events = await ndk.fetchEvents(filter);
+      const events = await new Promise<any>((resolve, reject) => {
+        const timer = globalThis.setTimeout(() => {
+          reject(new Error("Mint discovery timed out"));
+        }, FETCH_MINTS_TIMEOUT_MS);
+
+        Promise.resolve(ndk.fetchEvents(filter)).then(
+          (result) => {
+            globalThis.clearTimeout(timer);
+            resolve(result);
+          },
+          (error: unknown) => {
+            globalThis.clearTimeout(timer);
+            reject(error);
+          },
+        );
+      });
       let mintUrls: string[] = [];
-      events.forEach((event) => {
+      events.forEach((event: any) => {
         if (event.tagValue("k") == "38172" && event.tagValue("u")) {
           const mintUrl = event.tagValue("u");
           if (
