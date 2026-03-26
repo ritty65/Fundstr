@@ -382,8 +382,11 @@ export default defineComponent({
       if (!active) {
         clearConnectingTimeout();
         stopHeartbeat();
-      } else if (relayStatus.value === "connecting") {
-        scheduleConnectingTimeout();
+      } else {
+        reconnectFundstrRelay();
+        if (relayStatus.value === "connecting") {
+          scheduleConnectingTimeout();
+        }
       }
     });
 

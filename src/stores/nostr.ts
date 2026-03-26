@@ -266,6 +266,59 @@ async function publishDiscoveryProfileWithAcks(
 const RECONNECT_BACKOFF_MS = 15000; // 15s cooldown after failed attempts
 const MAX_RECONNECT_BACKOFF_MS = 5 * 60_000; // cap at 5 minutes
 const FETCH_MINTS_TIMEOUT_MS = 5000;
+const READ_ONLY_CONNECT_ATTEMPTS = 1;
+const READ_ONLY_CONNECT_TIMEOUT_MS = 2500;
+const readOnlyPoolsWithListeners = new WeakSet<object>();
+
+function syncConnectedRelaysFromPool(store: any, pool: any) {
+  store.connectedRelays.clear();
+  for (const relay of pool.relays.values()) {
+    if (relay?.connected && relay.url) {
+      store.connectedRelays.add(relay.url);
+    }
+  }
+  store.connected = store.connectedRelays.size > 0;
+}
+
+function attachReadOnlyPoolListeners(store: any, ndk: any) {
+  const pool = ndk?.pool;
+  if (!pool || readOnlyPoolsWithListeners.has(pool)) {
+    return;
+  }
+
+  pool.on("relay:connect", (r: any) => {
+    if (r?.url) {
+      store.connectedRelays.add(r.url);
+      store.connected = store.connectedRelays.size > 0;
+    }
+  });
+
+  pool.on("relay:disconnect", (r: any) => {
+    if (r?.url) {
+      store.connectedRelays.delete(r.url);
+      store.connected = store.connectedRelays.size > 0;
+    }
+  });
+
+  (pool as any).on?.("relay:stalled", (r: any) => {
+    if (r?.url && !store.failedRelays.includes(r.url)) {
+      store.failedRelays.push(r.url);
+    }
+    if (r?.url) {
+      store.connectedRelays.delete(r.url);
+      store.connected = store.connectedRelays.size > 0;
+    }
+  });
+
+  (pool as any).on?.("relay:heartbeat", (r: any) => {
+    const idx = store.failedRelays.indexOf(r?.url);
+    if (idx !== -1) {
+      store.failedRelays.splice(idx, 1);
+    }
+  });
+
+  readOnlyPoolsWithListeners.add(pool);
+}
 
 export class WalletLockedError extends Error {
   constructor(message = "Wallet locked") {
@@ -1903,6 +1956,7 @@ export const useNostrStore = defineStore("nostr", {
         requireSigner: false,
         fundstrOnly,
       });
+      attachReadOnlyPoolListeners(this, ndk);
       if (modeChanged) {
         this.connected = false;
         this.connectedRelays.clear();
@@ -1910,30 +1964,18 @@ export const useNostrStore = defineStore("nostr", {
         return;
       }
       try {
-        await ndk.connect();
+        const connectError = await safeConnect(
+          ndk,
+          READ_ONLY_CONNECT_ATTEMPTS,
+          READ_ONLY_CONNECT_TIMEOUT_MS,
+        );
+        syncConnectedRelaysFromPool(this, ndk.pool);
+        if (this.connectedRelays.size === 0 && connectError) {
+          throw connectError;
+        }
         this.lastError = null;
         this.connectionFailed = false;
         this.readOnlyMode = desiredMode;
-        ndk.pool.on("relay:connect", (r: any) => {
-          this.connectedRelays.add(r.url);
-          this.connected = this.connectedRelays.size > 0;
-        });
-        ndk.pool.on("relay:disconnect", (r: any) => {
-          this.connectedRelays.delete(r.url);
-          this.connected = this.connectedRelays.size > 0;
-        });
-        (ndk.pool as any).on?.("relay:stalled", (r: any) => {
-          if (!this.failedRelays.includes(r.url)) {
-            this.failedRelays.push(r.url);
-            notifyWarning(`Relay ${r.url} stalled, reconnecting`);
-          }
-          this.connectedRelays.delete(r.url);
-          this.connected = this.connectedRelays.size > 0;
-        });
-        (ndk.pool as any).on?.("relay:heartbeat", (r: any) => {
-          const idx = this.failedRelays.indexOf(r.url);
-          if (idx !== -1) this.failedRelays.splice(idx, 1);
-        });
       } catch (e: any) {
         console.warn("[nostr] read-only connect failed", e);
         if (!suppressWarnings) {
@@ -1947,7 +1989,7 @@ export const useNostrStore = defineStore("nostr", {
       }
     },
     disconnect: async function () {
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       for (const relay of ndk.pool.relays.values()) relay.disconnect();
       this.signer = undefined;
       this.connected = false;
@@ -2289,7 +2331,7 @@ export const useNostrStore = defineStore("nostr", {
       return ndk;
     },
     ensureNdkConnected: async function (relays?: string[]) {
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       if (!this.connected) {
         try {
           await ndk.connect();
@@ -2797,7 +2839,7 @@ export const useNostrStore = defineStore("nostr", {
       }
     },
     initNip46Signer: async function (nip46Token?: string) {
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       if (!nip46Token && !this.nip46Token.length) {
         nip46Token = (await prompt(
           "Enter your NIP-46 connection string",
@@ -2948,7 +2990,7 @@ export const useNostrStore = defineStore("nostr", {
     },
     fetchEventsFromUser: async function () {
       const filter: NDKFilter = { kinds: [1], authors: [this.pubkey] };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       return await ndk.fetchEvents(filter);
     },
 
@@ -2958,7 +3000,7 @@ export const useNostrStore = defineStore("nostr", {
       pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [3], "#p": [pubkey] };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const events = await ndk.fetchEvents(filter);
       const authors = new Set<string>();
       events.forEach((ev) => authors.add(ev.pubkey));
@@ -2971,7 +3013,7 @@ export const useNostrStore = defineStore("nostr", {
       pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [3], authors: [pubkey] };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const events = await ndk.fetchEvents(filter);
       let latest: NDKEvent | undefined;
       events.forEach((ev) => {
@@ -2995,7 +3037,7 @@ export const useNostrStore = defineStore("nostr", {
       pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [0, 1], authors: [pubkey] };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const events = await ndk.fetchEvents(filter);
       let earliest: number | null = null;
       events.forEach((ev) => {
@@ -3020,7 +3062,7 @@ export const useNostrStore = defineStore("nostr", {
       pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [1], authors: [pubkey], limit: 1 };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const events = await ndk.fetchEvents(filter);
       let latest: NDKEvent | null = null;
       events.forEach((ev) => {
@@ -3040,7 +3082,7 @@ export const useNostrStore = defineStore("nostr", {
       pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [1], authors: [pubkey], limit };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const events = await ndk.fetchEvents(filter);
       const sorted = Array.from(events).sort(
         (a, b) => (b.created_at || 0) - (a.created_at || 0),
@@ -3087,7 +3129,7 @@ export const useNostrStore = defineStore("nostr", {
     },
     fetchMints: async function () {
       const filter: NDKFilter = { kinds: [38000 as NDKKind], limit: 2000 };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const events = await new Promise<any>((resolve, reject) => {
         const timer = globalThis.setTimeout(() => {
           reject(new Error("Mint discovery timed out"));

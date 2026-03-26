@@ -38,14 +38,21 @@ That meant small relay hiccups were amplified into visible UI slowness and webso
 
 The read-only NDK path was still calling the required-DM relay hook, which is appropriate for publish/DM reliability but too aggressive for simple browsing and discovery.
 
-### 3. Mint discovery had no timeout and weak loading-state cleanup
+### 3. Read-only NDK boot still touched the signer and wallet page warmed the wrong client
+
+- `createNdk()` was still calling `initSignerIfNotSet()` even when callers explicitly asked for `requireSigner: false`.
+- `WalletPage.vue` also eagerly called `useNdk()` during mount just to warm background features.
+
+That combination triggered unnecessary `getPublicKey()` calls and could still build a signed NDK with reconnect/watchdog behavior even on the wallet page.
+
+### 4. Mint discovery had no timeout and weak loading-state cleanup
 
 - `src/stores/nostr.ts` used `ndk.fetchEvents(...)` with no timeout.
 - `src/components/MintSettings.vue` turned on `discoveringMints` before async work but did not guard the whole flow with `finally`.
 
 If the relay stalled, the spinner could stay active indefinitely.
 
-### 4. Favicon wiring pointed to placeholder assets
+### 5. Favicon wiring pointed to placeholder assets
 
 `index.html` referenced `public/icons/16x16.png`, `32x32.png`, `96x96.png`, `128x128.png`, plus `public/favicon.ico`, but those files were placeholders rather than the real Fundstr icon set.
 
@@ -60,11 +67,19 @@ If the relay stalled, the spinner could stay active indefinitely.
   - removed the unconditional boot-time relay preconnect
 - `src/boot/ndk.ts`
   - stopped forcing `mustConnectRequiredRelays()` for read-only browsing mode
+  - honors `requireSigner: false` so read-only callers no longer trigger signer bootstrap
+  - uses a short, single-attempt connect window for read-only relay work
+  - no longer starts the reconnect watchdog for read-only NDK instances
 - `src/layouts/MainLayout.vue`
   - removed eager signer/relay bootstrap on mount
   - scoped relay banner + reconnect behavior to relay-heavy routes only
+  - reconnects immediately when a relay-heavy route becomes active
 - `src/layouts/FullscreenLayout.vue`
   - removed eager signer/relay bootstrap on mount
+- `src/pages/WalletPage.vue`
+  - removed eager `useNdk()` warming from mount so the wallet page no longer creates a signed relay client just by loading
+- `src/stores/npubcash.ts`
+  - NIP-98 helpers now use read-only NDK context for signing-only flows instead of forcing a signed relay bootstrap
 
 ### Mint discovery hardening
 
@@ -108,6 +123,7 @@ If the relay stalled, the spinner could stay active indefinitely.
 - mint discovery times out instead of hanging forever
 - mint discovery falls back to the curated catalog when relay reads stall
 - read-only NDK bootstrap does not force required relay connections
+- read-only NDK bootstrap skips signer bootstrap and watchdog startup
 
 ## Production diagnostics that confirmed the infra state
 
