@@ -455,7 +455,8 @@
     </div>
   </div>
 </template>
-<script>import windowMixin from 'src/mixins/windowMixin'
+<script>
+import windowMixin from "src/mixins/windowMixin";
 import { debug } from "src/js/logger";
 
 import { ref, defineComponent, onMounted, onBeforeUnmount } from "vue";
@@ -659,34 +660,112 @@ export default defineComponent({
       await this.mintAmountSwap(swapAmountData);
       this.clearSwapData();
     },
+    fetchFallbackMintRecommendations: async function () {
+      try {
+        const response = await fetch("/mints.json", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`Mint catalog request failed: ${response.status}`);
+        }
+
+        const payload = await response.json();
+        if (!Array.isArray(payload)) {
+          return [];
+        }
+
+        return payload
+          .map((entry) => {
+            if (typeof entry === "string") {
+              const url = entry.trim();
+              return url ? { url, count: 1 } : null;
+            }
+
+            if (
+              entry &&
+              typeof entry === "object" &&
+              typeof entry.url === "string"
+            ) {
+              const url = entry.url.trim();
+              if (!url) {
+                return null;
+              }
+
+              const count = Number(entry.count);
+              return {
+                url,
+                count:
+                  Number.isFinite(count) && count > 0 ? Math.round(count) : 1,
+              };
+            }
+
+            return null;
+          })
+          .filter((entry) => entry && entry.url.startsWith("https://"));
+      } catch (error) {
+        debug("Fallback mint catalog unavailable", error);
+        return [];
+      }
+    },
     fetchMintsFromNdk: async function () {
       this.discoveringMints = true;
-      await this.initNdkReadOnly();
-      debug("### fetch mints");
-      let maxTries = 5;
-      let tries = 0;
+      const nostrStore = useNostrStore();
       let mintUrls = [];
-      while (mintUrls.length == 0 && tries < maxTries) {
-        try {
-          mintUrls = await this.fetchMints();
-        } catch (e) {
-          debug("Error fetching mints", e);
+      let usedFallbackCatalog = false;
+      let usedCachedRecommendations = false;
+
+      try {
+        await this.initNdkReadOnly({ suppressWarnings: true });
+        debug("### fetch mints");
+        let maxTries = 2;
+        let tries = 0;
+
+        while (mintUrls.length === 0 && tries < maxTries) {
+          try {
+            mintUrls = await this.fetchMints();
+          } catch (e) {
+            debug("Error fetching mints", e);
+          }
+          tries++;
         }
-        tries++;
-      }
-      if (mintUrls.length == 0) {
-        this.notifyError(
-          this.$i18n.t("MintSettings.discover.actions.discover.error_no_mints"),
-        );
-      } else {
+
+        if (!mintUrls.length) {
+          mintUrls = await this.fetchFallbackMintRecommendations();
+          usedFallbackCatalog = mintUrls.length > 0;
+        }
+
+        if (!mintUrls.length && Array.isArray(this.mintRecommendations)) {
+          mintUrls = this.mintRecommendations.slice();
+          usedCachedRecommendations = mintUrls.length > 0;
+        }
+
+        if (!mintUrls.length) {
+          this.notifyError(
+            this.$i18n.t(
+              "MintSettings.discover.actions.discover.error_no_mints",
+            ),
+          );
+          return;
+        }
+
+        nostrStore.mintRecommendations = mintUrls;
+        if (usedFallbackCatalog) {
+          notifyWarning(
+            "Live mint discovery timed out, so Fundstr loaded the curated mint catalog instead.",
+          );
+        } else if (usedCachedRecommendations) {
+          notifyWarning(
+            "Live mint discovery is slow right now, so Fundstr is showing your last successful mint recommendations.",
+          );
+        }
+
         this.notifySuccess(
           this.$i18n.t("MintSettings.discover.actions.discover.success", {
             length: mintUrls.length,
           }),
         );
+        debug(mintUrls);
+      } finally {
+        this.discoveringMints = false;
       }
-      debug(mintUrls);
-      this.discoveringMints = false;
     },
     showMintInfo: async function (mint) {
       this.showMintInfoData = mint;

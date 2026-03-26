@@ -14,6 +14,7 @@ type SetupResult = {
   settings: any;
   resetFallbackState: ReturnType<typeof vi.fn>;
   clearRelayFailureCache: ReturnType<typeof vi.fn>;
+  mustConnectRequiredRelays: ReturnType<typeof vi.fn>;
 };
 
 async function setupNdkModule(
@@ -144,6 +145,7 @@ async function setupNdkModule(
     settings,
     resetFallbackState,
     clearRelayFailureCache,
+    mustConnectRequiredRelays,
   };
 }
 
@@ -250,5 +252,16 @@ describe("boot/ndk", () => {
 
     expect(setTimeoutSpy).not.toHaveBeenCalled();
     expect(consoleDebug).not.toHaveBeenCalled();
+  });
+
+  it("does not force required relay connections for read-only browsing mode", async () => {
+    const { module, mustConnectRequiredRelays } = await setupNdkModule({
+      relayBootstrapMode: "auto",
+      relayDebugLogsEnabled: false,
+    });
+
+    await module.createNdk();
+
+    expect(mustConnectRequiredRelays).not.toHaveBeenCalled();
   });
 });

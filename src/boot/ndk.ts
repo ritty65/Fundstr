@@ -33,10 +33,10 @@ import {
   type FreeRelayFallbackContext,
   type FreeRelayFallbackStatus,
 } from "src/nostr/freeRelayFallback";
+import { mustConnectRequiredRelays } from "src/nostr/relays";
 
 export { getFreeRelayFallbackStatus, onFreeRelayFallbackStatusChange };
 export type { FreeRelayFallbackStatus };
-import { mustConnectRequiredRelays } from "../nostr/relays";
 
 export type NdkBootErrorReason =
   | "no-signer"
@@ -368,7 +368,6 @@ async function createReadOnlyNdk(
   if (!opts.fundstrOnly && autoBootstrap && !fundstrOnly) {
     mergeDefaultRelays(ndk);
   }
-  mustConnectRequiredRelays(ndk);
   if (autoBootstrap) {
     await safeConnect(ndk);
   }
