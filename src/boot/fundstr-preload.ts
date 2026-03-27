@@ -1,9 +1,5 @@
 import { boot } from "quasar/wrappers";
-import {
-  useCreatorsStore,
-  FEATURED_CREATORS,
-  fetchFundstrProfileBundle,
-} from "stores/creators";
+import { useCreatorsStore, fetchFundstrProfileBundle } from "stores/creators";
 import { toHex } from "@/nostr/relayClient";
 
 const CONCURRENCY_LIMIT = 2;
@@ -163,16 +159,6 @@ function scheduleFavoritesPreload(
 export default boot(() => {
   const creators = useCreatorsStore();
   const seenTargets = new Set<string>();
-
-  runWhenIdle(() => {
-    const featuredTargets = FEATURED_CREATORS.map((entry) =>
-      normalizeHexTarget(entry, seenTargets),
-    ).filter((hex): hex is string => Boolean(hex));
-    if (!featuredTargets.length) {
-      return;
-    }
-    void runPreloadQueue(featuredTargets, creators);
-  });
 
   scheduleFavoritesPreload(seenTargets, creators);
 });

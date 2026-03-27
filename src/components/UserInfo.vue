@@ -36,12 +36,21 @@
 <script setup lang="ts">
 import { computed, watch } from "vue";
 import { useQuasar } from "quasar";
+import { useRoute } from "vue-router";
 import { useNostrStore } from "src/stores/nostr";
 import { shortenString } from "src/js/string-utils";
 import { notifyError } from "src/js/notify";
 
 const $q = useQuasar();
 const nostr = useNostrStore();
+const route = useRoute();
+const PASSIVE_PROFILE_PATHS = ["/wallet", "/welcome", "/unlock", "/restore"];
+
+function shouldAutoLoadProfile(path: string): boolean {
+  return !PASSIVE_PROFILE_PATHS.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
+}
 
 const profile = computed(() => {
   const entry: any = (nostr.profiles as any)[nostr.pubkey];
@@ -49,9 +58,11 @@ const profile = computed(() => {
 });
 
 watch(
-  () => nostr.pubkey,
-  (pk) => {
-    if (pk) nostr.getProfile(pk);
+  [() => nostr.pubkey, () => route.path],
+  ([pk, path]) => {
+    if (pk && shouldAutoLoadProfile(path)) {
+      void nostr.getProfile(pk);
+    }
   },
   { immediate: true },
 );

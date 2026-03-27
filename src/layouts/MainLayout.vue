@@ -135,7 +135,6 @@ import {
   useFundstrRelayStatus,
 } from "src/nutzap/relayClient";
 import { WS_FIRST_TIMEOUT_MS } from "src/nutzap/relayEndpoints";
-import { creatorCacheService } from "src/nutzap/creatorCache";
 import { debug } from "src/js/logger";
 
 export default defineComponent({
@@ -460,9 +459,6 @@ export default defineComponent({
       reconnectFundstrRelay,
       route,
     };
-  },
-  mounted() {
-    creatorCacheService.start();
   },
 });
 </script>

@@ -14,7 +14,8 @@ vi.mock("src/js/notify", () => ({
 }));
 
 vi.mock("src/utils/relay", () => ({
-  sanitizeRelayUrls: (urls: string[]) => urls.map((url) => url.trim().toLowerCase()),
+  sanitizeRelayUrls: (urls: string[]) =>
+    urls.map((url) => url.trim().toLowerCase()),
 }));
 
 vi.mock("src/utils/ecash", () => ({
@@ -73,8 +74,15 @@ vi.mock("src/nutzap/relayClient", async () => {
 
 vi.mock("src/stores/p2pk", () => {
   const store = {
-    p2pkKeys: [] as Array<{ publicKey: string; privateKey: string; used: boolean; usedCount: number }>,
-    haveThisKey: vi.fn((key: string) => store.p2pkKeys.some((entry) => entry.publicKey === key)),
+    p2pkKeys: [] as Array<{
+      publicKey: string;
+      privateKey: string;
+      used: boolean;
+      usedCount: number;
+    }>,
+    haveThisKey: vi.fn((key: string) =>
+      store.p2pkKeys.some((entry) => entry.publicKey === key),
+    ),
   };
   return {
     useP2PKStore: () => store,
@@ -114,8 +122,9 @@ vi.mock("src/composables/useNdk", () => {
     getUser: vi.fn(() => ({ fetchProfile: vi.fn(), profile: null })),
     addExplicitRelay: vi.fn(),
   };
+  const useNdk = vi.fn(async () => current);
   return {
-    useNdk: vi.fn(async () => current),
+    useNdk,
     rebuildNdk: vi.fn(async () => current),
     __setMockNdkInstance: (ndk: typeof current) => {
       current = ndk;
@@ -128,6 +137,7 @@ vi.mock("src/composables/useNdk", () => {
         addExplicitRelay: vi.fn(),
       };
     },
+    __mockUseNdk: useNdk,
   };
 });
 
@@ -148,7 +158,10 @@ vi.mock("@nostr-dev-kit/ndk", () => {
 
   class MockNip07Signer {
     blockUntilReady = vi.fn(async () => undefined);
-    user = vi.fn(async () => ({ npub: "npub-default", pubkey: "pubkey-default" }));
+    user = vi.fn(async () => ({
+      npub: "npub-default",
+      pubkey: "pubkey-default",
+    }));
     getRelays = vi.fn(async () => null as Record<string, any> | null);
     on = vi.fn();
     constructor() {
@@ -159,7 +172,10 @@ vi.mock("@nostr-dev-kit/ndk", () => {
 
   class MockNip46Signer {
     listeners = new Map<string, (payload: any) => void>();
-    blockUntilReady = vi.fn(async () => ({ npub: "npub-nip46", pubkey: "pubkey-nip46" }));
+    blockUntilReady = vi.fn(async () => ({
+      npub: "npub-nip46",
+      pubkey: "pubkey-nip46",
+    }));
     on = vi.fn((event: string, handler: (payload: any) => void) => {
       this.listeners.set(event, handler);
     });
@@ -232,14 +248,25 @@ import { nip19, getPublicKey } from "nostr-tools";
 import { bytesToHex } from "@noble/hashes/utils";
 
 import { useNostrStore, SignerType } from "src/stores/nostr";
-import { queueNip07Instance, mockNip07Instances, resetNdkMocks, queueNip46Instance, mockNip46Instances, NDKPrivateKeySigner } from "@nostr-dev-kit/ndk";
+import {
+  queueNip07Instance,
+  mockNip07Instances,
+  resetNdkMocks,
+  queueNip46Instance,
+  mockNip46Instances,
+  NDKPrivateKeySigner,
+} from "@nostr-dev-kit/ndk";
 import { __mockSettingsStore, __resetSettingsStore } from "src/stores/settings";
 import { __mockWalletStore, __resetWalletStore } from "src/stores/wallet";
 import { __resetMessengerStore } from "src/stores/messenger";
 import { __resetP2PKStore } from "src/stores/p2pk";
 import { __resetUseLocalStorage } from "@vueuse/core";
 import { notifyWarning } from "src/js/notify";
-import { __setMockNdkInstance, __resetMockNdkInstance } from "src/composables/useNdk";
+import {
+  __mockUseNdk,
+  __setMockNdkInstance,
+  __resetMockNdkInstance,
+} from "src/composables/useNdk";
 
 if (!(globalThis as any).localStorage) {
   (globalThis as any).localStorage = {
@@ -264,12 +291,14 @@ describe("useNostrStore signer initialisation", () => {
     __resetMessengerStore();
     __resetP2PKStore();
     __resetMockNdkInstance();
+    __mockUseNdk.mockClear();
     localStorage.clear();
+    window.history.replaceState({}, "", "/");
 
     setActivePinia(createPinia());
     const nostr = useNostrStore();
     currentStore = nostr;
-    connectSpy = vi.spyOn(nostr, "connect").mockResolvedValue();
+    connectSpy = vi.spyOn(nostr, "connect").mockResolvedValue(undefined);
     window.alert = vi.fn();
     window.open = vi.fn();
     (window as any).nostr = { enable: vi.fn() };
@@ -323,7 +352,7 @@ describe("useNostrStore signer initialisation", () => {
       user: vi.fn().mockResolvedValue({ npub: "npub123", pubkey }),
       getRelays: vi.fn(),
     });
-    currentStore.cachedNip07Relays = ["wss://cached" ];
+    currentStore.cachedNip07Relays = ["wss://cached"];
 
     await currentStore.initNip07Signer({ skipRelayConnect: true });
 
@@ -374,7 +403,9 @@ describe("useNostrStore signer initialisation", () => {
     __setMockNdkInstance(mockNdk);
 
     queueNip46Instance({
-      blockUntilReady: vi.fn().mockResolvedValue({ npub: "npub-46", pubkey: "pubkey-46" }),
+      blockUntilReady: vi
+        .fn()
+        .mockResolvedValue({ npub: "npub-46", pubkey: "pubkey-46" }),
     });
 
     await currentStore.initNip46Signer("token-123");
@@ -382,12 +413,18 @@ describe("useNostrStore signer initialisation", () => {
     expect(currentStore.nip46Token).toBe("token-123");
     expect(currentStore.signerType).toBe(SignerType.NIP46);
     expect(currentStore.pubkey).toBe("pubkey-46");
-    expect(window.alert).toHaveBeenCalledWith("You are now logged in as npub-46");
+    expect(window.alert).toHaveBeenCalledWith(
+      "You are now logged in as npub-46",
+    );
     expect(connectSpy).toHaveBeenCalled();
 
     const signer = mockNip46Instances[mockNip46Instances.length - 1];
     signer.emit("authUrl", "https://auth.example");
-    expect(window.open).toHaveBeenCalledWith("https://auth.example", "auth", "width=600,height=600");
+    expect(window.open).toHaveBeenCalledWith(
+      "https://auth.example",
+      "auth",
+      "width=600,height=600",
+    );
   });
 
   it("connects when enable() is missing but core NIP-07 methods exist", async () => {
@@ -400,7 +437,9 @@ describe("useNostrStore signer initialisation", () => {
     };
 
     queueNip07Instance({
-      user: vi.fn().mockResolvedValue({ npub: "npub-core", pubkey: "pubkey-core" }),
+      user: vi
+        .fn()
+        .mockResolvedValue({ npub: "npub-core", pubkey: "pubkey-core" }),
     });
 
     await expect(currentStore.connectBrowserSigner()).resolves.not.toThrow();
@@ -468,7 +507,9 @@ describe("useNostrStore signer initialisation", () => {
     expect(currentStore.pubkey).toBe(seedPubkey);
 
     currentStore.signer = undefined;
-    await currentStore.initWalletSeedPrivateKeySigner({ skipRelayConnect: true });
+    await currentStore.initWalletSeedPrivateKeySigner({
+      skipRelayConnect: true,
+    });
 
     expect(currentStore.signerType).toBe(SignerType.SEED);
     expect(currentStore.pubkey).toBe(seedPubkey);
@@ -519,4 +560,76 @@ describe("useNostrStore signer initialisation", () => {
       expect(seedSpy).not.toHaveBeenCalled();
     },
   );
+
+  it("defers warming the active profile on passive wallet routes", async () => {
+    window.history.replaceState({}, "", "/wallet");
+    currentStore.pubkey = "c".repeat(64);
+
+    const getProfileSpy = vi
+      .spyOn(currentStore, "getProfile")
+      .mockResolvedValue(null);
+
+    await currentStore.onIdentityChange();
+    expect(getProfileSpy).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new Event("pointerdown"));
+
+    await vi.waitFor(() => {
+      expect(getProfileSpy).toHaveBeenCalledWith("c".repeat(64));
+    });
+  });
+
+  it("warms the active profile immediately on non-passive routes", async () => {
+    window.history.replaceState({}, "", "/about");
+    currentStore.pubkey = "d".repeat(64);
+
+    const getProfileSpy = vi
+      .spyOn(currentStore, "getProfile")
+      .mockResolvedValue(null);
+
+    await currentStore.onIdentityChange();
+
+    await vi.waitFor(() => {
+      expect(getProfileSpy).toHaveBeenCalledWith("d".repeat(64));
+    });
+  });
+
+  it("keeps nutzap subscriptions on fundstr-only read-only NDK", async () => {
+    const subscription = { on: vi.fn() };
+    const subscribe = vi.fn(() => subscription);
+    __setMockNdkInstance({
+      pool: {
+        relays: new Map(),
+        on: vi.fn(),
+        off: vi.fn(),
+      },
+      connect: vi.fn(),
+      getUser: vi.fn(() => ({ fetchProfile: vi.fn(), profile: null })),
+      addExplicitRelay: vi.fn(),
+      subscribe,
+    } as any);
+
+    const initNdkReadOnlySpy = vi
+      .spyOn(currentStore, "initNdkReadOnly")
+      .mockResolvedValue(undefined);
+
+    const { subscribeToNutzaps } = await import("src/stores/nostr");
+    const onZap = vi.fn();
+    const result = await subscribeToNutzaps("e".repeat(64), onZap);
+
+    expect(initNdkReadOnlySpy).toHaveBeenCalledWith({
+      fundstrOnly: true,
+      suppressWarnings: true,
+    });
+    expect(__mockUseNdk).toHaveBeenCalledWith({
+      requireSigner: false,
+      fundstrOnly: true,
+    });
+    expect(subscribe).toHaveBeenCalledWith({
+      kinds: [9321],
+      "#p": ["e".repeat(64)],
+    });
+    expect(subscription.on).toHaveBeenCalledWith("event", onZap);
+    expect(result).toBe(subscription);
+  });
 });

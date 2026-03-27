@@ -1,4 +1,12 @@
-import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  beforeAll,
+  afterAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { reactive } from "vue";
 
@@ -19,7 +27,7 @@ const qComponentStubs = vi.hoisted(() => {
 
   const QAvatarStub = {
     name: "QAvatarStub",
-    template: "<div class=\"q-avatar\"><slot /></div>",
+    template: '<div class="q-avatar"><slot /></div>',
   };
 
   return { QBtnStub, QAvatarStub };
@@ -53,6 +61,12 @@ const nostrStoreMock = reactive({
 
 vi.mock("src/stores/nostr", () => ({
   useNostrStore: () => nostrStoreMock,
+}));
+
+const routeMock = reactive({ path: "/about" });
+
+vi.mock("vue-router", () => ({
+  useRoute: () => routeMock,
 }));
 
 const { QBtnStub: qBtnStub, QAvatarStub: qAvatarStub } = qComponentStubs;
@@ -103,6 +117,7 @@ describe("UserInfo", () => {
     notifyMocks.notifyError.mockReset();
     getProfile.mockReset();
     $qMock.notify.mockReset();
+    routeMock.path = "/about";
 
     document.execCommand = vi.fn(() => false) as typeof document.execCommand;
 
@@ -129,5 +144,22 @@ describe("UserInfo", () => {
     expect(message).toContain("Unable to copy");
     expect(caption).toContain(nostrStoreMock.npub);
   });
-});
 
+  it("does not auto-fetch the profile on passive wallet routes", async () => {
+    routeMock.path = "/wallet";
+
+    mountUserInfo();
+    await flushPromises();
+
+    expect(getProfile).not.toHaveBeenCalled();
+  });
+
+  it("auto-fetches the profile on non-passive routes", async () => {
+    routeMock.path = "/about";
+
+    mountUserInfo();
+    await flushPromises();
+
+    expect(getProfile).toHaveBeenCalledWith(nostrStoreMock.pubkey);
+  });
+});
