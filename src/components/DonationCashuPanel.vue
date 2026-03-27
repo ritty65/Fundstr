@@ -523,7 +523,7 @@ watch(amount, (value) => {
 }
 
 .cashu-panel__section {
-  background-color: var(--surface-2);
+  background: rgba(16, 22, 31, 0.94) !important;
   border: 1px solid var(--surface-contrast-border, rgba(0, 0, 0, 0.08));
   border-radius: 12px;
   padding: 12px;
