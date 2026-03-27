@@ -113,6 +113,7 @@ export default defineConfig({
       "test/components/NostrIdentityManager.interaction.spec.ts",
       "test/components/InvoicesTable.behavior.spec.ts",
       "test/components/DonateDialog.capability.spec.ts",
+      "test/components/DonationCashuPanel.behavior.spec.ts",
       "test/components/SubscribeDialog.invalid.spec.ts",
       "test/components/SubscribeDialog.success.spec.ts",
       "test/components/TokenCarousel.behavior.spec.ts",

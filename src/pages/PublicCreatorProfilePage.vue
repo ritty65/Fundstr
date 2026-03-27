@@ -673,6 +673,18 @@ export default defineComponent({
       "We couldn't load this creator profile. Double-check the link and try again.";
 
     const currentCreatorParam = ref<string>(creatorParam ?? "");
+    let creatorIdentityResolveToken = 0;
+    let creatorLoadToken = 0;
+
+    const nextCreatorLoadToken = () => {
+      creatorLoadToken += 1;
+      return creatorLoadToken;
+    };
+
+    const isActiveCreatorLoad = (token: number, expectedHex: string | null) =>
+      token === creatorLoadToken &&
+      Boolean(expectedHex) &&
+      creatorHex.value === expectedHex;
 
     const resolveHexFromDiscovery = async (identifier: string) => {
       if (!identifier.includes("@")) {
@@ -708,6 +720,7 @@ export default defineComponent({
     };
 
     const updateCreatorKeys = async (param: string | undefined) => {
+      const resolveToken = ++creatorIdentityResolveToken;
       const nextParam = extractCreatorIdentifier(
         typeof param === "string" ? param : "",
       );
@@ -728,6 +741,9 @@ export default defineComponent({
 
       try {
         const resolvedHex = await resolveHexFromDiscovery(nextParam);
+        if (resolveToken !== creatorIdentityResolveToken) {
+          return;
+        }
         if (!resolvedHex) {
           decodeError.value = decodeFailureMessage;
           return;
@@ -1011,6 +1027,7 @@ export default defineComponent({
     };
 
     const resetCreatorState = () => {
+      nextCreatorLoadToken();
       profile.value = {};
       profileRelayHints.value = [];
       hasLoadedRelayProfile.value = false;
@@ -1031,8 +1048,12 @@ export default defineComponent({
       clearAutoRefreshTimer();
     };
 
-    const fetchTiers = async () => {
-      if (!creatorHex.value) {
+    const fetchTiers = async (
+      options: { token?: number; expectedHex?: string | null } = {},
+    ) => {
+      const expectedHex = options.expectedHex ?? creatorHex.value;
+      const token = options.token ?? creatorLoadToken;
+      if (!expectedHex) {
         loadingTiers.value = false;
         return;
       }
@@ -1042,12 +1063,18 @@ export default defineComponent({
       beginRefresh();
       creators.tierFetchError = false;
       try {
-        await creators.fetchCreator(creatorHex.value, true);
+        await creators.fetchCreator(expectedHex, true);
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
+        }
         if (creators.tierFetchError) {
           fallbackActive.value = true;
           fallbackFailed.value = true;
         }
       } catch (error) {
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
+        }
         console.error(
           "[creator-profile] Failed to refresh tier definitions",
           error,
@@ -1056,6 +1083,9 @@ export default defineComponent({
         fallbackActive.value = true;
         fallbackFailed.value = true;
       } finally {
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
+        }
         endRefresh();
         if (!hasInitialTierData.value) {
           loadingTiers.value = false;
@@ -1085,9 +1115,15 @@ export default defineComponent({
 
     const refreshProfileFromRelay = async (
       bundle: FundstrProfileBundle | null,
-      opts: { forceRelayRefresh?: boolean } = {},
+      opts: {
+        forceRelayRefresh?: boolean;
+        token?: number;
+        expectedHex?: string | null;
+      } = {},
     ): Promise<void> => {
-      if (!creatorHex.value) return;
+      const expectedHex = opts.expectedHex ?? creatorHex.value;
+      const token = opts.token ?? creatorLoadToken;
+      if (!expectedHex) return;
       beginRefresh();
       try {
         const shouldForceRefresh =
@@ -1095,15 +1131,18 @@ export default defineComponent({
           fallbackActive.value ||
           !hasLoadedRelayProfile.value;
         let fallbackAttempted = false;
-        let relayProfile = await fetchNutzapProfile(creatorHex.value, {
+        let relayProfile = await fetchNutzapProfile(expectedHex, {
           fundstrOnly: true,
           forceRefresh: shouldForceRefresh,
         });
         if (!relayProfile) {
           fallbackAttempted = true;
-          relayProfile = await fetchNutzapProfile(creatorHex.value, {
+          relayProfile = await fetchNutzapProfile(expectedHex, {
             forceRefresh: true,
           });
+        }
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
         }
         if (!relayProfile) {
           if (fallbackAttempted) {
@@ -1235,13 +1274,13 @@ export default defineComponent({
           applyBundleTierList(bundle!.tiers);
         }
 
-        const cachedTierList = creators.tiersMap[creatorHex.value] ?? [];
+        const cachedTierList = creators.tiersMap[expectedHex] ?? [];
         const needsRelayTiers =
           (!Array.isArray(bundle?.tiers) || bundle!.tiers.length === 0) &&
           (!Array.isArray(cachedTierList) || cachedTierList.length === 0);
         if (needsRelayTiers) {
           try {
-            const relayTierEvent = await queryNutzapTiers(creatorHex.value);
+            const relayTierEvent = await queryNutzapTiers(expectedHex);
             const relayTiers = parseTiersContent(relayTierEvent?.content)
               .map((tier) => ({
                 id: tier.id,
@@ -1253,6 +1292,9 @@ export default defineComponent({
               }))
               .filter((tier) => typeof tier.id === "string" && tier.id.trim());
             if (relayTiers.length > 0) {
+              if (!isActiveCreatorLoad(token, expectedHex)) {
+                return;
+              }
               applyBundleTierList(relayTiers);
               loadingTiers.value = false;
               creators.tierFetchError = false;
@@ -1265,6 +1307,9 @@ export default defineComponent({
           }
         }
       } catch (error) {
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
+        }
         console.error(
           "[creator-profile] Failed to refresh relay profile",
           error,
@@ -1272,6 +1317,9 @@ export default defineComponent({
         fallbackActive.value = true;
         fallbackFailed.value = true;
       } finally {
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
+        }
         endRefresh();
       }
     };
@@ -1280,14 +1328,24 @@ export default defineComponent({
       if (!creatorHex.value) {
         return;
       }
+      const expectedHex = creatorHex.value;
+      const token = nextCreatorLoadToken();
 
       let shouldFetchStandaloneTiers = true;
 
-      const profilePromise = fetchFundstrProfileBundle(creatorHex.value, {
+      const profilePromise = fetchFundstrProfileBundle(expectedHex, {
         forceRefresh: true,
       })
         .then(async (bundle) => {
-          if (!bundle) return;
+          if (!bundle || !isActiveCreatorLoad(token, expectedHex)) return;
+          if (
+            bundle.ownerPubkey &&
+            bundle.ownerPubkey.toLowerCase() !== expectedHex.toLowerCase()
+          ) {
+            throw new Error(
+              `Mismatched creator bundle: expected ${expectedHex}, received ${bundle.ownerPubkey}`,
+            );
+          }
           const {
             profile: profileData,
             followers: followersCount,
@@ -1348,9 +1406,16 @@ export default defineComponent({
             );
           }
           profileLoadError.value = null;
-          await refreshProfileFromRelay(bundle, { forceRelayRefresh });
+          await refreshProfileFromRelay(bundle, {
+            forceRelayRefresh,
+            token,
+            expectedHex,
+          });
         })
         .catch((err) => {
+          if (!isActiveCreatorLoad(token, expectedHex)) {
+            return;
+          }
           const error = err instanceof Error ? err : new Error(String(err));
           profileLoadError.value = error;
           fallbackActive.value = true;
@@ -1363,8 +1428,11 @@ export default defineComponent({
 
       await profilePromise;
 
-      if (shouldFetchStandaloneTiers) {
-        await fetchTiers();
+      if (
+        shouldFetchStandaloneTiers &&
+        isActiveCreatorLoad(token, expectedHex)
+      ) {
+        await fetchTiers({ token, expectedHex });
       }
     };
     const requestAutoRefresh = () => {

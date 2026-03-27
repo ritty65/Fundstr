@@ -479,6 +479,7 @@ function convertNutzapTierToDiscoveryTier(
 }
 
 export interface FundstrProfileBundle {
+  ownerPubkey?: string;
   profile: Record<string, any> | null;
   profileEvent: RelayEvent | null;
   followers: number | null;
@@ -1009,6 +1010,7 @@ async function fetchFundstrProfileBundleFromDiscovery(
 
   let bundle: FundstrProfileBundle = {
     ...baseBundle,
+    ownerPubkey: normalizedPubkey,
     tierDataFresh,
     tierSecurityBlocked,
     tierFetchFailed,
@@ -1132,6 +1134,10 @@ function buildBundleFromCachedCreatorProfile(
     : null;
 
   return {
+    ownerPubkey:
+      typeof creator.pubkey === "string"
+        ? creator.pubkey.trim().toLowerCase()
+        : undefined,
     profile,
     profileEvent: null,
     followers,
@@ -1187,6 +1193,10 @@ function buildBundleFromLegacyCreator(
   const tierDataFresh = (creator as any).tierDataFresh === false ? false : true;
 
   return {
+    ownerPubkey:
+      typeof creator.pubkey === "string"
+        ? creator.pubkey.trim().toLowerCase()
+        : undefined,
     profile,
     profileEvent: null,
     followers,
@@ -1238,7 +1248,10 @@ async function loadBundleFromCache(
       );
     }
 
-    return buildBundleFromCachedCreatorProfile(creator, details);
+    return {
+      ...buildBundleFromCachedCreatorProfile(creator, details),
+      ownerPubkey: pubkeyHex.toLowerCase(),
+    };
   } catch (error) {
     console.warn("fetchFundstrProfileBundle failed to load Dexie cache", {
       pubkey: pubkeyHex,
@@ -1287,7 +1300,10 @@ async function fetchBundleFromLegacy(
         return entry.pubkey.trim().toLowerCase() === normalizedPubkey;
       });
       if (match) {
-        return buildBundleFromLegacyCreator(match);
+        return {
+          ...buildBundleFromLegacyCreator(match),
+          ownerPubkey: normalizedPubkey,
+        };
       }
     } catch (error) {
       lastError = error;
@@ -1526,6 +1542,10 @@ function buildBundleFromDiscoveryCreator(
     .filter((tier): tier is Tier => tier !== null && isValidTier(tier));
 
   return {
+    ownerPubkey:
+      typeof creator.pubkey === "string"
+        ? creator.pubkey.trim().toLowerCase()
+        : undefined,
     profile,
     profileEvent: null,
     followers,

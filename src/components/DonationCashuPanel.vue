@@ -77,14 +77,16 @@
           </div>
         </div>
         <q-input
-          v-model.number="amount"
+          :model-value="amount"
           type="number"
           dense
           outlined
           :label="t('DonationPrompt.cashu.amountLabel')"
           class="cashu-panel__amount-input"
           min="1"
-          :disable="isAuthBlocked"
+          step="1"
+          inputmode="numeric"
+          @update:model-value="onAmountInput"
         />
         <div
           v-if="sendError"
@@ -420,6 +422,26 @@ function extractTierAmount(raw: any): number | null {
 function selectPreset(preset: number) {
   activePreset.value = preset;
   amount.value = preset;
+  sendError.value = "";
+}
+
+function onAmountInput(value: number | string | null) {
+  if (value === null || value === undefined || value === "") {
+    amount.value = null;
+    activePreset.value = null;
+    sendError.value = "";
+    return;
+  }
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return;
+  }
+
+  amount.value = Math.max(0, Math.round(numeric));
+  if (!presetAmounts.value.includes(amount.value)) {
+    activePreset.value = null;
+  }
   sendError.value = "";
 }
 
