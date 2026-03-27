@@ -313,11 +313,12 @@ function startRelayWatchdog(ndk: NDK) {
 export async function safeConnect(
   ndk: NDK,
   retries = RELAY_CONNECT_RETRY.maxAttempts,
+  timeoutMs = RELAY_CONNECT_RETRY.timeoutMs,
 ): Promise<Error | null> {
   let lastError: Error | null = null;
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      await ndk.connect(RELAY_CONNECT_RETRY.timeoutMs);
+      await ndk.connect(timeoutMs);
       return null;
     } catch (e: any) {
       lastError = e as Error;
@@ -341,7 +342,11 @@ export async function safeConnect(
 
 export type CreateReadOnlyOptions = {
   fundstrOnly?: boolean;
+  requireSigner?: boolean;
 };
+
+const READ_ONLY_CONNECT_ATTEMPTS = 1;
+const READ_ONLY_CONNECT_TIMEOUT_MS = 2500;
 
 async function createReadOnlyNdk(
   opts: CreateReadOnlyOptions = {},
@@ -369,7 +374,11 @@ async function createReadOnlyNdk(
     mergeDefaultRelays(ndk);
   }
   if (autoBootstrap) {
-    await safeConnect(ndk);
+    await safeConnect(
+      ndk,
+      READ_ONLY_CONNECT_ATTEMPTS,
+      READ_ONLY_CONNECT_TIMEOUT_MS,
+    );
   }
   if (!fundstrOnly && autoBootstrap) {
     healthyPromise.then(async (healthy) => {
@@ -388,14 +397,17 @@ async function createReadOnlyNdk(
         }
       }
       if (changed) {
-        await safeConnect(ndk);
+        await safeConnect(
+          ndk,
+          READ_ONLY_CONNECT_ATTEMPTS,
+          READ_ONLY_CONNECT_TIMEOUT_MS,
+        );
       }
     });
   }
   if (!fundstrOnly && autoBootstrap) {
     scheduleBootstrapFallback(ndk);
   }
-  startRelayWatchdog(ndk);
   return ndk;
 }
 
@@ -453,6 +465,11 @@ export async function createSignedNdk(signer: NDKSigner): Promise<NDK> {
 export async function createNdk(
   options: CreateReadOnlyOptions = {},
 ): Promise<NDK> {
+  if (options.requireSigner === false) {
+    debug("Creating read-only NDK without signer bootstrap");
+    return createReadOnlyNdk(options);
+  }
+
   const nostrStore = useNostrStore();
   try {
     await nostrStore.initSignerIfNotSet();

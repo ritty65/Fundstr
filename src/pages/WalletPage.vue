@@ -424,7 +424,6 @@ import QrcodeReader from "components/QrcodeReader.vue";
 import ActivityOrb from "components/ActivityOrb.vue";
 import BucketManager from "components/BucketManager.vue";
 import { watch } from "vue";
-import { useNdk } from "src/composables/useNdk";
 
 // pinia stores
 import { mapActions, mapState, mapWritableState } from "pinia";
@@ -893,9 +892,10 @@ export default {
 
     void (async () => {
       try {
-        await useNdk();
-        this.generateNPCConnection();
-        this.claimAllTokens();
+        await Promise.allSettled([
+          this.generateNPCConnection(),
+          this.claimAllTokens(),
+        ]);
       } catch (error) {
         console.error("Failed to warm wallet Nostr client", error);
         notifyWarning(

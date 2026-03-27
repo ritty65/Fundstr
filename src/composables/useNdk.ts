@@ -82,7 +82,10 @@ export async function useNdk(
     if (targetMode === "fundstr-only") {
       setFundstrOnlyRuntimeOverride(true);
       try {
-        adoptCachedNdk(await createNdk({ fundstrOnly: true }), "fundstr-only");
+        adoptCachedNdk(
+          await createNdk({ fundstrOnly: true, requireSigner }),
+          "fundstr-only",
+        );
       } catch (err) {
         throw new NetworkError(
           "Unable to reach fundstr-only relays. Please retry after confirming connectivity.",
@@ -93,7 +96,7 @@ export async function useNdk(
     } else {
       setFundstrOnlyRuntimeOverride(false);
       try {
-        adoptCachedNdk(await createNdk(), "default");
+        adoptCachedNdk(await createNdk({ requireSigner }), "default");
       } catch (err) {
         throw new NetworkError(
           "Nostr relays are unreachable right now. We'll keep retrying in the background.",
