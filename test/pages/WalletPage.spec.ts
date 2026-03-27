@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createRouter, createMemoryHistory } from "vue-router";
 import { createPinia, setActivePinia } from "pinia";
@@ -18,6 +18,7 @@ import {
   QSkeletonStub,
 } from "./quasarStubs";
 import { useMintsStore } from "src/stores/mints";
+import { useNostrStore } from "src/stores/nostr";
 
 if (!window.matchMedia) {
   // @ts-ignore - jsdom stub
@@ -134,7 +135,9 @@ describe("WalletPage", () => {
 
     const module = await import("src/pages/WalletPage.vue");
     const component = module.default;
-    useMintsStore().mints = [{}];
+    useMintsStore().mints = [
+      { url: "https://mint.test", keys: [], keysets: [] },
+    ] as any;
 
     return mount(component, {
       global: {
@@ -171,7 +174,9 @@ describe("WalletPage", () => {
     await router.isReady();
     const module = await import("src/pages/WalletPage.vue");
     const component = module.default;
-    useMintsStore().mints = [{}];
+    useMintsStore().mints = [
+      { url: "https://mint.test", keys: [], keysets: [] },
+    ] as any;
 
     const wrapper = mount(component, {
       global: {
@@ -214,6 +219,20 @@ describe("WalletPage", () => {
     expect(buttonLabels).toContain("WalletPage.actions.send.label");
   });
 
+  it("does not eagerly bootstrap wallet nostr when background features are disabled", async () => {
+    const nostr = useNostrStore();
+    const initSignerSpy = vi.spyOn(nostr, "initSigner");
+    const ensureDmListenersSpy = vi.spyOn(nostr, "ensureDmListeners");
+
+    await mountWalletPage();
+    balanceDeferred.resolve();
+    await flushPromises();
+    await nextTick();
+
+    expect(initSignerSpy).not.toHaveBeenCalled();
+    expect(ensureDmListenersSpy).not.toHaveBeenCalled();
+  });
+
   it("maintains the tab structure and updates panels when switching tabs", async () => {
     const wrapper = await mountWalletPage();
     balanceDeferred.resolve();
@@ -231,7 +250,7 @@ describe("WalletPage", () => {
       "info",
     ]);
 
-    await wrapper.vm.setTab("mints");
+    await (wrapper.vm as any).setTab("mints");
     await nextTick();
 
     expect(wrapper.find("[data-panel='mints']").exists()).toBe(true);

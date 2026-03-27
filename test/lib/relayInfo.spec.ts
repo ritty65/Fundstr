@@ -1,7 +1,50 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  afterEach,
+  vi,
+} from "vitest";
 import { fetchRelayInfo } from "../../src/lib/relayInfo";
 
 const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>();
+const healthyRelayUrls = new Set<string>();
+const createdNdkProbes: Array<any> = [];
+
+vi.mock("@nostr-dev-kit/ndk", () => {
+  class MockNDK {
+    pool = {
+      relays: new Map<string, any>(),
+      getRelay: (url: string) => this.pool.relays.get(url),
+    };
+
+    constructor(options: { explicitRelayUrls?: string[] } = {}) {
+      for (const url of options.explicitRelayUrls ?? []) {
+        this.addExplicitRelay(url);
+      }
+      createdNdkProbes.push(this);
+    }
+
+    addExplicitRelay(url: string) {
+      const relay = {
+        url,
+        connect: vi.fn(async (_timeoutMs?: number) => {
+          if (!healthyRelayUrls.has(url)) {
+            throw new Error(`offline:${url}`);
+          }
+        }),
+        disconnect: vi.fn(),
+      };
+      this.pool.relays.set(url, relay);
+      return relay;
+    }
+  }
+
+  return { default: MockNDK };
+});
 
 function createJsonResponse(body: unknown, status = 200): Response {
   const payload = body === undefined ? null : JSON.stringify(body);
@@ -44,7 +87,7 @@ describe("fetchRelayInfo", () => {
         expect.objectContaining({
           headers: { Accept: "application/nostr+json" },
           signal: expect.any(Object),
-        })
+        }),
       );
 
       expect(result.ok).toBe(true);
@@ -79,7 +122,10 @@ describe("fetchRelayInfo", () => {
     try {
       const result = await fetchRelayInfo("wss://relay.example");
 
-      expect(result).toEqual({ ok: false, reason: "unsupported or malformed NIP-11" });
+      expect(result).toEqual({
+        ok: false,
+        reason: "unsupported or malformed NIP-11",
+      });
       expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
     } finally {
       clearTimeoutSpy.mockRestore();
@@ -87,7 +133,9 @@ describe("fetchRelayInfo", () => {
   });
 
   it("reports timeouts when the abort signal rejects the request", async () => {
-    const abortError = Object.assign(new Error("The operation timed out"), { name: "AbortError" });
+    const abortError = Object.assign(new Error("The operation timed out"), {
+      name: "AbortError",
+    });
     fetchMock.mockImplementationOnce((_input, init) => {
       const signal = init?.signal as AbortSignal | undefined;
       return new Promise((_resolve, reject) => {
@@ -96,7 +144,7 @@ describe("fetchRelayInfo", () => {
           () => {
             reject(abortError);
           },
-          { once: true }
+          { once: true },
         );
       }) as ReturnType<typeof fetch>;
     });
@@ -110,5 +158,50 @@ describe("fetchRelayInfo", () => {
     } finally {
       clearTimeoutSpy.mockRestore();
     }
+  });
+});
+
+describe("filterHealthyRelays", () => {
+  beforeEach(() => {
+    healthyRelayUrls.clear();
+    createdNdkProbes.length = 0;
+  });
+
+  it("probes relays with an isolated ndk and disconnects probe relays", async () => {
+    healthyRelayUrls.add("wss://good.example");
+
+    const relayHealth = await import("../../src/utils/relayHealth");
+    const result = await relayHealth.filterHealthyRelays([
+      "wss://good.example",
+      "wss://bad.example",
+    ]);
+
+    expect(result).toEqual(["wss://good.example"]);
+    expect(createdNdkProbes).toHaveLength(1);
+
+    const probe = createdNdkProbes[0];
+    expect(
+      probe.pool.relays.get("wss://good.example").connect,
+    ).toHaveBeenCalled();
+    expect(
+      probe.pool.relays.get("wss://bad.example").connect,
+    ).toHaveBeenCalled();
+    expect(
+      probe.pool.relays.get("wss://good.example").disconnect,
+    ).toHaveBeenCalled();
+    expect(
+      probe.pool.relays.get("wss://bad.example").disconnect,
+    ).toHaveBeenCalled();
+  });
+
+  it("falls back to vetted relays when no candidate relay connects", async () => {
+    const relayHealth = await import("../../src/utils/relayHealth");
+    const config = await import("../../src/config/relays");
+
+    const result = await relayHealth.filterHealthyRelays([
+      "wss://offline.example",
+    ]);
+
+    expect(result).toEqual(config.FREE_RELAYS);
   });
 });

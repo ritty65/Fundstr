@@ -82,7 +82,9 @@ export class RelayWatchdog {
               await this.ndk.connect();
             } catch (err: any) {
               connectError =
-                err instanceof Error ? err : new Error(String(err ?? "connect"));
+                err instanceof Error
+                  ? err
+                  : new Error(String(err ?? "connect"));
             }
             const afterConnected = [...pool.relays.values()].some(
               (r: any) => r.connected,
@@ -127,7 +129,10 @@ export class RelayWatchdog {
       void check();
     }, 5000);
 
-    this.heartbeatTimer = setInterval(heartbeat, this.options.heartbeatIntervalMs);
+    this.heartbeatTimer = setInterval(
+      heartbeat,
+      this.options.heartbeatIntervalMs,
+    );
   }
 
   stop() {
@@ -159,7 +164,10 @@ export class RelayWatchdog {
   }
 
   private detachPoolListeners() {
-    (this.ndk.pool as any).off?.("relay:disconnect", this.poolDisconnectHandler);
+    (this.ndk.pool as any).off?.(
+      "relay:disconnect",
+      this.poolDisconnectHandler,
+    );
   }
 
   private async pingRelays() {
@@ -186,11 +194,15 @@ export class RelayWatchdog {
       since: Math.floor(Date.now() / 1000),
     };
 
-    const sub = this.ndk.subscribe([filter], {
-      closeOnEose: true,
-      groupable: false,
-      relaySet,
-    }, false as any);
+    const sub = this.ndk.subscribe(
+      [filter],
+      {
+        closeOnEose: true,
+        groupable: false,
+        relaySet,
+      },
+      false as any,
+    );
 
     let timeout: ReturnType<typeof setTimeout>;
     let stopped = false;
@@ -330,7 +342,7 @@ export async function stickyDmSubscription(
   getSince: () => number,
   handler: (ev: NDKEvent) => void | Promise<void>,
 ): Promise<() => void> {
-  const ndk = await useNdk();
+  const ndk = await useNdk({ requireSigner: false });
   let sub: any;
 
   const subscribe = () => {
@@ -361,4 +373,3 @@ export async function stickyDmSubscription(
     }
   };
 }
-
