@@ -181,11 +181,11 @@ defineExpose({
   background: rgba(5, 8, 14, 0.72);
 }
 
-.donation-card {
+.donation-card.q-card--dark.q-dark {
   width: min(100%, 38rem);
   border-radius: 22px;
   border: 1px solid var(--surface-contrast-border);
-  background-color: var(--surface-2);
+  background: rgba(11, 16, 24, 0.96) !important;
   color: var(--text-1);
   box-shadow: 0 28px 72px rgba(15, 23, 42, 0.34);
 }
@@ -194,9 +194,13 @@ defineExpose({
   margin-bottom: 8px;
 }
 
-.donation-panels {
+.donation-panels.q-tab-panels--dark.q-dark {
   border-radius: 18px;
-  background-color: var(--surface-2);
+  background: rgba(11, 16, 24, 0.94) !important;
+}
+
+.donation-panels :deep(.q-tab-panel) {
+  background: transparent;
 }
 
 .donation-actions {

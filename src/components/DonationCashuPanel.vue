@@ -77,14 +77,16 @@
           </div>
         </div>
         <q-input
-          v-model.number="amount"
+          :model-value="amount"
           type="number"
           dense
           outlined
           :label="t('DonationPrompt.cashu.amountLabel')"
           class="cashu-panel__amount-input"
           min="1"
-          :disable="isAuthBlocked"
+          step="1"
+          inputmode="numeric"
+          @update:model-value="onAmountInput"
         />
         <div
           v-if="sendError"
@@ -423,6 +425,26 @@ function selectPreset(preset: number) {
   sendError.value = "";
 }
 
+function onAmountInput(value: number | string | null) {
+  if (value === null || value === undefined || value === "") {
+    amount.value = null;
+    activePreset.value = null;
+    sendError.value = "";
+    return;
+  }
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return;
+  }
+
+  amount.value = Math.max(0, Math.round(numeric));
+  if (!presetAmounts.value.includes(amount.value)) {
+    activePreset.value = null;
+  }
+  sendError.value = "";
+}
+
 async function sendCashuDonation() {
   if (isAuthBlocked.value) {
     return;
@@ -523,7 +545,7 @@ watch(amount, (value) => {
 }
 
 .cashu-panel__section {
-  background-color: var(--surface-2);
+  background: rgba(16, 22, 31, 0.94) !important;
   border: 1px solid var(--surface-contrast-border, rgba(0, 0, 0, 0.08));
   border-radius: 12px;
   padding: 12px;

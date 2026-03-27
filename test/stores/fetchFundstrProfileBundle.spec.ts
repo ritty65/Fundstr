@@ -203,6 +203,7 @@ describe("fetchFundstrProfileBundle", () => {
     expect(discoveryMock.getCreators).toHaveBeenCalledTimes(2);
     expect(discoveryMock.getCreatorTiers).toHaveBeenCalledTimes(2);
     expect(bundle.fetchedFromFallback).toBe(false);
+    expect(bundle.ownerPubkey).toBe(PUBKEY_HEX);
     expect(bundle.tierDataFresh).toBe(true);
     expect(bundle.tierSecurityBlocked).toBe(false);
     expect(bundle.profile).toEqual(baseProfile);
@@ -305,6 +306,7 @@ describe("fetchFundstrProfileBundle", () => {
     expect(queryNutzapProfileMock).toHaveBeenCalledTimes(1);
     expect(queryNutzapTiersMock).toHaveBeenCalledTimes(1);
     expect(bundle.fetchedFromFallback).toBe(false);
+    expect(bundle.ownerPubkey).toBe(PUBKEY_HEX);
     expect(bundle.profile).toMatchObject({
       display_name: "Relay Creator",
       about: "Recovered from relay",
