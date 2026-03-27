@@ -35,7 +35,6 @@ const deferredBootLoaders = [
   () => import("./boot/welcomeGate"),
   () => import("./boot/cashu"),
   () => import("./boot/nostr-provider"),
-  () => import("./boot/prefetch-featured-creators"),
   () => import("./boot/fundstrRelay"),
 ];
 

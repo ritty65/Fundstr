@@ -266,6 +266,7 @@ async function publishDiscoveryProfileWithAcks(
 const RECONNECT_BACKOFF_MS = 15000; // 15s cooldown after failed attempts
 const MAX_RECONNECT_BACKOFF_MS = 5 * 60_000; // cap at 5 minutes
 const FETCH_MINTS_TIMEOUT_MS = 5000;
+const FETCH_MINTS_LIMIT = 2000;
 const READ_ONLY_CONNECT_ATTEMPTS = 1;
 const READ_ONLY_CONNECT_TIMEOUT_MS = 2500;
 const readOnlyPoolsWithListeners = new WeakSet<object>();
@@ -378,11 +379,71 @@ const PENDING_SIGNER_PUBLIC_KEY = "cashu.ndk.signerPubkey.pending";
 const PENDING_PRIVATEKEY_SIGNER_KEY =
   "cashu.ndk.privateKeySignerPrivateKey.pending";
 const UNENCRYPTED_PUBKEY_KEY = "cashu.ndk.pubkey.fallback";
+const PASSIVE_PROFILE_WARM_PATHS = [
+  "/wallet",
+  "/welcome",
+  "/unlock",
+  "/restore",
+];
+
+let pendingPassiveProfileWarmPubkey: string | null = null;
+let clearPendingPassiveProfileWarm: (() => void) | null = null;
 
 function hasEncryptedSecrets(): boolean {
   const storage = typeof localStorage === "undefined" ? null : localStorage;
   if (!storage) return false;
   return SENSITIVE_STORAGE_KEYS.some((k) => Boolean(storage.getItem(k)));
+}
+
+function shouldDeferOwnProfileWarm(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const path = window.location?.pathname || "";
+  return PASSIVE_PROFILE_WARM_PATHS.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
+}
+
+function scheduleOwnProfileWarm(
+  pubkey: string,
+  run: () => Promise<void>,
+): void {
+  clearPendingPassiveProfileWarm?.();
+
+  if (!shouldDeferOwnProfileWarm() || typeof window === "undefined") {
+    pendingPassiveProfileWarmPubkey = null;
+    void run();
+    return;
+  }
+
+  pendingPassiveProfileWarmPubkey = pubkey;
+
+  const start = () => {
+    if (pendingPassiveProfileWarmPubkey !== pubkey) {
+      return;
+    }
+    clearPendingPassiveProfileWarm?.();
+    void run();
+  };
+
+  const cleanup = () => {
+    window.removeEventListener("pointerdown", start);
+    window.removeEventListener("keydown", start);
+    window.removeEventListener("touchstart", start);
+    if (pendingPassiveProfileWarmPubkey === pubkey) {
+      pendingPassiveProfileWarmPubkey = null;
+    }
+    if (clearPendingPassiveProfileWarm === cleanup) {
+      clearPendingPassiveProfileWarm = null;
+    }
+  };
+
+  clearPendingPassiveProfileWarm = cleanup;
+  window.addEventListener("pointerdown", start, { once: true });
+  window.addEventListener("keydown", start, { once: true });
+  window.addEventListener("touchstart", start, { once: true });
 }
 
 export const WALLET_LOCKED_MESSAGE = "Unlock to restore your Nostr identity.";
@@ -1464,8 +1525,8 @@ export async function subscribeToNutzaps(
   onZap: (ev: NostrEvent) => void,
 ): Promise<NDKSubscription> {
   const nostr = useNostrStore();
-  await nostr.initNdkReadOnly();
-  const ndk = await useNdk();
+  await nostr.initNdkReadOnly({ fundstrOnly: true, suppressWarnings: true });
+  const ndk = await useNdk({ requireSigner: false, fundstrOnly: true });
   if (!ndk) {
     throw new Error(
       "NDK not initialised \u2013 call initSignerIfNotSet() first",
@@ -1482,6 +1543,12 @@ export async function subscribeToNutzaps(
 type MintRecommendation = {
   url: string;
   count: number;
+};
+
+type FetchMintsOptions = {
+  timeoutMs?: number;
+  limit?: number;
+  fundstrOnly?: boolean;
 };
 
 type NostrEventLog = {
@@ -2501,8 +2568,19 @@ export const useNostrStore = defineStore("nostr", {
         delete (this.profiles as any)[previous];
       }
       if (this.pubkey) {
-        void this.getProfile(this.pubkey).catch((error) => {
-          console.error("Failed to warm profile after identity change", error);
+        const currentPubkey = this.pubkey;
+        scheduleOwnProfileWarm(currentPubkey, async () => {
+          if (this.pubkey !== currentPubkey) {
+            return;
+          }
+          try {
+            await this.getProfile(currentPubkey);
+          } catch (error) {
+            console.error(
+              "Failed to warm profile after identity change",
+              error,
+            );
+          }
         });
       }
 
@@ -3127,13 +3205,25 @@ export const useNostrStore = defineStore("nostr", {
         .map((t: any) => t[1] as string);
       return relays.length ? relays : null;
     },
-    fetchMints: async function () {
-      const filter: NDKFilter = { kinds: [38000 as NDKKind], limit: 2000 };
-      const ndk = await useNdk({ requireSigner: false });
+    fetchMints: async function (options: FetchMintsOptions = {}) {
+      const timeoutMs =
+        typeof options.timeoutMs === "number" &&
+        Number.isFinite(options.timeoutMs)
+          ? Math.max(250, Math.round(options.timeoutMs))
+          : FETCH_MINTS_TIMEOUT_MS;
+      const limit =
+        typeof options.limit === "number" && Number.isFinite(options.limit)
+          ? Math.max(50, Math.round(options.limit))
+          : FETCH_MINTS_LIMIT;
+      const filter: NDKFilter = { kinds: [38000 as NDKKind], limit };
+      const ndk = await useNdk({
+        requireSigner: false,
+        fundstrOnly: options.fundstrOnly,
+      });
       const events = await new Promise<any>((resolve, reject) => {
         const timer = globalThis.setTimeout(() => {
           reject(new Error("Mint discovery timed out"));
-        }, FETCH_MINTS_TIMEOUT_MS);
+        }, timeoutMs);
 
         Promise.resolve(ndk.fetchEvents(filter)).then(
           (result) => {

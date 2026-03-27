@@ -21,7 +21,6 @@ export default configure((ctx) => ({
     'safe-html',
     'trusted-types',
     'nostr-provider',
-    'prefetch-featured-creators',
     'fundstrRelay',
     'e2e-test-api',
   ],

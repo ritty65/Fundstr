@@ -478,6 +478,11 @@ import MintDetailsDialog from "src/components/MintDetailsDialog.vue";
 import { EventBus } from "../js/eventBus";
 import AddMintDialog from "src/components/AddMintDialog.vue";
 
+const FAST_MINT_DISCOVERY_TIMEOUT_MS = 2500;
+const FAST_MINT_DISCOVERY_LIMIT = 600;
+const FAST_FUNDSTR_MINT_DISCOVERY_TIMEOUT_MS = 1500;
+const FAST_FUNDSTR_MINT_DISCOVERY_LIMIT = 250;
+
 export default defineComponent({
   name: "MintSettings",
   mixins: [windowMixin],
@@ -705,36 +710,104 @@ export default defineComponent({
         return [];
       }
     },
+    sameMintRecommendationSet: function (left, right) {
+      if (!Array.isArray(left) || !Array.isArray(right)) {
+        return false;
+      }
+      if (left.length !== right.length) {
+        return false;
+      }
+
+      return left.every((entry, index) => {
+        const candidate = right[index];
+        return (
+          entry?.url === candidate?.url &&
+          Number(entry?.count ?? 0) === Number(candidate?.count ?? 0)
+        );
+      });
+    },
+    refreshMintRecommendationsInBackground: async function (
+      currentRecommendations,
+    ) {
+      const nostrStore = useNostrStore();
+
+      try {
+        await this.initNdkReadOnly({
+          suppressWarnings: true,
+          fundstrOnly: false,
+        });
+        const refreshed = await this.fetchMints();
+        if (
+          !Array.isArray(refreshed) ||
+          refreshed.length === 0 ||
+          this.sameMintRecommendationSet(currentRecommendations, refreshed)
+        ) {
+          return;
+        }
+
+        nostrStore.mintRecommendations = refreshed;
+        this.notifySuccess(
+          this.$i18n.t("MintSettings.discover.actions.discover.success", {
+            length: refreshed.length,
+          }),
+        );
+      } catch (error) {
+        debug("Background mint discovery refresh failed", error);
+      }
+    },
     fetchMintsFromNdk: async function () {
       this.discoveringMints = true;
       const nostrStore = useNostrStore();
       let mintUrls = [];
       let usedFallbackCatalog = false;
       let usedCachedRecommendations = false;
+      let backgroundRefreshQueued = false;
+      const cachedRecommendations = Array.isArray(this.mintRecommendations)
+        ? this.mintRecommendations.slice()
+        : [];
 
       try {
-        await this.initNdkReadOnly({ suppressWarnings: true });
+        await this.initNdkReadOnly({
+          suppressWarnings: true,
+          fundstrOnly: true,
+        });
         debug("### fetch mints");
-        let maxTries = 2;
-        let tries = 0;
+        try {
+          mintUrls = await this.fetchMints({
+            timeoutMs: FAST_FUNDSTR_MINT_DISCOVERY_TIMEOUT_MS,
+            limit: FAST_FUNDSTR_MINT_DISCOVERY_LIMIT,
+            fundstrOnly: true,
+          });
+        } catch (e) {
+          debug("Fast fundstr-only mint discovery failed", e);
+        }
 
-        while (mintUrls.length === 0 && tries < maxTries) {
+        if (!mintUrls.length) {
+          await this.initNdkReadOnly({
+            suppressWarnings: true,
+            fundstrOnly: false,
+          });
           try {
-            mintUrls = await this.fetchMints();
+            mintUrls = await this.fetchMints({
+              timeoutMs: FAST_MINT_DISCOVERY_TIMEOUT_MS,
+              limit: FAST_MINT_DISCOVERY_LIMIT,
+              fundstrOnly: false,
+            });
           } catch (e) {
-            debug("Error fetching mints", e);
+            debug("Fast relay fanout mint discovery failed", e);
           }
-          tries++;
+        }
+
+        if (!mintUrls.length && cachedRecommendations.length) {
+          mintUrls = cachedRecommendations;
+          usedCachedRecommendations = mintUrls.length > 0;
+          backgroundRefreshQueued = usedCachedRecommendations;
         }
 
         if (!mintUrls.length) {
           mintUrls = await this.fetchFallbackMintRecommendations();
           usedFallbackCatalog = mintUrls.length > 0;
-        }
-
-        if (!mintUrls.length && Array.isArray(this.mintRecommendations)) {
-          mintUrls = this.mintRecommendations.slice();
-          usedCachedRecommendations = mintUrls.length > 0;
+          backgroundRefreshQueued = usedFallbackCatalog;
         }
 
         if (!mintUrls.length) {
@@ -753,7 +826,7 @@ export default defineComponent({
           );
         } else if (usedCachedRecommendations) {
           notifyWarning(
-            "Live mint discovery is slow right now, so Fundstr is showing your last successful mint recommendations.",
+            "Fundstr is showing your last successful mint recommendations while a background refresh checks for newer ones.",
           );
         }
 
@@ -763,6 +836,10 @@ export default defineComponent({
           }),
         );
         debug(mintUrls);
+
+        if (backgroundRefreshQueued) {
+          void this.refreshMintRecommendationsInBackground(mintUrls);
+        }
       } finally {
         this.discoveringMints = false;
       }
