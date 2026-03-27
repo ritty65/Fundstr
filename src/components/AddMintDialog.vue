@@ -20,7 +20,7 @@
         type="textarea"
         autogrow
         class="q-mb-xs"
-        style="font-family: monospace; font-size: 0.9em"
+        style="font-family: var(--font-mono); font-size: 0.9em"
       >
         <template #label>
           <div class="row items-center no-wrap">

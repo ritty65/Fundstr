@@ -451,6 +451,8 @@ describe("PublicCreatorProfilePage", () => {
 
     expect(wrapper.vm.profile.display_name).toBe("Relay Creator");
     expect(wrapper.vm.profile.about).toBe("Recovered from relay");
+    expect(wrapper.vm.fallbackActive).toBe(false);
+    expect(wrapper.vm.fallbackBannerText).toBe("");
     expect(queryNutzapTiersMock).toHaveBeenCalledTimes(1);
     expect(creatorsStoreMock.tiersMap[hex]?.[0]).toMatchObject({
       id: "relay-tier",
@@ -459,5 +461,107 @@ describe("PublicCreatorProfilePage", () => {
     });
 
     wrapper.unmount();
+  });
+
+  it("matches phonebook enrichment by exact pubkey instead of the first fuzzy result", async () => {
+    resetComponentDeps();
+    fetchFundstrProfileBundleMock.mockResolvedValue({
+      profile: {},
+      profileEvent: null,
+      profileDetails: {
+        trustedMints: ["https://mint"],
+        relays: ["wss://relay.fundstr.me"],
+        tierAddr: `30019:${hex}:tiers`,
+        p2pkPubkey: ensureCompressed(hex),
+      },
+      tiers: [],
+      followers: 0,
+      following: 0,
+      joined: null,
+      relayHints: [],
+      fetchedFromFallback: false,
+      tierDataFresh: true,
+      tierSecurityBlocked: false,
+      tierFetchFailed: false,
+    });
+    queryNutzapProfileMock.mockResolvedValue(
+      makeEvent({ relays: ["wss://relay.fundstr.me"] }),
+    );
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          headers: { get: () => "application/json" },
+          text: async () =>
+            JSON.stringify({
+              query: npub,
+              count: 2,
+              results: [
+                {
+                  pubkey:
+                    "805b34f708837dfb3e7f05815ac5760564628b58d5a0ce839ccbb6ef3620fac3",
+                  name: "wrong-first",
+                  display_name: null,
+                  about: "Wrong profile",
+                  picture: "https://example.com/wrong.png",
+                  nip05: null,
+                },
+                {
+                  pubkey: hex,
+                  name: "exact-handle",
+                  display_name: "Exact Creator",
+                  about: "Right profile",
+                  picture: "https://example.com/exact.png",
+                  nip05: null,
+                },
+              ],
+            }),
+        } as any),
+    ) as typeof fetch;
+
+    try {
+      const wrapper = shallowMount(PublicCreatorProfilePage, {
+        global: {
+          stubs: {
+            transition: false,
+            "q-btn": true,
+            "q-banner": true,
+            "q-tooltip": true,
+            "q-chip": true,
+            "q-spinner-dots": true,
+            "q-spinner-hourglass": true,
+            SubscribeDialog: true,
+            SetupRequiredDialog: true,
+            SubscriptionReceipt: true,
+            MintSafetyList: true,
+            RelayBadgeList: true,
+            TierSummaryCard: true,
+            PaywalledContent: true,
+          },
+          config: {
+            globalProperties: {
+              $t: (key: string) => key,
+              $tc: (key: string) => key,
+            },
+          },
+        },
+      });
+
+      await flushPromises();
+      await nextTick();
+      await flushPromises();
+
+      expect(wrapper.vm.profileDisplayName).toBe("Exact Creator");
+      expect(wrapper.vm.aboutText).toBe("Right profile");
+      expect(wrapper.vm.profileAvatar).toContain(
+        "https://example.com/exact.png",
+      );
+
+      wrapper.unmount();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

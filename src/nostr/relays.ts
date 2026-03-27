@@ -2,9 +2,9 @@ import { FUNDSTR_PRIMARY_RELAY } from "src/config/relays";
 
 export const REQUIRED_DM_RELAYS = [
   FUNDSTR_PRIMARY_RELAY,
-  "wss://relay.damus.io",
   "wss://relay.snort.social",
   "wss://relay.primal.net",
+  "wss://nos.lol",
 ] as const;
 
 export const DM_BLOCKLIST = new Set<string>([

@@ -130,6 +130,7 @@ export default defineConfig({
       "test/wallet-store.onTokenPaid.spec.ts",
       "test/wallet-store.melt.spec.ts",
       "test/pages/WalletPage.spec.ts",
+      "test/pages/WelcomeSlideMints.spec.ts",
       "test/pages/NostrMessenger.spec.ts",
       "test/pages/Settings.spec.ts",
       "test/pages/Restore.spec.ts",

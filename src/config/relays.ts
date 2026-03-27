@@ -42,22 +42,20 @@ export function uniqueRelayList(relays: string[]): string[] {
 }
 
 export const FALLBACK_RELAYS: string[] = [
-  "wss://relay.damus.io",
   "wss://relay.snort.social",
   "wss://relay.primal.net",
-  "wss://nostr.wine",
+  "wss://nos.lol",
   "wss://purplepag.es",
+  "wss://nostr.mom",
 ]; // keep small and easy to rotate
 
 // Curated default read relays – these are added at boot for read operations only.
 export const DEFAULT_RELAYS = [
   FUNDSTR_PRIMARY_RELAY,
-  "wss://relay.damus.io",
   "wss://relay.snort.social",
   "wss://relay.primal.net",
-  "wss://nostr.wine",
-  "wss://purplepag.es",
   "wss://nos.lol",
+  "wss://purplepag.es",
   "wss://nostr.mom",
   "wss://nostr.bitcoiner.social",
 ];
@@ -65,14 +63,12 @@ export const DEFAULT_RELAYS = [
 // Small set of known-open relays used as fallback for write operations.
 export const FREE_RELAYS = [
   FUNDSTR_PRIMARY_RELAY,
-  "wss://relay.damus.io",
   "wss://relay.snort.social",
   "wss://relay.primal.net",
-  "wss://nostr.wine",
+  "wss://nos.lol",
   "wss://purplepag.es",
   // Last resort large pools
   "wss://nostr.mom",
-  "wss://nos.lol",
 ];
 
 export const VETTED_OPEN_WRITE_RELAYS: string[] = [

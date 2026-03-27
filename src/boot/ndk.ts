@@ -629,7 +629,7 @@ export async function ndkSend(
       "Nostr identity required to send a direct message",
     );
   }
-  const list = relays.length ? relays : ["wss://relay.damus.io"];
+  const list = relays.length ? relays : [FUNDSTR_PRIMARY_RELAY];
   const { success } = await nostr.sendDirectMessageUnified(
     toNpub,
     plaintext,

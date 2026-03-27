@@ -451,7 +451,14 @@
             <p>Primal profile ↗️</p>
           </a>
           <router-link
-            to="/find-creators?npub=npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m"
+            :to="{
+              name: 'PublicCreatorProfile',
+              params: {
+                npubOrHex:
+                  'npub1aljmhjp5tqrw3m60ra7t3u8uqq223d6rdg9q0h76a8djd9m4hmvsmlj82m',
+              },
+              query: { tab: 'tiers' },
+            }"
             class="card tcenter community-card"
           >
             <span class="emj xl">💵</span>
@@ -1203,8 +1210,8 @@ const filteredFaqs = computed(() => {
 .community-card h3 {
   margin: 0;
   line-height: 1.2;
-  max-width: 10ch;
-  font-size: clamp(1.9rem, 2.6vw, 2.8rem);
+  max-width: 100%;
+  font-size: clamp(1.45rem, 2.2vw, 2.35rem);
   text-wrap: balance;
 }
 

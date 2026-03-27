@@ -1881,6 +1881,20 @@ export default defineComponent({
       return about;
     });
 
+    const hasVisibleCreatorContent = computed(() => {
+      const existingProfile = profile.value ?? {};
+      return Boolean(
+        (typeof existingProfile.display_name === "string" &&
+          existingProfile.display_name.trim()) ||
+          (typeof existingProfile.name === "string" &&
+            existingProfile.name.trim()) ||
+          aboutText.value ||
+          tiers.value.length ||
+          followers.value !== null ||
+          following.value !== null,
+      );
+    });
+
     const hasFollowerStats = computed(
       () => followers.value !== null || following.value !== null,
     );
@@ -2176,14 +2190,22 @@ export default defineComponent({
           "Fundstr relay is unreachable right now. We couldn't load fresh data from public relays.",
         );
       }
+      if (
+        !resolvingCreatorIdentifier.value &&
+        !loadingTiers.value &&
+        !refreshingTiers.value &&
+        hasVisibleCreatorContent.value
+      ) {
+        return "";
+      }
       return translationWithFallback(
         "CreatorHub.profile.fallbackActive",
-        "Fundstr relay is slow, loading data from public relays…",
+        "Refreshing creator data from public relays…",
       );
     });
 
     const fallbackRelaysLabel = computed(() => {
-      if (!fallbackRelays.value.length) return "";
+      if (!fallbackBannerText.value || !fallbackRelays.value.length) return "";
       return `${translationWithFallback(
         "CreatorHub.profile.fallbackRelaysLabel",
         "Attempting relays:",

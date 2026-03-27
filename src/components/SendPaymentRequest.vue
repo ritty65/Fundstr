@@ -18,7 +18,7 @@
         class="q-mt-md q-mb-md text-center"
         style="
           display: block;
-          font-family: monospace;
+          font-family: var(--font-mono);
           white-space: pre-wrap;
           word-wrap: break-word;
           max-width: 350px;

@@ -252,7 +252,7 @@
             <ChooseMint
               :rounded="true"
               :title="``"
-              :style="`font-family: monospace; font-size: 12px;`"
+              :style="`font-family: var(--font-mono); font-size: 12px;`"
             />
           </div>
           <div class="row q-pt-sm" v-if="swapSelected">
@@ -675,7 +675,7 @@ export default defineComponent({
   -moz-hyphens: none;
   hyphens: none;
   font-size: 0.9em;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .relative-container {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { nip19 } from "nostr-tools";
 
 const mockFetch = vi.fn();
 const originalLocation = globalThis.location;
@@ -150,6 +151,46 @@ describe("findProfiles", () => {
     expect(profile.name).toBe("jack");
     expect(profile.display_name).toBeNull();
     expect(profile.about).toBe("no state is the best state");
+  });
+
+  it("promotes exact npub matches to the front of the result list", async () => {
+    const exactHex =
+      "82341f882b6eabcd2ba7f1ef90aad961cf074af15b9ef44a09f9d2a8fbfbe6a2";
+    const exactNpub = nip19.npubEncode(exactHex);
+
+    mockFetch.mockResolvedValue(
+      mockJsonResponse({
+        query: exactNpub,
+        results: [
+          {
+            pubkey:
+              "805b34f708837dfb3e7f05815ac5760564628b58d5a0ce839ccbb6ef3620fac3",
+            name: "wrong-first",
+            display_name: null,
+            about: null,
+            picture: null,
+            nip05: null,
+          },
+          {
+            pubkey: exactHex,
+            name: "exact-match",
+            display_name: "Exact Match",
+            about: "Right creator",
+            picture: "https://example.com/exact.png",
+            nip05: null,
+          },
+        ],
+        count: 2,
+      }),
+    );
+
+    const { findProfiles } = await loadPhonebook();
+
+    const result = await findProfiles(exactNpub);
+
+    expect(result.results[0]?.pubkey).toBe(exactHex);
+    expect(result.results[0]?.display_name).toBe("Exact Match");
+    expect(result.results[1]?.name).toBe("wrong-first");
   });
 
   it("handles non-OK responses and malformed payloads gracefully", async () => {

@@ -127,7 +127,7 @@
               <q-chip
                 outline
                 class="q-pa-md"
-                style="height: 36px; font-family: monospace"
+                style="height: 36px; font-family: var(--font-mono)"
               >
                 <q-icon name="account_balance" size="xs" class="q-mr-sm" />
                 {{ shortUrl }}

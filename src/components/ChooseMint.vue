@@ -31,7 +31,7 @@
                 >
                 <q-item-label
                   class="text-caption q-pb-xs"
-                  style="font-family: monospace; font-size: 11px"
+                  style="font-family: var(--font-mono); font-size: 11px"
                 >
                   {{ scope.opt.url }}</q-item-label
                 >

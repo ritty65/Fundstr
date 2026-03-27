@@ -62,7 +62,8 @@ export function usePhonebookEnrichment(pubkey: Ref<string | null | undefined>) {
   let controller: AbortController | null = null;
 
   const loadPhonebookProfile = async (): Promise<PhonebookProfile | null> => {
-    const targetPubkey = pubkey.value?.trim?.() ?? "";
+    const targetPubkey =
+      typeof pubkey.value === "string" ? pubkey.value.trim().toLowerCase() : "";
     if (!targetPubkey) {
       phonebookProfile.value = null;
       loading.value = false;
@@ -71,23 +72,33 @@ export function usePhonebookEnrichment(pubkey: Ref<string | null | undefined>) {
     }
 
     controller?.abort();
-    controller = new AbortController();
+    const nextController = new AbortController();
+    controller = nextController;
     loading.value = true;
     error.value = null;
+    phonebookProfile.value = null;
 
     try {
-      const response = await findProfiles(targetPubkey, controller.signal);
-      const profile = response.results[0] ?? null;
+      const response = await findProfiles(targetPubkey, nextController.signal);
+      if (controller !== nextController) {
+        return null;
+      }
+      const profile =
+        response.results.find((entry) => entry.pubkey === targetPubkey) ?? null;
       phonebookProfile.value = profile;
       return profile;
     } catch (err) {
-      if (!(controller?.signal.aborted)) {
+      if (controller === nextController && !nextController.signal.aborted) {
         error.value = err as Error;
       }
-      phonebookProfile.value = null;
+      if (controller === nextController) {
+        phonebookProfile.value = null;
+      }
       return null;
     } finally {
-      loading.value = false;
+      if (controller === nextController) {
+        loading.value = false;
+      }
     }
   };
 

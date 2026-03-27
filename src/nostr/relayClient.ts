@@ -50,7 +50,7 @@ const PUBLIC_POOL = [
   FUNDSTR_PRIMARY_RELAY,
   "wss://relay.snort.social",
   "wss://nos.lol",
-  "wss://relay.damus.io",
+  "wss://relay.primal.net",
 ];
 
 const HEX_REGEX = /^[0-9a-fA-F]{64}$/;
