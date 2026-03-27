@@ -756,7 +756,7 @@ export async function urlsToRelaySet(
   const normalizedUrls = normalizeWsUrls(urls);
   if (!normalizedUrls.length) return undefined;
 
-  const ndk = await useNdk({ requireSigner: false });
+  const ndk = await useNdk();
   // Ensure selected relays exist in the pool
   for (const u of normalizedUrls) {
     if (!ndk.pool.relays.has(u)) {
@@ -1259,7 +1259,7 @@ export async function publishNutzapProfile(opts: {
     body.picture = opts.picture.trim();
   }
 
-  const ndk = await useNdk();
+  const ndk = await useNdk({ requireSigner: false });
   if (!ndk) {
     throw new Error(
       "NDK not initialised \u2013 call initSignerIfNotSet() first",
@@ -1324,7 +1324,7 @@ export async function publishDiscoveryProfile(opts: {
     2,
   );
   await nostr.connect(targets);
-  const ndk = await useNdk();
+  const ndk = await useNdk({ requireSigner: false });
   if (!ndk) {
     throw new Error("NDK not initialized. Cannot publish profile.");
   }
@@ -1431,7 +1431,7 @@ export async function publishNutzap(opts: {
   const nostr = useNostrStore();
   await nostr.initSignerIfNotSet();
   await nostr.connect(opts.relayHints ?? nostr.relays);
-  const ndk = await useNdk();
+  const ndk = await useNdk({ requireSigner: false });
   if (!ndk) {
     throw new Error(
       "NDK not initialised \u2013 call initSignerIfNotSet() first",
@@ -2560,7 +2560,7 @@ export const useNostrStore = defineStore("nostr", {
 
       await this.initNdkReadOnly();
       try {
-        const ndk = await useNdk();
+        const ndk = await useNdk({ requireSigner: false });
         const user = ndk.getUser({ pubkey });
         await user.fetchProfile();
         const entry: CachedProfile = { profile: user.profile, fetchedAt: now };
@@ -3226,7 +3226,7 @@ export const useNostrStore = defineStore("nostr", {
       const signer = privKey ? new NDKPrivateKeySigner(privKey) : this.signer;
       const senderPubkey =
         pubKey || (privKey ? getPublicKey(hexToBytes(privKey)) : this.pubkey);
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const event = new NDKEvent(ndk);
       event.kind = NDKKind.EncryptedDirectMessage;
       try {
@@ -3335,7 +3335,7 @@ export const useNostrStore = defineStore("nostr", {
         debug(
           `### Subscribing to NIP-04 direct messages to ${pubKey} since ${this.lastNip04EventTimestamp}`,
         );
-        const ndk = await useNdk();
+        const ndk = await useNdk({ requireSigner: false });
         try {
           await ndk.connect();
         } catch (e: any) {
@@ -3397,7 +3397,7 @@ export const useNostrStore = defineStore("nostr", {
         "#p": [pubKey],
         since,
       };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const sub = ndk.subscribe(filter, {
         closeOnEose: false,
         groupable: false,
@@ -3472,7 +3472,7 @@ export const useNostrStore = defineStore("nostr", {
     },
 
     async fetchUserRelays(pubkey: string): Promise<string[]> {
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const user = ndk.getUser({ pubkey });
       try {
         await user.fetchProfile();
@@ -3509,7 +3509,7 @@ export const useNostrStore = defineStore("nostr", {
         debug(
           `### Subscribing to NIP-17 direct messages to ${pubKey} since ${since}`,
         );
-        const ndk = await useNdk();
+        const ndk = await useNdk({ requireSigner: false });
         try {
           await ndk.connect();
         } catch (e: any) {

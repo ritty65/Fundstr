@@ -232,7 +232,7 @@ vi.mock("src/stores/npubcash", async () => {
   const { defineStore } = await import("pinia");
   return {
     useNPCStore: defineStore("npc", {
-      state: () => ({}),
+      state: () => ({ npcEnabled: false, automaticClaim: true }),
       actions: {
         generateNPCConnection: vi.fn(),
         claimAllTokens: vi.fn(),

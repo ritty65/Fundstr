@@ -1,4 +1,4 @@
-import { getNdk } from "src/boot/ndk";
+import NDK from "@nostr-dev-kit/ndk";
 import { sanitizeRelayUrls } from "./relay";
 import { FREE_RELAYS } from "src/config/relays";
 
@@ -6,6 +6,7 @@ const CACHE_TTL_MS = 60_000;
 const FAILURE_WINDOW_MS = 3 * 60_000;
 const FAILURE_SUPPRESS_MS = 2 * 60_000;
 const FAILURE_THRESHOLD = 2;
+const RELAY_HEALTH_TIMEOUT_MS = 1500;
 
 const cache = new Map<string, { ts: number; res: string[] }>();
 const relayFailureCache = new Map<
@@ -75,26 +76,36 @@ export async function filterHealthyRelays(relays: string[]): Promise<string[]> {
   const cached = cache.get(key);
   if (cached && now - cached.ts < CACHE_TTL_MS) return cached.res;
 
-  const ndk = await getNdk();
-  const pool = ndk.pool;
+  const probe = new NDK({ explicitRelayUrls: eligible });
+  const results = await Promise.all(
+    eligible.map(async (url) => {
+      try {
+        const relay =
+          probe.pool?.getRelay?.(url, true) ??
+          probe.pool?.relays?.get?.(url) ??
+          probe.addExplicitRelay(url);
+        if (!relay?.connect) {
+          throw new Error("noRelay");
+        }
+        await relay.connect(RELAY_HEALTH_TIMEOUT_MS);
+        markRelaySuccess(url);
+        return url;
+      } catch {
+        markRelayFailure(url);
+        return null;
+      }
+    }),
+  );
 
-  for (const url of eligible) {
-    ndk.addExplicitRelay(url);
+  for (const relay of probe.pool?.relays?.values?.() ?? []) {
+    try {
+      relay.disconnect?.();
+    } catch {
+      /* ignore probe cleanup failures */
+    }
   }
 
-  const connected: string[] = [];
-  await new Promise<void>((resolve) => {
-    const t = setTimeout(resolve, 1500);
-    function onConnect(relay: any) {
-      if (!connected.includes(relay.url)) connected.push(relay.url);
-    }
-    pool.on("relay:connect", onConnect);
-    setTimeout(() => {
-      pool.off("relay:connect", onConnect);
-      clearTimeout(t);
-      resolve();
-    }, 1500);
-  });
+  const connected = results.filter((url): url is string => Boolean(url));
 
   for (const url of eligible) {
     if (connected.includes(url)) {
@@ -112,21 +123,23 @@ export async function filterHealthyRelays(relays: string[]): Promise<string[]> {
 export async function probeWriteHealth(
   ndk: any,
   relays: string[],
-  { timeoutMs = 1200 }: { timeoutMs?: number } = {}
+  { timeoutMs = 1200 }: { timeoutMs?: number } = {},
 ): Promise<{ healthy: string[]; unhealthy: string[] }> {
   const healthy: string[] = [];
   const unhealthy: string[] = [];
 
-  await Promise.allSettled(relays.map(async (url) => {
-    try {
-      const relay = ndk.pool?.getRelay ? ndk.pool.getRelay(url, true) : null;
-      if (!relay) throw new Error("noRelay");
-      await relay.connect?.({ timeoutMs });
-      healthy.push(url);
-    } catch {
-      unhealthy.push(url);
-    }
-  }));
+  await Promise.allSettled(
+    relays.map(async (url) => {
+      try {
+        const relay = ndk.pool?.getRelay ? ndk.pool.getRelay(url, true) : null;
+        if (!relay) throw new Error("noRelay");
+        await relay.connect?.({ timeoutMs });
+        healthy.push(url);
+      } catch {
+        unhealthy.push(url);
+      }
+    }),
+  );
 
   return { healthy, unhealthy };
 }

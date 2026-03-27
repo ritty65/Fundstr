@@ -549,6 +549,7 @@ export default {
     ...mapWritableState(useCameraStore, ["camera", "hasCamera"]),
     ...mapWritableState(useP2PKStore, ["showP2PKDialog"]),
     ...mapWritableState(useNWCStore, ["showNWCDialog", "nwcEnabled"]),
+    ...mapState(useNPCStore, ["npcEnabled"]),
     ...mapState(useNostrStore, ["signerType"]),
     pendingPaymentsExist: function () {
       return this.payments.findIndex((payment) => payment.pending) !== -1;
@@ -612,6 +613,9 @@ export default {
       startSubscriptionRedeemWorker: "start",
     }),
     ...mapActions(useCashuSendWorker, ["start"]),
+    shouldBootstrapWalletNostr: function () {
+      return this.nwcEnabled || this.npcEnabled;
+    },
     initWalletNostrBootstrap: async function () {
       if (this.signerType === SignerType.NIP07) {
         const hasExt = await this.checkNip07Signer();
@@ -860,15 +864,17 @@ export default {
       this.checkLocalStorage();
       this.initializeMnemonic();
 
-      void this.initWalletNostrBootstrap().catch((error) => {
-        console.error("Failed to bootstrap wallet Nostr features", error);
-        notifyWarning(
-          "Wallet started with limited Nostr features",
-          error instanceof Error
-            ? error.message
-            : "Background Nostr bootstrap failed.",
-        );
-      });
+      if (this.shouldBootstrapWalletNostr()) {
+        void this.initWalletNostrBootstrap().catch((error) => {
+          console.error("Failed to bootstrap wallet Nostr features", error);
+          notifyWarning(
+            "Wallet started with limited Nostr features",
+            error instanceof Error
+              ? error.message
+              : "Background Nostr bootstrap failed.",
+          );
+        });
+      }
 
       this.showWelcomePage();
       this.startInvoiceCheckerWorker();
