@@ -1047,7 +1047,6 @@ async function fetchFundstrProfileBundleFromDiscovery(
               bundle.relayHints,
               relayProfileDetails.relays,
             ),
-            fetchedFromFallback: true,
           };
           bundle.profile = mergeProfileRecordWithDetails(
             bundle.profile,
@@ -1087,7 +1086,6 @@ async function fetchFundstrProfileBundleFromDiscovery(
             tiers: recoveredTiers,
             tierFetchFailed: false,
             tierDataFresh: false,
-            fetchedFromFallback: true,
           };
         }
       } catch (error) {

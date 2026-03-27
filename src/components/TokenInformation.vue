@@ -14,7 +14,7 @@
         <q-chip
           outline
           class="q-pa-md chip mint-chip"
-          style="height: 36px; font-family: monospace"
+          style="height: 36px; font-family: var(--font-mono)"
         >
           <q-icon name="account_balance" size="xs" class="q-mr-xs" />
           {{ tokenMintUrl }}

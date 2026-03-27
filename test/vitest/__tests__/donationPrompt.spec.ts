@@ -145,4 +145,25 @@ describe('DonationPrompt', () => {
     expect(mockGetCreatorsByPubkeys).toHaveBeenCalled()
     expect(wrapper.text()).not.toContain('Membership tiers')
   })
+
+  it('falls back to the built-in Fundstr supporter npub when no env override is set', async () => {
+    await loadComponent()
+
+    mockGetCreatorsByPubkeys.mockResolvedValueOnce({ results: [], warnings: [] })
+
+    localStorage.setItem(
+      LOCAL_STORAGE_KEYS.DONATION_LAST_PROMPT,
+      (Date.now() - 8 * 24 * 60 * 60 * 1000).toString()
+    )
+    localStorage.setItem(LOCAL_STORAGE_KEYS.DONATION_LAUNCH_COUNT, '4')
+
+    mountComponent()
+    await flushPromises()
+
+    expect(mockGetCreatorsByPubkeys).toHaveBeenCalledWith(
+      expect.objectContaining({
+        npubs: ['npub1mxmqzhgvla9wrgc8qlptmuylqzal2c50pc744zcm9kunhekv6g3s63ytu0']
+      })
+    )
+  })
 })

@@ -82,6 +82,7 @@
           dense
           outlined
           :label="t('DonationPrompt.cashu.amountLabel')"
+          class="cashu-panel__amount-input"
           min="1"
           :disable="isAuthBlocked"
         />
@@ -522,10 +523,11 @@ watch(amount, (value) => {
 }
 
 .cashu-panel__section {
-  background: var(--surface-2);
+  background-color: var(--surface-2);
   border: 1px solid var(--surface-contrast-border, rgba(0, 0, 0, 0.08));
   border-radius: 12px;
   padding: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .cashu-panel__section-title {
@@ -555,6 +557,7 @@ watch(amount, (value) => {
   border: 1px solid var(--surface-contrast-border, rgba(0, 0, 0, 0.08));
   border-radius: 999px;
   padding: 6px 12px;
+  color: var(--text-1);
   font-weight: 600;
   font-size: 0.9rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -614,6 +617,8 @@ watch(amount, (value) => {
 
 .cashu-panel__preset--active {
   border-color: var(--accent-500);
+  background: color-mix(in srgb, var(--accent-500) 20%, var(--surface-1));
+  color: var(--text-1);
   box-shadow: 0 0 0 2px rgba(93, 135, 255, 0.25);
 }
 
@@ -623,6 +628,7 @@ watch(amount, (value) => {
 
 .cashu-panel__cta {
   align-self: flex-start;
+  font-weight: 700;
 }
 
 .cashu-panel__mint-list {
@@ -639,6 +645,21 @@ watch(amount, (value) => {
 
 .cashu-panel__send-error {
   line-height: 1.3;
+}
+
+.cashu-panel__amount-input :deep(.q-field__control),
+.cashu-panel__amount-input :deep(.q-field__native),
+.cashu-panel__amount-input :deep(.q-field__input) {
+  color: var(--text-1);
+}
+
+.cashu-panel__amount-input :deep(.q-field__control) {
+  background: var(--surface-1);
+  border-radius: 12px;
+}
+
+.cashu-panel__amount-input :deep(.q-field__label) {
+  color: var(--text-2);
 }
 
 .cashu-panel__skeleton-header {

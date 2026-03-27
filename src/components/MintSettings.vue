@@ -134,7 +134,7 @@
                         style="
                           font-size: 12px;
                           line-height: 16px;
-                          font-family: monospace;
+                          font-family: var(--font-mono);
                           margin-top: 4px;
                         "
                       >
@@ -382,7 +382,7 @@
             style="
               min-width: 200px;
               width: 100%;
-              font-family: monospace;
+              font-family: var(--font-mono);
               font-size: 0.9em;
             "
             :disable="swapBlocking"
@@ -403,7 +403,7 @@
             style="
               min-width: 200px;
               width: 100%;
-              font-family: monospace;
+              font-family: var(--font-mono);
               font-size: 0.9em;
             "
             :disable="swapBlocking"

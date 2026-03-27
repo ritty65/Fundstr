@@ -304,7 +304,7 @@ describe("fetchFundstrProfileBundle", () => {
 
     expect(queryNutzapProfileMock).toHaveBeenCalledTimes(1);
     expect(queryNutzapTiersMock).toHaveBeenCalledTimes(1);
-    expect(bundle.fetchedFromFallback).toBe(true);
+    expect(bundle.fetchedFromFallback).toBe(false);
     expect(bundle.profile).toMatchObject({
       display_name: "Relay Creator",
       about: "Recovered from relay",

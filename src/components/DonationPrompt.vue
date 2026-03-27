@@ -1,5 +1,10 @@
 <template>
-  <q-dialog v-model="visible" persistent>
+  <q-dialog
+    v-model="visible"
+    persistent
+    backdrop-filter="blur(10px) saturate(150%)"
+    class="donation-dialog"
+  >
     <q-card class="q-pa-md donation-card">
       <q-card-section class="text-h6">
         {{ t("DonationPrompt.title", { name: supporterDisplayName }) }}
@@ -11,7 +16,11 @@
           <q-tab name="bitcoin" :label="t('DonationPrompt.tabs.bitcoin')" />
         </q-tabs>
         <q-separator />
-        <q-tab-panels v-model="tab" animated>
+        <q-tab-panels
+          v-model="tab"
+          animated
+          class="donation-panels bg-surface-2 text-1"
+        >
           <q-tab-panel name="cashu" class="q-pt-md">
             <DonationCashuPanel
               :supporter-npub="cashuSupporterNpub"
@@ -73,7 +82,7 @@
           </q-tab-panel>
         </q-tab-panels>
       </q-card-section>
-      <q-card-actions align="right">
+      <q-card-actions align="right" class="donation-actions">
         <q-btn flat :label="t('DonationPrompt.buttons.never')" @click="never" />
         <q-btn flat :label="t('DonationPrompt.buttons.later')" @click="later" />
       </q-card-actions>
@@ -168,16 +177,30 @@ defineExpose({
 </script>
 
 <style scoped>
+.donation-dialog :deep(.q-dialog__backdrop) {
+  background: rgba(5, 8, 14, 0.72);
+}
+
 .donation-card {
   width: min(100%, 38rem);
   border-radius: 22px;
   border: 1px solid var(--surface-contrast-border);
-  background: var(--surface-2);
+  background-color: var(--surface-2);
   color: var(--text-1);
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 28px 72px rgba(15, 23, 42, 0.34);
 }
 
 .donation-tabs {
   margin-bottom: 8px;
+}
+
+.donation-panels {
+  border-radius: 18px;
+  background-color: var(--surface-2);
+}
+
+.donation-actions {
+  border-top: 1px solid var(--surface-contrast-border);
+  padding-top: 0.85rem;
 }
 </style>
