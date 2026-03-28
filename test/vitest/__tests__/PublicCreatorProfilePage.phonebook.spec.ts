@@ -41,6 +41,7 @@ const creatorsStore = reactive({
 
 vi.mock("stores/creators", () => ({
   useCreatorsStore: () => creatorsStore,
+  creatorHasVerifiedNip05: (profile: any) => Boolean(profile?.nip05Verified),
   fetchFundstrProfileBundle: (...args: any[]) =>
     mockFetchFundstrProfileBundle(...args),
   FundstrProfileFetchError: class FundstrProfileFetchError extends Error {},

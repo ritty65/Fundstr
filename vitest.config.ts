@@ -34,6 +34,7 @@ export default defineConfig({
       "test/vitest/__tests__/CreatorStudioPage.publish.spec.ts",
       "test/vitest/__tests__/CreatorProfileModal.fallback.spec.ts",
       "test/vitest/__tests__/creatorCard.discovery.spec.ts",
+      "test/vitest/__tests__/FundstrSupportersPage.spec.ts",
       "test/vitest/__tests__/donationPrompt.spec.ts",
       "test/vitest/__tests__/messenger-send-token.spec.ts",
       "test/vitest/__tests__/messenger.spec.ts",

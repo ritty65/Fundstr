@@ -36,6 +36,8 @@ const queryNutzapTiersMock =
   vi.fn<(input: string) => Promise<NostrEvent | null>>();
 const queryNutzapProfileMock =
   vi.fn<(input: string) => Promise<NostrEvent | null>>();
+const queryKind0ProfileMock =
+  vi.fn<(input: string) => Promise<NostrEvent | null>>();
 
 const baseProfile = {
   name: "Sample Creator",
@@ -145,6 +147,7 @@ async function loadCreatorsModule(
 ) {
   queryNutzapTiersMock.mockReset();
   queryNutzapProfileMock.mockReset();
+  queryKind0ProfileMock.mockReset();
   queryNutzapTiersMock.mockResolvedValue(
     options.nutzapTierEvent === undefined ? null : options.nutzapTierEvent,
   );
@@ -153,12 +156,14 @@ async function loadCreatorsModule(
       ? null
       : options.nutzapProfileEvent,
   );
+  queryKind0ProfileMock.mockResolvedValue(null);
   vi.doMock("@/nostr/relayClient", async () => {
     const actual = await vi.importActual<Record<string, any>>(
       "@/nostr/relayClient",
     );
     return {
       ...actual,
+      queryKind0Profile: queryKind0ProfileMock,
       queryNutzapProfile: queryNutzapProfileMock,
       queryNutzapTiers: queryNutzapTiersMock,
     };
@@ -326,6 +331,54 @@ describe("fetchFundstrProfileBundle", () => {
         price_sats: 7000,
       }),
     ]);
+  });
+
+  it("attempts an exact kind-0 metadata fallback when discovery and nutzap metadata are empty", async () => {
+    const discoveryMock = createDiscoveryMock({
+      creators: {
+        [PUBKEY_HEX]: {
+          cached: { results: [] },
+          fresh: {
+            results: [
+              makeCreator({
+                profile: {},
+                tiers: [baseTier],
+              }),
+            ],
+          },
+        },
+      },
+      tiers: {
+        [PUBKEY_HEX]: {
+          cached: { tiers: [baseTier] },
+          fresh: { tiers: [baseTier] },
+        },
+      },
+    });
+
+    queryKind0ProfileMock.mockResolvedValue({
+      pubkey: PUBKEY_HEX,
+      kind: 0,
+      created_at: 1700000400,
+      id: "k".repeat(64),
+      sig: "c".repeat(128),
+      tags: [],
+      content: JSON.stringify({
+        display_name: "Kind Zero Creator",
+        about: "Recovered from kind zero",
+        picture: "https://example.com/kind0.png",
+      }),
+    } satisfies NostrEvent);
+
+    const { fetchFundstrProfileBundle } = await loadCreatorsModule(
+      discoveryMock,
+    );
+    const bundle = await fetchFundstrProfileBundle(PUBKEY_HEX, {
+      forceRefresh: true,
+    });
+
+    expect(queryKind0ProfileMock).toHaveBeenCalledTimes(1);
+    expect(bundle.profile).toEqual(expect.any(Object));
   });
 
   it("uses cached discovery data when fresh creator lookup fails", async () => {

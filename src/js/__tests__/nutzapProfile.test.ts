@@ -17,6 +17,7 @@ const {
   routerPush,
   creatorsStoreMock,
   fetchFundstrProfileBundleMock,
+  queryKind0ProfileMock,
   queryNutzapProfileMock,
   queryNutzapTiersMock,
   fallbackDiscoverRelaysMock,
@@ -30,6 +31,7 @@ const {
     tiersMap: {} as Record<string, any>,
   },
   fetchFundstrProfileBundleMock: vi.fn(),
+  queryKind0ProfileMock: vi.fn(),
   queryNutzapProfileMock: vi.fn(),
   queryNutzapTiersMock: vi.fn(),
   fallbackDiscoverRelaysMock: vi.fn(async () => []),
@@ -42,6 +44,7 @@ vi.mock("@/nostr/relayClient", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/nostr/relayClient")>();
   return {
     ...actual,
+    queryKind0Profile: queryKind0ProfileMock,
     queryNutzapProfile: queryNutzapProfileMock,
     queryNutzapTiers: queryNutzapTiersMock,
   };
@@ -62,6 +65,8 @@ const route = reactive({
   params: { npubOrHex: npub },
   query: {} as Record<string, any>,
   fullPath: "/creator",
+  hash: "",
+  name: "PublicCreatorProfile",
 });
 
 vi.mock("vue-router", () => ({
@@ -70,6 +75,7 @@ vi.mock("vue-router", () => ({
 }));
 vi.mock("stores/creators", () => ({
   useCreatorsStore: () => creatorsStoreMock,
+  creatorHasVerifiedNip05: (profile: any) => Boolean(profile?.nip05Verified),
   fetchFundstrProfileBundle: fetchFundstrProfileBundleMock,
   FundstrProfileFetchError: class extends Error {},
 }));
@@ -135,7 +141,10 @@ vi.mock("src/utils/profileUrl", () => ({
 
 vi.mock("src/utils/nostrKeys", () => ({
   deriveCreatorKeys: (param?: string) => ({
-    npub: param ?? "",
+    npub:
+      typeof param === "string" && /^[0-9a-f]{64}$/i.test(param)
+        ? nip19.npubEncode(param.toLowerCase())
+        : param ?? "",
     hex:
       typeof param === "string" && param.startsWith("npub")
         ? hex
@@ -232,7 +241,9 @@ beforeEach(() => {
   localStorage.clear();
   queryNutzapProfileMock.mockReset();
   queryNutzapTiersMock.mockReset();
+  queryKind0ProfileMock.mockReset();
   queryNutzapTiersMock.mockResolvedValue(null);
+  queryKind0ProfileMock.mockResolvedValue(null);
   fallbackDiscoverRelaysMock.mockReset();
   fallbackDiscoverRelaysMock.mockResolvedValue([]);
   storeMock.initNdkReadOnly.mockReset();
@@ -240,6 +251,8 @@ beforeEach(() => {
   route.params.npubOrHex = npub;
   route.query = {};
   route.fullPath = "/creator";
+  route.hash = "";
+  route.name = "PublicCreatorProfile";
   routerReplace.mockReset();
   routerPush.mockReset();
   resetComponentDeps();
@@ -563,5 +576,148 @@ describe("PublicCreatorProfilePage", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("hydrates exact kind-0 metadata when discovery and phonebook are empty", async () => {
+    resetComponentDeps();
+    fetchFundstrProfileBundleMock.mockResolvedValue({
+      profile: {},
+      profileEvent: null,
+      profileDetails: {
+        trustedMints: ["https://mint"],
+        relays: ["wss://relay.fundstr.me"],
+        tierAddr: `30019:${hex}:tiers`,
+        p2pkPubkey: ensureCompressed(hex),
+      },
+      tiers: [],
+      followers: 0,
+      following: 0,
+      joined: null,
+      relayHints: ["wss://relay.fundstr.me"],
+      fetchedFromFallback: false,
+      tierDataFresh: true,
+      tierSecurityBlocked: false,
+      tierFetchFailed: false,
+    });
+    queryNutzapProfileMock.mockResolvedValue(
+      makeEvent({ relays: ["wss://relay.fundstr.me"] }),
+    );
+    queryKind0ProfileMock.mockResolvedValue({
+      pubkey: hex,
+      kind: 0,
+      created_at: 1700000600,
+      id: "k".repeat(64),
+      sig: "d".repeat(128),
+      tags: [],
+      content: JSON.stringify({
+        display_name: "Kind Zero Creator",
+        about: "Recovered from kind zero",
+        picture: "https://example.com/kind0.png",
+      }),
+    });
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          headers: { get: () => "application/json" },
+          text: async () =>
+            JSON.stringify({
+              query: npub,
+              count: 0,
+              results: [],
+            }),
+        } as any),
+    ) as typeof fetch;
+
+    try {
+      const wrapper = shallowMount(PublicCreatorProfilePage, {
+        global: {
+          stubs: {
+            transition: false,
+            "q-btn": true,
+            "q-banner": true,
+            "q-tooltip": true,
+            "q-chip": true,
+            "q-spinner-dots": true,
+            "q-spinner-hourglass": true,
+            SubscribeDialog: true,
+            SetupRequiredDialog: true,
+            SubscriptionReceipt: true,
+            MintSafetyList: true,
+            RelayBadgeList: true,
+            TierSummaryCard: true,
+            PaywalledContent: true,
+          },
+          config: {
+            globalProperties: {
+              $t: (key: string) => key,
+              $tc: (key: string) => key,
+            },
+          },
+        },
+      });
+
+      await flushPromises();
+      await nextTick();
+      await flushPromises();
+
+      expect(queryKind0ProfileMock).toHaveBeenCalledTimes(1);
+      expect(wrapper.vm.profileDisplayName).toBe("Kind Zero Creator");
+      expect(wrapper.vm.aboutText).toBe("Recovered from kind zero");
+      expect(wrapper.vm.profileAvatar).toContain(
+        "https://example.com/kind0.png",
+      );
+
+      wrapper.unmount();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("canonicalizes raw hex profile routes to the public npub identifier", async () => {
+    resetComponentDeps();
+    route.params.npubOrHex = hex;
+    route.fullPath = `/creator/${hex}/profile`;
+
+    const wrapper = shallowMount(PublicCreatorProfilePage, {
+      global: {
+        stubs: {
+          transition: false,
+          "q-btn": true,
+          "q-banner": true,
+          "q-tooltip": true,
+          "q-chip": true,
+          "q-spinner-dots": true,
+          "q-spinner-hourglass": true,
+          SubscribeDialog: true,
+          SetupRequiredDialog: true,
+          SubscriptionReceipt: true,
+          MintSafetyList: true,
+          RelayBadgeList: true,
+          TierSummaryCard: true,
+          PaywalledContent: true,
+        },
+        config: {
+          globalProperties: {
+            $t: (key: string) => key,
+            $tc: (key: string) => key,
+          },
+        },
+      },
+    });
+
+    await flushPromises();
+    await nextTick();
+
+    expect(routerReplace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "PublicCreatorProfile",
+        params: { npubOrHex: npub },
+      }),
+    );
+
+    wrapper.unmount();
   });
 });
