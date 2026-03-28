@@ -96,8 +96,8 @@
             :is-creator="profile.isCreator ?? undefined"
             :is-personal="profile.isPersonal ?? undefined"
             :nip05="profile.nip05 ?? undefined"
-            @view-tiers="() => openProfile(profile.pubkey, 'tiers')"
-            @view-profile="() => openProfile(profile.pubkey, 'profile')"
+            @view-tiers="() => openProfile(profile, 'tiers')"
+            @view-profile="() => openProfile(profile, 'profile')"
             @message="startChat"
             @donate="donate"
           />
@@ -135,12 +135,20 @@ import type { Creator } from "src/lib/fundstrApi";
 import { SUPPORTERS } from "src/data/supporters";
 import { useRouter } from "vue-router";
 import { useQuasar } from "quasar";
+import { creatorHasVerifiedNip05 } from "stores/creators";
 import { useSendTokensStore } from "stores/sendTokensStore";
 import { useDonationPresetsStore } from "stores/donationPresets";
 import { useNostrStore } from "stores/nostr";
 import { useMessengerStore } from "stores/messenger";
 import { useDonationPrompt } from "@/composables/useDonationPrompt";
 import { debug } from "@/js/logger";
+import { queryKind0Profile } from "@/nostr/relayClient";
+import {
+  hasRenderableProfileMeta,
+  mergeMissingProfileMeta,
+  parseKind0ProfileMeta,
+} from "src/utils/profile";
+import { preferredCreatorPublicIdentifier } from "src/utils/profileUrl";
 
 const discoveryClient = createFundstrDiscoveryClient();
 const router = useRouter();
@@ -222,7 +230,9 @@ async function loadSupporterProfiles() {
       }
     }
 
-    supporterProfiles.value = resolvedProfiles;
+    supporterProfiles.value = await hydrateSupporterMetadataFromRelays(
+      resolvedProfiles,
+    );
   } catch (error) {
     console.error("[supporters] Failed to load supporter profiles", error);
     supportersError.value =
@@ -232,6 +242,129 @@ async function loadSupporterProfiles() {
   } finally {
     loadingSupporters.value = false;
   }
+}
+
+async function hydrateSupporterMetadataFromRelays(
+  profiles: Creator[],
+): Promise<Creator[]> {
+  return Promise.all(
+    profiles.map(async (profile) => {
+      if (!supporterNeedsRelayMetadata(profile)) {
+        return profile;
+      }
+
+      try {
+        const relayEvent = await queryKind0Profile(profile.pubkey, {
+          allowFanoutFallback: true,
+        });
+        const fallbackMeta = parseKind0ProfileMeta(relayEvent);
+        if (!hasRenderableProfileMeta(fallbackMeta)) {
+          return profile;
+        }
+        return mergeCreatorWithFallbackMeta(profile, fallbackMeta);
+      } catch (error) {
+        console.warn("[supporters] Failed to hydrate supporter metadata", {
+          pubkey: profile.pubkey,
+          error,
+        });
+        return profile;
+      }
+    }),
+  );
+}
+
+function supporterNeedsRelayMetadata(profile: Creator): boolean {
+  const supporterMeta = getSupporterProfileMeta(profile);
+  return !Boolean(
+    supporterMeta.display_name ||
+      supporterMeta.name ||
+      supporterMeta.about ||
+      supporterMeta.picture,
+  );
+}
+
+function getSupporterProfileMeta(profile: Creator) {
+  return mergeMissingProfileMeta(
+    (profile?.profile as Record<string, unknown> | null | undefined) ?? {},
+    {
+      display_name: profile.displayName ?? null,
+      name: profile.name ?? null,
+      about: profile.about ?? null,
+      picture: profile.picture ?? null,
+      nip05: profile.nip05 ?? null,
+    },
+  );
+}
+
+function mergeCreatorWithFallbackMeta(profile: Creator, fallbackMeta: unknown) {
+  const mergedMeta = mergeMissingProfileMeta(
+    getSupporterProfileMeta(profile),
+    fallbackMeta as Record<string, unknown> | null | undefined,
+  );
+  const nextProfile = {
+    ...(((profile?.profile as Record<string, unknown> | null | undefined) ??
+      {}) as Record<string, unknown>),
+    ...(mergedMeta.display_name
+      ? { display_name: mergedMeta.display_name }
+      : {}),
+    ...(mergedMeta.name ? { name: mergedMeta.name } : {}),
+    ...(mergedMeta.about ? { about: mergedMeta.about } : {}),
+    ...(mergedMeta.picture ? { picture: mergedMeta.picture } : {}),
+    ...(mergedMeta.nip05 ? { nip05: mergedMeta.nip05 } : {}),
+  };
+
+  return {
+    ...profile,
+    profile: Object.keys(nextProfile).length ? nextProfile : profile.profile,
+    displayName:
+      typeof profile.displayName === "string" && profile.displayName.trim()
+        ? profile.displayName
+        : mergedMeta.display_name ?? null,
+    name:
+      typeof profile.name === "string" && profile.name.trim()
+        ? profile.name
+        : mergedMeta.name ?? null,
+    about:
+      typeof profile.about === "string" && profile.about.trim()
+        ? profile.about
+        : mergedMeta.about ?? null,
+    picture:
+      typeof profile.picture === "string" && profile.picture.trim()
+        ? profile.picture
+        : mergedMeta.picture ?? null,
+    nip05:
+      typeof profile.nip05 === "string" && profile.nip05.trim()
+        ? profile.nip05
+        : mergedMeta.nip05 ?? null,
+  } satisfies Creator;
+}
+
+function encodePubkeyToNpub(pubkey: string): string {
+  const normalizedPubkey = typeof pubkey === "string" ? pubkey.trim() : "";
+  if (!normalizedPubkey) {
+    return "";
+  }
+
+  try {
+    return nip19.npubEncode(normalizedPubkey.toLowerCase());
+  } catch {
+    return normalizedPubkey;
+  }
+}
+
+function resolveSupporterRouteIdentifier(profile: Creator): string {
+  const fallbackIdentifier = encodePubkeyToNpub(profile.pubkey);
+  const supporterMeta = getSupporterProfileMeta(profile);
+
+  return (
+    preferredCreatorPublicIdentifier({
+      fallbackIdentifier,
+      nip05: supporterMeta.nip05 ?? null,
+      nip05Verified: creatorHasVerifiedNip05(profile as any),
+    }) ||
+    fallbackIdentifier ||
+    profile.pubkey
+  );
 }
 
 function decodeNpubToHex(identifier: string): string {
@@ -265,13 +398,14 @@ function decodeNpubToHex(identifier: string): string {
 const showDonateDialog = ref(false);
 const selectedPubkey = ref("");
 
-function openProfile(pubkey: string, tab: "profile" | "tiers" = "profile") {
-  const normalizedPubkey = typeof pubkey === "string" ? pubkey.trim() : "";
+function openProfile(profile: Creator, tab: "profile" | "tiers" = "profile") {
+  const normalizedPubkey =
+    typeof profile?.pubkey === "string" ? profile.pubkey.trim() : "";
   if (!normalizedPubkey) return;
 
   void router.push({
     name: "PublicCreatorProfile",
-    params: { npubOrHex: normalizedPubkey },
+    params: { npubOrHex: resolveSupporterRouteIdentifier(profile) },
     query: tab === "tiers" ? { tab: "tiers" } : undefined,
   });
 }

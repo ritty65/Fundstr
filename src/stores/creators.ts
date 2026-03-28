@@ -6,6 +6,7 @@ import { nip19 } from "nostr-tools";
 import { Event as NostrEvent } from "nostr-tools";
 import type { Tier } from "./types";
 import {
+  queryKind0Profile,
   queryNutzapProfile,
   queryNutzapTiers,
   toHex,
@@ -36,7 +37,13 @@ import {
   type Creator as FundstrCreator,
 } from "src/lib/fundstrApi";
 import { useNdk } from "src/composables/useNdk";
-import { shortenNpub } from "src/utils/profile";
+import {
+  hasRenderableProfileMeta,
+  mergeMissingProfileMeta,
+  parseKind0ProfileMeta,
+  shortenNpub,
+  type ProfileMeta,
+} from "src/utils/profile";
 import { extractCreatorIdentifier } from "src/utils/profileUrl";
 import { FEATURED_CREATORS as CONFIG_FEATURED_CREATORS } from "src/config/featured-creators";
 import { parseTiersContent as parseNutzapTiersContent } from "@/nutzap/profileShared";
@@ -1099,6 +1106,36 @@ async function fetchFundstrProfileBundleFromDiscovery(
     }
   }
 
+  if (!hasBundleProfileMetadata(bundle.profile, bundle.profileDetails)) {
+    try {
+      const kind0RelayHints = mergeStringLists(
+        bundle.relayHints,
+        bundle.profileDetails?.relays ?? [],
+      );
+      const kind0Event = await queryKind0Profile(pubkey, {
+        fanout: kind0RelayHints,
+        httpBase: FUNDSTR_REQ_URL,
+        fundstrWsUrl: FUNDSTR_WS_URL,
+        allowFanoutFallback: true,
+      });
+      const kind0Meta = parseKind0ProfileMeta(kind0Event);
+
+      if (hasRenderableProfileMeta(kind0Meta)) {
+        bundle = {
+          ...bundle,
+          profileEvent: bundle.profileEvent ?? kind0Event,
+          profile: mergeProfileRecordWithMeta(bundle.profile, kind0Meta),
+          fetchedFromFallback: true,
+        };
+      }
+    } catch (error) {
+      console.warn("fetchFundstrProfileBundle kind-0 hydration failed", {
+        pubkey,
+        error,
+      });
+    }
+  }
+
   return bundle;
 }
 
@@ -1636,6 +1673,31 @@ function mergeProfileRecordWithDetails(
   applyString("name", details?.name);
   applyString("about", details?.about);
   applyString("picture", details?.picture);
+
+  return Object.keys(next).length ? next : null;
+}
+
+function mergeProfileRecordWithMeta(
+  profile: Record<string, any> | null | undefined,
+  fallbackMeta: ProfileMeta | null | undefined,
+): Record<string, any> | null {
+  const mergedMeta = mergeMissingProfileMeta(profile ?? {}, fallbackMeta);
+  const next: Record<string, any> = profile
+    ? cloneDiscoveryProfile(profile) ?? {}
+    : {};
+
+  const applyString = (key: string, value: unknown) => {
+    if (typeof value === "string" && value.trim()) {
+      next[key] = value.trim();
+    }
+  };
+
+  applyString("display_name", mergedMeta.display_name);
+  applyString("name", mergedMeta.name);
+  applyString("about", mergedMeta.about);
+  applyString("picture", mergedMeta.picture);
+  applyString("nip05", mergedMeta.nip05);
+  applyString("website", mergedMeta.website);
 
   return Object.keys(next).length ? next : null;
 }

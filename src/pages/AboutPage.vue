@@ -465,6 +465,21 @@
             <h3>KalonAxiarch’s Tiers</h3>
             <p>Browse creator tiers</p>
           </router-link>
+          <router-link
+            :to="{
+              name: 'PublicCreatorProfile',
+              params: {
+                npubOrHex:
+                  'npub1mxmqzhgvla9wrgc8qlptmuylqzal2c50pc744zcm9kunhekv6g3s63ytu0',
+              },
+              query: { tab: 'tiers' },
+            }"
+            class="card tcenter community-card"
+          >
+            <span class="emj xl">🧡</span>
+            <h3>Official Fundstr Tiers</h3>
+            <p>Open supporter tiers</p>
+          </router-link>
         </div>
       </section>
 

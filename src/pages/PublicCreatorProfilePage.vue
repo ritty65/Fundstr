@@ -597,7 +597,7 @@ import {
   type FundstrProfileBundle,
 } from "stores/creators";
 import { useNostrStore, fetchNutzapProfile } from "stores/nostr";
-import { queryNutzapTiers } from "@/nostr/relayClient";
+import { queryKind0Profile, queryNutzapTiers } from "@/nostr/relayClient";
 import { parseTiersContent } from "@/nutzap/profileShared";
 import {
   buildProfileUrl,
@@ -622,8 +622,11 @@ import TierSummaryCard from "components/TierSummaryCard.vue";
 import { isTrustedUrl } from "src/utils/sanitize-url";
 import {
   displayNameFromProfile,
+  hasRenderableProfileMeta,
   initialFromName,
+  mergeMissingProfileMeta,
   normalizeMeta,
+  parseKind0ProfileMeta,
   safeImageSrc,
   type ProfileMeta,
 } from "src/utils/profile";
@@ -1020,6 +1023,66 @@ export default defineComponent({
       }
     };
 
+    const profileNeedsKind0Metadata = () => {
+      const meta = normalizeMeta(profile.value ?? {});
+      return !Boolean(
+        (typeof meta.display_name === "string" && meta.display_name.trim()) ||
+          (typeof meta.name === "string" && meta.name.trim()) ||
+          (typeof meta.about === "string" && meta.about.trim()) ||
+          (typeof meta.picture === "string" && meta.picture.trim()),
+      );
+    };
+
+    const hydrateKind0Metadata = async (expectedHex: string, token: number) => {
+      if (!expectedHex || !profileNeedsKind0Metadata()) {
+        return;
+      }
+
+      try {
+        const relayHints = mergeUniqueUrls(
+          profileRelayHints.value,
+          toStringList(profile.value?.relays),
+          fallbackRelays.value,
+        );
+        const kind0Event = await queryKind0Profile(expectedHex, {
+          fanout: relayHints,
+          allowFanoutFallback: true,
+        });
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
+        }
+
+        const kind0Meta = parseKind0ProfileMeta(kind0Event);
+        if (!hasRenderableProfileMeta(kind0Meta)) {
+          return;
+        }
+
+        const mergedMeta = mergeMissingProfileMeta(
+          normalizeMeta(profile.value ?? {}),
+          kind0Meta,
+        );
+        profile.value = {
+          ...profile.value,
+          ...(mergedMeta.display_name
+            ? { display_name: mergedMeta.display_name }
+            : {}),
+          ...(mergedMeta.name ? { name: mergedMeta.name } : {}),
+          ...(mergedMeta.about ? { about: mergedMeta.about } : {}),
+          ...(mergedMeta.picture ? { picture: mergedMeta.picture } : {}),
+          ...(mergedMeta.nip05 ? { nip05: mergedMeta.nip05 } : {}),
+          ...(mergedMeta.website ? { website: mergedMeta.website } : {}),
+        };
+      } catch (error) {
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
+        }
+        console.warn("[creator-profile] Failed to hydrate kind-0 metadata", {
+          pubkey: expectedHex,
+          error,
+        });
+      }
+    };
+
     const resetRefreshState = () => {
       refreshTaskCount.value = 0;
       refreshingTiers.value = false;
@@ -1306,6 +1369,8 @@ export default defineComponent({
             );
           }
         }
+
+        await hydrateKind0Metadata(expectedHex, token);
       } catch (error) {
         if (!isActiveCreatorLoad(token, expectedHex)) {
           return;
@@ -1435,6 +1500,29 @@ export default defineComponent({
         await fetchTiers({ token, expectedHex });
       }
     };
+
+    const canonicalizePublicRoute = async () => {
+      const currentParam = extractCreatorIdentifier(
+        ((route.params.npubOrHex ?? route.params.npub) as string | undefined) ??
+          "",
+      );
+      const nextIdentifier =
+        typeof publicRouteIdentifier.value === "string"
+          ? publicRouteIdentifier.value.trim()
+          : "";
+
+      if (!currentParam || !nextIdentifier || currentParam === nextIdentifier) {
+        return;
+      }
+
+      await router.replace({
+        name: "PublicCreatorProfile",
+        params: { npubOrHex: nextIdentifier },
+        query: route.query,
+        hash: typeof route.hash === "string" ? route.hash : undefined,
+      });
+    };
+
     const requestAutoRefresh = () => {
       if (!creatorHex.value) return;
       if (refreshTaskCount.value > 0) {
@@ -1471,7 +1559,7 @@ export default defineComponent({
       creatorHex,
       (next, prev) => {
         if (next && next !== prev) {
-          void loadPhonebookProfile();
+          void loadPhonebookProfile().then(() => canonicalizePublicRoute());
         }
       },
       { immediate: true },
@@ -1488,6 +1576,7 @@ export default defineComponent({
         resetCreatorState();
         await updateCreatorKeys(nextParam);
         await loadProfile();
+        await canonicalizePublicRoute();
         scheduleAutoRefresh();
       },
     );
@@ -1748,6 +1837,7 @@ export default defineComponent({
 
       await updateCreatorKeys(creatorParam);
       await loadProfile({ forceRelayRefresh: true });
+      await canonicalizePublicRoute();
       scheduleAutoRefresh();
       await applyRouteFocusHint();
     });
