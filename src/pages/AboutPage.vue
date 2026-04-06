@@ -167,26 +167,57 @@
 
       <!-- How it works -->
       <section class="section fade" id="how-it-works">
-        <h2 class="h2 grad center">How Ecash Works</h2>
-        <p class="lead center">
-          Bitcoin in → private e-cash out → social payments everywhere.
+        <h2 class="h2 grad center">Watch Fundstr in Action</h2>
+        <p class="lead center how-intro">
+          Start with the Cashu explainer, then watch the full Fundstr
+          walkthrough covering wallet basics, creator support, and recurring
+          subscriptions.
         </p>
         <div class="how-layout">
-          <figure class="how-video">
-            <video
-              class="how-video__player"
-              controls
-              preload="metadata"
-              poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 630'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop offset='0' stop-color='%231a1b2b'/%3E%3Cstop offset='1' stop-color='%232a2547'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23g)' width='1200' height='630'/%3E%3Cpath d='M180 420h280v40H180zM180 170h280v40H180zM740 170h280v40H740zM740 420h280v40H740z' fill='%233f83f8' opacity='.45'/%3E%3Ccircle cx='600' cy='315' r='120' fill='none' stroke='%23a855f7' stroke-width='32' stroke-dasharray='60 40' stroke-linecap='round' opacity='.65'/%3E%3Ctext x='600' y='310' text-anchor='middle' fill='%23f9fafb' font-family='Inter,Arial,sans-serif' font-size='72' font-weight='700'%3EEcash Flow%3C/text%3E%3Ctext x='600' y='380' text-anchor='middle' fill='%23d1d5db' font-family='Inter,Arial,sans-serif' font-size='32' font-weight='500'%3EDeposit %26%231859; Mint %26%231859; Spend%3C/text%3E%3C/svg%3E"
-              src="https://m.primal.net/HsMt.mp4"
-              aria-label="Short walkthrough showing how Fundstr turns Bitcoin deposits into private ecash you can spend socially"
-            ></video>
-            <figcaption class="how-video__caption">
-              Watch a quick walkthrough of Fundstr converting a Bitcoin deposit
-              into private ecash ready for social payments.
-            </figcaption>
-          </figure>
-          <div class="cards cards--3 rail">
+          <div class="cards cards--2 how-video-grid">
+            <article
+              v-for="tutorial in tutorialVideos"
+              :key="tutorial.title"
+              class="how-video"
+            >
+              <div class="how-video__head">
+                <span class="pill how-video__pill">{{ tutorial.badge }}</span>
+                <h3 class="how-video__title">{{ tutorial.title }}</h3>
+                <p class="how-video__summary">{{ tutorial.summary }}</p>
+              </div>
+
+              <video
+                class="how-video__player"
+                controls
+                preload="metadata"
+                playsinline
+                :poster="tutorial.poster"
+                :aria-label="tutorial.ariaLabel"
+              >
+                <source :src="tutorial.src" type="video/mp4" />
+                {{ tutorial.fallback }}
+              </video>
+
+              <p class="how-video__caption">
+                {{ tutorial.caption }}
+              </p>
+
+              <div class="how-video__actions">
+                <a
+                  v-for="action in tutorial.actions"
+                  :key="action.label"
+                  class="btn outline how-video__action"
+                  :href="action.href"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  {{ action.label }}
+                </a>
+              </div>
+            </article>
+          </div>
+
+          <div class="cards cards--3 rail how-steps">
             <div class="card step">
               <span class="emj xl">₿</span>
               <h3>Your Bitcoin</h3>
@@ -651,6 +682,52 @@ const siteOverviewCards = [
     ],
   },
 ];
+const tutorialVideos = [
+  {
+    badge: "Step 1",
+    title: "Cashu Explainer",
+    summary:
+      "Learn the privacy model first: how Bitcoin turns into private ecash you can move socially through Fundstr.",
+    src: "https://m.primal.net/HsMt.mp4",
+    poster:
+      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 630'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop offset='0' stop-color='%231a1b2b'/%3E%3Cstop offset='1' stop-color='%232a2547'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23g)' width='1200' height='630'/%3E%3Cpath d='M180 420h280v40H180zM180 170h280v40H180zM740 170h280v40H740zM740 420h280v40H740z' fill='%233f83f8' opacity='.45'/%3E%3Ccircle cx='600' cy='315' r='120' fill='none' stroke='%23a855f7' stroke-width='32' stroke-dasharray='60 40' stroke-linecap='round' opacity='.65'/%3E%3Ctext x='600' y='310' text-anchor='middle' fill='%23f9fafb' font-family='Inter,Arial,sans-serif' font-size='72' font-weight='700'%3EEcash Flow%3C/text%3E%3Ctext x='600' y='380' text-anchor='middle' fill='%23d1d5db' font-family='Inter,Arial,sans-serif' font-size='32' font-weight='500'%3EDeposit %26%231859; Mint %26%231859; Spend%3C/text%3E%3C/svg%3E",
+    ariaLabel:
+      "Short walkthrough showing how Fundstr turns Bitcoin deposits into private ecash you can spend socially.",
+    caption:
+      "A quick visual explanation of how deposits become private ecash inside Fundstr.",
+    fallback: "Your browser does not support the Cashu explainer video.",
+    actions: [
+      {
+        label: "Open explainer video",
+        href: "https://m.primal.net/HsMt.mp4",
+      },
+    ],
+  },
+  {
+    badge: "Step 2",
+    title: "Fundstr Walkthrough",
+    summary:
+      "See the full product flow in context, including wallet setup, creator support, and recurring subscription support.",
+    src: "https://blossom.primal.net/d9b53c689e7e7ba8571a736ac3b1305c34259a8c6c41b0b6777927aaed6d9b97.mp4",
+    poster:
+      "https://r2.primal.net/cache/d/a9/eb/da9eb1a201a1718c25c9e0418981e2202648a7e059ee2a4c10c55f2fd6da80ae.jpg",
+    ariaLabel:
+      "Long-form Fundstr tutorial covering how to use the app, support creators, and manage recurring subscriptions.",
+    caption:
+      "The full Fundstr tutorial, published on Nostr, showing how to use the app from first steps to creator support.",
+    fallback: "Your browser does not support the Fundstr walkthrough video.",
+    actions: [
+      {
+        label: "View original Primal post",
+        href: "https://primal.net/e/nevent1qqstfdg7n53sauyu0umnuw6l6e0rq8mx7wnu6h79a43j8rz26hmtahcvnau43",
+      },
+      {
+        label: "Open tutorial video",
+        href: "https://blossom.primal.net/d9b53c689e7e7ba8571a736ac3b1305c34259a8c6c41b0b6777927aaed6d9b97.mp4",
+      },
+    ],
+  },
+];
 const faqs = ref([
   {
     q: "What if a fan stops paying?",
@@ -805,7 +882,10 @@ const filteredFaqs = computed(() => {
   margin: 0;
   text-decoration: none;
   font-weight: 600;
-  transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s,
+  transition:
+    background-color 0.2s,
+    border-color 0.2s,
+    box-shadow 0.2s,
     color 0.2s;
   flex: 0 0 auto;
   white-space: nowrap;
@@ -829,10 +909,14 @@ const filteredFaqs = computed(() => {
 }
 .section-nav__link:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--s1), 0 0 0 5px rgba(var(--acRGB), 0.55);
+  box-shadow:
+    0 0 0 2px var(--s1),
+    0 0 0 5px rgba(var(--acRGB), 0.55);
 }
 .section-nav__link.active:focus-visible {
-  box-shadow: 0 0 0 2px var(--s1), 0 0 0 6px rgba(var(--acRGB), 0.65);
+  box-shadow:
+    0 0 0 2px var(--s1),
+    0 0 0 6px rgba(var(--acRGB), 0.65);
 }
 
 .hero-grid {
@@ -979,11 +1063,20 @@ const filteredFaqs = computed(() => {
 .how-layout {
   display: grid;
   gap: 1.5rem;
-  align-items: start;
 }
-@media (min-width: 1024px) {
-  .how-layout {
-    grid-template-columns: 1.1fr 0.9fr;
+
+.how-intro {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.how-video-grid {
+  align-items: stretch;
+}
+
+@media (max-width: 900px) {
+  .how-video-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -994,6 +1087,29 @@ const filteredFaqs = computed(() => {
   border-radius: 1rem;
   padding: 1rem;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.how-video__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.how-video__pill {
+  align-self: flex-start;
+  margin-bottom: 0;
+}
+.how-video__title {
+  margin: 0;
+  font-size: clamp(1.3rem, 1.2vw + 1rem, 1.85rem);
+  line-height: 1.2;
+}
+.how-video__summary {
+  margin: 0;
+  line-height: 1.55;
+  color: var(--txt);
+  opacity: 0.82;
 }
 .how-video__player {
   display: block;
@@ -1001,12 +1117,28 @@ const filteredFaqs = computed(() => {
   height: auto;
   border-radius: 0.75rem;
   background: #000;
+  aspect-ratio: 16 / 9;
 }
 .how-video__caption {
-  margin-top: 0.75rem;
+  margin: 0;
   font-size: 0.95rem;
   line-height: 1.5;
   color: var(--txt);
+}
+.how-video__actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+.how-video__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.how-steps {
+  margin-top: 0.25rem;
 }
 
 .two-col {
@@ -1056,7 +1188,10 @@ const filteredFaqs = computed(() => {
   border-radius: 1rem;
   padding: 1.4rem;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
-  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s,
+    border-color 0.2s;
   display: block;
   color: inherit;
   text-decoration: none;
@@ -1074,7 +1209,9 @@ const filteredFaqs = computed(() => {
 .card--overview:focus-within {
   transform: translateY(-6px);
   border-color: rgba(var(--acRGB), 0.35);
-  box-shadow: 0 0 0 3px var(--s1), 0 0 0 6px rgba(var(--acRGB), 0.55),
+  box-shadow:
+    0 0 0 3px var(--s1),
+    0 0 0 6px rgba(var(--acRGB), 0.55),
     0 12px 22px rgba(0, 0, 0, 0.3);
 }
 .card-link__primary {
@@ -1148,7 +1285,10 @@ const filteredFaqs = computed(() => {
   text-decoration: none;
   border-radius: 0.45rem;
   padding: 0.05rem 0.35rem;
-  transition: color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 .link-text:hover {
   color: var(--ac500);
@@ -1158,7 +1298,9 @@ const filteredFaqs = computed(() => {
   outline: none;
   color: var(--ac500);
   background: rgba(var(--acRGB), 0.18);
-  box-shadow: 0 0 0 2px var(--s1), 0 0 0 5px rgba(var(--acRGB), 0.55);
+  box-shadow:
+    0 0 0 2px var(--s1),
+    0 0 0 5px rgba(var(--acRGB), 0.55);
 }
 .emj {
   font-size: 1.25rem;
@@ -1398,7 +1540,9 @@ const filteredFaqs = computed(() => {
 .fade {
   opacity: 0;
   transform: translateY(18px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
+  transition:
+    opacity 0.6s ease,
+    transform 0.6s ease;
 }
 .fade.visible {
   opacity: 1;
