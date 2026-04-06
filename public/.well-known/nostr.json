@@ -1,0 +1,30 @@
+{
+  "names": {
+    "_": "d9b6015d0cff4ae1a30707c2bdf09f00bbf5628f0e3d5a8b1b2db93be6ccd223",
+    "fundstr": "d9b6015d0cff4ae1a30707c2bdf09f00bbf5628f0e3d5a8b1b2db93be6ccd223"
+  },
+  "relays": {
+    "d9b6015d0cff4ae1a30707c2bdf09f00bbf5628f0e3d5a8b1b2db93be6ccd223": [
+      "wss://relay.damus.io",
+      "wss://nos.lol",
+      "wss://relay.primal.net",
+      "wss://offchain.pub",
+      "wss://relay.nostr.band",
+      "wss://purplepag.es",
+      "wss://relay.snort.social",
+      "wss://nostr.wine",
+      "wss://relay.current.fyi",
+      "wss://nostr.mom",
+      "wss://relay.nostr.bg",
+      "wss://relayable.org",
+      "wss://nostr.oxtr.dev",
+      "wss://nostr.bitcoiner.social",
+      "wss://relay.nostr.net",
+      "wss://atl.purplerelay.com",
+      "wss://nostr.fmt.wiz.biz",
+      "wss://relay.orangepill.dev",
+      "wss://relay.minibits.cash",
+      "wss://bitcoiner.social"
+    ]
+  }
+}
