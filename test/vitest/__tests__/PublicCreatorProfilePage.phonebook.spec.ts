@@ -285,8 +285,8 @@ describe("PublicCreatorProfilePage phonebook enrichment", () => {
         }),
         expect.objectContaining({
           id: "nostr-band-trust",
-          label: "About nostr.band trust",
-          href: "https://trust.nostr.band",
+          label: "Open nostr.band NIP-85 relay",
+          href: "https://nip85.nostr.band",
         }),
       ]),
     );

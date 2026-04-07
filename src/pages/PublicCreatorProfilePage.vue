@@ -712,8 +712,8 @@ const TRUSTED_RANK_INFO_LINKS = [
   },
   {
     id: "nostr-band-trust",
-    label: "About nostr.band trust",
-    href: "https://trust.nostr.band",
+    label: "Open nostr.band NIP-85 relay",
+    href: "https://nip85.nostr.band",
   },
 ] as const;
 
