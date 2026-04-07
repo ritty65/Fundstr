@@ -6,6 +6,8 @@ import PublicCreatorProfilePage from "src/pages/PublicCreatorProfilePage.vue";
 
 const mockFindProfiles = vi.fn();
 const mockFetchFundstrProfileBundle = vi.fn();
+const mockFetchTrustedUserRank = vi.fn();
+const mockFetchNutzapProfile = vi.fn();
 
 vi.mock("src/api/phonebook", () => ({
   findProfiles: (...args: any[]) => mockFindProfiles(...args),
@@ -53,8 +55,9 @@ vi.mock("stores/nostr", () => ({
     initNdkReadOnly: vi.fn(),
     resolvePubkey: (v: string) => v,
     relays: [],
+    fetchTrustedUserRank: (...args: any[]) => mockFetchTrustedUserRank(...args),
   }),
-  fetchNutzapProfile: vi.fn().mockResolvedValue(null),
+  fetchNutzapProfile: (...args: any[]) => mockFetchNutzapProfile(...args),
 }));
 
 vi.mock("src/utils/nostrKeys", () => ({
@@ -120,6 +123,8 @@ describe("PublicCreatorProfilePage phonebook enrichment", () => {
   beforeEach(() => {
     mockFindProfiles.mockReset();
     mockFetchFundstrProfileBundle.mockReset();
+    mockFetchTrustedUserRank.mockReset();
+    mockFetchNutzapProfile.mockReset();
     mockFindProfiles.mockResolvedValue({
       query: "hex-test",
       count: 1,
@@ -149,6 +154,8 @@ describe("PublicCreatorProfilePage phonebook enrichment", () => {
       following: null,
       joined: Date.now(),
     });
+    mockFetchTrustedUserRank.mockResolvedValue(null);
+    mockFetchNutzapProfile.mockResolvedValue(null);
 
     vi.mocked(useRoute).mockReturnValue({
       query: {},
@@ -192,6 +199,154 @@ describe("PublicCreatorProfilePage phonebook enrichment", () => {
     );
     expect(wrapper.find(".profile-hero__avatar img").attributes("src")).toBe(
       "https://example.com/pb.png",
+    );
+  });
+
+  it("does not show a relay failure banner when no Fundstr relay profile exists for the creator", async () => {
+    const wrapper = shallowMount(PublicCreatorProfilePage, {
+      global: {
+        stubs: {
+          SubscribeDialog: true,
+          SubscriptionReceipt: true,
+          SetupRequiredDialog: true,
+          PaywalledContent: true,
+          MintSafetyList: true,
+          RelayBadgeList: true,
+          TierSummaryCard: true,
+        },
+        config: {
+          globalProperties: { $t: (key: string) => key },
+        },
+      },
+    });
+
+    await flushPromises();
+
+    expect(mockFetchNutzapProfile).toHaveBeenCalled();
+    expect((wrapper.vm as any).fallbackFailed).toBe(false);
+    expect((wrapper.vm as any).fallbackBannerText).toBe("");
+  });
+
+  it("adds a trusted rank metadata chip when a NIP-85 rank is available", async () => {
+    mockFetchTrustedUserRank.mockResolvedValue({
+      rank: 89,
+      providerLabel: "nostr.band",
+      providerPubkey:
+        "4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe",
+      relayUrl: "wss://nip85.nostr.band",
+      createdAt: 1712400000,
+    });
+
+    const wrapper = shallowMount(PublicCreatorProfilePage, {
+      global: {
+        stubs: {
+          SubscribeDialog: true,
+          SubscriptionReceipt: true,
+          SetupRequiredDialog: true,
+          PaywalledContent: true,
+          MintSafetyList: true,
+          RelayBadgeList: true,
+          TierSummaryCard: true,
+        },
+        config: {
+          globalProperties: { $t: (key: string) => key },
+        },
+      },
+    });
+
+    await flushPromises();
+
+    expect(mockFetchTrustedUserRank).toHaveBeenCalledWith("hex-test");
+
+    const chip = (wrapper.vm as any).metadataChips.find(
+      (entry: any) => entry.id === "trusted-rank",
+    );
+
+    expect(chip).toMatchObject({
+      id: "trusted-rank",
+      icon: "shield",
+      label: "Trusted rank 89",
+      ariaLabel: "Trusted rank 89 via nostr.band",
+    });
+    expect(chip.title).toContain(
+      "Provider-signed reputation signal via NIP-85 from nostr.band",
+    );
+    expect(chip.info).toMatchObject({
+      title: "About trusted rank",
+      provider: "Current provider: nostr.band",
+      ariaLabel: "About trusted rank via nostr.band",
+    });
+    expect(chip.info.links).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "nip85-spec",
+          label: "What is NIP-85?",
+          href: "https://github.com/nostr-protocol/nips/blob/master/85.md",
+        }),
+        expect.objectContaining({
+          id: "nostr-band-trust",
+          label: "About nostr.band trust",
+          href: "https://trust.nostr.band",
+        }),
+      ]),
+    );
+  });
+
+  it("does not add a trusted rank metadata chip when no NIP-85 rank is available", async () => {
+    mockFetchTrustedUserRank.mockResolvedValue(null);
+
+    const wrapper = shallowMount(PublicCreatorProfilePage, {
+      global: {
+        stubs: {
+          SubscribeDialog: true,
+          SubscriptionReceipt: true,
+          SetupRequiredDialog: true,
+          PaywalledContent: true,
+          MintSafetyList: true,
+          RelayBadgeList: true,
+          TierSummaryCard: true,
+        },
+        config: {
+          globalProperties: { $t: (key: string) => key },
+        },
+      },
+    });
+
+    await flushPromises();
+
+    expect(mockFetchTrustedUserRank).toHaveBeenCalledWith("hex-test");
+    expect(
+      (wrapper.vm as any).metadataChips.some(
+        (entry: any) => entry.id === "trusted-rank",
+      ),
+    ).toBe(false);
+  });
+
+  it("shows a generic support-data refresh banner when the relay refresh throws", async () => {
+    mockFetchNutzapProfile.mockRejectedValueOnce(new Error("relay timeout"));
+
+    const wrapper = shallowMount(PublicCreatorProfilePage, {
+      global: {
+        stubs: {
+          SubscribeDialog: true,
+          SubscriptionReceipt: true,
+          SetupRequiredDialog: true,
+          PaywalledContent: true,
+          MintSafetyList: true,
+          RelayBadgeList: true,
+          TierSummaryCard: true,
+        },
+        config: {
+          globalProperties: { $t: (key: string) => key },
+        },
+      },
+    });
+
+    await flushPromises();
+
+    expect((wrapper.vm as any).fallbackFailed).toBe(true);
+    expect((wrapper.vm as any).fallbackBannerText).toContain(
+      "Live Fundstr support data couldn't be refreshed right now.",
     );
   });
 });

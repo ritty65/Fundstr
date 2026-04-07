@@ -22,7 +22,11 @@ const {
   queryNutzapTiersMock,
   fallbackDiscoverRelaysMock,
 } = vi.hoisted(() => ({
-  storeMock: { initNdkReadOnly: vi.fn(), hasIdentity: true } as any,
+  storeMock: {
+    initNdkReadOnly: vi.fn(),
+    hasIdentity: true,
+    fetchTrustedUserRank: vi.fn().mockResolvedValue(null),
+  } as any,
   routerReplace: vi.fn(),
   routerPush: vi.fn(),
   creatorsStoreMock: {
@@ -144,13 +148,13 @@ vi.mock("src/utils/nostrKeys", () => ({
     npub:
       typeof param === "string" && /^[0-9a-f]{64}$/i.test(param)
         ? nip19.npubEncode(param.toLowerCase())
-        : param ?? "",
+        : (param ?? ""),
     hex:
       typeof param === "string" && param.startsWith("npub")
         ? hex
         : typeof param === "string"
-        ? param
-        : "",
+          ? param
+          : "",
   }),
 }));
 
@@ -247,6 +251,8 @@ beforeEach(() => {
   fallbackDiscoverRelaysMock.mockReset();
   fallbackDiscoverRelaysMock.mockResolvedValue([]);
   storeMock.initNdkReadOnly.mockReset();
+  storeMock.fetchTrustedUserRank.mockReset();
+  storeMock.fetchTrustedUserRank.mockResolvedValue(null);
   storeMock.hasIdentity = true;
   route.params.npubOrHex = npub;
   route.query = {};
@@ -531,7 +537,7 @@ describe("PublicCreatorProfilePage", () => {
                 },
               ],
             }),
-        } as any),
+        }) as any,
     ) as typeof fetch;
 
     try {
@@ -628,7 +634,7 @@ describe("PublicCreatorProfilePage", () => {
               count: 0,
               results: [],
             }),
-        } as any),
+        }) as any,
     ) as typeof fetch;
 
     try {
