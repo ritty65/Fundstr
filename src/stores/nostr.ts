@@ -1128,6 +1128,21 @@ export async function anyRelayReachable(relays: string[]): Promise<boolean> {
   return healthy.length > 0;
 }
 
+export type TrustedUserRank = {
+  rank: number;
+  providerLabel: string;
+  providerPubkey: string;
+  relayUrl: string;
+  createdAt: number | null;
+};
+
+const NIP85_USER_RANK_KIND = 30382;
+const NIP85_RANK_PROVIDER_LABEL = "nostr.band";
+const NIP85_RANK_PROVIDER_RELAY_URL = "wss://nip85.nostr.band";
+const NIP85_RANK_PROVIDER_PUBKEY =
+  "4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe";
+const NIP85_RANK_TIMEOUT_MS = 3500;
+
 /**
  * Fetches the receiver’s ‘kind:10019’ Nutzap profile.
  */
@@ -1294,8 +1309,8 @@ export async function publishNutzapProfile(opts: {
     typeof opts.display_name === "string" && opts.display_name.trim()
       ? opts.display_name.trim()
       : typeof opts.name === "string" && opts.name.trim()
-      ? opts.name.trim()
-      : "";
+        ? opts.name.trim()
+        : "";
   if (displayName) {
     tags.push(["name", displayName]);
   }
@@ -1634,10 +1649,10 @@ export const useNostrStore = defineStore("nostr", {
     const fallbackIdentitySource = pendingPubkey
       ? "pending"
       : pendingSignerPubkey
-      ? "pending"
-      : fallbackPubkey
-      ? "unencrypted"
-      : null;
+        ? "pending"
+        : fallbackPubkey
+          ? "unencrypted"
+          : null;
 
     return {
       connected: false,
@@ -1891,10 +1906,10 @@ export const useNostrStore = defineStore("nostr", {
           key === "cashu.ndk.pubkey"
             ? [PENDING_PUBKEY_KEY, PENDING_SIGNER_PUBLIC_KEY]
             : key === "cashu.ndk.signerType"
-            ? [PENDING_SIGNER_TYPE_KEY]
-            : key === "cashu.ndk.privateKeySignerPrivateKey"
-            ? [PENDING_PRIVATEKEY_SIGNER_KEY]
-            : [];
+              ? [PENDING_SIGNER_TYPE_KEY]
+              : key === "cashu.ndk.privateKeySignerPrivateKey"
+                ? [PENDING_PRIVATEKEY_SIGNER_KEY]
+                : [];
         await this.secureSetItem(key, value, { pendingKeys });
       }
 
@@ -2015,8 +2030,8 @@ export const useNostrStore = defineStore("nostr", {
         fundstrOnly === true
           ? "fundstr-only"
           : fundstrOnly === false
-          ? "default"
-          : undefined;
+            ? "default"
+            : undefined;
       const desiredMode = requestedMode ?? this.readOnlyMode ?? "default";
       const modeChanged = this.readOnlyMode !== desiredMode;
       const ndk = await useNdk({
@@ -2756,8 +2771,8 @@ export const useNostrStore = defineStore("nostr", {
                 e instanceof Error
                   ? e.message
                   : typeof e === "string"
-                  ? e
-                  : "Unknown NIP-07 error";
+                    ? e
+                    : "Unknown NIP-07 error";
 
               if (this.nip07LastError?.includes("enable")) {
                 lastFailureCause = "enable-failed";
@@ -2790,14 +2805,17 @@ export const useNostrStore = defineStore("nostr", {
         }
 
         if (this.signerType === SignerType.NIP07 && !this.nip07RetryInterval) {
-          this.nip07RetryInterval = window.setInterval(async () => {
-            const available = await this.checkNip07Signer(true);
-            if (available) {
-              clearInterval(this.nip07RetryInterval!);
-              this.nip07RetryInterval = null;
-              await this.initSignerIfNotSet();
-            }
-          }, Math.min(delayMs, maxDelayMs));
+          this.nip07RetryInterval = window.setInterval(
+            async () => {
+              const available = await this.checkNip07Signer(true);
+              if (available) {
+                clearInterval(this.nip07RetryInterval!);
+                this.nip07RetryInterval = null;
+                await this.initSignerIfNotSet();
+              }
+            },
+            Math.min(delayMs, maxDelayMs),
+          );
         }
 
         this.nip07LastFailureCause = lastFailureCause;
@@ -3149,6 +3167,80 @@ export const useNostrStore = defineStore("nostr", {
         }
       });
       return latest ? (latest.content as string) : null;
+    },
+
+    fetchTrustedUserRank: async function (
+      pubkey: string,
+    ): Promise<TrustedUserRank | null> {
+      const resolved = this.resolvePubkey(pubkey);
+      if (!resolved) return null;
+
+      let relaysToQuery = [NIP85_RANK_PROVIDER_RELAY_URL];
+      try {
+        const healthy = await filterHealthyRelays([
+          NIP85_RANK_PROVIDER_RELAY_URL,
+        ]);
+        if (healthy.includes(NIP85_RANK_PROVIDER_RELAY_URL)) {
+          relaysToQuery = [NIP85_RANK_PROVIDER_RELAY_URL];
+        }
+      } catch {
+        relaysToQuery = [NIP85_RANK_PROVIDER_RELAY_URL];
+      }
+
+      const pool = new SimplePool();
+      try {
+        const events = await pool.querySync(
+          relaysToQuery,
+          {
+            kinds: [NIP85_USER_RANK_KIND],
+            authors: [NIP85_RANK_PROVIDER_PUBKEY],
+            "#d": [resolved],
+            limit: 5,
+          } as any,
+          { maxWait: NIP85_RANK_TIMEOUT_MS } as any,
+        );
+
+        const latest = Array.from(events)
+          .filter(
+            (event: any) =>
+              event?.pubkey === NIP85_RANK_PROVIDER_PUBKEY &&
+              event.tags?.some(
+                (tag: string[]) => tag[0] === "d" && tag[1] === resolved,
+              ),
+          )
+          .sort(
+            (a: any, b: any) => (b.created_at || 0) - (a.created_at || 0),
+          )[0];
+
+        if (!latest) {
+          return null;
+        }
+
+        const rankTag = latest.tags?.find(
+          (tag: string[]) => tag[0] === "rank" && typeof tag[1] === "string",
+        );
+        const rank = Number.parseInt(rankTag?.[1] ?? "", 10);
+        if (!Number.isInteger(rank) || rank < 0 || rank > 100) {
+          return null;
+        }
+
+        return {
+          rank,
+          providerLabel: NIP85_RANK_PROVIDER_LABEL,
+          providerPubkey: NIP85_RANK_PROVIDER_PUBKEY,
+          relayUrl: NIP85_RANK_PROVIDER_RELAY_URL,
+          createdAt:
+            typeof latest.created_at === "number" ? latest.created_at : null,
+        };
+      } catch {
+        return null;
+      } finally {
+        try {
+          pool.close(relaysToQuery);
+        } catch {
+          /* ignore close errors */
+        }
+      }
     },
 
     fetchRecentNotes: async function (
