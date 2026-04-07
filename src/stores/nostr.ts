@@ -1136,12 +1136,149 @@ export type TrustedUserRank = {
   createdAt: number | null;
 };
 
+export type TrustedUserRankLookup = Record<string, TrustedUserRank>;
+
 const NIP85_USER_RANK_KIND = 30382;
 const NIP85_RANK_PROVIDER_LABEL = "nostr.band";
 const NIP85_RANK_PROVIDER_RELAY_URL = "wss://nip85.nostr.band";
 const NIP85_RANK_PROVIDER_PUBKEY =
   "4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe";
 const NIP85_RANK_TIMEOUT_MS = 3500;
+const NIP85_RANK_BATCH_SIZE = 25;
+
+function normalizeTrustedUserRankPubkey(pubkey: string): string | null {
+  if (typeof pubkey !== "string" || !pubkey.trim()) {
+    return null;
+  }
+
+  try {
+    return toHex(pubkey).trim().toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function parseTrustedUserRankEvent(
+  event: any,
+  allowedSubjects?: Set<string>,
+): { subjectPubkey: string; rank: TrustedUserRank } | null {
+  if (event?.pubkey !== NIP85_RANK_PROVIDER_PUBKEY) {
+    return null;
+  }
+
+  const subjectTag = event.tags?.find(
+    (tag: string[]) => tag[0] === "d" && typeof tag[1] === "string",
+  );
+  const subjectPubkey = normalizeTrustedUserRankPubkey(subjectTag?.[1] ?? "");
+  if (!subjectPubkey) {
+    return null;
+  }
+
+  if (allowedSubjects && !allowedSubjects.has(subjectPubkey)) {
+    return null;
+  }
+
+  const rankTag = event.tags?.find(
+    (tag: string[]) => tag[0] === "rank" && typeof tag[1] === "string",
+  );
+  const parsedRank = Number.parseInt(rankTag?.[1] ?? "", 10);
+  if (!Number.isInteger(parsedRank) || parsedRank < 0 || parsedRank > 100) {
+    return null;
+  }
+
+  return {
+    subjectPubkey,
+    rank: {
+      rank: parsedRank,
+      providerLabel: NIP85_RANK_PROVIDER_LABEL,
+      providerPubkey: NIP85_RANK_PROVIDER_PUBKEY,
+      relayUrl: NIP85_RANK_PROVIDER_RELAY_URL,
+      createdAt: typeof event.created_at === "number" ? event.created_at : null,
+    },
+  };
+}
+
+export async function queryTrustedUserRanks(
+  pubkeys: string[],
+): Promise<TrustedUserRankLookup> {
+  const subjects = Array.from(
+    new Set(
+      (Array.isArray(pubkeys) ? pubkeys : [])
+        .map((pubkey) => normalizeTrustedUserRankPubkey(pubkey))
+        .filter((pubkey): pubkey is string => Boolean(pubkey)),
+    ),
+  );
+
+  if (!subjects.length) {
+    return {};
+  }
+
+  let relaysToQuery = [NIP85_RANK_PROVIDER_RELAY_URL];
+  try {
+    const healthy = await filterHealthyRelays([NIP85_RANK_PROVIDER_RELAY_URL]);
+    if (healthy.includes(NIP85_RANK_PROVIDER_RELAY_URL)) {
+      relaysToQuery = [NIP85_RANK_PROVIDER_RELAY_URL];
+    }
+  } catch {
+    relaysToQuery = [NIP85_RANK_PROVIDER_RELAY_URL];
+  }
+
+  const pool = new SimplePool();
+  const allowedSubjects = new Set(subjects);
+  const results: TrustedUserRankLookup = {};
+
+  try {
+    for (
+      let index = 0;
+      index < subjects.length;
+      index += NIP85_RANK_BATCH_SIZE
+    ) {
+      const chunk = subjects.slice(index, index + NIP85_RANK_BATCH_SIZE);
+      const events = await pool.querySync(
+        relaysToQuery,
+        {
+          kinds: [NIP85_USER_RANK_KIND],
+          authors: [NIP85_RANK_PROVIDER_PUBKEY],
+          "#d": chunk,
+          limit: Math.max(5, chunk.length * 2),
+        } as any,
+        { maxWait: NIP85_RANK_TIMEOUT_MS } as any,
+      );
+
+      const latestBySubject = new Map<string, TrustedUserRank>();
+
+      for (const event of Array.from(events)) {
+        const parsed = parseTrustedUserRankEvent(event, allowedSubjects);
+        if (!parsed) {
+          continue;
+        }
+
+        const existing = latestBySubject.get(parsed.subjectPubkey);
+        const existingCreatedAt =
+          existing?.createdAt ?? Number.NEGATIVE_INFINITY;
+        const parsedCreatedAt =
+          parsed.rank.createdAt ?? Number.NEGATIVE_INFINITY;
+        if (!existing || parsedCreatedAt > existingCreatedAt) {
+          latestBySubject.set(parsed.subjectPubkey, parsed.rank);
+        }
+      }
+
+      for (const [subjectPubkey, rank] of latestBySubject.entries()) {
+        results[subjectPubkey] = rank;
+      }
+    }
+
+    return results;
+  } catch {
+    return {};
+  } finally {
+    try {
+      pool.close(relaysToQuery);
+    } catch {
+      /* ignore close errors */
+    }
+  }
+}
 
 /**
  * Fetches the receiver’s ‘kind:10019’ Nutzap profile.
@@ -3174,73 +3311,14 @@ export const useNostrStore = defineStore("nostr", {
     ): Promise<TrustedUserRank | null> {
       const resolved = this.resolvePubkey(pubkey);
       if (!resolved) return null;
+      const ranks = await queryTrustedUserRanks([resolved]);
+      return ranks[resolved.toLowerCase()] ?? null;
+    },
 
-      let relaysToQuery = [NIP85_RANK_PROVIDER_RELAY_URL];
-      try {
-        const healthy = await filterHealthyRelays([
-          NIP85_RANK_PROVIDER_RELAY_URL,
-        ]);
-        if (healthy.includes(NIP85_RANK_PROVIDER_RELAY_URL)) {
-          relaysToQuery = [NIP85_RANK_PROVIDER_RELAY_URL];
-        }
-      } catch {
-        relaysToQuery = [NIP85_RANK_PROVIDER_RELAY_URL];
-      }
-
-      const pool = new SimplePool();
-      try {
-        const events = await pool.querySync(
-          relaysToQuery,
-          {
-            kinds: [NIP85_USER_RANK_KIND],
-            authors: [NIP85_RANK_PROVIDER_PUBKEY],
-            "#d": [resolved],
-            limit: 5,
-          } as any,
-          { maxWait: NIP85_RANK_TIMEOUT_MS } as any,
-        );
-
-        const latest = Array.from(events)
-          .filter(
-            (event: any) =>
-              event?.pubkey === NIP85_RANK_PROVIDER_PUBKEY &&
-              event.tags?.some(
-                (tag: string[]) => tag[0] === "d" && tag[1] === resolved,
-              ),
-          )
-          .sort(
-            (a: any, b: any) => (b.created_at || 0) - (a.created_at || 0),
-          )[0];
-
-        if (!latest) {
-          return null;
-        }
-
-        const rankTag = latest.tags?.find(
-          (tag: string[]) => tag[0] === "rank" && typeof tag[1] === "string",
-        );
-        const rank = Number.parseInt(rankTag?.[1] ?? "", 10);
-        if (!Number.isInteger(rank) || rank < 0 || rank > 100) {
-          return null;
-        }
-
-        return {
-          rank,
-          providerLabel: NIP85_RANK_PROVIDER_LABEL,
-          providerPubkey: NIP85_RANK_PROVIDER_PUBKEY,
-          relayUrl: NIP85_RANK_PROVIDER_RELAY_URL,
-          createdAt:
-            typeof latest.created_at === "number" ? latest.created_at : null,
-        };
-      } catch {
-        return null;
-      } finally {
-        try {
-          pool.close(relaysToQuery);
-        } catch {
-          /* ignore close errors */
-        }
-      }
+    fetchTrustedUserRanks: async function (
+      pubkeys: string[],
+    ): Promise<TrustedUserRankLookup> {
+      return queryTrustedUserRanks(pubkeys);
     },
 
     fetchRecentNotes: async function (
