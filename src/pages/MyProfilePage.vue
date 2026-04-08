@@ -116,11 +116,12 @@
                   color="primary"
                   icon="edit"
                   unelevated
+                  no-caps
                   :to="{ name: 'CreatorStudio' }"
                   :label="primaryActionLabel"
                 />
                 <q-btn
-                  class="hero-preview-action"
+                  class="hero-secondary-action"
                   color="primary"
                   outline
                   icon="open_in_new"
@@ -129,83 +130,73 @@
                   :to="publicProfileRoute || undefined"
                   label="View public profile"
                 />
-                <q-btn-dropdown
-                  class="hero-secondary-dropdown"
+                <q-btn
+                  class="hero-secondary-action"
                   color="primary"
                   outline
-                  dropdown-icon="expand_more"
-                  :aria-label="secondaryActionsAriaLabel"
-                  :disable="secondaryActionsDisabled"
-                  :label="secondaryActionsLabel"
-                >
-                  <q-list>
-                    <q-item
-                      clickable
-                      tag="button"
-                      v-close-popup
-                      :disable="!npub"
-                      @click="handleCopy(npub, 'npub')"
-                    >
-                      <q-item-section avatar>
-                        <q-icon name="content_copy" />
-                      </q-item-section>
-                      <q-item-section>
-                        <q-item-label>{{
-                          $t("actions.copyNpub")
-                        }}</q-item-label>
-                      </q-item-section>
-                    </q-item>
-                    <q-item
-                      clickable
-                      tag="button"
-                      v-close-popup
-                      :disable="!pubkey"
-                      @click="handleCopy(pubkey, 'pubkey')"
-                    >
-                      <q-item-section avatar>
-                        <q-icon name="key" />
-                      </q-item-section>
-                      <q-item-section>
-                        <q-item-label>Copy pubkey</q-item-label>
-                      </q-item-section>
-                    </q-item>
-                    <q-item
-                      clickable
-                      tag="button"
-                      v-close-popup
-                      :disable="!shareUrl"
-                      @click="shareProfile"
-                    >
-                      <q-item-section avatar>
-                        <q-icon name="ios_share" />
-                      </q-item-section>
-                      <q-item-section>
-                        <q-item-label>{{
-                          $t("actions.shareProfile")
-                        }}</q-item-label>
-                      </q-item-section>
-                    </q-item>
-                  </q-list>
-                </q-btn-dropdown>
+                  icon="ios_share"
+                  no-caps
+                  :disable="!shareUrl"
+                  :label="shareProfileLabel"
+                  @click="shareProfile"
+                />
               </div>
             </div>
           </q-card-section>
           <q-separator inset />
-          <q-card-section class="hero-contact column q-gutter-md">
-            <div class="contact-row">
-              <span class="contact-label text-2">npub</span>
-              <div class="contact-value text-1">
-                <code>{{
-                  npub || "Add your npub to share with supporters."
-                }}</code>
+          <q-card-section class="hero-identity-grid">
+            <div class="identity-card bg-surface-1">
+              <div class="identity-card__header">
+                <div class="identity-card__title-block">
+                  <div class="identity-card__eyebrow text-caption text-2">
+                    Shareable identity
+                  </div>
+                  <div class="identity-card__title text-body1 text-1">npub</div>
+                </div>
+                <q-btn
+                  flat
+                  round
+                  dense
+                  color="primary"
+                  icon="content_copy"
+                  :disable="!npub"
+                  :aria-label="copyNpubLabel"
+                  @click="handleCopy(npub, 'npub')"
+                />
+              </div>
+              <div v-if="npub" class="identity-card__value text-1">
+                <code :title="npub">{{ npubPreview }}</code>
+              </div>
+              <div v-else class="identity-card__empty text-body2 text-2">
+                Add your npub to share with supporters.
               </div>
             </div>
-            <div class="contact-row">
-              <span class="contact-label text-2">Pubkey</span>
-              <div class="contact-value text-1">
-                <code>{{
-                  pubkey || "Connect a pubkey so supporters can find you."
-                }}</code>
+            <div class="identity-card bg-surface-1">
+              <div class="identity-card__header">
+                <div class="identity-card__title-block">
+                  <div class="identity-card__eyebrow text-caption text-2">
+                    Raw Nostr key
+                  </div>
+                  <div class="identity-card__title text-body1 text-1">
+                    Pubkey
+                  </div>
+                </div>
+                <q-btn
+                  flat
+                  round
+                  dense
+                  color="primary"
+                  icon="content_copy"
+                  :disable="!pubkey"
+                  :aria-label="copyPubkeyLabel"
+                  @click="handleCopy(pubkey, 'pubkey')"
+                />
+              </div>
+              <div v-if="pubkey" class="identity-card__value text-1">
+                <code :title="pubkey">{{ pubkeyPreview }}</code>
+              </div>
+              <div v-else class="identity-card__empty text-body2 text-2">
+                Connect a pubkey so supporters can find you.
               </div>
             </div>
           </q-card-section>
@@ -438,6 +429,7 @@ import { useClipboard } from "src/composables/useClipboard";
 import { useCreatorProfileHydration } from "src/composables/useCreatorProfileHydration";
 import { usePhonebookEnrichment } from "src/utils/phonebookEnrichment";
 import type { ProfileMeta } from "src/utils/profile";
+import { shortenString } from "src/js/string-utils";
 
 const creatorProfile = useCreatorProfileStore();
 const router = useRouter();
@@ -521,10 +513,14 @@ const derivedKeys = computed(() => {
 });
 
 const npub = computed(() => derivedKeys.value?.npub || "");
+const npubPreview = computed(() => formatIdentityPreview(npub.value, 20, 10));
 
 const mints = computed(() => creatorProfile.mints || []);
 const relays = computed(() => creatorProfile.relays || []);
 const hasPaymentRail = computed(() => mints.value.length > 0);
+const pubkeyPreview = computed(() =>
+  formatIdentityPreview(pubkey.value, 18, 12),
+);
 
 type CreatorStudioStep = "setup" | "profile" | "tiers" | "publish";
 
@@ -698,11 +694,11 @@ const relayStatusLabel = computed(
     } published`,
 );
 
-const secondaryActionsLabel = computed(() => "Share & copy");
-const secondaryActionsAriaLabel = computed(() => "Profile secondary actions");
-const secondaryActionsDisabled = computed(
-  () => !npub.value && !pubkey.value && !shareUrl.value,
+const shareProfileLabel = computed(() => t("CreatorSubscribers.shareProfile"));
+const copyNpubLabel = computed(() =>
+  t("CreatorSubscribers.drawer.actions.copyNpub"),
 );
+const copyPubkeyLabel = computed(() => "Copy pubkey");
 
 const chipStyle = computed(() => ({
   background: "var(--chip-bg)",
@@ -712,6 +708,14 @@ const chipStyle = computed(() => ({
 
 function retryHydration() {
   void hydrateCreatorProfile(true);
+}
+
+function formatIdentityPreview(value: string, length = 20, lastchars = 10) {
+  if (!value) {
+    return "";
+  }
+
+  return shortenString(value, length, lastchars) || value;
 }
 
 watch(
@@ -944,74 +948,116 @@ function goToCreatorStudioStep(step: CreatorStudioStep) {
 }
 
 .hero-actions {
-  margin-top: 8px;
-  display: flex;
+  margin-top: 12px;
+  display: grid;
   gap: 12px;
-  flex-wrap: wrap;
-  align-items: stretch;
+  grid-template-columns: minmax(0, 1.15fr) repeat(2, minmax(0, 1fr));
+}
+
+.hero-primary-action,
+.hero-secondary-action {
+  min-height: 52px;
+}
+
+.hero-actions .q-btn {
+  min-width: 0;
 }
 
 .hero-primary-action {
-  flex: 1 1 12rem;
+  grid-column: span 1;
 }
 
-.hero-preview-action {
-  flex: 1 1 12rem;
+.hero-secondary-action {
+  width: 100%;
 }
 
-.hero-secondary-dropdown {
-  flex: 0 0 auto;
-}
+@media (max-width: 899px) {
+  .hero-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 
-.hero-secondary-dropdown :deep(.q-btn) {
-  height: 100%;
+  .hero-primary-action {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 599px) {
   .hero-actions {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .hero-primary-action,
-  .hero-secondary-dropdown {
+  .hero-secondary-action {
     width: 100%;
-  }
-
-  .hero-secondary-dropdown :deep(.q-btn) {
-    width: 100%;
-    justify-content: space-between;
   }
 }
 
-.hero-contact {
+.hero-identity-grid {
+  display: grid;
+  gap: 12px;
   background: var(--surface-1);
   border-top: 1px solid var(--surface-contrast-border);
 }
 
-.contact-row {
+.identity-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--surface-contrast-border);
+  min-width: 0;
 }
 
 @media (min-width: 600px) {
-  .contact-row {
-    flex-direction: row;
-    align-items: center;
+  .hero-identity-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-.contact-label {
-  font-weight: 600;
-  min-width: 90px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.identity-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.contact-value code {
+.identity-card__title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.identity-card__eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.identity-card__title {
+  font-weight: 600;
+}
+
+.identity-card__value,
+.identity-card__empty {
+  min-height: 72px;
+  border-radius: 14px;
+  border: 1px solid var(--surface-contrast-border);
+  background: color-mix(in srgb, var(--surface-2) 65%, var(--surface-1));
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+}
+
+.identity-card__value code {
+  display: block;
+  width: 100%;
   background: transparent;
   color: inherit;
   font-family: var(--font-mono, "Roboto Mono", monospace);
+  font-size: 0.95rem;
+  line-height: 1.5;
   word-break: break-all;
 }
 
