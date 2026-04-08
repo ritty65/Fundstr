@@ -23,7 +23,6 @@ import { useNostrAuth } from "src/composables/useNostrAuth";
 import { useQuasar } from "quasar";
 import { useUiStore } from "src/stores/ui";
 import { useNostrStore } from "src/stores/nostr";
-import { FUNDSTR_WS_URL } from "src/nutzap/relayEndpoints";
 import { NAV_DRAWER_WIDTH, NAV_DRAWER_GUTTER } from "src/constants/layout";
 
 export default defineComponent({
@@ -54,27 +53,6 @@ export default defineComponent({
       nostr,
       route,
     };
-  },
-  async mounted() {
-    const nostr = useNostrStore();
-    void (async () => {
-      try {
-        await nostr.initSignerIfNotSet();
-        if (nostr.hasIdentity && typeof nostr.connect === "function") {
-          void nostr.connect([FUNDSTR_WS_URL]).catch((connectError) => {
-            console.warn(
-              "FullscreenLayout relay bootstrap failed",
-              connectError,
-            );
-          });
-        }
-      } catch (error) {
-        console.warn(
-          "FullscreenLayout signer/bootstrap relay connect failed",
-          error,
-        );
-      }
-    })();
   },
 });
 </script>

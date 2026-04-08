@@ -86,7 +86,8 @@
   </div>
 </template>
 
-<script>import windowMixin from 'src/mixins/windowMixin'
+<script>
+import windowMixin from "src/mixins/windowMixin";
 import { debug } from "src/js/logger";
 
 import { defineComponent } from "vue";
@@ -153,9 +154,7 @@ export default defineComponent({
       }
     },
     cardClass: function () {
-      return this.$q.dark.isActive
-        ? "bg-surface-2 text-inverse"
-        : "bg-surface-2 text-1";
+      return "bg-surface-2 text-1";
     },
     iconBgColor: function () {
       return this.$q.dark.isActive

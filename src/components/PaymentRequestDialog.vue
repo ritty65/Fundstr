@@ -48,7 +48,7 @@
                 :style="
                   chosenMintUrl == undefined
                     ? ''
-                    : 'height: 36px; font-family: monospace'
+                    : 'height: 36px; font-family: var(--font-mono)'
                 "
                 @click="setActiveMintUrl"
               >

@@ -134,8 +134,7 @@ import {
   fundstrRelayClient,
   useFundstrRelayStatus,
 } from "src/nutzap/relayClient";
-import { FUNDSTR_WS_URL, WS_FIRST_TIMEOUT_MS } from "src/nutzap/relayEndpoints";
-import { creatorCacheService } from "src/nutzap/creatorCache";
+import { WS_FIRST_TIMEOUT_MS } from "src/nutzap/relayEndpoints";
 import { debug } from "src/js/logger";
 
 export default defineComponent({
@@ -206,6 +205,11 @@ export default defineComponent({
     const CONNECTING_BANNER_DELAY_MS = Math.max(WS_FIRST_TIMEOUT_MS || 0, 5000);
     const connectingTimeoutElapsed = ref(false);
     let connectingBannerTimer = null;
+    const relayUiActive = computed(
+      () =>
+        route.path.startsWith("/nostr-messenger") ||
+        route.path.startsWith("/creator-studio"),
+    );
 
     const clearConnectingTimeout = () => {
       if (connectingBannerTimer) {
@@ -227,6 +231,9 @@ export default defineComponent({
     };
 
     const showRelayBanner = computed(() => {
+      if (!relayUiActive.value) {
+        return false;
+      }
       if (
         relayStatus.value === "reconnecting" ||
         relayStatus.value === "disconnected"
@@ -311,6 +318,9 @@ export default defineComponent({
     };
 
     const onWindowFocus = () => {
+      if (!relayUiActive.value) {
+        return;
+      }
       if (relayStatus.value !== "connected") {
         reconnectFundstrRelay();
       }
@@ -340,6 +350,12 @@ export default defineComponent({
     watch(
       relayStatus,
       (status, previous) => {
+        if (!relayUiActive.value) {
+          clearConnectingTimeout();
+          stopHeartbeat();
+          return;
+        }
+
         if (status === "connected") {
           clearConnectingTimeout();
           startHeartbeat();
@@ -360,6 +376,18 @@ export default defineComponent({
       },
       { immediate: true },
     );
+
+    watch(relayUiActive, (active) => {
+      if (!active) {
+        clearConnectingTimeout();
+        stopHeartbeat();
+      } else {
+        reconnectFundstrRelay();
+        if (relayStatus.value === "connecting") {
+          scheduleConnectingTimeout();
+        }
+      }
+    });
 
     watch(
       () => nostr.pubkey,
@@ -431,22 +459,6 @@ export default defineComponent({
       reconnectFundstrRelay,
       route,
     };
-  },
-  async mounted() {
-    const nostr = useNostrStore();
-    void (async () => {
-      try {
-        await nostr.initSignerIfNotSet();
-        if (nostr.hasIdentity && typeof nostr.connect === "function") {
-          void nostr.connect([FUNDSTR_WS_URL]).catch((connectError) => {
-            console.warn("MainLayout relay bootstrap failed", connectError);
-          });
-        }
-      } catch (error) {
-        console.warn("MainLayout signer/bootstrap relay connect failed", error);
-      }
-    })();
-    creatorCacheService.start();
   },
 });
 </script>

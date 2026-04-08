@@ -441,7 +441,7 @@ export default defineComponent({
   -moz-hyphens: none;
   hyphens: none;
   font-size: 0.9em;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .relative-container {

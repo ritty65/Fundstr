@@ -89,6 +89,69 @@ export interface FindProfilesResponse {
   warning?: string;
 }
 
+function resolveExactPubkeyQuery(query: string): string | null {
+  const trimmed = (query || "").trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  if (!/^npub1|^nprofile1/i.test(trimmed)) {
+    return null;
+  }
+
+  try {
+    const decoded = nip19.decode(trimmed);
+    if (
+      typeof decoded.data === "string" &&
+      /^[0-9a-f]{64}$/i.test(decoded.data)
+    ) {
+      return decoded.data.toLowerCase();
+    }
+    if (
+      decoded.data &&
+      typeof decoded.data === "object" &&
+      "pubkey" in decoded.data
+    ) {
+      const pubkey = (decoded.data as { pubkey?: unknown }).pubkey;
+      if (typeof pubkey === "string" && /^[0-9a-f]{64}$/i.test(pubkey)) {
+        return pubkey.toLowerCase();
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function promoteExactPubkeyMatch(
+  profiles: PhonebookProfile[],
+  query: string,
+): PhonebookProfile[] {
+  const exactPubkey = resolveExactPubkeyQuery(query);
+  if (!exactPubkey) {
+    return profiles;
+  }
+
+  const exactIndex = profiles.findIndex(
+    (entry) => entry.pubkey === exactPubkey,
+  );
+  if (exactIndex <= 0) {
+    return profiles;
+  }
+
+  const reordered = profiles.slice();
+  const [exact] = reordered.splice(exactIndex, 1);
+  if (exact) {
+    reordered.unshift(exact);
+  }
+  return reordered;
+}
+
 function normalizeProfile(entry: any): PhonebookProfile | null {
   const pubkey =
     typeof entry?.pubkey === "string" ? entry.pubkey.trim().toLowerCase() : "";
@@ -182,10 +245,11 @@ export async function findProfiles(
       .filter((entry: PhonebookProfile | null): entry is PhonebookProfile =>
         Boolean(entry),
       );
+    const orderedResults = promoteExactPubkeyMatch(normalized, trimmedQuery);
 
     const count = Number.isFinite(payload?.count)
       ? Number(payload.count)
-      : normalized.length;
+      : orderedResults.length;
 
     if (count > 0) {
       debug("[phonebook] hit", { query: trimmedQuery, count });
@@ -195,7 +259,7 @@ export async function findProfiles(
 
     return {
       query: typeof payload?.query === "string" ? payload.query : trimmedQuery,
-      results: normalized,
+      results: orderedResults,
       count,
     };
   } catch (error) {

@@ -4,6 +4,7 @@ import {
   useCreatorsStore,
   FEATURED_CREATORS,
   sortCreatorsByRelevance,
+  sortCreatorsByTrustedRank,
 } from "../../../src/stores/creators";
 import { toHex } from "@/nostr/relayClient";
 
@@ -90,6 +91,7 @@ const nostrStoreMock = {
   fetchFollowerCount: vi.fn().mockResolvedValue(10),
   fetchFollowingCount: vi.fn().mockResolvedValue(5),
   fetchJoinDate: vi.fn().mockResolvedValue(123456),
+  fetchTrustedUserRanks: vi.fn().mockResolvedValue({}),
   connected: true,
   lastError: null,
 };
@@ -115,6 +117,8 @@ beforeEach(() => {
   getCreatorsMock.mockResolvedValue({ results: [], warnings: [] });
   getCreatorsByPubkeysMock.mockResolvedValue({ results: [], warnings: [] });
   getUserFromNip05Mock.mockResolvedValue(null);
+  nostrStoreMock.fetchTrustedUserRanks.mockReset();
+  nostrStoreMock.fetchTrustedUserRanks.mockResolvedValue({});
   (nip19.decode as any).mockImplementation((value: string) => ({
     data: value.startsWith("npub") ? "f".repeat(64) : value,
   }));
@@ -266,6 +270,62 @@ describe("Creators store", () => {
     );
 
     expect(sorted[0].pubkey).toBe(exact.pubkey);
+  });
+
+  it("sorts creators by trusted rank before fallback relevance and follower signals", () => {
+    const highest = makeCreator("a".repeat(64), {
+      displayName: "Highest",
+      trustedMetrics: { rank: 91 },
+      followers: 10,
+    });
+    const middle = makeCreator("b".repeat(64), {
+      displayName: "Middle",
+      trustedMetrics: { rank: 75 },
+      followers: 50,
+    });
+    const missing = makeCreator("c".repeat(64), {
+      displayName: "Missing",
+      followers: 500,
+    });
+
+    const sorted = sortCreatorsByTrustedRank([missing, middle, highest], "");
+
+    expect(sorted.map((profile) => profile.pubkey)).toEqual([
+      highest.pubkey,
+      middle.pubkey,
+      missing.pubkey,
+    ]);
+  });
+
+  it("enriches discovery results with trusted metrics during search", async () => {
+    const pubkey = "d".repeat(64);
+    const discoveryCreator = makeCreator(pubkey, {
+      displayName: "Trusted Creator",
+    });
+    getCreatorsMock.mockResolvedValueOnce({
+      results: [discoveryCreator],
+      warnings: [],
+    });
+    nostrStoreMock.fetchTrustedUserRanks.mockResolvedValueOnce({
+      [pubkey]: {
+        rank: 88,
+        providerLabel: "nostr.band",
+        providerPubkey:
+          "4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe",
+        relayUrl: "wss://nip85.nostr.band",
+        createdAt: 1712400000,
+      },
+    });
+
+    const creators = useCreatorsStore();
+    await creators.searchCreators("trusted creator", { sort: "trustedRank" });
+
+    expect(nostrStoreMock.fetchTrustedUserRanks).toHaveBeenCalledWith([pubkey]);
+    expect(creators.searchResults).toHaveLength(1);
+    expect(creators.searchResults[0].trustedMetrics).toMatchObject({
+      rank: 88,
+      providerLabel: "nostr.band",
+    });
   });
 
   it("loads featured creators", async () => {

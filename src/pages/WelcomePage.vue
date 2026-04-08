@@ -108,7 +108,6 @@ import {
 import { useMnemonicStore } from "src/stores/mnemonic";
 import { useStorageStore } from "src/stores/storage";
 import ThemeToggle from "src/components/ThemeToggle.vue";
-import { usePwaInstall } from "src/composables/usePwaInstall";
 import { sanitizeAppRedirect } from "src/utils/safeRedirect";
 
 const { t } = useI18n();
@@ -120,7 +119,6 @@ const mnemonicStore = useMnemonicStore();
 const storageStore = useStorageStore();
 const showSeedDialog = ref(false);
 const showChecklist = ref(false);
-const { deferredPrompt } = usePwaInstall();
 
 onMounted(() => {
   const env = import.meta.env.VITE_APP_ENV;
@@ -167,7 +165,7 @@ async function finishOnboarding() {
 const slides = [
   { component: WelcomeSlideFeatures },
   { component: WelcomeSlideNostr },
-  { component: WelcomeSlidePwa, props: { deferredPrompt } },
+  { component: WelcomeSlidePwa },
   {
     component: WelcomeSlideBackup,
     props: { onRevealSeed: revealSeed, onDownloadBackup: downloadBackup },

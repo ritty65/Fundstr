@@ -18,17 +18,23 @@ const DEFAULT_TRUSTED_HTTPS_HOSTS = [
   "youtu.be",
   "nftstorage.link",
   "primal.net",
+  "m.primal.net",
   "snort.social",
 ];
 
-const metaEnv = (typeof import.meta !== "undefined" && (import.meta as any)?.env) || {};
-const processEnv = (typeof process !== "undefined" && (process as any)?.env) || {};
+const metaEnv =
+  (typeof import.meta !== "undefined" && (import.meta as any)?.env) || {};
+const processEnv =
+  (typeof process !== "undefined" && (process as any)?.env) || {};
 
 function parseTrustedHosts(): Set<string> {
   const raw =
-    (typeof metaEnv.VITE_TRUSTED_MEDIA_HOSTS === "string" && metaEnv.VITE_TRUSTED_MEDIA_HOSTS) ||
-    (typeof processEnv.VITE_TRUSTED_MEDIA_HOSTS === "string" && processEnv.VITE_TRUSTED_MEDIA_HOSTS) ||
-    (typeof processEnv.TRUSTED_MEDIA_HOSTS === "string" && processEnv.TRUSTED_MEDIA_HOSTS) ||
+    (typeof metaEnv.VITE_TRUSTED_MEDIA_HOSTS === "string" &&
+      metaEnv.VITE_TRUSTED_MEDIA_HOSTS) ||
+    (typeof processEnv.VITE_TRUSTED_MEDIA_HOSTS === "string" &&
+      processEnv.VITE_TRUSTED_MEDIA_HOSTS) ||
+    (typeof processEnv.TRUSTED_MEDIA_HOSTS === "string" &&
+      processEnv.TRUSTED_MEDIA_HOSTS) ||
     "";
 
   const envHosts = String(raw)
@@ -44,7 +50,10 @@ const ALLOWED_HTTPS_HOSTS = parseTrustedHosts();
 function isAllowedHttpsHost(url: string): boolean {
   try {
     const parsed = new URL(url);
-    return parsed.protocol === "https:" && ALLOWED_HTTPS_HOSTS.has(parsed.hostname.toLowerCase());
+    return (
+      parsed.protocol === "https:" &&
+      ALLOWED_HTTPS_HOSTS.has(parsed.hostname.toLowerCase())
+    );
   } catch (error) {
     return false;
   }
@@ -178,10 +187,14 @@ export function normalizeTierMediaItems(input: unknown): TierMedia[] {
       if (!url) {
         continue;
       }
-      const title = typeof media.title === "string" ? media.title.trim() : undefined;
-      const rawType = typeof media.type === "string" ? media.type.trim().toLowerCase() : "";
+      const title =
+        typeof media.title === "string" ? media.title.trim() : undefined;
+      const rawType =
+        typeof media.type === "string" ? media.type.trim().toLowerCase() : "";
       const normalizedType = rawType as NonNullable<TierMedia["type"]>;
-      const type = ALLOWED_MEDIA_TYPES.includes(normalizedType) ? normalizedType : undefined;
+      const type = ALLOWED_MEDIA_TYPES.includes(normalizedType)
+        ? normalizedType
+        : undefined;
 
       const normalized: TierMedia = { url };
       if (title) {
@@ -194,5 +207,10 @@ export function normalizeTierMediaItems(input: unknown): TierMedia[] {
     }
   }
 
-  return filterValidMedia(collected);
+  return collected
+    .map((media) => ({
+      ...media,
+      url: normalizeMediaUrl(media.url),
+    }))
+    .filter((media) => media.url);
 }

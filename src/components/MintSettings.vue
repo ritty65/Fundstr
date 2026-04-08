@@ -134,7 +134,7 @@
                         style="
                           font-size: 12px;
                           line-height: 16px;
-                          font-family: monospace;
+                          font-family: var(--font-mono);
                           margin-top: 4px;
                         "
                       >
@@ -382,7 +382,7 @@
             style="
               min-width: 200px;
               width: 100%;
-              font-family: monospace;
+              font-family: var(--font-mono);
               font-size: 0.9em;
             "
             :disable="swapBlocking"
@@ -403,7 +403,7 @@
             style="
               min-width: 200px;
               width: 100%;
-              font-family: monospace;
+              font-family: var(--font-mono);
               font-size: 0.9em;
             "
             :disable="swapBlocking"
@@ -455,7 +455,8 @@
     </div>
   </div>
 </template>
-<script>import windowMixin from 'src/mixins/windowMixin'
+<script>
+import windowMixin from "src/mixins/windowMixin";
 import { debug } from "src/js/logger";
 
 import { ref, defineComponent, onMounted, onBeforeUnmount } from "vue";
@@ -476,6 +477,11 @@ import { notifyError, notifyWarning } from "src/js/notify";
 import MintDetailsDialog from "src/components/MintDetailsDialog.vue";
 import { EventBus } from "../js/eventBus";
 import AddMintDialog from "src/components/AddMintDialog.vue";
+
+const FAST_MINT_DISCOVERY_TIMEOUT_MS = 2500;
+const FAST_MINT_DISCOVERY_LIMIT = 600;
+const FAST_FUNDSTR_MINT_DISCOVERY_TIMEOUT_MS = 1500;
+const FAST_FUNDSTR_MINT_DISCOVERY_LIMIT = 250;
 
 export default defineComponent({
   name: "MintSettings",
@@ -659,34 +665,184 @@ export default defineComponent({
       await this.mintAmountSwap(swapAmountData);
       this.clearSwapData();
     },
+    fetchFallbackMintRecommendations: async function () {
+      try {
+        const response = await fetch("/mints.json", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`Mint catalog request failed: ${response.status}`);
+        }
+
+        const payload = await response.json();
+        if (!Array.isArray(payload)) {
+          return [];
+        }
+
+        return payload
+          .map((entry) => {
+            if (typeof entry === "string") {
+              const url = entry.trim();
+              return url ? { url, count: 1 } : null;
+            }
+
+            if (
+              entry &&
+              typeof entry === "object" &&
+              typeof entry.url === "string"
+            ) {
+              const url = entry.url.trim();
+              if (!url) {
+                return null;
+              }
+
+              const count = Number(entry.count);
+              return {
+                url,
+                count:
+                  Number.isFinite(count) && count > 0 ? Math.round(count) : 1,
+              };
+            }
+
+            return null;
+          })
+          .filter((entry) => entry && entry.url.startsWith("https://"));
+      } catch (error) {
+        debug("Fallback mint catalog unavailable", error);
+        return [];
+      }
+    },
+    sameMintRecommendationSet: function (left, right) {
+      if (!Array.isArray(left) || !Array.isArray(right)) {
+        return false;
+      }
+      if (left.length !== right.length) {
+        return false;
+      }
+
+      return left.every((entry, index) => {
+        const candidate = right[index];
+        return (
+          entry?.url === candidate?.url &&
+          Number(entry?.count ?? 0) === Number(candidate?.count ?? 0)
+        );
+      });
+    },
+    refreshMintRecommendationsInBackground: async function (
+      currentRecommendations,
+    ) {
+      const nostrStore = useNostrStore();
+
+      try {
+        await this.initNdkReadOnly({
+          suppressWarnings: true,
+          fundstrOnly: false,
+        });
+        const refreshed = await this.fetchMints();
+        if (
+          !Array.isArray(refreshed) ||
+          refreshed.length === 0 ||
+          this.sameMintRecommendationSet(currentRecommendations, refreshed)
+        ) {
+          return;
+        }
+
+        nostrStore.mintRecommendations = refreshed;
+        this.notifySuccess(
+          this.$i18n.t("MintSettings.discover.actions.discover.success", {
+            length: refreshed.length,
+          }),
+        );
+      } catch (error) {
+        debug("Background mint discovery refresh failed", error);
+      }
+    },
     fetchMintsFromNdk: async function () {
       this.discoveringMints = true;
-      await this.initNdkReadOnly();
-      debug("### fetch mints");
-      let maxTries = 5;
-      let tries = 0;
+      const nostrStore = useNostrStore();
       let mintUrls = [];
-      while (mintUrls.length == 0 && tries < maxTries) {
+      let usedFallbackCatalog = false;
+      let usedCachedRecommendations = false;
+      let backgroundRefreshQueued = false;
+      const cachedRecommendations = Array.isArray(this.mintRecommendations)
+        ? this.mintRecommendations.slice()
+        : [];
+
+      try {
+        await this.initNdkReadOnly({
+          suppressWarnings: true,
+          fundstrOnly: true,
+        });
+        debug("### fetch mints");
         try {
-          mintUrls = await this.fetchMints();
+          mintUrls = await this.fetchMints({
+            timeoutMs: FAST_FUNDSTR_MINT_DISCOVERY_TIMEOUT_MS,
+            limit: FAST_FUNDSTR_MINT_DISCOVERY_LIMIT,
+            fundstrOnly: true,
+          });
         } catch (e) {
-          debug("Error fetching mints", e);
+          debug("Fast fundstr-only mint discovery failed", e);
         }
-        tries++;
-      }
-      if (mintUrls.length == 0) {
-        this.notifyError(
-          this.$i18n.t("MintSettings.discover.actions.discover.error_no_mints"),
-        );
-      } else {
+
+        if (!mintUrls.length) {
+          await this.initNdkReadOnly({
+            suppressWarnings: true,
+            fundstrOnly: false,
+          });
+          try {
+            mintUrls = await this.fetchMints({
+              timeoutMs: FAST_MINT_DISCOVERY_TIMEOUT_MS,
+              limit: FAST_MINT_DISCOVERY_LIMIT,
+              fundstrOnly: false,
+            });
+          } catch (e) {
+            debug("Fast relay fanout mint discovery failed", e);
+          }
+        }
+
+        if (!mintUrls.length && cachedRecommendations.length) {
+          mintUrls = cachedRecommendations;
+          usedCachedRecommendations = mintUrls.length > 0;
+          backgroundRefreshQueued = usedCachedRecommendations;
+        }
+
+        if (!mintUrls.length) {
+          mintUrls = await this.fetchFallbackMintRecommendations();
+          usedFallbackCatalog = mintUrls.length > 0;
+          backgroundRefreshQueued = usedFallbackCatalog;
+        }
+
+        if (!mintUrls.length) {
+          this.notifyError(
+            this.$i18n.t(
+              "MintSettings.discover.actions.discover.error_no_mints",
+            ),
+          );
+          return;
+        }
+
+        nostrStore.mintRecommendations = mintUrls;
+        if (usedFallbackCatalog) {
+          notifyWarning(
+            "Live mint discovery timed out, so Fundstr loaded the curated mint catalog instead.",
+          );
+        } else if (usedCachedRecommendations) {
+          notifyWarning(
+            "Fundstr is showing your last successful mint recommendations while a background refresh checks for newer ones.",
+          );
+        }
+
         this.notifySuccess(
           this.$i18n.t("MintSettings.discover.actions.discover.success", {
             length: mintUrls.length,
           }),
         );
+        debug(mintUrls);
+
+        if (backgroundRefreshQueued) {
+          void this.refreshMintRecommendationsInBackground(mintUrls);
+        }
+      } finally {
+        this.discoveringMints = false;
       }
-      debug(mintUrls);
-      this.discoveringMints = false;
     },
     showMintInfo: async function (mint) {
       this.showMintInfoData = mint;

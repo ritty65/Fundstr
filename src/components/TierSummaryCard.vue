@@ -66,6 +66,12 @@
             target="_blank"
             rel="noopener noreferrer"
           >
+            <span
+              v-if="item.externalPreview"
+              class="tier-card__media-link-badge"
+            >
+              Preview
+            </span>
             {{ item.label }}
           </a>
         </div>
@@ -104,8 +110,8 @@ import { QBtn } from "quasar";
 import MediaPreview from "./MediaPreview.vue";
 import {
   determineMediaType,
+  isTrustedUrl,
   normalizeMediaUrl,
-  normalizeTierMediaItems,
 } from "src/utils/validateMedia";
 
 let tierMediaIdCounter = 0;
@@ -121,7 +127,7 @@ type TierDetails = {
   name?: string;
   description?: string;
   benefits?: string[];
-  media?: TierMedia[];
+  media?: Array<TierMedia | string>;
 } | null;
 
 type BadgeInput =
@@ -208,9 +214,40 @@ const displayBenefits = computed(() => {
 });
 const hasBenefits = computed(() => displayBenefits.value.length > 0);
 
-const displayMedia = computed(() =>
-  normalizeTierMediaItems(props.tier?.media ?? []),
-);
+const displayMedia = computed(() => {
+  const input = Array.isArray(props.tier?.media) ? props.tier.media : [];
+  const collected: TierMedia[] = [];
+
+  for (const entry of input) {
+    if (!entry) {
+      continue;
+    }
+
+    if (typeof entry === "string") {
+      const normalizedUrl = normalizeMediaUrl(entry);
+      if (normalizedUrl) {
+        collected.push({ url: normalizedUrl });
+      }
+      continue;
+    }
+
+    if (typeof entry === "object") {
+      const media = entry as TierMedia;
+      const normalizedUrl = normalizeMediaUrl(media.url);
+      if (!normalizedUrl) {
+        continue;
+      }
+
+      collected.push({
+        url: normalizedUrl,
+        title: typeof media.title === "string" ? media.title.trim() : undefined,
+        type: media.type,
+      });
+    }
+  }
+
+  return collected;
+});
 const hasMedia = computed(() => displayMedia.value.length > 0);
 
 function resolvedMediaType(item: TierMedia) {
@@ -220,10 +257,6 @@ function resolvedMediaType(item: TierMedia) {
 
   const normalizedUrl = normalizeMediaUrl(item.url);
   const detected = determineMediaType(normalizedUrl);
-
-  if (detected === "iframe" || detected === "nostr") {
-    return "link" as const;
-  }
 
   return detected;
 }
@@ -243,13 +276,19 @@ function mediaLabel(item: TierMedia) {
 }
 
 const embeddedMedia = computed(() =>
-  displayMedia.value.filter((item) => resolvedMediaType(item) !== "link"),
+  displayMedia.value.filter(
+    (item) => isTrustedUrl(item.url) && item.type !== "link",
+  ),
 );
 
 const linkMedia = computed(() =>
   displayMedia.value
-    .filter((item) => resolvedMediaType(item) === "link")
-    .map((item) => ({ ...item, label: mediaLabel(item) })),
+    .filter((item) => !isTrustedUrl(item.url) || item.type === "link")
+    .map((item) => ({
+      ...item,
+      label: mediaLabel(item),
+      externalPreview: !isTrustedUrl(item.url),
+    })),
 );
 
 const isMediaCollapsed = ref(Boolean(props.collapseMedia));
@@ -443,6 +482,18 @@ const emitSubscribe = () => {
   gap: 0.75rem;
 }
 
+.tier-card__media :deep(.media-preview-container) {
+  margin-bottom: 0;
+  border: 1px solid var(--surface-contrast-border);
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+}
+
+.tier-card__media :deep(video),
+.tier-card__media :deep(iframe),
+.tier-card__media :deep(img) {
+  display: block;
+}
+
 .tier-card__media-links {
   display: flex;
   flex-wrap: wrap;
@@ -463,6 +514,19 @@ const emitSubscribe = () => {
   font-size: 0.82rem;
   font-weight: 600;
   text-decoration: none;
+}
+
+.tier-card__media-link-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.16rem 0.42rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-500) 14%, transparent);
+  color: var(--accent-600);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .tier-card__media-link:hover {

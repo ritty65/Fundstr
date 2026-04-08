@@ -77,13 +77,16 @@
           </div>
         </div>
         <q-input
-          v-model.number="amount"
+          :model-value="amount"
           type="number"
           dense
           outlined
           :label="t('DonationPrompt.cashu.amountLabel')"
+          class="cashu-panel__amount-input"
           min="1"
-          :disable="isAuthBlocked"
+          step="1"
+          inputmode="numeric"
+          @update:model-value="onAmountInput"
         />
         <div
           v-if="sendError"
@@ -422,6 +425,26 @@ function selectPreset(preset: number) {
   sendError.value = "";
 }
 
+function onAmountInput(value: number | string | null) {
+  if (value === null || value === undefined || value === "") {
+    amount.value = null;
+    activePreset.value = null;
+    sendError.value = "";
+    return;
+  }
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return;
+  }
+
+  amount.value = Math.max(0, Math.round(numeric));
+  if (!presetAmounts.value.includes(amount.value)) {
+    activePreset.value = null;
+  }
+  sendError.value = "";
+}
+
 async function sendCashuDonation() {
   if (isAuthBlocked.value) {
     return;
@@ -522,10 +545,11 @@ watch(amount, (value) => {
 }
 
 .cashu-panel__section {
-  background: var(--surface-2);
+  background: rgba(16, 22, 31, 0.94) !important;
   border: 1px solid var(--surface-contrast-border, rgba(0, 0, 0, 0.08));
   border-radius: 12px;
   padding: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .cashu-panel__section-title {
@@ -555,6 +579,7 @@ watch(amount, (value) => {
   border: 1px solid var(--surface-contrast-border, rgba(0, 0, 0, 0.08));
   border-radius: 999px;
   padding: 6px 12px;
+  color: var(--text-1);
   font-weight: 600;
   font-size: 0.9rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -614,6 +639,8 @@ watch(amount, (value) => {
 
 .cashu-panel__preset--active {
   border-color: var(--accent-500);
+  background: color-mix(in srgb, var(--accent-500) 20%, var(--surface-1));
+  color: var(--text-1);
   box-shadow: 0 0 0 2px rgba(93, 135, 255, 0.25);
 }
 
@@ -623,6 +650,7 @@ watch(amount, (value) => {
 
 .cashu-panel__cta {
   align-self: flex-start;
+  font-weight: 700;
 }
 
 .cashu-panel__mint-list {
@@ -639,6 +667,21 @@ watch(amount, (value) => {
 
 .cashu-panel__send-error {
   line-height: 1.3;
+}
+
+.cashu-panel__amount-input :deep(.q-field__control),
+.cashu-panel__amount-input :deep(.q-field__native),
+.cashu-panel__amount-input :deep(.q-field__input) {
+  color: var(--text-1);
+}
+
+.cashu-panel__amount-input :deep(.q-field__control) {
+  background: var(--surface-1);
+  border-radius: 12px;
+}
+
+.cashu-panel__amount-input :deep(.q-field__label) {
+  color: var(--text-2);
 }
 
 .cashu-panel__skeleton-header {

@@ -79,7 +79,7 @@
             </div>
           </div>
           <div
-            v-if="tierSummaryText || followers !== null"
+            v-if="tierSummaryText || followers !== null || trustedRank !== null"
             class="meta-chip-row text-2"
           >
             <span v-if="tierSummaryText" class="meta-chip">
@@ -89,6 +89,10 @@
             <span v-if="followers !== null" class="meta-chip">
               <q-icon name="group" size="14px" class="meta-chip-icon" />
               {{ followers }} followers
+            </span>
+            <span v-if="trustedRank !== null" class="meta-chip">
+              <q-icon name="shield" size="14px" class="meta-chip-icon" />
+              Trusted rank {{ trustedRank }}
             </span>
           </div>
         </div>
@@ -163,6 +167,7 @@ import type { Creator } from "src/lib/fundstrApi";
 import { formatMsatToSats } from "src/lib/fundstrApi";
 import { DONATION_FALLBACK_LOOKUP } from "src/config/donation-eligibility";
 import {
+  creatorTrustedRank,
   creatorHasVerifiedNip05,
   creatorIsFundstrCreator,
   creatorIsSignalOnly,
@@ -294,6 +299,7 @@ const tierSummaryText = computed(() => {
 });
 
 const followers = computed(() => props.profile.followers ?? null);
+const trustedRank = computed(() => creatorTrustedRank(props.profile as any));
 
 const inferredHasTiers = computed(() => {
   if (props.profile.hasTiers !== undefined && props.profile.hasTiers !== null) {
@@ -570,7 +576,9 @@ function handlePrimaryAction() {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  transition: box-shadow 0.25s ease, transform 0.25s ease;
+  transition:
+    box-shadow 0.25s ease,
+    transform 0.25s ease;
   box-shadow: 0 12px 30px -18px rgba(15, 23, 42, 0.45);
   height: 100%;
 }
@@ -659,7 +667,9 @@ function handlePrimaryAction() {
   color: var(--text-2);
   border: 1px solid
     color-mix(in srgb, var(--surface-contrast-border) 55%, transparent);
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
 }
 
 .status-chip.accent {
@@ -834,7 +844,10 @@ function handlePrimaryAction() {
   font-weight: 600;
   letter-spacing: 0.01em;
   border-radius: 0.75rem;
-  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease,
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
     transform 0.2s ease;
 }
 

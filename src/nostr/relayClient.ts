@@ -50,7 +50,7 @@ const PUBLIC_POOL = [
   FUNDSTR_PRIMARY_RELAY,
   "wss://relay.snort.social",
   "wss://nos.lol",
-  "wss://relay.damus.io",
+  "wss://relay.primal.net",
 ];
 
 const HEX_REGEX = /^[0-9a-fA-F]{64}$/;
@@ -640,6 +640,32 @@ export async function queryNutzapProfile(
   }
   const events = await queryNostr(filters, queryOptions);
   return pickLatestReplaceable(events, { kind: 10019, pubkey });
+}
+
+export async function queryKind0Profile(
+  pubkeyInput: string,
+  opts: NutzapQueryOptions = {},
+): Promise<NostrEvent | null> {
+  const pubkey = toHex(pubkeyInput);
+  const filters: Filter[] = [{ kinds: [0], authors: [pubkey], limit: 1 }];
+  const queryOptions: QueryOptions = {
+    preferFundstr: true,
+    fanout: opts.fanout,
+  };
+  if (opts.httpBase) {
+    queryOptions.httpBase = opts.httpBase;
+  }
+  if (opts.fundstrWsUrl) {
+    queryOptions.fundstrWsUrl = opts.fundstrWsUrl;
+  }
+  if (typeof opts.wsTimeoutMs === "number") {
+    queryOptions.wsTimeoutMs = opts.wsTimeoutMs;
+  }
+  if (opts.allowFanoutFallback) {
+    queryOptions.allowFanoutFallback = true;
+  }
+  const events = await queryNostr(filters, queryOptions);
+  return pickLatestReplaceable(events, { kind: 0, pubkey });
 }
 
 export async function queryNutzapTiers(

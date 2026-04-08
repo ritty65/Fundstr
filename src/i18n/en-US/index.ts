@@ -247,8 +247,8 @@ export const messages = {
           caption: "cashu.space",
         },
         github: {
-          title: "Github",
-          caption: "github.com/ritty65/Fundstr",
+          title: "Source Code",
+          caption: "Coming soon",
         },
         telegram: {
           title: "Telegram",
@@ -2009,8 +2009,8 @@ export const messages = {
           creator: "Ditto; includes creator-specific FAQs below.",
         },
         externalLinks: {
-          fan: "Cashu.space docs, GitHub, Twitter, Telegram, Donate.",
-          creator: "Identical — share with collaborators or fans.",
+          fan: "Cashu.space docs, Twitter, Telegram, and support links.",
+          creator: "Identical — quick links for docs, social channels, and support.",
         },
         nostrLogin: {
           fan: "Sign in using your Nostr keys.",
@@ -2157,10 +2157,10 @@ export const messages = {
       accept: "I accept the Terms of Service.",
     },
     pwa: {
-      title: "Install as App",
-      lead: "Install this wallet as a Progressive Web App for a better experience.",
-      ctaInstall: "Install",
-      ctaSkip: "Not now",
+      title: "Coming soon",
+      lead: "Fundstr is being hardened for public release. Public source access and extra polish are coming soon.",
+      ctaInstall: "Coming soon",
+      ctaSkip: "Continue",
     },
     finish: {
       title: "You’re ready!",

@@ -12,8 +12,11 @@ type SetupResult = {
   module: typeof import("src/boot/ndk");
   MockNDK: any;
   settings: any;
+  nostrStore: any;
   resetFallbackState: ReturnType<typeof vi.fn>;
   clearRelayFailureCache: ReturnType<typeof vi.fn>;
+  mustConnectRequiredRelays: ReturnType<typeof vi.fn>;
+  relayWatchdogStart: ReturnType<typeof vi.fn>;
 };
 
 async function setupNdkModule(
@@ -142,8 +145,11 @@ async function setupNdkModule(
     module,
     MockNDK,
     settings,
+    nostrStore,
     resetFallbackState,
     clearRelayFailureCache,
+    mustConnectRequiredRelays,
+    relayWatchdogStart,
   };
 }
 
@@ -250,5 +256,28 @@ describe("boot/ndk", () => {
 
     expect(setTimeoutSpy).not.toHaveBeenCalled();
     expect(consoleDebug).not.toHaveBeenCalled();
+  });
+
+  it("does not force required relay connections for read-only browsing mode", async () => {
+    const { module, mustConnectRequiredRelays } = await setupNdkModule({
+      relayBootstrapMode: "auto",
+      relayDebugLogsEnabled: false,
+    });
+
+    await module.createNdk();
+
+    expect(mustConnectRequiredRelays).not.toHaveBeenCalled();
+  });
+
+  it("skips signer bootstrap and watchdogs for read-only NDK requests", async () => {
+    const { module, nostrStore, relayWatchdogStart } = await setupNdkModule({
+      relayBootstrapMode: "auto",
+      relayDebugLogsEnabled: false,
+    });
+
+    await module.createNdk({ requireSigner: false });
+
+    expect(nostrStore.initSignerIfNotSet).not.toHaveBeenCalled();
+    expect(relayWatchdogStart).not.toHaveBeenCalled();
   });
 });

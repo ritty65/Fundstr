@@ -6,6 +6,7 @@ import {
   normalizeEvents,
   pickLatestAddrReplaceable,
   pickLatestReplaceable,
+  queryKind0Profile,
   queryNostr,
   queryNutzapProfile,
   queryNutzapTiers,
@@ -261,6 +262,40 @@ describe("relayClient transport", () => {
     expect(filtersParam).toBeTruthy();
     const parsed = JSON.parse(decodeURIComponent(filtersParam!));
     expect(parsed[0].authors[0]).toBe(pubkeyHex);
+  });
+
+  it("normalises npub authors to hex when querying kind-0 metadata", async () => {
+    const pubkeyHex = "e".repeat(64);
+    const npub = nip19.npubEncode(pubkeyHex);
+    const responseEvents = [
+      makeEvent({ id: "kind0-profile", kind: 0, pubkey: pubkeyHex }),
+    ];
+
+    const fetchMock = vi.fn(async (input: any) => {
+      const url = new URL(toUrlString(input));
+      const filtersParam = url.searchParams.get("filters");
+      expect(filtersParam).toBeTruthy();
+      const parsed = JSON.parse(decodeURIComponent(filtersParam!));
+      expect(parsed[0].authors[0]).toBe(pubkeyHex);
+      expect(parsed[0].kinds).toEqual([0]);
+      return new Response(JSON.stringify(responseEvents), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    class ThrowingWebSocket {
+      constructor() {
+        throw new Error("connect failed");
+      }
+    }
+
+    (globalThis as any).WebSocket = ThrowingWebSocket as any;
+
+    const kind0Result = await queryKind0Profile(npub);
+    expect(kind0Result?.id).toBe("kind0-profile");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("prefers canonical tier events when canonical and legacy share a timestamp", async () => {

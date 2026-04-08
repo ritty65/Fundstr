@@ -172,7 +172,7 @@ export default defineComponent({
 <style scoped>
 .token-full {
   word-break: break-all;
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 0.9em;
 }
 </style>

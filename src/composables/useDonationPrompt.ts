@@ -7,9 +7,10 @@ import { LOCAL_STORAGE_KEYS } from '@/constants/localStorageKeys';
 const visible = ref(false);
 const liquid = ref(import.meta.env.VITE_DONATION_LIQUID_ADDRESS || '');
 const bitcoin = ref(import.meta.env.VITE_DONATION_BITCOIN || '');
-const supporterIdentifier = (import.meta.env.VITE_DONATION_SUPPORTER_NPUB || '').trim();
 export const CASHU_SUPPORTER_NPUB =
   'npub1mxmqzhgvla9wrgc8qlptmuylqzal2c50pc744zcm9kunhekv6g3s63ytu0';
+const supporterIdentifier =
+  (import.meta.env.VITE_DONATION_SUPPORTER_NPUB || CASHU_SUPPORTER_NPUB).trim();
 const cashuSupporterNpub = CASHU_SUPPORTER_NPUB;
 
 type DonationTab = 'liquid' | 'bitcoin' | 'cashu';

@@ -150,7 +150,11 @@
           <q-item-label>Chats</q-item-label>
         </q-item-section>
       </q-item>
-      <q-item v-if="!isGuest && needsNostrLogin" clickable @click="gotoNostrLogin">
+      <q-item
+        v-if="!isGuest && needsNostrLogin"
+        clickable
+        @click="gotoNostrLogin"
+      >
         <q-item-section avatar>
           <q-icon name="vpn_key" />
         </q-item-section>
@@ -261,7 +265,7 @@ const needsNostrLogin = computed(() => !nostrStore.hasIdentity);
 const isGuest = computed(() => !welcomeStore.welcomeCompleted);
 
 const drawerContentClass = computed(() =>
-  $q.screen.lt.md ? "main-nav-safe" : "q-pt-sm"
+  $q.screen.lt.md ? "main-nav-safe" : "q-pt-sm",
 );
 
 const essentialLinks = [
@@ -282,12 +286,6 @@ const essentialLinks = [
     caption: t("MainHeader.menu.links.cashuSpace.caption"),
     icon: "web",
     link: "https://cashu.space",
-  },
-  {
-    title: t("MainHeader.menu.links.github.title"),
-    caption: t("MainHeader.menu.links.github.caption"),
-    icon: "code",
-    link: "https://github.com/ritty65/Fundstr",
   },
   {
     title: t("MainHeader.menu.links.telegram.title"),

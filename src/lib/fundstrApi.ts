@@ -84,6 +84,14 @@ export interface CreatorTierSummary {
   cheapestPriceMsat: number | null;
 }
 
+export interface CreatorTrustedMetrics {
+  rank: number | null;
+  providerLabel: string | null;
+  providerPubkey: string | null;
+  relayUrl: string | null;
+  createdAt: number | null;
+}
+
 export interface Creator {
   pubkey: string;
   profile: Record<string, unknown> | null;
@@ -107,6 +115,7 @@ export interface Creator {
   hasTiers?: boolean | null;
   isCreator?: boolean | null;
   isPersonal?: boolean | null;
+  trustedMetrics?: CreatorTrustedMetrics | null;
 }
 
 export function withPrefix(path = ""): string {
@@ -249,8 +258,8 @@ export function formatMsatToSats(
     typeof options.maximumFractionDigits === "number"
       ? options.maximumFractionDigits
       : Math.abs(sats) < 1
-      ? 3
-      : 0;
+        ? 3
+        : 0;
 
   const formatter = new Intl.NumberFormat(undefined, {
     minimumFractionDigits: 0,
@@ -425,7 +434,37 @@ function normalizeCreator(entry: unknown): Creator {
     creator.featured = entry.featured;
   }
 
+  const trustedMetrics = normalizeTrustedMetrics(
+    entry.trustedMetrics ?? entry.trusted_metrics,
+  );
+  if (trustedMetrics) {
+    creator.trustedMetrics = trustedMetrics;
+  }
+
   return creator;
+}
+
+function normalizeTrustedMetrics(input: unknown): CreatorTrustedMetrics | null {
+  if (!isRecord(input)) {
+    return null;
+  }
+
+  const rank = toNullableNumber(input.rank);
+  if (rank === null || !Number.isInteger(rank) || rank < 0 || rank > 100) {
+    return null;
+  }
+
+  return {
+    rank,
+    providerLabel: toNullableString(
+      input.providerLabel ?? input.provider_label,
+    ),
+    providerPubkey: toNullableString(
+      input.providerPubkey ?? input.provider_pubkey,
+    ),
+    relayUrl: toNullableString(input.relayUrl ?? input.relay_url),
+    createdAt: toNullableNumber(input.createdAt ?? input.created_at),
+  };
 }
 
 function normalizeMetrics(input: Record<string, unknown>): CreatorMetrics {

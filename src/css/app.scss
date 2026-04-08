@@ -50,14 +50,28 @@ body,
 .custom-btn {
   background: var(--custom-btn-bg);
   color: var(--custom-btn-text);
+  border: 1px solid var(--surface-contrast-border);
   border-radius: 8px;
   height: 80px;
   box-shadow: none;
   font-size: 18px;
+  transition: background-color 0.18s ease, border-color 0.18s ease,
+    transform 0.18s ease;
 }
 
 .custom-btn:hover {
-  background: $grey-8;
+  background: color-mix(in srgb, var(--custom-btn-bg) 82%, var(--accent-500));
+  border-color: color-mix(
+    in srgb,
+    var(--surface-contrast-border) 45%,
+    var(--accent-500)
+  );
+  transform: translateY(-1px);
+}
+
+.custom-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 4px rgba(236, 72, 153, 0.28);
 }
 
 .custom-btn-text {
@@ -121,6 +135,8 @@ body,
   --text-1: #111827;
   --text-2: #6b7280;
   --text-inverse: #ffffff;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
   --surface-1: #f9fafb;
   --surface-2: #ffffff;
   --surface-contrast-border: var(--border-subtle-light);

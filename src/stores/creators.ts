@@ -1,11 +1,18 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { db } from "./dexie";
-import { getEventHash, signEvent, publishEvent } from "./nostr";
+import {
+  getEventHash,
+  signEvent,
+  publishEvent,
+  useNostrStore,
+  type TrustedUserRank,
+} from "./nostr";
 import { nip19 } from "nostr-tools";
 import { Event as NostrEvent } from "nostr-tools";
 import type { Tier } from "./types";
 import {
+  queryKind0Profile,
   queryNutzapProfile,
   queryNutzapTiers,
   toHex,
@@ -36,7 +43,13 @@ import {
   type Creator as FundstrCreator,
 } from "src/lib/fundstrApi";
 import { useNdk } from "src/composables/useNdk";
-import { shortenNpub } from "src/utils/profile";
+import {
+  hasRenderableProfileMeta,
+  mergeMissingProfileMeta,
+  parseKind0ProfileMeta,
+  shortenNpub,
+  type ProfileMeta,
+} from "src/utils/profile";
 import { extractCreatorIdentifier } from "src/utils/profileUrl";
 import { FEATURED_CREATORS as CONFIG_FEATURED_CREATORS } from "src/config/featured-creators";
 import { parseTiersContent as parseNutzapTiersContent } from "@/nutzap/profileShared";
@@ -52,6 +65,10 @@ export { FEATURED_CREATORS } from "src/config/featured-creators";
 type CreatorProfileMetrics = NonNullable<FundstrCreator["metrics"]> & {
   signal_only?: unknown;
 };
+
+type CreatorTrustedMetrics = NonNullable<
+  NonNullable<FundstrCreator["trustedMetrics"]>
+>;
 
 export type CreatorProfile = Omit<FundstrCreator, "tiers" | "metrics"> & {
   tiers?: Tier[];
@@ -72,7 +89,7 @@ export type CreatorSearchFilters = {
   signalOnly?: boolean;
 };
 
-export type CreatorSearchSort = "relevance" | "followers";
+export type CreatorSearchSort = "relevance" | "followers" | "trustedRank";
 
 const FRESH_RETRY_BASE_MS = 1500;
 const FRESH_RETRY_MAX_MS = 30000;
@@ -384,9 +401,9 @@ function extractProfileDetailsFromDiscovery(
 
   const hasMetadata = Boolean(
     (displayName && displayName.length) ||
-      (name && name.length) ||
-      (about && about.length) ||
-      (picture && picture.length),
+    (name && name.length) ||
+    (about && about.length) ||
+    (picture && picture.length),
   );
 
   if (
@@ -479,6 +496,7 @@ function convertNutzapTierToDiscoveryTier(
 }
 
 export interface FundstrProfileBundle {
+  ownerPubkey?: string;
   profile: Record<string, any> | null;
   profileEvent: RelayEvent | null;
   followers: number | null;
@@ -864,8 +882,8 @@ async function fetchFundstrProfileBundleFromDiscovery(
   let finalTierCandidates = tierFreshMatch
     ? [...(tierFreshMatch.fresh ?? [])]
     : tierFallbackSource?.cached
-    ? [...tierFallbackSource.cached]
-    : [];
+      ? [...tierFallbackSource.cached]
+      : [];
   let tierFetchFailed =
     tierLookupFailed ||
     tierLookupBackoff ||
@@ -873,8 +891,8 @@ async function fetchFundstrProfileBundleFromDiscovery(
   let initialTierCandidates = tierFallbackSource?.cached?.length
     ? [...tierFallbackSource.cached]
     : tierFreshMatch?.fresh
-    ? [...tierFreshMatch.fresh]
-    : [];
+      ? [...tierFreshMatch.fresh]
+      : [];
 
   let usedCachedTierFallback = false;
   let usedNutzapTierFallback = false;
@@ -924,8 +942,8 @@ async function fetchFundstrProfileBundleFromDiscovery(
       typeof finalCreator?.pubkey === "string" && finalCreator.pubkey.trim()
         ? finalCreator.pubkey
         : typeof npubQuery === "string" && npubQuery
-        ? npubQuery
-        : tierResults[0]?.id ?? pubkey;
+          ? npubQuery
+          : (tierResults[0]?.id ?? pubkey);
     try {
       const nutzapEvent = await queryNutzapTiers(nutzapQueryInput);
       const recoveredTiers = nutzapEvent?.content
@@ -983,8 +1001,8 @@ async function fetchFundstrProfileBundleFromDiscovery(
   const baseBundle = finalCreatorForBundle
     ? buildBundleFromDiscoveryCreator(finalCreatorForBundle)
     : initialCreatorForBundle
-    ? buildBundleFromDiscoveryCreator(initialCreatorForBundle)
-    : null;
+      ? buildBundleFromDiscoveryCreator(initialCreatorForBundle)
+      : null;
 
   if (!baseBundle) {
     throw new FundstrProfileFetchError(
@@ -1009,6 +1027,7 @@ async function fetchFundstrProfileBundleFromDiscovery(
 
   let bundle: FundstrProfileBundle = {
     ...baseBundle,
+    ownerPubkey: normalizedPubkey,
     tierDataFresh,
     tierSecurityBlocked,
     tierFetchFailed,
@@ -1047,7 +1066,6 @@ async function fetchFundstrProfileBundleFromDiscovery(
               bundle.relayHints,
               relayProfileDetails.relays,
             ),
-            fetchedFromFallback: true,
           };
           bundle.profile = mergeProfileRecordWithDetails(
             bundle.profile,
@@ -1087,7 +1105,6 @@ async function fetchFundstrProfileBundleFromDiscovery(
             tiers: recoveredTiers,
             tierFetchFailed: false,
             tierDataFresh: false,
-            fetchedFromFallback: true,
           };
         }
       } catch (error) {
@@ -1096,6 +1113,36 @@ async function fetchFundstrProfileBundleFromDiscovery(
           error,
         });
       }
+    }
+  }
+
+  if (!hasBundleProfileMetadata(bundle.profile, bundle.profileDetails)) {
+    try {
+      const kind0RelayHints = mergeStringLists(
+        bundle.relayHints,
+        bundle.profileDetails?.relays ?? [],
+      );
+      const kind0Event = await queryKind0Profile(pubkey, {
+        fanout: kind0RelayHints,
+        httpBase: FUNDSTR_REQ_URL,
+        fundstrWsUrl: FUNDSTR_WS_URL,
+        allowFanoutFallback: true,
+      });
+      const kind0Meta = parseKind0ProfileMeta(kind0Event);
+
+      if (hasRenderableProfileMeta(kind0Meta)) {
+        bundle = {
+          ...bundle,
+          profileEvent: bundle.profileEvent ?? kind0Event,
+          profile: mergeProfileRecordWithMeta(bundle.profile, kind0Meta),
+          fetchedFromFallback: true,
+        };
+      }
+    } catch (error) {
+      console.warn("fetchFundstrProfileBundle kind-0 hydration failed", {
+        pubkey,
+        error,
+      });
     }
   }
 
@@ -1134,6 +1181,10 @@ function buildBundleFromCachedCreatorProfile(
     : null;
 
   return {
+    ownerPubkey:
+      typeof creator.pubkey === "string"
+        ? creator.pubkey.trim().toLowerCase()
+        : undefined,
     profile,
     profileEvent: null,
     followers,
@@ -1189,6 +1240,10 @@ function buildBundleFromLegacyCreator(
   const tierDataFresh = (creator as any).tierDataFresh === false ? false : true;
 
   return {
+    ownerPubkey:
+      typeof creator.pubkey === "string"
+        ? creator.pubkey.trim().toLowerCase()
+        : undefined,
     profile,
     profileEvent: null,
     followers,
@@ -1240,7 +1295,10 @@ async function loadBundleFromCache(
       );
     }
 
-    return buildBundleFromCachedCreatorProfile(creator, details);
+    return {
+      ...buildBundleFromCachedCreatorProfile(creator, details),
+      ownerPubkey: pubkeyHex.toLowerCase(),
+    };
   } catch (error) {
     console.warn("fetchFundstrProfileBundle failed to load Dexie cache", {
       pubkey: pubkeyHex,
@@ -1289,7 +1347,10 @@ async function fetchBundleFromLegacy(
         return entry.pubkey.trim().toLowerCase() === normalizedPubkey;
       });
       if (match) {
-        return buildBundleFromLegacyCreator(match);
+        return {
+          ...buildBundleFromLegacyCreator(match),
+          ownerPubkey: normalizedPubkey,
+        };
       }
     } catch (error) {
       lastError = error;
@@ -1528,6 +1589,10 @@ function buildBundleFromDiscoveryCreator(
     .filter((tier): tier is Tier => tier !== null && isValidTier(tier));
 
   return {
+    ownerPubkey:
+      typeof creator.pubkey === "string"
+        ? creator.pubkey.trim().toLowerCase()
+        : undefined,
     profile,
     profileEvent: null,
     followers,
@@ -1605,7 +1670,7 @@ function mergeProfileRecordWithDetails(
   details: NutzapProfileDetails | null | undefined,
 ): Record<string, any> | null {
   const next: Record<string, any> = profile
-    ? cloneDiscoveryProfile(profile) ?? {}
+    ? (cloneDiscoveryProfile(profile) ?? {})
     : {};
 
   const applyString = (key: string, value: unknown) => {
@@ -1618,6 +1683,31 @@ function mergeProfileRecordWithDetails(
   applyString("name", details?.name);
   applyString("about", details?.about);
   applyString("picture", details?.picture);
+
+  return Object.keys(next).length ? next : null;
+}
+
+function mergeProfileRecordWithMeta(
+  profile: Record<string, any> | null | undefined,
+  fallbackMeta: ProfileMeta | null | undefined,
+): Record<string, any> | null {
+  const mergedMeta = mergeMissingProfileMeta(profile ?? {}, fallbackMeta);
+  const next: Record<string, any> = profile
+    ? (cloneDiscoveryProfile(profile) ?? {})
+    : {};
+
+  const applyString = (key: string, value: unknown) => {
+    if (typeof value === "string" && value.trim()) {
+      next[key] = value.trim();
+    }
+  };
+
+  applyString("display_name", mergedMeta.display_name);
+  applyString("name", mergedMeta.name);
+  applyString("about", mergedMeta.about);
+  applyString("picture", mergedMeta.picture);
+  applyString("nip05", mergedMeta.nip05);
+  applyString("website", mergedMeta.website);
 
   return Object.keys(next).length ? next : null;
 }
@@ -1705,16 +1795,16 @@ function normalizeTier(tier: any): Tier {
       typeof tier?.name === "string"
         ? tier.name
         : typeof tier?.title === "string"
-        ? tier.title
-        : "",
+          ? tier.title
+          : "",
     price_sats:
       typeof tier?.price_sats === "number" && Number.isFinite(tier.price_sats)
         ? tier.price_sats
         : typeof tier?.price === "number" && Number.isFinite(tier.price)
-        ? tier.price
-        : amountMsat !== null
-        ? Math.round(amountMsat / 1000)
-        : 0,
+          ? tier.price
+          : amountMsat !== null
+            ? Math.round(amountMsat / 1000)
+            : 0,
     description: typeof tier?.description === "string" ? tier.description : "",
     frequency: normalizeTierFrequency(tier?.frequency ?? tier?.cadence),
     ...(perks && !tier?.benefits ? { benefits: [perks] } : {}),
@@ -1736,21 +1826,25 @@ function cloneCreatorProfile(
     : null;
   const tierSummary = source.tierSummary
     ? { ...source.tierSummary }
-    : source.tierSummary ?? null;
+    : (source.tierSummary ?? null);
   const metrics = source.metrics
     ? { ...source.metrics }
-    : source.metrics ?? undefined;
+    : (source.metrics ?? undefined);
+  const trustedMetrics = isValidTrustedMetrics(source.trustedMetrics)
+    ? { ...source.trustedMetrics }
+    : (source.trustedMetrics ?? null);
   const tiers = Array.isArray(source.tiers)
     ? source.tiers.map((tier) => normalizeTier(tier))
     : source.tiers === undefined
-    ? undefined
-    : [];
+      ? undefined
+      : [];
 
   return {
     ...source,
     profile,
     tierSummary,
     metrics,
+    trustedMetrics,
     tiers,
   };
 }
@@ -1773,6 +1867,116 @@ function isTruthyFlag(value: unknown): boolean {
     return value === 1;
   }
   return false;
+}
+
+function isValidTrustedMetrics(value: unknown): value is CreatorTrustedMetrics {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const rank = (value as CreatorTrustedMetrics).rank;
+  return (
+    typeof rank === "number" &&
+    Number.isInteger(rank) &&
+    rank >= 0 &&
+    rank <= 100
+  );
+}
+
+function toCreatorTrustedMetrics(
+  value: TrustedUserRank | CreatorTrustedMetrics | null | undefined,
+): CreatorTrustedMetrics | null {
+  if (!value) {
+    return null;
+  }
+
+  if (isValidTrustedMetrics(value)) {
+    return { ...value };
+  }
+
+  const rank = value.rank;
+  if (!Number.isInteger(rank) || rank < 0 || rank > 100) {
+    return null;
+  }
+
+  return {
+    rank,
+    providerLabel:
+      typeof value.providerLabel === "string" ? value.providerLabel : null,
+    providerPubkey:
+      typeof value.providerPubkey === "string" ? value.providerPubkey : null,
+    relayUrl: typeof value.relayUrl === "string" ? value.relayUrl : null,
+    createdAt: typeof value.createdAt === "number" ? value.createdAt : null,
+  };
+}
+
+export function creatorTrustedRank(
+  profile: Pick<CreatorProfile, "trustedMetrics"> | null | undefined,
+): number | null {
+  const trustedMetrics = toCreatorTrustedMetrics(profile?.trustedMetrics);
+  return trustedMetrics?.rank ?? null;
+}
+
+function applyTrustedMetricsToCreator(
+  profile: CreatorProfile,
+  trustedRank: TrustedUserRank | null,
+): CreatorProfile {
+  const nextTrustedMetrics =
+    toCreatorTrustedMetrics(trustedRank) ??
+    toCreatorTrustedMetrics(profile.trustedMetrics);
+
+  if (
+    !nextTrustedMetrics &&
+    (profile.trustedMetrics === undefined || profile.trustedMetrics === null)
+  ) {
+    return profile;
+  }
+
+  const nextProfile = cloneCreatorProfile(profile);
+  nextProfile.trustedMetrics = nextTrustedMetrics;
+  return nextProfile;
+}
+
+async function enrichCreatorsWithTrustedMetrics(
+  profiles: CreatorProfile[],
+): Promise<CreatorProfile[]> {
+  const uniquePubkeys = Array.from(
+    new Set(
+      profiles
+        .map((profile) =>
+          typeof profile.pubkey === "string"
+            ? profile.pubkey.trim().toLowerCase()
+            : "",
+        )
+        .filter((pubkey): pubkey is string => /^[0-9a-f]{64}$/.test(pubkey)),
+    ),
+  );
+
+  if (!uniquePubkeys.length) {
+    return profiles;
+  }
+
+  try {
+    const nostrStore = useNostrStore();
+    const trustedRanks = await nostrStore.fetchTrustedUserRanks(uniquePubkeys);
+
+    return profiles.map((profile) => {
+      const pubkey =
+        typeof profile.pubkey === "string"
+          ? profile.pubkey.trim().toLowerCase()
+          : "";
+      return applyTrustedMetricsToCreator(
+        profile,
+        trustedRanks[pubkey] ?? null,
+      );
+    });
+  } catch (error) {
+    console.warn(
+      "[creators] Failed to enrich creators with trusted metrics",
+      error,
+    );
+    return profiles;
+  }
 }
 
 function computeTierSummary(tiers: Tier[] | null | undefined) {
@@ -2126,8 +2330,8 @@ export function creatorHasVerifiedNip05(profile: CreatorProfile): boolean {
 
   return Boolean(
     nip05Value &&
-      verifiedHandle &&
-      nip05Value.trim().toLowerCase() === verifiedHandle.trim().toLowerCase(),
+    verifiedHandle &&
+    nip05Value.trim().toLowerCase() === verifiedHandle.trim().toLowerCase(),
   );
 }
 
@@ -2168,11 +2372,45 @@ function normalizeSearchValue(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
+export function sortCreatorsByTrustedRank(
+  profiles: CreatorProfile[],
+  query = "",
+): CreatorProfile[] {
+  const normalizedQuery = normalizeSearchValue(query);
+
+  return profiles.slice().sort((a, b) => {
+    const trustedRankDelta =
+      (creatorTrustedRank(b) ?? Number.NEGATIVE_INFINITY) -
+      (creatorTrustedRank(a) ?? Number.NEGATIVE_INFINITY);
+    if (trustedRankDelta !== 0) {
+      return trustedRankDelta;
+    }
+
+    if (normalizedQuery) {
+      const scoreDelta =
+        scoreCreatorRelevance(b, normalizedQuery) -
+        scoreCreatorRelevance(a, normalizedQuery);
+      if (scoreDelta !== 0) {
+        return scoreDelta;
+      }
+    }
+
+    const followerDelta =
+      (b.followers ?? Number.NEGATIVE_INFINITY) -
+      (a.followers ?? Number.NEGATIVE_INFINITY);
+    if (followerDelta !== 0) {
+      return followerDelta;
+    }
+
+    return fallbackName(a).localeCompare(fallbackName(b));
+  });
+}
+
 function profileNameCandidates(profile: CreatorProfile): string[] {
   const profileRecord = (profile?.profile ?? {}) as Record<string, unknown>;
   const metaRecord = (profile?.meta ?? {}) as Record<string, unknown>;
   const nip05 = normalizeSearchValue(profile.nip05);
-  const localHandle = nip05.includes("@") ? nip05.split("@")[0] ?? "" : nip05;
+  const localHandle = nip05.includes("@") ? (nip05.split("@")[0] ?? "") : nip05;
   return [
     normalizeSearchValue(profile.displayName),
     normalizeSearchValue(profile.name),
@@ -2342,6 +2580,10 @@ function applyCreatorFilters(
       );
   }
 
+  if (sort === "trustedRank") {
+    return sortCreatorsByTrustedRank(filtered, query);
+  }
+
   return sortCreatorsByRelevance(filtered, query);
 }
 
@@ -2440,6 +2682,7 @@ function createCreatorFromBundle(
     hasTiers: overrides.hasTiers ?? null,
     isCreator: overrides.isCreator ?? null,
     isPersonal: overrides.isPersonal ?? null,
+    trustedMetrics: toCreatorTrustedMetrics(overrides.trustedMetrics),
   };
 
   return creator;
@@ -2554,7 +2797,7 @@ export const useCreatorsStore = defineStore("creators", {
                   ? tier.media.map((media) => ({ ...media }))
                   : undefined,
               }))
-            : data.tiers ?? null,
+            : (data.tiers ?? null),
         });
       }
       return results;
@@ -2910,9 +3153,11 @@ export const useCreatorsStore = defineStore("creators", {
       this.error = "";
       this.searchStatusMessage = "";
       this.lastSearchQuery = appliedQuery;
-      this.unfilteredSearchResults = merged;
+      const enriched = await enrichCreatorsWithTrustedMetrics(merged);
+
+      this.unfilteredSearchResults = enriched;
       this.searchResults = applyCreatorFilters(
-        merged,
+        enriched,
         options.filters,
         options.sort,
         appliedQuery,
@@ -3152,9 +3397,16 @@ export const useCreatorsStore = defineStore("creators", {
           profiles,
           controller.signal,
         );
-        this.unfilteredSearchResults = mergedProfiles;
-        this.searchResults = applyCreatorFilters(mergedProfiles, filters, sort);
-        this.searchWarnings = applyTierWarnings(mergedProfiles, warnings);
+        const enrichedProfiles =
+          await enrichCreatorsWithTrustedMetrics(mergedProfiles);
+        this.unfilteredSearchResults = enrichedProfiles;
+        this.searchResults = applyCreatorFilters(
+          enrichedProfiles,
+          filters,
+          sort,
+          normalizedQuery,
+        );
+        this.searchWarnings = applyTierWarnings(enrichedProfiles, warnings);
         this.searchStatusMessage = "";
       };
 
@@ -3656,14 +3908,16 @@ export const useCreatorsStore = defineStore("creators", {
           .map((pubkey) => cachedEntries.get(pubkey))
           .filter((profile): profile is CreatorProfile => Boolean(profile));
         if (orderedCached.length) {
-          this.featuredCreators = orderedCached;
-          const cachedSecurityBlocked = orderedCached.some(
+          const enrichedCached =
+            await enrichCreatorsWithTrustedMetrics(orderedCached);
+          this.featuredCreators = enrichedCached;
+          const cachedSecurityBlocked = enrichedCached.some(
             (profile) => profile.tierSecurityBlocked === true,
           );
           if (cachedSecurityBlocked) {
             this.featuredStatusMessage = FIREFOX_TIER_SECURITY_WARNING;
           } else if (
-            orderedCached.some((profile) => profile.tierDataFresh === false)
+            enrichedCached.some((profile) => profile.tierDataFresh === false)
           ) {
             this.featuredStatusMessage = staleTierWarning;
           }
@@ -3763,21 +4017,24 @@ export const useCreatorsStore = defineStore("creators", {
           .map((pubkey) => fetchedMap.get(pubkey) ?? cachedEntries.get(pubkey))
           .filter((profile): profile is CreatorProfile => Boolean(profile));
 
-        this.featuredCreators = combined;
-        const combinedSecurityBlocked = combined.some(
+        const enrichedCombined =
+          await enrichCreatorsWithTrustedMetrics(combined);
+
+        this.featuredCreators = enrichedCombined;
+        const combinedSecurityBlocked = enrichedCombined.some(
           (profile) => profile.tierSecurityBlocked === true,
         );
         if (combinedSecurityBlocked) {
           this.featuredStatusMessage = FIREFOX_TIER_SECURITY_WARNING;
         } else if (
-          combined.some((profile) => profile.tierDataFresh === false)
+          enrichedCombined.some((profile) => profile.tierDataFresh === false)
         ) {
           this.featuredStatusMessage = staleTierWarning;
         } else if (!this.featuredError) {
           this.featuredStatusMessage = "";
         }
 
-        if (!combined.length) {
+        if (!enrichedCombined.length) {
           this.featuredError = "Failed to load featured creators.";
         } else {
           this.featuredError = "";
@@ -3867,9 +4124,11 @@ export const useCreatorsStore = defineStore("creators", {
           combinedMap.set(entry.pubkey, entry.profile);
         }
 
-        this.featuredCreators = pubkeys
-          .map((pubkey) => combinedMap.get(pubkey))
-          .filter((profile): profile is CreatorProfile => Boolean(profile));
+        this.featuredCreators = await enrichCreatorsWithTrustedMetrics(
+          pubkeys
+            .map((pubkey) => combinedMap.get(pubkey))
+            .filter((profile): profile is CreatorProfile => Boolean(profile)),
+        );
       }
 
       this.loadingFeatured = false;

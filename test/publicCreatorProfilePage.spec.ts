@@ -513,6 +513,52 @@ describe("PublicCreatorProfilePage", () => {
     expect(fallbackBanner).toBeTruthy();
   });
 
+  it("rejects mismatched creator bundles instead of rendering another creator's profile", async () => {
+    const sampleHex = "1".repeat(64);
+    const sampleNpub = nip19.npubEncode(sampleHex);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: "/creator/:npubOrHex",
+          name: "PublicCreatorProfile",
+          component: PublicCreatorProfilePage,
+        },
+      ],
+    });
+    router.push({
+      name: "PublicCreatorProfile",
+      params: { npubOrHex: sampleNpub },
+    });
+    await router.isReady();
+
+    fetchFundstrProfileBundleMock.mockResolvedValueOnce({
+      ownerPubkey: "2".repeat(64),
+      profile: { display_name: "Wrong Creator", about: "Wrong about" },
+      profileEvent: null,
+      followers: 5,
+      following: 3,
+      profileDetails: null,
+      relayHints: [],
+      fetchedFromFallback: false,
+      tierDataFresh: true,
+      tierSecurityBlocked: false,
+      tierFetchFailed: false,
+      tiers: [],
+    });
+
+    const wrapper = mountPage(router);
+    await flushPromises();
+    await nextTick();
+
+    expect(wrapper.text()).not.toContain("Wrong Creator");
+    expect(
+      wrapper
+        .findAll(".q-banner")
+        .some((banner) => banner.text().includes("Could not load creator")),
+    ).toBe(true);
+  });
+
   it("shows tier error banner and retries fetch when retry button is clicked", async () => {
     const sampleHex = "c".repeat(64);
     const sampleNpub = nip19.npubEncode(sampleHex);

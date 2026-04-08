@@ -1,14 +1,34 @@
 <template>
-  <q-dialog v-model="model" persistent>
-    <q-card class="donate-dialog qcard">
+  <q-dialog
+    v-model="model"
+    persistent
+    :maximized="$q.screen.lt.sm"
+    transition-show="slide-up"
+    transition-hide="slide-down"
+  >
+    <q-card class="donate-dialog qcard bg-surface-2 text-1">
       <q-card-section class="donate-dialog__header">
-        <div>
-          <div class="text-h6">
-            {{ $t("FindCreators.actions.donate.label") }}
+        <div class="donate-dialog__topbar">
+          <div class="donate-dialog__headline">
+            <div class="text-caption text-2 donate-dialog__eyebrow">
+              Support {{ creatorLabel }}
+            </div>
+            <div class="text-h6">
+              {{ $t("FindCreators.actions.donate.label") }}
+            </div>
+            <div class="text-caption text-2 q-mt-xs">
+              One-time gifts open a final send review. Advanced options let you
+              schedule support or lock it to the creator's pubkey.
+            </div>
           </div>
-          <div class="text-caption text-2 q-mt-xs">
-            Send a one-time gift or schedule a series of locked donations.
-          </div>
+          <q-btn
+            flat
+            round
+            dense
+            icon="close"
+            color="primary"
+            @click="cancel"
+          />
         </div>
         <div class="donate-dialog__summary bg-surface-1 text-1">
           <div class="donate-dialog__summary-item">
@@ -25,9 +45,17 @@
             class="donate-dialog__summary-item donate-dialog__summary-item--wide"
           >
             <span class="text-caption text-2">Active mint</span>
-            <strong class="donate-dialog__mint-url">{{
-              activeMintLabel
-            }}</strong>
+            <div class="donate-dialog__mint-row">
+              <strong class="donate-dialog__mint-url">{{
+                activeMintDisplayLabel
+              }}</strong>
+              <span
+                class="donate-dialog__mint-chip"
+                :class="`donate-dialog__mint-chip--${mintStatusTone}`"
+              >
+                {{ mintStatusLabel }}
+              </span>
+            </div>
           </div>
         </div>
       </q-card-section>
@@ -84,6 +112,27 @@
               : ''
           "
         />
+        <div
+          v-if="quickAmountSuggestions.length"
+          class="q-mt-sm donate-dialog__quick-amounts"
+        >
+          <div class="text-caption text-2 q-mb-xs">Quick amounts</div>
+          <div class="row q-col-gutter-sm q-row-gutter-sm">
+            <div
+              v-for="suggestion in quickAmountSuggestions"
+              :key="suggestion.value"
+            >
+              <q-chip
+                clickable
+                outline
+                color="primary"
+                @click="applyQuickAmount(suggestion.value)"
+              >
+                {{ suggestion.label }}
+              </q-chip>
+            </div>
+          </div>
+        </div>
         <q-input
           v-model.trim="message"
           dense
@@ -91,51 +140,66 @@
           :label="$t('DonateDialog.inputs.message')"
           class="q-mt-sm"
         />
-        <q-select
-          v-model="type"
-          :options="typeOptions"
-          emit-value
-          map-options
-          outlined
+        <q-expansion-item
+          v-model="showAdvancedOptions"
           dense
-          class="q-mt-md"
-          :label="$t('DonateDialog.inputs.type')"
-        />
-        <q-banner
-          dense
-          rounded
-          class="q-mt-md donate-dialog__info bg-surface-1 text-2"
-          icon="info"
+          dense-toggle
+          expand-separator
+          icon="tune"
+          switch-toggle-side
+          class="q-mt-md donate-dialog__advanced bg-surface-1"
+          label="Advanced support options"
+          :caption="advancedOptionsCaption"
         >
-          <div v-if="type === 'one-time'">
-            One-time donations send a single token immediately.
+          <div class="donate-dialog__advanced-body">
+            <q-select
+              v-model="type"
+              :options="typeOptions"
+              emit-value
+              map-options
+              outlined
+              dense
+              :label="$t('DonateDialog.inputs.type')"
+            />
+            <q-banner
+              dense
+              rounded
+              class="q-mt-md donate-dialog__info bg-surface-2 text-2"
+              icon="info"
+            >
+              <div v-if="type === 'one-time'">
+                One-time donations open the final send sheet so you can confirm
+                the token before it leaves your wallet.
+              </div>
+              <div v-else>
+                Scheduled donations create
+                {{ presetLabel.toLowerCase() }} worth of locked support for
+                future delivery.
+              </div>
+            </q-banner>
+            <q-option-group
+              v-model="locked"
+              :options="lockOptions"
+              inline
+              class="q-mt-md"
+            />
+            <div class="text-caption text-2 q-mt-sm">
+              {{ lockHelperText }}
+            </div>
+            <q-select
+              v-if="type !== 'one-time'"
+              v-model="preset"
+              :options="presetOptions"
+              emit-value
+              map-options
+              outlined
+              dense
+              class="q-mt-md"
+              :label="$t('DonateDialog.inputs.preset')"
+              :hint="scheduleHint"
+            />
           </div>
-          <div v-else>
-            Scheduled donations create {{ presetLabel.toLowerCase() }} worth of
-            locked tokens for future delivery.
-          </div>
-        </q-banner>
-        <q-option-group
-          v-model="locked"
-          :options="lockOptions"
-          inline
-          class="q-mt-md"
-        />
-        <div class="text-caption text-2 q-mt-sm">
-          {{ lockHelperText }}
-        </div>
-        <q-select
-          v-if="type !== 'one-time'"
-          v-model="preset"
-          :options="presetOptions"
-          emit-value
-          map-options
-          outlined
-          dense
-          class="q-mt-md"
-          :label="$t('DonateDialog.inputs.preset')"
-          :hint="scheduleHint"
-        />
+        </q-expansion-item>
         <q-banner
           v-if="splitBannerTone"
           rounded
@@ -179,13 +243,18 @@
           </div>
         </div>
       </q-card-section>
-      <q-card-actions align="right">
-        <q-btn flat color="primary" @click="cancel">{{
+      <q-card-actions class="donate-dialog__actions">
+        <div class="donate-dialog__footer-copy text-caption text-2">
+          {{ primaryActionHint }}
+        </div>
+        <q-space />
+        <q-btn flat color="primary" no-caps @click="cancel">{{
           $t("global.actions.cancel.label")
         }}</q-btn>
         <q-btn
-          flat
+          unelevated
           color="primary"
+          no-caps
           @click="confirm"
           :disable="confirmDisabled"
           >{{ confirmLabel }}</q-btn
@@ -209,6 +278,7 @@ import { useWalletStore } from "stores/wallet";
 import { mintSupportsSplit, resolveSupportedNuts } from "src/utils/nuts";
 import { useI18n } from "vue-i18n";
 import { describeMintPaymentCapabilities } from "src/utils/paymentCapabilities";
+import { getShortUrl } from "src/js/wallet-helpers";
 
 export default defineComponent({
   name: "DonateDialog",
@@ -264,6 +334,7 @@ export default defineComponent({
     const amount = ref<number>(0);
     const message = ref<string>("");
     const preset = ref<number>(donationStore.presets[0]?.periods || 0);
+    const showAdvancedOptions = ref(false);
 
     const model = computed({
       get: () => props.modelValue,
@@ -369,6 +440,77 @@ export default defineComponent({
       uiStore.formatCurrency(plannedTotal.value, activeUnit.value),
     );
 
+    const quickAmountSuggestions = computed(() => {
+      const balance = Math.max(0, Math.floor(selectedBucketBalance.value));
+      if (!balance) {
+        return [];
+      }
+
+      const dynamicSuggestions = [
+        Math.floor(balance / 4),
+        Math.floor(balance / 2),
+        balance,
+      ];
+      const presetSuggestions = [500, 1000, 5000, 10000, 25000, 50000];
+
+      return Array.from(new Set([...presetSuggestions, ...dynamicSuggestions]))
+        .filter(
+          (value) => Number.isFinite(value) && value > 0 && value <= balance,
+        )
+        .sort((a, b) => a - b)
+        .slice(0, 6)
+        .map((value) => ({
+          value,
+          label: uiStore.formatCurrency(value, activeUnit.value),
+        }));
+    });
+
+    const activeMintDisplayLabel = computed(() => {
+      if (!mintsStore.activeMintUrl) {
+        return "No active mint selected";
+      }
+
+      return getShortUrl(activeMintLabel.value);
+    });
+
+    const mintStatusTone = computed(() => {
+      if (!mintsStore.activeMintUrl) {
+        return "warning";
+      }
+      if (
+        creatorTrustedMintList.value.length > 0 &&
+        !activeMintTrustedByCreator.value
+      ) {
+        return "warning";
+      }
+      if (canSplit.value) {
+        return "ready";
+      }
+      if (activeMintCapability.value.capability === "exact") {
+        return "caution";
+      }
+      return "warning";
+    });
+
+    const mintStatusLabel = computed(() => {
+      if (!mintsStore.activeMintUrl) {
+        return "Pick a mint";
+      }
+      if (
+        creatorTrustedMintList.value.length > 0 &&
+        !activeMintTrustedByCreator.value
+      ) {
+        return "Not trusted";
+      }
+      if (canSplit.value) {
+        return "Split-ready";
+      }
+      if (activeMintCapability.value.capability === "exact") {
+        return "Exact only";
+      }
+      return "Needs review";
+    });
+
     const amountError = computed(() => {
       if (!bucketOptions.value.length) {
         return "Add or fund a bucket before donating.";
@@ -418,6 +560,20 @@ export default defineComponent({
     const creatorLabel = computed(
       () => props.creatorName?.trim() || "this creator",
     );
+
+    const advancedOptionsCaption = computed(() => {
+      if (type.value === "one-time" && locked.value === "normal") {
+        return "Schedule gifts or add a P2PK lock";
+      }
+
+      if (type.value === "one-time") {
+        return "P2PK lock enabled";
+      }
+
+      return `${presetLabel.value} scheduled${
+        locked.value === "locked" ? " with P2PK lock" : ""
+      }`;
+    });
 
     const donationCapabilityBanner = computed(() => {
       if (!model.value) {
@@ -650,9 +806,27 @@ export default defineComponent({
 
     const confirmLabel = computed(() =>
       type.value === "one-time"
-        ? t("global.actions.send.label")
+        ? amount.value > 0
+          ? `Review ${formattedPlannedTotal.value}`
+          : "Review send"
         : `Create ${presetLabel.value.toLowerCase()}`,
     );
+
+    const primaryActionHint = computed(() =>
+      type.value === "one-time"
+        ? "A final send sheet opens next so you can review the token and proof selection before sending it."
+        : "Scheduled support creates a locked donation plan that stays ready for future delivery.",
+    );
+
+    const applyQuickAmount = (value: number) => {
+      amount.value = value;
+    };
+
+    watch([type, locked], ([nextType, nextLocked]) => {
+      if (nextType !== "one-time" || nextLocked !== "normal") {
+        showAdvancedOptions.value = true;
+      }
+    });
 
     const cancel = () => {
       emit("update:modelValue", false);
@@ -695,16 +869,25 @@ export default defineComponent({
       scheduleHint,
       presetLabel,
       lockHelperText,
+      creatorLabel,
       donationCapabilityBanner,
+      activeMintDisplayLabel,
+      mintStatusTone,
+      mintStatusLabel,
+      quickAmountSuggestions,
       exactAmountSuggestions,
       splitBannerTone,
       splitBannerTitle,
       splitBannerCopy,
       showSplitSuggestions,
+      showAdvancedOptions,
+      advancedOptionsCaption,
       confirmDisabled,
       confirmLabel,
+      primaryActionHint,
       splitRequirementCopy:
         "Donations require a mint that supports splitting ecash (NUT-04). Switch to a mint with split support in your wallet to continue.",
+      applyQuickAmount,
       cancel,
       confirm,
     };
@@ -722,6 +905,22 @@ export default defineComponent({
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.donate-dialog__topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.donate-dialog__headline {
+  min-width: 0;
+}
+
+.donate-dialog__eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .donate-dialog__summary {
@@ -747,6 +946,42 @@ export default defineComponent({
   word-break: break-word;
 }
 
+.donate-dialog__mint-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.donate-dialog__mint-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.22rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--surface-contrast-border);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.donate-dialog__mint-chip--ready {
+  background: color-mix(in srgb, var(--accent-500) 14%, transparent);
+  color: var(--accent-600);
+}
+
+.donate-dialog__mint-chip--caution {
+  background: color-mix(in srgb, #f59e0b 14%, transparent);
+  color: #b45309;
+}
+
+.donate-dialog__mint-chip--warning {
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+  color: #b91c1c;
+}
+
 .donate-dialog__info {
   border: 1px solid var(--surface-contrast-border);
 }
@@ -765,13 +1000,62 @@ export default defineComponent({
   flex-direction: column;
 }
 
+.donate-dialog__quick-amounts {
+  display: flex;
+  flex-direction: column;
+}
+
+.donate-dialog__advanced {
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.donate-dialog__advanced-body {
+  padding: 0.5rem 0.25rem 0.25rem;
+}
+
+.donate-dialog__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem 0.35rem;
+  border-top: 1px solid var(--surface-contrast-border);
+}
+
+.donate-dialog__footer-copy {
+  max-width: 18rem;
+  line-height: 1.45;
+}
+
 @media (max-width: 480px) {
+  .donate-dialog {
+    width: 100%;
+    min-height: 100vh;
+    border-radius: 0;
+    padding: 0.75rem;
+  }
+
   .donate-dialog__summary {
     grid-template-columns: 1fr;
   }
 
   .donate-dialog__summary-item--wide {
     grid-column: auto;
+  }
+
+  .donate-dialog__topbar {
+    align-items: flex-start;
+  }
+
+  .donate-dialog__actions {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .donate-dialog__footer-copy {
+    max-width: none;
+    width: 100%;
   }
 }
 </style>

@@ -8,21 +8,16 @@ describe("WelcomeSlidePwa", () => {
     setActivePinia(createPinia());
   });
 
-  it("disables install button when prompt not available", () => {
+  it("shows coming soon copy without install controls", () => {
     const wrapper = mount(WelcomeSlidePwa, {
-      props: { deferredPrompt: undefined },
       global: {
         mocks: { $t: (msg: string) => msg, $q: {} },
         stubs: {
-          "q-btn": {
-            props: ["disable"],
-            template: "<button :disabled='disable'><slot/></button>",
-          },
           "q-icon": { template: "<i></i>" },
         },
       },
     });
-    const btn = wrapper.find("button");
-    expect((btn.element as HTMLButtonElement).disabled).toBe(true);
+    expect(wrapper.text()).toContain("Welcome.pwa.title");
+    expect(wrapper.find("button").exists()).toBe(false);
   });
 });

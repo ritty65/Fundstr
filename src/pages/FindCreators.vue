@@ -173,6 +173,13 @@
                     >
                       {{ activeFilterLabel }}
                     </div>
+                    <div
+                      v-if="sortContextHint"
+                      class="text-caption text-2 toolbar-summary__hint"
+                    >
+                      <q-icon name="shield" size="14px" />
+                      <span>{{ sortContextHint }}</span>
+                    </div>
                   </div>
                   <div class="row items-center q-gutter-sm toolbar-controls">
                     <div class="row items-center q-gutter-xs filters-group">
@@ -725,7 +732,7 @@ type FilterKey =
   | "nip05Verified"
   | "fundstrCreator"
   | "signalOnly";
-type SortOption = "relevance" | "followers";
+type SortOption = "relevance" | "followers" | "trustedRank";
 type ViewMode = "grid" | "grouped";
 type ProfileTab = "profile" | "tiers";
 
@@ -810,6 +817,7 @@ const filterChips: { key: FilterKey; label: string }[] = [
 const sortOptions: { label: string; value: SortOption }[] = [
   { label: "Relevance", value: "relevance" },
   { label: "Followers", value: "followers" },
+  { label: "Trusted rank", value: "trustedRank" },
 ];
 
 const activeFilters = ref<Record<FilterKey, boolean>>({
@@ -832,11 +840,33 @@ const hasFollowerMetrics = computed(() =>
       Number.isFinite(profile.followers),
   ),
 );
-const availableSortOptions = computed(() =>
-  hasFollowerMetrics.value
-    ? sortOptions
-    : sortOptions.filter((option) => option.value === "relevance"),
+const hasTrustedRankMetrics = computed(() =>
+  creatorsStore.unfilteredSearchResults.some(
+    (profile) =>
+      typeof profile.trustedMetrics?.rank === "number" &&
+      Number.isFinite(profile.trustedMetrics.rank),
+  ),
 );
+const availableSortOptions = computed(() =>
+  sortOptions.filter((option) => {
+    if (option.value === "relevance") {
+      return true;
+    }
+    if (option.value === "followers") {
+      return hasFollowerMetrics.value;
+    }
+    if (option.value === "trustedRank") {
+      return hasTrustedRankMetrics.value;
+    }
+    return false;
+  }),
+);
+const sortContextHint = computed(() => {
+  if (sortOption.value !== "trustedRank" || !hasTrustedRankMetrics.value) {
+    return "";
+  }
+  return "Using provider-signed NIP-85 trust scores to surface creators.";
+});
 
 const viewModeOptions = [
   { label: "Grid", icon: "grid_view", value: "grid" },
@@ -1215,8 +1245,15 @@ watch(
   { deep: true },
 );
 
-watch(hasFollowerMetrics, (hasFollowers) => {
-  if (!hasFollowers && sortOption.value === "followers") {
+watch([hasFollowerMetrics, hasTrustedRankMetrics, searchResults], () => {
+  if (!creatorsStore.unfilteredSearchResults.length) {
+    return;
+  }
+
+  const supported = availableSortOptions.value.some(
+    (option) => option.value === sortOption.value,
+  );
+  if (!supported) {
     sortOption.value = "relevance";
   }
 });
@@ -1434,8 +1471,8 @@ function redirectToCreatorIfPresent() {
     typeof queryNpub === "string" && queryNpub.trim()
       ? queryNpub.trim()
       : typeof routeNpubOrHex === "string" && routeNpubOrHex.trim()
-      ? routeNpubOrHex.trim()
-      : "";
+        ? routeNpubOrHex.trim()
+        : "";
 
   if (target) {
     void router.replace({
@@ -1662,7 +1699,9 @@ onMounted(() => {
   color: var(--text-2);
   border: 1px solid
     color-mix(in srgb, var(--surface-contrast-border) 55%, transparent);
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
 }
 
 .status-chip.accent {
@@ -1757,7 +1796,8 @@ h1 {
   width: 100%;
   border-radius: 16px;
   border: 1px solid var(--surface-contrast-border);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.04),
+  box-shadow:
+    0 12px 24px rgba(15, 23, 42, 0.04),
     0 24px 48px rgba(15, 23, 42, 0.08);
 }
 
@@ -1795,7 +1835,8 @@ h1 {
   border-radius: 26px;
   background: color-mix(in srgb, var(--accent-200) 24%, transparent);
   border: 1px solid var(--surface-contrast-border);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06),
+  box-shadow:
+    0 10px 30px rgba(15, 23, 42, 0.06),
     0 18px 46px rgba(15, 23, 42, 0.08);
 }
 
@@ -1896,6 +1937,13 @@ h1 {
   color: var(--accent-600);
   font-weight: 600;
   line-height: 1.2;
+}
+
+.toolbar-summary__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  line-height: 1.35;
 }
 
 .toolbar-controls {

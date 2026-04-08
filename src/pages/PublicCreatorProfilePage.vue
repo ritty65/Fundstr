@@ -81,20 +81,72 @@
               class="profile-hero__chips"
               role="list"
             >
-              <q-chip
+              <div
                 v-for="chip in metadataChips"
                 :key="chip.id"
-                dense
-                outline
-                :icon="chip.icon"
-                :label="chip.label"
-                :tag="chip.href ? 'a' : 'div'"
-                :href="chip.href"
-                :target="chip.href ? '_blank' : undefined"
-                :rel="chip.href ? 'noopener noreferrer' : undefined"
-                :clickable="!!chip.href"
+                class="profile-hero__chip-group"
                 role="listitem"
-              />
+              >
+                <q-chip
+                  dense
+                  outline
+                  :icon="chip.icon"
+                  :label="chip.label"
+                  :tag="chip.href ? 'a' : 'div'"
+                  :href="chip.href"
+                  :target="chip.href ? '_blank' : undefined"
+                  :rel="chip.href ? 'noopener noreferrer' : undefined"
+                  :clickable="!!chip.href"
+                  :title="chip.title"
+                  :aria-label="chip.ariaLabel || chip.label"
+                >
+                  <q-tooltip v-if="chip.title">{{ chip.title }}</q-tooltip>
+                </q-chip>
+                <q-btn
+                  v-if="chip.info"
+                  flat
+                  dense
+                  round
+                  size="sm"
+                  class="profile-hero__chip-info-btn"
+                  icon="info"
+                  :aria-label="chip.info.ariaLabel"
+                >
+                  <q-menu anchor="bottom left" self="top left">
+                    <div
+                      class="profile-hero__chip-info-card bg-surface-2 text-1"
+                    >
+                      <div class="text-subtitle2 text-weight-medium">
+                        {{ chip.info.title }}
+                      </div>
+                      <p class="profile-hero__chip-info-body text-body2 text-2">
+                        {{ chip.info.body }}
+                      </p>
+                      <div
+                        v-if="chip.info.provider"
+                        class="profile-hero__chip-info-provider text-caption text-2"
+                      >
+                        {{ chip.info.provider }}
+                      </div>
+                      <div
+                        v-if="chip.info.links.length"
+                        class="profile-hero__chip-info-links"
+                      >
+                        <a
+                          v-for="link in chip.info.links"
+                          :key="link.id"
+                          class="profile-hero__chip-info-link"
+                          :href="link.href"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {{ link.label }}
+                        </a>
+                      </div>
+                    </div>
+                  </q-menu>
+                </q-btn>
+              </div>
             </div>
             <div class="profile-hero__support bg-surface-1 text-1">
               <div class="profile-hero__support-copy">
@@ -596,8 +648,12 @@ import {
   FundstrProfileFetchError,
   type FundstrProfileBundle,
 } from "stores/creators";
-import { useNostrStore, fetchNutzapProfile } from "stores/nostr";
-import { queryNutzapTiers } from "@/nostr/relayClient";
+import {
+  useNostrStore,
+  fetchNutzapProfile,
+  type TrustedUserRank,
+} from "stores/nostr";
+import { queryKind0Profile, queryNutzapTiers } from "@/nostr/relayClient";
 import { parseTiersContent } from "@/nutzap/profileShared";
 import {
   buildProfileUrl,
@@ -622,8 +678,11 @@ import TierSummaryCard from "components/TierSummaryCard.vue";
 import { isTrustedUrl } from "src/utils/sanitize-url";
 import {
   displayNameFromProfile,
+  hasRenderableProfileMeta,
   initialFromName,
+  mergeMissingProfileMeta,
   normalizeMeta,
+  parseKind0ProfileMeta,
   safeImageSrc,
   type ProfileMeta,
 } from "src/utils/profile";
@@ -644,6 +703,19 @@ import { useDonationPresetsStore } from "stores/donationPresets";
 import { useMessengerStore } from "stores/messenger";
 import { useMintsStore } from "stores/mints";
 import { describeMintPaymentCapabilities } from "src/utils/paymentCapabilities";
+
+const TRUSTED_RANK_INFO_LINKS = [
+  {
+    id: "nip85-spec",
+    label: "What is NIP-85?",
+    href: "https://github.com/nostr-protocol/nips/blob/master/85.md",
+  },
+  {
+    id: "nostr-band-trust",
+    label: "Open nostr.band NIP-85 relay",
+    href: "https://nip85.nostr.band",
+  },
+] as const;
 
 export default defineComponent({
   name: "PublicCreatorProfilePage",
@@ -673,6 +745,18 @@ export default defineComponent({
       "We couldn't load this creator profile. Double-check the link and try again.";
 
     const currentCreatorParam = ref<string>(creatorParam ?? "");
+    let creatorIdentityResolveToken = 0;
+    let creatorLoadToken = 0;
+
+    const nextCreatorLoadToken = () => {
+      creatorLoadToken += 1;
+      return creatorLoadToken;
+    };
+
+    const isActiveCreatorLoad = (token: number, expectedHex: string | null) =>
+      token === creatorLoadToken &&
+      Boolean(expectedHex) &&
+      creatorHex.value === expectedHex;
 
     const resolveHexFromDiscovery = async (identifier: string) => {
       if (!identifier.includes("@")) {
@@ -708,6 +792,7 @@ export default defineComponent({
     };
 
     const updateCreatorKeys = async (param: string | undefined) => {
+      const resolveToken = ++creatorIdentityResolveToken;
       const nextParam = extractCreatorIdentifier(
         typeof param === "string" ? param : "",
       );
@@ -728,6 +813,9 @@ export default defineComponent({
 
       try {
         const resolvedHex = await resolveHexFromDiscovery(nextParam);
+        if (resolveToken !== creatorIdentityResolveToken) {
+          return;
+        }
         if (!resolvedHex) {
           decodeError.value = decodeFailureMessage;
           return;
@@ -784,6 +872,7 @@ export default defineComponent({
     const tiersSectionRef = ref<HTMLElement | null>(null);
     const followers = ref<number | null>(null);
     const following = ref<number | null>(null);
+    const trustedRank = ref<TrustedUserRank | null>(null);
     const loadingTiers = ref(true);
     const refreshingTiers = ref(false);
     const refreshTaskCount = ref(0);
@@ -920,8 +1009,8 @@ export default defineComponent({
             typeof tier.price_sats === "number"
               ? tier.price_sats
               : typeof tier.price === "number"
-              ? tier.price
-              : undefined;
+                ? tier.price
+                : undefined;
           const description =
             typeof tier.description === "string" ? tier.description : "";
           const frequency =
@@ -1004,6 +1093,66 @@ export default defineComponent({
       }
     };
 
+    const profileNeedsKind0Metadata = () => {
+      const meta = normalizeMeta(profile.value ?? {});
+      return !Boolean(
+        (typeof meta.display_name === "string" && meta.display_name.trim()) ||
+        (typeof meta.name === "string" && meta.name.trim()) ||
+        (typeof meta.about === "string" && meta.about.trim()) ||
+        (typeof meta.picture === "string" && meta.picture.trim()),
+      );
+    };
+
+    const hydrateKind0Metadata = async (expectedHex: string, token: number) => {
+      if (!expectedHex || !profileNeedsKind0Metadata()) {
+        return;
+      }
+
+      try {
+        const relayHints = mergeUniqueUrls(
+          profileRelayHints.value,
+          toStringList(profile.value?.relays),
+          fallbackRelays.value,
+        );
+        const kind0Event = await queryKind0Profile(expectedHex, {
+          fanout: relayHints,
+          allowFanoutFallback: true,
+        });
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
+        }
+
+        const kind0Meta = parseKind0ProfileMeta(kind0Event);
+        if (!hasRenderableProfileMeta(kind0Meta)) {
+          return;
+        }
+
+        const mergedMeta = mergeMissingProfileMeta(
+          normalizeMeta(profile.value ?? {}),
+          kind0Meta,
+        );
+        profile.value = {
+          ...profile.value,
+          ...(mergedMeta.display_name
+            ? { display_name: mergedMeta.display_name }
+            : {}),
+          ...(mergedMeta.name ? { name: mergedMeta.name } : {}),
+          ...(mergedMeta.about ? { about: mergedMeta.about } : {}),
+          ...(mergedMeta.picture ? { picture: mergedMeta.picture } : {}),
+          ...(mergedMeta.nip05 ? { nip05: mergedMeta.nip05 } : {}),
+          ...(mergedMeta.website ? { website: mergedMeta.website } : {}),
+        };
+      } catch (error) {
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
+        }
+        console.warn("[creator-profile] Failed to hydrate kind-0 metadata", {
+          pubkey: expectedHex,
+          error,
+        });
+      }
+    };
+
     const resetRefreshState = () => {
       refreshTaskCount.value = 0;
       refreshingTiers.value = false;
@@ -1011,6 +1160,7 @@ export default defineComponent({
     };
 
     const resetCreatorState = () => {
+      nextCreatorLoadToken();
       profile.value = {};
       profileRelayHints.value = [];
       hasLoadedRelayProfile.value = false;
@@ -1020,6 +1170,7 @@ export default defineComponent({
       profileLoadError.value = null;
       followers.value = null;
       following.value = null;
+      trustedRank.value = null;
       loadingTiers.value = true;
       resetRefreshState();
       creators.tierFetchError = false;
@@ -1031,8 +1182,12 @@ export default defineComponent({
       clearAutoRefreshTimer();
     };
 
-    const fetchTiers = async () => {
-      if (!creatorHex.value) {
+    const fetchTiers = async (
+      options: { token?: number; expectedHex?: string | null } = {},
+    ) => {
+      const expectedHex = options.expectedHex ?? creatorHex.value;
+      const token = options.token ?? creatorLoadToken;
+      if (!expectedHex) {
         loadingTiers.value = false;
         return;
       }
@@ -1042,12 +1197,18 @@ export default defineComponent({
       beginRefresh();
       creators.tierFetchError = false;
       try {
-        await creators.fetchCreator(creatorHex.value, true);
+        await creators.fetchCreator(expectedHex, true);
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
+        }
         if (creators.tierFetchError) {
           fallbackActive.value = true;
           fallbackFailed.value = true;
         }
       } catch (error) {
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
+        }
         console.error(
           "[creator-profile] Failed to refresh tier definitions",
           error,
@@ -1056,6 +1217,9 @@ export default defineComponent({
         fallbackActive.value = true;
         fallbackFailed.value = true;
       } finally {
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
+        }
         endRefresh();
         if (!hasInitialTierData.value) {
           loadingTiers.value = false;
@@ -1085,9 +1249,15 @@ export default defineComponent({
 
     const refreshProfileFromRelay = async (
       bundle: FundstrProfileBundle | null,
-      opts: { forceRelayRefresh?: boolean } = {},
+      opts: {
+        forceRelayRefresh?: boolean;
+        token?: number;
+        expectedHex?: string | null;
+      } = {},
     ): Promise<void> => {
-      if (!creatorHex.value) return;
+      const expectedHex = opts.expectedHex ?? creatorHex.value;
+      const token = opts.token ?? creatorLoadToken;
+      if (!expectedHex) return;
       beginRefresh();
       try {
         const shouldForceRefresh =
@@ -1095,21 +1265,20 @@ export default defineComponent({
           fallbackActive.value ||
           !hasLoadedRelayProfile.value;
         let fallbackAttempted = false;
-        let relayProfile = await fetchNutzapProfile(creatorHex.value, {
+        let relayProfile = await fetchNutzapProfile(expectedHex, {
           fundstrOnly: true,
           forceRefresh: shouldForceRefresh,
         });
         if (!relayProfile) {
           fallbackAttempted = true;
-          relayProfile = await fetchNutzapProfile(creatorHex.value, {
+          relayProfile = await fetchNutzapProfile(expectedHex, {
             forceRefresh: true,
           });
         }
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
+        }
         if (!relayProfile) {
-          if (fallbackAttempted) {
-            fallbackActive.value = true;
-            fallbackFailed.value = true;
-          }
           return;
         }
 
@@ -1136,8 +1305,8 @@ export default defineComponent({
           typeof profile.value.tierAddr === "string"
             ? profile.value.tierAddr
             : typeof cachedDetails?.tierAddr === "string"
-            ? cachedDetails.tierAddr
-            : "";
+              ? cachedDetails.tierAddr
+              : "";
         const nextTierAddr =
           typeof relayProfile.tierAddr === "string"
             ? relayProfile.tierAddr
@@ -1146,14 +1315,14 @@ export default defineComponent({
           typeof profile.value.p2pkPubkey === "string"
             ? profile.value.p2pkPubkey
             : typeof cachedDetails?.p2pkPubkey === "string"
-            ? cachedDetails.p2pkPubkey
-            : "";
+              ? cachedDetails.p2pkPubkey
+              : "";
         const currentDisplayName =
           typeof profile.value.display_name === "string"
             ? profile.value.display_name
             : typeof profile.value.name === "string"
-            ? profile.value.name
-            : "";
+              ? profile.value.name
+              : "";
         const currentAbout =
           typeof profile.value.about === "string" ? profile.value.about : "";
         const currentPicture =
@@ -1235,13 +1404,13 @@ export default defineComponent({
           applyBundleTierList(bundle!.tiers);
         }
 
-        const cachedTierList = creators.tiersMap[creatorHex.value] ?? [];
+        const cachedTierList = creators.tiersMap[expectedHex] ?? [];
         const needsRelayTiers =
           (!Array.isArray(bundle?.tiers) || bundle!.tiers.length === 0) &&
           (!Array.isArray(cachedTierList) || cachedTierList.length === 0);
         if (needsRelayTiers) {
           try {
-            const relayTierEvent = await queryNutzapTiers(creatorHex.value);
+            const relayTierEvent = await queryNutzapTiers(expectedHex);
             const relayTiers = parseTiersContent(relayTierEvent?.content)
               .map((tier) => ({
                 id: tier.id,
@@ -1253,6 +1422,9 @@ export default defineComponent({
               }))
               .filter((tier) => typeof tier.id === "string" && tier.id.trim());
             if (relayTiers.length > 0) {
+              if (!isActiveCreatorLoad(token, expectedHex)) {
+                return;
+              }
               applyBundleTierList(relayTiers);
               loadingTiers.value = false;
               creators.tierFetchError = false;
@@ -1264,7 +1436,12 @@ export default defineComponent({
             );
           }
         }
+
+        await hydrateKind0Metadata(expectedHex, token);
       } catch (error) {
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
+        }
         console.error(
           "[creator-profile] Failed to refresh relay profile",
           error,
@@ -1272,6 +1449,9 @@ export default defineComponent({
         fallbackActive.value = true;
         fallbackFailed.value = true;
       } finally {
+        if (!isActiveCreatorLoad(token, expectedHex)) {
+          return;
+        }
         endRefresh();
       }
     };
@@ -1280,14 +1460,24 @@ export default defineComponent({
       if (!creatorHex.value) {
         return;
       }
+      const expectedHex = creatorHex.value;
+      const token = nextCreatorLoadToken();
 
       let shouldFetchStandaloneTiers = true;
 
-      const profilePromise = fetchFundstrProfileBundle(creatorHex.value, {
+      const profilePromise = fetchFundstrProfileBundle(expectedHex, {
         forceRefresh: true,
       })
         .then(async (bundle) => {
-          if (!bundle) return;
+          if (!bundle || !isActiveCreatorLoad(token, expectedHex)) return;
+          if (
+            bundle.ownerPubkey &&
+            bundle.ownerPubkey.toLowerCase() !== expectedHex.toLowerCase()
+          ) {
+            throw new Error(
+              `Mismatched creator bundle: expected ${expectedHex}, received ${bundle.ownerPubkey}`,
+            );
+          }
           const {
             profile: profileData,
             followers: followersCount,
@@ -1348,9 +1538,16 @@ export default defineComponent({
             );
           }
           profileLoadError.value = null;
-          await refreshProfileFromRelay(bundle, { forceRelayRefresh });
+          await refreshProfileFromRelay(bundle, {
+            forceRelayRefresh,
+            token,
+            expectedHex,
+          });
         })
         .catch((err) => {
+          if (!isActiveCreatorLoad(token, expectedHex)) {
+            return;
+          }
           const error = err instanceof Error ? err : new Error(String(err));
           profileLoadError.value = error;
           fallbackActive.value = true;
@@ -1363,10 +1560,53 @@ export default defineComponent({
 
       await profilePromise;
 
-      if (shouldFetchStandaloneTiers) {
-        await fetchTiers();
+      if (isActiveCreatorLoad(token, expectedHex)) {
+        void nostr
+          .fetchTrustedUserRank(expectedHex)
+          .then((nextTrustedRank) => {
+            if (!isActiveCreatorLoad(token, expectedHex)) {
+              return;
+            }
+            trustedRank.value = nextTrustedRank;
+          })
+          .catch(() => {
+            if (!isActiveCreatorLoad(token, expectedHex)) {
+              return;
+            }
+            trustedRank.value = null;
+          });
+      }
+
+      if (
+        shouldFetchStandaloneTiers &&
+        isActiveCreatorLoad(token, expectedHex)
+      ) {
+        await fetchTiers({ token, expectedHex });
       }
     };
+
+    const canonicalizePublicRoute = async () => {
+      const currentParam = extractCreatorIdentifier(
+        ((route.params.npubOrHex ?? route.params.npub) as string | undefined) ??
+          "",
+      );
+      const nextIdentifier =
+        typeof publicRouteIdentifier.value === "string"
+          ? publicRouteIdentifier.value.trim()
+          : "";
+
+      if (!currentParam || !nextIdentifier || currentParam === nextIdentifier) {
+        return;
+      }
+
+      await router.replace({
+        name: "PublicCreatorProfile",
+        params: { npubOrHex: nextIdentifier },
+        query: route.query,
+        hash: typeof route.hash === "string" ? route.hash : undefined,
+      });
+    };
+
     const requestAutoRefresh = () => {
       if (!creatorHex.value) return;
       if (refreshTaskCount.value > 0) {
@@ -1403,7 +1643,7 @@ export default defineComponent({
       creatorHex,
       (next, prev) => {
         if (next && next !== prev) {
-          void loadPhonebookProfile();
+          void loadPhonebookProfile().then(() => canonicalizePublicRoute());
         }
       },
       { immediate: true },
@@ -1420,6 +1660,7 @@ export default defineComponent({
         resetCreatorState();
         await updateCreatorKeys(nextParam);
         await loadProfile();
+        await canonicalizePublicRoute();
         scheduleAutoRefresh();
       },
     );
@@ -1613,8 +1854,8 @@ export default defineComponent({
         typeof tier?.id === "string" && tier.id.trim()
           ? tier.id
           : typeof tier?.name === "string"
-          ? tier.name
-          : "";
+            ? tier.name
+            : "";
       if (isGuest.value || !welcomeStore.welcomeCompleted) {
         showSetupDialog.value = true;
         return;
@@ -1680,6 +1921,7 @@ export default defineComponent({
 
       await updateCreatorKeys(creatorParam);
       await loadProfile({ forceRelayRefresh: true });
+      await canonicalizePublicRoute();
       scheduleAutoRefresh();
       await applyRouteFocusHint();
     });
@@ -1881,6 +2123,20 @@ export default defineComponent({
       return about;
     });
 
+    const hasVisibleCreatorContent = computed(() => {
+      const existingProfile = profile.value ?? {};
+      return Boolean(
+        (typeof existingProfile.display_name === "string" &&
+          existingProfile.display_name.trim()) ||
+        (typeof existingProfile.name === "string" &&
+          existingProfile.name.trim()) ||
+        aboutText.value ||
+        tiers.value.length ||
+        followers.value !== null ||
+        following.value !== null,
+      );
+    });
+
     const hasFollowerStats = computed(
       () => followers.value !== null || following.value !== null,
     );
@@ -1937,10 +2193,39 @@ export default defineComponent({
         icon: string;
         label: string;
         href?: string;
+        title?: string;
+        ariaLabel?: string;
+        info?: {
+          title: string;
+          body: string;
+          provider?: string;
+          ariaLabel: string;
+          links: Array<{
+            id: string;
+            label: string;
+            href: string;
+          }>;
+        };
       }> = [];
       const nip = nip05Chip.value;
       if (nip) {
         chips.push(nip);
+      }
+      if (trustedRank.value) {
+        chips.push({
+          id: "trusted-rank",
+          icon: "shield",
+          label: `Trusted rank ${trustedRank.value.rank}`,
+          title: `Provider-signed reputation signal via NIP-85 from ${trustedRank.value.providerLabel}. Fundstr does not calculate this score.`,
+          ariaLabel: `Trusted rank ${trustedRank.value.rank} via ${trustedRank.value.providerLabel}`,
+          info: {
+            title: "About trusted rank",
+            body: "Trusted rank is a provider-signed NIP-85 reputation signal. It helps surface trusted creators on Nostr. Fundstr does not calculate this score, and it does not control payments, subscriptions, or access.",
+            provider: `Current provider: ${trustedRank.value.providerLabel}`,
+            ariaLabel: `About trusted rank via ${trustedRank.value.providerLabel}`,
+            links: TRUSTED_RANK_INFO_LINKS.map((link) => ({ ...link })),
+          },
+        });
       }
       if (sanitizedWebsite.value) {
         chips.push({
@@ -2173,17 +2458,25 @@ export default defineComponent({
       if (fallbackFailed.value) {
         return translationWithFallback(
           "CreatorHub.profile.fallbackFailed",
-          "Fundstr relay is unreachable right now. We couldn't load fresh data from public relays.",
+          "Live Fundstr support data couldn't be refreshed right now. Showing the best available creator data.",
         );
+      }
+      if (
+        !resolvingCreatorIdentifier.value &&
+        !loadingTiers.value &&
+        !refreshingTiers.value &&
+        hasVisibleCreatorContent.value
+      ) {
+        return "";
       }
       return translationWithFallback(
         "CreatorHub.profile.fallbackActive",
-        "Fundstr relay is slow, loading data from public relays…",
+        "Refreshing creator data from public relays…",
       );
     });
 
     const fallbackRelaysLabel = computed(() => {
-      if (!fallbackRelays.value.length) return "";
+      if (!fallbackBannerText.value || !fallbackRelays.value.length) return "";
       return `${translationWithFallback(
         "CreatorHub.profile.fallbackRelaysLabel",
         "Attempting relays:",
@@ -2403,6 +2696,68 @@ export default defineComponent({
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.profile-hero__chip-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.profile-hero__chip-info-btn {
+  color: var(--text-2);
+  min-width: 0;
+  padding: 0;
+}
+
+.profile-hero__chip-info-btn :deep(.q-btn__content) {
+  padding: 0;
+}
+
+.profile-hero__chip-info-btn :deep(.q-icon) {
+  font-size: 0.95rem;
+}
+
+.profile-hero__chip-info-btn:focus-visible {
+  outline: 2px solid var(--accent-500);
+  outline-offset: 2px;
+}
+
+.profile-hero__chip-info-card {
+  width: min(24rem, 80vw);
+  padding: 0.9rem 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--surface-contrast-border);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22);
+}
+
+.profile-hero__chip-info-body {
+  margin: 0.55rem 0 0;
+  line-height: 1.55;
+}
+
+.profile-hero__chip-info-provider {
+  margin-top: 0.55rem;
+}
+
+.profile-hero__chip-info-links {
+  margin-top: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.profile-hero__chip-info-link {
+  color: var(--accent-500);
+  text-decoration: none;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.profile-hero__chip-info-link:hover,
+.profile-hero__chip-info-link:focus-visible {
+  color: var(--accent-600);
+  text-decoration: underline;
 }
 
 .profile-hero__support {
@@ -2638,7 +2993,10 @@ export default defineComponent({
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease;
+  transition:
+    transform 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
   box-shadow: 0 10px 24px color-mix(in srgb, var(--accent-500) 20%, transparent);
 }
 

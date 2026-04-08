@@ -265,6 +265,61 @@ async function publishDiscoveryProfileWithAcks(
 
 const RECONNECT_BACKOFF_MS = 15000; // 15s cooldown after failed attempts
 const MAX_RECONNECT_BACKOFF_MS = 5 * 60_000; // cap at 5 minutes
+const FETCH_MINTS_TIMEOUT_MS = 5000;
+const FETCH_MINTS_LIMIT = 2000;
+const READ_ONLY_CONNECT_ATTEMPTS = 1;
+const READ_ONLY_CONNECT_TIMEOUT_MS = 2500;
+const readOnlyPoolsWithListeners = new WeakSet<object>();
+
+function syncConnectedRelaysFromPool(store: any, pool: any) {
+  store.connectedRelays.clear();
+  for (const relay of pool.relays.values()) {
+    if (relay?.connected && relay.url) {
+      store.connectedRelays.add(relay.url);
+    }
+  }
+  store.connected = store.connectedRelays.size > 0;
+}
+
+function attachReadOnlyPoolListeners(store: any, ndk: any) {
+  const pool = ndk?.pool;
+  if (!pool || readOnlyPoolsWithListeners.has(pool)) {
+    return;
+  }
+
+  pool.on("relay:connect", (r: any) => {
+    if (r?.url) {
+      store.connectedRelays.add(r.url);
+      store.connected = store.connectedRelays.size > 0;
+    }
+  });
+
+  pool.on("relay:disconnect", (r: any) => {
+    if (r?.url) {
+      store.connectedRelays.delete(r.url);
+      store.connected = store.connectedRelays.size > 0;
+    }
+  });
+
+  (pool as any).on?.("relay:stalled", (r: any) => {
+    if (r?.url && !store.failedRelays.includes(r.url)) {
+      store.failedRelays.push(r.url);
+    }
+    if (r?.url) {
+      store.connectedRelays.delete(r.url);
+      store.connected = store.connectedRelays.size > 0;
+    }
+  });
+
+  (pool as any).on?.("relay:heartbeat", (r: any) => {
+    const idx = store.failedRelays.indexOf(r?.url);
+    if (idx !== -1) {
+      store.failedRelays.splice(idx, 1);
+    }
+  });
+
+  readOnlyPoolsWithListeners.add(pool);
+}
 
 export class WalletLockedError extends Error {
   constructor(message = "Wallet locked") {
@@ -324,11 +379,71 @@ const PENDING_SIGNER_PUBLIC_KEY = "cashu.ndk.signerPubkey.pending";
 const PENDING_PRIVATEKEY_SIGNER_KEY =
   "cashu.ndk.privateKeySignerPrivateKey.pending";
 const UNENCRYPTED_PUBKEY_KEY = "cashu.ndk.pubkey.fallback";
+const PASSIVE_PROFILE_WARM_PATHS = [
+  "/wallet",
+  "/welcome",
+  "/unlock",
+  "/restore",
+];
+
+let pendingPassiveProfileWarmPubkey: string | null = null;
+let clearPendingPassiveProfileWarm: (() => void) | null = null;
 
 function hasEncryptedSecrets(): boolean {
   const storage = typeof localStorage === "undefined" ? null : localStorage;
   if (!storage) return false;
   return SENSITIVE_STORAGE_KEYS.some((k) => Boolean(storage.getItem(k)));
+}
+
+function shouldDeferOwnProfileWarm(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const path = window.location?.pathname || "";
+  return PASSIVE_PROFILE_WARM_PATHS.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
+}
+
+function scheduleOwnProfileWarm(
+  pubkey: string,
+  run: () => Promise<void>,
+): void {
+  clearPendingPassiveProfileWarm?.();
+
+  if (!shouldDeferOwnProfileWarm() || typeof window === "undefined") {
+    pendingPassiveProfileWarmPubkey = null;
+    void run();
+    return;
+  }
+
+  pendingPassiveProfileWarmPubkey = pubkey;
+
+  const start = () => {
+    if (pendingPassiveProfileWarmPubkey !== pubkey) {
+      return;
+    }
+    clearPendingPassiveProfileWarm?.();
+    void run();
+  };
+
+  const cleanup = () => {
+    window.removeEventListener("pointerdown", start);
+    window.removeEventListener("keydown", start);
+    window.removeEventListener("touchstart", start);
+    if (pendingPassiveProfileWarmPubkey === pubkey) {
+      pendingPassiveProfileWarmPubkey = null;
+    }
+    if (clearPendingPassiveProfileWarm === cleanup) {
+      clearPendingPassiveProfileWarm = null;
+    }
+  };
+
+  clearPendingPassiveProfileWarm = cleanup;
+  window.addEventListener("pointerdown", start, { once: true });
+  window.addEventListener("keydown", start, { once: true });
+  window.addEventListener("touchstart", start, { once: true });
 }
 
 export const WALLET_LOCKED_MESSAGE = "Unlock to restore your Nostr identity.";
@@ -702,7 +817,7 @@ export async function urlsToRelaySet(
   const normalizedUrls = normalizeWsUrls(urls);
   if (!normalizedUrls.length) return undefined;
 
-  const ndk = await useNdk({ requireSigner: false });
+  const ndk = await useNdk();
   // Ensure selected relays exist in the pool
   for (const u of normalizedUrls) {
     if (!ndk.pool.relays.has(u)) {
@@ -1013,6 +1128,158 @@ export async function anyRelayReachable(relays: string[]): Promise<boolean> {
   return healthy.length > 0;
 }
 
+export type TrustedUserRank = {
+  rank: number;
+  providerLabel: string;
+  providerPubkey: string;
+  relayUrl: string;
+  createdAt: number | null;
+};
+
+export type TrustedUserRankLookup = Record<string, TrustedUserRank>;
+
+const NIP85_USER_RANK_KIND = 30382;
+const NIP85_RANK_PROVIDER_LABEL = "nostr.band";
+const NIP85_RANK_PROVIDER_RELAY_URL = "wss://nip85.nostr.band";
+const NIP85_RANK_PROVIDER_PUBKEY =
+  "4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe";
+const NIP85_RANK_TIMEOUT_MS = 3500;
+const NIP85_RANK_BATCH_SIZE = 25;
+
+function normalizeTrustedUserRankPubkey(pubkey: string): string | null {
+  if (typeof pubkey !== "string" || !pubkey.trim()) {
+    return null;
+  }
+
+  try {
+    return toHex(pubkey).trim().toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function parseTrustedUserRankEvent(
+  event: any,
+  allowedSubjects?: Set<string>,
+): { subjectPubkey: string; rank: TrustedUserRank } | null {
+  if (event?.pubkey !== NIP85_RANK_PROVIDER_PUBKEY) {
+    return null;
+  }
+
+  const subjectTag = event.tags?.find(
+    (tag: string[]) => tag[0] === "d" && typeof tag[1] === "string",
+  );
+  const subjectPubkey = normalizeTrustedUserRankPubkey(subjectTag?.[1] ?? "");
+  if (!subjectPubkey) {
+    return null;
+  }
+
+  if (allowedSubjects && !allowedSubjects.has(subjectPubkey)) {
+    return null;
+  }
+
+  const rankTag = event.tags?.find(
+    (tag: string[]) => tag[0] === "rank" && typeof tag[1] === "string",
+  );
+  const parsedRank = Number.parseInt(rankTag?.[1] ?? "", 10);
+  if (!Number.isInteger(parsedRank) || parsedRank < 0 || parsedRank > 100) {
+    return null;
+  }
+
+  return {
+    subjectPubkey,
+    rank: {
+      rank: parsedRank,
+      providerLabel: NIP85_RANK_PROVIDER_LABEL,
+      providerPubkey: NIP85_RANK_PROVIDER_PUBKEY,
+      relayUrl: NIP85_RANK_PROVIDER_RELAY_URL,
+      createdAt: typeof event.created_at === "number" ? event.created_at : null,
+    },
+  };
+}
+
+export async function queryTrustedUserRanks(
+  pubkeys: string[],
+): Promise<TrustedUserRankLookup> {
+  const subjects = Array.from(
+    new Set(
+      (Array.isArray(pubkeys) ? pubkeys : [])
+        .map((pubkey) => normalizeTrustedUserRankPubkey(pubkey))
+        .filter((pubkey): pubkey is string => Boolean(pubkey)),
+    ),
+  );
+
+  if (!subjects.length) {
+    return {};
+  }
+
+  let relaysToQuery = [NIP85_RANK_PROVIDER_RELAY_URL];
+  try {
+    const healthy = await filterHealthyRelays([NIP85_RANK_PROVIDER_RELAY_URL]);
+    if (healthy.includes(NIP85_RANK_PROVIDER_RELAY_URL)) {
+      relaysToQuery = [NIP85_RANK_PROVIDER_RELAY_URL];
+    }
+  } catch {
+    relaysToQuery = [NIP85_RANK_PROVIDER_RELAY_URL];
+  }
+
+  const pool = new SimplePool();
+  const allowedSubjects = new Set(subjects);
+  const results: TrustedUserRankLookup = {};
+
+  try {
+    for (
+      let index = 0;
+      index < subjects.length;
+      index += NIP85_RANK_BATCH_SIZE
+    ) {
+      const chunk = subjects.slice(index, index + NIP85_RANK_BATCH_SIZE);
+      const events = await pool.querySync(
+        relaysToQuery,
+        {
+          kinds: [NIP85_USER_RANK_KIND],
+          authors: [NIP85_RANK_PROVIDER_PUBKEY],
+          "#d": chunk,
+          limit: Math.max(5, chunk.length * 2),
+        } as any,
+        { maxWait: NIP85_RANK_TIMEOUT_MS } as any,
+      );
+
+      const latestBySubject = new Map<string, TrustedUserRank>();
+
+      for (const event of Array.from(events)) {
+        const parsed = parseTrustedUserRankEvent(event, allowedSubjects);
+        if (!parsed) {
+          continue;
+        }
+
+        const existing = latestBySubject.get(parsed.subjectPubkey);
+        const existingCreatedAt =
+          existing?.createdAt ?? Number.NEGATIVE_INFINITY;
+        const parsedCreatedAt =
+          parsed.rank.createdAt ?? Number.NEGATIVE_INFINITY;
+        if (!existing || parsedCreatedAt > existingCreatedAt) {
+          latestBySubject.set(parsed.subjectPubkey, parsed.rank);
+        }
+      }
+
+      for (const [subjectPubkey, rank] of latestBySubject.entries()) {
+        results[subjectPubkey] = rank;
+      }
+    }
+
+    return results;
+  } catch {
+    return {};
+  } finally {
+    try {
+      pool.close(relaysToQuery);
+    } catch {
+      /* ignore close errors */
+    }
+  }
+}
+
 /**
  * Fetches the receiver’s ‘kind:10019’ Nutzap profile.
  */
@@ -1179,8 +1446,8 @@ export async function publishNutzapProfile(opts: {
     typeof opts.display_name === "string" && opts.display_name.trim()
       ? opts.display_name.trim()
       : typeof opts.name === "string" && opts.name.trim()
-      ? opts.name.trim()
-      : "";
+        ? opts.name.trim()
+        : "";
   if (displayName) {
     tags.push(["name", displayName]);
   }
@@ -1205,7 +1472,7 @@ export async function publishNutzapProfile(opts: {
     body.picture = opts.picture.trim();
   }
 
-  const ndk = await useNdk();
+  const ndk = await useNdk({ requireSigner: false });
   if (!ndk) {
     throw new Error(
       "NDK not initialised \u2013 call initSignerIfNotSet() first",
@@ -1270,7 +1537,7 @@ export async function publishDiscoveryProfile(opts: {
     2,
   );
   await nostr.connect(targets);
-  const ndk = await useNdk();
+  const ndk = await useNdk({ requireSigner: false });
   if (!ndk) {
     throw new Error("NDK not initialized. Cannot publish profile.");
   }
@@ -1377,7 +1644,7 @@ export async function publishNutzap(opts: {
   const nostr = useNostrStore();
   await nostr.initSignerIfNotSet();
   await nostr.connect(opts.relayHints ?? nostr.relays);
-  const ndk = await useNdk();
+  const ndk = await useNdk({ requireSigner: false });
   if (!ndk) {
     throw new Error(
       "NDK not initialised \u2013 call initSignerIfNotSet() first",
@@ -1410,8 +1677,8 @@ export async function subscribeToNutzaps(
   onZap: (ev: NostrEvent) => void,
 ): Promise<NDKSubscription> {
   const nostr = useNostrStore();
-  await nostr.initNdkReadOnly();
-  const ndk = await useNdk();
+  await nostr.initNdkReadOnly({ fundstrOnly: true, suppressWarnings: true });
+  const ndk = await useNdk({ requireSigner: false, fundstrOnly: true });
   if (!ndk) {
     throw new Error(
       "NDK not initialised \u2013 call initSignerIfNotSet() first",
@@ -1428,6 +1695,12 @@ export async function subscribeToNutzaps(
 type MintRecommendation = {
   url: string;
   count: number;
+};
+
+type FetchMintsOptions = {
+  timeoutMs?: number;
+  limit?: number;
+  fundstrOnly?: boolean;
 };
 
 type NostrEventLog = {
@@ -1513,10 +1786,10 @@ export const useNostrStore = defineStore("nostr", {
     const fallbackIdentitySource = pendingPubkey
       ? "pending"
       : pendingSignerPubkey
-      ? "pending"
-      : fallbackPubkey
-      ? "unencrypted"
-      : null;
+        ? "pending"
+        : fallbackPubkey
+          ? "unencrypted"
+          : null;
 
     return {
       connected: false,
@@ -1770,10 +2043,10 @@ export const useNostrStore = defineStore("nostr", {
           key === "cashu.ndk.pubkey"
             ? [PENDING_PUBKEY_KEY, PENDING_SIGNER_PUBLIC_KEY]
             : key === "cashu.ndk.signerType"
-            ? [PENDING_SIGNER_TYPE_KEY]
-            : key === "cashu.ndk.privateKeySignerPrivateKey"
-            ? [PENDING_PRIVATEKEY_SIGNER_KEY]
-            : [];
+              ? [PENDING_SIGNER_TYPE_KEY]
+              : key === "cashu.ndk.privateKeySignerPrivateKey"
+                ? [PENDING_PRIVATEKEY_SIGNER_KEY]
+                : [];
         await this.secureSetItem(key, value, { pendingKeys });
       }
 
@@ -1894,14 +2167,15 @@ export const useNostrStore = defineStore("nostr", {
         fundstrOnly === true
           ? "fundstr-only"
           : fundstrOnly === false
-          ? "default"
-          : undefined;
+            ? "default"
+            : undefined;
       const desiredMode = requestedMode ?? this.readOnlyMode ?? "default";
       const modeChanged = this.readOnlyMode !== desiredMode;
       const ndk = await useNdk({
         requireSigner: false,
         fundstrOnly,
       });
+      attachReadOnlyPoolListeners(this, ndk);
       if (modeChanged) {
         this.connected = false;
         this.connectedRelays.clear();
@@ -1909,30 +2183,18 @@ export const useNostrStore = defineStore("nostr", {
         return;
       }
       try {
-        await ndk.connect();
+        const connectError = await safeConnect(
+          ndk,
+          READ_ONLY_CONNECT_ATTEMPTS,
+          READ_ONLY_CONNECT_TIMEOUT_MS,
+        );
+        syncConnectedRelaysFromPool(this, ndk.pool);
+        if (this.connectedRelays.size === 0 && connectError) {
+          throw connectError;
+        }
         this.lastError = null;
         this.connectionFailed = false;
         this.readOnlyMode = desiredMode;
-        ndk.pool.on("relay:connect", (r: any) => {
-          this.connectedRelays.add(r.url);
-          this.connected = this.connectedRelays.size > 0;
-        });
-        ndk.pool.on("relay:disconnect", (r: any) => {
-          this.connectedRelays.delete(r.url);
-          this.connected = this.connectedRelays.size > 0;
-        });
-        (ndk.pool as any).on?.("relay:stalled", (r: any) => {
-          if (!this.failedRelays.includes(r.url)) {
-            this.failedRelays.push(r.url);
-            notifyWarning(`Relay ${r.url} stalled, reconnecting`);
-          }
-          this.connectedRelays.delete(r.url);
-          this.connected = this.connectedRelays.size > 0;
-        });
-        (ndk.pool as any).on?.("relay:heartbeat", (r: any) => {
-          const idx = this.failedRelays.indexOf(r.url);
-          if (idx !== -1) this.failedRelays.splice(idx, 1);
-        });
       } catch (e: any) {
         console.warn("[nostr] read-only connect failed", e);
         if (!suppressWarnings) {
@@ -1946,7 +2208,7 @@ export const useNostrStore = defineStore("nostr", {
       }
     },
     disconnect: async function () {
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       for (const relay of ndk.pool.relays.values()) relay.disconnect();
       this.signer = undefined;
       this.connected = false;
@@ -2288,7 +2550,7 @@ export const useNostrStore = defineStore("nostr", {
       return ndk;
     },
     ensureNdkConnected: async function (relays?: string[]) {
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       if (!this.connected) {
         try {
           await ndk.connect();
@@ -2458,8 +2720,19 @@ export const useNostrStore = defineStore("nostr", {
         delete (this.profiles as any)[previous];
       }
       if (this.pubkey) {
-        void this.getProfile(this.pubkey).catch((error) => {
-          console.error("Failed to warm profile after identity change", error);
+        const currentPubkey = this.pubkey;
+        scheduleOwnProfileWarm(currentPubkey, async () => {
+          if (this.pubkey !== currentPubkey) {
+            return;
+          }
+          try {
+            await this.getProfile(currentPubkey);
+          } catch (error) {
+            console.error(
+              "Failed to warm profile after identity change",
+              error,
+            );
+          }
         });
       }
 
@@ -2517,7 +2790,7 @@ export const useNostrStore = defineStore("nostr", {
 
       await this.initNdkReadOnly();
       try {
-        const ndk = await useNdk();
+        const ndk = await useNdk({ requireSigner: false });
         const user = ndk.getUser({ pubkey });
         await user.fetchProfile();
         const entry: CachedProfile = { profile: user.profile, fetchedAt: now };
@@ -2635,8 +2908,8 @@ export const useNostrStore = defineStore("nostr", {
                 e instanceof Error
                   ? e.message
                   : typeof e === "string"
-                  ? e
-                  : "Unknown NIP-07 error";
+                    ? e
+                    : "Unknown NIP-07 error";
 
               if (this.nip07LastError?.includes("enable")) {
                 lastFailureCause = "enable-failed";
@@ -2669,14 +2942,17 @@ export const useNostrStore = defineStore("nostr", {
         }
 
         if (this.signerType === SignerType.NIP07 && !this.nip07RetryInterval) {
-          this.nip07RetryInterval = window.setInterval(async () => {
-            const available = await this.checkNip07Signer(true);
-            if (available) {
-              clearInterval(this.nip07RetryInterval!);
-              this.nip07RetryInterval = null;
-              await this.initSignerIfNotSet();
-            }
-          }, Math.min(delayMs, maxDelayMs));
+          this.nip07RetryInterval = window.setInterval(
+            async () => {
+              const available = await this.checkNip07Signer(true);
+              if (available) {
+                clearInterval(this.nip07RetryInterval!);
+                this.nip07RetryInterval = null;
+                await this.initSignerIfNotSet();
+              }
+            },
+            Math.min(delayMs, maxDelayMs),
+          );
         }
 
         this.nip07LastFailureCause = lastFailureCause;
@@ -2796,7 +3072,7 @@ export const useNostrStore = defineStore("nostr", {
       }
     },
     initNip46Signer: async function (nip46Token?: string) {
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       if (!nip46Token && !this.nip46Token.length) {
         nip46Token = (await prompt(
           "Enter your NIP-46 connection string",
@@ -2947,7 +3223,7 @@ export const useNostrStore = defineStore("nostr", {
     },
     fetchEventsFromUser: async function () {
       const filter: NDKFilter = { kinds: [1], authors: [this.pubkey] };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       return await ndk.fetchEvents(filter);
     },
 
@@ -2957,7 +3233,7 @@ export const useNostrStore = defineStore("nostr", {
       pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [3], "#p": [pubkey] };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const events = await ndk.fetchEvents(filter);
       const authors = new Set<string>();
       events.forEach((ev) => authors.add(ev.pubkey));
@@ -2970,7 +3246,7 @@ export const useNostrStore = defineStore("nostr", {
       pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [3], authors: [pubkey] };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const events = await ndk.fetchEvents(filter);
       let latest: NDKEvent | undefined;
       events.forEach((ev) => {
@@ -2994,7 +3270,7 @@ export const useNostrStore = defineStore("nostr", {
       pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [0, 1], authors: [pubkey] };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const events = await ndk.fetchEvents(filter);
       let earliest: number | null = null;
       events.forEach((ev) => {
@@ -3019,7 +3295,7 @@ export const useNostrStore = defineStore("nostr", {
       pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [1], authors: [pubkey], limit: 1 };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const events = await ndk.fetchEvents(filter);
       let latest: NDKEvent | null = null;
       events.forEach((ev) => {
@@ -3028,6 +3304,21 @@ export const useNostrStore = defineStore("nostr", {
         }
       });
       return latest ? (latest.content as string) : null;
+    },
+
+    fetchTrustedUserRank: async function (
+      pubkey: string,
+    ): Promise<TrustedUserRank | null> {
+      const resolved = this.resolvePubkey(pubkey);
+      if (!resolved) return null;
+      const ranks = await queryTrustedUserRanks([resolved]);
+      return ranks[resolved.toLowerCase()] ?? null;
+    },
+
+    fetchTrustedUserRanks: async function (
+      pubkeys: string[],
+    ): Promise<TrustedUserRankLookup> {
+      return queryTrustedUserRanks(pubkeys);
     },
 
     fetchRecentNotes: async function (
@@ -3039,7 +3330,7 @@ export const useNostrStore = defineStore("nostr", {
       pubkey = resolved;
       await this.initNdkReadOnly();
       const filter: NDKFilter = { kinds: [1], authors: [pubkey], limit };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const events = await ndk.fetchEvents(filter);
       const sorted = Array.from(events).sort(
         (a, b) => (b.created_at || 0) - (a.created_at || 0),
@@ -3084,12 +3375,39 @@ export const useNostrStore = defineStore("nostr", {
         .map((t: any) => t[1] as string);
       return relays.length ? relays : null;
     },
-    fetchMints: async function () {
-      const filter: NDKFilter = { kinds: [38000 as NDKKind], limit: 2000 };
-      const ndk = await useNdk();
-      const events = await ndk.fetchEvents(filter);
+    fetchMints: async function (options: FetchMintsOptions = {}) {
+      const timeoutMs =
+        typeof options.timeoutMs === "number" &&
+        Number.isFinite(options.timeoutMs)
+          ? Math.max(250, Math.round(options.timeoutMs))
+          : FETCH_MINTS_TIMEOUT_MS;
+      const limit =
+        typeof options.limit === "number" && Number.isFinite(options.limit)
+          ? Math.max(50, Math.round(options.limit))
+          : FETCH_MINTS_LIMIT;
+      const filter: NDKFilter = { kinds: [38000 as NDKKind], limit };
+      const ndk = await useNdk({
+        requireSigner: false,
+        fundstrOnly: options.fundstrOnly,
+      });
+      const events = await new Promise<any>((resolve, reject) => {
+        const timer = globalThis.setTimeout(() => {
+          reject(new Error("Mint discovery timed out"));
+        }, timeoutMs);
+
+        Promise.resolve(ndk.fetchEvents(filter)).then(
+          (result) => {
+            globalThis.clearTimeout(timer);
+            resolve(result);
+          },
+          (error: unknown) => {
+            globalThis.clearTimeout(timer);
+            reject(error);
+          },
+        );
+      });
       let mintUrls: string[] = [];
-      events.forEach((event) => {
+      events.forEach((event: any) => {
         if (event.tagValue("k") == "38172" && event.tagValue("u")) {
           const mintUrl = event.tagValue("u");
           if (
@@ -3168,7 +3486,7 @@ export const useNostrStore = defineStore("nostr", {
       const signer = privKey ? new NDKPrivateKeySigner(privKey) : this.signer;
       const senderPubkey =
         pubKey || (privKey ? getPublicKey(hexToBytes(privKey)) : this.pubkey);
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const event = new NDKEvent(ndk);
       event.kind = NDKKind.EncryptedDirectMessage;
       try {
@@ -3277,7 +3595,7 @@ export const useNostrStore = defineStore("nostr", {
         debug(
           `### Subscribing to NIP-04 direct messages to ${pubKey} since ${this.lastNip04EventTimestamp}`,
         );
-        const ndk = await useNdk();
+        const ndk = await useNdk({ requireSigner: false });
         try {
           await ndk.connect();
         } catch (e: any) {
@@ -3339,7 +3657,7 @@ export const useNostrStore = defineStore("nostr", {
         "#p": [pubKey],
         since,
       };
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const sub = ndk.subscribe(filter, {
         closeOnEose: false,
         groupable: false,
@@ -3414,7 +3732,7 @@ export const useNostrStore = defineStore("nostr", {
     },
 
     async fetchUserRelays(pubkey: string): Promise<string[]> {
-      const ndk = await useNdk();
+      const ndk = await useNdk({ requireSigner: false });
       const user = ndk.getUser({ pubkey });
       try {
         await user.fetchProfile();
@@ -3451,7 +3769,7 @@ export const useNostrStore = defineStore("nostr", {
         debug(
           `### Subscribing to NIP-17 direct messages to ${pubKey} since ${since}`,
         );
-        const ndk = await useNdk();
+        const ndk = await useNdk({ requireSigner: false });
         try {
           await ndk.connect();
         } catch (e: any) {
