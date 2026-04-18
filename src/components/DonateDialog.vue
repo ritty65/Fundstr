@@ -5,6 +5,7 @@
     :maximized="$q.screen.lt.sm"
     transition-show="slide-up"
     transition-hide="slide-down"
+    backdrop-filter="blur(6px) brightness(45%)"
   >
     <q-card class="donate-dialog qcard bg-surface-2 text-1">
       <q-card-section class="donate-dialog__header">
@@ -896,9 +897,16 @@ export default defineComponent({
 </script>
 
 <style scoped>
+:deep(.q-dialog__backdrop) {
+  background-color: rgba(3, 7, 18, 0.72);
+}
+
 .donate-dialog {
   width: min(100%, 29rem);
   padding: 1rem;
+  background: var(--surface-2, #1d1d1d) !important;
+  border: 1px solid var(--surface-contrast-border, rgba(148, 163, 184, 0.28)) !important;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.48);
 }
 
 .donate-dialog__header {
@@ -929,6 +937,7 @@ export default defineComponent({
   gap: 0.75rem;
   padding: 0.9rem 1rem;
   border-radius: 16px;
+  background: var(--surface-1, #0e141b);
   border: 1px solid var(--surface-contrast-border);
 }
 
@@ -983,6 +992,7 @@ export default defineComponent({
 }
 
 .donate-dialog__info {
+  background: var(--surface-2, #1d1d1d);
   border: 1px solid var(--surface-contrast-border);
 }
 
@@ -1013,6 +1023,23 @@ export default defineComponent({
 
 .donate-dialog__advanced-body {
   padding: 0.5rem 0.25rem 0.25rem;
+}
+
+.donate-dialog :deep(.q-field--outlined .q-field__control) {
+  background: color-mix(
+    in srgb,
+    var(--surface-1, #0e141b) 82%,
+    var(--surface-2, #1d1d1d) 18%
+  );
+  border-radius: 14px;
+}
+
+.donate-dialog :deep(.q-field--outlined .q-field__control:before) {
+  border-color: color-mix(
+    in srgb,
+    var(--surface-contrast-border, rgba(148, 163, 184, 0.28)) 84%,
+    transparent
+  );
 }
 
 .donate-dialog__actions {
