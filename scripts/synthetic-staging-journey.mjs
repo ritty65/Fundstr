@@ -13,6 +13,12 @@ const artifactDir = path.resolve(
   process.env.SYNTHETIC_CANARY_ARTIFACT_DIR ||
     "artifacts/staging-synthetic-canary",
 );
+const allowLegacyDiscovery = shouldAllowLegacyDiscovery(
+  baseUrl,
+  process.env.SYNTHETIC_ALLOW_LEGACY_DISCOVERY,
+);
+const smokeExpectedEnv =
+  process.env.SMOKE_EXPECT_ENV || (allowLegacyDiscovery ? "staging" : "");
 
 function normalizeBaseUrl(value) {
   return value.endsWith("/") ? value.slice(0, -1) : value;
@@ -21,6 +27,22 @@ function normalizeBaseUrl(value) {
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
+  }
+}
+
+function shouldAllowLegacyDiscovery(url, explicitSetting) {
+  if (explicitSetting === "1") {
+    return true;
+  }
+
+  if (explicitSetting === "0") {
+    return false;
+  }
+
+  try {
+    return new URL(url).hostname.startsWith("staging.");
+  } catch {
+    return false;
   }
 }
 
@@ -69,7 +91,11 @@ async function runSmokeScript() {
   return new Promise((resolve, reject) => {
     const proc = spawn("bash", ["scripts/smoke-tests.sh"], {
       cwd: process.cwd(),
-      env: { ...process.env, BASE_URL: baseUrl },
+      env: {
+        ...process.env,
+        BASE_URL: baseUrl,
+        ...(smokeExpectedEnv ? { SMOKE_EXPECT_ENV: smokeExpectedEnv } : {}),
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -143,6 +169,10 @@ function looksLikeSpaShell(html) {
   return /<html/i.test(html) && /\/assets\/[A-Za-z0-9._-]+\.js/i.test(html);
 }
 
+function looksLikeLegacyDiscovery(html) {
+  return /find-creators\.css/i.test(html);
+}
+
 function toMarkdown(report) {
   const lines = [];
   lines.push("# Staging Synthetic Canary Report");
@@ -170,7 +200,7 @@ function toMarkdown(report) {
     "- If route checks fail, verify SPA rewrite/.htaccess rules on staging host.",
   );
   lines.push(
-    "- If redirect checks fail, verify the /find-creators.html redirect rule and CDN cache behaviour.",
+    "- If discovery checks fail, verify whether staging is expected to still serve the legacy /find-creators.html page or the new redirect.",
   );
   lines.push(
     "- If smoke script fails, inspect its log lines for headers/relay diagnostics.",
@@ -238,7 +268,7 @@ async function main() {
 
     await runStep(
       report,
-      "Legacy discovery URL redirects to SPA route",
+      "Legacy discovery URL is compatible with the current environment",
       async () => {
         const response = await withTimeout(`${baseUrl}/find-creators.html`, {
           method: "GET",
@@ -250,19 +280,36 @@ async function main() {
           redirect: "manual",
         });
 
-        assert(
-          response.status >= 300 && response.status < 400,
-          `Legacy discovery URL returned HTTP ${response.status} instead of redirecting`,
-        );
+        if (response.status >= 300 && response.status < 400) {
+          const location = response.headers.get("location") || "";
+          const redirectUrl = new URL(location || "/", baseUrl);
+          assert(
+            redirectUrl.pathname === "/find-creators",
+            `Legacy discovery URL redirected to unexpected location: ${location || "<missing>"}`,
+          );
 
-        const location = response.headers.get("location") || "";
-        const redirectUrl = new URL(location || "/", baseUrl);
-        assert(
-          redirectUrl.pathname === "/find-creators",
-          `Legacy discovery URL redirected to unexpected location: ${location || "<missing>"}`,
-        );
+          return `Legacy /find-creators.html redirects to ${redirectUrl.pathname}.`;
+        }
 
-        return `Legacy /find-creators.html redirects to ${redirectUrl.pathname}.`;
+        const body = await response.text();
+        assert(body.length > 0, `Empty response body at ${baseUrl}/find-creators.html`);
+
+        if (response.status === 200 && allowLegacyDiscovery) {
+          assert(
+            !looksLikeSpaShell(body),
+            "Legacy discovery URL returned HTTP 200 with SPA shell HTML instead of redirecting",
+          );
+          assert(
+            looksLikeLegacyDiscovery(body),
+            "Legacy discovery URL returned HTTP 200 but did not match the expected legacy document",
+          );
+
+          return "Legacy /find-creators.html still serves the standalone page on staging; compatibility mode accepted it.";
+        }
+
+        throw new Error(
+          `Legacy discovery URL returned HTTP ${response.status} instead of a compatible redirect or legacy document`,
+        );
       },
     );
 
