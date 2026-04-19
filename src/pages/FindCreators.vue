@@ -179,6 +179,54 @@
                     >
                       <q-icon name="shield" size="14px" />
                       <span>{{ sortContextHint }}</span>
+                      <q-btn
+                        flat
+                        dense
+                        round
+                        size="sm"
+                        icon="info"
+                        class="toolbar-summary__info-btn"
+                        aria-label="About trusted rank in creator discovery"
+                      >
+                        <q-menu anchor="bottom left" self="top left">
+                          <div class="trusted-rank-info-card bg-surface-2 text-1">
+                            <div class="text-subtitle2 text-weight-medium">
+                              About trusted rank
+                            </div>
+                            <p class="trusted-rank-info-body text-body2 text-2">
+                              Trusted rank is a provider-signed NIP-85 reputation
+                              signal. Fundstr shows it as discovery context before
+                              you message, donate, or subscribe. Fundstr does not
+                              calculate this score, and it does not control
+                              payments, subscriptions, or access.
+                            </p>
+                            <div
+                              v-if="trustedProviderText"
+                              class="trusted-rank-info-meta text-caption text-2"
+                            >
+                              {{ trustedProviderText }}
+                            </div>
+                            <div
+                              v-if="trustedFreshnessText"
+                              class="trusted-rank-info-meta text-caption text-2"
+                            >
+                              {{ trustedFreshnessText }}
+                            </div>
+                            <div class="trusted-rank-info-links">
+                              <a
+                                v-for="link in trustedRankInfoLinks"
+                                :key="link.id"
+                                class="trusted-rank-info-link"
+                                :href="link.href"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {{ link.label }}
+                              </a>
+                            </div>
+                          </div>
+                        </q-menu>
+                      </q-btn>
                     </div>
                   </div>
                   <div class="row items-center q-gutter-sm toolbar-controls">
@@ -719,11 +767,18 @@ import { useDonationPrompt } from "@/composables/useDonationPrompt";
 import { captureTelemetryWarning } from "src/utils/telemetry/sentry";
 import { useI18n } from "vue-i18n";
 import {
+  creatorHasTrustedSignal,
+  creatorTrustedMetrics,
   creatorHasVerifiedNip05,
   creatorIsFundstrCreator,
   creatorIsSignalOnly,
 } from "stores/creators";
 import { preferredCreatorPublicIdentifier } from "src/utils/profileUrl";
+import {
+  TRUSTED_RANK_INFO_LINKS,
+  formatTrustedRankFreshness,
+  trustedRankProviderLine,
+} from "src/utils/trustedRank";
 
 type FilterKey =
   | "hasTiers"
@@ -731,7 +786,8 @@ type FilterKey =
   | "featured"
   | "nip05Verified"
   | "fundstrCreator"
-  | "signalOnly";
+  | "signalOnly"
+  | "trustedSignal";
 type SortOption = "relevance" | "followers" | "trustedRank";
 type ViewMode = "grid" | "grouped";
 type ProfileTab = "profile" | "tiers";
@@ -812,6 +868,7 @@ const filterChips: { key: FilterKey; label: string }[] = [
   { key: "nip05Verified", label: "NIP-05 verified" },
   { key: "fundstrCreator", label: "Fundstr creator" },
   { key: "signalOnly", label: "Signal only" },
+  { key: "trustedSignal", label: "Trusted signal" },
 ];
 
 const sortOptions: { label: string; value: SortOption }[] = [
@@ -827,6 +884,7 @@ const activeFilters = ref<Record<FilterKey, boolean>>({
   nip05Verified: false,
   fundstrCreator: false,
   signalOnly: false,
+  trustedSignal: false,
 });
 
 const viewMode = ref<ViewMode>("grid");
@@ -847,6 +905,43 @@ const hasTrustedRankMetrics = computed(() =>
       Number.isFinite(profile.trustedMetrics.rank),
   ),
 );
+const trustedProfiles = computed(() =>
+  searchResults.value.filter((profile) => creatorHasTrustedSignal(profile)),
+);
+const trustedSignalCount = computed(() => trustedProfiles.value.length);
+const trustedProviderLabels = computed(() =>
+  Array.from(
+    new Set(
+      trustedProfiles.value
+        .map((profile) => creatorTrustedMetrics(profile)?.providerLabel?.trim())
+        .filter((label): label is string => Boolean(label)),
+    ),
+  ),
+);
+const trustedProviderText = computed(() => {
+  if (trustedProviderLabels.value.length === 1) {
+    return trustedRankProviderLine(trustedProviderLabels.value[0]);
+  }
+  if (trustedProviderLabels.value.length > 1) {
+    return `Current providers: ${trustedProviderLabels.value.join(", ")}`;
+  }
+  return null;
+});
+const trustedLatestCreatedAt = computed(() => {
+  const createdAts = trustedProfiles.value
+    .map((profile) => creatorTrustedMetrics(profile)?.createdAt)
+    .filter(
+      (createdAt): createdAt is number =>
+        typeof createdAt === "number" && Number.isFinite(createdAt),
+    );
+  if (!createdAts.length) {
+    return null;
+  }
+  return Math.max(...createdAts);
+});
+const trustedFreshnessText = computed(() =>
+  formatTrustedRankFreshness(trustedLatestCreatedAt.value),
+);
 const availableSortOptions = computed(() =>
   sortOptions.filter((option) => {
     if (option.value === "relevance") {
@@ -862,11 +957,26 @@ const availableSortOptions = computed(() =>
   }),
 );
 const sortContextHint = computed(() => {
-  if (sortOption.value !== "trustedRank" || !hasTrustedRankMetrics.value) {
+  if (!trustedSignalCount.value) {
     return "";
   }
-  return "Using provider-signed NIP-85 trust scores to surface creators.";
+
+  if (sortOption.value === "trustedRank") {
+    const provider = trustedProviderLabels.value[0];
+    return provider
+      ? `Using provider-signed NIP-85 trust scores from ${provider} to surface creators.`
+      : "Using provider-signed NIP-85 trust scores to surface creators.";
+  }
+
+  if (activeFilters.value.trustedSignal) {
+    return "Showing creators with provider-signed NIP-85 trust signals.";
+  }
+
+  return `${trustedSignalCount.value} result${trustedSignalCount.value === 1 ? " includes" : "s include"} NIP-85 trust context.`;
 });
+const trustedRankInfoLinks = TRUSTED_RANK_INFO_LINKS.map((link) => ({
+  ...link,
+}));
 
 const viewModeOptions = [
   { label: "Grid", icon: "grid_view", value: "grid" },
@@ -931,6 +1041,7 @@ const normalizedFilterKeys = new Set<FilterKey>([
   "nip05Verified",
   "fundstrCreator",
   "signalOnly",
+  "trustedSignal",
 ]);
 const resultSummary = computed(() => {
   if (!initialLoadComplete.value) {
@@ -1946,6 +2057,10 @@ h1 {
   line-height: 1.35;
 }
 
+.toolbar-summary__info-btn {
+  color: var(--text-2);
+}
+
 .toolbar-controls {
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -1967,6 +2082,40 @@ h1 {
 
 .view-mode-toggle {
   min-width: 164px;
+}
+
+.trusted-rank-info-card {
+  max-width: 300px;
+  padding: 0.95rem;
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 0.9rem;
+  box-shadow: 0 18px 36px -24px rgba(15, 23, 42, 0.65);
+}
+
+.trusted-rank-info-body {
+  margin: 0.45rem 0 0;
+}
+
+.trusted-rank-info-meta {
+  margin-top: 0.45rem;
+}
+
+.trusted-rank-info-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.7rem;
+}
+
+.trusted-rank-info-link {
+  color: var(--accent-500);
+  text-decoration: none;
+}
+
+.trusted-rank-info-link:hover,
+.trusted-rank-info-link:focus-visible {
+  color: var(--accent-600);
+  text-decoration: underline;
 }
 
 @media (max-width: 1023px) {

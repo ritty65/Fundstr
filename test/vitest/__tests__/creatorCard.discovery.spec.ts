@@ -66,6 +66,7 @@ const stubs = {
     template: '<button class="q-btn" :data-label="label"><slot /></button>',
   },
   "q-icon": { template: '<span class="q-icon"><slot /></span>' },
+  "q-menu": { template: '<div class="q-menu"><slot /></div>' },
   "q-tooltip": { template: '<span class="q-tooltip"><slot /></span>' },
 };
 
@@ -226,10 +227,13 @@ describe("CreatorCard donation eligibility signals", () => {
       },
     });
 
-    const chipTexts = wrapper
-      .findAll(".meta-chip")
-      .map((chip) => chip.text().replace(/\s+/g, " ").trim());
+    const trustedChip = wrapper.get(".meta-chip--trusted");
 
-    expect(chipTexts).toContain("Trusted rank 55");
+    expect(trustedChip.text().replace(/\s+/g, " ").trim()).toContain(
+      "Trusted rank 55",
+    );
+    expect(wrapper.text()).toContain("Provider-signed via NIP-85 from nostr.band");
+    expect(wrapper.text()).toContain("Current provider: nostr.band");
+    expect(wrapper.text()).toMatch(/Updated .*ago/);
   });
 });

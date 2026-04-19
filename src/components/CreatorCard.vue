@@ -90,10 +90,59 @@
               <q-icon name="group" size="14px" class="meta-chip-icon" />
               {{ followers }} followers
             </span>
-            <span v-if="trustedRank !== null" class="meta-chip">
-              <q-icon name="shield" size="14px" class="meta-chip-icon" />
-              Trusted rank {{ trustedRank }}
-            </span>
+            <div v-if="trustedRank !== null" class="meta-chip-group">
+              <span class="meta-chip meta-chip--trusted">
+                <q-icon name="shield" size="14px" class="meta-chip-icon" />
+                Trusted rank {{ trustedRank }}
+                <q-tooltip class="tooltip">{{ trustedRankTooltip }}</q-tooltip>
+              </span>
+              <q-btn
+                flat
+                dense
+                round
+                size="sm"
+                icon="info"
+                class="meta-chip-info-btn"
+                :aria-label="trustedRankInfoAriaLabel"
+              >
+                <q-menu anchor="bottom left" self="top left">
+                  <div class="trusted-rank-info-card bg-surface-2 text-1">
+                    <div class="text-subtitle2 text-weight-medium">
+                      About trusted rank
+                    </div>
+                    <p class="trusted-rank-info-body text-body2 text-2">
+                      Trusted rank is a provider-signed NIP-85 reputation signal.
+                      Fundstr shows it as discovery context only. It does not
+                      control payments, subscriptions, or access.
+                    </p>
+                    <div
+                      v-if="trustedRankProviderText"
+                      class="trusted-rank-info-meta text-caption text-2"
+                    >
+                      {{ trustedRankProviderText }}
+                    </div>
+                    <div
+                      v-if="trustedRankFreshness"
+                      class="trusted-rank-info-meta text-caption text-2"
+                    >
+                      {{ trustedRankFreshness }}
+                    </div>
+                    <div class="trusted-rank-info-links">
+                      <a
+                        v-for="link in trustedRankInfoLinks"
+                        :key="link.id"
+                        class="trusted-rank-info-link"
+                        :href="link.href"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {{ link.label }}
+                      </a>
+                    </div>
+                  </div>
+                </q-menu>
+              </q-btn>
+            </div>
           </div>
         </div>
       </div>
@@ -167,6 +216,7 @@ import type { Creator } from "src/lib/fundstrApi";
 import { formatMsatToSats } from "src/lib/fundstrApi";
 import { DONATION_FALLBACK_LOOKUP } from "src/config/donation-eligibility";
 import {
+  creatorTrustedMetrics,
   creatorTrustedRank,
   creatorHasVerifiedNip05,
   creatorIsFundstrCreator,
@@ -179,6 +229,12 @@ import {
   shortenNpub,
   type ProfileMeta,
 } from "src/utils/profile";
+import {
+  TRUSTED_RANK_INFO_LINKS,
+  buildTrustedRankTooltip,
+  formatTrustedRankFreshness,
+  trustedRankProviderLine,
+} from "src/utils/trustedRank";
 
 interface StatusChip {
   key: string;
@@ -299,7 +355,33 @@ const tierSummaryText = computed(() => {
 });
 
 const followers = computed(() => props.profile.followers ?? null);
+const trustedMetrics = computed(() => creatorTrustedMetrics(props.profile as any));
 const trustedRank = computed(() => creatorTrustedRank(props.profile as any));
+const trustedRankTooltip = computed(() =>
+  buildTrustedRankTooltip({
+    providerLabel: trustedMetrics.value?.providerLabel,
+    createdAt: trustedMetrics.value?.createdAt,
+  }),
+);
+const trustedRankFreshness = computed(() =>
+  formatTrustedRankFreshness(trustedMetrics.value?.createdAt),
+);
+const trustedRankProviderText = computed(() =>
+  trustedRankProviderLine(trustedMetrics.value?.providerLabel),
+);
+const trustedRankInfoAriaLabel = computed(() => {
+  if (!trustedRank.value) {
+    return "About trusted rank";
+  }
+
+  const provider = trustedMetrics.value?.providerLabel?.trim();
+  return provider
+    ? `About trusted rank ${trustedRank.value} via ${provider}`
+    : `About trusted rank ${trustedRank.value}`;
+});
+const trustedRankInfoLinks = TRUSTED_RANK_INFO_LINKS.map((link) => ({
+  ...link,
+}));
 
 const inferredHasTiers = computed(() => {
   if (props.profile.hasTiers !== undefined && props.profile.hasTiers !== null) {
@@ -823,6 +905,12 @@ function handlePrimaryAction() {
   margin-top: 0.25rem;
 }
 
+.meta-chip-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .meta-chip {
   display: inline-flex;
   align-items: center;
@@ -835,8 +923,52 @@ function handlePrimaryAction() {
   font-size: 0.9rem;
 }
 
+.meta-chip--trusted {
+  color: var(--accent-500);
+  background: color-mix(in srgb, var(--accent-200) 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-500) 24%, transparent);
+}
+
 .meta-chip-icon {
   color: var(--text-2);
+}
+
+.meta-chip-info-btn {
+  color: var(--text-2);
+}
+
+.trusted-rank-info-card {
+  max-width: 280px;
+  padding: 0.9rem;
+  border: 1px solid var(--surface-contrast-border);
+  border-radius: 0.9rem;
+  box-shadow: 0 18px 36px -24px rgba(15, 23, 42, 0.65);
+}
+
+.trusted-rank-info-body {
+  margin: 0.45rem 0 0;
+}
+
+.trusted-rank-info-meta {
+  margin-top: 0.45rem;
+}
+
+.trusted-rank-info-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.7rem;
+}
+
+.trusted-rank-info-link {
+  color: var(--accent-500);
+  text-decoration: none;
+}
+
+.trusted-rank-info-link:hover,
+.trusted-rank-info-link:focus-visible {
+  color: var(--accent-600);
+  text-decoration: underline;
 }
 
 .action-btn {

@@ -297,6 +297,24 @@ describe("Creators store", () => {
     ]);
   });
 
+  it("filters creators to trusted signals only when requested", () => {
+    const trusted = makeCreator("a".repeat(64), {
+      displayName: "Trusted",
+      trustedMetrics: { rank: 91, providerLabel: "nostr.band" },
+    });
+    const unranked = makeCreator("b".repeat(64), {
+      displayName: "Unranked",
+    });
+
+    const creators = useCreatorsStore();
+    creators.unfilteredSearchResults = [trusted, unranked];
+    creators.applySearchFilters({ trustedSignal: true }, "relevance");
+
+    expect(creators.searchResults.map((profile) => profile.pubkey)).toEqual([
+      trusted.pubkey,
+    ]);
+  });
+
   it("enriches discovery results with trusted metrics during search", async () => {
     const pubkey = "d".repeat(64);
     const discoveryCreator = makeCreator(pubkey, {
