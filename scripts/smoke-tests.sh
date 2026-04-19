@@ -48,42 +48,59 @@ root_csp=$(header_value "$root_headers" "content-security-policy")
 }
 log_step "Root CSP: $root_csp"
 
-discovery_headers=$(fetch_headers "$BASE/find-creators.html")
+discovery_headers=$(fetch_headers "$BASE/find-creators")
 discovery_csp=$(header_value "$discovery_headers" "content-security-policy")
 [ -n "$discovery_csp" ] || {
-  log_step "Missing Content-Security-Policy header on discovery iframe document"
+  log_step "Missing Content-Security-Policy header on find-creators route"
   exit 1
 }
 log_step "Discovery CSP: $discovery_csp"
 
-echo "$discovery_csp" | grep -q "frame-ancestors 'none'" && {
-  log_step "Discovery CSP blocks iframe embedding (frame-ancestors 'none')"
+discovery_html=$(fetch_body "$BASE/find-creators")
+echo "$discovery_html" | grep -Eiq '/assets/[A-Za-z0-9._-]+\.js' || {
+  log_step "find-creators route is not serving the SPA shell"
   exit 1
 }
 
-discovery_xfo=$(header_value "$discovery_headers" "x-frame-options")
-[ "$discovery_xfo" != "deny" ] || {
-  log_step "Discovery page blocks iframe embedding with X-Frame-Options: DENY"
+echo "$discovery_html" | grep -q "find-creators.css" && {
+  log_step "find-creators route is still serving legacy discovery HTML"
   exit 1
 }
 
-discovery_html=$(fetch_body "$BASE/find-creators.html")
-echo "$discovery_html" | grep -Eiq '/assets/[A-Za-z0-9._-]+\.js' && {
-  log_step "Discovery page is serving SPA shell HTML; expected standalone discovery document"
+log_step "Find creators route serves the SPA shell"
+
+legacy_headers=$(fetch_headers "$BASE/find-creators.html")
+legacy_status=$(awk 'NR==1 {print $2}' <<<"$legacy_headers")
+legacy_location=$(header_value "$legacy_headers" "location")
+
+case "$legacy_status" in
+  301|302|307|308) ;;
+  *)
+    log_step "Legacy discovery URL did not return an HTTP redirect (status=${legacy_status:-unknown})"
+    exit 1
+    ;;
+esac
+
+case "$legacy_location" in
+  /find-creators|/find-creators\?*|*/find-creators|*/find-creators\?*) ;;
+  *)
+    log_step "Legacy discovery URL redirected to an unexpected location: ${legacy_location:-<missing>}"
+    exit 1
+    ;;
+esac
+
+redirected_html=$(fetch_body "$BASE/find-creators.html")
+echo "$redirected_html" | grep -q "find-creators.css" && {
+  log_step "Legacy discovery URL still resolves to the old standalone document"
   exit 1
 }
 
-echo "$discovery_html" | grep -q "vendor/nostr.bundle.1.17.0.js" || {
-  log_step "Discovery page missing vendored nostr bundle reference"
+echo "$redirected_html" | grep -Eiq '/assets/[A-Za-z0-9._-]+\.js' || {
+  log_step "Legacy discovery URL did not land on the SPA shell after redirect"
   exit 1
 }
 
-echo "$discovery_html" | grep -Eiq 'unpkg\.com' && {
-  log_step "Discovery page still references unpkg.com"
-  exit 1
-}
-
-log_step "Discovery dependency policy checks passed"
+log_step "Legacy discovery URL redirects to the SPA route"
 
 manifest_headers=$(fetch_headers "$BASE/manifest.json")
 manifest_type=$(header_value "$manifest_headers" "content-type")

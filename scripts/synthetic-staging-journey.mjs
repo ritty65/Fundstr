@@ -170,7 +170,7 @@ function toMarkdown(report) {
     "- If route checks fail, verify SPA rewrite/.htaccess rules on staging host.",
   );
   lines.push(
-    "- If discovery checks fail, verify vendored bundle path and CSP for /find-creators.html.",
+    "- If redirect checks fail, verify the /find-creators.html redirect rule and CDN cache behaviour.",
   );
   lines.push(
     "- If smoke script fails, inspect its log lines for headers/relay diagnostics.",
@@ -238,24 +238,31 @@ async function main() {
 
     await runStep(
       report,
-      "Discovery iframe uses vendored dependency",
+      "Legacy discovery URL redirects to SPA route",
       async () => {
-        const { body } = await fetchText("/find-creators.html", "text/html");
-        if (looksLikeSpaShell(body)) {
-          throw new Error(
-            "Discovery route is serving SPA shell HTML. Deploy target likely missing standalone find-creators.html (or rewrite precedence is incorrect).",
-          );
-        }
+        const response = await withTimeout(`${baseUrl}/find-creators.html`, {
+          method: "GET",
+          headers: {
+            accept: "text/html",
+            "cache-control": "no-cache",
+          },
+          cache: "no-store",
+          redirect: "manual",
+        });
+
         assert(
-          body.includes("/vendor/nostr.bundle.1.17.0.js") ||
-            body.includes("vendor/nostr.bundle.1.17.0.js"),
-          "Discovery page missing vendored nostr bundle reference",
+          response.status >= 300 && response.status < 400,
+          `Legacy discovery URL returned HTTP ${response.status} instead of redirecting`,
         );
+
+        const location = response.headers.get("location") || "";
+        const redirectUrl = new URL(location || "/", baseUrl);
         assert(
-          !/unpkg\.com/i.test(body),
-          "Discovery page still references unpkg.com",
+          redirectUrl.pathname === "/find-creators",
+          `Legacy discovery URL redirected to unexpected location: ${location || "<missing>"}`,
         );
-        return "Discovery iframe references local vendor bundle only.";
+
+        return `Legacy /find-creators.html redirects to ${redirectUrl.pathname}.`;
       },
     );
 
