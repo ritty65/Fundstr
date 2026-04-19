@@ -26,7 +26,8 @@ gh run view <RUN_ID> --log-failed
 for i in 1 2 3 4 5; do curl -sS -o /dev/null -w "home status=%{http_code} ip=%{remote_ip} type=%{content_type}\n" https://staging.fundstr.me/; done
 for i in 1 2 3 4 5; do curl -sS -o /dev/null -w "deploy status=%{http_code} ip=%{remote_ip} type=%{content_type}\n" https://staging.fundstr.me/deploy.txt; done
 curl -sS https://staging.fundstr.me/deploy.txt
-curl -sS -D - https://staging.fundstr.me/find-creators.html -o /tmp/find-creators.html
+curl -sS -D - https://staging.fundstr.me/find-creators -o /tmp/find-creators.html
+curl -sS -I https://staging.fundstr.me/find-creators.html
 ```
 
 ## 4) Capture a full staging diagnostics bundle locally

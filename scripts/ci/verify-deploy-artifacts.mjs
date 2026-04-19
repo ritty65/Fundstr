@@ -9,12 +9,12 @@ const requiredFiles = [
   ".htaccess",
   "index.html",
   "find-creators.html",
-  "find-creators.css",
   "find_profiles.php",
   "featured-creators.json",
   "manifest.json",
   "relayHealth.js",
   "vendor/nostr.bundle.1.17.0.js",
+  "sw.js",
 ];
 
 function assert(condition, message) {
@@ -39,15 +39,40 @@ async function main() {
     ),
   );
 
-  const discoveryHtmlPath = resolve(root, "find-creators.html");
-  const discoveryHtml = await readFile(discoveryHtmlPath, "utf8");
+  const htaccessPath = resolve(root, ".htaccess");
+  const htaccess = await readFile(htaccessPath, "utf8");
   assert(
-    discoveryHtml.includes("vendor/nostr.bundle.1.17.0.js"),
-    "Deploy artifact validation failed: find-creators.html is missing vendored nostr bundle reference.",
+    htaccess.includes(
+      "RewriteRule ^find-creators\\.html$ /find-creators [R=301,L,NC,QSA]",
+    ),
+    "Deploy artifact validation failed: .htaccess is missing the legacy find-creators redirect.",
+  );
+
+  const redirectShim = await readFile(resolve(root, "find-creators.html"), "utf8");
+  assert(
+    redirectShim.includes("window.location.replace(target.toString())"),
+    "Deploy artifact validation failed: find-creators.html is not the expected redirect shim.",
   );
   assert(
-    !/unpkg\.com\/nostr-tools/i.test(discoveryHtml),
-    "Deploy artifact validation failed: find-creators.html still references unpkg nostr-tools.",
+    redirectShim.includes('meta name="robots" content="noindex, nofollow"'),
+    "Deploy artifact validation failed: find-creators.html must be marked noindex.",
+  );
+  assert(
+    !redirectShim.includes("find-creators.css"),
+    "Deploy artifact validation failed: find-creators.html still references the legacy stylesheet.",
+  );
+  assert(
+    !redirectShim.includes("nostr.bundle.1.17.0.js"),
+    "Deploy artifact validation failed: find-creators.html still references the legacy discovery bundle.",
+  );
+
+  const legacyBundle = await readFile(
+    resolve(root, "vendor/nostr.bundle.1.17.0.js"),
+    "utf8",
+  );
+  assert(
+    legacyBundle.includes("Legacy placeholder retained for deploy parity."),
+    "Deploy artifact validation failed: vendor/nostr.bundle.1.17.0.js is not the expected placeholder.",
   );
 
   console.log(

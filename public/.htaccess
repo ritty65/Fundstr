@@ -2,6 +2,9 @@
   Options -MultiViews
   RewriteEngine On
 
+  # Retire the legacy standalone discovery document in favor of the SPA route.
+  RewriteRule ^find-creators\.html$ /find-creators [R=301,L,NC,QSA]
+
   # Never rewrite static directories
   RewriteRule ^(assets|icons|vendor)/ - [L,NC]
 
@@ -9,7 +12,7 @@
   RewriteRule ^(_fundstr-phonebook\.php|\.fundstr-phonebook\.php)$ - [F,L,NC]
 
   # Never rewrite critical root static files
-  RewriteRule ^(find-creators\.html|find-creators\.css|featured-creators\.json|manifest\.json|mints\.json|relayHealth\.js|sw\.js|workbox-[A-Za-z0-9._-]+\.js|deploy\.txt|find_profiles\.php|favicon\.ico|robots\.txt)$ - [L,NC]
+  RewriteRule ^(featured-creators\.json|manifest\.json|mints\.json|relayHealth\.js|sw\.js|workbox-[A-Za-z0-9._-]+\.js|deploy\.txt|find_profiles\.php|favicon\.ico|robots\.txt)$ - [L,NC]
 
   # Never rewrite requests that look like file assets.
   # Let Apache serve the file directly (or return 404) instead of SPA shell HTML.
@@ -25,4 +28,12 @@
 <IfModule mod_mime.c>
   AddType application/javascript .js .mjs
   AddType application/wasm .wasm
+</IfModule>
+
+<IfModule mod_headers.c>
+  <Files "sw.js">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </Files>
 </IfModule>

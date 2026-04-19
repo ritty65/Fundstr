@@ -83,7 +83,7 @@ else
   log "dns_lookup_ipv6_failed host=${host}"
 fi
 
-for endpoint in / /deploy.txt /find-creators.html /find_profiles.php?q=jack /manifest.json /featured-creators.json; do
+for endpoint in / /deploy.txt /find-creators /find-creators.html /find_profiles.php?q=jack /manifest.json /featured-creators.json; do
   fetch_endpoint_snapshot "$endpoint"
 done
 
