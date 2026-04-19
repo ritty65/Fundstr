@@ -87,6 +87,7 @@ export type CreatorSearchFilters = {
   nip05Verified?: boolean;
   fundstrCreator?: boolean;
   signalOnly?: boolean;
+  trustedSignal?: boolean;
 };
 
 export type CreatorSearchSort = "relevance" | "followers" | "trustedRank";
@@ -1917,6 +1918,18 @@ export function creatorTrustedRank(
   return trustedMetrics?.rank ?? null;
 }
 
+export function creatorTrustedMetrics(
+  profile: Pick<CreatorProfile, "trustedMetrics"> | null | undefined,
+): CreatorTrustedMetrics | null {
+  return toCreatorTrustedMetrics(profile?.trustedMetrics);
+}
+
+export function creatorHasTrustedSignal(
+  profile: Pick<CreatorProfile, "trustedMetrics"> | null | undefined,
+): boolean {
+  return creatorTrustedMetrics(profile) !== null;
+}
+
 function applyTrustedMetricsToCreator(
   profile: CreatorProfile,
   trustedRank: TrustedUserRank | null,
@@ -2564,6 +2577,10 @@ function applyCreatorFilters(
     }
 
     if (filters.signalOnly && !creatorIsSignalOnly(profile)) {
+      return false;
+    }
+
+    if (filters.trustedSignal && !creatorHasTrustedSignal(profile)) {
       return false;
     }
 
