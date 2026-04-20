@@ -50,6 +50,7 @@ export default defineConfig({
       "test/vitest/__tests__/welcome.interaction.spec.ts",
       "test/vitest/__tests__/validateMedia.spec.ts",
       "test/vitest/__tests__/safeRedirect.spec.ts",
+      "test/vitest/__tests__/pwaUpdateLifecycle.spec.ts",
       "test/creatorStudio/tierComposerUtils.spec.ts",
       "test/creatorStudio/TierComposer.interaction.spec.ts",
       "test/cashu-sendQueue.spec.ts",
