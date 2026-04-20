@@ -665,16 +665,18 @@ const tiers = ref<TierDetails[]>([]);
 const showLocal = ref(false);
 const isMobileViewport = computed(() => $q.screen.lt.sm);
 const isDesktopViewport = computed(() => $q.screen.gt.sm);
-const compactTwoColumnBreakpoint = 1100;
-const isTwoColumnViewport = computed(() =>
-  $q.screen.width >= (props.compact ? compactTwoColumnBreakpoint : 1280),
+const isCompactDesktopPreview = computed(
+  () => props.compact === true && $q.screen.width >= 1024,
+);
+const isTwoColumnViewport = computed(
+  () => !props.compact && $q.screen.width >= 1280,
 );
 const isDialogMaximized = computed(() => isMobileViewport.value || (!props.compact && isDesktopViewport.value));
 const relayFallbackStatus = ref(getFreeRelayFallbackStatus());
 let relayFallbackUnsubscribe: (() => void) | null = null;
 const dialogClasses = computed(() => ({
   'profile-dialog--compact': props.compact === true,
-  'profile-dialog--compact-wide': props.compact === true && isTwoColumnViewport.value,
+  'profile-dialog--preview-desktop': isCompactDesktopPreview.value,
   'profile-dialog--maximized': isDialogMaximized.value,
   'profile-dialog--mobile': isMobileViewport.value,
   'profile-dialog--desktop': isDesktopViewport.value,
@@ -1526,14 +1528,31 @@ function resetState() {
   max-height: min(95vh, 1020px);
 }
 
+.profile-dialog--preview-desktop .profile-card {
+  width: min(100%, 1320px);
+  min-width: min(1120px, calc(100vw - 72px));
+  height: min(93vh, 960px);
+  max-height: min(93vh, 960px);
+}
+
 .profile-dialog--compact .profile-layout__body {
   gap: 24px;
   padding: clamp(18px, 3vh, 28px) clamp(18px, 3.2vw, 30px);
 }
 
+.profile-dialog--preview-desktop .profile-layout__body {
+  gap: 22px;
+  padding: 18px 28px 28px;
+  margin-top: 0;
+}
+
 .profile-dialog--compact .hero-panel {
   padding: clamp(20px, 2.4vw, 28px) clamp(20px, 2.8vw, 28px)
     clamp(18px, 2.2vw, 22px);
+}
+
+.profile-dialog--preview-desktop .hero-panel {
+  padding: 22px 28px 20px;
 }
 
 .profile-dialog--compact .hero-meta {
@@ -1544,13 +1563,26 @@ function resetState() {
   font-size: clamp(2rem, 1.6vw + 1.45rem, 2.95rem);
 }
 
+.profile-dialog--preview-desktop .hero-name {
+  max-width: 16ch;
+  font-size: clamp(2rem, 1.3vw + 1.45rem, 2.75rem);
+}
+
 .profile-dialog--compact .hero-handle {
   font-size: clamp(1.08rem, 0.4vw + 1rem, 1.28rem);
+}
+
+.profile-dialog--preview-desktop .hero-handle {
+  font-size: 1.08rem;
 }
 
 .profile-dialog--compact .hero-about {
   font-size: clamp(0.96rem, 0.18vw + 0.94rem, 1.08rem);
   line-height: 1.5;
+}
+
+.profile-dialog--preview-desktop .hero-about {
+  max-width: 48ch;
 }
 
 .profile-dialog--compact .hero-about--clamped {
@@ -1560,6 +1592,10 @@ function resetState() {
 .profile-dialog--compact .hero-actions {
   margin-top: 14px;
   gap: 10px;
+}
+
+.profile-dialog--preview-desktop .hero-actions {
+  margin-top: 10px;
 }
 
 .profile-dialog--compact .profile-tabs-section {
@@ -1731,6 +1767,13 @@ function resetState() {
   z-index: 1;
 }
 
+.profile-dialog--preview-desktop .hero-layout {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px 24px;
+  align-items: flex-start;
+}
+
 .profile-layout__hero--desktop .hero-layout {
   flex-direction: column;
   align-items: stretch;
@@ -1756,6 +1799,11 @@ function resetState() {
   box-shadow: 0 16px 30px rgba(9, 15, 28, 0.22);
 }
 
+.profile-dialog--preview-desktop .hero-avatar {
+  padding: 4px;
+  border-radius: 18px;
+}
+
 .profile-dialog--compact-wide .hero-avatar {
   padding: 4px;
   border-radius: 18px;
@@ -1775,6 +1823,10 @@ function resetState() {
   gap: clamp(10px, 1.6vw, 16px);
   flex: 1 1 260px;
   min-width: 0;
+}
+
+.profile-dialog--preview-desktop .hero-meta {
+  gap: 12px;
 }
 
 .profile-dialog--compact-wide .hero-meta {
@@ -1811,6 +1863,10 @@ function resetState() {
   gap: 10px;
   margin-top: 2px;
   padding: 12px 14px;
+}
+
+.profile-dialog--preview-desktop .hero-identity--compact {
+  max-width: 520px;
 }
 
 .hero-identity__row {
@@ -1951,8 +2007,17 @@ function resetState() {
   width: 100%;
 }
 
+.profile-dialog--preview-desktop .hero-actions--preview-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .hero-actions--preview-grid .action-button.subscribe {
   grid-column: 1 / -1;
+}
+
+.profile-dialog--preview-desktop .hero-actions--preview-grid .action-button.subscribe {
+  grid-column: auto;
 }
 
 .hero-actions--preview-grid .action-button {
@@ -1964,6 +2029,11 @@ function resetState() {
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 16px;
+}
+
+.profile-dialog--preview-desktop .hero-snapshot-strip {
+  margin-top: 8px;
+  gap: 8px;
 }
 
 .profile-dialog--compact-wide .hero-snapshot-strip {
@@ -2007,6 +2077,11 @@ function resetState() {
   color: var(--text-2);
   background: color-mix(in srgb, var(--surface-2) 80%, transparent);
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 85%, transparent);
+}
+
+.profile-dialog--preview-desktop .close-btn {
+  top: 16px;
+  right: 16px;
 }
 
 .profile-dialog--compact-wide .close-btn {
@@ -2062,6 +2137,10 @@ function resetState() {
   padding: 0 clamp(14px, 4.6vw, 24px);
 }
 
+.profile-dialog--preview-desktop .profile-tabs-section {
+  padding: 0 28px;
+}
+
 .profile-tabs {
   color: var(--tab-inactive);
 }
@@ -2099,6 +2178,10 @@ function resetState() {
   gap: 16px;
 }
 
+.profile-dialog--preview-desktop .highlights-section {
+  padding: 10px 28px 0;
+}
+
 .highlights-section--compact {
   gap: 18px;
 }
@@ -2132,6 +2215,10 @@ function resetState() {
   line-height: 1.55;
 }
 
+.profile-dialog--preview-desktop .snapshot-intro__helper {
+  max-width: 50rem;
+}
+
 .profile-dialog--compact-wide .section-heading {
   font-size: clamp(1.35rem, 0.55vw + 1.18rem, 1.85rem);
 }
@@ -2151,6 +2238,11 @@ function resetState() {
   gap: 18px;
 }
 
+.profile-dialog--preview-desktop .highlights-grid--compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
 .profile-dialog--compact-wide .highlights-grid--compact {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
@@ -2165,6 +2257,10 @@ function resetState() {
 
 .notes-section--compact {
   gap: 14px;
+}
+
+.profile-dialog--preview-desktop .notes-section--compact {
+  padding: 4px 28px 28px;
 }
 
 .notes-section__header {
@@ -2201,6 +2297,10 @@ function resetState() {
 .note-card--compact {
   padding: 16px 18px;
   gap: 12px;
+}
+
+.profile-dialog--preview-desktop .note-card--compact {
+  max-width: 72ch;
 }
 
 .note-card--skeleton {
@@ -2273,6 +2373,32 @@ function resetState() {
   box-shadow: 0 20px 44px rgba(10, 16, 32, 0.16);
 }
 
+.profile-dialog--preview-desktop .highlight-item--hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 18px;
+  align-items: start;
+  padding: 18px 20px;
+}
+
+.profile-dialog--preview-desktop .highlight-item--hero .highlight-header {
+  grid-column: 1 / 2;
+}
+
+.profile-dialog--preview-desktop .highlight-item--hero .highlight-value--hero {
+  grid-column: 2 / 3;
+  grid-row: 1 / span 2;
+  justify-self: end;
+  align-self: center;
+  font-size: clamp(2.4rem, 1.6vw + 1.5rem, 3.25rem);
+}
+
+.profile-dialog--preview-desktop .highlight-item--hero .highlight-copy,
+.profile-dialog--preview-desktop .highlight-item--hero .highlight-meta-row,
+.profile-dialog--preview-desktop .highlight-item--hero .highlight-details {
+  grid-column: 1 / -1;
+}
+
 .profile-dialog--compact-wide .highlight-item--hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2304,6 +2430,11 @@ function resetState() {
   min-height: 156px;
 }
 
+.profile-dialog--preview-desktop .highlight-item--metric,
+.profile-dialog--preview-desktop .highlight-item--detail {
+  min-height: 0;
+}
+
 .profile-dialog--compact-wide .highlight-item--metric,
 .profile-dialog--compact-wide .highlight-item--detail {
   min-height: 0;
@@ -2311,6 +2442,10 @@ function resetState() {
 
 .highlight-item--status {
   gap: 12px;
+}
+
+.profile-dialog--preview-desktop .highlight-item--status {
+  min-height: 0;
 }
 
 .highlight-header {
@@ -2911,30 +3046,6 @@ function resetState() {
 
   .empty-state {
     padding: 32px 48px;
-  }
-}
-@media (min-width: 1100px) {
-  .profile-dialog--compact-wide .profile-layout--two-column {
-    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
-    grid-template-rows: 1fr;
-    column-gap: clamp(24px, 2.4vw, 36px);
-  }
-
-  .profile-dialog--compact-wide .profile-layout__hero--desktop .hero-panel {
-    min-height: auto;
-    padding: clamp(18px, 2.2vw, 26px);
-  }
-
-  .profile-dialog--compact-wide .profile-layout__hero--desktop .hero-rail {
-    padding-right: clamp(8px, 0.8vw, 12px);
-  }
-
-  .profile-dialog--compact-wide .profile-layout__content--desktop {
-    padding-right: 0;
-  }
-
-  .profile-dialog--compact-wide .profile-layout__body {
-    padding: clamp(18px, 3vh, 28px) 0;
   }
 }
 @media (min-width: 1280px) {
