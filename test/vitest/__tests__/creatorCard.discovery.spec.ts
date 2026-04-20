@@ -154,6 +154,11 @@ describe("CreatorCard donation eligibility signals", () => {
   const hasDonateButton = (wrapper: ReturnType<typeof mountCard>) =>
     wrapper.findAll('[data-label="Donate"]').length > 0;
 
+  it("shows donate button for any profile with a public key", () => {
+    const wrapper = mountCard();
+    expect(hasDonateButton(wrapper)).toBe(true);
+  });
+
   it("shows donate button when lightning address is present", () => {
     const wrapper = mountCard({ profile: { lud16: "tip@example.com" } });
     expect(hasDonateButton(wrapper)).toBe(true);
@@ -189,8 +194,8 @@ describe("CreatorCard donation eligibility signals", () => {
     expect(hasDonateButton(wrapper)).toBe(true);
   });
 
-  it("hides donate button when no donation signals exist", () => {
-    const wrapper = mountCard();
+  it("hides donate button when the public key is missing", () => {
+    const wrapper = mountCard({ pubkey: "" });
     expect(hasDonateButton(wrapper)).toBe(false);
   });
 

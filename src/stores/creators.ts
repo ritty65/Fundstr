@@ -1895,7 +1895,8 @@ function toCreatorTrustedMetrics(
     return { ...value };
   }
 
-  const rank = value.rank;
+  const source = value as TrustedUserRank | CreatorTrustedMetrics;
+  const rank = source.rank;
   if (!Number.isInteger(rank) || rank < 0 || rank > 100) {
     return null;
   }
@@ -1903,11 +1904,11 @@ function toCreatorTrustedMetrics(
   return {
     rank,
     providerLabel:
-      typeof value.providerLabel === "string" ? value.providerLabel : null,
+      typeof source.providerLabel === "string" ? source.providerLabel : null,
     providerPubkey:
-      typeof value.providerPubkey === "string" ? value.providerPubkey : null,
-    relayUrl: typeof value.relayUrl === "string" ? value.relayUrl : null,
-    createdAt: typeof value.createdAt === "number" ? value.createdAt : null,
+      typeof source.providerPubkey === "string" ? source.providerPubkey : null,
+    relayUrl: typeof source.relayUrl === "string" ? source.relayUrl : null,
+    createdAt: typeof source.createdAt === "number" ? source.createdAt : null,
   };
 }
 
@@ -2145,6 +2146,9 @@ export function mergeCreatorProfileWithFallback(
   }
 
   const merged: CreatorProfile = { ...fallbackProfile, ...incomingProfile };
+  merged.trustedMetrics =
+    toCreatorTrustedMetrics(incomingProfile.trustedMetrics) ??
+    toCreatorTrustedMetrics(fallbackProfile.trustedMetrics);
   const applyNonEmptyString = (
     value: unknown,
     fallback: unknown,

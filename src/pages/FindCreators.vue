@@ -55,6 +55,77 @@
               </q-input>
             </q-form>
 
+            <section class="trusted-rank-spotlight bg-surface-1 text-1">
+              <div class="trusted-rank-spotlight__eyebrow">
+                NIP-85 trust context
+              </div>
+              <div class="trusted-rank-spotlight__header">
+                <div class="stack-12 trusted-rank-spotlight__copy">
+                  <div class="text-subtitle1 text-weight-medium">
+                    Trusted rank is visible directly in creator discovery.
+                  </div>
+                  <p class="text-body2 text-2 q-mb-none">
+                    Fundstr surfaces provider-signed NIP-85 trust signals on
+                    creator cards, in preview modals, and in search sorting.
+                    Fundstr does not calculate this score, and it never
+                    controls payments, subscriptions, or access.
+                  </p>
+                </div>
+                <div
+                  v-if="trustedSpotlightCount"
+                  class="trusted-rank-spotlight__badge"
+                >
+                  <q-icon name="shield" size="16px" />
+                  <span>
+                    {{ trustedSpotlightCount }} visible trusted signal{{
+                      trustedSpotlightCount === 1 ? "" : "s"
+                    }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="trusted-rank-spotlight__meta text-caption text-2">
+                <span>{{ trustedSpotlightSummary }}</span>
+                <span v-if="trustedSpotlightProviderText">
+                  {{ trustedSpotlightProviderText }}
+                </span>
+                <span v-if="trustedSpotlightFreshnessText">
+                  {{ trustedSpotlightFreshnessText }}
+                </span>
+              </div>
+
+              <div class="trusted-rank-spotlight__actions">
+                <q-btn
+                  outline
+                  no-caps
+                  color="accent"
+                  icon="swap_vert"
+                  label="Sort by trusted rank"
+                  :disable="!hasTrustedRankMetrics"
+                  @click="applyTrustedRankSort"
+                />
+                <q-btn
+                  flat
+                  no-caps
+                  color="accent"
+                  icon="shield"
+                  label="Show trusted only"
+                  :disable="!trustedSignalCount"
+                  @click="enableTrustedSignalFilter"
+                />
+                <a
+                  v-for="link in trustedRankInfoLinks"
+                  :key="link.id"
+                  class="trusted-rank-spotlight__link"
+                  :href="link.href"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {{ link.label }}
+                </a>
+              </div>
+            </section>
+
             <section
               class="column q-gutter-lg"
               role="region"
@@ -634,6 +705,18 @@
 
                       <div class="legend-item" role="listitem">
                         <div class="legend-chip">
+                          <span class="status-chip accent">
+                            <q-icon name="shield" size="14px" />
+                            <span>Trusted rank</span>
+                          </span>
+                        </div>
+                        <div class="legend-text text-2">
+                          Provider-signed NIP-85 trust signal
+                        </div>
+                      </div>
+
+                      <div class="legend-item" role="listitem">
+                        <div class="legend-chip">
                           <span class="status-chip warning">
                             <q-icon name="sensors" size="14px" />
                             <span>Signal only</span>
@@ -733,6 +816,17 @@
           </q-card-section>
         </q-card>
       </div>
+
+      <CreatorProfileModal
+        :show="profilePreviewVisible"
+        :pubkey="selectedPreviewPubkey"
+        :initial-profile="selectedPreviewProfile"
+        :initial-tab="profilePreviewInitialTab"
+        compact
+        @close="closeProfilePreview"
+        @message="startChat"
+        @donate="donate"
+      />
     </div>
   </q-page>
 </template>
@@ -750,6 +844,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useQuasar } from "quasar";
 import { nip19 } from "nostr-tools";
 import CreatorCard from "components/CreatorCard.vue";
+import CreatorProfileModal from "components/CreatorProfileModal.vue";
 import { useNostrStore } from "stores/nostr";
 import { useCreatorsStore, type CreatorProfile } from "stores/creators";
 import { useMessengerStore } from "stores/messenger";
@@ -773,7 +868,6 @@ import {
   creatorIsFundstrCreator,
   creatorIsSignalOnly,
 } from "stores/creators";
-import { preferredCreatorPublicIdentifier } from "src/utils/profileUrl";
 import {
   TRUSTED_RANK_INFO_LINKS,
   formatTrustedRankFreshness,
@@ -909,6 +1003,26 @@ const trustedProfiles = computed(() =>
   searchResults.value.filter((profile) => creatorHasTrustedSignal(profile)),
 );
 const trustedSignalCount = computed(() => trustedProfiles.value.length);
+const trustedSpotlightProfiles = computed(() => {
+  const combined = [...searchResults.value, ...featuredCreators.value];
+  const seen = new Set<string>();
+
+  return combined.filter((profile) => {
+    if (!creatorHasTrustedSignal(profile)) {
+      return false;
+    }
+
+    const key =
+      typeof profile.pubkey === "string" ? profile.pubkey.trim().toLowerCase() : "";
+    if (!key || seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+});
+const trustedSpotlightCount = computed(() => trustedSpotlightProfiles.value.length);
 const trustedProviderLabels = computed(() =>
   Array.from(
     new Set(
@@ -927,6 +1041,24 @@ const trustedProviderText = computed(() => {
   }
   return null;
 });
+const trustedSpotlightProviderLabels = computed(() =>
+  Array.from(
+    new Set(
+      trustedSpotlightProfiles.value
+        .map((profile) => creatorTrustedMetrics(profile)?.providerLabel?.trim())
+        .filter((label): label is string => Boolean(label)),
+    ),
+  ),
+);
+const trustedSpotlightProviderText = computed(() => {
+  if (trustedSpotlightProviderLabels.value.length === 1) {
+    return trustedRankProviderLine(trustedSpotlightProviderLabels.value[0]);
+  }
+  if (trustedSpotlightProviderLabels.value.length > 1) {
+    return `Current providers: ${trustedSpotlightProviderLabels.value.join(", ")}`;
+  }
+  return null;
+});
 const trustedLatestCreatedAt = computed(() => {
   const createdAts = trustedProfiles.value
     .map((profile) => creatorTrustedMetrics(profile)?.createdAt)
@@ -942,6 +1074,28 @@ const trustedLatestCreatedAt = computed(() => {
 const trustedFreshnessText = computed(() =>
   formatTrustedRankFreshness(trustedLatestCreatedAt.value),
 );
+const trustedSpotlightLatestCreatedAt = computed(() => {
+  const createdAts = trustedSpotlightProfiles.value
+    .map((profile) => creatorTrustedMetrics(profile)?.createdAt)
+    .filter(
+      (createdAt): createdAt is number =>
+        typeof createdAt === "number" && Number.isFinite(createdAt),
+    );
+  if (!createdAts.length) {
+    return null;
+  }
+  return Math.max(...createdAts);
+});
+const trustedSpotlightFreshnessText = computed(() =>
+  formatTrustedRankFreshness(trustedSpotlightLatestCreatedAt.value),
+);
+const trustedSpotlightSummary = computed(() => {
+  if (!trustedSpotlightCount.value) {
+    return "When a creator has provider-signed NIP-85 trust data, Fundstr can surface it before supporters click through.";
+  }
+
+  return `${trustedSpotlightCount.value} visible creator${trustedSpotlightCount.value === 1 ? " currently includes" : "s currently include"} provider-signed NIP-85 trust context.`;
+});
 const availableSortOptions = computed(() =>
   sortOptions.filter((option) => {
     if (option.value === "relevance") {
@@ -1449,6 +1603,14 @@ watch(searchWarnings, (warnings) => {
 const featuredSectionRef = ref<HTMLElement | ComponentPublicInstance | null>(
   null,
 );
+const profilePreviewVisible = ref(false);
+const selectedPreviewProfile = ref<CreatorProfile | null>(null);
+const profilePreviewInitialTab = ref<ProfileTab>("profile");
+const selectedPreviewPubkey = computed(() =>
+  typeof selectedPreviewProfile.value?.pubkey === "string"
+    ? selectedPreviewProfile.value.pubkey
+    : "",
+);
 const activeMintInfo = computed(() => mintsStore.activeInfo);
 const supportedNuts = computed(() =>
   resolveSupportedNuts(activeMintInfo.value),
@@ -1479,20 +1641,13 @@ function viewProfile(
     return;
   }
 
-  const npubOrHex =
-    preferredCreatorPublicIdentifier({
-      fallbackIdentifier:
-        (typeof profile.npub === "string" && profile.npub.trim()) ||
-        profile.pubkey,
-      nip05: typeof profile.nip05 === "string" ? profile.nip05 : null,
-      nip05Verified: creatorHasVerifiedNip05(profile),
-    }) || profile.pubkey;
+  selectedPreviewProfile.value = profile;
+  profilePreviewInitialTab.value = initialTab;
+  profilePreviewVisible.value = true;
+}
 
-  void router.push({
-    name: "PublicCreatorProfile",
-    params: { npubOrHex },
-    query: initialTab === "tiers" ? { tab: "tiers" } : undefined,
-  });
+function closeProfilePreview() {
+  profilePreviewVisible.value = false;
 }
 
 function startChat(pubkey: string) {
@@ -1597,6 +1752,25 @@ function toggleFilter(filterKey: FilterKey) {
   activeFilters.value = {
     ...activeFilters.value,
     [filterKey]: !activeFilters.value[filterKey],
+  };
+}
+
+function applyTrustedRankSort() {
+  if (!hasTrustedRankMetrics.value) {
+    return;
+  }
+
+  sortOption.value = "trustedRank";
+}
+
+function enableTrustedSignalFilter() {
+  if (!trustedSignalCount.value) {
+    return;
+  }
+
+  activeFilters.value = {
+    ...activeFilters.value,
+    trustedSignal: true,
   };
 }
 
@@ -1821,6 +1995,12 @@ onMounted(() => {
   border-color: color-mix(in srgb, var(--accent-500) 40%, transparent);
 }
 
+.status-chip.success {
+  color: #1a8f5f;
+  background: color-mix(in srgb, #1a8f5f 14%, var(--chip-bg));
+  border-color: color-mix(in srgb, #1a8f5f 28%, transparent);
+}
+
 .status-chip.muted {
   background: color-mix(in srgb, var(--chip-bg) 80%, transparent);
   color: var(--text-2);
@@ -1916,6 +2096,84 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+
+.trusted-rank-spotlight {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent-500) 18%, var(--surface-contrast-border));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent-200) 16%, var(--surface-1) 84%) 0%,
+    color-mix(in srgb, var(--surface-1) 94%, var(--surface-2) 6%) 100%
+  );
+}
+
+.trusted-rank-spotlight__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-200) 32%, transparent);
+  color: var(--accent-600);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.trusted-rank-spotlight__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trusted-rank-spotlight__copy {
+  min-width: 0;
+}
+
+.trusted-rank-spotlight__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-1) 75%, var(--accent-200) 25%);
+  border: 1px solid color-mix(in srgb, var(--accent-500) 24%, transparent);
+  color: var(--accent-600);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.trusted-rank-spotlight__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  line-height: 1.45;
+}
+
+.trusted-rank-spotlight__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.trusted-rank-spotlight__link {
+  color: var(--accent-500);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.trusted-rank-spotlight__link:hover,
+.trusted-rank-spotlight__link:focus-visible {
+  color: var(--accent-600);
+  text-decoration: underline;
 }
 
 .load-more-wrapper {
@@ -2119,12 +2377,20 @@ h1 {
 }
 
 @media (max-width: 1023px) {
+  .trusted-rank-spotlight__header {
+    flex-direction: column;
+  }
+
   .search-results-toolbar {
     align-items: stretch;
   }
 
   .toolbar-controls {
     justify-content: flex-start;
+  }
+
+  .trusted-rank-spotlight__actions {
+    align-items: stretch;
   }
 }
 

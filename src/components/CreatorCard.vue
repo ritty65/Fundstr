@@ -162,8 +162,8 @@
         <div class="action-helper text-2">
           {{
             hasTiers
-              ? "Open the creator page and browse tiers."
-              : "Open the full creator page."
+              ? "Preview the creator and browse tiers."
+              : "Open a quick creator preview."
           }}
         </div>
         <div v-if="!canViewProfile" class="action-helper text-2">
@@ -201,7 +201,7 @@
           class="action-btn action-btn--secondary"
           label="Donate"
           no-caps
-          v-if="hasLightning"
+          v-if="canDonate"
           @click.stop="$emit('donate', profile.pubkey)"
         />
       </div>
@@ -316,6 +316,8 @@ const canViewProfile = computed(() => {
   if (typeof props.profile?.pubkey !== "string") return false;
   return props.profile.pubkey.trim().length > 0;
 });
+
+const canDonate = computed(() => canViewProfile.value);
 
 function onAvatarError(event: Event) {
   (event.target as HTMLImageElement).src = safeImageSrc(
