@@ -130,6 +130,27 @@
                         @click="$emit('donate', pubkey)"
                       />
                     </div>
+                    <div
+                      v-if="props.compact && (trustedRankValue !== null || followersDisplay || lightningAddress)"
+                      class="hero-snapshot-strip"
+                      aria-label="Creator snapshot"
+                    >
+                      <div
+                        v-if="trustedRankValue !== null"
+                        class="hero-snapshot-pill hero-snapshot-pill--trusted"
+                      >
+                        <q-icon name="shield" size="14px" />
+                        <span>Trusted {{ trustedRankValue }}</span>
+                      </div>
+                      <div v-if="followersDisplay" class="hero-snapshot-pill">
+                        <q-icon name="groups" size="14px" />
+                        <span>{{ followersDisplay }} followers</span>
+                      </div>
+                      <div v-if="lightningAddress" class="hero-snapshot-pill">
+                        <q-icon name="bolt" size="14px" />
+                        <span>Lightning ready</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -179,54 +200,103 @@
 
               <q-tab-panels v-if="creator" v-model="activeTab" animated class="profile-tab-panels">
                 <q-tab-panel name="profile" class="profile-tab-panel">
-                  <div class="highlights-section">
-                    <div class="section-heading">Profile highlights</div>
-                    <div v-if="hasHighlights" class="highlights-grid">
-                      <div v-if="followersDisplay" class="highlight-item">
-                        <div class="highlight-label text-2">Followers</div>
-                        <div class="highlight-value">{{ followersDisplay }}</div>
+                  <div
+                    class="highlights-section"
+                    :class="{ 'highlights-section--compact': props.compact }"
+                  >
+                    <div class="snapshot-intro">
+                      <div class="snapshot-intro__eyebrow">Quick snapshot</div>
+                      <div class="section-heading">Profile highlights</div>
+                      <div class="snapshot-intro__helper text-body2 text-2">
+                        Fast trust and profile signals before you message,
+                        donate, or subscribe.
                       </div>
+                    </div>
+                    <div
+                      v-if="hasHighlights"
+                      class="highlights-grid"
+                      :class="{ 'highlights-grid--compact': props.compact }"
+                    >
                       <div
                         v-if="trustedRankValue !== null"
-                        class="highlight-item highlight-item--full highlight-item--trusted"
+                        class="highlight-item highlight-item--full highlight-item--hero highlight-item--trusted"
                       >
-                        <div class="highlight-label text-2">Trusted rank (NIP-85)</div>
-                        <div class="highlight-value highlight-value--trusted">
-                          <q-icon name="shield" size="18px" />
+                        <div class="highlight-header">
+                          <div class="highlight-header__copy">
+                            <div class="highlight-label text-2">Trusted rank (NIP-85)</div>
+                            <div class="highlight-kicker text-2">Discovery trust context</div>
+                          </div>
+                          <div
+                            v-if="trustedMetrics?.providerLabel"
+                            class="highlight-badge text-caption"
+                          >
+                            {{ trustedMetrics.providerLabel }}
+                          </div>
+                        </div>
+                        <div class="highlight-value highlight-value--hero highlight-value--trusted">
+                          <q-icon name="shield" size="24px" />
                           <span>{{ trustedRankValue }}</span>
                         </div>
                         <div class="highlight-copy text-body2 text-2">
-                          Provider-signed trust context for discovery. Fundstr
-                          does not calculate this score, and it never controls
-                          payments, subscriptions, or access.
+                          Provider-signed trust context for discovery.
                         </div>
-                        <div
-                          v-if="trustedRankProviderText"
-                          class="highlight-meta text-caption text-2"
-                        >
-                          {{ trustedRankProviderText }}
+                        <div class="highlight-meta-row text-caption text-2">
+                          <span v-if="trustedRankProviderText">{{ trustedRankProviderText }}</span>
+                          <span v-if="trustedRankFreshness">{{ trustedRankFreshness }}</span>
                         </div>
-                        <div
-                          v-if="trustedRankFreshness"
-                          class="highlight-meta text-caption text-2"
-                        >
-                          {{ trustedRankFreshness }}
+                        <details class="highlight-details">
+                          <summary class="highlight-details__summary">
+                            How NIP-85 works
+                          </summary>
+                          <div class="highlight-details__body text-body2 text-2">
+                            Fundstr does not calculate this score, and it never
+                            controls payments, subscriptions, or access.
+                          </div>
+                          <div class="trusted-rank-info-links">
+                            <a
+                              v-for="link in trustedRankInfoLinks"
+                              :key="link.id"
+                              class="trusted-rank-info-link"
+                              :href="link.href"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {{ link.label }}
+                            </a>
+                          </div>
+                        </details>
+                      </div>
+                      <div
+                        v-if="followersDisplay"
+                        class="highlight-item highlight-item--metric"
+                      >
+                        <div class="highlight-header">
+                          <div class="highlight-label text-2">Followers</div>
+                          <q-icon
+                            name="groups"
+                            size="16px"
+                            class="highlight-header__icon"
+                          />
                         </div>
-                        <div class="trusted-rank-info-links">
-                          <a
-                            v-for="link in trustedRankInfoLinks"
-                            :key="link.id"
-                            class="trusted-rank-info-link"
-                            :href="link.href"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            {{ link.label }}
-                          </a>
+                        <div class="highlight-value highlight-value--metric">
+                          {{ followersDisplay }}
+                        </div>
+                        <div class="highlight-copy text-body2 text-2">
+                          Public follower count visible on this profile.
                         </div>
                       </div>
-                      <div v-if="lightningAddress" class="highlight-item highlight-item--full">
-                        <div class="highlight-label text-2">Lightning address</div>
+                      <div
+                        v-if="lightningAddress"
+                        class="highlight-item highlight-item--detail"
+                      >
+                        <div class="highlight-header">
+                          <div class="highlight-label text-2">Lightning address</div>
+                          <q-icon
+                            name="bolt"
+                            size="16px"
+                            class="highlight-header__icon"
+                          />
+                        </div>
                         <div class="highlight-value highlight-value--mono">
                           <span>{{ lightningAddress }}</span>
                           <q-btn
@@ -243,15 +313,41 @@
                             </q-tooltip>
                           </q-btn>
                         </div>
+                        <div class="highlight-copy text-body2 text-2">
+                          Direct lightning support is available for this profile.
+                        </div>
                       </div>
-                      <div v-if="websiteUrl" class="highlight-item highlight-item--full">
-                        <div class="highlight-label text-2">Website</div>
+                      <div
+                        v-if="websiteUrl"
+                        class="highlight-item highlight-item--detail"
+                      >
+                        <div class="highlight-header">
+                          <div class="highlight-label text-2">Website</div>
+                          <q-icon
+                            name="public"
+                            size="16px"
+                            class="highlight-header__icon"
+                          />
+                        </div>
                         <a class="highlight-link" :href="websiteUrl" target="_blank" rel="noopener">
                           {{ websiteLabel }}
                         </a>
+                        <div class="highlight-copy text-body2 text-2">
+                          Open the creator&rsquo;s external site in a new tab.
+                        </div>
                       </div>
-                      <div v-if="highlightStatusChips.length" class="highlight-item highlight-item--full">
-                        <div class="highlight-label text-2">Status</div>
+                      <div
+                        v-if="highlightStatusChips.length"
+                        class="highlight-item highlight-item--full highlight-item--status"
+                      >
+                        <div class="highlight-header">
+                          <div class="highlight-label text-2">Status</div>
+                          <q-icon
+                            name="verified"
+                            size="16px"
+                            class="highlight-header__icon"
+                          />
+                        </div>
                         <div class="highlight-chips" role="list">
                           <span
                             v-for="chip in highlightStatusChips"
@@ -265,6 +361,9 @@
                             <q-icon v-if="chip.icon" :name="chip.icon" size="14px" />
                             <span>{{ chip.label }}</span>
                           </span>
+                        </div>
+                        <div class="highlight-copy text-body2 text-2">
+                          Extra profile signals that help explain this creator&rsquo;s current discovery state.
                         </div>
                       </div>
                     </div>
@@ -1315,6 +1414,40 @@ function resetState() {
   max-height: min(88vh, 920px);
 }
 
+.profile-dialog--compact .profile-layout__body {
+  gap: 18px;
+}
+
+.profile-dialog--compact .hero-panel {
+  padding: clamp(24px, 3vw, 32px) clamp(24px, 3.4vw, 34px)
+    clamp(20px, 2.6vw, 24px);
+}
+
+.profile-dialog--compact .hero-meta {
+  gap: 12px;
+}
+
+.profile-dialog--compact .hero-name {
+  font-size: clamp(2.8rem, 4vw, 4.2rem);
+}
+
+.profile-dialog--compact .hero-handle {
+  font-size: clamp(1.15rem, 0.55vw + 1rem, 1.4rem);
+}
+
+.profile-dialog--compact .hero-about {
+  font-size: clamp(1.05rem, 0.4vw + 0.98rem, 1.22rem);
+  line-height: 1.6;
+}
+
+.profile-dialog--compact .hero-actions {
+  margin-top: 18px;
+}
+
+.profile-dialog--compact .profile-tabs-section {
+  padding-top: 4px;
+}
+
 .profile-card--two-column {
   width: min(100%, 1760px);
 }
@@ -1634,6 +1767,33 @@ function resetState() {
   width: auto;
 }
 
+.hero-snapshot-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.hero-snapshot-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-2) 82%, var(--surface-1) 18%);
+  border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 72%, transparent);
+  color: var(--text-1);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.hero-snapshot-pill--trusted {
+  background: color-mix(in srgb, var(--accent-200) 22%, var(--surface-1) 78%);
+  border-color: color-mix(in srgb, var(--accent-500) 30%, transparent);
+  color: var(--accent-500);
+}
+
 .action-button.subscribe {
   box-shadow: 0 18px 32px rgba(10, 16, 32, 0.28);
 }
@@ -1738,10 +1898,43 @@ function resetState() {
   gap: 16px;
 }
 
+.highlights-section--compact {
+  gap: 18px;
+}
+
+.snapshot-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.snapshot-intro__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.35rem 0.72rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-200) 26%, transparent);
+  color: var(--accent-600);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.snapshot-intro__helper {
+  max-width: 42rem;
+  line-height: 1.55;
+}
+
 .highlights-grid {
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.highlights-grid--compact {
+  gap: 18px;
 }
 
 .notes-section {
@@ -1810,15 +2003,53 @@ function resetState() {
 .highlight-item {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--surface-1) 96%, var(--surface-2) 4%);
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface-1) 90%, var(--surface-2) 10%);
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
+  box-shadow: 0 16px 34px rgba(10, 16, 32, 0.12);
 }
 
 .highlight-item--full {
   grid-column: 1 / -1;
+}
+
+.highlight-item--hero {
+  padding: 20px 22px;
+  gap: 12px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent-200) 16%, var(--surface-1) 84%) 0%,
+    color-mix(in srgb, var(--surface-1) 90%, var(--surface-2) 10%) 100%
+  );
+  box-shadow: 0 20px 44px rgba(10, 16, 32, 0.16);
+}
+
+.highlight-item--metric,
+.highlight-item--detail {
+  min-height: 156px;
+}
+
+.highlight-item--status {
+  gap: 12px;
+}
+
+.highlight-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.highlight-header__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.highlight-header__icon {
+  color: color-mix(in srgb, var(--text-1) 86%, var(--accent-500) 14%);
 }
 
 .highlight-label {
@@ -1826,6 +2057,25 @@ function resetState() {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   font-size: 0.8rem;
+}
+
+.highlight-kicker {
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.highlight-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.65rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-1) 70%, var(--accent-200) 30%);
+  border: 1px solid color-mix(in srgb, var(--accent-500) 24%, transparent);
+  color: var(--accent-600);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .highlight-value {
@@ -1838,6 +2088,18 @@ function resetState() {
   overflow-wrap: anywhere;
 }
 
+.highlight-value--hero {
+  font-size: clamp(2.6rem, 2vw + 2rem, 4rem);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.highlight-value--metric {
+  font-size: clamp(1.9rem, 1vw + 1.6rem, 2.6rem);
+  font-weight: 800;
+  line-height: 1.05;
+}
+
 .highlight-value--mono {
   font-family: var(--font-mono, 'Fira Code', monospace);
   font-size: 1rem;
@@ -1848,6 +2110,15 @@ function resetState() {
   border-color: color-mix(in srgb, var(--accent-500) 24%, var(--surface-contrast-border));
 }
 
+.highlight-item--hero.highlight-item--trusted {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent-200) 26%, var(--surface-1) 74%) 0%,
+    color-mix(in srgb, var(--surface-1) 88%, var(--surface-2) 12%) 100%
+  );
+  border-color: color-mix(in srgb, var(--accent-500) 30%, var(--surface-contrast-border));
+}
+
 .highlight-value--trusted {
   color: var(--accent-500);
 }
@@ -1856,10 +2127,51 @@ function resetState() {
   line-height: 1.5;
 }
 
+.highlight-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  line-height: 1.5;
+}
+
+.highlight-details {
+  margin-top: 2px;
+}
+
+.highlight-details[open] {
+  padding-top: 2px;
+}
+
+.highlight-details__summary {
+  cursor: pointer;
+  color: var(--accent-500);
+  font-weight: 700;
+  list-style: none;
+}
+
+.highlight-details__summary::-webkit-details-marker {
+  display: none;
+}
+
+.highlight-details__summary::before {
+  content: '+';
+  margin-right: 0.45rem;
+}
+
+.highlight-details[open] .highlight-details__summary::before {
+  content: '-';
+}
+
+.highlight-details__body {
+  margin-top: 0.7rem;
+  line-height: 1.55;
+}
+
 .trusted-rank-info-links {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  margin-top: 0.75rem;
 }
 
 .trusted-rank-info-link {
@@ -1875,6 +2187,7 @@ function resetState() {
 
 .highlight-copy {
   color: var(--text-2);
+  line-height: 1.55;
 }
 
 .highlight-link {
@@ -2097,6 +2410,30 @@ function resetState() {
 }
 @media (max-width: 599px) {
 
+  .profile-dialog--compact .hero-panel {
+    padding: 20px 18px 18px;
+  }
+
+  .profile-dialog--compact .hero-name {
+    font-size: clamp(2.35rem, 10vw, 3.3rem);
+  }
+
+  .profile-dialog--compact .hero-handle {
+    font-size: 1.08rem;
+  }
+
+  .profile-dialog--compact .hero-about {
+    font-size: 1rem;
+  }
+
+  .hero-snapshot-strip {
+    gap: 8px;
+  }
+
+  .hero-snapshot-pill {
+    font-size: 0.82rem;
+  }
+
   .profile-layout__body {
     padding: 15px 12px 18px;
   }
@@ -2121,6 +2458,38 @@ function resetState() {
 
   .tiers-section {
     padding: 10px 16px 20px;
+  }
+
+  .highlights-section {
+    padding: 10px 16px 20px;
+  }
+
+  .highlights-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .highlight-item {
+    min-height: 0;
+  }
+
+  .highlight-item--hero {
+    padding: 18px;
+  }
+
+  .highlight-value--hero {
+    font-size: 2.35rem;
+  }
+
+  .highlight-value--metric {
+    font-size: 1.85rem;
+  }
+
+  .highlight-header {
+    flex-direction: column;
+  }
+
+  .highlight-badge {
+    width: fit-content;
   }
 
   .tiers-carousel {
@@ -2193,6 +2562,11 @@ function resetState() {
     padding: clamp(40px, 6vh, 64px) clamp(36px, 4vw, 56px);
   }
 
+  .profile-dialog--compact .profile-layout__hero--desktop .hero-panel {
+    padding: clamp(28px, 3.2vw, 38px) clamp(26px, 3.2vw, 34px)
+      clamp(22px, 2.6vw, 28px);
+  }
+
   .hero-meta {
     gap: clamp(16px, 2vw, 24px);
   }
@@ -2205,6 +2579,15 @@ function resetState() {
 
   .hero-actions--inline .action-button {
     flex: 1 1 180px;
+  }
+
+  .profile-dialog--compact .highlights-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  }
+
+  .profile-dialog--compact .highlight-item--hero,
+  .profile-dialog--compact .highlight-item--status {
+    grid-column: 1 / -1;
   }
 
   .profile-layout--two-column .profile-layout__body {
