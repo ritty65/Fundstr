@@ -33,6 +33,7 @@ type CreatorProfile = {
 };
 
 const fetchCreatorMock = vi.fn();
+const fetchRecentNotesMock = vi.fn();
 
 vi.mock("stores/creators", () => ({
   useCreatorsStore: () => ({
@@ -57,7 +58,7 @@ vi.mock("stores/nostr", () => ({
     npub: "npub1test",
     connected: false,
     relays: [],
-    fetchRecentNotes: vi.fn().mockResolvedValue([]),
+    fetchRecentNotes: fetchRecentNotesMock,
   }),
 }));
 
@@ -111,6 +112,8 @@ describe("CreatorProfileModal fallback", () => {
 
   beforeEach(() => {
     fetchCreatorMock.mockReset();
+    fetchRecentNotesMock.mockReset();
+    fetchRecentNotesMock.mockResolvedValue([]);
   });
 
   it("keeps the initial profile when fetching fails", async () => {
@@ -151,5 +154,39 @@ describe("CreatorProfileModal fallback", () => {
     expect(wrapper.text()).toContain("Fallback bio");
     expect(wrapper.text()).toContain("Starter Tier");
     expect(wrapper.text()).toContain("Showing saved details.");
+  });
+
+  it("renders a lighter recent activity preview in compact mode", async () => {
+    fetchCreatorMock.mockResolvedValue(null);
+    fetchRecentNotesMock.mockResolvedValue([
+      {
+        id: "note-1",
+        content: "Newest note",
+        created_at: 1_712_765_600,
+      },
+      {
+        id: "note-2",
+        content: "Older note",
+        created_at: 1_712_700_000,
+      },
+    ]);
+
+    const wrapper = mount(CreatorProfileModal, {
+      props: {
+        show: true,
+        pubkey: initialProfile.pubkey,
+        initialProfile,
+        compact: true,
+      },
+      global: { stubs: globalStubs },
+    });
+
+    await flushPromises();
+
+    expect(fetchRecentNotesMock).toHaveBeenCalledWith(initialProfile.pubkey, 1);
+    expect(wrapper.text()).toContain("Latest note");
+    expect(wrapper.text()).toContain("Newest note");
+    expect(wrapper.text()).not.toContain("Older note");
+    expect(wrapper.text()).toContain("View public keys and copy tools");
   });
 });
