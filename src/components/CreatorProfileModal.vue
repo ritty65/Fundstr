@@ -31,7 +31,7 @@
                   <div class="hero-meta">
                     <div class="hero-name">{{ displayName }}</div>
                     <div v-if="nip05" class="hero-handle">{{ nip05 }}</div>
-                    <div v-if="creatorPubkey" class="hero-identity">
+                    <div v-if="creatorPubkey && !props.compact" class="hero-identity">
                       <div class="hero-identity__row">
                         <span class="hero-identity__label text-2">npub</span>
                         <span class="hero-identity__value">{{ creatorNpub }}</span>
@@ -150,6 +150,59 @@
                         <q-icon name="bolt" size="14px" />
                         <span>Lightning ready</span>
                       </div>
+                    </div>
+                    <div v-if="creatorPubkey && props.compact" class="hero-identity hero-identity--compact">
+                      <div v-if="identityLinks.length" class="hero-identity__links hero-identity__links--compact">
+                        <a
+                          v-for="link in identityLinks"
+                          :key="link.label"
+                          class="hero-identity__link"
+                          :href="link.url"
+                          target="_blank"
+                          rel="noopener"
+                        >
+                          {{ link.label }}
+                        </a>
+                      </div>
+                      <details class="hero-identity__details">
+                        <summary class="hero-identity__summary">View public keys and copy tools</summary>
+                        <div class="hero-identity__details-body">
+                          <div class="hero-identity__row">
+                            <span class="hero-identity__label text-2">npub</span>
+                            <span class="hero-identity__value">{{ creatorNpub }}</span>
+                            <q-btn
+                              flat
+                              dense
+                              round
+                              icon="content_copy"
+                              class="hero-identity__copy"
+                              aria-label="Copy creator npub to clipboard"
+                              @click="copyIdentity(creatorNpub, 'npub')"
+                            >
+                              <q-tooltip v-model="copiedState.npub" anchor="top middle" self="bottom middle">
+                                Copied
+                              </q-tooltip>
+                            </q-btn>
+                          </div>
+                          <div class="hero-identity__row">
+                            <span class="hero-identity__label text-2">pubkey</span>
+                            <span class="hero-identity__value">{{ creatorPubkey }}</span>
+                            <q-btn
+                              flat
+                              dense
+                              round
+                              icon="content_copy"
+                              class="hero-identity__copy"
+                              aria-label="Copy creator pubkey to clipboard"
+                              @click="copyIdentity(creatorPubkey, 'pubkey')"
+                            >
+                              <q-tooltip v-model="copiedState.pubkey" anchor="top middle" self="bottom middle">
+                                Copied
+                              </q-tooltip>
+                            </q-btn>
+                          </div>
+                        </div>
+                      </details>
                     </div>
                   </div>
                 </div>
@@ -371,11 +424,25 @@
                       No highlights available yet
                     </div>
                   </div>
-                  <div class="notes-section">
-                    <div class="section-heading">Latest notes</div>
+                  <div
+                    v-if="showNotesSection"
+                    class="notes-section"
+                    :class="{ 'notes-section--compact': props.compact }"
+                  >
+                    <div class="notes-section__header">
+                      <div class="section-heading">{{ notesSectionHeading }}</div>
+                      <div v-if="props.compact" class="notes-section__helper text-body2 text-2">
+                        One recent public post to help you scan activity without turning the preview into a feed.
+                      </div>
+                    </div>
                     <div class="notes-list" role="list">
                       <template v-if="notesLoading">
-                        <div v-for="index in 3" :key="`note-skeleton-${index}`" class="note-card note-card--skeleton">
+                        <div
+                          v-for="index in notesSkeletonCount"
+                          :key="`note-skeleton-${index}`"
+                          class="note-card note-card--skeleton"
+                          :class="{ 'note-card--compact': props.compact }"
+                        >
                           <q-skeleton type="text" width="85%" />
                           <q-skeleton type="text" width="72%" />
                           <q-skeleton type="text" width="58%" />
@@ -386,9 +453,10 @@
                       </template>
                       <template v-else>
                         <div
-                          v-for="note in recentNotes"
+                          v-for="note in visibleRecentNotes"
                           :key="note.id"
                           class="note-card"
+                          :class="{ 'note-card--compact': props.compact }"
                           role="listitem"
                         >
                           <div class="note-content text-1">
@@ -406,7 +474,7 @@
                             </a>
                           </div>
                         </div>
-                        <div v-if="!recentNotes.length" class="notes-empty text-2">
+                        <div v-if="!visibleRecentNotes.length" class="notes-empty text-2">
                           No recent notes yet
                           <div v-if="notesError" class="notes-empty__error">
                             {{ notesError }}
@@ -595,12 +663,16 @@ const tiers = ref<TierDetails[]>([]);
 const showLocal = ref(false);
 const isMobileViewport = computed(() => $q.screen.lt.sm);
 const isDesktopViewport = computed(() => $q.screen.gt.sm);
-const isTwoColumnViewport = computed(() => !props.compact && $q.screen.width >= 1280);
+const compactTwoColumnBreakpoint = 1100;
+const isTwoColumnViewport = computed(() =>
+  $q.screen.width >= (props.compact ? compactTwoColumnBreakpoint : 1280),
+);
 const isDialogMaximized = computed(() => isMobileViewport.value || (!props.compact && isDesktopViewport.value));
 const relayFallbackStatus = ref(getFreeRelayFallbackStatus());
 let relayFallbackUnsubscribe: (() => void) | null = null;
 const dialogClasses = computed(() => ({
   'profile-dialog--compact': props.compact === true,
+  'profile-dialog--compact-wide': props.compact === true && isTwoColumnViewport.value,
   'profile-dialog--maximized': isDialogMaximized.value,
   'profile-dialog--mobile': isMobileViewport.value,
   'profile-dialog--desktop': isDesktopViewport.value,
@@ -620,6 +692,20 @@ let notesRequestId = 0;
 const recentNotes = ref<Array<{ content: string; created_at: number; id: string }>>([]);
 const notesLoading = ref(false);
 const notesError = ref<string | null>(null);
+const notesRequestLimit = computed(() => (props.compact ? 1 : 3));
+const notesSkeletonCount = computed(() => (props.compact ? 1 : 3));
+const visibleRecentNotes = computed(() =>
+  recentNotes.value.slice(0, notesRequestLimit.value),
+);
+const notesSectionHeading = computed(() =>
+  props.compact ? 'Latest note' : 'Latest notes',
+);
+const showNotesSection = computed(() => {
+  if (!props.compact) {
+    return true;
+  }
+  return notesLoading.value || visibleRecentNotes.value.length > 0;
+});
 
 function resolveInitialTab(tab?: string | null): 'profile' | 'tiers' {
   return tab === 'tiers' ? 'tiers' : 'profile';
@@ -926,7 +1012,7 @@ const tierFetchFailed = computed(() => creator.value?.tierFetchFailed === true);
 const showStickyFooter = computed(
   () => hasTiers.value && $q.screen.lt.md && activeTab.value === 'tiers',
 );
-const isHeroActionsInline = computed(() => $q.screen.gt.sm);
+const isHeroActionsInline = computed(() => $q.screen.gt.sm && !props.compact);
 
 const primaryTierId = computed(() => tiers.value[0]?.id ?? '');
 
@@ -1113,6 +1199,16 @@ watch(
       return;
     }
     activeTab.value = resolveInitialTab(nextTab);
+  },
+);
+
+watch(
+  () => props.compact,
+  () => {
+    if (!showLocal.value || !props.pubkey) {
+      return;
+    }
+    void loadRecentNotes(props.pubkey);
   },
 );
 
@@ -1310,7 +1406,10 @@ async function loadRecentNotes(pubkey: string) {
   notesError.value = null;
 
   try {
-    const notes = await nostrStore.fetchRecentNotes(pubkey, 3);
+    const notes = await nostrStore.fetchRecentNotes(
+      pubkey,
+      notesRequestLimit.value,
+    );
     if (requestId !== notesRequestId) {
       return;
     }
@@ -1409,43 +1508,49 @@ function resetState() {
 }
 
 .profile-dialog--compact .profile-card {
-  width: min(100%, 1040px);
-  height: min(88vh, 920px);
-  max-height: min(88vh, 920px);
+  width: min(100%, 1280px);
+  height: min(94vh, 980px);
+  max-height: min(94vh, 980px);
 }
 
 .profile-dialog--compact .profile-layout__body {
-  gap: 18px;
+  gap: 22px;
+  padding: clamp(16px, 2.8vh, 26px) clamp(16px, 3vw, 26px);
 }
 
 .profile-dialog--compact .hero-panel {
-  padding: clamp(24px, 3vw, 32px) clamp(24px, 3.4vw, 34px)
-    clamp(20px, 2.6vw, 24px);
+  padding: clamp(22px, 2.6vw, 30px) clamp(22px, 3vw, 30px)
+    clamp(18px, 2.4vw, 22px);
 }
 
 .profile-dialog--compact .hero-meta {
-  gap: 12px;
+  gap: 10px;
 }
 
 .profile-dialog--compact .hero-name {
-  font-size: clamp(2.8rem, 4vw, 4.2rem);
+  font-size: clamp(2.25rem, 2vw + 1.55rem, 3.35rem);
 }
 
 .profile-dialog--compact .hero-handle {
-  font-size: clamp(1.15rem, 0.55vw + 1rem, 1.4rem);
+  font-size: clamp(1.08rem, 0.4vw + 1rem, 1.28rem);
 }
 
 .profile-dialog--compact .hero-about {
-  font-size: clamp(1.05rem, 0.4vw + 0.98rem, 1.22rem);
-  line-height: 1.6;
+  font-size: clamp(0.98rem, 0.25vw + 0.95rem, 1.12rem);
+  line-height: 1.55;
+}
+
+.profile-dialog--compact .hero-about--clamped {
+  -webkit-line-clamp: 3;
 }
 
 .profile-dialog--compact .hero-actions {
-  margin-top: 18px;
+  margin-top: 16px;
+  gap: 10px;
 }
 
 .profile-dialog--compact .profile-tabs-section {
-  padding-top: 4px;
+  padding-top: 2px;
 }
 
 .profile-card--two-column {
@@ -1673,6 +1778,11 @@ function resetState() {
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 70%, transparent);
 }
 
+.hero-identity--compact {
+  gap: 10px;
+  margin-top: 2px;
+}
+
 .hero-identity__row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1704,6 +1814,10 @@ function resetState() {
   padding-left: 2px;
 }
 
+.hero-identity__links--compact {
+  padding-left: 0;
+}
+
 .hero-identity__link {
   font-size: 0.9rem;
   color: var(--accent-500);
@@ -1714,6 +1828,39 @@ function resetState() {
 .hero-identity__link:hover,
 .hero-identity__link:focus-visible {
   text-decoration: underline;
+}
+
+.hero-identity__details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hero-identity__summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--accent-500);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.hero-identity__summary::-webkit-details-marker {
+  display: none;
+}
+
+.hero-identity__summary::before {
+  content: '+';
+  margin-right: 0.45rem;
+}
+
+.hero-identity__details[open] .hero-identity__summary::before {
+  content: '-';
+}
+
+.hero-identity__details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .hero-about {
@@ -1944,6 +2091,21 @@ function resetState() {
   gap: 16px;
 }
 
+.notes-section--compact {
+  gap: 14px;
+}
+
+.notes-section__header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notes-section__helper {
+  max-width: 38rem;
+  line-height: 1.55;
+}
+
 .notes-list {
   display: flex;
   flex-direction: column;
@@ -1960,6 +2122,11 @@ function resetState() {
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
 }
 
+.note-card--compact {
+  padding: 16px 18px;
+  gap: 12px;
+}
+
 .note-card--skeleton {
   gap: 8px;
 }
@@ -1970,6 +2137,10 @@ function resetState() {
   -webkit-box-orient: vertical;
   overflow: hidden;
   line-height: 1.5;
+}
+
+.note-card--compact .note-content {
+  -webkit-line-clamp: 4;
 }
 
 .note-meta {
@@ -2415,7 +2586,7 @@ function resetState() {
   }
 
   .profile-dialog--compact .hero-name {
-    font-size: clamp(2.35rem, 10vw, 3.3rem);
+    font-size: clamp(2.15rem, 9vw, 3.05rem);
   }
 
   .profile-dialog--compact .hero-handle {
@@ -2461,6 +2632,10 @@ function resetState() {
   }
 
   .highlights-section {
+    padding: 10px 16px 20px;
+  }
+
+  .notes-section {
     padding: 10px 16px 20px;
   }
 
@@ -2590,6 +2765,10 @@ function resetState() {
     grid-column: 1 / -1;
   }
 
+  .profile-dialog--compact .note-card {
+    max-width: none;
+  }
+
   .profile-layout--two-column .profile-layout__body {
     padding: clamp(18px, 3vh, 28px) 0;
   }
@@ -2619,6 +2798,30 @@ function resetState() {
 
   .empty-state {
     padding: 32px 48px;
+  }
+}
+@media (min-width: 1100px) {
+  .profile-dialog--compact-wide .profile-layout--two-column {
+    grid-template-columns: minmax(360px, 420px) minmax(0, 1fr);
+    grid-template-rows: 1fr;
+    column-gap: clamp(28px, 2.8vw, 40px);
+  }
+
+  .profile-dialog--compact-wide .profile-layout__hero--desktop .hero-panel {
+    min-height: 100%;
+    padding: clamp(24px, 2.6vw, 32px);
+  }
+
+  .profile-dialog--compact-wide .profile-layout__hero--desktop .hero-rail {
+    padding-right: clamp(8px, 1vw, 14px);
+  }
+
+  .profile-dialog--compact-wide .profile-layout__content--desktop {
+    padding-right: 0;
+  }
+
+  .profile-dialog--compact-wide .profile-layout__body {
+    padding: clamp(18px, 3vh, 28px) 0;
   }
 }
 @media (min-width: 1280px) {
