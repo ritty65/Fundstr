@@ -126,7 +126,9 @@ describe("CreatorProfileModal fallback", () => {
     expect(fetchCreatorMock).toHaveBeenCalledWith(initialProfile.pubkey, false);
     expect(wrapper.text()).toContain("Initial Creator");
     expect(wrapper.text()).toContain("Fallback bio");
+    expect(wrapper.text()).toContain("Quick snapshot");
     expect(wrapper.text()).toContain("Trusted rank (NIP-85)");
+    expect(wrapper.text()).toContain("How NIP-85 works");
     expect(wrapper.text()).toContain("89");
     expect(wrapper.text()).toContain("nostr.band");
     expect(wrapper.text()).toContain("Starter Tier");
