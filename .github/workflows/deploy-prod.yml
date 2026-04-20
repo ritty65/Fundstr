@@ -80,7 +80,7 @@ jobs:
           done
 
       - name: Build (Quasar PWA)
-        run: pnpm run build
+        run: VITE_BUILD_ID="${{ github.sha }}" pnpm run build
 
       - name: Verify deploy artifacts
         run: node scripts/ci/verify-deploy-artifacts.mjs
