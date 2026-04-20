@@ -100,7 +100,10 @@
                     <div
                       v-if="creator"
                       class="hero-actions"
-                      :class="{ 'hero-actions--inline': isHeroActionsInline }"
+                      :class="{
+                        'hero-actions--inline': isHeroActionsInline,
+                        'hero-actions--preview-grid': props.compact,
+                      }"
                     >
                       <q-btn
                         unelevated
@@ -258,11 +261,10 @@
                     :class="{ 'highlights-section--compact': props.compact }"
                   >
                     <div class="snapshot-intro">
-                      <div class="snapshot-intro__eyebrow">Quick snapshot</div>
-                      <div class="section-heading">Profile highlights</div>
+                      <div class="snapshot-intro__eyebrow">{{ snapshotEyebrow }}</div>
+                      <div class="section-heading">{{ highlightsHeading }}</div>
                       <div class="snapshot-intro__helper text-body2 text-2">
-                        Fast trust and profile signals before you message,
-                        donate, or subscribe.
+                        {{ highlightsHelperText }}
                       </div>
                     </div>
                     <div
@@ -699,6 +701,17 @@ const visibleRecentNotes = computed(() =>
 );
 const notesSectionHeading = computed(() =>
   props.compact ? 'Latest note' : 'Latest notes',
+);
+const snapshotEyebrow = computed(() =>
+  props.compact ? 'Quick view' : 'Quick snapshot',
+);
+const highlightsHeading = computed(() =>
+  props.compact ? 'Snapshot' : 'Profile highlights',
+);
+const highlightsHelperText = computed(() =>
+  props.compact
+    ? 'Key trust and profile signals before you message, donate, or subscribe.'
+    : 'Fast trust and profile signals before you message, donate, or subscribe.',
 );
 const showNotesSection = computed(() => {
   if (!props.compact) {
@@ -1508,19 +1521,19 @@ function resetState() {
 }
 
 .profile-dialog--compact .profile-card {
-  width: min(100%, 1280px);
-  height: min(94vh, 980px);
-  max-height: min(94vh, 980px);
+  width: min(100%, 1380px);
+  height: min(95vh, 1020px);
+  max-height: min(95vh, 1020px);
 }
 
 .profile-dialog--compact .profile-layout__body {
-  gap: 22px;
-  padding: clamp(16px, 2.8vh, 26px) clamp(16px, 3vw, 26px);
+  gap: 24px;
+  padding: clamp(18px, 3vh, 28px) clamp(18px, 3.2vw, 30px);
 }
 
 .profile-dialog--compact .hero-panel {
-  padding: clamp(22px, 2.6vw, 30px) clamp(22px, 3vw, 30px)
-    clamp(18px, 2.4vw, 22px);
+  padding: clamp(20px, 2.4vw, 28px) clamp(20px, 2.8vw, 28px)
+    clamp(18px, 2.2vw, 22px);
 }
 
 .profile-dialog--compact .hero-meta {
@@ -1528,7 +1541,7 @@ function resetState() {
 }
 
 .profile-dialog--compact .hero-name {
-  font-size: clamp(2.25rem, 2vw + 1.55rem, 3.35rem);
+  font-size: clamp(2rem, 1.6vw + 1.45rem, 2.95rem);
 }
 
 .profile-dialog--compact .hero-handle {
@@ -1536,16 +1549,16 @@ function resetState() {
 }
 
 .profile-dialog--compact .hero-about {
-  font-size: clamp(0.98rem, 0.25vw + 0.95rem, 1.12rem);
-  line-height: 1.55;
+  font-size: clamp(0.96rem, 0.18vw + 0.94rem, 1.08rem);
+  line-height: 1.5;
 }
 
 .profile-dialog--compact .hero-about--clamped {
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
 }
 
 .profile-dialog--compact .hero-actions {
-  margin-top: 16px;
+  margin-top: 14px;
   gap: 10px;
 }
 
@@ -1724,6 +1737,13 @@ function resetState() {
   gap: clamp(18px, 2vw, 28px);
 }
 
+.profile-dialog--compact-wide .profile-layout__hero--desktop .hero-layout {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: nowrap;
+}
+
 .hero-avatar {
   flex-shrink: 0;
   display: flex;
@@ -1734,6 +1754,11 @@ function resetState() {
   background: color-mix(in srgb, var(--surface-1) 85%, var(--surface-2) 15%);
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 80%, transparent);
   box-shadow: 0 16px 30px rgba(9, 15, 28, 0.22);
+}
+
+.profile-dialog--compact-wide .hero-avatar {
+  padding: 4px;
+  border-radius: 18px;
 }
 
 .profile-avatar :deep(img) {
@@ -1750,6 +1775,10 @@ function resetState() {
   gap: clamp(10px, 1.6vw, 16px);
   flex: 1 1 260px;
   min-width: 0;
+}
+
+.profile-dialog--compact-wide .hero-meta {
+  gap: 12px;
 }
 
 .hero-name {
@@ -1781,6 +1810,7 @@ function resetState() {
 .hero-identity--compact {
   gap: 10px;
   margin-top: 2px;
+  padding: 12px 14px;
 }
 
 .hero-identity__row {
@@ -1914,11 +1944,30 @@ function resetState() {
   width: auto;
 }
 
+.hero-actions--preview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  width: 100%;
+}
+
+.hero-actions--preview-grid .action-button.subscribe {
+  grid-column: 1 / -1;
+}
+
+.hero-actions--preview-grid .action-button {
+  width: 100%;
+}
+
 .hero-snapshot-strip {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 16px;
+}
+
+.profile-dialog--compact-wide .hero-snapshot-strip {
+  margin-top: 10px;
 }
 
 .hero-snapshot-pill {
@@ -1958,6 +2007,11 @@ function resetState() {
   color: var(--text-2);
   background: color-mix(in srgb, var(--surface-2) 80%, transparent);
   border: 1px solid color-mix(in srgb, var(--surface-contrast-border) 85%, transparent);
+}
+
+.profile-dialog--compact-wide .close-btn {
+  top: 16px;
+  right: 16px;
 }
 
 .loading-state {
@@ -2055,6 +2109,10 @@ function resetState() {
   gap: 8px;
 }
 
+.profile-dialog--compact-wide .snapshot-intro {
+  gap: 6px;
+}
+
 .snapshot-intro__eyebrow {
   display: inline-flex;
   align-items: center;
@@ -2074,6 +2132,15 @@ function resetState() {
   line-height: 1.55;
 }
 
+.profile-dialog--compact-wide .section-heading {
+  font-size: clamp(1.35rem, 0.55vw + 1.18rem, 1.85rem);
+}
+
+.profile-dialog--compact-wide .snapshot-intro__helper {
+  max-width: none;
+  font-size: 0.98rem;
+}
+
 .highlights-grid {
   display: grid;
   gap: 16px;
@@ -2082,6 +2149,11 @@ function resetState() {
 
 .highlights-grid--compact {
   gap: 18px;
+}
+
+.profile-dialog--compact-wide .highlights-grid--compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .notes-section {
@@ -2104,6 +2176,10 @@ function resetState() {
 .notes-section__helper {
   max-width: 38rem;
   line-height: 1.55;
+}
+
+.profile-dialog--compact-wide .notes-section--compact {
+  padding-top: 0;
 }
 
 .notes-list {
@@ -2197,9 +2273,40 @@ function resetState() {
   box-shadow: 0 20px 44px rgba(10, 16, 32, 0.16);
 }
 
+.profile-dialog--compact-wide .highlight-item--hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 18px;
+  align-items: start;
+  padding: 18px 20px;
+}
+
+.profile-dialog--compact-wide .highlight-item--hero .highlight-header {
+  grid-column: 1 / 2;
+}
+
+.profile-dialog--compact-wide .highlight-item--hero .highlight-value--hero {
+  grid-column: 2 / 3;
+  grid-row: 1 / span 2;
+  justify-self: end;
+  align-self: center;
+  font-size: clamp(2.6rem, 2vw + 1.4rem, 3.4rem);
+}
+
+.profile-dialog--compact-wide .highlight-item--hero .highlight-copy,
+.profile-dialog--compact-wide .highlight-item--hero .highlight-meta-row,
+.profile-dialog--compact-wide .highlight-item--hero .highlight-details {
+  grid-column: 1 / -1;
+}
+
 .highlight-item--metric,
 .highlight-item--detail {
   min-height: 156px;
+}
+
+.profile-dialog--compact-wide .highlight-item--metric,
+.profile-dialog--compact-wide .highlight-item--detail {
+  min-height: 0;
 }
 
 .highlight-item--status {
@@ -2769,6 +2876,12 @@ function resetState() {
     max-width: none;
   }
 
+  .profile-dialog--compact-wide .hero-actions--preview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+
   .profile-layout--two-column .profile-layout__body {
     padding: clamp(18px, 3vh, 28px) 0;
   }
@@ -2802,18 +2915,18 @@ function resetState() {
 }
 @media (min-width: 1100px) {
   .profile-dialog--compact-wide .profile-layout--two-column {
-    grid-template-columns: minmax(360px, 420px) minmax(0, 1fr);
+    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
     grid-template-rows: 1fr;
-    column-gap: clamp(28px, 2.8vw, 40px);
+    column-gap: clamp(24px, 2.4vw, 36px);
   }
 
   .profile-dialog--compact-wide .profile-layout__hero--desktop .hero-panel {
-    min-height: 100%;
-    padding: clamp(24px, 2.6vw, 32px);
+    min-height: auto;
+    padding: clamp(18px, 2.2vw, 26px);
   }
 
   .profile-dialog--compact-wide .profile-layout__hero--desktop .hero-rail {
-    padding-right: clamp(8px, 1vw, 14px);
+    padding-right: clamp(8px, 0.8vw, 12px);
   }
 
   .profile-dialog--compact-wide .profile-layout__content--desktop {
