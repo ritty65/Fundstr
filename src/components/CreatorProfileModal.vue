@@ -666,10 +666,12 @@ const showLocal = ref(false);
 const isMobileViewport = computed(() => $q.screen.lt.sm);
 const isDesktopViewport = computed(() => $q.screen.gt.sm);
 const isCompactDesktopPreview = computed(
-  () => props.compact === true && $q.screen.width >= 1024,
+  () => props.compact === true && $q.screen.width >= 1180,
 );
 const isTwoColumnViewport = computed(
-  () => !props.compact && $q.screen.width >= 1280,
+  () =>
+    (props.compact === true && isCompactDesktopPreview.value) ||
+    (!props.compact && $q.screen.width >= 1280),
 );
 const isDialogMaximized = computed(() => isMobileViewport.value || (!props.compact && isDesktopViewport.value));
 const relayFallbackStatus = ref(getFreeRelayFallbackStatus());
@@ -1529,8 +1531,8 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .profile-card {
-  width: min(100%, 1320px);
-  min-width: min(1120px, calc(100vw - 72px));
+  width: min(100%, 1520px);
+  min-width: min(1220px, calc(100vw - 72px));
   height: min(93vh, 960px);
   max-height: min(93vh, 960px);
 }
@@ -1542,7 +1544,7 @@ function resetState() {
 
 .profile-dialog--preview-desktop .profile-layout__body {
   gap: 22px;
-  padding: 18px 28px 28px;
+  padding: 20px 30px 30px;
   margin-top: 0;
 }
 
@@ -1552,7 +1554,7 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .hero-panel {
-  padding: 22px 28px 20px;
+  padding: 24px 22px 20px;
 }
 
 .profile-dialog--compact .hero-meta {
@@ -1564,8 +1566,8 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .hero-name {
-  max-width: 16ch;
-  font-size: clamp(2rem, 1.3vw + 1.45rem, 2.75rem);
+  max-width: 12ch;
+  font-size: clamp(1.7rem, 0.95vw + 1.2rem, 2.35rem);
 }
 
 .profile-dialog--compact .hero-handle {
@@ -1573,7 +1575,7 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .hero-handle {
-  font-size: 1.08rem;
+  font-size: 1rem;
 }
 
 .profile-dialog--compact .hero-about {
@@ -1582,7 +1584,9 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .hero-about {
-  max-width: 48ch;
+  max-width: 28ch;
+  font-size: 0.98rem;
+  line-height: 1.52;
 }
 
 .profile-dialog--compact .hero-about--clamped {
@@ -1768,10 +1772,10 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .hero-layout {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 18px 24px;
-  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  align-items: stretch;
 }
 
 .profile-layout__hero--desktop .hero-layout {
@@ -1826,7 +1830,7 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .hero-meta {
-  gap: 12px;
+  gap: 10px;
 }
 
 .profile-dialog--compact-wide .hero-meta {
@@ -1866,7 +1870,7 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .hero-identity--compact {
-  max-width: 520px;
+  max-width: 100%;
 }
 
 .hero-identity__row {
@@ -2008,7 +2012,7 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .hero-actions--preview-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -2017,7 +2021,7 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .hero-actions--preview-grid .action-button.subscribe {
-  grid-column: auto;
+  grid-column: 1 / -1;
 }
 
 .hero-actions--preview-grid .action-button {
@@ -2032,6 +2036,7 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .hero-snapshot-strip {
+  display: none;
   margin-top: 8px;
   gap: 8px;
 }
@@ -2138,7 +2143,7 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .profile-tabs-section {
-  padding: 0 28px;
+  padding: 0 30px;
 }
 
 .profile-tabs {
@@ -2179,7 +2184,7 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .highlights-section {
-  padding: 10px 28px 0;
+  padding: 12px 30px 0;
 }
 
 .highlights-section--compact {
@@ -2217,6 +2222,7 @@ function resetState() {
 
 .profile-dialog--preview-desktop .snapshot-intro__helper {
   max-width: 50rem;
+  font-size: 1rem;
 }
 
 .profile-dialog--compact-wide .section-heading {
@@ -2239,8 +2245,8 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .highlights-grid--compact {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 18px;
 }
 
 .profile-dialog--compact-wide .highlights-grid--compact {
@@ -2260,7 +2266,7 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .notes-section--compact {
-  padding: 4px 28px 28px;
+  padding: 6px 30px 30px;
 }
 
 .notes-section__header {
@@ -2300,7 +2306,7 @@ function resetState() {
 }
 
 .profile-dialog--preview-desktop .note-card--compact {
-  max-width: 72ch;
+  max-width: none;
 }
 
 .note-card--skeleton {
@@ -2390,7 +2396,7 @@ function resetState() {
   grid-row: 1 / span 2;
   justify-self: end;
   align-self: center;
-  font-size: clamp(2.4rem, 1.6vw + 1.5rem, 3.25rem);
+  font-size: clamp(2.7rem, 1.8vw + 1.55rem, 3.8rem);
 }
 
 .profile-dialog--preview-desktop .highlight-item--hero .highlight-copy,
@@ -2446,6 +2452,11 @@ function resetState() {
 
 .profile-dialog--preview-desktop .highlight-item--status {
   min-height: 0;
+}
+
+.profile-dialog--preview-desktop .highlight-item--status,
+.profile-dialog--preview-desktop .highlight-item--hero {
+  grid-column: 1 / -1;
 }
 
 .highlight-header {
@@ -2980,8 +2991,8 @@ function resetState() {
   }
 
   .profile-dialog--compact .profile-layout__hero--desktop .hero-panel {
-    padding: clamp(28px, 3.2vw, 38px) clamp(26px, 3.2vw, 34px)
-      clamp(22px, 2.6vw, 28px);
+    padding: clamp(24px, 2.8vw, 34px) clamp(22px, 2.8vw, 30px)
+      clamp(20px, 2.4vw, 24px);
   }
 
   .hero-meta {
@@ -3009,12 +3020,6 @@ function resetState() {
 
   .profile-dialog--compact .note-card {
     max-width: none;
-  }
-
-  .profile-dialog--compact-wide .hero-actions--preview-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-    margin-top: 12px;
   }
 
   .profile-layout--two-column .profile-layout__body {
@@ -3048,11 +3053,41 @@ function resetState() {
     padding: 32px 48px;
   }
 }
+@media (min-width: 1180px) {
+  .profile-dialog--preview-desktop .profile-layout--two-column {
+    grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+    grid-template-rows: 1fr;
+    column-gap: 0;
+  }
+
+  .profile-dialog--preview-desktop .profile-layout__hero--desktop {
+    border-right: 1px solid color-mix(in srgb, var(--surface-contrast-border) 75%, transparent);
+  }
+
+  .profile-dialog--preview-desktop .profile-layout__hero--desktop .hero-rail {
+    height: 100%;
+    overflow-y: auto;
+    padding-right: 0;
+  }
+
+  .profile-dialog--preview-desktop .profile-layout__hero--desktop .hero-panel {
+    min-height: 100%;
+  }
+
+  .profile-dialog--preview-desktop .profile-layout__content--desktop {
+    padding-right: 0;
+  }
+}
 @media (min-width: 1280px) {
   .profile-layout--two-column {
     grid-template-columns: minmax(340px, clamp(440px, 32vw, 620px)) minmax(0, 1fr);
     grid-template-rows: 1fr;
     column-gap: clamp(40px, 4vw, 88px);
+  }
+
+  .profile-dialog--preview-desktop .profile-layout--two-column {
+    grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+    column-gap: 0;
   }
 
   .hero-actions--inline .action-button {
