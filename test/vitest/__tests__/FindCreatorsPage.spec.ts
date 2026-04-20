@@ -24,7 +24,12 @@ vi.mock("src/api/fundstrDiscovery", () => ({
 }));
 
 vi.mock("components/CreatorProfileModal.vue", () => ({
-  default: { name: "CreatorProfileModal", template: "<div />" },
+  default: {
+    name: "CreatorProfileModal",
+    props: ["show", "pubkey", "initialProfile", "initialTab", "compact"],
+    template:
+      '<div class="creator-profile-modal-stub" :data-show="String(show)" :data-pubkey="pubkey || \"\"" :data-tab="initialTab || \"\"" :data-compact="String(compact)"></div>',
+  },
 }));
 vi.mock("components/DonateDialog.vue", () => ({
   default: { name: "DonateDialog", template: "<div />" },
@@ -79,18 +84,23 @@ describe("FindCreators.vue", () => {
     });
     creatorsStore = reactive({
       searchResults: [],
+      unfilteredSearchResults: [],
       featuredCreators: [],
       searching: false,
+      isRefreshing: false,
       loadingFeatured: false,
       error: "",
+      searchStatusMessage: "",
       searchWarnings: [],
       featuredError: "",
+      featuredStatusMessage: "",
       tiersMap: reactive({}),
       tierFetchError: false,
       ensureCreatorCacheFromDexie: vi.fn().mockResolvedValue(undefined),
       saveProfileCache: vi.fn().mockResolvedValue(undefined),
       loadFeaturedCreators: vi.fn().mockResolvedValue(undefined),
       searchCreators: vi.fn().mockResolvedValue(undefined),
+      applySearchFilters: vi.fn(),
     });
   });
 
@@ -171,5 +181,33 @@ describe("FindCreators.vue", () => {
       .find((node) => node.text() === "Could not load featured");
 
     expect(bannerText).toBeTruthy();
+  });
+
+  it("opens the creator preview modal when a creator card emits view-profile", async () => {
+    creatorsStore.featuredCreators = [
+      {
+        pubkey: "a".repeat(64),
+        profile: {},
+        followers: 12,
+        following: 3,
+        joined: 1,
+      },
+    ];
+
+    const wrapper = mountComponent();
+    await flushPromises();
+
+    const card = wrapper.findComponent({ name: "CreatorCard" });
+    card.vm.$emit("view-profile", {
+      pubkey: "a".repeat(64),
+      initialTab: "profile",
+    });
+    await nextTick();
+
+    const modal = wrapper.get(".creator-profile-modal-stub");
+    expect(modal.attributes("data-show")).toBe("true");
+    expect(modal.attributes("data-pubkey")).toBe("a".repeat(64));
+    expect(modal.attributes("data-tab")).toBe("profile");
+    expect(modal.attributes("data-compact")).toBe("true");
   });
 });

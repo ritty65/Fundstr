@@ -27,6 +27,7 @@ type CreatorProfile = {
   displayName?: string;
   about?: string | null;
   name?: string;
+  trustedMetrics?: Record<string, unknown> | null;
   profile?: Record<string, unknown> | null;
   tiers?: Array<Record<string, any>> | null;
 };
@@ -42,6 +43,7 @@ vi.mock("stores/creators", () => ({
   }),
   mergeCreatorProfileWithFallback: (fallback: any, profile: any) =>
     profile ?? fallback,
+  creatorTrustedMetrics: (profile: any) => profile?.trustedMetrics ?? null,
   creatorIsSignalOnly: () => false,
   FundstrProfileFetchError: class FundstrProfileFetchError extends Error {
     fallbackAttempted = false;
@@ -60,13 +62,20 @@ vi.mock("stores/nostr", () => ({
 }));
 
 describe("CreatorProfileModal fallback", () => {
-  const initialProfile: CreatorProfile = {
-    pubkey: "pubkey-123",
-    displayName: "Initial Creator",
-    about: "Fallback bio",
-    name: "initial_creator",
-    profile: { display_name: "Initial Creator", about: "Fallback bio" },
-    tiers: [
+    const initialProfile: CreatorProfile = {
+      pubkey: "pubkey-123",
+      displayName: "Initial Creator",
+      about: "Fallback bio",
+      name: "initial_creator",
+      trustedMetrics: {
+        rank: 89,
+        providerLabel: "nostr.band",
+        providerPubkey: "provider",
+        relayUrl: "wss://nip85.nostr.band",
+        createdAt: 1_712_765_600,
+      },
+      profile: { display_name: "Initial Creator", about: "Fallback bio" },
+      tiers: [
       {
         id: "starter",
         name: "Starter Tier",
@@ -82,6 +91,7 @@ describe("CreatorProfileModal fallback", () => {
     "q-dialog": { template: "<div><slot /></div>" },
     "q-card": { template: "<div><slot /></div>" },
     "q-card-section": { template: "<section><slot /></section>" },
+    "q-icon": { template: "<i><slot /></i>" },
     "q-btn": {
       props: ["label"],
       template: "<button><slot />{{ label }}</button>",
@@ -116,6 +126,9 @@ describe("CreatorProfileModal fallback", () => {
     expect(fetchCreatorMock).toHaveBeenCalledWith(initialProfile.pubkey, false);
     expect(wrapper.text()).toContain("Initial Creator");
     expect(wrapper.text()).toContain("Fallback bio");
+    expect(wrapper.text()).toContain("Trusted rank (NIP-85)");
+    expect(wrapper.text()).toContain("89");
+    expect(wrapper.text()).toContain("nostr.band");
     expect(wrapper.text()).toContain("Starter Tier");
     expect(wrapper.text()).toContain("Showing saved details.");
     expect(wrapper.text()).toContain("Retry");

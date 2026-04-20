@@ -186,6 +186,45 @@
                         <div class="highlight-label text-2">Followers</div>
                         <div class="highlight-value">{{ followersDisplay }}</div>
                       </div>
+                      <div
+                        v-if="trustedRankValue !== null"
+                        class="highlight-item highlight-item--full highlight-item--trusted"
+                      >
+                        <div class="highlight-label text-2">Trusted rank (NIP-85)</div>
+                        <div class="highlight-value highlight-value--trusted">
+                          <q-icon name="shield" size="18px" />
+                          <span>{{ trustedRankValue }}</span>
+                        </div>
+                        <div class="highlight-copy text-body2 text-2">
+                          Provider-signed trust context for discovery. Fundstr
+                          does not calculate this score, and it never controls
+                          payments, subscriptions, or access.
+                        </div>
+                        <div
+                          v-if="trustedRankProviderText"
+                          class="highlight-meta text-caption text-2"
+                        >
+                          {{ trustedRankProviderText }}
+                        </div>
+                        <div
+                          v-if="trustedRankFreshness"
+                          class="highlight-meta text-caption text-2"
+                        >
+                          {{ trustedRankFreshness }}
+                        </div>
+                        <div class="trusted-rank-info-links">
+                          <a
+                            v-for="link in trustedRankInfoLinks"
+                            :key="link.id"
+                            class="trusted-rank-info-link"
+                            :href="link.href"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {{ link.label }}
+                          </a>
+                        </div>
+                      </div>
                       <div v-if="lightningAddress" class="highlight-item highlight-item--full">
                         <div class="highlight-label text-2">Lightning address</div>
                         <div class="highlight-value highlight-value--mono">
@@ -414,17 +453,24 @@ import { filterValidMedia } from 'src/utils/validateMedia';
 import type { Tier, TierMedia as TierMediaItem } from 'stores/types';
 import {
   FundstrProfileFetchError,
+  creatorTrustedMetrics,
   creatorIsSignalOnly,
   mergeCreatorProfileWithFallback,
   useCreatorsStore,
 } from 'stores/creators';
 import type { CreatorProfile } from 'stores/creators';
+import {
+  TRUSTED_RANK_INFO_LINKS,
+  formatTrustedRankFreshness,
+  trustedRankProviderLine,
+} from 'src/utils/trustedRank';
 
 const props = defineProps<{
   show: boolean;
   pubkey: string;
   initialProfile?: CreatorProfile | null;
   initialTab?: 'profile' | 'tiers';
+  compact?: boolean;
 }>();
 
 const emit = defineEmits(['close', 'message', 'donate']);
@@ -450,11 +496,12 @@ const tiers = ref<TierDetails[]>([]);
 const showLocal = ref(false);
 const isMobileViewport = computed(() => $q.screen.lt.sm);
 const isDesktopViewport = computed(() => $q.screen.gt.sm);
-const isTwoColumnViewport = computed(() => $q.screen.width >= 1280);
-const isDialogMaximized = computed(() => isMobileViewport.value || isDesktopViewport.value);
+const isTwoColumnViewport = computed(() => !props.compact && $q.screen.width >= 1280);
+const isDialogMaximized = computed(() => isMobileViewport.value || (!props.compact && isDesktopViewport.value));
 const relayFallbackStatus = ref(getFreeRelayFallbackStatus());
 let relayFallbackUnsubscribe: (() => void) | null = null;
 const dialogClasses = computed(() => ({
+  'profile-dialog--compact': props.compact === true,
   'profile-dialog--maximized': isDialogMaximized.value,
   'profile-dialog--mobile': isMobileViewport.value,
   'profile-dialog--desktop': isDesktopViewport.value,
@@ -797,6 +844,17 @@ const identityLinks = computed(() => {
 
 const copiedState = ref({ npub: false, pubkey: false, lightning: false });
 const copyTimeouts: Partial<Record<'npub' | 'pubkey' | 'lightning', number>> = {};
+const trustedMetrics = computed(() => creatorTrustedMetrics(creator.value as any));
+const trustedRankValue = computed(() => trustedMetrics.value?.rank ?? null);
+const trustedRankProviderText = computed(() =>
+  trustedRankProviderLine(trustedMetrics.value?.providerLabel),
+);
+const trustedRankFreshness = computed(() =>
+  formatTrustedRankFreshness(trustedMetrics.value?.createdAt),
+);
+const trustedRankInfoLinks = TRUSTED_RANK_INFO_LINKS.map((link) => ({
+  ...link,
+}));
 
 async function copyIdentity(value: string, key: 'npub' | 'pubkey' | 'lightning') {
   if (!value) {
@@ -907,7 +965,8 @@ const highlightStatusChips = computed(() => {
 
 const hasHighlights = computed(() =>
   Boolean(
-    followersDisplay.value ||
+      followersDisplay.value ||
+      trustedRankValue.value !== null ||
       lightningAddress.value ||
       websiteUrl.value ||
       highlightStatusChips.value.length,
@@ -1248,6 +1307,12 @@ function resetState() {
   height: 100%;
   max-height: min(98vh, 1600px);
   min-height: 0;
+}
+
+.profile-dialog--compact .profile-card {
+  width: min(100%, 1040px);
+  height: min(88vh, 920px);
+  max-height: min(88vh, 920px);
 }
 
 .profile-card--two-column {
@@ -1776,6 +1841,36 @@ function resetState() {
 .highlight-value--mono {
   font-family: var(--font-mono, 'Fira Code', monospace);
   font-size: 1rem;
+}
+
+.highlight-item--trusted {
+  background: color-mix(in srgb, var(--accent-200) 14%, var(--surface-1) 86%);
+  border-color: color-mix(in srgb, var(--accent-500) 24%, var(--surface-contrast-border));
+}
+
+.highlight-value--trusted {
+  color: var(--accent-500);
+}
+
+.highlight-meta {
+  line-height: 1.5;
+}
+
+.trusted-rank-info-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.trusted-rank-info-link {
+  color: var(--accent-500);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.trusted-rank-info-link:hover,
+.trusted-rank-info-link:focus-visible {
+  text-decoration: underline;
 }
 
 .highlight-copy {
