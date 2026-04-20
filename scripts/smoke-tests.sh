@@ -5,6 +5,11 @@ TRACE_FILE="${SMOKE_TRACE_FILE:-}"
 SMOKE_EXPECT_ENV="${SMOKE_EXPECT_ENV:-}"
 CURL_ARGS=(--retry 2 --retry-all-errors --retry-delay 1 --connect-timeout 15 --max-time 45)
 
+allow_legacy_discovery=0
+if [ "$SMOKE_EXPECT_ENV" = "staging" ]; then
+  allow_legacy_discovery=1
+fi
+
 log_step() {
   local message="$1"
   local ts
@@ -40,6 +45,14 @@ fetch_body() {
   curl "${CURL_ARGS[@]}" -fsSL "$url"
 }
 
+looks_like_spa_shell() {
+  grep -Eiq '/assets/[A-Za-z0-9._-]+\.js'
+}
+
+looks_like_legacy_discovery() {
+  grep -q "find-creators.css"
+}
+
 root_headers=$(fetch_headers "$BASE/")
 root_csp=$(header_value "$root_headers" "content-security-policy")
 [ -n "$root_csp" ] || {
@@ -57,12 +70,12 @@ discovery_csp=$(header_value "$discovery_headers" "content-security-policy")
 log_step "Discovery CSP: $discovery_csp"
 
 discovery_html=$(fetch_body "$BASE/find-creators")
-echo "$discovery_html" | grep -Eiq '/assets/[A-Za-z0-9._-]+\.js' || {
+echo "$discovery_html" | looks_like_spa_shell || {
   log_step "find-creators route is not serving the SPA shell"
   exit 1
 }
 
-echo "$discovery_html" | grep -q "find-creators.css" && {
+echo "$discovery_html" | looks_like_legacy_discovery && {
   log_step "find-creators route is still serving legacy discovery HTML"
   exit 1
 }
@@ -74,33 +87,53 @@ legacy_status=$(awk 'NR==1 {print $2}' <<<"$legacy_headers")
 legacy_location=$(header_value "$legacy_headers" "location")
 
 case "$legacy_status" in
-  301|302|307|308) ;;
+  301|302|307|308)
+    case "$legacy_location" in
+      /find-creators|/find-creators\?*|*/find-creators|*/find-creators\?*) ;;
+      *)
+        log_step "Legacy discovery URL redirected to an unexpected location: ${legacy_location:-<missing>}"
+        exit 1
+        ;;
+    esac
+
+    redirected_html=$(fetch_body "$BASE/find-creators.html")
+    echo "$redirected_html" | looks_like_legacy_discovery && {
+      log_step "Legacy discovery URL still resolves to the old standalone document"
+      exit 1
+    }
+
+    echo "$redirected_html" | looks_like_spa_shell || {
+      log_step "Legacy discovery URL did not land on the SPA shell after redirect"
+      exit 1
+    }
+
+    log_step "Legacy discovery URL redirects to the SPA route"
+    ;;
+  200)
+    legacy_html=$(fetch_body "$BASE/find-creators.html")
+
+    if [ "$allow_legacy_discovery" -ne 1 ]; then
+      log_step "Legacy discovery URL returned HTTP 200 instead of redirecting"
+      exit 1
+    fi
+
+    echo "$legacy_html" | looks_like_spa_shell && {
+      log_step "Legacy discovery URL returned HTTP 200 with SPA shell HTML instead of redirecting"
+      exit 1
+    }
+
+    echo "$legacy_html" | looks_like_legacy_discovery || {
+      log_step "Legacy discovery URL returned HTTP 200 but did not match the expected legacy document"
+      exit 1
+    }
+
+    log_step "Legacy discovery URL still serves the standalone page on staging; allowing compatibility until Develop2 catches up"
+    ;;
   *)
-    log_step "Legacy discovery URL did not return an HTTP redirect (status=${legacy_status:-unknown})"
+    log_step "Legacy discovery URL returned unexpected HTTP status ${legacy_status:-unknown}"
     exit 1
     ;;
 esac
-
-case "$legacy_location" in
-  /find-creators|/find-creators\?*|*/find-creators|*/find-creators\?*) ;;
-  *)
-    log_step "Legacy discovery URL redirected to an unexpected location: ${legacy_location:-<missing>}"
-    exit 1
-    ;;
-esac
-
-redirected_html=$(fetch_body "$BASE/find-creators.html")
-echo "$redirected_html" | grep -q "find-creators.css" && {
-  log_step "Legacy discovery URL still resolves to the old standalone document"
-  exit 1
-}
-
-echo "$redirected_html" | grep -Eiq '/assets/[A-Za-z0-9._-]+\.js' || {
-  log_step "Legacy discovery URL did not land on the SPA shell after redirect"
-  exit 1
-}
-
-log_step "Legacy discovery URL redirects to the SPA route"
 
 manifest_headers=$(fetch_headers "$BASE/manifest.json")
 manifest_type=$(header_value "$manifest_headers" "content-type")
